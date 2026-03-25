@@ -192,6 +192,8 @@ export interface IChatPendingRequest {
   readonly text: string;
   /** Queue behavior: wait or steer. */
   readonly kind: ChatRequestQueueKind;
+  /** Original request options that must survive queueing. */
+  readonly options?: IChatSendRequestOptions;
   /** Timestamp when the message was queued. */
   readonly timestamp: number;
 }
@@ -540,6 +542,8 @@ export interface IChatCommand {
 export interface IChatParticipant {
   /** Unique participant ID (e.g. 'parallx.chat.default', 'parallx.chat.workspace'). */
   readonly id: string;
+  /** The participant surface contract used for shared interpretation. */
+  readonly surface?: IChatParticipantRequestInterpretation['surface'];
   /** Display name shown in the UI (e.g. 'Chat', '@workspace'). */
   readonly displayName: string;
   /** Short description of what this participant does. */
@@ -550,6 +554,8 @@ export interface IChatParticipant {
   readonly commands: readonly IChatCommand[];
   /** The handler function that processes requests. */
   readonly handler: IChatParticipantHandler;
+  /** Optional runtime-backed entry for participants converged on a shared runtime contract. */
+  readonly runtime?: IChatParticipantRuntimeEntry;
   /** Optional follow-up suggestion provider, called after handler completes. */
   readonly provideFollowups?: IChatFollowupProvider;
 }
@@ -566,6 +572,15 @@ export type IChatParticipantHandler = (
   response: IChatResponseStream,
   token: ICancellationToken,
 ) => Promise<IChatParticipantResult>;
+
+export interface IChatParticipantRuntimeEntry {
+  handleTurn(
+    request: IChatParticipantRequest,
+    context: IChatParticipantContext,
+    response: IChatResponseStream,
+    token: ICancellationToken,
+  ): Promise<IChatParticipantResult>;
+}
 
 export type IChatParticipantWorkflowType =
   | 'generic-grounded'
@@ -693,6 +708,24 @@ export interface IChatParticipantContext {
   readonly sessionId: string;
   /** Previous request/response pairs in this session. */
   readonly history: readonly IChatRequestResponsePair[];
+  /** Shared runtime hooks exposed to all participant surfaces. */
+  readonly runtime?: IChatParticipantRuntimeContext;
+}
+
+export interface IChatParticipantRuntimeContext {
+  /** Report a runtime trace payload for the active request. */
+  reportTrace?(trace: unknown): void;
+  /** Build a runtime-owned prompt seed using the current conversation history. */
+  buildPromptSeed?(systemPrompt: string): readonly IChatMessage[];
+  /** Build a runtime-owned prompt envelope using the active request attachments. */
+  buildPromptEnvelope?(systemPrompt: string, userContent: string): readonly IChatMessage[];
+  /** Build a runtime-owned prompt envelope and execute it with the active session model. */
+  sendPrompt?(
+    systemPrompt: string,
+    userContent: string,
+    options?: IChatRequestOptions,
+    signal?: AbortSignal,
+  ): AsyncIterable<IChatResponseChunk>;
 }
 
 /**
@@ -882,6 +915,10 @@ export interface IChatTool {
   readonly requiresConfirmation: boolean;
   /** 3-tier permission level (M11 Task 2.1). Defaults to 'always-allowed' if not set. */
   readonly permissionLevel?: ToolPermissionLevel;
+  /** Registration origin for runtime provenance. */
+  readonly source?: 'built-in' | 'bridge';
+  /** Owning tool ID when contributed through ChatBridge. */
+  readonly ownerToolId?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -987,6 +1024,10 @@ export interface IChatService extends IDisposable {
   setTranscriptService(transcriptService: import('./serviceTypes.js').IWorkspaceTranscriptService): void;
   /** Late-bind workspace-aware turn preparation helpers used before agent dispatch. */
   setTurnPreparationServices(services: IChatTurnPreparationServices): void;
+  /** Late-bind a runtime trace reporter shared by all participant surfaces. */
+  setRuntimeTraceReporter?(reporter: ((trace: unknown) => void) | undefined): void;
+  /** Late-bind a participant selector for switching the default chat surface between implementations. */
+  setRuntimeParticipantResolver?(resolver: ((participantId: string) => string) | undefined): void;
   /** Send a user message and orchestrate the full request pipeline. */
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<IChatParticipantResult>;
   /** Cancel the in-progress request for a session. */

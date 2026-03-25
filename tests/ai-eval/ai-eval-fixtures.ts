@@ -110,6 +110,22 @@ export interface ChatEvalDebugSnapshot {
     hasActiveSlashCommand: boolean;
     isRagReady: boolean;
   };
+  bootstrapContext?: {
+    maxChars: number;
+    totalMaxChars: number;
+    totalRawChars: number;
+    totalInjectedChars: number;
+    files: Array<{
+      name: string;
+      path: string;
+      missing: boolean;
+      rawChars: number;
+      injectedChars: number;
+      truncated: boolean;
+      causes: string[];
+    }>;
+    warningLines: string[];
+  };
   retrievalError?: string;
 }
 

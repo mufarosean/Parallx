@@ -3,6 +3,7 @@ import type {
   IChatRequestResponsePair,
   IChatResponseChunk,
 } from '../../../services/chatTypes.js';
+import type { IChatRuntimeMemoryCheckpoint } from '../chatTypes.js';
 
 export interface IChatMemoryWriteBackConcept {
   readonly concept: string;
@@ -35,6 +36,7 @@ export interface IChatMemoryWriteBackOptions {
   readonly requestText: string;
   readonly sessionId?: string;
   readonly history: readonly IChatRequestResponsePair[];
+  readonly onCheckpoint?: (checkpoint: IChatRuntimeMemoryCheckpoint) => void;
 }
 
 export function queueChatMemoryWriteBack(
@@ -46,7 +48,9 @@ export function queueChatMemoryWriteBack(
   }
 
   if (deps.extractPreferences && options.requestText) {
-    deps.extractPreferences(options.requestText).catch(() => {});
+    deps.extractPreferences(options.requestText).then(() => {
+      options.onCheckpoint?.({ checkpoint: 'memory-preferences-extracted' });
+    }).catch(() => {});
   }
 
   if (
@@ -87,6 +91,7 @@ export function queueChatMemoryWriteBack(
 
       if (fallbackSummary) {
         await storeSessionMemory(sessionId, fallbackSummary, messageCount);
+        options.onCheckpoint?.({ checkpoint: 'memory-summary-fallback-stored' });
       }
 
       if (!deps.sendSummarizationRequest) {
@@ -158,10 +163,13 @@ export function queueChatMemoryWriteBack(
 
       if (summaryText) {
         await storeSessionMemory(sessionId, summaryText, messageCount);
+        options.onCheckpoint?.({ checkpoint: 'memory-summary-refined-stored' });
       }
 
       if (extractedConcepts.length > 0 && deps.storeConceptsFromSession) {
-        deps.storeConceptsFromSession(extractedConcepts, sessionId).catch(() => {});
+        deps.storeConceptsFromSession(extractedConcepts, sessionId).then(() => {
+          options.onCheckpoint?.({ checkpoint: 'memory-concepts-stored' });
+        }).catch(() => {});
       }
     } catch {
     }

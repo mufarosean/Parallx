@@ -1,66 +1,18 @@
 import type {
   ICancellationToken,
   IChatAttachment,
-  IChatFileAttachment,
-  IChatImageAttachment,
   IChatMessage,
-  IChatParticipantContext,
   IChatParticipantRequest,
   IChatParticipantResult,
   IChatResponseStream,
   IChatResponseChunk,
+  IChatRequestOptions,
 } from '../../../services/chatTypes.js';
 import { isChatFileAttachment, isChatImageAttachment } from '../../../services/chatTypes.js';
 
 const MAX_SCOPED_ATTACHMENT_FILES = 4;
 const MAX_SCOPED_ATTACHMENT_CHARS = 16000;
 const MAX_SCOPED_ATTACHMENT_FILE_CHARS = 4000;
-
-export function appendScopedParticipantHistory(
-  messages: IChatMessage[],
-  context: IChatParticipantContext,
-): void {
-  for (const pair of context.history) {
-    messages.push({ role: 'user', content: pair.request.text });
-    const responseText = pair.response.parts
-      .map((part) => {
-        if ('content' in part && typeof part.content === 'string') {
-          return part.content;
-        }
-        if ('code' in part && typeof part.code === 'string') {
-          return '```\n' + part.code + '\n```';
-        }
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n');
-    if (responseText) {
-      messages.push({ role: 'assistant', content: responseText });
-    }
-  }
-}
-
-export function createScopedParticipantMessages(
-  systemContent: string,
-  userContent: string,
-  request: IChatParticipantRequest,
-  context?: IChatParticipantContext,
-): IChatMessage[] {
-  const messages: IChatMessage[] = [
-    { role: 'system', content: systemContent },
-  ];
-
-  if (context) {
-    appendScopedParticipantHistory(messages, context);
-  }
-
-  messages.push({
-    role: 'user',
-    content: userContent,
-    images: request.attachments?.filter(isChatImageAttachment),
-  });
-  return messages;
-}
 
 function formatScopeSummary(request: IChatParticipantRequest): string | undefined {
   const turnState = request.turnState;
@@ -165,7 +117,7 @@ export async function streamScopedParticipantLLMResponse(
   token: ICancellationToken,
   sendChatRequest: (
     messages: readonly IChatMessage[],
-    options?: unknown,
+    options?: IChatRequestOptions,
     signal?: AbortSignal,
   ) => AsyncIterable<IChatResponseChunk>,
 ): Promise<IChatParticipantResult> {

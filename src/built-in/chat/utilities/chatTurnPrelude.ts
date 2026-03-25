@@ -1,19 +1,15 @@
 import type { IChatRequestResponsePair } from '../../../services/chatTypes.js';
 import type {
-  IChatContextPlan,
-  IChatTurnRoute,
   IDefaultParticipantServices,
-  IChatSemanticFallbackDecision,
-  IQueryScope,
-  IRetrievalPlan,
+  IPreparedChatTurnPrelude,
   IMentionResolutionServices,
 } from '../chatTypes.js';
 import { extractMentions, resolveMentions } from './chatMentionResolver.js';
 import { resolveQueryScope } from './chatScopeResolver.js';
 import { determineChatTurnRoute } from './chatTurnRouter.js';
 import { analyzeChatTurnSemantics } from './chatTurnSemantics.js';
-import { applyChatSemanticFallback, resolveChatSemanticFallback } from './chatSemanticFallback.js';
 import { createChatContextPlan, createChatRuntimeTrace } from './chatContextPlanner.js';
+import { applyChatSemanticFallback, resolveChatSemanticFallback } from './chatSemanticFallback.js';
 
 type IChatTurnPreludeDeps = Pick<
   IDefaultParticipantServices,
@@ -40,20 +36,6 @@ export interface IPrepareChatTurnPreludeInput {
   readonly history: readonly IChatRequestResponsePair[];
   readonly sessionId: string;
   readonly hasActiveSlashCommand: boolean;
-}
-
-export interface IPreparedChatTurnPrelude {
-  readonly mentionPills: Awaited<ReturnType<typeof resolveMentions>>['pills'];
-  readonly mentionContextBlocks: Awaited<ReturnType<typeof resolveMentions>>['contextBlocks'];
-  readonly userText: string;
-  readonly contextQueryText: string;
-  readonly isRagReady: boolean;
-  readonly turnRoute: IChatTurnRoute;
-  readonly contextPlan: IChatContextPlan;
-  readonly retrievalPlan: IRetrievalPlan;
-  readonly isConversationalTurn: boolean;
-  readonly queryScope: IQueryScope;
-  readonly semanticFallback?: IChatSemanticFallbackDecision;
 }
 
 function createMentionResolutionServices(deps: IChatTurnPreludeDeps): IMentionResolutionServices {
@@ -127,17 +109,6 @@ export async function prepareChatTurnPrelude(
   const retrievalPlan = contextPlan.retrievalPlan;
   const isConversationalTurn = turnRoute.kind === 'conversational';
 
-  if (semanticFallback) {
-    deps.reportResponseDebug?.({
-      phase: 'semantic-fallback',
-      markdownLength: 0,
-      yielded: false,
-      cancelled: false,
-      retrievedContextLength: 0,
-      note: `${semanticFallback.kind}:${semanticFallback.confidence.toFixed(2)}`,
-    });
-  }
-
   deps.reportRuntimeTrace?.(createChatRuntimeTrace(
     turnRoute,
     contextPlan,
@@ -161,6 +132,7 @@ export async function prepareChatTurnPrelude(
     mentionContextBlocks,
     userText,
     contextQueryText,
+    hasActiveSlashCommand: input.hasActiveSlashCommand,
     isRagReady,
     turnRoute,
     contextPlan,

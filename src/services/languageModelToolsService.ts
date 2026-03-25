@@ -25,6 +25,34 @@ import type {
 } from './chatTypes.js';
 import type { PermissionService } from './permissionService.js';
 
+export interface ILanguageModelToolsRuntimeMetadata {
+  readonly name: string;
+  readonly permissionLevel: ToolPermissionLevel;
+  readonly enabled: boolean;
+  readonly requiresApproval: boolean;
+  readonly autoApproved: boolean;
+  readonly approvalSource: 'default' | 'session' | 'persistent' | 'global-auto' | 'missing-permission-service';
+  readonly source?: 'built-in' | 'bridge';
+  readonly ownerToolId?: string;
+  readonly description?: string;
+}
+
+export interface ILanguageModelToolsRuntimeObserver {
+  onValidated?(metadata: ILanguageModelToolsRuntimeMetadata): void;
+  onApprovalRequested?(metadata: ILanguageModelToolsRuntimeMetadata): void;
+  onApprovalResolved?(metadata: ILanguageModelToolsRuntimeMetadata, approved: boolean): void;
+  onExecuted?(metadata: ILanguageModelToolsRuntimeMetadata, result: IToolResult): void;
+}
+
+export interface ILanguageModelToolsRuntimeControl {
+  invokeToolWithRuntimeControl(
+    name: string,
+    args: Record<string, unknown>,
+    token: ICancellationToken,
+    observer?: ILanguageModelToolsRuntimeObserver,
+  ): Promise<IToolResult>;
+}
+
 // ── Helpers ──
 
 /**
@@ -40,7 +68,7 @@ function getEffectivePermission(tool: IChatTool): ToolPermissionLevel {
 
 // ── Service implementation ──
 
-export class LanguageModelToolsService extends Disposable implements ILanguageModelToolsService {
+export class LanguageModelToolsService extends Disposable implements ILanguageModelToolsService, ILanguageModelToolsRuntimeControl {
 
   // ── Tool registry ──
 
@@ -168,49 +196,88 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     args: Record<string, unknown>,
     token: ICancellationToken,
   ): Promise<IToolResult> {
+    return this.invokeToolWithRuntimeControl(name, args, token);
+  }
+
+  async invokeToolWithRuntimeControl(
+    name: string,
+    args: Record<string, unknown>,
+    token: ICancellationToken,
+    observer?: ILanguageModelToolsRuntimeObserver,
+  ): Promise<IToolResult> {
     const tool = this._tools.get(name);
     if (!tool) {
       return { content: `Tool "${name}" not found`, isError: true };
     }
 
-    // Permission gate (M11 Task 2.1)
     const defaultLevel = getEffectivePermission(tool);
+    const permissionCheck = this._permissionService
+      ? this._permissionService.checkPermission(name, defaultLevel)
+      : {
+        level: defaultLevel,
+        autoApproved: defaultLevel === 'always-allowed',
+        source: 'missing-permission-service' as const,
+      };
 
-    if (this._permissionService) {
-      // New 3-tier permission model
+    const metadata: ILanguageModelToolsRuntimeMetadata = {
+      name,
+      description: tool.description,
+      permissionLevel: permissionCheck.level,
+      enabled: this.isToolEnabled(name),
+      requiresApproval: permissionCheck.level === 'requires-approval' && !permissionCheck.autoApproved,
+      autoApproved: permissionCheck.autoApproved,
+      approvalSource: permissionCheck.source,
+      source: tool.source,
+      ownerToolId: tool.ownerToolId,
+    };
+    observer?.onValidated?.(metadata);
+
+    if (!metadata.enabled) {
+      return { content: `Tool "${name}" is disabled`, isError: true };
+    }
+
+    if (permissionCheck.level === 'never-allowed') {
+      observer?.onApprovalResolved?.(metadata, false);
+      return { content: `Tool "${name}" is not allowed`, isError: true };
+    }
+
+    if (metadata.requiresApproval) {
+      observer?.onApprovalRequested?.(metadata);
+      if (!this._permissionService) {
+        observer?.onApprovalResolved?.(metadata, false);
+        return {
+          content: `Tool "${name}" requires approval but permission service is not available`,
+          isError: true,
+        };
+      }
+
       const approved = await this._permissionService.confirmToolInvocation(
         name,
         tool.description,
         args,
         defaultLevel,
       );
+      observer?.onApprovalResolved?.(metadata, approved);
       if (!approved) {
         return { content: 'Tool execution rejected by user', isError: true };
       }
-    } else {
-      // Fallback: legacy binary model (no PermissionService wired)
-      if (defaultLevel === 'requires-approval') {
-        return {
-          content: `Tool "${name}" requires approval but permission service is not available`,
-          isError: true,
-        };
-      }
-      if (defaultLevel === 'never-allowed') {
-        return { content: `Tool "${name}" is not allowed`, isError: true };
-      }
+    } else if (metadata.autoApproved) {
+      observer?.onApprovalResolved?.(metadata, true);
     }
 
-    // Check cancellation before executing
     if (token.isCancellationRequested) {
       return { content: 'Tool execution cancelled', isError: true };
     }
 
-    // Execute the tool handler
     try {
-      return await tool.handler(args, token);
+      const result = await tool.handler(args, token);
+      observer?.onExecuted?.(metadata, result);
+      return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      return { content: `Tool "${name}" failed: ${message}`, isError: true };
+      const result = { content: `Tool "${name}" failed: ${message}`, isError: true };
+      observer?.onExecuted?.(metadata, result);
+      return result;
     }
   }
 

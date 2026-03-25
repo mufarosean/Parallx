@@ -11,10 +11,14 @@ export interface IChatWorkspaceParticipantAdapterDeps {
   readonly searchPages: IWorkspaceParticipantServices['searchPages'];
   readonly getPageContent: IWorkspaceParticipantServices['getPageContent'];
   readonly getPageTitle: IWorkspaceParticipantServices['getPageTitle'];
+  readonly getReadOnlyToolDefinitions?: IWorkspaceParticipantServices['getReadOnlyToolDefinitions'];
+  readonly invokeToolWithRuntimeControl?: IWorkspaceParticipantServices['invokeToolWithRuntimeControl'];
   readonly listFiles?: IWorkspaceParticipantServices['listFiles'];
   readonly readFileContent?: IWorkspaceParticipantServices['readFileContent'];
   readonly reportParticipantDebug?: IWorkspaceParticipantServices['reportParticipantDebug'];
   readonly reportRetrievalDebug?: IWorkspaceParticipantServices['reportRetrievalDebug'];
+  readonly reportRuntimeTrace?: IWorkspaceParticipantServices['reportRuntimeTrace'];
+  readonly reportBootstrapDebug?: IWorkspaceParticipantServices['reportBootstrapDebug'];
 }
 
 export interface IChatCanvasParticipantAdapterDeps {
@@ -24,9 +28,13 @@ export interface IChatCanvasParticipantAdapterDeps {
   readonly getCurrentPageId: ICanvasParticipantServices['getCurrentPageId'];
   readonly getCurrentPageTitle: ICanvasParticipantServices['getCurrentPageTitle'];
   readonly getPageStructure: ICanvasParticipantServices['getPageStructure'];
+  readonly getReadOnlyToolDefinitions?: ICanvasParticipantServices['getReadOnlyToolDefinitions'];
+  readonly invokeToolWithRuntimeControl?: ICanvasParticipantServices['invokeToolWithRuntimeControl'];
   readonly readFileContent?: ICanvasParticipantServices['readFileContent'];
   readonly reportParticipantDebug?: ICanvasParticipantServices['reportParticipantDebug'];
   readonly reportRetrievalDebug?: ICanvasParticipantServices['reportRetrievalDebug'];
+  readonly reportRuntimeTrace?: ICanvasParticipantServices['reportRuntimeTrace'];
+  readonly reportBootstrapDebug?: ICanvasParticipantServices['reportBootstrapDebug'];
 }
 
 export function buildChatWorkspaceParticipantServices(
@@ -40,10 +48,14 @@ export function buildChatWorkspaceParticipantServices(
     searchPages: deps.searchPages,
     getPageContent: deps.getPageContent,
     getPageTitle: deps.getPageTitle,
+    getReadOnlyToolDefinitions: deps.getReadOnlyToolDefinitions,
+    invokeToolWithRuntimeControl: deps.invokeToolWithRuntimeControl,
     listFiles: deps.listFiles,
     readFileContent: deps.readFileContent,
     reportParticipantDebug: deps.reportParticipantDebug,
     reportRetrievalDebug: deps.reportRetrievalDebug,
+    reportRuntimeTrace: deps.reportRuntimeTrace,
+    reportBootstrapDebug: deps.reportBootstrapDebug,
   };
 }
 
@@ -57,8 +69,12 @@ export function buildChatCanvasParticipantServices(
     getCurrentPageId: deps.getCurrentPageId,
     getCurrentPageTitle: deps.getCurrentPageTitle,
     getPageStructure: deps.getPageStructure,
+    getReadOnlyToolDefinitions: deps.getReadOnlyToolDefinitions,
+    invokeToolWithRuntimeControl: deps.invokeToolWithRuntimeControl,
     readFileContent: deps.readFileContent,
     reportParticipantDebug: deps.reportParticipantDebug,
     reportRetrievalDebug: deps.reportRetrievalDebug,
+    reportRuntimeTrace: deps.reportRuntimeTrace,
+    reportBootstrapDebug: deps.reportBootstrapDebug,
   };
 }

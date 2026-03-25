@@ -428,6 +428,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
           sessionId,
           text,
           ChatRequestQueueKind.Queued,
+          attachments.length > 0 ? { attachments } : undefined,
         );
         this._renderPendingMessage(pending);
         this._onDidAcceptInput.fire(text);
@@ -542,7 +543,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
         this._services.removePendingRequest(this._session.id, pending.id);
         // Re-queue as steering (will signal yield + go to front)
         if (this._services.queueRequest) {
-          this._services.queueRequest(this._session.id, pending.text, ChatRequestQueueKind.Steering);
+          this._services.queueRequest(this._session.id, pending.text, ChatRequestQueueKind.Steering, pending.options);
         }
         this._removePendingMessageEl(pending.id);
       }
@@ -1007,16 +1008,18 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const title = $('div.parallx-chat-empty-state-title', 'How can I help you?');
     const subtitle = $('div.parallx-chat-empty-state-subtitle',
       'Ask questions, get explanations, or let AI help with your workspace.');
+    const posture = $('div.parallx-chat-empty-state-note',
+      'AI is always awake. Ask is read-first with evidence gathering; Agent unlocks action tools and approval-gated changes.');
 
-    append(root, icon, title, subtitle);
+    append(root, icon, title, subtitle, posture);
 
     // Feature hints — each inserts its label into the input on click
     const hints = $('div.parallx-chat-empty-state-hints');
 
     const hintItems: { svg: string; label: string; description: string; insert: string }[] = [
-      { svg: chatIcons.chatBubble, label: 'Ask mode', description: 'Q&A about anything', insert: '/ask ' },
+      { svg: chatIcons.chatBubble, label: 'Ask mode', description: 'Awake by default; read-first answers', insert: '/ask ' },
       { svg: chatIcons.pencil, label: 'Edit mode', description: 'AI-assisted canvas editing', insert: '/edit ' },
-      { svg: chatIcons.agent, label: 'Agent mode', description: 'Autonomous with tools', insert: '/agent ' },
+      { svg: chatIcons.agent, label: 'Agent mode', description: 'Action tools with approval gates', insert: '/agent ' },
       { svg: chatIcons.atSign, label: '@workspace', description: 'Search pages & files', insert: '@workspace ' },
       { svg: chatIcons.canvas, label: '@canvas', description: 'Edit current page', insert: '@canvas ' },
       { svg: chatIcons.keyboard, label: 'Ctrl+L', description: 'New chat session', insert: '' },

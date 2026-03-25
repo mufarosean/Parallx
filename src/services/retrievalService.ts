@@ -733,6 +733,8 @@ const EXPLICIT_SOURCE_QUERY_PATTERNS: readonly RegExp[] = [
   /\bin (?:the )?.*\b(?:book|document|file|pdf|guide|paper)\b/i,
   /\bfrom (?:the )?.*\b(?:book|document|file|pdf|guide|paper)\b/i,
   /\bwhich (?:book|document|file|pdf|guide|paper)\b/i,
+  /\b(?:workflow|system|claims?)\s+architecture\b/i,
+  /\b(?:architecture|schema|plan|spec(?:ification)?|report)\s+doc(?:ument)?\b/i,
 ];
 
 const SOURCE_MATCH_STOPWORDS = new Set([

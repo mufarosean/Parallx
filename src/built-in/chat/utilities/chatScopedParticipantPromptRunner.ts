@@ -7,11 +7,10 @@ import type {
   IChatResponseStream,
   IChatRequestOptions,
 } from '../../../services/chatTypes.js';
-import {
-  buildScopedParticipantUserContent,
-  createScopedParticipantMessages,
-  streamScopedParticipantLLMResponse,
-} from './chatScopedParticipantExecution.js';
+import { streamScopedParticipantLLMResponse } from './chatScopedParticipantExecution.js';
+import { buildScopedRuntimePromptEnvelope } from './chatScopedRuntimePromptStage.js';
+import type { IChatRuntimeTrace } from '../chatTypes.js';
+import { createScopedParticipantRuntimeReporter } from './chatScopedParticipantRuntime.js';
 
 export async function runScopedParticipantPrompt(options: {
   systemPrompt: string;
@@ -35,15 +34,25 @@ export async function runScopedParticipantPrompt(options: {
     queryScopeLevel?: string;
     semanticFallbackKind?: string;
   }) => void;
+  reportRuntimeTrace?: (trace: IChatRuntimeTrace) => void;
   surface: 'workspace' | 'canvas';
 }): Promise<{}> {
-  const userContent = await buildScopedParticipantUserContent({
+  const reportRuntimeTrace = createScopedParticipantRuntimeReporter({
     request: options.request,
+    context: options.context,
+    surface: options.surface,
+    reportRuntimeTrace: options.reportRuntimeTrace,
+  });
+
+  const { messages } = await buildScopedRuntimePromptEnvelope({
+    systemPrompt: options.systemPrompt,
     userText: options.userText,
+    request: options.request,
+    context: options.context,
     readFileContent: options.readFileContent,
     reportParticipantDebug: options.reportParticipantDebug,
+    reportRuntimeTrace,
     surface: options.surface,
   });
-  const messages = createScopedParticipantMessages(options.systemPrompt, userContent, options.request, options.context);
   return await streamScopedParticipantLLMResponse(messages, options.response, options.token, options.sendChatRequest);
 }

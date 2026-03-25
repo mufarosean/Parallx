@@ -69,4 +69,86 @@ describe('chat deterministic answer selector', () => {
 
     expect(answer).toBeUndefined();
   });
+
+  it('does not short-circuit summary-like grounded requests based on workflow label alone', () => {
+    const answer = selectDeterministicAnswer({
+      route: {
+        kind: 'grounded',
+        reason: 'misclassified route',
+        workflowType: 'exhaustive-extraction',
+      },
+      query: 'Give me a bulleted list with a short summary of each file in the RF Guides folder.',
+      evidenceAssessment: { status: 'sufficient', reasons: [] },
+      retrievedContextText: [
+        '[Retrieved Context]',
+        '[1] Source: Auto Insurance Policy.md',
+        'Path: RF Guides/Auto Insurance Policy.md',
+        'Collision deductible is **$500**. Comprehensive deductible is **$250**.',
+      ].join('\n'),
+    });
+
+    expect(answer).toBeUndefined();
+  });
+
+  it('does not short-circuit explicit extraction asks through deterministic workflow answers anymore', () => {
+    const answer = selectDeterministicAnswer({
+      route: {
+        kind: 'grounded',
+        reason: 'explicit extraction route',
+      },
+      query: 'List every deductible amount from all policy documents.',
+      evidenceAssessment: { status: 'sufficient', reasons: [] },
+      retrievedContextText: [
+        '[Retrieved Context]',
+        '[1] Source: Auto Insurance Policy.md',
+        'Path: RF Guides/Auto Insurance Policy.md',
+        'Collision deductible is **$500**. Comprehensive deductible is **$250**.',
+      ].join('\n'),
+    });
+
+    expect(answer).toBeUndefined();
+  });
+
+  it('does not short-circuit folder-summary turns through deterministic workflow answers', () => {
+    const answer = selectDeterministicAnswer({
+      route: {
+        kind: 'grounded',
+        reason: 'folder summary route',
+        workflowType: 'folder-summary',
+      },
+      query: 'What documents do I have in my workspace?',
+      evidenceAssessment: { status: 'sufficient', reasons: [] },
+      retrievedContextText: [
+        '[Retrieved Context]',
+        '[1] Source: Claims Guide.md',
+        'Path: Claims Guide.md',
+        '# Claims Guide',
+      ].join('\n'),
+    });
+
+    expect(answer).toBeUndefined();
+  });
+
+  it('does not short-circuit comparative turns through deterministic workflow answers', () => {
+    const answer = selectDeterministicAnswer({
+      route: {
+        kind: 'grounded',
+        reason: 'comparative route',
+        workflowType: 'comparative',
+      },
+      query: 'Compare Claims Guide.md and Accident Quick Reference.md',
+      evidenceAssessment: { status: 'sufficient', reasons: [] },
+      retrievedContextText: [
+        '[Retrieved Context]',
+        '[1] Source: Claims Guide.md',
+        'Path: Claims Guide.md',
+        'Claims guide content',
+        '[2] Source: Accident Quick Reference.md',
+        'Path: Accident Quick Reference.md',
+        'Accident quick reference content',
+      ].join('\n'),
+    });
+
+    expect(answer).toBeUndefined();
+  });
 });

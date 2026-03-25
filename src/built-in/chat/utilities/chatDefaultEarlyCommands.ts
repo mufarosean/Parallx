@@ -1,7 +1,5 @@
 import type {
-  ICancellationToken,
   IChatParticipantContext,
-  IChatParticipantRequest,
   IChatParticipantResult,
   IChatResponseStream,
 } from '../../../services/chatTypes.js';
@@ -64,4 +62,31 @@ export async function tryHandleDefaultCompactCommand(
     history: options.context.history,
     response: options.response,
   });
+}
+
+export async function tryHandleDefaultContextCommand(
+  services: Pick<
+    IDefaultParticipantServices,
+    | 'getWorkspaceName'
+    | 'readFileRelative'
+    | 'unifiedConfigService'
+    | 'getToolDefinitions'
+    | 'getReadOnlyToolDefinitions'
+    | 'getWorkflowSkillCatalog'
+    | 'getModelContextLength'
+    | 'getLastSystemPromptReport'
+    | 'reportSystemPromptReport'
+  >,
+  request: Pick<import('../../../services/chatTypes.js').IChatParticipantRequest, 'command' | 'text' | 'mode'>,
+  response: IChatResponseStream,
+): Promise<boolean> {
+  if (request.command !== 'context') {
+    return false;
+  }
+
+  response.markdown([
+    'The legacy claw comparison lane does not own `/context` diagnostics anymore.',
+    'Use the OpenClaw default lane to inspect runtime context and system-prompt composition.',
+  ].join('\n\n'));
+  return true;
 }

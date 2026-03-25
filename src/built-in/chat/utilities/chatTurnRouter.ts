@@ -1,4 +1,4 @@
-import type { IChatTurnRoute, IChatTurnSemantics, WorkflowType } from '../chatTypes.js';
+import type { IChatTurnRoute, IChatTurnSemantics } from '../chatTypes.js';
 import { analyzeChatTurnSemantics } from './chatTurnSemantics.js';
 
 export function determineChatTurnRoute(
@@ -58,7 +58,6 @@ export function determineChatTurnRoute(
       kind: 'grounded',
       reason: 'File or directory enumeration question — use tools to list actual contents instead of relying on retrieved context.',
       coverageMode: semantics.groundedCoverageModeHint,
-      workflowType: semantics.workflowTypeHint,
     };
   }
 
@@ -68,6 +67,5 @@ export function determineChatTurnRoute(
       ? 'This request needs exhaustive file-by-file coverage rather than representative retrieval.'
       : 'Default grounded route uses normal workspace-aware context planning.',
     coverageMode: semantics.groundedCoverageModeHint,
-    workflowType: semantics.workflowTypeHint,
   };
 }

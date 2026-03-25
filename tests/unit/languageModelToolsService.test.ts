@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { LanguageModelToolsService } from '../../src/services/languageModelToolsService';
 import { PermissionService } from '../../src/services/permissionService';
 import type { IChatTool, IToolResult, ICancellationToken } from '../../src/services/chatTypes';
+import type { ILanguageModelToolsRuntimeMetadata } from '../../src/services/languageModelToolsService';
 
 // ── Helpers ──
 
@@ -214,6 +215,47 @@ describe('LanguageModelToolsService', () => {
       const result = await service.invokeTool('test_tool', {}, createToken());
       expect(handler).toHaveBeenCalled();
       expect(result.content).toBe('auto-ok');
+    });
+
+    it('emits runtime-controlled approval lifecycle events', async () => {
+      const handler = vi.fn(async () => ({ content: 'created' }));
+      service.registerTool(createTool({
+        name: 'bridge_write',
+        description: 'Write bridge output',
+        requiresConfirmation: true,
+        handler,
+        source: 'bridge',
+        ownerToolId: 'sample.bridge',
+      }));
+
+      const permissionService = new PermissionService();
+      permissionService.setConfirmationHandler(vi.fn(async () => 'allow-once' as const));
+      service.setPermissionService(permissionService);
+
+      const events: Array<{ type: string; metadata: ILanguageModelToolsRuntimeMetadata; approved?: boolean; result?: IToolResult }> = [];
+      const result = await service.invokeToolWithRuntimeControl(
+        'bridge_write',
+        { path: 'notes.md' },
+        createToken(),
+        {
+          onValidated: (metadata) => events.push({ type: 'validated', metadata }),
+          onApprovalRequested: (metadata) => events.push({ type: 'approval-requested', metadata }),
+          onApprovalResolved: (metadata, approved) => events.push({ type: 'approval-resolved', metadata, approved }),
+          onExecuted: (metadata, executionResult) => events.push({ type: 'executed', metadata, result: executionResult }),
+        },
+      );
+
+      expect(result.content).toBe('created');
+      expect(events.map((event) => event.type)).toEqual([
+        'validated',
+        'approval-requested',
+        'approval-resolved',
+        'executed',
+      ]);
+      expect(events[0]?.metadata.source).toBe('bridge');
+      expect(events[0]?.metadata.ownerToolId).toBe('sample.bridge');
+      expect(events[2]?.approved).toBe(true);
+      expect(events[3]?.result?.content).toBe('created');
     });
   });
 

@@ -21,9 +21,24 @@ export type { IModePickerServices } from '../chatTypes.js';
 
 /** Mode display metadata. */
 const MODE_META: Record<ChatMode, { label: string; title: string; description: string; icon: string }> = {
-  [ChatMode.Ask]: { label: 'Ask', title: 'Q&A mode — no side effects', description: 'Ask questions without side effects', icon: chatIcons.chatBubble },
-  [ChatMode.Edit]: { label: 'Edit', title: 'Edit mode — canvas editing', description: 'Edit canvas with accept/reject', icon: chatIcons.pencil },
-  [ChatMode.Agent]: { label: 'Agent', title: 'Agent mode — autonomous', description: 'Autonomous with tool invocation', icon: chatIcons.agent },
+  [ChatMode.Ask]: {
+    label: 'Ask',
+    title: 'Ask mode — awake, read-first, no side effects',
+    description: 'Awake by default; uses read-only tools',
+    icon: chatIcons.chatBubble,
+  },
+  [ChatMode.Edit]: {
+    label: 'Edit',
+    title: 'Edit mode — structured canvas changes',
+    description: 'Focused edit proposals with accept/reject',
+    icon: chatIcons.pencil,
+  },
+  [ChatMode.Agent]: {
+    label: 'Agent',
+    title: 'Agent mode — awake, action-capable, approval-aware',
+    description: 'Action tools with approval gates',
+    icon: chatIcons.agent,
+  },
 };
 
 /**
@@ -80,6 +95,11 @@ export class ChatModePicker extends Disposable {
     icon.className = 'parallx-chat-picker-icon';
     icon.innerHTML = meta.icon;
     this._button.appendChild(icon);
+
+    const label = document.createElement('span');
+    label.className = 'parallx-chat-picker-label';
+    label.textContent = meta.label;
+    this._button.appendChild(label);
 
     // Chevron
     const chevron = document.createElement('span');

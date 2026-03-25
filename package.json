@@ -17,8 +17,9 @@
     "test:e2e": "npx playwright test",
     "test:e2e:headed": "npx playwright test --headed",
     "test:ai-eval": "npx playwright test --config=playwright.ai-eval.config.ts",
+    "test:ai-eval:full": "node scripts/run-full-ai-eval.mjs",
     "test:ai-eval:books": "node scripts/run-books-ai-eval.mjs",
-    "test:ai-eval:exam7": "npx playwright test --config=playwright.ai-eval.config.ts tests/ai-eval/exam7-quality.spec.ts",
+    "test:ai-eval:exam7": "node scripts/run-exam7-ai-eval.mjs",
     "test:unit": "npx vitest run",
     "test:unit:watch": "npx vitest"
   },

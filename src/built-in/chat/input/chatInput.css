@@ -195,10 +195,10 @@
 
 .parallx-chat-picker-btn--mode {
   justify-content: center;
-  min-width: 34px;
+  min-width: 66px;
   height: 26px;
-  padding: 0 6px;
-  gap: 2px;
+  padding: 0 8px;
+  gap: 4px;
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -213,6 +213,14 @@
 .parallx-chat-picker-icon svg {
   width: 14px;
   height: 14px;
+}
+
+.parallx-chat-picker-label {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: inherit;
 }
 
 .parallx-chat-picker-btn:hover {

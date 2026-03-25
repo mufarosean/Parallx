@@ -11,17 +11,14 @@
 import type { IDisposable } from '../../../platform/lifecycle.js';
 import type {
   IChatParticipant,
-  IChatParticipantHandler,
   IChatParticipantRequest,
   IChatParticipantContext,
   IChatResponseStream,
   ICancellationToken,
   IChatParticipantResult,
-  IChatMessage,
 } from '../../../services/chatTypes.js';
 import type { IWorkspaceParticipantServices } from '../chatTypes.js';
-import { appendScopedParticipantHistory } from '../utilities/chatScopedParticipantExecution.js';
-import { createScopedParticipantHandler } from '../utilities/chatScopedParticipantHandler.js';
+import { createScopedChatParticipantRuntime } from '../utilities/chatScopedParticipantRuntime.js';
 import { runScopedParticipantPrompt } from '../utilities/chatScopedParticipantPromptRunner.js';
 import { tryHandleWorkspaceDocumentListing } from '../utilities/chatWorkspaceDocumentListing.js';
 
@@ -45,7 +42,7 @@ const MAX_CONTENT_CHARS = 4000; // Truncate page content for context budget
  *   /summarize <id>  — Summarize a page's content
  */
 export function createWorkspaceParticipant(services: IWorkspaceParticipantServices): IChatParticipant & IDisposable {
-  const handler = createScopedParticipantHandler({
+  const runtime = createScopedChatParticipantRuntime({
     surface: 'workspace',
     services,
     handlers: {
@@ -56,8 +53,16 @@ export function createWorkspaceParticipant(services: IWorkspaceParticipantServic
     defaultHandler: handleGeneral,
   });
 
+  const handler = (request: IChatParticipantRequest, context: IChatParticipantContext, response: IChatResponseStream, token: ICancellationToken) => runtime.handleTurn(
+    request,
+    context,
+    response,
+    token,
+  );
+
   return {
     id: WORKSPACE_PARTICIPANT_ID,
+    surface: 'workspace',
     displayName: 'Workspace',
     description: 'Answers questions about your workspace pages and content.',
     commands: [
@@ -65,6 +70,7 @@ export function createWorkspaceParticipant(services: IWorkspaceParticipantServic
       { name: 'list', description: 'List all pages in the workspace' },
       { name: 'summarize', description: 'Summarize a specific page' },
     ],
+    runtime,
     handler,
     dispose: () => {/* no-op */},
   };
@@ -124,6 +130,7 @@ async function handleSearch(
     sendChatRequest: services.sendChatRequest,
     readFileContent: services.readFileContent,
     reportParticipantDebug: services.reportParticipantDebug,
+    reportRuntimeTrace: services.reportRuntimeTrace,
     surface: 'workspace',
   });
 }
@@ -218,6 +225,7 @@ async function handleSummarize(
     sendChatRequest: services.sendChatRequest,
     readFileContent: services.readFileContent,
     reportParticipantDebug: services.reportParticipantDebug,
+    reportRuntimeTrace: services.reportRuntimeTrace,
     surface: 'workspace',
   });
 }
@@ -294,6 +302,7 @@ async function handleGeneral(
     sendChatRequest: services.sendChatRequest,
     readFileContent: services.readFileContent,
     reportParticipantDebug: services.reportParticipantDebug,
+    reportRuntimeTrace: services.reportRuntimeTrace,
     surface: 'workspace',
   });
 }

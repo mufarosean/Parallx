@@ -89,7 +89,7 @@ function buildProductSemanticsAnswer(normalizedText: string): string | undefined
   return undefined;
 }
 
-function isLikelyConversationalTurn(normalizedText: string, strippedApostropheText: string): boolean {
+function isLikelyConversationalTurn(_normalizedText: string, strippedApostropheText: string): boolean {
   if (!strippedApostropheText || strippedApostropheText.length > 80) {
     return false;
   }
@@ -142,14 +142,17 @@ function isExhaustiveWorkspaceReviewTurn(normalizedText: string): boolean {
   }
 
   const hasExhaustiveLanguage = /(?:each|every|all|for each)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|one\s+(?:sentence|paragraph)\s+summary\s+(?:of|for)\s+(?:each|every|all|for each)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|(?:provide|give|create|write)?\s*summary\s+(?:of|for)\s+(?:each|every|all|for each)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|summari[sz]e\s+(?:each|every|all)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|read\s+(?:each|every|all)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?/.test(normalizedText);
+  const hasExhaustiveCollectionScope = /(?:from|across)\s+(?:each|every|all)(?:\s+of)?(?:\s+the)?\s+(?:(?:policy|workspace)\s+)?(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?/.test(normalizedText);
   const hasWorkspaceTarget = /\b(folder|directory|workspace|docs|documents|guides|papers|files)\b/.test(normalizedText);
-  return hasExhaustiveLanguage && hasWorkspaceTarget;
+  return (hasExhaustiveLanguage || hasExhaustiveCollectionScope) && hasWorkspaceTarget;
 }
 
 const SUMMARY_VERBS = /\b(summari[sz]e|overview|describe|outline|recap|brief)\b/i;
 const COMPARISON_CUES = /\b(compare|contrast|difference|differences|vs\.?|versus)\b/i;
 const EXHAUSTIVE_CUES = /\b(every|all|each|complete|entire|full)\b/i;
-const EXTRACTION_VERBS = /\b(extract|list|enumerate|find|identify|collect|gather|pull)\b/i;
+const EXTRACTION_VERBS = /\b(extract|identify|collect|gather|pull)\b/i;
+const ENUMERATION_EXTRACTION_VERBS = /\b(list|enumerate|find)\b/i;
+const EXTRACTION_TARGETS = /\b(amount|amounts|deductible|deductibles|date|dates|citation|citations|quote|quotes|name|names|title|titles|number|numbers|field|fields|value|values|limit|limits|clause|clauses)\b/i;
 
 function hasSummaryIntent(text: string): boolean {
   return SUMMARY_VERBS.test(text)
@@ -157,9 +160,20 @@ function hasSummaryIntent(text: string): boolean {
     || /\bone\s+(?:sentence|paragraph)\b/i.test(text);
 }
 
+function hasExplicitExtractionIntent(text: string): boolean {
+  if (hasSummaryIntent(text)) {
+    return false;
+  }
+
+  return EXTRACTION_VERBS.test(text)
+    || (ENUMERATION_EXTRACTION_VERBS.test(text) && EXTRACTION_TARGETS.test(text));
+}
+
 function classifyWorkflowType(text: string, isExhaustive: boolean): WorkflowType {
+  const summaryIntent = hasSummaryIntent(text);
+
   if (isExhaustive) {
-    if (EXTRACTION_VERBS.test(text) && EXHAUSTIVE_CUES.test(text)) {
+    if (EXHAUSTIVE_CUES.test(text) && hasExplicitExtractionIntent(text)) {
       return 'exhaustive-extraction';
     }
     return 'folder-summary';
@@ -171,7 +185,6 @@ function classifyWorkflowType(text: string, isExhaustive: boolean): WorkflowType
 
   const entityMatches = text.match(/\b[A-Z][A-Za-z0-9 _&-]{2,60}\b/g) ?? [];
   const hasEntityRef = entityMatches.length > 0;
-  const summaryIntent = hasSummaryIntent(text);
 
   if (hasEntityRef && summaryIntent && /\b(folder|directory|files)\b/i.test(text)) {
     return 'folder-summary';

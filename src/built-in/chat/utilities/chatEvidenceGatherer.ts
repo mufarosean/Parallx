@@ -128,6 +128,10 @@ async function gatherSemantic(
 const MAX_READ_FILES = 50;
 const MAX_READ_CHARS = 10_000;
 
+function hasUsableReadContent(content: string): boolean {
+  return content.trim().length > 0;
+}
+
 async function gatherExhaustive(
   step: IExecutionStep,
   deps: IEvidenceGathererDeps,
@@ -153,7 +157,7 @@ async function gatherExhaustive(
 
   for (const targetPath of targetPaths.slice(0, MAX_READ_FILES)) {
     const content = await deps.readFileRelative(targetPath);
-    if (content !== null) {
+    if (content !== null && hasUsableReadContent(content)) {
       reads.push({
         relativePath: targetPath,
         content: content.length > MAX_READ_CHARS

@@ -148,6 +148,21 @@ The main takeaway is negative but useful: neither VS Code nor OpenClaw appears
 to rely on the kind of single lexical intent router that is currently causing
 fragility in Parallx.
 
+OpenClaw grounding updated again during the rebuild slice on 2026-03-24:
+
+- `openclaw/src/agents/workspace.ts` loads a fixed bootstrap file set and resolves
+   root memory injection as `MEMORY.md` with lowercase fallback instead of auto-injecting
+   daily `memory/YYYY-MM-DD.md` files.
+- `openclaw/docs/concepts/system-prompt.md` and `openclaw/docs/concepts/context.md`
+   describe fixed workspace bootstrap injection with explicit missing-file markers and
+   token-budget visibility for injected files.
+- Parallx's OpenClaw lanes were updated to follow that contract more closely for the
+   live default, `@workspace`, and `@canvas` surfaces while preserving legacy claw aliases
+   for comparison.
+- The shared OpenClaw bootstrap helper in Parallx now applies per-file and total bootstrap
+   budgets, records raw-vs-injected character counts, and exposes truncation warnings through
+   the existing chat debug snapshot path instead of a separate reporting stack.
+
 ---
 
 ## 4. Current Parallx Gaps
@@ -520,11 +535,11 @@ landed during Milestone 40 close-out.
 | Request parsing | ✅ migrated | default, `@workspace`, `@canvas`, and bridged participants now share the typed interpretation contract |
 | Front-door routing | ✅ migrated | `chatTurnRouter.ts` now consumes typed semantics and planner/evidence layers own more correction authority |
 | Prelude flow | ✅ migrated | shared prelude / prepared-turn utilities now carry the primary interpretation and context-preparation path |
-| Default participant | ✅ migrated | default participant now acts mainly as orchestration over shared utilities |
+| Default participant | ✅ migrated, claw runtime consolidated | default participant is now a thin bridge over `chatDefaultParticipantRuntime.ts`; the live runtime is split into explicit interpretation, context, and execution stage modules, and the earlier migration seam has now been collapsed so claw is the sole default-participant runtime |
 | Workspace participant | ✅ migrated | explicit `@workspace` uses shared interpretation semantics and now shares deterministic document-listing behavior with the default path |
 | Canvas participant | ✅ migrated | `@canvas` remains a Parallx-specific surface, but it is on the shared interpretation contract and no-page guardrail path |
-| Tool-contributed participants | ⚠️ partial | `ChatBridge` now applies shared interpretation metadata before handler dispatch; full shared orchestration remains an explicit compatibility boundary rather than a hidden path |
-| Chat/agent policy behavior | ⚠️ partial | overlapping chat/runtime policy and config behavior is aligned for migrated chat surfaces, but milestone close-out still records manual autonomy review as a required external approval step |
+| Tool-contributed participants | ✅ explicit compatibility boundary | `ChatBridge` now applies shared interpretation metadata before handler dispatch, preserves explicit `bridge` surface identity through registration and service-layer dispatch, registers runtime-backed participant descriptors that `ChatAgentService` dispatches directly, receives runtime-owned prompt builders plus a `sendPrompt(...)` helper through participant context, and stamps results with explicit `bridge-compatibility` runtime metadata so the surface is formalized as compatibility rather than partial hidden migration |
+| Chat/agent policy behavior | ✅ migrated with external close-out blocker | migrated claw execution now exposes runtime-controlled tool invocation, approval-state trace metadata, and checkpointed memory/write-back reporting, the default claw execution path no longer falls back to raw tool invocation inside grounded execution wiring, runtime-controlled invocation ownership is centralized in `LanguageModelToolsService`, and runtime lifecycle now defers queued memory writes until `post-finalization`, while manual autonomy review remains an external close-out blocker rather than a live runtime seam |
 | Config resolution | ⚠️ migrated runtime, compatibility remains | unified effective config is now authoritative for migrated runtime chat behavior and proactive suggestions; legacy compatibility interfaces remain only for non-migrated or compatibility-only consumers |
 
 ---
@@ -643,6 +658,9 @@ Parallx should evolve toward these layers:
 
 ## 12. Milestone 40 Deliverables
 
+- `docs/clawrallx/PARALLX_OPENCLAW_REBUILD_DIRECTIVE.md` — records the architectural reversal that freezes the current claw runtime as legacy and starts a separate OpenClaw implementation root under `src/openclaw/`
+- `docs/clawrallx/PARALLX_OPENCLAW_E2E_EXECUTION_PLAN.md` — records the source-backed execution plan, deterministic suite-runner contract, and the verified 2026-03-25 AI-eval results for the OpenClaw lane
+
 Milestone 40 itself is complete when the following planning and accountability
  artifacts exist.
 
@@ -684,6 +702,33 @@ The milestone must include a phased rollout plan that explicitly covers:
 - agent execution surfaces
 - configuration surfaces
 - API / extension surfaces
+
+### F. Companion redesign packet
+
+The milestone may use companion design artifacts when the redesign scope is too
+large for a single milestone file. The current companion packet for the
+Parallx-owned claw runtime redesign lives under `docs/clawrallx/` and captures:
+
+- completion plan,
+- default chat surface crossover contract,
+- runtime gap diagnosis,
+- redesign charter,
+- implementation tracker,
+- upstream intake matrix,
+- target architecture,
+- migration plan,
+- dependency policy,
+- skills and prompt contract,
+- runtime contract,
+- verification/eval plan,
+- user model,
+- decisions ledger.
+
+The runtime-gap diagnosis artifact now also includes explicit verified
+upstream evidence from both `NVIDIA/NemoClaw` and `openclaw/openclaw`,
+distinguishing what those systems actually own directly from what Parallx must
+still implement itself for desktop workspace evidence planning, compare/diff
+orchestration, and completeness semantics.
 
 ---
 
@@ -871,33 +916,68 @@ Implemented during Phase 3 so far:
 
 1. shared default-turn execution utility now owns the default participant's final deterministic-answer, budgeting, user-content composition, synthesis-config, and execution tail
 2. `defaultParticipant.ts` is further reduced toward a coordinator over shared utilities
-3. contributed participant compatibility path is now explicitly mapped:
+3. explicit default-runtime extraction now exists through `src/built-in/chat/utilities/chatDefaultParticipantRuntime.ts`, with the default participant reduced to a thin bridge over the named `legacy | claw` runtime lane
+4. contributed participant compatibility path is now explicitly mapped:
    - tool-contributed participants are created through `src/api/bridges/chatBridge.ts`
-   - `ChatBridge.createChatParticipant()` currently registers raw tool handlers directly into `IChatAgentService`
-   - `src/services/chatAgentService.ts` dispatches those contributed handlers through the same agent registry as built-ins, but without the shared built-in orchestration utilities used by default / `@workspace` / `@canvas`
+   - `ChatBridge.createChatParticipant()` now wraps contributed handlers in runtime-backed participant descriptors before registration with `IChatAgentService`
+   - `src/services/chatAgentService.ts` dispatches those contributed participants through the same agent registry as built-ins, but without the shared built-in orchestration utilities used by default / `@workspace` / `@canvas`
    - Phase 3 follow-on work must decide whether contributed participants adapt into the shared orchestration contract before registration, or remain intentionally thin pass-through handlers with an explicit compatibility boundary
-4. shared scoped-participant execution utility now owns history replay and LLM streaming for `@workspace` and `@canvas`, reducing participant-local orchestration duplication
-5. shared scoped-participant message builder now owns the common `system + history + current user` message pattern for `@workspace` and `@canvas`, further aligning their prompt contract
-6. shared default command-registry and early-command utilities now own slash-command registration plus `/init` and `/compact` handling, further reducing participant-local control flow in `defaultParticipant.ts`
+5. shared scoped-participant execution utility now owns history replay and LLM streaming for `@workspace` and `@canvas`, reducing participant-local orchestration duplication
+6. shared scoped-participant message builder now owns the common `system + history + current user` message pattern for `@workspace` and `@canvas`, further aligning their prompt contract
+7. shared default command-registry and early-command utilities now own slash-command registration plus `/init` and `/compact` handling, further reducing participant-local control flow in `defaultParticipant.ts`
+8. runtime trace metadata now includes runtime/checkpoint identity for the extracted default runtime lane, making the compatibility path explicit in traces instead of implicit in participant code
+9. the claw default runtime is now organized into explicit stage modules:
+   - `chatDefaultRuntimeInterpretationStage.ts`
+   - `chatDefaultRuntimeContextStage.ts`
+   - `chatDefaultRuntimeExecutionStage.ts`
+   This reduces `chatDefaultParticipantRuntime.ts` to a runtime coordinator instead of one long legacy-shaped execution body
+10. claw prompt assembly now has an explicit runtime-owned stage boundary through `chatDefaultRuntimePromptStage.ts`, which owns system+history prompt seed materialization and final user-prompt envelope creation before execution starts
+11. migrated claw execution now invokes tools through a runtime-controlled path that records tool identity, run state, and approval state in runtime traces rather than leaving those transitions implicit inside legacy helper flow
+12. memory write-back and execution finalization now emit runtime-visible checkpoints for preference extraction, summary/concept storage, and run completion, abort, or failure transitions
+13. tool-contributed participants now preserve explicit `bridge` surface identity end-to-end through registration and dispatch, eliminating the old default-surface heuristic leak for bridged handlers
+14. the default-participant runtime factory no longer carries a live `legacy` execution branch, so the migration seam is now historical documentation rather than an active second runtime path
+15. the shared scoped participant prompt path for `@workspace` and `@canvas` now has an explicit runtime-visible prompt-stage boundary, emitting `prompt-seed` and `prompt-envelope` checkpoints instead of relying on opaque helper composition alone
+16. default, scoped, and bridged participant descriptors now all register runtime-backed entries, and `ChatAgentService` now dispatches those runtime entries directly before any compatibility handler path
+17. the grounded claw execution path no longer falls back to raw `invokeTool(...)`; tool execution in that lane now requires the runtime-controlled invocation interface
+18. runtime-controlled tool invocation ownership is now centralized in `src/services/languageModelToolsService.ts`, with `ChatDataService` delegating to that shared service instead of reimplementing permission and execution flow
+19. memory checkpoint wiring plus success/abort/failure outcome recording are now routed through `src/built-in/chat/utilities/chatRuntimeLifecycle.ts` instead of being assembled inline inside `chatTurnSynthesis.ts`
+20. bridged participants now receive a runtime-owned `sendPrompt(...)` helper through `context.runtime`, letting shared prompt assembly and model execution stay on one claw-owned path when bridge handlers opt in
+21. runtime lifecycle now defers queued memory write-back until `post-finalization`, dropping queued writes on abort/failure so memory side effects follow the explicit runtime finalization boundary
+22. bridged participant results now carry explicit `bridge-compatibility` runtime metadata, formalizing `ChatBridge` as a compatibility boundary instead of a partially hidden migration seam
+23. the NemoClaw-inspired parity target is now codified in-repo through `docs/clawrallx/PARALLX_CLAW_PARITY_SPEC.md`, `docs/clawrallx/PARALLX_CLAW_PARITY_FAILURE_LEDGER.md`, and `tests/ai-eval/clawParityBenchmark.ts`
+24. parity capture and import now have a canonical normalization/comparison layer in `tests/ai-eval/clawParityArtifacts.ts`, so Parallx-side captures and future NemoClaw artifacts can be compared with one in-repo schema
 
 ✅ Phase 3 checkpoint
 
 - targeted participant-agreement scenarios currently pass (`T30`, `T31`, `T32` all `100%`)
 - `defaultParticipant.ts` now primarily coordinates shared utilities rather than owning most orchestration business logic
-- the contributed / `ChatBridge` compatibility path is explicitly mapped for the next migration decision
+- the contributed / `ChatBridge` compatibility path is now formalized as an explicit compatibility boundary instead of an unresolved migration seam
+- the old default runtime compatibility path has now been removed from live execution; claw is the sole runtime contract for the default participant
+- the claw runtime coordinator is now stage-based rather than a single long turn body, with local compile and targeted unit verification passing after the extraction
+- prompt authority is now singular for claw-native surfaces, while `ChatBridge` is explicitly treated as a compatibility boundary rather than a hidden second prompt authority
+- tool invocation and approval behavior are now runtime-owned for claw-native execution, while bridge behavior is explicitly bounded as compatibility rather than silently described as partial convergence
+- persistence/write-back behavior is now runtime-owned through explicit runtime checkpoints and post-finalization-only memory write-back
+- route-authority AI eval is now green again after preserving planning-time `routeAuthority` data in the test debug snapshot across later execution traces, and the live route-authority spec now includes a summary-like exhaustive prompt with list phrasing noise to guard the default-chat crossover at the Electron surface
+- the default-chat crossover has now removed workflow-based deterministic answers from the live default path entirely, so grounded requests no longer bypass synthesis through workflow-label short-circuits at all
+- the live default-chat path no longer auto-applies the broad semantic-fallback upgrade in the shared prelude or `ChatService` turn-state builder, so ambiguous prompts like “Tell me about everything in here” now stay non-exhaustive and retrieval-backed unless later evidence/planning explicitly changes authority
+- grounded requests no longer carry live workflow labels in the default route/prompt path at all, planner-side automatic workflow-skill activation is disabled, and the default system-prompt path no longer injects workflow execution-plan sections
 
 Implemented during Phase 4 so far:
 
-1. shared typed semantic fallback contract added for bounded ambiguity handling in the interpretation/prelude layer
-2. shared prelude now applies a narrow fallback for broad workspace-summary phrasing only when deterministic routing remains weak and generic
-3. fallback activation is observable through shared runtime-trace / debug artifacts instead of hidden participant-local behavior
-4. shared prepared-turn context now adds a narrow fallback guidance section so ambiguous broad prompts receive explicit exhaustive-summary framing without replacing downstream planning
+1. shared typed semantic fallback contract still exists only for bounded ambiguity analysis and explicit runtime-trace/debug coverage
+2. the live default-chat path no longer auto-applies that semantic fallback in the shared prelude or `ChatService` turn-state builder
+3. grounded requests no longer carry live workflow labels in the default route/prompt path; exhaustive tool-first behavior is preserved through coverage mode and evidence planning rather than workflow taxonomy
+4. planner-side automatic workflow-skill activation is disabled for default chat, user-invoked skills remain explicit only, and the default system-prompt path no longer injects workflow execution-plan sections
 
 Current Phase 4 verification:
 
 - `T30` greeting cleanliness still passes at `100%`
 - `S-T09` ambiguous phrasing stress case now passes at `100%`
 - focused unit regressions now pass for shared prelude fallback activation and runtime-trace preservation
+- `npx vitest run tests/unit/chatTurnPrelude.test.ts tests/unit/chatRuntimePlanning.test.ts tests/unit/chatWorkflowPlanning.test.ts tests/unit/chatDeterministicAnswerSelector.test.ts tests/unit/chatDeterministicResponse.test.ts tests/unit/chatPipelineIntegration.test.ts tests/unit/chatService.test.ts tests/unit/workspaceParticipant.test.ts` now passes at `137/137` after removing representative front-door workflow labels and planner-side auto skill activation from the live default path
+- `npm run build:renderer` plus `npx playwright test --config=playwright.ai-eval.config.ts tests/ai-eval/route-authority.spec.ts` now passes at `2/2`, including the updated exhaustive-summary regression that proves the Electron surface preserves `coverageMode: exhaustive` without reintroducing a front-door `folder-summary` label
+- the same focused unit suite remains `137/137` after removing the final default-path workflow label, workflow direct-answer path, and workflow execution-plan prompt injection
+- the rebuilt Electron route-authority eval remains `2/2` after removing the live corrected-route workflow label as well, so both exhaustive and representative corrected routes now stay workflow-label free in the default surface
 - local Exam 7 phrasing-variant verification (`E708`) remains unrun in this pass, but the local Exam 7 workspace has since been confirmed and targeted Exam 7 verification (`E706|E707`) now passes when `PARALLX_AI_EVAL_WORKSPACE` points at `C:\Users\mchit\OneDrive\Documents\Actuarial Science\Exams\Exam 7 - April 2026`
 
 Implemented during Phases 5-7 so far:
@@ -922,15 +1002,36 @@ Phase 7 close-out status:
 
 - required default/demo verification subset passes locally after clearing stale eval-workspace environment variables:
    - `tests/ai-eval/ai-quality.spec.ts -g "T06|T19|T30|T31|T32"` = `100%`
+   - fresh broader default-workspace regression pass also succeeded locally:
+     - `npx playwright test tests/ai-eval/ai-quality.spec.ts tests/ai-eval/memory-layers.spec.ts tests/ai-eval/route-authority.spec.ts tests/ai-eval/workspace-bootstrap-diagnostic.spec.ts -c playwright.ai-eval.config.ts`
+     - `tests/ai-eval/ai-quality.spec.ts` = `32/32` and `100.0%`
 - required stress verification passes locally when pointed at the intended stress workspace:
    - `PARALLX_AI_EVAL_WORKSPACE=tests/ai-eval/stress-workspace`
-   - `tests/ai-eval/stress-quality.spec.ts` = `98%` (`Excellent`)
-   - targeted rerun `S-T04|S-T05|S-T10` = `100%`
-- required Exam 7 targeted verification now passes locally when the workspace path is wired explicitly:
-   - `PARALLX_AI_EVAL_WORKSPACE="C:\Users\mchit\OneDrive\Documents\Actuarial Science\Exams\Exam 7 - April 2026"`
-   - `tests/ai-eval/exam7-quality.spec.ts -g "E706|E707"` = `100%`
+   - after rebuilding the renderer, `PARALLX_AI_EVAL_WORKSPACE_NAME=stress-workspace` plus `tests/ai-eval/stress-quality.spec.ts` = `10/10` and `100%` (`Excellent`)
+- required Exam 7 targeted verification now binds to the explicit local workspace path, but remains externally blocked:
+   - current status changed after re-run: the configured Exam 7 workspace is missing required benchmark files
+   - missing files reported by the test harness:
+     - `Exam 7 Reading List.pdf`
+     - `Study Guide - CAS Exam 7 RF.pdf`
+   - until those files are present, `tests/ai-eval/exam7-quality.spec.ts -g "E706|E707"` is an external environment/data blocker rather than a code-pass signal
 - rollout/manual-review blocker remains procedural rather than architectural:
    - autonomy rollout gate still reports manual review approval as pending
+- local implementation verification for the extracted claw runtime slice also passes:
+   - `npx tsc --noEmit`
+   - `npm run test:unit` = `151` files / `2555` tests passed locally
+- focused runtime-slice regressions now pass locally:
+   - `tests/unit/workspaceParticipant.test.ts`
+   - `tests/unit/canvasParticipant.test.ts`
+   - `tests/unit/agenticLoop.test.ts`
+   - `tests/unit/chatGroundedExecutor.test.ts`
+   - `tests/unit/chatTurnSynthesis.test.ts`
+   - `tests/unit/chatMemoryWriteBack.test.ts`
+   - `tests/unit/chatDefaultRuntimePromptStage.test.ts`
+   - `tests/unit/chatDefaultParticipantAdapter.test.ts`
+   - `tests/unit/chatTurnEntryRouting.test.ts`
+   - `tests/unit/chatTurnExecutionConfig.test.ts`
+   - `tests/unit/chatResponseParsingHelpers.test.ts`
+   - `tests/unit/chatGateCompliance.test.ts`
 
 Canvas note:
 
@@ -1254,6 +1355,12 @@ Verification:
 
 #### Phase 3 tasks — refactor participant orchestration
 
+Status:
+
+- ✅ Shared runtime-lane extraction checkpoint reached.
+- `defaultParticipant.ts` is now a thin bridge over `chatDefaultParticipantRuntime.ts`.
+- The migration seam was made explicit during extraction and has since been collapsed; claw is now the sole live default-participant runtime.
+
 1. Extract shared orchestration services from `defaultParticipant.ts`.
 2. Narrow participant responsibilities:
    - default participant: general-purpose orchestration
@@ -1366,8 +1473,29 @@ Latest recorded outcome:
 
 - `tests/ai-eval/ai-quality.spec.ts -g "T06|T19|T30|T31|T32"` = `100%` locally on the demo workspace
 - `tests/ai-eval/memory-layers.spec.ts` = `7/7` passed locally
-- `tests/ai-eval/stress-quality.spec.ts` = `98%` (`Excellent`) locally when run against `tests/ai-eval/stress-workspace`
-- `tests/ai-eval/exam7-quality.spec.ts -g "E706|E707"` = `100%` locally when run with `PARALLX_AI_EVAL_WORKSPACE="C:\Users\mchit\OneDrive\Documents\Actuarial Science\Exams\Exam 7 - April 2026"`
+- `npx playwright test tests/ai-eval/ai-quality.spec.ts tests/ai-eval/memory-layers.spec.ts tests/ai-eval/route-authority.spec.ts tests/ai-eval/workspace-bootstrap-diagnostic.spec.ts -c playwright.ai-eval.config.ts` passed locally, with `tests/ai-eval/ai-quality.spec.ts` at `32/32` and `100.0%`
+- `npx tsc --noEmit` passed locally after the claw runtime extraction and contract cleanup
+- `npm run test:unit` passed locally: `156` files / `2587` tests
+- stage-based claw runtime extraction passes targeted local verification:
+   - `npx vitest run tests/unit/workspaceParticipant.test.ts tests/unit/canvasParticipant.test.ts tests/unit/chatDefaultRuntimePromptStage.test.ts tests/unit/chatService.test.ts tests/unit/agenticLoop.test.ts tests/unit/chatGroundedExecutor.test.ts tests/unit/chatTurnSynthesis.test.ts tests/unit/chatMemoryWriteBack.test.ts tests/unit/chatGateCompliance.test.ts`
+- runtime-entry and runtime-controlled tool-path convergence also pass targeted local verification:
+   - `npx vitest run tests/unit/chatGroundedExecutor.test.ts tests/unit/chatTurnExecutionConfig.test.ts tests/unit/chatDefaultParticipantAdapter.test.ts tests/unit/chatService.test.ts tests/unit/chatPipelineIntegration.test.ts tests/unit/chatContextIntegration.test.ts`
+   - `npx vitest run tests/unit/languageModelToolsService.test.ts tests/unit/chatGroundedExecutor.test.ts tests/unit/chatTurnExecutionConfig.test.ts tests/unit/chatDefaultParticipantAdapter.test.ts tests/unit/chatService.test.ts tests/unit/chatPipelineIntegration.test.ts tests/unit/chatContextIntegration.test.ts`
+- persistence-lifecycle extraction also passes targeted local verification:
+   - `npx vitest run tests/unit/chatRuntimeLifecycle.test.ts tests/unit/chatTurnSynthesis.test.ts tests/unit/chatRuntimeCheckpointSink.test.ts tests/unit/chatMemoryWriteBack.test.ts tests/unit/chatGateCompliance.test.ts`
+- bridge runtime prompt execution helper also passes targeted local verification:
+   - `npx vitest run tests/unit/chatService.test.ts tests/unit/chatBridge.test.ts tests/unit/chatAgentService.test.ts tests/unit/chatDefaultParticipantAdapter.test.ts tests/unit/chatGroundedExecutor.test.ts tests/unit/chatTurnExecutionConfig.test.ts tests/unit/chatPipelineIntegration.test.ts tests/unit/chatContextIntegration.test.ts`
+- `npx vitest run tests/unit/openclawDefaultParticipant.test.ts` = `10/10`, including the same-name `how-to-file.md` comparison regression
+- `npm run test:unit -- tests/unit/chatGroundedExecutor.test.ts tests/unit/chatTurnSynthesis.test.ts tests/unit/openclawDefaultParticipant.test.ts` = `16/16`, validating the runtime-owned autonomy mirror lifecycle and loop-safety wiring across the shared claw path and the live OpenClaw lane
+- `npm run build:renderer` passed locally after the autonomy parity wiring
+- `npm run test:ai-eval -- tests/ai-eval/ai-quality.spec.ts tests/ai-eval/stress-quality.spec.ts tests/ai-eval/memory-layers.spec.ts tests/ai-eval/route-authority.spec.ts tests/ai-eval/workspace-bootstrap-diagnostic.spec.ts` now records autonomy scenario summary `100%` for boundary, approval, completion, and trace completeness, but the broader `ai-quality.spec.ts` suite regressed to `73.6%` overall because of separate retrieval, disambiguation, and data-freshness failures (`T11`, `T12`, `T14`, `T21`, `T31`, plus partial retrieval cases)
+- `npm run build:renderer` followed by `PARALLX_AI_EVAL_WORKSPACE=tests/ai-eval/stress-workspace`, `PARALLX_AI_EVAL_WORKSPACE_NAME=stress-workspace`, and `npx playwright test tests/ai-eval/stress-quality.spec.ts -c playwright.ai-eval.config.ts` = `10/10` and `100%` (`Excellent`)
+- `npm run build:renderer` followed by `PARALLX_AI_EVAL_WORKSPACE=C:\Users\mchit\OneDrive\Documents\Books`, `PARALLX_AI_EVAL_WORKSPACE_NAME=Books`, and `npx playwright test --config=playwright.ai-eval.config.ts tests/ai-eval/books-quality.spec.ts` = `8/8` and `100.0%` (`Excellent`); the suite still requires the explicit Books workspace override, but it is no longer an unverified external blocker when that corpus is available
+- `npx vitest run tests/unit/chatGroundedAnswerRepairs.test.ts tests/unit/chatDataServiceMemoryRecall.test.ts tests/unit/openclawDefaultParticipant.test.ts` = `48/48`, validating the shared unsupported-topic and unsupported-specific-coverage repair paths, canonical multi-daily memory fallback, and deterministic OpenClaw memory-recall short-circuiting
+- `npm run build:renderer` followed by `npx playwright test --config=playwright.ai-eval.config.ts tests/ai-eval/ai-quality.spec.ts tests/ai-eval/memory-layers.spec.ts tests/ai-eval/route-authority.spec.ts tests/ai-eval/workspace-bootstrap-diagnostic.spec.ts` = `42/42`, with `tests/ai-eval/ai-quality.spec.ts` at `32/32` and `100.0%`, `tests/ai-eval/memory-layers.spec.ts` at `7/7`, `tests/ai-eval/route-authority.spec.ts` at `2/2`, and `tests/ai-eval/workspace-bootstrap-diagnostic.spec.ts` at `1/1`
+- `npm run test:ai-eval:books` now passes after replacing the raw Books launcher with the shared sanitized AI-eval runner, removing the Windows `spawn EINVAL` failure mode
+- `npm run test:ai-eval:full` now passes build + core insurance + stress + Books from one deterministic entrypoint while explicitly skipping Exam 7 because the configured local corpus at `C:\Users\mchit\OneDrive\Documents\Actuarial Science\Exams\Exam 7 - April 2026` is missing required benchmark files; the latest 2026-03-25 rerun after the OpenClaw coverage-overview stabilization repair restored `T04: Summary -- coverage overview` from `67%` back to `100%`, leaving the core insurance scoreboard at `42/42`
+- `tests/ai-eval/exam7-quality.spec.ts -g "E706|E707"` is currently blocked because the configured Exam 7 workspace is missing required benchmark files (`Exam 7 Reading List.pdf`, `Study Guide - CAS Exam 7 RF.pdf`)
 - remaining non-code close-out blocker: autonomy manual review approval is still pending
 
 ### 15.3 Definition of done for Milestone 40 implementation
@@ -1685,6 +1813,7 @@ The entries below are the initial canonical evidence set for Milestone 40.
 | `VSC-CHAT-04` | `src/vs/workbench/contrib/chat/common/participants/chatAgents.ts` | `detectAgentOrCommand(...)` is a narrow participant/command selector, not a general workflow planner | Any Parallx LLM-assisted router should return narrow structured output, not broad behavioral decisions |
 | `VSC-CHAT-05` | `src/vs/workbench/contrib/chat/common/requestParser/chatRequestParser.ts` | Explicit tokens like `@agent` and `/command` are parsed only in structurally valid positions | Parallx should harden explicit parse semantics before reaching for more heuristic regex expansion |
 | `VSC-CHAT-06` | `chat.detectParticipant.enabled` configuration docs from DeepWiki and VS Code chat service flow | Participant detection is optional, bounded, and configurable | Parallx should ship any semantic fallback behind a clearly defined gate and observability path |
+| `CLAW-ARCH-01` | OpenClaw docs + NemoClaw docs, summarized in `docs/clawrallx/PARALLX_CLAW_UPSTREAM_INTAKE_MATRIX.md` | OpenClaw is gateway-centered and NemoClaw is sandbox-centered; neither operating model should be adopted wholesale for Parallx's first cut | Parallx should selectively translate runtime-contract, file-first, approval, and capability ideas into an in-process desktop runtime rather than importing daemon/sandbox assumptions |
 
 ### Approved initial deviations
 

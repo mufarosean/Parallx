@@ -91,6 +91,35 @@ describe('computeCoverage', () => {
     expect(record.coveredTargets).toBe(0);
   });
 
+  it('treats empty deterministic reads as uncovered targets', () => {
+    const bundle: IEvidenceBundle = {
+      plan: makePlan(),
+      items: [
+        {
+          kind: 'structural',
+          scopePath: 'Broken Docs/',
+          files: [
+            { relativePath: 'Broken Docs/policy-scan.pdf', ext: '.pdf' },
+            { relativePath: 'Broken Docs/claims-scan.pdf', ext: '.pdf' },
+          ],
+        },
+        {
+          kind: 'exhaustive',
+          reads: [],
+        },
+      ],
+      totalChars: 0,
+    };
+
+    const record = computeCoverage(bundle);
+    expect(record.level).toBe('none');
+    expect(record.coveredTargets).toBe(0);
+    expect(record.gaps).toEqual([
+      'Broken Docs/policy-scan.pdf',
+      'Broken Docs/claims-scan.pdf',
+    ]);
+  });
+
   it('counts semantic sources as covering enumerated files', () => {
     const bundle: IEvidenceBundle = {
       plan: makePlan(),

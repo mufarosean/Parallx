@@ -18,6 +18,12 @@ import type { ChatWidget } from './widgets/chatWidget.js';
 import { createDefaultParticipant } from './participants/defaultParticipant.js';
 import { createWorkspaceParticipant } from './participants/workspaceParticipant.js';
 import { createCanvasParticipant } from './participants/canvasParticipant.js';
+import {
+  buildOpenclawCanvasParticipantServices,
+  buildOpenclawDefaultParticipantServices,
+  buildOpenclawWorkspaceParticipantServices,
+} from '../../openclaw/openclawParticipantServices.js';
+import { registerOpenclawParticipants } from '../../openclaw/registerOpenclawParticipants.js';
 import { registerBuiltInTools } from './tools/builtInTools.js';
 import type { IBuiltInToolFileWriter } from './chatTypes.js';
 import { ChatTokenStatusBar } from './widgets/chatTokenStatusBar.js';
@@ -32,7 +38,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentSessionService, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -43,6 +49,10 @@ import { ChatDataService, buildFileSystemAccessor, extractCanvasPageId } from '.
 import { URI } from '../../platform/uri.js';
 import type { AgentPlanStepInput, DelegatedTaskInput, AgentApprovalResolution } from '../../agent/agentTypes.js';
 import { searchWorkspaceTranscripts } from '../../services/transcriptSearch.js';
+import {
+  LEGACY_COMPARE_PARTICIPANT_ID,
+  resolveChatRuntimeParticipantId,
+} from '../../services/chatRuntimeSelector.js';
 
 // ── Local API type — only the subset we use ──
 
@@ -252,6 +262,18 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const agentTraceService = api.services.has(IAgentTraceService)
     ? api.services.get<import('../../services/serviceTypes.js').IAgentTraceService>(IAgentTraceService)
     : undefined;
+  const agentPolicyService = api.services.has(IAgentPolicyService)
+    ? api.services.get<import('../../services/serviceTypes.js').IAgentPolicyService>(IAgentPolicyService)
+    : undefined;
+  const agentTaskStore = api.services.has(IAgentTaskStore)
+    ? api.services.get<import('../../services/serviceTypes.js').IAgentTaskStore>(IAgentTaskStore)
+    : undefined;
+  const workspaceMemoryService = api.services.has(IWorkspaceMemoryService)
+    ? api.services.get<import('../../services/serviceTypes.js').IWorkspaceMemoryService>(IWorkspaceMemoryService)
+    : undefined;
+  const canonicalMemorySearchService = api.services.has(ICanonicalMemorySearchService)
+    ? api.services.get<import('../../services/serviceTypes.js').ICanonicalMemorySearchService>(ICanonicalMemorySearchService)
+    : undefined;
 
   // ── 1b. Build file system accessor for built-in tools ──
 
@@ -335,12 +357,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     retrievalService,
     indexingPipelineService,
     memoryService,
-    workspaceMemoryService: api.services.has(IWorkspaceMemoryService)
-      ? api.services.get<import('../../services/serviceTypes.js').IWorkspaceMemoryService>(IWorkspaceMemoryService)
-      : undefined,
-    canonicalMemorySearchService: api.services.has(ICanonicalMemorySearchService)
-      ? api.services.get<import('../../services/serviceTypes.js').ICanonicalMemorySearchService>(ICanonicalMemorySearchService)
-      : undefined,
+    workspaceMemoryService,
+    canonicalMemorySearchService,
     languageModelsService,
     languageModelToolsService,
     chatService,
@@ -358,10 +376,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     sessionContext: sessionContext ?? undefined,
     sessionManager: sessionManager ?? undefined,
     unifiedConfigService: unifiedConfigService ?? undefined,
+    permissionService: _permissionService ?? undefined,
     agentSessionService: agentSessionService ?? undefined,
     agentApprovalService: agentApprovalService ?? undefined,
     agentExecutionService: agentExecutionService ?? undefined,
     agentTraceService: agentTraceService ?? undefined,
+    agentPolicyService: agentPolicyService ?? undefined,
+    agentTaskStore: agentTaskStore ?? undefined,
     openFileEditor: (uri, opts) => api.editors.openFileEditor(uri, opts),
   });
 
@@ -476,6 +497,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // ── 3a. Register the default chat participant with IChatAgentService ──
 
   const defaultParticipantServices = dataService.buildDefaultParticipantServices();
+  chatService.setRuntimeTraceReporter?.((trace) => {
+    dataService.reportRuntimeTrace(trace as import('./chatTypes.js').IChatRuntimeTrace);
+  });
+  chatService.setRuntimeParticipantResolver?.((participantId: string) => resolveChatRuntimeParticipantId(
+    participantId,
+    () => unifiedConfigService?.getEffectiveConfig(),
+  ));
   chatService.setTurnPreparationServices({
     listFilesRelative: defaultParticipantServices.listFilesRelative,
     isRAGAvailable: defaultParticipantServices.isRAGAvailable,
@@ -487,17 +515,140 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const agentRegistration = agentService.registerAgent(defaultParticipant);
   context.subscriptions.push(agentRegistration);
 
+  const legacyDefaultParticipant = {
+    id: LEGACY_COMPARE_PARTICIPANT_ID,
+    surface: 'default' as const,
+    displayName: 'Chat (Legacy Claw)',
+    description: 'Frozen legacy claw lane preserved for comparison during the OpenClaw rebuild.',
+    commands: defaultParticipant.commands,
+    runtime: defaultParticipant.runtime,
+    handler: defaultParticipant.handler,
+  };
+  context.subscriptions.push(agentService.registerAgent(legacyDefaultParticipant));
+
+  const openclawDefaultParticipantServices = buildOpenclawDefaultParticipantServices({
+    sendChatRequest: (m, o, s) => dataService.sendChatRequest(m, o, s),
+    getActiveModel: () => dataService.getActiveModel(),
+    getWorkspaceName: () => dataService.getWorkspaceName(),
+    getPageCount: () => dataService.getPageCount(),
+    getCurrentPageTitle: () => dataService.getCurrentPageTitle(),
+    getToolDefinitions: () => dataService.getToolDefinitions(),
+    getReadOnlyToolDefinitions: () => dataService.getReadOnlyToolDefinitions(),
+    invokeToolWithRuntimeControl: (n, a, t, o) => dataService.invokeToolWithRuntimeControl(n, a, t, o),
+    maxIterations: unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? 10,
+    networkTimeout: 120_000,
+    getModelContextLength: () => dataService.getModelContextLength(),
+    sendSummarizationRequest: (m, s) => dataService.sendSummarizationRequest(m, s),
+    getFileCount: fsAccessor ? () => dataService.getFileCount() : undefined,
+    isRAGAvailable: () => dataService.isRAGAvailable(),
+    isIndexing: () => dataService.isIndexing(),
+    readFileContent: (p) => dataService.readFileContent(p),
+    getCurrentPageContent: () => dataService.getCurrentPageContent(),
+    retrieveContext: retrievalService
+      ? (q, pathPrefixes) => dataService.retrieveContext(q, pathPrefixes) as Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>
+      : undefined,
+    recallMemories: (memoryService || workspaceMemoryService) ? (q, s) => dataService.recallMemories(q, s) : undefined,
+    recallTranscripts: retrievalService ? (q) => dataService.recallTranscripts(q) : undefined,
+    storeSessionMemory: (memoryService || workspaceMemoryService) ? (s, su, m) => dataService.storeSessionMemory(s, su, m) : undefined,
+    storeConceptsFromSession: memoryService ? (c, s) => dataService.storeConceptsFromSession(c, s) : undefined,
+    recallConcepts: memoryService ? (q) => dataService.recallConcepts(q) : undefined,
+    isSessionEligibleForSummary: memoryService ? (m) => dataService.isSessionEligibleForSummary(m) : undefined,
+    hasSessionMemory: memoryService ? (s) => dataService.hasSessionMemory(s) : undefined,
+    getSessionMemoryMessageCount: memoryService ? (s) => dataService.getSessionMemoryMessageCount(s) : undefined,
+    extractPreferences: (memoryService || workspaceMemoryService) ? (t) => dataService.extractPreferences(t) : undefined,
+    getPreferencesForPrompt: (memoryService || workspaceMemoryService) ? () => dataService.getPreferencesForPrompt() : undefined,
+    getPromptOverlay: _promptFileService ? (a) => dataService.getPromptOverlay(a) : undefined,
+    listFilesRelative: fsAccessor ? (r) => dataService.listFilesRelative(r) : undefined,
+    readFileRelative: fsAccessor ? (r) => dataService.readFileRelative(r) : undefined,
+    writeFileRelative: (fileService && workspaceService?.folders?.length) ? (r, c) => dataService.writeFileRelative(r, c) : undefined,
+    existsRelative: fsAccessor ? (r) => dataService.existsRelative(r) : undefined,
+    invalidatePromptFiles: _promptFileService ? () => dataService.invalidatePromptFiles() : undefined,
+    reportContextPills: (p) => dataService.reportContextPills(p),
+    reportRetrievalDebug: (debug) => dataService.reportRetrievalDebug(debug),
+    reportResponseDebug: (debug) => dataService.reportResponseDebug(debug),
+    reportRuntimeTrace: (trace) => dataService.reportRuntimeTrace(trace as import('./chatTypes.js').IChatRuntimeTrace),
+    reportBootstrapDebug: (debug) => dataService.reportBootstrapDebug(debug),
+    reportSystemPromptReport: (report) => dataService.reportSystemPromptReport(report),
+    getExcludedContextIds: () => dataService.getExcludedContextIds(),
+    reportBudget: (slots) => dataService.reportBudget(slots),
+    getTerminalOutput: () => dataService.getTerminalOutput(),
+    listFolderFiles: fsAccessor ? (f) => dataService.listFolderFiles(f) : undefined,
+    userCommandFileSystem: dataService.getUserCommandFileSystem(),
+    compactSession: (s, t) => dataService.compactSession(s, t),
+    getWorkspaceDigest: () => dataService.getWorkspaceDigest(),
+    getLastSystemPromptReport: () => dataService.getLastSystemPromptReport(),
+    sessionManager,
+    unifiedConfigService,
+  });
+  const openclawWorkspaceParticipantServices = buildOpenclawWorkspaceParticipantServices({
+    sendChatRequest: (m, o, s) => dataService.sendChatRequest(m, o, s),
+    getActiveModel: () => dataService.getActiveModel(),
+    getWorkspaceName: () => dataService.getWorkspaceName(),
+    listPages: () => dataService.listPages(),
+    searchPages: (q) => dataService.searchPages(q),
+    getPageContent: (p) => dataService.getPageContent(p),
+    getPageTitle: (p) => dataService.getPageTitle(p),
+    getReadOnlyToolDefinitions: () => dataService.getReadOnlyToolDefinitions(),
+    invokeToolWithRuntimeControl: (n, a, t, o) => dataService.invokeToolWithRuntimeControl(n, a, t, o),
+    listFiles: fsAccessor ? (r) => fsAccessor.readdir(r) : undefined,
+    readFileContent: fsAccessor ? (r) => fsAccessor.readFile(r) : undefined,
+    reportParticipantDebug: (debug) => dataService.reportParticipantDebug(debug),
+    reportRetrievalDebug: (debug) => dataService.reportRetrievalDebug(debug),
+    reportRuntimeTrace: (trace) => dataService.reportRuntimeTrace(trace as import('./chatTypes.js').IChatRuntimeTrace),
+    reportBootstrapDebug: (debug) => dataService.reportBootstrapDebug(debug),
+  });
+  const openclawCanvasParticipantServices = buildOpenclawCanvasParticipantServices({
+    sendChatRequest: (m, o, s) => dataService.sendChatRequest(m, o, s),
+    getActiveModel: () => dataService.getActiveModel(),
+    getWorkspaceName: () => dataService.getWorkspaceName(),
+    getCurrentPageId: () => dataService.getCurrentPageId(),
+    getCurrentPageTitle: () => dataService.getCurrentPageTitle(),
+    getPageStructure: (p) => dataService.getPageStructure(p),
+    getReadOnlyToolDefinitions: () => dataService.getReadOnlyToolDefinitions(),
+    invokeToolWithRuntimeControl: (n, a, t, o) => dataService.invokeToolWithRuntimeControl(n, a, t, o),
+    readFileContent: fsAccessor ? (r) => fsAccessor.readFile(r) : undefined,
+    reportParticipantDebug: (debug) => dataService.reportParticipantDebug(debug),
+    reportRetrievalDebug: (debug) => dataService.reportRetrievalDebug(debug),
+    reportRuntimeTrace: (trace) => dataService.reportRuntimeTrace(trace as import('./chatTypes.js').IChatRuntimeTrace),
+    reportBootstrapDebug: (debug) => dataService.reportBootstrapDebug(debug),
+  });
+
+  context.subscriptions.push(...registerOpenclawParticipants({
+    agentService,
+    defaultParticipantServices: openclawDefaultParticipantServices,
+    workspaceParticipantServices: openclawWorkspaceParticipantServices,
+    canvasParticipantServices: openclawCanvasParticipantServices,
+  }));
+
   // ── 3b. Register @workspace participant ──
 
-  const workspaceParticipant = createWorkspaceParticipant(dataService.buildWorkspaceParticipantServices());
+  const workspaceParticipantServices = dataService.buildWorkspaceParticipantServices();
+  const workspaceParticipant = createWorkspaceParticipant(workspaceParticipantServices);
   context.subscriptions.push(workspaceParticipant);
-  context.subscriptions.push(agentService.registerAgent(workspaceParticipant));
+  context.subscriptions.push(agentService.registerAgent({
+    id: 'parallx.chat.legacy-workspace',
+    surface: 'workspace',
+    displayName: 'Workspace (Legacy Claw)',
+    description: 'Frozen legacy workspace lane preserved for comparison during the OpenClaw rebuild.',
+    commands: workspaceParticipant.commands,
+    runtime: workspaceParticipant.runtime,
+    handler: workspaceParticipant.handler,
+  }));
 
   // ── 3c. Register @canvas participant ──
 
-  const canvasParticipant = createCanvasParticipant(dataService.buildCanvasParticipantServices());
+  const canvasParticipantServices = dataService.buildCanvasParticipantServices();
+  const canvasParticipant = createCanvasParticipant(canvasParticipantServices);
   context.subscriptions.push(canvasParticipant);
-  context.subscriptions.push(agentService.registerAgent(canvasParticipant));
+  context.subscriptions.push(agentService.registerAgent({
+    id: 'parallx.chat.legacy-canvas',
+    surface: 'canvas',
+    displayName: 'Canvas (Legacy Claw)',
+    description: 'Frozen legacy canvas lane preserved for comparison during the OpenClaw rebuild.',
+    commands: canvasParticipant.commands,
+    runtime: canvasParticipant.runtime,
+    handler: canvasParticipant.handler,
+  }));
 
   // ── 3d. Register built-in tools (Cap 6 Task 6.3) ──
 

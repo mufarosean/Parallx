@@ -13,12 +13,13 @@ import type {
 import { interpretChatParticipantRequest } from './chatParticipantInterpretation.js';
 import { buildFollowUpRetrievalQuery } from './chatGroundedResponseHelpers.js';
 import { handleEarlyDeterministicAnswer } from './chatDeterministicResponse.js';
-import { matchWorkflowSkill, activateSkill } from './chatSkillMatcher.js';
+import { activateSkill } from './chatSkillMatcher.js';
 import { determineChatTurnRoute } from './chatTurnRouter.js';
 import { prepareChatTurnPrelude } from './chatTurnPrelude.js';
 import { createChatContextPlan } from './chatContextPlanner.js';
 import { extractMentions, resolveMentions } from './chatMentionResolver.js';
 import { resolveChatTurnEntryRouting } from './chatTurnEntryRouting.js';
+import { resolveQueryScope } from './chatScopeResolver.js';
 
 type IDefaultTurnInterpretationServices = Pick<
   IDefaultParticipantServices,
@@ -87,7 +88,8 @@ export async function resolveDefaultChatTurnInterpretation(
 
   const prelude = input.request.turnState
     ? await (async () => {
-        const mentions = input.request.turnState?.mentions ?? extractMentions(input.request.text);
+        const turnState = input.request.turnState!;
+        const mentions = turnState.mentions ?? extractMentions(input.request.text);
         let mentionPills: IPreparedChatTurnPrelude['mentionPills'] = [];
         let mentionContextBlocks: IPreparedChatTurnPrelude['mentionContextBlocks'] = [];
 
@@ -114,24 +116,41 @@ export async function resolveDefaultChatTurnInterpretation(
           mentionContextBlocks = mentionResult.contextBlocks;
         }
 
-        const isRagReady = input.request.turnState.isRagReady ?? (services.isRAGAvailable?.() ?? false);
-        const contextPlan = createChatContextPlan(input.request.turnState.turnRoute as any, {
-          hasActiveSlashCommand: input.request.turnState.hasActiveSlashCommand,
+        const isRagReady = turnState.isRagReady ?? (services.isRAGAvailable?.() ?? false);
+        const shouldRefreshQueryScope = !turnState.queryScope?.pathPrefixes?.length
+          && turnState.queryScope?.level === 'workspace'
+          && turnState.queryScope?.derivedFrom === 'contextual'
+          && !!services.listFilesRelative;
+        const queryScope = shouldRefreshQueryScope
+          ? await resolveQueryScope(turnState.userText, {
+              folders: mentions
+                .filter((mention): mention is typeof mention & { kind: 'folder'; path: string } => mention.kind === 'folder' && typeof mention.path === 'string')
+                .map((mention) => mention.path),
+              files: mentions
+                .filter((mention): mention is typeof mention & { kind: 'file'; path: string } => mention.kind === 'file' && typeof mention.path === 'string')
+                .map((mention) => mention.path),
+            }, {
+              listFilesRelative: services.listFilesRelative,
+            })
+          : turnState.queryScope as any;
+        const contextPlan = createChatContextPlan(turnState.turnRoute as any, {
+          hasActiveSlashCommand: turnState.hasActiveSlashCommand,
           isRagReady,
         });
 
         return {
           mentionPills,
           mentionContextBlocks,
-          userText: input.request.turnState.userText,
-          contextQueryText: input.request.turnState.contextQueryText,
+          userText: turnState.userText,
+          contextQueryText: turnState.contextQueryText,
+          hasActiveSlashCommand: turnState.hasActiveSlashCommand,
           isRagReady,
-          turnRoute: input.request.turnState.turnRoute as any,
+          turnRoute: turnState.turnRoute as any,
           contextPlan,
           retrievalPlan: contextPlan.retrievalPlan,
-          isConversationalTurn: input.request.turnState.isConversationalTurn,
-          queryScope: input.request.turnState.queryScope as any,
-          semanticFallback: input.request.turnState.semanticFallback as any,
+          isConversationalTurn: turnState.isConversationalTurn,
+          queryScope,
+          semanticFallback: turnState.semanticFallback as any,
         } satisfies IPreparedChatTurnPrelude;
       })()
     : await prepareChatTurnPrelude(
@@ -147,7 +166,6 @@ export async function resolveDefaultChatTurnInterpretation(
         },
       );
 
-  const skillCatalog = services.getWorkflowSkillCatalog?.() ?? [];
   const isSkillSlashCommand = slashResult.command?.specialHandler === 'skill';
   let activatedSkill: IActivatedSkill | undefined;
 
@@ -156,14 +174,6 @@ export async function resolveDefaultChatTurnInterpretation(
     if (manifest) {
       activatedSkill = activateSkill(manifest, effectiveText, 'user', prelude.queryScope);
     }
-  } else if (skillCatalog.length > 0) {
-    const skillMatch = matchWorkflowSkill(prelude.userText, prelude.turnRoute, prelude.queryScope, skillCatalog);
-    if (skillMatch.matched && skillMatch.skill) {
-      const manifest = services.getSkillManifest?.(skillMatch.skill.name);
-      if (manifest) {
-        activatedSkill = activateSkill(manifest, prelude.userText, 'planner', prelude.queryScope);
-      }
-    }
   }
 
   return {
@@ -171,7 +181,6 @@ export async function resolveDefaultChatTurnInterpretation(
     slashResult,
     effectiveText,
     activeCommand,
-    hasActiveSlashCommand,
     handledEarlyAnswer: handled,
     activatedSkill,
     ...prelude,

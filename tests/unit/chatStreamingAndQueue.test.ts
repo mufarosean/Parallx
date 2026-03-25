@@ -1,6 +1,6 @@
 // Unit tests for streamed thinking extraction and pending request queue — M13
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { _extractInlineThinking } from '../../src/built-in/chat/providers/ollamaProvider';
 import { ChatService, CancellationTokenSource } from '../../src/services/chatService';
 import { ChatAgentService } from '../../src/services/chatAgentService';
@@ -8,6 +8,7 @@ import { ChatModeService } from '../../src/services/chatModeService';
 import { LanguageModelsService } from '../../src/services/languageModelsService';
 import { ChatRequestQueueKind } from '../../src/services/chatTypes';
 import type {
+  IChatAttachment,
   IChatParticipant,
   IChatParticipantRequest,
   IChatParticipantContext,
@@ -179,6 +180,30 @@ describe('ChatService pending request queue', () => {
     expect(session.pendingRequests[0].id).toBe(pending.id);
   });
 
+  it('preserves sendRequest options on queued requests', () => {
+    const session = chatService.createSession();
+    const attachment: IChatAttachment = {
+      kind: 'file',
+      id: 'file-1',
+      name: 'Policy.md',
+      fullPath: 'D:/AI/Parallx/Policy.md',
+      isImplicit: false,
+    };
+
+    const pending = chatService.queueRequest(session.id, 'queued message', ChatRequestQueueKind.Queued, {
+      participantId: 'parallx.chat.capture',
+      command: 'context',
+      attachments: [attachment],
+    });
+
+    expect(pending.options).toEqual({
+      participantId: 'parallx.chat.capture',
+      command: 'context',
+      attachments: [attachment],
+    });
+    expect(session.pendingRequests[0].options).toEqual(pending.options);
+  });
+
   it('queues Steering at front of queue', () => {
     const session = chatService.createSession();
     chatService.queueRequest(session.id, 'first queued', ChatRequestQueueKind.Queued);
@@ -240,5 +265,88 @@ describe('ChatService pending request queue', () => {
     expect(session.pendingRequests[0].text).toBe('s1');
     expect(session.pendingRequests[1].text).toBe('s2');
     expect(session.pendingRequests[2].text).toBe('q1');
+  });
+
+  it('replays queued requests with preserved participant and attachments after the active turn completes', async () => {
+    const localAgentService = new ChatAgentService();
+    const localModeService = new ChatModeService();
+    const localLmService = new LanguageModelsService();
+    const localChatService = new ChatService(localAgentService, localModeService, localLmService);
+    let releaseSlowTurn: (() => void) | undefined;
+    let markSlowTurnStarted: (() => void) | undefined;
+    const slowTurnStarted = new Promise<void>((resolve) => {
+      markSlowTurnStarted = resolve;
+    });
+    const capture = vi.fn(async (
+      request: IChatParticipantRequest,
+      _context: IChatParticipantContext,
+      response: IChatResponseStream,
+    ) => {
+      response.markdown('Captured queued request');
+      return {};
+    });
+
+    localAgentService.registerAgent({
+      id: 'parallx.chat.capture',
+      displayName: 'Capture',
+      description: 'Captures queued requests',
+      commands: [],
+      handler: capture,
+    });
+
+    localAgentService.registerAgent({
+      id: 'parallx.chat.default',
+      displayName: 'Default',
+      description: 'Slow default for queue drain test',
+      commands: [],
+      handler: async (
+        _request: IChatParticipantRequest,
+        _context: IChatParticipantContext,
+        response: IChatResponseStream,
+      ) => {
+        response.markdown('Slow agent response');
+        markSlowTurnStarted?.();
+        await new Promise<void>((resolve) => {
+          releaseSlowTurn = resolve;
+        });
+        return {};
+      },
+    });
+
+    const session = localChatService.createSession();
+    const firstTurn = localChatService.sendRequest(session.id, 'first request');
+
+    expect(session.requestInProgress).toBe(true);
+    await slowTurnStarted;
+
+    const attachment: IChatAttachment = {
+      kind: 'file',
+      id: 'file-2',
+      name: 'Claims Guide.md',
+      fullPath: 'D:/AI/Parallx/Claims Guide.md',
+      isImplicit: false,
+    };
+
+    localChatService.queueRequest(session.id, '@capture /context queued request', ChatRequestQueueKind.Queued, {
+      participantId: 'parallx.chat.capture',
+      command: 'context',
+      attachments: [attachment],
+    });
+
+    releaseSlowTurn?.();
+    await firstTurn;
+
+    for (let attempt = 0; attempt < 20 && capture.mock.calls.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    expect(capture).toHaveBeenCalledTimes(1);
+
+    const queuedRequest = capture.mock.calls[0][0] as IChatParticipantRequest;
+    expect(queuedRequest.command).toBe('context');
+    expect(queuedRequest.attachments).toEqual([attachment]);
+    expect(session.messages.at(-1)?.request.participantId).toBe('parallx.chat.capture');
+    expect(session.messages.at(-1)?.request.command).toBe('context');
+    expect(session.messages.at(-1)?.request.attachments).toEqual([attachment]);
   });
 });

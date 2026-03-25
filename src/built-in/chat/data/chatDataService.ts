@@ -13,6 +13,8 @@
 import type {
   IDefaultParticipantServices,
   IChatRuntimeTrace,
+  IOpenclawBootstrapDebugReport,
+  IOpenclawSystemPromptReport,
   IWorkspaceParticipantServices,
   ICanvasParticipantServices,
   IChatWidgetServices,
@@ -42,9 +44,10 @@ import {
 
 import type { Event } from '../../../platform/events.js';
 
-import type { IAgentApprovalService, IAgentExecutionService, IAgentSessionService, IAgentTraceService, ICanonicalMemorySearchService, IDatabaseService, IFileService, IWorkspaceService, IEditorService, IRetrievalService, IIndexingPipelineService, IMemoryService, ITextFileModelManager, ISessionManager, IWorkspaceMemoryService } from '../../../services/serviceTypes.js';
+import type { IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, ICanonicalMemorySearchService, IDatabaseService, IFileService, IWorkspaceService, IEditorService, IRetrievalService, IIndexingPipelineService, IMemoryService, ITextFileModelManager, ISessionManager, IWorkspaceMemoryService } from '../../../services/serviceTypes.js';
 import type { IUnifiedAIConfigService } from '../../../aiSettings/unifiedConfigTypes.js';
 import type { ILanguageModelsService, IChatService, IChatModeService, ILanguageModelToolsService } from '../../../services/chatTypes.js';
+import type { ILanguageModelToolsRuntimeControl } from '../../../services/languageModelToolsService.js';
 import type { OllamaProvider } from '../providers/ollamaProvider.js';
 import type { PromptFileService } from '../../../services/promptFileService.js';
 import type { ChatWidget } from '../widgets/chatWidget.js';
@@ -52,6 +55,7 @@ import type { IWorkspaceSessionContext } from '../../../workspace/workspaceSessi
 import type { RetrievalTrace } from '../../../services/retrievalService.js';
 import { detectPreferences, formatConceptContextBlock } from '../../../services/memoryService.js';
 import { searchWorkspaceTranscripts } from '../../../services/transcriptSearch.js';
+import type { PermissionService } from '../../../services/permissionService.js';
 
 import { extractTextContent } from '../tools/builtInTools.js';
 import { buildChatAgentTaskWidgetServices } from '../utilities/chatAgentTaskWidgetAdapter.js';
@@ -67,6 +71,7 @@ import {
 } from '../utilities/chatScopedParticipantAdapters.js';
 import { buildChatTokenBarServices } from '../utilities/chatTokenBarAdapter.js';
 import { openChatFile, openChatMemoryViewer } from '../utilities/chatViewerOpeners.js';
+import { createChatRuntimeAutonomyMirror } from '../utilities/chatRuntimeAutonomyMirror.js';
 import { computeChatWorkspaceDigest } from '../utilities/chatWorkspaceDigest.js';
 
 function resolveMemoryRecallScope(query: string): {
@@ -153,11 +158,14 @@ export interface ChatDataServiceDeps {
   readonly sessionManager?: ISessionManager;
   /** Unified AI Config service (M20). Single source of truth for all AI configuration. */
   readonly unifiedConfigService?: IUnifiedAIConfigService;
+  readonly permissionService?: PermissionService;
   /** Autonomy services used for task and approval UI surfaces. */
   readonly agentSessionService?: IAgentSessionService;
   readonly agentApprovalService?: IAgentApprovalService;
   readonly agentExecutionService?: IAgentExecutionService;
   readonly agentTraceService?: IAgentTraceService;
+  readonly agentPolicyService?: IAgentPolicyService;
+  readonly agentTaskStore?: IAgentTaskStore;
   /** Open a file in the editor via the standard EditorsBridge resolver (same as explorer). */
   readonly openFileEditor?: (uri: string, options?: { pinned?: boolean }) => Promise<void>;
 }
@@ -210,6 +218,8 @@ export interface IChatTestDebugSnapshot {
     semanticFallbackKind?: string;
   };
   runtimeTrace?: IChatRuntimeTrace;
+  bootstrapContext?: IOpenclawBootstrapDebugReport;
+  systemPromptReport?: IOpenclawSystemPromptReport;
   retrievalError?: string;
 }
 
@@ -812,6 +822,20 @@ export class ChatDataService {
     return this._d.languageModelToolsService.invokeTool(name, args, token);
   }
 
+  async invokeToolWithRuntimeControl(
+    name: string,
+    args: Record<string, unknown>,
+    token: ICancellationToken,
+    observer?: import('../chatTypes.js').IChatRuntimeToolInvocationObserver,
+  ): Promise<IToolResult> {
+    const toolsService = this._d.languageModelToolsService as (ILanguageModelToolsService & Partial<ILanguageModelToolsRuntimeControl>) | undefined;
+    if (!toolsService?.invokeToolWithRuntimeControl) {
+      return { content: 'Tool service not available', isError: true };
+    }
+
+    return toolsService.invokeToolWithRuntimeControl(name, args, token, observer);
+  }
+
   async getFileCount(): Promise<number> {
     if (!this._d.fsAccessor) { return 0; }
     try {
@@ -1292,12 +1316,13 @@ export class ChatDataService {
               }
             } else {
               const memoryEntries = await this._d.fsAccessor.readdir('.parallx/memory');
-              const latestDaily = memoryEntries
+              const recentDailyFiles = memoryEntries
                 .filter((entry) => entry.type === 'file' && /^\d{4}-\d{2}-\d{2}\.md$/i.test(entry.name))
-                .sort((a, b) => b.name.localeCompare(a.name))[0];
-              if (latestDaily) {
-                const dailyContent = await this._d.fsAccessor.readFile(`.parallx/memory/${latestDaily.name}`);
-                const dailyLabel = `Daily memory (${latestDaily.name.replace(/\.md$/i, '')}):`;
+                .sort((a, b) => b.name.localeCompare(a.name))
+                .slice(0, 3);
+              for (const dailyEntry of recentDailyFiles) {
+                const dailyContent = await this._d.fsAccessor.readFile(`.parallx/memory/${dailyEntry.name}`);
+                const dailyLabel = `Daily memory (${dailyEntry.name.replace(/\.md$/i, '')}):`;
                 if (dailyContent.trim() && !aggregatedItems.some((item) => item.label === dailyLabel)) {
                   directItems.push({
                     label: dailyLabel,
@@ -1644,12 +1669,45 @@ export class ChatDataService {
   }
 
   reportRuntimeTrace(trace: IChatRuntimeTrace): void {
+    const previousTrace = this._lastTestDebugSnapshot.runtimeTrace;
     this._lastTestDebugSnapshot = {
       ...this._lastTestDebugSnapshot,
-      runtimeTrace: structuredClone(trace),
+      runtimeTrace: structuredClone({
+        ...previousTrace,
+        ...trace,
+        route: trace.route ?? previousTrace?.route,
+        contextPlan: trace.contextPlan ?? previousTrace?.contextPlan,
+        queryScope: trace.queryScope ?? previousTrace?.queryScope,
+        semanticFallback: trace.semanticFallback ?? previousTrace?.semanticFallback,
+        routeAuthority: trace.routeAuthority ?? previousTrace?.routeAuthority,
+      }),
       isRAGAvailable: this.isRAGAvailable(),
       isIndexing: this.isIndexing(),
     };
+  }
+
+  reportBootstrapDebug(debug: IOpenclawBootstrapDebugReport): void {
+    this._lastTestDebugSnapshot = {
+      ...this._lastTestDebugSnapshot,
+      bootstrapContext: structuredClone(debug),
+      isRAGAvailable: this.isRAGAvailable(),
+      isIndexing: this.isIndexing(),
+    };
+  }
+
+  reportSystemPromptReport(report: IOpenclawSystemPromptReport): void {
+    this._lastTestDebugSnapshot = {
+      ...this._lastTestDebugSnapshot,
+      systemPromptReport: structuredClone(report),
+      isRAGAvailable: this.isRAGAvailable(),
+      isIndexing: this.isIndexing(),
+    };
+  }
+
+  getLastSystemPromptReport(): IOpenclawSystemPromptReport | undefined {
+    return this._lastTestDebugSnapshot.systemPromptReport
+      ? structuredClone(this._lastTestDebugSnapshot.systemPromptReport)
+      : undefined;
   }
 
   getTestDebugSnapshot(): IChatTestDebugSnapshot {
@@ -2005,7 +2063,7 @@ export class ChatDataService {
       getCurrentPageTitle: () => this.getCurrentPageTitle(),
       getToolDefinitions: () => this.getToolDefinitions(),
       getReadOnlyToolDefinitions: () => this.getReadOnlyToolDefinitions(),
-      invokeTool: (n, a, t) => this.invokeTool(n, a, t),
+      invokeToolWithRuntimeControl: (n, a, t, o) => this.invokeToolWithRuntimeControl(n, a, t, o),
       maxIterations: this._d.unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? this._d.maxIterations,
       networkTimeout: this._d.networkTimeout,
       getModelContextLength: () => this.getModelContextLength(),
@@ -2040,6 +2098,8 @@ export class ChatDataService {
       reportRetrievalDebug: (debug) => this.reportRetrievalDebug(debug),
       reportResponseDebug: (debug) => this.reportResponseDebug(debug),
       reportRuntimeTrace: (trace) => this.reportRuntimeTrace(trace),
+      reportBootstrapDebug: (debug) => this.reportBootstrapDebug(debug),
+      reportSystemPromptReport: (report) => this.reportSystemPromptReport(report),
       getExcludedContextIds: () => this.getExcludedContextIds(),
       reportBudget: (s) => this.reportBudget(s),
       getTerminalOutput: () => this.getTerminalOutput(),
@@ -2047,8 +2107,23 @@ export class ChatDataService {
       userCommandFileSystem: this.getUserCommandFileSystem(),
       compactSession: (s, t) => this.compactSession(s, t),
       getWorkspaceDigest: () => this.getWorkspaceDigest(),
+      getLastSystemPromptReport: () => this.getLastSystemPromptReport(),
       sessionManager: this._d.sessionManager,
       unifiedConfigService: this._d.unifiedConfigService,
+      createAutonomyMirror: async (input) => {
+        if (!this._d.workspaceService || !this._d.agentTaskStore || !this._d.agentSessionService || !this._d.agentApprovalService || !this._d.agentTraceService || !this._d.agentPolicyService) {
+          return undefined;
+        }
+
+        return createChatRuntimeAutonomyMirror({
+          workspaceService: this._d.workspaceService,
+          agentTaskStore: this._d.agentTaskStore,
+          agentSessionService: this._d.agentSessionService,
+          agentApprovalService: this._d.agentApprovalService,
+          agentTraceService: this._d.agentTraceService,
+          agentPolicyService: this._d.agentPolicyService,
+        }, input);
+      },
     });
   }
 
@@ -2061,6 +2136,8 @@ export class ChatDataService {
       searchPages: (q) => this.searchPages(q),
       getPageContent: (p) => this.getPageContent(p),
       getPageTitle: (p) => this.getPageTitle(p),
+      getReadOnlyToolDefinitions: () => this.getReadOnlyToolDefinitions(),
+      invokeToolWithRuntimeControl: (n, a, t, o) => this.invokeToolWithRuntimeControl(n, a, t, o),
       listFiles: this._d.fsAccessor
         ? (r) => this._d.fsAccessor!.readdir(r)
         : undefined,
@@ -2069,6 +2146,8 @@ export class ChatDataService {
         : undefined,
       reportParticipantDebug: (debug) => this.reportParticipantDebug(debug),
       reportRetrievalDebug: (debug) => this.reportRetrievalDebug(debug),
+      reportRuntimeTrace: (trace) => this.reportRuntimeTrace(trace),
+      reportBootstrapDebug: (debug) => this.reportBootstrapDebug(debug),
     });
   }
 
@@ -2080,11 +2159,15 @@ export class ChatDataService {
       getCurrentPageId: () => this.getCurrentPageId(),
       getCurrentPageTitle: () => this.getCurrentPageTitle(),
       getPageStructure: (p) => this.getPageStructure(p),
+      getReadOnlyToolDefinitions: () => this.getReadOnlyToolDefinitions(),
+      invokeToolWithRuntimeControl: (n, a, t, o) => this.invokeToolWithRuntimeControl(n, a, t, o),
       readFileContent: this._d.fsAccessor
         ? (r) => this._d.fsAccessor!.readFile(r)
         : undefined,
       reportParticipantDebug: (debug) => this.reportParticipantDebug(debug),
       reportRetrievalDebug: (debug) => this.reportRetrievalDebug(debug),
+      reportRuntimeTrace: (trace) => this.reportRuntimeTrace(trace),
+      reportBootstrapDebug: (debug) => this.reportBootstrapDebug(debug),
     });
   }
 
@@ -2191,8 +2274,8 @@ export class ChatDataService {
         available: (this._d.ollamaProvider as any).getLastStatus?.()?.available ?? false,
       }),
       onDidChangeProviderStatus: (this._d.ollamaProvider as any).onDidChangeStatus as Event<void>,
-      queueRequest: (sessionId: string, message: string, kind: ChatRequestQueueKind) =>
-        this._d.chatService.queueRequest(sessionId, message, kind),
+      queueRequest: (sessionId: string, message: string, kind: ChatRequestQueueKind, options) =>
+        this._d.chatService.queueRequest(sessionId, message, kind, options),
       removePendingRequest: (sessionId: string, requestId: string) =>
         this._d.chatService.removePendingRequest(sessionId, requestId),
       requestYield: (sessionId: string) =>

@@ -25,7 +25,10 @@ export function buildExecutionPlan(
   route: IChatTurnRoute,
   scope: IQueryScope,
 ): IExecutionPlan {
-  const workflowType = route.workflowType ?? 'generic-grounded';
+  const workflowType = route.workflowType
+    ?? (route.kind === 'grounded' && (route.coverageMode === 'exhaustive' || route.coverageMode === 'enumeration')
+      ? 'folder-summary'
+      : 'generic-grounded');
   const targetPaths = scope.pathPrefixes ? [...scope.pathPrefixes] : undefined;
 
   const steps = buildSteps(workflowType, targetPaths);

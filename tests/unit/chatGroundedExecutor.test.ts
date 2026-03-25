@@ -27,7 +27,7 @@ describe('chat grounded executor', () => {
   it('executes tool calls and appends tool results to the conversation', async () => {
     const response = createResponse();
     const messages = [{ role: 'user', content: 'find it' }] as any[];
-    const invokeTool = vi.fn(async () => ({ content: 'tool result' }));
+    const invokeToolWithRuntimeControl = vi.fn(async () => ({ content: 'tool result' }));
 
     const result = await executeChatGrounded(
       {
@@ -42,7 +42,7 @@ describe('chat grounded executor', () => {
           .mockImplementationOnce(async function* () {
             yield { content: 'Final answer', done: true };
           }),
-        invokeTool,
+        invokeToolWithRuntimeControl,
         resetNetworkTimeout: vi.fn(),
         parseEditResponse: vi.fn(),
         extractToolCallsFromText: vi.fn((text: string) => ({ toolCalls: [], cleanedText: text })),
@@ -67,7 +67,7 @@ describe('chat grounded executor', () => {
     );
 
     expect(result.producedContent).toBe(true);
-    expect(invokeTool).toHaveBeenCalledWith('search_workspace', { query: 'find it' }, expect.any(Object));
+    expect(invokeToolWithRuntimeControl).toHaveBeenCalledWith('search_workspace', { query: 'find it' }, expect.objectContaining({ isCancellationRequested: false }), expect.anything());
     expect(messages.some((message) => message.role === 'tool' && message.content === 'tool result')).toBe(true);
     expect(response.markdown).toHaveBeenCalledWith('Final answer');
   });
@@ -91,7 +91,7 @@ describe('chat grounded executor', () => {
           .mockImplementationOnce(async function* () {
             yield { content: '', done: true };
           }),
-        invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+        invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
         resetNetworkTimeout: vi.fn(),
         parseEditResponse: vi.fn(),
         extractToolCallsFromText: vi.fn((text: string) => ({ toolCalls: [], cleanedText: text })),
@@ -117,5 +117,91 @@ describe('chat grounded executor', () => {
 
     expect(result.producedContent).toBe(true);
     expect(response.markdown).toHaveBeenCalledWith('Relevant details from retrieved context');
+  });
+
+  it('uses runtime-controlled tool invocation and emits approval-aware trace checkpoints', async () => {
+    const response = createResponse();
+    const runtimeTraceCalls: any[] = [];
+
+    const result = await executeChatGrounded(
+      {
+        sendChatRequest: vi.fn()
+          .mockImplementationOnce(async function* () {
+            yield {
+              content: '',
+              done: true,
+              toolCalls: [{ function: { name: 'write_file', arguments: { path: 'notes.md' } } }],
+            };
+          })
+          .mockImplementationOnce(async function* () {
+            yield { content: 'Wrote the file.', done: true };
+          }),
+        invokeToolWithRuntimeControl: vi.fn(async (_name, _args, _token, observer) => {
+          const metadata = {
+            name: 'write_file',
+            permissionLevel: 'requires-approval',
+            enabled: true,
+            requiresApproval: true,
+            autoApproved: false,
+            approvalSource: 'default',
+            description: 'Write a file',
+          } as const;
+          observer?.onValidated?.(metadata as any);
+          observer?.onApprovalRequested?.(metadata as any);
+          observer?.onApprovalResolved?.(metadata as any, true);
+          const toolResult = { content: 'tool result' };
+          observer?.onExecuted?.(metadata as any, toolResult);
+          return toolResult;
+        }),
+        resetNetworkTimeout: vi.fn(),
+        parseEditResponse: vi.fn(),
+        extractToolCallsFromText: vi.fn((text: string) => ({ toolCalls: [], cleanedText: text })),
+        stripToolNarration: vi.fn((text: string) => text),
+        buildExtractiveFallbackAnswer: vi.fn(() => ''),
+        reportResponseDebug: vi.fn(),
+        reportRuntimeTrace: vi.fn((trace) => runtimeTraceCalls.push(trace)),
+      },
+      {
+        messages: [{ role: 'user', content: 'write it' }] as any,
+        requestOptions: { tools: [] },
+        abortSignal: new AbortController().signal,
+        response,
+        token: createToken(),
+        maxIterations: 2,
+        canInvokeTools: true,
+        isEditMode: false,
+        requestText: 'write it',
+        userContent: 'write it',
+        retrievedContextText: '',
+        evidenceAssessment: { status: 'sufficient', reasons: [] },
+        runtimeTraceSeed: {
+          route: { kind: 'grounded', reason: 'tool-needed' },
+          contextPlan: {
+            route: 'grounded',
+            intent: 'task',
+            useRetrieval: false,
+            useMemoryRecall: false,
+            useTranscriptRecall: false,
+            useConceptRecall: false,
+            useCurrentPage: false,
+            citationMode: 'disabled',
+            reasoning: 'Tool execution required',
+            retrievalPlan: { intent: 'task', reasoning: 'Tool execution required', needsRetrieval: false, queries: [] },
+          },
+          hasActiveSlashCommand: false,
+          isRagReady: false,
+        },
+      },
+    );
+
+    expect(result.producedContent).toBe(true);
+    expect(runtimeTraceCalls.map((trace) => trace.checkpoint)).toEqual(expect.arrayContaining([
+      'tool-validated',
+      'approval-requested',
+      'approval-resolved',
+      'tool-executed',
+    ]));
+    expect(runtimeTraceCalls.some((trace) => trace.approvalState === 'pending')).toBe(true);
+    expect(runtimeTraceCalls.some((trace) => trace.approvalState === 'approved')).toBe(true);
   });
 });

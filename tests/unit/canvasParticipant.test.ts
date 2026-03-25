@@ -38,6 +38,7 @@ function mockServices(overrides?: Partial<ICanvasParticipantServices>): ICanvasP
     getWorkspaceName: vi.fn(() => 'Test Workspace'),
     readFileContent: vi.fn(async (relativePath: string) => `content for ${relativePath}`),
     reportParticipantDebug: vi.fn(),
+    reportRuntimeTrace: vi.fn(),
     ...overrides,
   };
 }
@@ -122,6 +123,14 @@ describe('canvas participant: /describe command', () => {
     expect(system?.content).toContain('Design Doc');
     expect(system?.content).toContain('heading');
     expect(system?.content).toContain('paragraph');
+    expect(services.reportRuntimeTrace).toHaveBeenCalledWith(expect.objectContaining({
+      checkpoint: 'prompt-seed',
+      note: 'canvas scoped participant prompt seed',
+    }));
+    expect(services.reportRuntimeTrace).toHaveBeenCalledWith(expect.objectContaining({
+      checkpoint: 'prompt-envelope',
+      note: 'canvas scoped participant prompt envelope',
+    }));
   });
 
   it('handles no active page', async () => {
@@ -230,6 +239,38 @@ describe('canvas participant: general (no command)', () => {
     expect(services.getPageStructure).toHaveBeenCalledWith('page-1');
     expect(services.sendChatRequest).toHaveBeenCalled();
     expect(stream.markdown).toHaveBeenCalledWith('LLM canvas response');
+  });
+
+  it('reports scoped runtime checkpoints through shared participant runtime context', async () => {
+    const services = mockServices({ reportRuntimeTrace: undefined });
+    const stream = mockStream();
+    const participant = createCanvasParticipant(services);
+    const reportTrace = vi.fn();
+
+    await participant.handler(
+      mockRequest({ text: 'What is this page about?' }),
+      { sessionId: 'test-session', history: [], runtime: { reportTrace } },
+      stream,
+      mockToken(),
+    );
+
+    expect(reportTrace).toHaveBeenCalledWith(expect.objectContaining({
+      checkpoint: 'scoped-handler-start',
+      runState: 'executing',
+      runtime: 'claw',
+      note: 'canvas scoped participant dispatch',
+    }));
+    expect(reportTrace).toHaveBeenCalledWith(expect.objectContaining({
+      checkpoint: 'prompt-envelope',
+      runtime: 'claw',
+      note: 'canvas scoped participant prompt envelope',
+    }));
+    expect(reportTrace).toHaveBeenCalledWith(expect.objectContaining({
+      checkpoint: 'scoped-handler-complete',
+      runState: 'completed',
+      runtime: 'claw',
+      note: 'canvas scoped participant dispatch',
+    }));
   });
 
   it('passes image attachments through to the scoped participant user message and image payload', async () => {

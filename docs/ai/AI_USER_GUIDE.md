@@ -1,422 +1,897 @@
-# Parallx AI — User Guide
+# Parallx AI User Guide
 
-Everything AI in Parallx runs **locally on your machine** via [Ollama](https://ollama.com). No cloud. No API keys. No data leaves your computer.
+Parallx AI is the assistant built into Parallx. It can answer questions about
+your workspace, help you edit content, and in Agent mode it can take
+multi-step actions with your approval.
+
+This guide is written for people who may be new to AI entirely. It explains:
+
+- what the AI is
+- what it can and cannot do
+- how to get started safely
+- what the three chat modes mean
+- what tools and skills are
+- where to see what the AI has access to
+- how to tell whether the AI is doing the right thing
+
+Parallx is designed so the AI works with your workspace, not as a black box.
 
 ---
 
 ## Table of Contents
 
-1. [Getting Started](#1-getting-started)
-2. [Chat](#2-chat)
-3. [AI Settings](#3-ai-settings)
-4. [Prompt Files](#4-prompt-files)
-5. [Tools & Skills](#5-tools--skills)
-6. [Knowledge Search](#6-knowledge-search)
-7. [Proactive Suggestions](#7-proactive-suggestions)
-8. [Privacy & Permissions](#8-privacy--permissions)
+1. [What Parallx AI Is](#1-what-parallx-ai-is)
+2. [AI Basics for New Users](#2-ai-basics-for-new-users)
+3. [Before You Start](#3-before-you-start)
+4. [Your First Five Minutes](#4-your-first-five-minutes)
+5. [The Three Chat Modes](#5-the-three-chat-modes)
+6. [What the AI Can Do by Mode](#6-what-the-ai-can-do-by-mode)
+7. [Tools](#7-tools)
+8. [Skills](#8-skills)
+9. [Context, Mentions, and Attachments](#9-context-mentions-and-attachments)
+10. [AI Settings](#10-ai-settings)
+11. [Memory and Workspace Files](#11-memory-and-workspace-files)
+12. [Approvals, Safety, and Privacy](#12-approvals-safety-and-privacy)
+13. [How to Check What the AI Is Seeing](#13-how-to-check-what-the-ai-is-seeing)
+14. [Recommended Ways to Use Parallx AI](#14-recommended-ways-to-use-parallx-ai)
+15. [Examples You Can Try](#15-examples-you-can-try)
+16. [Troubleshooting](#16-troubleshooting)
+17. [FAQ](#17-faq)
 
 ---
 
-## 1. Getting Started
+## 1. What Parallx AI Is
+
+Parallx AI is a workspace-aware assistant built into Parallx.
+
+That means it is not only a text chatbot. It can work with:
+
+- your files
+- your notes and pages
+- your workspace structure
+- your AI settings
+- approved tools and commands
+
+In practical terms, Parallx AI can help in three different ways:
+
+| Mode | Plain-English meaning |
+|------|------------------------|
+| Ask | "Answer my question" |
+| Edit | "Propose changes for me to review" |
+| Agent | "Do the work step by step, with approvals where needed" |
+
+The important idea is this:
+
+**Parallx AI is most useful when it is grounded in your workspace.**
+
+If you ask general questions, it behaves like a general assistant. If you ask
+about your workspace, it tries to use your actual files, notes, and context
+instead of making things up.
+
+---
+
+## 2. AI Basics for New Users
+
+If you are new to AI, start here.
+
+### What an AI assistant is good at
+
+AI is good at:
+
+- summarizing
+- explaining
+- rewriting
+- comparing documents
+- finding patterns
+- drafting text
+- answering questions from available context
+- helping you navigate a large workspace
+
+### What an AI assistant is not good at
+
+AI is not automatically truthful just because it sounds confident.
+
+It can:
+
+- misunderstand your question
+- rely on incomplete context
+- answer too broadly when you wanted precision
+- miss a file if you did not clearly scope the request
+- state something confidently that needs verification
+
+### The safest way to use AI
+
+Use this pattern:
+
+1. Start with a clear request.
+2. Give the AI the right context.
+3. Ask for sources or citations when accuracy matters.
+4. Review edits before accepting them.
+5. Approve actions intentionally in Agent mode.
+
+### A simple mental model
+
+Think of Parallx AI as a fast junior collaborator that can read a lot quickly,
+but still needs:
+
+- good instructions
+- access to the right material
+- review for important work
+
+---
+
+## 3. Before You Start
+
+Parallx AI depends on a local language model provider.
 
 ### Prerequisites
 
-1. **Install Ollama** — Download from [ollama.com](https://ollama.com) and start the server.
-2. **Pull a model** — Run `ollama pull qwen2.5:32b-instruct` (or any model you prefer) in your terminal.
-3. **Open a workspace folder** — File → Open Folder. The AI uses your workspace files as context.
+1. Install Ollama.
+2. Make sure the Ollama service is running.
+3. Pull at least one model.
+4. Open the workspace you want Parallx AI to work with.
 
-Once Ollama is running with at least one model installed, the chat panel is ready.
-If Ollama isn't running, Parallx shows setup guidance instead of error walls.
+Example model pull:
 
----
+```bash
+ollama pull qwen2.5:32b-instruct
+```
 
-## 2. Chat
+If Ollama is not running, Parallx should show setup guidance instead of simply
+failing silently.
 
-Open the chat panel from the **auxiliary bar** (right sidebar) or press the chat icon in the Activity Bar.
+### Why opening the right workspace matters
 
-### Chat Modes
+Parallx AI only helps well when it knows what workspace it is operating in.
 
-| Mode | What it does |
-|------|-------------|
-| **Ask** | Q&A — answers questions about your workspace, notes, and files. Read-only, no side effects. |
-| **Edit** | Proposes changes to canvas pages — inserts, edits, deletes blocks. You accept or reject each change via a diff view. |
-| **Agent** | Full autonomy — reads files, searches your knowledge base, writes files, runs terminal commands. Each action requires your approval. |
+If you open the wrong folder, the AI may:
 
-Switch modes with the **mode picker** dropdown in the chat input area.
-
-### Context Controls
-
-You control exactly what the AI sees:
-
-- **@mentions** — Type `@` to autocomplete:
-  - `@file:path/to/file.ts` — injects a specific file
-  - `@folder:path/to/dir` — injects all files in a folder
-  - `@workspace` — broad search across your entire workspace
-  - `@terminal` — injects recent terminal output
-- **Attachments** — Click "Add Context" to attach workspace files. Each shows its token cost.
-- **Context pills** — Visual chips above the input showing everything in context. Click × to remove any.
-
-### Slash Commands
-
-Type `/` at the start of a message:
-
-| Command | What it does |
-|---------|-------------|
-| `/explain` | Explain how selected code or a concept works |
-| `/fix` | Find and fix problems in code |
-| `/test` | Generate unit tests |
-| `/doc` | Generate documentation or comments |
-| `/review` | Code review with improvement suggestions |
-| `/compact` | Summarize old conversation history to free up context space |
-| `/init` | Scan your workspace and auto-generate an `AGENTS.md` project description |
-
-You can also create your own slash commands (see [Prompt Files](#4-prompt-files)).
-
-### Code Actions
-
-When the AI responds with code blocks, you can:
-
-- **Copy** — copy to clipboard
-- **Apply to File** — shows a diff view; you approve or reject
-- **Create File** — save as a new file
-- **Run in Terminal** — execute the code block
-
-### File Edit Review
-
-When the AI proposes file changes (in Agent mode or via "Apply to File"):
-
-- A side-by-side **diff view** shows exactly what will change (red = removed, green = added)
-- You **Accept** or **Reject** each change
-- Nothing is written to disk until you approve
-
-### Sessions
-
-- Chat sessions persist automatically (stored in your workspace database)
-- Browse and search past sessions from the session sidebar
-- Session titles are auto-generated
-- After each response, **follow-up suggestion chips** offer natural next questions
-
-### Model Picker
-
-Use the **model dropdown** in the chat header to switch between your locally installed Ollama models at any time. Shows model name, parameter count, and quantization.
+- search the wrong files
+- miss relevant notes
+- cite the wrong source set
+- appear less accurate than it really is
 
 ---
 
-## 3. AI Settings
+## 4. Your First Five Minutes
 
-Access AI Settings from:
-- **Activity Bar** icon
-- **Keyboard:** `Ctrl+Shift+A`
-- **Status bar:** click the `⚙ AI: Default` badge
+If you want the shortest path to success, do this.
 
-The AI Settings panel controls how the AI thinks, speaks, and behaves — no config files needed.
+### Step 1: Open the chat panel
 
-Important boundary:
+Open the chat panel from the chat UI in the workbench.
 
-- AI Settings configures AI behavior and model policy.
-- Workspace memory content does **not** live in AI Settings.
-- Canonical memory lives in markdown files under `.parallx/memory/`.
+### Step 2: Confirm a model is selected
 
-### Persona
+Use the model picker in the chat header to select the model you want.
 
-| Setting | What it controls |
-|---------|-----------------|
-| **Agent Name** | The name the AI uses (e.g., "Parallx AI", "Friday", "Atlas") |
-| **Description** | One-line description of the persona |
-| **Avatar** | Pick from 12 emoji icons: 🧠 💼 ✍️ 💰 🔬 📊 🎯 🤖 🦊 🌊 ⚡ 🧩 |
+### Step 3: Wait for workspace readiness
 
-### Chat Behavior
+When you first open a workspace, Parallx may need a short time to index and
+prepare retrieval. If you ask a workspace-specific question immediately,
+results may be weaker until the workspace is ready.
 
-| Setting | Options | What it controls |
-|---------|---------|-----------------|
-| **Response Length** | Short · Medium · Long · **Adaptive** | How verbose the AI is. Adaptive matches length to question complexity. |
-| **Communication Tone** | Concise · **Balanced** · Detailed | How much explanation and detail the AI provides |
-| **Domain Focus** | General · Finance · Writing · Coding · Research · Custom | What the AI pays special attention to |
-| **System Prompt** | Auto-generated or custom | The raw instruction the AI receives. Auto-updates when you change settings above. Toggle "Override" to write your own. |
+### Step 4: Start in Ask mode
 
-### Suggestions
+If you are new, begin with Ask mode. It is the safest mode because it is meant
+for question answering and should not perform side effects.
 
-| Setting | Default | What it controls |
-|---------|---------|-----------------|
-| **Proactive Suggestions** | ON | Whether the AI surfaces suggestions about your workspace |
-| **Confidence Threshold** | 65% | How confident the AI must be before showing a suggestion (lower = more suggestions) |
-| **Backlog Limit** | 5 | Maximum suggestion cards visible at once |
+### Step 5: Try a simple grounded question
 
-### Model
+Good first prompts:
 
-| Setting | Default | What it controls |
-|---------|---------|-----------------|
-| **Temperature** | 0.7 | Creativity dial — from Precise (0.0) through Balanced (0.5) to Creative (1.0) |
-| **Max Tokens** | Model default | Hard cap on response length |
-| **Context Window** | Model default | How much conversation history the model can see |
+- "What is this workspace about?"
+- "Summarize the main folders in this workspace."
+- "What files should I read first to understand this project?"
+- "Explain this note in simpler language."
 
-### Advanced
+### Step 6: Ask for evidence when accuracy matters
 
-- **Export Profile** — Download your current settings as a `.json` file
-- **Import Profile** — Load a `.json` profile (validates and fills any missing fields)
-- **Reset All** — Factory-reset the active profile to defaults
-- **Prompt Preview** — Read-only view of the effective system prompt
+Examples:
 
-### Persona Presets
+- "Answer using only the attached files."
+- "Cite the file names you used."
+- "If you are not sure, say so."
+- "Tell me which file each point came from."
 
-Parallx ships with three built-in presets:
+---
 
-| Preset | Avatar | Tone | Focus | Temperature |
-|--------|--------|------|-------|-------------|
-| **Default** | 🧠 | Balanced | General | 0.7 |
-| **Finance Focus** | 💰 | Concise | Finance | 0.7 |
-| **Creative Mode** | ✍️ | Detailed | Writing | 0.9 |
+## 5. The Three Chat Modes
 
-**Built-in presets are read-only.** If you change any setting on a built-in preset, Parallx automatically creates a copy (e.g., "Default (Modified)") so the original is preserved.
+Parallx AI has three explicit modes. They are not just labels. They define what
+the AI is allowed to do.
 
-You can also:
-- **Create custom presets** — cloned from the active profile
-- **Rename** or **delete** custom presets (right-click)
-- **Reset individual fields** — hover over any setting to see the reset (↺) icon
+## Ask Mode
 
-### Preview Panel
+Ask mode is for question answering.
 
-Test your settings before committing:
-1. Type a message (or click a starter chip: *"Hello, who are you?"*, *"Summarize what you know about me."*, *"What should I work on today?"*)
-2. Click **Run** — the AI responds using your current settings
-3. Click **Open in chat** to start a real conversation from the preview
+Use Ask mode when you want the AI to:
 
-### Workspace Memory Files
+- explain something
+- summarize documents
+- compare notes
+- answer questions about your workspace
+- help you think through a problem
 
-Parallx stores canonical workspace memory in markdown files, following the
-OpenClaw-style model:
+Ask mode is the best default for most users.
+
+Important expectation:
+
+- Ask mode is read-oriented.
+- It should not be your "go edit everything" mode.
+
+## Edit Mode
+
+Edit mode is for proposing changes that you review before accepting.
+
+Use Edit mode when you want the AI to:
+
+- rewrite a page
+- reorganize text
+- improve clarity
+- fix wording
+- draft structured content into an existing canvas page or note
+
+Important expectation:
+
+- Edit mode is about proposed changes.
+- You review the diff and decide whether to accept it.
+
+## Agent Mode
+
+Agent mode is for multi-step work.
+
+Use Agent mode when you want the AI to:
+
+- inspect multiple files
+- search and then act on results
+- write files after gathering evidence
+- run terminal commands with approval
+- carry out a longer chain of steps on your behalf
+
+Important expectation:
+
+- Agent mode is the most powerful mode.
+- It is also the mode that needs the most oversight.
+
+---
+
+## 6. What the AI Can Do by Mode
+
+This is the simplest capability map.
+
+| Capability | Ask | Edit | Agent |
+|------------|-----|------|-------|
+| Answer questions | Yes | Yes | Yes |
+| Summarize files and notes | Yes | Yes | Yes |
+| Use workspace context | Yes | Yes | Yes |
+| Propose text changes | Limited | Yes | Yes |
+| Show a diff before writing | Not typical | Yes | Yes |
+| Chain multiple actions | No | Limited | Yes |
+| Use tools for autonomous work | No | Limited | Yes |
+| Run commands | No | No | Yes, with approval |
+| Write or edit files | No direct autonomy | Proposed edits | Yes, with approval gates |
+
+### Best use of each mode
+
+| If you want to... | Best mode |
+|-------------------|-----------|
+| learn | Ask |
+| verify | Ask |
+| rewrite | Edit |
+| produce content you will review | Edit |
+| automate a process | Agent |
+| investigate a complex workspace issue | Agent |
+
+### A practical rule
+
+If you are unsure which mode to use:
+
+- start with Ask
+- move to Edit if you want changes proposed
+- move to Agent only when you want the AI to carry out a sequence of actions
+
+---
+
+## 7. Tools
+
+Tools are the actions Parallx AI can use to interact with your workspace.
+
+Without tools, an AI can only generate text.
+
+With tools, it can do things like:
+
+- read a file
+- search across files
+- list files in a folder
+- read a page
+- create a page
+- write or edit a file
+- run a command
+
+### Why tools matter
+
+Tools are what make Parallx AI useful as a workspace assistant instead of just a
+generic chatbot.
+
+### Where users can see available tools
+
+Parallx exposes tool visibility in several places:
+
+1. **Tool Gallery**
+  A dedicated installed-tools browser for seeing the tools that are available.
+
+2. **AI Settings -> Tools**
+  A tool tree where you can review and toggle tool availability.
+
+3. **Chat tool picker**
+  A per-conversation surface for enabling or disabling tools for the current
+  work.
+
+4. **OpenClaw `/context` commands**
+  Advanced transparency commands such as `/context list`, `/context detail`,
+  and `/context json` can show the current runtime context and tool footprint.
+
+### Built-in tools
+
+Examples of built-in tool categories include:
+
+- file tools
+- page tools
+- search tools
+- knowledge search tools
+- write/edit/delete tools
+- command execution tools
+
+Not every tool is equally powerful. Some are read-only. Some can change things.
+
+### Permission levels
+
+Parallx uses permission tiers so the AI does not silently do everything.
+
+Typical categories are:
+
+- always allowed
+- requires approval
+- never allowed
+
+As a user, the key point is:
+
+**Reading is usually easier to allow than writing, deleting, or command
+execution.**
+
+### Tool control advice for beginners
+
+If you are new, keep these enabled first:
+
+- read tools
+- search tools
+- listing tools
+
+Only enable broader action tools when you actually want the AI to take action.
+
+---
+
+## 8. Skills
+
+Skills are packaged instructions or capabilities that teach the AI how to do a
+particular kind of work.
+
+You can think of a skill as a reusable playbook.
+
+### What a skill is not
+
+A skill is not the same thing as a model.
+
+- A **model** is the engine that generates responses.
+- A **tool** is an action the AI can perform.
+- A **skill** is a structured guide or capability package that helps the AI use
+  those tools or follow a defined workflow.
+
+### Types of skills in Parallx
+
+Parallx currently has two broad skill shapes:
+
+1. **Built-in workflow skills**
+  These ship with Parallx.
+
+2. **Workspace skills**
+  These live inside your workspace and can be customized per project.
+
+### Where workspace skill files live
+
+Workspace skills live here:
+
+```text
+.parallx/skills/<skill-name>/SKILL.md
+```
+
+Example:
+
+```text
+.parallx/skills/release-checklist/SKILL.md
+```
+
+### Where built-in skills live
+
+Built-in workflow skills are bundled with Parallx itself. They are not exposed
+as ordinary editable files in the same way workspace skills are.
+
+For most users, the important distinction is:
+
+- workspace skills are yours to inspect and customize
+- built-in skills are product-provided behaviors
+
+### Why skills are useful
+
+Skills help the AI behave more consistently for recurring work.
+
+Examples:
+
+- a release workflow
+- a code review workflow
+- a note-formatting workflow
+- a project-specific writing style
+
+### When you should care about skills
+
+If you only want to chat casually, you may never need to think about skills.
+
+If you want Parallx AI to become more tailored to your workspace or your team,
+skills become much more important.
+
+---
+
+## 9. Context, Mentions, and Attachments
+
+AI quality depends heavily on context.
+
+### What context means
+
+Context is the information the model can see for the current turn.
+
+That can include:
+
+- your message
+- attached files
+- explicitly mentioned files or folders
+- retrieved workspace snippets
+- conversation history
+- workspace prompt files such as `SOUL.md`, `AGENTS.md`, and `TOOLS.md`
+
+### Why the same question can get different answers
+
+If you ask the same question with different context, you can get different
+answers.
+
+For example:
+
+- no file attached -> broad answer
+- exact file attached -> grounded answer
+- whole folder attached -> broader grounded answer
+
+### @mentions
+
+Parallx supports context mentions such as:
+
+- `@file:...`
+- `@folder:...`
+- `@workspace`
+- `@terminal`
+
+Use them when you want to be explicit about what the AI should consider.
+
+### Attachments and context pills
+
+Attached context appears visibly in the chat UI. This is useful because you can
+see what the AI is working from and remove context you did not intend to send.
+
+### Best practice for accurate answers
+
+When accuracy matters, do one or more of these:
+
+1. attach the exact file
+2. mention the exact folder
+3. ask for citations
+4. tell the AI to answer only from provided context
+
+---
+
+## 10. AI Settings
+
+AI Settings control how Parallx AI behaves.
+
+This is where you adjust things like:
+
+- persona
+- response style
+- suggestions
+- model behavior
+- enabled tools
+
+### Important idea
+
+AI Settings change how the AI behaves.
+
+They do **not** replace the workspace files that define project context and
+memory.
+
+### Major settings areas
+
+#### Persona
+
+Controls the assistant identity, description, and avatar.
+
+#### Chat behavior
+
+Controls things like:
+
+- response length
+- communication style
+- domain focus
+- system prompt override behavior
+
+#### Suggestions
+
+Controls proactive suggestion behavior.
+
+#### Model
+
+Controls things like:
+
+- temperature
+- token limits
+- context window assumptions
+
+#### Tools
+
+Lets you review and manage tool availability.
+
+### Beginner advice for settings
+
+If you are new, do not change everything at once.
+
+Start by adjusting only:
+
+- response length
+- tone
+- enabled tools
+
+Then test a few prompts and see whether the behavior improves.
+
+---
+
+## 11. Memory and Workspace Files
+
+Parallx AI is not only driven by the current chat turn. It can also be shaped by
+workspace files and memory files.
+
+### Important workspace-level prompt files
+
+These files are especially important:
+
+- `SOUL.md`
+- `AGENTS.md`
+- `TOOLS.md`
+
+### What they do
 
 | File | Purpose |
 |------|---------|
-| `.parallx/memory/MEMORY.md` | Durable memory — curated preferences, decisions, conventions, and durable facts |
-| `.parallx/memory/YYYY-MM-DD.md` | Daily memory log — day-scoped notes and session summaries |
+| `SOUL.md` | Identity, tone, boundaries, personality |
+| `AGENTS.md` | Project context, conventions, instructions |
+| `TOOLS.md` | Notes and guidance about tools and local conventions |
 
-You can open these directly from the command palette:
+### Workspace memory files
 
-- `Parallx: Open Durable Memory`
-- `Parallx: Open Today's Memory Log`
+Parallx uses file-backed memory inspired by the OpenClaw model.
 
-You can also access the `.parallx` folder directly in the Explorer whenever you
-want to inspect or edit memory files by hand.
+Canonical memory files live under:
 
-If you opened a workspace that predates canonical markdown memory, Parallx will
-import legacy memory records into these markdown files and continue using the
-markdown files as the source of truth.
-
----
-
-## 4. Prompt Files
-
-Parallx assembles the AI's instructions from layered markdown files in your workspace. You can edit any of them.
-
-### SOUL.md — Personality
-
-**Location:** Workspace root
-
-Defines the AI's identity, tone, and constraints. Ships with sensible defaults:
-- Direct and concise personality
-- Rules like "never hallucinate file contents" and "only access files within this workspace"
-- Response style guidelines (code blocks with language tags, relative file paths, etc.)
-
-Edit `SOUL.md` to change how the AI speaks and behaves across your entire workspace.
-
-### AGENTS.md — Project Context
-
-**Location:** Workspace root
-
-Tells the AI about your project — architecture, conventions, important files, build instructions.
-
-**Quick start:** Type `/init` in the chat. Parallx scans your workspace and generates `AGENTS.md` automatically. You can then edit it.
-
-### TOOLS.md — Tool Instructions
-
-**Location:** Workspace root
-
-Documents the available tools and usage guidelines. Auto-generated from registered skills. Override by creating your own `TOOLS.md`.
-
-### .parallx/rules/*.md — Scoped Rules
-
-**Location:** `.parallx/rules/` directory
-
-Pattern-scoped rules injected only when the active file matches. Each file uses YAML frontmatter with a `pattern:` glob.
-
-**Example** — `.parallx/rules/testing.md`:
-```yaml
----
-pattern: "*.test.ts"
----
-When working with test files:
-- Use vitest with describe/it syntax
-- Mock external dependencies
-- Test behavior, not implementation
+```text
+.parallx/memory/
 ```
 
-### .parallx/commands/*.md — Custom Slash Commands
+Typical files include:
 
-**Location:** `.parallx/commands/` directory
+- `.parallx/memory/MEMORY.md`
+- `.parallx/memory/YYYY-MM-DD.md`
 
-Define your own `/commands`. Each file has YAML frontmatter with `name:` and `description:`, plus a prompt template body. Use `{context}` as a placeholder for attached context.
+### Why this matters to users
 
-**Example** — `.parallx/commands/summarize.md`:
-```yaml
----
-name: summarize
-description: Summarize the attached content in 3 bullet points
----
-Summarize the following content in exactly 3 concise bullet points:
+This means important memory is inspectable. It is not trapped in a hidden AI
+database that you cannot review.
 
-{context}
-```
+That is good for:
 
-### How It All Fits Together
-
-When you send a message, Parallx assembles the full prompt in this order:
-
-1. Core Parallx identity
-2. `SOUL.md` (personality)
-3. `AGENTS.md` (project context)
-4. `TOOLS.md` (tool instructions)
-5. Matching `.parallx/rules/*.md` (scoped to active file)
-6. Auto-retrieved RAG results (relevant chunks from your workspace)
-7. Your @mentions and attachments
-8. Conversation history
-9. Your message
-
-You can view the fully assembled prompt at any time by clicking **View System Prompt** in the chat toolbar.
+- trust
+- debugging
+- portability
+- explicit control
 
 ---
 
-## 5. Tools & Skills
+## 12. Approvals, Safety, and Privacy
 
-In **Agent mode**, the AI can use tools to take actions on your behalf.
+Parallx AI is designed so you stay in control.
 
-### Built-in Tools
+### Approval model
 
-| Tool | What it does | Approval needed? |
-|------|-------------|-----------------|
-| `search_workspace` | Full-text search across canvas pages | No |
-| `read_page` | Read a canvas page by ID | No |
-| `read_page_by_title` | Find and read a page by title | No |
-| `read_current_page` | Read the currently open page | No |
-| `list_pages` | List all canvas pages | No |
-| `get_page_properties` | Get page metadata (icon, cover, dates) | No |
-| `create_page` | Create a new canvas page | **Yes** |
-| `list_files` | List directory contents | No |
-| `read_file` | Read file contents (supports line ranges) | No |
-| `search_files` | Search across workspace files | No |
-| `search_knowledge` | Semantic search using embeddings | No |
-| `write_file` | Write to a file (shows diff preview) | **Yes** |
-| `edit_file` | Search-replace or line-range edits (shows diff) | **Yes** |
-| `delete_file` | Delete a file | **Yes** |
-| `run_command` | Execute a shell command in the terminal | **Yes** |
+For higher-impact actions, Parallx can require approval before continuing.
 
-### Custom Workspace Skills
+Common examples:
 
-Create project-specific tools by adding skill definitions to `.parallx/skills/`:
+- writing a file
+- deleting a file
+- creating a page
+- running a command
 
-```
-.parallx/
-└── skills/
-    └── my-skill/
-        └── SKILL.md    # Manifest with YAML frontmatter + usage guide
-```
+### What you should do as a user
 
-Parallx discovers workspace skills automatically, registers them as available tools, and updates `TOOLS.md`.
+Before approving an action, quickly confirm:
 
-### Tool Picker
+1. Is this the right file or target?
+2. Is this the right action?
+3. Is the scope too broad?
+4. Can I explain why the AI wants to do this?
 
-In the chat input area, view all available tools and toggle individual tools on/off per conversation.
+If the answer to any of those is no, reject the action and ask the AI to revise
+its plan.
 
-### The Agentic Loop
+### Privacy
 
-In Agent mode, the AI can chain multiple tools in a single request:
+Current Parallx AI architecture is local-first and built around local model use.
 
-1. AI decides to call a tool (e.g., `search_files`)
-2. You approve (or it runs automatically if always-allowed)
-3. Tool result is fed back to the AI
-4. AI decides the next step (another tool, or a final answer)
-5. Repeat (up to 10 iterations by default, configurable in `.parallx/config.json`)
+The main user expectation should be:
+
+- your workspace remains under your control
+- approvals exist for sensitive actions
+- the system is designed to make context and actions inspectable
+
+### Safety reminder
+
+Do not approve destructive actions casually.
+
+Examples:
+
+- mass deletes
+- shell commands you do not understand
+- edits across many files if you have not reviewed the plan
 
 ---
 
-## 6. Knowledge Search
+## 13. How to Check What the AI Is Seeing
 
-Parallx automatically indexes your workspace (canvas pages and files) using vector embeddings. This powers two things:
+One of the best Parallx AI features is that the system is not meant to be fully
+opaque.
 
-### Automatic RAG
+### Everyday transparency surfaces
 
-On **every** message you send, Parallx automatically retrieves relevant content from your workspace and injects it into the AI's context. You see the retrieved chunks as context pills above the input. This happens transparently — you don't need to do anything.
+For most users, inspect here first:
 
-### Explicit Search
+1. context pills above the input
+2. attached files in the current turn
+3. tool toggles for the conversation
+4. diff views for proposed edits
 
-- **`@workspace`** — Type this in your message for a comprehensive search across your entire workspace
-- **`search_knowledge`** — In Agent mode, the AI can invoke semantic search itself as part of multi-step reasoning
+### Advanced transparency surfaces
 
-### Workspace Digest
+For deeper inspection:
 
-Every conversation starts with a pre-computed digest of your workspace (~2000 tokens):
-- Canvas page titles
-- File tree (3 levels deep)
-- Key file previews (README.md, SOUL.md, AGENTS.md, package.json)
+1. Tool Gallery
+2. AI Settings -> Tools
+3. workspace prompt files such as `SOUL.md`, `AGENTS.md`, and `TOOLS.md`
+4. `/context list`
+5. `/context detail`
+6. `/context json`
 
-The AI "already knows" your workspace structure without needing to search first.
+### Why `/context` matters
 
-### Token Budget
+The OpenClaw-backed runtime can report what was injected into the system prompt,
+including things like:
 
-Parallx manages a context budget so nothing gets silently truncated:
+- injected workspace files
+- tool footprint
+- skill footprint
+- bootstrap size and truncation
 
-| Category | Budget | What it includes |
-|----------|--------|-----------------|
-| System | 10% | Identity, personality, tools |
-| RAG | 30% | Auto-retrieved workspace content |
-| History | 30% | Previous conversation turns |
-| User | 30% | Your current message + attachments |
+That is useful when you want to answer questions like:
 
-When a category exceeds its budget, Parallx trims the lowest-priority items first.
-
----
-
-## 7. Proactive Suggestions
-
-Parallx analyzes your workspace content and surfaces suggestions as dismissable cards. This runs entirely on embeddings — no LLM calls.
-
-### Suggestion Types
-
-| Type | What it means |
-|------|--------------|
-| **Consolidate** | Two or more pages cover similar topics — consider merging |
-| **Orphan** | A page is isolated with no related pages — consider linking it |
-| **Coverage Gap** | A topic is mentioned frequently but has no dedicated page |
-
-### Configuring Suggestions
-
-In AI Settings → Suggestions:
-- **Toggle on/off** — disable entirely if you find them distracting
-- **Confidence threshold** — raise it to see fewer but higher-quality suggestions; lower it to see more
-- **Backlog limit** — cap how many cards are visible at once
+- "Did the AI actually load the project instructions?"
+- "Is a large prompt file being truncated?"
+- "What tools were available on this run?"
 
 ---
 
-## 8. Privacy & Permissions
+## 14. Recommended Ways to Use Parallx AI
 
-### Everything Is Local
+### Good pattern 1: Learn first, act second
 
-- AI inference runs on **your machine** via Ollama
-- Your files, notes, and conversations **never leave your computer**
-- No telemetry, no cloud sync, no API keys
+1. Ask mode: "Summarize the relevant files."
+2. Ask mode: "What would you change and why?"
+3. Edit or Agent mode: perform the change
 
-### Three Permission Tiers
+### Good pattern 2: Narrow the scope
 
-| Tier | What happens | Examples |
-|------|-------------|---------|
-| **Always Allowed** | Tool runs silently | Reading files, searching, listing pages |
-| **Requires Approval** | You see a confirmation dialog with Accept / Reject | Writing files, deleting, running commands |
-| **Never Allowed** | Blocked silently | Accessing files outside your workspace, system files |
+Instead of asking:
 
-When a tool requires approval, you see three options:
-- **Allow once** — just this time
-- **Allow for session** — skip approval for the rest of this session
-- **Always allow** — never ask again for this tool
+- "Explain this project"
+
+Try:
+
+- "Explain the purpose of these three files"
+- "Summarize the `docs/ai` folder"
+- "Compare these two notes"
+
+### Good pattern 3: Require honesty
+
+Useful phrases:
+
+- "If you do not know, say so."
+- "Do not guess."
+- "Answer only from the attached files."
+- "Cite your sources."
+
+### Good pattern 4: Use Agent mode only for real work
+
+Do not use Agent mode just because it sounds advanced.
+
+Use it when you actually want:
+
+- a sequence of actions
+- file operations
+- command execution
+- a longer autonomous run with checkpoints
+
+---
+
+## 15. Examples You Can Try
+
+### Ask mode examples
+
+- "What does this workspace seem to be for?"
+- "Summarize the main ideas in this file."
+- "Which files should I read first if I am new here?"
+- "Compare these two notes and list the differences."
+
+### Edit mode examples
+
+- "Rewrite this page for clarity."
+- "Turn this rough note into a clean checklist."
+- "Condense this long explanation into a user-facing guide."
+- "Propose an improved structure, but let me review before applying."
+
+### Agent mode examples
+
+- "Find all docs related to memory behavior, summarize the differences, and
+  draft a consolidated note."
+- "Inspect the AI settings and tool surfaces, then write a beginner-facing
+  explanation into a docs file."
+- "Search for references to this feature across the workspace and prepare a
+  change plan before editing anything."
+
+### Example of a strong grounded prompt
+
+"Use only the attached files. Summarize the differences in five bullets. Cite
+the file name for each bullet. If the files do not answer something, say that
+explicitly."
+
+---
+
+## 16. Troubleshooting
+
+### Problem: The AI gives a vague or generic answer
+
+Likely causes:
+
+- not enough context
+- wrong mode
+- question too broad
+
+What to do:
+
+1. attach the relevant file
+2. mention the relevant folder
+3. ask for a grounded answer with citations
+
+### Problem: The AI seems to miss a file
+
+What to do:
+
+1. confirm the correct workspace is open
+2. use `@file` or `@folder`
+3. wait for indexing/readiness if the workspace was just opened
+4. ask the AI to list the files it used
+
+### Problem: The AI wants to do too much in Agent mode
+
+What to do:
+
+1. reject the action
+2. narrow the instruction
+3. ask it to state the plan before acting
+4. disable tools you do not want used
+
+### Problem: The AI is confident but wrong
+
+What to do:
+
+1. ask for sources
+2. ask for exact file citations
+3. ask it to quote the relevant line or section
+4. reduce the scope to the exact file or folder
+
+### Problem: A proposed edit looks risky
+
+What to do:
+
+1. review the diff
+2. reject it if the scope is wrong
+3. ask for a smaller edit
+4. ask for an explanation before re-running
+
+---
+
+## 17. FAQ
+
+### Do I need to understand AI to use Parallx AI well?
+
+No. You mainly need to learn three habits:
+
+- give clear instructions
+- provide the right context
+- review important outputs
+
+### Which mode should most people use most of the time?
+
+Ask mode.
+
+It is the best default for learning, exploring, and checking information.
+
+### When should I use Edit instead of Ask?
+
+Use Edit when you want change proposals rather than just explanation.
+
+### When should I use Agent?
+
+Use Agent when the task involves multiple steps or real actions, not just a
+single answer.
+
+### Where do I see what tools are available?
+
+Use the Tool Gallery, AI Settings -> Tools, and the chat tool picker.
+
+### Where do I see skill files?
+
+Workspace skills live in `.parallx/skills/<skill-name>/SKILL.md`.
+
+### Can the AI act without me knowing?
+
+High-impact actions are meant to flow through approval-aware surfaces. You
+should still review actions and diffs carefully.
+
+### How do I get more accurate answers?
+
+Use exact files, exact folders, citations, and narrower prompts.
+
+### What should I do if the AI says something uncertain?
+
+Treat that as useful honesty, not failure. It usually means the model needs
+better context or the workspace does not actually contain the answer.
+
+---
+
+## Final Advice
+
+If you remember only five things, remember these:
+
+1. Start in Ask mode.
+2. Give the AI the right context.
+3. Ask for citations when accuracy matters.
+4. Review edits before accepting them.
+5. Use Agent mode intentionally, not casually.
+
+That is the fastest path to getting real value from Parallx AI.
 
 ### Customizing Permissions
 

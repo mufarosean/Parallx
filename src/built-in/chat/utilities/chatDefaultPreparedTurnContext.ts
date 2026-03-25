@@ -8,12 +8,13 @@ import type {
   IDefaultParticipantServices,
   IPreparedChatTurnPrelude,
   IActivatedSkill,
+  IChatRouteAuthorityDecision,
 } from '../chatTypes.js';
 import type { IChatEvidenceAssessment } from './chatContextAssembly.js';
 import { createChatContextPlan, createChatRuntimeTrace } from './chatContextPlanner.js';
 import { gatherEvidence, computeCoverage } from './chatEvidenceGatherer.js';
 import { buildExecutionPlan } from './chatExecutionPlanner.js';
-import { buildExecutionPlanPromptSection, buildSkillInstructionSection } from '../config/chatSystemPrompts.js';
+import { buildSkillInstructionSection } from '../config/chatSystemPrompts.js';
 import { refineChatRouteAuthorityWithEvidence, resolveChatRouteAuthority } from './chatRouteAuthority.js';
 import { prepareChatTurnContext } from './chatTurnContextPreparation.js';
 
@@ -48,6 +49,7 @@ export interface IResolveDefaultPreparedTurnContextInput extends IPreparedChatTu
 
 export interface IResolvedDefaultPreparedTurnContext {
   readonly turnRoute: IPreparedChatTurnPrelude['turnRoute'];
+  readonly routeAuthority: IChatRouteAuthorityDecision;
   readonly contextPlan: IChatContextPlan;
   readonly contextParts: string[];
   readonly ragSources: Array<{ uri: string; label: string; index?: number }>;
@@ -189,11 +191,6 @@ export async function resolveDefaultPreparedTurnContext(
     },
   ));
 
-  const planPromptSection = buildExecutionPlanPromptSection(buildExecutionPlan(finalTurnRoute, input.queryScope), input.queryScope, coverageRecord);
-  if (planPromptSection && input.messages.length > 0 && input.messages[0].role === 'system') {
-    input.messages[0] = { ...input.messages[0], content: input.messages[0].content + planPromptSection };
-  }
-
   if (input.activatedSkill && input.messages.length > 0 && input.messages[0].role === 'system') {
     input.messages[0] = {
       ...input.messages[0],
@@ -203,6 +200,7 @@ export async function resolveDefaultPreparedTurnContext(
 
   return {
     turnRoute: finalTurnRoute,
+    routeAuthority: finalAuthority,
     contextPlan,
     contextParts: preparedContext.contextParts,
     ragSources: preparedContext.ragSources,

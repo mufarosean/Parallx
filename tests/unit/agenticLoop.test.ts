@@ -12,6 +12,7 @@ import type {
 } from '../../src/services/chatTypes';
 import { createDefaultParticipant } from '../../src/built-in/chat/participants/defaultParticipant';
 import type { IDefaultParticipantServices } from '../../src/built-in/chat/participants/defaultParticipant';
+import { createDefaultChatParticipantRuntime, resolveDefaultChatRuntimeKind } from '../../src/built-in/chat/utilities/chatDefaultParticipantRuntime';
 
 // ── Helpers ──
 
@@ -84,9 +85,11 @@ async function* streamChunks(chunks: IChatResponseChunk[]): AsyncIterable<IChatR
 describe('defaultParticipant agentic loop', () => {
   let services: IDefaultParticipantServices;
   let sendChatRequest: ReturnType<typeof vi.fn>;
+  let reportRuntimeTrace: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     sendChatRequest = vi.fn();
+    reportRuntimeTrace = vi.fn();
     services = {
       sendChatRequest,
       getActiveModel: () => 'test-model',
@@ -95,9 +98,15 @@ describe('defaultParticipant agentic loop', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [],
       getReadOnlyToolDefinitions: () => [],
-      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
+      reportRuntimeTrace,
     };
+  });
+
+  it('defaults the selector to the claw runtime lane', () => {
+    expect(resolveDefaultChatRuntimeKind()).toBe('claw');
+    expect(createDefaultChatParticipantRuntime(services).kind).toBe('claw');
   });
 
   it('streams markdown content in Ask mode (with read-only tools)', async () => {
@@ -120,6 +129,12 @@ describe('defaultParticipant agentic loop', () => {
     expect(stream.calls['markdown']).toHaveLength(2);
     expect(stream.calls['markdown'][0][0]).toBe('Hello ');
     expect(stream.calls['markdown'][1][0]).toBe('World');
+    expect(reportRuntimeTrace).toHaveBeenCalled();
+    expect(reportRuntimeTrace.mock.calls.some(([trace]) => trace?.runtime === 'claw' && trace?.checkpoint === 'prepare-context')).toBe(true);
+    expect(reportRuntimeTrace.mock.calls.at(-1)?.[0]).toMatchObject({
+      runtime: 'claw',
+      checkpoint: expect.any(String),
+    });
   });
 
   it('executes agentic loop when model returns tool_calls in Agent mode', async () => {
@@ -151,9 +166,10 @@ describe('defaultParticipant agentic loop', () => {
     expect(result).toEqual({});
 
     // Tool was invoked silently (no tool cards rendered to user)
-    expect(services.invokeTool).toHaveBeenCalledWith(
+    expect(services.invokeToolWithRuntimeControl).toHaveBeenCalledWith(
       'search_workspace',
       { query: 'test' },
+      expect.any(Object),
       expect.any(Object),
     );
 
@@ -209,7 +225,7 @@ describe('defaultParticipant agentic loop', () => {
       .mockReturnValueOnce(firstResponse)
       .mockReturnValueOnce(secondResponse);
 
-    (services.invokeTool as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (services.invokeToolWithRuntimeControl as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       content: 'Tool execution rejected by user',
       isError: true,
     });
@@ -225,7 +241,7 @@ describe('defaultParticipant agentic loop', () => {
     );
 
     // Tool was still invoked (even though rejected)
-    expect(services.invokeTool).toHaveBeenCalled();
+    expect(services.invokeToolWithRuntimeControl).toHaveBeenCalled();
 
     // No tool invocation cards rendered — tools run silently
     expect(stream.calls['beginToolInvocation']).toHaveLength(0);
@@ -262,7 +278,7 @@ describe('defaultParticipant agentic loop', () => {
       { content: '', done: true },
     ]));
 
-    (services.invokeTool as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+    (services.invokeToolWithRuntimeControl as ReturnType<typeof vi.fn>).mockImplementation(async () => {
       // Simulate cancellation during tool execution
       (token as any).isCancellationRequested = true;
       return { content: 'Tool execution cancelled', isError: true };
@@ -309,7 +325,7 @@ describe('defaultParticipant agentic loop', () => {
     );
 
     // Both tools were invoked silently
-    expect(services.invokeTool).toHaveBeenCalledTimes(2);
+    expect(services.invokeToolWithRuntimeControl).toHaveBeenCalledTimes(2);
     expect(stream.calls['beginToolInvocation']).toHaveLength(0);
   });
 });

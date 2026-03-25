@@ -109,7 +109,7 @@ describe('M38 pipeline integration', () => {
     expect(services.sendChatRequest).toHaveBeenCalled();
   });
 
-  it('scoped-topic: system prompt contains execution plan section', async () => {
+  it('scoped-topic: representative scoped requests no longer inject an execution plan section', async () => {
     const { createDefaultParticipant } = await import(
       '../../src/built-in/chat/participants/defaultParticipant'
     );
@@ -126,8 +126,8 @@ describe('M38 pipeline integration', () => {
 
     const systemMsg = services.sendChatRequest.mock.calls[0]?.[0]?.[0];
     expect(systemMsg?.role).toBe('system');
-    expect(systemMsg?.content).toContain('EXECUTION PLAN FOR THIS TURN');
-    expect(systemMsg?.content).toContain('scoped-topic');
+    expect(systemMsg?.content).not.toContain('EXECUTION PLAN FOR THIS TURN');
+    expect(systemMsg?.content).not.toContain('scoped-topic');
   });
 
   it('folder-summary: calls listFilesRelative for structural evidence', async () => {

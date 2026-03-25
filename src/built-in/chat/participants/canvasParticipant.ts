@@ -12,16 +12,14 @@
 import type { IDisposable } from '../../../platform/lifecycle.js';
 import type {
   IChatParticipant,
-  IChatParticipantHandler,
   IChatParticipantRequest,
   IChatParticipantContext,
   IChatResponseStream,
   ICancellationToken,
   IChatParticipantResult,
-  IChatMessage,
 } from '../../../services/chatTypes.js';
 import type { IPageStructure, ICanvasParticipantServices } from '../chatTypes.js';
-import { createScopedParticipantHandler } from '../utilities/chatScopedParticipantHandler.js';
+import { createScopedChatParticipantRuntime } from '../utilities/chatScopedParticipantRuntime.js';
 import { runScopedParticipantPrompt } from '../utilities/chatScopedParticipantPromptRunner.js';
 
 // IBlockSummary, IPageStructure, ICanvasParticipantServices — now defined in chatTypes.ts (M13 Phase 1)
@@ -42,7 +40,7 @@ const MAX_BLOCK_PREVIEW = 200; // chars per block preview
  *   /blocks   — List all blocks on the current page
  */
 export function createCanvasParticipant(services: ICanvasParticipantServices): IChatParticipant & IDisposable {
-  const handler = createScopedParticipantHandler({
+  const runtime = createScopedChatParticipantRuntime({
     surface: 'canvas',
     services,
     handlers: {
@@ -52,14 +50,23 @@ export function createCanvasParticipant(services: ICanvasParticipantServices): I
     defaultHandler: handleGeneral,
   });
 
+  const handler = (request: IChatParticipantRequest, context: IChatParticipantContext, response: IChatResponseStream, token: ICancellationToken) => runtime.handleTurn(
+    request,
+    context,
+    response,
+    token,
+  );
+
   return {
     id: CANVAS_PARTICIPANT_ID,
+    surface: 'canvas',
     displayName: 'Canvas',
     description: 'Answers questions about your canvas pages and block structure.',
     commands: [
       { name: 'describe', description: 'Describe the current page structure' },
       { name: 'blocks', description: 'List all blocks on the current page' },
     ],
+    runtime,
     handler,
     dispose: () => {/* no-op */},
   };
@@ -113,6 +120,7 @@ async function handleDescribe(
     sendChatRequest: services.sendChatRequest,
     readFileContent: services.readFileContent,
     reportParticipantDebug: services.reportParticipantDebug,
+    reportRuntimeTrace: services.reportRuntimeTrace,
     surface: 'canvas',
   });
 }
@@ -215,6 +223,7 @@ async function handleGeneral(
     sendChatRequest: services.sendChatRequest,
     readFileContent: services.readFileContent,
     reportParticipantDebug: services.reportParticipantDebug,
+    reportRuntimeTrace: services.reportRuntimeTrace,
     surface: 'canvas',
   });
 }

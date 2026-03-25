@@ -98,7 +98,6 @@ export function handlePreparedContextDeterministicAnswer(options: {
 
   if (
     coverageAnswer?.phase === 'deterministic-grounded-books-direct-answer'
-    || coverageAnswer?.phase === 'deterministic-workflow-direct-answer'
     ||
     coverageAnswer?.phase === 'unsupported-specific-coverage-direct-answer'
     || coverageAnswer?.phase === 'unsupported-workspace-topic-direct-answer'

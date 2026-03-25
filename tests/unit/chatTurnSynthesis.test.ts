@@ -31,6 +31,7 @@ describe('chat turn synthesis', () => {
     const executeGrounded = vi.fn();
     const queueMemoryWriteBack = vi.fn();
     const validateAndFinalizeResponse = vi.fn();
+    const reportRuntimeTrace = vi.fn();
 
     const result = await executePreparedChatTurn(
       {
@@ -43,6 +44,7 @@ describe('chat turn synthesis', () => {
         extractToolCallsFromText: vi.fn(() => ({ toolCalls: [], cleanedText: '' })),
         stripToolNarration: vi.fn((text: string) => text),
         categorizeError: vi.fn(() => ({ message: 'boom' })),
+        reportRuntimeTrace,
         executeModelOnly: executeModelOnly as any,
         executeGrounded: executeGrounded as any,
         queueMemoryWriteBack: queueMemoryWriteBack as any,
@@ -69,6 +71,23 @@ describe('chat turn synthesis', () => {
         sessionId: 'session-1',
         history: [],
         networkTimeoutMs: 50,
+        runtimeTraceSeed: {
+          route: { kind: 'grounded', reason: 'retrieval' },
+          contextPlan: {
+            route: 'grounded',
+            intent: 'question',
+            useRetrieval: true,
+            useMemoryRecall: false,
+            useTranscriptRecall: false,
+            useConceptRecall: false,
+            useCurrentPage: false,
+            citationMode: 'required',
+            reasoning: 'Need evidence.',
+            retrievalPlan: { intent: 'question', reasoning: 'Need evidence.', needsRetrieval: true, queries: ['policy deductible'] },
+          },
+          hasActiveSlashCommand: false,
+          isRagReady: true,
+        },
       },
     );
 
@@ -85,6 +104,7 @@ describe('chat turn synthesis', () => {
         sessionId: 'session-1',
       }),
     );
+    expect(validateAndFinalizeResponse.mock.invocationCallOrder[0]).toBeLessThan(queueMemoryWriteBack.mock.invocationCallOrder[0]);
     expect(response.thinking).toHaveBeenCalledWith(
       'Intent: question\nAnalysis: Need evidence.\nSearched for:\n• policy deductible',
     );
@@ -98,6 +118,10 @@ describe('chat turn synthesis', () => {
         ragSources: [{ uri: 'Policy.md', label: 'Policy.md', index: 1 }],
       }),
     );
+    expect(reportRuntimeTrace).toHaveBeenCalledWith(expect.objectContaining({
+      checkpoint: 'post-finalization',
+      runState: 'completed',
+    }));
   });
 
   it('applies a visible fallback on aborts without user cancellation', async () => {

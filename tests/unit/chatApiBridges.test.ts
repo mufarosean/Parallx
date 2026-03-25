@@ -5,6 +5,7 @@ import { LanguageModelBridge } from '../../src/api/bridges/languageModelBridge';
 import { ChatBridge } from '../../src/api/bridges/chatBridge';
 import { LanguageModelsService } from '../../src/services/languageModelsService';
 import { ChatAgentService } from '../../src/services/chatAgentService';
+import { LanguageModelToolsService } from '../../src/services/languageModelToolsService';
 import type { IDisposable } from '../../src/platform/lifecycle';
 import type {
   ILanguageModelProvider,
@@ -116,13 +117,15 @@ describe('LanguageModelBridge', () => {
 
 describe('ChatBridge', () => {
   let agentService: ChatAgentService;
+  let toolsService: LanguageModelToolsService;
   let bridge: ChatBridge;
   let subscriptions: IDisposable[];
 
   beforeEach(() => {
     agentService = new ChatAgentService();
+    toolsService = new LanguageModelToolsService();
     subscriptions = [];
-    bridge = new ChatBridge('test-tool', agentService, undefined, subscriptions);
+    bridge = new ChatBridge('test-tool', agentService, toolsService, subscriptions);
   });
 
   it('createChatParticipant registers an agent', () => {
@@ -177,5 +180,19 @@ describe('ChatBridge', () => {
 
     expect(agentService.getAgent('agent1')).toBeUndefined();
     expect(agentService.getAgent('agent2')).toBeUndefined();
+  });
+
+  it('registerTool records bridge ownership metadata on contributed tools', () => {
+    bridge.registerTool('bridge_tool', {
+      description: 'Bridge tool',
+      parameters: { type: 'object', properties: {} },
+      handler: vi.fn(async () => ({ content: 'ok' })),
+      requiresConfirmation: true,
+    });
+
+    const tool = toolsService.getTool('bridge_tool');
+    expect(tool).toBeDefined();
+    expect(tool?.source).toBe('bridge');
+    expect(tool?.ownerToolId).toBe('test-tool');
   });
 });

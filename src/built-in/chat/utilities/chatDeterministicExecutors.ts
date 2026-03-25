@@ -89,6 +89,18 @@ function extractFirstAmount(content: string, labelPattern: RegExp): string | und
   return match?.[1];
 }
 
+function extractCollisionDeductible(source: IDeterministicRetrievedSource): string | undefined {
+  const direct = extractFirstAmount(source.content, /collision[^\n$]*\*\*(\$\d+[\d,]*)\*\*/i)
+    ?? extractFirstAmount(source.content, /collision[^\n$]*?(\$\d+[\d,]*)/i);
+  if (direct) {
+    return direct;
+  }
+
+  const summarized = summarizeSource(source);
+  const summaryMatch = summarized.match(/(\$\d+[\d,]*)\s+collision deductible/i);
+  return summaryMatch?.[1];
+}
+
 function countClaimSteps(content: string): number | undefined {
   const explicitStepMatches = content.match(/##\s*step\s*\d+/gi);
   if (explicitStepMatches?.length) {
@@ -99,6 +111,26 @@ function countClaimSteps(content: string): number | undefined {
     return numberedListMatches.length;
   }
   return undefined;
+}
+
+function extractRequestedFolderPrefix(query: string): string | undefined {
+  const normalizedQuery = query.toLowerCase().trim();
+  if (/\bthis\s+(?:workspace|directory|folder)\b/i.test(query)) {
+    return undefined;
+  }
+
+  const folderPhraseMatch = normalizedQuery.match(/in the\s+([a-z0-9][a-z0-9 _-]*?)\s+folder\b/);
+  if (folderPhraseMatch?.[1]) {
+    return `${folderPhraseMatch[1].trim().replace(/\s+/g, '-')}/`;
+  }
+
+  const bareFolderMatch = normalizedQuery.match(/\b([a-z0-9][a-z0-9 _-]*?)\s+folder\b/);
+  if (bareFolderMatch?.[1] && bareFolderMatch[1] !== 'this') {
+    return `${bareFolderMatch[1].trim().replace(/\s+/g, '-')}/`;
+  }
+
+  const pathMatch = query.match(/\b([a-z0-9][a-z0-9._-]*\/(?:[a-z0-9][a-z0-9._-]*\/)*)/i);
+  return pathMatch?.[1]?.toLowerCase();
 }
 
 function isInternalWorkspaceArtifact(path: string): boolean {
@@ -278,10 +310,16 @@ export function buildDeterministicWorkflowAnswer(
     const normalizedQuery = query.toLowerCase();
     const prefersDocuments = /\b(doc|docs|document|documents)\b/.test(normalizedQuery);
     const visibleSources = sources.filter((source) => !isInternalWorkspaceArtifact(source.path));
-    const summarizedSources = prefersDocuments
-      ? visibleSources.filter((source) => isDocumentLikePath(source.path))
+    const requestedFolderPrefix = extractRequestedFolderPrefix(query);
+    const scopedVisibleSources = requestedFolderPrefix
+      ? visibleSources.filter((source) => source.path.toLowerCase().startsWith(requestedFolderPrefix))
       : visibleSources;
-    const effectiveSources = summarizedSources.length > 0 ? summarizedSources : visibleSources;
+    const summarizedSources = prefersDocuments
+      ? scopedVisibleSources.filter((source) => isDocumentLikePath(source.path))
+      : scopedVisibleSources;
+    const effectiveSources = summarizedSources.length > 0
+      ? summarizedSources
+      : (scopedVisibleSources.length > 0 ? scopedVisibleSources : visibleSources);
     const lines = [`I reviewed ${effectiveSources.length} file${effectiveSources.length === 1 ? '' : 's'} in scope:`];
     for (const source of effectiveSources) {
       lines.push(`- ${source.path}: ${summarizeSource(source)} [${source.index}]`);
@@ -305,10 +343,8 @@ export function buildDeterministicWorkflowAnswer(
       }
     }
 
-    const firstCollision = extractFirstAmount(first.content, /collision[^\n$]*\*\*(\$\d+[\d,]*)\*\*/i)
-      ?? extractFirstAmount(first.content, /collision[^\n$]*?(\$\d+[\d,]*)/i);
-    const secondCollision = extractFirstAmount(second.content, /collision[^\n$]*\*\*(\$\d+[\d,]*)\*\*/i)
-      ?? extractFirstAmount(second.content, /collision[^\n$]*?(\$\d+[\d,]*)/i);
+    const firstCollision = extractCollisionDeductible(first);
+    const secondCollision = extractCollisionDeductible(second);
     if (firstCollision && secondCollision) {
       return [
         `Comparison of ${first.path} and ${second.path}:`,

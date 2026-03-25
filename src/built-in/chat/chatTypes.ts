@@ -9,7 +9,11 @@
 import type { Event } from '../../platform/events.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type {
+  IChatParticipantContext,
+  IChatParticipantRequest,
+  IChatParticipantResult,
   IChatMessage,
+  IChatResponseStream,
   IChatSession,
   IChatSendRequestOptions,
   IChatRequestOptions,
@@ -42,6 +46,127 @@ import type { IDiffResult } from '../../services/diffService.js';
 import type { ISessionManager } from '../../services/serviceTypes.js';
 import type { IUnifiedAIConfigService } from '../../aiSettings/unifiedConfigTypes.js';
 
+export type ChatRuntimeKind = 'claw' | 'openclaw';
+
+export type ChatRuntimeRunState = 'prepared' | 'executing' | 'awaiting-approval' | 'completed' | 'aborted' | 'failed';
+
+export type ChatRuntimeApprovalState = 'not-required' | 'pending' | 'approved' | 'denied' | 'auto-approved';
+
+export interface IChatParticipantRuntime {
+  readonly kind: ChatRuntimeKind;
+  handleTurn(
+    request: IChatParticipantRequest,
+    context: IChatParticipantContext,
+    response: IChatResponseStream,
+    token: ICancellationToken,
+  ): Promise<IChatParticipantResult>;
+}
+
+export interface IChatRuntimeToolMetadata {
+  readonly name: string;
+  readonly permissionLevel: import('../../services/chatTypes.js').ToolPermissionLevel;
+  readonly enabled: boolean;
+  readonly requiresApproval: boolean;
+  readonly autoApproved: boolean;
+  readonly approvalSource: 'default' | 'session' | 'persistent' | 'global-auto' | 'missing-permission-service';
+  readonly source?: 'built-in' | 'bridge';
+  readonly ownerToolId?: string;
+  readonly description?: string;
+}
+
+export interface IChatRuntimeToolInvocationObserver {
+  onValidated?(metadata: IChatRuntimeToolMetadata): void;
+  onApprovalRequested?(metadata: IChatRuntimeToolMetadata): void;
+  onApprovalResolved?(metadata: IChatRuntimeToolMetadata, approved: boolean): void;
+  onExecuted?(metadata: IChatRuntimeToolMetadata, result: IToolResult): void;
+}
+
+export interface IChatRuntimeAutonomyMirror {
+  readonly taskId: string;
+  begin(): Promise<void>;
+  createToolObserver(
+    toolName: string,
+    args: Record<string, unknown>,
+    downstream?: IChatRuntimeToolInvocationObserver,
+  ): IChatRuntimeToolInvocationObserver;
+  complete(note?: string): Promise<void>;
+  fail(note?: string): Promise<void>;
+  abort(note?: string): Promise<void>;
+}
+
+export interface IOpenclawBootstrapDebugFile {
+  readonly name: string;
+  readonly path: string;
+  readonly missing: boolean;
+  readonly rawChars: number;
+  readonly injectedChars: number;
+  readonly truncated: boolean;
+  readonly causes: readonly ('per-file-limit' | 'total-limit')[];
+}
+
+export interface IOpenclawBootstrapDebugReport {
+  readonly maxChars: number;
+  readonly totalMaxChars: number;
+  readonly totalRawChars: number;
+  readonly totalInjectedChars: number;
+  readonly files: readonly IOpenclawBootstrapDebugFile[];
+  readonly warningLines: readonly string[];
+}
+
+export interface IOpenclawSkillPromptEntry {
+  readonly name: string;
+  readonly blockChars: number;
+}
+
+export interface IOpenclawToolPromptEntry {
+  readonly name: string;
+  readonly summaryChars: number;
+  readonly schemaChars: number;
+  readonly propertiesCount?: number;
+}
+
+export interface IOpenclawSystemPromptReport {
+  readonly source: 'run' | 'estimate';
+  readonly generatedAt: number;
+  readonly workspaceName?: string;
+  readonly bootstrapMaxChars: number;
+  readonly bootstrapTotalMaxChars: number;
+  readonly systemPrompt: {
+    readonly chars: number;
+    readonly projectContextChars: number;
+    readonly nonProjectContextChars: number;
+  };
+  readonly injectedWorkspaceFiles: readonly IOpenclawBootstrapDebugFile[];
+  readonly bootstrapWarningLines: readonly string[];
+  readonly skills: {
+    readonly promptChars: number;
+    readonly entries: readonly IOpenclawSkillPromptEntry[];
+  };
+  readonly tools: {
+    readonly listChars: number;
+    readonly schemaChars: number;
+    readonly entries: readonly IOpenclawToolPromptEntry[];
+  };
+  readonly promptProvenance?: {
+    readonly rawUserInput: string;
+    readonly parsedUserText: string;
+    readonly contextQueryText: string;
+    readonly participantId?: string;
+    readonly command?: string;
+    readonly attachmentCount: number;
+    readonly historyTurns: number;
+    readonly seedMessageCount: number;
+    readonly modelMessageCount: number;
+    readonly modelMessageRoles: readonly string[];
+    readonly finalUserMessage: string;
+  };
+}
+
+export interface IChatRuntimeMemoryCheckpoint {
+  readonly checkpoint: string;
+  readonly note?: string;
+}
+
 export interface IDefaultParticipantServices {
   sendChatRequest(
     messages: readonly IChatMessage[],
@@ -58,6 +183,12 @@ export interface IDefaultParticipantServices {
     name: string,
     args: Record<string, unknown>,
     token: ICancellationToken,
+  ): Promise<IToolResult>;
+  invokeToolWithRuntimeControl?(
+    name: string,
+    args: Record<string, unknown>,
+    token: ICancellationToken,
+    observer?: IChatRuntimeToolInvocationObserver,
   ): Promise<IToolResult>;
   maxIterations?: number;
   networkTimeout?: number;
@@ -105,6 +236,8 @@ export interface IDefaultParticipantServices {
     note?: string;
   }): void;
   reportRuntimeTrace?(trace: IChatRuntimeTrace): void;
+  reportBootstrapDebug?(debug: IOpenclawBootstrapDebugReport): void;
+  reportSystemPromptReport?(report: IOpenclawSystemPromptReport): void;
   reportBudget?(slots: ReadonlyArray<{ label: string; used: number; allocated: number; color: string }>): void;
   listFolderFiles?(folderPath: string): Promise<Array<{ relativePath: string; content: string }>>;
   getTerminalOutput?(): Promise<string | undefined>;
@@ -112,10 +245,19 @@ export interface IDefaultParticipantServices {
   compactSession?(sessionId: string, summaryText: string): void;
   getExcludedContextIds?(): ReadonlySet<string>;
   getWorkspaceDigest?(): Promise<string | undefined>;
+  getLastSystemPromptReport?(): IOpenclawSystemPromptReport | undefined;
   /** Session manager for stale session detection during tool invocations. */
   sessionManager?: ISessionManager;
   /** Unified AI Config service for all configuration (M20). */
   unifiedConfigService?: IUnifiedAIConfigService;
+  createAutonomyMirror?(
+    input: {
+      sessionId: string;
+      requestText: string;
+      mode: import('../../services/chatTypes.js').ChatMode;
+      runtime: 'claw' | 'openclaw';
+    },
+  ): Promise<IChatRuntimeAutonomyMirror | undefined>;
   /** M39: Return lightweight catalog of workflow skills for prompt injection. */
   getWorkflowSkillCatalog?(): ISkillCatalogEntry[];
   /** M39: Return full skill manifest by name (for activation). */
@@ -135,6 +277,13 @@ export interface IWorkspaceParticipantServices {
   getPageContent(pageId: string): Promise<string | null>;
   getPageTitle(pageId: string): Promise<string | null>;
   getWorkspaceName(): string;
+  getReadOnlyToolDefinitions?(): readonly IToolDefinition[];
+  invokeToolWithRuntimeControl?(
+    name: string,
+    args: Record<string, unknown>,
+    token: ICancellationToken,
+    observer?: IChatRuntimeToolInvocationObserver,
+  ): Promise<IToolResult>;
   listFiles?(relativePath: string): Promise<readonly { name: string; type: 'file' | 'directory'; size: number }[]>;
   readFileContent?(relativePath: string): Promise<string>;
   reportParticipantDebug?(debug: {
@@ -153,6 +302,8 @@ export interface IWorkspaceParticipantServices {
     attempted: boolean;
     returnedSources?: number;
   }): void;
+  reportRuntimeTrace?(trace: IChatRuntimeTrace): void;
+  reportBootstrapDebug?(debug: IOpenclawBootstrapDebugReport): void;
 }
 
 /** Services injected into the @canvas participant. */
@@ -167,6 +318,13 @@ export interface ICanvasParticipantServices {
   getCurrentPageTitle(): string | undefined;
   getPageStructure(pageId: string): Promise<IPageStructure | null>;
   getWorkspaceName(): string;
+  getReadOnlyToolDefinitions?(): readonly IToolDefinition[];
+  invokeToolWithRuntimeControl?(
+    name: string,
+    args: Record<string, unknown>,
+    token: ICancellationToken,
+    observer?: IChatRuntimeToolInvocationObserver,
+  ): Promise<IToolResult>;
   readFileContent?(relativePath: string): Promise<string>;
   reportParticipantDebug?(debug: {
     surface: 'workspace' | 'canvas';
@@ -184,6 +342,8 @@ export interface ICanvasParticipantServices {
     attempted: boolean;
     returnedSources?: number;
   }): void;
+  reportRuntimeTrace?(trace: IChatRuntimeTrace): void;
+  reportBootstrapDebug?(debug: IOpenclawBootstrapDebugReport): void;
 }
 
 // ── Participant data types ──
@@ -421,6 +581,29 @@ export interface IChatRuntimeTrace {
   readonly sessionId?: string;
   readonly hasActiveSlashCommand: boolean;
   readonly isRagReady: boolean;
+  readonly runtime?: ChatRuntimeKind;
+  readonly runId?: string;
+  readonly phase?: 'interpretation' | 'context' | 'execution';
+  readonly checkpoint?: string;
+  readonly runState?: ChatRuntimeRunState;
+  readonly toolName?: string;
+  readonly approvalState?: ChatRuntimeApprovalState;
+  readonly note?: string;
+}
+
+export interface IPreparedChatTurnPrelude {
+  readonly mentionPills: IMentionResolutionResult['pills'];
+  readonly mentionContextBlocks: IMentionResolutionResult['contextBlocks'];
+  readonly userText: string;
+  readonly contextQueryText: string;
+  readonly hasActiveSlashCommand: boolean;
+  readonly isRagReady: boolean;
+  readonly turnRoute: IChatTurnRoute;
+  readonly contextPlan: IChatContextPlan;
+  readonly retrievalPlan: IRetrievalPlan;
+  readonly isConversationalTurn: boolean;
+  readonly queryScope: IQueryScope;
+  readonly semanticFallback?: IChatSemanticFallbackDecision;
 }
 
 // ── /init command ──
@@ -466,6 +649,8 @@ export interface IChatWidgetServices {
   readonly writeFileRelative?: (relativePath: string, content: string) => Promise<void>;
   readonly searchSessions?: (query: string) => Promise<Array<{ sessionId: string; sessionTitle: string; matchingContent: string }>>;
   readonly openAISettings?: () => void;
+  readonly getIndexingProgress?: () => import('../../services/indexingPipeline.js').IndexingProgress;
+  readonly getIndexStats?: () => { pages: number; files: number } | undefined;
   readonly getAgentTasks?: () => readonly IChatAgentTaskViewModel[];
   readonly resolveAgentApproval?: (taskId: string, requestId: string, resolution: AgentApprovalResolution) => Promise<void>;
   readonly continueAgentTask?: (taskId: string) => Promise<void>;
@@ -473,7 +658,7 @@ export interface IChatWidgetServices {
   readonly onDidChangeAgentTasks?: Event<AgentTaskRecord>;
   readonly onDidChangeAgentApprovals?: Event<AgentApprovalRequest>;
   // ── Pending request queue ──
-  readonly queueRequest?: (sessionId: string, message: string, kind: ChatRequestQueueKind) => IChatPendingRequest;
+  readonly queueRequest?: (sessionId: string, message: string, kind: ChatRequestQueueKind, options?: import('../../services/chatTypes.js').IChatSendRequestOptions) => IChatPendingRequest;
   readonly removePendingRequest?: (sessionId: string, requestId: string) => void;
   readonly requestYield?: (sessionId: string) => void;
   readonly onDidChangePendingRequests?: Event<string>;

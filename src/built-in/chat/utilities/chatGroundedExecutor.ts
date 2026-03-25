@@ -7,6 +7,13 @@ import type {
   IToolCall,
   IToolResult,
 } from '../../../services/chatTypes.js';
+import type {
+  ChatRuntimeApprovalState,
+  IChatRuntimeAutonomyMirror,
+  IChatRuntimeToolInvocationObserver,
+  IChatRuntimeTrace,
+} from '../chatTypes.js';
+import { ChatToolLoopSafety } from './chatToolLoopSafety.js';
 
 export interface IChatGroundedToolGuard {
   isValid(): boolean;
@@ -23,10 +30,11 @@ export interface IChatGroundedExecutorDeps {
     options?: IChatRequestOptions,
     signal?: AbortSignal,
   ) => AsyncIterable<IChatResponseChunk>;
-  readonly invokeTool?: (
+  readonly invokeToolWithRuntimeControl?: (
     name: string,
     args: Record<string, unknown>,
     token: ICancellationToken,
+    observer?: IChatRuntimeToolInvocationObserver,
   ) => Promise<IToolResult>;
   readonly resetNetworkTimeout: () => void;
   readonly parseEditResponse: (rawContent: string, response: IChatResponseStream) => void;
@@ -41,6 +49,7 @@ export interface IChatGroundedExecutorDeps {
     retrievedContextLength: number;
     note?: string;
   }) => void;
+  readonly reportRuntimeTrace?: (trace: Partial<IChatRuntimeTrace> & Pick<IChatRuntimeTrace, 'route' | 'contextPlan' | 'hasActiveSlashCommand' | 'isRagReady'>) => void;
   readonly reportFirstTokenLatency?: (durationMs: number) => void;
   readonly reportStreamCompleteLatency?: (durationMs: number) => void;
 }
@@ -59,6 +68,8 @@ export interface IChatGroundedExecutorOptions {
   readonly retrievedContextText: string;
   readonly evidenceAssessment: IChatGroundedEvidenceAssessment;
   readonly toolGuard?: IChatGroundedToolGuard;
+  readonly autonomyMirror?: IChatRuntimeAutonomyMirror;
+  readonly runtimeTraceSeed?: Pick<IChatRuntimeTrace, 'route' | 'contextPlan' | 'hasActiveSlashCommand' | 'isRagReady'>;
 }
 
 export interface IChatGroundedExecutorResult {
@@ -72,6 +83,21 @@ export async function executeChatGrounded(
   options: IChatGroundedExecutorOptions,
 ): Promise<IChatGroundedExecutorResult> {
   let producedContent = false;
+  const loopSafety = new ChatToolLoopSafety();
+
+  const emitToolTrace = (checkpoint: string, toolName: string, approvalState: ChatRuntimeApprovalState, note?: string): void => {
+    if (!deps.reportRuntimeTrace || !options.runtimeTraceSeed) {
+      return;
+    }
+
+    deps.reportRuntimeTrace({
+      ...options.runtimeTraceSeed,
+      checkpoint,
+      toolName,
+      approvalState,
+      note,
+    });
+  };
 
   for (let iteration = 0; iteration <= options.maxIterations; iteration += 1) {
     if (options.token.isYieldRequested || options.token.isCancellationRequested) {
@@ -166,7 +192,7 @@ export async function executeChatGrounded(
       options.response.replaceLastMarkdown('');
     }
 
-    if (!options.canInvokeTools || !deps.invokeTool) {
+    if (!options.canInvokeTools || !deps.invokeToolWithRuntimeControl) {
       options.response.warning('Tool calls are not available in this mode.');
       break;
     }
@@ -185,13 +211,43 @@ export async function executeChatGrounded(
       const toolArgs = toolCall.function.arguments;
       producedContent = true;
 
+      const loopDecision = loopSafety.record(toolName, toolArgs);
+      if (loopDecision.blocked) {
+        options.response.warning(loopDecision.note ?? `Blocked repeated ${toolName} calls.`);
+        options.messages.push({
+          role: 'tool',
+          content: loopDecision.note ?? `Blocked repeated ${toolName} calls.`,
+          toolName,
+        });
+        break;
+      }
+
       let result: IToolResult;
       if (options.toolGuard && !options.toolGuard.isValid()) {
         result = { content: 'Workspace session changed — results discarded.', isError: true };
         console.warn('[DefaultParticipant] Skipping tool "%s" — workspace session changed', toolName);
       } else {
         try {
-          result = await deps.invokeTool(toolName, toolArgs, options.token);
+          const downstreamObserver: IChatRuntimeToolInvocationObserver = {
+            onValidated: (metadata) => emitToolTrace('tool-validated', metadata.name, 'not-required', metadata.permissionLevel),
+            onApprovalRequested: (metadata) => emitToolTrace('approval-requested', metadata.name, 'pending', metadata.approvalSource),
+            onApprovalResolved: (metadata, approved) => emitToolTrace(
+              approved ? 'approval-resolved' : 'approval-denied',
+              metadata.name,
+              metadata.autoApproved ? 'auto-approved' : approved ? 'approved' : 'denied',
+              metadata.approvalSource,
+            ),
+            onExecuted: (metadata, invocationResult) => emitToolTrace(
+              invocationResult.isError ? 'tool-executed-error' : 'tool-executed',
+              metadata.name,
+              metadata.requiresApproval ? 'approved' : metadata.autoApproved ? 'auto-approved' : 'not-required',
+              invocationResult.isError ? invocationResult.content : undefined,
+            ),
+          };
+          const runtimeObserver = options.autonomyMirror
+            ? options.autonomyMirror.createToolObserver(toolName, toolArgs, downstreamObserver)
+            : downstreamObserver;
+          result = await deps.invokeToolWithRuntimeControl(toolName, toolArgs, options.token, runtimeObserver);
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
           result = { content: `Tool "${toolName}" failed: ${errMsg}`, isError: true };

@@ -127,6 +127,27 @@ describe('ChatAgentService', () => {
     expect(result).toEqual({ metadata: { ok: true } });
   });
 
+  it('invokeAgent prefers a participant runtime when one is registered', async () => {
+    const handler = vi.fn(async () => ({ metadata: { source: 'handler' } }));
+    const runtimeHandleTurn = vi.fn(async () => ({ metadata: { source: 'runtime' } }));
+    service.registerAgent({
+      ...createMockParticipant('test.runtime', handler),
+      runtime: { handleTurn: runtimeHandleTurn },
+    });
+
+    const result = await service.invokeAgent(
+      'test.runtime',
+      createMockRequest(),
+      createMockContext(),
+      createMockStream(),
+      createMockToken(),
+    );
+
+    expect(runtimeHandleTurn).toHaveBeenCalledTimes(1);
+    expect(handler).not.toHaveBeenCalled();
+    expect(result).toEqual({ metadata: { source: 'runtime' } });
+  });
+
   it('invokeAgent falls back to default agent when participant not found', async () => {
     const defaultHandler = vi.fn(async () => ({ fallback: true }));
     service.registerAgent(createMockParticipant('parallx.chat.default', defaultHandler));
@@ -171,5 +192,62 @@ describe('ChatAgentService', () => {
     expect(result.errorDetails).toBeDefined();
     expect(result.errorDetails?.message).toContain('boom');
     expect(stream.warning).toHaveBeenCalled();
+  });
+
+  it('invokeAgent reports a runtime failure trace when a handler throws', async () => {
+    const handler = vi.fn(async () => { throw new Error('boom'); });
+    const reportTrace = vi.fn();
+    service.registerAgent(createMockParticipant('faulty', handler));
+
+    await service.invokeAgent(
+      'faulty',
+      {
+        ...createMockRequest(),
+        turnState: {
+          rawText: 'hello',
+          effectiveText: 'hello',
+          userText: 'hello',
+          contextQueryText: 'hello',
+          semantics: {
+            rawText: 'hello',
+            normalizedText: 'hello',
+            strippedApostropheText: 'hello',
+            isConversational: false,
+            isExplicitMemoryRecall: false,
+            isExplicitTranscriptRecall: false,
+            isFileEnumeration: false,
+            isExhaustiveWorkspaceReview: false,
+            workflowTypeHint: 'generic-grounded',
+          },
+          queryScope: {
+            level: 'workspace',
+            derivedFrom: 'inferred',
+            confidence: 1,
+          },
+          turnRoute: {
+            kind: 'grounded',
+            reason: 'test route',
+            coverageMode: 'representative',
+          },
+          hasActiveSlashCommand: false,
+          isConversationalTurn: false,
+          isRagReady: true,
+        },
+      },
+      {
+        ...createMockContext(),
+        runtime: { reportTrace },
+      },
+      createMockStream(),
+      createMockToken(),
+    );
+
+    expect(reportTrace).toHaveBeenCalledWith(expect.objectContaining({
+      checkpoint: 'participant-handler-error',
+      runState: 'failed',
+      runtime: 'claw',
+      sessionId: 'test-session',
+      note: 'boom',
+    }));
   });
 });

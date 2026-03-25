@@ -4,10 +4,10 @@ import type {
 } from '../chatTypes.js';
 import type {
   ChatMode,
-  IChatMessage,
   IChatRequestResponsePair,
 } from '../../../services/chatTypes.js';
 import { buildSystemPrompt } from '../config/chatSystemPrompts.js';
+import { buildRuntimePromptSeedMessages } from './chatRuntimePromptMessages.js';
 
 type IChatTurnMessageAssemblyDeps = Pick<
   IDefaultParticipantServices,
@@ -24,30 +24,17 @@ type IChatTurnMessageAssemblyDeps = Pick<
   | 'getWorkflowSkillCatalog'
 >;
 
+export type { IChatTurnMessageAssemblyDeps };
+
 export interface IAssembleChatTurnMessagesInput {
   readonly mode: ChatMode;
   readonly history: readonly IChatRequestResponsePair[];
 }
 
-function getHistoryResponseText(pair: IChatRequestResponsePair): string {
-  return pair.response.parts
-    .map((part) => {
-      if ('content' in part && typeof part.content === 'string') {
-        return part.content;
-      }
-      if ('code' in part && typeof part.code === 'string') {
-        return '```\n' + part.code + '\n```';
-      }
-      return '';
-    })
-    .filter(Boolean)
-    .join('\n');
-}
-
 export async function assembleChatTurnMessages(
   services: IChatTurnMessageAssemblyDeps,
   input: IAssembleChatTurnMessagesInput,
-): Promise<{ messages: IChatMessage[] }> {
+): Promise<{ messages: ReturnType<typeof buildRuntimePromptSeedMessages> }> {
   const [pageCount, fileCount, promptOverlayFromFiles, workspaceDigest, prefsBlock] = await Promise.all([
     services.getPageCount().catch(() => 0),
     services.getFileCount ? services.getFileCount().catch(() => 0) : Promise.resolve(undefined),
@@ -79,27 +66,10 @@ export async function assembleChatTurnMessages(
     ? systemPrompt + '\n\n' + prefsBlock
     : systemPrompt;
 
-  const messages: IChatMessage[] = [{
-    role: 'system',
-    content: finalSystemPrompt,
-  }];
-
-  for (const pair of input.history) {
-    messages.push({
-      role: 'user',
-      content: pair.request.text,
-    });
-
-    const responseText = getHistoryResponseText(pair);
-    if (!responseText) {
-      continue;
-    }
-
-    messages.push({
-      role: 'assistant',
-      content: responseText,
-    });
-  }
+  const messages = buildRuntimePromptSeedMessages({
+    systemPrompt: finalSystemPrompt,
+    history: input.history,
+  });
 
   return { messages };
 }

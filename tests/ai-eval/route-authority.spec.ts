@@ -48,9 +48,28 @@ test.describe.serial('Route Authority Correction Evaluation', () => {
     expect(result.text.trim().length).toBeGreaterThan(0);
     expect(result.debug?.runtimeTrace?.routeAuthority?.action).toBe('corrected');
     expect(result.debug?.runtimeTrace?.routeAuthority?.reason).toContain('representative retrieval');
-    expect(result.debug?.runtimeTrace?.route?.workflowType).toBe('generic-grounded');
+    expect(result.debug?.runtimeTrace?.route?.workflowType).toBeUndefined();
     expect(result.debug?.runtimeTrace?.route?.coverageMode).toBe('representative');
     expect(result.debug?.runtimeTrace?.contextPlan?.useRetrieval).toBe(true);
     expect(result.debug?.runtimeTrace?.route?.reason).toContain('Evidence authority correction');
+  });
+
+  test('preserves exhaustive coverage without a front-door summary workflow label for summary-like workspace prompts', async ({ window }) => {
+    await startNewSession(window);
+    await window.waitForTimeout(500);
+
+    const result = await sendAndWaitForResponse(
+      window,
+      'Give me a bulleted list with a short summary of each file in my workspace.',
+      RESPONSE_TIMEOUT,
+    );
+
+    expect(result.text.trim().length).toBeGreaterThan(0);
+    expect(result.debug?.runtimeTrace?.routeAuthority?.action ?? 'preserved').toBe('preserved');
+    expect(result.debug?.runtimeTrace?.route?.workflowType).toBeUndefined();
+    expect(result.debug?.runtimeTrace?.route?.coverageMode).toBe('exhaustive');
+    expect(result.debug?.runtimeTrace?.contextPlan?.useRetrieval).toBe(false);
+    expect(result.debug?.responseDebug?.phase).not.toBe('deterministic-workflow-direct-answer');
+    expect(result.text).not.toContain('Deductible amounts found across the policy documents');
   });
 });

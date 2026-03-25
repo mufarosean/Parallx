@@ -35,7 +35,7 @@ describe('chat runtime routing', () => {
     const route = determineChatTurnRoute('Can you provide a one paragraph summary for each of the files in the RF Guides folder?');
 
     expect(route.kind).toBe('grounded');
-    expect(route.workflowType).toBe('folder-summary');
+    expect(route.workflowType).toBeUndefined();
     expect(route.coverageMode).toBe('exhaustive');
   });
 
@@ -117,6 +117,22 @@ describe('chat context planning', () => {
     expect(trace.semanticFallback?.groundedCoverageModeHint).toBe('exhaustive');
   });
 
+  it('keeps broad ambiguous workspace-summary phrasing representative by default', () => {
+    const route = determineChatTurnRoute('Tell me about everything in here.');
+    const plan = createChatContextPlan(route, { hasActiveSlashCommand: false, isRagReady: true });
+    const trace = createChatRuntimeTrace(route, plan, {
+      sessionId: 'session-generic',
+      hasActiveSlashCommand: false,
+      isRagReady: true,
+    });
+
+    expect(route.workflowType).toBeUndefined();
+    expect(route.coverageMode).toBe('representative');
+    expect(plan.useRetrieval).toBe(true);
+    expect(plan.retrievalPlan.coverageMode).toBe('representative');
+    expect(trace.semanticFallback).toBeUndefined();
+  });
+
   it('preserves route-authority details in the runtime trace', () => {
     const route = determineChatTurnRoute('what does my policy cover?');
     const plan = createChatContextPlan(route, { hasActiveSlashCommand: false, isRagReady: true });
@@ -168,7 +184,7 @@ describe('chat route authority', () => {
       isRagReady: true,
     });
 
-    expect(result.turnRoute.workflowType).toBe('generic-grounded');
+    expect(result.turnRoute.workflowType).toBeUndefined();
     expect(result.turnRoute.coverageMode).toBe('representative');
     expect(result.authority.action).toBe('corrected');
   });
@@ -203,7 +219,7 @@ describe('chat route authority', () => {
       isRagReady: true,
     });
 
-    expect(result.turnRoute.workflowType).toBe('generic-grounded');
+    expect(result.turnRoute.workflowType).toBeUndefined();
     expect(result.turnRoute.coverageMode).toBe('representative');
     expect(result.authority.action).toBe('corrected');
   });

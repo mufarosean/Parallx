@@ -22,6 +22,7 @@ function createHistory() {
 describe('chat memory write-back', () => {
   it('runs preference extraction when memory is enabled', async () => {
     const extractPreferences = vi.fn().mockResolvedValue(undefined);
+    const onCheckpoint = vi.fn();
 
     queueChatMemoryWriteBack(
       {
@@ -33,17 +34,20 @@ describe('chat memory write-back', () => {
         requestText: 'Remember that I prefer concise answers.',
         sessionId: 'session-1',
         history: [],
+        onCheckpoint,
       },
     );
 
     await flushPromises();
 
     expect(extractPreferences).toHaveBeenCalledWith('Remember that I prefer concise answers.');
+    expect(onCheckpoint).toHaveBeenCalledWith({ checkpoint: 'memory-preferences-extracted' });
   });
 
   it('stores fallback and model summaries, then persists extracted concepts', async () => {
     const storeSessionMemory = vi.fn().mockResolvedValue(undefined);
     const storeConceptsFromSession = vi.fn().mockResolvedValue(undefined);
+    const onCheckpoint = vi.fn();
     const sendSummarizationRequest = vi.fn(async function* () {
       yield {
         content: JSON.stringify({
@@ -75,6 +79,7 @@ describe('chat memory write-back', () => {
         requestText: 'The police report number is 2026-0308-1147.',
         sessionId: 'session-1',
         history: createHistory(),
+        onCheckpoint,
       },
     );
 
@@ -92,5 +97,8 @@ describe('chat memory write-back', () => {
       },
     ], 'session-1');
     expect(sendSummarizationRequest).toHaveBeenCalledTimes(1);
+    expect(onCheckpoint).toHaveBeenCalledWith({ checkpoint: 'memory-summary-fallback-stored' });
+    expect(onCheckpoint).toHaveBeenCalledWith({ checkpoint: 'memory-summary-refined-stored' });
+    expect(onCheckpoint).toHaveBeenCalledWith({ checkpoint: 'memory-concepts-stored' });
   });
 });

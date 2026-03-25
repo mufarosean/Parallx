@@ -100,6 +100,13 @@ const BUILTIN_COMMANDS: IChatSlashCommand[] = [
     isBuiltIn: true,
     specialHandler: 'init',
   },
+  {
+    name: 'context',
+    description: 'Show the runtime context breakdown',
+    promptTemplate: '',
+    isBuiltIn: true,
+    specialHandler: 'context',
+  },
 ];
 
 // ── Registry ──

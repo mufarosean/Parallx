@@ -40,58 +40,62 @@ describe('workflow type classification', () => {
   it('classifies plain grounded queries as generic-grounded', () => {
     const route = determineChatTurnRoute('what does my policy cover?');
     expect(route.kind).toBe('grounded');
-    expect(route.workflowType).toBe('generic-grounded');
+    expect(route.workflowType).toBeUndefined();
   });
 
   it('classifies entity + topic questions as scoped-topic', () => {
     const route = determineChatTurnRoute('What does the Claims Guide say about liability?');
     expect(route.kind).toBe('grounded');
-    expect(route.workflowType).toBe('scoped-topic');
+    expect(route.workflowType).toBeUndefined();
+    expect(route.coverageMode).toBe('representative');
   });
 
   it('classifies comparison requests as comparative', () => {
     const route = determineChatTurnRoute('compare the deductible amounts in my two plans');
     expect(route.kind).toBe('grounded');
-    expect(route.workflowType).toBe('comparative');
+    expect(route.workflowType).toBeUndefined();
+    expect(route.coverageMode).toBe('representative');
   });
 
   it('classifies entity + summary verb as document-summary', () => {
     const route = determineChatTurnRoute('Summarize the Auto Insurance Policy');
     expect(route.kind).toBe('grounded');
-    expect(route.workflowType).toBe('document-summary');
+    expect(route.workflowType).toBeUndefined();
+    expect(route.coverageMode).toBe('representative');
   });
 
   it('classifies entity + summary verb + folder cue as folder-summary', () => {
     const route = determineChatTurnRoute('Describe all the files in the RF Guides folder');
     expect(route.kind).toBe('grounded');
-    expect(route.workflowType).toBe('folder-summary');
+    expect(route.workflowType).toBeUndefined();
+    expect(route.coverageMode).toBe('exhaustive');
   });
 
   it('classifies exhaustive + extraction verbs as exhaustive-extraction', () => {
     const route = determineChatTurnRoute('Extract every phone number from each file in this folder and list them all.');
     expect(route.kind).toBe('grounded');
-    expect(route.workflowType).toBe('exhaustive-extraction');
+    expect(route.workflowType).toBeUndefined();
     expect(route.coverageMode).toBe('exhaustive');
   });
 
   it('classifies exhaustive review without extraction verbs as folder-summary', () => {
     const route = determineChatTurnRoute('Summarize each file in this directory in one sentence.');
     expect(route.kind).toBe('grounded');
-    expect(route.workflowType).toBe('folder-summary');
+    expect(route.workflowType).toBeUndefined();
     expect(route.coverageMode).toBe('exhaustive');
   });
 
   it('classifies natural summary phrasing as exhaustive folder-summary', () => {
     const route = determineChatTurnRoute('Can you provide a one paragraph summary for each of the files in the RF Guides folder?');
     expect(route.kind).toBe('grounded');
-    expect(route.workflowType).toBe('folder-summary');
+    expect(route.workflowType).toBeUndefined();
     expect(route.coverageMode).toBe('exhaustive');
   });
 
   it('classifies file enumeration as folder-summary with enumeration coverage', () => {
     const route = determineChatTurnRoute('How many files are in the Guides directory?');
     expect(route.kind).toBe('grounded');
-    expect(route.workflowType).toBe('folder-summary');
+    expect(route.workflowType).toBeUndefined();
     expect(route.coverageMode).toBe('enumeration');
   });
 });
@@ -113,9 +117,9 @@ describe('buildExecutionPlan', () => {
     const route = determineChatTurnRoute('What does the Claims Guide say about liability?');
     const plan = buildExecutionPlan(route, scope);
 
-    expect(plan.workflowType).toBe('scoped-topic');
+    expect(plan.workflowType).toBe('generic-grounded');
     expect(plan.steps.map(s => s.kind)).toEqual(['scoped-retrieve', 'synthesize']);
-    expect(plan.steps[0].targetPaths).toEqual(['Claims Guide/']);
+    expect(plan.steps[0].targetPaths).toBeUndefined();
   });
 
   it('produces enumerate + deterministic-read + synthesize for folder-summary', () => {
@@ -134,9 +138,9 @@ describe('buildExecutionPlan', () => {
     const route = determineChatTurnRoute('Summarize the Auto Insurance Policy');
     const plan = buildExecutionPlan(route, scope);
 
-    expect(plan.workflowType).toBe('document-summary');
-    expect(plan.steps.map(s => s.kind)).toEqual(['deterministic-read', 'synthesize']);
-    expect(plan.outputConstraints.format).toBe('prose');
+    expect(plan.workflowType).toBe('generic-grounded');
+    expect(plan.steps.map(s => s.kind)).toEqual(['scoped-retrieve', 'synthesize']);
+    expect(plan.outputConstraints).toEqual({});
   });
 
   it('produces two deterministic-reads + synthesize for comparative', () => {
@@ -144,13 +148,9 @@ describe('buildExecutionPlan', () => {
     const route = determineChatTurnRoute('compare the deductible amounts in my two plans');
     const plan = buildExecutionPlan(route, scope);
 
-    expect(plan.workflowType).toBe('comparative');
-    expect(plan.steps.map(s => s.kind)).toEqual([
-      'deterministic-read',
-      'deterministic-read',
-      'synthesize',
-    ]);
-    expect(plan.outputConstraints.format).toBe('table');
+    expect(plan.workflowType).toBe('generic-grounded');
+    expect(plan.steps.map(s => s.kind)).toEqual(['scoped-retrieve', 'synthesize']);
+    expect(plan.outputConstraints).toEqual({});
   });
 
   it('produces enumerate + deterministic-read + synthesize for exhaustive-extraction', () => {
@@ -158,7 +158,7 @@ describe('buildExecutionPlan', () => {
     const route = determineChatTurnRoute('Extract every phone number from each file in this folder and list them all.');
     const plan = buildExecutionPlan(route, scope);
 
-    expect(plan.workflowType).toBe('exhaustive-extraction');
+    expect(plan.workflowType).toBe('folder-summary');
     expect(plan.steps.map(s => s.kind)).toEqual([
       'enumerate',
       'deterministic-read',

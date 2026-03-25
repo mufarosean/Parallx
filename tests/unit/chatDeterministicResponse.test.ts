@@ -157,4 +157,121 @@ describe('chat deterministic response', () => {
       phase: 'unsupported-workspace-topic-direct-answer',
     }));
   });
+
+  it('does not short-circuit summary-like grounded requests at the prepared-context seam', () => {
+    const response = createResponse();
+
+    const handled = handlePreparedContextDeterministicAnswer({
+      route: {
+        kind: 'grounded',
+        reason: 'misclassified route',
+        workflowType: 'exhaustive-extraction',
+      },
+      query: 'Give me a bulleted list with a short summary of each file in the RF Guides folder.',
+      evidenceAssessment: { status: 'sufficient', reasons: [] },
+      retrievedContextText: [
+        '[Retrieved Context]',
+        '[1] Source: Auto Insurance Policy.md',
+        'Path: RF Guides/Auto Insurance Policy.md',
+        'Collision deductible is **$500**. Comprehensive deductible is **$250**.',
+      ].join('\n'),
+      memoryResult: null,
+      ragSources: [{ uri: 'RF Guides/Auto Insurance Policy.md', label: 'Auto Insurance Policy.md', index: 1 }],
+      response,
+      token: createToken(),
+    });
+
+    expect(handled).toBe(false);
+    expect(response.markdown).not.toHaveBeenCalled();
+    expect(response.setCitations).not.toHaveBeenCalled();
+  });
+
+  it('does not short-circuit explicit extraction requests at the prepared-context seam anymore', () => {
+    const response = createResponse();
+
+    const handled = handlePreparedContextDeterministicAnswer({
+      route: {
+        kind: 'grounded',
+        reason: 'explicit extraction route',
+      },
+      query: 'List every deductible amount from all policy documents.',
+      evidenceAssessment: { status: 'sufficient', reasons: [] },
+      retrievedContextText: [
+        '[Retrieved Context]',
+        '[1] Source: Auto Insurance Policy.md',
+        'Path: RF Guides/Auto Insurance Policy.md',
+        'Collision deductible is **$500**. Comprehensive deductible is **$250**.',
+      ].join('\n'),
+      memoryResult: null,
+      ragSources: [{ uri: 'RF Guides/Auto Insurance Policy.md', label: 'Auto Insurance Policy.md', index: 1 }],
+      response,
+      token: createToken(),
+    });
+
+    expect(handled).toBe(false);
+    expect(response.markdown).not.toHaveBeenCalled();
+    expect(response.setCitations).not.toHaveBeenCalled();
+  });
+
+  it('does not short-circuit folder-summary turns at the prepared-context seam', () => {
+    const response = createResponse();
+
+    const handled = handlePreparedContextDeterministicAnswer({
+      route: {
+        kind: 'grounded',
+        reason: 'folder summary route',
+        workflowType: 'folder-summary',
+      },
+      query: 'What documents do I have in my workspace?',
+      evidenceAssessment: { status: 'sufficient', reasons: [] },
+      retrievedContextText: [
+        '[Retrieved Context]',
+        '[1] Source: Claims Guide.md',
+        'Path: Claims Guide.md',
+        '# Claims Guide',
+      ].join('\n'),
+      memoryResult: null,
+      ragSources: [{ uri: 'Claims Guide.md', label: 'Claims Guide.md', index: 1 }],
+      response,
+      token: createToken(),
+    });
+
+    expect(handled).toBe(false);
+    expect(response.markdown).not.toHaveBeenCalled();
+    expect(response.setCitations).not.toHaveBeenCalled();
+  });
+
+  it('does not short-circuit comparative turns at the prepared-context seam', () => {
+    const response = createResponse();
+
+    const handled = handlePreparedContextDeterministicAnswer({
+      route: {
+        kind: 'grounded',
+        reason: 'comparative route',
+        workflowType: 'comparative',
+      },
+      query: 'Compare Claims Guide.md and Accident Quick Reference.md',
+      evidenceAssessment: { status: 'sufficient', reasons: [] },
+      retrievedContextText: [
+        '[Retrieved Context]',
+        '[1] Source: Claims Guide.md',
+        'Path: Claims Guide.md',
+        'Claims guide content',
+        '[2] Source: Accident Quick Reference.md',
+        'Path: Accident Quick Reference.md',
+        'Accident quick reference content',
+      ].join('\n'),
+      memoryResult: null,
+      ragSources: [
+        { uri: 'Claims Guide.md', label: 'Claims Guide.md', index: 1 },
+        { uri: 'Accident Quick Reference.md', label: 'Accident Quick Reference.md', index: 2 },
+      ],
+      response,
+      token: createToken(),
+    });
+
+    expect(handled).toBe(false);
+    expect(response.markdown).not.toHaveBeenCalled();
+    expect(response.setCitations).not.toHaveBeenCalled();
+  });
 });

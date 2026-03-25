@@ -167,6 +167,11 @@ export interface IUnifiedAgentConfig {
   readonly proactivity: AgentProactivityPreference;
 }
 
+export interface IUnifiedRuntimeConfig {
+  /** Active chat runtime implementation used for the default chat surface. */
+  readonly implementation: 'legacy-claw' | 'openclaw';
+}
+
 // ─── Memory (NEW in M20) ─────────────────────────────────────────────────────
 
 export interface IUnifiedMemoryConfig {
@@ -220,6 +225,7 @@ export interface IUnifiedAIConfig {
   readonly retrieval: IUnifiedRetrievalConfig;
   readonly suggestions: IUnifiedSuggestionsConfig;
   readonly agent: IUnifiedAgentConfig;
+  readonly runtime: IUnifiedRuntimeConfig;
   readonly memory: IUnifiedMemoryConfig;
   readonly indexing: IUnifiedIndexingConfig;
   readonly tools: IUnifiedToolsConfig;
@@ -437,6 +443,9 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
     executionStyle: 'balanced',
     proactivity: 'balanced',
   },
+  runtime: {
+    implementation: 'openclaw',
+  },
   memory: {
     memoryEnabled: true,
     autoSummarize: true,
@@ -498,6 +507,7 @@ export function fromLegacyProfile(profile: AISettingsProfile): IUnifiedPreset {
         maxPendingSuggestions: profile.suggestions.maxPendingSuggestions,
       },
       agent: { ...DEFAULT_UNIFIED_CONFIG.agent },
+      runtime: { ...DEFAULT_UNIFIED_CONFIG.runtime },
       memory: { ...DEFAULT_UNIFIED_CONFIG.memory },
       indexing: { ...DEFAULT_UNIFIED_CONFIG.indexing },
       tools: { ...DEFAULT_UNIFIED_CONFIG.tools },

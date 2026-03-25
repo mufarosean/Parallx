@@ -1,4 +1,5 @@
 import type {
+  IChatRuntimeToolInvocationObserver,
   IChatRuntimeTrace,
   IDefaultParticipantServices,
   IUserCommandFileSystem,
@@ -13,7 +14,12 @@ export interface IChatDefaultParticipantAdapterDeps {
   readonly getCurrentPageTitle: IDefaultParticipantServices['getCurrentPageTitle'];
   readonly getToolDefinitions: IDefaultParticipantServices['getToolDefinitions'];
   readonly getReadOnlyToolDefinitions: IDefaultParticipantServices['getReadOnlyToolDefinitions'];
-  readonly invokeTool?: IDefaultParticipantServices['invokeTool'];
+  readonly invokeToolWithRuntimeControl?: (
+    name: string,
+    args: Record<string, unknown>,
+    token: import('../../../services/chatTypes.js').ICancellationToken,
+    observer?: IChatRuntimeToolInvocationObserver,
+  ) => Promise<import('../../../services/chatTypes.js').IToolResult>;
   readonly maxIterations?: number;
   readonly networkTimeout?: number;
   readonly getModelContextLength?: IDefaultParticipantServices['getModelContextLength'];
@@ -44,6 +50,8 @@ export interface IChatDefaultParticipantAdapterDeps {
   readonly reportRetrievalDebug?: IDefaultParticipantServices['reportRetrievalDebug'];
   readonly reportResponseDebug?: IDefaultParticipantServices['reportResponseDebug'];
   readonly reportRuntimeTrace?: (trace: IChatRuntimeTrace) => void;
+  readonly reportBootstrapDebug?: IDefaultParticipantServices['reportBootstrapDebug'];
+  readonly reportSystemPromptReport?: IDefaultParticipantServices['reportSystemPromptReport'];
   readonly getExcludedContextIds?: IDefaultParticipantServices['getExcludedContextIds'];
   readonly reportBudget?: IDefaultParticipantServices['reportBudget'];
   readonly getTerminalOutput?: IDefaultParticipantServices['getTerminalOutput'];
@@ -51,8 +59,10 @@ export interface IChatDefaultParticipantAdapterDeps {
   readonly userCommandFileSystem?: IUserCommandFileSystem;
   readonly compactSession?: IDefaultParticipantServices['compactSession'];
   readonly getWorkspaceDigest?: IDefaultParticipantServices['getWorkspaceDigest'];
+  readonly getLastSystemPromptReport?: IDefaultParticipantServices['getLastSystemPromptReport'];
   readonly sessionManager?: IDefaultParticipantServices['sessionManager'];
   readonly unifiedConfigService?: IDefaultParticipantServices['unifiedConfigService'];
+  readonly createAutonomyMirror?: IDefaultParticipantServices['createAutonomyMirror'];
 }
 
 export function buildChatDefaultParticipantServices(
@@ -66,7 +76,7 @@ export function buildChatDefaultParticipantServices(
     getCurrentPageTitle: deps.getCurrentPageTitle,
     getToolDefinitions: deps.getToolDefinitions,
     getReadOnlyToolDefinitions: deps.getReadOnlyToolDefinitions,
-    invokeTool: deps.invokeTool,
+    invokeToolWithRuntimeControl: deps.invokeToolWithRuntimeControl,
     maxIterations: deps.maxIterations,
     networkTimeout: deps.networkTimeout,
     getModelContextLength: deps.getModelContextLength,
@@ -97,6 +107,8 @@ export function buildChatDefaultParticipantServices(
     reportRetrievalDebug: deps.reportRetrievalDebug,
     reportResponseDebug: deps.reportResponseDebug,
     reportRuntimeTrace: deps.reportRuntimeTrace,
+    reportBootstrapDebug: deps.reportBootstrapDebug,
+    reportSystemPromptReport: deps.reportSystemPromptReport,
     getExcludedContextIds: deps.getExcludedContextIds,
     reportBudget: deps.reportBudget,
     getTerminalOutput: deps.getTerminalOutput,
@@ -104,7 +116,9 @@ export function buildChatDefaultParticipantServices(
     userCommandFileSystem: deps.userCommandFileSystem,
     compactSession: deps.compactSession,
     getWorkspaceDigest: deps.getWorkspaceDigest,
+    getLastSystemPromptReport: deps.getLastSystemPromptReport,
     sessionManager: deps.sessionManager,
     unifiedConfigService: deps.unifiedConfigService,
+    createAutonomyMirror: deps.createAutonomyMirror,
   };
 }

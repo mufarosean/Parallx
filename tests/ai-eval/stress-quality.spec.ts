@@ -42,6 +42,10 @@ const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const REPORT_DIR = path.join(PROJECT_ROOT, 'test-results');
 
+if (!process.env.PARALLX_AI_EVAL_WORKSPACE) {
+  test.skip(true, 'Stress eval requires PARALLX_AI_EVAL_WORKSPACE to point at the stress workspace.');
+}
+
 // ── Accumulated results (module-level, safe with workers:1) ──────────────────
 const allResults: TestCaseResult[] = [];
 

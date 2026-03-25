@@ -99,6 +99,10 @@ export function buildMissingCitationFooter(
     return '';
   }
 
+  if (/\[\d+\]/.test(text)) {
+    return '';
+  }
+
   const visibleSources = [...citations]
     .sort((a, b) => a.index - b.index)
     .slice(0, Number.isFinite(maxVisibleSources) ? Math.max(1, maxVisibleSources) : undefined);

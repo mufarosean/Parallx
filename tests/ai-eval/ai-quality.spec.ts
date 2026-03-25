@@ -55,6 +55,7 @@ import {
   type TurnResult,
 } from './scoring';
 import { runAutonomyBenchmarkScenarios } from './autonomyScenarioRunner';
+import { validateInsuranceWorkspaceGroundTruth } from './insuranceGroundTruth';
 import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
@@ -94,6 +95,7 @@ test.describe.serial('AI Quality Evaluation', () => {
   test.beforeAll(
     async ({ window, electronApp, workspacePath, workspaceLabel }) => {
       workspaceDisplayName = process.env.PARALLX_AI_EVAL_WORKSPACE_NAME || workspaceLabel || path.basename(workspacePath) || 'workspace';
+      await validateInsuranceWorkspaceGroundTruth(workspacePath);
       console.log(`\n  [Setup] Opening ${workspaceDisplayName}...`);
       await openFolderViaMenu(electronApp, window, workspacePath);
 

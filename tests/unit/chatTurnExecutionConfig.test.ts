@@ -58,7 +58,7 @@ describe('chat turn execution config', () => {
   it('uses read-only tools in ask mode and JSON output in edit mode policy cases', () => {
     const baseServices = {
       sendChatRequest: vi.fn(),
-      invokeTool: vi.fn(),
+      invokeToolWithRuntimeControl: vi.fn(),
       getWorkspaceName: () => 'Demo',
       getPageCount: vi.fn(),
       getCurrentPageTitle: () => undefined,

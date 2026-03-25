@@ -109,6 +109,24 @@ describe('gatherEvidence', () => {
     expect(deps.readFileRelative).toHaveBeenCalledWith('Claims.md');
   });
 
+  it('skips deterministic reads that produce no usable text', async () => {
+    const plan = makePlan([
+      { kind: 'deterministic-read', label: 'Read file', targetPaths: ['policy-scan.pdf', 'claims-scan.pdf'] },
+      { kind: 'synthesize', label: 'Synthesize' },
+    ], 'document-summary');
+    const deps = makeDeps({
+      readFileRelative: vi.fn(async () => ''),
+    });
+
+    const bundle = await gatherEvidence(plan, 'summarize broken docs', deps);
+
+    expect(bundle.items).toHaveLength(1);
+    expect(bundle.items[0].kind).toBe('exhaustive');
+    if (bundle.items[0].kind === 'exhaustive') {
+      expect(bundle.items[0].reads).toHaveLength(0);
+    }
+  });
+
   it('collects multiple evidence items for multi-step plans', async () => {
     const plan = makePlan([
       { kind: 'enumerate', label: 'Enumerate', targetPaths: ['docs/'] },

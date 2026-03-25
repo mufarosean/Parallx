@@ -5,6 +5,7 @@ import { ChatService } from '../../src/services/chatService';
 import { ChatAgentService } from '../../src/services/chatAgentService';
 import { ChatModeService } from '../../src/services/chatModeService';
 import { LanguageModelsService } from '../../src/services/languageModelsService';
+import { ChatBridge } from '../../src/api/bridges/chatBridge';
 import { ChatMode, ChatContentPartKind } from '../../src/services/chatTypes';
 import type {
   IChatParticipant,
@@ -200,6 +201,237 @@ describe('ChatService', () => {
       expect(request.turnState?.hasActiveSlashCommand).toBe(false);
       expect(request.turnState?.isRagReady).toBe(true);
       expect(request.turnState?.contextQueryText).toBe('Please summarize each file in the RF Guides folder.');
+    });
+
+    it('dispatches tool-contributed participants with the bridge surface contract', async () => {
+      const capture = vi.fn(async (
+        request: IChatParticipantRequest,
+        _context: IChatParticipantContext,
+        response: IChatResponseStream,
+      ) => {
+        response.markdown('Captured');
+        return {};
+      });
+
+      const bridge = new ChatBridge('tool.test', agentService, undefined, []);
+      bridge.createChatParticipant('tool.test.participant', capture as any);
+
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'Hello from bridge', {
+        participantId: 'tool.test.participant',
+      });
+
+      const request = capture.mock.calls[0][0] as IChatParticipantRequest;
+      expect(request.interpretation?.surface).toBe('bridge');
+    });
+
+    it('propagates shared runtime traces for tool-contributed participants', async () => {
+      const traceReporter = vi.fn();
+      chatService.setRuntimeTraceReporter?.(traceReporter);
+
+      const capture = vi.fn(async (
+        _request: IChatParticipantRequest,
+        _context: IChatParticipantContext,
+        response: IChatResponseStream,
+      ) => {
+        response.markdown('Captured');
+        return {};
+      });
+
+      const bridge = new ChatBridge('tool.test', agentService, undefined, []);
+      bridge.createChatParticipant('tool.test.participant', capture as any);
+
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'Hello from bridge', {
+        participantId: 'tool.test.participant',
+      });
+
+      expect(traceReporter).toHaveBeenCalledWith(expect.objectContaining({
+        checkpoint: 'bridge-handler-start',
+        runState: 'executing',
+        runtime: 'claw',
+      }));
+      expect(traceReporter).toHaveBeenCalledWith(expect.objectContaining({
+        checkpoint: 'bridge-handler-complete',
+        runState: 'completed',
+        runtime: 'claw',
+      }));
+    });
+
+    it('forwards runtime traces returned in participant result metadata', async () => {
+      const traceReporter = vi.fn();
+      chatService.setRuntimeTraceReporter?.(traceReporter);
+
+      const bridge = new ChatBridge('tool.test', agentService, undefined, []);
+      bridge.createChatParticipant('tool.test.participant', vi.fn(async (
+        _request: IChatParticipantRequest,
+        _context: IChatParticipantContext,
+        response: IChatResponseStream,
+      ) => {
+        response.markdown('Captured');
+        return {
+          metadata: {
+            runtimeTrace: {
+              checkpoint: 'bridge-handler-metadata',
+              runState: 'completed',
+              runtime: 'claw',
+            },
+          },
+        };
+      }) as any);
+
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'Hello from bridge', {
+        participantId: 'tool.test.participant',
+      });
+
+      expect(traceReporter).toHaveBeenCalledWith(expect.objectContaining({
+        checkpoint: 'bridge-handler-metadata',
+        runState: 'completed',
+        runtime: 'claw',
+      }));
+    });
+
+    it('returns explicit bridge compatibility metadata for tool-contributed participants', async () => {
+      const bridge = new ChatBridge('tool.test', agentService, undefined, []);
+      bridge.createChatParticipant('tool.test.participant', vi.fn(async (
+        _request: IChatParticipantRequest,
+        _context: IChatParticipantContext,
+        response: IChatResponseStream,
+      ) => {
+        response.markdown('Captured');
+        return {};
+      }) as any);
+
+      const session = chatService.createSession();
+      const result = await chatService.sendRequest(session.id, 'Hello from bridge', {
+        participantId: 'tool.test.participant',
+      });
+
+      expect(result.metadata).toMatchObject({
+        runtimeBoundary: {
+          type: 'bridge-compatibility',
+          participantId: 'tool.test.participant',
+          runtime: 'claw',
+        },
+      });
+    });
+
+    it('exposes runtime-owned prompt builders in participant context', async () => {
+      const traceReporter = vi.fn();
+      chatService.setRuntimeTraceReporter?.(traceReporter);
+
+      const capture = vi.fn(async (
+        _request: IChatParticipantRequest,
+        context: IChatParticipantContext,
+        response: IChatResponseStream,
+      ) => {
+        response.markdown('Captured');
+        return {
+          metadata: {
+            promptEnvelope: context.runtime?.buildPromptEnvelope?.('System prompt', 'Bridge content'),
+          },
+        };
+      });
+
+      const bridge = new ChatBridge('tool.test', agentService, undefined, []);
+      bridge.createChatParticipant('tool.test.participant', capture as any);
+
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'Hello from default');
+      const imageAttachment = {
+        kind: 'image',
+        id: 'img-1',
+        name: 'photo.png',
+        fullPath: 'parallx-image://1',
+        isImplicit: false,
+        mimeType: 'image/png',
+        data: 'abc',
+      } as const;
+      const fileAttachment = {
+        kind: 'file',
+        id: 'file-1',
+        name: 'Policy.md',
+        fullPath: 'D:/AI/Parallx/Policy.md',
+        isImplicit: false,
+      } as const;
+
+      await chatService.sendRequest(session.id, 'Hello from bridge', {
+        participantId: 'tool.test.participant',
+        attachments: [imageAttachment, fileAttachment],
+      });
+
+      const promptEnvelope = capture.mock.results[0]?.value;
+      const result = await promptEnvelope;
+      expect(result.metadata.promptEnvelope).toEqual([
+        { role: 'system', content: 'System prompt' },
+        { role: 'user', content: 'Hello from default' },
+        { role: 'assistant', content: 'Hello from default agent' },
+        {
+          role: 'user',
+          content: 'Bridge content',
+          images: [imageAttachment],
+        },
+      ]);
+      expect(traceReporter).toHaveBeenCalledWith(expect.objectContaining({
+        checkpoint: 'prompt-seed',
+        note: 'bridge runtime prompt seed',
+        runtime: 'claw',
+      }));
+      expect(traceReporter).toHaveBeenCalledWith(expect.objectContaining({
+        checkpoint: 'prompt-envelope',
+        note: 'bridge runtime prompt envelope',
+        runtime: 'claw',
+      }));
+    });
+
+    it('exposes a runtime-owned prompt execution helper in participant context', async () => {
+      const traceReporter = vi.fn();
+      chatService.setRuntimeTraceReporter?.(traceReporter);
+
+      const sendChatRequest = vi.spyOn(lmService, 'sendChatRequest').mockImplementation(async function* (messages) {
+        yield {
+          content: `sent:${messages.at(-1)?.content ?? ''}`,
+          done: true,
+        } as any;
+      });
+
+      const capture = vi.fn(async (
+        _request: IChatParticipantRequest,
+        context: IChatParticipantContext,
+        response: IChatResponseStream,
+      ) => {
+        const chunks: string[] = [];
+        for await (const chunk of context.runtime!.sendPrompt!('System prompt', 'Bridge content', { think: false })) {
+          if (chunk.content) {
+            chunks.push(chunk.content);
+          }
+        }
+        response.markdown(chunks.join(''));
+        return {};
+      });
+
+      const bridge = new ChatBridge('tool.test', agentService, undefined, []);
+      bridge.createChatParticipant('tool.test.prompt.participant', capture as any);
+
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'Hello from default');
+      await chatService.sendRequest(session.id, 'Hello from bridge', {
+        participantId: 'tool.test.prompt.participant',
+      });
+
+      expect(sendChatRequest).toHaveBeenCalledWith([
+        { role: 'system', content: 'System prompt' },
+        { role: 'user', content: 'Hello from default' },
+        { role: 'assistant', content: 'Hello from default agent' },
+        { role: 'user', content: 'Bridge content' },
+      ], { think: false }, undefined);
+      expect(session.messages.at(-1)?.response.parts.some((part: any) => part.kind === ChatContentPartKind.Markdown && part.content === 'sent:Bridge content')).toBe(true);
+      expect(traceReporter).toHaveBeenCalledWith(expect.objectContaining({
+        checkpoint: 'prompt-envelope',
+        note: 'bridge runtime prompt envelope',
+        runtime: 'claw',
+      }));
     });
 
     it('stores replay metadata for regenerated requests', async () => {
@@ -655,7 +887,7 @@ describe('default participant integration helpers', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [],
       getReadOnlyToolDefinitions: () => [],
-      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;
 
@@ -711,7 +943,7 @@ describe('default participant integration helpers', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [],
       getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
-      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;
 
@@ -785,7 +1017,7 @@ describe('default participant integration helpers', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [],
       getReadOnlyToolDefinitions: () => [],
-      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;
 
@@ -843,7 +1075,7 @@ describe('default participant integration helpers', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [],
       getReadOnlyToolDefinitions: () => [],
-      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;
 
@@ -901,7 +1133,7 @@ describe('default participant integration helpers', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [],
       getReadOnlyToolDefinitions: () => [],
-      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;
 
@@ -960,7 +1192,7 @@ describe('default participant integration helpers', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [],
       getReadOnlyToolDefinitions: () => [],
-      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;
 
@@ -1035,7 +1267,7 @@ describe('default participant integration helpers', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [],
       getReadOnlyToolDefinitions: () => [],
-      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;
 
@@ -1128,7 +1360,7 @@ describe('default participant integration helpers', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [],
       getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
-      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       retrieveContext: vi.fn(async () => ({
         text: [
           '[Retrieved Context]',
@@ -1189,7 +1421,7 @@ describe('default participant integration helpers', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [],
       getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
-      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       retrieveContext: vi.fn(async () => ({
         text: [
           '[Retrieved Context]',
@@ -1262,7 +1494,7 @@ describe('default participant integration helpers', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
       getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
-      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;
 
@@ -1326,7 +1558,7 @@ describe('default participant integration helpers', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
       getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
-      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;
 
@@ -1383,7 +1615,7 @@ describe('default participant integration helpers', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
       getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
-      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;
 
@@ -1428,7 +1660,7 @@ describe('default participant integration helpers', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
       getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
-      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;
 
@@ -1473,7 +1705,7 @@ describe('default participant integration helpers', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
       getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
-      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;
 
@@ -1519,7 +1751,7 @@ describe('default participant integration helpers', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
       getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
-      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;
 
@@ -1564,7 +1796,7 @@ describe('default participant integration helpers', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
       getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
-      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;
 

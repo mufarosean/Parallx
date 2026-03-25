@@ -34,6 +34,7 @@ function mockServices(overrides?: Partial<IWorkspaceParticipantServices>): IWork
     getWorkspaceName: vi.fn(() => 'Test Workspace'),
     readFileContent: vi.fn(async (relativePath: string) => `content for ${relativePath}`),
     reportParticipantDebug: vi.fn(),
+    reportRuntimeTrace: vi.fn(),
     ...overrides,
   };
 }
@@ -246,6 +247,38 @@ describe('workspace participant: general (no command)', () => {
     expect(system?.content).toContain('Meeting Notes');
   });
 
+  it('reports scoped runtime checkpoints through shared participant runtime context', async () => {
+    const services = mockServices({ reportRuntimeTrace: undefined });
+    const stream = mockStream();
+    const participant = createWorkspaceParticipant(services);
+    const reportTrace = vi.fn();
+
+    await participant.handler(
+      mockRequest({ text: 'What pages do I have?' }),
+      { sessionId: 'test-session', history: [], runtime: { reportTrace } },
+      stream,
+      mockToken(),
+    );
+
+    expect(reportTrace).toHaveBeenCalledWith(expect.objectContaining({
+      checkpoint: 'scoped-handler-start',
+      runState: 'executing',
+      runtime: 'claw',
+      note: 'workspace scoped participant dispatch',
+    }));
+    expect(reportTrace).toHaveBeenCalledWith(expect.objectContaining({
+      checkpoint: 'prompt-seed',
+      runtime: 'claw',
+      note: 'workspace scoped participant prompt seed',
+    }));
+    expect(reportTrace).toHaveBeenCalledWith(expect.objectContaining({
+      checkpoint: 'scoped-handler-complete',
+      runState: 'completed',
+      runtime: 'claw',
+      note: 'workspace scoped participant dispatch',
+    }));
+  });
+
   it('includes shared turn scope and attachment content in the user message', async () => {
     const services = mockServices();
     const stream = mockStream();
@@ -306,6 +339,14 @@ describe('workspace participant: general (no command)', () => {
       usedSharedTurnState: true,
       attachmentCount: 1,
       fileAttachmentCount: 1,
+    }));
+    expect(services.reportRuntimeTrace).toHaveBeenCalledWith(expect.objectContaining({
+      checkpoint: 'prompt-seed',
+      note: 'workspace scoped participant prompt seed',
+    }));
+    expect(services.reportRuntimeTrace).toHaveBeenCalledWith(expect.objectContaining({
+      checkpoint: 'prompt-envelope',
+      note: 'workspace scoped participant prompt envelope',
     }));
   });
 });

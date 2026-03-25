@@ -63,6 +63,8 @@ export function buildSystemPrompt(mode: ChatMode, context: ISystemPromptContext)
 function buildAskPrompt(ctx: ISystemPromptContext): string {
   const lines: string[] = [ctx.promptOverlay || PARALLX_IDENTITY];
 
+  lines.push('You are awake by default. In Ask mode, focus on answering the user by gathering evidence with read-only tools when needed, without making side-effecting changes.');
+
   // Workspace statistics
   lines.push('');
   appendWorkspaceStats(lines, ctx);
@@ -177,7 +179,7 @@ function buildEditPrompt(ctx: ISystemPromptContext): string {
 function buildAgentPrompt(ctx: ISystemPromptContext): string {
   const lines: string[] = [
     ctx.promptOverlay || PARALLX_IDENTITY,
-    'You are in Agent mode — you can take autonomous actions using tools.',
+    'You are in Agent mode — the AI is already awake; this mode unlocks action tools, longer autonomous runs, and approval-aware changes.',
   ];
 
   // Workspace statistics
@@ -225,7 +227,8 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
     '- For explicit prior-session transcript history under `.parallx/sessions/`, use `transcript_search` to locate relevant turns and `transcript_get` to read a specific session transcript. Do not use transcript recall unless the user explicitly asks about prior session history.',
     '- Treat each new chat as a fresh session. Do not reference prior sessions, daily notes, or durable memory unless the user explicitly asks for prior work, remembered decisions, preferences, dates, or todos.',
     '- NEVER describe function calls, tool names, or JSON objects in your response. Use tools silently — the user only sees the final answer.',
-    '- Read-only tools (search, read, list) can be used freely. Write tools (create, update, delete) require user confirmation.',
+    '- Modes gate authority, not wakefulness. Read-only tools can be used immediately; write tools and other mutating actions require user confirmation or approval flow.',
+    '- When a first-class tool exists for an action, use the tool directly instead of narrating manual steps for the user.',
     '- All actions are restricted to the active workspace. This boundary exists to protect the user — it ensures you only read, write, and reason about files the user has explicitly opened, preventing accidental access to unrelated data.',
     '- If a tool call fails, try alternatives before reporting failure.',
     '- If the user\'s message is short or vague, interpret it generously — but ground your answer in actual retrieved content, not guesses.'
@@ -307,6 +310,7 @@ function appendSkillCatalog(lines: string[], ctx: ISystemPromptContext): void {
     '<available_skills>',
     'The following workflow skills provide specialized step-by-step instructions for complex tasks.',
     'When a task matches a skill\'s description, the skill will be activated automatically.',
+    'Prefer a clearly matching skill over improvising a weaker ad hoc workflow.',
     'You can also use your standard tools for tasks that don\'t match any skill.',
     '',
   );

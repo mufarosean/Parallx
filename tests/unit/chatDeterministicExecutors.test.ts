@@ -65,6 +65,50 @@ describe('chat deterministic executors', () => {
     expect(answer).toContain('not insurance-related');
   });
 
+  it('treats workspace-wide explicit file-summary prompts as full-scope summaries', () => {
+    const answer = buildDeterministicWorkflowAnswer(
+      'folder-summary',
+      'Summarize each file in this workspace.',
+      [
+        '[Retrieved Context]',
+        '[1] Source: Claims Guide.md',
+        'Path: Claims Guide.md',
+        '# Claims Guide',
+        '[2] Source: Vehicle Info.md',
+        'Path: Vehicle Info.md',
+        '# Vehicle Info',
+      ].join('\n'),
+    );
+
+    expect(answer).toContain('Claims Guide.md');
+    expect(answer).toContain('Vehicle Info.md');
+    expect(answer).toContain('I reviewed 2 files in scope');
+  });
+
+  it('scopes explicit folder-summary prompts that use natural language folder names', () => {
+    const answer = buildDeterministicWorkflowAnswer(
+      'folder-summary',
+      'Summarize each file in the policies folder.',
+      [
+        '[Retrieved Context]',
+        '[1] Source: auto-policy-2024.md',
+        'Path: policies/auto-policy-2024.md',
+        '# Auto Policy 2024',
+        '[2] Source: auto-policy-2023.md',
+        'Path: policies/auto-policy-2023.md',
+        '# Auto Policy 2023',
+        '[3] Source: how-to-file.md',
+        'Path: claims/how-to-file.md',
+        '# Claims How To File',
+      ].join('\n'),
+    );
+
+    expect(answer).toContain('policies/auto-policy-2024.md');
+    expect(answer).toContain('policies/auto-policy-2023.md');
+    expect(answer).not.toContain('claims/how-to-file.md');
+    expect(answer).toContain('I reviewed 2 files in scope');
+  });
+
   it('filters internal artifacts for document-listing summaries', () => {
     const answer = buildDeterministicWorkflowAnswer(
       'folder-summary',

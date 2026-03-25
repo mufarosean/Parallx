@@ -24,7 +24,7 @@ export function renderAgentTaskRail(
   const title = $('div.parallx-chat-agent-task-rail-title');
   title.textContent = tasks.length === 1 ? '1 agent task' : `${tasks.length} agent tasks`;
   const subtitle = $('div.parallx-chat-agent-task-rail-subtitle');
-  subtitle.textContent = 'Delegated workspace progress, approvals, and diagnostics.';
+  subtitle.textContent = 'AI stays awake across modes. This rail shows action progress, approvals, and diagnostics when work becomes task-shaped.';
   header.append(title, subtitle);
   root.appendChild(header);
 

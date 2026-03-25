@@ -9,7 +9,7 @@ export interface IChatWidgetRequestAdapterDeps {
   readonly onDidChangeSession: Event<string>;
   readonly getProviderStatus: () => { available: boolean };
   readonly onDidChangeProviderStatus: Event<void>;
-  readonly queueRequest: (sessionId: string, message: string, kind: ChatRequestQueueKind) => IChatPendingRequest;
+  readonly queueRequest: (sessionId: string, message: string, kind: ChatRequestQueueKind, options?: IChatSendRequestOptions) => IChatPendingRequest;
   readonly removePendingRequest: (sessionId: string, requestId: string) => void;
   readonly requestYield: (sessionId: string) => void;
   readonly onDidChangePendingRequests: Event<string>;

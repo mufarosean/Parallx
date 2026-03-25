@@ -17,10 +17,16 @@ import { ChatContentPartKind } from './chatTypes.js';
 import { parseChatRequest } from '../built-in/chat/input/chatRequestParser.js';
 import { analyzeChatTurnSemantics } from '../built-in/chat/utilities/chatTurnSemantics.js';
 import { determineChatTurnRoute } from '../built-in/chat/utilities/chatTurnRouter.js';
-import { applyChatSemanticFallback, resolveChatSemanticFallback } from '../built-in/chat/utilities/chatSemanticFallback.js';
 import { buildFollowUpRetrievalQuery } from '../built-in/chat/utilities/chatGroundedResponseHelpers.js';
 import { extractMentions, stripMentions } from '../built-in/chat/utilities/chatMentionResolver.js';
 import { resolveQueryScope } from '../built-in/chat/utilities/chatScopeResolver.js';
+import {
+  buildRuntimePromptEnvelopeMessages,
+  buildRuntimePromptSeedMessages,
+} from '../built-in/chat/utilities/chatRuntimePromptMessages.js';
+import { buildParticipantRuntimeTrace } from '../built-in/chat/utilities/chatParticipantRuntimeTrace.js';
+import { applyChatSemanticFallback, resolveChatSemanticFallback } from '../built-in/chat/utilities/chatSemanticFallback.js';
+import { resolveChatRuntimeParticipantId } from './chatRuntimeSelector.js';
 import {
   ensureChatTables,
   saveSession,
@@ -34,9 +40,11 @@ import type { SessionGuard } from '../workspace/staleGuard.js';
 import type {
   IChatService,
   IChatSession,
+  IChatMessage,
   IChatUserMessage,
   IChatAssistantResponse,
   IChatRequestResponsePair,
+  IChatRequestOptions,
   IChatSendRequestOptions,
   IChatParticipantRequest,
   IChatParticipantContext,
@@ -116,6 +124,25 @@ function findReplayReplacementIndex(
   }
 
   return replayIndex;
+}
+
+function extractRuntimeTracesFromMetadata(metadata: unknown): unknown[] {
+  if (!metadata || typeof metadata !== 'object') {
+    return [];
+  }
+
+  const record = metadata as { runtimeTrace?: unknown; runtimeTraces?: unknown[] };
+  const traces: unknown[] = [];
+
+  if (typeof record.runtimeTrace !== 'undefined') {
+    traces.push(record.runtimeTrace);
+  }
+
+  if (Array.isArray(record.runtimeTraces)) {
+    traces.push(...record.runtimeTraces);
+  }
+
+  return traces;
 }
 
 /**
@@ -565,6 +592,8 @@ export class ChatService extends Disposable implements IChatService {
   private _sessionManager: ISessionManager | undefined;
   private _transcriptService: IWorkspaceTranscriptService | undefined;
   private _turnPreparationServices: IChatTurnPreparationServices | undefined;
+  private _runtimeTraceReporter: ((trace: unknown) => void) | undefined;
+  private _runtimeParticipantResolver: ((participantId: string) => string) | undefined;
 
   /** Debounce timer for persistence writes. */
   private _persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -634,12 +663,28 @@ export class ChatService extends Disposable implements IChatService {
     this._turnPreparationServices = services;
   }
 
-  private _getParticipantSurface(participantId: string): 'default' | 'workspace' | 'canvas' {
+  setRuntimeTraceReporter(reporter: ((trace: unknown) => void) | undefined): void {
+    this._runtimeTraceReporter = reporter;
+  }
+
+  setRuntimeParticipantResolver(resolver: ((participantId: string) => string) | undefined): void {
+    this._runtimeParticipantResolver = resolver;
+  }
+
+  private _getParticipantSurface(participantId: string): 'default' | 'workspace' | 'canvas' | 'bridge' {
+    const registeredSurface = this._agentService.getAgent(participantId)?.surface;
+    if (registeredSurface) {
+      return registeredSurface;
+    }
+
     if (participantId.endsWith('.workspace')) {
       return 'workspace';
     }
     if (participantId.endsWith('.canvas')) {
       return 'canvas';
+    }
+    if (!participantId.startsWith('parallx.chat.')) {
+      return 'bridge';
     }
     return 'default';
   }
@@ -844,10 +889,14 @@ export class ChatService extends Disposable implements IChatService {
     const requestId = generateUUID();
     const attempt = Math.max(0, options?.attempt ?? 0);
 
+    const requestedParticipantId = options?.participantId ?? parsed.participantId ?? this._agentService.getDefaultAgent()?.id ?? 'parallx.chat.default';
+    const participantId = this._runtimeParticipantResolver?.(requestedParticipantId)
+      ?? resolveChatRuntimeParticipantId(requestedParticipantId);
+
     const userMessage: IChatUserMessage = {
       text: message,
       requestId,
-      participantId: options?.participantId ?? parsed.participantId,
+      participantId,
       command: options?.command ?? parsed.command,
       variables: parsed.variables.map((variable) => ({ name: variable.name })),
       attachments: options?.attachments,
@@ -887,9 +936,6 @@ export class ChatService extends Disposable implements IChatService {
     session.requestInProgress = true;
     this._onDidChangeSession.fire(sessionId);
 
-    // 5. Resolve participant (prefer explicit option, then parsed @mention, then default)
-    const participantId = options?.participantId ?? parsed.participantId ?? this._agentService.getDefaultAgent()?.id ?? 'parallx.chat.default';
-
     // 6. Create cancellation token
     const cts = new CancellationTokenSource();
     this._activeCancellations.set(sessionId, cts);
@@ -911,12 +957,70 @@ export class ChatService extends Disposable implements IChatService {
       attempt,
     };
 
+    const history = session.messages.slice(0, -1);
+    const turnState = await this._buildTurnState(parsed.text, options?.command ?? parsed.command, history);
+    const participantSurface = this._getParticipantSurface(participantId);
+
     // 9. Build context
+    const buildRuntimePromptEnvelope = (systemPrompt: string, userContent: string): readonly IChatMessage[] => {
+      const seedMessages = buildRuntimePromptSeedMessages({
+        systemPrompt,
+        history,
+      });
+      const promptTraceContext: IChatParticipantContext = { sessionId, history };
+      const seedTrace = buildParticipantRuntimeTrace(
+        { ...participantRequest, turnState },
+        promptTraceContext,
+        {
+          checkpoint: 'prompt-seed',
+          note: `${participantSurface} runtime prompt seed`,
+        },
+        { useCurrentPage: participantSurface === 'canvas' },
+      );
+      if (seedTrace) {
+        this._runtimeTraceReporter?.(seedTrace);
+      }
+
+      const envelopeMessages = buildRuntimePromptEnvelopeMessages({
+        seedMessages,
+        userContent,
+        attachments: participantRequest.attachments,
+      });
+      const envelopeTrace = buildParticipantRuntimeTrace(
+        { ...participantRequest, turnState },
+        promptTraceContext,
+        {
+          checkpoint: 'prompt-envelope',
+          note: `${participantSurface} runtime prompt envelope`,
+        },
+        { useCurrentPage: participantSurface === 'canvas' },
+      );
+      if (envelopeTrace) {
+        this._runtimeTraceReporter?.(envelopeTrace);
+      }
+
+      return envelopeMessages;
+    };
+
     const context: IChatParticipantContext = {
       sessionId,
-      history: session.messages.slice(0, -1), // Exclude the current pair
+      history,
+      runtime: {
+        reportTrace: this._runtimeTraceReporter
+          ? (trace) => this._runtimeTraceReporter?.(trace)
+          : undefined,
+        buildPromptSeed: (systemPrompt: string) => buildRuntimePromptSeedMessages({
+          systemPrompt,
+          history,
+        }),
+        buildPromptEnvelope: buildRuntimePromptEnvelope,
+        sendPrompt: (systemPrompt: string, userContent: string, requestOptions?: IChatRequestOptions, signal?: AbortSignal) => this._languageModelsService.sendChatRequest(
+          buildRuntimePromptEnvelope(systemPrompt, userContent),
+          requestOptions,
+          signal,
+        ),
+      },
     };
-    const turnState = await this._buildTurnState(parsed.text, options?.command ?? parsed.command, context.history);
 
     // 10. Invoke agent
     let result: IChatParticipantResult;
@@ -950,6 +1054,12 @@ export class ChatService extends Disposable implements IChatService {
     }
 
     // 10b. Render errorDetails as a warning part so it's visible in the chat UI
+    if (this._runtimeTraceReporter) {
+      for (const trace of extractRuntimeTracesFromMetadata(result.metadata)) {
+        this._runtimeTraceReporter(trace);
+      }
+    }
+
     if (result.errorDetails) {
       const errMsg = result.errorDetails.message || 'An unknown error occurred.';
       stream.warning(errMsg);
@@ -997,7 +1107,7 @@ export class ChatService extends Disposable implements IChatService {
     sessionId: string,
     message: string,
     kind: ChatRequestQueueKind,
-    _options?: IChatSendRequestOptions,
+    options?: IChatSendRequestOptions,
   ): IChatPendingRequest {
     const session = this._sessions.get(sessionId);
     if (!session) {
@@ -1008,6 +1118,7 @@ export class ChatService extends Disposable implements IChatService {
       id: generateUUID(),
       text: message,
       kind,
+      options,
       timestamp: Date.now(),
     };
 
@@ -1062,7 +1173,7 @@ export class ChatService extends Disposable implements IChatService {
 
     // Fire-and-forget — errors are handled inside sendRequest
     queueMicrotask(() => {
-      this.sendRequest(sessionId, next.text).catch(() => { /* swallowed */ });
+      this.sendRequest(sessionId, next.text, next.options).catch(() => { /* swallowed */ });
     });
   }
 }

@@ -12,7 +12,7 @@ const BROAD_WORKSPACE_SUMMARY_PATTERNS: readonly RegExp[] = [
   /^(?:tell me|show me)\s+what(?:'s| is)\s+in\s+here[?.!]?$/i,
 ];
 
-function isBroadWorkspaceSummaryPrompt(text: string): boolean {
+export function isBroadWorkspaceSummaryPrompt(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed || trimmed.length > 120) {
     return false;

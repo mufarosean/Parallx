@@ -25,7 +25,6 @@ export function resolveChatRouteAuthority(
         kind: 'grounded',
         reason: 'Evidence authority correction: tool-first coverage produced no usable evidence, so the route falls back to representative retrieval.',
         coverageMode: 'representative',
-        workflowType: 'generic-grounded',
       },
       authority: {
         action: 'corrected',
@@ -64,7 +63,6 @@ export function refineChatRouteAuthorityWithEvidence(
         kind: 'grounded',
         reason: 'Evidence authority correction: tool-first coverage stayed insufficient after planning, so the route falls back to representative retrieval.',
         coverageMode: 'representative',
-        workflowType: 'generic-grounded',
       },
       authority: {
         action: 'corrected',

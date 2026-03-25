@@ -19,6 +19,7 @@ import type {
   IChatParticipantResult,
   ICancellationToken,
 } from './chatTypes.js';
+import { buildParticipantRuntimeTrace } from '../built-in/chat/utilities/chatParticipantRuntimeTrace.js';
 
 /** Default participant ID — handles messages with no @mention. */
 const DEFAULT_AGENT_ID = 'parallx.chat.default';
@@ -126,10 +127,23 @@ export class ChatAgentService extends Disposable implements IChatAgentService {
     token: ICancellationToken,
   ): Promise<IChatParticipantResult> {
     try {
+      if (agent.runtime) {
+        return await agent.runtime.handleTurn(request, context, response, token);
+      }
       return await agent.handler(request, context, response, token);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[ChatAgentService] Agent '${agent.id}' handler error:`, err);
+
+      const failureTrace = buildParticipantRuntimeTrace(request, context, {
+        phase: 'execution',
+        checkpoint: 'participant-handler-error',
+        runState: 'failed',
+        note: message,
+      });
+      if (failureTrace) {
+        context.runtime?.reportTrace?.(failureTrace);
+      }
 
       // Write error to the response stream so the user sees it
       try {

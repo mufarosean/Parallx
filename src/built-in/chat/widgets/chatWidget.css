@@ -562,6 +562,14 @@
   color: var(--vscode-descriptionForeground, #989898);
 }
 
+.parallx-chat-empty-state-note {
+  margin-top: 10px;
+  max-width: 360px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+}
+
 /* ── Offline State ── */
 
 .parallx-chat-offline-state {

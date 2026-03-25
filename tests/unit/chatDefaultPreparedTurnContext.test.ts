@@ -69,7 +69,7 @@ describe('resolveDefaultPreparedTurnContext', () => {
       coveredTargets: 0,
       gaps: ['docs/a.md', 'docs/b.md'],
     });
-    expect(result.turnRoute.workflowType).toBe('generic-grounded');
+    expect(result.turnRoute.workflowType).toBeUndefined();
     expect(result.turnRoute.coverageMode).toBe('representative');
     expect(result.contextPlan.useRetrieval).toBe(true);
     expect(result.retrievedContextText).toContain('Retrieved fallback context');
@@ -150,7 +150,7 @@ describe('resolveDefaultPreparedTurnContext', () => {
       coveredTargets: 1,
       gaps: ['docs/b.md', 'docs/c.md'],
     });
-    expect(result.turnRoute.workflowType).toBe('generic-grounded');
+    expect(result.turnRoute.workflowType).toBeUndefined();
     expect(result.turnRoute.coverageMode).toBe('representative');
     expect(result.contextPlan.useRetrieval).toBe(true);
     expect(result.retrievedContextText).toContain('Retrieved representative fallback context');

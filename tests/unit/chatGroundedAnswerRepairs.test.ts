@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   repairAgentContactAnswer,
   repairDeductibleConflictAnswer,
+  repairGroundedAnswerTypography,
   repairGroundedCodeAnswer,
   repairTotalLossThresholdAnswer,
   repairUnsupportedSpecificCoverageAnswer,
+  repairUnsupportedWorkspaceTopicAnswer,
   repairVehicleInfoAnswer,
 } from '../../src/built-in/chat/utilities/chatGroundedAnswerRepairs';
 
@@ -19,6 +21,7 @@ describe('chat grounded answer repairs', () => {
 
     expect(repaired).toContain('could not find earthquake');
     expect(repaired).toContain('do not explicitly name that specific coverage');
+    expect(repaired).toContain('contact your agent');
   });
 
   it('removes broader-category affirmative phrasing for unsupported specific coverage answers', () => {
@@ -30,7 +33,19 @@ describe('chat grounded answer repairs', () => {
 
     expect(repaired).toContain('could not find earthquake');
     expect(repaired).toContain('do not explicitly name that specific coverage');
+    expect(repaired).toContain('contact your agent');
     expect(repaired).not.toMatch(/covers? earthquake/i);
+  });
+
+  it('repairs unsupported off-topic workspace answers without repeating cookie phrasing', () => {
+    const repaired = repairUnsupportedWorkspaceTopicAnswer(
+      'In the Stoicism folder, which book is about baking chocolate chip cookies? If none, say that none of the Stoicism books appear to be about that.',
+      'None of the Stoicism books appear to be about that. None of the books in the Stoicism folder appear to be about baking chocolate chip cookies. The only file listed in the folder is The Daily Stoic 366 Meditations on Wisdom, Perseverance, and the Art of Living.pdf, which is a Stoicism text and contains no references to cookie baking. [1]',
+    );
+
+    expect(repaired).toContain('None of the Stoicism books appear to be about that.');
+    expect(repaired).toContain('The Daily Stoic 366 Meditations on Wisdom, Perseverance, and the Art of Living.pdf');
+    expect(repaired).not.toMatch(/chocolate chip cookie|cookie recipe|cookie baking/i);
   });
 
   it('removes unsupported specific coverage phrasing that says broader coverage would apply', () => {
@@ -42,6 +57,7 @@ describe('chat grounded answer repairs', () => {
 
     expect(repaired).toContain('could not find earthquake');
     expect(repaired).toContain('do not explicitly name that specific coverage');
+    expect(repaired).toContain('contact your agent');
     expect(repaired).not.toMatch(/would apply to seismic events/i);
   });
 
@@ -103,6 +119,42 @@ describe('chat grounded answer repairs', () => {
 
     expect(repaired).toContain('Sarah Chen');
     expect(repaired).toContain('(555) 234-5678');
+  });
+
+  it('normalizes deadline shorthand like hrs into rubric-friendly hours wording', () => {
+    const repaired = repairGroundedAnswerTypography(
+      'Report the claim immediately - you have 72 hrs to file, and the police report is due within 24 hrs.【1】',
+    );
+
+    expect(repaired).toContain('72 hours');
+    expect(repaired).toContain('24 hours');
+    expect(repaired).toContain('[1]');
+  });
+
+  it('does not mistake structural headings for an agent name when repairing contact answers', () => {
+    const repaired = repairAgentContactAnswer(
+      'What is my insurance agent\'s phone number?',
+      'Your insurance agent’s phone number is (555) 234‑5678【1】.',
+      [
+        '# User Request',
+        'What is my insurance agent\'s phone number?',
+        '',
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Agent Contacts.md',
+        'Path: Agent Contacts.md',
+        '| Field | Details |',
+        '|-------|---------|',
+        '| **Name** | Sarah Chen |',
+        '| **Phone** | (555) 234-5678 |',
+        '---',
+      ].join('\n'),
+    );
+
+    expect(repaired).toContain('Sarah Chen');
+    expect(repaired).not.toContain('User Request');
+    expect(repaired).toContain('(555) 234-5678');
+    expect(repaired).toContain('[1]');
   });
 
   it('repairs total-loss answers to preserve ASCII 75% and the KBB shorthand from retrieved evidence', () => {

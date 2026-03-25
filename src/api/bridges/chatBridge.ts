@@ -13,7 +13,7 @@ import type {
   ICancellationToken,
   IToolResult,
 } from '../../services/chatTypes.js';
-import { interpretChatParticipantRequest } from '../../built-in/chat/utilities/chatParticipantInterpretation.js';
+import { createBridgeParticipantRuntime } from '../../built-in/chat/utilities/chatBridgeParticipantRuntime.js';
 
 /**
  * Bridge for the `parallx.chat` API namespace.
@@ -49,30 +49,21 @@ export class ChatBridge {
     let commands: { name: string; description: string }[] = [];
     let participantDisposable: IDisposable | undefined;
 
-    const wrappedHandler: IChatParticipantHandler = async (request, context, response, token) => {
-      const interpretation = interpretChatParticipantRequest('bridge', request);
-      return handler({
-        ...request,
-        text: interpretation.effectiveText,
-        command: interpretation.commandName,
-        interpretation: {
-          surface: interpretation.surface,
-          rawText: interpretation.rawText,
-          effectiveText: interpretation.effectiveText,
-          commandName: interpretation.commandName,
-          hasExplicitCommand: interpretation.hasExplicitCommand,
-          kind: interpretation.kind,
-          semantics: interpretation.semantics,
-        },
-      }, context, response, token);
-    };
+    const runtime = createBridgeParticipantRuntime({
+      participantId: id,
+      handler,
+    });
+
+    const wrappedHandler: IChatParticipantHandler = (request, context, response, token) => runtime.handleTurn(request, context, response, token);
 
     const participant: IChatParticipant = {
       id,
+      surface: 'bridge',
       get displayName() { return displayName; },
       get description() { return description; },
       get iconPath() { return iconPath; },
       get commands() { return commands; },
+      runtime,
       handler: wrappedHandler,
     };
 
@@ -87,6 +78,7 @@ export class ChatBridge {
     // Return a configurable + disposable participant object
     return {
       id,
+      surface: 'bridge',
       get displayName() { return displayName; },
       set displayName(v: string) { displayName = v; },
       get description() { return description; },
@@ -95,6 +87,7 @@ export class ChatBridge {
       set iconPath(v: string | undefined) { iconPath = v; },
       get commands() { return commands; },
       set commands(v: { name: string; description: string }[]) { commands = v; },
+      runtime,
       handler: wrappedHandler,
       dispose: () => disposable.dispose(),
     };
@@ -124,6 +117,8 @@ export class ChatBridge {
       parameters: tool.parameters,
       handler: tool.handler,
       requiresConfirmation: tool.requiresConfirmation,
+      source: 'bridge',
+      ownerToolId: this._toolId,
     };
 
     const disposable = this._toolsService.registerTool(chatTool);

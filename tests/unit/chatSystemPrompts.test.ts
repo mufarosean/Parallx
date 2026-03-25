@@ -122,6 +122,12 @@ describe('buildSystemPrompt — Ask mode', () => {
     expect(prompt).toMatch(/cannot create.*modify.*delete/i);
   });
 
+  it('explains that Ask mode is still awake and read-first', () => {
+    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext());
+    expect(prompt).toContain('You are awake by default.');
+    expect(prompt).toContain('read-only tools');
+  });
+
   it('includes RAG context note when RAG is available', () => {
     const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ isRAGAvailable: true }));
     expect(prompt).toContain('semantic search');
@@ -194,6 +200,12 @@ describe('buildSystemPrompt — Agent mode', () => {
   it('includes agent identity', () => {
     const prompt = buildSystemPrompt(ChatMode.Agent, makeContext());
     expect(prompt).toMatch(/agent mode/i);
+  });
+
+  it('frames Agent mode as authority expansion rather than wakefulness', () => {
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext());
+    expect(prompt).toContain('the AI is already awake');
+    expect(prompt).toContain('Modes gate authority, not wakefulness');
   });
 
   it('omits tool section when no tools provided', () => {

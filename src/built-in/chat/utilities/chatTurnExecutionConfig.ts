@@ -23,6 +23,12 @@ const DEFAULT_NETWORK_TIMEOUT_MS = 60_000;
 export interface IBuildChatTurnExecutionConfigInput {
   readonly requestMode: import('../../../services/chatTypes.js').ChatMode;
   readonly requestText: string;
+  readonly aiProfile?: {
+    readonly model?: {
+      readonly temperature?: number;
+      readonly maxTokens?: number;
+    };
+  };
   readonly capabilities: IChatModeCapabilities;
   readonly messages: IChatMessage[];
   readonly userContent: string;
@@ -47,32 +53,41 @@ export interface IBuildChatTurnExecutionConfigInput {
   readonly categorizeError: IExecutePreparedChatTurnDeps['categorizeError'];
 }
 
-export function buildChatTurnExecutionConfig(
+export async function buildChatTurnExecutionConfig(
   services: IDefaultParticipantServices,
   input: IBuildChatTurnExecutionConfigInput,
-): {
+): Promise<{
   synthesisDeps: IExecutePreparedChatTurnDeps;
   synthesisOptions: IExecutePreparedChatTurnOptions;
-} {
+}> {
   const effectiveConfig = services.unifiedConfigService?.getEffectiveConfig();
+  const modelConfig = input.aiProfile?.model ?? effectiveConfig?.model;
   const requestOptions: IChatRequestOptions = {
     tools: (!input.isConversationalTurn && shouldIncludeTools(input.requestMode))
       ? (input.capabilities.canAutonomous ? services.getToolDefinitions() : services.getReadOnlyToolDefinitions())
       : undefined,
     format: shouldUseStructuredOutput(input.requestMode) ? { type: 'object' } : undefined,
     think: true,
-    temperature: effectiveConfig?.model.temperature,
-    maxTokens: effectiveConfig?.model.maxTokens || undefined,
+    temperature: modelConfig?.temperature,
+    maxTokens: modelConfig?.maxTokens || undefined,
   };
 
-  const canInvokeTools = input.capabilities.canInvokeTools && !!services.invokeTool;
+  const canInvokeTools = input.capabilities.canInvokeTools && !!services.invokeToolWithRuntimeControl;
   const isEditMode = input.capabilities.canProposeEdits && !input.capabilities.canAutonomous;
-  const memoryEnabled = services.unifiedConfigService?.getEffectiveConfig().memory.memoryEnabled ?? true;
+  const memoryEnabled = effectiveConfig?.memory?.memoryEnabled ?? true;
+  const autonomyMirror = services.createAutonomyMirror
+    ? await services.createAutonomyMirror({
+        sessionId: input.sessionId,
+        requestText: input.requestText,
+        mode: input.requestMode,
+        runtime: 'claw',
+      })
+    : undefined;
 
   return {
     synthesisDeps: {
       sendChatRequest: services.sendChatRequest,
-      invokeTool: services.invokeTool,
+      invokeToolWithRuntimeControl: services.invokeToolWithRuntimeControl,
       extractPreferences: services.extractPreferences,
       storeSessionMemory: services.storeSessionMemory,
       storeConceptsFromSession: services.storeConceptsFromSession,
@@ -80,6 +95,7 @@ export function buildChatTurnExecutionConfig(
       getSessionMemoryMessageCount: services.getSessionMemoryMessageCount,
       sendSummarizationRequest: services.sendSummarizationRequest,
       reportResponseDebug: services.reportResponseDebug,
+      reportRuntimeTrace: services.reportRuntimeTrace,
       buildExtractiveFallbackAnswer: input.buildExtractiveFallbackAnswer,
       buildMissingCitationFooter: input.buildMissingCitationFooter,
       buildDeterministicSessionSummary: input.buildDeterministicSessionSummary,
@@ -111,6 +127,7 @@ export function buildChatTurnExecutionConfig(
       history: input.history,
       networkTimeoutMs: services.networkTimeout ?? DEFAULT_NETWORK_TIMEOUT_MS,
       sessionCancellationSignal: services.sessionManager?.activeContext?.cancellationSignal,
+      autonomyMirror,
       toolGuard: services.sessionManager
         ? captureSession(services.sessionManager)
         : undefined,

@@ -8,7 +8,13 @@ describe('chat widget request adapter', () => {
     const sendRequest = vi.fn().mockResolvedValue(undefined);
     const cancelRequest = vi.fn();
     const createSession = vi.fn().mockReturnValue({ id: 'session-1' });
-    const queueRequest = vi.fn().mockReturnValue({ id: 'pending-1', text: 'msg', kind: ChatRequestQueueKind.Queued, timestamp: 1 });
+    const queueRequest = vi.fn().mockReturnValue({
+      id: 'pending-1',
+      text: 'msg',
+      kind: ChatRequestQueueKind.Queued,
+      options: { command: 'context' },
+      timestamp: 1,
+    });
     const removePendingRequest = vi.fn();
     const requestYield = vi.fn();
 
@@ -28,13 +34,19 @@ describe('chat widget request adapter', () => {
     await services.sendRequest('session-1', 'hello', [{ id: 'a-1' }] as any);
     services.cancelRequest('session-1');
     expect(services.createSession()).toEqual({ id: 'session-1' });
-    expect(services.queueRequest?.('session-1', 'msg', ChatRequestQueueKind.Queued)).toEqual({ id: 'pending-1', text: 'msg', kind: ChatRequestQueueKind.Queued, timestamp: 1 });
+    expect(services.queueRequest?.('session-1', 'msg', ChatRequestQueueKind.Queued, { command: 'context' } as any)).toEqual({
+      id: 'pending-1',
+      text: 'msg',
+      kind: ChatRequestQueueKind.Queued,
+      options: { command: 'context' },
+      timestamp: 1,
+    });
     services.removePendingRequest?.('session-1', 'pending-1');
     services.requestYield?.('session-1');
 
     expect(sendRequest).toHaveBeenCalledWith('session-1', 'hello', [{ id: 'a-1' }]);
     expect(cancelRequest).toHaveBeenCalledWith('session-1');
-    expect(queueRequest).toHaveBeenCalledWith('session-1', 'msg', ChatRequestQueueKind.Queued);
+    expect(queueRequest).toHaveBeenCalledWith('session-1', 'msg', ChatRequestQueueKind.Queued, { command: 'context' });
     expect(removePendingRequest).toHaveBeenCalledWith('session-1', 'pending-1');
     expect(requestYield).toHaveBeenCalledWith('session-1');
   });

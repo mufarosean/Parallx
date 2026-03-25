@@ -6,10 +6,11 @@ import type {
   IChatRequestResponsePair,
   IChatResponseStream,
 } from '../../../services/chatTypes.js';
-import type { IDefaultParticipantServices, IRetrievalPlan } from '../chatTypes.js';
+import type { IDefaultParticipantServices, IRetrievalPlan, IChatRuntimeAutonomyMirror, IChatRuntimeTrace } from '../chatTypes.js';
 import { executeChatModelOnly } from './chatModelOnlyExecutor.js';
 import { executeChatGrounded, type IChatGroundedEvidenceAssessment, type IChatGroundedToolGuard } from './chatGroundedExecutor.js';
 import { queueChatMemoryWriteBack } from './chatMemoryWriteBack.js';
+import { createChatRuntimeLifecycle } from './chatRuntimeLifecycle.js';
 import { validateAndFinalizeChatResponse } from './chatResponseValidator.js';
 import { selectAttributableCitations } from './chatResponseParsingHelpers.js';
 
@@ -17,7 +18,7 @@ const DEFAULT_NETWORK_TIMEOUT_MS = 60_000;
 
 export interface IExecutePreparedChatTurnDeps {
   readonly sendChatRequest: IDefaultParticipantServices['sendChatRequest'];
-  readonly invokeTool?: IDefaultParticipantServices['invokeTool'];
+  readonly invokeToolWithRuntimeControl?: IDefaultParticipantServices['invokeToolWithRuntimeControl'];
   readonly extractPreferences?: IDefaultParticipantServices['extractPreferences'];
   readonly storeSessionMemory?: IDefaultParticipantServices['storeSessionMemory'];
   readonly storeConceptsFromSession?: IDefaultParticipantServices['storeConceptsFromSession'];
@@ -25,6 +26,7 @@ export interface IExecutePreparedChatTurnDeps {
   readonly getSessionMemoryMessageCount?: IDefaultParticipantServices['getSessionMemoryMessageCount'];
   readonly sendSummarizationRequest?: IDefaultParticipantServices['sendSummarizationRequest'];
   readonly reportResponseDebug?: IDefaultParticipantServices['reportResponseDebug'];
+  readonly reportRuntimeTrace?: IDefaultParticipantServices['reportRuntimeTrace'];
   readonly buildExtractiveFallbackAnswer: (query: string, retrievedContextText: string) => string;
   readonly buildMissingCitationFooter: (
     text: string,
@@ -82,6 +84,8 @@ export interface IExecutePreparedChatTurnOptions {
   readonly networkTimeoutMs?: number;
   readonly sessionCancellationSignal?: AbortSignal;
   readonly toolGuard?: IChatGroundedToolGuard;
+  readonly autonomyMirror?: IChatRuntimeAutonomyMirror;
+  readonly runtimeTraceSeed?: Pick<IChatRuntimeTrace, 'route' | 'contextPlan' | 'hasActiveSlashCommand' | 'isRagReady'>;
 }
 
 export async function executePreparedChatTurn(
@@ -92,6 +96,11 @@ export async function executePreparedChatTurn(
   const groundedExecutor = deps.executeGrounded ?? executeChatGrounded;
   const memoryWriteBack = deps.queueMemoryWriteBack ?? queueChatMemoryWriteBack;
   const responseValidator = deps.validateAndFinalizeResponse ?? validateAndFinalizeChatResponse;
+  const lifecycle = createChatRuntimeLifecycle({
+    runtimeTraceSeed: options.runtimeTraceSeed,
+    reportRuntimeTrace: deps.reportRuntimeTrace,
+    queueMemoryWriteBackImpl: memoryWriteBack,
+  });
 
   const applyFallbackAnswer = (phase: string, note: string): void => {
     const extractiveFallback = deps.buildExtractiveFallbackAnswer(
@@ -173,6 +182,8 @@ export async function executePreparedChatTurn(
   resetNetworkTimeout();
 
   try {
+    await options.autonomyMirror?.begin();
+
     let producedContent = false;
 
     if (options.useModelOnlyExecution) {
@@ -205,13 +216,14 @@ export async function executePreparedChatTurn(
       const groundedResult = await groundedExecutor(
         {
           sendChatRequest: deps.sendChatRequest,
-          invokeTool: deps.invokeTool,
+          invokeToolWithRuntimeControl: deps.invokeToolWithRuntimeControl,
           resetNetworkTimeout,
           parseEditResponse: deps.parseEditResponse,
           extractToolCallsFromText: deps.extractToolCallsFromText,
           stripToolNarration: deps.stripToolNarration,
           buildExtractiveFallbackAnswer: deps.buildExtractiveFallbackAnswer,
           reportResponseDebug: deps.reportResponseDebug,
+          reportRuntimeTrace: deps.reportRuntimeTrace,
           reportFirstTokenLatency: (durationMs) => {
             console.debug(`[Parallx:latency] Time to first token: ${durationMs.toFixed(1)}ms`);
           },
@@ -232,7 +244,9 @@ export async function executePreparedChatTurn(
           userContent: options.userContent,
           retrievedContextText: options.retrievedContextText,
           evidenceAssessment: options.evidenceAssessment,
+          autonomyMirror: options.autonomyMirror,
           toolGuard: options.toolGuard,
+          runtimeTraceSeed: options.runtimeTraceSeed,
         },
       );
       producedContent = groundedResult.producedContent;
@@ -246,7 +260,7 @@ export async function executePreparedChatTurn(
       options.response.warning('The model returned an empty response. Try rephrasing your question or selecting a different model.');
     }
 
-    memoryWriteBack(
+    lifecycle.queueMemoryWriteBack(
       {
         extractPreferences: deps.extractPreferences,
         storeSessionMemory: deps.storeSessionMemory,
@@ -292,6 +306,9 @@ export async function executePreparedChatTurn(
       },
     );
 
+    await options.autonomyMirror?.complete();
+    lifecycle.recordCompleted();
+
     return {};
   } catch (err) {
     if (networkTimeoutId !== undefined) {
@@ -308,11 +325,16 @@ export async function executePreparedChatTurn(
     });
 
     if (err instanceof DOMException && err.name === 'AbortError') {
+      await options.autonomyMirror?.abort(err.message);
+      lifecycle.recordAborted();
       if (!options.token.isCancellationRequested && !options.token.isYieldRequested && options.response.getMarkdownText().trim().length === 0) {
         applyFallbackAnswer('catch', 'abort-without-user-cancel');
       }
       return {};
     }
+
+  await options.autonomyMirror?.fail(err instanceof Error ? err.message : String(err));
+    lifecycle.recordFailed(err instanceof Error ? err.message : String(err));
 
     const { message } = deps.categorizeError(err);
     return {
