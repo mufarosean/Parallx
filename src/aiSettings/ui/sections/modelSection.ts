@@ -74,7 +74,7 @@ export class ModelSection extends SettingsSection {
     // ── Temperature ──
     const tempRow = createSettingRow({
       label: 'Creativity / Temperature',
-      description: 'Controls output randomness — lower values are more deterministic',
+      description: 'Controls randomness. Lower = more focused, higher = more creative. Default: 0.7',
       key: 'model.temperature',
       onReset: () => this._service.updateActiveProfile({
         model: { temperature: DEFAULT_PROFILE.model.temperature },
@@ -110,7 +110,7 @@ export class ModelSection extends SettingsSection {
     // ── Max Response Tokens ──
     const maxTokensRow = createSettingRow({
       label: 'Max Response Tokens',
-      description: 'Hard cap on response length (0 = model default)',
+      description: 'Maximum length of AI responses. Higher = longer answers but slower. 0 = no limit.',
       key: 'model.maxTokens',
       onReset: () => this._service.updateActiveProfile({
         model: { maxTokens: DEFAULT_PROFILE.model.maxTokens },
@@ -141,7 +141,7 @@ export class ModelSection extends SettingsSection {
     // ── Context Window ──
     const ctxRow = createSettingRow({
       label: 'Context Window',
-      description: 'How much history the model sees (0 = model default)',
+      description: 'How much text the AI can consider at once. Auto-detected from your model. 0 = use model default.',
       key: 'model.contextWindow',
       onReset: () => this._service.updateActiveProfile({
         model: { contextWindow: DEFAULT_PROFILE.model.contextWindow },

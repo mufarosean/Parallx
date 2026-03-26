@@ -75,7 +75,7 @@ export class ChatSection extends SettingsSection {
     // ── Response Length ──
     const lengthRow = createSettingRow({
       label: 'Response Length',
-      description: 'How long the AI responses should be',
+      description: 'Short = quick answers, Long = thorough explanations, Adaptive = AI picks the best length.',
       key: 'chat.responseLength',
       onReset: () => this._service.updateActiveProfile({
         chat: { responseLength: DEFAULT_PROFILE.chat.responseLength },
@@ -99,7 +99,7 @@ export class ChatSection extends SettingsSection {
     // ── Communication Tone ──
     const toneRow = createSettingRow({
       label: 'Communication Tone',
-      description: 'Overall communication style shared with suggestions',
+      description: 'Concise = bullet points, Balanced = normal prose, Detailed = step-by-step explanations.',
       key: 'suggestions.tone',
       onReset: () => this._service.updateActiveProfile({
         suggestions: { tone: DEFAULT_PROFILE.suggestions.tone },
@@ -122,7 +122,7 @@ export class ChatSection extends SettingsSection {
     // ── Domain Focus ──
     const domainRow = createSettingRow({
       label: 'Domain Focus',
-      description: 'The domain the AI pays extra attention to',
+      description: 'The AI will tailor its language and advice to this subject area.',
       key: 'suggestions.focusDomain',
       onReset: () => this._service.updateActiveProfile({
         suggestions: { focusDomain: DEFAULT_PROFILE.suggestions.focusDomain },
@@ -149,7 +149,7 @@ export class ChatSection extends SettingsSection {
     // ── Custom Focus (conditionally visible) ──
     const customFocusRow = createSettingRow({
       label: 'Custom Focus',
-      description: 'Describe what the AI should pay attention to',
+      description: 'Tell the AI what topics or concepts matter most in this workspace.',
       key: 'suggestions.customFocusDescription',
       onReset: () => this._service.updateActiveProfile({
         suggestions: { customFocusDescription: DEFAULT_PROFILE.suggestions.customFocusDescription },
@@ -170,7 +170,7 @@ export class ChatSection extends SettingsSection {
     // ── System Prompt (collapsible) ──
     const promptRow = createSettingRow({
       label: 'System Prompt',
-      description: 'The system prompt injected into every chat conversation (auto-generated)',
+      description: 'Base instructions the AI follows every turn. Auto-generated from your settings above.',
       key: 'chat.systemPrompt',
       onReset: () => this._service.updateActiveProfile({
         chat: { systemPrompt: '', systemPromptIsCustom: false },

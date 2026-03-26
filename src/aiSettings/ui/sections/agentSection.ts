@@ -39,7 +39,7 @@ export class AgentSection extends SettingsSection {
     // ── Max Iterations ──
     const iterRow = createSettingRow({
       label: 'Max Iterations',
-      description: 'Maximum number of agentic loop iterations before stopping (1–50)',
+      description: 'How many steps the agent can take before pausing. Higher = more autonomous work.',
       key: 'agent.maxIterations',
       onReset: () => this._updateAgent({ maxIterations: defaults.maxIterations }),
       scopePath: 'agent.maxIterations',
@@ -69,7 +69,7 @@ export class AgentSection extends SettingsSection {
 
     const verbosityRow = createSettingRow({
       label: 'Agent Verbosity',
-      description: 'How much detail the agent should include in runtime explanations and blockers',
+      description: 'How much the agent explains its thinking. Minimal = just results, Verbose = full reasoning.',
       key: 'agent.verbosity',
       onReset: () => this._updateAgent({ verbosity: defaults.verbosity }),
       scopePath: 'agent.verbosity',
@@ -88,7 +88,7 @@ export class AgentSection extends SettingsSection {
 
     const strictnessRow = createSettingRow({
       label: 'Approval Strictness',
-      description: 'How often the agent should stop for approval before acting',
+      description: 'How often the agent asks for your OK. Strict = every action, Relaxed = only risky ones.',
       key: 'agent.approvalStrictness',
       onReset: () => this._updateAgent({ approvalStrictness: defaults.approvalStrictness }),
       scopePath: 'agent.approvalStrictness',
@@ -107,7 +107,7 @@ export class AgentSection extends SettingsSection {
 
     const styleRow = createSettingRow({
       label: 'Execution Style',
-      description: 'Whether the agent should work stepwise or in longer autonomous batches',
+      description: 'Stepwise = one action at a time, Batch = multiple actions per turn.',
       key: 'agent.executionStyle',
       onReset: () => this._updateAgent({ executionStyle: defaults.executionStyle }),
       scopePath: 'agent.executionStyle',
@@ -126,7 +126,7 @@ export class AgentSection extends SettingsSection {
 
     const proactivityRow = createSettingRow({
       label: 'Proactivity',
-      description: 'How far the agent should continue before checking back in',
+      description: 'How eager the agent is to take initiative vs. waiting for instructions.',
       key: 'agent.proactivity',
       onReset: () => this._updateAgent({ proactivity: defaults.proactivity }),
       scopePath: 'agent.proactivity',
