@@ -16,6 +16,7 @@ import { Disposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
 import type { Event } from '../platform/events.js';
 import type { ToolPermissionLevel, ToolGrantDecision } from './chatTypes.js';
+import type { AgentApprovalStrictness } from '../aiSettings/unifiedConfigTypes.js';
 
 // ── Types ──
 
@@ -44,8 +45,16 @@ export interface IPermissionCheckResult {
   readonly level: ToolPermissionLevel;
   /** Whether the tool can proceed without asking the user. */
   readonly autoApproved: boolean;
-  /** Source of the decision: 'default' | 'session' | 'persistent' | 'global-auto'. */
-  readonly source: 'default' | 'session' | 'persistent' | 'global-auto';
+  /** Source of the decision: 'default' | 'session' | 'persistent' | 'global-auto' | 'strictness'. */
+  readonly source: 'default' | 'session' | 'persistent' | 'global-auto' | 'strictness';
+}
+
+/** A single entry in the approval audit log. */
+export interface IApprovalAuditEntry {
+  readonly tool: string;
+  readonly decision: 'approved' | 'rejected' | 'blocked';
+  readonly source: IPermissionCheckResult['source'];
+  readonly timestamp: number;
 }
 
 // ── Service ──
@@ -71,6 +80,12 @@ export class PermissionService extends Disposable {
 
   /** Global auto-approve mode (YOLO). */
   private _autoApprove = false;
+
+  /** Approval strictness from agent config. */
+  private _approvalStrictness: AgentApprovalStrictness = 'balanced';
+
+  /** Audit log of approval decisions. */
+  private readonly _auditLog: IApprovalAuditEntry[] = [];
 
   /** Confirmation handler set by UI layer. */
   private _confirmationHandler: ToolConfirmationHandler | undefined;
@@ -101,6 +116,22 @@ export class PermissionService extends Disposable {
   /** Whether auto-approve is currently enabled. */
   get autoApprove(): boolean {
     return this._autoApprove;
+  }
+
+  /** Set the approval strictness from agent config. */
+  setApprovalStrictness(strictness: AgentApprovalStrictness): void {
+    this._approvalStrictness = strictness;
+    this._onDidChange.fire();
+  }
+
+  /** Get the approval audit log. */
+  getAuditLog(): readonly IApprovalAuditEntry[] {
+    return this._auditLog;
+  }
+
+  /** Clear the audit log (e.g. on session reset). */
+  clearAuditLog(): void {
+    this._auditLog.length = 0;
   }
 
   // ── Session Grants ──
@@ -209,7 +240,17 @@ export class PermissionService extends Disposable {
       };
     }
 
-    // 4. Tool's default
+    // 4. Approval strictness override from agent config
+    if (this._approvalStrictness === 'strict' && defaultLevel !== 'never-allowed') {
+      // Strict: require approval for all tools regardless of default
+      return { level: 'requires-approval', autoApproved: false, source: 'strictness' };
+    }
+    if (this._approvalStrictness === 'streamlined' && defaultLevel === 'requires-approval') {
+      // Streamlined: auto-allow tools that default to requires-approval
+      return { level: 'always-allowed', autoApproved: true, source: 'strictness' };
+    }
+
+    // 5. Tool's default
     return {
       level: defaultLevel,
       autoApproved: defaultLevel === 'always-allowed',
@@ -235,17 +276,20 @@ export class PermissionService extends Disposable {
 
     // Auto-approved — proceed immediately
     if (check.autoApproved) {
+      this._auditLog.push({ tool: toolName, decision: 'approved', source: check.source, timestamp: Date.now() });
       return true;
     }
 
     // Never-allowed — block immediately
     if (check.level === 'never-allowed') {
+      this._auditLog.push({ tool: toolName, decision: 'blocked', source: check.source, timestamp: Date.now() });
       return false;
     }
 
     // Requires approval — ask the user
     if (!this._confirmationHandler) {
       console.warn(`[PermissionService] Tool "${toolName}" requires approval but no handler registered`);
+      this._auditLog.push({ tool: toolName, decision: 'blocked', source: 'default', timestamp: Date.now() });
       return false;
     }
 
@@ -253,18 +297,22 @@ export class PermissionService extends Disposable {
 
     switch (decision) {
       case 'allow-once':
+        this._auditLog.push({ tool: toolName, decision: 'approved', source: check.source, timestamp: Date.now() });
         return true;
 
       case 'allow-session':
         this.grantForSession(toolName);
+        this._auditLog.push({ tool: toolName, decision: 'approved', source: 'session', timestamp: Date.now() });
         return true;
 
       case 'always-allow':
         this.setPersistentOverride(toolName, 'always-allowed');
         this.grantForSession(toolName); // Also grant for current session
+        this._auditLog.push({ tool: toolName, decision: 'approved', source: 'persistent', timestamp: Date.now() });
         return true;
 
       case 'reject':
+        this._auditLog.push({ tool: toolName, decision: 'rejected', source: check.source, timestamp: Date.now() });
         return false;
 
       default:

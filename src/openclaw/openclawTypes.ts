@@ -131,6 +131,8 @@ export interface IChatRuntimeTrace {
 export interface IOpenclawCommandRegistryFacade {
   readonly parseSlashCommand: (text: string) => IParsedSlashCommand;
   readonly applyCommandTemplate: (command: IChatSlashCommand, input: string, contextContent: string) => string | undefined;
+  readonly registerCommand?: (command: IChatSlashCommand) => { dispose(): void };
+  readonly getRegisteredCommands?: () => readonly IChatSlashCommand[];
 }
 
 export interface IOpenclawResolvedTurn {

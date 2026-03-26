@@ -38,6 +38,14 @@ const OPENCLAW_COMMANDS: Record<string, IChatSlashCommand> = {
 };
 
 export function createOpenclawCommandRegistry(): IOpenclawCommandRegistryFacade {
+  /** Dynamically registered commands (from user workspace or extensions). */
+  const dynamicCommands: Record<string, IChatSlashCommand> = {};
+
+  /** Combined lookup: dynamic overrides built-in. */
+  function getCommand(name: string): IChatSlashCommand | undefined {
+    return dynamicCommands[name] ?? OPENCLAW_COMMANDS[name];
+  }
+
   return {
     parseSlashCommand(text: string): IParsedSlashCommand {
       const trimmed = text.trim();
@@ -51,7 +59,7 @@ export function createOpenclawCommandRegistry(): IOpenclawCommandRegistryFacade 
 
       const [commandName, ...rest] = trimmed.slice(1).split(/\s+/);
       return {
-        command: OPENCLAW_COMMANDS[commandName],
+        command: getCommand(commandName),
         commandName,
         remainingText: rest.join(' '),
       };
@@ -60,6 +68,22 @@ export function createOpenclawCommandRegistry(): IOpenclawCommandRegistryFacade 
       return command.promptTemplate.includes('{input}')
         ? command.promptTemplate.replace('{input}', input)
         : input;
+    },
+    registerCommand(command: IChatSlashCommand): { dispose(): void } {
+      dynamicCommands[command.name] = command;
+      return {
+        dispose: () => {
+          if (dynamicCommands[command.name] === command) {
+            delete dynamicCommands[command.name];
+          }
+        },
+      };
+    },
+    getRegisteredCommands(): readonly IChatSlashCommand[] {
+      const all = new Map<string, IChatSlashCommand>();
+      for (const cmd of Object.values(OPENCLAW_COMMANDS)) all.set(cmd.name, cmd);
+      for (const cmd of Object.values(dynamicCommands)) all.set(cmd.name, cmd);
+      return [...all.values()];
     },
   };
 }
