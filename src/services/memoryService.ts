@@ -487,7 +487,7 @@ export class MemoryService extends Disposable implements IMemoryService {
       this._db.run(
         'UPDATE conversation_memories SET last_accessed = datetime(\'now\') WHERE session_id = ?',
         [mem.sessionId],
-      ).catch(() => {});
+      ).catch((e) => { console.error('[MemoryService] Failed to update last_accessed:', e); });
     }
 
     return memories;
@@ -817,7 +817,7 @@ export class MemoryService extends Disposable implements IMemoryService {
     await this._db.run('DELETE FROM conversation_memories WHERE session_id = ?', [sessionId]);
     try {
       await this._vectorStore.deleteSource(MEMORY_SOURCE_TYPE, sessionId);
-    } catch { /* best-effort */ }
+    } catch (e) { console.error('[MemoryService] deleteMemory vector cleanup failed:', e); }
     this._onDidUpdateMemory.fire(sessionId);
   }
 
@@ -857,7 +857,7 @@ export class MemoryService extends Disposable implements IMemoryService {
     if (row) {
       try {
         await this._vectorStore.deleteSource(CONCEPT_SOURCE_TYPE, `concept:${row.concept.toLowerCase()}`);
-      } catch { /* best-effort */ }
+      } catch (e) { console.error('[MemoryService] deleteConcept vector cleanup failed:', e); }
     }
   }
 
@@ -920,14 +920,6 @@ export class MemoryService extends Disposable implements IMemoryService {
       [MEMORY_EVICTION_DAYS],
     );
 
-    for (const m of staleMemories) {
-      await this._db.run('DELETE FROM conversation_memories WHERE session_id = ?', [m.session_id]);
-      // Clean up vector store entry (vec_embeddings + fts_chunks + indexing_metadata)
-      try {
-        await this._vectorStore.deleteSource(MEMORY_SOURCE_TYPE, m.session_id);
-      } catch { /* best-effort */ }
-    }
-
     // Evict stale concepts (low encounter, old, fully decayed)
     const staleConcepts = await this._db.all<{ id: number; concept: string }>(
       `SELECT id, concept FROM learning_concepts
@@ -937,11 +929,31 @@ export class MemoryService extends Disposable implements IMemoryService {
       [CONCEPT_EVICTION_DAYS],
     );
 
+    // Wrap SQL deletes in a transaction for atomicity
+    await this._db.run('BEGIN IMMEDIATE');
+    try {
+      for (const m of staleMemories) {
+        await this._db.run('DELETE FROM conversation_memories WHERE session_id = ?', [m.session_id]);
+      }
+      for (const c of staleConcepts) {
+        await this._db.run('DELETE FROM learning_concepts WHERE id = ?', [c.id]);
+      }
+      await this._db.run('COMMIT');
+    } catch (err) {
+      await this._db.run('ROLLBACK').catch(() => {});
+      throw err;
+    }
+
+    // Clean up vector store entries outside transaction (non-critical)
+    for (const m of staleMemories) {
+      try {
+        await this._vectorStore.deleteSource(MEMORY_SOURCE_TYPE, m.session_id);
+      } catch (e) { console.error('[MemoryService] eviction vector cleanup failed:', e); }
+    }
     for (const c of staleConcepts) {
-      await this._db.run('DELETE FROM learning_concepts WHERE id = ?', [c.id]);
       try {
         await this._vectorStore.deleteSource(CONCEPT_SOURCE_TYPE, `concept:${c.concept.toLowerCase()}`);
-      } catch { /* best-effort */ }
+      } catch (e) { console.error('[MemoryService] eviction concept vector cleanup failed:', e); }
     }
 
     return {
@@ -974,12 +986,12 @@ export class MemoryService extends Disposable implements IMemoryService {
     for (const m of memories) {
       try {
         await this._vectorStore.deleteSource(MEMORY_SOURCE_TYPE, m.session_id);
-      } catch { /* best-effort */ }
+      } catch (e) { console.error('[MemoryService] clearAll memory vector cleanup failed:', e); }
     }
     for (const c of concepts) {
       try {
         await this._vectorStore.deleteSource(CONCEPT_SOURCE_TYPE, `concept:${c.concept.toLowerCase()}`);
-      } catch { /* best-effort */ }
+      } catch (e) { console.error('[MemoryService] clearAll concept vector cleanup failed:', e); }
     }
   }
 }

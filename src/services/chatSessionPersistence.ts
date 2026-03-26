@@ -95,8 +95,9 @@ export async function ensureChatTables(db: IChatPersistenceDatabase): Promise<vo
       await db.run(`ALTER TABLE chat_sessions ADD COLUMN workspace_id TEXT NOT NULL DEFAULT ''`);
       await db.run(CREATE_SESSIONS_WORKSPACE_INDEX);
     }
-  } catch {
+  } catch (e) {
     // Migration failure is non-fatal — new tables already have the column
+    console.warn('[ChatPersistence] workspace_id migration check failed:', e);
   }
 }
 
