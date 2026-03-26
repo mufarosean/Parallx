@@ -67,6 +67,11 @@ export interface IOpenclawTurnContext {
   readonly preferencesPrompt?: string;
   readonly promptOverlay?: string;
 
+  // M2: Mention context blocks to inject
+  readonly mentionContextBlocks?: readonly string[];
+  // M3: Activated skill body to inject into system prompt
+  readonly activatedSkillBody?: string;
+
   // Tool inputs
   readonly tools: readonly IToolDefinition[];
   readonly toolMode: OpenclawToolProfile;
@@ -132,13 +137,14 @@ export async function executeOpenclawAttempt(
   }));
 
   // 2. Build system prompt (System 3)
+  //    M3: If a skill was activated, inject its resolved body into the prompt
   const systemPromptParams: IOpenclawSystemPromptParams = {
     bootstrapFiles: context.bootstrapFiles,
     workspaceDigest: context.workspaceDigest,
     skills: context.skills,
     tools: toolSummaries,
     runtimeInfo: context.runtimeInfo,
-    systemPromptAddition: assembled.systemPromptAddition,
+    systemPromptAddition: [assembled.systemPromptAddition, context.activatedSkillBody].filter(Boolean).join('\n\n'),
     preferencesPrompt: context.preferencesPrompt,
     promptOverlay: context.promptOverlay,
   };
@@ -151,10 +157,16 @@ export async function executeOpenclawAttempt(
     permissions: context.toolPermissions,
   });
 
-  // 4. Build messages: [system, ...context history, user]
+  // 4. Build messages: [system, ...context history, mention context, user]
+  //    M2: Inject mention context blocks between assembled context and user query
+  const mentionMessages: IChatMessage[] = context.mentionContextBlocks?.length
+    ? [{ role: 'user' as const, content: context.mentionContextBlocks.join('\n\n---\n\n') }]
+    : [];
+
   const messages: IChatMessage[] = [
     { role: 'system', content: systemPrompt },
     ...assembled.messages,
+    ...mentionMessages,
     { role: 'user', content: request.text, images: request.attachments?.filter(a => a.kind === 'image') },
   ];
 

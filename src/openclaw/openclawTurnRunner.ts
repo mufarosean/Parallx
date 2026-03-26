@@ -50,6 +50,7 @@ export interface IOpenclawTurnResult {
   readonly promptTokens?: number;
   readonly completionTokens?: number;
   readonly ragSources: readonly { uri: string; label: string; index: number }[];
+  readonly retrievedContextText: string;
   readonly overflowCompactions: number;
   readonly timeoutCompactions: number;
   readonly transientRetries: number;
@@ -114,6 +115,7 @@ export async function runOpenclawTurn(
 
       return {
         ...result,
+        retrievedContextText: assembled.retrievedContextText,
         overflowCompactions: overflowAttempts,
         timeoutCompactions: timeoutAttempts,
         transientRetries,
@@ -161,6 +163,7 @@ export async function runOpenclawTurn(
     thinking: '',
     toolCallCount: 0,
     ragSources: [],
+    retrievedContextText: '',
     overflowCompactions: overflowAttempts,
     timeoutCompactions: timeoutAttempts,
     transientRetries,

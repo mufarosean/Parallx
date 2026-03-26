@@ -16,6 +16,7 @@
 import type { IChatMessage } from '../services/chatTypes.js';
 import type { IDefaultParticipantServices } from './openclawTypes.js';
 import { computeTokenBudget, estimateTokens, estimateMessagesTokens } from './openclawTokenBudget.js';
+import { assessEvidence, buildEvidenceConstraint } from './openclawResponseValidation.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -76,6 +77,7 @@ export interface IOpenclawAssembleResult {
   readonly estimatedTokens: number;
   readonly systemPromptAddition?: string;
   readonly ragSources: readonly { uri: string; label: string; index: number }[];
+  readonly retrievedContextText: string;
 }
 
 export interface IOpenclawCompactParams {
@@ -161,6 +163,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     const messages: IChatMessage[] = [];
     let ragSources: { uri: string; label: string; index: number }[] = [];
     let systemPromptAddition: string | undefined;
+    let retrievedContextText = '';
 
     // ── RAG: retrieve workspace context relevant to prompt ──
     // Upstream: ContextEngine.assemble builds messages under budget
@@ -168,6 +171,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     if (this._ragReady && this.services.retrieveContext) {
       const ragResult = await this.services.retrieveContext(params.prompt);
       if (ragResult) {
+        retrievedContextText = ragResult.text;
         const ragTokens = estimateTokens(ragResult.text);
         if (ragTokens <= budget.rag) {
           systemPromptAddition = `## Retrieved Context\n${ragResult.text}`;
@@ -215,6 +219,15 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
       }
     }
 
+    // ── M5: Assess evidence quality and add constraint if weak ──
+    if (retrievedContextText.trim()) {
+      const evidence = assessEvidence(params.prompt, retrievedContextText, ragSources);
+      if (evidence.status !== 'sufficient') {
+        const constraint = buildEvidenceConstraint(params.prompt, evidence);
+        systemPromptAddition = (systemPromptAddition ?? '') + `\n\n${constraint}`;
+      }
+    }
+
     // ── History: trim conversation history to fit budget ──
     // Keep most recent messages that fit within the history budget
     const historyMessages = trimHistoryToBudget(params.history, budget.history);
@@ -228,6 +241,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
       estimatedTokens,
       systemPromptAddition: systemPromptAddition || undefined,
       ragSources,
+      retrievedContextText,
     };
   }
 

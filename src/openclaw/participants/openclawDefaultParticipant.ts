@@ -29,6 +29,8 @@ import { runOpenclawTurn } from '../openclawTurnRunner.js';
 import { OpenclawContextEngine } from '../openclawContextEngine.js';
 import { resolveToolProfile } from '../openclawToolPolicy.js';
 import { computeTokenBudget } from '../openclawTokenBudget.js';
+import { validateCitations, buildExtractiveFallback } from '../openclawResponseValidation.js';
+import { resolveMentions, activateSkill, detectSemanticFallback } from '../openclawTurnPreprocessing.js';
 import type { IBootstrapFile, ISkillEntry, IOpenclawRuntimeInfo } from '../openclawSystemPrompt.js';
 
 export function createOpenclawDefaultParticipant(services: IDefaultParticipantServices): IChatParticipant & IDisposable {
@@ -93,8 +95,26 @@ async function runOpenclawDefaultTurn(
     return {};
   }
 
+  // M2: Resolve @file/@folder/@workspace/@terminal mentions
+  const mentionResult = await resolveMentions(request.text, services);
+  if (mentionResult.pills.length > 0) {
+    services.reportContextPills?.(mentionResult.pills as any[]);
+  }
+
+  // M3: Skill activation — when command is a skill, inject resolved body
+  const activated = request.command
+    ? activateSkill(request.command, mentionResult.strippedText, services)
+    : undefined;
+
+  // M4: Semantic fallback — detect broad workspace summary prompts
+  const semanticFallback = detectSemanticFallback(mentionResult.strippedText);
+
   // Build turn context for the new OpenClaw execution pipeline
-  const turnContext = await buildOpenclawTurnContext(services, request, context);
+  const turnContext = await buildOpenclawTurnContext(services, request, context, {
+    mentionContextBlocks: mentionResult.contextBlocks.length > 0 ? mentionResult.contextBlocks : undefined,
+    activatedSkillBody: activated?.resolvedBody,
+    promptOverlay: semanticFallback?.promptOverlay,
+  });
 
   // Execute turn through the new pipeline
   const lifecycle = createOpenclawRuntimeLifecycle({});
@@ -102,9 +122,18 @@ async function runOpenclawDefaultTurn(
   try {
     const result = await runOpenclawTurn(request, turnContext, response, token);
 
-    // Citations
-    if (result.ragSources.length > 0) {
-      response.setCitations(result.ragSources.map(s => ({ index: s.index, uri: s.uri, label: s.label })));
+    // M1: Response validation — remap/filter citations
+    const validated = validateCitations(result.markdown, [...result.ragSources]);
+    if (validated.attributableSources.length > 0) {
+      response.setCitations(validated.attributableSources.map(s => ({ index: s.index, uri: s.uri, label: s.label })));
+    }
+
+    // M6: Extractive fallback — when model returns empty but we have context
+    if (!result.markdown.trim() && result.retrievedContextText) {
+      const fallback = buildExtractiveFallback(request.text, result.retrievedContextText);
+      if (fallback) {
+        response.markdown(fallback);
+      }
     }
 
     // Memory writeback
@@ -160,6 +189,7 @@ async function buildOpenclawTurnContext(
   services: IDefaultParticipantServices,
   request: IChatParticipantRequest,
   context: IChatParticipantContext,
+  preprocessed?: { mentionContextBlocks?: readonly string[]; activatedSkillBody?: string; promptOverlay?: string },
 ): Promise<IOpenclawTurnContext> {
   // Token budget from model context length
   const contextWindow = services.getModelContextLength?.() ?? 8192;
@@ -217,6 +247,9 @@ async function buildOpenclawTurnContext(
     tools,
     toolMode: resolveToolProfile(request.mode),
     maxToolIterations,
+    mentionContextBlocks: preprocessed?.mentionContextBlocks,
+    activatedSkillBody: preprocessed?.activatedSkillBody,
+    promptOverlay: preprocessed?.promptOverlay,
     sendChatRequest: (messages, options, signal) => services.sendChatRequest(messages, options, signal),
     invokeToolWithRuntimeControl: services.invokeToolWithRuntimeControl
       ? (name, args, token) => services.invokeToolWithRuntimeControl!(name, args, token)
