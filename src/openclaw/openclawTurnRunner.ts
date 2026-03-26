@@ -110,6 +110,18 @@ export async function runOpenclawTurn(
       prompt: request.text,
     });
 
+    // 1b. Auto-compact when assembled context is near capacity (>80% of budget)
+    //     Upstream: overflow detection triggers compaction before model call
+    if (assembled.estimatedTokens > context.tokenBudget * 0.8 && overflowAttempts < MAX_OVERFLOW_COMPACTION) {
+      response.progress(`Context near capacity (${assembled.estimatedTokens}/${context.tokenBudget} tokens), auto-compacting...`);
+      await context.engine.compact({
+        sessionId: context.sessionId,
+        tokenBudget: context.tokenBudget,
+      });
+      overflowAttempts++;
+      continue; // Re-assemble with compacted history
+    }
+
     try {
       // 2. Execute attempt
       const result = await executeOpenclawAttempt(

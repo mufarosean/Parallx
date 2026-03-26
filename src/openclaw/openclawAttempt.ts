@@ -31,6 +31,7 @@ import type { IChatRuntimeToolInvocationObserver } from './openclawTypes.js';
 import { buildOpenclawSystemPrompt } from './openclawSystemPrompt.js';
 import { applyOpenclawToolPolicy } from './openclawToolPolicy.js';
 import { ChatToolLoopSafety } from '../services/chatToolLoopSafety.js';
+import { estimateMessagesTokens } from './openclawTokenBudget.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -273,6 +274,35 @@ export async function executeOpenclawAttempt(
 
     if (loopBlocked) {
       break;
+    }
+
+    // Mid-loop budget check: estimate total token usage after tool results.
+    // If accumulated messages exceed budget, compact before next model call.
+    // Upstream: re-budgets after each tool call in loop.
+    const loopTokenEstimate = estimateMessagesTokens(currentMessages);
+    if (context.tokenBudget > 0 && loopTokenEstimate > context.tokenBudget * 0.85) {
+      response.progress(`Tool loop context near capacity (${loopTokenEstimate}/${context.tokenBudget} tokens), compacting...`);
+      await context.engine.compact({
+        sessionId: context.sessionId,
+        tokenBudget: context.tokenBudget,
+      });
+      // Re-assemble after compaction to get trimmed history
+      const reAssembled = await context.engine.assemble({
+        sessionId: context.sessionId,
+        history: context.history,
+        tokenBudget: context.tokenBudget,
+        prompt: request.text,
+      });
+      // Rebuild messages: system prompt stays, use re-assembled history,
+      // keep recent tool exchange, add user message
+      currentMessages = [
+        currentMessages[0], // system prompt
+        ...reAssembled.messages,
+        ...mentionMessages,
+        { role: 'user', content: request.text, images: request.attachments?.filter(a => a.kind === 'image') },
+        { role: 'assistant', content: markdown, toolCalls: turnResult.toolCalls },
+        ...toolResultMessages,
+      ];
     }
 
     iterations++;
