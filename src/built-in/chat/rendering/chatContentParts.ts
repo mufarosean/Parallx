@@ -59,6 +59,12 @@ export function renderContentPart(part: IChatContentPart): HTMLElement {
       return _renderEditProposal(part);
     case ChatContentPartKind.EditBatch:
       return _renderEditBatch(part);
+    default: {
+      // Unknown part kind — render a placeholder so the DOM doesn't break
+      const el = $('div.parallx-chat-unknown-part');
+      el.textContent = `[Unsupported content part: ${(part as IChatContentPart).kind}]`;
+      return el;
+    }
   }
 }
 

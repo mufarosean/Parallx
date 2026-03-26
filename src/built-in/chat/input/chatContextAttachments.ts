@@ -86,6 +86,12 @@ export class ChatContextAttachments extends Disposable {
   }
 
   async addPastedImage(file: File): Promise<void> {
+    // Reject images larger than 10MB to avoid OOM and excessive base64 encoding
+    const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+    if (file.size > MAX_IMAGE_BYTES) {
+      console.warn(`[ChatAttachments] Rejecting pasted image: ${(file.size / 1024 / 1024).toFixed(1)}MB exceeds ${MAX_IMAGE_BYTES / 1024 / 1024}MB limit`);
+      return;
+    }
     const dataUrl = await this._readFileAsDataUrl(file);
     const commaIndex = dataUrl.indexOf(',');
     if (commaIndex < 0) {

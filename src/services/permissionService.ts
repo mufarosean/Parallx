@@ -84,8 +84,9 @@ export class PermissionService extends Disposable {
   /** Approval strictness from agent config. */
   private _approvalStrictness: AgentApprovalStrictness = 'balanced';
 
-  /** Audit log of approval decisions. */
+  /** Audit log of approval decisions (bounded to last 500 entries). */
   private readonly _auditLog: IApprovalAuditEntry[] = [];
+  private static readonly _MAX_AUDIT_LOG_SIZE = 500;
 
   /** Confirmation handler set by UI layer. */
   private _confirmationHandler: ToolConfirmationHandler | undefined;
@@ -98,6 +99,14 @@ export class PermissionService extends Disposable {
 
   constructor() {
     super();
+  }
+
+  /** Append an audit entry and trim if over max size. */
+  private _audit(entry: IApprovalAuditEntry): void {
+    this._auditLog.push(entry);
+    if (this._auditLog.length > PermissionService._MAX_AUDIT_LOG_SIZE) {
+      this._auditLog.splice(0, this._auditLog.length - PermissionService._MAX_AUDIT_LOG_SIZE);
+    }
   }
 
   // ── Configuration ──
@@ -276,20 +285,20 @@ export class PermissionService extends Disposable {
 
     // Auto-approved — proceed immediately
     if (check.autoApproved) {
-      this._auditLog.push({ tool: toolName, decision: 'approved', source: check.source, timestamp: Date.now() });
+      this._audit({ tool: toolName, decision: 'approved', source: check.source, timestamp: Date.now() });
       return true;
     }
 
     // Never-allowed — block immediately
     if (check.level === 'never-allowed') {
-      this._auditLog.push({ tool: toolName, decision: 'blocked', source: check.source, timestamp: Date.now() });
+      this._audit({ tool: toolName, decision: 'blocked', source: check.source, timestamp: Date.now() });
       return false;
     }
 
     // Requires approval — ask the user
     if (!this._confirmationHandler) {
       console.warn(`[PermissionService] Tool "${toolName}" requires approval but no handler registered`);
-      this._auditLog.push({ tool: toolName, decision: 'blocked', source: 'default', timestamp: Date.now() });
+      this._audit({ tool: toolName, decision: 'blocked', source: 'default', timestamp: Date.now() });
       return false;
     }
 
@@ -297,22 +306,22 @@ export class PermissionService extends Disposable {
 
     switch (decision) {
       case 'allow-once':
-        this._auditLog.push({ tool: toolName, decision: 'approved', source: check.source, timestamp: Date.now() });
+        this._audit({ tool: toolName, decision: 'approved', source: check.source, timestamp: Date.now() });
         return true;
 
       case 'allow-session':
         this.grantForSession(toolName);
-        this._auditLog.push({ tool: toolName, decision: 'approved', source: 'session', timestamp: Date.now() });
+        this._audit({ tool: toolName, decision: 'approved', source: 'session', timestamp: Date.now() });
         return true;
 
       case 'always-allow':
         this.setPersistentOverride(toolName, 'always-allowed');
         this.grantForSession(toolName); // Also grant for current session
-        this._auditLog.push({ tool: toolName, decision: 'approved', source: 'persistent', timestamp: Date.now() });
+        this._audit({ tool: toolName, decision: 'approved', source: 'persistent', timestamp: Date.now() });
         return true;
 
       case 'reject':
-        this._auditLog.push({ tool: toolName, decision: 'rejected', source: check.source, timestamp: Date.now() });
+        this._audit({ tool: toolName, decision: 'rejected', source: check.source, timestamp: Date.now() });
         return false;
 
       default:
