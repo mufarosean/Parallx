@@ -199,6 +199,22 @@ export class PermissionService extends Disposable {
   }
 
   /**
+   * Get the effective permission map for tool policy filtering.
+   * Merges persistent overrides + session grants. Used by OpenClaw tool
+   * policy to filter never-allowed tools before the model sees them.
+   */
+  getEffectivePermissions(): Record<string, ToolPermissionLevel> {
+    const result: Record<string, ToolPermissionLevel> = {};
+    for (const [name, level] of this._persistentOverrides) {
+      result[name] = level;
+    }
+    for (const [name, level] of this._sessionGrants) {
+      result[name] = level;
+    }
+    return result;
+  }
+
+  /**
    * Serialize current persistent overrides to JSON (for writing to permissions.json).
    */
   serializeOverrides(): string {

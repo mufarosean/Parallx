@@ -13,6 +13,7 @@ import type {
   IContextPill,
   IToolDefinition,
   IToolResult,
+  ToolPermissionLevel,
 } from '../services/chatTypes.js';
 import type { AgentApprovalResolution } from '../agent/agentTypes.js';
 import type { IUnifiedAIConfigService } from '../aiSettings/unifiedConfigTypes.js';
@@ -277,6 +278,7 @@ export interface IDefaultParticipantServices {
   createAutonomyMirror?(input: { sessionId: string; requestText: string; mode: ChatMode; runtime: 'claw' | 'openclaw' }): Promise<IChatRuntimeAutonomyMirror | undefined>;
   getWorkflowSkillCatalog?(): ISkillCatalogEntry[];
   getSkillManifest?(name: string): unknown;
+  getToolPermissions?(): Record<string, ToolPermissionLevel>;
 }
 
 export interface IWorkspaceParticipantServices {

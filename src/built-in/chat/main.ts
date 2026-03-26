@@ -594,6 +594,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     unifiedConfigService,
     getWorkflowSkillCatalog: () => _skillLoaderRef?.getWorkflowSkillCatalog() ?? [],
     getSkillManifest: (name: string) => _skillLoaderRef?.getSkill(name),
+    getToolPermissions: _permissionService ? () => _permissionService!.getEffectivePermissions() : undefined,
   });
   const openclawWorkspaceParticipantServices = buildOpenclawWorkspaceParticipantServices({
     sendChatRequest: (m, o, s) => dataService.sendChatRequest(m, o, s),
@@ -1228,6 +1229,27 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
       // Store reference so OpenClaw participant services can access skills
       _skillLoaderRef = skillLoader;
+
+      // Register skill tools with the language model tools service
+      if (languageModelToolsService) {
+        const skillToolDisposables: import('../../platform/lifecycle.js').IDisposable[] = [];
+
+        const registerSkillTools = () => {
+          // Dispose previous registrations
+          for (const d of skillToolDisposables) { d.dispose(); }
+          skillToolDisposables.length = 0;
+          // Register current skills as invocable tools
+          for (const tool of skillLoader.getToolDefinitions()) {
+            skillToolDisposables.push(languageModelToolsService.registerTool(tool));
+          }
+        };
+
+        // Register on initial load + re-register when skills change
+        registerSkillTools();
+        context.subscriptions.push(
+          skillLoader.onDidChangeSkills(() => registerSkillTools()),
+        );
+      }
 
       // Register built-in skills that ship with Parallx
       import('./skills/builtInSkillManifests.js').then(({ builtInSkillManifests }) => {

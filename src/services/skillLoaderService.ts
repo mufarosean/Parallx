@@ -317,7 +317,12 @@ export function manifestToToolDefinition(manifest: ISkillManifest): IChatTool {
       properties,
       ...(required.length > 0 ? { required } : {}),
     },
-    handler: async () => ({ content: `Skill "${manifest.name}" has no built-in handler.`, isError: true }),
+    handler: async () => {
+      if (manifest.body) {
+        return { content: `## Skill: ${manifest.name}\n\nFollow these instructions:\n\n${manifest.body}` };
+      }
+      return { content: `Skill "${manifest.name}" has no instructions body.`, isError: true };
+    },
     requiresConfirmation: manifest.permission === 'requires-approval',
     permissionLevel: manifest.permission,
   };

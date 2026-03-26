@@ -59,6 +59,7 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly createAutonomyMirror?: IDefaultParticipantServices['createAutonomyMirror'];
   readonly getWorkflowSkillCatalog?: IDefaultParticipantServices['getWorkflowSkillCatalog'];
   readonly getSkillManifest?: IDefaultParticipantServices['getSkillManifest'];
+  readonly getToolPermissions?: IDefaultParticipantServices['getToolPermissions'];
 }
 
 export interface IOpenclawWorkspaceParticipantAdapterDeps {
@@ -152,6 +153,7 @@ export function buildOpenclawDefaultParticipantServices(
     createAutonomyMirror: deps.createAutonomyMirror,
     getWorkflowSkillCatalog: deps.getWorkflowSkillCatalog,
     getSkillManifest: deps.getSkillManifest,
+    getToolPermissions: deps.getToolPermissions,
   };
 }
 

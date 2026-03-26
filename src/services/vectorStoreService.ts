@@ -447,14 +447,6 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
 
     const fused = reciprocalRankFusion(rankedLists, RRF_K, topK);
 
-    // When only the vector path fired (keyword returned nothing), each
-    // result's RRF score is halved compared to dual-path results because
-    // it only gets one 1/(k+rank+1) contribution instead of two.
-    // Scale ×2 so the scores stay comparable to the min-score threshold.
-    if (keywordResults.length === 0) {
-      for (const r of fused) { r.score *= 2; }
-    }
-
     // 4. Filter by minimum score and return
     const finalResults = fused
       .filter((r) => r.score >= minScore)

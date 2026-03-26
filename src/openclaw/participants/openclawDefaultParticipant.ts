@@ -121,6 +121,14 @@ async function runOpenclawDefaultTurn(
   // M4: Semantic fallback — detect broad workspace summary prompts
   const semanticFallback = detectSemanticFallback(variableResult.strippedText);
 
+  // M11: Load pattern-scoped rules from .parallx/rules/*.md
+  const patternRulesOverlay = await services.getPromptOverlay?.().catch(() => undefined);
+
+  // Merge pattern rules + semantic fallback overlays
+  const effectiveOverlay = [patternRulesOverlay, semanticFallback?.promptOverlay]
+    .filter(Boolean)
+    .join('\n\n') || undefined;
+
   // C3: Resolve non-image file attachments into context blocks
   const fileAttachmentBlocks: string[] = [];
   if (request.attachments?.length && services.readFileRelative) {
@@ -144,7 +152,7 @@ async function runOpenclawDefaultTurn(
   const turnContext = await buildOpenclawTurnContext(services, request, context, {
     mentionContextBlocks: allContextBlocks.length > 0 ? allContextBlocks : undefined,
     activatedSkillBody: activated?.resolvedBody,
-    promptOverlay: semanticFallback?.promptOverlay,
+    promptOverlay: effectiveOverlay,
   });
 
   // Execute turn through the new pipeline
@@ -278,6 +286,9 @@ async function buildOpenclawTurnContext(
     ? Math.min(services.maxIterations ?? OPENCLAW_MAX_AGENT_ITERATIONS, OPENCLAW_MAX_AGENT_ITERATIONS)
     : OPENCLAW_MAX_READONLY_ITERATIONS;
 
+  // Tool permissions for pre-flight filtering
+  const toolPermissions = services.getToolPermissions?.();
+
   // Flatten history pairs into IChatMessage[]
   const history = flattenHistory(context.history);
 
@@ -293,6 +304,7 @@ async function buildOpenclawTurnContext(
     tools,
     toolMode: resolveToolProfile(request.mode),
     maxToolIterations,
+    toolPermissions,
     mentionContextBlocks: preprocessed?.mentionContextBlocks,
     activatedSkillBody: preprocessed?.activatedSkillBody,
     promptOverlay: preprocessed?.promptOverlay,
