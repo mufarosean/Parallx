@@ -217,3 +217,96 @@ export function detectSemanticFallback(text: string): ISemanticFallbackResult | 
   }
   return undefined;
 }
+
+// ---------------------------------------------------------------------------
+// M43: Variable resolution — #activeFile, #file:path
+// ---------------------------------------------------------------------------
+
+export interface IVariableResolutionResult {
+  /** User text with #variable references stripped out. */
+  readonly strippedText: string;
+  /** Context blocks to inject into the assembled messages. */
+  readonly contextBlocks: readonly string[];
+  /** UI pills for the chat widget. */
+  readonly pills: readonly IContextPill[];
+}
+
+/**
+ * Matches #file:"path with spaces" or #file:path (no spaces).
+ * Also matches standalone #activeFile.
+ */
+const VARIABLE_FILE_RE = /#file:(?:"([^"]+)"|(\S+))/g;
+const VARIABLE_ACTIVEFILE_RE = /#activeFile\b/g;
+
+/**
+ * Resolve #-prefixed variable references in user text.
+ *
+ * Supported variables:
+ * - `#activeFile` — resolves to the currently-focused canvas document content
+ * - `#file:"path"` or `#file:path` — resolves to file content by relative path
+ *
+ * Follows the same pattern as `resolveMentions()` — returns context blocks,
+ * pills, and stripped text.
+ */
+export async function resolveVariables(
+  text: string,
+  services: IDefaultParticipantServices,
+): Promise<IVariableResolutionResult> {
+  const blocks: string[] = [];
+  const pills: IContextPill[] = [];
+  const replacements: { start: number; end: number }[] = [];
+
+  // ── #file:path variables ──
+  VARIABLE_FILE_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = VARIABLE_FILE_RE.exec(text)) !== null) {
+    const filePath = match[1] ?? match[2];
+    if (!filePath || !services.readFileRelative) continue;
+
+    const content = await services.readFileRelative(filePath).catch(() => null);
+    if (content) {
+      blocks.push(`[Variable #file: ${filePath}]\n\`\`\`\n${content}\n\`\`\``);
+      pills.push({
+        id: `var-file:${filePath}`,
+        label: filePath.split('/').pop() ?? filePath,
+        type: 'attachment',
+        tokens: Math.ceil(content.length / 4),
+        removable: true,
+      });
+    }
+    replacements.push({ start: match.index, end: match.index + match[0].length });
+  }
+
+  // ── #activeFile variable ──
+  VARIABLE_ACTIVEFILE_RE.lastIndex = 0;
+  while ((match = VARIABLE_ACTIVEFILE_RE.exec(text)) !== null) {
+    if (!services.getCurrentPageContent) continue;
+
+    const pageResult = await services.getCurrentPageContent().catch(() => undefined);
+    if (pageResult?.textContent) {
+      blocks.push(`[Active document: "${pageResult.title}" (id: ${pageResult.pageId})]\n${pageResult.textContent}`);
+      pills.push({
+        id: 'var-activeFile',
+        label: pageResult.title || 'Active Page',
+        type: 'attachment',
+        tokens: Math.ceil(pageResult.textContent.length / 4),
+        removable: true,
+      });
+    }
+    replacements.push({ start: match.index, end: match.index + match[0].length });
+    break; // only resolve once even if mentioned multiple times
+  }
+
+  if (replacements.length === 0) {
+    return { strippedText: text, contextBlocks: [], pills: [] };
+  }
+
+  // Strip variable references from text (reverse order to preserve indices)
+  let stripped = text;
+  for (const r of replacements.sort((a, b) => b.start - a.start)) {
+    stripped = stripped.slice(0, r.start) + stripped.slice(r.end);
+  }
+  stripped = stripped.replace(/\s{2,}/g, ' ').trim();
+
+  return { strippedText: stripped, contextBlocks: blocks, pills };
+}

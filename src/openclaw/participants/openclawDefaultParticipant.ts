@@ -30,7 +30,7 @@ import { OpenclawContextEngine } from '../openclawContextEngine.js';
 import { resolveToolProfile } from '../openclawToolPolicy.js';
 import { computeTokenBudget } from '../openclawTokenBudget.js';
 import { validateCitations, buildExtractiveFallback } from '../openclawResponseValidation.js';
-import { resolveMentions, activateSkill, detectSemanticFallback } from '../openclawTurnPreprocessing.js';
+import { resolveMentions, resolveVariables, activateSkill, detectSemanticFallback } from '../openclawTurnPreprocessing.js';
 import type { IBootstrapFile, ISkillEntry, IOpenclawRuntimeInfo } from '../openclawSystemPrompt.js';
 
 export function createOpenclawDefaultParticipant(services: IDefaultParticipantServices): IChatParticipant & IDisposable {
@@ -101,13 +101,19 @@ async function runOpenclawDefaultTurn(
     services.reportContextPills?.(mentionResult.pills as any[]);
   }
 
+  // M43: Resolve #activeFile, #file:path variables
+  const variableResult = await resolveVariables(mentionResult.strippedText, services);
+  if (variableResult.pills.length > 0) {
+    services.reportContextPills?.(variableResult.pills as any[]);
+  }
+
   // M3: Skill activation — when command is a skill, inject resolved body
   const activated = request.command
-    ? activateSkill(request.command, mentionResult.strippedText, services)
+    ? activateSkill(request.command, variableResult.strippedText, services)
     : undefined;
 
   // M4: Semantic fallback — detect broad workspace summary prompts
-  const semanticFallback = detectSemanticFallback(mentionResult.strippedText);
+  const semanticFallback = detectSemanticFallback(variableResult.strippedText);
 
   // C3: Resolve non-image file attachments into context blocks
   const fileAttachmentBlocks: string[] = [];
@@ -121,9 +127,10 @@ async function runOpenclawDefaultTurn(
     }
   }
 
-  // Combine mention + file attachment context blocks
+  // Combine mention + variable + file attachment context blocks
   const allContextBlocks = [
     ...(mentionResult.contextBlocks.length > 0 ? mentionResult.contextBlocks : []),
+    ...(variableResult.contextBlocks.length > 0 ? variableResult.contextBlocks : []),
     ...fileAttachmentBlocks,
   ];
 
