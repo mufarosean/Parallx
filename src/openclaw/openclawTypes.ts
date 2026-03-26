@@ -280,7 +280,7 @@ export interface IOpenclawRuntimeLifecycle {
       isSessionEligibleForSummary?: (messageCount: number) => boolean;
       getSessionMemoryMessageCount?: (sessionId: string) => Promise<number | null>;
       sendSummarizationRequest?: (messages: readonly IChatMessage[], signal?: AbortSignal) => AsyncIterable<IChatResponseChunk>;
-      buildDeterministicSessionSummary: (history: readonly { request: { text: string } }[], currentRequestText: string) => string;
+      buildFallbackSessionSummary: (history: readonly { request: { text: string } }[], currentRequestText: string) => string;
     },
     options: {
       memoryEnabled: boolean;

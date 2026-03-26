@@ -25,21 +25,37 @@ import { computeTokenBudget, estimateTokens, estimateMessagesTokens } from './op
  * Parallx adaptation of upstream ContextEngine (context-engine/types.ts:104-230).
  *
  * Upstream methods mapped:
+ *   bootstrap → bootstrap (one-time per-turn initialization)
  *   assemble → assemble  (build context under budget)
  *   compact  → compact   (reduce context on overflow)
  *   afterTurn → afterTurn (post-turn persistence)
  *
  * Upstream methods NOT adopted (with reason):
- *   bootstrap — Parallx bootstraps via platform (bootstrap files loaded separately)
  *   maintain  — Transcript maintenance handled by compact
  *   ingest/ingestBatch — Platform handles message persistence
  *   prepareSubagentSpawn/onSubagentEnded — No subagents in Parallx
  *   dispose — Engine is per-turn, not long-lived
  */
 export interface IOpenclawContextEngine {
+  bootstrap?(params: IOpenclawBootstrapParams): Promise<IOpenclawBootstrapResult>;
   assemble(params: IOpenclawAssembleParams): Promise<IOpenclawAssembleResult>;
   compact(params: IOpenclawCompactParams): Promise<IOpenclawCompactResult>;
   afterTurn?(params: IOpenclawAfterTurnParams): Promise<void>;
+}
+
+export interface IOpenclawBootstrapParams {
+  readonly sessionId: string;
+  readonly tokenBudget: number;
+}
+
+/**
+ * Result from bootstrap — reports service readiness so assemble()
+ * can skip unavailable services instead of calling them and failing.
+ */
+export interface IOpenclawBootstrapResult {
+  readonly ragReady: boolean;
+  readonly memoryReady: boolean;
+  readonly conceptsReady: boolean;
 }
 
 export interface IOpenclawAssembleParams {
@@ -111,8 +127,31 @@ export type IOpenclawContextEngineServices = Pick<
 export class OpenclawContextEngine implements IOpenclawContextEngine {
   /** Cached history from the most recent `assemble()` call (used by `compact()`). */
   private _lastHistory: readonly IChatMessage[] = [];
+  /** Service readiness state set by bootstrap(). */
+  private _ragReady = true;
+  private _memoryReady = true;
+  private _conceptsReady = true;
 
   constructor(private readonly services: IOpenclawContextEngineServices) {}
+
+  /**
+   * One-time per-turn initialization.
+   *
+   * Upstream: runAttemptContextEngineBootstrap (attempt.context-engine-helpers.ts)
+   * Checks which services are available so assemble() can skip unavailable ones
+   * rather than making calls that will fail.
+   */
+  async bootstrap(_params: IOpenclawBootstrapParams): Promise<IOpenclawBootstrapResult> {
+    this._ragReady = !!this.services.retrieveContext;
+    this._memoryReady = !!this.services.recallMemories;
+    this._conceptsReady = !!this.services.recallConcepts;
+
+    return {
+      ragReady: this._ragReady,
+      memoryReady: this._memoryReady,
+      conceptsReady: this._conceptsReady,
+    };
+  }
 
   async assemble(params: IOpenclawAssembleParams): Promise<IOpenclawAssembleResult> {
     // Cache history for use by compact() — upstream pattern couples assemble/compact state
@@ -126,7 +165,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     // ── RAG: retrieve workspace context relevant to prompt ──
     // Upstream: ContextEngine.assemble builds messages under budget
     // Parallx: uses services.retrieveContext for hybrid vector + FTS5 retrieval
-    if (this.services.retrieveContext) {
+    if (this._ragReady && this.services.retrieveContext) {
       const ragResult = await this.services.retrieveContext(params.prompt);
       if (ragResult) {
         const ragTokens = estimateTokens(ragResult.text);
@@ -152,7 +191,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     }
 
     // ── Memory: recall relevant memories ──
-    if (this.services.recallMemories) {
+    if (this._memoryReady && this.services.recallMemories) {
       const memoryResult = await this.services.recallMemories(params.prompt, params.sessionId);
       if (memoryResult) {
         const memoryTokens = estimateTokens(memoryResult);
@@ -165,7 +204,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     }
 
     // ── Concepts: recall relevant concepts ──
-    if (this.services.recallConcepts) {
+    if (this._conceptsReady && this.services.recallConcepts) {
       const conceptResult = await this.services.recallConcepts(params.prompt);
       if (conceptResult) {
         const conceptTokens = estimateTokens(conceptResult);

@@ -80,6 +80,15 @@ export async function runOpenclawTurn(
   token: ICancellationToken,
 ): Promise<IOpenclawTurnResult> {
 
+  // Bootstrap context engine once before retry loop
+  // Upstream: runAttemptContextEngineBootstrap (attempt.context-engine-helpers.ts)
+  if (context.engine.bootstrap) {
+    await context.engine.bootstrap({
+      sessionId: context.sessionId,
+      tokenBudget: context.tokenBudget,
+    });
+  }
+
   let overflowAttempts = 0;
   let timeoutAttempts = 0;
   let transientRetries = 0;

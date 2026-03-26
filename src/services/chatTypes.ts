@@ -110,6 +110,12 @@ export interface IChatRequestOptions {
   readonly seed?: number;
   /** Enable thinking/reasoning mode for supported models. */
   readonly think?: boolean;
+  /**
+   * Context window size (num_ctx) to send to the provider for this request.
+   * When set, overrides the provider-level default for this single request.
+   * Upstream: wrapOllamaCompatNumCtx injects num_ctx matching the token budget.
+   */
+  readonly numCtx?: number;
 }
 
 /**

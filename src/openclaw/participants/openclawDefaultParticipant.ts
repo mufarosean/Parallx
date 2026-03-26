@@ -15,7 +15,7 @@ import type {
 } from '../openclawTypes.js';
 import { OPENCLAW_DEFAULT_PARTICIPANT_ID } from '../../services/chatRuntimeSelector.js';
 import {
-  buildDeterministicSessionSummary,
+  buildFallbackSessionSummary,
   createOpenclawCommandRegistry,
   createOpenclawRuntimeLifecycle,
   tryHandleOpenclawCompactCommand,
@@ -116,7 +116,7 @@ async function runOpenclawDefaultTurn(
         isSessionEligibleForSummary: services.isSessionEligibleForSummary,
         getSessionMemoryMessageCount: services.getSessionMemoryMessageCount,
         sendSummarizationRequest: services.sendSummarizationRequest,
-        buildDeterministicSessionSummary,
+        buildFallbackSessionSummary,
       },
       {
         memoryEnabled: services.unifiedConfigService?.getEffectiveConfig().memory?.memoryEnabled ?? true,

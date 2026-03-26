@@ -384,7 +384,7 @@ async function tryExecuteCompactOpenclawCommand(
   return true;
 }
 
-export function buildDeterministicSessionSummary(
+export function buildFallbackSessionSummary(
   history: readonly { request: { text: string } }[],
   currentRequestText: string,
 ): string {
@@ -491,7 +491,7 @@ function queueOpenclawMemoryWriteBack(
           .join(' ');
         return `User: ${entry.request.text}\nAssistant: ${responseText}`;
       }).join('\n\n');
-      const fallbackSummary = deps.buildDeterministicSessionSummary(options.history, options.requestText);
+      const fallbackSummary = deps.buildFallbackSessionSummary(options.history, options.requestText);
       if (fallbackSummary) {
         await deps.storeSessionMemory(sessionId, fallbackSummary, messageCount);
         reportCheckpoint('memory-summary-fallback-stored');

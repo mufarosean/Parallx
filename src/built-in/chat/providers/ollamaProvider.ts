@@ -386,7 +386,10 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     // for qwen3) forces Ollama to allocate a massive KV-cache that cripples
     // inference speed even for tiny prompts.
     const ollamaOptions: Record<string, unknown> = {};
-    if (this._contextLengthOverride > 0) {
+    // num_ctx priority: per-request numCtx > provider-level override > Ollama default
+    if (options?.numCtx && options.numCtx > 0) {
+      ollamaOptions['num_ctx'] = options.numCtx;
+    } else if (this._contextLengthOverride > 0) {
       ollamaOptions['num_ctx'] = this._contextLengthOverride;
     }
     if (options) {

@@ -149,12 +149,11 @@ export async function executeOpenclawAttempt(
 
   // 5. Execute model turn with tool loop
   //    Upstream: wrapOllamaCompatNumCtx wraps stream to inject num_ctx
-  // Note: num_ctx is handled at the Ollama provider level, not per-request.
-  // The token budget shapes the prompt (via context engine trimming), while
-  // the provider's context length override controls Ollama's KV cache allocation.
+  //    Parallx: pass tokenBudget as numCtx so Ollama allocates matching KV cache
   const requestOptions: IChatRequestOptions = {
     think: true,
     tools: allowedTools.length > 0 ? allowedTools : undefined,
+    numCtx: context.tokenBudget,
   };
 
   const loopSafety = new ChatToolLoopSafety();
