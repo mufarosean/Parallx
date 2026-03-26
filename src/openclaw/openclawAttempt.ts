@@ -30,7 +30,7 @@ import type { IToolPermissions, OpenclawToolProfile } from './openclawToolPolicy
 import type { IChatRuntimeToolInvocationObserver } from './openclawTypes.js';
 import { buildOpenclawSystemPrompt } from './openclawSystemPrompt.js';
 import { applyOpenclawToolPolicy } from './openclawToolPolicy.js';
-import { ChatToolLoopSafety } from './openclawToolLoopSafety.js';
+import { ChatToolLoopSafety } from '../services/chatToolLoopSafety.js';
 
 // ---------------------------------------------------------------------------
 // Constants

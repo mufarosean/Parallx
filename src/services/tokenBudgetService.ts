@@ -138,6 +138,16 @@ const DEFAULT_LEGACY_BUDGET: ITokenBudgetConfig = {
 // ── Service ──
 
 /**
+ * Estimate tokens from a string using the chars/4 heuristic (M9 spec).
+ *
+ * Standalone function for use outside the TokenBudgetService class.
+ * Both OpenClaw and built-in chat import this shared estimator.
+ */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/**
  * Token budget manager.
  *
  * Allocates context window using elastic demand-driven logic. Each slot gets

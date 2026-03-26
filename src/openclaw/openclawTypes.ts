@@ -5,26 +5,58 @@ import type {
   ICancellationToken,
   IChatMessage,
   IChatParticipant,
-  IChatParticipantContext,
-  IChatParticipantRequest,
-  IChatParticipantResult,
   IChatRequestOptions,
   IChatRequestResponsePair,
   IChatResponseChunk,
-  IChatResponseStream,
   IChatSendRequestOptions,
   IChatSession,
   IContextPill,
   IToolDefinition,
   IToolResult,
 } from '../services/chatTypes.js';
-import type { AgentApprovalRequest, AgentApprovalResolution, AgentTaskDiagnostics, AgentTaskRecord } from '../agent/agentTypes.js';
+import type { AgentApprovalResolution } from '../agent/agentTypes.js';
 import type { IUnifiedAIConfigService } from '../aiSettings/unifiedConfigTypes.js';
 import type { ISessionManager } from '../services/serviceTypes.js';
 
-export type ChatRuntimeKind = 'claw' | 'openclaw';
-export type ChatRuntimeRunState = 'prepared' | 'executing' | 'awaiting-approval' | 'completed' | 'aborted' | 'failed';
-export type ChatRuntimeApprovalState = 'not-required' | 'pending' | 'approved' | 'denied' | 'auto-approved';
+// ── Shared runtime types (canonical source: services/chatRuntimeTypes.ts) ──
+export type {
+  ChatRuntimeKind,
+  ChatRuntimeRunState,
+  ChatRuntimeApprovalState,
+  IPageSummary,
+  IBlockSummary,
+  IPageStructure,
+  IOpenclawBootstrapDebugFile,
+  IOpenclawBootstrapDebugReport,
+  IOpenclawSkillPromptEntry,
+  IOpenclawToolPromptEntry,
+  IOpenclawSystemPromptReport,
+  IChatRuntimeToolMetadata,
+  IChatRuntimeToolInvocationObserver,
+  IChatRuntimeAutonomyMirror,
+  IChatRuntimeMemoryCheckpoint,
+  IChatSlashCommand,
+  IParsedSlashCommand,
+  IChatParticipantRuntime,
+  IChatAgentTaskViewModel,
+} from '../services/chatRuntimeTypes.js';
+
+import type {
+  ChatRuntimeKind,
+  ChatRuntimeRunState,
+  ChatRuntimeApprovalState,
+  IPageSummary,
+  IPageStructure,
+  IOpenclawBootstrapDebugReport,
+  IOpenclawSystemPromptReport,
+  IChatRuntimeToolInvocationObserver,
+  IChatRuntimeAutonomyMirror,
+  IChatSlashCommand,
+  IParsedSlashCommand,
+  IChatAgentTaskViewModel,
+} from '../services/chatRuntimeTypes.js';
+
+// ── OpenClaw-only types ──
 
 export type WorkflowType =
   | 'generic-grounded'
@@ -35,26 +67,6 @@ export type WorkflowType =
   | 'exhaustive-extraction'
   | 'mixed';
 
-export interface IPageSummary {
-  readonly id: string;
-  readonly title: string;
-  readonly icon?: string;
-}
-
-export interface IBlockSummary {
-  readonly id: string;
-  readonly blockType: string;
-  readonly parentBlockId: string | null;
-  readonly sortOrder: number;
-  readonly textPreview: string;
-}
-
-export interface IPageStructure {
-  readonly pageId: string;
-  readonly title: string;
-  readonly icon?: string;
-  readonly blocks: readonly IBlockSummary[];
-}
 
 export interface IRetrievalPlan {
   readonly intent: 'question' | 'situation' | 'task' | 'conversational' | 'exploration' | string;
@@ -113,124 +125,8 @@ export interface IChatRuntimeTrace {
   readonly note?: string;
 }
 
-export interface IChatRuntimeToolMetadata {
-  readonly name: string;
-  readonly permissionLevel: import('../services/chatTypes.js').ToolPermissionLevel;
-  readonly enabled: boolean;
-  readonly requiresApproval: boolean;
-  readonly autoApproved: boolean;
-  readonly approvalSource: 'default' | 'session' | 'persistent' | 'global-auto' | 'missing-permission-service';
-  readonly source?: 'built-in' | 'bridge';
-  readonly ownerToolId?: string;
-  readonly description?: string;
-}
 
-export interface IChatRuntimeToolInvocationObserver {
-  onValidated?(metadata: IChatRuntimeToolMetadata): void;
-  onApprovalRequested?(metadata: IChatRuntimeToolMetadata): void;
-  onApprovalResolved?(metadata: IChatRuntimeToolMetadata, approved: boolean): void;
-  onExecuted?(metadata: IChatRuntimeToolMetadata, result: IToolResult): void;
-}
 
-export interface IChatRuntimeAutonomyMirror {
-  readonly taskId: string;
-  begin(): Promise<void>;
-  createToolObserver(
-    toolName: string,
-    args: Record<string, unknown>,
-    downstream?: IChatRuntimeToolInvocationObserver,
-  ): IChatRuntimeToolInvocationObserver;
-  complete(note?: string): Promise<void>;
-  fail(note?: string): Promise<void>;
-  abort(note?: string): Promise<void>;
-}
-
-export interface IOpenclawBootstrapDebugFile {
-  readonly name: string;
-  readonly path: string;
-  readonly missing: boolean;
-  readonly rawChars: number;
-  readonly injectedChars: number;
-  readonly truncated: boolean;
-  readonly causes: readonly ('per-file-limit' | 'total-limit')[];
-}
-
-export interface IOpenclawBootstrapDebugReport {
-  readonly maxChars: number;
-  readonly totalMaxChars: number;
-  readonly totalRawChars: number;
-  readonly totalInjectedChars: number;
-  readonly files: readonly IOpenclawBootstrapDebugFile[];
-  readonly warningLines: readonly string[];
-}
-
-export interface IOpenclawSkillPromptEntry {
-  readonly name: string;
-  readonly blockChars: number;
-}
-
-export interface IOpenclawToolPromptEntry {
-  readonly name: string;
-  readonly summaryChars: number;
-  readonly schemaChars: number;
-  readonly propertiesCount?: number;
-}
-
-export interface IOpenclawSystemPromptReport {
-  readonly source: 'run' | 'estimate';
-  readonly generatedAt: number;
-  readonly workspaceName?: string;
-  readonly bootstrapMaxChars: number;
-  readonly bootstrapTotalMaxChars: number;
-  readonly systemPrompt: {
-    readonly chars: number;
-    readonly projectContextChars: number;
-    readonly nonProjectContextChars: number;
-  };
-  readonly injectedWorkspaceFiles: readonly IOpenclawBootstrapDebugFile[];
-  readonly bootstrapWarningLines: readonly string[];
-  readonly skills: {
-    readonly promptChars: number;
-    readonly entries: readonly IOpenclawSkillPromptEntry[];
-  };
-  readonly tools: {
-    readonly listChars: number;
-    readonly schemaChars: number;
-    readonly entries: readonly IOpenclawToolPromptEntry[];
-  };
-  readonly promptProvenance?: {
-    readonly rawUserInput: string;
-    readonly parsedUserText: string;
-    readonly contextQueryText: string;
-    readonly participantId?: string;
-    readonly command?: string;
-    readonly attachmentCount: number;
-    readonly historyTurns: number;
-    readonly seedMessageCount: number;
-    readonly modelMessageCount: number;
-    readonly modelMessageRoles: readonly string[];
-    readonly finalUserMessage: string;
-  };
-}
-
-export interface IChatRuntimeMemoryCheckpoint {
-  readonly checkpoint: string;
-  readonly note?: string;
-}
-
-export interface IChatSlashCommand {
-  readonly name: string;
-  readonly description: string;
-  readonly promptTemplate: string;
-  readonly isBuiltIn: boolean;
-  readonly specialHandler?: string;
-}
-
-export interface IParsedSlashCommand {
-  readonly command: IChatSlashCommand | undefined;
-  readonly commandName: string | undefined;
-  readonly remainingText: string;
-}
 
 export interface IOpenclawCommandRegistryFacade {
   readonly parseSlashCommand: (text: string) => IParsedSlashCommand;
@@ -454,21 +350,6 @@ export interface ICanvasParticipantServices {
   reportBootstrapDebug?(debug: IOpenclawBootstrapDebugReport): void;
 }
 
-export interface IChatParticipantRuntime {
-  readonly kind: ChatRuntimeKind;
-  handleTurn(
-    request: IChatParticipantRequest,
-    context: IChatParticipantContext,
-    response: IChatResponseStream,
-    token: ICancellationToken,
-  ): Promise<IChatParticipantResult>;
-}
-
-export interface IChatAgentTaskViewModel {
-  readonly task: AgentTaskRecord;
-  readonly diagnostics?: AgentTaskDiagnostics;
-  readonly pendingApprovals: readonly AgentApprovalRequest[];
-}
 
 export interface IChatWidgetServices {
   readonly sendRequest: (sessionId: string, message: string, options?: IChatSendRequestOptions) => Promise<void>;

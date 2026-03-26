@@ -10,6 +10,11 @@
  *   - M9 spec: Token estimation = chars / 4
  */
 
+import { estimateTokens } from '../services/tokenBudgetService.js';
+
+// Re-export the shared estimator so existing OpenClaw consumers don't break.
+export { estimateTokens };
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -50,17 +55,8 @@ export function computeTokenBudget(contextWindow: number): IOpenclawTokenBudget 
 }
 
 // ---------------------------------------------------------------------------
-// Token estimation
+// Token estimation (estimateTokens is re-exported from services/tokenBudgetService)
 // ---------------------------------------------------------------------------
-
-/**
- * Estimate token count from text.
- *
- * Uses chars / 4 per M9 spec. Conservative estimate for planning budgets.
- */
-export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
 
 /**
  * Estimate token count from an array of chat messages.

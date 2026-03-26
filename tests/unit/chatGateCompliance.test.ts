@@ -33,6 +33,7 @@ const EXEMPT_FILES = new Set([
   'skills/folder-overview/SKILL.md',      // Built-in workflow skill (M39)
   'skills/document-comparison/SKILL.md',  // Built-in workflow skill (M39)
   'skills/scoped-extraction/SKILL.md',    // Built-in workflow skill (M39)
+  'utilities/chatToolLoopSafety.ts',      // Re-export shim → canonical src/services/chatToolLoopSafety.ts
 ]);
 
 // ── Per-file import rules ───────────────────────────────────────────────────
@@ -165,7 +166,6 @@ const FOLDER_RULES: Record<string, string[]> = {
   'utilities/chatTokenBarAdapter.ts':        ['widgets/'],
   'utilities/chatSkillMatcher.ts':           [],
   'utilities/chatRuntimeAutonomyMirror.ts': [],
-  'utilities/chatToolLoopSafety.ts':  [],
   'utilities/userCommandLoader.ts':   [],
 };
 

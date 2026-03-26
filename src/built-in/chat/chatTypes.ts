@@ -9,11 +9,7 @@
 import type { Event } from '../../platform/events.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type {
-  IChatParticipantContext,
-  IChatParticipantRequest,
-  IChatParticipantResult,
   IChatMessage,
-  IChatResponseStream,
   IChatSession,
   IChatSendRequestOptions,
   IChatRequestOptions,
@@ -30,7 +26,6 @@ import type {
 import type {
   AgentApprovalRequest,
   AgentApprovalResolution,
-  AgentTaskDiagnostics,
   AgentTaskRecord,
 } from '../../agent/agentTypes.js';
 import { ChatRequestQueueKind } from '../../services/chatTypes.js';
@@ -46,126 +41,41 @@ import type { IDiffResult } from '../../services/diffService.js';
 import type { ISessionManager } from '../../services/serviceTypes.js';
 import type { IUnifiedAIConfigService } from '../../aiSettings/unifiedConfigTypes.js';
 
-export type ChatRuntimeKind = 'claw' | 'openclaw';
+// ── Shared runtime types (canonical source: services/chatRuntimeTypes.ts) ──
+export type {
+  ChatRuntimeKind,
+  ChatRuntimeRunState,
+  ChatRuntimeApprovalState,
+  IChatParticipantRuntime,
+  IChatRuntimeToolMetadata,
+  IChatRuntimeToolInvocationObserver,
+  IChatRuntimeAutonomyMirror,
+  IOpenclawBootstrapDebugFile,
+  IOpenclawBootstrapDebugReport,
+  IOpenclawSkillPromptEntry,
+  IOpenclawToolPromptEntry,
+  IOpenclawSystemPromptReport,
+  IChatRuntimeMemoryCheckpoint,
+  IPageSummary,
+  IBlockSummary,
+  IPageStructure,
+  IChatSlashCommand,
+  IParsedSlashCommand,
+  IChatAgentTaskViewModel,
+} from '../../services/chatRuntimeTypes.js';
 
-export type ChatRuntimeRunState = 'prepared' | 'executing' | 'awaiting-approval' | 'completed' | 'aborted' | 'failed';
-
-export type ChatRuntimeApprovalState = 'not-required' | 'pending' | 'approved' | 'denied' | 'auto-approved';
-
-export interface IChatParticipantRuntime {
-  readonly kind: ChatRuntimeKind;
-  handleTurn(
-    request: IChatParticipantRequest,
-    context: IChatParticipantContext,
-    response: IChatResponseStream,
-    token: ICancellationToken,
-  ): Promise<IChatParticipantResult>;
-}
-
-export interface IChatRuntimeToolMetadata {
-  readonly name: string;
-  readonly permissionLevel: import('../../services/chatTypes.js').ToolPermissionLevel;
-  readonly enabled: boolean;
-  readonly requiresApproval: boolean;
-  readonly autoApproved: boolean;
-  readonly approvalSource: 'default' | 'session' | 'persistent' | 'global-auto' | 'missing-permission-service';
-  readonly source?: 'built-in' | 'bridge';
-  readonly ownerToolId?: string;
-  readonly description?: string;
-}
-
-export interface IChatRuntimeToolInvocationObserver {
-  onValidated?(metadata: IChatRuntimeToolMetadata): void;
-  onApprovalRequested?(metadata: IChatRuntimeToolMetadata): void;
-  onApprovalResolved?(metadata: IChatRuntimeToolMetadata, approved: boolean): void;
-  onExecuted?(metadata: IChatRuntimeToolMetadata, result: IToolResult): void;
-}
-
-export interface IChatRuntimeAutonomyMirror {
-  readonly taskId: string;
-  begin(): Promise<void>;
-  createToolObserver(
-    toolName: string,
-    args: Record<string, unknown>,
-    downstream?: IChatRuntimeToolInvocationObserver,
-  ): IChatRuntimeToolInvocationObserver;
-  complete(note?: string): Promise<void>;
-  fail(note?: string): Promise<void>;
-  abort(note?: string): Promise<void>;
-}
-
-export interface IOpenclawBootstrapDebugFile {
-  readonly name: string;
-  readonly path: string;
-  readonly missing: boolean;
-  readonly rawChars: number;
-  readonly injectedChars: number;
-  readonly truncated: boolean;
-  readonly causes: readonly ('per-file-limit' | 'total-limit')[];
-}
-
-export interface IOpenclawBootstrapDebugReport {
-  readonly maxChars: number;
-  readonly totalMaxChars: number;
-  readonly totalRawChars: number;
-  readonly totalInjectedChars: number;
-  readonly files: readonly IOpenclawBootstrapDebugFile[];
-  readonly warningLines: readonly string[];
-}
-
-export interface IOpenclawSkillPromptEntry {
-  readonly name: string;
-  readonly blockChars: number;
-}
-
-export interface IOpenclawToolPromptEntry {
-  readonly name: string;
-  readonly summaryChars: number;
-  readonly schemaChars: number;
-  readonly propertiesCount?: number;
-}
-
-export interface IOpenclawSystemPromptReport {
-  readonly source: 'run' | 'estimate';
-  readonly generatedAt: number;
-  readonly workspaceName?: string;
-  readonly bootstrapMaxChars: number;
-  readonly bootstrapTotalMaxChars: number;
-  readonly systemPrompt: {
-    readonly chars: number;
-    readonly projectContextChars: number;
-    readonly nonProjectContextChars: number;
-  };
-  readonly injectedWorkspaceFiles: readonly IOpenclawBootstrapDebugFile[];
-  readonly bootstrapWarningLines: readonly string[];
-  readonly skills: {
-    readonly promptChars: number;
-    readonly entries: readonly IOpenclawSkillPromptEntry[];
-  };
-  readonly tools: {
-    readonly listChars: number;
-    readonly schemaChars: number;
-    readonly entries: readonly IOpenclawToolPromptEntry[];
-  };
-  readonly promptProvenance?: {
-    readonly rawUserInput: string;
-    readonly parsedUserText: string;
-    readonly contextQueryText: string;
-    readonly participantId?: string;
-    readonly command?: string;
-    readonly attachmentCount: number;
-    readonly historyTurns: number;
-    readonly seedMessageCount: number;
-    readonly modelMessageCount: number;
-    readonly modelMessageRoles: readonly string[];
-    readonly finalUserMessage: string;
-  };
-}
-
-export interface IChatRuntimeMemoryCheckpoint {
-  readonly checkpoint: string;
-  readonly note?: string;
-}
+import type {
+  ChatRuntimeKind,
+  ChatRuntimeRunState,
+  ChatRuntimeApprovalState,
+  IChatRuntimeToolInvocationObserver,
+  IChatRuntimeAutonomyMirror,
+  IOpenclawBootstrapDebugReport,
+  IOpenclawSystemPromptReport,
+  IPageSummary,
+  IPageStructure,
+  IChatAgentTaskViewModel,
+} from '../../services/chatRuntimeTypes.js';
 
 export interface IDefaultParticipantServices {
   sendChatRequest(
@@ -348,30 +258,6 @@ export interface ICanvasParticipantServices {
 
 // ── Participant data types ──
 
-/** Summary of a canvas page (for @workspace participant). */
-export interface IPageSummary {
-  readonly id: string;
-  readonly title: string;
-  readonly icon?: string;
-}
-
-/** Summary of a single block (for @canvas participant). */
-export interface IBlockSummary {
-  readonly id: string;
-  readonly blockType: string;
-  readonly parentBlockId: string | null;
-  readonly sortOrder: number;
-  readonly textPreview: string;
-}
-
-/** Full page structure with blocks (for @canvas participant). */
-export interface IPageStructure {
-  readonly pageId: string;
-  readonly title: string;
-  readonly icon?: string;
-  readonly blocks: readonly IBlockSummary[];
-}
-
 /** Retrieval plan from the 2-call pipeline (M12). */
 export interface IRetrievalPlan {
   intent: 'question' | 'situation' | 'task' | 'conversational' | 'exploration';
@@ -547,12 +433,6 @@ export interface IChatWidgetServices {
   readonly removePendingRequest?: (sessionId: string, requestId: string) => void;
   readonly requestYield?: (sessionId: string) => void;
   readonly onDidChangePendingRequests?: Event<string>;
-}
-
-export interface IChatAgentTaskViewModel {
-  readonly task: AgentTaskRecord;
-  readonly diagnostics?: AgentTaskDiagnostics;
-  readonly pendingApprovals: readonly AgentApprovalRequest[];
 }
 
 /** Services needed by the model picker dropdown. */
@@ -779,23 +659,7 @@ export interface IChatModeCapabilities {
   readonly canAutonomous: boolean;
 }
 
-// ── Slash command types ──
-
-/** A registered slash command. */
-export interface IChatSlashCommand {
-  readonly name: string;
-  readonly description: string;
-  readonly promptTemplate: string;
-  readonly isBuiltIn: boolean;
-  readonly specialHandler?: string;
-}
-
-/** Result of parsing a slash command from user input. */
-export interface IParsedSlashCommand {
-  readonly command: IChatSlashCommand | undefined;
-  readonly commandName: string | undefined;
-  readonly remainingText: string;
-}
+// ── Slash command types (re-exported from services/chatRuntimeTypes.ts) ──
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Utility & Input Parsing Interfaces

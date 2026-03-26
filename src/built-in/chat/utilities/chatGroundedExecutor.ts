@@ -13,7 +13,7 @@ import type {
   IChatRuntimeToolInvocationObserver,
   IChatRuntimeTrace,
 } from '../chatTypes.js';
-import { ChatToolLoopSafety } from './chatToolLoopSafety.js';
+import { ChatToolLoopSafety } from '../../../services/chatToolLoopSafety.js';
 
 export interface IChatGroundedToolGuard {
   isValid(): boolean;
