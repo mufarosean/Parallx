@@ -940,7 +940,7 @@ export class MemoryService extends Disposable implements IMemoryService {
       }
       await this._db.run('COMMIT');
     } catch (err) {
-      await this._db.run('ROLLBACK').catch(() => {});
+      await this._db.run('ROLLBACK').catch((rbErr) => { console.error('[MemoryService] ROLLBACK failed during eviction:', rbErr); });
       throw err;
     }
 

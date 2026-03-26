@@ -497,6 +497,12 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
             continue;
           }
 
+          // Skip chunks with no message body (e.g. done:true completion markers)
+          if (!chunk.message) {
+            if (chunk.done) { receivedDone = true; }
+            continue;
+          }
+
           // Validate tool call arguments if present
           if (chunk.message.tool_calls) {
             for (const tc of chunk.message.tool_calls) {
@@ -518,7 +524,9 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
         try {
           chunk = JSON.parse(buffer.trim()) as OllamaChatChunk;
           if (chunk.done) { receivedDone = true; }
-          yield this._parseChunk(chunk);
+          if (chunk.message) {
+            yield this._parseChunk(chunk);
+          }
         } catch {
           console.warn('[OllamaProvider] Malformed trailing chunk:', buffer.trim());
         }

@@ -488,7 +488,7 @@ function queueOpenclawMemoryWriteBack(
   if (deps.extractPreferences && options.requestText) {
     deps.extractPreferences(options.requestText).then(() => {
       reportCheckpoint('memory-preferences-extracted');
-    }).catch(() => {});
+    }).catch((e) => { console.warn('[OpenClaw] Preference extraction failed:', e); });
   }
 
   if (!deps.storeSessionMemory || !deps.isSessionEligibleForSummary || !deps.getSessionMemoryMessageCount || options.history.length === 0) {
@@ -546,8 +546,8 @@ function queueOpenclawMemoryWriteBack(
         await storeMemory(sessionId, summaryText, messageCount);
         reportCheckpoint('memory-summary-refined-stored');
       }
-    } catch {
-      // Ignore background memory write-back failures.
+    } catch (memErr) {
+      console.warn('[OpenClaw] Background memory write-back failed:', memErr);
     }
-  }).catch(() => {});
+  }).catch((e) => { console.warn('[OpenClaw] Session memory persistence failed:', e); });
 }
