@@ -191,9 +191,8 @@ export interface IOpenclawRuntimeLifecycle {
 }
 
 export interface IUserCommandFileSystem {
-  exists(path: string): Promise<boolean>;
-  readFile(path: string): Promise<string | null>;
-  writeFile(path: string, content: string): Promise<void>;
+  listCommandFiles(): Promise<string[]>;
+  readCommandFile(relativePath: string): Promise<string>;
 }
 
 export interface ISkillCatalogEntry {

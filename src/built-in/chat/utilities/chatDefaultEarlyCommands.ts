@@ -65,7 +65,7 @@ export async function tryHandleDefaultCompactCommand(
 }
 
 export async function tryHandleDefaultContextCommand(
-  services: Pick<
+  _services: Pick<
     IDefaultParticipantServices,
     | 'getWorkspaceName'
     | 'readFileRelative'

@@ -1,5 +1,4 @@
 import type {
-  IDefaultParticipantServices,
   IChatTurnRoute,
   IParsedSlashCommand,
   IChatTurnSemantics,

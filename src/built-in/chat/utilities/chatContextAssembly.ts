@@ -60,11 +60,6 @@ interface IChatContextBlock {
   readonly sourceIds: string[];
 }
 
-function toCitationLabelFromPath(path: string): string {
-  const parts = path.replace(/\\/g, '/').split('/');
-  return parts[parts.length - 1] || path;
-}
-
 function appendProvenance(
   target: IChatProvenanceEntry[],
   entry: IChatProvenanceEntry,

@@ -473,6 +473,7 @@ function queueOpenclawMemoryWriteBack(
 
   const sessionId = options.sessionId ?? '';
   const messageCount = options.history.length + 1;
+  const storeMemory = deps.storeSessionMemory;
   if (!sessionId || !deps.isSessionEligibleForSummary(messageCount)) {
     return;
   }
@@ -493,7 +494,7 @@ function queueOpenclawMemoryWriteBack(
       }).join('\n\n');
       const fallbackSummary = deps.buildFallbackSessionSummary(options.history, options.requestText);
       if (fallbackSummary) {
-        await deps.storeSessionMemory(sessionId, fallbackSummary, messageCount);
+        await storeMemory(sessionId, fallbackSummary, messageCount);
         reportCheckpoint('memory-summary-fallback-stored');
       }
 
@@ -518,7 +519,7 @@ function queueOpenclawMemoryWriteBack(
 
       summaryText = summaryText.trim();
       if (summaryText) {
-        await deps.storeSessionMemory(sessionId, summaryText, messageCount);
+        await storeMemory(sessionId, summaryText, messageCount);
         reportCheckpoint('memory-summary-refined-stored');
       }
     } catch {

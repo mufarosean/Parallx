@@ -26,14 +26,6 @@ function buildRetrievalPlan(
         needsRetrieval: false,
         queries: [],
       };
-    case 'product-semantics':
-    case 'off-topic':
-      return {
-        intent: 'question',
-        reasoning: route.reason,
-        needsRetrieval: false,
-        queries: [],
-      };
     case 'grounded':
     default: {
       return {
@@ -88,20 +80,6 @@ export function createChatContextPlan(
         useRetrieval: false,
         useMemoryRecall: false,
         useTranscriptRecall: true,
-        useConceptRecall: false,
-        useCurrentPage: false,
-        citationMode: 'disabled',
-        reasoning: route.reason,
-        retrievalPlan,
-      };
-    case 'product-semantics':
-    case 'off-topic':
-      return {
-        route: route.kind,
-        intent: retrievalPlan.intent,
-        useRetrieval: false,
-        useMemoryRecall: false,
-        useTranscriptRecall: false,
         useConceptRecall: false,
         useCurrentPage: false,
         citationMode: 'disabled',

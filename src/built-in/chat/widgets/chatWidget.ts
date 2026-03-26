@@ -420,6 +420,9 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     const sessionId = this._session.id;
 
+    // Collect attachments before clearing (must be before early-return branch)
+    const attachments = this._inputPart.getAttachments();
+
     // If a request is already in progress, queue the message
     if (this._session.requestInProgress) {
       if (this._services.queueRequest) {
@@ -435,9 +438,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       }
       return;
     }
-
-    // Collect attachments before clearing
-    const attachments = this._inputPart.getAttachments();
 
     this._inputPart.clear();
     this._inputPart.setStreaming(true);
