@@ -19,7 +19,8 @@ import type { IModePickerServices } from '../chatTypes.js';
 // IModePickerServices — now defined in chatTypes.ts (M13 Phase 1)
 export type { IModePickerServices } from '../chatTypes.js';
 
-/** Mode display metadata. */\nconst MODE_META: Record<ChatMode, { label: string; title: string; description: string; icon: string }> = {
+/** Mode display metadata. */
+const MODE_META: Record<ChatMode, { label: string; title: string; description: string; icon: string }> = {
   [ChatMode.Ask]: {
     // M41 Phase 9: Ask collapsed into Agent behavior. Keep metadata for
     // backward compat (old sessions stored as 'ask' in DB) but hide from picker.
