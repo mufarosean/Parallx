@@ -2,14 +2,14 @@
 
 > **Branch:** `m44-defensive-hardening`  
 > **Base:** `m43-reliability-hardening` @ `cdb4e11`  
-> **HEAD:** `c245d41`  
+> **HEAD:** `48292fe`  
 > **Compile:** 0 errors | **Tests:** 152 files, 2,446 passing  
 
 ---
 
 ## Objective
 
-Address all actionable gaps from the v2 deep audit (`DEEP_AUDIT_GAP_ANALYSIS_v2.md`). The audit identified 34 items (5 CRITICAL, 19 MEDIUM, 10 LOW) plus 6 false positives. M44 resolved all 5 CRITICAL items and 10 additional MEDIUM/LOW items — 15 fixes total — and verified 5 more items as additional false positives during implementation.
+Address all actionable gaps from the v2 deep audit (`DEEP_AUDIT_GAP_ANALYSIS_v2.md`). The audit identified 34 items (5 CRITICAL, 19 MEDIUM, 10 LOW) plus 6 false positives. M44 resolved all 5 CRITICAL items and 14 additional MEDIUM/LOW items — 19 fixes total across 6 phases — and verified 5 more items as additional false positives during implementation. A final verification pass (Phase 6) caught 4 additional issues missed in Phases 1–5.
 
 ---
 
@@ -22,6 +22,7 @@ Address all actionable gaps from the v2 deep audit (`DEEP_AUDIT_GAP_ANALYSIS_v2.
 | 3 | `1294f55` | Budget & Config Guards | System prompt budget enforcement, temperature/topP/maxTokens clamping, model probe retry |
 | 4 | `d99a543` | Memory & Persistence Hygiene | Eviction transaction, error logging in memoryService, migration logging |
 | 5 | `c245d41` | UX Feedback & Polish | renderContentPart default case, audit log bounded to 500, image attachment 10MB limit |
+| 6 | `48292fe` | Verification Pass | Path traversal in main.ts copy, chunk.message null guard, 3 silent catches |
 
 ---
 
@@ -95,6 +96,19 @@ Address all actionable gaps from the v2 deep audit (`DEEP_AUDIT_GAP_ANALYSIS_v2.
 
 ---
 
+### Phase 6: Verification Pass (`48292fe`)
+
+Found during final audit sweep after Phases 1–5 were committed:
+
+| Gap | File | Change |
+|-----|------|--------|
+| 1.1 (second copy) | `main.ts` | Second `normalizeWorkspaceRelativePath()` in `main.ts` (write paths) now rejects `..` segments — was missing the guard added to `chatDataService.ts` |
+| NEW: chunk.message null | `ollamaProvider.ts` | Streaming chunks with no `message` body (e.g. `done:true` markers) now skip `_parseChunk()` instead of crashing |
+| 1.3 (missed ROLLBACK) | `memoryService.ts` | `ROLLBACK` catch in eviction now logs with `console.error` instead of silent `.catch(() => {})` |
+| 2.5 (runtime support) | `openclawDefaultRuntimeSupport.ts` | 2 silent `.catch(() => {})` + 1 empty `catch {}` replaced with `console.warn` logging for background memory persistence |
+
+---
+
 ## Remaining Open Items (Deferred)
 
 These are genuine but lower-priority items not addressed in M44:
@@ -128,9 +142,11 @@ These are genuine but lower-priority items not addressed in M44:
 | `src/services/embeddingService.ts` | 1 |
 | `src/openclaw/openclawAttempt.ts` | 2, 3 |
 | `src/openclaw/openclawTurnRunner.ts` | 2 |
-| `src/built-in/chat/providers/ollamaProvider.ts` | 3 |
+| `src/built-in/chat/providers/ollamaProvider.ts` | 3, 6 |
 | `src/services/languageModelsService.ts` | 3 |
-| `src/services/memoryService.ts` | 4 |
+| `src/services/memoryService.ts` | 4, 6 |
 | `src/services/permissionService.ts` | 5 |
 | `src/built-in/chat/rendering/chatContentParts.ts` | 5 |
 | `src/built-in/chat/input/chatContextAttachments.ts` | 5 |
+| `src/built-in/chat/main.ts` | 6 |
+| `src/openclaw/openclawDefaultRuntimeSupport.ts` | 6 |
