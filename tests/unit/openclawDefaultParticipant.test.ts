@@ -208,14 +208,14 @@ describe('openclaw default participant', () => {
     expect(response.markdown).toHaveBeenCalledWith('Grounded OpenClaw answer');
   });
 
-  it('does not inject current canvas page context into default grounded turns', async () => {
+  it('injects current canvas page context into default grounded turns (C2)', async () => {
     const sendChatRequest = vi.fn(() => streamChunks([
       { content: 'Vehicle answer', done: true },
     ]));
     const getCurrentPageContent = vi.fn(async () => ({
       title: 'Testing',
       pageId: 'page-1',
-      textContent: 'This page should stay out of the default OpenClaw lane.',
+      textContent: 'This page should be visible in the OpenClaw context.',
     }));
     const services: IDefaultParticipantServices = {
       sendChatRequest,
@@ -253,11 +253,10 @@ describe('openclaw default participant', () => {
       history: [],
     } as IChatParticipantContext, response, createToken());
 
-    expect(getCurrentPageContent).not.toHaveBeenCalled();
+    expect(getCurrentPageContent).toHaveBeenCalled();
     const sentMessages = sendChatRequest.mock.calls[0][0];
-    for (const msg of sentMessages) {
-      expect(msg.content).not.toContain('This page should stay out of the default OpenClaw lane.');
-    }
+    const systemMsg = sentMessages.find((m: any) => m.role === 'system');
+    expect(systemMsg?.content).toContain('Currently Open Page');
   });
 
   it('seeds prior conversation turns into the default OpenClaw model prompt', async () => {

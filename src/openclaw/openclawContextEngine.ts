@@ -110,6 +110,8 @@ export type IOpenclawContextEngineServices = Pick<
   | 'retrieveContext'
   | 'recallMemories'
   | 'recallConcepts'
+  | 'recallTranscripts'
+  | 'getCurrentPageContent'
   | 'storeSessionMemory'
   | 'storeConceptsFromSession'
   | 'compactSession'
@@ -133,6 +135,8 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
   private _ragReady = true;
   private _memoryReady = true;
   private _conceptsReady = true;
+  private _transcriptsReady = true;
+  private _pageReady = true;
 
   constructor(private readonly services: IOpenclawContextEngineServices) {}
 
@@ -147,6 +151,8 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     this._ragReady = !!this.services.retrieveContext;
     this._memoryReady = !!this.services.recallMemories;
     this._conceptsReady = !!this.services.recallConcepts;
+    this._transcriptsReady = !!this.services.recallTranscripts;
+    this._pageReady = !!this.services.getCurrentPageContent;
 
     return {
       ragReady: this._ragReady,
@@ -165,63 +171,109 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     let systemPromptAddition: string | undefined;
     let retrievedContextText = '';
 
-    // ── RAG: retrieve workspace context relevant to prompt ──
-    // Upstream: ContextEngine.assemble builds messages under budget
-    // Parallx: uses services.retrieveContext for hybrid vector + FTS5 retrieval
-    if (this._ragReady && this.services.retrieveContext) {
-      const ragResult = await this.services.retrieveContext(params.prompt);
-      if (ragResult) {
-        retrievedContextText = ragResult.text;
-        const ragTokens = estimateTokens(ragResult.text);
-        if (ragTokens <= budget.rag) {
-          systemPromptAddition = `## Retrieved Context\n${ragResult.text}`;
-          ragSources = ragResult.sources.map((s, i) => ({
-            uri: s.uri,
-            label: s.label,
-            index: s.index ?? i,
-          }));
-        } else {
-          // Trim RAG context to fit budget
-          const maxChars = budget.rag * 4; // tokens * 4 = chars (inverse of chars/4)
-          const trimmedText = ragResult.text.slice(0, maxChars);
-          systemPromptAddition = `## Retrieved Context\n${trimmedText}`;
-          ragSources = ragResult.sources.map((s, i) => ({
-            uri: s.uri,
-            label: s.label,
-            index: s.index ?? i,
-          }));
-        }
+    // ── C1: Parallel loading — fire all retrieval services concurrently ──
+    const [ragResult, memoryResult, conceptResult, pageResult, transcriptResult] = await Promise.all([
+      (this._ragReady && this.services.retrieveContext)
+        ? this.services.retrieveContext(params.prompt).catch(() => undefined)
+        : Promise.resolve(undefined),
+      (this._memoryReady && this.services.recallMemories)
+        ? this.services.recallMemories(params.prompt, params.sessionId).catch(() => undefined)
+        : Promise.resolve(undefined),
+      (this._conceptsReady && this.services.recallConcepts)
+        ? this.services.recallConcepts(params.prompt).catch(() => undefined)
+        : Promise.resolve(undefined),
+      (this._pageReady && this.services.getCurrentPageContent)
+        ? this.services.getCurrentPageContent().catch(() => undefined)
+        : Promise.resolve(undefined),
+      (this._transcriptsReady && this.services.recallTranscripts)
+        ? this.services.recallTranscripts(params.prompt).catch(() => undefined)
+        : Promise.resolve(undefined),
+    ]);
+
+    // ── C2: Page content — inject currently open editor page ──
+    if (pageResult?.textContent) {
+      const pageTokens = estimateTokens(pageResult.textContent);
+      if (pageTokens <= budget.rag * 0.3) { // max 30% of RAG budget for page
+        const pageHeader = `## Currently Open Page: "${pageResult.title}" (id: ${pageResult.pageId})`;
+        systemPromptAddition = `${pageHeader}\n${pageResult.textContent}`;
       }
     }
 
+    // ── RAG: retrieve workspace context relevant to prompt ──
+    if (ragResult) {
+      retrievedContextText = ragResult.text;
+      const ragTokens = estimateTokens(ragResult.text);
+      const maxRagChars = budget.rag * 4;
+      const contextText = ragTokens <= budget.rag
+        ? ragResult.text
+        : ragResult.text.slice(0, maxRagChars);
+      systemPromptAddition = (systemPromptAddition ?? '') + `\n\n## Retrieved Context\n${contextText}`;
+      ragSources = ragResult.sources.map((s, i) => ({
+        uri: s.uri,
+        label: s.label,
+        index: s.index ?? i,
+      }));
+    }
+
     // ── Memory: recall relevant memories ──
-    if (this._memoryReady && this.services.recallMemories) {
-      const memoryResult = await this.services.recallMemories(params.prompt, params.sessionId);
-      if (memoryResult) {
-        const memoryTokens = estimateTokens(memoryResult);
-        // Memory fits within RAG budget allocation (shared with RAG)
-        if (memoryTokens < budget.rag * 0.2) { // max 20% of RAG budget for memory
-          systemPromptAddition = (systemPromptAddition ?? '') +
-            `\n\n## Recalled Memories\n${memoryResult}`;
-        }
+    if (memoryResult) {
+      const memoryTokens = estimateTokens(memoryResult);
+      if (memoryTokens < budget.rag * 0.2) {
+        systemPromptAddition = (systemPromptAddition ?? '') +
+          `\n\n## Recalled Memories\n${memoryResult}`;
       }
     }
 
     // ── Concepts: recall relevant concepts ──
-    if (this._conceptsReady && this.services.recallConcepts) {
-      const conceptResult = await this.services.recallConcepts(params.prompt);
-      if (conceptResult) {
-        const conceptTokens = estimateTokens(conceptResult);
-        if (conceptTokens < budget.rag * 0.1) { // max 10% of RAG budget for concepts
-          systemPromptAddition = (systemPromptAddition ?? '') +
-            `\n\n## Concepts\n${conceptResult}`;
-        }
+    if (conceptResult) {
+      const conceptTokens = estimateTokens(conceptResult);
+      if (conceptTokens < budget.rag * 0.1) {
+        systemPromptAddition = (systemPromptAddition ?? '') +
+          `\n\n## Concepts\n${conceptResult}`;
       }
     }
 
-    // ── M5: Assess evidence quality and add constraint if weak ──
+    // ── C4: Transcript recall ──
+    if (transcriptResult) {
+      const transcriptTokens = estimateTokens(transcriptResult);
+      if (transcriptTokens < budget.rag * 0.15) { // max 15% of RAG budget for transcripts
+        systemPromptAddition = (systemPromptAddition ?? '') +
+          `\n\n## Recalled Transcripts\n${transcriptResult}`;
+      }
+    }
+
+    // ── M5 + C5: Assess evidence quality; re-retrieve on insufficient ──
     if (retrievedContextText.trim()) {
-      const evidence = assessEvidence(params.prompt, retrievedContextText, ragSources);
+      let evidence = assessEvidence(params.prompt, retrievedContextText, ragSources);
+      // C5: Re-retrieval — when evidence is insufficient, reformulate and try again
+      if (evidence.status === 'insufficient' && this._ragReady && this.services.retrieveContext) {
+        const reQuery = buildRetrieveAgainQuery(params.prompt, evidence.reasons);
+        if (reQuery) {
+          const reResult = await this.services.retrieveContext(reQuery).catch(() => undefined);
+          if (reResult?.text) {
+            // Merge re-retrieved context
+            retrievedContextText = retrievedContextText + '\n\n' + reResult.text;
+            const combinedTokens = estimateTokens(retrievedContextText);
+            const maxChars = budget.rag * 4;
+            const combinedText = combinedTokens <= budget.rag
+              ? retrievedContextText
+              : retrievedContextText.slice(0, maxChars);
+            systemPromptAddition = (systemPromptAddition ?? '').replace(
+              /\n\n## Retrieved Context\n[\s\S]*?(?=\n\n##|$)/,
+              `\n\n## Retrieved Context\n${combinedText}`,
+            );
+            // Merge sources, dedup by uri
+            const existingUris = new Set(ragSources.map(s => s.uri));
+            for (const s of reResult.sources) {
+              if (!existingUris.has(s.uri)) {
+                ragSources.push({ uri: s.uri, label: s.label, index: ragSources.length });
+              }
+            }
+            // Re-assess with augmented context
+            evidence = assessEvidence(params.prompt, retrievedContextText, ragSources);
+          }
+        }
+      }
       if (evidence.status !== 'sufficient') {
         const constraint = buildEvidenceConstraint(params.prompt, evidence);
         systemPromptAddition = (systemPromptAddition ?? '') + `\n\n${constraint}`;
@@ -229,7 +281,6 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     }
 
     // ── History: trim conversation history to fit budget ──
-    // Keep most recent messages that fit within the history budget
     const historyMessages = trimHistoryToBudget(params.history, budget.history);
     messages.push(...historyMessages);
 
@@ -347,4 +398,34 @@ function trimHistoryToBudget(
   }
 
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// C5: Re-retrieval query reformulation
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a reformulated query for re-retrieval when evidence is insufficient.
+ *
+ * Strategy: strip question wrappers, extract core noun phrases,
+ * and produce a keyword-focused search string that may retrieve
+ * different chunks from the vector store.
+ */
+function buildRetrieveAgainQuery(
+  originalQuery: string,
+  reasons: readonly string[],
+): string | undefined {
+  // Only re-retrieve for meaningful gaps — skip if we simply have no sources at all
+  if (reasons.includes('no-grounded-sources')) return undefined;
+
+  // Strip question framing to extract core search terms
+  const stripped = originalQuery
+    .replace(/^(?:what|how|where|who|when|which|does|do|is|are|can|could|should|would|will|tell me|show me|explain)\s+/i, '')
+    .replace(/\?+$/, '')
+    .trim();
+
+  if (stripped.length < 5) return undefined;
+
+  // Add "details about" prefix to bias toward explanatory chunks
+  return `details about ${stripped}`;
 }

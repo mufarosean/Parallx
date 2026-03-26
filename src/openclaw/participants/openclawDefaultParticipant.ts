@@ -8,7 +8,7 @@ import type {
   IChatResponseStream,
   ICancellationToken,
 } from '../../services/chatTypes.js';
-import { ChatMode } from '../../services/chatTypes.js';
+import { ChatMode, isChatFileAttachment } from '../../services/chatTypes.js';
 import type {
   IDefaultParticipantServices,
   IOpenclawCommandRegistryFacade,
@@ -109,9 +109,27 @@ async function runOpenclawDefaultTurn(
   // M4: Semantic fallback — detect broad workspace summary prompts
   const semanticFallback = detectSemanticFallback(mentionResult.strippedText);
 
+  // C3: Resolve non-image file attachments into context blocks
+  const fileAttachmentBlocks: string[] = [];
+  if (request.attachments?.length && services.readFileRelative) {
+    const fileAttachments = request.attachments.filter(isChatFileAttachment);
+    for (const att of fileAttachments) {
+      const content = await services.readFileRelative(att.fullPath).catch(() => null);
+      if (content) {
+        fileAttachmentBlocks.push(`## Attached File: ${att.name}\n${content}`);
+      }
+    }
+  }
+
+  // Combine mention + file attachment context blocks
+  const allContextBlocks = [
+    ...(mentionResult.contextBlocks.length > 0 ? mentionResult.contextBlocks : []),
+    ...fileAttachmentBlocks,
+  ];
+
   // Build turn context for the new OpenClaw execution pipeline
   const turnContext = await buildOpenclawTurnContext(services, request, context, {
-    mentionContextBlocks: mentionResult.contextBlocks.length > 0 ? mentionResult.contextBlocks : undefined,
+    mentionContextBlocks: allContextBlocks.length > 0 ? allContextBlocks : undefined,
     activatedSkillBody: activated?.resolvedBody,
     promptOverlay: semanticFallback?.promptOverlay,
   });
