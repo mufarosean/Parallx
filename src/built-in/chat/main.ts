@@ -1230,6 +1230,27 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       // Store reference so OpenClaw participant services can access skills
       _skillLoaderRef = skillLoader;
 
+      // File watcher: live-reload skills when .parallx/skills/ changes
+      if (fileService?.onDidFileChange) {
+        let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+        const SKILLS_PATH_SEGMENT = '.parallx/skills/';
+        context.subscriptions.push(
+          fileService.onDidFileChange((events) => {
+            const skillEvents = events.filter(e => {
+              const p = e.uri.fsPath.replace(/\\/g, '/');
+              return p.includes(SKILLS_PATH_SEGMENT);
+            });
+            if (skillEvents.length === 0) { return; }
+            // Debounce rapid saves: wait 500ms then rescan
+            if (debounceTimer !== undefined) { clearTimeout(debounceTimer); }
+            debounceTimer = setTimeout(() => {
+              debounceTimer = undefined;
+              skillLoader.scanSkills().catch(() => { /* best-effort */ });
+            }, 500);
+          }),
+        );
+      }
+
       // Register skill tools with the language model tools service
       if (languageModelToolsService) {
         const skillToolDisposables: import('../../platform/lifecycle.js').IDisposable[] = [];
