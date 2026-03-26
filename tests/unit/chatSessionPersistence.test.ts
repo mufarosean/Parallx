@@ -66,7 +66,7 @@ function createTestSession(): IChatSession {
   return {
     id: 'test-session-1',
     title: 'Test Session',
-    mode: ChatMode.Ask,
+    mode: ChatMode.Agent,
     modelId: 'llama3.1:8b',
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -220,7 +220,7 @@ describe('chatSessionPersistence', () => {
           return [{
             id: 'session-1',
             title: 'Session',
-            mode: 'ask',
+            mode: 'agent',
             model_id: 'qwen',
             created_at: 1,
             updated_at: 2,
@@ -310,7 +310,7 @@ describe('chatSessionPersistence', () => {
           return [{
             id: 'session-1',
             title: 'Session',
-            mode: 'ask',
+            mode: 'agent',
             model_id: 'qwen',
             created_at: 1,
             updated_at: 2,

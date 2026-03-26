@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
   id            TEXT PRIMARY KEY,
   workspace_id  TEXT NOT NULL DEFAULT '',
   title         TEXT NOT NULL DEFAULT 'New Chat',
-  mode          TEXT NOT NULL DEFAULT 'ask',
+  mode          TEXT NOT NULL DEFAULT 'agent',
   model_id      TEXT NOT NULL DEFAULT '',
   created_at    INTEGER NOT NULL,
   updated_at    INTEGER NOT NULL
@@ -327,8 +327,7 @@ function _extractTextContent(parts: readonly IChatContentPart[]): string {
 
 function _parseMode(mode: string): ChatMode {
   if (mode === 'edit') { return ChatMode.Edit; }
-  if (mode === 'agent') { return ChatMode.Agent; }
-  return ChatMode.Ask;
+  return ChatMode.Agent;
 }
 
 function _serializeUserMessageMetadata(message: IChatUserMessage): Record<string, unknown> {

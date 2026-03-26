@@ -22,7 +22,7 @@ describe('ChatTokenStatusBar — indexing indicator (Task 6.1)', () => {
     return {
       getActiveSession: () => undefined,
       getContextLength: async () => 128_000,
-      getMode: () => 'ask' as const,
+      getMode: () => 'agent' as const,
       getWorkspaceName: () => 'TestWorkspace',
       getPageCount: async () => 10,
       getCurrentPageTitle: () => 'Page 1',

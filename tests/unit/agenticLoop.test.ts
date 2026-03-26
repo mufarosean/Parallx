@@ -61,7 +61,7 @@ function createStream(): IChatResponseStream & { calls: Record<string, any[][]> 
 function makeRequest(overrides: Partial<IChatParticipantRequest> = {}): IChatParticipantRequest {
   return {
     text: 'Hello',
-    mode: ChatMode.Ask,
+    mode: ChatMode.Agent,
     ...overrides,
   };
 }
@@ -109,7 +109,7 @@ describe('defaultParticipant agentic loop', () => {
     expect(createDefaultChatParticipantRuntime(services).kind).toBe('claw');
   });
 
-  it('streams markdown content in Ask mode (with read-only tools)', async () => {
+  it('streams markdown content in Agent mode', async () => {
     sendChatRequest.mockReturnValue(streamChunks([
       { content: 'Hello ', done: false },
       { content: 'World', done: true },
@@ -119,7 +119,7 @@ describe('defaultParticipant agentic loop', () => {
     const stream = createStream();
 
     const result = await participant.handler(
-      makeRequest({ mode: ChatMode.Ask }),
+      makeRequest({ mode: ChatMode.Agent }),
       makeContext(),
       stream,
       createToken(),

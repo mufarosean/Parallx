@@ -326,7 +326,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const chatConfig = api.workspace.getConfiguration('chat');
   const ollamaBaseUrl = chatConfig.get<string>('ollama.baseUrl', 'http://localhost:11434');
   const defaultModel = chatConfig.get<string>('defaultModel', '');
-  const defaultMode = chatConfig.get<string>('defaultMode', 'ask') as import('../../services/chatTypes.js').ChatMode;
+  const defaultMode = chatConfig.get<string>('defaultMode', 'agent') as import('../../services/chatTypes.js').ChatMode;
   const configuredContextLength = chatConfig.get<number>('contextLength', 0);
 
   // Apply configured default mode

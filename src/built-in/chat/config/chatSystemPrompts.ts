@@ -52,7 +52,6 @@ export function buildSystemPrompt(mode: ChatMode, context: ISystemPromptContext)
   switch (mode) {
     case ChatMode.Edit:
       return buildEditPrompt(context);
-    case ChatMode.Ask:
     case ChatMode.Agent:
     default:
       return buildAgentPrompt(context);

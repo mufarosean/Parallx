@@ -298,8 +298,7 @@ test.describe('Chat Context Integration', () => {
     expect(chatRequests.length).toBeGreaterThanOrEqual(1);
     const lastReq = chatRequests[chatRequests.length - 1];
 
-    // Ask mode no longer lists tool names inside the system prompt. Tool
-    // definitions are carried on the request payload itself.
+    // Tool definitions are carried on the request payload itself, not in the system prompt.
     expect(Array.isArray(lastReq.tools)).toBe(true);
     const toolNames = lastReq.tools.map((t: any) => t.function?.name);
     expect(toolNames).toContain('read_page');

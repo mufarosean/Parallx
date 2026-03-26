@@ -91,7 +91,7 @@ describe('ChatService workspace-scoped persistence', () => {
           return [{
             id: 'session-for-b',
             title: 'B Session',
-            mode: 'ask',
+            mode: 'agent',
             model_id: '',
             created_at: Date.now(),
             updated_at: Date.now(),

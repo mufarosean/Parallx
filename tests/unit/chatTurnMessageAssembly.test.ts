@@ -21,7 +21,7 @@ describe('chat turn message assembly', () => {
         } as any),
       } as any,
     }, {
-      mode: ChatMode.Ask,
+      mode: ChatMode.Agent,
       history: [],
     });
 

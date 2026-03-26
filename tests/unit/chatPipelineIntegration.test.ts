@@ -27,7 +27,7 @@ function makeToken() {
 }
 
 function makeRequest(text: string, requestId = '1') {
-  return { text, requestId, mode: 'ask', modelId: 'test-model', attempt: 0 };
+  return { text, requestId, mode: 'agent', modelId: 'test-model', attempt: 0 };
 }
 
 function makeContext(history: any[] = []) {

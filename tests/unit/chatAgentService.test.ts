@@ -29,7 +29,7 @@ function createMockRequest(text = 'hello'): IChatParticipantRequest {
   return {
     text,
     requestId: 'req-1',
-    mode: ChatMode.Ask,
+    mode: ChatMode.Agent,
     modelId: 'test-model',
     attempt: 0,
   };

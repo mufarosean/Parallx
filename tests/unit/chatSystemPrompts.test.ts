@@ -36,7 +36,7 @@ function makeTool(name: string, description: string): IToolDefinition {
 describe('buildSystemPrompt', () => {
   it('returns a non-empty string for each mode', () => {
     const ctx = makeContext();
-    for (const mode of [ChatMode.Ask, ChatMode.Edit, ChatMode.Agent]) {
+    for (const mode of [ChatMode.Agent, ChatMode.Edit, ChatMode.Agent]) {
       const prompt = buildSystemPrompt(mode, ctx);
       expect(prompt).toBeTruthy();
       expect(typeof prompt).toBe('string');
@@ -46,7 +46,7 @@ describe('buildSystemPrompt', () => {
 
   it('produces different prompts for each mode', () => {
     const ctx = makeContext();
-    const ask = buildSystemPrompt(ChatMode.Ask, ctx);
+    const ask = buildSystemPrompt(ChatMode.Agent, ctx);
     const edit = buildSystemPrompt(ChatMode.Edit, ctx);
     const agent = buildSystemPrompt(ChatMode.Agent, ctx);
     // M41 Phase 9: Ask now shares Agent prompt
@@ -58,12 +58,6 @@ describe('buildSystemPrompt', () => {
 // ── Parallx identity (Task 4.2) ──
 
 describe('buildSystemPrompt — Parallx identity', () => {
-  it('includes Parallx identity in Ask mode', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext());
-    expect(prompt).toContain('Parallx AI');
-    expect(prompt).toContain('local-first knowledge workspace');
-  });
-
   it('includes Parallx identity in Agent mode', () => {
     const prompt = buildSystemPrompt(ChatMode.Agent, makeContext());
     expect(prompt).toContain('Parallx AI');
@@ -71,82 +65,75 @@ describe('buildSystemPrompt — Parallx identity', () => {
   });
 
   it('mentions Ollama and local-only', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext());
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext());
     expect(prompt).toContain('Ollama');
     expect(prompt).toContain('locally');
   });
 });
 
-// ── Ask mode ──
+// ── Agent mode context ──
 
-describe('buildSystemPrompt — Ask mode', () => {
+describe('buildSystemPrompt — Agent mode context', () => {
   it('includes workspace name', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext());
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext());
     expect(prompt).toContain('Test Workspace');
   });
 
   it('includes page count', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ pageCount: 12 }));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ pageCount: 12 }));
     expect(prompt).toContain('12 canvas pages');
   });
 
   it('includes file count when provided', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ fileCount: 42 }));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ fileCount: 42 }));
     expect(prompt).toContain('42 files');
   });
 
   it('omits file count when zero or undefined', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ fileCount: 0 }));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ fileCount: 0 }));
     expect(prompt).not.toContain('0 file');
   });
 
   it('includes current page title when provided', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ currentPageTitle: 'My Note' }));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ currentPageTitle: 'My Note' }));
     expect(prompt).toContain('My Note');
   });
 
   it('omits page title line when not provided', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ currentPageTitle: undefined }));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ currentPageTitle: undefined }));
     expect(prompt).not.toContain('Currently viewing');
   });
 
   it('handles singular page count correctly', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ pageCount: 1 }));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ pageCount: 1 }));
     expect(prompt).toContain('1 canvas page');
     expect(prompt).not.toContain('1 canvas pages');
   });
 
-  it('uses Agent prompt for Ask mode (M41 consolidation)', () => {
-    // M41 Phase 9: Ask now shares the Agent prompt — no read-only restriction text
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext());
-    expect(prompt).toContain('Parallx AI');
-    expect(prompt).toContain('approval');
-  });
-
   it('includes RAG context note when RAG is available', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ isRAGAvailable: true }));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ isRAGAvailable: true }));
     expect(prompt).toContain('semantic search');
   });
 
   it('includes tool-first guidance for coverage and enumeration tasks', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ isRAGAvailable: true }));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ isRAGAvailable: true }));
     expect(prompt).toContain('For exhaustive file-by-file or folder-wide coverage');
     expect(prompt).toContain('use read-only tools to enumerate and read the relevant files');
     expect(prompt).toContain('ALWAYS verify with tools');
   });
 
   it('omits RAG note when RAG is not available', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ isRAGAvailable: false }));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ isRAGAvailable: false }));
     expect(prompt).not.toContain('semantic search');
   });
 
   it('shows indexing status when indexing', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ isIndexing: true }));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ isIndexing: true }));
     expect(prompt).toContain('building');
   });
 
   it('shows ready status when RAG is ready', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ isRAGAvailable: true, isIndexing: false }));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ isRAGAvailable: true, isIndexing: false }));
     expect(prompt).toContain('ready');
   });
 });
@@ -253,7 +240,7 @@ describe('buildSystemPrompt — Agent mode', () => {
 describe('buildSystemPrompt — token budget', () => {
   it('keeps Ask prompt under 2000 tokens (estimated chars/4)', () => {
     const tools = Array.from({ length: 11 }, (_, i) => makeTool(`tool_${i}`, `Description for tool ${i}`));
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({
       tools,
       currentPageTitle: 'My Long Page Title',
       fileCount: 100,
@@ -278,12 +265,12 @@ describe('buildSystemPrompt — token budget', () => {
 
 describe('buildSystemPrompt — edge cases', () => {
   it('handles zero pages', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ pageCount: 0 }));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ pageCount: 0 }));
     expect(prompt).toContain('0 canvas pages');
   });
 
   it('handles empty workspace name', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ workspaceName: '' }));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ workspaceName: '' }));
     expect(prompt).toContain('""');
   });
 
@@ -295,7 +282,7 @@ describe('buildSystemPrompt — edge cases', () => {
 
   it('does not include page name or file name listings', () => {
     // M10 Phase 4: static listings removed in favour of RAG
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ pageCount: 5 }));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ pageCount: 5 }));
     expect(prompt).not.toContain('Canvas pages in this workspace:');
     expect(prompt).not.toContain('Files and folders at the workspace root:');
   });
@@ -309,8 +296,8 @@ describe('buildSystemPrompt — skill catalog', () => {
     { name: 'folder-overview', description: 'Overview of a folder structure', kind: 'workflow' as const, tags: ['workflow', 'overview'] },
   ];
 
-  it('includes skill catalog section when skills are provided (Ask mode)', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ skillCatalog: catalogEntries }));
+  it('includes skill catalog section when skills are provided', () => {
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ skillCatalog: catalogEntries }));
     expect(prompt).toContain('<available_skills>');
     expect(prompt).toContain('</available_skills>');
     expect(prompt).toContain('exhaustive-summary');
@@ -324,12 +311,12 @@ describe('buildSystemPrompt — skill catalog', () => {
   });
 
   it('omits skill catalog when no skills provided', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ skillCatalog: undefined }));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ skillCatalog: undefined }));
     expect(prompt).not.toContain('<available_skills>');
   });
 
   it('omits skill catalog when empty array', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ skillCatalog: [] }));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ skillCatalog: [] }));
     expect(prompt).not.toContain('<available_skills>');
   });
 
@@ -339,7 +326,7 @@ describe('buildSystemPrompt — skill catalog', () => {
   });
 
   it('includes behavioral instruction text', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ skillCatalog: catalogEntries }));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ skillCatalog: catalogEntries }));
     expect(prompt).toContain('workflow skills provide specialized step-by-step instructions');
     expect(prompt).toContain('activated automatically');
   });
@@ -352,8 +339,8 @@ describe('buildSystemPrompt — skill catalog', () => {
       { name: 'scoped-extraction', description: 'Extract specific information across scope', kind: 'workflow' as const, tags: ['workflow'] },
     ];
 
-    const withoutSkills = buildSystemPrompt(ChatMode.Ask, makeContext());
-    const withSkills = buildSystemPrompt(ChatMode.Ask, makeContext({ skillCatalog: fourSkills }));
+    const withoutSkills = buildSystemPrompt(ChatMode.Agent, makeContext());
+    const withSkills = buildSystemPrompt(ChatMode.Agent, makeContext({ skillCatalog: fourSkills }));
 
     const addedTokens = Math.ceil((withSkills.length - withoutSkills.length) / 4);
     expect(addedTokens).toBeLessThan(500);

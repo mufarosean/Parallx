@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ChatMode } from '../../src/services/chatTypes';
 import type {
@@ -90,7 +90,7 @@ describe('openclaw default participant', () => {
     await participant.handler({
       text: 'What does my policy cover?',
       requestId: 'req-1',
-      mode: ChatMode.Ask,
+      mode: ChatMode.Agent,
       modelId: 'test-model',
       attempt: 0,
     } as IChatParticipantRequest, {
@@ -146,7 +146,7 @@ describe('openclaw default participant', () => {
       text: 'list',
       command: 'context',
       requestId: 'req-context',
-      mode: ChatMode.Ask,
+      mode: ChatMode.Agent,
       modelId: 'test-model',
       attempt: 0,
     } as IChatParticipantRequest, {
@@ -245,7 +245,7 @@ describe('openclaw default participant', () => {
     await participant.handler({
       text: 'Tell me about my insured vehicle.',
       requestId: 'req-vehicle',
-      mode: ChatMode.Ask,
+      mode: ChatMode.Agent,
       modelId: 'test-model',
       attempt: 0,
     } as IChatParticipantRequest, {
@@ -290,7 +290,7 @@ describe('openclaw default participant', () => {
     await participant.handler({
       text: 'Who should I call to file the claim?',
       requestId: 'req-history-followup',
-      mode: ChatMode.Ask,
+      mode: ChatMode.Agent,
       modelId: 'test-model',
       attempt: 0,
     } as IChatParticipantRequest, {
@@ -351,7 +351,7 @@ describe('openclaw default participant', () => {
     await participant.handler({
       text: 'What details do you remember about my accident?',
       requestId: 'req-memory',
-      mode: ChatMode.Ask,
+      mode: ChatMode.Agent,
       modelId: 'test-model',
       attempt: 0,
     } as IChatParticipantRequest, {

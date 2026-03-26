@@ -22,7 +22,7 @@ describe('chat default runtime prompt stage', () => {
         } as any),
       } as any,
     }, {
-      mode: ChatMode.Ask,
+      mode: ChatMode.Agent,
       history: [{
         request: { text: 'Summarize the policy.' },
         response: { parts: [{ content: 'Policy summary.' }] },

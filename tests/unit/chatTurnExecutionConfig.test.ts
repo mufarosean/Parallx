@@ -55,7 +55,7 @@ describe('chat turn execution config', () => {
     expect(synthesisOptions.memoryEnabled).toBe(true);
   });
 
-  it('uses read-only tools in ask mode and JSON output in edit mode policy cases', async () => {
+  it('uses read-only tools in Agent mode and JSON output in Edit mode policy cases', async () => {
     const baseServices = {
       sendChatRequest: vi.fn(),
       invokeToolWithRuntimeControl: vi.fn(),
@@ -70,7 +70,7 @@ describe('chat turn execution config', () => {
     } as any;
 
     const askConfig = await buildChatTurnExecutionConfig(baseServices, {
-      requestMode: ChatMode.Ask,
+      requestMode: ChatMode.Agent,
       requestText: 'question',
       capabilities: {
         canReadContext: true,

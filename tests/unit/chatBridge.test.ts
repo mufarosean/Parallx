@@ -37,7 +37,7 @@ describe('ChatBridge', () => {
     await registeredHandler?.({
       text: '   hello world   ',
       requestId: 'req-1',
-      mode: 'ask',
+      mode: 'agent',
       modelId: 'test-model',
       attempt: 0,
     }, {
@@ -104,7 +104,7 @@ describe('ChatBridge', () => {
     const result = await registeredHandler?.({
       text: 'hello world',
       requestId: 'req-1',
-      mode: 'ask',
+      mode: 'agent',
       modelId: 'test-model',
       attempt: 0,
       turnState: {
@@ -210,7 +210,7 @@ describe('ChatBridge', () => {
     const result = await registeredHandler?.({
       text: 'hello world',
       requestId: 'req-1',
-      mode: 'ask',
+      mode: 'agent',
       modelId: 'test-model',
       attempt: 0,
     }, {
@@ -266,7 +266,7 @@ describe('ChatBridge', () => {
     await expect(registeredHandler?.({
       text: 'hello world',
       requestId: 'req-1',
-      mode: 'ask',
+      mode: 'agent',
       modelId: 'test-model',
       attempt: 0,
       turnState: {

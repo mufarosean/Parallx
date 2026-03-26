@@ -23,7 +23,7 @@ describe('ChatSessionSidebar', () => {
       sessionResource: { scheme: 'parallx-chat-session', path: '/session-today' },
       createdAt: NOW - HOUR,           // 1 hour ago → Today
       title: 'Today Chat',
-      mode: 'ask' as const,
+      mode: 'agent' as const,
       modelId: 'llama3.1:8b',
       messages: [
         {
@@ -57,7 +57,7 @@ describe('ChatSessionSidebar', () => {
       sessionResource: { scheme: 'parallx-chat-session', path: '/session-old' },
       createdAt: NOW - 60 * DAY,       // 60 days ago → Older
       title: 'Old Chat',
-      mode: 'ask' as const,
+      mode: 'agent' as const,
       modelId: 'llama3.1:8b',
       messages: [],
       requestInProgress: false,

@@ -31,12 +31,6 @@ const AUTONOMY_LEVELS: { value: AgentAutonomyLevel; label: string; description: 
 
 /** Mode display metadata. */
 const MODE_META: Record<ChatMode, { label: string; title: string; description: string; icon: string }> = {
-  [ChatMode.Ask]: {
-    label: 'Ask',
-    title: 'Ask mode — answers grounded in your workspace',
-    description: 'AI answers questions using workspace context',
-    icon: chatIcons.chatBubble,
-  },
   [ChatMode.Edit]: {
     label: 'Edit',
     title: 'Edit mode — structured canvas changes',

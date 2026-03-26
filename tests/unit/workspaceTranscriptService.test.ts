@@ -63,7 +63,7 @@ function createSession(): IChatSession {
     sessionResource: URI.from({ scheme: 'parallx-chat-session', path: '/session-123' }),
     createdAt: Date.parse('2026-03-13T12:00:00.000Z'),
     title: 'Test Session',
-    mode: ChatMode.Ask,
+    mode: ChatMode.Agent,
     modelId: 'gpt-oss:20b',
     messages: [
       {

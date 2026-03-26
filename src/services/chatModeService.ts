@@ -1,6 +1,6 @@
 // chatModeService.ts — IChatModeService implementation (M9 Task 2.3)
 //
-// Mode state management: Ask / Edit / Agent.
+// Mode state management: Edit / Agent.
 // Tracks the user's current mode selection and available modes.
 //
 // VS Code reference:
@@ -13,12 +13,12 @@ import { ChatMode } from './chatTypes.js';
 import type { IChatModeService } from './chatTypes.js';
 
 /** All available modes in order. */
-const ALL_MODES: readonly ChatMode[] = [ChatMode.Ask, ChatMode.Edit, ChatMode.Agent];
+const ALL_MODES: readonly ChatMode[] = [ChatMode.Edit, ChatMode.Agent];
 
 /**
- * Chat mode service — manages Ask/Edit/Agent mode state.
+ * Chat mode service — manages Edit/Agent mode state.
  *
- * Default mode is Ask (safe, no side effects).
+ * Default mode is Agent.
  */
 export class ChatModeService extends Disposable implements IChatModeService {
 

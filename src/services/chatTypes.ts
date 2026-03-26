@@ -150,8 +150,6 @@ export interface IChatResponseChunk {
  * VS Code reference: ChatModeKind enum (constants.ts)
  */
 export enum ChatMode {
-  /** Q&A mode — no side effects, no tool invocation. */
-  Ask = 'ask',
   /** Edit mode — canvas page/block editing with accept/reject. */
   Edit = 'edit',
   /** Agent mode — autonomous with tool invocation and confirmation gates. */

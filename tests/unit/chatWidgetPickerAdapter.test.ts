@@ -17,9 +17,9 @@ describe('chat widget picker adapter', () => {
       setActiveModel,
       onDidChangeModels,
       getModelContextLength,
-      getMode: vi.fn().mockReturnValue(ChatMode.Ask),
+      getMode: vi.fn().mockReturnValue(ChatMode.Agent),
       setMode: vi.fn(),
-      getAvailableModes: vi.fn().mockReturnValue([ChatMode.Ask, ChatMode.Agent]),
+      getAvailableModes: vi.fn().mockReturnValue([ChatMode.Edit, ChatMode.Agent]),
       onDidChangeMode: vi.fn() as any,
     });
 
@@ -34,7 +34,7 @@ describe('chat widget picker adapter', () => {
   it('delegates mode picker operations', () => {
     const getMode = vi.fn().mockReturnValue(ChatMode.Edit);
     const setMode = vi.fn();
-    const getAvailableModes = vi.fn().mockReturnValue([ChatMode.Ask, ChatMode.Edit, ChatMode.Agent]);
+    const getAvailableModes = vi.fn().mockReturnValue([ChatMode.Edit, ChatMode.Agent]);
     const onDidChangeMode = vi.fn() as any;
 
     const services = buildChatWidgetPickerServices({
@@ -51,7 +51,7 @@ describe('chat widget picker adapter', () => {
 
     expect(services.modePicker?.getMode()).toBe(ChatMode.Edit);
     services.modePicker?.setMode(ChatMode.Agent);
-    expect(services.modePicker?.getAvailableModes()).toEqual([ChatMode.Ask, ChatMode.Edit, ChatMode.Agent]);
+    expect(services.modePicker?.getAvailableModes()).toEqual([ChatMode.Edit, ChatMode.Agent]);
     expect(setMode).toHaveBeenCalledWith(ChatMode.Agent);
     expect(services.modePicker?.onDidChangeMode).toBe(onDidChangeMode);
   });

@@ -17,28 +17,19 @@ export type { IChatModeCapabilities } from '../chatTypes.js';
 /**
  * Frozen capability objects — one per mode.
  *
- * M41 Phase 9 consolidation: Ask collapsed into Agent behavior.
- * Ask keeps shorter iteration limit (canAutonomous: false) but gets
- * full tools + approval gates — the approval flow already prevents
- * accidental writes, making Ask's old restriction redundant.
- * Edit gains read-only tools so it can look up context.
+ * M44: Ask mode removed. Only Edit and Agent remain.
+ * Edit gets read-only tools so it can look up context.
  *
- *   | Capability            | Ask (≈Agent-lite) | Edit | Agent |
- *   |-----------------------|-------------------|------|-------|
- *   | Read context          | ✅                | ✅   | ✅    |
- *   | Invoke tools          | ✅                | ✅🔒 | ✅    |
- *   | Propose edits         | ✅                | ✅   | ✅    |
- *   | Autonomous multi-step | ❌                | ❌   | ✅    |
+ *   | Capability            | Edit | Agent |
+ *   |-----------------------|------|-------|
+ *   | Read context          | ✅   | ✅    |
+ *   | Invoke tools          | ✅🔒 | ✅    |
+ *   | Propose edits         | ✅   | ✅    |
+ *   | Autonomous multi-step | ❌   | ✅    |
  *
  *   🔒 = read-only tools only (no write/delete/run_command)
  */
 const MODE_CAPABILITIES: Readonly<Record<ChatMode, IChatModeCapabilities>> = Object.freeze({
-  [ChatMode.Ask]: Object.freeze({
-    canReadContext: true,
-    canInvokeTools: true,
-    canProposeEdits: true,
-    canAutonomous: false,   // shorter iteration limit than Agent
-  }),
   [ChatMode.Edit]: Object.freeze({
     canReadContext: true,
     canInvokeTools: true,   // read-only tools for context lookup
@@ -55,16 +46,17 @@ const MODE_CAPABILITIES: Readonly<Record<ChatMode, IChatModeCapabilities>> = Obj
 
 /**
  * Look up the capability flags for a given chat mode.
+ * Falls back to Agent capabilities for unknown/legacy modes (e.g. persisted 'ask' sessions).
  */
 export function getModeCapabilities(mode: ChatMode): IChatModeCapabilities {
-  return MODE_CAPABILITIES[mode];
+  return MODE_CAPABILITIES[mode] ?? MODE_CAPABILITIES[ChatMode.Agent];
 }
 
 /**
  * Should tool definitions be included in the Ollama request for this mode?
  */
 export function shouldIncludeTools(mode: ChatMode): boolean {
-  return MODE_CAPABILITIES[mode].canInvokeTools;
+  return (MODE_CAPABILITIES[mode] ?? MODE_CAPABILITIES[ChatMode.Agent]).canInvokeTools;
 }
 
 /**

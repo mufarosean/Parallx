@@ -46,7 +46,7 @@ describe('chat service 100-user simulation', () => {
     const lmService = new LanguageModelsService();
     const chatService = new ChatService(agentService, modeService, lmService);
 
-    modeService.setMode(ChatMode.Ask);
+    modeService.setMode(ChatMode.Agent);
     agentService.registerAgent(createEchoAgent());
     chatService.setTurnPreparationServices({
       isRAGAvailable: () => true,
@@ -67,7 +67,7 @@ describe('chat service 100-user simulation', () => {
       },
     });
 
-    const sessions = Array.from({ length: USER_COUNT }, () => chatService.createSession(ChatMode.Ask, 'test-model'));
+    const sessions = Array.from({ length: USER_COUNT }, () => chatService.createSession(ChatMode.Agent, 'test-model'));
 
     await Promise.all(sessions.map(async (session, userIndex) => {
       for (let turn = 0; turn < TURNS_PER_USER; turn += 1) {

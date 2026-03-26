@@ -82,7 +82,7 @@ describe('openclaw scoped participants', () => {
     await participant.handler({
       text: 'What documents do I have in my workspace?',
       requestId: 'req-docs',
-      mode: ChatMode.Ask,
+      mode: ChatMode.Agent,
       modelId: 'test-model',
       attempt: 0,
     } as IChatParticipantRequest, {
@@ -121,7 +121,7 @@ describe('openclaw scoped participants', () => {
       text: 'claims',
       command: 'search',
       requestId: 'req-1',
-      mode: ChatMode.Ask,
+      mode: ChatMode.Agent,
       modelId: 'test-model',
       attempt: 0,
     } as IChatParticipantRequest, {
@@ -164,7 +164,7 @@ describe('openclaw scoped participants', () => {
       text: '',
       command: 'describe',
       requestId: 'req-2',
-      mode: ChatMode.Ask,
+      mode: ChatMode.Agent,
       modelId: 'test-model',
       attempt: 0,
     } as IChatParticipantRequest, {
@@ -198,7 +198,7 @@ describe('openclaw scoped participants', () => {
       text: '',
       command: 'describe',
       requestId: 'req-no-page',
-      mode: ChatMode.Ask,
+      mode: ChatMode.Agent,
       modelId: 'test-model',
       attempt: 0,
     } as IChatParticipantRequest, {

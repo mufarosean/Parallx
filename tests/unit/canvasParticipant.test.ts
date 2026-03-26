@@ -47,7 +47,7 @@ function mockRequest(overrides?: Partial<IChatParticipantRequest>): IChatPartici
   return {
     text: 'hello',
     requestId: 'req-1',
-    mode: ChatMode.Ask,
+    mode: ChatMode.Agent,
     modelId: 'test-model',
     attempt: 0,
     ...overrides,
