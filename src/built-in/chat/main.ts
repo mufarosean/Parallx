@@ -934,7 +934,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
   context.subscriptions.push(
     api.commands.registerCommand('chat.switchMode', () => {
-      // Cycle through Ask → Agent → Edit → Ask (matches getAvailableModes order)
+      // M41 Phase 9: Cycle Agent ↔ Edit (Ask collapsed into Agent)
       const modes = modeService.getAvailableModes();
       const current = modeService.getMode();
       const idx = modes.indexOf(current);

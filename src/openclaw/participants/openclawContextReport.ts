@@ -53,17 +53,17 @@ export async function buildOpenclawPromptArtifacts(
     systemPromptSections.push(`Workspace description: ${workspaceDescription}`);
   }
 
-  if (mode === ChatMode.Ask) {
+  if (mode === ChatMode.Edit) {
     systemPromptSections.push(
-      'Modes gate authority, not wakefulness. Ask mode is read-first: gather evidence proactively with read-only tools, but do not make side-effecting changes.',
+      'Edit mode is for structured canvas changes. Use read-only tools to gather context, then respond with structured edit proposals.',
     );
-  } else if (mode === ChatMode.Agent) {
+  } else {
+    // Ask + Agent — both have full tools with approval gates
+    const autonomyNote = mode === ChatMode.Agent
+      ? 'Agent mode unlocks longer autonomous runs and approval-aware changes.'
+      : 'Use tools proactively to gather evidence and take action. Write operations require user approval.';
     systemPromptSections.push(
-      'Modes gate authority, not wakefulness. Agent mode unlocks action tools, longer autonomous runs, and approval-aware changes.',
-    );
-  } else if (mode === ChatMode.Edit) {
-    systemPromptSections.push(
-      'Edit mode is for structured canvas changes, not for general write-capable tool orchestration.',
+      `Modes gate authority, not wakefulness. ${autonomyNote}`,
     );
   }
 
@@ -340,9 +340,9 @@ function resolveToolDefinitions(
   services: Pick<IDefaultParticipantServices, 'getToolDefinitions' | 'getReadOnlyToolDefinitions'>,
   mode: ChatMode,
 ): readonly IToolDefinition[] {
-  return mode === ChatMode.Agent
-    ? services.getToolDefinitions()
-    : services.getReadOnlyToolDefinitions();
+  return mode === ChatMode.Edit
+    ? services.getReadOnlyToolDefinitions()
+    : services.getToolDefinitions();
 }
 
 function countToolProperties(parameters: Record<string, unknown>): number | undefined {

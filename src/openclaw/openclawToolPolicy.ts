@@ -116,10 +116,13 @@ export function applyOpenclawToolPolicy(params: {
  * Maps Parallx chat modes to tool profiles.
  */
 export function resolveToolProfile(mode: string | undefined): OpenclawToolProfile {
+  // M41 Phase 9: All modes get full tool access. Approval gates
+  // on write tools are the real safety boundary, not mode-based
+  // tool denial.
   switch (mode) {
-    case 'agent':
-      return 'full';
+    case 'edit':
+      return 'standard'; // Edit mode: read-only tools only
     default:
-      return 'standard';
+      return 'full';     // Ask + Agent: full tools with approval gates
   }
 }

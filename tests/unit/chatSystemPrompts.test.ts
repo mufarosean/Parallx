@@ -50,9 +50,9 @@ describe('buildSystemPrompt', () => {
     const ask = buildSystemPrompt(ChatMode.Ask, ctx);
     const edit = buildSystemPrompt(ChatMode.Edit, ctx);
     const agent = buildSystemPrompt(ChatMode.Agent, ctx);
-    expect(ask).not.toBe(edit);
+    // M41 Phase 9: Ask now shares Agent prompt
+    expect(ask).toBe(agent);
     expect(edit).not.toBe(agent);
-    expect(ask).not.toBe(agent);
   });
 });
 
@@ -117,15 +117,11 @@ describe('buildSystemPrompt — Ask mode', () => {
     expect(prompt).not.toContain('1 canvas pages');
   });
 
-  it('indicates read-only tools only', () => {
+  it('uses Agent prompt for Ask mode (M41 consolidation)', () => {
+    // M41 Phase 9: Ask now shares the Agent prompt — no read-only restriction text
     const prompt = buildSystemPrompt(ChatMode.Ask, makeContext());
-    expect(prompt).toMatch(/cannot create.*modify.*delete/i);
-  });
-
-  it('explains that Ask mode is still awake and read-first', () => {
-    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext());
-    expect(prompt).toContain('You are awake by default.');
-    expect(prompt).toContain('read-only tools');
+    expect(prompt).toContain('Parallx AI');
+    expect(prompt).toContain('approval');
   });
 
   it('includes RAG context note when RAG is available', () => {

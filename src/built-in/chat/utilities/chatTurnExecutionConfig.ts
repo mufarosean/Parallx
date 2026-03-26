@@ -16,6 +16,7 @@ import type {
   IExecutePreparedChatTurnOptions,
 } from './chatTurnSynthesis.js';
 import { shouldIncludeTools, shouldUseStructuredOutput } from '../config/chatModeCapabilities.js';
+import { ChatMode } from '../../../services/chatTypes.js';
 import { captureSession } from '../../../workspace/staleGuard.js';
 
 const DEFAULT_NETWORK_TIMEOUT_MS = 60_000;
@@ -64,7 +65,7 @@ export async function buildChatTurnExecutionConfig(
   const modelConfig = input.aiProfile?.model ?? effectiveConfig?.model;
   const requestOptions: IChatRequestOptions = {
     tools: (!input.isConversationalTurn && shouldIncludeTools(input.requestMode))
-      ? (input.capabilities.canAutonomous ? services.getToolDefinitions() : services.getReadOnlyToolDefinitions())
+      ? (input.requestMode === ChatMode.Edit ? services.getReadOnlyToolDefinitions() : services.getToolDefinitions())
       : undefined,
     format: shouldUseStructuredOutput(input.requestMode) ? { type: 'object' } : undefined,
     think: true,
@@ -73,7 +74,7 @@ export async function buildChatTurnExecutionConfig(
   };
 
   const canInvokeTools = input.capabilities.canInvokeTools && !!services.invokeToolWithRuntimeControl;
-  const isEditMode = input.capabilities.canProposeEdits && !input.capabilities.canAutonomous;
+  const isEditMode = input.requestMode === ChatMode.Edit;
   const memoryEnabled = effectiveConfig?.memory?.memoryEnabled ?? true;
   const autonomyMirror = services.createAutonomyMirror
     ? await services.createAutonomyMirror({

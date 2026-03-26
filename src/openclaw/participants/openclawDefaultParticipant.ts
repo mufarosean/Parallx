@@ -180,10 +180,11 @@ async function buildOpenclawTurnContext(
     .filter(s => s.kind === 'workflow')
     .map(s => ({ name: s.name, description: s.description, location: '' }));
 
-  // Tools based on mode
-  const tools = request.mode === ChatMode.Agent
-    ? services.getToolDefinitions()
-    : services.getReadOnlyToolDefinitions();
+  // Tools based on mode — M41 Phase 9: Ask + Agent get full tools,
+  // Edit gets read-only tools for context lookup only
+  const tools = request.mode === ChatMode.Edit
+    ? services.getReadOnlyToolDefinitions()
+    : services.getToolDefinitions();
 
   // Context engine
   const engine = new OpenclawContextEngine(services);
@@ -196,7 +197,7 @@ async function buildOpenclawTurnContext(
     parallxVersion: '0.1.0',
   };
 
-  // Max tool iterations
+  // Max tool iterations — Agent gets full autonomy, Ask/Edit get short loops
   const maxToolIterations = request.mode === ChatMode.Agent
     ? Math.min(services.maxIterations ?? OPENCLAW_MAX_AGENT_ITERATIONS, OPENCLAW_MAX_AGENT_ITERATIONS)
     : OPENCLAW_MAX_READONLY_ITERATIONS;

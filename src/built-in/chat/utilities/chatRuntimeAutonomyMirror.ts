@@ -185,7 +185,7 @@ class ChatRuntimeAutonomyMirror implements IChatRuntimeAutonomyMirror {
 
     await this._deps.agentSessionService.createTask({
       goal: this._input.requestText,
-      desiredAutonomy: this._input.mode === ChatMode.Agent ? 'allow-policy-actions' : 'allow-safe-actions',
+      desiredAutonomy: this._input.mode === ChatMode.Edit ? 'allow-safe-actions' : 'allow-policy-actions',
       completionCriteria: ['Produce a final chat answer.'],
       allowedScope: { kind: 'workspace' },
       mode: 'operator',
@@ -441,7 +441,9 @@ export function createChatRuntimeAutonomyMirror(
   deps: IChatRuntimeAutonomyMirrorDeps,
   input: ICreateChatRuntimeAutonomyMirrorInput,
 ): IChatRuntimeAutonomyMirror | undefined {
-  if (input.mode !== ChatMode.Agent) {
+  // M41 Phase 9: Autonomy mirror for Ask + Agent (both have full tools).
+  // Edit mode skips it (structured output, no autonomous actions).
+  if (input.mode === ChatMode.Edit) {
     return undefined;
   }
 

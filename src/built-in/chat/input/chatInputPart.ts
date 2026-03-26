@@ -278,11 +278,10 @@ export class ChatInputPart extends Disposable {
 
   /**
    * Show or hide the Configure Tools button based on current mode.
-   * Ask mode has only read-only tools (always on) — no configuration needed.
+   * M41 Phase 9: All modes now have tools — always show the button.
    */
-  updateToolsButtonForMode(mode: ChatMode): void {
-    const show = mode !== ChatMode.Ask;
-    this._toolsBtn.style.display = show ? '' : 'none';
+  updateToolsButtonForMode(_mode: ChatMode): void {
+    this._toolsBtn.style.display = '';
   }
 
   /** Get current explicit attachments (to include in the request). */

@@ -17,25 +17,31 @@ export type { IChatModeCapabilities } from '../chatTypes.js';
 /**
  * Frozen capability objects — one per mode.
  *
- *   | Capability            | Ask | Edit | Agent |
- *   |-----------------------|-----|------|-------|
- *   | Read context          | ✅  | ✅   | ✅    |
- *   | Invoke tools          | 🔒  | ❌   | ✅    |
- *   | Propose edits         | ❌  | ✅   | ✅    |
- *   | Autonomous multi-step | ❌  | ❌   | ✅    |
+ * M41 Phase 9 consolidation: Ask collapsed into Agent behavior.
+ * Ask keeps shorter iteration limit (canAutonomous: false) but gets
+ * full tools + approval gates — the approval flow already prevents
+ * accidental writes, making Ask's old restriction redundant.
+ * Edit gains read-only tools so it can look up context.
  *
- *   🔒 = read-only tools only (list, read, search — no create/modify)
+ *   | Capability            | Ask (≈Agent-lite) | Edit | Agent |
+ *   |-----------------------|-------------------|------|-------|
+ *   | Read context          | ✅                | ✅   | ✅    |
+ *   | Invoke tools          | ✅                | ✅🔒 | ✅    |
+ *   | Propose edits         | ✅                | ✅   | ✅    |
+ *   | Autonomous multi-step | ❌                | ❌   | ✅    |
+ *
+ *   🔒 = read-only tools only (no write/delete/run_command)
  */
 const MODE_CAPABILITIES: Readonly<Record<ChatMode, IChatModeCapabilities>> = Object.freeze({
   [ChatMode.Ask]: Object.freeze({
     canReadContext: true,
-    canInvokeTools: true,   // read-only tools — gated at invocation layer
-    canProposeEdits: false,
-    canAutonomous: false,
+    canInvokeTools: true,
+    canProposeEdits: true,
+    canAutonomous: false,   // shorter iteration limit than Agent
   }),
   [ChatMode.Edit]: Object.freeze({
     canReadContext: true,
-    canInvokeTools: false,
+    canInvokeTools: true,   // read-only tools for context lookup
     canProposeEdits: true,
     canAutonomous: false,
   }),
@@ -63,8 +69,10 @@ export function shouldIncludeTools(mode: ChatMode): boolean {
 
 /**
  * Should the request use JSON structured output format (edit proposals)?
+ *
+ * M41 Phase 9: Only Edit mode uses structured JSON output.
+ * Ask and Agent use free-form text + tools.
  */
 export function shouldUseStructuredOutput(mode: ChatMode): boolean {
-  return MODE_CAPABILITIES[mode].canProposeEdits && !MODE_CAPABILITIES[mode].canAutonomous;
-  // Edit mode = structured output; Agent mode = tools + free-form
+  return mode === ChatMode.Edit;
 }

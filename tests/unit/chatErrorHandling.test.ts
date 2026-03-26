@@ -231,18 +231,19 @@ describe('IChatResponseStream edit methods', () => {
 describe('ChatModeService', () => {
   it('cycles through modes via setMode', () => {
     const modeService = new ChatModeService();
-    expect(modeService.getMode()).toBe(ChatMode.Ask);
+    // M41 Phase 9: default is now Agent, available modes are [Agent, Edit]
+    expect(modeService.getMode()).toBe(ChatMode.Agent);
 
     const modes = modeService.getAvailableModes();
-    expect(modes).toContain(ChatMode.Ask);
-    expect(modes).toContain(ChatMode.Edit);
     expect(modes).toContain(ChatMode.Agent);
-
-    modeService.setMode(ChatMode.Agent);
-    expect(modeService.getMode()).toBe(ChatMode.Agent);
+    expect(modes).toContain(ChatMode.Edit);
+    expect(modes).not.toContain(ChatMode.Ask);
 
     modeService.setMode(ChatMode.Edit);
     expect(modeService.getMode()).toBe(ChatMode.Edit);
+
+    modeService.setMode(ChatMode.Agent);
+    expect(modeService.getMode()).toBe(ChatMode.Agent);
   });
 
   it('fires onDidChangeMode when mode changes', () => {
@@ -250,7 +251,7 @@ describe('ChatModeService', () => {
     const listener = vi.fn();
     modeService.onDidChangeMode(listener);
 
-    modeService.setMode(ChatMode.Agent);
-    expect(listener).toHaveBeenCalledWith(ChatMode.Agent);
+    modeService.setMode(ChatMode.Edit);
+    expect(listener).toHaveBeenCalledWith(ChatMode.Edit);
   });
 });

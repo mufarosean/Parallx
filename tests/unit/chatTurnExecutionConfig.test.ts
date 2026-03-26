@@ -101,7 +101,8 @@ describe('chat turn execution config', () => {
       categorizeError: vi.fn(),
     });
 
-    expect(askConfig.synthesisOptions.requestOptions.tools).toEqual([{ name: 'read_file' }]);
+    // M41 Phase 9: Ask now gets full tools (same as Agent)
+    expect(askConfig.synthesisOptions.requestOptions.tools).toEqual([{ name: 'write_file' }]);
     expect(askConfig.synthesisOptions.canInvokeTools).toBe(true);
     expect(askConfig.synthesisOptions.useModelOnlyExecution).toBe(false);
     expect(askConfig.synthesisOptions.memoryEnabled).toBe(false);
@@ -138,9 +139,11 @@ describe('chat turn execution config', () => {
       categorizeError: vi.fn(),
     });
 
-    expect(editConfig.synthesisOptions.requestOptions.tools).toBeUndefined();
+    // M41 Phase 9: Edit now gets read-only tools
+    expect(editConfig.synthesisOptions.requestOptions.tools).toEqual([{ name: 'read_file' }]);
     expect(editConfig.synthesisOptions.requestOptions.format).toEqual({ type: 'object' });
     expect(editConfig.synthesisOptions.isEditMode).toBe(true);
-    expect(editConfig.synthesisOptions.useModelOnlyExecution).toBe(true);
+    // Edit has tools now (read-only), so useModelOnlyExecution is false
+    expect(editConfig.synthesisOptions.useModelOnlyExecution).toBe(false);
   });
 });

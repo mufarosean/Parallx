@@ -13,20 +13,22 @@ import type { IChatModeCapabilities } from '../../src/built-in/chat/config/chatM
 
 describe('getModeCapabilities', () => {
   it('returns capabilities for Ask mode', () => {
+    // M41 Phase 9: Ask now mirrors Agent capabilities (tools + edits)
     const caps = getModeCapabilities(ChatMode.Ask);
     expect(caps).toEqual({
       canReadContext: true,
       canInvokeTools: true,
-      canProposeEdits: false,
+      canProposeEdits: true,
       canAutonomous: false,
     });
   });
 
   it('returns capabilities for Edit mode', () => {
+    // M41 Phase 9: Edit now has canInvokeTools for read-only tool access
     const caps = getModeCapabilities(ChatMode.Edit);
     expect(caps).toEqual({
       canReadContext: true,
-      canInvokeTools: false,
+      canInvokeTools: true,
       canProposeEdits: true,
       canAutonomous: false,
     });
@@ -67,8 +69,8 @@ describe('shouldIncludeTools', () => {
     expect(shouldIncludeTools(ChatMode.Ask)).toBe(true);
   });
 
-  it('returns false for Edit mode', () => {
-    expect(shouldIncludeTools(ChatMode.Edit)).toBe(false);
+  it('returns true for Edit mode (M41: read-only tools)', () => {
+    expect(shouldIncludeTools(ChatMode.Edit)).toBe(true);
   });
 
   it('returns true for Agent mode', () => {

@@ -19,13 +19,14 @@ import type { IModePickerServices } from '../chatTypes.js';
 // IModePickerServices — now defined in chatTypes.ts (M13 Phase 1)
 export type { IModePickerServices } from '../chatTypes.js';
 
-/** Mode display metadata. */
-const MODE_META: Record<ChatMode, { label: string; title: string; description: string; icon: string }> = {
+/** Mode display metadata. */\nconst MODE_META: Record<ChatMode, { label: string; title: string; description: string; icon: string }> = {
   [ChatMode.Ask]: {
-    label: 'Ask',
-    title: 'Ask mode — awake, read-first, no side effects',
-    description: 'Awake by default; uses read-only tools',
-    icon: chatIcons.chatBubble,
+    // M41 Phase 9: Ask collapsed into Agent behavior. Keep metadata for
+    // backward compat (old sessions stored as 'ask' in DB) but hide from picker.
+    label: 'Agent',
+    title: 'Agent mode — awake, action-capable, approval-aware',
+    description: 'Full tools with approval gates',
+    icon: chatIcons.agent,
   },
   [ChatMode.Edit]: {
     label: 'Edit',
@@ -36,7 +37,7 @@ const MODE_META: Record<ChatMode, { label: string; title: string; description: s
   [ChatMode.Agent]: {
     label: 'Agent',
     title: 'Agent mode — awake, action-capable, approval-aware',
-    description: 'Action tools with approval gates',
+    description: 'Full tools with approval gates',
     icon: chatIcons.agent,
   },
 };
