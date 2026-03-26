@@ -12,7 +12,7 @@
  *   - Tools filtered BEFORE reaching the model, not after (upstream pattern)
  */
 
-import type { IToolDefinition, ToolPermissionLevel } from '../services/chatTypes.js';
+import type { IToolDefinition, ToolPermissionLevel, ModelCapability } from '../services/chatTypes.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -86,7 +86,13 @@ export function applyOpenclawToolPolicy(params: {
   tools: readonly IToolDefinition[];
   mode: OpenclawToolProfile;
   permissions?: IToolPermissions;
+  modelCapabilities?: readonly ModelCapability[];
 }): IToolDefinition[] {
+  // M42 Phase 2: If model doesn't support tool calling, return empty array
+  if (params.modelCapabilities && !params.modelCapabilities.includes('tools')) {
+    return [];
+  }
+
   const profile = TOOL_PROFILES[params.mode];
 
   return params.tools.filter(tool => {

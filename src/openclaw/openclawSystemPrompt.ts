@@ -60,6 +60,10 @@ export interface IOpenclawSystemPromptParams {
   readonly preferencesPrompt?: string;
   /** Prompt overlay from active file pattern rules */
   readonly promptOverlay?: string;
+  /** M42: Model tier derived from parameter size — adjusts behavioral guidance */
+  readonly modelTier?: 'small' | 'medium' | 'large';
+  /** M42: Whether the model supports tool calling */
+  readonly supportsTools?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,6 +120,16 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
 
   // 8. Behavioral rules (M11 small-model guidance — framework-level, not query-specific)
   sections.push(buildBehavioralRulesSection());
+
+  // 9. M42: Model-tier-specific guidance
+  if (params.modelTier === 'small') {
+    sections.push(buildSmallModelGuidance());
+  }
+
+  // 10. M42: No-tools fallback note
+  if (params.supportsTools === false) {
+    sections.push(buildNoToolsFallbackNote());
+  }
 
   return sections.join('\n\n');
 }
@@ -235,6 +249,35 @@ export function buildBehavioralRulesSection(): string {
 export function estimateSystemPromptTokens(params: IOpenclawSystemPromptParams): number {
   const prompt = buildOpenclawSystemPrompt(params);
   return estimateTokens(prompt);
+}
+
+// ---------------------------------------------------------------------------
+// M42 Phase 2: Model-tier guidance
+// ---------------------------------------------------------------------------
+
+/**
+ * Extra guidance for small models (≤8B parameters).
+ * Encourages step-by-step reasoning and concise output to stay within
+ * the smaller context window and attention capacity.
+ */
+function buildSmallModelGuidance(): string {
+  return `## Small Model Guidance
+- Think step-by-step before answering complex questions.
+- Keep responses concise — prefer short paragraphs over long prose.
+- When uncertain, say so rather than generating plausible-sounding guesses.
+- Focus on the most relevant workspace files rather than trying to reference everything.`;
+}
+
+/**
+ * Fallback note when the model doesn't support tool calling.
+ * Instructs the model to produce structured text output instead.
+ */
+function buildNoToolsFallbackNote(): string {
+  return `## Tool Calling Not Available
+This model does not support native tool calling. When you need to perform actions (search files, read documents, run commands), describe what you would do in a structured format:
+- Action: [tool name]
+- Input: [parameters]
+The system will interpret these and execute them on your behalf.`;
 }
 
 // ---------------------------------------------------------------------------

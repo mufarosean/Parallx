@@ -27,6 +27,7 @@ import type {
   IChatMessage,
   IChatRequestOptions,
   IChatResponseChunk,
+  ModelCapability,
 } from './chatTypes.js';
 
 /** Storage key for the persisted active model ID. */
@@ -50,6 +51,17 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
 
   /** Cached model list from the last aggregation. */
   private _cachedModels: readonly ILanguageModelInfo[] = [];
+
+  // ── Model intelligence cache (M42 Phase 2) ──
+
+  /** Model ID → detected context length from /api/show. */
+  private readonly _modelContextLengths = new Map<string, number>();
+
+  /** Model ID → detected capabilities from /api/show. */
+  private readonly _modelCapabilities = new Map<string, readonly ModelCapability[]>();
+
+  /** Model ID → parameter size string (e.g. '8.0B'). */
+  private readonly _modelParameterSizes = new Map<string, string>();
 
   // ── Active model ──
 
@@ -133,6 +145,7 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
     }
     this._activeModelId = modelId;
     this._persistActiveModel();
+    this._probeActiveModel(modelId);
     this._onDidChangeModels.fire();
   }
 
@@ -179,6 +192,71 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
     } else {
       this._storage.delete(ACTIVE_MODEL_STORAGE_KEY);
     }
+  }
+
+  // ── Model Intelligence (M42 Phase 2) ──
+
+  /**
+   * Probe a model via getModelInfo and cache context length + capabilities.
+   * Fire-and-forget — does not block model switch.
+   */
+  private _probeActiveModel(modelId: string): void {
+    if (this._modelContextLengths.has(modelId)) {
+      return; // Already cached
+    }
+    const providerId = this._modelToProvider.get(modelId);
+    if (!providerId) { return; }
+    const provider = this._providers.get(providerId);
+    if (!provider) { return; }
+
+    provider.getModelInfo(modelId).then(info => {
+      if (info.contextLength > 0) {
+        this._modelContextLengths.set(modelId, info.contextLength);
+      }
+      if (info.capabilities.length > 0) {
+        this._modelCapabilities.set(modelId, info.capabilities);
+      }
+      if (info.parameterSize) {
+        this._modelParameterSizes.set(modelId, info.parameterSize);
+      }
+      this._onDidChangeModels.fire();
+    }).catch(() => {
+      // Probe failed — not critical, use defaults
+    });
+  }
+
+  /**
+   * Get the detected context length for the active model.
+   * Falls back to 4096 if not probed yet.
+   */
+  getActiveModelContextLength(): number {
+    if (!this._activeModelId) { return 4096; }
+    return this._modelContextLengths.get(this._activeModelId) ?? 4096;
+  }
+
+  /**
+   * Get the detected capabilities for the active model.
+   * Returns ['completion'] if not probed yet.
+   */
+  getActiveModelCapabilities(): readonly ModelCapability[] {
+    if (!this._activeModelId) { return ['completion']; }
+    return this._modelCapabilities.get(this._activeModelId) ?? ['completion'];
+  }
+
+  /**
+   * Derive a model tier from parameter size.
+   * small: ≤8B, medium: 9-30B, large: >30B
+   */
+  getActiveModelTier(): 'small' | 'medium' | 'large' {
+    if (!this._activeModelId) { return 'medium'; }
+    const sizeStr = this._modelParameterSizes.get(this._activeModelId);
+    if (!sizeStr) { return 'medium'; }
+    const match = sizeStr.match(/([\d.]+)B/i);
+    if (!match) { return 'medium'; }
+    const sizeB = parseFloat(match[1]);
+    if (sizeB <= 8) { return 'small'; }
+    if (sizeB <= 30) { return 'medium'; }
+    return 'large';
   }
 
   // ── Chat Request Delegation ──
