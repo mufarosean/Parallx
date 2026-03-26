@@ -19,15 +19,23 @@ import type { IModePickerServices } from '../chatTypes.js';
 // IModePickerServices — now defined in chatTypes.ts (M13 Phase 1)
 export type { IModePickerServices } from '../chatTypes.js';
 
+/** Autonomy levels for Agent mode. */
+export type AgentAutonomyLevel = 'manual' | 'allow-reads' | 'allow-safe' | 'custom';
+
+const AUTONOMY_LEVELS: { value: AgentAutonomyLevel; label: string; description: string }[] = [
+  { value: 'manual', label: 'Manual', description: 'Every action requires your OK' },
+  { value: 'allow-reads', label: 'Allow Reads', description: 'Auto-search, ask for changes' },
+  { value: 'allow-safe', label: 'Allow Safe', description: 'Reads + safe edits run automatically' },
+  { value: 'custom', label: 'Custom', description: 'You set the rules in Settings → Agent' },
+];
+
 /** Mode display metadata. */
 const MODE_META: Record<ChatMode, { label: string; title: string; description: string; icon: string }> = {
   [ChatMode.Ask]: {
-    // M41 Phase 9: Ask collapsed into Agent behavior. Keep metadata for
-    // backward compat (old sessions stored as 'ask' in DB) but hide from picker.
-    label: 'Agent',
-    title: 'Agent mode — awake, action-capable, approval-aware',
+    label: 'Ask',
+    title: 'Ask mode — answers grounded in your workspace',
     description: 'AI answers questions using workspace context',
-    icon: chatIcons.agent,
+    icon: chatIcons.chatBubble,
   },
   [ChatMode.Edit]: {
     label: 'Edit',
@@ -53,9 +61,13 @@ export class ChatModePicker extends Disposable {
   private _dropdown: HTMLElement | undefined;
   private _closeHandler: ((e: MouseEvent) => void) | undefined;
   private _services: IModePickerServices;
+  private _autonomyLevel: AgentAutonomyLevel = 'allow-reads';
 
   private readonly _onDidSelectMode = this._register(new Emitter<ChatMode>());
   readonly onDidSelectMode: Event<ChatMode> = this._onDidSelectMode.event;
+
+  private readonly _onDidChangeAutonomy = this._register(new Emitter<AgentAutonomyLevel>());
+  readonly onDidChangeAutonomy: Event<AgentAutonomyLevel> = this._onDidChangeAutonomy.event;
 
   constructor(container: HTMLElement, services: IModePickerServices) {
     super();
@@ -149,6 +161,31 @@ export class ChatModePicker extends Disposable {
       dropdown.appendChild(item);
     }
 
+    // ── Autonomy level sub-selector (visible when Agent is current mode) ──
+    if (currentMode === ChatMode.Agent) {
+      const separator = $('div.parallx-chat-picker-separator');
+      dropdown.appendChild(separator);
+
+      const autonomyHeader = $('div.parallx-chat-picker-autonomy-header', 'Agent autonomy');
+      dropdown.appendChild(autonomyHeader);
+
+      for (const level of AUTONOMY_LEVELS) {
+        const chip = $('div.parallx-chat-picker-autonomy-chip');
+        if (level.value === this._autonomyLevel) {
+          chip.classList.add('parallx-chat-picker-autonomy-chip--active');
+        }
+        chip.textContent = level.label;
+        chip.title = level.description;
+        chip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this._autonomyLevel = level.value;
+          this._onDidChangeAutonomy.fire(level.value);
+          this._closeDropdown();
+        });
+        dropdown.appendChild(chip);
+      }
+    }
+
     // Position below button (opening upward from the input bar)
     const rect = this._button.getBoundingClientRect();
     dropdown.style.left = `${rect.left}px`;
@@ -181,5 +218,9 @@ export class ChatModePicker extends Disposable {
   override dispose(): void {
     this._closeDropdown();
     super.dispose();
+  }
+
+  get autonomyLevel(): AgentAutonomyLevel {
+    return this._autonomyLevel;
   }
 }

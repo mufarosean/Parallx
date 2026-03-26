@@ -237,7 +237,7 @@ describe('ChatModeService', () => {
     const modes = modeService.getAvailableModes();
     expect(modes).toContain(ChatMode.Agent);
     expect(modes).toContain(ChatMode.Edit);
-    expect(modes).not.toContain(ChatMode.Ask);
+    expect(modes).toContain(ChatMode.Ask);
 
     modeService.setMode(ChatMode.Edit);
     expect(modeService.getMode()).toBe(ChatMode.Edit);

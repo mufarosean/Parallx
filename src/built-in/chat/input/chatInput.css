@@ -305,6 +305,44 @@
   position: relative;
 }
 
+/* ── Autonomy sub-selector ── */
+
+.parallx-chat-picker-separator {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--vscode-editorWidget-border, #454545);
+}
+
+.parallx-chat-picker-autonomy-header {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  padding: 2px 8px 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.parallx-chat-picker-autonomy-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  margin: 2px 4px;
+  border-radius: 10px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--vscode-foreground, #cccccc);
+  background: var(--vscode-toolbar-hoverBackground, #383838);
+  border: 1px solid transparent;
+}
+
+.parallx-chat-picker-autonomy-chip:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.parallx-chat-picker-autonomy-chip--active {
+  background: var(--vscode-list-activeSelectionBackground, #04395e);
+  color: var(--vscode-list-activeSelectionForeground, #ffffff);
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
 /* Picker chevron (shared by model + mode pickers) */
 
 .parallx-chat-picker-chevron {

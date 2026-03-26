@@ -13,7 +13,7 @@ import { ChatMode } from './chatTypes.js';
 import type { IChatModeService } from './chatTypes.js';
 
 /** All available modes in order. */
-const ALL_MODES: readonly ChatMode[] = [ChatMode.Agent, ChatMode.Edit];
+const ALL_MODES: readonly ChatMode[] = [ChatMode.Ask, ChatMode.Edit, ChatMode.Agent];
 
 /**
  * Chat mode service — manages Ask/Edit/Agent mode state.
