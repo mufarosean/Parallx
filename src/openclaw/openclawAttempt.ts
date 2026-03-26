@@ -282,31 +282,44 @@ export async function executeOpenclawAttempt(
     const loopTokenEstimate = estimateMessagesTokens(currentMessages);
     if (context.tokenBudget > 0 && loopTokenEstimate > context.tokenBudget * 0.85) {
       response.progress(`Tool loop context near capacity (${loopTokenEstimate}/${context.tokenBudget} tokens), compacting...`);
-      await context.engine.compact({
-        sessionId: context.sessionId,
-        tokenBudget: context.tokenBudget,
-      });
-      // Re-assemble after compaction to get trimmed history
-      const reAssembled = await context.engine.assemble({
-        sessionId: context.sessionId,
-        history: context.history,
-        tokenBudget: context.tokenBudget,
-        prompt: request.text,
-      });
-      // Rebuild messages: system prompt stays, use re-assembled history,
-      // keep recent tool exchange, add user message
-      currentMessages = [
-        currentMessages[0], // system prompt
-        ...reAssembled.messages,
-        ...mentionMessages,
-        { role: 'user', content: request.text, images: request.attachments?.filter(a => a.kind === 'image') },
-        { role: 'assistant', content: markdown, toolCalls: turnResult.toolCalls },
-        ...toolResultMessages,
-      ];
+      try {
+        await context.engine.compact({
+          sessionId: context.sessionId,
+          tokenBudget: context.tokenBudget,
+        });
+        // Re-assemble after compaction to get trimmed history
+        const reAssembled = await context.engine.assemble({
+          sessionId: context.sessionId,
+          history: context.history,
+          tokenBudget: context.tokenBudget,
+          prompt: request.text,
+        });
+        // Rebuild messages: system prompt stays, use re-assembled history,
+        // keep recent tool exchange, add user message
+        currentMessages = [
+          currentMessages[0], // system prompt
+          ...reAssembled.messages,
+          ...mentionMessages,
+          { role: 'user', content: request.text, images: request.attachments?.filter(a => a.kind === 'image') },
+          { role: 'assistant', content: markdown, toolCalls: turnResult.toolCalls },
+          ...toolResultMessages,
+        ];
+      } catch (compactErr) {
+        console.error('[OpenClaw] Mid-loop compaction failed, continuing without compaction:', compactErr);
+      }
+    }
+
+    // Detect all-tools-failed: if every tool result was an error, stop looping
+    // to avoid pointless retries that waste tokens.
+    const allToolsFailed = toolResultMessages.length > 0
+      && toolResultMessages.every(m => m.content.startsWith('Error:') || m.content.startsWith('error:'));
+    if (allToolsFailed) {
+      response.progress('All tool invocations returned errors, stopping tool loop.');
+      break;
     }
 
     iterations++;
-    // Reset markdown for next iteration — the model will produce a new response
+    // Preserve accumulated markdown for streaming; next iteration appends
     markdown = '';
   }
 

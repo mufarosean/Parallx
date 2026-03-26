@@ -114,10 +114,14 @@ export async function runOpenclawTurn(
     //     Upstream: overflow detection triggers compaction before model call
     if (assembled.estimatedTokens > context.tokenBudget * 0.8 && overflowAttempts < MAX_OVERFLOW_COMPACTION) {
       response.progress(`Context near capacity (${assembled.estimatedTokens}/${context.tokenBudget} tokens), auto-compacting...`);
-      await context.engine.compact({
-        sessionId: context.sessionId,
-        tokenBudget: context.tokenBudget,
-      });
+      try {
+        await context.engine.compact({
+          sessionId: context.sessionId,
+          tokenBudget: context.tokenBudget,
+        });
+      } catch (compactErr) {
+        console.error('[OpenClaw] Auto-compact failed:', compactErr);
+      }
       overflowAttempts++;
       continue; // Re-assemble with compacted history
     }
@@ -143,10 +147,15 @@ export async function runOpenclawTurn(
       // 3a. Context overflow → compact → retry
       if (isContextOverflow(error) && overflowAttempts < MAX_OVERFLOW_COMPACTION) {
         response.progress(`Context overflow detected, compacting (attempt ${overflowAttempts + 1}/${MAX_OVERFLOW_COMPACTION})...`);
-        await context.engine.compact({
-          sessionId: context.sessionId,
-          tokenBudget: context.tokenBudget,
-        });
+        try {
+          await context.engine.compact({
+            sessionId: context.sessionId,
+            tokenBudget: context.tokenBudget,
+          });
+        } catch (compactErr) {
+          console.error('[OpenClaw] Overflow compact failed, re-throwing original error:', compactErr);
+          throw error;
+        }
         overflowAttempts++;
         continue;
       }
@@ -154,11 +163,16 @@ export async function runOpenclawTurn(
       // 3b. Timeout → compact(force) → retry
       if (isTimeoutError(error) && timeoutAttempts < MAX_TIMEOUT_COMPACTION) {
         response.progress(`Timeout detected, compacting (attempt ${timeoutAttempts + 1}/${MAX_TIMEOUT_COMPACTION})...`);
-        await context.engine.compact({
-          sessionId: context.sessionId,
-          tokenBudget: context.tokenBudget,
-          force: true,
-        });
+        try {
+          await context.engine.compact({
+            sessionId: context.sessionId,
+            tokenBudget: context.tokenBudget,
+            force: true,
+          });
+        } catch (compactErr) {
+          console.error('[OpenClaw] Timeout compact failed, re-throwing original error:', compactErr);
+          throw error;
+        }
         timeoutAttempts++;
         continue;
       }
