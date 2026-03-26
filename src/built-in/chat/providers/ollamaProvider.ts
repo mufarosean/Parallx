@@ -399,9 +399,9 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       ollamaOptions['num_ctx'] = this._contextLengthOverride;
     }
     if (options) {
-      if (options.temperature !== undefined) ollamaOptions['temperature'] = options.temperature;
-      if (options.topP !== undefined) ollamaOptions['top_p'] = options.topP;
-      if (options.maxTokens !== undefined) ollamaOptions['num_predict'] = options.maxTokens;
+      if (options.temperature !== undefined) ollamaOptions['temperature'] = Math.max(0, Math.min(2, options.temperature));
+      if (options.topP !== undefined) ollamaOptions['top_p'] = Math.max(0, Math.min(1, options.topP));
+      if (options.maxTokens !== undefined && options.maxTokens > 0) ollamaOptions['num_predict'] = options.maxTokens;
       if (options.seed !== undefined) ollamaOptions['seed'] = options.seed;
 
       if (options.tools && options.tools.length > 0) {

@@ -31,7 +31,7 @@ import type { IChatRuntimeToolInvocationObserver } from './openclawTypes.js';
 import { buildOpenclawSystemPrompt } from './openclawSystemPrompt.js';
 import { applyOpenclawToolPolicy } from './openclawToolPolicy.js';
 import { ChatToolLoopSafety } from '../services/chatToolLoopSafety.js';
-import { estimateMessagesTokens } from './openclawTokenBudget.js';
+import { estimateMessagesTokens, estimateTokens, trimTextToBudget } from './openclawTokenBudget.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -151,6 +151,23 @@ export async function executeOpenclawAttempt(
   };
   const systemPrompt = buildOpenclawSystemPrompt(systemPromptParams);
 
+  // 2b. Enforce system prompt token budget (10% of total context window).
+  //     If the built system prompt exceeds the budget, truncate to fit.
+  const systemBudget = Math.floor(context.tokenBudget * 0.10);
+  let effectiveSystemPrompt = systemPrompt;
+  if (systemBudget > 0) {
+    const systemTokens = estimateTokens(systemPrompt);
+    if (systemTokens > systemBudget) {
+      const { text, trimmed } = trimTextToBudget(systemPrompt, systemBudget);
+      if (trimmed) {
+        effectiveSystemPrompt = text;
+        console.warn(
+          `[OpenClaw] System prompt (${systemTokens} tokens) exceeds budget (${systemBudget} tokens), truncated.`,
+        );
+      }
+    }
+  }
+
   // 3. Filter tools (System 4)
   const allowedTools = applyOpenclawToolPolicy({
     tools: context.tools,
@@ -165,7 +182,7 @@ export async function executeOpenclawAttempt(
     : [];
 
   const messages: IChatMessage[] = [
-    { role: 'system', content: systemPrompt },
+    { role: 'system', content: effectiveSystemPrompt },
     ...assembled.messages,
     ...mentionMessages,
     { role: 'user', content: request.text, images: request.attachments?.filter(a => a.kind === 'image') },

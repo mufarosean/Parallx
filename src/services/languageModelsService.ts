@@ -210,6 +210,7 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
 
   /**
    * Probe a model via getModelInfo and cache context length + capabilities.
+   * Retries up to 3× with exponential backoff on failure.
    * Fire-and-forget — does not block model switch.
    */
   private _probeActiveModel(modelId: string): void {
@@ -221,20 +222,29 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
     const provider = this._providers.get(providerId);
     if (!provider) { return; }
 
-    provider.getModelInfo(modelId).then(info => {
-      if (info.contextLength > 0) {
-        this._modelContextLengths.set(modelId, info.contextLength);
-      }
-      if (info.capabilities.length > 0) {
-        this._modelCapabilities.set(modelId, info.capabilities);
-      }
-      if (info.parameterSize) {
-        this._modelParameterSizes.set(modelId, info.parameterSize);
-      }
-      this._onDidChangeModels.fire();
-    }).catch(() => {
-      // Probe failed — not critical, use defaults
-    });
+    const MAX_RETRIES = 3;
+    const attempt = (retry: number): void => {
+      provider.getModelInfo(modelId).then(info => {
+        if (info.contextLength > 0) {
+          this._modelContextLengths.set(modelId, info.contextLength);
+        }
+        if (info.capabilities.length > 0) {
+          this._modelCapabilities.set(modelId, info.capabilities);
+        }
+        if (info.parameterSize) {
+          this._modelParameterSizes.set(modelId, info.parameterSize);
+        }
+        this._onDidChangeModels.fire();
+      }).catch((err) => {
+        if (retry < MAX_RETRIES) {
+          const delay = 1000 * Math.pow(2, retry); // 1s, 2s, 4s
+          setTimeout(() => attempt(retry + 1), delay);
+        } else {
+          console.warn(`[LanguageModelsService] Model probe failed for "${modelId}" after ${MAX_RETRIES} retries:`, err);
+        }
+      });
+    };
+    attempt(0);
   }
 
   /**
