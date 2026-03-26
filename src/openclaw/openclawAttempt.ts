@@ -33,6 +33,17 @@ import { applyOpenclawToolPolicy } from './openclawToolPolicy.js';
 import { ChatToolLoopSafety } from './openclawToolLoopSafety.js';
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/**
+ * Maximum characters per tool result before truncation.
+ * 20 000 chars ≈ 5 000 tokens — leaves room for multiple tool results per turn
+ * without blowing out the context window.
+ */
+const MAX_TOOL_RESULT_CHARS = 20_000;
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -190,12 +201,19 @@ export async function executeOpenclawAttempt(
       break; // No tool execution capability
     }
 
+    // Collect all tool results first, then batch-append to messages.
+    // This avoids duplicating the assistant message for each tool result
+    // when the model returns multiple tool calls in a single turn.
+    const toolResultMessages: IChatMessage[] = [];
+    let loopBlocked = false;
+
     for (const toolCall of turnResult.toolCalls) {
       if (token.isCancellationRequested) break;
 
       // Safety: detect infinite tool loops
       const safety = loopSafety.record(toolCall.function.name, toolCall.function.arguments);
       if (safety.blocked) {
+        loopBlocked = true;
         break;
       }
 
@@ -218,12 +236,31 @@ export async function executeOpenclawAttempt(
         { isComplete: true, isError: toolResult.isError, result: toolResult },
       );
 
-      // Add tool call + result to message history for next iteration
+      // Truncate oversized results to stay within token budget
+      let resultContent = toolResult.content;
+      if (resultContent.length > MAX_TOOL_RESULT_CHARS) {
+        resultContent = resultContent.slice(0, MAX_TOOL_RESULT_CHARS)
+          + `\n\n... (truncated, ${resultContent.length} chars total)`;
+      }
+
+      toolResultMessages.push({
+        role: 'tool',
+        content: resultContent,
+        toolName: toolCall.function.name,
+      });
+    }
+
+    // Batch-append: one assistant message + all tool result messages
+    if (toolResultMessages.length > 0) {
       currentMessages = [
         ...currentMessages,
         { role: 'assistant', content: markdown, toolCalls: turnResult.toolCalls },
-        { role: 'tool', content: toolResult.content, toolName: toolCall.function.name },
+        ...toolResultMessages,
       ];
+    }
+
+    if (loopBlocked) {
+      break;
     }
 
     iterations++;
