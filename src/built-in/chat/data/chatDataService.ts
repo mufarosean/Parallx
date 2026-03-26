@@ -2016,9 +2016,35 @@ export class ChatDataService {
 
   async searchSessions(query: string): Promise<Array<{ sessionId: string; sessionTitle: string; matchingContent: string }>> {
     if (!this._d.databaseService) { return []; }
-    const { searchSessions } = await import('../../../services/chatSessionPersistence.js');
+    const { searchSessions, searchSessionsSemantic } = await import('../../../services/chatSessionPersistence.js');
     const workspaceId = this._d.workspaceService?.activeWorkspace?.id ?? '';
-    return searchSessions(this._d.databaseService, query, workspaceId);
+
+    // Substring search (fast, always available)
+    const substringResults = await searchSessions(this._d.databaseService, query, workspaceId);
+
+    // Semantic search via memory embeddings (when available)
+    if (this._d.memoryService) {
+      try {
+        const memories = await this._d.memoryService.recallMemories(query, { topK: 10 });
+        if (memories.length > 0) {
+          const semanticResults = await searchSessionsSemantic(
+            this._d.databaseService,
+            memories.map(m => ({ sessionId: m.sessionId, summary: m.summary, messageCount: m.messageCount, createdAt: m.createdAt ?? '' })),
+          );
+          // Merge: semantic results first, then substring results not already included
+          const seen = new Set(semanticResults.map(r => r.sessionId));
+          const merged = [
+            ...semanticResults.map(r => ({ sessionId: r.sessionId, sessionTitle: r.sessionTitle, matchingContent: r.summary })),
+            ...substringResults.filter(r => !seen.has(r.sessionId)),
+          ];
+          return merged;
+        }
+      } catch {
+        // Semantic search is best-effort — fall back to substring
+      }
+    }
+
+    return substringResults;
   }
 
   async getContextLength(): Promise<number> {

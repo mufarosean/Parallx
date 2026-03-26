@@ -1073,6 +1073,20 @@ export class ChatService extends Disposable implements IChatService {
     if (!result.errorDetails?.responseIsIncomplete) {
       assistantResponse.isComplete = true;
     }
+
+    // 11b. Provide followup suggestions
+    const participant = this._agentService.getAgent(participantId);
+    if (participant?.provideFollowups && !result.errorDetails?.responseIsIncomplete) {
+      try {
+        const followups = await participant.provideFollowups(result, context, cts.token);
+        if (followups.length > 0) {
+          assistantResponse.followups = followups;
+        }
+      } catch {
+        // Non-critical — don't fail the response if followup generation fails
+      }
+    }
+
     session.requestInProgress = false;
 
     cts.dispose();

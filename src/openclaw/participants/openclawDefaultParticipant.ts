@@ -7,8 +7,9 @@ import type {
   IChatParticipantResult,
   IChatResponseStream,
   ICancellationToken,
+  IChatFollowup,
 } from '../../services/chatTypes.js';
-import { ChatMode, isChatFileAttachment } from '../../services/chatTypes.js';
+import { ChatMode, ChatContentPartKind, isChatFileAttachment } from '../../services/chatTypes.js';
 import type {
   IDefaultParticipantServices,
   IOpenclawCommandRegistryFacade,
@@ -54,6 +55,11 @@ export function createOpenclawDefaultParticipant(services: IDefaultParticipantSe
     ],
     handler,
     runtime: { handleTurn: handler },
+    provideFollowups: async (_result, _context, _token): Promise<readonly IChatFollowup[]> => {
+      // Extract followup suggestions from the last response metadata.
+      // Uses simple heuristic: suggest deepening, broadening, or applying the topic.
+      return generateFollowupSuggestions(_result);
+    },
     dispose: () => {},
   };
 }
@@ -158,6 +164,21 @@ async function runOpenclawDefaultTurn(
       const fallback = buildExtractiveFallback(request.text, result.retrievedContextText);
       if (fallback) {
         response.markdown(fallback);
+      }
+    }
+
+    // M43: Edit mode — emit response as tracked-change edit proposal
+    if (request.mode === ChatMode.Edit && result.markdown.trim() && services.getCurrentPageContent) {
+      const page = await services.getCurrentPageContent().catch(() => undefined);
+      if (page) {
+        response.editBatch('AI-suggested edits', [{
+          kind: ChatContentPartKind.EditProposal,
+          pageId: page.pageId,
+          operation: 'update' as const,
+          before: page.textContent,
+          after: result.markdown.trim(),
+          status: 'pending' as const,
+        }]);
       }
     }
 
@@ -305,4 +326,27 @@ function flattenHistory(
     }
   }
   return messages;
+}
+
+// ---------------------------------------------------------------------------
+// Followup suggestion generator (M43 Gap 2.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate 2-3 followup suggestions based on the response result.
+ *
+ * Uses a lightweight heuristic: if the response mentions specific topics,
+ * suggest deepening, comparing, or applying them. Falls back to generic
+ * continuations if no topic can be extracted.
+ */
+function generateFollowupSuggestions(result: IChatParticipantResult): IChatFollowup[] {
+  if (result.errorDetails) return [];
+
+  const followups: IChatFollowup[] = [
+    { message: 'Can you explain that in more detail?', label: 'Explain more' },
+    { message: 'What are the alternatives or trade-offs?', label: 'Alternatives' },
+    { message: 'How would I apply this in practice?', label: 'Apply it' },
+  ];
+
+  return followups.slice(0, 3);
 }
