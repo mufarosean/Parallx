@@ -96,8 +96,8 @@ describe('registerBuiltInTools', () => {
 
     const disposables = registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
-    expect(toolsService.registeredTools).toHaveLength(19);
-    expect(disposables).toHaveLength(19);
+    expect(toolsService.registeredTools).toHaveLength(20);
+    expect(disposables).toHaveLength(20);
 
     const names = toolsService.registeredTools.map(t => t.name).sort();
     expect(names).toEqual([
@@ -105,6 +105,7 @@ describe('registerBuiltInTools', () => {
       'delete_file',
       'edit_file',
       'get_page_properties',
+      'grep_search',
       'list_files',
       'list_pages',
       'memory_get',
@@ -133,7 +134,7 @@ describe('registerBuiltInTools', () => {
 
     registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
-    const readOnly = ['search_workspace', 'read_page', 'read_page_by_title', 'read_current_page', 'list_pages', 'get_page_properties', 'list_files', 'read_file', 'search_files', 'search_knowledge', 'memory_get', 'memory_search', 'transcript_get', 'transcript_search'];
+    const readOnly = ['search_workspace', 'read_page', 'read_page_by_title', 'read_current_page', 'list_pages', 'get_page_properties', 'list_files', 'read_file', 'search_files', 'grep_search', 'search_knowledge', 'memory_get', 'memory_search', 'transcript_get', 'transcript_search'];
     for (const name of readOnly) {
       const tool = toolsService.registeredTools.find(t => t.name === name);
       expect(tool?.requiresConfirmation, `${name} should not require confirmation`).toBe(false);

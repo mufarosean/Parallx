@@ -1,9 +1,9 @@
 // builtInTools.ts — Built-in chat tool orchestrator (M9 Task 6.3 + M10 Task 3.3, split M13 Phase 5)
 //
-// Registers 15 tools with ILanguageModelToolsService by delegating to domain files:
+// Registers 20 tools with ILanguageModelToolsService by delegating to domain files:
 //   pageTools.ts — search_workspace, read_page, read_page_by_title, read_current_page,
 //                  list_pages, get_page_properties, create_page
-//   fileTools.ts — list_files, read_file, search_files, search_knowledge
+//   fileTools.ts — list_files, read_file, search_files, grep_search, search_knowledge
 //   memoryTools.ts — memory_get, memory_search
 //   transcriptTools.ts — transcript_get, transcript_search
 //   writeTools.ts — write_file, edit_file, delete_file
@@ -53,6 +53,7 @@ import {
   createListFilesTool,
   createReadFileTool,
   createSearchFilesTool,
+  createGrepSearchTool,
   createSearchKnowledgeTool,
 } from './fileTools.js';
 import {
@@ -105,6 +106,7 @@ export function registerBuiltInTools(
     createListFilesTool(fs),
     createReadFileTool(fs),
     createSearchFilesTool(fs),
+    createGrepSearchTool(fs),
     createMemoryGetTool(fs),
     createMemorySearchTool(canonicalMemorySearch),
     createTranscriptGetTool(fs),

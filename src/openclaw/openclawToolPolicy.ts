@@ -119,8 +119,6 @@ export function resolveToolProfile(mode: string | undefined): OpenclawToolProfil
   switch (mode) {
     case 'agent':
       return 'full';
-    case 'readonly':
-      return 'readonly';
     default:
       return 'standard';
   }

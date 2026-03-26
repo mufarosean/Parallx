@@ -15,6 +15,10 @@ import type {
 
 const MAX_SEARCH_RESULTS = 50;
 const MAX_SEARCH_DEPTH = 5;
+const MAX_GREP_MATCHES = 100;
+const GREP_CONTEXT_LINES = 2;
+/** Maximum file size (bytes) to search inside for grep_search. */
+const MAX_GREP_FILE_SIZE = 512_000; // 512 KB
 /** Maximum characters returned by read_file for extracted rich document text. */
 const MAX_DOC_TEXT_CHARS = 50_000;
 /** Rich document extensions that should use document extraction instead of raw read. */
@@ -77,12 +81,15 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
       'Read the content of a workspace file. Path is relative to the workspace root. ' +
       'Supports text files (up to 50 KB) and rich documents (PDF, DOCX, XLSX — text is extracted automatically). ' +
       'Use this tool whenever you need to verify or confirm the actual contents of a file. ' +
+      'Optionally specify start_line and end_line to read a specific range (1-indexed). ' +
       'For large documents like books, prefer search_knowledge which searches across all indexed chunks.',
     parameters: {
       type: 'object',
       required: ['path'],
       properties: {
         path: { type: 'string', description: 'Relative file path from workspace root' },
+        start_line: { type: 'number', description: 'First line to return (1-indexed, inclusive). Omit to read from start.' },
+        end_line: { type: 'number', description: 'Last line to return (1-indexed, inclusive). Omit to read to end.' },
       },
     },
     requiresConfirmation: false,
@@ -90,6 +97,8 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireFs(fs);
       const relPath = String(args['path'] || '').replace(/\\/g, '/');
+      const startLine = typeof args['start_line'] === 'number' ? Math.max(1, Math.floor(args['start_line'])) : undefined;
+      const endLine = typeof args['end_line'] === 'number' ? Math.max(1, Math.floor(args['end_line'])) : undefined;
 
       if (!relPath) {
         return { content: 'path is required', isError: true };
@@ -120,6 +129,18 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
 
         // Regular text file
         const content = await fs!.readFile(relPath);
+
+        // Apply line-range slicing if requested
+        if (startLine !== undefined || endLine !== undefined) {
+          const allLines = content.split('\n');
+          const totalLines = allLines.length;
+          const s = (startLine ?? 1) - 1; // convert to 0-indexed
+          const e = endLine ?? totalLines;
+          const sliced = allLines.slice(Math.max(0, s), Math.min(totalLines, e));
+          const rangeLabel = `lines ${s + 1}-${Math.min(totalLines, e)} of ${totalLines}`;
+          return { content: `**${relPath}** (${rangeLabel})\n\n\`\`\`\n${sliced.join('\n')}\n\`\`\`` };
+        }
+
         return { content: `**${relPath}**\n\n\`\`\`\n${content}\n\`\`\`` };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -176,6 +197,169 @@ export function createSearchFilesTool(fs: IBuiltInToolFileSystem | undefined): I
       }
     },
   };
+}
+
+// ── grep_search tool (M41 Phase 8) ──
+
+export function createGrepSearchTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
+  return {
+    name: 'grep_search',
+    description:
+      'Search for text content inside workspace files. Finds lines matching a pattern (plain text or regex) ' +
+      'and returns matching lines with surrounding context. Use this to find specific code, strings, or patterns ' +
+      'across the workspace. For filename search, use search_files instead.',
+    parameters: {
+      type: 'object',
+      required: ['pattern'],
+      properties: {
+        pattern: { type: 'string', description: 'Text or regex pattern to search for (case-insensitive by default)' },
+        path: { type: 'string', description: 'Relative directory or file to search within (default: workspace root ".")' },
+        is_regex: { type: 'boolean', description: 'Whether the pattern is a regular expression (default: false)' },
+        case_sensitive: { type: 'boolean', description: 'Whether the search is case-sensitive (default: false)' },
+      },
+    },
+    requiresConfirmation: false,
+    permissionLevel: 'always-allowed' as ToolPermissionLevel,
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      requireFs(fs);
+      const patternStr = String(args['pattern'] || '');
+      const rootPath = String(args['path'] || '.').replace(/\\/g, '/');
+      const isRegex = args['is_regex'] === true;
+      const caseSensitive = args['case_sensitive'] === true;
+
+      if (!patternStr) {
+        return { content: 'pattern is required', isError: true };
+      }
+
+      // Build the matcher
+      let regex: RegExp;
+      try {
+        const flags = caseSensitive ? 'g' : 'gi';
+        regex = isRegex
+          ? new RegExp(patternStr, flags)
+          : new RegExp(escapeRegExp(patternStr), flags);
+      } catch (err) {
+        return { content: `Invalid regex pattern: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      }
+
+      try {
+        const matches: GrepMatch[] = [];
+        await grepRecursive(fs!, rootPath, regex, matches, 0);
+
+        if (matches.length === 0) {
+          return { content: `No matches found for "${patternStr}" in "${rootPath}".` };
+        }
+
+        const formatted = matches.map(m => {
+          const header = `${m.file}:${m.line}`;
+          const contextLines = m.context.map(c =>
+            `${c.lineNum === m.line ? '>' : ' '} ${c.lineNum}: ${c.text}`
+          ).join('\n');
+          return `${header}\n${contextLines}`;
+        }).join('\n\n');
+
+        const truncNote = matches.length >= MAX_GREP_MATCHES
+          ? `\n\n(Results capped at ${MAX_GREP_MATCHES} matches. Narrow your search for more specific results.)`
+          : '';
+
+        return {
+          content: `Found ${matches.length} match(es) for "${patternStr}":\n\n${formatted}${truncNote}`,
+        };
+      } catch (err) {
+        return { content: `Grep search failed: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      }
+    },
+  };
+}
+
+interface GrepMatch {
+  file: string;
+  line: number;
+  context: { lineNum: number; text: string }[];
+}
+
+/** Escape special regex characters in a literal string. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Binary-looking extensions to skip during grep. */
+const BINARY_EXTS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.svg', '.webp',
+  '.mp3', '.mp4', '.wav', '.avi', '.mov', '.mkv', '.webm',
+  '.zip', '.tar', '.gz', '.bz2', '.7z', '.rar',
+  '.exe', '.dll', '.so', '.dylib', '.bin', '.dat',
+  '.woff', '.woff2', '.ttf', '.otf', '.eot',
+  '.sqlite', '.db', '.sqlite3',
+]);
+
+async function grepRecursive(
+  fs: IBuiltInToolFileSystem,
+  dirPath: string,
+  regex: RegExp,
+  results: GrepMatch[],
+  depth: number,
+): Promise<void> {
+  if (depth >= MAX_SEARCH_DEPTH || results.length >= MAX_GREP_MATCHES) { return; }
+
+  // If dirPath points to a file, search it directly
+  let entries: readonly { name: string; type: 'file' | 'directory'; size: number }[];
+  try {
+    entries = await fs.readdir(dirPath);
+  } catch {
+    // dirPath might be a file — try reading it directly
+    try {
+      await grepFile(fs, dirPath, regex, results);
+    } catch { /* skip unreadable */ }
+    return;
+  }
+
+  for (const entry of entries) {
+    if (results.length >= MAX_GREP_MATCHES) { break; }
+
+    const entryPath = dirPath === '.' ? entry.name : `${dirPath}/${entry.name}`;
+
+    if (entry.type === 'directory') {
+      if (!isIgnoredDir(entry.name)) {
+        await grepRecursive(fs, entryPath, regex, results, depth + 1);
+      }
+    } else {
+      // Skip large files and binary-looking files
+      if (entry.size > MAX_GREP_FILE_SIZE) { continue; }
+      const dotIdx = entry.name.lastIndexOf('.');
+      if (dotIdx >= 0 && BINARY_EXTS.has(entry.name.slice(dotIdx).toLowerCase())) { continue; }
+      await grepFile(fs, entryPath, regex, results);
+    }
+  }
+}
+
+async function grepFile(
+  fs: IBuiltInToolFileSystem,
+  filePath: string,
+  regex: RegExp,
+  results: GrepMatch[],
+): Promise<void> {
+  let content: string;
+  try {
+    content = await fs.readFile(filePath);
+  } catch {
+    return; // Skip unreadable files
+  }
+
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length && results.length < MAX_GREP_MATCHES; i++) {
+    // Reset regex state for each line (global flag)
+    regex.lastIndex = 0;
+    if (regex.test(lines[i])) {
+      const start = Math.max(0, i - GREP_CONTEXT_LINES);
+      const end = Math.min(lines.length - 1, i + GREP_CONTEXT_LINES);
+      const context: { lineNum: number; text: string }[] = [];
+      for (let j = start; j <= end; j++) {
+        context.push({ lineNum: j + 1, text: lines[j] });
+      }
+      results.push({ file: filePath, line: i + 1, context });
+    }
+  }
 }
 
 /**
