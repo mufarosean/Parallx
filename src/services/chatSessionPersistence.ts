@@ -109,51 +109,59 @@ export async function ensureChatTables(db: IChatPersistenceDatabase): Promise<vo
 export async function saveSession(db: IChatPersistenceDatabase, session: IChatSession, workspaceId: string = ''): Promise<void> {
   if (!db.isOpen) { return; }
 
-  // Upsert session row
-  await db.run(
-    `INSERT OR REPLACE INTO chat_sessions (id, workspace_id, title, mode, model_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [session.id, workspaceId, session.title, session.mode, session.modelId, session.createdAt, Date.now()],
-  );
-
-  // Delete existing messages for this session (full replace)
-  await db.run(`DELETE FROM chat_messages WHERE session_id = ?`, [session.id]);
-
-  // Insert all message pairs
-  for (let i = 0; i < session.messages.length; i++) {
-    const pair = session.messages[i];
-
-    // User message
+  await db.run('BEGIN IMMEDIATE');
+  try {
+    // Upsert session row
     await db.run(
-      `INSERT INTO chat_messages (session_id, role, content, parts_json, model_id, is_complete, timestamp, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        session.id,
-        'user',
-        pair.request.text,
-        JSON.stringify(_serializeUserMessageMetadata(pair.request)),
-        '',
-        1,
-        pair.request.timestamp,
-        i * 2,
-      ],
+      `INSERT OR REPLACE INTO chat_sessions (id, workspace_id, title, mode, model_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [session.id, workspaceId, session.title, session.mode, session.modelId, session.createdAt, Date.now()],
     );
 
-    // Assistant response
-    await db.run(
-      `INSERT INTO chat_messages (session_id, role, content, parts_json, model_id, is_complete, timestamp, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        session.id,
-        'assistant',
-        _extractTextContent(pair.response.parts),
-        JSON.stringify(pair.response.parts),
-        pair.response.modelId,
-        pair.response.isComplete ? 1 : 0,
-        pair.response.timestamp,
-        i * 2 + 1,
-      ],
-    );
+    // Delete existing messages for this session (full replace)
+    await db.run(`DELETE FROM chat_messages WHERE session_id = ?`, [session.id]);
+
+    // Insert all message pairs
+    for (let i = 0; i < session.messages.length; i++) {
+      const pair = session.messages[i];
+
+      // User message
+      await db.run(
+        `INSERT INTO chat_messages (session_id, role, content, parts_json, model_id, is_complete, timestamp, sort_order)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          session.id,
+          'user',
+          pair.request.text,
+          JSON.stringify(_serializeUserMessageMetadata(pair.request)),
+          '',
+          1,
+          pair.request.timestamp,
+          i * 2,
+        ],
+      );
+
+      // Assistant response
+      await db.run(
+        `INSERT INTO chat_messages (session_id, role, content, parts_json, model_id, is_complete, timestamp, sort_order)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          session.id,
+          'assistant',
+          _extractTextContent(pair.response.parts),
+          JSON.stringify(pair.response.parts),
+          pair.response.modelId,
+          pair.response.isComplete ? 1 : 0,
+          pair.response.timestamp,
+          i * 2 + 1,
+        ],
+      );
+    }
+
+    await db.run('COMMIT');
+  } catch (err) {
+    await db.run('ROLLBACK').catch(() => { /* rollback best-effort */ });
+    throw err;
   }
 }
 

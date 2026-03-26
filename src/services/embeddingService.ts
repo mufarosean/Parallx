@@ -333,9 +333,9 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
     if (data.embeddings.length > 0) {
       const dims = data.embeddings[0].length;
       if (dims !== EXPECTED_DIMENSIONS) {
-        console.warn(
+        throw new Error(
           `[EmbeddingService] Expected ${EXPECTED_DIMENSIONS} dimensions, got ${dims}. ` +
-          `Check if the model "${this._model}" matches the vec_embeddings table schema.`,
+          `Model "${this._model}" does not match the vec_embeddings table schema.`,
         );
       }
     }

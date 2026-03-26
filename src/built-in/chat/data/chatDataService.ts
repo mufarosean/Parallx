@@ -446,13 +446,19 @@ function normalizeWorkspaceRelativePath(relativePath: string): string {
   if (normalized === '.' || normalized === './' || normalized === '') {
     return '.';
   }
-  if (normalized.startsWith('./')) {
-    return normalized.slice(2);
+  let clean = normalized;
+  if (clean.startsWith('./')) {
+    clean = clean.slice(2);
   }
-  if (normalized.startsWith('/')) {
-    return normalized.slice(1);
+  if (clean.startsWith('/')) {
+    clean = clean.slice(1);
   }
-  return normalized;
+  // Reject path traversal — any ".." segment escapes the workspace root
+  const segments = clean.split('/');
+  if (segments.some(s => s === '..')) {
+    return '.';
+  }
+  return clean;
 }
 
 /**

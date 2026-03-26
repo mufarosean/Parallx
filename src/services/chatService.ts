@@ -628,7 +628,7 @@ export class ChatService extends Disposable implements IChatService {
 
     // Ensure tables exist (fire and forget — errors are non-fatal)
     if (database) {
-      ensureChatTables(database).catch(() => { /* persistence is best-effort */ });
+      ensureChatTables(database).catch((e) => { console.error('[ChatService] ensureChatTables failed:', e); });
     }
   }
 
@@ -644,7 +644,7 @@ export class ChatService extends Disposable implements IChatService {
   setDatabase(database: IChatPersistenceDatabase, workspaceId: string = ''): void {
     this._database = database;
     this._workspaceId = workspaceId;
-    ensureChatTables(database).catch(() => { /* persistence is best-effort */ });
+    ensureChatTables(database).catch((e) => { console.error('[ChatService] ensureChatTables failed:', e); });
   }
 
   /**
@@ -786,10 +786,10 @@ export class ChatService extends Disposable implements IChatService {
     for (const id of ids) {
       const session = this._sessions.get(id);
       if (session && this._database) {
-        saveSession(this._database, session, this._workspaceId).catch(() => { /* best-effort */ });
+        saveSession(this._database, session, this._workspaceId).catch((e) => { console.error('[ChatService] saveSession failed:', e); });
       }
       if (session && this._transcriptService) {
-        this._transcriptService.writeSessionTranscript(session).catch(() => { /* best-effort */ });
+        this._transcriptService.writeSessionTranscript(session).catch((e) => { console.error('[ChatService] writeSessionTranscript failed:', e); });
       }
     }
   }
@@ -838,11 +838,11 @@ export class ChatService extends Disposable implements IChatService {
 
     if (this._sessions.delete(sessionId)) {
       if (this._transcriptService) {
-        this._transcriptService.deleteSessionTranscript(sessionId).catch(() => { /* best-effort */ });
+        this._transcriptService.deleteSessionTranscript(sessionId).catch((e) => { console.error('[ChatService] deleteSessionTranscript failed:', e); });
       }
       // Remove from database
       if (this._database) {
-        deletePersistedSession(this._database, sessionId).catch(() => { /* best-effort */ });
+        deletePersistedSession(this._database, sessionId).catch((e) => { console.error('[ChatService] deletePersistedSession failed:', e); });
       }
       this._onDidDeleteSession.fire(sessionId);
     }
@@ -1187,7 +1187,7 @@ export class ChatService extends Disposable implements IChatService {
 
     // Fire-and-forget — errors are handled inside sendRequest
     queueMicrotask(() => {
-      this.sendRequest(sessionId, next.text, next.options).catch(() => { /* swallowed */ });
+      this.sendRequest(sessionId, next.text, next.options).catch((e) => { console.error('[ChatService] queued sendRequest failed:', e); });
     });
   }
 }
