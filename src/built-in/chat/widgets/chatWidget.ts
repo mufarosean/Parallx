@@ -1017,12 +1017,15 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const hints = $('div.parallx-chat-empty-state-hints');
 
     const hintItems: { svg: string; label: string; description: string; insert: string }[] = [
-      { svg: chatIcons.chatBubble, label: 'Ask mode', description: 'Awake by default; read-first answers', insert: '/ask ' },
-      { svg: chatIcons.pencil, label: 'Edit mode', description: 'AI-assisted canvas editing', insert: '/edit ' },
-      { svg: chatIcons.agent, label: 'Agent mode', description: 'Action tools with approval gates', insert: '/agent ' },
-      { svg: chatIcons.atSign, label: '@workspace', description: 'Search pages & files', insert: '@workspace ' },
-      { svg: chatIcons.canvas, label: '@canvas', description: 'Edit current page', insert: '@canvas ' },
-      { svg: chatIcons.keyboard, label: 'Ctrl+L', description: 'New chat session', insert: '' },
+      { svg: chatIcons.chatBubble, label: 'Ask mode', description: 'Get answers grounded in your workspace', insert: '/ask ' },
+      { svg: chatIcons.pencil, label: 'Edit mode', description: 'AI proposes edits for you to review', insert: '/edit ' },
+      { svg: chatIcons.agent, label: 'Agent mode', description: 'AI takes multi-step actions with your OK', insert: '/agent ' },
+      { svg: chatIcons.atSign, label: '@workspace', description: 'Search across all your files and pages', insert: '@workspace ' },
+      { svg: chatIcons.canvas, label: '@canvas', description: 'Edit the current page with AI', insert: '@canvas ' },
+      { svg: chatIcons.keyboard, label: 'Ctrl+L', description: 'Start a new chat session', insert: '' },
+      { svg: chatIcons.wand, label: '/init', description: 'Generate project context for better answers', insert: '/init ' },
+      { svg: chatIcons.lightbulb, label: '/explain', description: 'Get a clear explanation of any concept', insert: '/explain ' },
+      { svg: chatIcons.search, label: 'Search workspace', description: 'Find information across all your files', insert: '@workspace ' },
     ];
 
     for (const hint of hintItems) {

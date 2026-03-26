@@ -45,6 +45,19 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   });
   context.subscriptions.push(commandDisposable);
 
+  // Register "open chat with /init" command
+  const initCmdDisposable = api.commands.registerCommand('parallx.chat.openWithInit', async () => {
+    await api.commands.executeCommand('workbench.action.chat.open');
+    await api.commands.executeCommand('workbench.action.chat.insertText', '/init ');
+  });
+  context.subscriptions.push(initCmdDisposable);
+
+  // Register "open AI User Guide" command
+  const guideCmdDisposable = api.commands.registerCommand('parallx.openAIUserGuide', () => {
+    api.commands.executeCommand('workbench.action.quickOpen', 'docs/ai/AI_USER_GUIDE.md').catch(() => {});
+  });
+  context.subscriptions.push(guideCmdDisposable);
+
   // Auto-open on first launch
   const hasShown = context.globalState.get<boolean>(FIRST_LAUNCH_KEY);
   if (!hasShown) {
@@ -163,6 +176,44 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
     row.appendChild(iconSpan);
     row.appendChild(textSpan);
     row.appendChild(hintSpan);
+    row.addEventListener('click', () => {
+      api.commands.executeCommand(item.command).catch(() => {});
+    });
+    leftCol.appendChild(row);
+  }
+
+  // AI Quick Start sub-section
+  const aiTitle = $('h2');
+  aiTitle.classList.add('welcome-section-title', 'welcome-section-title--ai');
+  aiTitle.textContent = 'AI Quick Start';
+  leftCol.appendChild(aiTitle);
+
+  const aiItems = [
+    { icon: '✨', text: 'Open AI Chat', hint: 'Ctrl+Shift+I', command: 'workbench.action.chat.open' },
+    { icon: '🪄', text: 'Set Up Workspace AI', hint: '/init', command: 'parallx.chat.openWithInit' },
+    { icon: '📖', text: 'AI User Guide', hint: '', command: 'parallx.openAIUserGuide' },
+  ];
+
+  for (const item of aiItems) {
+    const row = $('div');
+    row.classList.add('welcome-action-row');
+    const iconSpan = $('span');
+    iconSpan.textContent = item.icon;
+    iconSpan.classList.add('welcome-action-icon');
+    const textSpan = $('span');
+    textSpan.textContent = item.text;
+    textSpan.classList.add('welcome-action-text');
+    if (item.hint) {
+      const hintSpan = $('span');
+      hintSpan.textContent = item.hint;
+      hintSpan.classList.add('welcome-action-hint');
+      row.appendChild(iconSpan);
+      row.appendChild(textSpan);
+      row.appendChild(hintSpan);
+    } else {
+      row.appendChild(iconSpan);
+      row.appendChild(textSpan);
+    }
     row.addEventListener('click', () => {
       api.commands.executeCommand(item.command).catch(() => {});
     });

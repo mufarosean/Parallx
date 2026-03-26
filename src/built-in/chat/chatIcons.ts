@@ -113,6 +113,16 @@ export const chatIcons = {
     <path d="M4.5 7h1M7 7h2M10.5 7h1M5 9.5h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
   </svg>`,
 
+  /** Wand — /init setup hint */
+  wand: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M2 14L10.5 5.5M10.5 5.5l-2-2M9 2l1.5 1M13 3.5L12 5M14 7l-1.5-.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`,
+
+  /** Lightbulb — explain hint */
+  lightbulb: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M6 12.5h4M6.5 14h3M8 2a4 4 0 00-2 7.5V11h4V9.5A4 4 0 008 2z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`,
+
   // ── Sidebar ──
 
   /** Small chevron-right (collapsed section) */
