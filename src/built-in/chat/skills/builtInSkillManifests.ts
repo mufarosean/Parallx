@@ -276,4 +276,147 @@ If any file is missing from your summary, go back and read it now.
 State: "Coverage: X/Y files summarized" where X = files you summarized and
 Y = total files from Step 1. X must equal Y.`,
   },
+  {
+    name: 'git-status',
+    description: 'Show the current Git status, recent commits, and uncommitted changes in the workspace. Uses terminal commands to gather repository state.',
+    version: '1.0.0',
+    author: 'parallx',
+    kind: 'workflow',
+    permission: 'always-allowed',
+    userInvocable: true,
+    disableModelInvocation: false,
+    tags: ['workflow', 'git', 'version-control'],
+    relativePath: '(built-in)/skills/git-status/SKILL.md',
+    parameters: [
+      { name: 'detail', type: 'string', description: 'Level of detail: "brief" for status only, "full" for status + log + diff', required: false },
+    ],
+    body: `# Git Status Workflow
+
+You are executing the **git-status** skill. Follow these steps precisely.
+
+## Step 1: Check repository status
+
+Use \`run_command\` to run: \`git status --short\`
+
+Record:
+- Staged files (A/M/D)
+- Unstaged changes
+- Untracked files
+
+## Step 2: Recent commits
+
+Use \`run_command\` to run: \`git log --oneline -10\`
+
+Record the last 10 commits with their short hashes and messages.
+
+## Step 3: Current branch
+
+Use \`run_command\` to run: \`git branch --show-current\`
+
+Note the current branch name.
+
+## Step 4: Show diff (if detail = "full")
+
+If the user requested full detail or $ARGUMENTS contains "full":
+Use \`run_command\` to run: \`git diff --stat\`
+
+Show a summary of changed lines per file.
+
+## Step 5: Present results
+
+Format the output as:
+
+1. **Branch**: Current branch name
+2. **Status**: Modified/added/deleted/untracked files
+3. **Recent commits**: Last 10 commits
+4. **Changes** (if full): Diff stat summary`,
+  },
+  {
+    name: 'fetch-url',
+    description: 'Fetch the content of a URL and return it as text. Useful for reading web pages, API responses, or online documentation.',
+    version: '1.0.0',
+    author: 'parallx',
+    kind: 'workflow',
+    permission: 'requires-approval',
+    userInvocable: true,
+    disableModelInvocation: false,
+    tags: ['workflow', 'web', 'fetch'],
+    relativePath: '(built-in)/skills/fetch-url/SKILL.md',
+    parameters: [
+      { name: 'url', type: 'string', description: 'The URL to fetch', required: true },
+    ],
+    body: `# Fetch URL Workflow
+
+You are executing the **fetch-url** skill. Follow these steps precisely.
+
+## Step 1: Validate the URL
+
+Check that $ARGUMENTS contains a valid URL starting with http:// or https://.
+If the URL is missing or invalid, respond with an error message.
+
+## Step 2: Fetch the content
+
+Use \`run_command\` to run: \`curl -sL --max-time 15 "$URL"\`
+
+Where $URL is the provided URL. The -sL flags silence progress output
+and follow redirects. The --max-time flag prevents hanging.
+
+## Step 3: Process the response
+
+- If the content is HTML, extract the main text content (strip tags)
+- If the content is JSON, format it readably
+- If the content is plain text, return as-is
+- If the fetch failed, report the error
+
+## Step 4: Present results
+
+Format the output as:
+
+1. **URL**: The fetched URL
+2. **Content type**: HTML / JSON / Plain text
+3. **Content**: The extracted text (truncated to ~4000 characters if very long)`,
+  },
+  {
+    name: 'pdf-extract',
+    description: 'Extract text content from a PDF file using the Docling bridge. Returns the full text of the PDF for analysis or summarization.',
+    version: '1.0.0',
+    author: 'parallx',
+    kind: 'workflow',
+    permission: 'always-allowed',
+    userInvocable: true,
+    disableModelInvocation: false,
+    tags: ['workflow', 'pdf', 'extraction', 'docling'],
+    relativePath: '(built-in)/skills/pdf-extract/SKILL.md',
+    parameters: [
+      { name: 'file', type: 'string', description: 'Path to the PDF file to extract', required: true },
+    ],
+    body: `# PDF Extract Workflow
+
+You are executing the **pdf-extract** skill. Follow these steps precisely.
+
+## Step 1: Locate the PDF
+
+Check that $ARGUMENTS contains a file path ending in .pdf.
+Use \`list_files\` to verify the file exists at the given path.
+
+If the path is ambiguous, use \`search_knowledge\` to find PDF files
+matching the name.
+
+## Step 2: Extract content
+
+Use \`read_file\` on the PDF path. If the workspace has Docling integration,
+this will automatically extract the text content through the document
+extraction bridge.
+
+## Step 3: Present results
+
+Format the output as:
+
+1. **File**: The PDF path
+2. **Pages**: Number of pages (if available)
+3. **Content**: The extracted text
+
+If extraction fails (e.g., scanned image PDF without OCR), report the
+limitation and suggest the user enable Docling OCR.`,
+  },
 ];

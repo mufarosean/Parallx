@@ -34,10 +34,17 @@ import { isContextOverflow, isTimeoutError, isTransientError } from './openclawE
 const MAX_OVERFLOW_COMPACTION = 3;
 /** Max timeout compaction retries — from run.ts */
 const MAX_TIMEOUT_COMPACTION = 2;
-/** Transient retry delay in ms — from agent-runner-execution.ts */
-const TRANSIENT_RETRY_DELAY = 2500;
+/** Transient retry base delay in ms */
+const TRANSIENT_BASE_DELAY = 2500;
+/** Max transient retry delay cap in ms */
+const TRANSIENT_MAX_DELAY = 15000;
 /** Max transient retries before giving up */
 const MAX_TRANSIENT_RETRIES = 3;
+
+/** Exponential backoff: 2500 → 5000 → 10000 (capped at 15000) */
+function transientDelay(attempt: number): number {
+  return Math.min(TRANSIENT_BASE_DELAY * Math.pow(2, attempt), TRANSIENT_MAX_DELAY);
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -144,10 +151,11 @@ export async function runOpenclawTurn(
         continue;
       }
 
-      // 3c. Transient → delay → retry
+      // 3c. Transient → exponential backoff → retry
       if (isTransientError(error) && transientRetries < MAX_TRANSIENT_RETRIES) {
-        response.progress(`Transient error, retrying in ${TRANSIENT_RETRY_DELAY}ms...`);
-        await delay(TRANSIENT_RETRY_DELAY);
+        const backoff = transientDelay(transientRetries);
+        response.progress(`Transient error, retrying in ${backoff}ms...`);
+        await delay(backoff);
         transientRetries++;
         continue;
       }
