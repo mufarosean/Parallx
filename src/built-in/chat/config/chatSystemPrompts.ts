@@ -249,46 +249,6 @@ function appendSkillCatalog(lines: string[], ctx: ISystemPromptContext): void {
   lines.push('</available_skills>');
 }
 
-// ── M38: Dynamic execution plan prompt section ──
-
-import type { IExecutionPlan, IQueryScope, ICoverageRecord } from '../chatTypes.js';
-
-/**
- * Build a system-prompt addon that tells the model about the current turn's
- * execution plan, scope constraints, and output requirements.
- *
- * Returns an empty string for generic-grounded (no-op).
- */
-export function buildExecutionPlanPromptSection(
-  plan: IExecutionPlan,
-  scope: IQueryScope,
-  coverageRecord?: ICoverageRecord,
-): string {
-  if (plan.workflowType === 'generic-grounded') return '';
-
-  const lines: string[] = [
-    '',
-    'EXECUTION PLAN FOR THIS TURN:',
-    `- Workflow: ${plan.workflowType}`,
-    `- Scope: ${scope.level}${scope.pathPrefixes?.length ? ` (${scope.pathPrefixes.join(', ')})` : ''}`,
-  ];
-
-  if (plan.outputConstraints) {
-    const c = plan.outputConstraints;
-    if (c.format) lines.push(`- Output format: ${c.format}`);
-    if (c.requireExhaustiveCitation) lines.push('- Citation: exhaustive — cite every source used');
-  }
-
-  if (coverageRecord && coverageRecord.level !== 'full') {
-    lines.push(`- Coverage: ${coverageRecord.level} (${coverageRecord.coveredTargets}/${coverageRecord.totalTargets} files covered)`);
-    if (coverageRecord.gaps.length > 0) {
-      lines.push(`- Gaps: ${coverageRecord.gaps.slice(0, 5).join(', ')}${coverageRecord.gaps.length > 5 ? ` (+${coverageRecord.gaps.length - 5} more)` : ''}`);
-    }
-  }
-
-  return lines.join('\n');
-}
-
 // ── M39: Skill instruction injection ──
 
 import type { IActivatedSkill } from '../chatTypes.js';

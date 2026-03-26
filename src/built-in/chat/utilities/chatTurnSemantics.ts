@@ -1,4 +1,4 @@
-import type { IChatTurnSemantics, WorkflowType } from '../chatTypes.js';
+import type { IChatTurnSemantics } from '../chatTypes.js';
 
 const CONVERSATIONAL_TURN_PATTERNS: readonly RegExp[] = [
   /^(?:hi|hello|hey|yo|sup|good morning|good afternoon|good evening)$/,
@@ -136,79 +136,10 @@ function isFileEnumerationTurn(normalizedText: string): boolean {
     && /\b(?:folder|directory|workspace|dir)\b/.test(normalizedText);
 }
 
-function isExhaustiveWorkspaceReviewTurn(normalizedText: string): boolean {
-  if (!normalizedText) {
-    return false;
-  }
-
-  const hasExhaustiveLanguage = /(?:each|every|all|for each)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|one\s+(?:sentence|paragraph)\s+summary\s+(?:of|for)\s+(?:each|every|all|for each)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|(?:provide|give|create|write)?\s*summary\s+(?:of|for)\s+(?:each|every|all|for each)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|summari[sz]e\s+(?:each|every|all)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|read\s+(?:each|every|all)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?/.test(normalizedText);
-  const hasExhaustiveCollectionScope = /(?:from|across)\s+(?:each|every|all)(?:\s+of)?(?:\s+the)?\s+(?:(?:policy|workspace)\s+)?(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?/.test(normalizedText);
-  const hasWorkspaceTarget = /\b(folder|directory|workspace|docs|documents|guides|papers|files)\b/.test(normalizedText);
-  return (hasExhaustiveLanguage || hasExhaustiveCollectionScope) && hasWorkspaceTarget;
-}
-
-const SUMMARY_VERBS = /\b(summari[sz]e|overview|describe|outline|recap|brief)\b/i;
-const COMPARISON_CUES = /\b(compare|contrast|difference|differences|vs\.?|versus)\b/i;
-const EXHAUSTIVE_CUES = /\b(every|all|each|complete|entire|full)\b/i;
-const EXTRACTION_VERBS = /\b(extract|identify|collect|gather|pull)\b/i;
-const ENUMERATION_EXTRACTION_VERBS = /\b(list|enumerate|find)\b/i;
-const EXTRACTION_TARGETS = /\b(amount|amounts|deductible|deductibles|date|dates|citation|citations|quote|quotes|name|names|title|titles|number|numbers|field|fields|value|values|limit|limits|clause|clauses)\b/i;
-
-function hasSummaryIntent(text: string): boolean {
-  return SUMMARY_VERBS.test(text)
-    || /\bsummary\b/i.test(text)
-    || /\bone\s+(?:sentence|paragraph)\b/i.test(text);
-}
-
-function hasExplicitExtractionIntent(text: string): boolean {
-  if (hasSummaryIntent(text)) {
-    return false;
-  }
-
-  return EXTRACTION_VERBS.test(text)
-    || (ENUMERATION_EXTRACTION_VERBS.test(text) && EXTRACTION_TARGETS.test(text));
-}
-
-function classifyWorkflowType(text: string, isExhaustive: boolean): WorkflowType {
-  const summaryIntent = hasSummaryIntent(text);
-
-  if (isExhaustive) {
-    if (EXHAUSTIVE_CUES.test(text) && hasExplicitExtractionIntent(text)) {
-      return 'exhaustive-extraction';
-    }
-    return 'folder-summary';
-  }
-
-  if (COMPARISON_CUES.test(text)) {
-    return 'comparative';
-  }
-
-  const entityMatches = text.match(/\b[A-Z][A-Za-z0-9 _&-]{2,60}\b/g) ?? [];
-  const hasEntityRef = entityMatches.length > 0;
-
-  if (hasEntityRef && summaryIntent && /\b(folder|directory|files)\b/i.test(text)) {
-    return 'folder-summary';
-  }
-
-  if (hasEntityRef && summaryIntent) {
-    return 'document-summary';
-  }
-
-  if (hasEntityRef && !SUMMARY_VERBS.test(text)) {
-    return 'scoped-topic';
-  }
-
-  return 'generic-grounded';
-}
-
 export function analyzeChatTurnSemantics(text: string): IChatTurnSemantics {
   const normalizedText = normalizeForRouting(text);
   const strippedApostropheText = normalizeForRouting(text, '').replace(/'/g, '');
   const isFileEnumeration = isFileEnumerationTurn(normalizedText);
-  const isExhaustiveWorkspaceReview = isExhaustiveWorkspaceReviewTurn(normalizedText);
-  const workflowTypeHint = isFileEnumeration
-    ? 'folder-summary'
-    : classifyWorkflowType(text, isExhaustiveWorkspaceReview);
 
   return {
     rawText: text,
@@ -218,14 +149,7 @@ export function analyzeChatTurnSemantics(text: string): IChatTurnSemantics {
     isExplicitMemoryRecall: isExplicitMemoryRecallTurn(normalizedText),
     isExplicitTranscriptRecall: isExplicitTranscriptRecallTurn(normalizedText),
     isFileEnumeration,
-    isExhaustiveWorkspaceReview,
     offTopicDirectAnswer: buildOffTopicRedirectAnswer(normalizedText),
     productSemanticsDirectAnswer: buildProductSemanticsAnswer(normalizeForRouting(text, "'")),
-    workflowTypeHint,
-    groundedCoverageModeHint: isFileEnumeration
-      ? 'enumeration'
-      : isExhaustiveWorkspaceReview
-        ? 'exhaustive'
-        : 'representative',
   };
 }

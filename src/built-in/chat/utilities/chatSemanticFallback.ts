@@ -32,14 +32,6 @@ export function resolveChatSemanticFallback(
     return undefined;
   }
 
-  if (route.coverageMode && route.coverageMode !== 'representative') {
-    return undefined;
-  }
-
-  if (route.workflowType && route.workflowType !== 'generic-grounded' && route.workflowType !== 'scoped-topic') {
-    return undefined;
-  }
-
   if (queryScope.level !== 'workspace') {
     return undefined;
   }
@@ -49,7 +41,6 @@ export function resolveChatSemanticFallback(
     || semantics.isExplicitMemoryRecall
     || semantics.isExplicitTranscriptRecall
     || semantics.isFileEnumeration
-    || semantics.isExhaustiveWorkspaceReview
   ) {
     return undefined;
   }
@@ -62,8 +53,6 @@ export function resolveChatSemanticFallback(
     kind: 'broad-workspace-summary',
     confidence: 0.76,
     reason: 'Broad workspace-wide phrasing implies exhaustive multi-file coverage even though deterministic routing stayed generic.',
-    workflowTypeHint: 'folder-summary',
-    groundedCoverageModeHint: 'exhaustive',
   };
 }
 
@@ -78,7 +67,5 @@ export function applyChatSemanticFallback(
   return {
     ...route,
     reason: `${route.reason} Semantic fallback applied: ${fallback.reason}`,
-    coverageMode: fallback.groundedCoverageModeHint,
-    workflowType: fallback.workflowTypeHint,
   };
 }

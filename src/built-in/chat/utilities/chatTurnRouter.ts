@@ -57,15 +57,11 @@ export function determineChatTurnRoute(
     return {
       kind: 'grounded',
       reason: 'File or directory enumeration question — use tools to list actual contents instead of relying on retrieved context.',
-      coverageMode: semantics.groundedCoverageModeHint,
     };
   }
 
   return {
     kind: 'grounded',
-    reason: semantics.groundedCoverageModeHint === 'exhaustive'
-      ? 'This request needs exhaustive file-by-file coverage rather than representative retrieval.'
-      : 'Default grounded route uses normal workspace-aware context planning.',
-    coverageMode: semantics.groundedCoverageModeHint,
+    reason: 'Default grounded route uses normal workspace-aware context planning.',
   };
 }

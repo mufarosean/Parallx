@@ -13,19 +13,5 @@ describe('chat turn semantics', () => {
     expect(semantics.isExplicitMemoryRecall).toBe(true);
   });
 
-  it('keeps summary-style exhaustive reviews on the folder-summary path even when list wording appears', () => {
-    const semantics = analyzeChatTurnSemantics('Give me a bulleted list with a short summary of each file in the RF Guides folder.');
 
-    expect(semantics.isExhaustiveWorkspaceReview).toBe(true);
-    expect(semantics.workflowTypeHint).toBe('folder-summary');
-    expect(semantics.groundedCoverageModeHint).toBe('exhaustive');
-  });
-
-  it('marks explicit extraction requests as exhaustive extraction', () => {
-    const semantics = analyzeChatTurnSemantics('List every deductible amount from all policy documents.');
-
-    expect(semantics.isExhaustiveWorkspaceReview).toBe(true);
-    expect(semantics.workflowTypeHint).toBe('exhaustive-extraction');
-    expect(semantics.groundedCoverageModeHint).toBe('exhaustive');
-  });
 });

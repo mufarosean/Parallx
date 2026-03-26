@@ -605,10 +605,10 @@ export interface IChatParticipantTurnSemantics {
   readonly isExplicitMemoryRecall: boolean;
   readonly isExplicitTranscriptRecall: boolean;
   readonly isFileEnumeration: boolean;
-  readonly isExhaustiveWorkspaceReview: boolean;
+  readonly isExhaustiveWorkspaceReview?: boolean;
   readonly offTopicDirectAnswer?: string;
   readonly productSemanticsDirectAnswer?: string;
-  readonly workflowTypeHint: IChatParticipantWorkflowType;
+  readonly workflowTypeHint?: IChatParticipantWorkflowType;
   readonly groundedCoverageModeHint?: 'representative' | 'exhaustive' | 'enumeration';
 }
 
@@ -647,8 +647,8 @@ export interface IChatParticipantSemanticFallbackDecision {
   readonly kind: 'broad-workspace-summary';
   readonly confidence: number;
   readonly reason: string;
-  readonly workflowTypeHint: IChatParticipantWorkflowType;
-  readonly groundedCoverageModeHint: 'exhaustive';
+  readonly workflowTypeHint?: IChatParticipantWorkflowType;
+  readonly groundedCoverageModeHint?: 'exhaustive';
 }
 
 export interface IChatParticipantTurnState {

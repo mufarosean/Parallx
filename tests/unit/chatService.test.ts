@@ -194,10 +194,8 @@ describe('ChatService', () => {
       });
 
       const request = capture.mock.calls[0][0] as IChatParticipantRequest;
-      expect(request.interpretation?.semantics?.workflowTypeHint).toBe('folder-summary');
       expect(request.turnState?.queryScope.level).toBe('folder');
       expect(request.turnState?.queryScope.pathPrefixes).toContain('RF Guides/');
-      expect(request.turnState?.turnRoute.coverageMode).toBe('exhaustive');
       expect(request.turnState?.hasActiveSlashCommand).toBe(false);
       expect(request.turnState?.isRagReady).toBe(true);
       expect(request.turnState?.contextQueryText).toBe('Please summarize each file in the RF Guides folder.');

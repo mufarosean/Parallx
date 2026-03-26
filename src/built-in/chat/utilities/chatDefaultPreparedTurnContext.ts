@@ -12,8 +12,6 @@ import type {
 } from '../chatTypes.js';
 import type { IChatEvidenceAssessment } from './chatContextAssembly.js';
 import { createChatContextPlan, createChatRuntimeTrace } from './chatContextPlanner.js';
-import { gatherEvidence, computeCoverage } from './chatEvidenceGatherer.js';
-import { buildExecutionPlan } from './chatExecutionPlanner.js';
 import { buildSkillInstructionSection } from '../config/chatSystemPrompts.js';
 import { refineChatRouteAuthorityWithEvidence, resolveChatRouteAuthority } from './chatRouteAuthority.js';
 import { prepareChatTurnContext } from './chatTurnContextPreparation.js';
@@ -78,20 +76,8 @@ export async function resolveDefaultPreparedTurnContext(
     };
   }
 
-  const executionPlan = buildExecutionPlan(input.turnRoute, input.queryScope);
-  const isPlannedWorkflow = executionPlan.workflowType !== 'generic-grounded';
-
-  const evidenceBundle = isPlannedWorkflow
-    ? await gatherEvidence(executionPlan, input.contextQueryText, {
-        listFilesRelative: services.listFilesRelative,
-        readFileRelative: services.readFileRelative,
-        retrieveContext: services.retrieveContext,
-      })
-    : undefined;
-
-  const coverageRecord = evidenceBundle
-    ? computeCoverage(evidenceBundle)
-    : undefined;
+  const evidenceBundle = undefined;
+  const coverageRecord = undefined;
 
   const { turnRoute, authority } = resolveChatRouteAuthority(input.turnRoute, coverageRecord, {
     hasActiveSlashCommand: input.hasActiveSlashCommand,

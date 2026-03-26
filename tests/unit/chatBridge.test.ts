@@ -83,11 +83,8 @@ describe('ChatBridge', () => {
         isExplicitMemoryRecall: false,
         isExplicitTranscriptRecall: false,
         isFileEnumeration: false,
-        isExhaustiveWorkspaceReview: false,
         offTopicDirectAnswer: undefined,
         productSemanticsDirectAnswer: undefined,
-        workflowTypeHint: 'generic-grounded',
-        groundedCoverageModeHint: 'representative',
       },
     });
   });
@@ -126,11 +123,8 @@ describe('ChatBridge', () => {
           isExplicitMemoryRecall: false,
           isExplicitTranscriptRecall: false,
           isFileEnumeration: false,
-          isExhaustiveWorkspaceReview: false,
           offTopicDirectAnswer: undefined,
           productSemanticsDirectAnswer: undefined,
-          workflowTypeHint: 'generic-grounded',
-          groundedCoverageModeHint: 'representative',
         },
         queryScope: {
           level: 'workspace',
@@ -140,7 +134,6 @@ describe('ChatBridge', () => {
         },
         turnRoute: {
           kind: 'grounded',
-          coverageMode: 'representative',
         },
         contextPlan: {
           intent: 'answer',
@@ -294,11 +287,8 @@ describe('ChatBridge', () => {
           isExplicitMemoryRecall: false,
           isExplicitTranscriptRecall: false,
           isFileEnumeration: false,
-          isExhaustiveWorkspaceReview: false,
           offTopicDirectAnswer: undefined,
           productSemanticsDirectAnswer: undefined,
-          workflowTypeHint: 'generic-grounded',
-          groundedCoverageModeHint: 'representative',
         },
         queryScope: {
           level: 'workspace',
@@ -308,7 +298,6 @@ describe('ChatBridge', () => {
         },
         turnRoute: {
           kind: 'grounded',
-          coverageMode: 'representative',
         },
         contextPlan: {
           intent: 'answer',

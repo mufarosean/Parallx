@@ -98,8 +98,7 @@ describe('chat turn prelude', () => {
       hasActiveSlashCommand: false,
     });
 
-    expect(result.turnRoute.workflowType).toBeUndefined();
-    expect(result.turnRoute.coverageMode).toBe('exhaustive');
+    expect(result.turnRoute.kind).toBe('grounded');
     expect(result.mentionPills).toHaveLength(0);
     expect(result.mentionContextBlocks).toHaveLength(0);
     expect(listFolderFiles).not.toHaveBeenCalled();
@@ -127,18 +126,15 @@ describe('chat turn prelude', () => {
 
     expect(result.semanticFallback).toEqual(expect.objectContaining({
       kind: 'broad-workspace-summary',
-      workflowTypeHint: 'folder-summary',
-      groundedCoverageModeHint: 'exhaustive',
     }));
-    expect(result.turnRoute.workflowType).toBe('folder-summary');
-    expect(result.turnRoute.coverageMode).toBe('exhaustive');
-    expect(result.contextPlan.retrievalPlan.coverageMode).toBe('exhaustive');
+    expect(result.turnRoute.kind).toBe('grounded');
+    expect(result.contextPlan.useRetrieval).toBe(true);
     expect(reportResponseDebug).not.toHaveBeenCalled();
     expect(reportRuntimeTrace).toHaveBeenCalledOnce();
     expect(reportRetrievalDebug).toHaveBeenCalledWith({
       hasActiveSlashCommand: false,
       isRagReady: true,
-      needsRetrieval: false,
+      needsRetrieval: true,
       attempted: false,
     });
   });

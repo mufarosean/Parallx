@@ -24,19 +24,16 @@ describe('chat runtime routing', () => {
     expect(route.kind).toBe('transcript-recall');
   });
 
-  it('marks exhaustive file-by-file review requests as exhaustive coverage turns', () => {
+  it('routes exhaustive file-by-file review requests as grounded turns', () => {
     const route = determineChatTurnRoute('Read each file in this folder and provide a one sentence summary of each file.');
 
     expect(route.kind).toBe('grounded');
-    expect(route.coverageMode).toBe('exhaustive');
   });
 
-  it('marks natural paragraph-summary phrasing as exhaustive coverage', () => {
+  it('routes natural paragraph-summary phrasing as grounded turns', () => {
     const route = determineChatTurnRoute('Can you provide a one paragraph summary for each of the files in the RF Guides folder?');
 
     expect(route.kind).toBe('grounded');
-    expect(route.workflowType).toBeUndefined();
-    expect(route.coverageMode).toBe('exhaustive');
   });
 
   it('routes product semantics as direct answers', () => {
@@ -117,7 +114,7 @@ describe('chat context planning', () => {
     expect(trace.semanticFallback?.groundedCoverageModeHint).toBe('exhaustive');
   });
 
-  it('keeps broad ambiguous workspace-summary phrasing representative by default', () => {
+  it('keeps broad ambiguous workspace-summary phrasing as standard grounded retrieval', () => {
     const route = determineChatTurnRoute('Tell me about everything in here.');
     const plan = createChatContextPlan(route, { hasActiveSlashCommand: false, isRagReady: true });
     const trace = createChatRuntimeTrace(route, plan, {
@@ -126,10 +123,8 @@ describe('chat context planning', () => {
       isRagReady: true,
     });
 
-    expect(route.workflowType).toBeUndefined();
-    expect(route.coverageMode).toBe('representative');
+    expect(route.kind).toBe('grounded');
     expect(plan.useRetrieval).toBe(true);
-    expect(plan.retrievalPlan.coverageMode).toBe('representative');
     expect(trace.semanticFallback).toBeUndefined();
   });
 
@@ -150,14 +145,13 @@ describe('chat context planning', () => {
     expect(trace.routeAuthority?.reason).toContain('representative retrieval');
   });
 
-  it('switches grounded planning into exploration intent for exhaustive coverage turns', () => {
+  it('uses standard retrieval for exhaustive-phrased grounded turns', () => {
     const route = determineChatTurnRoute('Summarize each file in this directory in one sentence.');
     const plan = createChatContextPlan(route, { hasActiveSlashCommand: false, isRagReady: true });
 
-    expect(plan.useRetrieval).toBe(false);
-    expect(plan.retrievalPlan.intent).toBe('exploration');
-    expect(plan.retrievalPlan.coverageMode).toBe('exhaustive');
-    expect(plan.retrievalPlan.needsRetrieval).toBe(false);
+    expect(plan.useRetrieval).toBe(true);
+    expect(plan.retrievalPlan.intent).toBe('question');
+    expect(plan.retrievalPlan.needsRetrieval).toBe(true);
     expect(plan.citationMode).toBe('required');
   });
 
@@ -171,24 +165,6 @@ describe('chat context planning', () => {
 });
 
 describe('chat route authority', () => {
-  it('corrects empty tool-first exhaustive coverage back to representative retrieval', () => {
-    const route = determineChatTurnRoute('Summarize each file in this directory in one sentence.');
-
-    const result = resolveChatRouteAuthority(route, {
-      level: 'none',
-      totalTargets: 4,
-      coveredTargets: 0,
-      gaps: ['a.md', 'b.md', 'c.md', 'd.md'],
-    }, {
-      hasActiveSlashCommand: false,
-      isRagReady: true,
-    });
-
-    expect(result.turnRoute.workflowType).toBeUndefined();
-    expect(result.turnRoute.coverageMode).toBe('representative');
-    expect(result.authority.action).toBe('corrected');
-  });
-
   it('preserves the route when exhaustive coverage produced usable evidence', () => {
     const route = determineChatTurnRoute('Summarize each file in this directory in one sentence.');
 
@@ -204,24 +180,6 @@ describe('chat route authority', () => {
 
     expect(result.turnRoute.workflowType).toBe(route.workflowType);
     expect(result.authority.action).toBe('preserved');
-  });
-
-  it('corrects incomplete exhaustive coverage when evidence remains insufficient', () => {
-    const route = determineChatTurnRoute('Summarize each file in this directory in one sentence.');
-
-    const result = refineChatRouteAuthorityWithEvidence(route, {
-      level: 'minimal',
-      totalTargets: 4,
-      coveredTargets: 1,
-      gaps: ['b.md', 'c.md', 'd.md'],
-    }, 'insufficient', {
-      hasActiveSlashCommand: false,
-      isRagReady: true,
-    });
-
-    expect(result.turnRoute.workflowType).toBeUndefined();
-    expect(result.turnRoute.coverageMode).toBe('representative');
-    expect(result.authority.action).toBe('corrected');
   });
 
   it('preserves incomplete exhaustive coverage when evidence is still sufficient', () => {

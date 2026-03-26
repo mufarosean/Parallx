@@ -525,13 +525,7 @@ export interface ISkillCatalogEntry {
   readonly description: string;
   readonly kind: SkillKind;
   readonly tags: readonly string[];
-}
-
-/** Tier 2 — result of matching user intent to a workflow skill. */
-export interface ISkillMatchResult {
-  readonly matched: boolean;
-  readonly skill?: ISkillCatalogEntry;
-  readonly reason: string;
+  readonly location?: string;
 }
 
 /** Tier 3 — fully activated skill with resolved body ready for injection. */
@@ -944,10 +938,10 @@ export interface IChatTurnSemantics {
   readonly isExplicitMemoryRecall: boolean;
   readonly isExplicitTranscriptRecall: boolean;
   readonly isFileEnumeration: boolean;
-  readonly isExhaustiveWorkspaceReview: boolean;
+  readonly isExhaustiveWorkspaceReview?: boolean;
   readonly offTopicDirectAnswer?: string;
   readonly productSemanticsDirectAnswer?: string;
-  readonly workflowTypeHint: WorkflowType;
+  readonly workflowTypeHint?: WorkflowType;
   readonly groundedCoverageModeHint?: 'representative' | 'exhaustive' | 'enumeration';
 }
 
@@ -955,8 +949,8 @@ export interface IChatSemanticFallbackDecision {
   readonly kind: 'broad-workspace-summary';
   readonly confidence: number;
   readonly reason: string;
-  readonly workflowTypeHint: WorkflowType;
-  readonly groundedCoverageModeHint: 'exhaustive';
+  readonly workflowTypeHint?: WorkflowType;
+  readonly groundedCoverageModeHint?: 'exhaustive';
 }
 
 export interface IChatRouteAuthorityDecision {

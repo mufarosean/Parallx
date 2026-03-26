@@ -305,6 +305,7 @@ export interface ISkillCatalogEntry {
   readonly description: string;
   readonly kind: string;
   readonly tags: readonly string[];
+  readonly location?: string;
 }
 
 export interface IDefaultParticipantServices {

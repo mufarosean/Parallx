@@ -178,7 +178,7 @@ async function buildOpenclawTurnContext(
   const skillEntries = services.getWorkflowSkillCatalog?.() ?? [];
   const skills: ISkillEntry[] = skillEntries
     .filter(s => s.kind === 'workflow')
-    .map(s => ({ name: s.name, description: s.description, location: '' }));
+    .map(s => ({ name: s.name, description: s.description, location: s.location ?? '' }));
 
   // Tools based on mode — M41 Phase 9: Ask + Agent get full tools,
   // Edit gets read-only tools for context lookup only

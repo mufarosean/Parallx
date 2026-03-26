@@ -5,7 +5,6 @@ import { ChatMode } from '../../src/services/chatTypes';
 import { buildSystemPrompt } from '../../src/built-in/chat/config/chatSystemPrompts';
 import type { ISystemPromptContext } from '../../src/built-in/chat/config/chatSystemPrompts';
 import type { IToolDefinition } from '../../src/services/chatTypes';
-import { SkillLoaderService } from '../../src/services/skillLoaderService';
 
 // ── Helpers ──
 
@@ -358,20 +357,6 @@ describe('buildSystemPrompt — skill catalog', () => {
 
     const addedTokens = Math.ceil((withSkills.length - withoutSkills.length) / 4);
     expect(addedTokens).toBeLessThan(500);
-  });
-
-  it('F.5: real built-in skill catalog adds < 500 tokens', () => {
-    // Use actual built-in skills from SkillLoaderService (not mocks)
-    const loader = new SkillLoaderService();
-    loader.registerBuiltInWorkflowSkills();
-    const realCatalog = loader.getWorkflowSkillCatalog();
-
-    const withoutSkills = buildSystemPrompt(ChatMode.Ask, makeContext());
-    const withSkills = buildSystemPrompt(ChatMode.Ask, makeContext({ skillCatalog: realCatalog }));
-
-    const addedTokens = Math.ceil((withSkills.length - withoutSkills.length) / 4);
-    expect(addedTokens).toBeLessThan(500);
-    expect(realCatalog.length).toBe(4);
   });
 });
 
