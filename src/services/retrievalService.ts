@@ -71,22 +71,6 @@ function estimateTokens(text: string): number {
 }
 
 /**
- * Minimum cosine similarity between query embedding and candidate embedding
- * for a chunk to survive cosine re-ranking. 0.20 is lenient — it removes
- * only clearly unrelated candidates. Set to 0 to disable cosine filtering
- * entirely and let the AI see everything above the RRF score threshold.
- *
- * Reference: docs/Parallx_Milestone_16.md Phase 2 — Cosine Re-ranking
- */
-const DEFAULT_MIN_COSINE_SCORE = 0.20;
-
-/**
- * Default relative score drop-off ratio. 0 = disabled (no drop-off filter).
- * When > 0, results below topScore × ratio are dropped.
- */
-const DEFAULT_DROPOFF_RATIO = 0;
-
-/**
  * Dot product of two equal-length vectors.
  * Used by cosineRerank to compute query-candidate similarity.
  */
@@ -218,48 +202,6 @@ function buildKeywordFocusedQuery(query: string, identifiers: readonly string[])
   return normalizeQueryKey(focused) === normalizeQueryKey(query) ? undefined : focused;
 }
 
-function extractFocusTerms(query: string, identifiers: readonly string[]): string[] {
-  const tokens = stripFormattingRequests(query)
-    .replace(/[?!.,:;()[\]{}]/g, ' ')
-    .split(/\s+/)
-    .map((token) => normalizeLexicalToken(token.trim()))
-    .filter((token) => token.length >= 3 && !KEYWORD_FOCUS_STOPWORDS.has(token));
-
-  const merged = [...identifiers.map((identifier) => identifier.toLowerCase()), ...tokens];
-  const seen = new Set<string>();
-  const deduped: string[] = [];
-  for (const token of merged) {
-    if (seen.has(token)) { continue; }
-    seen.add(token);
-    deduped.push(token);
-  }
-  return deduped;
-}
-
-function collectRerankFocusTerms(queryPlan: RetrievalQueryPlan, maxTerms = 12): string[] {
-  const seeds = [
-    ...queryPlan.variants
-      .filter((variant) => typeof variant.keywordQuery === 'string' && variant.keywordQuery.length > 0)
-      .map((variant) => variant.keywordQuery!),
-    ...queryPlan.variants.map((variant) => variant.text),
-  ];
-
-  const merged: string[] = [];
-  const seen = new Set<string>();
-  for (const seed of seeds) {
-    for (const term of extractFocusTerms(seed, queryPlan.identifiers)) {
-      if (seen.has(term)) { continue; }
-      seen.add(term);
-      merged.push(term);
-      if (merged.length >= maxTerms) {
-        return merged;
-      }
-    }
-  }
-
-  return merged;
-}
-
 function decomposeQuery(query: string): string[] {
   const lowered = query.toLowerCase();
   if (/\b(compare|difference|versus|vs\.?|between)\b/i.test(lowered)) {
@@ -306,264 +248,6 @@ function queryExplicitlyTargetsInternalArtifacts(query: string): boolean {
     /\bsession\s+history\b/,
     /\bsession\s+log\b/,
   ]);
-}
-
-function isInsuranceCorpusCandidate(result: SearchResult): boolean {
-  const sourceMeta = [
-    result.sourceId,
-    result.contextPrefix,
-    result.headingPath,
-    result.parentHeadingPath,
-    result.chunkText.slice(0, 180),
-  ]
-    .filter((value): value is string => typeof value === 'string' && value.length > 0)
-    .join(' ')
-    .toLowerCase();
-
-  return matchesAny(sourceMeta, [
-    /agent contacts/,
-    /claims guide/,
-    /auto insurance policy/,
-    /accident quick reference/,
-    /vehicle info/,
-    /uninsured motorist/,
-    /underinsured motorist/,
-    /claims hotline/,
-    /deductible/,
-    /total loss/,
-    /kbb/,
-  ]);
-}
-
-type EvidenceRole =
-  | 'definition'
-  | 'architecture-location'
-  | 'implementation-detail'
-  | 'current-behavior'
-  | 'failure-mode'
-  | 'recency';
-
-function uniqueValues<T>(values: readonly T[]): T[] {
-  return Array.from(new Set(values));
-}
-
-function classifyQueryEvidenceRoles(query: string, queryPlan: RetrievalQueryPlan): EvidenceRole[] {
-  const lowered = query.toLowerCase();
-  const roles: EvidenceRole[] = [];
-  const isClaimFilingQuery = matchesAny(lowered, [
-    /\bfile\b.*\bclaim\b/,
-    /\bclaim\b.*\bfile\b/,
-    /\bclaims?\s+line\b/,
-    /who\s+do\s+i\s+call/,
-    /\b72-hour\b/,
-    /\b72\s+hours\b/,
-  ]);
-
-  if (matchesAny(lowered, [
-    /\bwhat is\b/,
-    /\bdefine\b/,
-    /\boverview\b/,
-    /\bsummary\b/,
-    /\bexplain\b/,
-  ])) {
-    roles.push('definition');
-  }
-
-  if (matchesAny(lowered, [
-    /\bwhere\b/,
-    /which\s+(?:file|document|source|module|section)/,
-    /\barchitecture\b/,
-    /\blayout\b/,
-    /\bstructure\b/,
-    /\bpath\b/,
-    /located/,
-  ])) {
-    roles.push('architecture-location');
-  }
-
-  if (matchesAny(lowered, [
-    /\bhow\b/,
-    /implement/,
-    /implementation/,
-    /\bcode\b/,
-    /\blogic\b/,
-    /\bfunction\b/,
-    /\bmethod\b/,
-    /\bconfig\b/,
-    /\bprocedure\b/,
-  ])) {
-    roles.push('implementation-detail');
-  }
-
-  if (matchesAny(lowered, [
-    /\bcurrent\b/,
-    /\bcurrently\b/,
-    /\bnow\b/,
-    /\btoday\b/,
-    /\bdefault\b/,
-    /what\s+does/,
-    /what\s+happens/,
-    /\bbehavior\b/,
-    /\bcover(?:age)?\b/,
-  ])) {
-    roles.push('current-behavior');
-  }
-
-  if (matchesAny(lowered, [
-    /\berror\b/,
-    /\bbug\b/,
-    /\bfail(?:ure)?\b/,
-    /\brisk\b/,
-    /\bissue\b/,
-    /\bproblem\b/,
-    /watch\s+for/,
-    /\bwrong\b/,
-    /\bcrash\b/,
-    /\bteardown\b/,
-    /\bempty response\b/,
-    /\buninsured\b/,
-    /\bexclusion\b/,
-  ])) {
-    roles.push('failure-mode');
-  }
-
-  if (matchesAny(lowered, [
-    /\blatest\b/,
-    /\brecent\b/,
-    /\bupdated\b/,
-    /\bnewest\b/,
-    /\bchanged\b/,
-  ])) {
-    roles.push('recency');
-  }
-
-  if (isClaimFilingQuery) {
-    roles.push('implementation-detail', 'current-behavior', 'failure-mode', 'recency');
-  }
-
-  if (roles.length === 0 && queryPlan.complexity === 'hard') {
-    roles.push('definition', 'implementation-detail', 'current-behavior', 'failure-mode');
-  }
-
-  if (queryPlan.strategy === 'decomposed') {
-    roles.push('implementation-detail', 'current-behavior');
-  }
-
-  return uniqueValues(roles);
-}
-
-function classifyResultEvidenceRoles(result: SearchResult): EvidenceRole[] {
-  const combined = [
-    result.sourceId,
-    result.contextPrefix,
-    result.headingPath,
-    result.parentHeadingPath,
-    result.chunkText,
-    result.documentKind,
-    result.structuralRole,
-  ]
-    .filter((value): value is string => typeof value === 'string' && value.length > 0)
-    .join(' ')
-    .toLowerCase();
-
-  const roles: EvidenceRole[] = [];
-
-  if (matchesAny(combined, [
-    /\boverview\b/,
-    /\bsummary\b/,
-    /\bdefinition\b/,
-    /what\s+is/,
-    /\bintroduction\b/,
-    /\bpurpose\b/,
-    /coverage\s+(?:summary|overview|basics)/,
-  ])) {
-    roles.push('definition');
-  }
-
-  if (matchesAny(combined, [
-    /\barchitecture\b/,
-    /\bpipeline\b/,
-    /\bflow\b/,
-    /\bstructure\b/,
-    /\blayout\b/,
-    /\bdirectory\b/,
-    /\bworkspace\b/,
-    /\bmodule map\b/,
-  ])) {
-    roles.push('architecture-location');
-  }
-
-  if (
-    /\.(?:ts|tsx|js|jsx|cjs|mjs|py|java|cs|go|rs|json)$/i.test(result.sourceId)
-    || result.structuralRole === 'code'
-    || matchesAny(combined, [
-      /implement/,
-      /implementation/,
-      /\bfunction\b/,
-      /\bmethod\b/,
-      /\bclass\b/,
-      /\bservice\b/,
-      /\bhandler\b/,
-      /\bprocedure\b/,
-      /\bconfig\b/,
-      /\blogic\b/,
-      /step[- ]by[- ]step/,
-    ])
-  ) {
-    roles.push('implementation-detail');
-  }
-
-  if (matchesAny(combined, [
-    /\bcurrent\b/,
-    /\bcurrently\b/,
-    /\bruntime\b/,
-    /\bdefault\b/,
-    /current\s+behavior/,
-    /runtime\s+behavior/,
-    /coverage\s+applies/,
-    /applies\s+when/,
-    /policy\s+cover(?:age)?/,
-  ])) {
-    roles.push('current-behavior');
-  }
-
-  if (matchesAny(combined, [
-    /\berror\b/,
-    /\bbug\b/,
-    /\bfail(?:ure|ing)?\b/,
-    /\brisk\b/,
-    /\bissue\b/,
-    /\bproblem\b/,
-    /\bwarning\b/,
-    /\bregression\b/,
-    /\bcrash\b/,
-    /\bteardown\b/,
-    /\bempty-response\b/,
-    /\bempty response\b/,
-    /\buninsured\b/,
-    /\bexclusion\b/,
-  ])) {
-    roles.push('failure-mode');
-  }
-
-  if (matchesAny(combined, [
-    /\bupdated\b/,
-    /\blatest\b/,
-    /\brecent\b/,
-    /\btoday\b/,
-    /\bcurrent state\b/,
-    /\b20\d{2}\b/,
-  ])) {
-    roles.push('recency');
-  }
-
-  if (roles.length === 0) {
-    roles.push(/\.(?:ts|tsx|js|jsx|cjs|mjs|py|java|cs|go|rs|json)$/i.test(result.sourceId)
-      ? 'implementation-detail'
-      : 'definition');
-  }
-
-  return uniqueValues(roles);
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -639,19 +323,8 @@ export interface RetrievalDiagnosticCandidate {
   preview: string;
 }
 
-export interface RetrievalRerankScoreTrace {
-  rowid: number;
-  sourceType: string;
-  sourceId: string;
-  chunkIndex: number;
-  contextPrefix: string;
-  beforeScore: number;
-  afterScore: number;
-  delta: number;
-}
-
 export interface RetrievalDroppedEvidenceTrace extends RetrievalDiagnosticCandidate {
-  droppedAt: 'corpus-hygiene' | 'score-threshold' | 'dropoff' | 'cosine' | 'dedup' | 'token-budget';
+  droppedAt: 'corpus-hygiene' | 'score-threshold' | 'dedup' | 'token-budget';
   detail?: string;
 }
 
@@ -661,42 +334,20 @@ export interface RetrievalTrace {
   minScore: number;
   maxPerSource: number;
   tokenBudget: number;
-  cosineThreshold: number;
-  dropoffRatio: number;
   rawCandidateCount: number;
   afterCorpusHygieneCount: number;
   afterScoreFilterCount: number;
-  afterStructureExpansionCount: number;
-  afterDropoffCount: number;
-  afterCosineCount: number;
-  afterSecondStageCount: number;
-  afterDiversityCount: number;
   afterDedupCount: number;
   finalCount: number;
   corpusHygieneDrops: number;
   scoreThresholdDrops: number;
-  dropoffDrops: number;
-  cosineDrops: number;
   dedupDrops: number;
   tokenBudgetDrops: number;
   tokenBudgetUsed: number;
   queryPlan?: RetrievalQueryPlanTrace;
-  rankingTrace?: {
-    focusTerms: string[];
-    secondStageApplied: boolean;
-    secondStageMode?: 'standard' | 'late-interaction';
-    diversityApplied: boolean;
-    diversityMode: 'simple' | 'hard';
-    diversityStrength?: 'balanced' | 'strong';
-    roleBalanceApplied?: boolean;
-    targetRoles?: string[];
-    coveredRoles?: string[];
-    structureExpansionApplied?: boolean;
-  };
   diagnostics?: {
     generatedQueries: RetrievalQueryPlanTrace['variants'];
     firstStageCandidates: RetrievalDiagnosticCandidate[];
-    rerankScores: RetrievalRerankScoreTrace[];
     droppedEvidence: RetrievalDroppedEvidenceTrace[];
     finalPackedContextText: string;
     finalPackedContext: RetrievalDiagnosticCandidate[];
@@ -793,8 +444,8 @@ function toDiagnosticCandidate(result: SearchResult): RetrievalDiagnosticCandida
  * Query-time retrieval service.
  *
  * Embeds a user query, runs hybrid search through the VectorStoreService,
- * applies post-retrieval filtering (score threshold, cosine re-ranking,
- * dedup, token budget), and returns ranked context chunks.
+ * applies post-retrieval filtering (score threshold, dedup, token budget),
+ * and returns ranked context chunks. No post-retrieval heuristic re-ranking.
  */
 /** Config provider shape — all retrieval settings from AI Settings. */
 interface IRetrievalConfigProvider {
@@ -802,15 +453,10 @@ interface IRetrievalConfigProvider {
     retrieval: {
       ragDecompositionMode?: 'auto' | 'off';
       ragCandidateBreadth?: 'balanced' | 'broad';
-      ragDiversityStrength?: 'balanced' | 'strong';
-      ragStructureExpansionMode?: 'auto' | 'off';
-      ragRerankMode?: 'standard' | 'late-interaction';
       ragTopK: number;
       ragMaxPerSource: number;
       ragTokenBudget: number;
       ragScoreThreshold: number;
-      ragCosineThreshold: number;
-      ragDropoffRatio: number;
     };
     model?: { contextWindow?: number };
   };
@@ -842,11 +488,14 @@ export class RetrievalService extends Disposable implements IRetrievalService {
   /**
    * Retrieve relevant context chunks for a user query.
    *
+   * Aligned with upstream OpenClaw pattern: hybrid search (RRF fusion),
+   * then let the model decide relevance. No post-retrieval heuristic stages.
+   *
    * Pipeline:
    *   1. Embed query (search_query prefix)
-   *   2. Hybrid search (vector + keyword via VectorStoreService, 3× overfetch)
-   *   3. Score threshold filter (absolute + optional relative drop-off)
-   *   4. Cosine re-ranking (optional, drops below cosine threshold)
+   *   2. Hybrid search (vector + keyword via VectorStoreService, RRF k=60)
+   *   3. Internal artifact hygiene (exclude .parallx internals)
+   *   4. Score threshold filter (basic RRF noise floor)
    *   5. Source deduplication (cap chunks per source)
    *   6. Token budget enforcement (auto-scales to model context window)
    */
@@ -860,11 +509,6 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     const maxPerSource = options?.maxPerSource ?? cfgRetrieval?.ragMaxPerSource ?? DEFAULT_MAX_PER_SOURCE;
     const decompositionMode = cfgRetrieval?.ragDecompositionMode ?? 'auto';
     const candidateBreadth = cfgRetrieval?.ragCandidateBreadth ?? 'balanced';
-    const diversityStrength = cfgRetrieval?.ragDiversityStrength ?? 'balanced';
-    const structureExpansionMode = cfgRetrieval?.ragStructureExpansionMode ?? 'auto';
-    const rerankMode = cfgRetrieval?.ragRerankMode ?? 'standard';
-    const cosineThreshold = cfgRetrieval?.ragCosineThreshold ?? DEFAULT_MIN_COSINE_SCORE;
-    const dropoffRatio = cfgRetrieval?.ragDropoffRatio ?? DEFAULT_DROPOFF_RATIO;
     const queryPlan = this._buildQueryPlan(query, topK, decompositionMode, candidateBreadth);
     const explicitSourceIds = options?.sourceIds ?? await this._resolveExplicitSourceIds(query, queryPlan);
 
@@ -881,8 +525,7 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     // 1. Embed the user query
     const queryEmbedding = await this._embeddingService.embedQuery(query);
 
-    // 2. Phase C candidate generation — stay on the fast path for simple
-    //    exact questions, but widen and decompose harder questions.
+    // 2. Hybrid search — RRF fusion of vector + keyword candidates
     const { results: candidateResults, traces: vectorStoreTraces } = await this._collectCandidates(
       query,
       queryEmbedding,
@@ -892,20 +535,17 @@ export class RetrievalService extends Disposable implements IRetrievalService {
         sourceIds: explicitSourceIds,
       },
     );
-    const structuredResults = await this._applyStructureAwareExpansion(candidateResults, queryPlan, topK, structureExpansionMode);
-    const rankedResults = this._applyIntentAwareSourceBoost(
-      this._applyLexicalFocusBoost(structuredResults.results, queryPlan),
-      query,
-      queryPlan,
-    );
     const vectorStoreTrace = vectorStoreTraces.at(-1);
 
-    const corpusHygieneResult = this._applyInternalArtifactHygiene(rankedResults, query, options);
+    // 3. Internal artifact hygiene (.parallx files excluded from generic retrieval)
+    const corpusHygieneResult = this._applyInternalArtifactHygiene(candidateResults, query, options);
     const rawResults = corpusHygieneResult.results;
+    const rawCandidateCount = candidateResults.length;
+    const afterCorpusHygieneCount = rawResults.length;
 
-    // 3. Score threshold filter (RRF scores)
+    // 4. Score threshold filter (RRF scores)
     const droppedEvidence: RetrievalDroppedEvidenceTrace[] = [...corpusHygieneResult.dropped];
-    let filtered = rawResults.filter((r) => {
+    const filtered = rawResults.filter((r) => {
       if (r.score >= minScore) { return true; }
       droppedEvidence.push({
         ...toDiagnosticCandidate(r),
@@ -914,54 +554,15 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       });
       return false;
     });
-    const rawCandidateCount = rankedResults.length;
-    const afterStructureExpansionCount = rawCandidateCount;
-    const afterCorpusHygieneCount = rawResults.length;
     const afterScoreFilterCount = filtered.length;
-
-    // 3b. Relative score drop-off (configurable, 0 = disabled).
-    //     When enabled, drops results below topScore × dropoffRatio.
-    if (dropoffRatio > 0 && filtered.length > 1) {
-      const topScore = filtered[0].score;
-      const dropoffThreshold = topScore * dropoffRatio;
-      filtered = filtered.filter((r) => {
-        if (r.score >= dropoffThreshold) { return true; }
-        droppedEvidence.push({
-          ...toDiagnosticCandidate(r),
-          droppedAt: 'dropoff',
-          detail: `score ${r.score.toFixed(4)} < dropoffThreshold ${dropoffThreshold.toFixed(4)}`,
-        });
-        return false;
-      });
-    }
-    const afterDropoffCount = filtered.length;
-
-    // 4. Cosine re-ranking (configurable threshold, 0 = disabled).
-    if (cosineThreshold > 0 && filtered.length > 0) {
-      const cosineResult = await this._cosineRerank(queryEmbedding, filtered, cosineThreshold);
-      filtered = cosineResult.results;
-      droppedEvidence.push(...cosineResult.dropped);
-    }
-    const afterCosineCount = filtered.length;
-
-    const rerankResult = this._applySecondStageRerank(filtered, queryPlan, rerankMode);
-    filtered = rerankResult.results;
-    const afterSecondStageCount = filtered.length;
-
-    filtered = this._applyDiversityReordering(filtered, queryPlan, topK, maxPerSource, diversityStrength);
-    const afterDiversityCount = filtered.length;
-
-    const roleBalanceResult = this._applyEvidenceRoleBalancing(filtered, query, queryPlan, topK);
-    filtered = roleBalanceResult.results;
 
     // 5. Source deduplication — cap chunks from any single source
     const dedupResult = this._deduplicateSources(filtered, maxPerSource);
-    filtered = dedupResult.results;
     droppedEvidence.push(...dedupResult.dropped);
-    const afterDedupCount = filtered.length;
+    const afterDedupCount = dedupResult.results.length;
 
     // 6. Token budget enforcement
-    const budgeted = this._applyTokenBudget(filtered, tokenBudget);
+    const budgeted = this._applyTokenBudget(dedupResult.results, tokenBudget);
     droppedEvidence.push(...budgeted.dropped);
 
     // 7. Map to RetrievedContext and trim to topK
@@ -982,8 +583,16 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       minScore,
       maxPerSource,
       tokenBudget,
-      cosineThreshold,
-      dropoffRatio,
+      rawCandidateCount,
+      afterCorpusHygieneCount,
+      afterScoreFilterCount,
+      afterDedupCount,
+      finalCount: finalResults.length,
+      corpusHygieneDrops: rawCandidateCount - afterCorpusHygieneCount,
+      scoreThresholdDrops: afterCorpusHygieneCount - afterScoreFilterCount,
+      dedupDrops: afterScoreFilterCount - afterDedupCount,
+      tokenBudgetDrops: afterDedupCount - budgeted.results.length,
+      tokenBudgetUsed: budgeted.tokensUsed,
       queryPlan: {
         rawQuery: query,
         complexity: queryPlan.complexity,
@@ -999,35 +608,6 @@ export class RetrievalService extends Disposable implements IRetrievalService {
           keywordQuery: variant.keywordQuery,
         })),
       },
-      rawCandidateCount,
-      afterStructureExpansionCount,
-      afterCorpusHygieneCount,
-      afterScoreFilterCount,
-      afterDropoffCount,
-      afterCosineCount,
-      afterSecondStageCount,
-      afterDiversityCount,
-      afterDedupCount,
-      finalCount: finalResults.length,
-      corpusHygieneDrops: rawCandidateCount - afterCorpusHygieneCount,
-      scoreThresholdDrops: afterCorpusHygieneCount - afterScoreFilterCount,
-      dropoffDrops: afterScoreFilterCount - afterDropoffCount,
-      cosineDrops: afterDropoffCount - afterCosineCount,
-      dedupDrops: afterCosineCount - afterDedupCount,
-      tokenBudgetDrops: afterDedupCount - budgeted.results.length,
-      tokenBudgetUsed: budgeted.tokensUsed,
-      rankingTrace: {
-        focusTerms: rerankResult.focusTerms,
-        secondStageApplied: rerankResult.applied,
-        secondStageMode: rerankResult.mode,
-        diversityApplied: filtered.length > 1,
-        diversityMode: queryPlan.complexity,
-        diversityStrength,
-        roleBalanceApplied: roleBalanceResult.applied,
-        targetRoles: roleBalanceResult.targetRoles,
-        coveredRoles: roleBalanceResult.coveredRoles,
-        structureExpansionApplied: structuredResults.applied,
-      },
       diagnostics: {
         generatedQueries: queryPlan.variants.map((variant) => ({
           text: variant.text,
@@ -1035,7 +615,6 @@ export class RetrievalService extends Disposable implements IRetrievalService {
           keywordQuery: variant.keywordQuery,
         })),
         firstStageCandidates: rawResults.map((result) => toDiagnosticCandidate(result)),
-        rerankScores: rerankResult.scoreChanges,
         droppedEvidence,
         finalPackedContextText,
         finalPackedContext: budgeted.results.slice(0, topK).map((result) => toDiagnosticCandidate(result)),
@@ -1343,688 +922,6 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     };
   }
 
-  private _applyLexicalFocusBoost(
-    results: SearchResult[],
-    queryPlan: RetrievalQueryPlan,
-  ): SearchResult[] {
-    if (queryPlan.exactMatchBias) {
-      return results;
-    }
-
-    const focusSeed = queryPlan.variants[0]?.keywordQuery ?? queryPlan.variants[0]?.text ?? '';
-    const focusTerms = extractFocusTerms(focusSeed, queryPlan.identifiers);
-    if (focusTerms.length === 0) {
-      return results;
-    }
-
-    return results.map((result) => {
-      const context = [result.contextPrefix, result.headingPath, result.parentHeadingPath]
-        .filter((value): value is string => typeof value === 'string' && value.length > 0)
-        .join(' ')
-        .toLowerCase();
-
-      if (!context) {
-        return result;
-      }
-
-      const matchedTerms = focusTerms.filter((term) => context.includes(term));
-      if (matchedTerms.length === 0) {
-        return result;
-      }
-
-      const coverage = matchedTerms.length / focusTerms.length;
-      const contextBoost = Math.min(0.012, coverage * 0.012);
-      return { ...result, score: result.score + contextBoost };
-    }).sort((a, b) => b.score - a.score);
-  }
-
-  private _applyIntentAwareSourceBoost(
-    results: SearchResult[],
-    query: string,
-    queryPlan: RetrievalQueryPlan,
-  ): SearchResult[] {
-    const normalizedQuery = normalizeQueryKey(stripFormattingRequests(query));
-    const isSimple = queryPlan.complexity === 'simple';
-    const insuranceDomainQuery = matchesAny(normalizedQuery, [
-      /\binsurance\b/,
-      /\bpolicy\b/,
-      /\bclaim\b/,
-      /\bclaims\b/,
-      /\bcoverage\b/,
-      /\bdeductible\b/,
-      /\baccident\b/,
-      /\brepair\b/,
-      /\bdriver\b/,
-      /\bmotorist\b/,
-      /\btotal\s+loss\b/,
-      /\bkbb\b/,
-      /\broadside\b/,
-      /\bhotline\b/,
-    ]);
-    const hasInsuranceCorpusCandidates = results.some((result) => isInsuranceCorpusCandidate(result));
-    const insuranceDomainActive = insuranceDomainQuery || hasInsuranceCorpusCandidates;
-    const wantsAgentContact = insuranceDomainActive && matchesAny(normalizedQuery, [
-      /\bcontact\b/,
-      /\bphone\b/,
-      /\bnumber\b/,
-      /\bcall\b/,
-      /\bemail\b/,
-      /\bmy\s+agent\b/,
-      /\byour\s+agent\b/,
-      /\bagent\s+contact\b/,
-    ]) && !matchesAny(normalizedQuery, [
-      /\brepair\b/,
-      /\bshop\b/,
-      /\broadside\b/,
-      /\bclaims\s+line\b/,
-    ]);
-    const wantsRepairShops = insuranceDomainActive && matchesAny(normalizedQuery, [/\brepair\b/, /\bshop\b/, /\bshops\b/]);
-    const wantsDeductible = insuranceDomainActive && matchesAny(normalizedQuery, [/\bdeductible\b/, /\bcollision\b/, /\bcomprehensive\b/]);
-    const wantsWorkspaceDocs = matchesAny(normalizedQuery, [/\bdocuments?\b/, /\bfiles?\b/, /\bworkspace\b/, /\bcontents?\b/]);
-    const wantsClaimFiling = insuranceDomainActive && matchesAny(normalizedQuery, [
-      /\bfile\b.*\bclaim\b/,
-      /\bclaim\b.*\bfile\b/,
-      /\bclaims?\s+line\b/,
-      /\bhotline\b/,
-      /who\s+do\s+i\s+call/,
-      /\b72-hour\b/,
-      /\b72\s+hours\b/,
-    ]);
-    const wantsAgentFieldLookup = wantsAgentContact && matchesAny(normalizedQuery, [
-      /\bname\b/,
-      /\bphone\b/,
-      /\bnumber\b/,
-      /\bemail\b/,
-      /\bcell\b/,
-      /\boffice\b/,
-    ]);
-    const wantsTabularEvidence = matchesAny(normalizedQuery, [
-      /\btable\b/,
-      /\bcompare\b/,
-      /\bcomparison\b/,
-      /\bthreshold\b/,
-      /\bdeductible\b/,
-      /\bpremium\b/,
-      /\blimit\b/,
-      /\bvalue\b/,
-      /\bamount\b/,
-      /\bphone\b/,
-      /\bnumber\b/,
-    ]);
-    const wantsTotalLossThreshold = matchesAny(normalizedQuery, [
-      /\btotal\s+loss\b/,
-      /\b75%\b/,
-      /\bkbb\b/,
-      /\bkelly\s+blue\s+book\b/,
-      /\bcurrent\s+value\b/,
-      /\bthreshold\b/,
-    ]);
-    const wantsCodeEvidence = queryPlan.exactMatchBias || matchesAny(normalizedQuery, [
-      /\bfunction\b/,
-      /\bmethod\b/,
-      /\bclass\b/,
-      /\bapi\b/,
-      /\bjson\b/,
-      /\bconfig\b/,
-      /\bcode\b/,
-      /\bimplementation\b/,
-      /\bhandler\b/,
-      /\bservice\b/,
-      /\bimport\b/,
-    ]);
-    const wantsFigureCaption = matchesAny(normalizedQuery, [
-      /\bfigure\b/,
-      /\bcaption\b/,
-      /\bdiagram\b/,
-      /\bchart\b/,
-      /\bcallout\b/,
-      /\bimage\b/,
-    ]);
-    const wantsCoverageDecision = insuranceDomainActive && matchesAny(normalizedQuery, [
-      /\bcoverage\b/,
-      /\binsurance\b/,
-      /\buninsured\b/,
-      /\bunderinsured\b/,
-      /\bum\b/,
-      /\buim\b/,
-    ]);
-
-    return results.map((result) => {
-      let adjustedScore = result.score;
-      const sourceMeta = [
-        result.sourceId,
-        result.contextPrefix,
-        result.headingPath,
-        result.parentHeadingPath,
-        result.chunkText.slice(0, 180),
-      ]
-        .filter((value): value is string => typeof value === 'string' && value.length > 0)
-        .join(' ')
-        .toLowerCase();
-
-      if (isSimple && result.sourceType === 'concept') {
-        adjustedScore -= 0.008;
-      }
-
-      if (wantsAgentContact) {
-        if (sourceMeta.includes('agent contacts') || sourceMeta.includes('your agent') || sourceMeta.includes('sarah')) {
-          adjustedScore += 0.016;
-        }
-        if (sourceMeta.includes('claims guide') || sourceMeta.includes('quick reference')) {
-          adjustedScore -= 0.003;
-        }
-      }
-
-      if (wantsAgentFieldLookup) {
-        if (
-          sourceMeta.includes('| name |')
-          || sourceMeta.includes('| phone |')
-          || sourceMeta.includes('| email |')
-          || sourceMeta.includes('| field |')
-          || sourceMeta.includes('senior insurance agent')
-        ) {
-          adjustedScore += 0.018;
-        }
-        if (sourceMeta.includes('claims line') || sourceMeta.includes('hotline')) {
-          adjustedScore -= 0.006;
-        }
-      }
-
-      if (wantsRepairShops) {
-        if (sourceMeta.includes('preferred repair') || sourceMeta.includes('repair shop')) {
-          adjustedScore += 0.016;
-        }
-        if (sourceMeta.includes('agent contacts')) {
-          adjustedScore += 0.004;
-        }
-      }
-
-      if (wantsDeductible) {
-        if (sourceMeta.includes('collision coverage') || sourceMeta.includes('comprehensive coverage') || sourceMeta.includes('deductible')) {
-          adjustedScore += 0.010;
-        }
-        if (result.sourceId.toLowerCase() === 'auto insurance policy.md') {
-          adjustedScore += 0.004;
-        }
-      }
-
-      if (wantsWorkspaceDocs) {
-        if (result.sourceType === 'file_chunk' && /\.md$/i.test(result.sourceId)) {
-          adjustedScore += 0.010;
-        }
-        if (/ai-config\.json$/i.test(result.sourceId)) {
-          adjustedScore -= 0.020;
-        }
-      }
-
-      if (wantsTabularEvidence) {
-        if (
-          result.structuralRole === 'table'
-          || sourceMeta.includes('table')
-          || result.chunkText.includes('|')
-        ) {
-          adjustedScore += 0.014;
-        } else if (queryPlan.complexity === 'hard' && result.structuralRole === 'section') {
-          adjustedScore -= 0.003;
-        }
-      }
-
-      if (wantsTotalLossThreshold) {
-        if (
-          sourceMeta.includes('total loss')
-          && (sourceMeta.includes('75%') || sourceMeta.includes('kbb') || sourceMeta.includes('current value'))
-        ) {
-          adjustedScore += 0.018;
-        }
-        if (sourceMeta.includes('vehicle info')) {
-          adjustedScore += 0.008;
-        }
-        if (sourceMeta.includes('severity desk') && !sourceMeta.includes('75%') && !sourceMeta.includes('kbb')) {
-          adjustedScore -= 0.006;
-        }
-      }
-
-      if (wantsCodeEvidence) {
-        const isCodeLikeSource = /\.(?:ts|tsx|js|jsx|cjs|mjs|py|java|cs|go|rs|json)$/i.test(result.sourceId);
-        if (result.structuralRole === 'code' || isCodeLikeSource) {
-          adjustedScore += queryPlan.exactMatchBias ? 0.016 : 0.010;
-        }
-
-        if (queryPlan.identifiers.some((identifier) => sourceMeta.includes(identifier.toLowerCase()))) {
-          adjustedScore += 0.008;
-        }
-      }
-
-      if (wantsFigureCaption) {
-        if (
-          sourceMeta.includes('figure')
-          || sourceMeta.includes('caption')
-          || sourceMeta.includes('diagram')
-          || sourceMeta.includes('callout')
-        ) {
-          adjustedScore += 0.012;
-        }
-      }
-
-      if (queryPlan.complexity === 'hard' && wantsClaimFiling) {
-        if (result.sourceType === 'concept') {
-          adjustedScore -= 0.012;
-        }
-
-        if (
-          sourceMeta.includes('claims guide')
-          || sourceMeta.includes('claims line')
-          || sourceMeta.includes('within 72 hours')
-          || sourceMeta.includes('72 hours')
-          || sourceMeta.includes('report the claim')
-          || sourceMeta.includes('file a claim')
-        ) {
-          adjustedScore += 0.018;
-        }
-
-        if (
-          sourceMeta.includes('agent contacts')
-          || sourceMeta.includes('your agent')
-          || sourceMeta.includes('sarah')
-          || sourceMeta.includes('phone')
-        ) {
-          adjustedScore += 0.016;
-        }
-
-        if (sourceMeta.includes('accident quick reference')) {
-          adjustedScore += 0.006;
-        }
-
-        if (
-          sourceMeta.includes('auto insurance policy')
-          && !sourceMeta.includes('claim')
-          && !sourceMeta.includes('phone')
-        ) {
-          adjustedScore -= 0.006;
-        }
-      }
-
-      if (queryPlan.complexity === 'hard' && wantsCoverageDecision) {
-        if (result.sourceType === 'concept') {
-          adjustedScore -= 0.018;
-        }
-
-        if (sourceMeta.includes('auto insurance policy') || sourceMeta.includes('claims guide')) {
-          adjustedScore += 0.010;
-        }
-
-        if (
-          sourceMeta.includes('collision coverage')
-          || sourceMeta.includes('uninsured motorist')
-          || sourceMeta.includes('underinsured motorist')
-          || sourceMeta.includes('um/uim')
-          || sourceMeta.includes('deductible')
-        ) {
-          adjustedScore += 0.014;
-        }
-
-        if (sourceMeta.includes('exclusions')) {
-          adjustedScore -= 0.012;
-        }
-      }
-
-      return adjustedScore === result.score
-        ? result
-        : { ...result, score: adjustedScore };
-    }).sort((a, b) => b.score - a.score);
-  }
-
-  private _applySecondStageRerank(
-    results: SearchResult[],
-    queryPlan: RetrievalQueryPlan,
-    rerankMode: 'standard' | 'late-interaction',
-  ): { results: SearchResult[]; focusTerms: string[]; applied: boolean; mode: 'standard' | 'late-interaction'; scoreChanges: RetrievalRerankScoreTrace[] } {
-    if (results.length <= 1) {
-      return { results, focusTerms: [], applied: false, mode: rerankMode, scoreChanges: [] };
-    }
-
-    const focusTerms = collectRerankFocusTerms(queryPlan, queryPlan.complexity === 'hard' ? 12 : 8);
-    if (focusTerms.length === 0) {
-      return { results, focusTerms: [], applied: false, mode: rerankMode, scoreChanges: [] };
-    }
-
-    const scoreChanges: RetrievalRerankScoreTrace[] = [];
-    const reranked = results.map((result) => {
-      const beforeScore = result.score;
-      let adjustedScore = result.score;
-      const body = [result.contextPrefix, result.headingPath, result.parentHeadingPath, result.chunkText]
-        .filter((value): value is string => typeof value === 'string' && value.length > 0)
-        .join(' ')
-        .toLowerCase();
-      const headingBody = [result.contextPrefix, result.headingPath, result.parentHeadingPath]
-        .filter((value): value is string => typeof value === 'string' && value.length > 0)
-        .join(' ')
-        .toLowerCase();
-
-      const matchedTerms = focusTerms.filter((term) => body.includes(term));
-      const headingMatches = focusTerms.filter((term) => headingBody.includes(term));
-
-      if (matchedTerms.length > 0) {
-        adjustedScore += Math.min(0.018, (matchedTerms.length / focusTerms.length) * 0.018);
-      }
-      if (headingMatches.length > 0) {
-        adjustedScore += Math.min(0.012, (headingMatches.length / focusTerms.length) * 0.012);
-      }
-      if (queryPlan.complexity === 'hard' && result.extractionFallback) {
-        adjustedScore -= 0.004;
-      }
-      if (rerankMode === 'late-interaction' && queryPlan.complexity === 'hard') {
-        adjustedScore += this._scoreLateInteractionMatch(result, focusTerms, queryPlan.identifiers);
-      }
-
-      scoreChanges.push({
-        rowid: result.rowid,
-        sourceType: result.sourceType,
-        sourceId: result.sourceId,
-        chunkIndex: result.chunkIndex,
-        contextPrefix: result.contextPrefix,
-        beforeScore,
-        afterScore: adjustedScore,
-        delta: adjustedScore - beforeScore,
-      });
-
-      return adjustedScore === result.score
-        ? result
-        : { ...result, score: adjustedScore };
-    }).sort((a, b) => b.score - a.score);
-
-    scoreChanges.sort((a, b) => b.afterScore - a.afterScore);
-    return { results: reranked, focusTerms, applied: true, mode: rerankMode, scoreChanges };
-  }
-
-  private _scoreLateInteractionMatch(
-    result: SearchResult,
-    focusTerms: string[],
-    identifiers: string[],
-  ): number {
-    const wantsStructuredRow = focusTerms.some((term) => ['review', 'start', 'target', 'coordinator', 'deadline', 'matrix'].includes(term));
-    const wantsCodeSymbol = focusTerms.some((term) => ['helper', 'builder', 'snippet', 'stage', 'stages', 'assemble', 'assembles'].includes(term));
-    const segments = [
-      result.contextPrefix,
-      result.headingPath,
-      result.parentHeadingPath,
-      ...result.chunkText
-        .split(/\r?\n+/)
-        .flatMap((line) => line.split(/(?<=[.!?])\s+/))
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0),
-    ]
-      .filter((segment): segment is string => typeof segment === 'string' && segment.length > 0)
-      .slice(0, 18);
-
-    let bestScore = 0;
-    for (const segment of segments) {
-      const lowered = segment.toLowerCase();
-      const matchedTerms = focusTerms.filter((term) => lowered.includes(term));
-      const matchedIdentifiers = identifiers.filter((identifier) => lowered.includes(identifier.toLowerCase()));
-      const hasStructuredSignal = /^[-*]|^\d+\.|^\|/.test(segment) || /\*\*[^*]+\*\*/.test(segment);
-      const looksLikeCode = /\b(?:function|class|return|readonly|const|export)\b|=>|stages:\s*\[/.test(segment);
-      const hasQuotedStageName = /['"`][a-z0-9-]+['"`]/i.test(segment);
-
-      let segmentScore = 0;
-      if (matchedTerms.length > 0) {
-        segmentScore += Math.min(0.016, (matchedTerms.length / focusTerms.length) * 0.016);
-      }
-      if (matchedIdentifiers.length > 0) {
-        segmentScore += Math.min(0.012, matchedIdentifiers.length * 0.006);
-      }
-      if (hasStructuredSignal && matchedTerms.length > 0) {
-        segmentScore += 0.003;
-      }
-      if (wantsStructuredRow && /^\|/.test(segment) && matchedTerms.length > 0) {
-        segmentScore += 0.006;
-      }
-      if (wantsCodeSymbol && looksLikeCode) {
-        segmentScore += matchedTerms.length > 0 ? 0.010 : 0.004;
-      }
-      if (wantsCodeSymbol && hasQuotedStageName) {
-        segmentScore += 0.004;
-      }
-
-      if (segmentScore > bestScore) {
-        bestScore = segmentScore;
-      }
-    }
-
-    return bestScore;
-  }
-
-  private _applyDiversityReordering(
-    results: SearchResult[],
-    queryPlan: RetrievalQueryPlan,
-    topK: number,
-    maxPerSource: number,
-    diversityStrength: 'balanced' | 'strong',
-  ): SearchResult[] {
-    if (results.length <= 2) {
-      return results;
-    }
-
-    const sourceNoveltyBonus = diversityStrength === 'strong'
-      ? (queryPlan.complexity === 'hard' ? 0.018 : 0.008)
-      : (queryPlan.complexity === 'hard' ? 0.010 : 0.004);
-    const sourceReusePenaltyStep = diversityStrength === 'strong'
-      ? (queryPlan.complexity === 'hard' ? 0.009 : 0.005)
-      : (queryPlan.complexity === 'hard' ? 0.006 : 0.003);
-    const headingNoveltyBonus = diversityStrength === 'strong'
-      ? (queryPlan.complexity === 'hard' ? 0.010 : 0.005)
-      : (queryPlan.complexity === 'hard' ? 0.006 : 0.003);
-    const headingReusePenaltyStep = diversityStrength === 'strong' ? 0.004 : 0.003;
-    const structuralNoveltyBonus = diversityStrength === 'strong'
-      ? (queryPlan.complexity === 'hard' ? 0.005 : 0.002)
-      : (queryPlan.complexity === 'hard' ? 0.003 : 0.001);
-
-    const reordered: SearchResult[] = [];
-    const remaining = [...results];
-
-    while (remaining.length > 0) {
-      let bestIndex = 0;
-      let bestScore = Number.NEGATIVE_INFINITY;
-
-      for (let index = 0; index < remaining.length; index++) {
-        const candidate = remaining[index];
-        const sourceKey = `${candidate.sourceType}:${candidate.sourceId}`;
-        const headingKey = normalizeQueryKey(candidate.headingPath ?? candidate.contextPrefix ?? '');
-        const sourceReuse = reordered.filter((item) => `${item.sourceType}:${item.sourceId}` === sourceKey).length;
-        const headingReuse = headingKey
-          ? reordered.filter((item) => normalizeQueryKey(item.headingPath ?? item.contextPrefix ?? '') === headingKey).length
-          : 0;
-
-        let adjustedScore = candidate.score;
-        if (sourceReuse === 0) {
-          adjustedScore += sourceNoveltyBonus;
-        } else {
-          adjustedScore -= Math.min(sourceNoveltyBonus * 1.2, sourceReuse * sourceReusePenaltyStep);
-        }
-
-        if (headingKey) {
-          if (headingReuse === 0) {
-            adjustedScore += headingNoveltyBonus;
-          } else {
-            adjustedScore -= Math.min(headingNoveltyBonus, headingReuse * headingReusePenaltyStep);
-          }
-        }
-
-        if (candidate.structuralRole && !reordered.some((item) => item.structuralRole === candidate.structuralRole)) {
-          adjustedScore += structuralNoveltyBonus;
-        }
-
-        if (sourceReuse >= maxPerSource) {
-          adjustedScore -= 0.050;
-        }
-
-        if (adjustedScore > bestScore) {
-          bestScore = adjustedScore;
-          bestIndex = index;
-        }
-      }
-
-      reordered.push(remaining.splice(bestIndex, 1)[0]);
-
-      if (reordered.length >= Math.max(topK * 2, topK + maxPerSource) && remaining.length > 0) {
-        reordered.push(...remaining);
-        break;
-      }
-    }
-
-    return reordered;
-  }
-
-  private _applyEvidenceRoleBalancing(
-    results: SearchResult[],
-    query: string,
-    queryPlan: RetrievalQueryPlan,
-    topK: number,
-  ): { results: SearchResult[]; applied: boolean; targetRoles: string[]; coveredRoles: string[] } {
-    if (results.length <= 2) {
-      return { results, applied: false, targetRoles: [], coveredRoles: [] };
-    }
-
-    const targetRoles = classifyQueryEvidenceRoles(query, queryPlan);
-    if (targetRoles.length === 0) {
-      return { results, applied: false, targetRoles: [], coveredRoles: [] };
-    }
-
-    const shouldBalance = queryPlan.complexity === 'hard' || queryPlan.strategy === 'decomposed' || targetRoles.length >= 2;
-    if (!shouldBalance) {
-      return { results, applied: false, targetRoles, coveredRoles: [] };
-    }
-
-    const roleCache = new Map<number, EvidenceRole[]>();
-    const getRoles = (candidate: SearchResult): EvidenceRole[] => {
-      const cached = roleCache.get(candidate.rowid);
-      if (cached) { return cached; }
-      const roles = classifyResultEvidenceRoles(candidate);
-      roleCache.set(candidate.rowid, roles);
-      return roles;
-    };
-
-    const reordered: SearchResult[] = [];
-    const remaining = [...results];
-    const coveredRoles = new Set<EvidenceRole>();
-    const targetRoleSet = new Set(targetRoles as EvidenceRole[]);
-    const reorderLimit = Math.min(results.length, Math.max(topK + queryPlan.variants.length, topK * 2));
-
-    while (remaining.length > 0) {
-      const hasUncoveredTargetRemaining = remaining.some((candidate) =>
-        getRoles(candidate).some((role) => targetRoleSet.has(role) && !coveredRoles.has(role)),
-      );
-
-      let bestIndex = 0;
-      let bestScore = Number.NEGATIVE_INFINITY;
-
-      for (let index = 0; index < remaining.length; index++) {
-        const candidate = remaining[index];
-        const roles = getRoles(candidate);
-        const uncoveredTargetRoles = roles.filter((role) => targetRoleSet.has(role) && !coveredRoles.has(role));
-        const uncoveredSupportRoles = roles.filter((role) => !targetRoleSet.has(role) && !coveredRoles.has(role));
-
-        let adjustedScore = candidate.score;
-        adjustedScore += Math.min(0.024, uncoveredTargetRoles.length * 0.010);
-        adjustedScore += Math.min(0.006, uncoveredSupportRoles.length * 0.003);
-
-        if (roles.length > 1) {
-          adjustedScore += 0.002;
-        }
-
-        if (hasUncoveredTargetRemaining && uncoveredTargetRoles.length === 0) {
-          adjustedScore -= 0.008;
-        }
-
-        if (adjustedScore > bestScore) {
-          bestScore = adjustedScore;
-          bestIndex = index;
-        }
-      }
-
-      const [chosen] = remaining.splice(bestIndex, 1);
-      reordered.push(chosen);
-      for (const role of getRoles(chosen)) {
-        coveredRoles.add(role);
-      }
-
-      if (reordered.length >= reorderLimit && remaining.length > 0) {
-        reordered.push(...remaining);
-        break;
-      }
-    }
-
-    return {
-      results: reordered,
-      applied: true,
-      targetRoles,
-      coveredRoles: Array.from(coveredRoles),
-    };
-  }
-
-  private async _applyStructureAwareExpansion(
-    results: SearchResult[],
-    queryPlan: RetrievalQueryPlan,
-    topK: number,
-    structureExpansionMode: 'auto' | 'off',
-  ): Promise<{ results: SearchResult[]; applied: boolean }> {
-    if (structureExpansionMode === 'off' || results.length === 0 || queryPlan.complexity !== 'hard') {
-      return { results, applied: false };
-    }
-
-    const anchorCandidates = results.filter((result) => this._shouldExpandStructure(result)).slice(0, Math.min(4, topK));
-    if (anchorCandidates.length === 0) {
-      return { results, applied: false };
-    }
-
-    const companions = await Promise.all(
-      anchorCandidates.map((anchor) => this._vectorStore.getStructuralCompanions(anchor, { limit: 2 }).catch(() => [])),
-    );
-
-    const merged = new Map<string, SearchResult>();
-    const makeKey = (result: SearchResult) => `${result.rowid}:${result.sourceType}:${result.sourceId}`;
-    for (const result of results) {
-      merged.set(makeKey(result), result);
-    }
-
-    let added = 0;
-    for (let index = 0; index < anchorCandidates.length; index++) {
-      const anchor = anchorCandidates[index];
-      for (const companion of companions[index]) {
-        const key = makeKey(companion);
-        if (merged.has(key)) { continue; }
-        merged.set(key, {
-          ...companion,
-          score: Math.max(0.001, anchor.score - 0.010 - (Math.abs(companion.chunkIndex - anchor.chunkIndex) * 0.0015)),
-          sources: uniqueValues([...anchor.sources, 'structure-expand']),
-        });
-        added++;
-      }
-    }
-
-    return {
-      results: Array.from(merged.values()).sort((a, b) => b.score - a.score),
-      applied: added > 0,
-    };
-  }
-
-  private _shouldExpandStructure(result: SearchResult): boolean {
-    if (!result.headingPath && !result.parentHeadingPath) {
-      return false;
-    }
-
-    if (result.structuralRole === 'table' || result.structuralRole === 'code') {
-      return true;
-    }
-
-    if (result.extractionPipeline === 'docling' || result.extractionPipeline === 'docling-ocr') {
-      return true;
-    }
-
-    const documentKind = result.documentKind?.toLowerCase() ?? '';
-    return /(pdf|document|technical|manual|architecture|spec|report)/.test(documentKind);
-  }
-
   private async _runSingleSearch(
     queryText: string,
     keywordQueryText: string | undefined,
@@ -2174,7 +1071,6 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     let tokensUsed = 0;
     const seenSources = new Set<string>();
     const seenHeadings = new Set<string>();
-    const seenRoles = new Set<EvidenceRole>();
 
     while (remaining.length > 0) {
       const fittingCandidates = remaining
@@ -2203,8 +1099,6 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       for (const candidate of fittingCandidates) {
         const sourceKey = `${candidate.result.sourceType}:${candidate.result.sourceId}`;
         const headingKey = normalizeQueryKey(candidate.result.headingPath ?? candidate.result.contextPrefix ?? '');
-        const roles = classifyResultEvidenceRoles(candidate.result);
-        const uncoveredRoleCount = roles.filter((role) => !seenRoles.has(role)).length;
         const densityScore = candidate.result.score / Math.max(1, Math.sqrt(candidate.tokens));
 
         let packScore = densityScore + (candidate.result.score * 0.20);
@@ -2214,7 +1108,6 @@ export class RetrievalService extends Disposable implements IRetrievalService {
         if (headingKey && !seenHeadings.has(headingKey)) {
           packScore += 0.002;
         }
-        packScore += Math.min(0.009, uncoveredRoleCount * 0.003);
 
         if (packScore > bestPackScore) {
           bestPackScore = packScore;
@@ -2230,9 +1123,6 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       if (headingKey) {
         seenHeadings.add(headingKey);
       }
-      for (const role of classifyResultEvidenceRoles(selected)) {
-        seenRoles.add(role);
-      }
     }
 
     for (const leftover of remaining) {
@@ -2244,66 +1134,5 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     }
 
     return { results: budgeted, tokensUsed, dropped };
-  }
-
-  // ── Cosine Re-Ranking (M16 Task 2.2) ──
-
-  /**
-   * Re-rank candidates by cosine similarity between the query embedding
-   * and each candidate's stored embedding. Drops candidates below the
-   * configured cosine threshold and re-sorts by cosine similarity (descending).
-   *
-   * This is a lightweight, zero-latency re-ranker that uses already-computed
-   * embeddings — no additional model calls. It catches false positives from
-   * keyword-only matches that passed the RRF score threshold but aren't
-   * actually semantically related to the query.
-   */
-  private async _cosineRerank(
-    queryEmbedding: number[],
-    candidates: SearchResult[],
-    minCosine: number = DEFAULT_MIN_COSINE_SCORE,
-  ): Promise<{ results: SearchResult[]; dropped: RetrievalDroppedEvidenceTrace[] }> {
-    // Fetch stored embeddings for all candidate rowids
-    const rowids = candidates.map((c) => c.rowid);
-    const embeddings = await this._vectorStore.getEmbeddings(rowids);
-
-    // Score each candidate by cosine similarity
-    const scored: Array<{ result: SearchResult; cosine: number }> = [];
-    const dropped: RetrievalDroppedEvidenceTrace[] = [];
-    for (const candidate of candidates) {
-      const emb = embeddings.get(candidate.rowid);
-      if (!emb) {
-        // No stored embedding (shouldn't happen) — keep with neutral score
-        scored.push({ result: candidate, cosine: minCosine });
-        continue;
-      }
-      const sim = cosineSimilarity(queryEmbedding, emb);
-      if (sim >= minCosine) {
-        scored.push({ result: candidate, cosine: sim });
-      } else {
-        dropped.push({
-          ...toDiagnosticCandidate(candidate),
-          droppedAt: 'cosine',
-          detail: `cosine ${sim.toFixed(4)} < threshold ${minCosine.toFixed(4)}`,
-        });
-      }
-      // else: dropped — not semantically close enough
-    }
-
-    // Sort by cosine similarity (descending), tie-break by RRF score
-    scored.sort((a, b) => {
-      if (Math.abs(b.cosine - a.cosine) > 0.001) { return b.cosine - a.cosine; }
-      return b.result.score - a.result.score;
-    });
-
-    return {
-      results: scored.map(({ result, cosine }) => ({
-      ...result,
-      // Downstream ranking stages sort by score, so persist a blended score here
-      // instead of returning only an updated array order.
-      score: (result.score * 0.5) + (cosine * 0.05),
-      })),
-      dropped,
-    };
   }
 }

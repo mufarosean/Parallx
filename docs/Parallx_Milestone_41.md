@@ -1,6 +1,6 @@
 # Milestone 41 — Implement OpenClaw Framework in Parallx
 
-**Status:** Planning  
+**Status:** Phases 1-5 Complete  
 **Branch:** `m41-openclaw-rebuild-plan`  
 **Depends on:** Milestone 40 (commit `e1e86bb` on `milestone-40`)  
 **Upstream Reference:** OpenClaw commit `e635cedb` (2026-03-20)
@@ -1089,3 +1089,54 @@ Every claim in this document traces to a direct source code read. No conclusions
 | `docs/clawrallx/OPENCLAW_INTEGRATION_AUDIT.md` | Line-by-line audit of all 11 `src/openclaw/` files |
 | `docs/clawrallx/OPENCLAW_GAP_MATRIX.md` | 43-item gap matrix, 7 categories |
 | `docs/clawrallx/OPENCLAW_REFERENCE_SOURCE_MAP.md` | Foundation document, upstream file index |
+
+---
+
+## Phase 4 — Strip Post-Retrieval Heuristic Pipeline (Hybrid Search Alignment)
+
+**Status:** Complete  
+**Rationale:** Parallx added 8+ post-RRF heuristic stages (lexical focus boost, intent-aware source boost, second-stage rerank, late-interaction rerank, diversity reordering, evidence role balancing, structure-aware expansion, cosine re-ranking, score drop-off) on top of the core hybrid search. Upstream OpenClaw does simple RRF (vector + keyword, k=60) and lets the model decide relevance — no post-retrieval score manipulation. The heuristic stages were identified as the root cause of retrieval quality problems.
+
+### Changes
+
+| File | Action | Details |
+|------|--------|---------|
+| `src/services/retrievalService.ts` | Rewrote `retrieve()` | Simplified to 6-stage pipeline: embed → hybrid RRF → artifact hygiene → score threshold → dedup → token budget. Removed all heuristic stage calls. |
+| `src/services/retrievalService.ts` | Deleted 9 heuristic methods | `_applyLexicalFocusBoost`, `_applyIntentAwareSourceBoost` (295 lines), `_applySecondStageRerank`, `_scoreLateInteractionMatch`, `_applyDiversityReordering`, `_applyEvidenceRoleBalancing`, `_applyStructureAwareExpansion`, `_shouldExpandStructure`, `_cosineRerank` |
+| `src/services/retrievalService.ts` | Deleted 9 dead helpers/types | `extractFocusTerms`, `collectRerankFocusTerms`, `isInsuranceCorpusCandidate`, `EvidenceRole`, `uniqueValues`, `classifyQueryEvidenceRoles`, `classifyResultEvidenceRoles`, `DEFAULT_MIN_COSINE_SCORE`, `DEFAULT_DROPOFF_RATIO` |
+| `src/services/retrievalService.ts` | Simplified `RetrievalTrace` | Removed heuristic-specific counts (`afterStructureExpansionCount`, `afterDropoffCount`, etc.), `rankingTrace`, `rerankScores`, `cosineThreshold`, `dropoffRatio` |
+| `src/services/retrievalService.ts` | Simplified `IRetrievalConfigProvider` | Removed `ragDiversityStrength`, `ragStructureExpansionMode`, `ragRerankMode`, `ragCosineThreshold`, `ragDropoffRatio` |
+| `src/services/retrievalService.ts` | Cleaned `_applyTokenBudget` | Removed `EvidenceRole`/`classifyResultEvidenceRoles` references from packing logic |
+| `src/services/retrievalService.ts` | Deleted `RetrievalRerankScoreTrace` | Dead export type |
+| `src/aiSettings/unifiedConfigTypes.ts` | Removed 5 config properties | `ragDiversityStrength`, `ragStructureExpansionMode`, `ragRerankMode`, `ragCosineThreshold`, `ragDropoffRatio` from interface and defaults |
+| `src/aiSettings/ui/sections/retrievalSection.ts` | Removed 5 UI controls | Diversity Strength, Hard-Document Expansion, Rerank Mode, Cosine Threshold, Drop-off Ratio — member fields, build blocks, and update blocks |
+| `tests/unit/retrievalService.test.ts` | Deleted 26 heuristic tests | Cosine re-ranking, diversity, late-interaction, structure expansion, intent-aware boosts, evidence role balancing, drop-off filter |
+| `tests/unit/retrievalService.test.ts` | Updated 3 tests | Cleaned mock configs and trace assertions |
+| `tests/unit/unifiedAIConfigService.test.ts` | Removed 5 dead assertions | Default config assertions for deleted properties |
+| `tests/ai-eval/ai-eval-fixtures.ts` | Removed `ragRerankMode` verification | Simplified debug helper |
+
+### Line count
+
+| File | Before | After | Delta |
+|------|--------|-------|-------|
+| `retrievalService.ts` | 2309 | 1138 | −1171 |
+| `retrievalService.test.ts` | ~1663 | ~600 | ~−1063 |
+
+---
+
+## Phase 5 — Session Transcript & Compaction Alignment
+
+**Status:** Complete  
+**Rationale:** Upstream couples compaction with auto-flush to long-term memory. Parallx's `compact()` was a stub that called `compactSession()` with a placeholder string and never flushed to memory. JSONL transcript writing (M33) was already in place.
+
+### Changes
+
+| File | Action | Details |
+|------|--------|---------|
+| `src/openclaw/openclawContextEngine.ts` | Rewrote `compact()` | Now generates real summary via `sendSummarizationRequest`, calls `compactSession()` with the actual summary, and auto-flushes to long-term memory via `storeSessionMemory()`. Caches history from `assemble()` for use by `compact()`. |
+| `src/openclaw/openclawDefaultRuntimeSupport.ts` | Wired memory flush into `/compact` command | After manual compaction, calls `storeSessionMemory()` to persist summary to long-term memory. Updated `IOpenclawCompactCommandDeps` and `tryHandleOpenclawCompactCommand` signature. |
+
+### Verification
+
+- 2603 / 2603 unit tests pass (163 test files)
+- Zero compile errors

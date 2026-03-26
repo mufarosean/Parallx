@@ -267,7 +267,7 @@ async function buildFileTree(
 }
 
 export async function tryHandleOpenclawCompactCommand(
-  services: Pick<IDefaultParticipantServices, 'sendSummarizationRequest' | 'compactSession'>,
+  services: Pick<IDefaultParticipantServices, 'sendSummarizationRequest' | 'compactSession' | 'storeSessionMemory'>,
   options: {
     readonly activeCommand?: string;
     readonly slashSpecialHandler?: string;
@@ -278,6 +278,7 @@ export async function tryHandleOpenclawCompactCommand(
   return tryExecuteCompactOpenclawCommand({
     sendSummarizationRequest: services.sendSummarizationRequest,
     compactSession: services.compactSession,
+    storeSessionMemory: services.storeSessionMemory,
   }, {
     isCompactCommand: options.activeCommand === 'compact' || options.slashSpecialHandler === 'compact',
     sessionId: options.context.sessionId,
@@ -292,6 +293,7 @@ interface IOpenclawCompactCommandDeps {
     signal?: AbortSignal,
   ) => AsyncIterable<IChatResponseChunk>;
   readonly compactSession?: (sessionId: string, summaryText: string) => void;
+  readonly storeSessionMemory?: (sessionId: string, summary: string, messageCount: number) => Promise<void>;
 }
 
 async function tryExecuteCompactOpenclawCommand(
@@ -362,6 +364,16 @@ async function tryExecuteCompactOpenclawCommand(
   const afterTokens = Math.ceil(summaryText.length / 4);
   const saved = beforeTokens - afterTokens;
   deps.compactSession?.(input.sessionId, summaryText);
+
+  // Auto-flush summary to long-term memory (upstream pattern: compaction → memory flush)
+  if (deps.storeSessionMemory) {
+    try {
+      await deps.storeSessionMemory(input.sessionId, summaryText, input.history.length);
+    } catch {
+      // Memory flush failure is non-fatal
+    }
+  }
+
   input.response.markdown(
     `**Conversation compacted.**\n\n`
     + `- Before: ~${beforeTokens.toLocaleString()} tokens (${input.history.length} turns)\n`

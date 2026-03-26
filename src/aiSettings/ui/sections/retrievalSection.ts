@@ -6,8 +6,6 @@
 //   - Max Per Source (Slider: 1–20)
 //   - Token Budget (Slider: 0–50000, 0 = auto)
 //   - Score Threshold (Slider: 0.000–0.100, step 0.001)
-//   - Cosine Threshold (Slider: 0.00–1.00, step 0.05, 0 = disabled)
-//   - Drop-off Ratio (Slider: 0.00–1.00, step 0.05, 0 = disabled)
 //
 // Each control reads/writes through IUnifiedAIConfigService.
 
@@ -27,9 +25,6 @@ export class RetrievalSection extends SettingsSection {
   private _autoRagToggle!: Toggle;
   private _decompositionModeDropdown!: Dropdown;
   private _candidateBreadthDropdown!: Dropdown;
-  private _diversityStrengthDropdown!: Dropdown;
-  private _structureExpansionDropdown!: Dropdown;
-  private _rerankModeDropdown!: Dropdown;
   private _topKSlider!: Slider;
   private _topKValue!: HTMLElement;
   private _maxPerSourceSlider!: Slider;
@@ -38,10 +33,6 @@ export class RetrievalSection extends SettingsSection {
   private _tokenBudgetValue!: HTMLElement;
   private _thresholdSlider!: Slider;
   private _thresholdValue!: HTMLElement;
-  private _cosineSlider!: Slider;
-  private _cosineValue!: HTMLElement;
-  private _dropoffSlider!: Slider;
-  private _dropoffValue!: HTMLElement;
 
   private readonly _unifiedService: IUnifiedAIConfigService | undefined;
 
@@ -116,75 +107,6 @@ export class RetrievalSection extends SettingsSection {
       this._notifySaved('retrieval.ragCandidateBreadth');
     }));
     this._addRow(candidateBreadthRow.row);
-
-    // ── Diversity Strength ──
-    const diversityStrengthRow = createSettingRow({
-      label: 'Diversity Strength',
-      description: 'Controls how strongly retrieval favors complementary evidence from different sources and headings.',
-      key: 'retrieval.ragDiversityStrength',
-      onReset: () => this._updateRetrieval({ ragDiversityStrength: defaults.ragDiversityStrength }),
-      scopePath: 'retrieval.ragDiversityStrength',
-      unifiedService: this._unifiedService,
-    });
-    this._diversityStrengthDropdown = this._register(new Dropdown(diversityStrengthRow.controlSlot, {
-      items: [
-        { value: 'balanced', label: 'Balanced' },
-        { value: 'strong', label: 'Strong' },
-      ],
-      selected: defaults.ragDiversityStrength,
-      ariaLabel: 'Retrieval diversity strength',
-    }));
-    this._register(this._diversityStrengthDropdown.onDidChange((value) => {
-      this._updateRetrieval({ ragDiversityStrength: value as IUnifiedAIConfig['retrieval']['ragDiversityStrength'] });
-      this._notifySaved('retrieval.ragDiversityStrength');
-    }));
-    this._addRow(diversityStrengthRow.row);
-
-    // ── Hard-Document Expansion ──
-    const structureExpansionRow = createSettingRow({
-      label: 'Hard-Document Expansion',
-      description: 'Controls parent-section expansion for structured or long-document anchors. Off disables the E1 expansion path.',
-      key: 'retrieval.ragStructureExpansionMode',
-      onReset: () => this._updateRetrieval({ ragStructureExpansionMode: defaults.ragStructureExpansionMode }),
-      scopePath: 'retrieval.ragStructureExpansionMode',
-      unifiedService: this._unifiedService,
-    });
-    this._structureExpansionDropdown = this._register(new Dropdown(structureExpansionRow.controlSlot, {
-      items: [
-        { value: 'auto', label: 'Auto' },
-        { value: 'off', label: 'Off' },
-      ],
-      selected: defaults.ragStructureExpansionMode,
-      ariaLabel: 'Hard-document structure expansion mode',
-    }));
-    this._register(this._structureExpansionDropdown.onDidChange((value) => {
-      this._updateRetrieval({ ragStructureExpansionMode: value as IUnifiedAIConfig['retrieval']['ragStructureExpansionMode'] });
-      this._notifySaved('retrieval.ragStructureExpansionMode');
-    }));
-    this._addRow(structureExpansionRow.row);
-
-    // ── Rerank Mode ──
-    const rerankModeRow = createSettingRow({
-      label: 'Rerank Mode',
-      description: 'Controls the second-stage reranker. Late-interaction is an experimental hard-case path and is off by default.',
-      key: 'retrieval.ragRerankMode',
-      onReset: () => this._updateRetrieval({ ragRerankMode: defaults.ragRerankMode }),
-      scopePath: 'retrieval.ragRerankMode',
-      unifiedService: this._unifiedService,
-    });
-    this._rerankModeDropdown = this._register(new Dropdown(rerankModeRow.controlSlot, {
-      items: [
-        { value: 'standard', label: 'Standard' },
-        { value: 'late-interaction', label: 'Late-Interaction (Experimental)' },
-      ],
-      selected: defaults.ragRerankMode,
-      ariaLabel: 'Retrieval rerank mode',
-    }));
-    this._register(this._rerankModeDropdown.onDidChange((value) => {
-      this._updateRetrieval({ ragRerankMode: value as IUnifiedAIConfig['retrieval']['ragRerankMode'] });
-      this._notifySaved('retrieval.ragRerankMode');
-    }));
-    this._addRow(rerankModeRow.row);
 
     // ── RAG Top K ──
     const topKRow = createSettingRow({
@@ -286,58 +208,6 @@ export class RetrievalSection extends SettingsSection {
       this._notifySaved('retrieval.ragScoreThreshold');
     }));
     this._addRow(thresholdRow.row);
-
-    // ── Cosine Threshold ──
-    const cosineRow = createSettingRow({
-      label: 'Cosine Threshold',
-      description: 'Minimum cosine similarity for re-ranking (0.00–1.00). 0 = disabled.',
-      key: 'retrieval.ragCosineThreshold',
-      onReset: () => this._updateRetrieval({ ragCosineThreshold: defaults.ragCosineThreshold }),
-      scopePath: 'retrieval.ragCosineThreshold',
-      unifiedService: this._unifiedService,
-    });
-    this._cosineSlider = this._register(new Slider(cosineRow.controlSlot, {
-      min: 0,
-      max: 100,
-      step: 5,
-      value: Math.round(defaults.ragCosineThreshold * 100),
-      ariaLabel: 'Cosine threshold',
-    }));
-    this._cosineValue = $('span.ai-settings-row__value', defaults.ragCosineThreshold.toFixed(2));
-    cosineRow.controlSlot.appendChild(this._cosineValue);
-    this._register(this._cosineSlider.onDidChange((value) => {
-      const cosine = value / 100;
-      this._cosineValue.textContent = cosine.toFixed(2);
-      this._updateRetrieval({ ragCosineThreshold: cosine });
-      this._notifySaved('retrieval.ragCosineThreshold');
-    }));
-    this._addRow(cosineRow.row);
-
-    // ── Drop-off Ratio ──
-    const dropoffRow = createSettingRow({
-      label: 'Drop-off Ratio',
-      description: 'Drop results below top_score × ratio (0.00–1.00). 0 = disabled.',
-      key: 'retrieval.ragDropoffRatio',
-      onReset: () => this._updateRetrieval({ ragDropoffRatio: defaults.ragDropoffRatio }),
-      scopePath: 'retrieval.ragDropoffRatio',
-      unifiedService: this._unifiedService,
-    });
-    this._dropoffSlider = this._register(new Slider(dropoffRow.controlSlot, {
-      min: 0,
-      max: 100,
-      step: 5,
-      value: Math.round(defaults.ragDropoffRatio * 100),
-      ariaLabel: 'Drop-off ratio',
-    }));
-    this._dropoffValue = $('span.ai-settings-row__value', defaults.ragDropoffRatio === 0 ? 'Off' : defaults.ragDropoffRatio.toFixed(2));
-    dropoffRow.controlSlot.appendChild(this._dropoffValue);
-    this._register(this._dropoffSlider.onDidChange((value) => {
-      const ratio = value / 100;
-      this._dropoffValue.textContent = ratio === 0 ? 'Off' : ratio.toFixed(2);
-      this._updateRetrieval({ ragDropoffRatio: ratio });
-      this._notifySaved('retrieval.ragDropoffRatio');
-    }));
-    this._addRow(dropoffRow.row);
   }
 
   private _updateRetrieval(patch: Partial<IUnifiedAIConfig['retrieval']>): void {
@@ -361,15 +231,6 @@ export class RetrievalSection extends SettingsSection {
     if (this._candidateBreadthDropdown.value !== config.ragCandidateBreadth) {
       this._candidateBreadthDropdown.value = config.ragCandidateBreadth;
     }
-    if (this._diversityStrengthDropdown.value !== config.ragDiversityStrength) {
-      this._diversityStrengthDropdown.value = config.ragDiversityStrength;
-    }
-    if (this._structureExpansionDropdown.value !== config.ragStructureExpansionMode) {
-      this._structureExpansionDropdown.value = config.ragStructureExpansionMode;
-    }
-    if (this._rerankModeDropdown.value !== config.ragRerankMode) {
-      this._rerankModeDropdown.value = config.ragRerankMode;
-    }
     if (this._topKSlider.value !== config.ragTopK) {
       this._topKSlider.value = config.ragTopK;
       this._topKValue.textContent = String(config.ragTopK);
@@ -386,16 +247,6 @@ export class RetrievalSection extends SettingsSection {
     if (this._thresholdSlider.value !== thresholdSliderVal) {
       this._thresholdSlider.value = thresholdSliderVal;
       this._thresholdValue.textContent = config.ragScoreThreshold.toFixed(3);
-    }
-    const cosineSliderVal = Math.round(config.ragCosineThreshold * 100);
-    if (this._cosineSlider.value !== cosineSliderVal) {
-      this._cosineSlider.value = cosineSliderVal;
-      this._cosineValue.textContent = config.ragCosineThreshold.toFixed(2);
-    }
-    const dropoffSliderVal = Math.round(config.ragDropoffRatio * 100);
-    if (this._dropoffSlider.value !== dropoffSliderVal) {
-      this._dropoffSlider.value = dropoffSliderVal;
-      this._dropoffValue.textContent = config.ragDropoffRatio === 0 ? 'Off' : config.ragDropoffRatio.toFixed(2);
     }
   }
 }

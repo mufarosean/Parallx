@@ -461,7 +461,6 @@ export async function waitForRagReady(page: Page, timeout = 120_000): Promise<vo
       const host = window as unknown as {
         __parallx_chat_debug__?: {
           updateWorkspaceOverride?: (patch: unknown) => Promise<void> | void;
-          getEffectiveConfig?: () => { retrieval?: { ragRerankMode?: string } } | undefined;
         };
       };
       const patch = JSON.parse(overrideText) as { overrides?: unknown };
@@ -469,18 +468,14 @@ export async function waitForRagReady(page: Page, timeout = 120_000): Promise<vo
       return {
         hasDebugHook: !!host.__parallx_chat_debug__,
         hasUpdate: typeof host.__parallx_chat_debug__?.updateWorkspaceOverride === 'function',
-        mode: host.__parallx_chat_debug__?.getEffectiveConfig?.()?.retrieval?.ragRerankMode,
       };
     }, configOverride);
 
-    const expectedMode = JSON.parse(configOverride)?.overrides?.retrieval?.ragRerankMode;
-    if (typeof expectedMode === 'string') {
-      if (overrideResult.mode !== expectedMode) {
-        throw new Error(
-          `AI config override did not apply. expected=${expectedMode} actual=${String(overrideResult.mode)} ` +
-          `debugHook=${overrideResult.hasDebugHook} updateMethod=${overrideResult.hasUpdate}`,
-        );
-      }
+    if (!overrideResult.hasUpdate) {
+      throw new Error(
+        `AI config override could not be applied. ` +
+        `debugHook=${overrideResult.hasDebugHook} updateMethod=${overrideResult.hasUpdate}`,
+      );
     }
   }
 

@@ -109,9 +109,15 @@ export type IOpenclawContextEngineServices = Pick<
  * to fit context within the model's window.
  */
 export class OpenclawContextEngine implements IOpenclawContextEngine {
+  /** Cached history from the most recent `assemble()` call (used by `compact()`). */
+  private _lastHistory: readonly IChatMessage[] = [];
+
   constructor(private readonly services: IOpenclawContextEngineServices) {}
 
   async assemble(params: IOpenclawAssembleParams): Promise<IOpenclawAssembleResult> {
+    // Cache history for use by compact() — upstream pattern couples assemble/compact state
+    this._lastHistory = params.history;
+
     const budget = computeTokenBudget(params.tokenBudget);
     const messages: IChatMessage[] = [];
     let ragSources: { uri: string; label: string; index: number }[] = [];
@@ -187,20 +193,63 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
   }
 
   async compact(params: IOpenclawCompactParams): Promise<IOpenclawCompactResult> {
-    // Upstream: compactEmbeddedPiSession from agent-runner-execution.ts
-    // Summarize older history to reduce token count.
-    // Platform provides compactSession which replaces older turns with a summary.
+    // Upstream pattern (agent-runner-execution.ts): context overflow triggers
+    // summarization of older turns → compactSession → auto-flush to memory.
 
-    if (this.services.compactSession && this.services.sendSummarizationRequest) {
-      // The platform's compactSession handles the actual summarization
-      // We just need to trigger it and measure the result
-      const before = params.tokenBudget; // approximate — actual tokens tracked by caller
-      this.services.compactSession(params.sessionId, '[compacted by context engine]');
-      const after = Math.floor(before * 0.6); // conservative estimate of compaction effect
-      return { compacted: true, tokensBefore: before, tokensAfter: after };
+    if (!this.services.compactSession) {
+      return { compacted: false, tokensBefore: params.tokenBudget, tokensAfter: params.tokenBudget };
     }
 
-    return { compacted: false, tokensBefore: params.tokenBudget, tokensAfter: params.tokenBudget };
+    const history = this._lastHistory;
+    const historyTokens = estimateMessagesTokens([...history]);
+
+    // Build a transcript of history for summarization
+    const transcript = history
+      .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+      .join('\n\n');
+
+    let summaryText = '';
+
+    if (this.services.sendSummarizationRequest && transcript.length > 0) {
+      // Generate a real summary via the model
+      const summaryPrompt: IChatMessage[] = [
+        {
+          role: 'system',
+          content: 'You are a conversation summarizer. Condense the following conversation history into a concise context summary. Preserve all key facts, decisions, code references, and action items. Output ONLY the summary.',
+        },
+        { role: 'user', content: transcript },
+      ];
+
+      try {
+        for await (const chunk of this.services.sendSummarizationRequest(summaryPrompt)) {
+          if (chunk.content) {
+            summaryText += chunk.content;
+          }
+        }
+        summaryText = summaryText.trim();
+      } catch {
+        // Summarization failed — fall back to placeholder
+      }
+    }
+
+    if (!summaryText) {
+      summaryText = '[compacted by context engine]';
+    }
+
+    const summaryTokens = estimateTokens(summaryText);
+    this.services.compactSession(params.sessionId, summaryText);
+
+    // Auto-flush summary to long-term memory (upstream pattern: compaction → memory flush)
+    if (this.services.storeSessionMemory && summaryText !== '[compacted by context engine]') {
+      const messageCount = history.length;
+      try {
+        await this.services.storeSessionMemory(params.sessionId, summaryText, messageCount);
+      } catch {
+        // Memory flush failure is non-fatal
+      }
+    }
+
+    return { compacted: true, tokensBefore: historyTokens, tokensAfter: summaryTokens };
   }
 
   async afterTurn(_params: IOpenclawAfterTurnParams): Promise<void> {
