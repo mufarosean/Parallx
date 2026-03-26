@@ -486,6 +486,8 @@ export interface ITokenStatusBarServices {
   isIndexing(): boolean;
   getIndexingProgress?(): import('../../services/indexingPipeline.js').IndexingProgress;
   getIndexStats?(): { pages: number; files: number } | undefined;
+  /** M42 Phase 3: Check provider connection health. */
+  checkConnectionHealth?(): Promise<{ available: boolean; model?: string; error?: string }>;
 }
 
 // ── Attachment data types ──

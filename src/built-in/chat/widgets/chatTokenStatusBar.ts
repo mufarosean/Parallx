@@ -70,9 +70,11 @@ export class ChatTokenStatusBar extends Disposable {
 
   // ── Status bar DOM elements (rendered directly into the status bar) ──
   private readonly _root: HTMLElement;
+  private readonly _healthDot: HTMLElement;
   private readonly _barSvg: HTMLElement;
   private readonly _label: HTMLElement;
   private readonly _indexingIndicator: HTMLElement;
+  private _healthCheckTimer: ReturnType<typeof setInterval> | undefined;
 
   constructor(
     services: ITokenStatusBarServices,
@@ -82,6 +84,12 @@ export class ChatTokenStatusBar extends Disposable {
 
     // Build a container for the status bar content
     this._root = $('div.parallx-token-statusbar');
+
+    // M42 Phase 3: Connection health dot
+    this._healthDot = $('span.parallx-health-dot');
+    this._healthDot.classList.add('parallx-health-dot--connecting');
+    this._healthDot.title = 'Checking connection...';
+    this._root.appendChild(this._healthDot);
 
     this._barSvg = $('span.parallx-token-statusbar-bar');
     this._barSvg.innerHTML = this._buildBarSvg(0);
@@ -101,6 +109,10 @@ export class ChatTokenStatusBar extends Disposable {
       e.stopPropagation();
       this._togglePopup();
     });
+
+    // M42 Phase 3: Start periodic health check
+    this._checkHealth();
+    this._healthCheckTimer = setInterval(() => this._checkHealth(), 30_000);
   }
 
   // ── Public API ──
@@ -185,9 +197,37 @@ export class ChatTokenStatusBar extends Disposable {
   }
 
   override dispose(): void {
+    if (this._healthCheckTimer) {
+      clearInterval(this._healthCheckTimer);
+      this._healthCheckTimer = undefined;
+    }
     this._dismissPopup();
     this._root.remove();
     super.dispose();
+  }
+
+  // ── Connection Health (M42 Phase 3) ──
+
+  private _checkHealth(): void {
+    if (!this._services.checkConnectionHealth) {
+      this._setHealthState('connected', 'Provider health check not available');
+      return;
+    }
+    this._services.checkConnectionHealth().then(result => {
+      if (result.available) {
+        const tip = result.model ? `Connected — ${result.model}` : 'Connected';
+        this._setHealthState('connected', tip);
+      } else {
+        this._setHealthState('disconnected', result.error ?? 'Disconnected');
+      }
+    }).catch(() => {
+      this._setHealthState('disconnected', 'Health check failed');
+    });
+  }
+
+  private _setHealthState(state: 'connected' | 'disconnected' | 'connecting', tooltip: string): void {
+    this._healthDot.className = `parallx-health-dot parallx-health-dot--${state}`;
+    this._healthDot.title = tooltip;
   }
 
   // ── Token Breakdown Calculation ──
