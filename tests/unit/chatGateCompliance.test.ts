@@ -33,6 +33,7 @@ const EXEMPT_FILES = new Set([
   'skills/folder-overview/SKILL.md',      // Built-in workflow skill (M39)
   'skills/document-comparison/SKILL.md',  // Built-in workflow skill (M39)
   'skills/scoped-extraction/SKILL.md',    // Built-in workflow skill (M39)
+  'skills/builtInSkillManifests.ts',      // Built-in skill manifest registry (M41)
   'utilities/chatToolLoopSafety.ts',      // Re-export shim → canonical src/services/chatToolLoopSafety.ts
 ]);
 

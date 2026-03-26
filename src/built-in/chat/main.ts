@@ -526,6 +526,14 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   };
   context.subscriptions.push(agentService.registerAgent(legacyDefaultParticipant));
 
+  // Late-binding skill loader reference — populated asynchronously in section 10
+  // when SkillLoaderService finishes dynamic import. Closures below capture the
+  // variable so they resolve correctly once the loader is ready.
+  let _skillLoaderRef: {
+    getWorkflowSkillCatalog(): { name: string; description: string; kind: string; tags: readonly string[]; location: string }[];
+    getSkill(name: string): unknown;
+  } | undefined;
+
   const openclawDefaultParticipantServices = buildOpenclawDefaultParticipantServices({
     sendChatRequest: (m, o, s) => dataService.sendChatRequest(m, o, s),
     getActiveModel: () => dataService.getActiveModel(),
@@ -579,6 +587,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getLastSystemPromptReport: () => dataService.getLastSystemPromptReport(),
     sessionManager,
     unifiedConfigService,
+    getWorkflowSkillCatalog: () => _skillLoaderRef?.getWorkflowSkillCatalog() ?? [],
+    getSkillManifest: (name: string) => _skillLoaderRef?.getSkill(name),
   });
   const openclawWorkspaceParticipantServices = buildOpenclawWorkspaceParticipantServices({
     sendChatRequest: (m, o, s) => dataService.sendChatRequest(m, o, s),
@@ -1210,6 +1220,14 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       });
       skillLoader.scanSkills().catch(() => { /* best-effort */ });
       context.subscriptions.push(skillLoader);
+
+      // Store reference so OpenClaw participant services can access skills
+      _skillLoaderRef = skillLoader;
+
+      // Register built-in skills that ship with Parallx
+      import('./skills/builtInSkillManifests.js').then(({ builtInSkillManifests }) => {
+        skillLoader.registerBuiltInManifests(builtInSkillManifests);
+      }).catch(() => { /* best-effort */ });
     }).catch(() => { /* optional service */ });
   }
 
