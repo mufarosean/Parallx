@@ -1,6 +1,6 @@
 # Milestone 41 — Implement OpenClaw Framework in Parallx
 
-**Status:** Phases 1-5 Complete  
+**Status:** Phases 1-9 Complete  
 **Branch:** `m41-openclaw-rebuild-plan`  
 **Depends on:** Milestone 40 (commit `e1e86bb` on `milestone-40`)  
 **Upstream Reference:** OpenClaw commit `e635cedb` (2026-03-20)
@@ -1140,3 +1140,100 @@ Every claim in this document traces to a direct source code read. No conclusions
 
 - 2603 / 2603 unit tests pass (163 test files)
 - Zero compile errors
+
+---
+
+## Phase 6 — Deduplicate Shared Utilities (D1, D3)
+
+**Status:** Complete — committed as `4c62de0`  
+**Rationale:** Gap analysis found 3 critical duplications. D1 (tool loop safety) and D3 (token estimation) both had identical implementations in each runtime with divergent import paths.
+
+### Changes
+
+| File | Action | Details |
+|------|--------|---------|
+| `src/services/chatToolLoopSafety.ts` | Created | Canonical `ChatToolLoopSafety` class + `IChatToolLoopSafetyDecision` interface. Both runtimes import from here. |
+| `src/services/tokenBudgetService.ts` | Added export | Standalone `estimateTokens()` function for shared token estimation. |
+| `src/openclaw/openclawToolLoopSafety.ts` | Converted to shim | Re-exports from `../services/chatToolLoopSafety.js`. |
+| `src/built-in/chat/utilities/chatToolLoopSafety.ts` | Converted to shim | Re-exports from `../../../services/chatToolLoopSafety.js`. |
+
+### Verification
+
+- 152 files, 2,446 tests pass
+
+---
+
+## Phase 7 — Consolidate Type Contracts (D2)
+
+**Status:** Complete — committed as `4c62de0` (combined with Phase 6)  
+**Rationale:** 19 type definitions were identically duplicated between `openclawTypes.ts` and `chatTypes.ts`. Created a shared canonical type file.
+
+### Changes
+
+| File | Action | Details |
+|------|--------|---------|
+| `src/services/chatRuntimeTypes.ts` | Created | 19 shared runtime types with proper imports from `chatTypes` and `agentTypes`. |
+| `src/openclaw/openclawTypes.ts` | Refactored | Replaced 19 local type definitions with re-exports from `chatRuntimeTypes`. |
+| `src/built-in/chat/chatTypes.ts` | Refactored | Replaced 19 local type definitions with re-exports from `chatRuntimeTypes`. |
+
+### Verification
+
+- 11 files changed, 365 insertions, 443 deletions
+- 152 files, 2,446 tests pass
+
+---
+
+## Phase 8 — Wire Missing Features M1-M6
+
+**Status:** Complete — committed as `84249df`  
+**Rationale:** Gap analysis found 6 features present in built-in but missing from OpenClaw. All features implemented as OpenClaw-native code.
+
+### New files
+
+| File | Features |
+|------|----------|
+| `src/openclaw/openclawResponseValidation.ts` | M1 (citation validation), M4 (broad workspace detection), M5 (evidence assessment), M6 (extractive fallback) |
+| `src/openclaw/openclawTurnPreprocessing.ts` | M2 (mention resolution), M3 (skill activation), M4 (semantic fallback) |
+
+### Feature summary
+
+| Gap | Feature | Function(s) |
+|-----|---------|-------------|
+| M1 | Response validation | `validateCitations()` |
+| M2 | Mention resolution | `resolveMentions()`, `extractMentions()`, `stripMentions()` |
+| M3 | Skill activation | `activateSkill()` |
+| M4 | Semantic fallback | `detectSemanticFallback()`, `isBroadWorkspaceSummaryPrompt()` |
+| M5 | Evidence assessment | `assessEvidence()`, `buildEvidenceConstraint()` |
+| M6 | Extractive fallback | `buildExtractiveFallback()` |
+
+### Verification
+
+- 6 files changed, 627 insertions, 6 deletions
+- 152 files, 2,446 tests pass
+
+---
+
+## Phase 9 — Upgrade Context Engine (C1-C5)
+
+**Status:** Complete — committed as `ee99fba`  
+**Rationale:** Gap analysis found 7 context engine gaps. Addressed all HIGH and MEDIUM priority gaps.
+
+### Changes
+
+| Gap | What changed |
+|-----|-------------|
+| C1 — Parallel loading | Sequential `await`s replaced with `Promise.all()` for RAG, memories, concepts, page content, transcripts |
+| C2 — Page content injection | `getCurrentPageContent()` added to parallel load; injected as first context block |
+| C3 — File attachments | Non-image attachments resolved via `readFileRelative`; content injected as context blocks |
+| C4 — Transcript recall | `recallTranscripts()` added to services and parallel load |
+| C5 — Evidence re-retrieval | `buildRetrieveAgainQuery()` reformulates on insufficient evidence; second retrieval merges + dedupes |
+
+### Deferred (LOW priority)
+
+- C6 — Citation provenance chain (diagnostics improvement only)
+- C7 — Post-tool re-retrieval (neither pipeline does this today)
+
+### Verification
+
+- 3 files changed, 152 insertions, 54 deletions
+- 152 files, 2,446 tests pass
