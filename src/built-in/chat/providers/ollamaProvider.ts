@@ -189,6 +189,12 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     this._contextLengthOverride = Math.max(0, Math.floor(value));
   }
 
+  /** Reset streaming parser state (called on model switch to avoid stale artifacts). */
+  resetStreamState(): void {
+    this._inThinkTag = false;
+    this._noThinkModels.clear();
+  }
+
   /**
    * Get the context length for a model (fetched lazily, cached).
    * If the user set an override, returns that instead.
@@ -467,6 +473,8 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     const decoder = new TextDecoder();
     let buffer = '';
 
+    let receivedDone = false;
+
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -480,24 +488,46 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
           const trimmed = line.trim();
           if (!trimmed) continue;
 
+          let chunk: OllamaChatChunk;
           try {
-            const chunk = JSON.parse(trimmed) as OllamaChatChunk;
-            yield this._parseChunk(chunk);
+            chunk = JSON.parse(trimmed) as OllamaChatChunk;
           } catch {
-            // Malformed JSON line — skip
             console.warn('[OllamaProvider] Malformed streaming chunk:', trimmed);
+            yield { content: '\n\n⚠️ *[Malformed response chunk — partial data may be missing]*', done: false } as IChatResponseChunk;
+            continue;
           }
+
+          // Validate tool call arguments if present
+          if (chunk.message.tool_calls) {
+            for (const tc of chunk.message.tool_calls) {
+              if (!tc.function?.name || typeof tc.function.arguments !== 'object') {
+                console.warn('[OllamaProvider] Invalid tool call structure:', JSON.stringify(tc));
+                yield { content: `\n\n⚠️ *[Tool call error: malformed call to "${tc.function?.name ?? 'unknown'}"]*`, done: false } as IChatResponseChunk;
+              }
+            }
+          }
+
+          if (chunk.done) { receivedDone = true; }
+          yield this._parseChunk(chunk);
         }
       }
 
       // Process any remaining buffer content
       if (buffer.trim()) {
+        let chunk: OllamaChatChunk;
         try {
-          const chunk = JSON.parse(buffer.trim()) as OllamaChatChunk;
+          chunk = JSON.parse(buffer.trim()) as OllamaChatChunk;
+          if (chunk.done) { receivedDone = true; }
           yield this._parseChunk(chunk);
         } catch {
-          // Ignore trailing incomplete data
+          console.warn('[OllamaProvider] Malformed trailing chunk:', buffer.trim());
         }
+      }
+
+      // Stream ended without a done:true final chunk — connection dropped
+      if (!receivedDone) {
+        console.warn('[OllamaProvider] Stream ended without done:true — connection may have dropped');
+        yield { content: '\n\n⚠️ *[Response interrupted — connection lost. Try sending your message again.]*', done: true } as IChatResponseChunk;
       }
     } finally {
       reader.releaseLock();

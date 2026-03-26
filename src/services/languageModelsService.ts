@@ -146,6 +146,9 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
     this._activeModelId = modelId;
     this._persistActiveModel();
     this._probeActiveModel(modelId);
+    // Reset provider streaming state to avoid stale parser artifacts
+    // across model switches (e.g. thinking tag tracker, no-think cache)
+    this._resetProviderStreamState();
     this._onDidChangeModels.fire();
   }
 
@@ -191,6 +194,15 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
       this._storage.set(ACTIVE_MODEL_STORAGE_KEY, this._activeModelId);
     } else {
       this._storage.delete(ACTIVE_MODEL_STORAGE_KEY);
+    }
+  }
+
+  /** Reset streaming state on all providers (thinking tag parser, no-think cache). */
+  private _resetProviderStreamState(): void {
+    for (const provider of this._providers.values()) {
+      if (typeof (provider as any).resetStreamState === 'function') {
+        (provider as any).resetStreamState();
+      }
     }
   }
 
