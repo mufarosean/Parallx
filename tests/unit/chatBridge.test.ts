@@ -83,8 +83,6 @@ describe('ChatBridge', () => {
         isExplicitMemoryRecall: false,
         isExplicitTranscriptRecall: false,
         isFileEnumeration: false,
-        offTopicDirectAnswer: undefined,
-        productSemanticsDirectAnswer: undefined,
       },
     });
   });
@@ -123,8 +121,6 @@ describe('ChatBridge', () => {
           isExplicitMemoryRecall: false,
           isExplicitTranscriptRecall: false,
           isFileEnumeration: false,
-          offTopicDirectAnswer: undefined,
-          productSemanticsDirectAnswer: undefined,
         },
         queryScope: {
           level: 'workspace',
@@ -287,8 +283,6 @@ describe('ChatBridge', () => {
           isExplicitMemoryRecall: false,
           isExplicitTranscriptRecall: false,
           isFileEnumeration: false,
-          offTopicDirectAnswer: undefined,
-          productSemanticsDirectAnswer: undefined,
         },
         queryScope: {
           level: 'workspace',

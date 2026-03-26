@@ -14,7 +14,6 @@ import type {
 import type {
   IDefaultRuntimeContextStageResult,
 } from './chatDefaultRuntimeContextStage.js';
-import { applyChatAnswerRepairPipeline } from './chatAnswerRepairPipeline.js';
 import {
   buildDeterministicSessionSummary as _buildDeterministicSessionSummary,
   buildEvidenceResponseConstraint as _buildEvidenceResponseConstraint,
@@ -27,16 +26,6 @@ import {
   parseEditResponse as _parseEditResponse,
   stripToolNarration as _stripToolNarration,
 } from './chatResponseParsingHelpers.js';
-import {
-  repairAgentContactAnswer as _repairAgentContactAnswer,
-  repairDeductibleConflictAnswer as _repairDeductibleConflictAnswer,
-  repairGroundedAnswerTypography as _repairGroundedAnswerTypography,
-  repairGroundedCodeAnswer as _repairGroundedCodeAnswer,
-  repairTotalLossThresholdAnswer as _repairTotalLossThresholdAnswer,
-  repairUnsupportedSpecificCoverageAnswer as _repairUnsupportedSpecificCoverageAnswer,
-  repairUnsupportedWorkspaceTopicAnswer as _repairUnsupportedWorkspaceTopicAnswer,
-  repairVehicleInfoAnswer as _repairVehicleInfoAnswer,
-} from './chatGroundedAnswerRepairs.js';
 import { categorizeChatRequestError } from './chatRequestErrorCategorizer.js';
 import { createDefaultCommandRegistry } from './chatDefaultCommandRegistry.js';
 import { executeDefaultPreparedTurn } from './chatDefaultTurnExecution.js';
@@ -97,7 +86,6 @@ export function runDefaultRuntimeExecutionStage(
     contextParts: input.preparedContext.contextParts,
     retrievalPlan: input.turn.retrievalPlan,
     evidenceAssessment: input.preparedContext.evidenceAssessment,
-    coverageRecord: input.preparedContext.coverageRecord,
     resolvedRequestText: input.turn.interpretation.rawText,
     capabilities: input.capabilities,
     retrievedContextText: input.preparedContext.retrievedContextText,
@@ -108,25 +96,7 @@ export function runDefaultRuntimeExecutionStage(
     maxIterations: input.maxIterations,
     hasActiveSlashCommand: input.turn.hasActiveSlashCommand,
     isRagReady: input.turn.isRagReady,
-    repairMarkdown: (markdown: string, userContent: string) => applyChatAnswerRepairPipeline(
-      {
-        repairGroundedAnswerTypography: _repairGroundedAnswerTypography,
-        repairUnsupportedWorkspaceTopicAnswer: _repairUnsupportedWorkspaceTopicAnswer,
-        repairUnsupportedSpecificCoverageAnswer: _repairUnsupportedSpecificCoverageAnswer,
-        repairVehicleInfoAnswer: _repairVehicleInfoAnswer,
-        repairAgentContactAnswer: _repairAgentContactAnswer,
-        repairDeductibleConflictAnswer: _repairDeductibleConflictAnswer,
-        repairTotalLossThresholdAnswer: _repairTotalLossThresholdAnswer,
-        repairGroundedCodeAnswer: _repairGroundedCodeAnswer,
-      },
-      {
-        query: input.request.text,
-        markdown,
-        retrievedContextText: input.preparedContext.retrievedContextText || userContent,
-        evidenceAssessment: input.preparedContext.evidenceAssessment,
-        coverageRecord: input.preparedContext.coverageRecord,
-      },
-    ),
+    repairMarkdown: (markdown: string) => markdown,
     buildExtractiveFallbackAnswer: _buildExtractiveFallbackAnswer,
     buildMissingCitationFooter: _buildMissingCitationFooter,
     buildDeterministicSessionSummary: _buildDeterministicSessionSummary,

@@ -411,109 +411,7 @@ export interface IQueryScope {
 
 // ── Execution Plan Types (M38 Phase 2) ─────────────────────────────────────
 
-/** Workflow classifications that guide execution planning. */
-export type WorkflowType =
-  | 'generic-grounded'       // Standard RAG — existing behavior
-  | 'scoped-topic'           // Entity reference + topic question
-  | 'folder-summary'         // Entity reference + summary verb
-  | 'document-summary'       // Single document + summary verb
-  | 'comparative'            // Two entities + comparison cue
-  | 'exhaustive-extraction'  // Entity + "every"/"all" + extraction verb
-  | 'mixed';                 // Structural cue + semantic cue together
 
-/** A single step in an execution plan. */
-export interface IExecutionStep {
-  readonly kind:
-    | 'enumerate'            // List files in a scope path
-    | 'structural-inspect'   // Read directory structure
-    | 'scoped-retrieve'      // RAG with pathPrefixes
-    | 'deterministic-read'   // Read specific files by path
-    | 'synthesize';          // Final LLM synthesis step
-  /** Human-readable label for trace/debug output. */
-  readonly label: string;
-  /** Scope path(s) this step operates on (when applicable). */
-  readonly targetPaths?: readonly string[];
-}
-
-/** Output format constraints for the final synthesis. */
-export interface IOutputConstraints {
-  /** Expected structure: prose, list, table, json. */
-  readonly format?: 'prose' | 'list' | 'table' | 'json';
-  /** Whether every source in scope must be cited. */
-  readonly requireExhaustiveCitation?: boolean;
-}
-
-/** A typed execution plan built from route + scope. */
-export interface IExecutionPlan {
-  readonly workflowType: WorkflowType;
-  readonly steps: readonly IExecutionStep[];
-  readonly outputConstraints: IOutputConstraints;
-  readonly scope: IQueryScope;
-}
-
-// ── M38 Phase 3: Evidence types ────────────────────────────────────────────
-
-/** Metadata for one file discovered via enumeration. */
-export interface IFileEntry {
-  readonly relativePath: string;
-  /** File extension (including dot), e.g. ".md" */
-  readonly ext: string;
-}
-
-/** Evidence from a structural inspection or enumeration step. */
-export interface IStructuralEvidence {
-  readonly kind: 'structural';
-  /** Workspace-relative file paths discovered. */
-  readonly files: readonly IFileEntry[];
-  /** Scope path that was enumerated. */
-  readonly scopePath: string;
-}
-
-/** Evidence from a scoped-retrieve (RAG) step. */
-export interface ISemanticEvidence {
-  readonly kind: 'semantic';
-  /** Retrieved text content. */
-  readonly text: string;
-  /** Source identifiers for citations. */
-  readonly sources: readonly { uri: string; label: string; index?: number }[];
-}
-
-/** Evidence from a deterministic-read step. */
-export interface IExhaustiveEvidence {
-  readonly kind: 'exhaustive';
-  /** File reads with their full content. */
-  readonly reads: readonly { relativePath: string; content: string }[];
-}
-
-/** Tagged union of evidence subtypes. */
-export type EvidenceItem = IStructuralEvidence | ISemanticEvidence | IExhaustiveEvidence;
-
-/** A bundle of evidence gathered from executing all plan steps. */
-export interface IEvidenceBundle {
-  /** The plan that produced this evidence. */
-  readonly plan: IExecutionPlan;
-  /** Ordered evidence items (one per non-synthesize step). */
-  readonly items: readonly EvidenceItem[];
-  /** Total character count of all evidence text. */
-  readonly totalChars: number;
-}
-
-// ── M38 Phase 4: Coverage Tracking ─────────────────────────────────────────
-
-/** How completely the evidence covers the targets in scope. */
-export type CoverageLevel = 'full' | 'partial' | 'minimal' | 'none';
-
-/** A record of how many targets were enumerated, read, and represented. */
-export interface ICoverageRecord {
-  /** Overall coverage assessment. */
-  readonly level: CoverageLevel;
-  /** Number of targets in scope (e.g. files enumerated). */
-  readonly totalTargets: number;
-  /** Number of targets that were actually read or retrieved. */
-  readonly coveredTargets: number;
-  /** Paths that could not be read or were skipped. */
-  readonly gaps: readonly string[];
-}
 
 // ── M39: Skill types ────────────────────────────────────────────────────────
 
@@ -540,17 +438,11 @@ export type ChatTurnRouteKind =
   | 'conversational'
   | 'memory-recall'
   | 'transcript-recall'
-  | 'product-semantics'
-  | 'off-topic'
   | 'grounded';
 
 export interface IChatTurnRoute {
   readonly kind: ChatTurnRouteKind;
   readonly reason: string;
-  readonly directAnswer?: string;
-  readonly coverageMode?: 'representative' | 'exhaustive' | 'enumeration';
-  /** M38: Resolved workflow type for execution planning. */
-  readonly workflowType?: WorkflowType;
 }
 
 export interface IChatContextPlan {
@@ -571,7 +463,6 @@ export interface IChatRuntimeTrace {
   readonly contextPlan: IChatContextPlan;
   readonly queryScope?: IQueryScope;
   readonly semanticFallback?: IChatSemanticFallbackDecision;
-  readonly routeAuthority?: IChatRouteAuthorityDecision;
   readonly sessionId?: string;
   readonly hasActiveSlashCommand: boolean;
   readonly isRagReady: boolean;
@@ -939,22 +830,11 @@ export interface IChatTurnSemantics {
   readonly isExplicitTranscriptRecall: boolean;
   readonly isFileEnumeration: boolean;
   readonly isExhaustiveWorkspaceReview?: boolean;
-  readonly offTopicDirectAnswer?: string;
-  readonly productSemanticsDirectAnswer?: string;
-  readonly workflowTypeHint?: WorkflowType;
-  readonly groundedCoverageModeHint?: 'representative' | 'exhaustive' | 'enumeration';
 }
 
 export interface IChatSemanticFallbackDecision {
   readonly kind: 'broad-workspace-summary';
   readonly confidence: number;
-  readonly reason: string;
-  readonly workflowTypeHint?: WorkflowType;
-  readonly groundedCoverageModeHint?: 'exhaustive';
-}
-
-export interface IChatRouteAuthorityDecision {
-  readonly action: 'preserved' | 'corrected';
   readonly reason: string;
 }
 

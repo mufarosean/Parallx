@@ -56,14 +56,12 @@ export interface IRunDefaultRuntimeContextStageInput {
 export interface IDefaultRuntimeContextStageResult {
   readonly messages: Awaited<ReturnType<typeof buildDefaultRuntimePromptSeed>>['messages'];
   readonly turnRoute: Awaited<ReturnType<typeof resolveDefaultPreparedTurnContext>>['turnRoute'];
-  readonly routeAuthority: Awaited<ReturnType<typeof resolveDefaultPreparedTurnContext>>['routeAuthority'];
   readonly contextPlan: Awaited<ReturnType<typeof resolveDefaultPreparedTurnContext>>['contextPlan'];
   readonly contextParts: Awaited<ReturnType<typeof resolveDefaultPreparedTurnContext>>['contextParts'];
   readonly ragSources: Awaited<ReturnType<typeof resolveDefaultPreparedTurnContext>>['ragSources'];
   readonly retrievedContextText: Awaited<ReturnType<typeof resolveDefaultPreparedTurnContext>>['retrievedContextText'];
   readonly evidenceAssessment: Awaited<ReturnType<typeof resolveDefaultPreparedTurnContext>>['evidenceAssessment'];
   readonly memoryResult: Awaited<ReturnType<typeof resolveDefaultPreparedTurnContext>>['memoryResult'];
-  readonly coverageRecord: Awaited<ReturnType<typeof resolveDefaultPreparedTurnContext>>['coverageRecord'];
 }
 
 export async function runDefaultRuntimeContextStage(
@@ -100,13 +98,11 @@ export async function runDefaultRuntimeContextStage(
   return {
     messages,
     turnRoute: preparedContext.turnRoute,
-    routeAuthority: preparedContext.routeAuthority,
     contextPlan: preparedContext.contextPlan,
     contextParts: preparedContext.contextParts,
     ragSources: preparedContext.ragSources,
     retrievedContextText: preparedContext.retrievedContextText,
     evidenceAssessment: preparedContext.evidenceAssessment,
     memoryResult: preparedContext.memoryResult,
-    coverageRecord: preparedContext.coverageRecord,
   };
 }

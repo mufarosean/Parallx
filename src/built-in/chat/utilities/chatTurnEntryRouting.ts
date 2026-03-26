@@ -1,8 +1,4 @@
 import type {
-  ICancellationToken,
-  IChatResponseStream,
-} from '../../../services/chatTypes.js';
-import type {
   IDefaultParticipantServices,
   IChatTurnRoute,
   IParsedSlashCommand,
@@ -12,16 +8,6 @@ import type {
 export interface IChatTurnEntryRoutingDeps {
   readonly parseSlashCommand: (text: string) => IParsedSlashCommand;
   readonly determineChatTurnRoute: (textOrSemantics: string | IChatTurnSemantics, options: { hasActiveSlashCommand: boolean }) => IChatTurnRoute;
-  readonly handleEarlyDeterministicAnswer: (options: {
-    route: IChatTurnRoute;
-    hasActiveSlashCommand: boolean;
-    isRagReady: boolean;
-    sessionId?: string;
-    response: IChatResponseStream;
-    token: ICancellationToken;
-    reportRuntimeTrace?: IDefaultParticipantServices['reportRuntimeTrace'];
-    reportResponseDebug?: IDefaultParticipantServices['reportResponseDebug'];
-  }) => boolean;
 }
 
 export interface IResolveChatTurnEntryRoutingInput {
@@ -29,11 +15,6 @@ export interface IResolveChatTurnEntryRoutingInput {
   readonly requestCommand?: string;
   readonly semantics?: IChatTurnSemantics;
   readonly isRagReady: boolean;
-  readonly sessionId?: string;
-  readonly response: IChatResponseStream;
-  readonly token: ICancellationToken;
-  readonly reportRuntimeTrace?: IDefaultParticipantServices['reportRuntimeTrace'];
-  readonly reportResponseDebug?: IDefaultParticipantServices['reportResponseDebug'];
 }
 
 export interface IResolveChatTurnEntryRoutingResult {
@@ -65,16 +46,6 @@ export function resolveChatTurnEntryRouting(
 
   const hasActiveSlashCommand = !!(activeCommand && activeCommand !== 'compact');
   const earlyRoute = deps.determineChatTurnRoute(input.semantics ?? effectiveText, { hasActiveSlashCommand });
-  const handled = deps.handleEarlyDeterministicAnswer({
-    route: earlyRoute,
-    hasActiveSlashCommand,
-    isRagReady: input.isRagReady,
-    sessionId: input.sessionId,
-    response: input.response,
-    token: input.token,
-    reportRuntimeTrace: input.reportRuntimeTrace,
-    reportResponseDebug: input.reportResponseDebug,
-  });
 
   return {
     slashResult,
@@ -82,6 +53,6 @@ export function resolveChatTurnEntryRouting(
     activeCommand,
     hasActiveSlashCommand,
     earlyRoute,
-    handled,
+    handled: false,
   };
 }

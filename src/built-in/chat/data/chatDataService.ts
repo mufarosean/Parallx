@@ -1679,7 +1679,6 @@ export class ChatDataService {
         contextPlan: trace.contextPlan ?? previousTrace?.contextPlan,
         queryScope: trace.queryScope ?? previousTrace?.queryScope,
         semanticFallback: trace.semanticFallback ?? previousTrace?.semanticFallback,
-        routeAuthority: trace.routeAuthority ?? previousTrace?.routeAuthority,
       }),
       isRAGAvailable: this.isRAGAvailable(),
       isIndexing: this.isIndexing(),

@@ -74,9 +74,6 @@ export interface ChatEvalDebugSnapshot {
     route: {
       kind: string;
       reason: string;
-      directAnswer?: string;
-      workflowType?: string;
-      coverageMode?: 'representative' | 'exhaustive' | 'enumeration';
     };
     contextPlan: {
       route: string;
@@ -99,8 +96,6 @@ export interface ChatEvalDebugSnapshot {
       kind: string;
       confidence: number;
       reason: string;
-      workflowTypeHint: string;
-      groundedCoverageModeHint: 'exhaustive';
     };
     routeAuthority?: {
       action: 'preserved' | 'corrected';

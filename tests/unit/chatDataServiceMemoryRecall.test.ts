@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ChatDataService } from '../../src/built-in/chat/data/chatDataService';
-import type { IChatRuntimeTrace } from '../../src/built-in/chat/chatTypes';
 
 function createDataService(overrides: Partial<any> = {}) {
   const memoryService = {
@@ -351,73 +350,5 @@ describe('ChatDataService.recallMemories', () => {
 
     expect(result).toBe('Plain text');
     expect(harness.fsAccessor.readFile).toHaveBeenCalledWith('notes/example.md');
-  });
-
-  it('preserves route-authority planning fields across later runtime trace updates in the test debug snapshot', () => {
-    const harness = createDataService();
-
-    const planningTrace: IChatRuntimeTrace = {
-      route: {
-        kind: 'grounded',
-        reason: 'Evidence authority correction',
-        workflowType: 'generic-grounded',
-        coverageMode: 'representative',
-      },
-      contextPlan: {
-        route: 'grounded',
-        intent: 'question',
-        useRetrieval: true,
-        useMemoryRecall: false,
-        useTranscriptRecall: false,
-        useConceptRecall: false,
-        useCurrentPage: false,
-        citationMode: 'required',
-        reasoning: 'Representative retrieval is now authoritative.',
-        retrievalPlan: {
-          intent: 'question',
-          reasoning: 'Representative retrieval is now authoritative.',
-          needsRetrieval: true,
-          queries: ['summarize broken docs'],
-          coverageMode: 'representative',
-        },
-      },
-      routeAuthority: {
-        action: 'corrected',
-        reason: 'Coverage tracking reported zero covered targets for a tool-first route, so representative retrieval is now authoritative.',
-      },
-      sessionId: 'session-1',
-      hasActiveSlashCommand: false,
-      isRagReady: true,
-      phase: 'context',
-      checkpoint: 'prepare-context',
-      runState: 'prepared',
-    };
-
-    const executionTrace: IChatRuntimeTrace = {
-      route: {
-        kind: 'grounded',
-        reason: 'Evidence authority correction',
-        workflowType: 'generic-grounded',
-        coverageMode: 'representative',
-      },
-      contextPlan: planningTrace.contextPlan,
-      sessionId: 'session-1',
-      hasActiveSlashCommand: false,
-      isRagReady: true,
-      phase: 'execution',
-      checkpoint: 'tool-executed',
-      runState: 'executing',
-      toolName: 'search_workspace',
-    };
-
-    harness.service.reportRuntimeTrace(planningTrace);
-    harness.service.reportRuntimeTrace(executionTrace);
-
-    const snapshot = harness.service.getTestDebugSnapshot();
-    expect(snapshot.runtimeTrace?.routeAuthority).toEqual(planningTrace.routeAuthority);
-    expect(snapshot.runtimeTrace?.route?.workflowType).toBe('generic-grounded');
-    expect(snapshot.runtimeTrace?.phase).toBe('execution');
-    expect(snapshot.runtimeTrace?.checkpoint).toBe('tool-executed');
-    expect(snapshot.runtimeTrace?.toolName).toBe('search_workspace');
   });
 });

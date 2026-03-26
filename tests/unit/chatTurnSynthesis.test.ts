@@ -223,4 +223,128 @@ describe('chat turn synthesis', () => {
       },
     });
   });
+
+  it('retries transient errors up to 3 times then succeeds', async () => {
+    vi.useFakeTimers();
+    const response = createResponse('');
+    (response as any).progress = vi.fn();
+
+    const executeModelOnly = vi.fn()
+      .mockRejectedValueOnce(new Error('connect ECONNREFUSED 127.0.0.1:11434'))
+      .mockResolvedValueOnce({ producedContent: true });
+
+    const validateAndFinalizeResponse = vi.fn();
+
+    const promise = executePreparedChatTurn(
+      {
+        sendChatRequest: vi.fn() as any,
+        buildExtractiveFallbackAnswer: vi.fn(() => ''),
+        buildMissingCitationFooter: vi.fn(() => ''),
+        buildDeterministicSessionSummary: vi.fn(() => 'summary'),
+        repairMarkdown: vi.fn((markdown: string) => markdown),
+        parseEditResponse: vi.fn(),
+        extractToolCallsFromText: vi.fn(() => ({ toolCalls: [], cleanedText: '' })),
+        stripToolNarration: vi.fn((text: string) => text),
+        categorizeError: vi.fn(() => ({ message: 'Connection refused' })),
+        executeModelOnly: executeModelOnly as any,
+        queueMemoryWriteBack: vi.fn() as any,
+        validateAndFinalizeResponse: validateAndFinalizeResponse as any,
+      },
+      {
+        messages: [{ role: 'user', content: 'hello' } as any],
+        requestOptions: { tools: undefined },
+        response,
+        token: createToken(),
+        maxIterations: 2,
+        canInvokeTools: false,
+        isEditMode: false,
+        useModelOnlyExecution: true,
+        requestText: 'hello',
+        userContent: 'hello',
+        retrievedContextText: 'retrieved',
+        evidenceAssessment: { status: 'weak', reasons: [] },
+        isConversationalTurn: false,
+        citationMode: 'disabled',
+        ragSources: [],
+        retrievalPlan: { intent: 'question', reasoning: 'Need evidence.', needsRetrieval: false, queries: [] },
+        memoryEnabled: true,
+        sessionId: 'session-1',
+        history: [],
+        networkTimeoutMs: 60_000,
+      },
+    );
+
+    await vi.advanceTimersByTimeAsync(2500);
+    const result = await promise;
+    vi.useRealTimers();
+
+    expect(result).toEqual({});
+    expect(executeModelOnly).toHaveBeenCalledTimes(2);
+    expect(response.progress).toHaveBeenCalledWith(expect.stringContaining('Connection issue detected'));
+    expect(validateAndFinalizeResponse).toHaveBeenCalled();
+  });
+
+  it('gives up after exhausting transient retries', async () => {
+    vi.useFakeTimers();
+    const response = createResponse('');
+    (response as any).progress = vi.fn();
+
+    const transientError = new Error('connect ECONNREFUSED 127.0.0.1:11434');
+    const executeModelOnly = vi.fn().mockRejectedValue(transientError);
+
+    const promise = executePreparedChatTurn(
+      {
+        sendChatRequest: vi.fn() as any,
+        buildExtractiveFallbackAnswer: vi.fn(() => ''),
+        buildMissingCitationFooter: vi.fn(() => ''),
+        buildDeterministicSessionSummary: vi.fn(() => 'summary'),
+        repairMarkdown: vi.fn((markdown: string) => markdown),
+        parseEditResponse: vi.fn(),
+        extractToolCallsFromText: vi.fn(() => ({ toolCalls: [], cleanedText: '' })),
+        stripToolNarration: vi.fn((text: string) => text),
+        categorizeError: vi.fn(() => ({ message: 'Connection refused' })),
+        executeModelOnly: executeModelOnly as any,
+        queueMemoryWriteBack: vi.fn() as any,
+        validateAndFinalizeResponse: vi.fn() as any,
+      },
+      {
+        messages: [{ role: 'user', content: 'hello' } as any],
+        requestOptions: { tools: undefined },
+        response,
+        token: createToken(),
+        maxIterations: 2,
+        canInvokeTools: false,
+        isEditMode: false,
+        useModelOnlyExecution: true,
+        requestText: 'hello',
+        userContent: 'hello',
+        retrievedContextText: 'retrieved',
+        evidenceAssessment: { status: 'weak', reasons: [] },
+        isConversationalTurn: false,
+        citationMode: 'disabled',
+        ragSources: [],
+        retrievalPlan: { intent: 'question', reasoning: 'Need evidence.', needsRetrieval: false, queries: [] },
+        memoryEnabled: true,
+        sessionId: 'session-1',
+        history: [],
+        networkTimeoutMs: 60_000,
+      },
+    );
+
+    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(2500);
+    const result = await promise;
+    vi.useRealTimers();
+
+    // 1 initial + 3 retries = 4 total calls
+    expect(executeModelOnly).toHaveBeenCalledTimes(4);
+    expect(response.progress).toHaveBeenCalledTimes(3);
+    expect(result).toEqual({
+      errorDetails: {
+        message: 'Connection refused',
+        responseIsIncomplete: true,
+      },
+    });
+  });
 });

@@ -16,22 +16,6 @@ export function determineChatTurnRoute(
     };
   }
 
-  if (semantics.productSemanticsDirectAnswer) {
-    return {
-      kind: 'product-semantics',
-      reason: 'Matched a product-semantics explanation that should bypass retrieval.',
-      directAnswer: semantics.productSemanticsDirectAnswer,
-    };
-  }
-
-  if (semantics.offTopicDirectAnswer) {
-    return {
-      kind: 'off-topic',
-      reason: 'Matched an off-topic request pattern outside the workspace domain.',
-      directAnswer: semantics.offTopicDirectAnswer,
-    };
-  }
-
   if (semantics.isExplicitTranscriptRecall) {
     return {
       kind: 'transcript-recall',

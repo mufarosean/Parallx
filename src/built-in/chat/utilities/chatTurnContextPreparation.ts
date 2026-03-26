@@ -8,7 +8,6 @@ import type {
 import type {
   IChatContextPlan,
   IDefaultParticipantServices,
-  IEvidenceBundle,
 } from '../chatTypes.js';
 import { assembleChatContext, type IChatEvidenceAssessment } from './chatContextAssembly.js';
 import { loadChatContextSources } from './chatContextSourceLoader.js';
@@ -46,8 +45,6 @@ export interface IPrepareChatTurnContextOptions {
   readonly contextPlan: IChatContextPlan;
   readonly hasActiveSlashCommand: boolean;
   readonly isRagReady: boolean;
-  /** M38: Pre-gathered evidence bundle from the execution planner. */
-  readonly evidenceBundle?: IEvidenceBundle;
 }
 
 export interface IPreparedChatTurnContext {
@@ -66,16 +63,7 @@ export async function prepareChatTurnContext(
   options: IPrepareChatTurnContextOptions,
 ): Promise<IPreparedChatTurnContext> {
 
-  // M38: When the evidence bundle already contains semantic evidence,
-  // suppress the initial retrieval to avoid duplicate retrieveContext calls.
-  // The semantic evidence is forwarded as the ragResult so that
-  // assembleChatContext can assess sufficiency and still "retrieve again"
-  // when the initial evidence is insufficient.
-  const semanticItem = options.evidenceBundle?.items.find(i => i.kind === 'semantic') as
-    | import('../chatTypes.js').ISemanticEvidence
-    | undefined;
-  const evidenceHasSemantics = !!semanticItem;
-  const effectiveUseRetrieval = evidenceHasSemantics ? false : options.contextPlan.useRetrieval;
+  const effectiveUseRetrieval = options.contextPlan.useRetrieval;
 
   const {
     pageResult,
@@ -108,11 +96,7 @@ export async function prepareChatTurnContext(
     },
   );
 
-  // When standard retrieval was suppressed, forward the semantic evidence
-  // as ragResult so assembleChatContext can evaluate sufficiency normally.
-  const effectiveRagResult = ragResult ?? (semanticItem
-    ? { text: semanticItem.text, sources: [...semanticItem.sources] }
-    : null);
+
 
   const {
     contextParts: assembledContextParts,
@@ -145,12 +129,11 @@ export async function prepareChatTurnContext(
               : pageResult.textContent,
           }
         : pageResult,
-      ragResult: effectiveRagResult,
+      ragResult,
       memoryResult,
       transcriptResult,
       conceptResult,
       attachmentResults,
-      evidenceBundle: options.evidenceBundle,
     },
   );
 

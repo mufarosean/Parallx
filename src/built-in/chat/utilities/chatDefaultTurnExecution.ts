@@ -10,7 +10,6 @@ import type {
   IChatContextPlan,
   IChatTurnRoute,
 } from '../chatTypes.js';
-import { handlePreparedContextDeterministicAnswer } from './chatDeterministicResponse.js';
 import { applyChatTurnBudgeting } from './chatTurnBudgeting.js';
 import { buildChatTurnExecutionConfig } from './chatTurnExecutionConfig.js';
 import { executePreparedChatTurn } from './chatTurnSynthesis.js';
@@ -29,7 +28,6 @@ export interface IExecuteDefaultPreparedTurnOptions {
   readonly contextParts: string[];
   readonly retrievalPlan: import('../chatTypes.js').IRetrievalPlan;
   readonly evidenceAssessment: import('./chatContextAssembly.js').IChatEvidenceAssessment;
-  readonly coverageRecord: import('../chatTypes.js').ICoverageRecord | undefined;
   readonly resolvedRequestText: string;
   readonly capabilities: ReturnType<typeof import('../config/chatModeCapabilities.js').getModeCapabilities>;
   readonly retrievedContextText: string;
@@ -54,20 +52,6 @@ export async function executeDefaultPreparedTurn(
   services: IDefaultParticipantServices,
   options: IExecuteDefaultPreparedTurnOptions,
 ): Promise<IChatParticipantResult> {
-  if (handlePreparedContextDeterministicAnswer({
-    route: options.turnRoute,
-    query: options.userText,
-    evidenceAssessment: options.evidenceAssessment,
-    retrievedContextText: options.retrievedContextText,
-    memoryResult: options.memoryResult,
-    ragSources: options.ragSources,
-    response: options.response,
-    token: options.token,
-    reportResponseDebug: services.reportResponseDebug,
-  })) {
-    return {};
-  }
-
   applyChatTurnBudgeting({
     messages: options.messages,
     contextParts: options.contextParts,

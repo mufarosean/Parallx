@@ -88,50 +88,6 @@ describe('chat context assembly', () => {
     expect(result.contextParts.some((part) => part.includes('Attached file text'))).toBe(true);
   });
 
-  it('promotes exhaustive direct file reads into citable sources', async () => {
-    const result = await assembleChatContext(
-      {
-        assessEvidenceSufficiency: () => ({ status: 'sufficient', reasons: [] }),
-        buildRetrieveAgainQuery: () => '',
-      },
-      {
-        userText: 'Summarize each file in the RF Guides folder.',
-        messages: [{ role: 'system', content: 'system prompt text' } as any],
-        mentionPills: [],
-        useRetrieval: false,
-        maxMemoryContextChars: 100,
-        maxConceptContextChars: 100,
-        pageResult: null,
-        ragResult: null,
-        memoryResult: null,
-        conceptResult: null,
-        attachmentResults: [],
-        evidenceBundle: {
-          plan: {} as any,
-          items: [{
-            kind: 'exhaustive',
-            reads: [
-              { relativePath: 'RF Guides/Clark.pdf', content: 'Clark summary text' },
-              { relativePath: 'RF Guides/Verrall.pdf', content: 'Verrall summary text' },
-            ],
-          }],
-          totalChars: 34,
-        },
-      },
-    );
-
-    expect(result.ragSources).toEqual([
-      { uri: 'RF Guides/Clark.pdf', label: 'Clark.pdf', index: 1 },
-      { uri: 'RF Guides/Verrall.pdf', label: 'Verrall.pdf', index: 2 },
-    ]);
-    expect(result.provenance.map((entry) => ({ kind: entry.kind, uri: entry.uri, index: entry.index }))).toEqual([
-      { kind: 'rag', uri: 'RF Guides/Clark.pdf', index: 1 },
-      { kind: 'rag', uri: 'RF Guides/Verrall.pdf', index: 2 },
-    ]);
-    expect(result.retrievedContextText).toContain('Clark summary text');
-    expect(result.retrievedContextText).toContain('Verrall summary text');
-  });
-
   it('runs a retrieve-again pass when initial evidence is insufficient', async () => {
     const retrieveContext = vi.fn(async () => ({
       text: '[Retrieved Context]\n[2] Source: Policy.md\nPath: Policy.md\nCollision deductible is $500',

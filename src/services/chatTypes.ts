@@ -588,15 +588,6 @@ export interface IChatParticipantRuntimeEntry {
   ): Promise<IChatParticipantResult>;
 }
 
-export type IChatParticipantWorkflowType =
-  | 'generic-grounded'
-  | 'scoped-topic'
-  | 'folder-summary'
-  | 'document-summary'
-  | 'comparative'
-  | 'exhaustive-extraction'
-  | 'mixed';
-
 export interface IChatParticipantTurnSemantics {
   readonly rawText: string;
   readonly normalizedText: string;
@@ -606,10 +597,6 @@ export interface IChatParticipantTurnSemantics {
   readonly isExplicitTranscriptRecall: boolean;
   readonly isFileEnumeration: boolean;
   readonly isExhaustiveWorkspaceReview?: boolean;
-  readonly offTopicDirectAnswer?: string;
-  readonly productSemanticsDirectAnswer?: string;
-  readonly workflowTypeHint?: IChatParticipantWorkflowType;
-  readonly groundedCoverageModeHint?: 'representative' | 'exhaustive' | 'enumeration';
 }
 
 export interface IChatParticipantMention {
@@ -636,19 +623,14 @@ export interface IChatParticipantQueryScope {
 }
 
 export interface IChatParticipantTurnRoute {
-  readonly kind: 'grounded' | 'product-semantics' | 'off-topic' | 'transcript-recall' | 'memory-recall' | 'conversational';
+  readonly kind: 'grounded' | 'transcript-recall' | 'memory-recall' | 'conversational';
   readonly reason: string;
-  readonly directAnswer?: string;
-  readonly coverageMode?: 'representative' | 'exhaustive' | 'enumeration';
-  readonly workflowType?: IChatParticipantWorkflowType;
 }
 
 export interface IChatParticipantSemanticFallbackDecision {
   readonly kind: 'broad-workspace-summary';
   readonly confidence: number;
   readonly reason: string;
-  readonly workflowTypeHint?: IChatParticipantWorkflowType;
-  readonly groundedCoverageModeHint?: 'exhaustive';
 }
 
 export interface IChatParticipantTurnState {

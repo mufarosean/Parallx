@@ -18,48 +18,20 @@ import {
 
 export type ScopedSurface = 'workspace' | 'canvas';
 
-function resolvePromptWorkflowType(route: IChatRuntimeTrace['route'] | undefined): 'generic-grounded' | 'folder-summary' | 'exhaustive-extraction' {
-  if (route?.workflowType === 'exhaustive-extraction') {
-    return 'exhaustive-extraction';
-  }
-
-  if (route?.kind === 'grounded' && (route.coverageMode === 'exhaustive' || route.coverageMode === 'enumeration')) {
-    return 'folder-summary';
-  }
-
-  return 'generic-grounded';
-}
-
-function mapWorkflowTypeToRetrievalIntent(
-  workflowType: 'generic-grounded' | 'folder-summary' | 'exhaustive-extraction',
-): IChatRuntimeTrace['contextPlan']['intent'] {
-  switch (workflowType) {
-    case 'exhaustive-extraction':
-      return 'task';
-    case 'folder-summary':
-    case 'generic-grounded':
-    default:
-      return 'question';
-  }
-}
-
 export function createScopedRuntimeTraceSeed(
   request: IChatParticipantRequest,
   surface: ScopedSurface,
 ): Pick<IChatRuntimeTrace, 'route' | 'contextPlan' | 'hasActiveSlashCommand' | 'isRagReady'> {
   const turnState = request.turnState;
-  const workflowType = resolvePromptWorkflowType(turnState?.turnRoute);
   const route = turnState?.turnRoute ?? {
-    kind: 'grounded',
+    kind: 'grounded' as const,
     reason: `${surface} scoped participant prompt stage`,
-    workflowType,
   };
   const retrievalPlan = {
-    intent: mapWorkflowTypeToRetrievalIntent(workflowType),
+    intent: 'question' as const,
     reasoning: route.reason,
     needsRetrieval: route.kind === 'grounded',
     queries: turnState ? [turnState.contextQueryText] : [request.text],
-    coverageMode: route.coverageMode,
   };
 
   return {

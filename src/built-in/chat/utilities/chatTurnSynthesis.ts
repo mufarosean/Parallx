@@ -14,7 +14,16 @@ import { createChatRuntimeLifecycle } from './chatRuntimeLifecycle.js';
 import { validateAndFinalizeChatResponse } from './chatResponseValidator.js';
 import { selectAttributableCitations } from './chatResponseParsingHelpers.js';
 
+import { isTransientError } from '../../../openclaw/openclawErrorClassification.js';
+
 const DEFAULT_NETWORK_TIMEOUT_MS = 60_000;
+
+/**
+ * Transient retry constants — aligned with OpenClaw turn runner.
+ * Upstream: openclawTurnRunner.ts — TRANSIENT_RETRY_DELAY = 2500, MAX_TRANSIENT_RETRIES = 3
+ */
+const MAX_TRANSIENT_RETRIES = 3;
+const TRANSIENT_RETRY_DELAY_MS = 2500;
 
 export interface IExecutePreparedChatTurnDeps {
   readonly sendChatRequest: IDefaultParticipantServices['sendChatRequest'];
@@ -185,71 +194,87 @@ export async function executePreparedChatTurn(
     await options.autonomyMirror?.begin();
 
     let producedContent = false;
+    let transientRetries = 0;
 
-    if (options.useModelOnlyExecution) {
-      const modelOnlyResult = await modelOnlyExecutor(
-        {
-          sendChatRequest: deps.sendChatRequest,
-          resetNetworkTimeout,
-          parseEditResponse: deps.parseEditResponse,
-          extractToolCallsFromText: deps.extractToolCallsFromText,
-          stripToolNarration: deps.stripToolNarration,
-          reportFirstTokenLatency: (durationMs) => {
-            console.debug(`[Parallx:latency] Time to first token: ${durationMs.toFixed(1)}ms`);
-          },
-          reportStreamCompleteLatency: (durationMs) => {
-            console.debug(`[Parallx:latency] LLM stream complete: ${durationMs.toFixed(1)}ms`);
-          },
-        },
-        {
-          messages: options.messages,
-          requestOptions: options.requestOptions,
-          abortSignal: abortController.signal,
-          response: options.response,
-          token: options.token,
-          canInvokeTools: options.canInvokeTools,
-          isEditMode: options.isEditMode,
-        },
-      );
-      producedContent = modelOnlyResult.producedContent;
-    } else {
-      const groundedResult = await groundedExecutor(
-        {
-          sendChatRequest: deps.sendChatRequest,
-          invokeToolWithRuntimeControl: deps.invokeToolWithRuntimeControl,
-          resetNetworkTimeout,
-          parseEditResponse: deps.parseEditResponse,
-          extractToolCallsFromText: deps.extractToolCallsFromText,
-          stripToolNarration: deps.stripToolNarration,
-          buildExtractiveFallbackAnswer: deps.buildExtractiveFallbackAnswer,
-          reportResponseDebug: deps.reportResponseDebug,
-          reportRuntimeTrace: deps.reportRuntimeTrace,
-          reportFirstTokenLatency: (durationMs) => {
-            console.debug(`[Parallx:latency] Time to first token: ${durationMs.toFixed(1)}ms`);
-          },
-          reportStreamCompleteLatency: (durationMs) => {
-            console.debug(`[Parallx:latency] LLM stream complete: ${durationMs.toFixed(1)}ms`);
-          },
-        },
-        {
-          messages: options.messages,
-          requestOptions: options.requestOptions,
-          abortSignal: abortController.signal,
-          response: options.response,
-          token: options.token,
-          maxIterations: options.maxIterations,
-          canInvokeTools: options.canInvokeTools,
-          isEditMode: options.isEditMode,
-          requestText: options.requestText,
-          userContent: options.userContent,
-          retrievedContextText: options.retrievedContextText,
-          evidenceAssessment: options.evidenceAssessment,
-          autonomyMirror: options.autonomyMirror,
-          toolGuard: options.toolGuard,
-          runtimeTraceSeed: options.runtimeTraceSeed,
-        },
-      );
-      producedContent = groundedResult.producedContent;
+    // Retry loop for transient errors — aligned with OpenClaw turn runner
+    for (;;) {
+      try {
+        if (options.useModelOnlyExecution) {
+          const modelOnlyResult = await modelOnlyExecutor(
+            {
+              sendChatRequest: deps.sendChatRequest,
+              resetNetworkTimeout,
+              parseEditResponse: deps.parseEditResponse,
+              extractToolCallsFromText: deps.extractToolCallsFromText,
+              stripToolNarration: deps.stripToolNarration,
+              reportFirstTokenLatency: (durationMs) => {
+                console.debug(`[Parallx:latency] Time to first token: ${durationMs.toFixed(1)}ms`);
+              },
+              reportStreamCompleteLatency: (durationMs) => {
+                console.debug(`[Parallx:latency] LLM stream complete: ${durationMs.toFixed(1)}ms`);
+              },
+            },
+            {
+              messages: options.messages,
+              requestOptions: options.requestOptions,
+              abortSignal: abortController.signal,
+              response: options.response,
+              token: options.token,
+              canInvokeTools: options.canInvokeTools,
+              isEditMode: options.isEditMode,
+            },
+          );
+          producedContent = modelOnlyResult.producedContent;
+        } else {
+          const groundedResult = await groundedExecutor(
+            {
+              sendChatRequest: deps.sendChatRequest,
+              invokeToolWithRuntimeControl: deps.invokeToolWithRuntimeControl,
+              resetNetworkTimeout,
+              parseEditResponse: deps.parseEditResponse,
+              extractToolCallsFromText: deps.extractToolCallsFromText,
+              stripToolNarration: deps.stripToolNarration,
+              buildExtractiveFallbackAnswer: deps.buildExtractiveFallbackAnswer,
+              reportResponseDebug: deps.reportResponseDebug,
+              reportRuntimeTrace: deps.reportRuntimeTrace,
+              reportFirstTokenLatency: (durationMs) => {
+                console.debug(`[Parallx:latency] Time to first token: ${durationMs.toFixed(1)}ms`);
+              },
+              reportStreamCompleteLatency: (durationMs) => {
+                console.debug(`[Parallx:latency] LLM stream complete: ${durationMs.toFixed(1)}ms`);
+              },
+            },
+            {
+              messages: options.messages,
+              requestOptions: options.requestOptions,
+              abortSignal: abortController.signal,
+              response: options.response,
+              token: options.token,
+              maxIterations: options.maxIterations,
+              canInvokeTools: options.canInvokeTools,
+              isEditMode: options.isEditMode,
+              requestText: options.requestText,
+              userContent: options.userContent,
+              retrievedContextText: options.retrievedContextText,
+              evidenceAssessment: options.evidenceAssessment,
+              autonomyMirror: options.autonomyMirror,
+              toolGuard: options.toolGuard,
+              runtimeTraceSeed: options.runtimeTraceSeed,
+            },
+          );
+          producedContent = groundedResult.producedContent;
+        }
+        break; // Success — exit retry loop
+      } catch (retryError) {
+        if (isTransientError(retryError) && transientRetries < MAX_TRANSIENT_RETRIES && !options.token.isCancellationRequested) {
+          transientRetries++;
+          options.response.progress(`Connection issue detected, retrying in ${(TRANSIENT_RETRY_DELAY_MS / 1000).toFixed(1)}s (attempt ${transientRetries}/${MAX_TRANSIENT_RETRIES})...`);
+          await new Promise(resolve => setTimeout(resolve, TRANSIENT_RETRY_DELAY_MS));
+          resetNetworkTimeout();
+          continue;
+        }
+        throw retryError;
+      }
     }
 
     if (networkTimeoutId !== undefined) {

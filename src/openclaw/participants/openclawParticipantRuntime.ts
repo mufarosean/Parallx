@@ -345,7 +345,6 @@ export function buildOpenclawTraceSeed(
     reasoning: route.reason,
     needsRetrieval: route.kind === 'grounded',
     queries: [turnState?.contextQueryText ?? request.text],
-    coverageMode: route.coverageMode,
   };
   const contextPlan: IChatContextPlan = {
     route: route.kind,

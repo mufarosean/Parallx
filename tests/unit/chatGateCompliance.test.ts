@@ -104,7 +104,6 @@ const FOLDER_RULES: Record<string, string[]> = {
 
   // ── utilities/ — mention resolution, user commands ──────────────────────
   'utilities/chatAgentTaskWidgetAdapter.ts': [],
-  'utilities/chatAnswerRepairPipeline.ts': [],
   'utilities/chatCompactCommand.ts': [],
   'utilities/chatContextAssembly.ts':        ['utilities/'],
   'utilities/chatContextPlanner.ts':         [],
@@ -120,12 +119,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'utilities/chatDefaultRuntimePromptStage.ts': ['utilities/'],
   'utilities/chatDefaultTurnExecution.ts': ['config/', 'utilities/'],
   'utilities/chatDefaultTurnInterpretation.ts': ['utilities/'],
-  'utilities/chatDeterministicAnswerSelector.ts': ['utilities/'],
   'utilities/chatExecutionPlanner.ts':           [],
-  'utilities/chatEvidenceGatherer.ts':           [],
-  'utilities/chatDeterministicExecutors.ts': ['utilities/'],
-  'utilities/chatDeterministicResponse.ts': ['utilities/'],
-  'utilities/chatGroundedAnswerRepairs.ts': ['utilities/'],
   'utilities/chatGroundedResponseHelpers.ts': ['utilities/'],
   'utilities/chatBridgeParticipantRuntime.ts': ['utilities/'],
   'utilities/chatGroundedExecutor.ts':       ['utilities/'],
@@ -133,7 +127,6 @@ const FOLDER_RULES: Record<string, string[]> = {
   'utilities/chatParticipantInterpretation.ts': ['utilities/'],
   'utilities/chatParticipantRuntimeTrace.ts': [],
   'utilities/chatRequestErrorCategorizer.ts': [],
-  'utilities/chatRouteAuthority.ts': [],
   'utilities/chatRuntimeCheckpointSink.ts': [],
   'utilities/chatRuntimeLifecycle.ts': ['utilities/'],
   'utilities/chatRuntimePromptMessages.ts': [],

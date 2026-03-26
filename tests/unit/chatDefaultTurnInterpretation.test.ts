@@ -37,7 +37,6 @@ describe('resolveDefaultChatTurnInterpretation', () => {
             category: 'folder-summary',
             isComparative: false,
             exhaustiveSignal: 'strong',
-            groundedCoverageModeHint: 'exhaustive',
           },
           queryScope: {
             level: 'workspace',
@@ -47,7 +46,6 @@ describe('resolveDefaultChatTurnInterpretation', () => {
           turnRoute: {
             kind: 'grounded',
             reason: 'This request needs exhaustive file-by-file coverage rather than representative retrieval.',
-            coverageMode: 'exhaustive',
           },
           semanticFallback: undefined,
           hasActiveSlashCommand: false,

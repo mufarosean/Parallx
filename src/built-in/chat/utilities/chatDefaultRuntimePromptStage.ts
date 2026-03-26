@@ -60,7 +60,6 @@ export function buildDefaultRuntimePromptEnvelope(
       contextParts: input.preparedContext.contextParts,
       retrievalPlan: input.turn.retrievalPlan,
       evidenceAssessment: input.preparedContext.evidenceAssessment,
-      coverageRecord: input.preparedContext.coverageRecord,
     },
   );
 

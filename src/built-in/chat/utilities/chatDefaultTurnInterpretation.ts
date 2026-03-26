@@ -12,7 +12,6 @@ import type {
 } from '../chatTypes.js';
 import { interpretChatParticipantRequest } from './chatParticipantInterpretation.js';
 import { buildFollowUpRetrievalQuery } from './chatGroundedResponseHelpers.js';
-import { handleEarlyDeterministicAnswer } from './chatDeterministicResponse.js';
 import { activateSkill } from './chatSkillMatcher.js';
 import { determineChatTurnRoute } from './chatTurnRouter.js';
 import { prepareChatTurnPrelude } from './chatTurnPrelude.js';
@@ -70,20 +69,11 @@ export async function resolveDefaultChatTurnInterpretation(
   } = resolveChatTurnEntryRouting({
     parseSlashCommand: input.parseSlashCommand,
     determineChatTurnRoute,
-    handleEarlyDeterministicAnswer: (options) => handleEarlyDeterministicAnswer({
-      ...options,
-      sessionId: options.sessionId ?? input.context.sessionId,
-    }),
   }, {
     requestText: input.request.text,
     requestCommand: interpretation.commandName,
     semantics: interpretation.semantics,
     isRagReady: earlyIsRagReady,
-    sessionId: input.context.sessionId,
-    response: input.response,
-    token: input.token,
-    reportRuntimeTrace: services.reportRuntimeTrace,
-    reportResponseDebug: services.reportResponseDebug,
   });
 
   const prelude = input.request.turnState

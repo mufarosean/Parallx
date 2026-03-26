@@ -3,17 +3,14 @@ import type {
   IChatMessage,
 } from '../../../services/chatTypes.js';
 import type {
-  ICoverageRecord,
   IChatContextPlan,
   IDefaultParticipantServices,
   IPreparedChatTurnPrelude,
   IActivatedSkill,
-  IChatRouteAuthorityDecision,
 } from '../chatTypes.js';
 import type { IChatEvidenceAssessment } from './chatContextAssembly.js';
 import { createChatContextPlan, createChatRuntimeTrace } from './chatContextPlanner.js';
 import { buildSkillInstructionSection } from '../config/chatSystemPrompts.js';
-import { refineChatRouteAuthorityWithEvidence, resolveChatRouteAuthority } from './chatRouteAuthority.js';
 import { prepareChatTurnContext } from './chatTurnContextPreparation.js';
 
 type IDefaultPreparedTurnContextServices = Pick<
@@ -47,7 +44,6 @@ export interface IResolveDefaultPreparedTurnContextInput extends IPreparedChatTu
 
 export interface IResolvedDefaultPreparedTurnContext {
   readonly turnRoute: IPreparedChatTurnPrelude['turnRoute'];
-  readonly routeAuthority: IChatRouteAuthorityDecision;
   readonly contextPlan: IChatContextPlan;
   readonly contextParts: string[];
   readonly ragSources: Array<{ uri: string; label: string; index?: number }>;
@@ -55,7 +51,6 @@ export interface IResolvedDefaultPreparedTurnContext {
   readonly evidenceAssessment: IChatEvidenceAssessment;
   readonly provenance: Awaited<ReturnType<typeof prepareChatTurnContext>>['provenance'];
   readonly memoryResult: string | null;
-  readonly coverageRecord: ICoverageRecord | undefined;
 }
 
 export async function resolveDefaultPreparedTurnContext(
@@ -76,21 +71,12 @@ export async function resolveDefaultPreparedTurnContext(
     };
   }
 
-  const evidenceBundle = undefined;
-  const coverageRecord = undefined;
-
-  const { turnRoute, authority } = resolveChatRouteAuthority(input.turnRoute, coverageRecord, {
-    hasActiveSlashCommand: input.hasActiveSlashCommand,
-    isRagReady: input.isRagReady,
-  });
-  let finalTurnRoute = turnRoute;
-  let finalAuthority = authority;
-  let contextPlan = createChatContextPlan(finalTurnRoute, {
+  const contextPlan = createChatContextPlan(input.turnRoute, {
     hasActiveSlashCommand: input.hasActiveSlashCommand,
     isRagReady: input.isRagReady,
   });
 
-  let preparedContext = await prepareChatTurnContext(
+  const preparedContext = await prepareChatTurnContext(
     {
       getCurrentPageContent: services.getCurrentPageContent,
       retrieveContext: services.retrieveContext,
@@ -114,66 +100,17 @@ export async function resolveDefaultPreparedTurnContext(
       contextPlan,
       hasActiveSlashCommand: input.hasActiveSlashCommand,
       isRagReady: input.isRagReady,
-      evidenceBundle,
     },
   );
-
-  const postEvidenceAuthority = refineChatRouteAuthorityWithEvidence(
-    finalTurnRoute,
-    coverageRecord,
-    preparedContext.evidenceAssessment.status,
-    {
-      hasActiveSlashCommand: input.hasActiveSlashCommand,
-      isRagReady: input.isRagReady,
-    },
-  );
-
-  if (postEvidenceAuthority.authority.action === 'corrected') {
-    finalTurnRoute = postEvidenceAuthority.turnRoute;
-    finalAuthority = postEvidenceAuthority.authority;
-    contextPlan = createChatContextPlan(finalTurnRoute, {
-      hasActiveSlashCommand: input.hasActiveSlashCommand,
-      isRagReady: input.isRagReady,
-    });
-
-    preparedContext = await prepareChatTurnContext(
-      {
-        getCurrentPageContent: services.getCurrentPageContent,
-        retrieveContext: services.retrieveContext,
-        recallMemories: services.recallMemories,
-        recallTranscripts: services.recallTranscripts,
-        recallConcepts: services.recallConcepts,
-        readFileContent: services.readFileContent,
-        reportRetrievalDebug: services.reportRetrievalDebug,
-        reportContextPills: services.reportContextPills,
-        getExcludedContextIds: services.getExcludedContextIds,
-        assessEvidenceSufficiency: input.assessEvidenceSufficiency,
-        buildRetrieveAgainQuery: input.buildRetrieveAgainQuery,
-      },
-      {
-        contextQueryText: input.contextQueryText,
-        sessionId: input.sessionId,
-        attachments: input.attachments,
-        messages: input.messages,
-        mentionPills: input.mentionPills,
-        mentionContextBlocks: input.mentionContextBlocks,
-        contextPlan,
-        hasActiveSlashCommand: input.hasActiveSlashCommand,
-        isRagReady: input.isRagReady,
-        evidenceBundle,
-      },
-    );
-  }
 
   services.reportRuntimeTrace?.(createChatRuntimeTrace(
-    finalTurnRoute,
+    input.turnRoute,
     contextPlan,
     {
       sessionId: input.sessionId,
       hasActiveSlashCommand: input.hasActiveSlashCommand,
       isRagReady: input.isRagReady,
       semanticFallback: input.semanticFallback,
-      routeAuthority: finalAuthority,
     },
   ));
 
@@ -185,8 +122,7 @@ export async function resolveDefaultPreparedTurnContext(
   }
 
   return {
-    turnRoute: finalTurnRoute,
-    routeAuthority: finalAuthority,
+    turnRoute: input.turnRoute,
     contextPlan,
     contextParts: preparedContext.contextParts,
     ragSources: preparedContext.ragSources,
@@ -194,6 +130,5 @@ export async function resolveDefaultPreparedTurnContext(
     evidenceAssessment: preparedContext.evidenceAssessment,
     provenance: preparedContext.provenance,
     memoryResult: preparedContext.memoryResult,
-    coverageRecord,
   };
 }

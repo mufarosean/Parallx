@@ -11,8 +11,6 @@ const CONVERSATIONAL_TURN_PATTERNS: readonly RegExp[] = [
 
 const WORKSPACE_ROUTING_TERMS = /\b(file|files|document|documents|doc|docs|page|pages|note|notes|canvas|workspace|folder|folders|project|repo|repository|code|function|error|bug|test|build|commit|branch|source|sources|citation|cite|pdf|docx|xlsx|markdown|readme)\b/i;
 const TASK_ROUTING_TERMS = /\b(read|open|search|find|summari[sz]e|explain|show|list|compare|quote|retrieve|look up|use|run|edit|write|change|delete|fix|debug|analy[sz]e|review|patch)\b/i;
-const IN_SCOPE_DOMAIN_TERMS = /\b(insurance|policy|coverage|claim|claims|deductible|agent|adjuster|premium|liability|collision|comprehensive|uninsured|underinsured|medpay|roadside|accident|vehicle|car|auto|workspace|document|file|citation|source|context)\b/i;
-const OFF_TOPIC_DOMAIN_TERMS = /\b(recipe|recipes|cook|cooking|bake|baking|cookie|cookies|chocolate|flour|sugar|oven|meal|restaurant|movie|movies|tv|television|song|songs|music|sports?|weather|vacation|travel|dating)\b/i;
 
 function normalizeForRouting(text: string, apostropheReplacement = ' '): string {
   return text
@@ -21,72 +19,6 @@ function normalizeForRouting(text: string, apostropheReplacement = ' '): string 
     .replace(/[’']/g, apostropheReplacement)
     .replace(/[^a-z0-9\s']/g, ' ')
     .replace(/\s+/g, ' ');
-}
-
-function buildOffTopicRedirectAnswer(normalizedText: string): string | undefined {
-  if (!normalizedText || normalizedText.length > 180) {
-    return undefined;
-  }
-
-  if (WORKSPACE_ROUTING_TERMS.test(normalizedText) || TASK_ROUTING_TERMS.test(normalizedText) || IN_SCOPE_DOMAIN_TERMS.test(normalizedText)) {
-    return undefined;
-  }
-
-  if (!OFF_TOPIC_DOMAIN_TERMS.test(normalizedText)) {
-    return undefined;
-  }
-
-  return 'Sorry, I can help with the insurance policy, claims guidance, and other files in this workspace, but I cannot help with that off-topic request here.';
-}
-
-function buildProductSemanticsAnswer(normalizedText: string): string | undefined {
-  if (
-    normalizedText.includes('approve once')
-    && normalizedText.includes('approve task')
-    && /(difference|vs|versus|mean|means)/.test(normalizedText)
-  ) {
-    return [
-      'Approve once allows only the current action to run.',
-      'Approve task is broader: it allows the remaining approval-scoped actions in that task to continue without asking again each time.',
-      'Use Approve once when you want tighter review. Use Approve task when you trust the remaining task scope and want fewer interruptions.',
-    ].join(' ');
-  }
-
-  if (
-    normalizedText.includes('outside the workspace')
-    && /(blocked|what should i do next|what do i do next|what next|how do i recover)/.test(normalizedText)
-  ) {
-    return [
-      'The task was blocked because it targeted something outside the active workspace boundary, so the agent stopped before taking that action.',
-      'Retarget the task to a file or folder inside the current workspace, or narrow the instructions so the next action stays within an allowed target.',
-      'After you fix the target, continue or retry the task.',
-    ].join(' ');
-  }
-
-  if (
-    /(delegated task|task)/.test(normalizedText)
-    && /(recorded artifacts|artifacts)/.test(normalizedText)
-    && /(what should i check next|what should i do next|what next|what do i check)/.test(normalizedText)
-  ) {
-    return [
-      'Recorded artifacts tell you which workspace files the task changed or produced.',
-      'Check those files first to confirm the result matches the goal and to decide whether a follow-up task is needed.',
-      'If the artifacts look right, you can keep them. If not, launch a narrower follow-up task to correct or extend the work.',
-    ].join(' ');
-  }
-
-  if (
-    normalizedText.includes('trace')
-    && /(task details|help me understand|tell me|mean|means|show)/.test(normalizedText)
-  ) {
-    return [
-      'The trace shows the recent planning, approval, and execution events for a task in order.',
-      'Use it to see what the agent tried, where it paused or was blocked, and which tool or step produced the latest outcome.',
-      'It is most useful when you need to understand why a task stopped, what ran successfully, or what to retry next.',
-    ].join(' ');
-  }
-
-  return undefined;
 }
 
 function isLikelyConversationalTurn(_normalizedText: string, strippedApostropheText: string): boolean {
@@ -149,7 +81,5 @@ export function analyzeChatTurnSemantics(text: string): IChatTurnSemantics {
     isExplicitMemoryRecall: isExplicitMemoryRecallTurn(normalizedText),
     isExplicitTranscriptRecall: isExplicitTranscriptRecallTurn(normalizedText),
     isFileEnumeration,
-    offTopicDirectAnswer: buildOffTopicRedirectAnswer(normalizedText),
-    productSemanticsDirectAnswer: buildProductSemanticsAnswer(normalizeForRouting(text, "'")),
   };
 }

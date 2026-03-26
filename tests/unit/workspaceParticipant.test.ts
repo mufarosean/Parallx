@@ -308,8 +308,6 @@ describe('workspace participant: general (no command)', () => {
             isExplicitTranscriptRecall: false,
             isFileEnumeration: false,
             isExhaustiveWorkspaceReview: false,
-            workflowTypeHint: 'scoped-topic',
-            groundedCoverageModeHint: 'representative',
           },
           queryScope: {
             level: 'document',

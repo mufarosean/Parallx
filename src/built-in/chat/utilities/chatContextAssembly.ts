@@ -1,8 +1,6 @@
 import { isChatFileAttachment, isChatImageAttachment } from '../../../services/chatTypes.js';
 import type { IChatAttachment, IChatMessage, IChatProvenanceEntry, IContextPill } from '../../../services/chatTypes.js';
 
-import type { IEvidenceBundle } from '../chatTypes.js';
-
 import type {
   ChatAttachmentResult,
   ChatConceptResult,
@@ -46,8 +44,6 @@ export interface IChatContextAssemblyOptions {
   readonly transcriptResult: ChatTranscriptResult;
   readonly conceptResult: ChatConceptResult;
   readonly attachmentResults: readonly ChatAttachmentResult[];
-  /** M38: Pre-gathered evidence bundle from the execution planner. */
-  readonly evidenceBundle?: IEvidenceBundle;
 }
 
 export interface IChatContextAssemblyResult {
@@ -109,60 +105,6 @@ function resolveMemoryProvenanceLabel(memoryResult: string): string {
     return 'Daily memory';
   }
   return 'Memory recall';
-}
-
-function appendEvidenceBundleContext(
-  options: IChatContextAssemblyOptions,
-  helpers: {
-    pushContextBlock: (text: string, sourceIds: readonly string[]) => void;
-    registerCitableSource: (source: { uri: string; label: string; index?: number }, kind: 'attachment' | 'rag', tokens: number) => { uri: string; label: string; index: number };
-  },
-): { retrievedContextText: string } {
-  const retrievedSections: string[] = [];
-
-  for (const item of options.evidenceBundle?.items ?? []) {
-    if (item.kind === 'structural' && item.files.length > 0) {
-      helpers.pushContextBlock(
-        ['[Enumerated Files in Scope]', ...item.files.map((file) => `- ${file.relativePath}`)].join('\n'),
-        item.files.map((file) => file.relativePath),
-      );
-      continue;
-    }
-
-    if (item.kind !== 'exhaustive' || item.reads.length === 0) {
-      continue;
-    }
-
-    const blockLines: string[] = ['[Deterministic Read Context]'];
-    const sourceIds: string[] = [];
-
-    for (const read of item.reads) {
-      const source = helpers.registerCitableSource({
-        uri: read.relativePath,
-        label: toCitationLabelFromPath(read.relativePath),
-      }, 'rag', Math.ceil(read.content.length / 4));
-      sourceIds.push(source.uri);
-      blockLines.push(
-        '',
-        `[${source.index}] Source: ${source.label}`,
-        `Path: ${read.relativePath}`,
-        read.content,
-      );
-      retrievedSections.push(
-        `[${source.index}] Source: ${source.label}`,
-        `Path: ${read.relativePath}`,
-        read.content,
-      );
-    }
-
-    helpers.pushContextBlock(blockLines.join('\n'), sourceIds);
-  }
-
-  return {
-    retrievedContextText: retrievedSections.length > 0
-      ? ['[Retrieved Context]', ...retrievedSections].join('\n')
-      : '',
-  };
 }
 
 export async function assembleChatContext(
@@ -265,15 +207,6 @@ export async function assembleChatContext(
     }
   };
 
-  const evidenceBundleContext = appendEvidenceBundleContext(options, {
-    pushContextBlock,
-    registerCitableSource,
-  });
-
-  if (evidenceBundleContext.retrievedContextText) {
-    retrievedContextText = evidenceBundleContext.retrievedContextText;
-  }
-
   if (options.ragResult) {
     retrievedContextText = [retrievedContextText, options.ragResult.text].filter(Boolean).join('\n\n');
     appendRagResult(options.ragResult);
@@ -375,44 +308,6 @@ export async function assembleChatContext(
     for (const attachment of options.attachments) {
       if (isChatImageAttachment(attachment)) {
         pushContextBlock(`Attached image: ${attachment.name}`, [attachment.fullPath]);
-      }
-    }
-  }
-
-  // ── M38: Inject evidence bundle items as labelled context blocks ─────────
-  if (options.evidenceBundle) {
-    for (const item of options.evidenceBundle.items) {
-      switch (item.kind) {
-        case 'structural': {
-          const listing = item.files.map(f => `  - ${f.relativePath}`).join('\n');
-          pushContextBlock(`[Enumerated files in "${item.scopePath || '.'}"]\n${listing}`, [`evidence:structural:${item.scopePath}`]);
-          break;
-        }
-        case 'semantic': {
-          // Semantic evidence overlaps with ragResult — only add if not already present.
-          if (!seenRagBlocks.has(item.text)) {
-            pushContextBlock(item.text, item.sources.map(s => s.uri));
-            seenRagBlocks.add(item.text);
-            for (const source of item.sources) {
-              if (!alreadyInContext.has(source.uri)) {
-                ragSources.push(source);
-                alreadyInContext.add(source.uri);
-              }
-            }
-          }
-          break;
-        }
-        case 'exhaustive': {
-          for (const read of item.reads) {
-            const source = registerCitableSource(
-              { uri: read.relativePath, label: toCitationLabelFromPath(read.relativePath) },
-              'attachment',
-              Math.ceil(read.content.length / 4),
-            );
-            pushContextBlock(`[File: ${read.relativePath}]\n${read.content}`, [source.uri]);
-          }
-          break;
-        }
       }
     }
   }
