@@ -4,8 +4,8 @@ import { ChatMode } from '../../src/services/chatTypes';
 import { buildChatTurnExecutionConfig } from '../../src/built-in/chat/utilities/chatTurnExecutionConfig';
 
 describe('chat turn execution config', () => {
-  it('disables tools for conversational turns and carries profile model settings', () => {
-    const { synthesisOptions } = buildChatTurnExecutionConfig({
+  it('disables tools for conversational turns and carries profile model settings', async () => {
+    const { synthesisOptions } = await buildChatTurnExecutionConfig({
       sendChatRequest: vi.fn(),
       getWorkspaceName: () => 'Demo',
       getPageCount: vi.fn(),
@@ -55,7 +55,7 @@ describe('chat turn execution config', () => {
     expect(synthesisOptions.memoryEnabled).toBe(true);
   });
 
-  it('uses read-only tools in ask mode and JSON output in edit mode policy cases', () => {
+  it('uses read-only tools in ask mode and JSON output in edit mode policy cases', async () => {
     const baseServices = {
       sendChatRequest: vi.fn(),
       invokeToolWithRuntimeControl: vi.fn(),
@@ -69,7 +69,7 @@ describe('chat turn execution config', () => {
       } as any,
     } as any;
 
-    const askConfig = buildChatTurnExecutionConfig(baseServices, {
+    const askConfig = await buildChatTurnExecutionConfig(baseServices, {
       requestMode: ChatMode.Ask,
       requestText: 'question',
       capabilities: {
@@ -106,7 +106,7 @@ describe('chat turn execution config', () => {
     expect(askConfig.synthesisOptions.useModelOnlyExecution).toBe(false);
     expect(askConfig.synthesisOptions.memoryEnabled).toBe(false);
 
-    const editConfig = buildChatTurnExecutionConfig(baseServices, {
+    const editConfig = await buildChatTurnExecutionConfig(baseServices, {
       requestMode: ChatMode.Edit,
       requestText: 'edit this',
       capabilities: {

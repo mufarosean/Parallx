@@ -128,7 +128,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'utilities/chatGroundedAnswerRepairs.ts': ['utilities/'],
   'utilities/chatGroundedResponseHelpers.ts': ['utilities/'],
   'utilities/chatBridgeParticipantRuntime.ts': ['utilities/'],
-  'utilities/chatGroundedExecutor.ts':       [],
+  'utilities/chatGroundedExecutor.ts':       ['utilities/'],
   'utilities/chatParticipantCommandDispatcher.ts': ['utilities/'],
   'utilities/chatParticipantInterpretation.ts': ['utilities/'],
   'utilities/chatParticipantRuntimeTrace.ts': [],
@@ -171,6 +171,8 @@ const FOLDER_RULES: Record<string, string[]> = {
   'utilities/chatWidgetSessionAdapter.ts':   [],
   'utilities/chatTokenBarAdapter.ts':        ['widgets/'],
   'utilities/chatSkillMatcher.ts':           [],
+  'utilities/chatRuntimeAutonomyMirror.ts': [],
+  'utilities/chatToolLoopSafety.ts':  [],
   'utilities/userCommandLoader.ts':   [],
 };
 
