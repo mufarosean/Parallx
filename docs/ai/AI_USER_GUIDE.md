@@ -636,6 +636,34 @@ Before approving an action, quickly confirm:
 4. Can I explain why the AI wants to do this?
 
 If the answer to any of those is no, reject the action and ask the AI to revise
+
+---
+
+## Known Limitations
+
+These are architectural limitations of the current version. They are planned
+for improvement in future milestones.
+
+### Skills run independently
+
+Each skill (workflow) executes on its own — there is no automatic chaining
+of one skill's output into another skill's input. If you need a multi-step
+workflow (e.g., extract from PDF then compare), describe the full sequence
+in a single prompt and the AI will orchestrate the steps manually.
+
+**Planned:** Skill dependency chaining is targeted for a future milestone.
+
+### Retrieval uses statistical fusion, not LLM re-ranking
+
+When the AI searches your workspace, results are ranked using Reciprocal
+Rank Fusion (RRF) across vector and keyword matches. There is no secondary
+LLM-based re-ranking pass. This means results are fast and deterministic,
+but may occasionally rank a less-relevant chunk higher than an LLM would.
+
+**Workaround:** If answers seem to miss key context, try rephrasing your
+question with more specific terms that appear in the target documents.
+
+**Planned:** LLM re-ranking is targeted for a future milestone.
 its plan.
 
 ### Privacy

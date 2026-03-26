@@ -58,6 +58,12 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   });
   context.subscriptions.push(guideCmdDisposable);
 
+  // Register "open workspace AI config" command — reveals .parallx/ folder
+  const configCmdDisposable = api.commands.registerCommand('parallx.openWorkspaceAIConfig', () => {
+    api.commands.executeCommand('workbench.action.quickOpen', '.parallx/ai-config.json').catch(() => {});
+  });
+  context.subscriptions.push(configCmdDisposable);
+
   // Auto-open on first launch
   const hasShown = context.globalState.get<boolean>(FIRST_LAUNCH_KEY);
   if (!hasShown) {
@@ -192,6 +198,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
     { icon: '✨', text: 'Open AI Chat', hint: 'Ctrl+Shift+I', command: 'workbench.action.chat.open' },
     { icon: '🪄', text: 'Set Up Workspace AI', hint: '/init', command: 'parallx.chat.openWithInit' },
     { icon: '📖', text: 'AI User Guide', hint: '', command: 'parallx.openAIUserGuide' },
+    { icon: '⚙️', text: 'Workspace AI Config', hint: '.parallx/', command: 'parallx.openWorkspaceAIConfig' },
   ];
 
   for (const item of aiItems) {
