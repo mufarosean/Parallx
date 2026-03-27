@@ -12,6 +12,7 @@ import type {
 import type {
   IChatContextPlan,
   IChatRuntimeTrace,
+  IChatTurnRoute,
   IOpenclawBootstrapDebugFile,
   IOpenclawBootstrapDebugReport,
   IRetrievalPlan,
@@ -341,7 +342,9 @@ export function buildOpenclawTraceSeed(
   defaultReason: string,
 ): Pick<IChatRuntimeTrace, 'route' | 'contextPlan' | 'hasActiveSlashCommand' | 'isRagReady'> {
   const turnState = request.turnState;
-  const route = turnState?.turnRoute ?? {
+  // OpenClaw participants derive their own route — never consume the old
+  // regex-based turnState.turnRoute from the legacy routing cascade.
+  const route: IChatTurnRoute = {
     kind: 'grounded',
     reason: defaultReason,
   };

@@ -3,7 +3,7 @@ import type {
   IOpenclawToolCapabilityReportEntry,
   IOpenclawToolFilterReason,
 } from '../services/chatRuntimeTypes.js';
-import { applyOpenclawToolPolicy, type IToolPermissions, type OpenclawToolProfile } from './openclawToolPolicy.js';
+import { applyOpenclawToolPolicy, isToolDeniedByProfile, type IToolPermissions, type OpenclawToolProfile } from './openclawToolPolicy.js';
 import type { ISkillCatalogEntry } from './openclawTypes.js';
 
 export interface IOpenclawRuntimeToolState {
@@ -153,7 +153,7 @@ function getToolFilteredReason(
   if (permissions?.[tool.name] === 'never-allowed') {
     return 'permission-never-allowed';
   }
-  if (mode === 'standard' && tool.name === 'run_command') {
+  if (isToolDeniedByProfile(tool.name, mode)) {
     return 'tool-profile-deny';
   }
   return 'tool-profile-not-allowed';

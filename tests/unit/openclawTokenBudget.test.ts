@@ -118,6 +118,22 @@ describe('computeElasticBudget', () => {
     expect(result.history).toBe(historyCeil);
     expect(result.user).toBe(userCeil);
   });
+
+  it('negative contextWindow — all zeros', () => {
+    const result = computeElasticBudget({ contextWindow: -100 });
+    expect(result.total).toBe(0);
+    expect(result.system).toBe(0);
+    expect(result.rag).toBe(0);
+    expect(result.history).toBe(0);
+    expect(result.user).toBe(0);
+  });
+
+  it('very small context window (1 token) — all lanes floor to 0', () => {
+    const result = computeElasticBudget({ contextWindow: 1 });
+    expect(result.total).toBe(1);
+    // All lanes floor to 0 due to 10/30/30/30 splits of 1
+    expect(result.system + result.rag + result.history + result.user).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

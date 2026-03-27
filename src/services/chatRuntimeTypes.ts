@@ -92,8 +92,7 @@ export type IOpenclawToolFilterReason =
   | 'tool-profile-deny'
   | 'tool-profile-not-allowed'
   | 'permission-never-allowed'
-  | 'name-collision'
-  | 'model-unsupported';
+  | 'name-collision';
 
 export interface IOpenclawToolPromptEntry {
   readonly name: string;

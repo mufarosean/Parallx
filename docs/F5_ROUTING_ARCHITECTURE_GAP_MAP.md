@@ -1,9 +1,9 @@
 # F5 Routing Architecture — Gap Map
 
 **Domain:** F5 — Routing Architecture  
-**Iteration:** 1  
+**Iteration:** 2 (deep re-audit)  
 **Date:** 2026-03-27  
-**Input:** `docs/F5_ROUTING_ARCHITECTURE_AUDIT.md`  
+**Input:** `docs/F5_ROUTING_ARCHITECTURE_AUDIT_R2.md`  
 
 ---
 
@@ -11,73 +11,98 @@
 
 | ID | Capability | Current | Target | Severity |
 |----|-----------|---------|--------|----------|
-| F5-05 | Broad workspace summary | HEURISTIC | ALIGNED | MEDIUM |
-| F5-06 | Workspace document listing | HEURISTIC (untracked) | ALIGNED | LOW |
-| F5-TD1 | Dead route kind literals | TYPE DEBT | CLEAN | LOW |
-| F5-TD2 | Dead `isConversationalTurn` property | TYPE DEBT | CLEAN | LOW |
-| F5-TD3 | Dead `semanticFallback` property (openclaw types) | TYPE DEBT | CLEAN | LOW |
+| F5-R2-01 | Trace seed consumes old regex routing | MISALIGNED | ALIGNED | MEDIUM |
+| F5-R2-02 | chatService runs dead regex semantics | MISALIGNED | ALIGNED | MEDIUM |
+| F5-R2-03 | Path traversal in @file mention reads | MISALIGNED (SECURITY) | ALIGNED | HIGH |
+| F5-R2-04 | No tests for openclawTurnPreprocessing | MISALIGNED | ALIGNED | HIGH |
+| F5-R2-12 | No heuristic-absence regression tests | MISALIGNED | ALIGNED | LOW |
 
 ---
 
 ## Change Plan
 
-### F5-05: Broad Workspace Summary — HEURISTIC → ALIGNED
+### F5-R2-03: Path Traversal in @file Mention Reads — SECURITY
 
-**Severity:** MEDIUM  
-**Anti-pattern:** Pre-classification — regex patterns decide turn behavior before the model runs.  
-**Upstream:** OpenClaw has no regex pre-classification for workspace summaries. The `/summarize` slash command already exists in Parallx as the structural alternative. Model routing is via system prompt instructions, not regex.
+**Severity:** HIGH  
+**Type:** Security — path traversal allows reading files outside workspace boundary  
 
-#### What to remove
+#### Root cause
 
-The entire `BROAD_WORKSPACE_PATTERNS` + `isBroadWorkspaceSummaryPrompt` + `detectSemanticFallback` pipeline across both the OpenClaw participant layer and the built-in chat service layer.
+`readFileRelative()` in `chatDataService.ts` (L1563) passes the user-controlled
+relative path directly to `fsAccessor.readFile()` without calling
+`normalizeWorkspaceRelativePath()`. The write path is protected; the read path is not.
 
-#### Changes (ordered by dependency)
+#### Changes
 
-**Change 1 — Remove consumer in default participant**
+**Change 1 — Add normalization to readFileRelative (belt)**
 
-- **File:** `src/openclaw/participants/openclawDefaultParticipant.ts`
-- **Line 34:** Remove `detectSemanticFallback` from the import of `../openclawTurnPreprocessing.js`. The import becomes:
-  ```ts
-  import { resolveMentions, resolveVariables } from '../openclawTurnPreprocessing.js';
-  ```
-- **Lines 117:** Delete the line:
-  ```ts
-  const semanticFallback = detectSemanticFallback(variableResult.strippedText);
-  ```
-- **Line 123:** Remove `semanticFallback?.promptOverlay` from the overlay merge. The line becomes:
-  ```ts
-  const effectiveOverlay = patternRulesOverlay || undefined;
-  ```
+- **File:** `src/built-in/chat/data/chatDataService.ts`
+- **Function:** `readFileRelative()` (~L1563)
+- Add `normalizeWorkspaceRelativePath(relativePath)` call before delegating to fsAccessor.
+- If the normalized path is `.` (meaning traversal was detected), return `null`.
 
-**Change 2 — Remove `detectSemanticFallback` + `ISemanticFallbackResult` + re-export from preprocessing**
+**Change 2 — Add path validation in resolveMentions (suspenders)**
 
 - **File:** `src/openclaw/openclawTurnPreprocessing.ts`
-- **Line 13:** Remove import of `isBroadWorkspaceSummaryPrompt` from `'./openclawResponseValidation.js'`.
-- **Line 169:** Remove the re-export: `export { isBroadWorkspaceSummaryPrompt } from './openclawResponseValidation.js';`
-- **Lines 171–176:** Delete `ISemanticFallbackResult` interface.
-- **Lines 181–190:** Delete the `detectSemanticFallback()` function entirely.
-- **Delete the `// M4: Semantic fallback` section header comment (lines 167-168).**
+- **Function:** `resolveMentions()`, case `'file'` and `'folder'`
+- Before calling `services.readFileRelative()`, reject paths containing `..` segments.
 
-**Change 3 — Remove `BROAD_WORKSPACE_PATTERNS` + `isBroadWorkspaceSummaryPrompt` from validation**
+### F5-R2-01: Trace Seed Consumes Old Regex Routing
 
-- **File:** `src/openclaw/openclawResponseValidation.ts`
-- **Lines 269–283:** Delete the `// Semantic fallback detection (M4)` section header, `BROAD_WORKSPACE_PATTERNS` array, and the `isBroadWorkspaceSummaryPrompt()` function.
+**Severity:** MEDIUM  
 
-**Change 4 — Remove built-in chat service layer duplicate**
+#### Changes
 
-- **File:** `src/built-in/chat/utilities/chatSemanticFallback.ts`
-- **Action:** Delete the entire file. It contains only `BROAD_WORKSPACE_SUMMARY_PATTERNS`, `isBroadWorkspaceSummaryPrompt`, `resolveChatSemanticFallback`, and `applyChatSemanticFallback` — all pre-classification anti-patterns.
+**Change 1 — buildOpenclawTraceSeed ignores turnState.turnRoute**
 
-**Change 5 — Remove chatService consumer of chatSemanticFallback**
+- **File:** `src/openclaw/participants/openclawParticipantRuntime.ts`
+- **Function:** `buildOpenclawTraceSeed()` (~L339)
+- Replace `const route = turnState?.turnRoute ?? { kind: 'grounded', reason: defaultReason };`
+  with: `const route = { kind: 'grounded' as const, reason: defaultReason };`
+- This ensures trace data reflects actual OpenClaw behavior, not legacy regex classification.
+
+### F5-R2-02: chatService Runs Dead Regex Semantics for OpenClaw Turns
+
+**Severity:** MEDIUM  
+
+#### Changes
+
+**Change 1 — Skip old turnState computation for OpenClaw participants**
 
 - **File:** `src/services/chatService.ts`
-- **Line 28:** Remove the import:
-  ```ts
-  import { applyChatSemanticFallback, resolveChatSemanticFallback } from '../built-in/chat/utilities/chatSemanticFallback.js';
-  ```
-- **Lines 713–716:** Delete the `resolveChatSemanticFallback(...)` call and its result binding.
-- **Line 720:** Remove `applyChatSemanticFallback(initialTurnRoute, semanticFallback)` — replace with direct use of `initialTurnRoute`:
-  ```ts
+- **Function:** `sendRequest()` (~L951)
+- After resolving `participantId` via `resolveChatRuntimeParticipantId`, check if the
+  resolved ID starts with `parallx.chat.openclaw`. If so, skip `_buildTurnState()` and
+  provide a minimal stub turnState.
+
+### F5-R2-04: Create openclawTurnPreprocessing Tests
+
+**Severity:** HIGH  
+
+#### Changes
+
+**Change 1 — Create test file**
+
+- **File:** `tests/unit/openclawTurnPreprocessing.test.ts` (new)
+- Coverage targets:
+  - `extractMentions()` — all 4 mention types, quoted paths, edge cases
+  - `stripMentions()` — single/multiple mentions, whitespace normalization
+  - `resolveMentions()` — file/folder/workspace/terminal with mocked services
+  - `resolveVariables()` — #file:path, #activeFile, multiple variables
+  - Error resilience — service failures return gracefully
+  - Path traversal — rejected after F5-R2-03 fix
+
+### F5-R2-12: Add Heuristic-Absence Regression Tests
+
+**Severity:** LOW  
+
+#### Changes
+
+**Change 1 — Add regression tests to openclawDefaultParticipant.test.ts**
+
+- Verify that arbitrary input (greetings, off-topic, domain terms) all reach the model
+  call without pre-filtering.
+- Verify that `request.turnState` is not consumed for behavioral routing decisions.
   const turnRoute = initialTurnRoute;
   ```
 - **Line 731:** Remove `semanticFallback,` from the return object.

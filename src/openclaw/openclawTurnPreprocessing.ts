@@ -33,6 +33,21 @@ export interface IMentionResolutionResult {
 
 const MENTION_RE = /@(file|folder):(?:"([^"]+)"|(\S+))|@(workspace|terminal)\b/g;
 
+/**
+ * Validate that a user-provided path is safe for workspace-relative file access.
+ * Rejects path traversal (`..`), absolute paths, and empty strings.
+ */
+export function isValidWorkspaceRelativePath(p: string): boolean {
+  if (!p) return false;
+  const normalized = p.replace(/\\/g, '/');
+  // Reject absolute paths (drive letters or leading /)
+  if (/^[a-zA-Z]:/.test(normalized) || normalized.startsWith('/')) return false;
+  // Reject path traversal
+  const segments = normalized.split('/');
+  if (segments.some(s => s === '..')) return false;
+  return true;
+}
+
 export function extractMentions(text: string): IMention[] {
   const mentions: IMention[] = [];
   MENTION_RE.lastIndex = 0;
@@ -85,6 +100,7 @@ export async function resolveMentions(
     switch (mention.kind) {
       case 'file': {
         if (!mention.path || !services.readFileRelative) break;
+        if (!isValidWorkspaceRelativePath(mention.path)) break;
         const content = await services.readFileRelative(mention.path).catch(() => null);
         if (content) {
           blocks.push(`[Mentioned file: ${mention.path}]\n\`\`\`\n${content}\n\`\`\``);
@@ -100,6 +116,7 @@ export async function resolveMentions(
       }
       case 'folder': {
         if (!mention.path || !services.listFolderFiles) break;
+        if (!isValidWorkspaceRelativePath(mention.path)) break;
         const files = await services.listFolderFiles(mention.path).catch(() => []);
         let charCount = 0;
         const parts: string[] = [`[Mentioned folder: ${mention.path}] (${files.length} files)`];
@@ -204,6 +221,7 @@ export async function resolveVariables(
   while ((match = VARIABLE_FILE_RE.exec(text)) !== null) {
     const filePath = match[1] ?? match[2];
     if (!filePath || !services.readFileRelative) continue;
+    if (!isValidWorkspaceRelativePath(filePath)) continue;
 
     const content = await services.readFileRelative(filePath).catch(() => null);
     if (content) {

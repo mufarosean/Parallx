@@ -33,6 +33,7 @@ import type { IOpenclawRuntimeSkillState } from './openclawSkillState.js';
 import { buildOpenclawPromptArtifacts } from './openclawPromptArtifacts.js';
 import type { IOpenclawRuntimeToolState } from './openclawToolState.js';
 import { resolveModelTier } from './openclawModelTier.js';
+import { validateCitations } from './openclawResponseValidation.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -108,6 +109,7 @@ export interface IOpenclawAttemptResult {
   readonly promptTokens?: number;
   readonly completionTokens?: number;
   readonly ragSources: readonly { uri: string; label: string; index: number }[];
+  readonly validatedCitations?: readonly { uri: string; label: string; index: number }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -217,6 +219,7 @@ export async function executeOpenclawAttempt(
   let currentMessages = messages;
   let iterations = 0;
 
+  try {
   while (!token.isCancellationRequested && iterations < context.maxToolIterations + 1) {
     // Execute model call
     const turnResult = await executeModelStream(
@@ -351,20 +354,15 @@ export async function executeOpenclawAttempt(
     markdown = '';
   }
 
-  // 6. Stream final markdown to response
-  if (markdown) {
-    response.markdown(markdown);
-  }
+  // 6. Validate citations before streaming — remap mismatched indices
+  //    so the displayed markdown matches the citation metadata.
+  const validated = validateCitations(markdown, [...assembled.ragSources]);
+  const displayMarkdown = validated.markdown;
 
-  // 7. Finalize context engine turn
-  const allMessages: IChatMessage[] = [
-    ...currentMessages,
-    { role: 'assistant', content: markdown },
-  ];
-  await context.engine.afterTurn?.({
-    sessionId: context.sessionId,
-    messages: allMessages,
-  });
+  // 7. Stream final markdown to response
+  if (displayMarkdown) {
+    response.markdown(displayMarkdown);
+  }
 
   // 8. Report token usage
   if (promptTokens != null && completionTokens != null) {
@@ -372,13 +370,29 @@ export async function executeOpenclawAttempt(
   }
 
   return {
-    markdown,
+    markdown: displayMarkdown,
     thinking,
     toolCallCount,
     promptTokens,
     completionTokens,
     ragSources: assembled.ragSources,
+    validatedCitations: validated.attributableSources,
   };
+  } finally {
+    // Finalize context engine turn — runs on ALL exit paths (success, error, cancellation)
+    const finalMessages: IChatMessage[] = [
+      ...currentMessages,
+      ...(markdown ? [{ role: 'assistant' as const, content: markdown }] : []),
+    ];
+    try {
+      await context.engine.afterTurn?.({
+        sessionId: context.sessionId,
+        messages: finalMessages,
+      });
+    } catch (afterTurnErr) {
+      console.error('[OpenClaw] afterTurn failed:', afterTurnErr);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

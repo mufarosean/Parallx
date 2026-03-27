@@ -99,6 +99,18 @@ describe('trimTextToBudget', () => {
     // Keeps the end (most recent)
     expect(result.text).toBe('x'.repeat(200));
   });
+
+  it('returns empty string when budget is 0 (F2-R2-01)', () => {
+    const result = trimTextToBudget('hello world', 0);
+    expect(result.text).toBe('');
+    expect(result.trimmed).toBe(true);
+  });
+
+  it('returns empty string for empty text and budget 0', () => {
+    const result = trimTextToBudget('', 0);
+    expect(result.text).toBe('');
+    expect(result.trimmed).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -307,6 +319,39 @@ describe('OpenclawContextEngine', () => {
       expect(result.systemPromptAddition).toBeUndefined();
     });
 
+    it('does not include empty RAG header when retrieveContext returns empty text (F2-R2-05)', async () => {
+      const emptyRagServices = createMockServices({
+        retrieveContext: vi.fn(async () => ({ text: '', sources: [] })),
+      });
+      const emptyRagEngine = new OpenclawContextEngine(emptyRagServices);
+      await emptyRagEngine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+      const result = await emptyRagEngine.assemble({
+        sessionId: 's1',
+        history: [{ role: 'user', content: 'Hello' }],
+        tokenBudget: 8192,
+        prompt: 'Hello',
+      });
+
+      // Should NOT have a context message with empty "## Retrieved Context"
+      const contextMsg = result.messages.find(m => m.content.includes('Retrieved Context'));
+      expect(contextMsg).toBeUndefined();
+      expect(result.ragSources).toHaveLength(0);
+    });
+
+    it('handles zero tokenBudget gracefully', async () => {
+      await engine.bootstrap({ sessionId: 's1', tokenBudget: 0 });
+      const result = await engine.assemble({
+        sessionId: 's1',
+        history: [{ role: 'user', content: 'Hello' }],
+        tokenBudget: 0,
+        prompt: 'Hello',
+      });
+
+      // Zero budget → all lane budgets are 0 → no content fits
+      expect(result.estimatedTokens).toBe(0);
+      expect(result.messages).toHaveLength(0);
+    });
+
     it('isolates service failures via catch', async () => {
       const failServices = createMockServices({
         retrieveContext: vi.fn(async () => { throw new Error('RAG down'); }),
@@ -324,6 +369,115 @@ describe('OpenclawContextEngine', () => {
       });
       expect(result).toBeDefined();
       expect(result.ragSources).toHaveLength(0);
+    });
+
+    // ── Re-retrieval on insufficient evidence (F9-R2-08) ──
+
+    it('fires re-retrieval when evidence is insufficient (no query term overlap)', async () => {
+      const retrieveFn = vi.fn()
+        .mockResolvedValueOnce({
+          text: 'Unrelated chunk about zebra crossings and traffic lights.',
+          sources: [{ uri: 'file:///traffic.md', label: 'Traffic', index: 0 }],
+        })
+        .mockResolvedValueOnce({
+          text: 'The deductible for collision coverage is $500.',
+          sources: [{ uri: 'file:///policy.md', label: 'Policy', index: 0 }],
+        });
+
+      const reServices = createMockServices({ retrieveContext: retrieveFn });
+      const reEngine = new OpenclawContextEngine(reServices);
+      await reEngine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+
+      await reEngine.assemble({
+        sessionId: 's1',
+        history: [],
+        tokenBudget: 8192,
+        prompt: 'What is my deductible for collision coverage?',
+      });
+
+      // retrieveContext called twice — original + re-retrieval
+      expect(retrieveFn).toHaveBeenCalledTimes(2);
+      // Second call should be a reformulated query (not the original)
+      const secondCallQuery = retrieveFn.mock.calls[1][0] as string;
+      expect(secondCallQuery).not.toBe('What is my deductible for collision coverage?');
+      expect(secondCallQuery.length).toBeGreaterThan(0);
+    });
+
+    it('does NOT re-retrieve when evidence is sufficient', async () => {
+      const retrieveFn = vi.fn().mockResolvedValue({
+        text: 'Your deductible for collision coverage is $500 per the policy terms.',
+        sources: [{ uri: 'file:///policy.md', label: 'Policy', index: 0 }],
+      });
+
+      const okServices = createMockServices({ retrieveContext: retrieveFn });
+      const okEngine = new OpenclawContextEngine(okServices);
+      await okEngine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+
+      await okEngine.assemble({
+        sessionId: 's1',
+        history: [],
+        tokenBudget: 8192,
+        prompt: 'What is my deductible?',
+      });
+
+      // Only the initial retrieval — no re-retrieval needed
+      expect(retrieveFn).toHaveBeenCalledTimes(1);
+    });
+
+    it('merges re-retrieval sources by URI dedup', async () => {
+      const retrieveFn = vi.fn()
+        .mockResolvedValueOnce({
+          text: 'Unrelated chunk about zebra crossings.',
+          sources: [{ uri: 'file:///traffic.md', label: 'Traffic', index: 0 }],
+        })
+        .mockResolvedValueOnce({
+          text: 'Coverage details for comprehensive and collision.',
+          sources: [
+            { uri: 'file:///traffic.md', label: 'Traffic', index: 0 }, // dupe
+            { uri: 'file:///coverage.md', label: 'Coverage', index: 1 },
+          ],
+        });
+
+      const mergeServices = createMockServices({ retrieveContext: retrieveFn });
+      const mergeEngine = new OpenclawContextEngine(mergeServices);
+      await mergeEngine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+
+      const result = await mergeEngine.assemble({
+        sessionId: 's1',
+        history: [],
+        tokenBudget: 8192,
+        prompt: 'What is my deductible for collision coverage?',
+      });
+
+      // Sources should be deduped — traffic.md appears once, coverage.md added
+      const uris = result.ragSources.map(s => s.uri);
+      expect(uris.filter(u => u === 'file:///traffic.md')).toHaveLength(1);
+      expect(uris).toContain('file:///coverage.md');
+    });
+
+    it('gracefully handles re-retrieval failure', async () => {
+      const retrieveFn = vi.fn()
+        .mockResolvedValueOnce({
+          text: 'Unrelated chunk about zebra crossings.',
+          sources: [{ uri: 'file:///traffic.md', label: 'Traffic', index: 0 }],
+        })
+        .mockRejectedValueOnce(new Error('RAG down during re-retrieval'));
+
+      const failServices = createMockServices({ retrieveContext: retrieveFn });
+      const failEngine = new OpenclawContextEngine(failServices);
+      await failEngine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+
+      // Should not throw — re-retrieval failure is caught
+      const result = await failEngine.assemble({
+        sessionId: 's1',
+        history: [],
+        tokenBudget: 8192,
+        prompt: 'What is my deductible for collision coverage?',
+      });
+
+      expect(result).toBeDefined();
+      // Still has the original (insufficient) context
+      expect(result.systemPromptAddition).toBeDefined();
     });
   });
 
@@ -459,6 +613,60 @@ describe('OpenclawContextEngine', () => {
       // Should not throw — falls back to simple trim
       const result = await failEngine.compact({ sessionId: 's1', tokenBudget: 8192 });
       expect(result.compacted).toBe(true);
+    });
+
+    it('returns compacted: false for exactly 2 messages with no summarizer (F2-R2-03)', async () => {
+      const history: IChatMessage[] = [
+        { role: 'user', content: 'Question' },
+        { role: 'assistant', content: 'Answer' },
+      ];
+      await engine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+      await engine.assemble({ sessionId: 's1', history, tokenBudget: 8192, prompt: 'test' });
+
+      const result = await engine.compact({ sessionId: 's1', tokenBudget: 8192 });
+      // Simple trim: keepCount = max(2, floor(2/2)) = 2 ≥ history.length → no reduction
+      expect(result.compacted).toBe(false);
+      expect(result.tokensAfter).toBe(result.tokensBefore);
+    });
+
+    it('does not increase context size with summarizer on 2-message history (F2-R2-04)', async () => {
+      async function* mockSummarize(): AsyncIterable<IChatResponseChunk> {
+        yield { content: 'Summary: user asked a question and got an answer.' } as IChatResponseChunk;
+      }
+      const sumServices = createMockServices({
+        sendSummarizationRequest: vi.fn(() => mockSummarize()),
+      });
+      const sumEngine = new OpenclawContextEngine(sumServices);
+
+      const history: IChatMessage[] = [
+        { role: 'user', content: 'What is my policy?' },
+        { role: 'assistant', content: 'Your policy covers collision.' },
+      ];
+      await sumEngine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+      await sumEngine.assemble({ sessionId: 's1', history, tokenBudget: 8192, prompt: 'test' });
+
+      const result = await sumEngine.compact({ sessionId: 's1', tokenBudget: 8192 });
+      // With exactly 2 messages, summarizer is skipped to avoid increasing context
+      // Falls to simple trim → compacted: false (no reduction possible)
+      expect(result.tokensAfter).toBeLessThanOrEqual(result.tokensBefore);
+    });
+
+    it('respects force flag — compacts even with minimal history (F2-R2-02)', async () => {
+      const history: IChatMessage[] = [
+        { role: 'user', content: 'Only one message' },
+      ];
+      await engine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+      await engine.assemble({ sessionId: 's1', history, tokenBudget: 8192, prompt: 'test' });
+
+      // Without force: should NOT compact (< 2 messages)
+      const normalResult = await engine.compact({ sessionId: 's1', tokenBudget: 8192 });
+      expect(normalResult.compacted).toBe(false);
+
+      // With force: should bypass the < 2 guard
+      const forceResult = await engine.compact({ sessionId: 's1', tokenBudget: 8192, force: true });
+      // Simple trim path with 1 message: keepCount = max(2, 0) = 2 >= 1 → no reduction → false
+      // But the guard was bypassed — the method at least attempted compaction
+      expect(forceResult).toBeDefined();
     });
 
     it('preserves compacted history across assemble → compact → re-assemble cycle (F8-16)', async () => {

@@ -29,7 +29,6 @@ import { runOpenclawTurn } from '../openclawTurnRunner.js';
 import { OpenclawContextEngine } from '../openclawContextEngine.js';
 import { resolveToolProfile } from '../openclawToolPolicy.js';
 import { computeTokenBudget } from '../openclawTokenBudget.js';
-import { validateCitations } from '../openclawResponseValidation.js';
 import { resolveMentions, resolveVariables } from '../openclawTurnPreprocessing.js';
 import type { IBootstrapFile, IOpenclawRuntimeInfo } from '../openclawSystemPrompt.js';
 import { buildOpenclawRuntimeSkillState } from '../openclawSkillState.js';
@@ -138,10 +137,24 @@ async function runOpenclawDefaultTurn(
   try {
     const result = await runOpenclawTurn(request, turnContext, response, token);
 
-    // M1: Response validation — remap/filter citations
-    const validated = validateCitations(result.markdown, [...result.ragSources]);
-    if (validated.attributableSources.length > 0) {
-      response.setCitations(validated.attributableSources.map(s => ({ index: s.index, uri: s.uri, label: s.label })));
+    // Aborted — skip memory writeback and record as aborted, not completed
+    if (token.isCancellationRequested) {
+      lifecycle.recordAborted();
+      return {
+        metadata: {
+          runtimeBoundary: {
+            type: 'openclaw-default',
+            participantId: OPENCLAW_DEFAULT_PARTICIPANT_ID,
+            runtime: 'openclaw',
+          },
+        },
+      };
+    }
+
+    // M1: Citation metadata — attempt already validated+remapped citations
+    const attributable = result.validatedCitations ?? [];
+    if (attributable.length > 0) {
+      response.setCitations(attributable.map(s => ({ index: s.index, uri: s.uri, label: s.label })));
     }
 
     // M43: Edit mode — emit response as tracked-change edit proposal

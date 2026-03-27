@@ -144,6 +144,9 @@ export function trimTextToBudget(
   }
   // chars / 4 = tokens → chars = tokens * 4
   const maxChars = Math.max(0, budgetTokens * 4);
+  if (maxChars === 0) {
+    return { text: '', trimmed: estimated > 0 };
+  }
   return {
     text: text.slice(-maxChars), // keep the end (most recent)
     trimmed: true,

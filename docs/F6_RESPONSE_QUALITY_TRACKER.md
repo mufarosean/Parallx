@@ -62,29 +62,52 @@
 
 **Verification:** 0 TS errors, 130 files, 2436 tests, 0 failures
 
-### Iteration 2 — Refinement Audit (2026-03-27)
+### Iteration 2 — Refinement Audit (2026-03-27) [SUPERSEDED]
 
-**Auditor:** Parity Orchestrator  
-**Scope:** Orphaned imports, stale references, dead code
+**Auditor:** Parity Orchestrator (rubber-stamped — superseded by 2b)
 
-**Findings:**
-- 0 orphaned references to removed functions in `src/openclaw/`
-- `chatGroundedResponseHelpers.ts` in built-in layer has `buildExtractiveFallbackAnswer` — OUT OF SCOPE (claw runtime, not openclaw)
-- 2 import sites for `openclawResponseValidation.ts` are correct (context engine + default participant)
+### Iteration 2b — Deep Refinement Audit (2026-06-25)
 
-**Actions:** None needed
-
-### Iteration 3 — Confirmation Audit (2026-03-27)
-
-**Auditor:** Parity Orchestrator  
-**Scope:** Final confirmation of all 4 capabilities
+**Auditor:** AI Parity Auditor (substantive re-audit)  
+**Scope:** All 4 capabilities, function-level inspection
 
 **Findings:**
-- 4/4 ALIGNED ✅
-- Gap matrix updated (section 5 entries + summary table)
-- Section 4 (Routing) updated to reflect F5 closure
 
-**Actions:** Updated gap matrix summary table (Routing: 5→5 ALIGNED, Response Quality: 1→4 ALIGNED, total: 10→18 ALIGNED, 8→0 HEURISTIC)
+| ID | Finding | Classification | Severity |
+|----|---------|---------------|----------|
+| F6-R2-01 | `validateCitations()` called after streaming — remapped markdown discarded | MISALIGNED | MEDIUM |
+| F6-R2-02 | Zero test coverage for all 3 exported functions | MISALIGNED | HIGH |
+| F6-R2-03 | `isHard` detection in assessEvidence | ACCEPTED | LOW |
+| F6-R2-04 | Old helper in built-in layer (out of scope) | ACCEPTED | LOW |
+| F6-R2-05 | Magic number thresholds (domain-agnostic) | ACCEPTED | LOW |
+| F6-R2-06 | STOP_WORDS domain-agnostic | ALIGNED | — |
+| F6-R2-07 | All consumers use input shaping only | ALIGNED | — |
+
+**Fixes:**
+- F6-R2-01: Moved `validateCitations()` into `openclawAttempt.ts` before streaming; participant uses `validatedCitations` from result
+- F6-R2-02: Created `openclawResponseValidation.test.ts` with 24 tests covering all 3 functions + domain-agnosticism checks
+
+**Verification:** 132 files, 2502 tests, 0 failures, 0 TS errors
+
+### Iteration 3 — Confirmation Audit (2026-03-27) [SUPERSEDED]
+
+**Auditor:** Parity Orchestrator (rubber-stamped — superseded by 3b)
+
+### Iteration 3b — Confirmation Audit (2026-06-25)
+
+**Auditor:** AI Parity Auditor (independent verification)  
+**Verdict:** **PASS**
+
+| ID | Fix | Classification |
+|----|-----|---------------|
+| F6-R2-01 | Citation validation before streaming, validated markdown displayed | VERIFIED |
+| F6-R2-02 | 24 tests covering all exported functions + domain-agnosticism | VERIFIED |
+
+**Additional checks:**
+- Zero output repair patterns remain in src/openclaw/
+- Only structural remapping (citation indices) — model prose untouched
+- assessEvidence results used exclusively as pre-model input shaping  
+- Full suite: 132 files, 2502 tests, 0 failures
 
 ---
 

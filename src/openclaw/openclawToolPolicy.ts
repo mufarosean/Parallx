@@ -12,7 +12,7 @@
  *   - Tools filtered BEFORE reaching the model, not after (upstream pattern)
  */
 
-import type { IToolDefinition, ToolPermissionLevel, ModelCapability } from '../services/chatTypes.js';
+import type { IToolDefinition, ToolPermissionLevel } from '../services/chatTypes.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -69,6 +69,13 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
 // ---------------------------------------------------------------------------
 
 /**
+ * Check whether a tool name appears on the deny list for a given profile.
+ */
+export function isToolDeniedByProfile(toolName: string, mode: OpenclawToolProfile): boolean {
+  return TOOL_PROFILES[mode].deny.includes(toolName);
+}
+
+/**
  * Filter tools through the policy pipeline.
  *
  * Upstream pattern: applyToolPolicyPipeline (tool-policy-pipeline.ts:44-154)
@@ -86,13 +93,7 @@ export function applyOpenclawToolPolicy(params: {
   tools: readonly IToolDefinition[];
   mode: OpenclawToolProfile;
   permissions?: IToolPermissions;
-  modelCapabilities?: readonly ModelCapability[];
 }): IToolDefinition[] {
-  // M42 Phase 2: If model doesn't support tool calling, return empty array
-  if (params.modelCapabilities && !params.modelCapabilities.includes('tools')) {
-    return [];
-  }
-
   const profile = TOOL_PROFILES[params.mode];
 
   return params.tools.filter(tool => {
@@ -122,12 +123,12 @@ export function applyOpenclawToolPolicy(params: {
  * Maps Parallx chat modes to tool profiles.
  */
 export function resolveToolProfile(mode: string | undefined): OpenclawToolProfile {
-  // M41 Phase 9: All modes get full tool access. Approval gates
-  // on write tools are the real safety boundary, not mode-based
-  // tool denial.
+  // M41 Phase 9: Most modes get full tool access. Edit mode uses standard
+  // profile (no command execution). Approval gates on write tools are the
+  // real safety boundary, not mode-based tool denial.
   switch (mode) {
     case 'edit':
-      return 'standard'; // Edit mode: read-only tools only
+      return 'standard'; // Edit mode: standard tools (no command execution)
     default:
       return 'full';     // Ask + Agent: full tools with approval gates
   }

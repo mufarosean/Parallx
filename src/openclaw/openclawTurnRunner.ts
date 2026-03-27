@@ -57,6 +57,7 @@ export interface IOpenclawTurnResult {
   readonly promptTokens?: number;
   readonly completionTokens?: number;
   readonly ragSources: readonly { uri: string; label: string; index: number }[];
+  readonly validatedCitations?: readonly { uri: string; label: string; index: number }[];
   readonly retrievedContextText: string;
   readonly overflowCompactions: number;
   readonly timeoutCompactions: number;

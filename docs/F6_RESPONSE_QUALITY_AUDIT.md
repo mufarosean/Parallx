@@ -88,3 +88,45 @@
 | `src/openclaw/participants/openclawDefaultParticipant.ts` | Removed `buildExtractiveFallback` import and consumer block |
 | `tests/unit/chatService.test.ts` | Updated 2 assertions to verify absence of extractive fallback |
 | `docs/clawrallx/OPENCLAW_GAP_MATRIX.md` | Section 5 updated to 4/4 ALIGNED. Summary table updated. |
+
+---
+
+## Iteration 2b: Deep Refinement Audit (2026-03-27)
+
+**Auditor:** AI Parity Auditor — substantive re-audit after iter 2/3 rubber-stamp
+
+### Findings
+
+| ID | File + Line | Classification | Severity | Description |
+|---|---|---|---|---|
+| F6-R2-01 | `openclawAttempt.ts:356` + `openclawDefaultParticipant.ts:142` | **FIXED** | MEDIUM | `validateCitations()` was called post-stream — remapped markdown was discarded while display showed original indices. **Fix:** Moved `validateCitations` into the attempt before `response.markdown()`. Participant now uses pre-validated `result.validatedCitations`. |
+| F6-R2-02 | `tests/` (was MISSING) | **FIXED** | HIGH | Zero unit tests for `openclawResponseValidation.ts`. **Fix:** Created `tests/unit/openclawResponseValidation.test.ts` with 24 tests covering `validateCitations` (10), `assessEvidence` (10), `buildEvidenceConstraint` (4). |
+| F6-R2-03 | `openclawResponseValidation.ts:127` | ACCEPTED | LOW | `isHard` detection adjusts evidence thresholds, not routing. Legitimate input shaping. |
+| F6-R2-04 | `src/built-in/chat/utilities/chatGroundedResponseHelpers.ts` | MISALIGNED | MEDIUM | Old helper file still contains output repair functions (`buildExtractiveFallbackAnswer`, `assessEvidenceSufficiency` with insurance-domain hardcoding). Not used by `src/openclaw/` but represents tech debt. Out of F6 scope — flagged for future cleanup. |
+| F6-R2-05 | `openclawResponseValidation.ts:123` | ACCEPTED | LOW | Thresholds are magic numbers but domain-agnostic. Parallx adaptation, no upstream equivalent. |
+| F6-R2-06 | `openclawResponseValidation.ts:170` | ALIGNED | N/A | STOP_WORDS (11 English function words) are domain-agnostic. |
+| F6-R2-07 | Consumer call sites (4 verified) | ALIGNED | N/A | All evidence assessment used as INPUT shaping only. No post-model output repair. |
+
+### Changes Made
+
+| File | Change |
+|---|---|
+| `src/openclaw/openclawAttempt.ts` | `validateCitations` moved into attempt before `response.markdown()`. Added `validatedCitations` to `IOpenclawAttemptResult`. |
+| `src/openclaw/openclawTurnRunner.ts` | Added `validatedCitations` to `IOpenclawTurnResult`. |
+| `src/openclaw/participants/openclawDefaultParticipant.ts` | Removed `validateCitations` import/call. Uses `result.validatedCitations` directly. |
+| `tests/unit/openclawResponseValidation.test.ts` | **NEW** — 24 tests for all 3 exported functions. |
+
+### Verification
+
+- `npx tsc --noEmit` — clean compile
+- `npx vitest run` — 132 files, 2502 tests, all pass
+- Zero regressions
+
+### Overall Verdict: **PASS** (after fixes)
+
+| Capability | Status |
+|---|---|
+| Model produces correct output | ALIGNED |
+| Deterministic workflow answers | ALIGNED |
+| Evidence sufficiency scoring | ALIGNED |
+| Citation attribution | ALIGNED (F6-R2-01 fixed) |

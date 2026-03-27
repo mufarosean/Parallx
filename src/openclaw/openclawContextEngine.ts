@@ -249,15 +249,17 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     }
 
     // ── RAG: retrieve workspace context relevant to prompt ──
-    if (ragResult) {
-      retrievedContextText = ragResult.text;
+    if (ragResult?.text) {
       const ragTokens = estimateTokens(ragResult.text);
       const maxChars = ragLaneBudget * 4;
       const contextText = ragTokens <= ragLaneBudget
         ? ragResult.text
         : ragResult.text.slice(0, maxChars);
-      contextSections.push(`## Retrieved Context\n${contextText}`);
-      usedRagTokens += Math.min(ragTokens, ragLaneBudget);
+      if (contextText) {
+        retrievedContextText = ragResult.text;
+        contextSections.push(`## Retrieved Context\n${contextText}`);
+        usedRagTokens += Math.min(ragTokens, ragLaneBudget);
+      }
       ragSources = ragResult.sources.map((s, i) => ({
         uri: s.uri,
         label: s.label,
@@ -370,7 +372,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     const history = this._lastHistory;
     const historyTokens = estimateMessagesTokens([...history]);
 
-    if (history.length < 2) {
+    if (history.length < 2 && !params.force) {
       return { compacted: false, tokensBefore: historyTokens, tokensAfter: historyTokens };
     }
 
@@ -381,7 +383,10 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
 
     let summaryText = '';
 
-    if (this.services.sendSummarizationRequest && transcript.length > 0) {
+    // Only attempt summarization when history is long enough to benefit (>2 messages).
+    // With ≤2 messages, summarizer prepends summary + ack to the existing messages,
+    // which INCREASES context size rather than reducing it (F2-R2-04).
+    if (this.services.sendSummarizationRequest && transcript.length > 0 && history.length > 2) {
       // Generate a real summary via the model
       const summaryPrompt: IChatMessage[] = [
         {
@@ -406,6 +411,10 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     if (!summaryText) {
       // Without a summarizer, do a simple trim: keep the most recent half of history
       const keepCount = Math.max(2, Math.floor(history.length / 2));
+      if (keepCount >= history.length) {
+        // No actual reduction possible — report honestly (F2-R2-03)
+        return { compacted: false, tokensBefore: historyTokens, tokensAfter: historyTokens };
+      }
       this._lastHistory = history.slice(history.length - keepCount);
       this._compactGeneration++;
       const afterTokens = estimateMessagesTokens([...this._lastHistory]);

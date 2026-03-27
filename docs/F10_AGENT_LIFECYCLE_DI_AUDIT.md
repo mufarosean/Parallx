@@ -79,8 +79,10 @@ These cannot be removed from the interface without breaking the built-in runtime
 | Iter | Type | Findings | Actions |
 |---|---|---|---|
 | 1 | Structural | 3 ALIGNED, 3 MISALIGNED (lifecycle split, memory writeback, stale members) | Reclassified splits as N/A adaptation; stale members serve dual-runtime interface |
-| 2 | Refinement | Confirmed `sessionManager` is ALIVE in built-in layer | No changes needed |
-| 3 | Confirmation | 6/6 ALIGNED ✅ | None |
+| 2 | Refinement [SUPERSEDED] | Confirmed `sessionManager` is ALIVE in built-in layer | No changes needed |
+| 3 | Confirmation [SUPERSEDED] | 6/6 ALIGNED ✅ | None |
+| 2b | Substantive Deep Audit | 3 MISALIGNED + 1 MEDIUM: recordAborted never called, afterTurn not on all paths, dead types, no registration tests | All 4 fixed |
+| 3b | Substantive Confirmation | All 4 fixes verified PASS | 10/10 ALIGNED |
 
 ---
 

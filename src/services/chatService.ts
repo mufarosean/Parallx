@@ -692,10 +692,26 @@ export class ChatService extends Disposable implements IChatService {
     requestText: string,
     commandName: string | undefined,
     history: readonly IChatRequestResponsePair[],
+    participantSurface?: string,
   ): Promise<IChatParticipantTurnState> {
     const mentions = extractMentions(requestText);
     const userText = stripMentions(requestText, mentions);
-    const semantics = analyzeChatTurnSemantics(userText);
+
+    // OpenClaw participants use their own context engine and don't consume the
+    // legacy regex routing cascade. Skip the expensive semantic analysis +
+    // route determination when the surface is NOT the bridge participant.
+    const needsLegacyRouting = participantSurface === 'bridge' || participantSurface === undefined;
+    const semantics = needsLegacyRouting
+      ? analyzeChatTurnSemantics(userText)
+      : {
+          rawText: userText,
+          normalizedText: userText.toLowerCase(),
+          strippedApostropheText: userText,
+          isConversational: false,
+          isExplicitMemoryRecall: false,
+          isExplicitTranscriptRecall: false,
+          isFileEnumeration: false,
+        };
     const hasActiveSlashCommand = !!(commandName && commandName !== 'compact');
     const mentionScope = {
       folders: mentions
@@ -708,8 +724,9 @@ export class ChatService extends Disposable implements IChatService {
     const queryScope = await resolveQueryScope(userText, mentionScope, {
       listFilesRelative: this._turnPreparationServices?.listFilesRelative,
     });
-    const initialTurnRoute = determineChatTurnRoute(semantics, { hasActiveSlashCommand });
-    const turnRoute = initialTurnRoute;
+    const turnRoute = needsLegacyRouting
+      ? determineChatTurnRoute(semantics, { hasActiveSlashCommand })
+      : { kind: 'grounded' as const, reason: 'openclaw-runtime' };
 
     return {
       rawText: requestText,
@@ -948,8 +965,8 @@ export class ChatService extends Disposable implements IChatService {
     };
 
     const history = session.messages.slice(0, -1);
-    const turnState = await this._buildTurnState(parsed.text, options?.command ?? parsed.command, history);
     const participantSurface = this._getParticipantSurface(participantId);
+    const turnState = await this._buildTurnState(parsed.text, options?.command ?? parsed.command, history, participantSurface);
 
     // 9. Build context
     const buildRuntimePromptEnvelope = (systemPrompt: string, userContent: string): readonly IChatMessage[] => {

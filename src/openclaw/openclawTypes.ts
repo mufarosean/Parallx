@@ -1,10 +1,8 @@
 import type { Event } from '../platform/events.js';
-import type { IDisposable } from '../platform/lifecycle.js';
 import type {
   ChatMode,
   ICancellationToken,
   IChatMessage,
-  IChatParticipant,
   IChatRequestOptions,
   IChatRequestResponsePair,
   IChatResponseChunk,
@@ -134,37 +132,6 @@ export interface IOpenclawCommandRegistryFacade {
   readonly applyCommandTemplate: (command: IChatSlashCommand, input: string, contextContent: string) => string | undefined;
   readonly registerCommand?: (command: IChatSlashCommand) => { dispose(): void };
   readonly getRegisteredCommands?: () => readonly IChatSlashCommand[];
-}
-
-export interface IOpenclawResolvedTurn {
-  readonly interpretation: { readonly rawText: string };
-  readonly slashResult: IParsedSlashCommand;
-  readonly effectiveText: string;
-  readonly activeCommand?: string;
-  readonly hasActiveSlashCommand: boolean;
-  readonly handledEarlyAnswer: boolean;
-  readonly userText: string;
-  readonly contextQueryText: string;
-  readonly isRagReady: boolean;
-  readonly turnRoute: IChatTurnRoute;
-  readonly contextPlan: IChatContextPlan;
-  readonly retrievalPlan: IRetrievalPlan;
-  readonly queryScope: IQueryScope;
-  readonly mentionPills: readonly IContextPill[];
-  readonly mentionContextBlocks: readonly string[];
-}
-
-export interface IOpenclawPreparedContext {
-  readonly messages: readonly IChatMessage[];
-  readonly turnRoute: IChatTurnRoute;
-  readonly routeAuthority?: unknown;
-  readonly contextPlan: IChatContextPlan;
-  readonly contextParts: readonly string[];
-  readonly ragSources: readonly { uri: string; label: string; index?: number }[];
-  readonly retrievedContextText: string;
-  readonly evidenceAssessment: { status: 'sufficient' | 'weak' | 'insufficient'; reasons: readonly string[] };
-  readonly memoryResult?: string;
-  readonly coverageRecord?: unknown;
 }
 
 export interface IOpenclawRuntimeLifecycle {
@@ -378,5 +345,3 @@ export interface IChatWidgetServices {
   readonly getAgentTasks?: () => readonly IChatAgentTaskViewModel[];
   readonly resolveAgentApproval?: (taskId: string, requestId: string, resolution: AgentApprovalResolution) => Promise<void>;
 }
-
-export type IChatParticipantFactory = (services: IDefaultParticipantServices) => IChatParticipant & IDisposable;

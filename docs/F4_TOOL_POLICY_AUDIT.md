@@ -90,5 +90,7 @@ All missing steps are multi-tenant features that don't apply to a desktop workbe
 | Iter | Type | Findings | Actions |
 |---|---|---|---|
 | 1 | Structural | 5 ALIGNED, 1 MISALIGNED (multi-stage configurability) | Reclassified as N/A adaptation |
-| 2 | Refinement | No issues found | None |
-| 3 | Confirmation | 6/6 ALIGNED ✅ | Gap matrix updated (Tool Policy: MISSING → ALIGNED) |
+| 2 | Refinement [SUPERSEDED] | No issues found | None |
+| 3 | Confirmation [SUPERSEDED] | 6/6 ALIGNED ✅ | Gap matrix updated |
+| 2b | Substantive Deep Audit | 3 MISALIGNED + 1 ACCEPTED: filter reason bug, misleading comments, dead code, no tests | All 4 fixed |
+| 3b | Substantive Confirmation | All 4 fixes verified PASS | 10/10 ALIGNED |
