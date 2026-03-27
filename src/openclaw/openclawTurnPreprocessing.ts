@@ -1,16 +1,14 @@
 /**
- * OpenClaw turn preprocessing — M2 + M4 gap closure.
+ * OpenClaw turn preprocessing — M2 gap closure.
  *
  * M2: Mention resolution — extract @file/@folder/@workspace/@terminal mentions,
  *     resolve content, strip mentions from query text.
- * M4: Semantic fallback — detect broad workspace summary prompts.
  *
  * These run before context assembly to influence what context gets included.
  */
 
 import type { IContextPill } from '../services/chatTypes.js';
 import type { IDefaultParticipantServices } from './openclawTypes.js';
-import { isBroadWorkspaceSummaryPrompt } from './openclawResponseValidation.js';
 
 // ---------------------------------------------------------------------------
 // M2: Mention extraction + resolution
@@ -160,33 +158,6 @@ export async function resolveMentions(
     contextBlocks: blocks,
     pills,
   };
-}
-
-// ---------------------------------------------------------------------------
-// M4: Semantic fallback
-// ---------------------------------------------------------------------------
-
-export { isBroadWorkspaceSummaryPrompt } from './openclawResponseValidation.js';
-
-export interface ISemanticFallbackResult {
-  readonly kind: 'broad-workspace-summary';
-  readonly coverageMode: 'exhaustive';
-  readonly promptOverlay: string;
-}
-
-/**
- * Detect when the user's prompt implies exhaustive workspace coverage
- * (e.g., "summarize everything in here").
- */
-export function detectSemanticFallback(text: string): ISemanticFallbackResult | undefined {
-  if (isBroadWorkspaceSummaryPrompt(text)) {
-    return {
-      kind: 'broad-workspace-summary',
-      coverageMode: 'exhaustive',
-      promptOverlay: 'The user is asking for a comprehensive workspace summary. Cover every file and major section systematically. Do not skip any document.',
-    };
-  }
-  return undefined;
 }
 
 // ---------------------------------------------------------------------------

@@ -71,7 +71,7 @@ export type WorkflowType =
 
 
 export interface IRetrievalPlan {
-  readonly intent: 'question' | 'situation' | 'task' | 'conversational' | 'exploration' | string;
+  readonly intent: 'question' | 'situation' | 'task' | 'exploration' | string;
   readonly reasoning: string;
   readonly needsRetrieval: boolean;
   readonly queries: readonly string[];
@@ -88,7 +88,7 @@ export interface IQueryScope {
 }
 
 export interface IChatTurnRoute {
-  readonly kind: 'conversational' | 'memory-recall' | 'transcript-recall' | 'product-semantics' | 'off-topic' | 'grounded' | string;
+  readonly kind: 'memory-recall' | 'transcript-recall' | 'grounded' | string;
   readonly reason: string;
   readonly directAnswer?: string;
   readonly coverageMode?: 'representative' | 'exhaustive' | 'enumeration';
@@ -112,7 +112,6 @@ export interface IChatRuntimeTrace {
   readonly route: IChatTurnRoute;
   readonly contextPlan: IChatContextPlan;
   readonly queryScope?: IQueryScope;
-  readonly semanticFallback?: unknown;
   readonly routeAuthority?: unknown;
   readonly sessionId?: string;
   readonly hasActiveSlashCommand: boolean;
@@ -150,9 +149,7 @@ export interface IOpenclawResolvedTurn {
   readonly turnRoute: IChatTurnRoute;
   readonly contextPlan: IChatContextPlan;
   readonly retrievalPlan: IRetrievalPlan;
-  readonly isConversationalTurn: boolean;
   readonly queryScope: IQueryScope;
-  readonly semanticFallback?: unknown;
   readonly mentionPills: readonly IContextPill[];
   readonly mentionContextBlocks: readonly string[];
 }
@@ -322,7 +319,6 @@ export interface IWorkspaceParticipantServices {
     fileAttachmentCount: number;
     imageAttachmentCount: number;
     queryScopeLevel?: string;
-    semanticFallbackKind?: string;
   }): void;
   reportRetrievalDebug?(debug: {
     hasActiveSlashCommand: boolean;
@@ -358,7 +354,6 @@ export interface ICanvasParticipantServices {
     fileAttachmentCount: number;
     imageAttachmentCount: number;
     queryScopeLevel?: string;
-    semanticFallbackKind?: string;
   }): void;
   reportRetrievalDebug?(debug: {
     hasActiveSlashCommand: boolean;

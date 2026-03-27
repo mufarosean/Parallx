@@ -40,7 +40,6 @@ export function buildParticipantRuntimeTrace(
       retrievalPlan,
     },
     queryScope: turnState.queryScope,
-    semanticFallback: turnState.semanticFallback,
     sessionId: context.sessionId,
     hasActiveSlashCommand: turnState.hasActiveSlashCommand,
     isRagReady: turnState.isRagReady,

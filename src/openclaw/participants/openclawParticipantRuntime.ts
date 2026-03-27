@@ -346,7 +346,7 @@ export function buildOpenclawTraceSeed(
     reason: defaultReason,
   };
   const retrievalPlan: IRetrievalPlan = {
-    intent: route.kind === 'conversational' ? 'conversational' : 'question',
+    intent: 'question',
     reasoning: route.reason,
     needsRetrieval: route.kind === 'grounded',
     queries: [turnState?.contextQueryText ?? request.text],

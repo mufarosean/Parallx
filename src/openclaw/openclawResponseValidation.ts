@@ -267,22 +267,6 @@ export function buildEvidenceConstraint(
 }
 
 // ---------------------------------------------------------------------------
-// Semantic fallback detection (M4)
-// ---------------------------------------------------------------------------
-
-const BROAD_WORKSPACE_PATTERNS: readonly RegExp[] = [
-  /^(?:tell me about|walk me through|go through|summari[sz]e)\s+(?:everything|all(?: of)? (?:this|it|my stuff|my files|the files))(?:\s+in here)?[?.!]?$/i,
-  /^what(?:'s| is)\s+in\s+my\s+files\??[?.!]?$/i,
-  /^(?:go through|walk through)\s+all\s+my\s+stuff\.?$/i,
-  /^(?:tell me|show me)\s+what(?:'s| is)\s+in\s+here[?.!]?$/i,
-];
-
-export function isBroadWorkspaceSummaryPrompt(text: string): boolean {
-  const trimmed = text.trim();
-  return trimmed.length > 0 && trimmed.length <= 120 && BROAD_WORKSPACE_PATTERNS.some(p => p.test(trimmed));
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

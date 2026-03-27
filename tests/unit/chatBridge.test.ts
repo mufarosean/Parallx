@@ -138,9 +138,7 @@ describe('ChatBridge', () => {
           usePageContext: false,
           useAttachments: false,
         },
-        semanticFallback: undefined,
         hasActiveSlashCommand: false,
-        isConversationalTurn: false,
         isRagReady: true,
       },
     }, {
@@ -300,9 +298,7 @@ describe('ChatBridge', () => {
           usePageContext: false,
           useAttachments: false,
         },
-        semanticFallback: undefined,
         hasActiveSlashCommand: false,
-        isConversationalTurn: false,
         isRagReady: true,
       },
     }, {

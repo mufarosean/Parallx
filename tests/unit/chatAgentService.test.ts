@@ -230,7 +230,6 @@ describe('ChatAgentService', () => {
             coverageMode: 'representative',
           },
           hasActiveSlashCommand: false,
-          isConversationalTurn: false,
           isRagReady: true,
         },
       },

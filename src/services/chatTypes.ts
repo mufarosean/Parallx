@@ -625,12 +625,6 @@ export interface IChatParticipantTurnRoute {
   readonly reason: string;
 }
 
-export interface IChatParticipantSemanticFallbackDecision {
-  readonly kind: 'broad-workspace-summary';
-  readonly confidence: number;
-  readonly reason: string;
-}
-
 export interface IChatParticipantTurnState {
   readonly rawText: string;
   readonly effectiveText: string;
@@ -640,9 +634,7 @@ export interface IChatParticipantTurnState {
   readonly semantics: IChatParticipantTurnSemantics;
   readonly queryScope: IChatParticipantQueryScope;
   readonly turnRoute: IChatParticipantTurnRoute;
-  readonly semanticFallback?: IChatParticipantSemanticFallbackDecision;
   readonly hasActiveSlashCommand: boolean;
-  readonly isConversationalTurn: boolean;
   readonly isRagReady: boolean;
 }
 

@@ -22,7 +22,6 @@ import {
 import { runOpenclawReadOnlyTurn } from '../openclawReadOnlyTurnRunner.js';
 import { buildOpenclawSystemPrompt } from '../openclawSystemPrompt.js';
 import type { IOpenclawRuntimeInfo } from '../openclawSystemPrompt.js';
-import { tryHandleWorkspaceDocumentListing } from '../openclawWorkspaceDocumentListing.js';
 
 const OPENCLAW_WORKSPACE_PARTICIPANT_ID = 'parallx.chat.workspace';
 
@@ -204,16 +203,6 @@ async function handleGeneral(
   response: IChatResponseStream,
   token: ICancellationToken,
 ): Promise<IChatParticipantResult> {
-  if (await tryHandleWorkspaceDocumentListing({
-    text: request.text,
-    listFiles: services.listFiles,
-    response,
-    token,
-    workspaceName: services.getWorkspaceName(),
-  })) {
-    return {};
-  }
-
   response.progress('Gathering workspace context...');
   if (token.isCancellationRequested) {
     return {};

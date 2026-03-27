@@ -22,7 +22,6 @@ import {
   tryHandleOpenclawCompactCommand,
   tryHandleOpenclawInitCommand,
 } from '../openclawDefaultRuntimeSupport.js';
-import { tryHandleWorkspaceDocumentListing } from '../openclawWorkspaceDocumentListing.js';
 import { tryHandleOpenclawContextCommand } from './openclawContextReport.js';
 import { buildOpenclawBootstrapContext, loadOpenclawBootstrapEntries } from './openclawParticipantRuntime.js';
 import type { IOpenclawTurnContext } from '../openclawAttempt.js';
@@ -31,7 +30,7 @@ import { OpenclawContextEngine } from '../openclawContextEngine.js';
 import { resolveToolProfile } from '../openclawToolPolicy.js';
 import { computeTokenBudget } from '../openclawTokenBudget.js';
 import { validateCitations, buildExtractiveFallback } from '../openclawResponseValidation.js';
-import { resolveMentions, resolveVariables, detectSemanticFallback } from '../openclawTurnPreprocessing.js';
+import { resolveMentions, resolveVariables } from '../openclawTurnPreprocessing.js';
 import type { IBootstrapFile, IOpenclawRuntimeInfo } from '../openclawSystemPrompt.js';
 import { buildOpenclawRuntimeSkillState } from '../openclawSkillState.js';
 import { buildOpenclawRuntimeToolState } from '../openclawToolState.js';
@@ -82,16 +81,6 @@ async function runOpenclawDefaultTurn(
     return {};
   }
 
-  if (await tryHandleWorkspaceDocumentListing({
-    text: request.text,
-    listFiles: services.listFilesRelative,
-    response,
-    token,
-    workspaceName: services.getWorkspaceName(),
-  })) {
-    return {};
-  }
-
   if (await tryHandleOpenclawCompactCommand(services, {
     activeCommand: request.command,
     slashSpecialHandler: request.command === 'compact' ? 'compact' : undefined,
@@ -113,16 +102,10 @@ async function runOpenclawDefaultTurn(
     services.reportContextPills?.(variableResult.pills as any[]);
   }
 
-  // M4: Semantic fallback — detect broad workspace summary prompts
-  const semanticFallback = detectSemanticFallback(variableResult.strippedText);
-
   // M11: Load pattern-scoped rules from .parallx/rules/*.md
   const patternRulesOverlay = await services.getPromptOverlay?.().catch(() => undefined);
 
-  // Merge pattern rules + semantic fallback overlays
-  const effectiveOverlay = [patternRulesOverlay, semanticFallback?.promptOverlay]
-    .filter(Boolean)
-    .join('\n\n') || undefined;
+  const effectiveOverlay = patternRulesOverlay || undefined;
 
   // C3: Resolve non-image file attachments into context blocks
   const fileAttachmentBlocks: string[] = [];

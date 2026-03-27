@@ -107,7 +107,6 @@ const FOLDER_RULES: Record<string, string[]> = {
   'utilities/chatParticipantRuntimeTrace.ts': [],
   'utilities/chatRuntimePromptMessages.ts': [],
   'utilities/chatScopeResolver.ts':          [],
-  'utilities/chatSemanticFallback.ts': [],
   'utilities/chatSystemPromptComposer.ts': ['config/'],
   'utilities/chatTokenBarAdapter.ts':        ['widgets/'],
   'utilities/chatTurnRouter.ts':             ['utilities/'],

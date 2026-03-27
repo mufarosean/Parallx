@@ -53,52 +53,6 @@ async function* streamChunks(chunks: IChatResponseChunk[]): AsyncIterable<IChatR
 }
 
 describe('openclaw scoped participants', () => {
-  it('answers workspace document listing queries deterministically without the model', async () => {
-    const sendChatRequest = vi.fn(() => streamChunks([{ content: 'should not run', done: true }]));
-    const participant = createOpenclawWorkspaceParticipant({
-      sendChatRequest,
-      getActiveModel: () => 'test-model',
-      getWorkspaceName: () => 'Demo Workspace',
-      listPages: vi.fn(async () => []),
-      searchPages: vi.fn(async () => []),
-      getPageContent: vi.fn(async () => ''),
-      getPageTitle: vi.fn(async () => undefined),
-      listFiles: vi.fn(async (relativePath: string) => {
-        if (!relativePath || relativePath === '.') {
-          return [
-            { name: 'Agent Contacts.md', type: 'file' },
-            { name: 'Claims Guide.md', type: 'file' },
-            { name: '.parallx', type: 'directory' },
-          ];
-        }
-        return [];
-      }),
-      readFileContent: vi.fn(async () => null),
-      getReadOnlyToolDefinitions: () => [],
-      reportRuntimeTrace: vi.fn(),
-    } as IWorkspaceParticipantServices);
-    const response = createResponse();
-
-    await participant.handler({
-      text: 'What documents do I have in my workspace?',
-      requestId: 'req-docs',
-      mode: ChatMode.Agent,
-      modelId: 'test-model',
-      attempt: 0,
-    } as IChatParticipantRequest, {
-      sessionId: 'session-docs',
-      history: [],
-    } as IChatParticipantContext, response, createToken());
-
-    expect(sendChatRequest).not.toHaveBeenCalled();
-    expect(response.markdown).toHaveBeenCalledWith([
-      'Your workspace contains 2 documents:',
-      '',
-      '- Agent Contacts.md',
-      '- Claims Guide.md',
-    ].join('\n'));
-  });
-
   it('builds workspace prompts with OpenClaw bootstrap markers', async () => {
     const sendChatRequest = vi.fn(() => streamChunks([{ content: 'workspace answer', done: true }]));
     const reportBootstrapDebug = vi.fn();

@@ -92,11 +92,6 @@ export interface ChatEvalDebugSnapshot {
         coverageMode?: 'representative' | 'exhaustive';
       };
     };
-    semanticFallback?: {
-      kind: string;
-      confidence: number;
-      reason: string;
-    };
     routeAuthority?: {
       action: 'preserved' | 'corrected';
       reason: string;

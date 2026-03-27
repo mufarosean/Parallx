@@ -25,7 +25,6 @@ import {
   buildRuntimePromptSeedMessages,
 } from '../built-in/chat/utilities/chatRuntimePromptMessages.js';
 import { buildParticipantRuntimeTrace } from '../built-in/chat/utilities/chatParticipantRuntimeTrace.js';
-import { applyChatSemanticFallback, resolveChatSemanticFallback } from '../built-in/chat/utilities/chatSemanticFallback.js';
 import { resolveChatRuntimeParticipantId } from './chatRuntimeSelector.js';
 import {
   ensureChatTables,
@@ -710,14 +709,7 @@ export class ChatService extends Disposable implements IChatService {
       listFilesRelative: this._turnPreparationServices?.listFilesRelative,
     });
     const initialTurnRoute = determineChatTurnRoute(semantics, { hasActiveSlashCommand });
-    const semanticFallback = resolveChatSemanticFallback(
-      userText,
-      semantics,
-      initialTurnRoute,
-      queryScope,
-      { hasActiveSlashCommand },
-    );
-    const turnRoute = applyChatSemanticFallback(initialTurnRoute, semanticFallback);
+    const turnRoute = initialTurnRoute;
 
     return {
       rawText: requestText,
@@ -728,9 +720,7 @@ export class ChatService extends Disposable implements IChatService {
       semantics,
       queryScope,
       turnRoute,
-      semanticFallback,
       hasActiveSlashCommand,
-      isConversationalTurn: turnRoute.kind === 'conversational',
       isRagReady: this._turnPreparationServices?.isRAGAvailable?.() ?? false,
     };
   }

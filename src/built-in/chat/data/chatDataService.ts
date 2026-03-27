@@ -206,7 +206,6 @@ export interface IChatTestDebugSnapshot {
     fileAttachmentCount: number;
     imageAttachmentCount: number;
     queryScopeLevel?: string;
-    semanticFallbackKind?: string;
   };
   runtimeTrace?: IChatRuntimeTrace;
   bootstrapContext?: IOpenclawBootstrapDebugReport;
@@ -1655,7 +1654,6 @@ export class ChatDataService {
     fileAttachmentCount: number;
     imageAttachmentCount: number;
     queryScopeLevel?: string;
-    semanticFallbackKind?: string;
   }): void {
     this._lastTestDebugSnapshot = {
       ...this._lastTestDebugSnapshot,
@@ -1675,7 +1673,6 @@ export class ChatDataService {
         route: trace.route ?? previousTrace?.route,
         contextPlan: trace.contextPlan ?? previousTrace?.contextPlan,
         queryScope: trace.queryScope ?? previousTrace?.queryScope,
-        semanticFallback: trace.semanticFallback ?? previousTrace?.semanticFallback,
       }),
       isRAGAvailable: this.isRAGAvailable(),
       isIndexing: this.isIndexing(),

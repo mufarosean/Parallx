@@ -203,7 +203,6 @@ export interface IWorkspaceParticipantServices {
     fileAttachmentCount: number;
     imageAttachmentCount: number;
     queryScopeLevel?: string;
-    semanticFallbackKind?: string;
   }): void;
   reportRetrievalDebug?(debug: {
     hasActiveSlashCommand: boolean;
@@ -243,7 +242,6 @@ export interface ICanvasParticipantServices {
     fileAttachmentCount: number;
     imageAttachmentCount: number;
     queryScopeLevel?: string;
-    semanticFallbackKind?: string;
   }): void;
   reportRetrievalDebug?(debug: {
     hasActiveSlashCommand: boolean;
@@ -357,7 +355,6 @@ export interface IChatRuntimeTrace {
   readonly route: IChatTurnRoute;
   readonly contextPlan: IChatContextPlan;
   readonly queryScope?: IQueryScope;
-  readonly semanticFallback?: IChatSemanticFallbackDecision;
   readonly sessionId?: string;
   readonly hasActiveSlashCommand: boolean;
   readonly isRagReady: boolean;
@@ -381,9 +378,7 @@ export interface IPreparedChatTurnPrelude {
   readonly turnRoute: IChatTurnRoute;
   readonly contextPlan: IChatContextPlan;
   readonly retrievalPlan: IRetrievalPlan;
-  readonly isConversationalTurn: boolean;
   readonly queryScope: IQueryScope;
-  readonly semanticFallback?: IChatSemanticFallbackDecision;
 }
 
 // ── /init command ──
@@ -705,12 +700,6 @@ export interface IChatTurnSemantics {
   readonly isExplicitTranscriptRecall: boolean;
   readonly isFileEnumeration: boolean;
   readonly isExhaustiveWorkspaceReview?: boolean;
-}
-
-export interface IChatSemanticFallbackDecision {
-  readonly kind: 'broad-workspace-summary';
-  readonly confidence: number;
-  readonly reason: string;
 }
 
 /** A parsed variable reference in user input. */
