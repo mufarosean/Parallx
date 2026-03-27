@@ -71,24 +71,28 @@
 
 ## 4. Routing & Turn Classification
 
+*Audited and closed 2026-03-27 — see `docs/F5_ROUTING_ARCHITECTURE_AUDIT.md` for full findings.*
+
 | Upstream Capability | Upstream Location | Parallx Status | Parallx Location | Gap | Fix |
 |---|---|---|---|---|---|
-| Route resolution | routing/resolve-route.ts | **HEURISTIC** | `resolveOpenclawTurnInterpretation` L594-720 | Regex cascades classify turns by keyword matching. Upstream resolves routes by channel/agent config. | **Remove regex routing.** Let the model handle intent classification via system prompt instructions. Route only by structural signals (slash commands, mode selection). |
-| Off-topic detection | `OPENCLAW_OFF_TOPIC_DOMAIN_TERMS` | **HEURISTIC** | L66, L85-103 | Keyword regex detects off-topic prompts | Remove. The model handles off-topic responses via system prompt boundaries. |
-| Conversational detection | `OPENCLAW_CONVERSATIONAL_PATTERNS` | **HEURISTIC** | L58-62, L155-172 | Regex detects greetings/farewells | Remove. The model handles conversational turns naturally. |
-| Product semantics Q&A | `buildOpenclawProductSemanticsAnswer` | **HEURISTIC** | L105-152 | Hardcoded answers for 4 specific product questions | Remove. These are eval-specific hacks. The model should answer these from context. |
-| Broad workspace summary | `BROAD_WORKSPACE_SUMMARY_PATTERNS` | **HEURISTIC** | L52-56 | Regex triggers exhaustive coverage | Simplify. Keep the concept of exhaustive retrieval but trigger it via slash command (`/summarize`) or explicit mode, not regex. |
+| Route resolution | routing/resolve-route.ts | **ALIGNED** | Slash commands + mode selection only | Regex routing cascades removed (F5 audit). Routes by structural signals only. | — |
+| Off-topic detection | `OPENCLAW_OFF_TOPIC_DOMAIN_TERMS` | **ALIGNED** | Removed (F5 audit) | Keyword regex detection removed. Model handles off-topic via system prompt boundaries. | — |
+| Conversational detection | `OPENCLAW_CONVERSATIONAL_PATTERNS` | **ALIGNED** | Removed (F5 audit) | Regex detection removed. Dead route kinds (`'conversational'`, `'product-semantics'`, `'off-topic'`) removed from openclaw types. | — |
+| Product semantics Q&A | `buildOpenclawProductSemanticsAnswer` | **ALIGNED** | Removed (F5 audit) | Hardcoded deterministic answers deleted. Model answers from context. | — |
+| Broad workspace summary | `BROAD_WORKSPACE_SUMMARY_PATTERNS` | **ALIGNED** | Removed (F5 audit) | Regex-triggered semantic fallback removed. `chatSemanticFallback.ts` deleted. `tryHandleWorkspaceDocumentListing` deleted. | — |
 
 ---
 
 ## 5. Response Quality
 
+*Audited 2026-03-27 — see F6 audit report for full findings.*
+
 | Upstream Capability | Upstream Location | Parallx Status | Parallx Location | Gap | Fix |
 |---|---|---|---|---|---|
-| Model produces correct output | Proper system prompt + context | **HEURISTIC** | Output repair layer (15+ functions) | Model output is post-processed by ~15 repair functions that override/append content | **Remove all output repair functions.** Fix the INPUTS: better system prompt, better context assembly, better evidence presentation. If the model can't produce correct output from correct inputs, the model or prompt is wrong. |
-| Deterministic workflow answers | — (upstream doesn't have this) | **HEURISTIC** | `buildDeterministicWorkflowAnswer` + source summaries | Answers for folder-summary, comparative, exhaustive-extraction are built WITHOUT the model, from hardcoded path-specific descriptions | **Remove.** These bypass the model entirely. If the model needs guidance for these workflows, add it to the system prompt as instructions, not as code that replaces the model. |
-| Evidence sufficiency scoring | — (upstream doesn't have this) | **HEURISTIC** | `assessEvidenceSufficiency` | Term overlap + content length scoring | Keep but simplify. This is a reasonable quality signal for weak local models. Move it from routing (pre-model) to post-model validation. |
-| Citation attribution | — | **ALIGNED** | `selectAttributableCitations`, `buildMissingCitationFooter` | Reasonable citation handling | Acceptable |
+| Model produces correct output | Proper system prompt + context | **ALIGNED** | Output repair layer removed (F5/F6/F7 audits). `buildExtractiveFallback` removed (F6). No post-processing of model content. | All output repair functions removed. Model output used as-is. When model returns empty, the fix is better inputs (system prompt, context), not output repair. | — |
+| Deterministic workflow answers | — (upstream doesn't have this) | **ALIGNED** | Removed (F5 audit). `buildDeterministicWorkflowAnswer` and `buildOpenclawProductSemanticsAnswer` deleted. | Deterministic answer bypass fully removed. Model handles all responses. | — |
+| Evidence sufficiency scoring | — (Parallx adaptation) | **ALIGNED** | `openclawResponseValidation.ts` `assessEvidence()` → `openclawContextEngine.ts` `assemble()` | Simplified to domain-agnostic quality signal. Used as INPUT shaping (constraint injection into system prompt), not output repair. Insurance-domain hardcoding (`extractCoverageFocusTerms`, `roleBonus`) removed. | — |
+| Citation attribution | — | **ALIGNED** | `openclawResponseValidation.ts` `validateCitations()` | Structural citation index remapping. No content rewriting. | — |
 
 ---
 
@@ -114,10 +118,10 @@
 
 ## Priority-Ordered Fix Plan
 
-### Phase 1: Remove Heuristic Patchwork (HIGH — M40 mandate)
-1. **Remove output repair layer** — Delete all `repair*` functions from `openclawDefaultRuntimeSupport.ts` and all `ensure*` functions from `openclawDefaultParticipant.ts`
-2. **Remove regex routing** — Delete all routing term regex, turn interpretation cascades, off-topic/conversational detection
-3. **Remove deterministic workflow answers** — Delete `buildDeterministicWorkflowAnswer`, hardcoded source summaries
+### Phase 1: Remove Heuristic Patchwork (HIGH — M40 mandate) ✅ COMPLETE
+1. ~~**Remove output repair layer**~~ — Done (F5/F6/F7 audits). All `repair*`, `ensure*`, `buildExtractiveFallback`, `extractCoverageFocusTerms`, `roleBonus`, `scoreLine` removed.
+2. ~~**Remove regex routing**~~ — Done (F5 audit). All routing term regex, turn interpretation cascades, off-topic/conversational detection removed.
+3. ~~**Remove deterministic workflow answers**~~ — Done (F5 audit). `buildDeterministicWorkflowAnswer`, hardcoded source summaries removed.
 4. **Remove product semantics hardcoded Q&A** — Delete `buildOpenclawProductSemanticsAnswer`
 
 ### Phase 2: Fix System Prompt (HIGH — root cause of output quality)
@@ -151,12 +155,12 @@
 | Execution Pipeline | 17 | 1 | 4 | 0 | 8 | 4 |
 | Context Engine | 6 | 5 | 0 | 0 | 0 | 1† |
 | Memory & Search | 5 | 1 | 3 | 0 | 1 | 0 |
-| Routing | 5 | 0 | 0 | 5 | 0 | 0 |
-| Response Quality | 4 | 1 | 0 | 3 | 0 | 0 |
+| Routing | 5 | 5 | 0 | 0 | 0 | 0 |
+| Response Quality | 4 | 4 | 0 | 0 | 0 | 0 |
 | System Prompt | 4 | 1 | 2 | 0 | 1 | 0 |
 | Tool Policy | 2 | 1 | 0 | 0 | 1 | 0 |
-| **TOTAL** | **43** | **10** | **5** | **8** | **11** | **5†** |
+| **TOTAL** | **43** | **18** | **5** | **0** | **11** | **5†** |
 
 † F2-03 (Context engine registry) counted as ALIGNED with documented N/A adaptation.
 
-**Bottom line:** of 39 applicable capabilities (43 minus 4 N/A), 10 are aligned (26%), 5 misaligned (13%), 8 are heuristic patchwork (21%), and 11 are entirely missing (28%). F2 Context Engine fully closed: 5 ALIGNED + 1 N/A (was 0 ALIGNED, 5 MISSING).
+**Bottom line:** of 39 applicable capabilities (43 minus 4 N/A), 18 are aligned (46%), 5 misaligned (13%), 0 heuristic patchwork (0%), and 11 are missing (28%). Domains closed: F2 Context Engine, F5 Routing, F6 Response Quality (all ALIGNED). F7/F8/F3/F1 also closed — see individual TRACKER docs for details.

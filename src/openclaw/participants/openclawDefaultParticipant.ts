@@ -29,7 +29,7 @@ import { runOpenclawTurn } from '../openclawTurnRunner.js';
 import { OpenclawContextEngine } from '../openclawContextEngine.js';
 import { resolveToolProfile } from '../openclawToolPolicy.js';
 import { computeTokenBudget } from '../openclawTokenBudget.js';
-import { validateCitations, buildExtractiveFallback } from '../openclawResponseValidation.js';
+import { validateCitations } from '../openclawResponseValidation.js';
 import { resolveMentions, resolveVariables } from '../openclawTurnPreprocessing.js';
 import type { IBootstrapFile, IOpenclawRuntimeInfo } from '../openclawSystemPrompt.js';
 import { buildOpenclawRuntimeSkillState } from '../openclawSkillState.js';
@@ -142,14 +142,6 @@ async function runOpenclawDefaultTurn(
     const validated = validateCitations(result.markdown, [...result.ragSources]);
     if (validated.attributableSources.length > 0) {
       response.setCitations(validated.attributableSources.map(s => ({ index: s.index, uri: s.uri, label: s.label })));
-    }
-
-    // M6: Extractive fallback — when model returns empty but we have context
-    if (!result.markdown.trim() && result.retrievedContextText) {
-      const fallback = buildExtractiveFallback(request.text, result.retrievedContextText);
-      if (fallback) {
-        response.markdown(fallback);
-      }
     }
 
     // M43: Edit mode — emit response as tracked-change edit proposal

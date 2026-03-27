@@ -1090,7 +1090,11 @@ describe('default participant integration helpers', () => {
     expect(result).not.toHaveProperty('errorDetails');
     const systemMessage = sendChatRequest.mock.calls[0]?.[0]?.[0]?.content ?? '';
     expect(systemMessage).toContain('Response Constraint');
-    expect(stream.calls.markdown.join('')).toMatch(/Relevant details from retrieved context|do not have enough grounded evidence/);
+    // F6: Extractive fallback (output repair) removed. The model's empty response
+    // is no longer replaced with synthesized content. The Response Constraint in the
+    // system prompt is the correct fix — it guides the model to produce useful output.
+    // No fabricated content should appear in the stream.
+    expect(stream.calls.markdown.join('')).not.toContain('Relevant details from retrieved context');
   });
 
   it('uses deductible context from the previous turn for short comprehensive follow-ups', async () => {
@@ -1235,9 +1239,11 @@ describe('default participant integration helpers', () => {
 
     expect(result).not.toHaveProperty('errorDetails');
     expect(sendChatRequest).toHaveBeenCalledTimes(2);
-    expect(stream.calls.markdown.join('')).toContain('Sarah Chen');
-    expect(stream.calls.markdown.join('')).toContain('1-800-555-CLAIM');
-    expect(stream.calls.markdown.join('')).toContain('72 hours');
+    // F6: Extractive fallback (output repair) removed. When the model returns empty,
+    // no synthesized content should replace it. The correct fix is better prompts/context
+    // (input shaping via Response Constraint), not post-hoc content generation.
+    expect(stream.calls.markdown.join('')).not.toContain('Relevant details from retrieved context');
+    // The stream may be empty or contain model output — but NOT fabricated content.
   });
 
   it('preserves source attribution when abort fallback synthesizes a response', async () => {
