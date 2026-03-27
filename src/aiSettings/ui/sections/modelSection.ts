@@ -1,10 +1,11 @@
-// modelSection.ts — Model settings section (M15 Task 2.6)
+// modelSection.ts — Model settings section (M15 Task 2.6, F11-R3 stripped)
 //
-// Fields:
-//   - Default Model (Dropdown — populated from ILanguageModelsService)
+// Fields (after F11-R3 dead settings removal):
 //   - Creativity / Temperature (Slider 0.0–1.0, 5 labeled stops)
 //   - Max Response Tokens (InputBox, number, 0 = model default)
-//   - Context Window (InputBox, number, 0 = model default)
+//
+// Removed (F11-R3): Default Model (dead — runtime reads chatConfig, not unified config),
+// Context Window (dead — runtime reads from Ollama API getModelContextLength()).
 //
 // Temperature slider has labeled stops: Precise (0) · Focused (0.25) ·
 // Balanced (0.5) · Expressive (0.75) · Creative (1.0).
@@ -13,9 +14,6 @@
 import { $ } from '../../../ui/dom.js';
 import { Slider } from '../../../ui/slider.js';
 import { InputBox } from '../../../ui/inputBox.js';
-import { Dropdown } from '../../../ui/dropdown.js';
-import type { IDropdownItem } from '../../../ui/dropdown.js';
-import type { ILanguageModelsService } from '../../../services/chatTypes.js';
 import type { IAISettingsService, AISettingsProfile } from '../../aiSettingsTypes.js';
 import { DEFAULT_PROFILE } from '../../aiSettingsDefaults.js';
 import { SettingsSection, createSettingRow } from '../sectionBase.js';
@@ -24,53 +22,16 @@ import { SettingsSection, createSettingRow } from '../sectionBase.js';
 
 export class ModelSection extends SettingsSection {
 
-  private _defaultModelDropdown!: Dropdown;
   private _temperatureSlider!: Slider;
   private _temperatureValue!: HTMLElement;
   private _maxTokensInput!: InputBox;
   private _maxTokensWarning!: HTMLElement;
-  private _contextWindowInput!: InputBox;
 
-  private readonly _languageModelsService: ILanguageModelsService | undefined;
-  private _isLoadingModels = false;
-
-  constructor(service: IAISettingsService, languageModelsService?: ILanguageModelsService) {
+  constructor(service: IAISettingsService) {
     super(service, 'model', 'Model');
-    this._languageModelsService = languageModelsService;
   }
 
   build(): void {
-    // ── Default Model ──
-    const defaultModelRow = createSettingRow({
-      label: 'Default Model',
-      description: 'Model used for new chats. Auto-select picks the first available chat model.',
-      key: 'model.defaultModel',
-      onReset: () => this._service.updateActiveProfile({
-        model: { defaultModel: DEFAULT_PROFILE.model.defaultModel },
-      }),
-    });
-    this._defaultModelDropdown = this._register(new Dropdown(defaultModelRow.controlSlot, {
-      items: [{ value: '', label: 'Auto-select' }],
-      selected: '',
-      placeholder: 'Auto-select',
-      ariaLabel: 'Default model',
-    }));
-
-    this._register(this._defaultModelDropdown.onDidChange((value) => {
-      this._service.updateActiveProfile({ model: { defaultModel: value } });
-      this._notifySaved('model.defaultModel');
-    }));
-    this._addRow(defaultModelRow.row);
-
-    // Populate dropdown from language models service (async)
-    this._loadModelOptions();
-    // Re-populate when models change
-    if (this._languageModelsService) {
-      this._register(this._languageModelsService.onDidChangeModels(() => {
-        this._loadModelOptions();
-      }));
-    }
-
     // ── Temperature ──
     const tempRow = createSettingRow({
       label: 'Creativity / Temperature',
@@ -138,41 +99,11 @@ export class ModelSection extends SettingsSection {
     }));
     this._addRow(maxTokensRow.row);
 
-    // ── Context Window ──
-    const ctxRow = createSettingRow({
-      label: 'Context Window',
-      description: 'How much text the AI can consider at once. Auto-detected from your model. 0 = use model default.',
-      key: 'model.contextWindow',
-      onReset: () => this._service.updateActiveProfile({
-        model: { contextWindow: DEFAULT_PROFILE.model.contextWindow },
-      }),
-    });
-    this._contextWindowInput = this._register(new InputBox(ctxRow.controlSlot, {
-      placeholder: '0',
-      ariaLabel: 'Context window size',
-    }));
-    this._contextWindowInput.inputElement.type = 'number';
-    this._contextWindowInput.inputElement.min = '0';
-
-    this._register(this._contextWindowInput.onDidChange((value) => {
-      const n = parseInt(value, 10);
-      if (!isNaN(n) && n >= 0) {
-        this._service.updateActiveProfile({ model: { contextWindow: n } });
-        this._notifySaved('model.contextWindow');
-      }
-    }));
-    this._addRow(ctxRow.row);
-
     // ── Reset section link ──
     this._addResetSectionLink('model');
   }
 
   update(profile: AISettingsProfile): void {
-    // Default model
-    if (this._defaultModelDropdown.value !== profile.model.defaultModel) {
-      this._defaultModelDropdown.value = profile.model.defaultModel;
-    }
-
     // Temperature (service stores 0–1, slider uses 0–100)
     const tempPct = Math.round(profile.model.temperature * 100);
     if (this._temperatureSlider.value !== tempPct) {
@@ -187,41 +118,5 @@ export class ModelSection extends SettingsSection {
     }
     this._maxTokensWarning.style.display =
       (profile.model.maxTokens > 0 && profile.model.maxTokens < 200) ? '' : 'none';
-
-    // Context window
-    const ctxStr = String(profile.model.contextWindow);
-    if (this._contextWindowInput.value !== ctxStr) {
-      this._contextWindowInput.value = ctxStr;
-    }
-  }
-
-  // ── Internal ──
-
-  /**
-   * Populate the Default Model dropdown from the language models service.
-   * Always includes an "Auto-select" entry with value ''.
-   */
-  private async _loadModelOptions(): Promise<void> {
-    if (!this._languageModelsService || this._isLoadingModels) { return; }
-    this._isLoadingModels = true;
-    try {
-      const models = await this._languageModelsService.getModels();
-      const items: IDropdownItem[] = [{ value: '', label: 'Auto-select' }];
-      for (const m of models) {
-        // Skip embedding models — they can't handle chat
-        if (m.id.toLowerCase().includes('embed') || m.family.toLowerCase().includes('bert')) {
-          continue;
-        }
-        items.push({ value: m.id, label: m.displayName || m.id });
-      }
-      this._defaultModelDropdown.items = items;
-      // Re-set value so the dropdown re-renders the correct label
-      const profile = this._service.getActiveProfile();
-      this._defaultModelDropdown.value = profile.model.defaultModel;
-    } catch {
-      // Models unavailable — keep the "Auto-select" default
-    } finally {
-      this._isLoadingModels = false;
-    }
   }
 }

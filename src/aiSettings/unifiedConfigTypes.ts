@@ -47,10 +47,9 @@ export interface IUnifiedChatConfig {
   /** @deprecated F11: No OpenClaw consumer. Only feeds legacy systemPromptGenerator. */
   readonly responseLength: AIResponseLength;
   /**
-   * User-editable description of what this workspace contains.
-   * Injected prominently into every system prompt so the AI knows the
-   * meaning of "workspace" / "my files" in context — preventing semantic
-   * contamination from documents that use the same vocabulary.
+   * @parallx-specific No upstream equivalent. Upstream uses bootstrap files only.
+   * Desktop adaptation: user-editable description of workspace contents,
+   * injected into system prompt so the AI knows workspace semantics.
    * Empty string = auto-generated from workspace digest.
    */
   readonly workspaceDescription: string;
@@ -59,15 +58,15 @@ export interface IUnifiedChatConfig {
 // ─── Model (merged from M15 + config.json) ──────────────────────────────────
 
 export interface IUnifiedModelConfig {
-  /** Preferred model for chat sessions (empty = auto-select) */
+  /** @deprecated F11-R3: Dead field — runtime reads model from chatConfig.get('defaultModel'), not unified config. UI removed. */
   readonly chatModel: string;
-  /** Embedding model for RAG pipeline */
+  /** @deprecated F11-R3: Dead field — runtime hardcodes nomic-embed-text. No UI surface. */
   readonly embeddingModel: string;
   /** 0.0 = deterministic, 1.0 = creative */
   readonly temperature: number;
   /** Max tokens per response (0 = model default) */
   readonly maxTokens: number;
-  /** Context window size override (0 = model default) */
+  /** @deprecated F11-R3: Dead field — runtime reads context window from Ollama API getModelContextLength(). UI removed. */
   readonly contextWindow: number;
 }
 
@@ -103,19 +102,19 @@ export interface IUnifiedContextBudgetConfig {
 }
 
 export interface IUnifiedRetrievalConfig {
-  /** Automatically search workspace for context on every message */
+  /** @parallx-specific No upstream OpenClaw equivalent. Upstream context engine always runs if registered. Desktop toggle to disable RAG when workspace is empty. */
   readonly autoRag: boolean;
-  /** Query decomposition mode. Auto keeps the current hard-query decomposition behavior; off forces a single-query plan. */
+  /** @parallx-specific No upstream equivalent. Decomposes user query into sub-queries for broader recall via retrievalService._buildQueryPlan. */
   readonly ragDecompositionMode: 'auto' | 'off';
-  /** Candidate breadth preset for first-stage retrieval. Broad only widens hard-query recall. */
+  /** @parallx-specific Loosely inspired by upstream candidateMultiplier (numeric), remapped to balanced/broad enum for retrievalService. */
   readonly ragCandidateBreadth: 'balanced' | 'broad';
-  /** Number of top results to return from hybrid search */
+  /** @parallx-specific Upstream has memorySearch.query.maxResults (YAML) but configures a different retrieval system. Controls retrievalService top-K. */
   readonly ragTopK: number;
-  /** Maximum chunks from any single source (prevents one doc monopolizing context) */
+  /** @parallx-specific No upstream equivalent. Caps chunks from a single source to prevent context monopolization in retrievalService. */
   readonly ragMaxPerSource: number;
-  /** Token budget for retrieved context. 0 = auto (30% of model context window). */
+  /** @parallx-specific No upstream equivalent. Upstream memory search has no token budget concept; budgeting happens at context engine assembly. */
   readonly ragTokenBudget: number;
-  /** Minimum RRF score to include a retrieval result (0–1) */
+  /** @parallx-specific Upstream has memorySearch.query.minScore (YAML) but configures a different retrieval system. RRF noise floor for retrievalService. */
   readonly ragScoreThreshold: number;
   /** Token budget allocation across system/RAG/history/user */
   readonly contextBudget: IUnifiedContextBudgetConfig;
@@ -157,7 +156,7 @@ export const AGENT_PROACTIVITY_OPTIONS = ['low', 'balanced', 'high'] as const;
 export type AgentProactivityPreference = typeof AGENT_PROACTIVITY_OPTIONS[number];
 
 export interface IUnifiedAgentConfig {
-  /** Maximum agentic loop iterations before stopping */
+  /** @parallx-specific Upstream hardcodes MAX_RUN_LOOP_ITERATIONS = 24 + 8/profile. Parallx exposes as user setting with floor guard (min 4, max 6). */
   readonly maxIterations: number;
   /** @deprecated F11: No OpenClaw consumer. */
   readonly verbosity: AgentVerbosityPreference;

@@ -22,7 +22,6 @@ import { ChatSection } from './sections/chatSection.js';
 import { ModelSection } from './sections/modelSection.js';
 import { RetrievalSection } from './sections/retrievalSection.js';
 import { AgentSection } from './sections/agentSection.js';
-import { IndexingSection } from './sections/indexingSection.js';
 import { ToolsSection } from './sections/toolsSection.js';
 import { AdvancedSection } from './sections/advancedSection.js';
 import { PreviewSection } from './sections/previewSection.js';
@@ -42,7 +41,7 @@ export class AISettingsPanel extends Disposable {
   constructor(
     container: HTMLElement,
     private readonly _service: IAISettingsService,
-    private readonly _languageModelsService?: ILanguageModelsService,
+    _languageModelsService?: ILanguageModelsService,
     private readonly _unifiedConfigService?: IUnifiedAIConfigService,
     private readonly _toolPickerServices?: IToolPickerServices,
   ) {
@@ -83,10 +82,9 @@ export class AISettingsPanel extends Disposable {
     // ── Build Sections ──
     this._sections = [
       this._register(new ChatSection(this._service, this._unifiedConfigService)),
-      this._register(new ModelSection(this._service, this._languageModelsService)),
+      this._register(new ModelSection(this._service)),
       this._register(new RetrievalSection(this._service, this._unifiedConfigService)),
       this._register(new AgentSection(this._service, this._unifiedConfigService)),
-      this._register(new IndexingSection(this._service, this._unifiedConfigService)),
       this._register(new ToolsSection(this._service, this._toolPickerServices, this._unifiedConfigService)),
       this._register(new AdvancedSection(this._service)),
       this._register(new PreviewSection(this._service)),
@@ -125,7 +123,6 @@ export class AISettingsPanel extends Disposable {
       { id: 'model', label: 'Model' },
       { id: 'retrieval', label: 'Retrieval' },
       { id: 'agent', label: 'Agent' },
-      { id: 'indexing', label: 'Indexing' },
       { id: 'tools', label: 'Tools' },
       { id: 'advanced', label: 'Advanced' },
       { id: 'preview', label: 'Preview' },

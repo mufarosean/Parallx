@@ -143,7 +143,7 @@ describe('SettingsSection (base class)', () => {
 
     // All rows should be visible initially
     let matches = section.applySearch('');
-    expect(matches).toBeGreaterThanOrEqual(4); // defaultModel, temperature, maxTokens, contextWindow
+    expect(matches).toBeGreaterThanOrEqual(2); // temperature, maxTokens
 
     // Search for 'temperature' should match
     matches = section.applySearch('temperature');
@@ -266,18 +266,17 @@ describe('AISettingsPanel', () => {
     panel.dispose();
   });
 
-  it('renders navigation with 8 section buttons', () => {
+  it('renders navigation with 7 section buttons', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const navItems = parent.querySelectorAll('.ai-settings-nav__item');
-    expect(navItems.length).toBe(8);
+    expect(navItems.length).toBe(7);
     expect(navItems[0].textContent).toBe('Chat');
     expect(navItems[1].textContent).toBe('Model');
     expect(navItems[2].textContent).toBe('Retrieval');
     expect(navItems[3].textContent).toBe('Agent');
-    expect(navItems[4].textContent).toBe('Indexing');
-    expect(navItems[5].textContent).toBe('Tools');
-    expect(navItems[6].textContent).toBe('Advanced');
-    expect(navItems[7].textContent).toBe('Preview');
+    expect(navItems[4].textContent).toBe('Tools');
+    expect(navItems[5].textContent).toBe('Advanced');
+    expect(navItems[6].textContent).toBe('Preview');
     panel.dispose();
   });
 
@@ -287,12 +286,12 @@ describe('AISettingsPanel', () => {
     panel.dispose();
   });
 
-  it('renders all eight sections in content area', () => {
+  it('renders all seven sections in content area', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const sections = parent.querySelectorAll('.ai-settings-section');
-    expect(sections.length).toBe(8);
+    expect(sections.length).toBe(7);
     const ids = Array.from(sections).map(s => (s as HTMLElement).dataset.sectionId);
-    expect(ids).toEqual(['chat', 'model', 'retrieval', 'agent', 'indexing', 'tools', 'advanced', 'preview']);
+    expect(ids).toEqual(['chat', 'model', 'retrieval', 'agent', 'tools', 'advanced', 'preview']);
     panel.dispose();
   });
 
@@ -368,18 +367,16 @@ describe('ModelSection', () => {
     service = createMockService();
   });
 
-  it('builds with defaultModel, temperature, maxTokens, and contextWindow rows', () => {
+  it('builds with temperature and maxTokens rows', () => {
     const section = new ModelSection(service as any);
     section.build();
 
     const rows = section.element.querySelectorAll('.ai-settings-row');
-    expect(rows.length).toBe(4);
+    expect(rows.length).toBe(2);
 
     const keys = Array.from(rows).map(r => (r as HTMLElement).dataset.settingKey);
-    expect(keys).toContain('model.defaultModel');
     expect(keys).toContain('model.temperature');
     expect(keys).toContain('model.maxTokens');
-    expect(keys).toContain('model.contextWindow');
     section.dispose();
   });
 

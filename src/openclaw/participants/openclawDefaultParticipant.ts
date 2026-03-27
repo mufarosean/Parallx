@@ -219,6 +219,7 @@ async function runOpenclawDefaultTurn(
 // ---------------------------------------------------------------------------
 
 const OPENCLAW_MAX_AGENT_ITERATIONS = 6;
+const OPENCLAW_MIN_AGENT_ITERATIONS = 4;
 const OPENCLAW_MAX_READONLY_ITERATIONS = 3;
 
 async function buildOpenclawTurnContext(
@@ -260,7 +261,7 @@ async function buildOpenclawTurnContext(
 
   // Max tool iterations — Agent gets full autonomy, Ask/Edit get short loops
   const maxToolIterations = request.mode === ChatMode.Agent
-    ? Math.min(services.maxIterations ?? OPENCLAW_MAX_AGENT_ITERATIONS, OPENCLAW_MAX_AGENT_ITERATIONS)
+    ? Math.max(OPENCLAW_MIN_AGENT_ITERATIONS, Math.min(services.maxIterations ?? OPENCLAW_MAX_AGENT_ITERATIONS, OPENCLAW_MAX_AGENT_ITERATIONS))
     : OPENCLAW_MAX_READONLY_ITERATIONS;
 
   const toolState = buildOpenclawRuntimeToolState({
