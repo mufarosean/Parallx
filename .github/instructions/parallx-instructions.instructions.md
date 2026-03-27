@@ -26,7 +26,7 @@ implementation work.
 - **One shared interpretation model.** Default chat, explicit participants, and bridged participants must converge on one request-interpretation contract.
 - **Use `ILanguageModelsService` for all model communication.** Do NOT call Ollama HTTP endpoints directly.
 - **Verification is phase-gated.** Each phase must have explicit success criteria and required verification commands before it can be treated as complete.
-- **Commit discipline without implicit commits.** Prepare work in small commit-sized units, but do not actually create a git commit unless the user explicitly requests it.
+- **Commit discipline at domain closure.** Each completed parity domain (F1-F10) must be committed with its code changes, tests, and documentation (AUDIT, GAP_MAP, TRACKER). Regression fixes are committed separately. The orchestrator must commit after every domain closure before advancing.
 - **Completion requires milestone updates.** When a task is actually complete, update the milestone tracking document with facts, verification outcomes, and any deviation notes.
 
 ### Key M11 Constraints
