@@ -109,10 +109,12 @@
 
 ## 7. Tool Policy
 
+*Audited and closed 2026-03-27 — see `docs/F4_TOOL_POLICY_AUDIT.md` for full findings.*
+
 | Upstream Capability | Upstream Location | Parallx Status | Parallx Location | Gap | Fix |
 |---|---|---|---|---|---|
-| 4-stage tool filtering | tool-policy.ts | **MISSING** | — | All tools sent to model unconditionally | Add tool filtering: by profile (read-only vs full), by agent config, by mode (Chat vs Agent) |
-| Tool approval system | Session-level approval | **ALIGNED** | `IChatRuntimeAutonomyMirror` | Approval flow exists in types and participant | Acceptable |
+| 4-stage tool filtering | tool-policy.ts | **ALIGNED** | `openclawToolPolicy.ts` `applyOpenclawToolPolicy()` + `openclawToolState.ts` `buildOpenclawRuntimeToolState()` | 2-step pipeline (profile deny/allow + permission filter) implemented. Full upstream 6-step pipeline (per-agent, per-provider, per-group) N/A for single-user desktop. | — |
+| Tool approval system | Session-level approval | **ALIGNED** | `IChatRuntimeAutonomyMirror` + `languageModelToolsService.ts` `invokeToolWithRuntimeControl()` | 3-tier permission enforcement: never-allowed excluded at policy level, requires-approval gated at invocation level, always-allowed passed through. | — |
 
 ---
 
@@ -158,9 +160,9 @@
 | Routing | 5 | 5 | 0 | 0 | 0 | 0 |
 | Response Quality | 4 | 4 | 0 | 0 | 0 | 0 |
 | System Prompt | 4 | 1 | 2 | 0 | 1 | 0 |
-| Tool Policy | 2 | 1 | 0 | 0 | 1 | 0 |
-| **TOTAL** | **43** | **18** | **5** | **0** | **11** | **5†** |
+| Tool Policy | 2 | 2 | 0 | 0 | 0 | 0 |
+| **TOTAL** | **43** | **19** | **5** | **0** | **10** | **5†** |
 
 † F2-03 (Context engine registry) counted as ALIGNED with documented N/A adaptation.
 
-**Bottom line:** of 39 applicable capabilities (43 minus 4 N/A), 18 are aligned (46%), 5 misaligned (13%), 0 heuristic patchwork (0%), and 11 are missing (28%). Domains closed: F2 Context Engine, F5 Routing, F6 Response Quality (all ALIGNED). F7/F8/F3/F1 also closed — see individual TRACKER docs for details.
+**Bottom line:** of 39 applicable capabilities (43 minus 4 N/A), 19 are aligned (49%), 5 misaligned (13%), 0 heuristic patchwork (0%), and 10 are missing (26%). All 10 domains audited and closed. Domains: F7, F8, F3, F1, F2, F5, F6, F9, F10, F4 — see individual TRACKER docs for details.
