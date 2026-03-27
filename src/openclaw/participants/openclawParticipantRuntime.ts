@@ -22,11 +22,49 @@ export const OPENCLAW_BOOTSTRAP_FILES = [
   'SOUL.md',
   'AGENTS.md',
   'TOOLS.md',
-  'IDENTITY.md',
-  'USER.md',
-  'HEARTBEAT.md',
-  'BOOTSTRAP.md',
 ] as const;
+
+/**
+ * Built-in defaults for bootstrap files that every workspace should have.
+ * When a workspace is missing these files, the runtime injects these defaults
+ * instead of marking them [MISSING]. Mirrors upstream's scaffold-on-create.
+ */
+export const OPENCLAW_BOOTSTRAP_DEFAULTS = new Map<string, string>([
+  ['SOUL.md', `# Parallx AI Assistant
+
+You are Parallx, a local AI assistant running entirely on the user's machine.
+You help the user understand and work with their project files and canvas pages.
+
+## Personality
+- Direct, concise, technical
+- Explain your reasoning when asked
+- Admit when you don't know something
+- Never hallucinate file contents — read the actual file
+
+## Constraints
+- You can ONLY access files within this workspace
+- You MUST ask permission before writing or modifying files
+- You MUST NOT fabricate code or file contents
+- When referencing files, always verify they exist first
+- Keep responses focused — don't repeat the user's question back
+
+## Response Style
+- Use code blocks with language tags
+- Reference file paths relative to workspace root
+- When showing diffs, use unified diff format
+- For long explanations, use headers and bullet points`],
+  ['TOOLS.md', `# Tool Usage Guidelines
+
+## When to Use Tools
+- Use file read/search tools to answer questions about workspace content
+- Use write tools only when explicitly asked to create or modify files
+- Prefer targeted file reads over broad searches when the user specifies a file
+
+## Tool Invocation Style
+- Always explain what you're about to do before invoking a tool
+- Report tool results clearly and concisely
+- If a tool fails, explain the failure and suggest alternatives`],
+]);
 
 export const OPENCLAW_MAX_READONLY_ITERATIONS = 3;
 export const OPENCLAW_DEFAULT_BOOTSTRAP_MAX_CHARS = 20_000;
@@ -54,7 +92,13 @@ export async function loadOpenclawBootstrapEntries(
   readWorkspaceFile: ReadWorkspaceFile | undefined,
 ): Promise<IOpenclawBootstrapEntry[]> {
   if (!readWorkspaceFile) {
-    return OPENCLAW_BOOTSTRAP_FILES.map((path) => ({ name: path, path, missing: true }));
+    return OPENCLAW_BOOTSTRAP_FILES.map((path) => {
+      const fallback = OPENCLAW_BOOTSTRAP_DEFAULTS.get(path);
+      if (fallback) {
+        return { name: path, path, content: fallback, missing: false };
+      }
+      return { name: path, path, missing: true };
+    });
   }
 
   const entries: IOpenclawBootstrapEntry[] = [];
@@ -62,6 +106,11 @@ export async function loadOpenclawBootstrapEntries(
     const content = await readWorkspaceFile(path);
     if (typeof content === 'string') {
       entries.push({ name: path, path, content, missing: false });
+      continue;
+    }
+    const fallback = OPENCLAW_BOOTSTRAP_DEFAULTS.get(path);
+    if (fallback) {
+      entries.push({ name: path, path, content: fallback, missing: false });
       continue;
     }
     entries.push({ name: path, path, missing: true });

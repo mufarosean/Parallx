@@ -278,6 +278,8 @@ async function buildOpenclawTurnContext(
     ? (await services.getAvailableModelIds()).filter(id => id !== runtimeInfo.model)
     : undefined;
 
+  const effectiveConfig = services.unifiedConfigService?.getEffectiveConfig();
+
   return {
     sessionId: context.sessionId,
     history,
@@ -289,6 +291,9 @@ async function buildOpenclawTurnContext(
     skillState,
     runtimeInfo,
     preferencesPrompt: await services.getPreferencesForPrompt?.(),
+    temperature: effectiveConfig?.model?.temperature,
+    maxTokens: effectiveConfig?.model?.maxTokens,
+    autoRag: effectiveConfig?.retrieval?.autoRag,
     toolState,
     maxToolIterations,
     mentionContextBlocks: preprocessed?.mentionContextBlocks,

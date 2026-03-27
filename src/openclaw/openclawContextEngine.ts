@@ -48,6 +48,8 @@ export interface IOpenclawContextEngine {
 export interface IOpenclawBootstrapParams {
   readonly sessionId: string;
   readonly tokenBudget: number;
+  /** When false, skip workspace retrieval (RAG) even if the service is available. */
+  readonly autoRag?: boolean;
 }
 
 /**
@@ -166,7 +168,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
    * rather than making calls that will fail.
    */
   async bootstrap(_params: IOpenclawBootstrapParams): Promise<IOpenclawBootstrapResult> {
-    this._ragReady = !!this.services.retrieveContext;
+    this._ragReady = !!this.services.retrieveContext && (_params.autoRag !== false);
     this._memoryReady = !!this.services.recallMemories;
     this._conceptsReady = !!this.services.recallConcepts;
     this._transcriptsReady = !!this.services.recallTranscripts;

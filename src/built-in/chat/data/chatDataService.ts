@@ -2208,6 +2208,7 @@ export class ChatDataService {
       isIndexing: () => this.isIndexing(),
       getIndexingProgress: () => this._d.indexingPipelineService?.progress ?? { phase: 'idle' as const, processed: 0, total: 0 },
       getIndexStats: () => this._lastIndexStats,
+      getLastSystemPromptReport: () => this.getLastSystemPromptReport(),
     });
   }
 }

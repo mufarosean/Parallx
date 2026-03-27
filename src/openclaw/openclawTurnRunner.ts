@@ -95,6 +95,7 @@ export async function runOpenclawTurn(
     await context.engine.bootstrap({
       sessionId: context.sessionId,
       tokenBudget: context.tokenBudget,
+      autoRag: context.autoRag,
     });
   }
 

@@ -14,6 +14,7 @@ import type {
   IOpenclawRuntimeLifecycle,
   IParsedSlashCommand,
 } from './openclawTypes.js';
+import { OPENCLAW_BOOTSTRAP_DEFAULTS } from './participants/openclawParticipantRuntime.js';
 
 const OPENCLAW_COMMANDS: Record<string, IChatSlashCommand> = {
   context: {
@@ -232,7 +233,17 @@ async function executeOpenclawInitCommand(
   if (services.writeFile) {
     try {
       await services.writeFile('AGENTS.md', `${generatedContent.trim()}\n`);
-      response.markdown('\n\n---\nâœ… **AGENTS.md** has been created at the workspace root.');
+      response.markdown('\n\n---\n✅ **AGENTS.md** has been created at the workspace root.');
+
+      // Scaffold SOUL.md and TOOLS.md if missing (from bootstrap defaults)
+      for (const [filename, defaultContent] of OPENCLAW_BOOTSTRAP_DEFAULTS) {
+        const fileExists = await services.exists?.(filename);
+        if (!fileExists) {
+          await services.writeFile(filename, `${defaultContent.trim()}\n`);
+          response.markdown(`\n✅ **${filename}** has been created with default content.`);
+        }
+      }
+
       for (const dir of ['.parallx', '.parallx/rules', '.parallx/commands', '.parallx/skills']) {
         const exists = await services.exists?.(dir);
         if (!exists) {

@@ -1,6 +1,7 @@
 import type { ITokenStatusBarServices } from '../chatTypes.js';
 import type { ChatWidget } from '../widgets/chatWidget.js';
 import type { ChatMode, IToolDefinition } from '../../../services/chatTypes.js';
+import type { IOpenclawSystemPromptReport } from '../../../services/chatRuntimeTypes.js';
 
 export interface IChatTokenBarAdapterDeps {
   readonly getActiveWidget: () => ChatWidget | undefined;
@@ -15,6 +16,7 @@ export interface IChatTokenBarAdapterDeps {
   readonly isIndexing: () => boolean;
   readonly getIndexingProgress: NonNullable<ITokenStatusBarServices['getIndexingProgress']>;
   readonly getIndexStats: NonNullable<ITokenStatusBarServices['getIndexStats']>;
+  readonly getLastSystemPromptReport?: () => IOpenclawSystemPromptReport | undefined;
 }
 
 export function buildChatTokenBarServices(deps: IChatTokenBarAdapterDeps): ITokenStatusBarServices {
@@ -31,5 +33,6 @@ export function buildChatTokenBarServices(deps: IChatTokenBarAdapterDeps): IToke
     isIndexing: deps.isIndexing,
     getIndexingProgress: deps.getIndexingProgress,
     getIndexStats: deps.getIndexStats,
+    getLastSystemPromptReport: deps.getLastSystemPromptReport,
   };
 }

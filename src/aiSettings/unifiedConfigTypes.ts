@@ -26,6 +26,10 @@ import type { IConfigFileSystem } from '../services/parallxConfigService.js';
 
 // ─── Behavior (from M15 persona + chat) ──────────────────────────────────────
 
+/**
+ * @deprecated F11: Persona config is dead code — OpenClaw uses SOUL.md for personality.
+ * No runtime consumer reads these fields. Retained for UI display compatibility.
+ */
 export interface IUnifiedPersonaConfig {
   /** Display name shown in UI and suggestion cards */
   readonly name: string;
@@ -40,7 +44,7 @@ export interface IUnifiedChatConfig {
   readonly systemPrompt: string;
   /** Whether user has manually edited the system prompt */
   readonly systemPromptIsCustom: boolean;
-  /** Controls response length preference */
+  /** @deprecated F11: No OpenClaw consumer. Only feeds legacy systemPromptGenerator. */
   readonly responseLength: AIResponseLength;
   /**
    * User-editable description of what this workspace contains.
@@ -76,6 +80,10 @@ export interface IUnifiedModelConfig {
  * slots are trimmed first when the context window is exceeded. Lower
  * numbers are trimmed first. Min-percent floors guarantee a slot keeps
  * at least that percentage of the window.
+ */
+/**
+ * @deprecated F11: contextBudget is dead code — OpenClaw context engine uses hardcoded elastic ratios.
+ * Retained for type compatibility.
  */
 export interface IUnifiedContextBudgetConfig {
   /** Trim priority per slot (lower = trimmed first). */
@@ -115,6 +123,10 @@ export interface IUnifiedRetrievalConfig {
 
 // ─── Suggestions (from M15) ──────────────────────────────────────────────────
 
+/**
+ * @deprecated F11: Suggestion config fields are dead code — OpenClaw does not read tone/focus/threshold.
+ * Only `suggestionsEnabled` has a potential consumer. Retained for UI compatibility.
+ */
 export interface IUnifiedSuggestionsConfig {
   /** Friendly tone for proactive suggestions */
   readonly tone: AITone;
@@ -147,19 +159,19 @@ export type AgentProactivityPreference = typeof AGENT_PROACTIVITY_OPTIONS[number
 export interface IUnifiedAgentConfig {
   /** Maximum agentic loop iterations before stopping */
   readonly maxIterations: number;
-  /** How verbose agent-facing runtime explanations should be. */
+  /** @deprecated F11: No OpenClaw consumer. */
   readonly verbosity: AgentVerbosityPreference;
-  /** Default approval posture for autonomous actions. */
+  /** @deprecated F11: No OpenClaw consumer. */
   readonly approvalStrictness: AgentApprovalStrictness;
-  /** Preferred cadence for autonomous execution. */
+  /** @deprecated F11: No OpenClaw consumer. */
   readonly executionStyle: AgentExecutionStylePreference;
-  /** How proactively the runtime should continue without a check-in. */
+  /** @deprecated F11: No OpenClaw consumer. */
   readonly proactivity: AgentProactivityPreference;
 }
 
 export interface IUnifiedRuntimeConfig {
   /** Active chat runtime implementation used for the default chat surface. */
-  readonly implementation: 'legacy-claw' | 'openclaw';
+  readonly implementation: 'openclaw';
 }
 
 // ─── Memory (NEW in M20) ─────────────────────────────────────────────────────
@@ -167,11 +179,11 @@ export interface IUnifiedRuntimeConfig {
 export interface IUnifiedMemoryConfig {
   /** Whether automatic memory creation is enabled */
   readonly memoryEnabled: boolean;
-  /** Whether post-chat summarization runs */
+  /** @deprecated F11: No OpenClaw consumer. Post-chat summarization is unconditional. */
   readonly autoSummarize: boolean;
   /** Whether canonical session transcripts are indexed for explicit transcript recall. */
   readonly transcriptIndexingEnabled: boolean;
-  /** Days before stale memories are evicted */
+  /** @deprecated F11: No consumer. Memory eviction is not implemented. */
   readonly evictionDays: number;
 }
 

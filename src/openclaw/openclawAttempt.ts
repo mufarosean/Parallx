@@ -77,6 +77,12 @@ export interface IOpenclawTurnContext {
   // M2: Mention context blocks to inject
   readonly mentionContextBlocks?: readonly string[];
 
+  // Model parameters from config
+  readonly temperature?: number;
+  readonly maxTokens?: number;
+  /** When false, skip workspace retrieval (RAG). Defaults to true. */
+  readonly autoRag?: boolean;
+
   // Tool inputs
   readonly toolState: IOpenclawRuntimeToolState;
   readonly maxToolIterations: number;
@@ -208,6 +214,8 @@ export async function executeOpenclawAttempt(
     think: true,
     tools: context.toolState.availableDefinitions.length > 0 ? context.toolState.availableDefinitions : undefined,
     numCtx: context.tokenBudget,
+    temperature: context.temperature,
+    maxTokens: context.maxTokens || undefined,
   };
 
   const loopSafety = new ChatToolLoopSafety();

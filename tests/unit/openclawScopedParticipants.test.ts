@@ -90,7 +90,7 @@ describe('openclaw scoped participants', () => {
     expect(messages[0].content).toContain('agent rules');
     expect(bootstrapDebug.files).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'AGENTS.md', rawChars: expect.any(Number) }),
-      expect.objectContaining({ name: 'SOUL.md', missing: true, rawChars: 0, injectedChars: expect.any(Number) }),
+      expect.objectContaining({ name: 'SOUL.md', missing: false, rawChars: expect.any(Number) }),
     ]));
     expect(response.markdown).toHaveBeenCalledWith('workspace answer');
   });

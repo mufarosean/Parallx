@@ -1,5 +1,3 @@
-import type { IUnifiedAIConfig } from '../aiSettings/unifiedConfigTypes.js';
-
 export const DEFAULT_CHAT_PARTICIPANT_ID = 'parallx.chat.default';
 export const OPENCLAW_DEFAULT_PARTICIPANT_ID = 'parallx.chat.openclaw-default';
 
@@ -9,7 +7,6 @@ export const OPENCLAW_DEFAULT_PARTICIPANT_ID = 'parallx.chat.openclaw-default';
  */
 export function resolveChatRuntimeParticipantId(
   participantId: string,
-  _getConfig?: () => IUnifiedAIConfig | undefined,
 ): string {
   if (participantId !== DEFAULT_CHAT_PARTICIPANT_ID) {
     return participantId;

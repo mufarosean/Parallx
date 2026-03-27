@@ -271,48 +271,54 @@ export class ChatTokenStatusBar extends Disposable {
     let toolResultsEst = 0;
 
     try {
-      const pageCount = await this._services.getPageCount();
-      const fileCount = await this._services.getFileCount();
-      const toolDefs = this._services.getToolDefinitions();
-      const isRAGAvailable = this._services.isRAGAvailable();
-      const isIndexing = this._services.isIndexing();
+      // Prefer OpenClaw runtime's cached prompt report (accurate post-turn data)
+      const promptReport = this._services.getLastSystemPromptReport?.();
+      if (promptReport) {
+        systemInstructionsEst = Math.ceil(promptReport.systemPrompt.nonProjectContextChars / 4);
+        toolDefinitionsEst = Math.ceil(promptReport.tools.schemaChars / 4);
+        filesEst = Math.ceil(promptReport.systemPrompt.projectContextChars / 4);
+      } else {
+        // Fallback: legacy buildSystemPrompt estimation (before first OpenClaw turn)
+        const pageCount = await this._services.getPageCount();
+        const fileCount = await this._services.getFileCount();
+        const toolDefs = this._services.getToolDefinitions();
+        const isRAGAvailable = this._services.isRAGAvailable();
+        const isIndexing = this._services.isIndexing();
 
-      // Full system prompt (with tools for Agent mode)
-      const fullCtx: ISystemPromptContext = {
-        workspaceName: this._services.getWorkspaceName(),
-        pageCount,
-        currentPageTitle: this._services.getCurrentPageTitle(),
-        tools: mode === ChatMode.Agent ? toolDefs : undefined,
-        fileCount,
-        isRAGAvailable,
-        isIndexing,
-      };
-      const fullSystemPrompt = buildSystemPrompt(mode, fullCtx);
+        const fullCtx: ISystemPromptContext = {
+          workspaceName: this._services.getWorkspaceName(),
+          pageCount,
+          currentPageTitle: this._services.getCurrentPageTitle(),
+          tools: mode === ChatMode.Agent ? toolDefs : undefined,
+          fileCount,
+          isRAGAvailable,
+          isIndexing,
+        };
+        const fullSystemPrompt = buildSystemPrompt(mode, fullCtx);
 
-      // Without tools (base instructions only)
-      const baseCtx: ISystemPromptContext = {
-        workspaceName: this._services.getWorkspaceName(),
-        pageCount,
-        currentPageTitle: this._services.getCurrentPageTitle(),
-        fileCount,
-        isRAGAvailable,
-        isIndexing,
-      };
-      const basePrompt = buildSystemPrompt(mode, baseCtx);
+        const baseCtx: ISystemPromptContext = {
+          workspaceName: this._services.getWorkspaceName(),
+          pageCount,
+          currentPageTitle: this._services.getCurrentPageTitle(),
+          fileCount,
+          isRAGAvailable,
+          isIndexing,
+        };
+        const basePrompt = buildSystemPrompt(mode, baseCtx);
 
-      systemInstructionsEst = Math.ceil(basePrompt.length / 4);
-      toolDefinitionsEst = Math.ceil((fullSystemPrompt.length - basePrompt.length) / 4);
-      filesEst = 0; // No longer listing files in system prompt (RAG handles this)
+        systemInstructionsEst = Math.ceil(basePrompt.length / 4);
+        toolDefinitionsEst = Math.ceil((fullSystemPrompt.length - basePrompt.length) / 4);
+        filesEst = 0;
 
-      // Tool definitions JSON body (agent mode)
-      if (mode === ChatMode.Agent && toolDefs.length > 0) {
-        const toolJsonChars = JSON.stringify(
-          toolDefs.map(t => ({
-            type: 'function',
-            function: { name: t.name, description: t.description, parameters: t.parameters },
-          })),
-        ).length;
-        toolDefinitionsEst += Math.ceil(toolJsonChars / 4);
+        if (mode === ChatMode.Agent && toolDefs.length > 0) {
+          const toolJsonChars = JSON.stringify(
+            toolDefs.map(t => ({
+              type: 'function',
+              function: { name: t.name, description: t.description, parameters: t.parameters },
+            })),
+          ).length;
+          toolDefinitionsEst += Math.ceil(toolJsonChars / 4);
+        }
       }
     } catch {
       // Best-effort

@@ -535,7 +535,6 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   });
   chatService.setRuntimeParticipantResolver?.((participantId: string) => resolveChatRuntimeParticipantId(
     participantId,
-    () => unifiedConfigService?.getEffectiveConfig(),
   ));
   chatService.setTurnPreparationServices({
     listFilesRelative: fsAccessor ? (r) => dataService.listFilesRelative(r) : undefined,

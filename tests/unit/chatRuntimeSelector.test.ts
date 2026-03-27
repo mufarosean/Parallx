@@ -12,14 +12,6 @@ describe('chat runtime selector', () => {
   });
 
   it('always routes the default participant to OpenClaw', () => {
-    expect(resolveChatRuntimeParticipantId(DEFAULT_CHAT_PARTICIPANT_ID, () => ({
-      runtime: { implementation: 'openclaw' },
-    } as any))).toBe(OPENCLAW_DEFAULT_PARTICIPANT_ID);
-  });
-
-  it('routes the default participant to OpenClaw even with other config', () => {
-    expect(resolveChatRuntimeParticipantId(DEFAULT_CHAT_PARTICIPANT_ID, () => ({
-      runtime: { implementation: 'legacy-claw' },
-    } as any))).toBe(OPENCLAW_DEFAULT_PARTICIPANT_ID);
+    expect(resolveChatRuntimeParticipantId(DEFAULT_CHAT_PARTICIPANT_ID)).toBe(OPENCLAW_DEFAULT_PARTICIPANT_ID);
   });
 });

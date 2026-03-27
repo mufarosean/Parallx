@@ -492,6 +492,8 @@ export interface ITokenStatusBarServices {
   getIndexStats?(): { pages: number; files: number } | undefined;
   /** M42 Phase 3: Check provider connection health. */
   checkConnectionHealth?(): Promise<{ available: boolean; model?: string; error?: string }>;
+  /** F11: Get the most recent system prompt report from the OpenClaw runtime. */
+  getLastSystemPromptReport?(): import('../../services/chatRuntimeTypes.js').IOpenclawSystemPromptReport | undefined;
 }
 
 // ── Attachment data types ──
