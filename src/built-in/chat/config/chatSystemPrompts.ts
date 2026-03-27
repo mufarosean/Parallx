@@ -15,7 +15,7 @@
 //   Parallx centralises prompt building here for consistency.
 
 import { ChatMode } from '../../../services/chatTypes.js';
-import type { ISystemPromptContext } from '../chatTypes.js';
+import type { ISystemPromptContext, IActivatedSkill } from '../chatTypes.js';
 
 // ISystemPromptContext — now defined in chatTypes.ts (M13 Phase 1)
 export type { ISystemPromptContext } from '../chatTypes.js';
@@ -254,25 +254,19 @@ function appendSkillCatalog(lines: string[], ctx: ISystemPromptContext): void {
   lines.push('</available_skills>');
 }
 
-// ── M39: Skill instruction injection ──
-
-import type { IActivatedSkill } from '../chatTypes.js';
+// ── M39 Phase C: Activated skill injection ──
 
 /**
- * Build a system-prompt addon that injects an activated skill's full body.
- * The skill instructions are wrapped in `<skill_instructions>` tags so the
- * model can identify them as authoritative workflow guidance.
+ * Build a `<skill_instructions>` block for an activated skill.
+ * Injected into the system prompt when the planner or user activates a skill.
  */
 export function buildSkillInstructionSection(skill: IActivatedSkill): string {
   const lines: string[] = [
-    '',
     '<skill_instructions>',
-    `ACTIVATED SKILL: ${skill.manifest.name}`,
+    `Skill: ${skill.manifest.name}`,
     `Activated by: ${skill.activatedBy}`,
     '',
-    'Follow these step-by-step instructions carefully. They take priority over',
-    'your general behavior for this turn. Use the available tools to complete',
-    'each step. Do not skip steps or summarize the instructions.',
+    'Follow these step-by-step instructions exactly as written. Do not skip steps.',
     '',
     skill.resolvedBody,
     '</skill_instructions>',

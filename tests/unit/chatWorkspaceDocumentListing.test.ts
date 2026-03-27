@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { tryHandleWorkspaceDocumentListing } from '../../src/built-in/chat/utilities/chatWorkspaceDocumentListing';
+import { tryHandleWorkspaceDocumentListing } from '../../src/openclaw/openclawWorkspaceDocumentListing';
 
 describe('chat workspace document listing', () => {
   it('lists user-facing documents and skips internal artifacts', async () => {

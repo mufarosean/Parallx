@@ -22,6 +22,7 @@ import type {
   IChatPendingRequest,
   ChatMode,
   IChatEditProposalContent,
+  ToolPermissionLevel,
 } from '../../services/chatTypes.js';
 import type {
   AgentApprovalRequest,
@@ -52,6 +53,7 @@ export type {
   IChatRuntimeAutonomyMirror,
   IOpenclawBootstrapDebugFile,
   IOpenclawBootstrapDebugReport,
+  IOpenclawSkillCatalogReportEntry,
   IOpenclawSkillPromptEntry,
   IOpenclawToolPromptEntry,
   IOpenclawSystemPromptReport,
@@ -168,10 +170,8 @@ export interface IDefaultParticipantServices {
       runtime: 'claw' | 'openclaw';
     },
   ): Promise<IChatRuntimeAutonomyMirror | undefined>;
-  /** M39: Return lightweight catalog of workflow skills for prompt injection. */
-  getWorkflowSkillCatalog?(): ISkillCatalogEntry[];
-  /** M39: Return full skill manifest by name (for activation). */
-  getSkillManifest?(name: string): import('../../services/skillLoaderService.js').ISkillManifest | undefined;
+  /** M39: Return the canonical file-backed skill catalog for runtime loading. */
+  getSkillCatalog?(): ISkillCatalogEntry[];
 }
 
 /** Services injected into the @workspace participant. */
@@ -310,14 +310,23 @@ export interface ISkillCatalogEntry {
   readonly kind: SkillKind;
   readonly tags: readonly string[];
   readonly location?: string;
+  readonly disableModelInvocation?: boolean;
+  readonly userInvocable?: boolean;
+  readonly permissionLevel?: ToolPermissionLevel;
+  readonly parameters?: readonly {
+    readonly name: string;
+    readonly type: string;
+    readonly description: string;
+    readonly required: boolean;
+  }[];
+  readonly body?: string;
 }
 
-/** Tier 3 — fully activated skill with resolved body ready for injection. */
+/** M39 Phase C — an activated skill ready for injection into the system prompt. */
 export interface IActivatedSkill {
   readonly manifest: import('../../services/skillLoaderService.js').ISkillManifest;
   readonly resolvedBody: string;
-  readonly activatedBy: 'planner' | 'user';
-  readonly scope?: IQueryScope;
+  readonly activatedBy: string;
 }
 
 export type ChatTurnRouteKind =

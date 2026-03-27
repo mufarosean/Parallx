@@ -35,7 +35,6 @@ const EXEMPT_FILES = new Set([
   'skills/scoped-extraction/SKILL.md',    // Built-in workflow skill (M39)
   'skills/builtInSkillManifests.ts',      // Built-in skill manifest registry (M41)
   'skills/defaultSkillContents.ts',       // Default skill file contents for /init (M45)
-  'utilities/chatToolLoopSafety.ts',      // Re-export shim → canonical src/services/chatToolLoopSafety.ts
 ]);
 
 // ── Per-file import rules ───────────────────────────────────────────────────
@@ -55,8 +54,6 @@ const FOLDER_RULES: Record<string, string[]> = {
   // chatTypes.ts and chatIcons.ts have their own purity tests below.
 
   // ── config/ — imports only chatTypes ────────────────────────────────────
-  'config/chatModeCapabilities.ts': [],
-  'config/chatSlashCommands.ts':    [],
   'config/chatSystemPrompts.ts':    [],
 
   // ── data/ — data service hub ────────────────────────────────────────────
@@ -88,11 +85,6 @@ const FOLDER_RULES: Record<string, string[]> = {
   'tools/transcriptTools.ts': [],
   'tools/writeTools.ts':    [],
 
-  // ── participants/ — chat participants ───────────────────────────────────
-  'participants/canvasParticipant.ts':    ['utilities/'],
-  'participants/defaultParticipant.ts':   ['config/', 'commands/', 'utilities/'],
-  'participants/workspaceParticipant.ts': ['utilities/'],
-
   // ── widgets/ — chat widget components ───────────────────────────────────
   'widgets/chatSessionSidebar.ts': ['chatIcons'],
   'widgets/chatTokenStatusBar.ts': ['chatIcons', 'config/'],
@@ -105,70 +97,30 @@ const FOLDER_RULES: Record<string, string[]> = {
   // ── commands/ — slash/init commands ─────────────────────────────────────
   'commands/initCommand.ts': ['skills/'],
 
-  // ── utilities/ — mention resolution, user commands ──────────────────────
+  // ── utilities/ — mention resolution, shared helpers ──────────────────
   'utilities/chatAgentTaskWidgetAdapter.ts': [],
-  'utilities/chatCompactCommand.ts': [],
-  'utilities/chatContextAssembly.ts':        ['utilities/'],
-  'utilities/chatContextPlanner.ts':         [],
-  'utilities/chatContextSourceLoader.ts':    [],
-  'utilities/chatDefaultCommandRegistry.ts': ['config/', 'utilities/'],
-  'utilities/chatDefaultEarlyCommands.ts': ['commands/', 'utilities/'],
-  'utilities/chatDefaultParticipantAdapter.ts': [],
-  'utilities/chatDefaultParticipantRuntime.ts': ['config/', 'utilities/'],
-  'utilities/chatDefaultPreparedTurnContext.ts': ['config/', 'utilities/'],
-  'utilities/chatDefaultRuntimeContextStage.ts': ['utilities/'],
-  'utilities/chatDefaultRuntimeExecutionStage.ts': ['config/', 'utilities/'],
-  'utilities/chatDefaultRuntimeInterpretationStage.ts': ['config/', 'utilities/'],
-  'utilities/chatDefaultRuntimePromptStage.ts': ['utilities/'],
-  'utilities/chatDefaultTurnExecution.ts': ['config/', 'utilities/'],
-  'utilities/chatDefaultTurnInterpretation.ts': ['utilities/'],
-  'utilities/chatExecutionPlanner.ts':           [],
-  'utilities/chatGroundedResponseHelpers.ts': ['utilities/'],
   'utilities/chatBridgeParticipantRuntime.ts': ['utilities/'],
-  'utilities/chatGroundedExecutor.ts':       ['utilities/'],
+  'utilities/chatGroundedResponseHelpers.ts': ['utilities/'],
+  'utilities/chatMentionResolver.ts': [],
   'utilities/chatParticipantCommandDispatcher.ts': ['utilities/'],
   'utilities/chatParticipantInterpretation.ts': ['utilities/'],
   'utilities/chatParticipantRuntimeTrace.ts': [],
-  'utilities/chatRequestErrorCategorizer.ts': [],
-  'utilities/chatRuntimeCheckpointSink.ts': [],
-  'utilities/chatRuntimeLifecycle.ts': ['utilities/'],
   'utilities/chatRuntimePromptMessages.ts': [],
   'utilities/chatScopeResolver.ts':          [],
-  'utilities/chatScopedParticipantExecution.ts': [],
-  'utilities/chatScopedParticipantHandler.ts': ['utilities/'],
-  'utilities/chatScopedParticipantPromptRunner.ts': ['utilities/'],
-  'utilities/chatScopedParticipantRuntime.ts': ['utilities/'],
-  'utilities/chatScopedRuntimePromptStage.ts': ['utilities/'],
   'utilities/chatSemanticFallback.ts': [],
-  'utilities/chatMemoryWriteBack.ts':        [],
-  'utilities/chatMentionResolver.ts': [],
-  'utilities/chatModelOnlyExecutor.ts':      [],
-  'utilities/chatResponseValidator.ts':      [],
-  'utilities/chatResponseParsingHelpers.ts': [],
-  'utilities/chatScopedParticipantAdapters.ts': [],
-  'utilities/chatSpecificCoverageFocus.ts': [],
   'utilities/chatSystemPromptComposer.ts': ['config/'],
-  'utilities/chatTurnContextPreparation.ts': ['utilities/'],
-  'utilities/chatTurnBudgeting.ts':          [],
-  'utilities/chatTurnExecutionConfig.ts':    ['config/', 'utilities/'],
-  'utilities/chatTurnEntryRouting.ts':       [],
-  'utilities/chatTurnPrelude.ts':            ['utilities/'],
-  'utilities/chatTurnMessageAssembly.ts':    ['config/', 'utilities/'],
-  'utilities/chatTurnSynthesis.ts':         ['utilities/'],
+  'utilities/chatTokenBarAdapter.ts':        ['widgets/'],
   'utilities/chatTurnRouter.ts':             ['utilities/'],
   'utilities/chatTurnSemantics.ts':          [],
-  'utilities/chatUserContentComposer.ts':    [],
   'utilities/chatViewerOpeners.ts':          [],
-  'utilities/chatWorkspaceDocumentListing.ts': [],
-  'utilities/chatWorkspaceDigest.ts':        [],
   'utilities/chatWidgetAttachmentAdapter.ts': [],
   'utilities/chatWidgetPickerAdapter.ts':    [],
   'utilities/chatWidgetRequestAdapter.ts':   [],
   'utilities/chatWidgetSessionAdapter.ts':   [],
-  'utilities/chatTokenBarAdapter.ts':        ['widgets/'],
-  'utilities/chatSkillMatcher.ts':           [],
-  'utilities/chatRuntimeAutonomyMirror.ts': [],
-  'utilities/userCommandLoader.ts':   [],
+  'utilities/chatWorkspaceDigest.ts':        [],
+  'utilities/chatTurnExecutionConfig.ts':    [],
+  'utilities/chatGroundedExecutor.ts':       ['utilities/'],
+  'utilities/chatTurnSynthesis.ts':          [],
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

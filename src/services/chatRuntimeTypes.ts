@@ -76,14 +76,38 @@ export interface IOpenclawBootstrapDebugReport {
 
 export interface IOpenclawSkillPromptEntry {
   readonly name: string;
+  readonly location: string;
   readonly blockChars: number;
 }
+
+export interface IOpenclawSkillCatalogReportEntry {
+  readonly name: string;
+  readonly kind: string;
+  readonly location?: string;
+  readonly modelVisible: boolean;
+  readonly modelVisibilityReason: 'workflow-visible' | 'model-invocation-disabled' | 'non-workflow';
+}
+
+export type IOpenclawToolFilterReason =
+  | 'tool-profile-deny'
+  | 'tool-profile-not-allowed'
+  | 'permission-never-allowed'
+  | 'name-collision'
+  | 'model-unsupported';
 
 export interface IOpenclawToolPromptEntry {
   readonly name: string;
   readonly summaryChars: number;
   readonly schemaChars: number;
   readonly propertiesCount?: number;
+}
+
+export interface IOpenclawToolCapabilityReportEntry extends IOpenclawToolPromptEntry {
+  readonly source: 'platform' | 'skill';
+  readonly skillLocation?: string;
+  readonly exposed: boolean;
+  readonly available: boolean;
+  readonly filteredReason?: IOpenclawToolFilterReason;
 }
 
 export interface IOpenclawSystemPromptReport {
@@ -101,12 +125,20 @@ export interface IOpenclawSystemPromptReport {
   readonly bootstrapWarningLines: readonly string[];
   readonly skills: {
     readonly promptChars: number;
+    readonly totalCount: number;
+    readonly visibleCount: number;
+    readonly hiddenCount: number;
     readonly entries: readonly IOpenclawSkillPromptEntry[];
+    readonly catalog: readonly IOpenclawSkillCatalogReportEntry[];
   };
   readonly tools: {
     readonly listChars: number;
     readonly schemaChars: number;
-    readonly entries: readonly IOpenclawToolPromptEntry[];
+    readonly totalCount: number;
+    readonly availableCount: number;
+    readonly filteredCount: number;
+    readonly skillDerivedCount: number;
+    readonly entries: readonly IOpenclawToolCapabilityReportEntry[];
   };
   readonly promptProvenance?: {
     readonly rawUserInput: string;
@@ -133,7 +165,7 @@ export interface IChatRuntimeToolMetadata {
   readonly enabled: boolean;
   readonly requiresApproval: boolean;
   readonly autoApproved: boolean;
-  readonly approvalSource: 'default' | 'session' | 'persistent' | 'global-auto' | 'missing-permission-service';
+  readonly approvalSource: 'default' | 'session' | 'persistent' | 'global-auto' | 'strictness' | 'missing-permission-service';
   readonly source?: 'built-in' | 'bridge';
   readonly ownerToolId?: string;
   readonly description?: string;

@@ -352,13 +352,13 @@ tags: [workflow, summary, exhaustive]
   it('getToolDefinitions returns tool skills only (workflow skills have no tool parameters)', async () => {
     await service.scanSkills();
     const tools = service.getToolDefinitions();
-    // Both are converted — manifestToToolDefinition works on any manifest
-    expect(tools).toHaveLength(2);
+    // Only tool-kind skills produce tool definitions
+    expect(tools).toHaveLength(1);
   });
 
-  it('getWorkflowSkillCatalog returns only workflow skills', async () => {
+  it('getSkillCatalog filtered for workflow returns only workflow skills', async () => {
     await service.scanSkills();
-    const catalog = service.getWorkflowSkillCatalog();
+    const catalog = service.getSkillCatalog().filter(s => s.kind === 'workflow');
     expect(catalog).toHaveLength(1);
     expect(catalog[0].name).toBe('exhaustive-summary');
     expect(catalog[0].kind).toBe('workflow');
@@ -387,7 +387,7 @@ Private instructions.`;
     });
 
     await service.scanSkills();
-    const catalog = service.getWorkflowSkillCatalog();
+    const catalog = service.getSkillCatalog().filter(s => s.kind === 'workflow' && !s.disableModelInvocation);
     expect(catalog).toHaveLength(1);
     expect(catalog[0].name).toBe('exhaustive-summary');
   });

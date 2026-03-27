@@ -11,15 +11,15 @@ describe('chat runtime selector', () => {
     expect(resolveChatRuntimeParticipantId('parallx.chat.workspace')).toBe('parallx.chat.workspace');
   });
 
-  it('routes the default participant to the OpenClaw lane when configured', () => {
+  it('always routes the default participant to OpenClaw', () => {
     expect(resolveChatRuntimeParticipantId(DEFAULT_CHAT_PARTICIPANT_ID, () => ({
       runtime: { implementation: 'openclaw' },
     } as any))).toBe(OPENCLAW_DEFAULT_PARTICIPANT_ID);
   });
 
-  it('keeps the legacy default lane when configured', () => {
+  it('routes the default participant to OpenClaw even with other config', () => {
     expect(resolveChatRuntimeParticipantId(DEFAULT_CHAT_PARTICIPANT_ID, () => ({
       runtime: { implementation: 'legacy-claw' },
-    } as any))).toBe(DEFAULT_CHAT_PARTICIPANT_ID);
+    } as any))).toBe(OPENCLAW_DEFAULT_PARTICIPANT_ID);
   });
 });

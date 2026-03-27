@@ -11,12 +11,9 @@
 // callback deps (getActiveWidget, etc.).
 
 import type {
-  IDefaultParticipantServices,
   IChatRuntimeTrace,
   IOpenclawBootstrapDebugReport,
   IOpenclawSystemPromptReport,
-  IWorkspaceParticipantServices,
-  ICanvasParticipantServices,
   IChatWidgetServices,
   ITokenStatusBarServices,
   IBuiltInToolFileSystem,
@@ -59,19 +56,13 @@ import type { PermissionService } from '../../../services/permissionService.js';
 
 import { extractTextContent } from '../tools/builtInTools.js';
 import { buildChatAgentTaskWidgetServices } from '../utilities/chatAgentTaskWidgetAdapter.js';
-import { buildChatDefaultParticipantServices } from '../utilities/chatDefaultParticipantAdapter.js';
 import { buildChatWidgetAttachmentServices } from '../utilities/chatWidgetAttachmentAdapter.js';
 import { buildChatWidgetPickerServices } from '../utilities/chatWidgetPickerAdapter.js';
 import { buildChatWidgetRequestServices } from '../utilities/chatWidgetRequestAdapter.js';
 import { buildChatWidgetSessionServices } from '../utilities/chatWidgetSessionAdapter.js';
 import { composeChatSystemPrompt } from '../utilities/chatSystemPromptComposer.js';
-import {
-  buildChatCanvasParticipantServices,
-  buildChatWorkspaceParticipantServices,
-} from '../utilities/chatScopedParticipantAdapters.js';
 import { buildChatTokenBarServices } from '../utilities/chatTokenBarAdapter.js';
 import { openChatFile, openChatMemoryViewer } from '../utilities/chatViewerOpeners.js';
-import { createChatRuntimeAutonomyMirror } from '../utilities/chatRuntimeAutonomyMirror.js';
 import { computeChatWorkspaceDigest } from '../utilities/chatWorkspaceDigest.js';
 
 function resolveMemoryRecallScope(query: string): {
@@ -2084,123 +2075,6 @@ export class ChatDataService {
   // ═══════════════════════════════════════════════════════════════════════════
   // Builder Methods
   // ═══════════════════════════════════════════════════════════════════════════
-
-  buildDefaultParticipantServices(): IDefaultParticipantServices {
-    return buildChatDefaultParticipantServices({
-      sendChatRequest: (m, o, s) => this.sendChatRequest(m, o, s),
-      getActiveModel: () => this.getActiveModel(),
-      getWorkspaceName: () => this.getWorkspaceName(),
-      getPageCount: () => this.getPageCount(),
-      getCurrentPageTitle: () => this.getCurrentPageTitle(),
-      getToolDefinitions: () => this.getToolDefinitions(),
-      getReadOnlyToolDefinitions: () => this.getReadOnlyToolDefinitions(),
-      invokeToolWithRuntimeControl: (n, a, t, o) => this.invokeToolWithRuntimeControl(n, a, t, o),
-      maxIterations: this._d.unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? this._d.maxIterations,
-      networkTimeout: this._d.networkTimeout,
-      getModelContextLength: () => this.getModelContextLength(),
-      sendSummarizationRequest: (m, s) => this.sendSummarizationRequest(m, s),
-      getFileCount: this._d.fsAccessor ? () => this.getFileCount() : undefined,
-      isRAGAvailable: () => this.isRAGAvailable(),
-      isIndexing: () => this.isIndexing(),
-      readFileContent: (p) => this.readFileContent(p),
-      getCurrentPageContent: () => this.getCurrentPageContent(),
-      retrieveContext: this._d.retrievalService
-        ? (q, pathPrefixes) => this.retrieveContext(q, pathPrefixes) as Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>
-        : undefined,
-      recallMemories: (this._d.memoryService || this._d.workspaceMemoryService) ? (q, s) => this.recallMemories(q, s) : undefined,
-      recallTranscripts: this._d.retrievalService ? (q: string) => this.recallTranscripts(q) : undefined,
-      storeSessionMemory: (this._d.memoryService || this._d.workspaceMemoryService) ? (s, su, m) => this.storeSessionMemory(s, su, m) : undefined,
-      storeConceptsFromSession: this._d.memoryService ? (c, s) => this.storeConceptsFromSession(c, s) : undefined,
-      recallConcepts: this._d.memoryService ? (q) => this.recallConcepts(q) : undefined,
-      isSessionEligibleForSummary: this._d.memoryService ? (m) => this.isSessionEligibleForSummary(m) : undefined,
-      hasSessionMemory: this._d.memoryService ? (s) => this.hasSessionMemory(s) : undefined,
-      getSessionMemoryMessageCount: this._d.memoryService ? (s) => this.getSessionMemoryMessageCount(s) : undefined,
-      extractPreferences: (this._d.memoryService || this._d.workspaceMemoryService) ? (t) => this.extractPreferences(t) : undefined,
-      getPreferencesForPrompt: (this._d.memoryService || this._d.workspaceMemoryService) ? () => this.getPreferencesForPrompt() : undefined,
-      getPromptOverlay: this._d.promptFileService ? (a) => this.getPromptOverlay(a) : undefined,
-      listFilesRelative: this._d.fsAccessor ? (r) => this.listFilesRelative(r) : undefined,
-      readFileRelative: this._d.fsAccessor ? (r) => this.readFileRelative(r) : undefined,
-      writeFileRelative: (this._d.fileService && this._d.workspaceService?.folders?.length)
-        ? (r, c) => this.writeFileRelative(r, c)
-        : undefined,
-      existsRelative: this._d.fsAccessor ? (r) => this.existsRelative(r) : undefined,
-      invalidatePromptFiles: this._d.promptFileService ? () => this.invalidatePromptFiles() : undefined,
-      reportContextPills: (p) => this.reportContextPills(p),
-      reportRetrievalDebug: (debug) => this.reportRetrievalDebug(debug),
-      reportResponseDebug: (debug) => this.reportResponseDebug(debug),
-      reportRuntimeTrace: (trace) => this.reportRuntimeTrace(trace),
-      reportBootstrapDebug: (debug) => this.reportBootstrapDebug(debug),
-      reportSystemPromptReport: (report) => this.reportSystemPromptReport(report),
-      getExcludedContextIds: () => this.getExcludedContextIds(),
-      reportBudget: (s) => this.reportBudget(s),
-      getTerminalOutput: () => this.getTerminalOutput(),
-      listFolderFiles: this._d.fsAccessor ? (f) => this.listFolderFiles(f) : undefined,
-      userCommandFileSystem: this.getUserCommandFileSystem(),
-      compactSession: (s, t) => this.compactSession(s, t),
-      getWorkspaceDigest: () => this.getWorkspaceDigest(),
-      getLastSystemPromptReport: () => this.getLastSystemPromptReport(),
-      sessionManager: this._d.sessionManager,
-      unifiedConfigService: this._d.unifiedConfigService,
-      createAutonomyMirror: async (input) => {
-        if (!this._d.workspaceService || !this._d.agentTaskStore || !this._d.agentSessionService || !this._d.agentApprovalService || !this._d.agentTraceService || !this._d.agentPolicyService) {
-          return undefined;
-        }
-
-        return createChatRuntimeAutonomyMirror({
-          workspaceService: this._d.workspaceService,
-          agentTaskStore: this._d.agentTaskStore,
-          agentSessionService: this._d.agentSessionService,
-          agentApprovalService: this._d.agentApprovalService,
-          agentTraceService: this._d.agentTraceService,
-          agentPolicyService: this._d.agentPolicyService,
-        }, input);
-      },
-    });
-  }
-
-  buildWorkspaceParticipantServices(): IWorkspaceParticipantServices {
-    return buildChatWorkspaceParticipantServices({
-      sendChatRequest: (m, o, s) => this.sendChatRequest(m, o, s),
-      getActiveModel: () => this.getActiveModel(),
-      getWorkspaceName: () => this.getWorkspaceName(),
-      listPages: () => this.listPages(),
-      searchPages: (q) => this.searchPages(q),
-      getPageContent: (p) => this.getPageContent(p),
-      getPageTitle: (p) => this.getPageTitle(p),
-      getReadOnlyToolDefinitions: () => this.getReadOnlyToolDefinitions(),
-      invokeToolWithRuntimeControl: (n, a, t, o) => this.invokeToolWithRuntimeControl(n, a, t, o),
-      listFiles: this._d.fsAccessor
-        ? (r) => this._d.fsAccessor!.readdir(r)
-        : undefined,
-      readFileContent: this._d.fsAccessor
-        ? (r) => this._d.fsAccessor!.readFile(r)
-        : undefined,
-      reportParticipantDebug: (debug) => this.reportParticipantDebug(debug),
-      reportRetrievalDebug: (debug) => this.reportRetrievalDebug(debug),
-      reportRuntimeTrace: (trace) => this.reportRuntimeTrace(trace),
-      reportBootstrapDebug: (debug) => this.reportBootstrapDebug(debug),
-    });
-  }
-
-  buildCanvasParticipantServices(): ICanvasParticipantServices {
-    return buildChatCanvasParticipantServices({
-      sendChatRequest: (m, o, s) => this.sendChatRequest(m, o, s),
-      getActiveModel: () => this.getActiveModel(),
-      getWorkspaceName: () => this.getWorkspaceName(),
-      getCurrentPageId: () => this.getCurrentPageId(),
-      getCurrentPageTitle: () => this.getCurrentPageTitle(),
-      getPageStructure: (p) => this.getPageStructure(p),
-      getReadOnlyToolDefinitions: () => this.getReadOnlyToolDefinitions(),
-      invokeToolWithRuntimeControl: (n, a, t, o) => this.invokeToolWithRuntimeControl(n, a, t, o),
-      readFileContent: this._d.fsAccessor
-        ? (r) => this._d.fsAccessor!.readFile(r)
-        : undefined,
-      reportParticipantDebug: (debug) => this.reportParticipantDebug(debug),
-      reportRetrievalDebug: (debug) => this.reportRetrievalDebug(debug),
-      reportRuntimeTrace: (trace) => this.reportRuntimeTrace(trace),
-      reportBootstrapDebug: (debug) => this.reportBootstrapDebug(debug),
-    });
-  }
 
   buildWidgetServices(): IChatWidgetServices {
     const agentTaskServices = buildChatAgentTaskWidgetServices({

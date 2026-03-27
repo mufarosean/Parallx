@@ -374,17 +374,37 @@ export class SkillLoaderService extends Disposable {
 
   /** Convert all loaded skills to IChatTool definitions. */
   getToolDefinitions(): IChatTool[] {
-    return this.skills.map(manifestToToolDefinition);
+    return this.skills
+      .filter(skill => skill.kind === 'tool')
+      .map(manifestToToolDefinition);
   }
 
-  /**
-   * Return a lightweight catalog of workflow skills for system prompt injection.
-   * Excludes skills with `disableModelInvocation: true`.
-   */
-  getWorkflowSkillCatalog(): { name: string; description: string; kind: SkillKind; tags: readonly string[]; location: string }[] {
+  /** Return the canonical file-backed skill catalog for runtime loading. */
+  getSkillCatalog(): {
+    name: string;
+    description: string;
+    kind: SkillKind;
+    tags: readonly string[];
+    location: string;
+    disableModelInvocation: boolean;
+    userInvocable: boolean;
+    permissionLevel: ToolPermissionLevel;
+    parameters: readonly ISkillParameter[];
+    body: string;
+  }[] {
     return this.skills
-      .filter(s => s.kind === 'workflow' && !s.disableModelInvocation)
-      .map(s => ({ name: s.name, description: s.description, kind: s.kind, tags: s.tags, location: s.relativePath }));
+      .map(s => ({
+        name: s.name,
+        description: s.description,
+        kind: s.kind,
+        tags: s.tags,
+        location: s.relativePath,
+        disableModelInvocation: s.disableModelInvocation,
+        userInvocable: s.userInvocable,
+        permissionLevel: s.permission,
+        parameters: s.parameters,
+        body: s.body,
+      }));
   }
 
   /**

@@ -15,14 +15,13 @@ import type { Event } from '../../platform/events.js';
 import { OllamaProvider } from './providers/ollamaProvider.js';
 import { createChatView } from './widgets/chatView.js';
 import type { ChatWidget } from './widgets/chatWidget.js';
-import { createDefaultParticipant } from './participants/defaultParticipant.js';
-import { createWorkspaceParticipant } from './participants/workspaceParticipant.js';
-import { createCanvasParticipant } from './participants/canvasParticipant.js';
+
 import {
   buildOpenclawCanvasParticipantServices,
   buildOpenclawDefaultParticipantServices,
   buildOpenclawWorkspaceParticipantServices,
 } from '../../openclaw/openclawParticipantServices.js';
+import { buildToolDefinitionFromSkillCatalogEntry } from '../../openclaw/openclawToolState.js';
 import { registerOpenclawParticipants } from '../../openclaw/registerOpenclawParticipants.js';
 import { registerBuiltInTools } from './tools/builtInTools.js';
 import type { IBuiltInToolFileWriter } from './chatTypes.js';
@@ -35,6 +34,7 @@ import {
   ILanguageModelToolsService,
 } from '../../services/chatTypes.js';
 import type {
+  ICancellationToken,
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
@@ -44,13 +44,13 @@ import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
 import type { IPromptFileAccess } from '../../services/promptFileService.js';
 import { PermissionService } from '../../services/permissionService.js';
+import type { IPermissionCheckResult } from '../../services/permissionService.js';
 import type { ToolGrantDecision } from '../../services/chatTypes.js';
 import { ChatDataService, buildFileSystemAccessor, extractCanvasPageId } from './data/chatDataService.js';
 import { URI } from '../../platform/uri.js';
 import type { AgentPlanStepInput, DelegatedTaskInput, AgentApprovalResolution } from '../../agent/agentTypes.js';
 import { searchWorkspaceTranscripts } from '../../services/transcriptSearch.js';
 import {
-  LEGACY_COMPARE_PARTICIPANT_ID,
   resolveChatRuntimeParticipantId,
 } from '../../services/chatRuntimeSelector.js';
 
@@ -113,6 +113,35 @@ function normalizeWorkspaceRelativePath(relativePath: string): string {
     return '.';
   }
   return clean;
+}
+
+function dedupeToolDefinitionsByName(
+  tools: readonly import('../../services/chatTypes.js').IToolDefinition[],
+): readonly import('../../services/chatTypes.js').IToolDefinition[] {
+  const seen = new Set<string>();
+  const unique: import('../../services/chatTypes.js').IToolDefinition[] = [];
+  for (const tool of tools) {
+    if (seen.has(tool.name)) {
+      continue;
+    }
+    seen.add(tool.name);
+    unique.push(tool);
+  }
+  return unique;
+}
+
+function resolveRuntimeSkillPermission(
+  toolName: string,
+  defaultLevel: import('../../services/chatTypes.js').ToolPermissionLevel,
+): IPermissionCheckResult {
+  if (_permissionService) {
+    return _permissionService.checkPermission(toolName, defaultLevel);
+  }
+  return {
+    level: defaultLevel,
+    autoApproved: defaultLevel === 'always-allowed',
+    source: 'default',
+  };
 }
 
 type TestAgentPlanStepSeed = Omit<AgentPlanStepInput, 'taskId' | 'proposedAction'> & {
@@ -499,9 +528,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     };
   }
 
-  // ── 3a. Register the default chat participant with IChatAgentService ──
+  // ── 3a. Wire shared chat service hooks ──
 
-  const defaultParticipantServices = dataService.buildDefaultParticipantServices();
   chatService.setRuntimeTraceReporter?.((trace) => {
     dataService.reportRuntimeTrace(trace as import('./chatTypes.js').IChatRuntimeTrace);
   });
@@ -510,34 +538,113 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     () => unifiedConfigService?.getEffectiveConfig(),
   ));
   chatService.setTurnPreparationServices({
-    listFilesRelative: defaultParticipantServices.listFilesRelative,
-    isRAGAvailable: defaultParticipantServices.isRAGAvailable,
+    listFilesRelative: fsAccessor ? (r) => dataService.listFilesRelative(r) : undefined,
+    isRAGAvailable: () => dataService.isRAGAvailable(),
   });
-
-  const defaultParticipant = createDefaultParticipant(defaultParticipantServices);
-  context.subscriptions.push(defaultParticipant);
-
-  const agentRegistration = agentService.registerAgent(defaultParticipant);
-  context.subscriptions.push(agentRegistration);
-
-  const legacyDefaultParticipant = {
-    id: LEGACY_COMPARE_PARTICIPANT_ID,
-    surface: 'default' as const,
-    displayName: 'Chat (Legacy Claw)',
-    description: 'Frozen legacy claw lane preserved for comparison during the OpenClaw rebuild.',
-    commands: defaultParticipant.commands,
-    runtime: defaultParticipant.runtime,
-    handler: defaultParticipant.handler,
-  };
-  context.subscriptions.push(agentService.registerAgent(legacyDefaultParticipant));
 
   // Late-binding skill loader reference — populated asynchronously in section 10
   // when SkillLoaderService finishes dynamic import. Closures below capture the
   // variable so they resolve correctly once the loader is ready.
   let _skillLoaderRef: {
-    getWorkflowSkillCatalog(): { name: string; description: string; kind: string; tags: readonly string[]; location: string }[];
-    getSkill(name: string): unknown;
+    getSkillCatalog(): {
+      name: string;
+      description: string;
+      kind: string;
+      tags: readonly string[];
+      location: string;
+      disableModelInvocation: boolean;
+      userInvocable: boolean;
+      permissionLevel: import('../../services/chatTypes.js').ToolPermissionLevel;
+      parameters: readonly {
+        name: string;
+        type: string;
+        description: string;
+        required: boolean;
+      }[];
+      body: string;
+    }[];
   } | undefined;
+
+  const getRuntimeSkillCatalog = () => _skillLoaderRef?.getSkillCatalog() ?? [];
+
+  const getRuntimeSkillToolDefinitions = (readOnlyOnly: boolean): readonly import('../../services/chatTypes.js').IToolDefinition[] => {
+    const tools = getRuntimeSkillCatalog()
+      .filter((skill) => skill.kind === 'tool')
+      .filter((skill) => !readOnlyOnly || skill.permissionLevel === 'always-allowed')
+      .map((skill) => buildToolDefinitionFromSkillCatalogEntry(skill));
+    return dedupeToolDefinitionsByName(tools);
+  };
+
+  const mergeRuntimeToolDefinitions = (
+    platformTools: readonly import('../../services/chatTypes.js').IToolDefinition[],
+    readOnlyOnly: boolean,
+  ): readonly import('../../services/chatTypes.js').IToolDefinition[] => {
+    return dedupeToolDefinitionsByName([
+      ...platformTools,
+      ...getRuntimeSkillToolDefinitions(readOnlyOnly),
+    ]);
+  };
+
+  const invokeRuntimeToolWithSkillSupport = async (
+    name: string,
+    args: Record<string, unknown>,
+    token: ICancellationToken,
+    observer?: import('./chatTypes.js').IChatRuntimeToolInvocationObserver,
+  ) => {
+    const platformTools = dataService.getToolDefinitions();
+    if (platformTools.some((tool) => tool.name === name)) {
+      return dataService.invokeToolWithRuntimeControl(name, args, token, observer);
+    }
+
+    const skill = getRuntimeSkillCatalog().find((entry) => entry.kind === 'tool' && entry.name === name);
+    if (!skill) {
+      return dataService.invokeToolWithRuntimeControl(name, args, token, observer);
+    }
+
+    const permission = resolveRuntimeSkillPermission(name, skill.permissionLevel);
+    const metadata = {
+      name,
+      description: skill.description,
+      permissionLevel: permission.level,
+      enabled: true,
+      requiresApproval: permission.level === 'requires-approval' && !permission.autoApproved,
+      autoApproved: permission.autoApproved,
+      approvalSource: permission.source,
+      source: 'built-in' as const,
+    };
+
+    observer?.onValidated?.(metadata);
+
+    if (permission.level === 'never-allowed') {
+      observer?.onApprovalResolved?.(metadata, false);
+      return { content: `Tool "${name}" is not allowed`, isError: true };
+    }
+
+    if (metadata.requiresApproval) {
+      const approved = _permissionService
+        ? await _permissionService.confirmToolInvocation(name, skill.description, args, skill.permissionLevel)
+        : false;
+      observer?.onApprovalResolved?.(metadata, approved);
+      if (!approved) {
+        return { content: 'Tool execution rejected by user', isError: true };
+      }
+    } else if (metadata.autoApproved) {
+      observer?.onApprovalResolved?.(metadata, true);
+    }
+
+    if (token.isCancellationRequested) {
+      return { content: 'Tool execution cancelled', isError: true };
+    }
+
+    const result = {
+      content: skill.body
+        ? `## Skill: ${skill.name}\n\nFollow these instructions:\n\n${skill.body}`
+        : `Skill "${skill.name}" has no instructions body.`,
+      isError: !skill.body,
+    };
+    observer?.onExecuted?.(metadata, result);
+    return result;
+  };
 
   const openclawDefaultParticipantServices = buildOpenclawDefaultParticipantServices({
     sendChatRequest: (m, o, s) => dataService.sendChatRequest(m, o, s),
@@ -547,7 +654,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getCurrentPageTitle: () => dataService.getCurrentPageTitle(),
     getToolDefinitions: () => dataService.getToolDefinitions(),
     getReadOnlyToolDefinitions: () => dataService.getReadOnlyToolDefinitions(),
-    invokeToolWithRuntimeControl: (n, a, t, o) => dataService.invokeToolWithRuntimeControl(n, a, t, o),
+    invokeToolWithRuntimeControl: (n, a, t, o) => invokeRuntimeToolWithSkillSupport(n, a, t, o),
     maxIterations: unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? 25,
     networkTimeout: 120_000,
     getModelContextLength: () => dataService.getModelContextLength(),
@@ -592,8 +699,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getLastSystemPromptReport: () => dataService.getLastSystemPromptReport(),
     sessionManager,
     unifiedConfigService,
-    getWorkflowSkillCatalog: () => _skillLoaderRef?.getWorkflowSkillCatalog() ?? [],
-    getSkillManifest: (name: string) => _skillLoaderRef?.getSkill(name),
+    getSkillCatalog: () => getRuntimeSkillCatalog(),
     getToolPermissions: _permissionService ? () => _permissionService!.getEffectivePermissions() : undefined,
   });
   const openclawWorkspaceParticipantServices = buildOpenclawWorkspaceParticipantServices({
@@ -604,8 +710,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     searchPages: (q) => dataService.searchPages(q),
     getPageContent: (p) => dataService.getPageContent(p),
     getPageTitle: (p) => dataService.getPageTitle(p),
-    getReadOnlyToolDefinitions: () => dataService.getReadOnlyToolDefinitions(),
-    invokeToolWithRuntimeControl: (n, a, t, o) => dataService.invokeToolWithRuntimeControl(n, a, t, o),
+    getReadOnlyToolDefinitions: () => mergeRuntimeToolDefinitions(dataService.getReadOnlyToolDefinitions(), true),
+    invokeToolWithRuntimeControl: (n, a, t, o) => invokeRuntimeToolWithSkillSupport(n, a, t, o),
     listFiles: fsAccessor ? (r) => fsAccessor.readdir(r) : undefined,
     readFileContent: fsAccessor ? (r) => fsAccessor.readFile(r) : undefined,
     reportParticipantDebug: (debug) => dataService.reportParticipantDebug(debug),
@@ -620,8 +726,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getCurrentPageId: () => dataService.getCurrentPageId(),
     getCurrentPageTitle: () => dataService.getCurrentPageTitle(),
     getPageStructure: (p) => dataService.getPageStructure(p),
-    getReadOnlyToolDefinitions: () => dataService.getReadOnlyToolDefinitions(),
-    invokeToolWithRuntimeControl: (n, a, t, o) => dataService.invokeToolWithRuntimeControl(n, a, t, o),
+    getReadOnlyToolDefinitions: () => mergeRuntimeToolDefinitions(dataService.getReadOnlyToolDefinitions(), true),
+    invokeToolWithRuntimeControl: (n, a, t, o) => invokeRuntimeToolWithSkillSupport(n, a, t, o),
     readFileContent: fsAccessor ? (r) => fsAccessor.readFile(r) : undefined,
     reportParticipantDebug: (debug) => dataService.reportParticipantDebug(debug),
     reportRetrievalDebug: (debug) => dataService.reportRetrievalDebug(debug),
@@ -636,35 +742,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     canvasParticipantServices: openclawCanvasParticipantServices,
   }));
 
-  // ── 3b. Register @workspace participant ──
 
-  const workspaceParticipantServices = dataService.buildWorkspaceParticipantServices();
-  const workspaceParticipant = createWorkspaceParticipant(workspaceParticipantServices);
-  context.subscriptions.push(workspaceParticipant);
-  context.subscriptions.push(agentService.registerAgent({
-    id: 'parallx.chat.legacy-workspace',
-    surface: 'workspace',
-    displayName: 'Workspace (Legacy Claw)',
-    description: 'Frozen legacy workspace lane preserved for comparison during the OpenClaw rebuild.',
-    commands: workspaceParticipant.commands,
-    runtime: workspaceParticipant.runtime,
-    handler: workspaceParticipant.handler,
-  }));
-
-  // ── 3c. Register @canvas participant ──
-
-  const canvasParticipantServices = dataService.buildCanvasParticipantServices();
-  const canvasParticipant = createCanvasParticipant(canvasParticipantServices);
-  context.subscriptions.push(canvasParticipant);
-  context.subscriptions.push(agentService.registerAgent({
-    id: 'parallx.chat.legacy-canvas',
-    surface: 'canvas',
-    displayName: 'Canvas (Legacy Claw)',
-    description: 'Frozen legacy canvas lane preserved for comparison during the OpenClaw rebuild.',
-    commands: canvasParticipant.commands,
-    runtime: canvasParticipant.runtime,
-    handler: canvasParticipant.handler,
-  }));
 
   // ── 3d. Register built-in tools (Cap 6 Task 6.3) ──
 
@@ -1282,26 +1360,6 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         );
       }
 
-      // Register skill tools with the language model tools service
-      if (languageModelToolsService) {
-        const skillToolDisposables: import('../../platform/lifecycle.js').IDisposable[] = [];
-
-        const registerSkillTools = () => {
-          // Dispose previous registrations
-          for (const d of skillToolDisposables) { d.dispose(); }
-          skillToolDisposables.length = 0;
-          // Register current skills as invocable tools
-          for (const tool of skillLoader.getToolDefinitions()) {
-            skillToolDisposables.push(languageModelToolsService.registerTool(tool));
-          }
-        };
-
-        // Register on initial load + re-register when skills change
-        registerSkillTools();
-        context.subscriptions.push(
-          skillLoader.onDidChangeSkills(() => registerSkillTools()),
-        );
-      }
     }).catch(() => { /* optional service */ });
   }
 
@@ -1407,15 +1465,7 @@ export function setActiveWidget(widget: ChatWidget | undefined): void {
       });
     }
 
-    // Slash command provider: built-in + user commands from registry
-    import('./config/chatSlashCommands.js').then(({ SlashCommandRegistry }) => {
-      const reg = new SlashCommandRegistry();
-      widget.setSlashCommandProvider({
-        getCommands() {
-          return reg.getCommands().map(c => ({ name: c.name, description: c.description }));
-        },
-      });
-    }).catch(() => { /* best-effort */ });
+    // Slash commands are handled by OpenClaw runtime via openclawDefaultRuntimeSupport
   }
 }
 

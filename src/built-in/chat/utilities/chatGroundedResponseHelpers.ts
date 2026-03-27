@@ -1,5 +1,28 @@
 import type { IChatRequestResponsePair } from '../../../services/chatTypes.js';
-import { extractSpecificCoverageFocusTerms } from './chatSpecificCoverageFocus.js';
+
+// Inlined from deleted chatSpecificCoverageFocus.ts (M45 legacy cleanup)
+const EVIDENCE_STOP_WORDS = new Set([
+  'what', 'when', 'where', 'which', 'with', 'your', 'this', 'that', 'have', 'from', 'into',
+  'about', 'does', 'will', 'would', 'could', 'should', 'doesnt', 'dont', 'policy', 'insurance',
+  'coverage', 'cover', 'covered', 'covers', 'endorsement', 'rider', 'include', 'included', 'including',
+  'listed', 'mention', 'mentioned', 'explicitly', 'say', 'says', 'under', 'there', 'their', 'them',
+  'mine', 'my', 'our', 'ours', 'the', 'and', 'for', 'against', 'damage',
+]);
+
+function extractSpecificCoverageFocusTerms(normalizedQuery: string): string[] {
+  const rawPhrases = [
+    ...normalizedQuery.matchAll(/\b([a-z0-9-]+(?:\s+[a-z0-9-]+){0,2})\s+coverage\b/g),
+    ...normalizedQuery.matchAll(/\bcoverage\s+for\s+([a-z0-9-]+(?:\s+[a-z0-9-]+){0,2})\b/g),
+    ...normalizedQuery.matchAll(/\b([a-z0-9-]+(?:\s+[a-z0-9-]+){0,2})\s+endorsement\b/g),
+    ...normalizedQuery.matchAll(/\b([a-z0-9-]+(?:\s+[a-z0-9-]+){0,2})\s+rider\b/g),
+  ].map((match) => match[1]?.trim() ?? '').filter(Boolean);
+
+  return [...new Set(
+    rawPhrases.flatMap((phrase) => phrase
+      .split(/\s+/)
+      .filter((term: string) => term.length >= 4 && !EVIDENCE_STOP_WORDS.has(term))),
+  )].slice(0, 3);
+}
 
 export function buildDeterministicSessionSummary(
   history: readonly { request: { text: string } }[],
