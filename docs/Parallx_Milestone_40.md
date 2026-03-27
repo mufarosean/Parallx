@@ -1485,7 +1485,7 @@ Latest recorded outcome:
    - `npx vitest run tests/unit/chatRuntimeLifecycle.test.ts tests/unit/chatTurnSynthesis.test.ts tests/unit/chatRuntimeCheckpointSink.test.ts tests/unit/chatMemoryWriteBack.test.ts tests/unit/chatGateCompliance.test.ts`
 - bridge runtime prompt execution helper also passes targeted local verification:
    - `npx vitest run tests/unit/chatService.test.ts tests/unit/chatBridge.test.ts tests/unit/chatAgentService.test.ts tests/unit/chatDefaultParticipantAdapter.test.ts tests/unit/chatGroundedExecutor.test.ts tests/unit/chatTurnExecutionConfig.test.ts tests/unit/chatPipelineIntegration.test.ts tests/unit/chatContextIntegration.test.ts`
-- `npx vitest run tests/unit/openclawDefaultParticipant.test.ts` = `10/10`, including the same-name `how-to-file.md` comparison regression
+- `npx vitest run tests/unit/openclawDefaultParticipant.test.ts` = `8/8` after completing the OpenClaw runtime-owned skill contract: the live lanes now carry one canonical file-backed skill catalog into prompt construction, runtime skill-tool capability derivation, policy filtering, direct invocation support, and `/context` reporting, while removing the old boot-time skill-tool registration path
 - `npm run test:unit -- tests/unit/chatGroundedExecutor.test.ts tests/unit/chatTurnSynthesis.test.ts tests/unit/openclawDefaultParticipant.test.ts` = `16/16`, validating the runtime-owned autonomy mirror lifecycle and loop-safety wiring across the shared claw path and the live OpenClaw lane
 - `npm run build:renderer` passed locally after the autonomy parity wiring
 - `npm run test:ai-eval -- tests/ai-eval/ai-quality.spec.ts tests/ai-eval/stress-quality.spec.ts tests/ai-eval/memory-layers.spec.ts tests/ai-eval/route-authority.spec.ts tests/ai-eval/workspace-bootstrap-diagnostic.spec.ts` now records autonomy scenario summary `100%` for boundary, approval, completion, and trace completeness, but the broader `ai-quality.spec.ts` suite regressed to `73.6%` overall because of separate retrieval, disambiguation, and data-freshness failures (`T11`, `T12`, `T14`, `T21`, `T31`, plus partial retrieval cases)
@@ -1510,6 +1510,13 @@ Milestone 40 implementation is complete only when:
    model
 4. chat and agent surfaces do not silently disagree on policy and prompt rules
 5. the required verification contract passes at the agreed acceptance level
+
+Latest OpenClaw skill-contract parity slice landed on 2026-03-27:
+
+- affected surfaces: live OpenClaw default/workspace/canvas participant lanes, OpenClaw attempt execution, OpenClaw `/context` diagnostics, chat activation/runtime invocation wiring, file-backed skill loader contract, and milestone trace docs
+- centralized shared layer: runtime-owned skill-state normalization plus one shared prompt-artifact/tool-state builder path used by turn execution and prompt estimation/reporting
+- removed/closed legacy drift: OpenClaw no longer re-derives workflow-skill visibility independently in the participant and `/context` layers, tool-kind skill exposure is no longer registered at app boot, and runtime reporting now explains exposed vs filtered vs available skill-derived capabilities
+- verification for this slice: `npx vitest run tests/unit/openclawDefaultParticipant.test.ts`, `npm run build`
 
 ### 15.4 Phase 1 repo task breakdown
 
