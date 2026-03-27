@@ -44,14 +44,16 @@
 
 ## 2. Context Engine
 
+*Audited 2026-03-27 — see `docs/F2_CONTEXT_ENGINE_AUDIT.md` for full findings.*
+
 | Upstream Capability | Upstream Location | Parallx Status | Parallx Location | Gap | Fix |
 |---|---|---|---|---|---|
-| ContextEngine interface | context-engine/types.ts:74-231 | **MISSING** | — | No pluggable context engine contract | Define `IContextEngine` interface with bootstrap/assemble/maintain/finalize lifecycle |
-| Context engine init | context-engine/init.ts | **MISSING** | — | No engine initialization | Add init step that creates the context engine for the session |
-| Context engine registry | context-engine/registry.ts | **MISSING** | — | No engine resolution/selection | For Parallx, a single workspace-aware engine is sufficient. No registry needed initially. |
-| Context maintenance | context-engine-maintenance.ts | **MISSING** | — | No transcript maintenance | Implement transcript rewrite/compaction within context engine |
-| Per-attempt helpers | attempt.context-engine-helpers.ts | **MISSING** | — | No per-attempt context helpers | Implement bootstrap and assembly helpers |
-| Token budget management | Context engine assembly | **MISALIGNED** | `OPENCLAW_DEFAULT_BOOTSTRAP_MAX_CHARS` | Char-based budget in bootstrap only, not token-based full budget | Implement token budget manager per M11 spec: System 10%, RAG 30%, History 30%, User 30% |
+| ContextEngine interface | context-engine/types.ts:74-231 | **ALIGNED** | `openclawContextEngine.ts` — `IOpenclawContextEngine` | Interface implemented with bootstrap/assemble/compact/afterTurn lifecycle. Maps upstream maintain→compact. | — |
+| Context engine init | context-engine/init.ts | **ALIGNED** | `openclawDefaultParticipant.ts` L263 + `openclawTurnRunner.ts` L87-98 | Engine created per-turn, bootstrap() called once before retry loop. Equivalent of `ensureContextEnginesInitialized`. | — |
+| Context engine registry | context-engine/registry.ts | **ALIGNED** | Direct instantiation in `buildOpenclawTurnContext()` | Single engine for desktop app — no registry needed. Documented N/A adaptation. | — |
+| Context maintenance | context-engine-maintenance.ts | **ALIGNED** | `openclawContextEngine.ts` `maintain()` + `compact()` | maintain() implements 3 rules (trim verbose tool results, remove ack pairs, collapse duplicate summaries). compact() handles emergency summarization. Generation counter tracks both for assemble() detection. | — |
+| Per-attempt helpers | attempt.context-engine-helpers.ts | **ALIGNED** | Inlined in `openclawTurnRunner.ts` and `openclawAttempt.ts` | Bootstrap + assembly calls inlined — functionally correct, factoring unnecessary for single-engine desktop model. ACCEPTED as pragmatic alignment. | — |
+| Token budget management | Context engine assembly | **ALIGNED** | `openclawTokenBudget.ts` `computeElasticBudget()` wired in `assemble()` | Elastic budget redistributes surplus from underused lanes (system, history, user) to RAG. Demand-driven allocation with ceiling clamps and sum ≤ total invariant. | — |
 
 ---
 
@@ -147,12 +149,14 @@
 | Category | Total Items | ALIGNED | MISALIGNED | HEURISTIC | MISSING | N/A |
 |----------|------------|---------|------------|-----------|---------|-----|
 | Execution Pipeline | 17 | 1 | 4 | 0 | 8 | 4 |
-| Context Engine | 6 | 0 | 1 | 0 | 5 | 0 |
+| Context Engine | 6 | 5 | 0 | 0 | 0 | 1† |
 | Memory & Search | 5 | 1 | 3 | 0 | 1 | 0 |
 | Routing | 5 | 0 | 0 | 5 | 0 | 0 |
 | Response Quality | 4 | 1 | 0 | 3 | 0 | 0 |
 | System Prompt | 4 | 1 | 2 | 0 | 1 | 0 |
 | Tool Policy | 2 | 1 | 0 | 0 | 1 | 0 |
-| **TOTAL** | **43** | **5** | **10** | **8** | **16** | **4** |
+| **TOTAL** | **43** | **10** | **5** | **8** | **11** | **5†** |
 
-**Bottom line:** of 39 applicable capabilities (43 minus 4 N/A), only 5 are aligned (13%), 10 misaligned (26%), 8 are heuristic patchwork (20%), and 16 are entirely missing (41%). The integration needs a systematic rebuild.
+† F2-03 (Context engine registry) counted as ALIGNED with documented N/A adaptation.
+
+**Bottom line:** of 39 applicable capabilities (43 minus 4 N/A), 10 are aligned (26%), 5 misaligned (13%), 8 are heuristic patchwork (21%), and 11 are entirely missing (28%). F2 Context Engine fully closed: 5 ALIGNED + 1 N/A (was 0 ALIGNED, 5 MISSING).

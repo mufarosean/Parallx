@@ -97,6 +97,17 @@ export async function runOpenclawTurn(
     });
   }
 
+  // Proactive context maintenance — trims verbose tool results, removes redundant
+  // acks, and collapses duplicate summaries before the retry loop.
+  // Upstream: context-engine-maintenance.ts lifecycle hook
+  if (context.engine.maintain) {
+    await context.engine.maintain({
+      sessionId: context.sessionId,
+      tokenBudget: context.tokenBudget,
+      history: context.history,
+    });
+  }
+
   let overflowAttempts = 0;
   let proactiveCompactions = 0;
   let timeoutAttempts = 0;

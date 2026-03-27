@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { OpenclawContextEngine, type IOpenclawContextEngineServices } from '../../src/openclaw/openclawContextEngine';
-import { computeTokenBudget, estimateMessagesTokens, estimateTokens, trimTextToBudget } from '../../src/openclaw/openclawTokenBudget';
+import { computeTokenBudget, computeElasticBudget, estimateMessagesTokens, estimateTokens, trimTextToBudget } from '../../src/openclaw/openclawTokenBudget';
 import type { IChatMessage, IChatResponseChunk } from '../../src/services/chatTypes';
 
 // ---------------------------------------------------------------------------
@@ -505,6 +505,201 @@ describe('OpenclawContextEngine', () => {
       // (or compacted summaries) — NOT the same count as before compaction
       expect(historyCount2).toBeLessThanOrEqual(historyCount1);
       expect(result2.estimatedTokens).toBeLessThanOrEqual(result1.estimatedTokens);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // afterTurn
+  // ---------------------------------------------------------------------------
+
+  describe('afterTurn', () => {
+    it('smoke test — completes without error', async () => {
+      await engine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+      await engine.afterTurn({
+        sessionId: 's1',
+        messages: [{ role: 'user', content: 'Hello' }],
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // maintain
+  // ---------------------------------------------------------------------------
+
+  describe('maintain', () => {
+    it('no-op on clean history — returns rewrites: 0', async () => {
+      const history: IChatMessage[] = [
+        { role: 'user', content: 'What is my policy?' },
+        { role: 'assistant', content: 'Your policy covers collision damage.' },
+      ];
+      await engine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+
+      const result = await engine.maintain!({ sessionId: 's1', tokenBudget: 8192, history });
+      expect(result.rewrites).toBe(0);
+      expect(result.tokensBefore).toBe(result.tokensAfter);
+    });
+
+    it('trims verbose tool results — content >2000 chars truncated', async () => {
+      const longToolContent = 'x'.repeat(3000);
+      const history: IChatMessage[] = [
+        { role: 'user', content: 'Run the tool' },
+        { role: 'tool' as IChatMessage['role'], content: longToolContent },
+        { role: 'assistant', content: 'Done.' },
+      ];
+      await engine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+
+      const result = await engine.maintain!({ sessionId: 's1', tokenBudget: 8192, history });
+      expect(result.rewrites).toBeGreaterThanOrEqual(1);
+      expect(result.tokensAfter).toBeLessThan(result.tokensBefore);
+    });
+
+    it('removes redundant acks — "Understood" messages removed', async () => {
+      const history: IChatMessage[] = [
+        { role: 'user', content: 'Remember this.' },
+        { role: 'assistant', content: 'Understood.' },
+        { role: 'user', content: 'Also this.' },
+        { role: 'assistant', content: 'Got it.' },
+        { role: 'user', content: 'What is my deductible?' },
+        { role: 'assistant', content: 'Your deductible is $500.' },
+      ];
+      await engine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+
+      const result = await engine.maintain!({ sessionId: 's1', tokenBudget: 8192, history });
+      expect(result.rewrites).toBeGreaterThanOrEqual(2); // "Understood." and "Got it."
+    });
+
+    it('collapses duplicate summaries — keeps only latest [Context summary]', async () => {
+      const history: IChatMessage[] = [
+        { role: 'user', content: '[Context summary] Old summary from turn 1' },
+        { role: 'assistant', content: 'Understood, I have the context.' },
+        { role: 'user', content: '[Context summary] Newer summary from turn 2' },
+        { role: 'assistant', content: 'Understood, I have the context.' },
+        { role: 'user', content: 'What is my deductible?' },
+      ];
+      await engine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+
+      const result = await engine.maintain!({ sessionId: 's1', tokenBudget: 8192, history });
+      // Should remove the old summary (1 rewrite) + possibly ack removals
+      expect(result.rewrites).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // assemble — elastic budget integration
+  // ---------------------------------------------------------------------------
+
+  describe('assemble elastic budget', () => {
+    it('short history gets more RAG', async () => {
+      // With empty history and short prompt, elastic should give more to RAG
+      await engine.bootstrap({ sessionId: 's1', tokenBudget: 4096 });
+      const result = await engine.assemble({
+        sessionId: 's1',
+        history: [{ role: 'user', content: 'Hi' }],
+        tokenBudget: 4096,
+        prompt: 'Hello',
+      });
+
+      // The context message with RAG content should exist — elastic gives more room
+      const contextMsg = result.messages.find(m => m.content.includes('Retrieved Context'));
+      expect(contextMsg).toBeDefined();
+
+      // With short history + short prompt, budget should reflect elastic redistribution
+      // The fixed RAG budget at 4096 would be floor(4096*0.30) = 1228
+      // Elastic should yield more since history and user are tiny
+      const fixedBudget = computeTokenBudget(4096);
+      const elasticBudget = computeElasticBudget({
+        contextWindow: 4096,
+        historyActual: estimateMessagesTokens([{ role: 'user', content: 'Hi' }]),
+        userActual: estimateTokens('Hello'),
+      });
+      expect(elasticBudget.rag).toBeGreaterThan(fixedBudget.rag);
+    });
+
+    it('elastic degrades to fixed when no actuals available', async () => {
+      // computeElasticBudget with no actuals should match computeTokenBudget exactly
+      const fixed = computeTokenBudget(8192);
+      const elastic = computeElasticBudget({ contextWindow: 8192 });
+      expect(elastic.system).toBe(fixed.system);
+      expect(elastic.rag).toBe(fixed.rag);
+      expect(elastic.history).toBe(fixed.history);
+      expect(elastic.user).toBe(fixed.user);
+    });
+
+    it('budget sum ≤ total invariant across scenarios', async () => {
+      const windows = [2048, 4096, 8192, 16384, 32768];
+      for (const w of windows) {
+        for (const histActual of [0, 50, 500]) {
+          for (const userActual of [0, 20, 200]) {
+            const b = computeElasticBudget({
+              contextWindow: w,
+              historyActual: histActual,
+              userActual: userActual,
+            });
+            expect(b.system + b.rag + b.history + b.user).toBeLessThanOrEqual(b.total);
+          }
+        }
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // compact → assemble generation flow
+  // ---------------------------------------------------------------------------
+
+  describe('compact generation detection', () => {
+    it('assemble uses compacted history after compact() even when same length', async () => {
+      // Create a 4-message history that compact+summarize replaces with 4 messages
+      // (2 summary + 2 last exchange) — same length but different content
+      const history: IChatMessage[] = [
+        { role: 'user', content: 'Old question about deductibles' },
+        { role: 'assistant', content: 'Your deductible is $500.' },
+        { role: 'user', content: 'What about liability?' },
+        { role: 'assistant', content: 'Liability coverage is $100k.' },
+      ];
+      await engine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+      await engine.assemble({ sessionId: 's1', history, tokenBudget: 8192, prompt: 'first' });
+
+      // Compact — without summarizer, does simple trim (keeps recent half)
+      const compactResult = await engine.compact({ sessionId: 's1', tokenBudget: 8192 });
+      expect(compactResult.compacted).toBe(true);
+
+      // Next assemble should use compacted history, not original
+      const result2 = await engine.assemble({
+        sessionId: 's1',
+        history, // passing the ORIGINAL history — engine should ignore it
+        tokenBudget: 8192,
+        prompt: 'second',
+      });
+      // The compacted history should have fewer messages than original
+      // (compact without summarizer keeps floor(4/2) = 2 messages)
+      const historyMsgs = result2.messages.filter(m => m.role === 'user' || m.role === 'assistant');
+      expect(historyMsgs.length).toBeLessThan(history.length);
+    });
+
+    it('maintain with rewrites causes next assemble to use maintained history', async () => {
+      const history: IChatMessage[] = [
+        { role: 'user', content: 'Do something.' },
+        { role: 'assistant', content: 'Understood.' },
+        { role: 'user', content: 'What is my policy coverage?' },
+        { role: 'assistant', content: 'Your policy covers collision damage.' },
+      ];
+      await engine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+
+      // maintain should remove the "Understood." ack
+      const maintainResult = await engine.maintain!({ sessionId: 's1', tokenBudget: 8192, history });
+      expect(maintainResult.rewrites).toBeGreaterThanOrEqual(1);
+
+      // Next assemble should use maintained (shorter) history
+      const result = await engine.assemble({
+        sessionId: 's1',
+        history, // passing ORIGINAL with acks — engine should ignore it
+        tokenBudget: 8192,
+        prompt: 'test',
+      });
+
+      // The maintained history should not contain "Understood."
+      const hasAck = result.messages.some(m => m.content === 'Understood.');
+      expect(hasAck).toBe(false);
     });
   });
 });

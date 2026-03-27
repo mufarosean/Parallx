@@ -15,7 +15,7 @@
 
 import type { IChatMessage } from '../services/chatTypes.js';
 import type { IDefaultParticipantServices } from './openclawTypes.js';
-import { computeTokenBudget, estimateTokens, estimateMessagesTokens } from './openclawTokenBudget.js';
+import { computeElasticBudget, estimateTokens, estimateMessagesTokens } from './openclawTokenBudget.js';
 import { assessEvidence, buildEvidenceConstraint } from './openclawResponseValidation.js';
 
 // ---------------------------------------------------------------------------
@@ -29,10 +29,10 @@ import { assessEvidence, buildEvidenceConstraint } from './openclawResponseValid
  *   bootstrap → bootstrap (one-time per-turn initialization)
  *   assemble → assemble  (build context under budget)
  *   compact  → compact   (reduce context on overflow)
+ *   maintain → maintain   (proactive transcript cleanup)
  *   afterTurn → afterTurn (post-turn persistence)
  *
  * Upstream methods NOT adopted (with reason):
- *   maintain  — Transcript maintenance handled by compact
  *   ingest/ingestBatch — Platform handles message persistence
  *   prepareSubagentSpawn/onSubagentEnded — No subagents in Parallx
  *   dispose — Engine is per-turn, not long-lived
@@ -42,6 +42,7 @@ export interface IOpenclawContextEngine {
   assemble(params: IOpenclawAssembleParams): Promise<IOpenclawAssembleResult>;
   compact(params: IOpenclawCompactParams): Promise<IOpenclawCompactResult>;
   afterTurn?(params: IOpenclawAfterTurnParams): Promise<void>;
+  maintain?(params: IOpenclawMaintainParams): Promise<IOpenclawMaintainResult>;
 }
 
 export interface IOpenclawBootstrapParams {
@@ -100,6 +101,20 @@ export interface IOpenclawAfterTurnParams {
   readonly messages: readonly IChatMessage[];
 }
 
+export interface IOpenclawMaintainParams {
+  readonly sessionId: string;
+  readonly tokenBudget: number;
+  /** History to maintain — passed from the turn context so maintain()
+   *  can operate before the first assemble() populates _lastHistory. */
+  readonly history: readonly IChatMessage[];
+}
+
+export interface IOpenclawMaintainResult {
+  readonly rewrites: number;
+  readonly tokensBefore: number;
+  readonly tokensAfter: number;
+}
+
 // ---------------------------------------------------------------------------
 // Services subset needed by the context engine
 // ---------------------------------------------------------------------------
@@ -130,6 +145,10 @@ export type IOpenclawContextEngineServices = Pick<
 export class OpenclawContextEngine implements IOpenclawContextEngine {
   /** Cached history from the most recent `assemble()` call (used by `compact()`). */
   private _lastHistory: readonly IChatMessage[] = [];
+  /** Incremented on every compact() so assemble() can detect compaction regardless of length. */
+  private _compactGeneration = 0;
+  /** The generation seen by the last assemble() call. */
+  private _lastAssembleGeneration = 0;
   /** Service readiness state set by bootstrap(). */
   private _ragReady = true;
   private _memoryReady = true;
@@ -161,17 +180,25 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
   }
 
   async assemble(params: IOpenclawAssembleParams): Promise<IOpenclawAssembleResult> {
-    // Use compacted history if available (compact() was called between retries).
-    // If _lastHistory is non-empty and shorter than incoming history, it was compacted.
+    // Use compacted/maintained history if available.
     // Upstream pattern: compact() mutates the engine's internal state, and the next
     // assemble() uses the compacted version — not the original from the participant.
-    const effectiveHistory = (this._lastHistory.length > 0 && this._lastHistory.length < params.history.length)
+    // We use a generation counter instead of length comparison because compact()
+    // may produce the same number of messages (e.g., 2 summary + 2 last exchange).
+    const effectiveHistory = (this._compactGeneration > this._lastAssembleGeneration)
       ? this._lastHistory
       : params.history;
+    this._lastAssembleGeneration = this._compactGeneration;
     // Cache for compact() — always the history we're actually using
     this._lastHistory = effectiveHistory;
 
-    const budget = computeTokenBudget(params.tokenBudget);
+    const historyTokenEstimate = estimateMessagesTokens(effectiveHistory);
+    const userTokenEstimate = estimateTokens(params.prompt);
+    const budget = computeElasticBudget({
+      contextWindow: params.tokenBudget,
+      historyActual: historyTokenEstimate,
+      userActual: userTokenEstimate,
+    });
     const messages: IChatMessage[] = [];
     let ragSources: { uri: string; label: string; index: number }[] = [];
     let systemPromptAddition: string | undefined;
@@ -380,6 +407,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
       // Without a summarizer, do a simple trim: keep the most recent half of history
       const keepCount = Math.max(2, Math.floor(history.length / 2));
       this._lastHistory = history.slice(history.length - keepCount);
+      this._compactGeneration++;
       const afterTokens = estimateMessagesTokens([...this._lastHistory]);
       return { compacted: true, tokensBefore: historyTokens, tokensAfter: afterTokens };
     }
@@ -391,6 +419,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
       { role: 'assistant' as const, content: 'Understood, I have the conversation context.' },
       ...lastExchange,
     ];
+    this._compactGeneration++;
 
     const afterTokens = estimateMessagesTokens([...this._lastHistory]);
 
@@ -412,6 +441,92 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     // Parallx: platform handles message persistence automatically
     // Memory write-back is handled separately by the participant lifecycle
     // This hook exists for future extensions (e.g., concept extraction from turn)
+  }
+
+  /**
+   * Proactive context maintenance — trims and cleans cached history
+   * before the retry loop to keep context lean.
+   *
+   * Upstream evidence:
+   *   - context-engine-maintenance.ts — rule-based transcript maintenance
+   *
+   * Rules applied (no model calls):
+   *   1. Trim verbose tool results (>2000 chars → first 1500 + truncation marker)
+   *   2. Remove redundant acknowledgment pairs (<20 chars, e.g. "Understood")
+   *   3. Collapse duplicate [Context summary] messages — keep only the latest
+   */
+  async maintain(params: IOpenclawMaintainParams): Promise<IOpenclawMaintainResult> {
+    // Use incoming history (from turn context) — _lastHistory may be empty before first assemble()
+    const history = [...params.history] as IChatMessage[];
+    const tokensBefore = estimateMessagesTokens(history);
+    let rewrites = 0;
+
+    // Rule 1: Trim verbose tool results (role 'tool' or content containing tool markers)
+    for (let i = 0; i < history.length; i++) {
+      const msg = history[i];
+      const isToolResult = msg.role === 'tool' || msg.content.includes('```tool-result') || msg.content.includes('[tool-result]');
+      if (isToolResult && msg.content.length > 2000) {
+        history[i] = { ...msg, content: msg.content.slice(0, 1500) + '\n[... truncated]' };
+        rewrites++;
+      }
+    }
+
+    // Rule 2: Remove redundant acknowledgment pairs
+    const ackPattern = /^(understood|got it|sure|ok|okay|alright|noted|yes|right)\.?$/i;
+    const toRemove = new Set<number>();
+    for (let i = 0; i < history.length; i++) {
+      const msg = history[i];
+      if (msg.role === 'assistant' && msg.content.length < 20 && ackPattern.test(msg.content.trim())) {
+        toRemove.add(i);
+        rewrites++;
+      }
+    }
+    if (toRemove.size > 0) {
+      const filtered: IChatMessage[] = [];
+      for (let i = 0; i < history.length; i++) {
+        if (!toRemove.has(i)) {
+          filtered.push(history[i]);
+        }
+      }
+      history.length = 0;
+      history.push(...filtered);
+    }
+
+    // Rule 3: Collapse duplicate [Context summary] messages — keep only the latest
+    let lastSummaryIdx = -1;
+    for (let i = 0; i < history.length; i++) {
+      if (history[i].content.startsWith('[Context summary]')) {
+        lastSummaryIdx = i;
+      }
+    }
+    if (lastSummaryIdx > 0) {
+      const summaryIndicesToRemove = new Set<number>();
+      for (let i = 0; i < lastSummaryIdx; i++) {
+        if (history[i].content.startsWith('[Context summary]')) {
+          summaryIndicesToRemove.add(i);
+          rewrites++;
+        }
+      }
+      if (summaryIndicesToRemove.size > 0) {
+        const filtered: IChatMessage[] = [];
+        for (let i = 0; i < history.length; i++) {
+          if (!summaryIndicesToRemove.has(i)) {
+            filtered.push(history[i]);
+          }
+        }
+        history.length = 0;
+        history.push(...filtered);
+      }
+    }
+
+    this._lastHistory = history;
+    // Bump generation so assemble() uses the maintained history
+    if (rewrites > 0) {
+      this._compactGeneration++;
+    }
+    const tokensAfter = estimateMessagesTokens(history);
+
+    return { rewrites, tokensBefore, tokensAfter };
   }
 }
 

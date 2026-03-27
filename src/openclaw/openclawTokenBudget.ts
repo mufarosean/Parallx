@@ -55,6 +55,62 @@ export function computeTokenBudget(contextWindow: number): IOpenclawTokenBudget 
 }
 
 // ---------------------------------------------------------------------------
+// Elastic budget computation
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for elastic (demand-driven) budget allocation.
+ *
+ * Upstream evidence:
+ *   - context-engine-maintenance.ts — elastic budget redistributes unused
+ *     lane capacity to RAG to maximise grounded context.
+ */
+export interface IOpenclawElasticBudgetParams {
+  readonly contextWindow: number;
+  readonly systemActual?: number;
+  readonly historyActual?: number;
+  readonly userActual?: number;
+}
+
+/**
+ * Compute an elastic token budget that redistributes surplus to RAG.
+ *
+ * Fixed-percentage ceilings (10/30/30/30) set the maximum per lane.
+ * When a lane's actual usage is below its ceiling, the surplus flows
+ * to the RAG lane so retrieved context fills the freed capacity.
+ *
+ * @param params — context window size and actual token counts per lane
+ */
+export function computeElasticBudget(params: IOpenclawElasticBudgetParams): IOpenclawTokenBudget {
+  const total = Math.max(0, Math.floor(params.contextWindow));
+  if (total === 0) {
+    return { total: 0, system: 0, rag: 0, history: 0, user: 0 };
+  }
+
+  // Fixed-percentage ceilings
+  const systemCeil = Math.floor(total * 0.10);
+  const ragCeil = Math.floor(total * 0.30);
+  const historyCeil = Math.floor(total * 0.30);
+  const userCeil = Math.floor(total * 0.30);
+
+  // Actual usage (clamped to ceiling)
+  const systemUsed = Math.min(params.systemActual ?? systemCeil, systemCeil);
+  const historyUsed = Math.min(params.historyActual ?? historyCeil, historyCeil);
+  const userUsed = Math.min(params.userActual ?? userCeil, userCeil);
+
+  // Surplus redistributed to RAG
+  const surplus = (systemCeil - systemUsed) + (historyCeil - historyUsed) + (userCeil - userUsed);
+
+  return {
+    total,
+    system: systemUsed,
+    rag: ragCeil + surplus,
+    history: historyUsed,
+    user: userUsed,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Token estimation (estimateTokens is re-exported from services/tokenBudgetService)
 // ---------------------------------------------------------------------------
 
