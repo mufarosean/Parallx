@@ -72,7 +72,6 @@ function estimateTokens(text: string): number {
 
 /**
  * Dot product of two equal-length vectors.
- * Used by cosineRerank to compute query-candidate similarity.
  */
 export function dotProduct(a: number[], b: number[]): number {
   let sum = 0;
