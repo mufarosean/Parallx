@@ -1,10 +1,8 @@
 /**
- * OpenClaw turn preprocessing — M2 + M3 + M4 gap closure.
+ * OpenClaw turn preprocessing — M2 + M4 gap closure.
  *
  * M2: Mention resolution — extract @file/@folder/@workspace/@terminal mentions,
  *     resolve content, strip mentions from query text.
- * M3: Skill activation — detect skill slash commands, load manifest,
- *     perform $ARGUMENTS substitution.
  * M4: Semantic fallback — detect broad workspace summary prompts.
  *
  * These run before context assembly to influence what context gets included.
@@ -162,74 +160,6 @@ export async function resolveMentions(
     contextBlocks: blocks,
     pills,
   };
-}
-
-// ---------------------------------------------------------------------------
-// M3: Skill activation
-// ---------------------------------------------------------------------------
-
-export interface IActivatedSkill {
-  readonly name: string;
-  readonly resolvedBody: string;
-}
-
-/**
- * When a slash command's `specialHandler` is `'skill'`, load the skill manifest
- * and perform `$ARGUMENTS` substitution.
- */
-export function activateSkill(
-  commandName: string,
-  userText: string,
-  services: IDefaultParticipantServices,
-): IActivatedSkill | undefined {
-  if (!services.getSkillManifest) return undefined;
-
-  const manifest = services.getSkillManifest(commandName) as { body?: string } | undefined;
-  if (!manifest?.body) return undefined;
-
-  const resolvedBody = manifest.body.replace(/\$ARGUMENTS/g, userText);
-  return { name: commandName, resolvedBody };
-}
-
-/**
- * Detect a skill name mentioned in free-text input and activate it.
- *
- * Upstream OpenClaw pattern: skills are activated before the model sees the
- * turn. When the user says "use the X skill", detect the name, load the
- * manifest, and inject the body into the system prompt.
- */
-export function detectAndActivateFreeTextSkill(
-  text: string,
-  services: IDefaultParticipantServices,
-): IActivatedSkill | undefined {
-  const catalog = services.getWorkflowSkillCatalog?.() ?? [];
-  if (catalog.length === 0) return undefined;
-
-  const lower = text.toLowerCase();
-  const skillNames = catalog.map(s => s.name.toLowerCase());
-
-  for (const skillName of skillNames) {
-    const escaped = skillName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(
-      `\\b(?:use|run|follow|apply|execute|activate|invoke|try)\\s+(?:the\\s+)?${escaped}(?:\\s+(?:skill|workflow))?\\b`,
-      'i',
-    );
-    if (pattern.test(lower)) {
-      const entry = catalog.find(s => s.name.toLowerCase() === skillName);
-      if (entry) return activateSkill(entry.name, text, services);
-    }
-  }
-
-  for (const skillName of skillNames) {
-    const escaped = skillName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`\\b${escaped}\\s+skill\\b`, 'i');
-    if (pattern.test(lower)) {
-      const entry = catalog.find(s => s.name.toLowerCase() === skillName);
-      if (entry) return activateSkill(entry.name, text, services);
-    }
-  }
-
-  return undefined;
 }
 
 // ---------------------------------------------------------------------------

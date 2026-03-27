@@ -14,7 +14,7 @@
  *   - M9: Token estimation chars / 4
  */
 
-import { estimateTokens } from './openclawTokenBudget.js';
+import { estimateTokens, trimTextToBudget } from './openclawTokenBudget.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,6 +41,9 @@ export interface IOpenclawRuntimeInfo {
   readonly provider: string;
   readonly host: string;
   readonly parallxVersion: string;
+  readonly os?: string;
+  readonly arch?: string;
+  readonly shell?: string;
 }
 
 export interface IOpenclawSystemPromptParams {
@@ -64,6 +67,9 @@ export interface IOpenclawSystemPromptParams {
   readonly modelTier?: 'small' | 'medium' | 'large';
   /** M42: Whether the model supports tool calling */
   readonly supportsTools?: boolean;
+  /** Token budget for system prompt (typically 10% of context window).
+   *  When set, variable sections are truncated if total exceeds budget. */
+  readonly systemBudgetTokens?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,6 +95,9 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
   // 1. Identity (upstream: first line of buildAgentSystemPrompt)
   sections.push(buildIdentitySection(params.runtimeInfo));
 
+  // 1b. Safety (upstream: system-prompt.ts lines 378-385)
+  sections.push(buildSafetySection());
+
   // 2. Skills (upstream: agents/system-prompt.ts lines 20-37)
   if (params.skills.length > 0) {
     sections.push(buildSkillsSection(params.skills));
@@ -103,6 +112,10 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
   sections.push(buildWorkspaceSection(params.bootstrapFiles, params.workspaceDigest));
 
   // 5. Context engine addition (upstream: systemPromptAddition from AssembleResult)
+  //    Parallx adaptation: kept at position 5 (after workspace context, before preferences)
+  //    rather than upstream's end-of-prompt position. Context engine output is semantically
+  //    closest to workspace context, and placing it here keeps the prompt flow coherent
+  //    for local models that weight earlier prompt content more heavily.
   if (params.systemPromptAddition) {
     sections.push(params.systemPromptAddition);
   }
@@ -131,7 +144,18 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
     sections.push(buildNoToolsFallbackNote());
   }
 
-  return sections.join('\n\n');
+  let result = sections.join('\n\n');
+
+  // Budget-aware truncation: if total exceeds systemBudgetTokens,
+  // truncate variable sections (workspace context first, then tool summaries).
+  if (params.systemBudgetTokens && params.systemBudgetTokens > 0) {
+    const currentTokens = estimateTokens(result);
+    if (currentTokens > params.systemBudgetTokens) {
+      result = truncateSystemPromptToBudget(sections, params.systemBudgetTokens);
+    }
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,9 +179,11 @@ export function buildSkillsSection(skills: readonly ISkillEntry[]): string {
 
   return `## Skills (mandatory)
 Before replying: scan <available_skills> <description> entries.
-- If exactly one skill clearly applies: read its SKILL.md at <location>.
-- If multiple could apply: choose the most specific one.
+- If exactly one skill clearly applies: read its SKILL.md at <location>, then follow it.
+- If multiple could apply: choose the most specific one, then read/follow it.
 - If none clearly apply: do not read any SKILL.md.
+Constraints: never read more than one skill up front; only read after selecting.
+When a skill drives external API writes, assume rate limits: prefer fewer larger writes, avoid tight one-item loops, serialize bursts when possible, and respect 429/Retry-After.
 <available_skills>
 ${entries}
 </available_skills>`;
@@ -171,8 +197,8 @@ ${entries}
  * with human-readable context in the prompt text.
  */
 export function buildToolSummariesSection(tools: readonly IToolSummary[]): string {
-  const lines = tools.map(t => `- **${t.name}**: ${t.description}`).join('\n');
-  return `## Available Tools\n${lines}`;
+  const lines = tools.map(t => `- ${t.name}: ${t.description}`).join('\n');
+  return `Tool availability (filtered by policy):\n${lines}`;
 }
 
 /**
@@ -211,11 +237,17 @@ export function buildWorkspaceSection(
  * Upstream: runtimeInfo section in buildAgentSystemPrompt
  */
 export function buildRuntimeSection(runtimeInfo: IOpenclawRuntimeInfo): string {
-  return `## Runtime
-- Model: ${runtimeInfo.model}
-- Provider: ${runtimeInfo.provider}
-- Host: ${runtimeInfo.host}
-- Parallx version: ${runtimeInfo.parallxVersion}`;
+  const lines = [
+    '## Runtime',
+    `- Model: ${runtimeInfo.model}`,
+    `- Provider: ${runtimeInfo.provider}`,
+    `- Host: ${runtimeInfo.host}`,
+    `- Parallx version: ${runtimeInfo.parallxVersion}`,
+  ];
+  if (runtimeInfo.os) { lines.push(`- OS: ${runtimeInfo.os}`); }
+  if (runtimeInfo.arch) { lines.push(`- Architecture: ${runtimeInfo.arch}`); }
+  if (runtimeInfo.shell) { lines.push(`- Shell: ${runtimeInfo.shell}`); }
+  return lines.join('\n');
 }
 
 /**
@@ -283,6 +315,53 @@ The system will interpret these and execute them on your behalf.`;
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Safety section following upstream pattern.
+ * Upstream: system-prompt.ts lines 378-385
+ */
+function buildSafetySection(): string {
+  return [
+    '## Safety',
+    'You have no independent goals: do not pursue self-preservation, replication, resource acquisition, or power-seeking; avoid long-term plans beyond the user\'s request.',
+    'Prioritize safety and human oversight over completion; if instructions conflict, pause and ask; comply with stop/pause/audit requests and never bypass safeguards.',
+    'Do not manipulate or persuade anyone to expand access or disable safeguards. Do not copy yourself or change system prompts, safety rules, or tool policies unless explicitly requested.',
+  ].join('\n');
+}
+
+/**
+ * Budget-aware truncation of system prompt sections.
+ * Truncation priority: workspace context first (largest variable section),
+ * then tool summaries. Safety, identity, and skills are never truncated.
+ */
+function truncateSystemPromptToBudget(
+  sections: readonly string[],
+  budgetTokens: number,
+): string {
+  const mutableSections = [...sections];
+
+  // Find truncatable sections
+  const workspaceIdx = mutableSections.findIndex(s => s.startsWith('## Workspace Context'));
+  const toolsIdx = mutableSections.findIndex(s => s.startsWith('Tool availability'));
+
+  // Try truncating workspace first
+  if (workspaceIdx >= 0) {
+    const sectionBudget = Math.floor(budgetTokens * 0.3);
+    mutableSections[workspaceIdx] = trimTextToBudget(mutableSections[workspaceIdx], sectionBudget).text;
+    const candidate = mutableSections.join('\n\n');
+    if (estimateTokens(candidate) <= budgetTokens) {
+      return candidate;
+    }
+  }
+
+  // Then truncate tools
+  if (toolsIdx >= 0) {
+    const sectionBudget = Math.floor(budgetTokens * 0.15);
+    mutableSections[toolsIdx] = trimTextToBudget(mutableSections[toolsIdx], sectionBudget).text;
+  }
+
+  return mutableSections.join('\n\n');
+}
 
 function escapeXml(text: string): string {
   return text

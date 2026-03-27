@@ -21,17 +21,18 @@ import type {
   IChatResponseStream,
   ICancellationToken,
   IToolCall,
-  IToolDefinition,
   IToolResult,
 } from '../services/chatTypes.js';
 import type { IOpenclawAssembleResult, IOpenclawContextEngine } from './openclawContextEngine.js';
-import type { IOpenclawSystemPromptParams, IBootstrapFile, ISkillEntry, IToolSummary, IOpenclawRuntimeInfo } from './openclawSystemPrompt.js';
-import type { IToolPermissions, OpenclawToolProfile } from './openclawToolPolicy.js';
+import type { IBootstrapFile, IOpenclawRuntimeInfo } from './openclawSystemPrompt.js';
 import type { IChatRuntimeToolInvocationObserver } from './openclawTypes.js';
-import { buildOpenclawSystemPrompt } from './openclawSystemPrompt.js';
-import { applyOpenclawToolPolicy } from './openclawToolPolicy.js';
+import type { IOpenclawBootstrapDebugReport, IOpenclawSystemPromptReport } from '../services/chatRuntimeTypes.js';
 import { ChatToolLoopSafety } from '../services/chatToolLoopSafety.js';
-import { estimateMessagesTokens, estimateTokens, trimTextToBudget } from './openclawTokenBudget.js';
+import { estimateMessagesTokens, estimateTokens } from './openclawTokenBudget.js';
+import type { IOpenclawRuntimeSkillState } from './openclawSkillState.js';
+import { buildOpenclawPromptArtifacts } from './openclawPromptArtifacts.js';
+import type { IOpenclawRuntimeToolState } from './openclawToolState.js';
+import { resolveModelTier } from './openclawModelTier.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -62,21 +63,21 @@ export interface IOpenclawTurnContext {
 
   // System prompt inputs
   readonly bootstrapFiles: readonly IBootstrapFile[];
+  readonly bootstrapDebugReport: IOpenclawBootstrapDebugReport;
   readonly workspaceDigest: string;
-  readonly skills: readonly ISkillEntry[];
+  readonly skillState: IOpenclawRuntimeSkillState;
   readonly runtimeInfo: IOpenclawRuntimeInfo;
   readonly preferencesPrompt?: string;
   readonly promptOverlay?: string;
+  readonly reportSystemPromptReport?: (report: IOpenclawSystemPromptReport) => void;
+  /** The participant handling this turn (e.g., 'parallx.chat.default'). */
+  readonly participantId?: string;
 
   // M2: Mention context blocks to inject
   readonly mentionContextBlocks?: readonly string[];
-  // M3: Activated skill body to inject into system prompt
-  readonly activatedSkillBody?: string;
 
   // Tool inputs
-  readonly tools: readonly IToolDefinition[];
-  readonly toolMode: OpenclawToolProfile;
-  readonly toolPermissions?: IToolPermissions;
+  readonly toolState: IOpenclawRuntimeToolState;
   readonly maxToolIterations: number;
 
   // Model execution
@@ -131,49 +132,55 @@ export async function executeOpenclawAttempt(
   token: ICancellationToken,
 ): Promise<IOpenclawAttemptResult> {
 
-  // 1. Build tool summaries for prompt injection
-  const toolSummaries: IToolSummary[] = context.tools.map(t => ({
-    name: t.name,
-    description: t.description,
-  }));
-
-  // 2. Build system prompt (System 3)
-  //    M3: If a skill was activated, inject its resolved body into the prompt
-  const systemPromptParams: IOpenclawSystemPromptParams = {
+  const promptArtifacts = buildOpenclawPromptArtifacts({
+    source: 'run',
     bootstrapFiles: context.bootstrapFiles,
+    bootstrapReport: context.bootstrapDebugReport,
     workspaceDigest: context.workspaceDigest,
-    skills: context.skills,
-    tools: toolSummaries,
+    skillState: context.skillState,
+    toolState: context.toolState,
     runtimeInfo: context.runtimeInfo,
-    systemPromptAddition: [assembled.systemPromptAddition, context.activatedSkillBody].filter(Boolean).join('\n\n'),
+    systemPromptAddition: assembled.systemPromptAddition,
     preferencesPrompt: context.preferencesPrompt,
     promptOverlay: context.promptOverlay,
-  };
-  const systemPrompt = buildOpenclawSystemPrompt(systemPromptParams);
+    modelTier: resolveModelTier(context.runtimeInfo.model),
+    systemBudgetTokens: Math.floor(context.tokenBudget * 0.10),
+    promptProvenance: {
+      rawUserInput: request.text,
+      parsedUserText: request.text,
+      contextQueryText: request.text,
+      participantId: context.participantId,
+      command: request.command,
+      attachmentCount: request.attachments?.length ?? 0,
+      historyTurns: Math.floor(context.history.length / 2),
+      seedMessageCount: assembled.messages.length + 2,
+      modelMessageCount: assembled.messages.length + (context.mentionContextBlocks?.length ? 3 : 2),
+      modelMessageRoles: [
+        'system',
+        ...assembled.messages.map((message) => message.role),
+        ...(context.mentionContextBlocks?.length ? ['user'] : []),
+        'user',
+      ],
+      finalUserMessage: request.text,
+    },
+  });
+  const systemPrompt = promptArtifacts.systemPrompt;
+  context.reportSystemPromptReport?.(promptArtifacts.report);
 
-  // 2b. Enforce system prompt token budget (10% of total context window).
-  //     If the built system prompt exceeds the budget, truncate to fit.
+  // 2b. System prompt budget check (warning only).
+  //     RAG content now flows through assembled.messages, not systemPromptAddition,
+  //     so the system prompt should naturally fit within 10%. If it doesn't,
+  //     log a warning — the overflow → compact → retry cycle handles oversize.
+  const effectiveSystemPrompt = systemPrompt;
   const systemBudget = Math.floor(context.tokenBudget * 0.10);
-  let effectiveSystemPrompt = systemPrompt;
   if (systemBudget > 0) {
     const systemTokens = estimateTokens(systemPrompt);
     if (systemTokens > systemBudget) {
-      const { text, trimmed } = trimTextToBudget(systemPrompt, systemBudget);
-      if (trimmed) {
-        effectiveSystemPrompt = text;
-        console.warn(
-          `[OpenClaw] System prompt (${systemTokens} tokens) exceeds budget (${systemBudget} tokens), truncated.`,
-        );
-      }
+      console.warn(
+        `[OpenClaw] System prompt (${systemTokens} tokens) exceeds 10% budget (${systemBudget} tokens). Overflow cycle will handle if needed.`,
+      );
     }
   }
-
-  // 3. Filter tools (System 4)
-  const allowedTools = applyOpenclawToolPolicy({
-    tools: context.tools,
-    mode: context.toolMode,
-    permissions: context.toolPermissions,
-  });
 
   // 4. Build messages: [system, ...context history, mention context, user]
   //    M2: Inject mention context blocks between assembled context and user query
@@ -193,7 +200,7 @@ export async function executeOpenclawAttempt(
   //    Parallx: pass tokenBudget as numCtx so Ollama allocates matching KV cache
   const requestOptions: IChatRequestOptions = {
     think: true,
-    tools: allowedTools.length > 0 ? allowedTools : undefined,
+    tools: context.toolState.availableDefinitions.length > 0 ? context.toolState.availableDefinitions : undefined,
     numCtx: context.tokenBudget,
   };
 
