@@ -161,14 +161,30 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
   }
 
   async assemble(params: IOpenclawAssembleParams): Promise<IOpenclawAssembleResult> {
-    // Cache history for use by compact() — upstream pattern couples assemble/compact state
-    this._lastHistory = params.history;
+    // Use compacted history if available (compact() was called between retries).
+    // If _lastHistory is non-empty and shorter than incoming history, it was compacted.
+    // Upstream pattern: compact() mutates the engine's internal state, and the next
+    // assemble() uses the compacted version — not the original from the participant.
+    const effectiveHistory = (this._lastHistory.length > 0 && this._lastHistory.length < params.history.length)
+      ? this._lastHistory
+      : params.history;
+    // Cache for compact() — always the history we're actually using
+    this._lastHistory = effectiveHistory;
 
     const budget = computeTokenBudget(params.tokenBudget);
     const messages: IChatMessage[] = [];
     let ragSources: { uri: string; label: string; index: number }[] = [];
     let systemPromptAddition: string | undefined;
     let retrievedContextText = '';
+
+    // ── Sub-lane budget allocation (normalized to 100% of RAG budget) ──
+    // Upstream: context engine assembles content UNDER the token budget.
+    // Sub-lanes must sum to ≤ 100% to prevent over-allocation.
+    const ragLaneBudget = Math.floor(budget.rag * 0.55);     // 55% — primary retrieval
+    const pageLaneBudget = Math.floor(budget.rag * 0.15);    // 15% — open page
+    const memoryLaneBudget = Math.floor(budget.rag * 0.15);  // 15% — recalled memories
+    const transcriptLaneBudget = Math.floor(budget.rag * 0.10); // 10% — transcripts
+    const conceptLaneBudget = Math.floor(budget.rag * 0.05); // 5%  — concepts
 
     // ── C1: Parallel loading — fire all retrieval services concurrently ──
     const [ragResult, memoryResult, conceptResult, pageResult, transcriptResult] = await Promise.all([
@@ -189,12 +205,19 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
         : Promise.resolve(undefined),
     ]);
 
+    // ── Build retrieval context sections (delivered via messages, not systemPromptAddition) ──
+    // Upstream pattern (context-engine/types.ts): AssembleResult.messages is the primary
+    // delivery channel for context. systemPromptAddition is for lightweight metadata only.
+    const contextSections: string[] = [];
+    let usedRagTokens = 0;
+
     // ── C2: Page content — inject currently open editor page ──
     if (pageResult?.textContent) {
       const pageTokens = estimateTokens(pageResult.textContent);
-      if (pageTokens <= budget.rag * 0.3) { // max 30% of RAG budget for page
-        const pageHeader = `## Currently Open Page: "${pageResult.title}" (id: ${pageResult.pageId})`;
-        systemPromptAddition = `${pageHeader}\n${pageResult.textContent}`;
+      if (pageTokens <= pageLaneBudget) {
+        const section = `## Currently Open Page: "${pageResult.title}" (id: ${pageResult.pageId})\n${pageResult.textContent}`;
+        contextSections.push(section);
+        usedRagTokens += pageTokens;
       }
     }
 
@@ -202,11 +225,12 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     if (ragResult) {
       retrievedContextText = ragResult.text;
       const ragTokens = estimateTokens(ragResult.text);
-      const maxRagChars = budget.rag * 4;
-      const contextText = ragTokens <= budget.rag
+      const maxChars = ragLaneBudget * 4;
+      const contextText = ragTokens <= ragLaneBudget
         ? ragResult.text
-        : ragResult.text.slice(0, maxRagChars);
-      systemPromptAddition = (systemPromptAddition ?? '') + `\n\n## Retrieved Context\n${contextText}`;
+        : ragResult.text.slice(0, maxChars);
+      contextSections.push(`## Retrieved Context\n${contextText}`);
+      usedRagTokens += Math.min(ragTokens, ragLaneBudget);
       ragSources = ragResult.sources.map((s, i) => ({
         uri: s.uri,
         label: s.label,
@@ -217,27 +241,27 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     // ── Memory: recall relevant memories ──
     if (memoryResult) {
       const memoryTokens = estimateTokens(memoryResult);
-      if (memoryTokens < budget.rag * 0.2) {
-        systemPromptAddition = (systemPromptAddition ?? '') +
-          `\n\n## Recalled Memories\n${memoryResult}`;
-      }
-    }
-
-    // ── Concepts: recall relevant concepts ──
-    if (conceptResult) {
-      const conceptTokens = estimateTokens(conceptResult);
-      if (conceptTokens < budget.rag * 0.1) {
-        systemPromptAddition = (systemPromptAddition ?? '') +
-          `\n\n## Concepts\n${conceptResult}`;
+      if (memoryTokens <= memoryLaneBudget && usedRagTokens + memoryTokens <= budget.rag) {
+        contextSections.push(`## Recalled Memories\n${memoryResult}`);
+        usedRagTokens += memoryTokens;
       }
     }
 
     // ── C4: Transcript recall ──
     if (transcriptResult) {
       const transcriptTokens = estimateTokens(transcriptResult);
-      if (transcriptTokens < budget.rag * 0.15) { // max 15% of RAG budget for transcripts
-        systemPromptAddition = (systemPromptAddition ?? '') +
-          `\n\n## Recalled Transcripts\n${transcriptResult}`;
+      if (transcriptTokens <= transcriptLaneBudget && usedRagTokens + transcriptTokens <= budget.rag) {
+        contextSections.push(`## Recalled Transcripts\n${transcriptResult}`);
+        usedRagTokens += transcriptTokens;
+      }
+    }
+
+    // ── Concepts: recall relevant concepts ──
+    if (conceptResult) {
+      const conceptTokens = estimateTokens(conceptResult);
+      if (conceptTokens <= conceptLaneBudget && usedRagTokens + conceptTokens <= budget.rag) {
+        contextSections.push(`## Concepts\n${conceptResult}`);
+        usedRagTokens += conceptTokens;
       }
     }
 
@@ -253,14 +277,15 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
             // Merge re-retrieved context
             retrievedContextText = retrievedContextText + '\n\n' + reResult.text;
             const combinedTokens = estimateTokens(retrievedContextText);
-            const maxChars = budget.rag * 4;
-            const combinedText = combinedTokens <= budget.rag
+            const maxChars = ragLaneBudget * 4;
+            const combinedText = combinedTokens <= ragLaneBudget
               ? retrievedContextText
               : retrievedContextText.slice(0, maxChars);
-            systemPromptAddition = (systemPromptAddition ?? '').replace(
-              /\n\n## Retrieved Context\n[\s\S]*?(?=\n\n##|$)/,
-              `\n\n## Retrieved Context\n${combinedText}`,
-            );
+            // Replace the RAG section in contextSections
+            const ragIdx = contextSections.findIndex(s => s.startsWith('## Retrieved Context\n'));
+            if (ragIdx >= 0) {
+              contextSections[ragIdx] = `## Retrieved Context\n${combinedText}`;
+            }
             // Merge sources, dedup by uri
             const existingUris = new Set(ragSources.map(s => s.uri));
             for (const s of reResult.sources) {
@@ -275,12 +300,22 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
       }
       if (evidence.status !== 'sufficient') {
         const constraint = buildEvidenceConstraint(params.prompt, evidence);
-        systemPromptAddition = (systemPromptAddition ?? '') + `\n\n${constraint}`;
+        systemPromptAddition = constraint;
       }
     }
 
+    // ── Deliver retrieval content via messages (upstream pattern) ──
+    // Upstream: AssembleResult.messages is the primary delivery channel.
+    // RAG content goes in a context message BEFORE history, not in the system prompt.
+    if (contextSections.length > 0) {
+      messages.push({
+        role: 'user' as const,
+        content: `The following is retrieved context relevant to the conversation. Use it to inform your responses.\n\n${contextSections.join('\n\n---\n\n')}`,
+      });
+    }
+
     // ── History: trim conversation history to fit budget ──
-    const historyMessages = trimHistoryToBudget(params.history, budget.history);
+    const historyMessages = trimHistoryToBudget(effectiveHistory, budget.history);
     messages.push(...historyMessages);
 
     const estimatedTokens = estimateMessagesTokens(messages) +
