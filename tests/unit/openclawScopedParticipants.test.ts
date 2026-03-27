@@ -132,8 +132,8 @@ describe('openclaw scoped participants', () => {
     const messages = sendChatRequest.mock.calls[0][0];
     const bootstrapDebug = reportBootstrapDebug.mock.calls[0][0];
     expect(messages[0].content).toContain('OpenClaw workspace lane');
-    expect(messages[0].content).toContain('[AGENTS.md]');
-    expect(messages[0].content).toContain('[MISSING] Expected at: SOUL.md');
+    expect(messages[0].content).toContain('### AGENTS.md');
+    expect(messages[0].content).toContain('agent rules');
     expect(bootstrapDebug.files).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'AGENTS.md', rawChars: expect.any(Number) }),
       expect.objectContaining({ name: 'SOUL.md', missing: true, rawChars: 0, injectedChars: expect.any(Number) }),

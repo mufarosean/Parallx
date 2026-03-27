@@ -158,6 +158,158 @@ describe('openclaw default participant', () => {
     expect(reportSystemPromptReport).toHaveBeenCalledWith(expect.objectContaining({ source: 'estimate' }));
     expect(response.markdown).toHaveBeenCalledWith(expect.stringContaining('Context breakdown'));
     expect(response.markdown).toHaveBeenCalledWith(expect.stringContaining('Bootstrap max/file'));
+    expect(response.markdown).toHaveBeenCalledWith(expect.stringContaining('Hidden skills:'));
+  });
+
+  it('uses canonical skill state for prompt visibility and reporting', async () => {
+    const sendChatRequest = vi.fn(() => streamChunks([
+      { content: 'Skilled answer', done: true, promptEvalCount: 8, evalCount: 12 },
+    ]));
+    const reportSystemPromptReport = vi.fn();
+    const services: IDefaultParticipantServices = {
+      sendChatRequest,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Demo Workspace',
+      getPageCount: vi.fn(async () => 0),
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [],
+      getReadOnlyToolDefinitions: () => [],
+      getSkillCatalog: () => [
+        {
+          name: 'claims-playbook',
+          description: 'Claims workflow.',
+          kind: 'workflow',
+          tags: ['claims'],
+          location: '.parallx/skills/claims-playbook/SKILL.md',
+        },
+        {
+          name: 'internal-playbook',
+          description: 'Hidden workflow.',
+          kind: 'workflow',
+          tags: ['internal'],
+          location: '.parallx/skills/internal-playbook/SKILL.md',
+          disableModelInvocation: true,
+        },
+        {
+          name: 'read_policy',
+          description: 'Tool skill.',
+          kind: 'tool',
+          tags: ['tool'],
+          location: '.parallx/skills/read_policy/SKILL.md',
+        },
+      ],
+      readFileRelative: vi.fn(async () => null),
+      reportSystemPromptReport,
+      getPreferencesForPrompt: vi.fn(async () => 'Prefer concise answers.'),
+      unifiedConfigService: {
+        getEffectiveConfig: () => ({
+          chat: { workspaceDescription: 'Insurance workspace' },
+          model: { temperature: 0.2, maxTokens: 512 },
+        } as any),
+      } as any,
+    } as IDefaultParticipantServices;
+
+    const participant = createOpenclawDefaultParticipant(services);
+    const response = createResponse();
+
+    await participant.handler({
+      text: 'Help with a claim.',
+      requestId: 'req-skills',
+      mode: ChatMode.Agent,
+      modelId: 'test-model',
+      attempt: 0,
+    } as IChatParticipantRequest, {
+      sessionId: 'session-skills',
+      history: [],
+    } as IChatParticipantContext, response, createToken());
+
+    const sentMessages = sendChatRequest.mock.calls[0][0];
+    expect(sentMessages[0].content).toContain('claims-playbook');
+    expect(sentMessages[0].content).not.toContain('internal-playbook');
+    expect(sentMessages[0].content).toContain('## User Preferences');
+    expect(reportSystemPromptReport).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'run',
+      skills: expect.objectContaining({
+        totalCount: 3,
+        visibleCount: 1,
+        hiddenCount: 2,
+      }),
+      tools: expect.objectContaining({
+        totalCount: 1,
+        availableCount: 1,
+        filteredCount: 0,
+        skillDerivedCount: 1,
+      }),
+    }));
+  });
+
+  it('derives skill tools at runtime and reports filtered capability state', async () => {
+    const sendChatRequest = vi.fn(() => streamChunks([
+      { content: 'Runtime skill answer', done: true, promptEvalCount: 9, evalCount: 14 },
+    ]));
+    const reportSystemPromptReport = vi.fn();
+    const services: IDefaultParticipantServices = {
+      sendChatRequest,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Demo Workspace',
+      getPageCount: vi.fn(async () => 0),
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [{ name: 'run_command', description: 'Run command', parameters: { type: 'object', properties: { command: { type: 'string' } } } }],
+      getReadOnlyToolDefinitions: () => [],
+      getSkillCatalog: () => [
+        {
+          name: 'policy_playbook',
+          description: 'Explain the policy workflow.',
+          kind: 'tool',
+          tags: ['tool'],
+          location: '.parallx/skills/policy_playbook/SKILL.md',
+          permissionLevel: 'always-allowed',
+          parameters: [{ name: 'query', type: 'string', description: 'Question', required: true }],
+          body: '# Policy Playbook',
+        },
+      ],
+      getToolPermissions: () => ({ run_command: 'never-allowed' }),
+      readFileRelative: vi.fn(async () => null),
+      reportSystemPromptReport,
+      invokeToolWithRuntimeControl: vi.fn(async (name: string) => ({ content: `invoked ${name}` })),
+      unifiedConfigService: {
+        getEffectiveConfig: () => ({
+          chat: { workspaceDescription: 'Insurance workspace' },
+          model: { temperature: 0.2, maxTokens: 512 },
+        } as any),
+      } as any,
+    } as IDefaultParticipantServices;
+
+    const participant = createOpenclawDefaultParticipant(services);
+    const response = createResponse();
+
+    await participant.handler({
+      text: 'Use the policy playbook.',
+      requestId: 'req-runtime-tools',
+      mode: ChatMode.Agent,
+      modelId: 'test-model',
+      attempt: 0,
+    } as IChatParticipantRequest, {
+      sessionId: 'session-runtime-tools',
+      history: [],
+    } as IChatParticipantContext, response, createToken());
+
+    const requestOptions = sendChatRequest.mock.calls[0][1];
+    expect(requestOptions.tools).toEqual([
+      expect.objectContaining({ name: 'policy_playbook' }),
+    ]);
+    expect(reportSystemPromptReport).toHaveBeenCalledWith(expect.objectContaining({
+      tools: expect.objectContaining({
+        totalCount: 2,
+        availableCount: 1,
+        filteredCount: 1,
+        skillDerivedCount: 1,
+        entries: expect.arrayContaining([
+          expect.objectContaining({ name: 'policy_playbook', source: 'skill', available: true }),
+          expect.objectContaining({ name: 'run_command', source: 'platform', available: false, filteredReason: 'permission-never-allowed' }),
+        ]),
+      }),
+    }));
   });
 
   it('executes runtime-controlled tool calls inside the separate OpenClaw lane', async () => {
@@ -255,8 +407,12 @@ describe('openclaw default participant', () => {
 
     expect(getCurrentPageContent).toHaveBeenCalled();
     const sentMessages = sendChatRequest.mock.calls[0][0];
-    const systemMsg = sentMessages.find((m: any) => m.role === 'system');
-    expect(systemMsg?.content).toContain('Currently Open Page');
+    // Page content is now delivered via a user-role context message (F8-3 fix),
+    // not systemPromptAddition, matching upstream AssembleResult.messages pattern.
+    const contextMsg = sentMessages.find((m: any) =>
+      m.role === 'user' && m.content.includes('Currently Open Page')
+    );
+    expect(contextMsg).toBeDefined();
   });
 
   it('seeds prior conversation turns into the default OpenClaw model prompt', async () => {

@@ -1,16 +1,18 @@
 import { ChatMode, type IChatParticipantRequest, type IChatResponseStream, type IToolDefinition } from '../../services/chatTypes.js';
 import type {
   IDefaultParticipantServices,
-  IOpenclawBootstrapDebugFile,
   IOpenclawBootstrapDebugReport,
-  IOpenclawSkillPromptEntry,
   IOpenclawSystemPromptReport,
-  IOpenclawToolPromptEntry,
 } from '../openclawTypes.js';
 import {
   buildOpenclawBootstrapContext,
   loadOpenclawBootstrapEntries,
 } from './openclawParticipantRuntime.js';
+import type { IBootstrapFile, IOpenclawRuntimeInfo } from '../openclawSystemPrompt.js';
+import { buildOpenclawRuntimeSkillState } from '../openclawSkillState.js';
+import { buildOpenclawRuntimeToolState } from '../openclawToolState.js';
+import { buildOpenclawPromptArtifacts as buildRuntimePromptArtifacts } from '../openclawPromptArtifacts.js';
+import { resolveToolProfile } from '../openclawToolPolicy.js';
 
 export type IOpenclawPromptArtifacts = {
   systemPrompt: string;
@@ -21,132 +23,76 @@ export type IOpenclawPromptArtifacts = {
 export async function buildOpenclawPromptArtifacts(
   services: Pick<
     IDefaultParticipantServices,
+    | 'getActiveModel'
     | 'getWorkspaceName'
     | 'readFileRelative'
     | 'unifiedConfigService'
     | 'getToolDefinitions'
     | 'getReadOnlyToolDefinitions'
-    | 'getWorkflowSkillCatalog'
+    | 'getSkillCatalog'
+    | 'getToolPermissions'
+    | 'getWorkspaceDigest'
   >,
   mode: ChatMode,
   source: 'run' | 'estimate',
 ): Promise<IOpenclawPromptArtifacts> {
   const workspaceName = services.getWorkspaceName();
-  const workspaceDescription = services.unifiedConfigService?.getEffectiveConfig().chat.workspaceDescription?.trim();
-  const bootstrapFiles = await loadOpenclawBootstrapEntries(
+  const bootstrapEntries = await loadOpenclawBootstrapEntries(
     services.readFileRelative
       ? async (relativePath: string) => services.readFileRelative!(relativePath)
       : undefined,
   );
-  const { sections: bootstrapSections, debug: bootstrapReport } = buildOpenclawBootstrapContext(bootstrapFiles);
-  const skills = buildSkillsPrompt(services);
-  const tools = buildToolsPrompt(resolveToolDefinitions(services, mode));
-
-  const systemPromptSections: string[] = [
-    'You are the OpenClaw runtime lane inside Parallx.',
-    'Treat workspace files as the authoritative state. Use tools when the answer depends on current workspace contents instead of inventing state.',
-    'Keep responses grounded and concise. If evidence is missing, say so clearly.',
-    `Workspace: ${workspaceName}`,
-  ];
-
-  if (workspaceDescription) {
-    systemPromptSections.push(`Workspace description: ${workspaceDescription}`);
-  }
-
-  if (mode === ChatMode.Edit) {
-    systemPromptSections.push(
-      'Edit mode is for structured canvas changes. Use read-only tools to gather context, then respond with structured edit proposals.',
-    );
-  } else {
-    // Ask + Agent — both have full tools with approval gates
-    const autonomyNote = mode === ChatMode.Agent
-      ? 'Agent mode unlocks longer autonomous runs and approval-aware changes.'
-      : 'Use tools proactively to gather evidence and take action. Write operations require user approval.';
-    systemPromptSections.push(
-      `Modes gate authority, not wakefulness. ${autonomyNote}`,
-    );
-  }
-
-  systemPromptSections.push(
-    '## Retrieved Context Contract',
-    'When the user message contains a [Retrieved Context] block, treat those snippets as grounded workspace evidence that has already been fetched for this turn.',
-    'If the retrieved snippets clearly answer the question, answer from them directly instead of claiming the file is missing or unavailable.',
-    'Do not infer missing evidence from a filename or section title alone. If a retrieved snippet contains the needed facts, use it.',
-    'For file counts, directory listings, or exact workspace inventory questions, verify with tools instead of relying on retrieved snippets alone.',
-    'Preserve exact counts and quantities from retrieved evidence, including file totals, step totals, and sentence counts, instead of paraphrasing them away.',
-    'If a retrieved source is brief, partial, or stub-like, say that explicitly instead of padding the answer with fuller-sounding content.',
-    'When quoting phone numbers, policy numbers, percentages, thresholds, VINs, or other identifiers from evidence, preserve the source formatting exactly. Do not replace ASCII punctuation with typographic dashes or narrow spaces.',
-    'If you use retrieved snippets in the answer, cite them with exact [N] markers that match the numbered sources in the [Retrieved Context] block. Do not invent other citation formats.',
-    '# Project Context',
-    'The following project context files have been loaded:',
-    ...bootstrapSections,
-  );
-
-  if (skills.prompt) {
-    systemPromptSections.push(
-      '## Skills',
-      'When a listed workflow skill clearly matches the request, prefer that skill-guided workflow over ad hoc reasoning.',
-      skills.prompt,
-    );
-  }
-
-  if (tools.listText) {
-    systemPromptSections.push(
-      '## Tools',
-      'Tool names are case-sensitive. Call tools exactly as listed.',
-      'When a first-class tool exists for an action, use the tool directly instead of narrating manual steps.',
-      tools.listText,
-      'TOOLS.md does not control tool availability; it is user guidance for how to use external tools.',
-    );
-  }
-
-  const systemPrompt = systemPromptSections.join('\n\n');
-  const projectContextChars = [
-    'The following project context files have been loaded:',
-    ...bootstrapSections,
-  ].join('\n\n').length;
+  const { debug: bootstrapReport } = buildOpenclawBootstrapContext(bootstrapEntries);
+  const bootstrapFiles: IBootstrapFile[] = bootstrapEntries
+    .filter((entry) => !entry.missing && entry.content)
+    .map((entry) => ({ name: entry.name, content: entry.content! }));
+  const skillCatalog = services.getSkillCatalog?.() ?? [];
+  const skillState = buildOpenclawRuntimeSkillState(skillCatalog);
+  const toolState = buildOpenclawRuntimeToolState({
+    platformTools: resolveToolDefinitions(services, mode),
+    skillCatalog,
+    mode: resolveToolProfile(mode),
+    permissions: services.getToolPermissions?.(),
+  });
+  const runtimeInfo: IOpenclawRuntimeInfo = {
+    model: services.getActiveModel?.() ?? 'unknown',
+    provider: 'ollama',
+    host: 'localhost',
+    parallxVersion: '0.1.0',
+  };
+  const { systemPrompt, report } = buildRuntimePromptArtifacts({
+    source,
+    workspaceName,
+    bootstrapFiles,
+    bootstrapReport,
+    workspaceDigest: (await services.getWorkspaceDigest?.()) ?? '',
+    skillState,
+    toolState,
+    runtimeInfo,
+  });
 
   return {
     systemPrompt,
     bootstrapReport,
-    systemPromptReport: {
-      source,
-      generatedAt: Date.now(),
-      workspaceName,
-      bootstrapMaxChars: bootstrapReport.maxChars,
-      bootstrapTotalMaxChars: bootstrapReport.totalMaxChars,
-      systemPrompt: {
-        chars: systemPrompt.length,
-        projectContextChars,
-        nonProjectContextChars: Math.max(0, systemPrompt.length - projectContextChars),
-      },
-      injectedWorkspaceFiles: bootstrapReport.files,
-      bootstrapWarningLines: bootstrapReport.warningLines,
-      skills: {
-        promptChars: skills.prompt.length,
-        entries: skills.entries,
-      },
-      tools: {
-        listChars: tools.listText.length,
-        schemaChars: tools.entries.reduce((sum, entry) => sum + entry.schemaChars, 0),
-        entries: tools.entries,
-      },
-    },
+    systemPromptReport: report,
   };
 }
 
 export async function tryHandleOpenclawContextCommand(
   services: Pick<
     IDefaultParticipantServices,
+    | 'getActiveModel'
     | 'getWorkspaceName'
     | 'readFileRelative'
     | 'unifiedConfigService'
     | 'getToolDefinitions'
     | 'getReadOnlyToolDefinitions'
-    | 'getWorkflowSkillCatalog'
+    | 'getSkillCatalog'
+    | 'getToolPermissions'
     | 'getModelContextLength'
     | 'getLastSystemPromptReport'
     | 'reportSystemPromptReport'
+    | 'getWorkspaceDigest'
   >,
   request: Pick<IChatParticipantRequest, 'command' | 'text' | 'mode'>,
   response: IChatResponseStream,
@@ -225,10 +171,13 @@ function formatContextReport(
 
   lines.push(
     '',
-    `Skills list (system prompt text): ${formatCharsAndTokens(report.skills.promptChars)} (${skillNames.length} skills)`,
+    `Skills list (system prompt text): ${formatCharsAndTokens(report.skills.promptChars)} (${report.skills.visibleCount}/${report.skills.totalCount} visible)`,
     `Skills: ${formatNameList(skillNames, 20)}`,
-    `Tool list (system prompt text): ${formatCharsAndTokens(report.tools.listChars)}`,
+    `Hidden skills: ${report.skills.hiddenCount}`,
+    `Tool list (system prompt text): ${formatCharsAndTokens(report.tools.listChars)} (${report.tools.availableCount}/${report.tools.totalCount} available)`,
     `Tool schemas (JSON): ${formatCharsAndTokens(report.tools.schemaChars)} (counts toward context; not shown as text)`,
+    `Skill-derived capabilities: ${report.tools.skillDerivedCount}`,
+    `Filtered tools: ${report.tools.filteredCount}`,
     `Tools: ${formatNameList(toolNames, 30)}`,
   );
 
@@ -260,18 +209,33 @@ function formatContextReport(
 
   if (detailed) {
     const topSkills = formatListTop(report.skills.entries.map((entry) => ({ name: entry.name, value: entry.blockChars })), 30);
-    const topToolSchema = formatListTop(report.tools.entries.map((entry) => ({ name: entry.name, value: entry.schemaChars })), 30);
-    const topToolSummary = formatListTop(report.tools.entries.map((entry) => ({ name: entry.name, value: entry.summaryChars })), 30);
+    const topToolSchema = formatListTop(report.tools.entries.filter((entry) => entry.available).map((entry) => ({ name: entry.name, value: entry.schemaChars })), 30);
+    const topToolSummary = formatListTop(report.tools.entries.filter((entry) => entry.available).map((entry) => ({ name: entry.name, value: entry.summaryChars })), 30);
     const toolParamLines = report.tools.entries
-      .filter((entry) => typeof entry.propertiesCount === 'number')
+      .filter((entry) => entry.available && typeof entry.propertiesCount === 'number')
       .sort((left, right) => (right.propertiesCount ?? 0) - (left.propertiesCount ?? 0))
       .slice(0, 30)
       .map((entry) => `- ${entry.name}: ${entry.propertiesCount} params`);
+    const filteredTools = report.tools.entries
+      .filter((entry) => entry.exposed && !entry.available)
+      .slice(0, 30)
+      .map((entry) => `- ${entry.name} (${entry.source}${entry.skillLocation ? `; ${entry.skillLocation}` : ''}; ${entry.filteredReason ?? 'filtered'})`);
 
     if (topSkills.lines.length > 0) {
       lines.push('', 'Top skills (prompt entry size):', ...topSkills.lines);
       if (topSkills.omitted > 0) {
         lines.push(`… (+${topSkills.omitted} more skills)`);
+      }
+    }
+
+    const hiddenSkills = report.skills.catalog
+      .filter((entry) => !entry.modelVisible)
+      .slice(0, 30)
+      .map((entry) => `- ${entry.name} (${entry.kind}; ${entry.modelVisibilityReason})`);
+    if (hiddenSkills.length > 0) {
+      lines.push('', 'Hidden skills:', ...hiddenSkills);
+      if (report.skills.hiddenCount > hiddenSkills.length) {
+        lines.push(`… (+${report.skills.hiddenCount - hiddenSkills.length} more hidden skills)`);
       }
     }
 
@@ -288,6 +252,13 @@ function formatContextReport(
     if (toolParamLines.length > 0) {
       lines.push('', 'Tools (param count):', ...toolParamLines);
     }
+
+    if (filteredTools.length > 0) {
+      lines.push('', 'Filtered tools:', ...filteredTools);
+      if (report.tools.filteredCount > filteredTools.length) {
+        lines.push(`… (+${report.tools.filteredCount - filteredTools.length} more filtered tools)`);
+      }
+    }
   }
 
   if (typeof contextWindow === 'number' && Number.isFinite(contextWindow) && contextWindow > 0) {
@@ -295,45 +266,6 @@ function formatContextReport(
   }
 
   return lines.join('\n');
-}
-
-function buildSkillsPrompt(
-  services: Pick<IDefaultParticipantServices, 'getWorkflowSkillCatalog'>,
-): { prompt: string; entries: IOpenclawSkillPromptEntry[] } {
-  const catalog = services.getWorkflowSkillCatalog?.() ?? [];
-  const entries = catalog
-    .filter((skill) => skill.kind === 'workflow')
-    .map((skill) => {
-      const block = `- ${skill.name}: ${skill.description}`;
-      return {
-        name: skill.name,
-        blockChars: block.length,
-      };
-    });
-
-  return {
-    prompt: catalog
-      .filter((skill) => skill.kind === 'workflow')
-      .map((skill) => `- ${skill.name}: ${skill.description}`)
-      .join('\n'),
-    entries,
-  };
-}
-
-function buildToolsPrompt(
-  toolDefinitions: readonly IToolDefinition[],
-): { listText: string; entries: IOpenclawToolPromptEntry[] } {
-  const entries = toolDefinitions.map((tool) => ({
-    name: tool.name,
-    summaryChars: tool.description.length,
-    schemaChars: JSON.stringify(tool.parameters ?? {}).length,
-    propertiesCount: countToolProperties(tool.parameters),
-  }));
-
-  return {
-    listText: toolDefinitions.map((tool) => `- ${tool.name}: ${tool.description}`).join('\n'),
-    entries,
-  };
 }
 
 function resolveToolDefinitions(
@@ -345,15 +277,7 @@ function resolveToolDefinitions(
     : services.getToolDefinitions();
 }
 
-function countToolProperties(parameters: Record<string, unknown>): number | undefined {
-  const properties = parameters?.properties;
-  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) {
-    return undefined;
-  }
-  return Object.keys(properties as Record<string, unknown>).length;
-}
-
-function formatBootstrapFileLine(file: IOpenclawBootstrapDebugFile): string {
+function formatBootstrapFileLine(file: IOpenclawBootstrapDebugReport['files'][number]): string {
   const status = file.missing ? 'MISSING' : file.truncated ? 'TRUNCATED' : 'OK';
   const raw = file.missing ? '0' : formatCharsAndTokens(file.rawChars);
   const injected = file.missing ? '0' : formatCharsAndTokens(file.injectedChars);

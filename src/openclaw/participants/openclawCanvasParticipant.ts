@@ -17,10 +17,12 @@ import {
   buildOpenclawReadOnlyRequestOptions,
   buildOpenclawSeedMessages,
   buildOpenclawTraceSeed,
-  executeOpenclawModelTurn,
   loadOpenclawBootstrapEntries,
   OPENCLAW_MAX_READONLY_ITERATIONS,
 } from './openclawParticipantRuntime.js';
+import { runOpenclawReadOnlyTurn } from '../openclawReadOnlyTurnRunner.js';
+import { buildOpenclawSystemPrompt } from '../openclawSystemPrompt.js';
+import type { IOpenclawRuntimeInfo } from '../openclawSystemPrompt.js';
 
 const OPENCLAW_CANVAS_PARTICIPANT_ID = 'parallx.chat.canvas';
 
@@ -197,22 +199,52 @@ async function runCanvasPromptTurn(
       ? async (relativePath: string) => services.readFileContent!(relativePath)
       : undefined,
   );
-  const { sections: bootstrapSections, debug: bootstrapReport } = buildOpenclawBootstrapContext(bootstrapEntries);
+  const { sections: _bootstrapSections, debug: bootstrapReport } = buildOpenclawBootstrapContext(bootstrapEntries);
   services.reportBootstrapDebug?.(bootstrapReport);
-  const systemPrompt = [
-    'You are the OpenClaw canvas lane inside Parallx.',
-    'Treat the open canvas page as live workspace state. Use read-only tools when more evidence is needed.',
-    `Workspace: ${services.getWorkspaceName()}`,
-    ...bootstrapSections,
-    'Canvas context for this turn:',
-    options.promptContext,
-  ].join('\n\n');
+
+  const bootstrapFiles = bootstrapEntries
+    .filter(e => !e.missing && e.content)
+    .map(e => ({ name: e.name, content: e.content! }));
+
+  const runtimeInfo: IOpenclawRuntimeInfo = {
+    model: services.getActiveModel() ?? 'unknown',
+    provider: 'ollama',
+    host: 'localhost',
+    parallxVersion: '0.1.0',
+    os: typeof process !== 'undefined' ? `${process.platform} ${process.arch}` : undefined,
+    arch: typeof process !== 'undefined' ? process.arch : undefined,
+  };
+
+  // F3-16: Populate skills and tools for readonly participants.
+  const skillEntries = (services as any).getSkillCatalog?.() as any[] | undefined;
+  const skills = (skillEntries ?? [])
+    .filter((s: any) => s.kind === 'workflow' && s.disableModelInvocation !== true)
+    .map((s: any) => ({ name: s.name as string, description: (s.description ?? '') as string, location: (s.location ?? '') as string }));
+  const toolDefs = services.getReadOnlyToolDefinitions?.() ?? [];
+  const tools = toolDefs.map(t => ({ name: t.name, description: t.description }));
+
+  const systemPrompt = buildOpenclawSystemPrompt({
+    bootstrapFiles,
+    workspaceDigest: `Workspace: ${services.getWorkspaceName()}`,
+    skills,
+    tools,
+    runtimeInfo,
+    systemPromptAddition: [
+      'You are the OpenClaw canvas lane inside Parallx.',
+      'Treat the open canvas page as live workspace state. Use read-only tools when more evidence is needed.',
+      'Canvas context for this turn:',
+      options.promptContext,
+    ].join('\n\n'),
+  });
+
   const messages = buildOpenclawSeedMessages(systemPrompt, context.history, {
     ...request,
     text: options.userText,
   });
+  const effectiveConfig = services.unifiedConfigService?.getEffectiveConfig();
   const requestOptions = buildOpenclawReadOnlyRequestOptions({
-    tools: services.getReadOnlyToolDefinitions?.(),
+    temperature: effectiveConfig?.model?.temperature,
+    maxTokens: effectiveConfig?.model?.maxTokens,
   });
 
   reportTrace(services, request, context, {
@@ -222,24 +254,21 @@ async function runCanvasPromptTurn(
     note: options.traceReason,
   });
 
-  let iterationsRemaining = OPENCLAW_MAX_READONLY_ITERATIONS;
-  while (iterationsRemaining >= 0) {
-    const iteration = await executeOpenclawModelTurn(
-      services.sendChatRequest,
+  try {
+    const result = await runOpenclawReadOnlyTurn({
+      sendChatRequest: services.sendChatRequest,
       messages,
       requestOptions,
+      tools: services.getReadOnlyToolDefinitions?.() ?? [],
       response,
       token,
-    );
+      maxIterations: OPENCLAW_MAX_READONLY_ITERATIONS,
+      invokeToolWithRuntimeControl: services.invokeToolWithRuntimeControl
+        ? (name, args, tok) => services.invokeToolWithRuntimeControl!(name, args, tok)
+        : undefined,
+    });
 
-    if (typeof iteration.promptTokens === 'number' && typeof iteration.completionTokens === 'number') {
-      response.reportTokenUsage(iteration.promptTokens, iteration.completionTokens);
-    }
-
-    if (iteration.toolCalls.length === 0) {
-      if (iteration.markdown) {
-        response.markdown(iteration.markdown);
-      }
+    if (result.completed) {
       reportTrace(services, request, context, {
         phase: 'execution',
         checkpoint: 'openclaw-run-complete',
@@ -256,46 +285,34 @@ async function runCanvasPromptTurn(
       };
     }
 
-    if (!services.invokeToolWithRuntimeControl) {
-      response.warning('OpenClaw canvas lane received tool calls, but runtime-controlled tool invocation is not available.');
-      break;
-    }
-
-    messages.push({
-      role: 'assistant',
-      content: iteration.markdown,
-      toolCalls: iteration.toolCalls,
-      thinking: iteration.thinking,
+    reportTrace(services, request, context, {
+      phase: 'execution',
+      checkpoint: 'openclaw-run-incomplete',
+      runState: 'failed',
+      note: 'iteration-budget-exhausted',
     });
-
-    for (const toolCall of iteration.toolCalls) {
-      const toolName = toolCall.function.name;
-      reportTrace(services, request, context, {
-        phase: 'execution',
-        checkpoint: 'openclaw-tool-dispatch',
-        runState: 'executing',
-        toolName,
-      });
-      const toolResult = await services.invokeToolWithRuntimeControl(toolName, toolCall.function.arguments, token);
-      messages.push({ role: 'tool', content: toolResult.content, toolName });
-    }
-
-    iterationsRemaining -= 1;
+    return {
+      errorDetails: {
+        message: 'OpenClaw canvas lane exhausted its iteration budget.',
+        responseIsIncomplete: true,
+      },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    reportTrace(services, request, context, {
+      phase: 'execution',
+      checkpoint: 'openclaw-run-error',
+      runState: 'failed',
+      note: message,
+    });
+    response.warning(`OpenClaw canvas lane failed: ${message}`);
+    return {
+      errorDetails: {
+        message,
+        responseIsIncomplete: true,
+      },
+    };
   }
-
-  response.warning('OpenClaw canvas lane stopped before completing the turn.');
-  reportTrace(services, request, context, {
-    phase: 'execution',
-    checkpoint: 'openclaw-run-incomplete',
-    runState: 'failed',
-    note: 'iteration-budget-exhausted',
-  });
-  return {
-    errorDetails: {
-      message: 'OpenClaw canvas lane exhausted its iteration budget.',
-      responseIsIncomplete: true,
-    },
-  };
 }
 
 function formatPageStructure(structure: IPageStructure): string {

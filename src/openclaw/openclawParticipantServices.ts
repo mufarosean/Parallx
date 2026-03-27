@@ -57,8 +57,7 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly sessionManager?: IDefaultParticipantServices['sessionManager'];
   readonly unifiedConfigService?: IDefaultParticipantServices['unifiedConfigService'];
   readonly createAutonomyMirror?: IDefaultParticipantServices['createAutonomyMirror'];
-  readonly getWorkflowSkillCatalog?: IDefaultParticipantServices['getWorkflowSkillCatalog'];
-  readonly getSkillManifest?: IDefaultParticipantServices['getSkillManifest'];
+  readonly getSkillCatalog?: IDefaultParticipantServices['getSkillCatalog'];
   readonly getToolPermissions?: IDefaultParticipantServices['getToolPermissions'];
 }
 
@@ -151,8 +150,7 @@ export function buildOpenclawDefaultParticipantServices(
     sessionManager: deps.sessionManager,
     unifiedConfigService: deps.unifiedConfigService,
     createAutonomyMirror: deps.createAutonomyMirror,
-    getWorkflowSkillCatalog: deps.getWorkflowSkillCatalog,
-    getSkillManifest: deps.getSkillManifest,
+    getSkillCatalog: deps.getSkillCatalog,
     getToolPermissions: deps.getToolPermissions,
   };
 }

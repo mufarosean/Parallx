@@ -24,15 +24,17 @@ import {
 } from '../openclawDefaultRuntimeSupport.js';
 import { tryHandleWorkspaceDocumentListing } from '../openclawWorkspaceDocumentListing.js';
 import { tryHandleOpenclawContextCommand } from './openclawContextReport.js';
-import { loadOpenclawBootstrapEntries } from './openclawParticipantRuntime.js';
+import { buildOpenclawBootstrapContext, loadOpenclawBootstrapEntries } from './openclawParticipantRuntime.js';
 import type { IOpenclawTurnContext } from '../openclawAttempt.js';
 import { runOpenclawTurn } from '../openclawTurnRunner.js';
 import { OpenclawContextEngine } from '../openclawContextEngine.js';
 import { resolveToolProfile } from '../openclawToolPolicy.js';
 import { computeTokenBudget } from '../openclawTokenBudget.js';
 import { validateCitations, buildExtractiveFallback } from '../openclawResponseValidation.js';
-import { resolveMentions, resolveVariables, activateSkill, detectSemanticFallback, detectAndActivateFreeTextSkill } from '../openclawTurnPreprocessing.js';
-import type { IBootstrapFile, ISkillEntry, IOpenclawRuntimeInfo } from '../openclawSystemPrompt.js';
+import { resolveMentions, resolveVariables, detectSemanticFallback } from '../openclawTurnPreprocessing.js';
+import type { IBootstrapFile, IOpenclawRuntimeInfo } from '../openclawSystemPrompt.js';
+import { buildOpenclawRuntimeSkillState } from '../openclawSkillState.js';
+import { buildOpenclawRuntimeToolState } from '../openclawToolState.js';
 
 export function createOpenclawDefaultParticipant(services: IDefaultParticipantServices): IChatParticipant & IDisposable {
   const commandRegistry = createOpenclawCommandRegistry();
@@ -55,10 +57,8 @@ export function createOpenclawDefaultParticipant(services: IDefaultParticipantSe
     ],
     handler,
     runtime: { handleTurn: handler },
-    provideFollowups: async (_result, _context, _token): Promise<readonly IChatFollowup[]> => {
-      // Extract followup suggestions from the last response metadata.
-      // Uses simple heuristic: suggest deepening, broadening, or applying the topic.
-      return generateFollowupSuggestions(_result);
+    provideFollowups: async (): Promise<readonly IChatFollowup[]> => {
+      return [];
     },
     dispose: () => {},
   };
@@ -113,12 +113,6 @@ async function runOpenclawDefaultTurn(
     services.reportContextPills?.(variableResult.pills as any[]);
   }
 
-  // M3: Skill activation — when command is a skill, inject resolved body
-  // M45: Also detect free-text skill mentions (upstream OpenClaw pattern)
-  const activated = request.command
-    ? activateSkill(request.command, variableResult.strippedText, services)
-    : detectAndActivateFreeTextSkill(variableResult.strippedText, services);
-
   // M4: Semantic fallback — detect broad workspace summary prompts
   const semanticFallback = detectSemanticFallback(variableResult.strippedText);
 
@@ -152,7 +146,6 @@ async function runOpenclawDefaultTurn(
   // Build turn context for the new OpenClaw execution pipeline
   const turnContext = await buildOpenclawTurnContext(services, request, context, {
     mentionContextBlocks: allContextBlocks.length > 0 ? allContextBlocks : undefined,
-    activatedSkillBody: activated?.resolvedBody,
     promptOverlay: effectiveOverlay,
   });
 
@@ -244,7 +237,7 @@ async function buildOpenclawTurnContext(
   services: IDefaultParticipantServices,
   request: IChatParticipantRequest,
   context: IChatParticipantContext,
-  preprocessed?: { mentionContextBlocks?: readonly string[]; activatedSkillBody?: string; promptOverlay?: string },
+  preprocessed?: { mentionContextBlocks?: readonly string[]; promptOverlay?: string },
 ): Promise<IOpenclawTurnContext> {
   // Token budget from model context length
   const contextWindow = services.getModelContextLength?.() ?? 8192;
@@ -252,6 +245,7 @@ async function buildOpenclawTurnContext(
 
   // Bootstrap files (AGENTS.md, SOUL.md, TOOLS.md, etc.)
   const bootstrapEntries = await loadOpenclawBootstrapEntries(services.readFileRelative);
+  const { debug: bootstrapDebugReport } = buildOpenclawBootstrapContext(bootstrapEntries);
   const bootstrapFiles: IBootstrapFile[] = bootstrapEntries
     .filter(e => !e.missing && e.content)
     .map(e => ({ name: e.name, content: e.content! }));
@@ -259,15 +253,9 @@ async function buildOpenclawTurnContext(
   // Workspace digest
   const workspaceDigest = (await services.getWorkspaceDigest?.()) ?? '';
 
-  // Skills from catalog
-  const skillEntries = services.getWorkflowSkillCatalog?.() ?? [];
-  const skills: ISkillEntry[] = skillEntries
-    .filter(s => s.kind === 'workflow')
-    .map(s => ({ name: s.name, description: s.description, location: s.location ?? '' }));
-
-  // Tools based on mode — M41 Phase 9: Ask + Agent get full tools,
-  // Edit gets read-only tools for context lookup only
-  const tools = request.mode === ChatMode.Edit
+  const skillCatalog = services.getSkillCatalog?.() ?? [];
+  const skillState = buildOpenclawRuntimeSkillState(skillCatalog);
+  const platformTools = request.mode === ChatMode.Edit
     ? services.getReadOnlyToolDefinitions()
     : services.getToolDefinitions();
 
@@ -287,8 +275,12 @@ async function buildOpenclawTurnContext(
     ? Math.min(services.maxIterations ?? OPENCLAW_MAX_AGENT_ITERATIONS, OPENCLAW_MAX_AGENT_ITERATIONS)
     : OPENCLAW_MAX_READONLY_ITERATIONS;
 
-  // Tool permissions for pre-flight filtering
-  const toolPermissions = services.getToolPermissions?.();
+  const toolState = buildOpenclawRuntimeToolState({
+    platformTools,
+    skillCatalog,
+    mode: resolveToolProfile(request.mode),
+    permissions: services.getToolPermissions?.(),
+  });
 
   // Flatten history pairs into IChatMessage[]
   const history = flattenHistory(context.history);
@@ -299,16 +291,16 @@ async function buildOpenclawTurnContext(
     tokenBudget: budget.total,
     engine,
     bootstrapFiles,
+    bootstrapDebugReport,
     workspaceDigest,
-    skills,
+    skillState,
     runtimeInfo,
-    tools,
-    toolMode: resolveToolProfile(request.mode),
+    preferencesPrompt: await services.getPreferencesForPrompt?.(),
+    toolState,
     maxToolIterations,
-    toolPermissions,
     mentionContextBlocks: preprocessed?.mentionContextBlocks,
-    activatedSkillBody: preprocessed?.activatedSkillBody,
     promptOverlay: preprocessed?.promptOverlay,
+    reportSystemPromptReport: services.reportSystemPromptReport,
     sendChatRequest: (messages, options, signal) => services.sendChatRequest(messages, options, signal),
     invokeToolWithRuntimeControl: services.invokeToolWithRuntimeControl
       ? (name, args, token) => services.invokeToolWithRuntimeControl!(name, args, token)
@@ -342,24 +334,6 @@ function flattenHistory(
 }
 
 // ---------------------------------------------------------------------------
-// Followup suggestion generator (M43 Gap 2.2)
-// ---------------------------------------------------------------------------
-
-/**
- * Generate 2-3 followup suggestions based on the response result.
- *
- * Uses a lightweight heuristic: if the response mentions specific topics,
- * suggest deepening, comparing, or applying them. Falls back to generic
- * continuations if no topic can be extracted.
- */
-function generateFollowupSuggestions(result: IChatParticipantResult): IChatFollowup[] {
-  if (result.errorDetails) return [];
-
-  const followups: IChatFollowup[] = [
-    { message: 'Can you explain that in more detail?', label: 'Explain more' },
-    { message: 'What are the alternatives or trade-offs?', label: 'Alternatives' },
-    { message: 'How would I apply this in practice?', label: 'Apply it' },
-  ];
-
-  return followups.slice(0, 3);
-}
+// Followup suggestions removed (M41 anti-pattern A3: heuristic patchwork).
+// The 3 hardcoded generic strings ("Explain more", "Alternatives", "Apply it")
+// provided no value. Return empty array from provideFollowups instead.

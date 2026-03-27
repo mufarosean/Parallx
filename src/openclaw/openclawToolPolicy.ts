@@ -51,8 +51,8 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
   readonly deny: readonly string[];
 }> = {
   readonly: {
-    allow: ['search_knowledge', 'list_files', 'read_file'],
-    deny: ['write_file', 'edit_file', 'delete_file', 'run_command'],
+    allow: ['*'],
+    deny: ['write_file', 'edit_file', 'delete_file', 'run_command', 'create_page'],
   },
   standard: {
     allow: ['*'],

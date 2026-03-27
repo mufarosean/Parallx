@@ -18,8 +18,8 @@ import type {
 } from '../openclawTypes.js';
 
 export const OPENCLAW_BOOTSTRAP_FILES = [
-  'AGENTS.md',
   'SOUL.md',
+  'AGENTS.md',
   'TOOLS.md',
   'IDENTITY.md',
   'USER.md',
@@ -271,6 +271,11 @@ export function buildOpenclawSeedMessages(
   return messages;
 }
 
+/**
+ * @deprecated Use {@link runOpenclawReadOnlyTurn} from openclawReadOnlyTurnRunner.ts
+ * for readonly participants, or {@link runOpenclawTurn} from openclawTurnRunner.ts
+ * for the default participant. This function lacks retry logic and tool policy filtering.
+ */
 export async function executeOpenclawModelTurn(
   sendChatRequest: (
     messages: readonly IChatMessage[],

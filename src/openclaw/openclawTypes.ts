@@ -29,6 +29,7 @@ export type {
   IPageStructure,
   IOpenclawBootstrapDebugFile,
   IOpenclawBootstrapDebugReport,
+  IOpenclawSkillCatalogReportEntry,
   IOpenclawSkillPromptEntry,
   IOpenclawToolPromptEntry,
   IOpenclawSystemPromptReport,
@@ -154,7 +155,6 @@ export interface IOpenclawResolvedTurn {
   readonly semanticFallback?: unknown;
   readonly mentionPills: readonly IContextPill[];
   readonly mentionContextBlocks: readonly string[];
-  readonly activatedSkill?: unknown;
 }
 
 export interface IOpenclawPreparedContext {
@@ -204,6 +204,16 @@ export interface ISkillCatalogEntry {
   readonly kind: string;
   readonly tags: readonly string[];
   readonly location?: string;
+  readonly disableModelInvocation?: boolean;
+  readonly userInvocable?: boolean;
+  readonly permissionLevel?: ToolPermissionLevel;
+  readonly parameters?: readonly {
+    readonly name: string;
+    readonly type: string;
+    readonly description: string;
+    readonly required: boolean;
+  }[];
+  readonly body?: string;
 }
 
 export interface IDefaultParticipantServices {
@@ -276,8 +286,7 @@ export interface IDefaultParticipantServices {
   sessionManager?: ISessionManager;
   unifiedConfigService?: IUnifiedAIConfigService;
   createAutonomyMirror?(input: { sessionId: string; requestText: string; mode: ChatMode; runtime: 'claw' | 'openclaw' }): Promise<IChatRuntimeAutonomyMirror | undefined>;
-  getWorkflowSkillCatalog?(): ISkillCatalogEntry[];
-  getSkillManifest?(name: string): unknown;
+  getSkillCatalog?(): ISkillCatalogEntry[];
   getToolPermissions?(): Record<string, ToolPermissionLevel>;
 }
 
@@ -316,6 +325,7 @@ export interface IWorkspaceParticipantServices {
   }): void;
   reportRuntimeTrace?(trace: IChatRuntimeTrace): void;
   reportBootstrapDebug?(debug: IOpenclawBootstrapDebugReport): void;
+  unifiedConfigService?: IUnifiedAIConfigService;
 }
 
 export interface ICanvasParticipantServices {
@@ -351,6 +361,7 @@ export interface ICanvasParticipantServices {
   }): void;
   reportRuntimeTrace?(trace: IChatRuntimeTrace): void;
   reportBootstrapDebug?(debug: IOpenclawBootstrapDebugReport): void;
+  unifiedConfigService?: IUnifiedAIConfigService;
 }
 
 
