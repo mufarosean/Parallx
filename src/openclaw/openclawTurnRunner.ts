@@ -98,6 +98,7 @@ export async function runOpenclawTurn(
   }
 
   let overflowAttempts = 0;
+  let proactiveCompactions = 0;
   let timeoutAttempts = 0;
   let transientRetries = 0;
   let fallbackIndex = 0;
@@ -113,8 +114,9 @@ export async function runOpenclawTurn(
     });
 
     // 1b. Auto-compact when assembled context is near capacity (>80% of budget)
-    //     Upstream: overflow detection triggers compaction before model call
-    if (assembled.estimatedTokens > currentContext.tokenBudget * 0.8 && overflowAttempts < MAX_OVERFLOW_COMPACTION) {
+    //     Parallx-specific optimization (upstream only compacts on post-error overflow).
+    //     Uses independent counter to avoid consuming error-path retry budget.
+    if (assembled.estimatedTokens > currentContext.tokenBudget * 0.8 && proactiveCompactions < MAX_OVERFLOW_COMPACTION) {
       response.progress(`Context near capacity (${assembled.estimatedTokens}/${currentContext.tokenBudget} tokens), auto-compacting...`);
       try {
         await currentContext.engine.compact({
@@ -124,7 +126,7 @@ export async function runOpenclawTurn(
       } catch (compactErr) {
         console.error('[OpenClaw] Auto-compact failed:', compactErr);
       }
-      overflowAttempts++;
+      proactiveCompactions++;
       continue; // Re-assemble with compacted history
     }
 
@@ -189,13 +191,18 @@ export async function runOpenclawTurn(
       }
 
       // 3d. Model failure → try next fallback model
-      if (isModelError(error) && currentContext.fallbackModels && fallbackIndex < currentContext.fallbackModels.length) {
+      //     Upstream: runWithModelFallback wraps the full inner execution, so each
+      //     model candidate gets fresh retry counters. We reset counters here.
+      if (isModelError(error) && currentContext.fallbackModels && currentContext.rebuildSendChatRequest && fallbackIndex < currentContext.fallbackModels.length) {
         const nextModel = currentContext.fallbackModels[fallbackIndex];
         response.progress(`Model error, falling back to ${nextModel}...`);
-        if (currentContext.rebuildSendChatRequest) {
-          currentContext = { ...currentContext, sendChatRequest: currentContext.rebuildSendChatRequest(nextModel) };
-        }
+        currentContext = { ...currentContext, sendChatRequest: currentContext.rebuildSendChatRequest(nextModel) };
         fallbackIndex++;
+        // Reset retry counters — each model candidate gets fresh retries (upstream pattern)
+        overflowAttempts = 0;
+        proactiveCompactions = 0;
+        timeoutAttempts = 0;
+        transientRetries = 0;
         continue;
       }
 

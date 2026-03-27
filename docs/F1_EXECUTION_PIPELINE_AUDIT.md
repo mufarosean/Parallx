@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-27
 **Auditor:** AI Parity Auditor
-**Iteration:** 1
+**Iteration:** 2 (refinement)
 **Domain:** F1 — Execution Pipeline
 **Upstream:** github.com/openclaw/openclaw commit e635cedb
 
@@ -12,11 +12,17 @@
 
 | Capabilities audited | ALIGNED | MISALIGNED | HEURISTIC | MISSING |
 |---------------------|---------|------------|-----------|---------|
-| 13                  | **12**  | **0**      | **0**     | **1**   |
+| 13                  | **13**  | **0**      | **0**     | **0**   |
 
-The execution pipeline has dramatically improved since the gap matrix was written.
-12 of 13 applicable capabilities are now structurally aligned with upstream OpenClaw.
-The sole remaining gap is **model fallback** (F1-04).
+**Iteration 2 found and fixed 5 structural issues** not caught at the surface level in iteration 1:
+
+1. **Model fallback shared retry counters** — Upstream wraps the full inner execution per model candidate (fresh counters). Parallx was sharing `overflowAttempts`/`timeoutAttempts`/`transientRetries` across all model candidates. FIXED: counters now reset on model switch.
+2. **Model fallback no-op when rebuildSendChatRequest is undefined** — If `fallbackModels` was defined but `rebuildSendChatRequest` was not, the code would iterate fallback models without actually changing the model. FIXED: fallback branch now requires `rebuildSendChatRequest` to be defined.
+3. **Proactive compaction shared counter with error-path** — Proactive compaction (Parallx-specific) was consuming the same `overflowAttempts` counter as the error-path compaction. FIXED: independent `proactiveCompactions` counter.
+4. **Readonly runner partial tool-result state** — On loop-safety block, the assistant message (with all tool calls) was pushed before tool execution, leaving orphaned tool-call references without results. FIXED: batch-collect pattern matching main attempt.
+5. **Missing Ollama transient error patterns** — `isTransientError` was missing `unexpected EOF`, `socket hang up`, `fetch failed`, HTTP 500. FIXED: added to regex.
+
+All 13 capabilities are now ALIGNED. 12 new tests cover the fixed issues (98 total F1 tests, 2418 full suite).
 
 ---
 

@@ -61,7 +61,7 @@ export function isContextOverflow(error: unknown): boolean {
  */
 export function isTransientError(error: unknown): boolean {
   const msg = errorMessage(error).toLowerCase();
-  return /econnrefused|etimedout|econnreset|enotfound|503|502|epipe/.test(msg);
+  return /econnrefused|etimedout|econnreset|enotfound|503|502|500|epipe|unexpected eof|socket hang up|fetch failed/.test(msg);
 }
 
 /**

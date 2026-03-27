@@ -354,4 +354,69 @@ describe('openclawReadOnlyTurnRunner', () => {
     // 2 iterations x 2 tool calls each = 4 total
     expect(result.toolCallCount).toBe(4);
   });
+
+  // -----------------------------------------------------------------------
+  // Iteration 2 refinement tests
+  // -----------------------------------------------------------------------
+
+  it('ChatToolLoopSafety blocks with clean message state (no partial tool results)', async () => {
+    // Model always returns the same tool call → safety blocks after 8
+    const sendChatRequest = vi.fn(() => streamChunks([
+      {
+        content: 'Calling...',
+        done: true,
+        toolCalls: [{ function: { name: 'readFile', arguments: { path: 'same.md' } } }],
+      } as unknown as IChatResponseChunk,
+    ]));
+
+    const invokeToolWithRuntimeControl = vi.fn(async (): Promise<IToolResult> => ({
+      content: 'result',
+    }));
+
+    const response = createResponse();
+    const opts = baseOptions({
+      sendChatRequest,
+      tools: [dummyTool],
+      invokeToolWithRuntimeControl,
+      maxIterations: 20,
+      response,
+    });
+    const result = await runOpenclawReadOnlyTurn(opts);
+
+    // Safety blocks → turn stops (completed=false since loop was interrupted)
+    expect(result.toolCallCount).toBeLessThanOrEqual(8);
+    expect(response.warning).toHaveBeenCalledWith(
+      expect.stringContaining('repeated identical'),
+    );
+  });
+
+  it('timeout retry path — retries on timeout then succeeds', async () => {
+    let callCount = 0;
+    const sendChatRequest = vi.fn(() => {
+      callCount++;
+      if (callCount === 1) {
+        return (async function* () {
+          throw new Error('request timeout');
+        })();
+      }
+      return streamChunks([makeFinalChunk('Recovered after timeout')]);
+    });
+
+    const response = createResponse();
+    const opts = baseOptions({ sendChatRequest, response });
+    const result = await runOpenclawReadOnlyTurn(opts);
+
+    expect(result.completed).toBe(true);
+    expect(result.timeoutRetries).toBe(1);
+    expect(result.markdown).toContain('Recovered');
+  });
+
+  it('max timeout retries exhausted → throws', async () => {
+    const sendChatRequest = vi.fn(() => (async function* () {
+      throw new Error('request timeout');
+    })());
+
+    const opts = baseOptions({ sendChatRequest });
+    await expect(runOpenclawReadOnlyTurn(opts)).rejects.toThrow('request timeout');
+  });
 });

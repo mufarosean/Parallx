@@ -216,12 +216,10 @@ export async function runOpenclawReadOnlyTurn(
     }
 
     // Execute tool calls and feed results back
-    messages.push({
-      role: 'assistant',
-      content: markdown,
-      toolCalls,
-      thinking,
-    });
+    // Batch-collect results before appending to messages to avoid partial state
+    // if loop safety blocks mid-iteration (matches openclawAttempt.ts pattern).
+    const toolResultMessages: IChatMessage[] = [];
+    let loopBlocked = false;
 
     for (const toolCall of toolCalls) {
       const toolName = toolCall.function.name;
@@ -230,12 +228,28 @@ export async function runOpenclawReadOnlyTurn(
       const safety = loopSafety.record(toolName, toolCall.function.arguments);
       if (safety.blocked) {
         response.warning(`Stopped: repeated identical ${toolName} calls detected.`);
+        loopBlocked = true;
         break;
       }
 
       totalToolCalls++;
       const toolResult = await options.invokeToolWithRuntimeControl(toolName, toolCall.function.arguments, token);
-      messages.push({ role: 'tool', content: toolResult.content, toolName });
+      toolResultMessages.push({ role: 'tool', content: toolResult.content, toolName });
+    }
+
+    // Batch-append: one assistant message + all collected tool result messages
+    if (toolResultMessages.length > 0) {
+      messages.push({
+        role: 'assistant',
+        content: markdown,
+        toolCalls,
+        thinking,
+      });
+      messages.push(...toolResultMessages);
+    }
+
+    if (loopBlocked) {
+      break;
     }
 
     iterationsRemaining -= 1;

@@ -63,6 +63,10 @@ describe('isTransientError', () => {
     'HTTP 503 Service Unavailable',
     'HTTP 502 Bad Gateway',
     'EPIPE broken pipe',
+    'unexpected EOF',
+    'socket hang up',
+    'fetch failed',
+    'HTTP 500 Internal Server Error',
   ];
 
   it.each(positives)('detects "%s"', (msg) => {

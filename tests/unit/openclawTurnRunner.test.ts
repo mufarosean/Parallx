@@ -328,4 +328,126 @@ describe('openclawTurnRunner', () => {
     expect(engine.compact).toHaveBeenCalledTimes(1);
     expect(response.progress).toHaveBeenCalledWith(expect.stringContaining('auto-compacting'));
   });
+
+  // -----------------------------------------------------------------------
+  // Iteration 2 refinement tests
+  // -----------------------------------------------------------------------
+
+  it('model fallback resets retry counters for each model candidate (upstream pattern)', async () => {
+    // Model A: overflow once, then model error
+    // Model B: should get fresh overflow retry budget
+    mockExecute
+      .mockRejectedValueOnce(new Error('context length exceeded'))  // A: overflow
+      .mockRejectedValueOnce(new Error('out of memory'))            // A: model error
+      .mockRejectedValueOnce(new Error('context length exceeded'))  // B: overflow (fresh counter)
+      .mockResolvedValueOnce(successResult);                        // B: success
+
+    const engine = createEngine();
+    const fallbackSend = vi.fn();
+    const response = createResponse();
+    const result = await runOpenclawTurn(
+      createRequest(),
+      createContext({
+        engine,
+        fallbackModels: ['modelB'],
+        rebuildSendChatRequest: () => fallbackSend,
+      }),
+      response,
+      createToken(),
+    );
+
+    expect(result.markdown).toBe('Hello world');
+    // Compactions: 1 for model A overflow + 1 for model B overflow = 2
+    expect(engine.compact).toHaveBeenCalledTimes(2);
+  });
+
+  it('model fallback skipped when rebuildSendChatRequest is undefined', async () => {
+    // If fallbackModels is defined but rebuildSendChatRequest is not,
+    // the model fallback branch should NOT be entered — error should propagate
+    mockExecute.mockRejectedValue(new Error('out of memory'));
+
+    await expect(
+      runOpenclawTurn(
+        createRequest(),
+        createContext({
+          fallbackModels: ['modelA', 'modelB'],
+          rebuildSendChatRequest: undefined,
+        }),
+        createResponse(),
+        createToken(),
+      ),
+    ).rejects.toThrow('out of memory');
+
+    // Only 1 attempt — no fallback retries since rebuild is unavailable
+    expect(mockExecute).toHaveBeenCalledTimes(1);
+  });
+
+  it('proactive compaction uses independent counter from error-path compaction', async () => {
+    // Proactive compact uses all 3 budget → error-path overflow should still get 3 retries
+    mockExecute
+      .mockRejectedValueOnce(new Error('context length exceeded'))
+      .mockRejectedValueOnce(new Error('context length exceeded'))
+      .mockRejectedValueOnce(new Error('context length exceeded'))
+      .mockResolvedValueOnce(successResult);
+
+    const assembleCount = { value: 0 };
+    const engine = createEngine({
+      assemble: vi.fn(async (): Promise<IOpenclawAssembleResult> => {
+        assembleCount.value++;
+        // First 3 assemblies return high tokens (triggers proactive compact)
+        // Then normal
+        if (assembleCount.value <= 3) {
+          return {
+            messages: [{ role: 'user', content: 'Hello' }],
+            estimatedTokens: 7000,
+            ragSources: [],
+            retrievedContextText: '',
+          };
+        }
+        return {
+          messages: [{ role: 'user', content: 'Hello' }],
+          estimatedTokens: 100,
+          ragSources: [],
+          retrievedContextText: '',
+        };
+      }),
+    });
+
+    const response = createResponse();
+    const result = await runOpenclawTurn(
+      createRequest(),
+      createContext({ engine }),
+      response,
+      createToken(),
+    );
+
+    // 3 proactive compacts + 3 error-path compacts = 6 total compacts
+    // (proactive counter is independent, doesn't consume error-path budget)
+    expect(result.markdown).toBe('Hello world');
+    expect(engine.compact).toHaveBeenCalledTimes(6);
+  });
+
+  it('compact failure during overflow rethrows original error', async () => {
+    mockExecute.mockRejectedValueOnce(new Error('context length exceeded'));
+
+    const engine = createEngine({
+      compact: vi.fn(async () => { throw new Error('compact disk full'); }),
+    });
+
+    await expect(
+      runOpenclawTurn(createRequest(), createContext({ engine }), createResponse(), createToken()),
+    ).rejects.toThrow('context length exceeded');
+  });
+
+  it('compact failure during timeout rethrows original error', async () => {
+    mockExecute.mockRejectedValueOnce(new Error('request timeout'));
+
+    const engine = createEngine({
+      compact: vi.fn(async () => { throw new Error('compact disk full'); }),
+    });
+
+    await expect(
+      runOpenclawTurn(createRequest(), createContext({ engine }), createResponse(), createToken()),
+    ).rejects.toThrow('request timeout');
+  });
 });

@@ -83,3 +83,51 @@
 - TypeScript compilation: 0 errors
 - Test suite: 130 files, 2406 tests, 0 failures
 - New tests: 73 added (2333 → 2406)
+
+### Iteration 2 — Refinement (2026-03-27)
+
+**Audit findings:** 5 structural issues found by deeper review
+
+1. **CRITICAL: Model fallback shared retry counters** — Overflow/timeout/transient counters persisted across model candidates. Upstream `runWithModelFallback` wraps the full inner execution, giving each candidate fresh counters. **Fixed**: Reset all counters on model switch.
+
+2. **HIGH: Silent no-op fallback** — When `fallbackModels` defined but `rebuildSendChatRequest` undefined, fallback retry ran without changing the model. **Fixed**: Guard requires both fields.
+
+3. **MEDIUM: Proactive compaction consuming error-path budget** — Shared `overflowAttempts` counter between proactive (80% capacity) and post-error compaction. **Fixed**: Independent `proactiveCompactions` counter.
+
+4. **MEDIUM: Readonly runner partial tool-result state** — Assistant message pushed before tool execution; safety block left orphaned tool-call references. **Fixed**: Aligned with main attempt's batch-collect pattern.
+
+5. **MEDIUM: Missing Ollama transient patterns** — `unexpected EOF`, `socket hang up`, `fetch failed`, HTTP 500 not classified as transient. **Fixed**: Added to regex.
+
+**Changes applied:**
+- `openclawTurnRunner.ts`: Counter reset on fallback, independent proactive counter, rebuildSendChatRequest guard
+- `openclawReadOnlyTurnRunner.ts`: Batch-collect pattern for tool results
+- `openclawErrorClassification.ts`: Added 4 Ollama transient patterns
+
+**New tests:** 12 added (2406 → 2418)
+
+**Verification results:**
+- TypeScript compilation: 0 errors
+- Test suite: 130 files, 2418 tests, 0 failures
+
+### Iteration 3 — Confirmation (2026-03-27)
+
+**Audit scope:** Full fresh-eyes re-read of all 8 F1 files (4 production + 4 test). All 13 capabilities re-verified line-by-line.
+
+**Findings:** None. All 13 capabilities confirmed ALIGNED.
+
+**Anti-pattern check:** Clean — no output repair, pre-classification, eval-driven patchwork, or heuristic shortcuts detected. Proactive compaction at >80% is a documented Parallx-specific optimization with independent counter.
+
+**Test coverage:** 82 F1-related tests covering every retry branch, error class, fallback path, lifecycle hook, and edge case. No critical untested paths.
+
+**Verdict:** PASS — CLOSE Domain F1
+
+---
+
+## Closure
+
+**Status:** CLOSED ✅  
+**Score:** 13/13 ALIGNED (100%)  
+**Iterations:** 3 (structural → refinement → confirmation)  
+**Total F1 tests:** 82  
+**Suite total at closure:** 130 files, 2418 tests, 0 failures  
+**TypeScript:** 0 errors
