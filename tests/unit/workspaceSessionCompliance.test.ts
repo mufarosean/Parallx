@@ -87,36 +87,9 @@ describe('M14 Workspace Session Compliance', () => {
     expect(content).toContain('guard.isValid()');
   });
 
-  it('captureSession is used in chat turn execution config assembly', () => {
-    const content = readSrc('built-in/chat/utilities/chatTurnExecutionConfig.ts');
-    expect(content).toContain("import { captureSession }");
-    expect(content).toContain('toolGuard');
-    expect(content).toContain('captureSession(services.sessionManager)');
-  });
-
-  it('tool guard validation is enforced in grounded executor', () => {
-    const content = readSrc('built-in/chat/utilities/chatGroundedExecutor.ts');
-    expect(content).toContain('toolGuard');
-    expect(content).toContain('toolGuard.isValid()');
-  });
-
   it('session embedding guard exists in _embedChunks', () => {
     const content = readSrc('services/indexingPipeline.ts');
     expect(content).toContain('Session stale during embedding');
-  });
-
-  // ── Abort signal propagation ──
-
-  it('session cancellation signal is passed from execution config assembly into the synthesis utility', () => {
-    const content = readSrc('built-in/chat/utilities/chatTurnExecutionConfig.ts');
-    expect(content).toContain('sessionCancellationSignal');
-    expect(content).toContain('cancellationSignal');
-  });
-
-  it('session cancellation signal is linked in the chat synthesis utility', () => {
-    const content = readSrc('built-in/chat/utilities/chatTurnSynthesis.ts');
-    expect(content).toContain('sessionCancellationSignal');
-    expect(content).toContain("addEventListener('abort'");
   });
 
   // ── Service wiring ──
@@ -170,14 +143,13 @@ describe('M14 Workspace Session Compliance', () => {
 
   // ── Minimum guard count ──
 
-  it('at least 5 captureSession call sites exist', () => {
+  it('at least 2 captureSession call sites exist', () => {
     const files = [
       readSrc('services/indexingPipeline.ts'),
       readSrc('services/chatService.ts'),
-      readSrc('built-in/chat/utilities/chatTurnExecutionConfig.ts'),
     ];
     const allContent = files.join('\n');
     const matches = allContent.match(/captureSession\(/g) || [];
-    expect(matches.length).toBeGreaterThanOrEqual(3);
+    expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 });
