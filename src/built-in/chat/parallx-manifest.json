@@ -56,7 +56,7 @@
           },
           "chat.agent.maxIterations": {
             "type": "number",
-            "default": 10,
+            "default": 25,
             "description": "Maximum agentic loop iterations per request."
           },
           "chat.agent.autoApproveTools": {

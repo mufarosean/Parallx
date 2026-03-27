@@ -61,6 +61,7 @@ export interface IChatGroundedExecutorOptions {
   readonly response: IChatResponseStream;
   readonly token: ICancellationToken;
   readonly maxIterations: number;
+  readonly contextWindow?: number;
   readonly canInvokeTools: boolean;
   readonly isEditMode: boolean;
   readonly requestText: string;
@@ -259,6 +260,32 @@ export async function executeChatGrounded(
         content: result.content,
         toolName,
       });
+    }
+
+    // Mid-loop budget check: if accumulated messages approach the context
+    // window, trim older history to make room (aligned with OpenClaw
+    // openclawAttempt.ts mid-loop compaction pattern).
+    if (options.contextWindow && options.contextWindow > 0) {
+      const MID_LOOP_TRIM_THRESHOLD = 0.85;
+      let loopTokenEstimate = 0;
+      for (const msg of options.messages) {
+        loopTokenEstimate += Math.ceil(msg.content.length / 4);
+      }
+      if (loopTokenEstimate > options.contextWindow * MID_LOOP_TRIM_THRESHOLD) {
+        // Keep: system prompt (index 0), user query + recent tool exchanges.
+        // Drop: older history messages between them.
+        const keepRecent = Math.min(options.messages.length - 1, 6);
+        const trimEnd = options.messages.length - keepRecent;
+        if (trimEnd > 1) {
+          const dropped = trimEnd - 1;
+          options.messages.splice(1, dropped);
+          options.messages.splice(1, 0, {
+            role: 'user' as const,
+            content: `[${dropped} older messages trimmed to stay within context budget]`,
+          });
+          options.response.progress(`Context near capacity (${loopTokenEstimate}/${options.contextWindow} est. tokens), trimmed ${dropped} older messages.`);
+        }
+      }
     }
   }
 

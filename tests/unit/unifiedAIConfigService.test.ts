@@ -66,7 +66,7 @@ describe('IUnifiedAIConfig defaults', () => {
   });
 
   it('agent defaults match defaultParticipant constants', () => {
-    expect(DEFAULT_UNIFIED_CONFIG.agent.maxIterations).toBe(10);
+    expect(DEFAULT_UNIFIED_CONFIG.agent.maxIterations).toBe(25);
   });
 
   it('memory defaults enable features', () => {
@@ -98,7 +98,7 @@ describe('fromLegacyProfile', () => {
     // Sections not in legacy profiles should come from defaults
     expect(preset.config.retrieval.autoRag).toBe(true);
     expect(preset.config.retrieval.ragTopK).toBe(20);
-    expect(preset.config.agent.maxIterations).toBe(10);
+    expect(preset.config.agent.maxIterations).toBe(25);
     expect(preset.config.memory.memoryEnabled).toBe(true);
     expect(preset.config.indexing.autoIndex).toBe(true);
   });
@@ -266,7 +266,7 @@ describe('UnifiedAIConfigService', () => {
       const config = service.getEffectiveConfig();
       expect(config.persona.name).toBe('Parallx AI');
       expect(config.retrieval.ragTopK).toBe(20);
-      expect(config.agent.maxIterations).toBe(10);
+      expect(config.agent.maxIterations).toBe(25);
     });
 
     it('returns merged config when workspace override is set', async () => {
@@ -663,8 +663,8 @@ describe('A.4 Consumer wiring', () => {
       await service.initialize();
     });
 
-    it('default maxIterations is 10', () => {
-      expect(service.getEffectiveConfig().agent.maxIterations).toBe(10);
+    it('default maxIterations is 25', () => {
+      expect(service.getEffectiveConfig().agent.maxIterations).toBe(25);
     });
 
     it('workspace override changes maxIterations', async () => {
@@ -710,7 +710,7 @@ describe('A.4 Consumer wiring', () => {
       await svc.initialize();
 
       // Default config before workspace
-      expect(svc.getEffectiveConfig().agent.maxIterations).toBe(10);
+      expect(svc.getEffectiveConfig().agent.maxIterations).toBe(25);
 
       // Simulate a .parallx/ai-config.json file
       const mockFs = {

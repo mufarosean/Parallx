@@ -191,6 +191,47 @@ export function activateSkill(
   return { name: commandName, resolvedBody };
 }
 
+/**
+ * Detect a skill name mentioned in free-text input and activate it.
+ *
+ * Upstream OpenClaw pattern: skills are activated before the model sees the
+ * turn. When the user says "use the X skill", detect the name, load the
+ * manifest, and inject the body into the system prompt.
+ */
+export function detectAndActivateFreeTextSkill(
+  text: string,
+  services: IDefaultParticipantServices,
+): IActivatedSkill | undefined {
+  const catalog = services.getWorkflowSkillCatalog?.() ?? [];
+  if (catalog.length === 0) return undefined;
+
+  const lower = text.toLowerCase();
+  const skillNames = catalog.map(s => s.name.toLowerCase());
+
+  for (const skillName of skillNames) {
+    const escaped = skillName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(
+      `\\b(?:use|run|follow|apply|execute|activate|invoke|try)\\s+(?:the\\s+)?${escaped}(?:\\s+(?:skill|workflow))?\\b`,
+      'i',
+    );
+    if (pattern.test(lower)) {
+      const entry = catalog.find(s => s.name.toLowerCase() === skillName);
+      if (entry) return activateSkill(entry.name, text, services);
+    }
+  }
+
+  for (const skillName of skillNames) {
+    const escaped = skillName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`\\b${escaped}\\s+skill\\b`, 'i');
+    if (pattern.test(lower)) {
+      const entry = catalog.find(s => s.name.toLowerCase() === skillName);
+      if (entry) return activateSkill(entry.name, text, services);
+    }
+  }
+
+  return undefined;
+}
+
 // ---------------------------------------------------------------------------
 // M4: Semantic fallback
 // ---------------------------------------------------------------------------

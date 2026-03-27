@@ -1009,7 +1009,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const subtitle = $('div.parallx-chat-empty-state-subtitle',
       'Ask questions, get explanations, or let AI help with your workspace.');
     const posture = $('div.parallx-chat-empty-state-note',
-      'AI is always awake. Ask is read-first with evidence gathering; Agent unlocks action tools and approval-gated changes.');
+      'AI is always awake. Agent unlocks action tools and approval-gated changes.');
 
     append(root, icon, title, subtitle, posture);
 
@@ -1017,7 +1017,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const hints = $('div.parallx-chat-empty-state-hints');
 
     const hintItems: { svg: string; label: string; description: string; insert: string }[] = [
-      { svg: chatIcons.chatBubble, label: 'Ask mode', description: 'Get answers grounded in your workspace', insert: '/ask ' },
       { svg: chatIcons.pencil, label: 'Edit mode', description: 'AI proposes edits for you to review', insert: '/edit ' },
       { svg: chatIcons.agent, label: 'Agent mode', description: 'AI takes multi-step actions with your OK', insert: '/agent ' },
       { svg: chatIcons.atSign, label: '@workspace', description: 'Search across all your files and pages', insert: '@workspace ' },

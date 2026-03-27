@@ -17,7 +17,7 @@ import { tryHandleWorkspaceDocumentListing } from './chatWorkspaceDocumentListin
 import { resolveDefaultChatTurnInterpretation } from './chatDefaultTurnInterpretation.js';
 import { tryHandleDefaultCompactCommand, tryHandleDefaultContextCommand, tryHandleDefaultInitCommand } from './chatDefaultEarlyCommands.js';
 
-const DEFAULT_MAX_ITERATIONS = 10;
+const DEFAULT_MAX_ITERATIONS = 25;
 const ASK_MODE_MAX_ITERATIONS = 5;
 
 type IDefaultRuntimeInterpretationStageServices = Pick<

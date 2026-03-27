@@ -9,6 +9,7 @@
 
 import type { IChatResponseStream, IChatMessage } from '../../../services/chatTypes.js';
 import type { IInitCommandServices } from '../chatTypes.js';
+import { defaultSkillContents } from '../skills/defaultSkillContents.js';
 
 // IInitCommandServices — now defined in chatTypes.ts (M13 Phase 1)
 export type { IInitCommandServices } from '../chatTypes.js';
@@ -150,6 +151,20 @@ export async function executeInitCommand(
         }
       }
       response.markdown('\n📁 `.parallx/` directory structure created (rules, commands, skills).');
+
+      // 7. Write default skills (skip any that already exist)
+      let skillsWritten = 0;
+      for (const [name, content] of defaultSkillContents) {
+        const skillPath = `.parallx/skills/${name}/SKILL.md`;
+        const skillExists = await services.exists?.(skillPath);
+        if (!skillExists) {
+          await services.writeFile(skillPath, content);
+          skillsWritten++;
+        }
+      }
+      if (skillsWritten > 0) {
+        response.markdown(`\n🛠️ ${skillsWritten} default skill(s) installed to \`.parallx/skills/\`.`);
+      }
 
       // Invalidate prompt file cache so AGENTS.md is picked up
       services.invalidatePromptFiles?.();

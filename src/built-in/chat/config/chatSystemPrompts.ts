@@ -222,8 +222,11 @@ function appendWorkspaceStats(lines: string[], ctx: ISystemPromptContext): void 
 const SKILL_CATALOG_MAX_ENTRIES = 100;
 
 /**
- * Append a lightweight skill catalog to the system prompt.
- * Only included when workflow skills exist. Each entry is ~20 tokens.
+ * Append a skill catalog to the system prompt.
+ *
+ * Follows the upstream OpenClaw pattern: XML-tagged entries with file locations
+ * and a mandatory scan instruction that tells the model to read the SKILL.md
+ * using the read_file tool when a skill clearly matches.
  */
 function appendSkillCatalog(lines: string[], ctx: ISystemPromptContext): void {
   const catalog = ctx.skillCatalog;
@@ -233,16 +236,19 @@ function appendSkillCatalog(lines: string[], ctx: ISystemPromptContext): void {
 
   lines.push(
     '',
+    '## Skills (mandatory)',
+    'Before replying: scan <available_skills> <description> entries.',
+    '- If exactly one skill clearly applies: read its SKILL.md at <location> using read_file, then follow its instructions step by step.',
+    '- If the user explicitly names a skill (e.g. "use the X skill"): read that skill\'s SKILL.md at <location> using read_file, then follow its instructions.',
+    '- If multiple could apply: choose the most specific one.',
+    '- If none clearly apply: do not read any SKILL.md.',
+    '- NEVER describe a skill\'s instructions from memory or the description alone — always read the actual SKILL.md file first.',
     '<available_skills>',
-    'The following workflow skills provide specialized step-by-step instructions for complex tasks.',
-    'When a task matches a skill\'s description, the skill will be activated automatically.',
-    'Prefer a clearly matching skill over improvising a weaker ad hoc workflow.',
-    'You can also use your standard tools for tasks that don\'t match any skill.',
-    '',
   );
 
   for (const entry of entries) {
-    lines.push(`- **${entry.name}**: ${entry.description}`);
+    const loc = entry.location || `.parallx/skills/${entry.name}/SKILL.md`;
+    lines.push(`<skill><name>${entry.name}</name><description>${entry.description}</description><location>${loc}</location></skill>`);
   }
 
   lines.push('</available_skills>');

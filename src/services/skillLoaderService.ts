@@ -349,7 +349,6 @@ export interface ISkillFileSystem {
 export class SkillLoaderService extends Disposable {
 
   private readonly _skills = new Map<string, ISkillManifest>();
-  private readonly _builtInSkills = new Map<string, ISkillManifest>();
 
   private readonly _onDidChangeSkills = this._register(new Emitter<ISkillsChangeEvent>());
   readonly onDidChangeSkills: Event<ISkillsChangeEvent> = this._onDidChangeSkills.event;
@@ -363,31 +362,9 @@ export class SkillLoaderService extends Disposable {
     this._fs = fs;
   }
 
-  /**
-   * Register built-in skill manifests that ship with Parallx.
-   * These are always available and survive workspace scans.
-   * Workspace skills with the same name take precedence.
-   */
-  registerBuiltInManifests(manifests: readonly ISkillManifest[]): void {
-    const added: ISkillManifest[] = [];
-    for (const m of manifests) {
-      if (!this._builtInSkills.has(m.name)) {
-        this._builtInSkills.set(m.name, m);
-        added.push(m);
-      }
-    }
-    if (added.length > 0) {
-      this._onDidChangeSkills.fire({ added, removed: [] });
-    }
-  }
-
-  /** All loaded skill manifests (workspace skills override built-in). */
+  /** All loaded skill manifests. */
   get skills(): readonly ISkillManifest[] {
-    const merged = new Map<string, ISkillManifest>(this._builtInSkills);
-    for (const [name, manifest] of this._skills) {
-      merged.set(name, manifest);
-    }
-    return [...merged.values()];
+    return [...this._skills.values()];
   }
 
   /** Get a specific skill by name. */

@@ -5,6 +5,10 @@ import type {
   IAgentSessionService,
   IAgentTraceService,
 } from '../../../services/serviceTypes.js';
+import type { AgentTaskStatus } from '../../../agent/agentTypes.js';
+
+/** Terminal statuses — tasks in these states no longer need rail visibility. */
+const TERMINAL_TASK_STATUSES: ReadonlySet<AgentTaskStatus> = new Set(['completed', 'failed', 'cancelled']);
 
 export interface IChatAgentTaskWidgetAdapterDeps {
   readonly agentSessionService?: IAgentSessionService;
@@ -29,6 +33,7 @@ export function buildChatAgentTaskWidgetServices(
       ? () => {
         const tasks = deps.agentSessionService!.listActiveWorkspaceTasks();
         return [...tasks]
+          .filter((task) => !TERMINAL_TASK_STATUSES.has(task.status))
           .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
           .map((task) => ({
             task,

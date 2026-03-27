@@ -422,7 +422,7 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
     maxPendingSuggestions: 5,
   },
   agent: {
-    maxIterations: 10,
+    maxIterations: 25,
     verbosity: 'balanced',
     approvalStrictness: 'balanced',
     executionStyle: 'balanced',

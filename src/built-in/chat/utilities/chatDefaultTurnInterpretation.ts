@@ -12,7 +12,7 @@ import type {
 } from '../chatTypes.js';
 import { interpretChatParticipantRequest } from './chatParticipantInterpretation.js';
 import { buildFollowUpRetrievalQuery } from './chatGroundedResponseHelpers.js';
-import { activateSkill } from './chatSkillMatcher.js';
+import { activateSkill, detectFreeTextSkillName } from './chatSkillMatcher.js';
 import { determineChatTurnRoute } from './chatTurnRouter.js';
 import { prepareChatTurnPrelude } from './chatTurnPrelude.js';
 import { createChatContextPlan } from './chatContextPlanner.js';
@@ -160,9 +160,22 @@ export async function resolveDefaultChatTurnInterpretation(
   let activatedSkill: IActivatedSkill | undefined;
 
   if (isSkillSlashCommand && slashResult.commandName) {
+    // Path 1: Explicit slash command — e.g. /deep-research
     const manifest = services.getSkillManifest?.(slashResult.commandName);
     if (manifest) {
       activatedSkill = activateSkill(manifest, effectiveText, 'user', prelude.queryScope);
+    }
+  } else if (!hasActiveSlashCommand) {
+    // Path 2: Free-text skill mention — e.g. "use the deep-research skill"
+    // Upstream OpenClaw pattern: detect skill name in free text, load manifest,
+    // inject body into system prompt so the model follows it.
+    const catalog = services.getWorkflowSkillCatalog?.() ?? [];
+    const detectedName = detectFreeTextSkillName(effectiveText, catalog);
+    if (detectedName) {
+      const manifest = services.getSkillManifest?.(detectedName);
+      if (manifest) {
+        activatedSkill = activateSkill(manifest, effectiveText, 'user', prelude.queryScope);
+      }
     }
   }
 

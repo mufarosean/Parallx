@@ -76,6 +76,7 @@ export interface IExecutePreparedChatTurnOptions {
   readonly response: IChatResponseStream;
   readonly token: ICancellationToken;
   readonly maxIterations: number;
+  readonly contextWindow?: number;
   readonly canInvokeTools: boolean;
   readonly isEditMode: boolean;
   readonly useModelOnlyExecution: boolean;
@@ -251,6 +252,7 @@ export async function executePreparedChatTurn(
               response: options.response,
               token: options.token,
               maxIterations: options.maxIterations,
+              contextWindow: options.contextWindow,
               canInvokeTools: options.canInvokeTools,
               isEditMode: options.isEditMode,
               requestText: options.requestText,

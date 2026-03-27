@@ -31,7 +31,7 @@ import { OpenclawContextEngine } from '../openclawContextEngine.js';
 import { resolveToolProfile } from '../openclawToolPolicy.js';
 import { computeTokenBudget } from '../openclawTokenBudget.js';
 import { validateCitations, buildExtractiveFallback } from '../openclawResponseValidation.js';
-import { resolveMentions, resolveVariables, activateSkill, detectSemanticFallback } from '../openclawTurnPreprocessing.js';
+import { resolveMentions, resolveVariables, activateSkill, detectSemanticFallback, detectAndActivateFreeTextSkill } from '../openclawTurnPreprocessing.js';
 import type { IBootstrapFile, ISkillEntry, IOpenclawRuntimeInfo } from '../openclawSystemPrompt.js';
 
 export function createOpenclawDefaultParticipant(services: IDefaultParticipantServices): IChatParticipant & IDisposable {
@@ -114,9 +114,10 @@ async function runOpenclawDefaultTurn(
   }
 
   // M3: Skill activation — when command is a skill, inject resolved body
+  // M45: Also detect free-text skill mentions (upstream OpenClaw pattern)
   const activated = request.command
     ? activateSkill(request.command, variableResult.strippedText, services)
-    : undefined;
+    : detectAndActivateFreeTextSkill(variableResult.strippedText, services);
 
   // M4: Semantic fallback — detect broad workspace summary prompts
   const semanticFallback = detectSemanticFallback(variableResult.strippedText);

@@ -374,7 +374,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     textFileModelManager: api.services.has(ITextFileModelManager)
       ? api.services.get<import('../../services/serviceTypes.js').ITextFileModelManager>(ITextFileModelManager)
       : undefined,
-    maxIterations: unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? chatConfig.get<number>('agent.maxIterations', 10),
+    maxIterations: unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? chatConfig.get<number>('agent.maxIterations', 25),
     networkTimeout: 60_000,
     getActiveWidget: () => _activeWidget,
     openPage: (pageId: string) => api.editors.openEditor({ typeId: 'canvas', title: 'Page', instanceId: pageId }),
@@ -548,7 +548,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getToolDefinitions: () => dataService.getToolDefinitions(),
     getReadOnlyToolDefinitions: () => dataService.getReadOnlyToolDefinitions(),
     invokeToolWithRuntimeControl: (n, a, t, o) => dataService.invokeToolWithRuntimeControl(n, a, t, o),
-    maxIterations: unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? 10,
+    maxIterations: unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? 25,
     networkTimeout: 120_000,
     getModelContextLength: () => dataService.getModelContextLength(),
     sendSummarizationRequest: (m, s) => dataService.sendSummarizationRequest(m, s),
@@ -680,10 +680,14 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     _permissionService.setConfirmationHandler(
       (toolName: string, toolDescription: string, args: Record<string, unknown>): Promise<ToolGrantDecision> => {
         return new Promise<ToolGrantDecision>((resolve) => {
-          // Find the chat list container to append the confirmation card
-          const chatContainer = document.querySelector('.parallx-chat-messages')
-            ?? document.querySelector('.parallx-chat-list')
-            ?? document.body;
+          // Find the chat message list to append the confirmation card inline
+          const chatContainer = document.querySelector('.parallx-chat-message-list');
+          if (!chatContainer) {
+            // No chat UI mounted — reject rather than appending to body and breaking layout
+            console.warn('[PermissionService] Confirmation handler: chat container not found, rejecting');
+            resolve('reject');
+            return;
+          }
 
           const card = document.createElement('div');
           card.className = 'parallx-chat-confirmation';
@@ -1224,7 +1228,34 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         },
         exists: (path: string) => fsAccessor!.exists(path),
       });
-      skillLoader.scanSkills().catch(() => { /* best-effort */ });
+      skillLoader.scanSkills().then(async () => {
+        // Seed any missing default skills into .parallx/skills/ (for pre-existing workspaces)
+        try {
+          const parallxExists = await fsAccessor!.exists('.parallx');
+          if (parallxExists && fileService && workspaceService) {
+            const { defaultSkillContents } = await import('./skills/defaultSkillContents.js');
+            const folders = workspaceService.folders;
+            if (folders && folders.length > 0) {
+              const rootUri = folders[0].uri;
+              let seeded = false;
+              for (const [name, content] of defaultSkillContents) {
+                const rel = `.parallx/skills/${name}/SKILL.md`;
+                const skillExists = await fsAccessor!.exists(rel);
+                if (!skillExists) {
+                  const clean = normalizeWorkspaceRelativePath(rel);
+                  const parentPath = clean.slice(0, clean.lastIndexOf('/'));
+                  try { await fileService.mkdir(rootUri.joinPath(parentPath)); } catch { /* may exist */ }
+                  await fileService.writeFile(rootUri.joinPath(clean), content);
+                  seeded = true;
+                }
+              }
+              if (seeded) {
+                await skillLoader.scanSkills();
+              }
+            }
+          }
+        } catch { /* best-effort seeding */ }
+      }).catch(() => { /* best-effort */ });
       context.subscriptions.push(skillLoader);
 
       // Store reference so OpenClaw participant services can access skills
@@ -1271,11 +1302,6 @@ export function activate(api: ParallxApi, context: ToolContext): void {
           skillLoader.onDidChangeSkills(() => registerSkillTools()),
         );
       }
-
-      // Register built-in skills that ship with Parallx
-      import('./skills/builtInSkillManifests.js').then(({ builtInSkillManifests }) => {
-        skillLoader.registerBuiltInManifests(builtInSkillManifests);
-      }).catch(() => { /* best-effort */ });
     }).catch(() => { /* optional service */ });
   }
 

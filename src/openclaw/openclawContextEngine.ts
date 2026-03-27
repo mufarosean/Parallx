@@ -114,7 +114,6 @@ export type IOpenclawContextEngineServices = Pick<
   | 'getCurrentPageContent'
   | 'storeSessionMemory'
   | 'storeConceptsFromSession'
-  | 'compactSession'
   | 'sendSummarizationRequest'
 >;
 
@@ -298,14 +297,20 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
 
   async compact(params: IOpenclawCompactParams): Promise<IOpenclawCompactResult> {
     // Upstream pattern (agent-runner-execution.ts): context overflow triggers
-    // summarization of older turns → compactSession → auto-flush to memory.
-
-    if (!this.services.compactSession) {
-      return { compacted: false, tokensBefore: params.tokenBudget, tokensAfter: params.tokenBudget };
-    }
+    // summarization of older turns into a compact summary, then re-assemble
+    // uses the trimmed history for the next model call.
+    //
+    // CRITICAL: upstream compaction is an INTERNAL context-assembly operation.
+    // It trims the messages sent to the model, NOT the visible UI conversation.
+    // Calling compactSession() here would destroy the user's visible chat —
+    // that's only for the explicit /compact slash command.
 
     const history = this._lastHistory;
     const historyTokens = estimateMessagesTokens([...history]);
+
+    if (history.length < 2) {
+      return { compacted: false, tokensBefore: historyTokens, tokensAfter: historyTokens };
+    }
 
     // Build a transcript of history for summarization
     const transcript = history
@@ -337,14 +342,25 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     }
 
     if (!summaryText) {
-      summaryText = '[compacted by context engine]';
+      // Without a summarizer, do a simple trim: keep the most recent half of history
+      const keepCount = Math.max(2, Math.floor(history.length / 2));
+      this._lastHistory = history.slice(history.length - keepCount);
+      const afterTokens = estimateMessagesTokens([...this._lastHistory]);
+      return { compacted: true, tokensBefore: historyTokens, tokensAfter: afterTokens };
     }
 
-    const summaryTokens = estimateTokens(summaryText);
-    this.services.compactSession(params.sessionId, summaryText);
+    // Replace internal history with a single summary message + keep the last exchange
+    const lastExchange = history.length >= 2 ? history.slice(-2) : [...history];
+    this._lastHistory = [
+      { role: 'user' as const, content: `[Context summary]\n${summaryText}` },
+      { role: 'assistant' as const, content: 'Understood, I have the conversation context.' },
+      ...lastExchange,
+    ];
+
+    const afterTokens = estimateMessagesTokens([...this._lastHistory]);
 
     // Auto-flush summary to long-term memory (upstream pattern: compaction → memory flush)
-    if (this.services.storeSessionMemory && summaryText !== '[compacted by context engine]') {
+    if (this.services.storeSessionMemory && summaryText.length > 0) {
       const messageCount = history.length;
       try {
         await this.services.storeSessionMemory(params.sessionId, summaryText, messageCount);
@@ -353,7 +369,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
       }
     }
 
-    return { compacted: true, tokensBefore: historyTokens, tokensAfter: summaryTokens };
+    return { compacted: true, tokensBefore: historyTokens, tokensAfter: afterTokens };
   }
 
   async afterTurn(_params: IOpenclawAfterTurnParams): Promise<void> {

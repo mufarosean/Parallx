@@ -34,6 +34,7 @@ const EXEMPT_FILES = new Set([
   'skills/document-comparison/SKILL.md',  // Built-in workflow skill (M39)
   'skills/scoped-extraction/SKILL.md',    // Built-in workflow skill (M39)
   'skills/builtInSkillManifests.ts',      // Built-in skill manifest registry (M41)
+  'skills/defaultSkillContents.ts',       // Default skill file contents for /init (M45)
   'utilities/chatToolLoopSafety.ts',      // Re-export shim → canonical src/services/chatToolLoopSafety.ts
 ]);
 
@@ -102,7 +103,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'providers/ollamaProvider.ts': [],
 
   // ── commands/ — slash/init commands ─────────────────────────────────────
-  'commands/initCommand.ts': [],
+  'commands/initCommand.ts': ['skills/'],
 
   // ── utilities/ — mention resolution, user commands ──────────────────────
   'utilities/chatAgentTaskWidgetAdapter.ts': [],

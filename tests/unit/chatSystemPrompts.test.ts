@@ -327,8 +327,8 @@ describe('buildSystemPrompt — skill catalog', () => {
 
   it('includes behavioral instruction text', () => {
     const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ skillCatalog: catalogEntries }));
-    expect(prompt).toContain('workflow skills provide specialized step-by-step instructions');
-    expect(prompt).toContain('activated automatically');
+    expect(prompt).toContain('Skills (mandatory)');
+    expect(prompt).toContain('read its SKILL.md at <location>');
   });
 
   it('skill catalog adds reasonable token overhead', () => {

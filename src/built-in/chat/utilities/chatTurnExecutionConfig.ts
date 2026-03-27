@@ -112,6 +112,7 @@ export async function buildChatTurnExecutionConfig(
       response: input.response,
       token: input.token,
       maxIterations: input.maxIterations,
+      contextWindow: services.getModelContextLength?.(),
       canInvokeTools,
       isEditMode,
       useModelOnlyExecution: requestOptions.tools === undefined && !input.capabilities.canAutonomous,
