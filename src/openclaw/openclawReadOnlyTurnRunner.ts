@@ -27,6 +27,7 @@ import type {
 } from '../services/chatTypes.js';
 import { applyOpenclawToolPolicy } from './openclawToolPolicy.js';
 import { isTransientError, isTimeoutError } from './openclawErrorClassification.js';
+import { ChatToolLoopSafety } from '../services/chatToolLoopSafety.js';
 
 // ---------------------------------------------------------------------------
 // Constants (shared with openclawTurnRunner.ts)
@@ -124,6 +125,7 @@ export async function runOpenclawReadOnlyTurn(
   let transientRetries = 0;
   let timeoutRetries = 0;
   let totalToolCalls = 0;
+  const loopSafety = new ChatToolLoopSafety();
 
   let iterationsRemaining = maxIterations;
   while (iterationsRemaining >= 0 && !token.isCancellationRequested) {
@@ -223,6 +225,14 @@ export async function runOpenclawReadOnlyTurn(
 
     for (const toolCall of toolCalls) {
       const toolName = toolCall.function.name;
+
+      // Safety: detect infinite tool loops
+      const safety = loopSafety.record(toolName, toolCall.function.arguments);
+      if (safety.blocked) {
+        response.warning(`Stopped: repeated identical ${toolName} calls detected.`);
+        break;
+      }
+
       totalToolCalls++;
       const toolResult = await options.invokeToolWithRuntimeControl(toolName, toolCall.function.arguments, token);
       messages.push({ role: 'tool', content: toolResult.content, toolName });

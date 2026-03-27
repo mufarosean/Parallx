@@ -86,6 +86,10 @@ export interface IOpenclawTurnContext {
     options?: IChatRequestOptions,
     signal?: AbortSignal,
   ) => AsyncIterable<IChatResponseChunk>;
+  /** Ordered list of fallback model IDs to try if primary fails. */
+  readonly fallbackModels?: readonly string[];
+  /** Callback to rebuild sendChatRequest for a different model. */
+  readonly rebuildSendChatRequest?: (modelId: string) => IOpenclawTurnContext['sendChatRequest'];
   readonly invokeToolWithRuntimeControl?: (
     name: string,
     args: Record<string, unknown>,

@@ -74,3 +74,21 @@ export function isTimeoutError(error: unknown): boolean {
   const msg = errorMessage(error).toLowerCase();
   return msg.includes('timeout') || msg.includes('deadline') || msg.includes('aborted');
 }
+
+/**
+ * Detect non-transient model errors from Ollama.
+ *
+ * Upstream: model-fallback.ts — non-transient failures that won't resolve
+ * by retrying the same model. Requires fallback to an alternate model.
+ */
+export function isModelError(error: unknown): boolean {
+  const msg = errorMessage(error).toLowerCase();
+  return (
+    msg.includes('out of memory') ||
+    msg.includes('model not found') ||
+    msg.includes('failed to load model') ||
+    msg.includes('insufficient') ||
+    msg.includes('cuda out of memory') ||
+    msg.includes('ggml_metal')
+  );
+}

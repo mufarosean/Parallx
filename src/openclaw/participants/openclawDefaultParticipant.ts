@@ -285,6 +285,11 @@ async function buildOpenclawTurnContext(
   // Flatten history pairs into IChatMessage[]
   const history = flattenHistory(context.history);
 
+  // Model fallback: resolve available models for retry on model errors
+  const fallbackModels = services.getAvailableModelIds
+    ? (await services.getAvailableModelIds()).filter(id => id !== runtimeInfo.model)
+    : undefined;
+
   return {
     sessionId: context.sessionId,
     history,
@@ -302,6 +307,8 @@ async function buildOpenclawTurnContext(
     promptOverlay: preprocessed?.promptOverlay,
     reportSystemPromptReport: services.reportSystemPromptReport,
     sendChatRequest: (messages, options, signal) => services.sendChatRequest(messages, options, signal),
+    fallbackModels: fallbackModels?.length ? fallbackModels : undefined,
+    rebuildSendChatRequest: services.sendChatRequestForModel ?? undefined,
     invokeToolWithRuntimeControl: services.invokeToolWithRuntimeControl
       ? (name, args, token) => services.invokeToolWithRuntimeControl!(name, args, token)
       : undefined,

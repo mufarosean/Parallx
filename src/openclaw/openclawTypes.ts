@@ -288,6 +288,14 @@ export interface IDefaultParticipantServices {
   createAutonomyMirror?(input: { sessionId: string; requestText: string; mode: ChatMode; runtime: 'claw' | 'openclaw' }): Promise<IChatRuntimeAutonomyMirror | undefined>;
   getSkillCatalog?(): ISkillCatalogEntry[];
   getToolPermissions?(): Record<string, ToolPermissionLevel>;
+  /** Get IDs of all available models (for model fallback). */
+  getAvailableModelIds?(): Promise<readonly string[]>;
+  /** Build a sendChatRequest function targeting a specific model (for model fallback). */
+  sendChatRequestForModel?(modelId: string): (
+    messages: readonly IChatMessage[],
+    options?: IChatRequestOptions,
+    signal?: AbortSignal,
+  ) => AsyncIterable<IChatResponseChunk>;
 }
 
 export interface IWorkspaceParticipantServices {

@@ -24,7 +24,7 @@ import type {
 } from '../services/chatTypes.js';
 import type { IOpenclawTurnContext } from './openclawAttempt.js';
 import { executeOpenclawAttempt } from './openclawAttempt.js';
-import { isContextOverflow, isTimeoutError, isTransientError } from './openclawErrorClassification.js';
+import { isContextOverflow, isModelError, isTimeoutError, isTransientError } from './openclawErrorClassification.js';
 
 // ---------------------------------------------------------------------------
 // Constants (from upstream)
@@ -100,24 +100,26 @@ export async function runOpenclawTurn(
   let overflowAttempts = 0;
   let timeoutAttempts = 0;
   let transientRetries = 0;
+  let fallbackIndex = 0;
+  let currentContext = context;
 
   while (!token.isCancellationRequested) {
     // 1. Assemble context
-    const assembled = await context.engine.assemble({
-      sessionId: context.sessionId,
-      history: context.history,
-      tokenBudget: context.tokenBudget,
+    const assembled = await currentContext.engine.assemble({
+      sessionId: currentContext.sessionId,
+      history: currentContext.history,
+      tokenBudget: currentContext.tokenBudget,
       prompt: request.text,
     });
 
     // 1b. Auto-compact when assembled context is near capacity (>80% of budget)
     //     Upstream: overflow detection triggers compaction before model call
-    if (assembled.estimatedTokens > context.tokenBudget * 0.8 && overflowAttempts < MAX_OVERFLOW_COMPACTION) {
-      response.progress(`Context near capacity (${assembled.estimatedTokens}/${context.tokenBudget} tokens), auto-compacting...`);
+    if (assembled.estimatedTokens > currentContext.tokenBudget * 0.8 && overflowAttempts < MAX_OVERFLOW_COMPACTION) {
+      response.progress(`Context near capacity (${assembled.estimatedTokens}/${currentContext.tokenBudget} tokens), auto-compacting...`);
       try {
-        await context.engine.compact({
-          sessionId: context.sessionId,
-          tokenBudget: context.tokenBudget,
+        await currentContext.engine.compact({
+          sessionId: currentContext.sessionId,
+          tokenBudget: currentContext.tokenBudget,
         });
       } catch (compactErr) {
         console.error('[OpenClaw] Auto-compact failed:', compactErr);
@@ -130,7 +132,7 @@ export async function runOpenclawTurn(
       // 2. Execute attempt
       const result = await executeOpenclawAttempt(
         request,
-        context,
+        currentContext,
         assembled,
         response,
         token,
@@ -148,9 +150,9 @@ export async function runOpenclawTurn(
       if (isContextOverflow(error) && overflowAttempts < MAX_OVERFLOW_COMPACTION) {
         response.progress(`Context overflow detected, compacting (attempt ${overflowAttempts + 1}/${MAX_OVERFLOW_COMPACTION})...`);
         try {
-          await context.engine.compact({
-            sessionId: context.sessionId,
-            tokenBudget: context.tokenBudget,
+          await currentContext.engine.compact({
+            sessionId: currentContext.sessionId,
+            tokenBudget: currentContext.tokenBudget,
           });
         } catch (compactErr) {
           console.error('[OpenClaw] Overflow compact failed, re-throwing original error:', compactErr);
@@ -164,9 +166,9 @@ export async function runOpenclawTurn(
       if (isTimeoutError(error) && timeoutAttempts < MAX_TIMEOUT_COMPACTION) {
         response.progress(`Timeout detected, compacting (attempt ${timeoutAttempts + 1}/${MAX_TIMEOUT_COMPACTION})...`);
         try {
-          await context.engine.compact({
-            sessionId: context.sessionId,
-            tokenBudget: context.tokenBudget,
+          await currentContext.engine.compact({
+            sessionId: currentContext.sessionId,
+            tokenBudget: currentContext.tokenBudget,
             force: true,
           });
         } catch (compactErr) {
@@ -186,7 +188,18 @@ export async function runOpenclawTurn(
         continue;
       }
 
-      // 3d. Unrecoverable error
+      // 3d. Model failure → try next fallback model
+      if (isModelError(error) && currentContext.fallbackModels && fallbackIndex < currentContext.fallbackModels.length) {
+        const nextModel = currentContext.fallbackModels[fallbackIndex];
+        response.progress(`Model error, falling back to ${nextModel}...`);
+        if (currentContext.rebuildSendChatRequest) {
+          currentContext = { ...currentContext, sendChatRequest: currentContext.rebuildSendChatRequest(nextModel) };
+        }
+        fallbackIndex++;
+        continue;
+      }
+
+      // 3e. Unrecoverable error
       throw error;
     }
   }
