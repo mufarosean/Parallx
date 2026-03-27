@@ -18,9 +18,7 @@ import type { ILanguageModelsService } from '../../services/chatTypes.js';
 import type { IUnifiedAIConfigService } from '../unifiedConfigTypes.js';
 import { PresetSwitcher } from './presetSwitcher.js';
 import type { SettingsSection } from './sectionBase.js';
-import { PersonaSection } from './sections/personaSection.js';
 import { ChatSection } from './sections/chatSection.js';
-import { SuggestionsSection } from './sections/suggestionsSection.js';
 import { ModelSection } from './sections/modelSection.js';
 import { RetrievalSection } from './sections/retrievalSection.js';
 import { AgentSection } from './sections/agentSection.js';
@@ -84,9 +82,7 @@ export class AISettingsPanel extends Disposable {
 
     // ── Build Sections ──
     this._sections = [
-      this._register(new PersonaSection(this._service)),
       this._register(new ChatSection(this._service, this._unifiedConfigService)),
-      this._register(new SuggestionsSection(this._service)),
       this._register(new ModelSection(this._service, this._languageModelsService)),
       this._register(new RetrievalSection(this._service, this._unifiedConfigService)),
       this._register(new AgentSection(this._service, this._unifiedConfigService)),
@@ -125,9 +121,7 @@ export class AISettingsPanel extends Disposable {
 
   private _buildNav(nav: HTMLElement): void {
     const navSections = [
-      { id: 'persona', label: 'Persona' },
       { id: 'chat', label: 'Chat' },
-      { id: 'suggestions', label: 'Suggestions' },
       { id: 'model', label: 'Model' },
       { id: 'retrieval', label: 'Retrieval' },
       { id: 'agent', label: 'Agent' },

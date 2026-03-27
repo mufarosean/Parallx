@@ -11,9 +11,7 @@ import { Emitter } from '../../src/platform/events';
 import { createSettingRow, SettingsSection } from '../../src/aiSettings/ui/sectionBase';
 import { PresetSwitcher } from '../../src/aiSettings/ui/presetSwitcher';
 import { AISettingsPanel } from '../../src/aiSettings/ui/aiSettingsPanel';
-import { PersonaSection } from '../../src/aiSettings/ui/sections/personaSection';
 import { ChatSection } from '../../src/aiSettings/ui/sections/chatSection';
-import { SuggestionsSection } from '../../src/aiSettings/ui/sections/suggestionsSection';
 import { ModelSection } from '../../src/aiSettings/ui/sections/modelSection';
 import { AdvancedSection } from '../../src/aiSettings/ui/sections/advancedSection';
 import { PreviewSection } from '../../src/aiSettings/ui/sections/previewSection';
@@ -117,7 +115,7 @@ describe('createSettingRow', () => {
   });
 });
 
-// ─── SettingsSection (via PersonaSection as concrete subclass) ───────────────
+// ─── SettingsSection (via ModelSection as concrete subclass) ────────────────
 
 describe('SettingsSection (base class)', () => {
   let parent: HTMLElement;
@@ -130,25 +128,25 @@ describe('SettingsSection (base class)', () => {
   });
 
   it('creates section with header and content elements', () => {
-    const section = new PersonaSection(service as any);
+    const section = new ModelSection(service as any);
     expect(section.element.classList.contains('ai-settings-section')).toBe(true);
-    expect(section.element.dataset.sectionId).toBe('persona');
-    expect(section.headerElement.textContent).toBe('Persona');
-    expect(section.headerElement.id).toBe('ai-settings-section-persona');
+    expect(section.element.dataset.sectionId).toBe('model');
+    expect(section.headerElement.textContent).toBe('Model');
+    expect(section.headerElement.id).toBe('ai-settings-section-model');
     expect(section.contentElement.classList.contains('ai-settings-section__content')).toBe(true);
     section.dispose();
   });
 
   it('applySearch dims non-matching rows', () => {
-    const section = new PersonaSection(service as any);
+    const section = new ModelSection(service as any);
     section.build();
 
     // All rows should be visible initially
     let matches = section.applySearch('');
-    expect(matches).toBeGreaterThanOrEqual(3); // name, desc, avatar
+    expect(matches).toBeGreaterThanOrEqual(4); // defaultModel, temperature, maxTokens, contextWindow
 
-    // Search for 'name' should match Agent Name
-    matches = section.applySearch('name');
+    // Search for 'temperature' should match
+    matches = section.applySearch('temperature');
     expect(matches).toBeGreaterThanOrEqual(1);
 
     const rows = section.element.querySelectorAll('.ai-settings-row');
@@ -164,7 +162,7 @@ describe('SettingsSection (base class)', () => {
   });
 
   it('marks section as no-matches when nothing matches', () => {
-    const section = new PersonaSection(service as any);
+    const section = new ModelSection(service as any);
     section.build();
 
     const matches = section.applySearch('zzznonexistent');
@@ -268,20 +266,18 @@ describe('AISettingsPanel', () => {
     panel.dispose();
   });
 
-  it('renders navigation with 10 section buttons', () => {
+  it('renders navigation with 8 section buttons', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const navItems = parent.querySelectorAll('.ai-settings-nav__item');
-    expect(navItems.length).toBe(10);
-    expect(navItems[0].textContent).toBe('Persona');
-    expect(navItems[1].textContent).toBe('Chat');
-    expect(navItems[2].textContent).toBe('Suggestions');
-    expect(navItems[3].textContent).toBe('Model');
-    expect(navItems[4].textContent).toBe('Retrieval');
-    expect(navItems[5].textContent).toBe('Agent');
-    expect(navItems[6].textContent).toBe('Indexing');
-    expect(navItems[7].textContent).toBe('Tools');
-    expect(navItems[8].textContent).toBe('Advanced');
-    expect(navItems[9].textContent).toBe('Preview');
+    expect(navItems.length).toBe(8);
+    expect(navItems[0].textContent).toBe('Chat');
+    expect(navItems[1].textContent).toBe('Model');
+    expect(navItems[2].textContent).toBe('Retrieval');
+    expect(navItems[3].textContent).toBe('Agent');
+    expect(navItems[4].textContent).toBe('Indexing');
+    expect(navItems[5].textContent).toBe('Tools');
+    expect(navItems[6].textContent).toBe('Advanced');
+    expect(navItems[7].textContent).toBe('Preview');
     panel.dispose();
   });
 
@@ -291,13 +287,12 @@ describe('AISettingsPanel', () => {
     panel.dispose();
   });
 
-  it('renders all ten sections in content area', () => {
+  it('renders all eight sections in content area', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const sections = parent.querySelectorAll('.ai-settings-section');
-    expect(sections.length).toBe(10);
-    // Verify section IDs (Memory section removed in M35)
+    expect(sections.length).toBe(8);
     const ids = Array.from(sections).map(s => (s as HTMLElement).dataset.sectionId);
-    expect(ids).toEqual(['persona', 'chat', 'suggestions', 'model', 'retrieval', 'agent', 'indexing', 'tools', 'advanced', 'preview']);
+    expect(ids).toEqual(['chat', 'model', 'retrieval', 'agent', 'indexing', 'tools', 'advanced', 'preview']);
     panel.dispose();
   });
 
@@ -322,89 +317,6 @@ describe('AISettingsPanel', () => {
   });
 });
 
-// ─── PersonaSection ──────────────────────────────────────────────────────────
-
-describe('PersonaSection', () => {
-  let service: ReturnType<typeof createMockService>;
-
-  beforeEach(() => {
-    document.body.innerHTML = '';
-    service = createMockService();
-  });
-
-  it('builds with Agent Name, Description, and Avatar rows', () => {
-    const section = new PersonaSection(service as any);
-    section.build();
-
-    const rows = section.element.querySelectorAll('.ai-settings-row');
-    expect(rows.length).toBe(3);
-
-    const keys = Array.from(rows).map(r => (r as HTMLElement).dataset.settingKey);
-    expect(keys).toEqual(['persona.name', 'persona.description', 'persona.avatar']);
-    section.dispose();
-  });
-
-  it('renders 12 avatar emoji buttons', () => {
-    const section = new PersonaSection(service as any);
-    section.build();
-
-    const avatarBtns = section.element.querySelectorAll('.ai-settings-avatar-btn');
-    expect(avatarBtns.length).toBe(12);
-    section.dispose();
-  });
-
-  it('marks the active avatar', () => {
-    const section = new PersonaSection(service as any);
-    section.build();
-    section.update(service.getActiveProfile());
-
-    const activeBtns = section.element.querySelectorAll('.ai-settings-avatar-btn--active');
-    expect(activeBtns.length).toBe(1);
-    expect((activeBtns[0] as HTMLElement).dataset.avatarId).toBe('avatar-brain');
-    section.dispose();
-  });
-
-  it('calls updateActiveProfile on avatar click', () => {
-    const section = new PersonaSection(service as any);
-    section.build();
-
-    const avatarBtns = section.element.querySelectorAll('.ai-settings-avatar-btn');
-    (avatarBtns[3] as HTMLElement).click(); // avatar-coins (index 3)
-
-    expect(service.updateActiveProfile).toHaveBeenCalledWith({
-      persona: { avatarEmoji: 'avatar-coins' },
-    });
-    section.dispose();
-  });
-
-  it('has reset section link', () => {
-    const section = new PersonaSection(service as any);
-    section.build();
-
-    const link = section.element.querySelector('.ai-settings-section__reset-link');
-    expect(link).toBeTruthy();
-    expect(link?.textContent).toBe('Reset section to defaults');
-
-    (link as HTMLElement).click();
-    expect(service.resetSection).toHaveBeenCalledWith('persona');
-    section.dispose();
-  });
-
-  it('update() sets avatar active class correctly', () => {
-    const section = new PersonaSection(service as any);
-    section.build();
-
-    const profile = structuredClone(DEFAULT_PROFILE);
-    profile.persona.avatarEmoji = 'avatar-robot';
-    section.update(profile);
-
-    const active = section.element.querySelectorAll('.ai-settings-avatar-btn--active');
-    expect(active.length).toBe(1);
-    expect((active[0] as HTMLElement).dataset.avatarId).toBe('avatar-robot');
-    section.dispose();
-  });
-});
-
 // ─── ChatSection ─────────────────────────────────────────────────────────────
 
 describe('ChatSection', () => {
@@ -415,12 +327,15 @@ describe('ChatSection', () => {
     service = createMockService();
   });
 
-  it('builds with expected setting rows', () => {
+  it('builds with workspace description row', () => {
     const section = new ChatSection(service as any);
     section.build();
 
     const rows = section.element.querySelectorAll('.ai-settings-row');
-    expect(rows.length).toBeGreaterThanOrEqual(4); // responseLength, tone, domain, customFocus, systemPrompt, override, effective
+    expect(rows.length).toBe(1);
+
+    const keys = Array.from(rows).map(r => (r as HTMLElement).dataset.settingKey);
+    expect(keys).toContain('chat.workspaceDescription');
     section.dispose();
   });
 
@@ -439,48 +354,6 @@ describe('ChatSection', () => {
     expect(link).toBeTruthy();
     (link as HTMLElement).click();
     expect(service.resetSection).toHaveBeenCalledWith('chat');
-    section.dispose();
-  });
-});
-
-// ─── SuggestionsSection ──────────────────────────────────────────────────────
-
-describe('SuggestionsSection', () => {
-  let service: ReturnType<typeof createMockService>;
-
-  beforeEach(() => {
-    document.body.innerHTML = '';
-    service = createMockService();
-  });
-
-  it('builds with enabled toggle, confidence slider, and backlog limit', () => {
-    const section = new SuggestionsSection(service as any);
-    section.build();
-
-    const rows = section.element.querySelectorAll('.ai-settings-row');
-    expect(rows.length).toBe(3);
-
-    const keys = Array.from(rows).map(r => (r as HTMLElement).dataset.settingKey);
-    expect(keys).toContain('suggestions.suggestionsEnabled');
-    expect(keys).toContain('suggestions.suggestionConfidenceThreshold');
-    expect(keys).toContain('suggestions.maxPendingSuggestions');
-    section.dispose();
-  });
-
-  it('has suggestions section header', () => {
-    const section = new SuggestionsSection(service as any);
-    expect(section.sectionId).toBe('suggestions');
-    expect(section.headerElement.textContent).toBe('Suggestions');
-    section.dispose();
-  });
-
-  it('has reset section link', () => {
-    const section = new SuggestionsSection(service as any);
-    section.build();
-    const link = section.element.querySelector('.ai-settings-section__reset-link');
-    expect(link).toBeTruthy();
-    (link as HTMLElement).click();
-    expect(service.resetSection).toHaveBeenCalledWith('suggestions');
     section.dispose();
   });
 });
@@ -538,12 +411,12 @@ describe('AdvancedSection', () => {
     service = createMockService();
   });
 
-  it('builds with export, import, reset, and prompt preview rows', () => {
+  it('builds with export, import, and reset rows', () => {
     const section = new AdvancedSection(service as any);
     section.build();
 
     const rows = section.element.querySelectorAll('.ai-settings-row');
-    expect(rows.length).toBeGreaterThanOrEqual(3);
+    expect(rows.length).toBe(3);
     section.dispose();
   });
 

@@ -93,7 +93,7 @@ export class PreviewSection extends SettingsSection {
 
   update(profile: AISettingsProfile): void {
     this._metadataLine.textContent =
-      `Preset: ${profile.presetName} · Temperature: ${profile.model.temperature.toFixed(2)} · Tone: ${profile.suggestions.tone}`;
+      `Preset: ${profile.presetName} · Temperature: ${profile.model.temperature.toFixed(2)}`;
   }
 
   // ─── Run Preview ───────────────────────────────────────────────────

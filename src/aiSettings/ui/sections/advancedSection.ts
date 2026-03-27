@@ -1,23 +1,18 @@
-// advancedSection.ts — Advanced settings section (M15 Task 2.7)
+// advancedSection.ts — Advanced settings section
 //
 // Fields:
 //   - Export Profile (button: "Export as JSON")
 //   - Import Profile (file picker)
 //   - Reset All (danger button with confirmation)
-//   - Generated Prompt Preview (read-only textarea)
 
 import { $ } from '../../../ui/dom.js';
 import { Button } from '../../../ui/button.js';
-import { Textarea } from '../../../ui/textarea.js';
 import type { IAISettingsService, AISettingsProfile } from '../../aiSettingsTypes.js';
-import { generateChatSystemPrompt, buildGenInputFromProfile } from '../../systemPromptGenerator.js';
 import { SettingsSection, createSettingRow } from '../sectionBase.js';
 
 // ─── AdvancedSection ─────────────────────────────────────────────────────────
 
 export class AdvancedSection extends SettingsSection {
-
-  private _promptPreview!: Textarea;
 
   constructor(service: IAISettingsService) {
     super(service, 'advanced', 'Advanced');
@@ -79,26 +74,10 @@ export class AdvancedSection extends SettingsSection {
     resetBtn.element.classList.add('ai-settings-danger-btn');
     this._register(resetBtn.onDidClick(() => this._confirmResetAll()));
     this._addRow(resetRow.row);
-
-    // ── Generated Prompt Preview ──
-    const previewRow = createSettingRow({
-      label: 'Generated Prompt Preview',
-      description: 'The effective system prompt based on current settings',
-      key: 'advanced.promptPreview',
-    });
-    this._promptPreview = this._register(new Textarea(previewRow.controlSlot, {
-      rows: 8,
-      readonly: true,
-      ariaLabel: 'Generated prompt preview',
-    }));
-    this._addRow(previewRow.row);
   }
 
-  update(profile: AISettingsProfile): void {
-    const prompt = generateChatSystemPrompt(buildGenInputFromProfile(profile));
-    if (this._promptPreview.value !== prompt) {
-      this._promptPreview.value = prompt;
-    }
+  update(_profile: AISettingsProfile): void {
+    // No dynamic fields to update
   }
 
   // ─── Export ────────────────────────────────────────────────────────
