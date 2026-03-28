@@ -674,6 +674,12 @@ export interface IChatParticipantRequest {
   readonly interpretation?: IChatParticipantRequestInterpretation;
   /** Shared first-pass turn state computed before dispatch. */
   readonly turnState?: IChatParticipantTurnState;
+  /**
+   * Whether this turn was triggered by a steering message that interrupted
+   * a previous active turn. Upstream: `shouldSteer` in L1 runReplyAgent.
+   * When true, followup continuation is suppressed (D1 contract).
+   */
+  readonly isSteeringTurn?: boolean;
 }
 
 /**
@@ -1045,6 +1051,11 @@ export interface IChatSendRequestOptions {
   readonly attempt?: number;
   /** Original request ID when replaying a prior turn; when found, the prior turn is replaced. */
   readonly replayOfRequestId?: string;
+  /**
+   * Whether this turn was triggered by a steering message that interrupted
+   * a previous active turn. Upstream: `shouldSteer` flag in L1 runReplyAgent.
+   */
+  readonly isSteeringTurn?: boolean;
 }
 
 export interface IChatTurnPreparationServices {

@@ -62,6 +62,12 @@ export interface IOpenclawTurnResult {
   readonly overflowCompactions: number;
   readonly timeoutCompactions: number;
   readonly transientRetries: number;
+  /** Whether this turn was a steering turn (interrupted a previous turn). */
+  readonly isSteeringTurn: boolean;
+  /** Whether this turn was a self-initiated followup continuation. */
+  readonly isFollowupTurn: boolean;
+  /** Current depth in the followup chain (0 = user-initiated turn). */
+  readonly followupDepth: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,6 +94,19 @@ export async function runOpenclawTurn(
   response: IChatResponseStream,
   token: ICancellationToken,
 ): Promise<IOpenclawTurnResult> {
+
+  const steered = context.isSteeringTurn === true;
+  const isFollowup = context.isFollowupTurn === true;
+  const followupDepth = context.followupDepth ?? 0;
+
+  // D3 Steer check — upstream L1 runReplyAgent step 1:
+  //   if (steered && !shouldFollowup) { cleanup and return }
+  // In Parallx, a steering turn means this message interrupted a previous turn.
+  // The previous turn's cancellation has already been triggered by the queue.
+  // We log the steer and proceed — followup suppression is enforced by evaluateFollowup (D1).
+  if (steered) {
+    response.progress('Processing steering message...');
+  }
 
   // Bootstrap context engine once before retry loop
   // Upstream: runAttemptContextEngineBootstrap (attempt.context-engine-helpers.ts)
@@ -159,6 +178,9 @@ export async function runOpenclawTurn(
         overflowCompactions: overflowAttempts,
         timeoutCompactions: timeoutAttempts,
         transientRetries,
+        isSteeringTurn: steered,
+        isFollowupTurn: isFollowup,
+        followupDepth,
       };
     } catch (error) {
       // 3a. Context overflow → compact → retry
@@ -234,6 +256,9 @@ export async function runOpenclawTurn(
     overflowCompactions: overflowAttempts,
     timeoutCompactions: timeoutAttempts,
     transientRetries,
+    isSteeringTurn: steered,
+    isFollowupTurn: isFollowup,
+    followupDepth,
   };
 }
 

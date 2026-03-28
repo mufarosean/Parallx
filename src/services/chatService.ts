@@ -963,6 +963,7 @@ export class ChatService extends Disposable implements IChatService {
       modelId: session.modelId,
       attachments: options?.attachments,
       attempt,
+      isSteeringTurn: options?.isSteeringTurn,
     };
 
     const history = session.messages.slice(0, -1);
@@ -1193,9 +1194,16 @@ export class ChatService extends Disposable implements IChatService {
     const next = session.pendingRequests.shift()!;
     this._onDidChangePendingRequests.fire(sessionId);
 
+    // Propagate steering flag so the participant knows this turn interrupted
+    // a previous active turn. Upstream: resolveActiveRunQueueAction → shouldSteer.
+    const sendOptions: IChatSendRequestOptions = {
+      ...next.options,
+      ...(next.kind === ChatRequestQueueKind.Steering ? { isSteeringTurn: true } : undefined),
+    };
+
     // Fire-and-forget — errors are handled inside sendRequest
     queueMicrotask(() => {
-      this.sendRequest(sessionId, next.text, next.options).catch((e) => { console.error('[ChatService] queued sendRequest failed:', e); });
+      this.sendRequest(sessionId, next.text, sendOptions).catch((e) => { console.error('[ChatService] queued sendRequest failed:', e); });
     });
   }
 }

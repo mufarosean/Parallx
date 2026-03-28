@@ -83,6 +83,22 @@ export interface IOpenclawTurnContext {
   /** When false, skip workspace retrieval (RAG). Defaults to true. */
   readonly autoRag?: boolean;
 
+  // Autonomy flags (D3: steer check — upstream L1 runReplyAgent)
+  /**
+   * Whether this turn was triggered by a steering message that interrupted
+   * a previous active turn. Upstream: `shouldSteer` in L1 runReplyAgent.
+   * When true, followup continuation is suppressed.
+   */
+  readonly isSteeringTurn?: boolean;
+  /**
+   * Whether this turn is a self-initiated followup continuation.
+   * Upstream: `followupRun` flag in L1 runReplyAgent.
+   * When true, this turn was triggered by the followup runner, not the user.
+   */
+  readonly isFollowupTurn?: boolean;
+  /** Current depth in the followup chain (0 = user-initiated turn). */
+  readonly followupDepth?: number;
+
   // Tool inputs
   readonly toolState: IOpenclawRuntimeToolState;
   readonly maxToolIterations: number;

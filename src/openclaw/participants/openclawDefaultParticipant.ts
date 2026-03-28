@@ -129,6 +129,7 @@ async function runOpenclawDefaultTurn(
   const turnContext = await buildOpenclawTurnContext(services, request, context, {
     mentionContextBlocks: allContextBlocks.length > 0 ? allContextBlocks : undefined,
     promptOverlay: effectiveOverlay,
+    isSteeringTurn: request.isSteeringTurn,
   });
 
   // Execute turn through the new pipeline
@@ -226,7 +227,7 @@ async function buildOpenclawTurnContext(
   services: IDefaultParticipantServices,
   request: IChatParticipantRequest,
   context: IChatParticipantContext,
-  preprocessed?: { mentionContextBlocks?: readonly string[]; promptOverlay?: string },
+  preprocessed?: { mentionContextBlocks?: readonly string[]; promptOverlay?: string; isSteeringTurn?: boolean },
 ): Promise<IOpenclawTurnContext> {
   // Token budget from model context length
   const contextWindow = services.getModelContextLength?.() ?? 8192;
@@ -299,6 +300,7 @@ async function buildOpenclawTurnContext(
     maxToolIterations,
     mentionContextBlocks: preprocessed?.mentionContextBlocks,
     promptOverlay: preprocessed?.promptOverlay,
+    isSteeringTurn: preprocessed?.isSteeringTurn,
     reportSystemPromptReport: services.reportSystemPromptReport,
     sendChatRequest: (messages, options, signal) => services.sendChatRequest(messages, options, signal),
     fallbackModels: fallbackModels?.length ? fallbackModels : undefined,

@@ -450,4 +450,76 @@ describe('openclawTurnRunner', () => {
       runOpenclawTurn(createRequest(), createContext({ engine }), createResponse(), createToken()),
     ).rejects.toThrow('request timeout');
   });
+
+  // -----------------------------------------------------------------------
+  // D3: Steer Check — upstream L1 runReplyAgent step 1
+  // -----------------------------------------------------------------------
+
+  describe('steer check (D3)', () => {
+    it('steering turn sets isSteeringTurn in result', async () => {
+      mockExecute.mockResolvedValueOnce(successResult);
+
+      const result = await runOpenclawTurn(
+        createRequest(),
+        createContext({ isSteeringTurn: true }),
+        createResponse(),
+        createToken(),
+      );
+
+      expect(result.isSteeringTurn).toBe(true);
+    });
+
+    it('non-steering turn sets isSteeringTurn to false', async () => {
+      mockExecute.mockResolvedValueOnce(successResult);
+
+      const result = await runOpenclawTurn(
+        createRequest(),
+        createContext(),
+        createResponse(),
+        createToken(),
+      );
+
+      expect(result.isSteeringTurn).toBe(false);
+    });
+
+    it('steering turn shows progress notification', async () => {
+      mockExecute.mockResolvedValueOnce(successResult);
+      const response = createResponse();
+
+      await runOpenclawTurn(
+        createRequest(),
+        createContext({ isSteeringTurn: true }),
+        response,
+        createToken(),
+      );
+
+      expect(response.progress).toHaveBeenCalledWith('Processing steering message...');
+    });
+
+    it('non-steering turn skips steer progress', async () => {
+      mockExecute.mockResolvedValueOnce(successResult);
+      const response = createResponse();
+
+      await runOpenclawTurn(
+        createRequest(),
+        createContext(),
+        response,
+        createToken(),
+      );
+
+      expect(response.progress).not.toHaveBeenCalledWith('Processing steering message...');
+    });
+
+    it('cancelled steering turn preserves isSteeringTurn', async () => {
+      const result = await runOpenclawTurn(
+        createRequest(),
+        createContext({ isSteeringTurn: true }),
+        createResponse(),
+        createToken(true),
+      );
+
+      expect(result.markdown).toBe('');
+      expect(result.isSteeringTurn).toBe(true);
+    });
+  });
 });
