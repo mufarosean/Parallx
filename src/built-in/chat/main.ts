@@ -210,6 +210,8 @@ let _tokenStatusBar: ChatTokenStatusBar | undefined;
 let _lastIndexStats: { pages: number; files: number } | undefined;
 let _promptFileService: PromptFileService | undefined;
 let _permissionService: PermissionService | undefined;
+/** D2: Session-scoped flags for /think, /verbose toggles. */
+const _sessionFlags = new Map<string, boolean>();
 let _fsAccessor: IBuiltInToolFileSystem | undefined;
 let _api: ParallxApi | undefined;
 
@@ -700,6 +702,23 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     unifiedConfigService,
     getSkillCatalog: () => getRuntimeSkillCatalog(),
     getToolPermissions: _permissionService ? () => _permissionService!.getEffectivePermissions() : undefined,
+    // D2: Command service delegates
+    listModels: _ollamaProvider ? async () => {
+      const models = await _ollamaProvider!.listModels();
+      return models.map(m => ({ id: m.id, name: m.displayName ?? m.id, parameterSize: m.parameterSize, quantization: m.quantization, contextLength: m.contextLength }));
+    } : undefined,
+    checkProviderStatus: _ollamaProvider ? () => _ollamaProvider!.checkAvailability() : undefined,
+    getSessionFlag: (key: string) => _sessionFlags.get(key) ?? false,
+    setSessionFlag: (key: string, value: boolean) => { _sessionFlags.set(key, value); },
+    executeCommand: (commandId: string, ...args: unknown[]) => { api.commands.executeCommand(commandId, ...args); },
+    getAvailableModelIds: _ollamaProvider ? async () => {
+      const models = await _ollamaProvider!.listModels().catch(() => []);
+      return models.map(m => m.id);
+    } : undefined,
+    sendChatRequestForModel: _ollamaProvider ? (modelId: string) => {
+      return (messages: Parameters<typeof dataService.sendChatRequest>[0], options?: Parameters<typeof dataService.sendChatRequest>[1], signal?: AbortSignal) =>
+        _ollamaProvider!.sendChatRequest(modelId, messages as any, options as any, signal);
+    } : undefined,
   });
   const openclawWorkspaceParticipantServices = buildOpenclawWorkspaceParticipantServices({
     sendChatRequest: (m, o, s) => dataService.sendChatRequest(m, o, s),

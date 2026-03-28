@@ -34,6 +34,15 @@ import type { IBootstrapFile, IOpenclawRuntimeInfo } from '../openclawSystemProm
 import { buildOpenclawRuntimeSkillState } from '../openclawSkillState.js';
 import { buildOpenclawRuntimeToolState } from '../openclawToolState.js';
 import { resolveAgentConfig, type IGlobalConfigSlice } from '../agents/openclawAgentResolver.js';
+// D2: Command handlers
+import { tryHandleOpenclawStatusCommand } from '../commands/openclawStatusCommand.js';
+import { tryHandleOpenclawNewCommand } from '../commands/openclawNewCommand.js';
+import { tryHandleOpenclawModelsCommand } from '../commands/openclawModelsCommand.js';
+import { tryHandleOpenclawDoctorCommand } from '../commands/openclawDoctorCommand.js';
+import { tryHandleOpenclawThinkCommand, THINK_SESSION_FLAG } from '../commands/openclawThinkCommand.js';
+import { tryHandleOpenclawUsageCommand } from '../commands/openclawUsageCommand.js';
+import { tryHandleOpenclawToolsCommand } from '../commands/openclawToolsCommand.js';
+import { tryHandleOpenclawVerboseCommand, VERBOSE_SESSION_FLAG } from '../commands/openclawVerboseCommand.js';
 
 export function createOpenclawDefaultParticipant(services: IDefaultParticipantServices): IChatParticipant & IDisposable {
   const commandRegistry = createOpenclawCommandRegistry();
@@ -53,6 +62,14 @@ export function createOpenclawDefaultParticipant(services: IDefaultParticipantSe
       { name: 'context', description: 'Show the runtime context breakdown' },
       { name: 'init', description: 'Scan workspace and generate AGENTS.md' },
       { name: 'compact', description: 'Summarize conversation to free token budget' },
+      { name: 'status', description: 'Show AI runtime status (model, connection, budget)' },
+      { name: 'new', description: 'Start a new conversation' },
+      { name: 'models', description: 'List available Ollama models' },
+      { name: 'doctor', description: 'Run diagnostic checks on AI runtime' },
+      { name: 'think', description: 'Toggle extended thinking mode for this session' },
+      { name: 'usage', description: 'Show token usage statistics for this session' },
+      { name: 'tools', description: 'List available tools and their status' },
+      { name: 'verbose', description: 'Toggle verbose debug output for this session' },
     ],
     handler,
     runtime: { handleTurn: handler },
@@ -89,6 +106,16 @@ async function runOpenclawDefaultTurn(
   })) {
     return {};
   }
+
+  // D2: New slash command dispatch
+  if (await tryHandleOpenclawStatusCommand(services, request.command, response)) return {};
+  if (await tryHandleOpenclawNewCommand(services, request.command, response)) return {};
+  if (await tryHandleOpenclawModelsCommand(services, request.command, response)) return {};
+  if (await tryHandleOpenclawDoctorCommand(services, request.command, response)) return {};
+  if (await tryHandleOpenclawThinkCommand(services, request.command, response)) return {};
+  if (await tryHandleOpenclawUsageCommand(services, request.command, context, response)) return {};
+  if (await tryHandleOpenclawToolsCommand(services, request.command, response, request.mode)) return {};
+  if (await tryHandleOpenclawVerboseCommand(services, request.command, response)) return {};
 
   // M2: Resolve @file/@folder/@workspace/@terminal mentions
   const mentionResult = await resolveMentions(request.text, services);
@@ -132,6 +159,24 @@ async function runOpenclawDefaultTurn(
     promptOverlay: effectiveOverlay,
     isSteeringTurn: request.isSteeringTurn,
   });
+
+  // D2: Verbose mode — emit debug header when enabled
+  const verboseEnabled = services.getSessionFlag?.(VERBOSE_SESSION_FLAG) ?? false;
+  if (verboseEnabled) {
+    const debugLines = [
+      '<details><summary>🔍 Verbose Debug</summary>\n',
+      `- **Model:** ${turnContext.runtimeInfo.model}`,
+      `- **Token Budget:** ${turnContext.tokenBudget}`,
+      `- **Tools:** ${turnContext.toolState.availableCount} active`,
+      `- **History:** ${turnContext.history.length} messages`,
+      `- **Bootstrap Files:** ${turnContext.bootstrapFiles.length}`,
+      `- **Agent:** ${turnContext.agentConfig?.id ?? 'default'}`,
+      `- **Think:** ${services.getSessionFlag?.(THINK_SESSION_FLAG) ? 'enabled' : 'disabled'}`,
+      `- **Auto-RAG:** ${turnContext.autoRag !== false ? 'enabled' : 'disabled'}`,
+      '\n</details>\n',
+    ];
+    response.markdown(debugLines.join('\n'));
+  }
 
   // Execute turn through the new pipeline
   const lifecycle = createOpenclawRuntimeLifecycle({});
@@ -319,7 +364,11 @@ async function buildOpenclawTurnContext(
     promptOverlay: preprocessed?.promptOverlay,
     isSteeringTurn: preprocessed?.isSteeringTurn,
     reportSystemPromptReport: services.reportSystemPromptReport,
-    sendChatRequest: (messages, options, signal) => services.sendChatRequest(messages, options, signal),
+    sendChatRequest: (messages, options, signal) => services.sendChatRequest(messages, {
+      ...options,
+      // D2: Inject session-level thinking flag
+      think: options?.think ?? (services.getSessionFlag?.(THINK_SESSION_FLAG) || undefined),
+    }, signal),
     fallbackModels: fallbackModels?.length ? fallbackModels : undefined,
     rebuildSendChatRequest: services.sendChatRequestForModel ?? undefined,
     invokeToolWithRuntimeControl: services.invokeToolWithRuntimeControl

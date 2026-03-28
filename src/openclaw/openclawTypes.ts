@@ -263,6 +263,16 @@ export interface IDefaultParticipantServices {
   ) => AsyncIterable<IChatResponseChunk>;
   /** D8: Agent registry for per-agent configuration. */
   agentRegistry?: IAgentRegistry;
+  /** D2: List available models from provider (for /models command). */
+  listModels?(): Promise<readonly { id: string; name: string; parameterSize?: string; quantization?: string; contextLength?: number }[]>;
+  /** D2: Check provider connection status (for /status, /doctor commands). */
+  checkProviderStatus?(): Promise<{ available: boolean; version?: string; error?: string }>;
+  /** D2: Session-scoped flags for /think, /verbose toggles. */
+  getSessionFlag?(key: string): boolean;
+  /** D2: Set a session-scoped flag. */
+  setSessionFlag?(key: string, value: boolean): void;
+  /** D2: Execute a UI command by ID (for /new → chat.newSession bridge). */
+  executeCommand?(commandId: string, ...args: unknown[]): void;
 }
 
 export interface IWorkspaceParticipantServices {

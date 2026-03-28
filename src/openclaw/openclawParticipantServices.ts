@@ -62,6 +62,12 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly getAvailableModelIds?: IDefaultParticipantServices['getAvailableModelIds'];
   readonly sendChatRequestForModel?: IDefaultParticipantServices['sendChatRequestForModel'];
   readonly agentRegistry?: IDefaultParticipantServices['agentRegistry'];
+  // D2: Command service delegates
+  readonly listModels?: IDefaultParticipantServices['listModels'];
+  readonly checkProviderStatus?: IDefaultParticipantServices['checkProviderStatus'];
+  readonly getSessionFlag?: IDefaultParticipantServices['getSessionFlag'];
+  readonly setSessionFlag?: IDefaultParticipantServices['setSessionFlag'];
+  readonly executeCommand?: IDefaultParticipantServices['executeCommand'];
 }
 
 export interface IOpenclawWorkspaceParticipantAdapterDeps {
@@ -158,6 +164,12 @@ export function buildOpenclawDefaultParticipantServices(
     getAvailableModelIds: deps.getAvailableModelIds,
     sendChatRequestForModel: deps.sendChatRequestForModel,
     agentRegistry: deps.agentRegistry,
+    // D2: Command service delegates
+    listModels: deps.listModels,
+    checkProviderStatus: deps.checkProviderStatus,
+    getSessionFlag: deps.getSessionFlag,
+    setSessionFlag: deps.setSessionFlag,
+    executeCommand: deps.executeCommand,
   };
 }
 

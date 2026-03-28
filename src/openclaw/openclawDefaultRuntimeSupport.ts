@@ -36,6 +36,55 @@ const OPENCLAW_COMMANDS: Record<string, IChatSlashCommand> = {
     isBuiltIn: true,
     specialHandler: 'compact',
   },
+  // D2: New chat commands
+  status: {
+    name: 'status',
+    description: 'Show AI runtime status (model, connection, budget)',
+    promptTemplate: '{input}',
+    isBuiltIn: true,
+  },
+  new: {
+    name: 'new',
+    description: 'Start a new conversation',
+    promptTemplate: '{input}',
+    isBuiltIn: true,
+  },
+  models: {
+    name: 'models',
+    description: 'List available Ollama models',
+    promptTemplate: '{input}',
+    isBuiltIn: true,
+  },
+  doctor: {
+    name: 'doctor',
+    description: 'Run diagnostic checks on AI runtime',
+    promptTemplate: '{input}',
+    isBuiltIn: true,
+  },
+  think: {
+    name: 'think',
+    description: 'Toggle extended thinking mode for this session',
+    promptTemplate: '{input}',
+    isBuiltIn: true,
+  },
+  usage: {
+    name: 'usage',
+    description: 'Show token usage statistics for this session',
+    promptTemplate: '{input}',
+    isBuiltIn: true,
+  },
+  tools: {
+    name: 'tools',
+    description: 'List available tools and their status',
+    promptTemplate: '{input}',
+    isBuiltIn: true,
+  },
+  verbose: {
+    name: 'verbose',
+    description: 'Toggle verbose debug output for this session',
+    promptTemplate: '{input}',
+    isBuiltIn: true,
+  },
 };
 
 export function createOpenclawCommandRegistry(): IOpenclawCommandRegistryFacade {
