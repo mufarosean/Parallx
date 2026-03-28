@@ -79,35 +79,28 @@ export class AgentSection extends SettingsSection {
     this._agentListContainer = container;
 
     const header = $('div.ai-settings-agent-list__header');
-    header.textContent = 'Agent Configuration';
+    const headerText = $('span', 'Agent Configuration');
+    header.appendChild(headerText);
+    const headerDesc = $('span.ai-settings-agent-list__header-desc');
+    headerDesc.textContent = 'Per-agent model, behavior, and tool access';
+    header.appendChild(headerDesc);
     container.appendChild(header);
 
-    const desc = $('div.ai-settings-agent-list__description');
-    desc.textContent = 'Configure per-agent model, behavior, and tool access. Built-in agents can be customized; additional agents can be added.';
-    container.appendChild(desc);
+    // Agent cards container
+    const list = $('div.ai-settings-agent-list__cards');
+    this._renderAgentCards(list);
+    container.appendChild(list);
 
-    const table = $('div.ai-settings-agent-list__table');
-    table.setAttribute('role', 'table');
+    // Add Agent button
+    const addBtn = $('button.ai-settings-agent-list__add-btn', '+ Add Agent');
+    addBtn.addEventListener('click', () => this._addAgent());
+    container.appendChild(addBtn);
 
-    // Header row
-    const headRow = $('div.ai-settings-agent-list__row.ai-settings-agent-list__row--header');
-    headRow.setAttribute('role', 'row');
-    for (const col of ['Name', 'Surface', 'Model', '']) {
-      const cell = $('div.ai-settings-agent-list__cell');
-      cell.setAttribute('role', 'columnheader');
-      cell.textContent = col;
-      headRow.appendChild(cell);
-    }
-    table.appendChild(headRow);
-
-    // Render agents
-    this._renderAgentRows(table);
-    container.appendChild(table);
     this.contentElement.appendChild(container);
   }
 
-  /** Render agent rows. Merges built-in defaults with persisted definitions. */
-  private _renderAgentRows(table: HTMLElement): void {
+  /** Render agent cards. Merges built-in defaults with persisted definitions. */
+  private _renderAgentCards(list: HTMLElement): void {
     const mergedMap = new Map<string, IAgentConfigData>();
     for (const builtin of DEFAULT_AGENT_CONFIGS) mergedMap.set(builtin.id, builtin);
     const persisted = this._unifiedService?.getEffectiveConfig().agent.agentDefinitions;
@@ -117,116 +110,149 @@ export class AgentSection extends SettingsSection {
 
     for (const agent of mergedMap.values()) {
       const isBuiltIn = DEFAULT_AGENT_CONFIGS.some(b => b.id === agent.id);
-      const row = $('div.ai-settings-agent-list__row');
-      row.setAttribute('role', 'row');
-      row.dataset.agentId = agent.id;
-
-      // Name
-      const nameCell = $('div.ai-settings-agent-list__cell');
-      nameCell.textContent = agent.name;
-      row.appendChild(nameCell);
-
-      // Surface
-      const surfaceCell = $('div.ai-settings-agent-list__cell');
-      surfaceCell.textContent = agent.surface ?? '—';
-      row.appendChild(surfaceCell);
-
-      // Model
-      const modelCell = $('div.ai-settings-agent-list__cell');
-      modelCell.textContent = agent.model ?? '(global)';
-      row.appendChild(modelCell);
-
-      // Edit button
-      const actionCell = $('div.ai-settings-agent-list__cell');
-      const editBtn = $('button.ai-settings-agent-list__edit');
-      editBtn.textContent = '✏️';
-      editBtn.title = `Edit ${agent.name}`;
-      editBtn.addEventListener('click', () => this._toggleAgentEdit(row, agent, isBuiltIn));
-      actionCell.appendChild(editBtn);
-
-      if (!isBuiltIn) {
-        const removeBtn = $('button.ai-settings-agent-list__remove');
-        removeBtn.textContent = '✕';
-        removeBtn.title = `Remove ${agent.name}`;
-        removeBtn.addEventListener('click', () => this._removeAgent(agent.id));
-        actionCell.appendChild(removeBtn);
-      }
-      row.appendChild(actionCell);
-      table.appendChild(row);
+      const card = this._renderAgentCard(agent, isBuiltIn);
+      list.appendChild(card);
     }
-
-    // Add Agent button
-    const addRow = $('div.ai-settings-agent-list__add');
-    const addBtn = $('button.ai-settings-agent-list__add-btn');
-    addBtn.textContent = '+ Add Agent';
-    addBtn.addEventListener('click', () => this._addAgent());
-    addRow.appendChild(addBtn);
-    table.appendChild(addRow);
   }
 
-  /** Toggle inline edit panel for an agent row. */
-  private _toggleAgentEdit(row: HTMLElement, agent: IAgentConfigData, _isBuiltIn: boolean): void {
-    const existing = row.nextElementSibling;
-    if (existing?.classList.contains('ai-settings-agent-list__edit-panel')) {
+  /** Render a single agent card (collapsed row with expand-to-edit). */
+  private _renderAgentCard(agent: IAgentConfigData, isBuiltIn: boolean): HTMLElement {
+    const card = $('div.ai-settings-agent-card');
+    card.dataset.agentId = agent.id;
+
+    // ── Summary row (always visible, clickable to expand) ──
+    const summary = $('div.ai-settings-agent-card__summary');
+
+    const nameEl = $('span.ai-settings-agent-card__name', agent.name);
+    summary.appendChild(nameEl);
+
+    const badges = $('span.ai-settings-agent-card__badges');
+    if (agent.surface) {
+      const surfaceBadge = $('span.ai-settings-agent-card__badge', agent.surface);
+      badges.appendChild(surfaceBadge);
+    }
+    if (isBuiltIn) {
+      const builtinBadge = $('span.ai-settings-agent-card__badge.ai-settings-agent-card__badge--builtin', 'built-in');
+      badges.appendChild(builtinBadge);
+    }
+    summary.appendChild(badges);
+
+    const meta = $('span.ai-settings-agent-card__meta');
+    meta.textContent = agent.model ? agent.model : 'global model';
+    summary.appendChild(meta);
+
+    // Actions (appear on hover)
+    const actions = $('span.ai-settings-agent-card__actions');
+    const editBtn = $('button.ai-settings-agent-card__action-btn');
+    editBtn.textContent = '⚙';
+    editBtn.title = `Configure ${agent.name}`;
+    actions.appendChild(editBtn);
+
+    if (!isBuiltIn) {
+      const removeBtn = $('button.ai-settings-agent-card__action-btn.ai-settings-agent-card__action-btn--danger');
+      removeBtn.textContent = '✕';
+      removeBtn.title = `Remove ${agent.name}`;
+      removeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._removeAgent(agent.id);
+      });
+      actions.appendChild(removeBtn);
+    }
+    summary.appendChild(actions);
+
+    summary.addEventListener('click', () => this._toggleAgentPanel(card, agent));
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._toggleAgentPanel(card, agent);
+    });
+    card.appendChild(summary);
+
+    return card;
+  }
+
+  /** Toggle the inline edit panel for an agent card. */
+  private _toggleAgentPanel(card: HTMLElement, agent: IAgentConfigData): void {
+    const existing = card.querySelector('.ai-settings-agent-card__panel');
+    if (existing) {
       existing.remove();
+      card.classList.remove('ai-settings-agent-card--expanded');
       return;
     }
 
-    const panel = $('div.ai-settings-agent-list__edit-panel');
+    // Collapse any other open panels
+    const openPanels = this._agentListContainer.querySelectorAll('.ai-settings-agent-card__panel');
+    openPanels.forEach(p => {
+      p.parentElement?.classList.remove('ai-settings-agent-card--expanded');
+      p.remove();
+    });
+
+    card.classList.add('ai-settings-agent-card--expanded');
+    const panel = $('div.ai-settings-agent-card__panel');
 
     // Model override
-    const modelRow = $('div.ai-settings-agent-list__edit-field');
-    const modelLabel = $('label', 'Model override');
-    const modelInput = $('input') as HTMLInputElement;
-    modelInput.type = 'text';
-    modelInput.placeholder = '(use global default)';
-    modelInput.value = agent.model ?? '';
-    modelRow.appendChild(modelLabel);
-    modelRow.appendChild(modelInput);
-    panel.appendChild(modelRow);
+    const modelField = this._createField('Model override', 'text', agent.model ?? '', '(use global default)');
+    panel.appendChild(modelField.container);
 
     // Temperature
-    const tempRow = $('div.ai-settings-agent-list__edit-field');
-    const tempLabel = $('label', 'Temperature');
-    const tempInput = $('input') as HTMLInputElement;
-    tempInput.type = 'number';
-    tempInput.min = '0';
-    tempInput.max = '2';
-    tempInput.step = '0.1';
-    tempInput.value = agent.temperature != null ? String(agent.temperature) : '';
-    tempInput.placeholder = '(global)';
-    tempRow.appendChild(tempLabel);
-    tempRow.appendChild(tempInput);
-    panel.appendChild(tempRow);
+    const tempField = this._createField('Temperature', 'number', agent.temperature != null ? String(agent.temperature) : '', '(global)');
+    (tempField.input as HTMLInputElement).min = '0';
+    (tempField.input as HTMLInputElement).max = '2';
+    (tempField.input as HTMLInputElement).step = '0.1';
+    panel.appendChild(tempField.container);
 
     // System prompt overlay
-    const overlayRow = $('div.ai-settings-agent-list__edit-field');
-    const overlayLabel = $('label', 'System prompt overlay');
-    const overlayInput = $('textarea') as HTMLTextAreaElement;
-    overlayInput.rows = 3;
-    overlayInput.placeholder = 'Additional instructions for this agent...';
-    overlayInput.value = agent.systemPromptOverlay ?? '';
-    overlayRow.appendChild(overlayLabel);
-    overlayRow.appendChild(overlayInput);
-    panel.appendChild(overlayRow);
+    const overlayField = this._createTextareaField('System prompt overlay', agent.systemPromptOverlay ?? '', 'Additional instructions for this agent...');
+    panel.appendChild(overlayField.container);
 
-    // Save button
-    const saveBtn = $('button.ai-settings-agent-list__save-btn');
-    saveBtn.textContent = 'Save';
+    // Button row
+    const btnRow = $('div.ai-settings-agent-card__btn-row');
+    const saveBtn = $('button.ai-settings-agent-card__save-btn', 'Save');
     saveBtn.addEventListener('click', () => {
       const updated: IAgentConfigData = {
         ...agent,
-        model: modelInput.value.trim() || undefined,
-        temperature: tempInput.value ? parseFloat(tempInput.value) : undefined,
-        systemPromptOverlay: overlayInput.value.trim() || undefined,
+        model: (modelField.input as HTMLInputElement).value.trim() || undefined,
+        temperature: (tempField.input as HTMLInputElement).value ? parseFloat((tempField.input as HTMLInputElement).value) : undefined,
+        systemPromptOverlay: (overlayField.input as HTMLTextAreaElement).value.trim() || undefined,
       };
       this._persistAgentDefinition(updated);
-      panel.remove();
       this._refreshAgentList();
     });
-    panel.appendChild(saveBtn);
+    const cancelBtn = $('button.ai-settings-agent-card__cancel-btn', 'Cancel');
+    cancelBtn.addEventListener('click', () => {
+      card.classList.remove('ai-settings-agent-card--expanded');
+      panel.remove();
+    });
+    btnRow.appendChild(saveBtn);
+    btnRow.appendChild(cancelBtn);
+    panel.appendChild(btnRow);
 
-    row.after(panel);
+    card.appendChild(panel);
+  }
+
+  /** Create a labeled input field. */
+  private _createField(label: string, type: string, value: string, placeholder: string): { container: HTMLElement; input: HTMLInputElement } {
+    const container = $('div.ai-settings-agent-card__field');
+    const labelEl = $('label.ai-settings-agent-card__field-label', label);
+    const input = $('input.ai-settings-agent-card__field-input') as HTMLInputElement;
+    input.type = type;
+    input.value = value;
+    input.placeholder = placeholder;
+    container.appendChild(labelEl);
+    container.appendChild(input);
+    return { container, input };
+  }
+
+  /** Create a labeled textarea field. */
+  private _createTextareaField(label: string, value: string, placeholder: string): { container: HTMLElement; input: HTMLTextAreaElement } {
+    const container = $('div.ai-settings-agent-card__field');
+    const labelEl = $('label.ai-settings-agent-card__field-label', label);
+    const input = $('textarea.ai-settings-agent-card__field-input') as HTMLTextAreaElement;
+    input.rows = 3;
+    input.value = value;
+    input.placeholder = placeholder;
+    container.appendChild(labelEl);
+    container.appendChild(input);
+    return { container, input };
   }
 
   /** Add a new custom agent. */
