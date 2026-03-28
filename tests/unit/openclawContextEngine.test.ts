@@ -802,3 +802,209 @@ describe('OpenclawContextEngine', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// D6: Compaction depth tests
+// ---------------------------------------------------------------------------
+
+describe('D6: extractIdentifiers', () => {
+  it('extracts file paths, URIs, and dates', async () => {
+    const { extractIdentifiers } = await import('../../src/openclaw/openclawContextEngine');
+    const text = 'The file /src/main.ts was modified on 2024-01-15. See https://example.com/docs for details.';
+    const ids = extractIdentifiers(text);
+    expect(ids).toContain('/src/main.ts');
+    expect(ids).toContain('2024-01-15');
+    expect(ids).toContain('https://example.com/docs');
+  });
+
+  it('extracts dollar amounts and policy numbers', async () => {
+    const { extractIdentifiers } = await import('../../src/openclaw/openclawContextEngine');
+    const text = 'Policy #12345 has a deductible of $500.';
+    const ids = extractIdentifiers(text);
+    expect(ids.some(id => id.includes('12345'))).toBe(true);
+    expect(ids).toContain('$500');
+  });
+
+  it('returns empty for plain text with no identifiers', async () => {
+    const { extractIdentifiers } = await import('../../src/openclaw/openclawContextEngine');
+    const ids = extractIdentifiers('Hello world, how are you?');
+    expect(ids).toHaveLength(0);
+  });
+});
+
+describe('D6: auditCompactionQuality', () => {
+  it('passes when all identifiers are present in summary', async () => {
+    const { auditCompactionQuality } = await import('../../src/openclaw/openclawContextEngine');
+    const identifiers = ['/src/main.ts', '2024-01-15', '$500'];
+    const summary = 'The file /src/main.ts was updated on 2024-01-15. Deductible is $500.';
+    const result = auditCompactionQuality(identifiers, summary);
+    expect(result.passed).toBe(true);
+    expect(result.score).toBe(1.0);
+    expect(result.missingIdentifiers).toHaveLength(0);
+  });
+
+  it('fails when >40% of identifiers are missing', async () => {
+    const { auditCompactionQuality } = await import('../../src/openclaw/openclawContextEngine');
+    const identifiers = ['/src/main.ts', '2024-01-15', '$500', 'https://example.com', '#12345'];
+    const summary = 'A file was discussed.'; // All missing
+    const result = auditCompactionQuality(identifiers, summary);
+    expect(result.passed).toBe(false);
+    expect(result.score).toBe(0);
+    expect(result.missingIdentifiers).toHaveLength(5);
+  });
+
+  it('passes vacuously when no identifiers exist', async () => {
+    const { auditCompactionQuality } = await import('../../src/openclaw/openclawContextEngine');
+    const result = auditCompactionQuality([], 'Any summary');
+    expect(result.passed).toBe(true);
+    expect(result.score).toBe(1.0);
+  });
+});
+
+describe('D6: extractConceptsFromTranscript', () => {
+  it('extracts file references and URIs as concepts', async () => {
+    const { extractConceptsFromTranscript } = await import('../../src/openclaw/openclawContextEngine');
+    const transcript = 'The file /src/config.ts and https://api.example.com/v2 were discussed.';
+    const concepts = extractConceptsFromTranscript(transcript);
+    expect(concepts.some(c => c.concept === '/src/config.ts' && c.category === 'reference')).toBe(true);
+    expect(concepts.some(c => c.concept.includes('https://api.example.com') && c.category === 'reference')).toBe(true);
+  });
+
+  it('extracts capitalized multi-word names as entities', async () => {
+    const { extractConceptsFromTranscript } = await import('../../src/openclaw/openclawContextEngine');
+    const transcript = 'John Smith discussed the Auto Insurance details.';
+    const concepts = extractConceptsFromTranscript(transcript);
+    expect(concepts.some(c => c.concept === 'John Smith' && c.category === 'entity')).toBe(true);
+    expect(concepts.some(c => c.concept === 'Auto Insurance' && c.category === 'entity')).toBe(true);
+  });
+
+  it('returns empty for trivial text', async () => {
+    const { extractConceptsFromTranscript } = await import('../../src/openclaw/openclawContextEngine');
+    const concepts = extractConceptsFromTranscript('hello world');
+    expect(concepts).toHaveLength(0);
+  });
+});
+
+describe('D6: compact quality retry', () => {
+  it('retries with stronger prompt when quality audit fails', async () => {
+    const { OpenclawContextEngine } = await import('../../src/openclaw/openclawContextEngine');
+
+    let callCount = 0;
+    async function* mockSummarize(): AsyncIterable<any> {
+      callCount++;
+      if (callCount === 1) {
+        // First attempt: summary missing identifiers
+        yield { content: 'A conversation about policy details.' };
+      } else {
+        // Retry: includes the identifiers
+        yield { content: 'Policy #99001 for /docs/policy.md dated 2024-03-15 was discussed.' };
+      }
+    }
+
+    const sumServices = createMockServices({
+      sendSummarizationRequest: vi.fn(() => mockSummarize()),
+    });
+    const sumEngine = new OpenclawContextEngine(sumServices);
+
+    const history: IChatMessage[] = [
+      { role: 'user', content: 'My policy #99001 at /docs/policy.md dated 2024-03-15 has issues.' },
+      { role: 'assistant', content: 'Let me look into that.' },
+      { role: 'user', content: 'What is the coverage detail?' },
+      { role: 'assistant', content: 'The coverage includes collision and comprehensive.' },
+    ];
+
+    await sumEngine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+    await sumEngine.assemble({ sessionId: 's1', history, tokenBudget: 8192, prompt: 'test' });
+
+    const result = await sumEngine.compact({ sessionId: 's1', tokenBudget: 8192 });
+    expect(result.compacted).toBe(true);
+    // Should have retried at least once
+    expect(callCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it('accepts best summary after all retries exhausted', async () => {
+    const { OpenclawContextEngine } = await import('../../src/openclaw/openclawContextEngine');
+
+    async function* poorSummarize(): AsyncIterable<any> {
+      yield { content: 'A generic summary with no specifics.' };
+    }
+
+    const sumServices = createMockServices({
+      sendSummarizationRequest: vi.fn(() => poorSummarize()),
+    });
+    const sumEngine = new OpenclawContextEngine(sumServices);
+
+    const history: IChatMessage[] = [
+      { role: 'user', content: 'Policy #77001 for /data/claims.md dated 2024-06-01 was reviewed.' },
+      { role: 'assistant', content: 'I see that policy.' },
+      { role: 'user', content: 'What about claim #88002?' },
+      { role: 'assistant', content: 'Claim is pending review.' },
+    ];
+
+    await sumEngine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+    await sumEngine.assemble({ sessionId: 's1', history, tokenBudget: 8192, prompt: 'test' });
+
+    const result = await sumEngine.compact({ sessionId: 's1', tokenBudget: 8192 });
+    expect(result.compacted).toBe(true);
+    // Should have exhausted retries (3 total calls = 1 initial + MAX_QUALITY_RETRIES)
+    expect(sumServices.sendSummarizationRequest).toHaveBeenCalledTimes(3);
+  });
+
+  it('calls storeConceptsFromSession during compact', async () => {
+    const { OpenclawContextEngine } = await import('../../src/openclaw/openclawContextEngine');
+
+    async function* mockSummarize(): AsyncIterable<any> {
+      yield { content: 'Summary covering all points.' };
+    }
+
+    const conceptServices = createMockServices({
+      sendSummarizationRequest: vi.fn(() => mockSummarize()),
+      storeConceptsFromSession: vi.fn(async () => {}),
+    });
+    const conceptEngine = new OpenclawContextEngine(conceptServices);
+
+    const history: IChatMessage[] = [
+      { role: 'user', content: 'The /src/app.ts file and https://api.test.com were discussed by John Smith.' },
+      { role: 'assistant', content: 'I understand the context.' },
+      { role: 'user', content: 'What about the Auto Insurance coverage?' },
+      { role: 'assistant', content: 'Auto Insurance covers collision.' },
+    ];
+
+    await conceptEngine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+    await conceptEngine.assemble({ sessionId: 's1', history, tokenBudget: 8192, prompt: 'test' });
+
+    await conceptEngine.compact({ sessionId: 's1', tokenBudget: 8192 });
+    expect(conceptServices.storeConceptsFromSession).toHaveBeenCalled();
+    const concepts = conceptServices.storeConceptsFromSession.mock.calls[0][0];
+    expect(concepts.length).toBeGreaterThan(0);
+    expect(concepts.some((c: any) => c.category === 'reference')).toBe(true);
+  });
+
+  it('survives concept extraction failure during compact', async () => {
+    const { OpenclawContextEngine } = await import('../../src/openclaw/openclawContextEngine');
+
+    async function* mockSummarize(): AsyncIterable<any> {
+      yield { content: 'Summary of the conversation.' };
+    }
+
+    const failConceptServices = createMockServices({
+      sendSummarizationRequest: vi.fn(() => mockSummarize()),
+      storeConceptsFromSession: vi.fn(async () => { throw new Error('Storage failed'); }),
+    });
+    const failEngine = new OpenclawContextEngine(failConceptServices);
+
+    const history: IChatMessage[] = [
+      { role: 'user', content: 'File /a/b.ts was discussed.' },
+      { role: 'assistant', content: 'Got it.' },
+      { role: 'user', content: 'What next?' },
+      { role: 'assistant', content: 'Proceeding.' },
+    ];
+
+    await failEngine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+    await failEngine.assemble({ sessionId: 's1', history, tokenBudget: 8192, prompt: 'test' });
+
+    // Should not throw
+    const result = await failEngine.compact({ sessionId: 's1', tokenBudget: 8192 });
+    expect(result.compacted).toBe(true);
+  });
+});

@@ -1863,6 +1863,14 @@ export interface ITurnMetrics {
     readonly history: number;
     readonly user: number;
   };
+  /** D6-8: Number of overflow-triggered compactions during the turn. */
+  readonly overflowCompactions?: number;
+  /** D6-8: Number of timeout-triggered compactions during the turn. */
+  readonly timeoutCompactions?: number;
+  /** D6-2: Best quality score from compaction quality audit (0-1). */
+  readonly compactionQualityScore?: number;
+  /** D6-3: Number of quality-based retries performed during compaction. */
+  readonly compactionQualityRetries?: number;
 }
 
 export interface ISessionMetrics {

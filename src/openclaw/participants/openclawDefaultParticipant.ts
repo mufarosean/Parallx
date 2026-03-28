@@ -193,6 +193,10 @@ async function runOpenclawDefaultTurn(
         totalTokens: (result.promptTokens ?? 0) + (result.completionTokens ?? 0),
         durationMs: result.durationMs,
         timestamp: Date.now(),
+        overflowCompactions: result.overflowCompactions || undefined,
+        timeoutCompactions: result.timeoutCompactions || undefined,
+        compactionQualityScore: result.compactionQualityScore,
+        compactionQualityRetries: result.compactionQualityRetries,
       });
     }
 

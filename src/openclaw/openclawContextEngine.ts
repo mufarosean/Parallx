@@ -101,6 +101,10 @@ export interface IOpenclawCompactResult {
   readonly compacted: boolean;
   readonly tokensBefore: number;
   readonly tokensAfter: number;
+  /** D6-2: Identifier coverage score (0-1). Present when quality audit ran. */
+  readonly qualityScore?: number;
+  /** D6-3: Number of quality-based retries attempted. */
+  readonly qualityRetries?: number;
 }
 
 export interface IOpenclawAfterTurnParams {
@@ -386,31 +390,78 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
       .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
       .join('\n\n');
 
+    // D6-4: Extract and store concepts before summarization (preserves entities from compacted history)
+    if (this.services.storeConceptsFromSession && transcript.length > 0 && history.length > 2) {
+      try {
+        const concepts = extractConceptsFromTranscript(transcript);
+        if (concepts.length > 0) {
+          await this.services.storeConceptsFromSession(concepts, params.sessionId);
+        }
+      } catch {
+        // Concept extraction failure is non-fatal
+      }
+    }
+
     let summaryText = '';
+    let qualityScore: number | undefined;
+    let qualityRetries = 0;
 
     // Only attempt summarization when history is long enough to benefit (>2 messages).
     // With ≤2 messages, summarizer prepends summary + ack to the existing messages,
     // which INCREASES context size rather than reducing it (F2-R2-04).
     if (this.services.sendSummarizationRequest && transcript.length > 0 && history.length > 2) {
-      // Generate a real summary via the model
-      const summaryPrompt: IChatMessage[] = [
-        {
-          role: 'system',
-          content: 'You are a conversation summarizer. Condense the following conversation history into a concise context summary. Preserve all key facts, decisions, code references, and action items. Output ONLY the summary.',
-        },
-        { role: 'user', content: transcript },
-      ];
+      const identifiers = extractIdentifiers(transcript);
+      let bestSummary = '';
+      let bestScore = 0;
 
-      try {
-        for await (const chunk of this.services.sendSummarizationRequest(summaryPrompt)) {
-          if (chunk.content) {
-            summaryText += chunk.content;
+      // D6-1: Identifier-aware summarization prompt
+      const basePromptContent = COMPACTION_SUMMARIZATION_PROMPT;
+
+      // D6-3: Quality-gated retry loop (upstream: MAX_OVERFLOW_COMPACTION_ATTEMPTS)
+      for (let attempt = 0; attempt <= MAX_QUALITY_RETRIES; attempt++) {
+        let promptContent = basePromptContent;
+        if (attempt > 0 && identifiers.length > 0) {
+          // Stronger retry prompt that explicitly lists missing identifiers
+          const audit = auditCompactionQuality(identifiers, bestSummary);
+          if (audit.missingIdentifiers.length > 0) {
+            promptContent = `${basePromptContent}\n\nCRITICAL: Your previous summary DROPPED these identifiers — you MUST include them verbatim:\n${audit.missingIdentifiers.join(', ')}`;
           }
         }
-        summaryText = summaryText.trim();
-      } catch {
-        // Summarization failed — fall back to placeholder
+
+        const summaryPrompt: IChatMessage[] = [
+          { role: 'system', content: promptContent },
+          { role: 'user', content: transcript },
+        ];
+
+        let candidateSummary = '';
+        try {
+          for await (const chunk of this.services.sendSummarizationRequest(summaryPrompt)) {
+            if (chunk.content) {
+              candidateSummary += chunk.content;
+            }
+          }
+          candidateSummary = candidateSummary.trim();
+        } catch {
+          break; // Summarization failed — use what we have
+        }
+
+        if (!candidateSummary) { break; }
+
+        // D6-2: Quality audit — check identifier coverage
+        const audit = auditCompactionQuality(identifiers, candidateSummary);
+        if (audit.score > bestScore) {
+          bestSummary = candidateSummary;
+          bestScore = audit.score;
+        }
+
+        if (audit.passed || identifiers.length === 0) {
+          break; // Quality sufficient
+        }
+        qualityRetries++;
       }
+
+      summaryText = bestSummary;
+      qualityScore = identifiers.length > 0 ? bestScore : undefined;
     }
 
     if (!summaryText) {
@@ -447,14 +498,29 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
       }
     }
 
-    return { compacted: true, tokensBefore: historyTokens, tokensAfter: afterTokens };
+    return {
+      compacted: true,
+      tokensBefore: historyTokens,
+      tokensAfter: afterTokens,
+      qualityScore,
+      qualityRetries: qualityRetries > 0 ? qualityRetries : undefined,
+    };
   }
 
-  async afterTurn(_params: IOpenclawAfterTurnParams): Promise<void> {
-    // Upstream: finalize step commits context mutations
-    // Parallx: platform handles message persistence automatically
-    // Memory write-back is handled separately by the participant lifecycle
-    // This hook exists for future extensions (e.g., concept extraction from turn)
+  async afterTurn(params: IOpenclawAfterTurnParams): Promise<void> {
+    // D6-4/R5: Extract concepts from the turn's messages and store them.
+    // This catches concepts from short sessions that never trigger compact().
+    if (this.services.storeConceptsFromSession && params.messages.length > 0) {
+      try {
+        const transcript = params.messages.map(m => m.content).join('\n');
+        const concepts = extractConceptsFromTranscript(transcript);
+        if (concepts.length > 0) {
+          await this.services.storeConceptsFromSession(concepts, params.sessionId);
+        }
+      } catch {
+        // Concept extraction failure is non-fatal
+      }
+    }
   }
 
   /**
@@ -590,6 +656,134 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     this._lastHistory = [...this._lastHistory, resultMessage];
     this._compactGeneration++;
   }
+}
+
+// ---------------------------------------------------------------------------
+// D6: Compaction constants and helpers
+// ---------------------------------------------------------------------------
+
+/** Maximum quality-based retries for compaction (upstream: MAX_OVERFLOW_COMPACTION_ATTEMPTS). */
+export const MAX_QUALITY_RETRIES = 2;
+
+/** Quality threshold — 60% identifier survival required to pass. */
+export const QUALITY_THRESHOLD = 0.6;
+
+/**
+ * D6-1: Identifier-aware summarization prompt.
+ * Enumerates explicit identifier classes to preserve during compaction.
+ */
+export const COMPACTION_SUMMARIZATION_PROMPT = [
+  'You are a conversation summarizer. Condense the following conversation history into a concise context summary.',
+  'You MUST preserve:',
+  '- Document titles and page names',
+  '- File paths, URIs, and code references',
+  '- Dates, timestamps, and version numbers',
+  '- Proper names (people, systems, organizations, entities)',
+  '- Numeric values (amounts, IDs, policy numbers, thresholds)',
+  '- Decisions made and action items agreed upon',
+  '- Key technical terms and domain-specific identifiers',
+  'Output ONLY the summary.',
+].join('\n');
+
+/**
+ * D6-2: Extract identifiers from a transcript for quality auditing.
+ * Returns a deduplicated list of identifiable strings.
+ */
+export function extractIdentifiers(text: string): string[] {
+  const identifiers = new Set<string>();
+
+  // File paths (forward and backslash)
+  for (const m of text.matchAll(/(?:\/[\w.-]+)+\.\w+/g)) { identifiers.add(m[0]); }
+  for (const m of text.matchAll(/(?:\\[\w.-]+)+\.\w+/g)) { identifiers.add(m[0]); }
+
+  // URIs
+  for (const m of text.matchAll(/https?:\/\/\S+/g)) { identifiers.add(m[0]); }
+
+  // Dates (ISO and common formats)
+  for (const m of text.matchAll(/\d{4}-\d{2}-\d{2}/g)) { identifiers.add(m[0]); }
+  for (const m of text.matchAll(/\d{1,2}\/\d{1,2}\/\d{4}/g)) { identifiers.add(m[0]); }
+
+  // Policy/ID numbers (# or $ prefixed)
+  for (const m of text.matchAll(/(?:#|policy\s*)\d{4,}/gi)) { identifiers.add(m[0]); }
+  for (const m of text.matchAll(/\$[\d,]+(?:\.\d{2})?/g)) { identifiers.add(m[0]); }
+
+  // Email addresses
+  for (const m of text.matchAll(/\S+@\S+\.\S+/g)) { identifiers.add(m[0]); }
+
+  // Version numbers (e.g., v1.2.3, 2.0.0)
+  for (const m of text.matchAll(/\bv?\d+\.\d+\.\d+\b/g)) { identifiers.add(m[0]); }
+
+  // CamelCase/PascalCase identifiers (e.g., MyClass, handleClick)
+  for (const m of text.matchAll(/\b[A-Z][a-z]+(?:[A-Z][a-z]+)+\b/g)) { identifiers.add(m[0]); }
+
+  // ALL_CAPS constants (e.g., MAX_RETRIES, API_KEY) — minimum 3 chars
+  for (const m of text.matchAll(/\b[A-Z][A-Z_]{2,}\b/g)) { identifiers.add(m[0]); }
+
+  return [...identifiers];
+}
+
+/**
+ * D6-2: Audit compaction quality — check identifier survival in the summary.
+ */
+export function auditCompactionQuality(
+  identifiers: string[],
+  summary: string,
+): { passed: boolean; score: number; missingIdentifiers: string[] } {
+  if (identifiers.length === 0) {
+    return { passed: true, score: 1.0, missingIdentifiers: [] };
+  }
+
+  const lowerSummary = summary.toLowerCase();
+  const missing: string[] = [];
+  for (const id of identifiers) {
+    if (!lowerSummary.includes(id.toLowerCase())) {
+      missing.push(id);
+    }
+  }
+
+  const found = identifiers.length - missing.length;
+  const score = found / identifiers.length;
+  return { passed: score >= QUALITY_THRESHOLD, score, missingIdentifiers: missing };
+}
+
+/**
+ * D6-4: Extract concepts from a transcript for long-term concept storage.
+ * Lightweight heuristic — no model call required.
+ */
+export function extractConceptsFromTranscript(
+  transcript: string,
+): Array<{ concept: string; category: string; summary: string; struggled: boolean }> {
+  const concepts: Array<{ concept: string; category: string; summary: string; struggled: boolean }> = [];
+  const seen = new Set<string>();
+
+  // Extract file references as 'reference' concepts
+  for (const m of transcript.matchAll(/(?:\/[\w.-]+)+\.\w+/g)) {
+    const ref = m[0];
+    if (!seen.has(ref)) {
+      seen.add(ref);
+      concepts.push({ concept: ref, category: 'reference', summary: `File reference: ${ref}`, struggled: false });
+    }
+  }
+
+  // Extract URIs as 'reference' concepts
+  for (const m of transcript.matchAll(/https?:\/\/\S+/g)) {
+    const uri = m[0];
+    if (!seen.has(uri)) {
+      seen.add(uri);
+      concepts.push({ concept: uri, category: 'reference', summary: `URI: ${uri}`, struggled: false });
+    }
+  }
+
+  // Extract capitalized multi-word terms (potential proper nouns/entities)
+  for (const m of transcript.matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/g)) {
+    const term = m[1];
+    if (!seen.has(term) && term.length > 4) {
+      seen.add(term);
+      concepts.push({ concept: term, category: 'entity', summary: `Entity: ${term}`, struggled: false });
+    }
+  }
+
+  return concepts;
 }
 
 // ---------------------------------------------------------------------------

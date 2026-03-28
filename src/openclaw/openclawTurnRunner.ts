@@ -63,6 +63,10 @@ export interface IOpenclawTurnResult {
   readonly overflowCompactions: number;
   readonly timeoutCompactions: number;
   readonly transientRetries: number;
+  /** D6-2: Best compaction quality score across all compactions in this turn (0-1). */
+  readonly compactionQualityScore?: number;
+  /** D6-3: Total quality-based retries across all compactions in this turn. */
+  readonly compactionQualityRetries?: number;
   /** Whether this turn was a steering turn (interrupted a previous turn). */
   readonly isSteeringTurn: boolean;
   /** Whether this turn was a self-initiated followup continuation. */
@@ -137,6 +141,8 @@ export async function runOpenclawTurn(
   let timeoutAttempts = 0;
   let transientRetries = 0;
   let fallbackIndex = 0;
+  let bestQualityScore: number | undefined;
+  let totalQualityRetries = 0;
   let currentContext = context;
   const turnStartMs = Date.now();
 
@@ -155,10 +161,16 @@ export async function runOpenclawTurn(
     if (assembled.estimatedTokens > currentContext.tokenBudget * 0.8 && proactiveCompactions < MAX_OVERFLOW_COMPACTION) {
       response.progress(`Context near capacity (${assembled.estimatedTokens}/${currentContext.tokenBudget} tokens), auto-compacting...`);
       try {
-        await currentContext.engine.compact({
+        const compactResult = await currentContext.engine.compact({
           sessionId: currentContext.sessionId,
           tokenBudget: currentContext.tokenBudget,
         });
+        if (compactResult.qualityScore !== undefined) {
+          bestQualityScore = Math.max(bestQualityScore ?? 0, compactResult.qualityScore);
+        }
+        if (compactResult.qualityRetries) {
+          totalQualityRetries += compactResult.qualityRetries;
+        }
       } catch (compactErr) {
         console.error('[OpenClaw] Auto-compact failed:', compactErr);
       }
@@ -182,6 +194,8 @@ export async function runOpenclawTurn(
         retrievedContextText: assembled.retrievedContextText,
         overflowCompactions: overflowAttempts,
         timeoutCompactions: timeoutAttempts,
+        compactionQualityScore: bestQualityScore,
+        compactionQualityRetries: totalQualityRetries || undefined,
         transientRetries,
         isSteeringTurn: steered,
         isFollowupTurn: isFollowup,
@@ -192,10 +206,16 @@ export async function runOpenclawTurn(
       if (isContextOverflow(error) && overflowAttempts < MAX_OVERFLOW_COMPACTION) {
         response.progress(`Context overflow detected, compacting (attempt ${overflowAttempts + 1}/${MAX_OVERFLOW_COMPACTION})...`);
         try {
-          await currentContext.engine.compact({
+          const compactResult = await currentContext.engine.compact({
             sessionId: currentContext.sessionId,
             tokenBudget: currentContext.tokenBudget,
           });
+          if (compactResult.qualityScore !== undefined) {
+            bestQualityScore = Math.max(bestQualityScore ?? 0, compactResult.qualityScore);
+          }
+          if (compactResult.qualityRetries) {
+            totalQualityRetries += compactResult.qualityRetries;
+          }
         } catch (compactErr) {
           console.error('[OpenClaw] Overflow compact failed, re-throwing original error:', compactErr);
           throw error;
@@ -208,11 +228,17 @@ export async function runOpenclawTurn(
       if (isTimeoutError(error) && timeoutAttempts < MAX_TIMEOUT_COMPACTION) {
         response.progress(`Timeout detected, compacting (attempt ${timeoutAttempts + 1}/${MAX_TIMEOUT_COMPACTION})...`);
         try {
-          await currentContext.engine.compact({
+          const compactResult = await currentContext.engine.compact({
             sessionId: currentContext.sessionId,
             tokenBudget: currentContext.tokenBudget,
             force: true,
           });
+          if (compactResult.qualityScore !== undefined) {
+            bestQualityScore = Math.max(bestQualityScore ?? 0, compactResult.qualityScore);
+          }
+          if (compactResult.qualityRetries) {
+            totalQualityRetries += compactResult.qualityRetries;
+          }
         } catch (compactErr) {
           console.error('[OpenClaw] Timeout compact failed, re-throwing original error:', compactErr);
           throw error;
@@ -261,6 +287,8 @@ export async function runOpenclawTurn(
     retrievedContextText: '',
     overflowCompactions: overflowAttempts,
     timeoutCompactions: timeoutAttempts,
+    compactionQualityScore: bestQualityScore,
+    compactionQualityRetries: totalQualityRetries || undefined,
     transientRetries,
     isSteeringTurn: steered,
     isFollowupTurn: isFollowup,

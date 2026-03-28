@@ -269,3 +269,22 @@ describe('Observability diagnostic check', () => {
     expect(result.detail).toContain('not wired');
   });
 });
+
+describe('D6: Compaction metrics in observability', () => {
+  it('records turns with compaction fields', () => {
+    const svc = new ObservabilityService();
+    svc.recordTurn(makeTurn({ overflowCompactions: 2, timeoutCompactions: 1 }));
+    const history = svc.getTurnHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0].overflowCompactions).toBe(2);
+    expect(history[0].timeoutCompactions).toBe(1);
+  });
+
+  it('compaction fields are optional and default to undefined', () => {
+    const svc = new ObservabilityService();
+    svc.recordTurn(makeTurn());
+    const history = svc.getTurnHistory();
+    expect(history[0].overflowCompactions).toBeUndefined();
+    expect(history[0].timeoutCompactions).toBeUndefined();
+  });
+});

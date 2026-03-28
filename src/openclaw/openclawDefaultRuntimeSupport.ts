@@ -14,6 +14,13 @@ import type {
   IOpenclawRuntimeLifecycle,
   IParsedSlashCommand,
 } from './openclawTypes.js';
+import {
+  COMPACTION_SUMMARIZATION_PROMPT,
+  MAX_QUALITY_RETRIES,
+  extractConceptsFromTranscript,
+  extractIdentifiers,
+  auditCompactionQuality,
+} from './openclawContextEngine.js';
 import { OPENCLAW_BOOTSTRAP_DEFAULTS } from './participants/openclawParticipantRuntime.js';
 
 const OPENCLAW_COMMANDS: Record<string, IChatSlashCommand> = {
@@ -351,7 +358,7 @@ async function buildFileTree(
 }
 
 export async function tryHandleOpenclawCompactCommand(
-  services: Pick<IDefaultParticipantServices, 'sendSummarizationRequest' | 'compactSession' | 'storeSessionMemory'>,
+  services: Pick<IDefaultParticipantServices, 'sendSummarizationRequest' | 'compactSession' | 'storeSessionMemory' | 'storeConceptsFromSession'>,
   options: {
     readonly activeCommand?: string;
     readonly slashSpecialHandler?: string;
@@ -363,6 +370,7 @@ export async function tryHandleOpenclawCompactCommand(
     sendSummarizationRequest: services.sendSummarizationRequest,
     compactSession: services.compactSession,
     storeSessionMemory: services.storeSessionMemory,
+    storeConceptsFromSession: services.storeConceptsFromSession,
   }, {
     isCompactCommand: options.activeCommand === 'compact' || options.slashSpecialHandler === 'compact',
     sessionId: options.context.sessionId,
@@ -378,6 +386,7 @@ interface IOpenclawCompactCommandDeps {
   ) => AsyncIterable<IChatResponseChunk>;
   readonly compactSession?: (sessionId: string, summaryText: string) => void;
   readonly storeSessionMemory?: (sessionId: string, summary: string, messageCount: number) => Promise<void>;
+  readonly storeConceptsFromSession?: (concepts: Array<{ concept: string; category: string; summary: string; struggled: boolean }>, sessionId: string) => Promise<void>;
 }
 
 async function tryExecuteCompactOpenclawCommand(
@@ -425,18 +434,43 @@ async function tryExecuteCompactOpenclawCommand(
   }).join('\n\n---\n\n');
 
   const beforeTokens = Math.ceil(historyText.length / 4);
-  const summaryPrompt: IChatMessage[] = [
-    {
-      role: 'system',
-      content: 'You are a conversation summarizer. Condense the following conversation history into a concise context summary. Preserve all key facts, decisions, code references, and action items. Output ONLY the summary.',
-    },
-    { role: 'user', content: historyText },
-  ];
 
+  // D6-1: Extract identifiers for quality auditing before summarization
+  const identifiers = extractIdentifiers(historyText);
+
+  // D6-2/D6-3: Quality-gated retry loop using identifier-aware prompt
   let summaryText = '';
-  for await (const chunk of deps.sendSummarizationRequest(summaryPrompt)) {
-    if (chunk.content) {
-      summaryText += chunk.content;
+
+  for (let attempt = 0; attempt <= MAX_QUALITY_RETRIES; attempt++) {
+    const promptContent = attempt === 0
+      ? COMPACTION_SUMMARIZATION_PROMPT
+      : COMPACTION_SUMMARIZATION_PROMPT + '\n\nCRITICAL: The previous summary lost these identifiers — you MUST include them:\n' + identifiers.join(', ');
+
+    const summaryPrompt: IChatMessage[] = [
+      { role: 'system', content: promptContent },
+      { role: 'user', content: historyText },
+    ];
+
+    let candidate = '';
+    for await (const chunk of deps.sendSummarizationRequest(summaryPrompt)) {
+      if (chunk.content) {
+        candidate += chunk.content;
+      }
+    }
+
+    if (!candidate) {
+      break; // No output at all — give up
+    }
+
+    summaryText = candidate;
+
+    if (identifiers.length === 0) {
+      break; // Nothing to audit
+    }
+
+    const audit = auditCompactionQuality(identifiers, candidate);
+    if (audit.passed) {
+      break;
     }
   }
 
@@ -448,6 +482,19 @@ async function tryExecuteCompactOpenclawCommand(
   const afterTokens = Math.ceil(summaryText.length / 4);
   const saved = beforeTokens - afterTokens;
   deps.compactSession?.(input.sessionId, summaryText);
+
+  // D6-4: Extract and store concepts from the transcript before it's discarded
+  if (deps.storeConceptsFromSession) {
+    try {
+      const transcript = input.history.map(pair => pair.request.text).join('\n');
+      const concepts = extractConceptsFromTranscript(transcript);
+      if (concepts.length > 0) {
+        await deps.storeConceptsFromSession(concepts, input.sessionId);
+      }
+    } catch {
+      // Concept extraction failure is non-fatal
+    }
+  }
 
   // Auto-flush summary to long-term memory (upstream pattern: compaction → memory flush)
   if (deps.storeSessionMemory) {
