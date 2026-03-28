@@ -154,6 +154,59 @@ describe('buildOpenclawSystemPrompt', () => {
     expect(prompt).toContain('Always cite page numbers.');
   });
 
+  // D8-5: Agent identity overlay
+  it('includes agent identity section when agentIdentity is provided', () => {
+    const prompt = buildOpenclawSystemPrompt(createBaseParams({
+      agentIdentity: { name: 'HelperBot', theme: 'friendly and concise', emoji: '🤖' },
+    }));
+    expect(prompt).toContain('## Agent Identity');
+    expect(prompt).toContain('Name: HelperBot');
+    expect(prompt).toContain('Theme: friendly and concise');
+    expect(prompt).toContain('Emoji: 🤖');
+  });
+
+  it('excludes agent identity section when agentIdentity is undefined', () => {
+    const prompt = buildOpenclawSystemPrompt(createBaseParams());
+    expect(prompt).not.toContain('## Agent Identity');
+  });
+
+  it('includes partial agent identity when only some fields set', () => {
+    const prompt = buildOpenclawSystemPrompt(createBaseParams({
+      agentIdentity: { name: 'OnlyName' },
+    }));
+    expect(prompt).toContain('## Agent Identity');
+    expect(prompt).toContain('Name: OnlyName');
+    expect(prompt).not.toContain('Theme:');
+    expect(prompt).not.toContain('Emoji:');
+  });
+
+  // D8-5: Agent system prompt overlay
+  it('includes agent instructions section when agentSystemPromptOverlay is provided', () => {
+    const prompt = buildOpenclawSystemPrompt(createBaseParams({
+      agentSystemPromptOverlay: 'You specialize in insurance claims.',
+    }));
+    expect(prompt).toContain('## Agent Instructions');
+    expect(prompt).toContain('You specialize in insurance claims.');
+  });
+
+  it('excludes agent instructions when agentSystemPromptOverlay is undefined', () => {
+    const prompt = buildOpenclawSystemPrompt(createBaseParams());
+    expect(prompt).not.toContain('## Agent Instructions');
+  });
+
+  it('includes both agent identity and agent instructions when both provided', () => {
+    const prompt = buildOpenclawSystemPrompt(createBaseParams({
+      agentIdentity: { name: 'ClaimsBot', emoji: '📋' },
+      agentSystemPromptOverlay: 'Focus on claims processing.',
+    }));
+    expect(prompt).toContain('## Agent Identity');
+    expect(prompt).toContain('## Agent Instructions');
+    // Identity should come before Instructions
+    const identityIdx = prompt.indexOf('## Agent Identity');
+    const instructionsIdx = prompt.indexOf('## Agent Instructions');
+    expect(identityIdx).toBeLessThan(instructionsIdx);
+  });
+
   it('includes runtime section', () => {
     const prompt = buildOpenclawSystemPrompt(createBaseParams());
     expect(prompt).toContain('## Runtime');

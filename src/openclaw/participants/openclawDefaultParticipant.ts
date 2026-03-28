@@ -33,6 +33,7 @@ import { resolveMentions, resolveVariables } from '../openclawTurnPreprocessing.
 import type { IBootstrapFile, IOpenclawRuntimeInfo } from '../openclawSystemPrompt.js';
 import { buildOpenclawRuntimeSkillState } from '../openclawSkillState.js';
 import { buildOpenclawRuntimeToolState } from '../openclawToolState.js';
+import { resolveAgentConfig, type IGlobalConfigSlice } from '../agents/openclawAgentResolver.js';
 
 export function createOpenclawDefaultParticipant(services: IDefaultParticipantServices): IChatParticipant & IDisposable {
   const commandRegistry = createOpenclawCommandRegistry();
@@ -265,11 +266,28 @@ async function buildOpenclawTurnContext(
     ? Math.min(services.maxIterations ?? 25, OPENCLAW_MAX_ITERATIONS_CEILING)
     : OPENCLAW_MAX_READONLY_ITERATIONS;
 
+  const effectiveConfig = services.unifiedConfigService?.getEffectiveConfig();
+
+  // D8: Resolve agent config if registry is available (before tool state, so agent tools can be applied)
+  const agentId = 'default'; // Default participant → 'default' agent
+  const resolvedAgentConfig = services.agentRegistry ? resolveAgentConfig(
+    services.agentRegistry,
+    agentId,
+    {
+      model: runtimeInfo.model,
+      temperature: effectiveConfig?.model?.temperature ?? 0.7,
+      maxTokens: effectiveConfig?.model?.maxTokens ?? 4096,
+      maxIterations: maxToolIterations,
+      autoRag: effectiveConfig?.retrieval?.autoRag ?? true,
+    } satisfies IGlobalConfigSlice,
+  ) : undefined;
+
   const toolState = buildOpenclawRuntimeToolState({
     platformTools,
     skillCatalog,
     mode: resolveToolProfile(request.mode),
     permissions: services.getToolPermissions?.(),
+    agentTools: resolvedAgentConfig?.tools,
   });
 
   // Flatten history pairs into IChatMessage[]
@@ -279,8 +297,6 @@ async function buildOpenclawTurnContext(
   const fallbackModels = services.getAvailableModelIds
     ? (await services.getAvailableModelIds()).filter(id => id !== runtimeInfo.model)
     : undefined;
-
-  const effectiveConfig = services.unifiedConfigService?.getEffectiveConfig();
 
   return {
     sessionId: context.sessionId,
@@ -293,11 +309,12 @@ async function buildOpenclawTurnContext(
     skillState,
     runtimeInfo,
     preferencesPrompt: await services.getPreferencesForPrompt?.(),
-    temperature: effectiveConfig?.model?.temperature,
-    maxTokens: effectiveConfig?.model?.maxTokens,
-    autoRag: effectiveConfig?.retrieval?.autoRag,
+    temperature: resolvedAgentConfig?.temperature ?? effectiveConfig?.model?.temperature,
+    maxTokens: resolvedAgentConfig?.maxTokens ?? effectiveConfig?.model?.maxTokens,
+    autoRag: resolvedAgentConfig?.autoRag ?? effectiveConfig?.retrieval?.autoRag,
     toolState,
     maxToolIterations,
+    agentConfig: resolvedAgentConfig,
     mentionContextBlocks: preprocessed?.mentionContextBlocks,
     promptOverlay: preprocessed?.promptOverlay,
     isSteeringTurn: preprocessed?.isSteeringTurn,

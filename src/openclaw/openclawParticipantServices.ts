@@ -61,6 +61,7 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly getToolPermissions?: IDefaultParticipantServices['getToolPermissions'];
   readonly getAvailableModelIds?: IDefaultParticipantServices['getAvailableModelIds'];
   readonly sendChatRequestForModel?: IDefaultParticipantServices['sendChatRequestForModel'];
+  readonly agentRegistry?: IDefaultParticipantServices['agentRegistry'];
 }
 
 export interface IOpenclawWorkspaceParticipantAdapterDeps {
@@ -156,6 +157,7 @@ export function buildOpenclawDefaultParticipantServices(
     getToolPermissions: deps.getToolPermissions,
     getAvailableModelIds: deps.getAvailableModelIds,
     sendChatRequestForModel: deps.sendChatRequestForModel,
+    agentRegistry: deps.agentRegistry,
   };
 }
 

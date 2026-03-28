@@ -16,6 +16,7 @@ import type {
 import type { AgentApprovalResolution } from '../agent/agentTypes.js';
 import type { IUnifiedAIConfigService } from '../aiSettings/unifiedConfigTypes.js';
 import type { ISessionManager } from '../services/serviceTypes.js';
+import type { IAgentRegistry } from './agents/openclawAgentRegistry.js';
 
 // ── Shared runtime types (canonical source: services/chatRuntimeTypes.ts) ──
 export type {
@@ -260,6 +261,8 @@ export interface IDefaultParticipantServices {
     options?: IChatRequestOptions,
     signal?: AbortSignal,
   ) => AsyncIterable<IChatResponseChunk>;
+  /** D8: Agent registry for per-agent configuration. */
+  agentRegistry?: IAgentRegistry;
 }
 
 export interface IWorkspaceParticipantServices {
@@ -297,6 +300,8 @@ export interface IWorkspaceParticipantServices {
   reportRuntimeTrace?(trace: IChatRuntimeTrace): void;
   reportBootstrapDebug?(debug: IOpenclawBootstrapDebugReport): void;
   unifiedConfigService?: IUnifiedAIConfigService;
+  /** D8: Agent registry for per-agent configuration. */
+  agentRegistry?: IAgentRegistry;
 }
 
 export interface ICanvasParticipantServices {
@@ -332,6 +337,8 @@ export interface ICanvasParticipantServices {
   reportRuntimeTrace?(trace: IChatRuntimeTrace): void;
   reportBootstrapDebug?(debug: IOpenclawBootstrapDebugReport): void;
   unifiedConfigService?: IUnifiedAIConfigService;
+  /** D8: Agent registry for per-agent configuration. */
+  agentRegistry?: IAgentRegistry;
 }
 
 

@@ -23,6 +23,7 @@ import {
 import { runOpenclawReadOnlyTurn } from '../openclawReadOnlyTurnRunner.js';
 import { buildOpenclawSystemPrompt } from '../openclawSystemPrompt.js';
 import type { IOpenclawRuntimeInfo } from '../openclawSystemPrompt.js';
+import { resolveAgentConfig } from '../agents/openclawAgentResolver.js';
 
 const OPENCLAW_CANVAS_PARTICIPANT_ID = 'parallx.chat.canvas';
 
@@ -223,6 +224,20 @@ async function runCanvasPromptTurn(
   const toolDefs = services.getReadOnlyToolDefinitions?.() ?? [];
   const tools = toolDefs.map(t => ({ name: t.name, description: t.description }));
 
+  // D8: Resolve agent config for 'canvas' surface if registry is available
+  const effectiveConfig = services.unifiedConfigService?.getEffectiveConfig();
+  const resolvedAgentConfig = services.agentRegistry ? resolveAgentConfig(
+    services.agentRegistry,
+    'canvas',
+    {
+      model: runtimeInfo.model,
+      temperature: effectiveConfig?.model?.temperature ?? 0.7,
+      maxTokens: effectiveConfig?.model?.maxTokens ?? 4096,
+      maxIterations: OPENCLAW_MAX_READONLY_ITERATIONS,
+      autoRag: effectiveConfig?.retrieval?.autoRag ?? true,
+    },
+  ) : undefined;
+
   const systemPrompt = buildOpenclawSystemPrompt({
     bootstrapFiles,
     workspaceDigest: `Workspace: ${services.getWorkspaceName()}`,
@@ -235,16 +250,17 @@ async function runCanvasPromptTurn(
       'Canvas context for this turn:',
       options.promptContext,
     ].join('\n\n'),
+    agentIdentity: resolvedAgentConfig?.identity,
+    agentSystemPromptOverlay: resolvedAgentConfig?.systemPromptOverlay,
   });
 
   const messages = buildOpenclawSeedMessages(systemPrompt, context.history, {
     ...request,
     text: options.userText,
   });
-  const effectiveConfig = services.unifiedConfigService?.getEffectiveConfig();
   const requestOptions = buildOpenclawReadOnlyRequestOptions({
-    temperature: effectiveConfig?.model?.temperature,
-    maxTokens: effectiveConfig?.model?.maxTokens,
+    temperature: resolvedAgentConfig?.temperature ?? effectiveConfig?.model?.temperature,
+    maxTokens: resolvedAgentConfig?.maxTokens ?? effectiveConfig?.model?.maxTokens,
   });
 
   reportTrace(services, request, context, {

@@ -15,6 +15,7 @@
  */
 
 import { estimateTokens, trimTextToBudget } from './openclawTokenBudget.js';
+import type { IAgentIdentityConfig } from './agents/openclawAgentConfig.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,6 +71,10 @@ export interface IOpenclawSystemPromptParams {
   /** Token budget for system prompt (typically 10% of context window).
    *  When set, variable sections are truncated if total exceeds budget. */
   readonly systemBudgetTokens?: number;
+  /** D8: Per-agent identity overlay. */
+  readonly agentIdentity?: IAgentIdentityConfig;
+  /** D8: Per-agent system prompt overlay text. */
+  readonly agentSystemPromptOverlay?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,6 +131,28 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
   }
   if (params.promptOverlay) {
     sections.push(`## Active Rules\n${params.promptOverlay}`);
+  }
+
+  // 6b. D8: Agent identity overlay (per-agent personality)
+  if (params.agentIdentity) {
+    const identityParts: string[] = [];
+    if (params.agentIdentity.name) {
+      identityParts.push(`Name: ${params.agentIdentity.name}`);
+    }
+    if (params.agentIdentity.theme) {
+      identityParts.push(`Theme: ${params.agentIdentity.theme}`);
+    }
+    if (params.agentIdentity.emoji) {
+      identityParts.push(`Emoji: ${params.agentIdentity.emoji}`);
+    }
+    if (identityParts.length > 0) {
+      sections.push(`## Agent Identity\n${identityParts.join('\n')}`);
+    }
+  }
+
+  // 6c. D8: Agent system prompt overlay (per-agent instructions)
+  if (params.agentSystemPromptOverlay) {
+    sections.push(`## Agent Instructions\n${params.agentSystemPromptOverlay}`);
   }
 
   // 7. Runtime metadata (upstream: runtimeInfo section)

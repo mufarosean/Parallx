@@ -5,6 +5,7 @@ import type {
 } from '../services/chatRuntimeTypes.js';
 import { applyOpenclawToolPolicy, isToolDeniedByProfile, type IToolPermissions, type OpenclawToolProfile } from './openclawToolPolicy.js';
 import type { ISkillCatalogEntry } from './openclawTypes.js';
+import type { IAgentToolsConfig } from './agents/openclawAgentConfig.js';
 
 export interface IOpenclawRuntimeToolState {
   readonly exposedDefinitions: readonly IToolDefinition[];
@@ -21,6 +22,7 @@ export function buildOpenclawRuntimeToolState(input: {
   readonly skillCatalog: readonly ISkillCatalogEntry[];
   readonly mode: OpenclawToolProfile;
   readonly permissions?: IToolPermissions;
+  readonly agentTools?: IAgentToolsConfig;
 }): IOpenclawRuntimeToolState {
   const reportEntries: IOpenclawToolCapabilityReportEntry[] = [];
   const platformTools = dedupeToolDefinitions(input.platformTools);
@@ -82,6 +84,7 @@ export function buildOpenclawRuntimeToolState(input: {
     tools: exposedDefinitions,
     mode: input.mode,
     permissions: input.permissions,
+    agentTools: input.agentTools,
   });
 
   return {

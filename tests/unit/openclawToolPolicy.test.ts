@@ -92,6 +92,67 @@ describe('applyOpenclawToolPolicy', () => {
     expect(result).toHaveLength(1);
   });
 
+  // D8-6: Agent tool policy filter stage
+  it('agentTools deny removes tool even in full profile', () => {
+    const tools = [tool('read_file'), tool('write_file'), tool('search')];
+    const result = applyOpenclawToolPolicy({
+      tools,
+      mode: 'full',
+      agentTools: { deny: ['write_file'] },
+    });
+    expect(result.map(t => t.name)).toEqual(['read_file', 'search']);
+  });
+
+  it('agentTools allow restricts to listed tools only', () => {
+    const tools = [tool('read_file'), tool('write_file'), tool('search')];
+    const result = applyOpenclawToolPolicy({
+      tools,
+      mode: 'full',
+      agentTools: { allow: ['read_file', 'search'] },
+    });
+    expect(result.map(t => t.name)).toEqual(['read_file', 'search']);
+  });
+
+  it('agentTools deny + allow combined: deny takes priority', () => {
+    const tools = [tool('read_file'), tool('write_file'), tool('search')];
+    const result = applyOpenclawToolPolicy({
+      tools,
+      mode: 'full',
+      agentTools: { allow: ['read_file', 'write_file'], deny: ['write_file'] },
+    });
+    expect(result.map(t => t.name)).toEqual(['read_file']);
+  });
+
+  it('agentTools with empty allow array has no filtering effect', () => {
+    const tools = [tool('read_file'), tool('write_file')];
+    const result = applyOpenclawToolPolicy({
+      tools,
+      mode: 'full',
+      agentTools: { allow: [] },
+    });
+    expect(result).toHaveLength(2);
+  });
+
+  it('agentTools with empty deny array has no filtering effect', () => {
+    const tools = [tool('read_file'), tool('write_file')];
+    const result = applyOpenclawToolPolicy({
+      tools,
+      mode: 'full',
+      agentTools: { deny: [] },
+    });
+    expect(result).toHaveLength(2);
+  });
+
+  it('agentTools undefined has no filtering effect', () => {
+    const tools = [tool('read_file'), tool('write_file')];
+    const result = applyOpenclawToolPolicy({
+      tools,
+      mode: 'full',
+      agentTools: undefined,
+    });
+    expect(result).toHaveLength(2);
+  });
+
   it('profile deny takes priority over permission level', () => {
     const tools = [tool('run_command')];
     const result = applyOpenclawToolPolicy({

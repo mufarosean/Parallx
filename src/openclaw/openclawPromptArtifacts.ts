@@ -12,6 +12,7 @@ import {
 } from './openclawSystemPrompt.js';
 import type { IOpenclawRuntimeSkillState } from './openclawSkillState.js';
 import type { IOpenclawRuntimeToolState } from './openclawToolState.js';
+import type { IAgentIdentityConfig } from './agents/openclawAgentConfig.js';
 
 export interface IOpenclawPromptArtifactInput {
   readonly source: 'run' | 'estimate';
@@ -32,6 +33,10 @@ export interface IOpenclawPromptArtifactInput {
   readonly supportsTools?: boolean;
   /** Token budget for system prompt (typically 10% of context window). */
   readonly systemBudgetTokens?: number;
+  /** D8: Per-agent identity overlay. */
+  readonly agentIdentity?: IAgentIdentityConfig;
+  /** D8: Per-agent system prompt overlay text. */
+  readonly agentSystemPromptOverlay?: string;
 }
 
 export function buildOpenclawPromptArtifacts(
@@ -54,6 +59,8 @@ export function buildOpenclawPromptArtifacts(
     modelTier: input.modelTier,
     supportsTools: input.supportsTools ?? input.toolState.availableDefinitions.length > 0,
     systemBudgetTokens: input.systemBudgetTokens,
+    agentIdentity: input.agentIdentity,
+    agentSystemPromptOverlay: input.agentSystemPromptOverlay,
   });
 
   const workspaceSection = buildWorkspaceSection(input.bootstrapFiles, input.workspaceDigest);

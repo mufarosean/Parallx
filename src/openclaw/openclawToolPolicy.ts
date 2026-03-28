@@ -13,6 +13,7 @@
  */
 
 import type { IToolDefinition, ToolPermissionLevel } from '../services/chatTypes.js';
+import type { IAgentToolsConfig } from './agents/openclawAgentConfig.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -93,6 +94,7 @@ export function applyOpenclawToolPolicy(params: {
   tools: readonly IToolDefinition[];
   mode: OpenclawToolProfile;
   permissions?: IToolPermissions;
+  agentTools?: IAgentToolsConfig;
 }): IToolDefinition[] {
   const profile = TOOL_PROFILES[params.mode];
 
@@ -105,6 +107,18 @@ export function applyOpenclawToolPolicy(params: {
     // Allow: if not wildcard, tool must be on allow list
     if (!profile.allow.includes('*') && !profile.allow.includes(tool.name)) {
       return false;
+    }
+
+    // Step 1b: D8 Agent tool policy (per-agent allow/deny)
+    if (params.agentTools) {
+      // Deny-first for agent tools
+      if (params.agentTools.deny?.includes(tool.name)) {
+        return false;
+      }
+      // If agent has an explicit allow list, tool must be on it
+      if (params.agentTools.allow && params.agentTools.allow.length > 0 && !params.agentTools.allow.includes(tool.name)) {
+        return false;
+      }
     }
 
     // Step 2: Permission filter (Parallx M11: 3-tier)

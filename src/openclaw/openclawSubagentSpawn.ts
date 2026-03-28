@@ -23,6 +23,7 @@
  */
 
 import type { IDisposable } from '../platform/lifecycle.js';
+import type { IOpenclawContextEngine } from './openclawContextEngine.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -271,6 +272,9 @@ export class SubagentSpawner implements IDisposable {
     private readonly _announcer: SubagentAnnouncer | null,
     private readonly _maxDepth: number = DEFAULT_MAX_SPAWN_DEPTH,
     registry?: SubagentRegistry,
+    /** D8-8: Optional context engine for subagent context preparation/feedback. */
+    private readonly _contextEngine?: IOpenclawContextEngine,
+    private readonly _parentSessionId?: string,
   ) {
     this._registry = registry ?? new SubagentRegistry();
   }
@@ -318,6 +322,19 @@ export class SubagentSpawner implements IDisposable {
     // Step 2: Mark running
     this._registry.update(run.id, { status: 'running' });
 
+    // Step 2b: D8-8 — Prepare context snapshot from engine if available
+    if (this._contextEngine?.prepareSubagentSpawn && this._parentSessionId) {
+      try {
+        await this._contextEngine.prepareSubagentSpawn({
+          task: params.task,
+          tokenBudget: 2048,
+          parentSessionId: this._parentSessionId,
+        });
+      } catch {
+        // Context preparation failure is non-fatal
+      }
+    }
+
     // Step 3: Execute with timeout
     try {
       const result = await this._executeWithTimeout(
@@ -345,6 +362,20 @@ export class SubagentSpawner implements IDisposable {
         }
       }
 
+      // Step 5b: D8-8 — Notify context engine of subagent completion
+      if (this._contextEngine?.onSubagentEnded && this._parentSessionId) {
+        try {
+          await this._contextEngine.onSubagentEnded({
+            runId: run.id,
+            parentSessionId: this._parentSessionId,
+            result,
+            status: 'completed',
+          });
+        } catch {
+          // Context engine feedback failure is non-fatal
+        }
+      }
+
       return {
         runId: run.id,
         status: 'completed',
@@ -364,6 +395,20 @@ export class SubagentSpawner implements IDisposable {
         error: errorMessage,
         completedAt: now,
       });
+
+      // D8-8: Notify context engine of subagent failure
+      if (this._contextEngine?.onSubagentEnded && this._parentSessionId) {
+        try {
+          await this._contextEngine.onSubagentEnded({
+            runId: run.id,
+            parentSessionId: this._parentSessionId,
+            result: null,
+            status: isTimeout ? 'timeout' : 'failed',
+          });
+        } catch {
+          // Non-fatal
+        }
+      }
 
       return {
         runId: run.id,

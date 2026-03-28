@@ -147,6 +147,23 @@ export type AgentExecutionStylePreference = typeof AGENT_EXECUTION_STYLE_OPTIONS
 export const AGENT_PROACTIVITY_OPTIONS = ['low', 'balanced', 'high'] as const;
 export type AgentProactivityPreference = typeof AGENT_PROACTIVITY_OPTIONS[number];
 
+/** Serializable agent definition for persistence in unified config.
+ *  Mirrors IAgentConfig from openclawAgentConfig.ts without circular import. */
+export interface IAgentConfigData {
+  readonly id: string;
+  readonly name: string;
+  readonly isDefault?: boolean;
+  readonly surface?: 'default' | 'workspace' | 'canvas';
+  readonly model?: string;
+  readonly temperature?: number;
+  readonly maxTokens?: number;
+  readonly maxIterations?: number;
+  readonly autoRag?: boolean;
+  readonly systemPromptOverlay?: string;
+  readonly identity?: { readonly name?: string; readonly theme?: string; readonly emoji?: string };
+  readonly tools?: { readonly allow?: readonly string[]; readonly deny?: readonly string[] };
+}
+
 export interface IUnifiedAgentConfig {
   /** @parallx-specific Upstream hardcodes MAX_RUN_LOOP_ITERATIONS = 24 + 8/profile. Parallx exposes as user setting (default 25, ceiling 50). */
   readonly maxIterations: number;
@@ -158,6 +175,9 @@ export interface IUnifiedAgentConfig {
   readonly executionStyle: AgentExecutionStylePreference;
   /** @deprecated F11: No OpenClaw consumer. */
   readonly proactivity: AgentProactivityPreference;
+  /** User-defined agent configurations. Merged with DEFAULT_AGENT_CONFIGS on load.
+   *  Upstream: AgentsConfig.list (src/config/types.agents.ts:89-101) */
+  readonly agentDefinitions?: readonly IAgentConfigData[];
 }
 
 export interface IUnifiedRuntimeConfig {
@@ -426,6 +446,7 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
     approvalStrictness: 'balanced',
     executionStyle: 'balanced',
     proactivity: 'balanced',
+    agentDefinitions: [],
   },
   runtime: {
     implementation: 'openclaw',

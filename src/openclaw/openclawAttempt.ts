@@ -32,6 +32,7 @@ import { estimateMessagesTokens, estimateTokens } from './openclawTokenBudget.js
 import type { IOpenclawRuntimeSkillState } from './openclawSkillState.js';
 import { buildOpenclawPromptArtifacts } from './openclawPromptArtifacts.js';
 import type { IOpenclawRuntimeToolState } from './openclawToolState.js';
+import type { IResolvedAgentConfig } from './agents/openclawAgentConfig.js';
 import { resolveModelTier } from './openclawModelTier.js';
 import { validateCitations } from './openclawResponseValidation.js';
 
@@ -73,6 +74,9 @@ export interface IOpenclawTurnContext {
   readonly reportSystemPromptReport?: (report: IOpenclawSystemPromptReport) => void;
   /** The participant handling this turn (e.g., 'parallx.chat.default'). */
   readonly participantId?: string;
+
+  /** Resolved agent configuration for this turn. */
+  readonly agentConfig?: IResolvedAgentConfig;
 
   // M2: Mention context blocks to inject
   readonly mentionContextBlocks?: readonly string[];
@@ -175,6 +179,8 @@ export async function executeOpenclawAttempt(
     promptOverlay: context.promptOverlay,
     modelTier: resolveModelTier(context.runtimeInfo.model),
     systemBudgetTokens: Math.floor(context.tokenBudget * 0.10),
+    agentIdentity: context.agentConfig?.identity,
+    agentSystemPromptOverlay: context.agentConfig?.systemPromptOverlay,
     promptProvenance: {
       rawUserInput: request.text,
       parsedUserText: request.text,

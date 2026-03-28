@@ -31,10 +31,11 @@ import { computeElasticBudget, estimateTokens, estimateMessagesTokens } from './
  *   compact  → compact   (reduce context on overflow)
  *   maintain → maintain   (proactive transcript cleanup)
  *   afterTurn → afterTurn (post-turn persistence)
+ *   prepareSubagentSpawn → prepareSubagentSpawn (D8-8: extract context for subagent)
+ *   onSubagentEnded → onSubagentEnded (D8-8: incorporate subagent result into context)
  *
  * Upstream methods NOT adopted (with reason):
  *   ingest/ingestBatch — Platform handles message persistence
- *   prepareSubagentSpawn/onSubagentEnded — No subagents in Parallx
  *   dispose — Engine is per-turn, not long-lived
  */
 export interface IOpenclawContextEngine {
@@ -43,6 +44,10 @@ export interface IOpenclawContextEngine {
   compact(params: IOpenclawCompactParams): Promise<IOpenclawCompactResult>;
   afterTurn?(params: IOpenclawAfterTurnParams): Promise<void>;
   maintain?(params: IOpenclawMaintainParams): Promise<IOpenclawMaintainResult>;
+  /** D8-8: Prepare a context snapshot for a subagent spawn (upstream: prepareSubagentSpawn). */
+  prepareSubagentSpawn?(params: IOpenclawSubagentSpawnContextParams): Promise<IOpenclawSubagentSpawnContext>;
+  /** D8-8: Incorporate subagent result back into the parent context (upstream: onSubagentEnded). */
+  onSubagentEnded?(params: IOpenclawSubagentEndedParams): Promise<void>;
 }
 
 export interface IOpenclawBootstrapParams {
@@ -115,6 +120,43 @@ export interface IOpenclawMaintainResult {
   readonly rewrites: number;
   readonly tokensBefore: number;
   readonly tokensAfter: number;
+}
+
+// ---------------------------------------------------------------------------
+// D8-8: Subagent context types
+// Upstream: context-engine/types.ts:194-210 (prepareSubagentSpawn, onSubagentEnded)
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for preparing subagent context.
+ * Upstream: PrepareSubagentSpawnParams — task description + budget for the subagent.
+ */
+export interface IOpenclawSubagentSpawnContextParams {
+  readonly task: string;
+  readonly tokenBudget: number;
+  readonly parentSessionId: string;
+}
+
+/**
+ * Context snapshot passed to a subagent spawn.
+ * Upstream: SubagentSpawnContext — workspace overview + relevant history subset.
+ */
+export interface IOpenclawSubagentSpawnContext {
+  /** Summary of parent context for subagent's system prompt. */
+  readonly contextSummary: string;
+  /** Token estimate of the context snapshot. */
+  readonly estimatedTokens: number;
+}
+
+/**
+ * Parameters for subagent completion callback.
+ * Upstream: OnSubagentEndedParams — run result + completion status.
+ */
+export interface IOpenclawSubagentEndedParams {
+  readonly runId: string;
+  readonly parentSessionId: string;
+  readonly result: string | null;
+  readonly status: 'completed' | 'failed' | 'timeout';
 }
 
 // ---------------------------------------------------------------------------
@@ -499,6 +541,54 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     const tokensAfter = estimateMessagesTokens(history);
 
     return { rewrites, tokensBefore, tokensAfter };
+  }
+
+  /**
+   * D8-8: Prepare a context snapshot for a subagent spawn.
+   * Upstream: prepareSubagentSpawn in context-engine/types.ts:194-200.
+   *
+   * Extracts a summary of the current context (available history + last RAG results)
+   * for the subagent to use as its starting context.
+   */
+  async prepareSubagentSpawn(params: IOpenclawSubagentSpawnContextParams): Promise<IOpenclawSubagentSpawnContext> {
+    const history = this._lastHistory;
+    const recentMessages = history.slice(-4); // Last 2 exchanges max
+    const contextParts: string[] = [];
+
+    if (recentMessages.length > 0) {
+      contextParts.push('Parent conversation context:');
+      for (const msg of recentMessages) {
+        contextParts.push(`${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content.slice(0, 500)}`);
+      }
+    }
+
+    contextParts.push(`\nSubagent task: ${params.task}`);
+
+    const contextSummary = contextParts.join('\n');
+    const estimatedTokens = estimateTokens(contextSummary);
+
+    return { contextSummary, estimatedTokens };
+  }
+
+  /**
+   * D8-8: Incorporate subagent result into parent context.
+   * Upstream: onSubagentEnded in context-engine/types.ts:206-210.
+   *
+   * Appends the subagent's result as a context message so subsequent
+   * assemble() calls include it in the conversation history.
+   */
+  async onSubagentEnded(params: IOpenclawSubagentEndedParams): Promise<void> {
+    if (params.status !== 'completed' || !params.result) {
+      return; // Only incorporate successful results
+    }
+
+    // Append subagent result as a context note in the cached history
+    const resultMessage: IChatMessage = {
+      role: 'assistant' as const,
+      content: `[Subagent ${params.runId} result]\n${params.result}`,
+    };
+    this._lastHistory = [...this._lastHistory, resultMessage];
+    this._compactGeneration++;
   }
 }
 
