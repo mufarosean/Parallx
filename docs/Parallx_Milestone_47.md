@@ -1,9 +1,10 @@
 # Milestone 47 — Parity Extension: 8 Domains, 3 Iterations
 
-**Status:** In Progress  
+**Status:** COMPLETE ✅  
 **Branch:** `m47-parity-extension`  
 **Depends on:** Milestone 46 (commit `9efa836` on `m46-autonomy-mechanisms`)  
-**Baseline:** 137 test files, 2638 tests, 0 failures, 0 tsc errors
+**Baseline:** 137 test files, 2638 tests, 0 failures, 0 tsc errors  
+**Final:** 149 test files, 2879 tests, 0 failures, 0 tsc errors
 
 ---
 
@@ -75,11 +76,13 @@ Each domain goes through 3 iterations:
 
 | Domain | Status | Iter 1 | Iter 2 | Iter 3 | Tests Added | Commit |
 |--------|--------|--------|--------|--------|-------------|--------|
-| D8: Agent Configuration | 🔄 IN PROGRESS | | | | | |
-| D2: Chat Commands | ⏳ Not Started | | | | | |
-| D3: Doctor/Diagnostics | ⏳ Not Started | | | | | |
-| D7: Observability/Usage | ⏳ Not Started | | | | | |
-| D6: Compaction Depth | ⏳ Not Started | | | | | |
-| D4: Runtime Hooks | ⏳ Not Started | | | | | |
-| D1: MCP Integration | ⏳ Not Started | | | | | |
-| D5: Media/Vision | ⏳ Not Started | | | | | |
+| D8: Agent Configuration | ✅ CLOSED | ✅ | ✅ | ✅ | 10/10 ALIGNED | `d2d1da9` |
+| D2: Chat Commands | ✅ CLOSED | ✅ | ✅ | ✅ | 8/8 ALIGNED | `0ad0ead` |
+| D3: Doctor/Diagnostics | ✅ CLOSED | ✅ | ✅ | ✅ | 10/10 ALIGNED | `b6ccdac` |
+| D7: Observability/Usage | ✅ CLOSED | ✅ | ✅ | ✅ | 10/10 ALIGNED | `a847f1a` |
+| D6: Compaction Depth | ✅ CLOSED | ✅ | ✅ | ✅ | 8/8 ALIGNED, 15 tests | `fa8c2b2` |
+| D4: Runtime Hooks | ✅ CLOSED | ✅ | ✅ | ✅ | 8/8 ALIGNED, 12 tests | `3ea2b46` |
+| D1: MCP Integration | ✅ CLOSED | ✅ | ✅ | ✅ | 8/8 ALIGNED, 65 tests | `109eb24` |
+| D5: Media/Vision | ✅ CLOSED | ✅ | ✅ | ✅ | 8/8 ALIGNED, 13 tests | `e75a363` |
+
+**All 8 domains CLOSED. 149 test files, 2879 tests, 0 failures, 0 tsc errors.**
