@@ -337,6 +337,18 @@ async function runWorkspacePromptTurn(
         : undefined,
     });
 
+    // D7: Record turn metrics in observability service
+    if (services.observabilityService && !token.isCancellationRequested) {
+      services.observabilityService.recordTurn({
+        model: services.getActiveModel() ?? 'unknown',
+        promptTokens: result.promptTokens ?? 0,
+        completionTokens: result.completionTokens ?? 0,
+        totalTokens: (result.promptTokens ?? 0) + (result.completionTokens ?? 0),
+        durationMs: result.durationMs,
+        timestamp: Date.now(),
+      });
+    }
+
     if (result.completed) {
       reportTrace(services, request, context, {
         phase: 'execution',

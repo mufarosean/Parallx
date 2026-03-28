@@ -1835,6 +1835,8 @@ export interface IDiagnosticCheckDeps {
   readonly checkVectorStore?: () => Promise<boolean>;
   readonly checkDocumentExtraction?: () => Promise<boolean>;
   readonly checkMemoryService?: () => Promise<boolean>;
+  // D7: Observability integration
+  readonly getObservabilityMetrics?: () => ISessionMetrics;
 }
 
 export interface IDiagnosticsService {
@@ -1845,3 +1847,50 @@ export interface IDiagnosticsService {
 }
 
 export const IDiagnosticsService = createServiceIdentifier<IDiagnosticsService>('IDiagnosticsService');
+
+// ─── IObservabilityService (D7) ─────────────────────────────────────────────
+
+export interface ITurnMetrics {
+  readonly model: string;
+  readonly promptTokens: number;
+  readonly completionTokens: number;
+  readonly totalTokens: number;
+  readonly durationMs: number;
+  readonly timestamp: number;
+  readonly budgetUtilization?: {
+    readonly system: number;  // actual / allocated ratio (0-1)
+    readonly rag: number;
+    readonly history: number;
+    readonly user: number;
+  };
+}
+
+export interface ISessionMetrics {
+  readonly turnCount: number;
+  readonly totalPromptTokens: number;
+  readonly totalCompletionTokens: number;
+  readonly totalTokens: number;
+  readonly totalDurationMs: number;
+  readonly avgDurationMs: number;
+  readonly avgPromptTokens: number;
+  readonly avgCompletionTokens: number;
+}
+
+export interface IModelMetrics {
+  readonly model: string;
+  readonly turnCount: number;
+  readonly totalTokens: number;
+  readonly avgDurationMs: number;
+  readonly avgPromptTokens: number;
+  readonly avgCompletionTokens: number;
+}
+
+export interface IObservabilityService {
+  recordTurn(metrics: ITurnMetrics): void;
+  getSessionMetrics(): ISessionMetrics;
+  getModelMetrics(model?: string): readonly IModelMetrics[];
+  getTurnHistory(): readonly ITurnMetrics[];
+  readonly onDidRecordTurn: Event<ITurnMetrics>;
+}
+
+export const IObservabilityService = createServiceIdentifier<IObservabilityService>('IObservabilityService');

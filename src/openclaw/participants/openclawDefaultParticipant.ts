@@ -184,6 +184,18 @@ async function runOpenclawDefaultTurn(
   try {
     const result = await runOpenclawTurn(request, turnContext, response, token);
 
+    // D7: Record turn metrics in observability service
+    if (services.observabilityService && !token.isCancellationRequested) {
+      services.observabilityService.recordTurn({
+        model: services.getActiveModel?.() ?? 'unknown',
+        promptTokens: result.promptTokens ?? 0,
+        completionTokens: result.completionTokens ?? 0,
+        totalTokens: (result.promptTokens ?? 0) + (result.completionTokens ?? 0),
+        durationMs: result.durationMs,
+        timestamp: Date.now(),
+      });
+    }
+
     // Aborted — skip memory writeback and record as aborted, not completed
     if (token.isCancellationRequested) {
       lifecycle.recordAborted();

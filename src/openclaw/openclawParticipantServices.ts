@@ -70,6 +70,8 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly executeCommand?: IDefaultParticipantServices['executeCommand'];
   // D3: Diagnostics service
   readonly diagnosticsService?: IDefaultParticipantServices['diagnosticsService'];
+  // D7: Observability service
+  readonly observabilityService?: IDefaultParticipantServices['observabilityService'];
 }
 
 export interface IOpenclawWorkspaceParticipantAdapterDeps {
@@ -88,6 +90,7 @@ export interface IOpenclawWorkspaceParticipantAdapterDeps {
   readonly reportRetrievalDebug?: IWorkspaceParticipantServices['reportRetrievalDebug'];
   readonly reportRuntimeTrace?: IWorkspaceParticipantServices['reportRuntimeTrace'];
   readonly reportBootstrapDebug?: IWorkspaceParticipantServices['reportBootstrapDebug'];
+  readonly observabilityService?: IWorkspaceParticipantServices['observabilityService'];
 }
 
 export interface IOpenclawCanvasParticipantAdapterDeps {
@@ -104,6 +107,7 @@ export interface IOpenclawCanvasParticipantAdapterDeps {
   readonly reportRetrievalDebug?: ICanvasParticipantServices['reportRetrievalDebug'];
   readonly reportRuntimeTrace?: ICanvasParticipantServices['reportRuntimeTrace'];
   readonly reportBootstrapDebug?: ICanvasParticipantServices['reportBootstrapDebug'];
+  readonly observabilityService?: ICanvasParticipantServices['observabilityService'];
 }
 
 export function buildOpenclawDefaultParticipantServices(
@@ -174,6 +178,8 @@ export function buildOpenclawDefaultParticipantServices(
     executeCommand: deps.executeCommand,
     // D3: Diagnostics service
     diagnosticsService: deps.diagnosticsService,
+    // D7: Observability service
+    observabilityService: deps.observabilityService,
   };
 }
 
@@ -196,6 +202,7 @@ export function buildOpenclawWorkspaceParticipantServices(
     reportRetrievalDebug: deps.reportRetrievalDebug,
     reportRuntimeTrace: deps.reportRuntimeTrace,
     reportBootstrapDebug: deps.reportBootstrapDebug,
+    observabilityService: deps.observabilityService,
   };
 }
 
@@ -216,5 +223,6 @@ export function buildOpenclawCanvasParticipantServices(
     reportRetrievalDebug: deps.reportRetrievalDebug,
     reportRuntimeTrace: deps.reportRuntimeTrace,
     reportBootstrapDebug: deps.reportBootstrapDebug,
+    observabilityService: deps.observabilityService,
   };
 }

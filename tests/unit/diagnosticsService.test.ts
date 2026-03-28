@@ -247,8 +247,8 @@ describe('Core Diagnostic Checks', () => {
 });
 
 describe('Extended Diagnostic Checks', () => {
-  it('exports 4 extended checks', () => {
-    expect(EXTENDED_DIAGNOSTIC_CHECKS).toHaveLength(4);
+  it('exports 5 extended checks', () => {
+    expect(EXTENDED_DIAGNOSTIC_CHECKS).toHaveLength(5);
   });
 
   it('Embedding — pass when responding', async () => {
@@ -294,8 +294,8 @@ describe('Extended Diagnostic Checks', () => {
 });
 
 describe('ALL_DIAGNOSTIC_CHECKS', () => {
-  it('combines core + extended = 13 total', () => {
-    expect(ALL_DIAGNOSTIC_CHECKS).toHaveLength(13);
+  it('combines core + extended = 14 total', () => {
+    expect(ALL_DIAGNOSTIC_CHECKS).toHaveLength(14);
     expect(ALL_DIAGNOSTIC_CHECKS).toEqual([...CORE_DIAGNOSTIC_CHECKS, ...EXTENDED_DIAGNOSTIC_CHECKS]);
   });
 });

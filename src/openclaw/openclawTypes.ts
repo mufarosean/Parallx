@@ -275,6 +275,8 @@ export interface IDefaultParticipantServices {
   executeCommand?(commandId: string, ...args: unknown[]): void;
   /** D3: Diagnostics service for /doctor delegation. */
   diagnosticsService?: import('../services/serviceTypes.js').IDiagnosticsService;
+  /** D7: Observability service for turn metric recording. */
+  observabilityService?: import('../services/serviceTypes.js').IObservabilityService;
 }
 
 export interface IWorkspaceParticipantServices {
@@ -314,6 +316,8 @@ export interface IWorkspaceParticipantServices {
   unifiedConfigService?: IUnifiedAIConfigService;
   /** D8: Agent registry for per-agent configuration. */
   agentRegistry?: IAgentRegistry;
+  /** D7: Observability service for turn metric recording. */
+  observabilityService?: import('../services/serviceTypes.js').IObservabilityService;
 }
 
 export interface ICanvasParticipantServices {
@@ -351,6 +355,8 @@ export interface ICanvasParticipantServices {
   unifiedConfigService?: IUnifiedAIConfigService;
   /** D8: Agent registry for per-agent configuration. */
   agentRegistry?: IAgentRegistry;
+  /** D7: Observability service for turn metric recording. */
+  observabilityService?: import('../services/serviceTypes.js').IObservabilityService;
 }
 
 

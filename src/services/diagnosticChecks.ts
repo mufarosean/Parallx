@@ -177,6 +177,26 @@ const checkMemoryService: IDiagnosticCheckProducer = async (deps) => {
   };
 };
 
+// D7: Observability health check
+const checkObservability: IDiagnosticCheckProducer = async (deps) => {
+  if (!deps.getObservabilityMetrics) {
+    return { name: 'Observability', status: 'warn', detail: 'Observability service not wired', timestamp: Date.now(), category: 'config' };
+  }
+  const metrics = deps.getObservabilityMetrics();
+  if (metrics.turnCount === 0) {
+    return { name: 'Observability', status: 'pass', detail: 'Active — no turns recorded yet', timestamp: Date.now(), category: 'config' };
+  }
+  const avgMs = Math.round(metrics.avgDurationMs);
+  const warn = avgMs > 30000; // warn if average turn > 30s
+  return {
+    name: 'Observability',
+    status: warn ? 'warn' : 'pass',
+    detail: `${metrics.turnCount} turns tracked, avg ${avgMs}ms${warn ? ' (slow responses)' : ''}`,
+    timestamp: Date.now(),
+    category: 'config',
+  };
+};
+
 // ── Export all check producers ──────────────────────────────────────────────
 
 export const CORE_DIAGNOSTIC_CHECKS: readonly IDiagnosticCheckProducer[] = [
@@ -196,6 +216,7 @@ export const EXTENDED_DIAGNOSTIC_CHECKS: readonly IDiagnosticCheckProducer[] = [
   checkVectorStore,
   checkDocumentExtraction,
   checkMemoryService,
+  checkObservability,
 ];
 
 export const ALL_DIAGNOSTIC_CHECKS: readonly IDiagnosticCheckProducer[] = [

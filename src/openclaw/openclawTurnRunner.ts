@@ -56,6 +56,7 @@ export interface IOpenclawTurnResult {
   readonly toolCallCount: number;
   readonly promptTokens?: number;
   readonly completionTokens?: number;
+  readonly durationMs: number;
   readonly ragSources: readonly { uri: string; label: string; index: number }[];
   readonly validatedCitations?: readonly { uri: string; label: string; index: number }[];
   readonly retrievedContextText: string;
@@ -137,6 +138,7 @@ export async function runOpenclawTurn(
   let transientRetries = 0;
   let fallbackIndex = 0;
   let currentContext = context;
+  const turnStartMs = Date.now();
 
   while (!token.isCancellationRequested) {
     // 1. Assemble context
@@ -176,6 +178,7 @@ export async function runOpenclawTurn(
 
       return {
         ...result,
+        durationMs: Date.now() - turnStartMs,
         retrievedContextText: assembled.retrievedContextText,
         overflowCompactions: overflowAttempts,
         timeoutCompactions: timeoutAttempts,
@@ -253,6 +256,7 @@ export async function runOpenclawTurn(
     markdown: '',
     thinking: '',
     toolCallCount: 0,
+    durationMs: Date.now() - turnStartMs,
     ragSources: [],
     retrievedContextText: '',
     overflowCompactions: overflowAttempts,

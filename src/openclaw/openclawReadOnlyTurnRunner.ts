@@ -90,6 +90,7 @@ export interface IReadOnlyTurnResult {
   readonly toolCallCount: number;
   readonly promptTokens?: number;
   readonly completionTokens?: number;
+  readonly durationMs: number;
   readonly transientRetries: number;
   readonly timeoutRetries: number;
   readonly completed: boolean;
@@ -122,6 +123,7 @@ export async function runOpenclawReadOnlyTurn(
     tools: filteredTools.length > 0 ? filteredTools : undefined,
   };
 
+  const turnStartMs = Date.now();
   let transientRetries = 0;
   let timeoutRetries = 0;
   let totalToolCalls = 0;
@@ -191,6 +193,7 @@ export async function runOpenclawReadOnlyTurn(
         toolCallCount: totalToolCalls,
         promptTokens,
         completionTokens,
+        durationMs: Date.now() - turnStartMs,
         transientRetries,
         timeoutRetries,
         completed: true,
@@ -209,6 +212,7 @@ export async function runOpenclawReadOnlyTurn(
         toolCallCount: totalToolCalls,
         promptTokens,
         completionTokens,
+        durationMs: Date.now() - turnStartMs,
         transientRetries,
         timeoutRetries,
         completed: false,
@@ -264,6 +268,7 @@ export async function runOpenclawReadOnlyTurn(
     markdown: '',
     thinking: '',
     toolCallCount: totalToolCalls,
+    durationMs: Date.now() - turnStartMs,
     transientRetries,
     timeoutRetries,
     completed: false,
