@@ -336,8 +336,12 @@ async function createWindow() {
     appId: 'com.parallx.app',
     appIconPath: path.join(__dirname, 'parallx.ico'),
     appIconIndex: 0,
+    relaunchCommand: `wscript.exe "${path.join(__dirname, '..', 'scripts', 'Parallx.vbs')}"`,
     relaunchDisplayName: 'Parallx',
   });
+
+  // Override the window icon explicitly (taskbar + title bar)
+  mainWindow.setIcon(path.join(__dirname, 'parallx.ico'));
 
   configureSpellCheckerForWindow(mainWindow);
 
