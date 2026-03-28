@@ -10,6 +10,7 @@ const AdmZip = require('adm-zip');
 const { databaseManager } = require('./database.cjs');
 const { extractText, isRichDocument, RICH_DOCUMENT_EXTENSIONS } = require('./documentExtractor.cjs');
 const doclingBridge = require('./doclingBridge.cjs');
+const { setupMcpBridge, killAllMcpProcesses } = require('./mcpBridge.cjs');
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
@@ -340,6 +341,9 @@ async function createWindow() {
     mainWindow.maximize();
   }
 
+  // ── D1: MCP Bridge ──
+  setupMcpBridge(ipcMain, () => mainWindow);
+
   // Track normal (non-maximized) bounds so we can save them even when
   // the window is maximized at quit time.
   mainWindow._lastNormalBounds = mainWindow.getNormalBounds();
@@ -430,6 +434,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   isAppQuitting = true;
+  killAllMcpProcesses();
   if (rendererServer) {
     try { rendererServer.close(); } catch { /* ignore */ }
     rendererServer = null;

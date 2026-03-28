@@ -32,7 +32,7 @@ export interface ILanguageModelToolsRuntimeMetadata {
   readonly requiresApproval: boolean;
   readonly autoApproved: boolean;
   readonly approvalSource: 'default' | 'session' | 'persistent' | 'global-auto' | 'strictness' | 'missing-permission-service';
-  readonly source?: 'built-in' | 'bridge';
+  readonly source?: 'built-in' | 'bridge' | 'mcp';
   readonly ownerToolId?: string;
   readonly description?: string;
 }

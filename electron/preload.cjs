@@ -258,6 +258,29 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   },
 
   // ══════════════════════════════════════════════════════════════════════════
+  // MCP Bridge API (D1 — Model Context Protocol)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  mcp: {
+    spawn: (serverId, command, args, env) =>
+      ipcRenderer.invoke('mcp:spawn', serverId, command, args, env),
+    send: (serverId, message) =>
+      ipcRenderer.invoke('mcp:send', serverId, message),
+    kill: (serverId) =>
+      ipcRenderer.invoke('mcp:kill', serverId),
+    onMessage: (callback) => {
+      const handler = (_event, serverId, data) => callback(serverId, data);
+      ipcRenderer.on('mcp:message', handler);
+      return () => ipcRenderer.removeListener('mcp:message', handler);
+    },
+    onExit: (callback) => {
+      const handler = (_event, serverId, code) => callback(serverId, code);
+      ipcRenderer.on('mcp:exit', handler);
+      return () => ipcRenderer.removeListener('mcp:exit', handler);
+    },
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
   // Docling Bridge API (M21 Phase A)
   // ══════════════════════════════════════════════════════════════════════════
 

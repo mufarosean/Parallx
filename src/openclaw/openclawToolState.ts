@@ -20,6 +20,7 @@ export interface IOpenclawRuntimeToolState {
 export function buildOpenclawRuntimeToolState(input: {
   readonly platformTools: readonly IToolDefinition[];
   readonly skillCatalog: readonly ISkillCatalogEntry[];
+  readonly mcpTools?: readonly IToolDefinition[];
   readonly mode: OpenclawToolProfile;
   readonly permissions?: IToolPermissions;
   readonly agentTools?: IAgentToolsConfig;
@@ -79,7 +80,39 @@ export function buildOpenclawRuntimeToolState(input: {
     skillDefinitions.push(toolDefinition);
   }
 
-  const exposedDefinitions = [...platformTools, ...skillDefinitions];
+  // MCP tools (D1)
+  const mcpDefinitions: IToolDefinition[] = [];
+  if (input.mcpTools) {
+    for (const tool of input.mcpTools) {
+      if (platformNames.has(tool.name)) {
+        reportEntries.push({
+          name: tool.name,
+          source: 'mcp',
+          summaryChars: tool.description.length,
+          schemaChars: JSON.stringify(tool.parameters ?? {}).length,
+          propertiesCount: countToolProperties(tool.parameters),
+          exposed: false,
+          available: false,
+          filteredReason: 'name-collision',
+        });
+        continue;
+      }
+      const filteredReason = getToolFilteredReason(tool, input.mode, input.permissions);
+      reportEntries.push({
+        name: tool.name,
+        source: 'mcp',
+        summaryChars: tool.description.length,
+        schemaChars: JSON.stringify(tool.parameters ?? {}).length,
+        propertiesCount: countToolProperties(tool.parameters),
+        exposed: true,
+        available: filteredReason === undefined,
+        filteredReason,
+      });
+      mcpDefinitions.push(tool);
+    }
+  }
+
+  const exposedDefinitions = [...platformTools, ...skillDefinitions, ...mcpDefinitions];
   const availableDefinitions = applyOpenclawToolPolicy({
     tools: exposedDefinitions,
     mode: input.mode,

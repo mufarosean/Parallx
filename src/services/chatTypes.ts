@@ -900,7 +900,7 @@ export interface IChatTool {
   /** 3-tier permission level (M11 Task 2.1). Defaults to 'always-allowed' if not set. */
   readonly permissionLevel?: ToolPermissionLevel;
   /** Registration origin for runtime provenance. */
-  readonly source?: 'built-in' | 'bridge';
+  readonly source?: 'built-in' | 'bridge' | 'mcp';
   /** Owning tool ID when contributed through ChatBridge. */
   readonly ownerToolId?: string;
 }

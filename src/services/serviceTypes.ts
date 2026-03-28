@@ -1926,3 +1926,19 @@ export interface IRuntimeHookRegistry {
 }
 
 export const IRuntimeHookRegistry = createServiceIdentifier<IRuntimeHookRegistry>('IRuntimeHookRegistry');
+
+// ── D1: MCP Client Service ──────────────────────────────────────────────────
+
+import type { IMcpServerConfig, IMcpToolSchema, IMcpToolCallResult, McpConnectionState } from '../openclaw/mcp/mcpTypes.js';
+
+export interface IMcpClientService extends IDisposable {
+  connectServer(config: IMcpServerConfig): Promise<void>;
+  disconnectServer(serverId: string): Promise<void>;
+  getServerStatus(serverId: string): McpConnectionState;
+  getConnectedServers(): readonly string[];
+  listTools(serverId: string): Promise<readonly IMcpToolSchema[]>;
+  callTool(serverId: string, toolName: string, args: Record<string, unknown>): Promise<IMcpToolCallResult>;
+  readonly onDidChangeStatus: Event<{ serverId: string; status: McpConnectionState }>;
+}
+
+export const IMcpClientService = createServiceIdentifier<IMcpClientService>('IMcpClientService');

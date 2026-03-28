@@ -19,6 +19,7 @@ import type {
 } from './aiSettingsTypes.js';
 import type { IParallxConfig } from '../services/parallxConfigService.js';
 import type { IConfigFileSystem } from '../services/parallxConfigService.js';
+import type { IUnifiedMcpConfig } from '../openclaw/mcp/mcpTypes.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Unified Configuration Shape
@@ -242,6 +243,7 @@ export interface IUnifiedAIConfig {
   readonly memory: IUnifiedMemoryConfig;
   readonly indexing: IUnifiedIndexingConfig;
   readonly tools: IUnifiedToolsConfig;
+  readonly mcp: IUnifiedMcpConfig;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -466,6 +468,9 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
   tools: {
     enabledOverrides: {},
   },
+  mcp: {
+    servers: [],
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -516,6 +521,7 @@ export function fromLegacyProfile(profile: AISettingsProfile): IUnifiedPreset {
       memory: { ...DEFAULT_UNIFIED_CONFIG.memory },
       indexing: { ...DEFAULT_UNIFIED_CONFIG.indexing },
       tools: { ...DEFAULT_UNIFIED_CONFIG.tools },
+      mcp: { ...DEFAULT_UNIFIED_CONFIG.mcp },
     },
   };
 }

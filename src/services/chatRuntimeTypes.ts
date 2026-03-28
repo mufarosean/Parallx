@@ -102,7 +102,7 @@ export interface IOpenclawToolPromptEntry {
 }
 
 export interface IOpenclawToolCapabilityReportEntry extends IOpenclawToolPromptEntry {
-  readonly source: 'platform' | 'skill';
+  readonly source: 'platform' | 'skill' | 'mcp';
   readonly skillLocation?: string;
   readonly exposed: boolean;
   readonly available: boolean;
@@ -166,7 +166,7 @@ export interface IChatRuntimeToolMetadata {
   readonly requiresApproval: boolean;
   readonly autoApproved: boolean;
   readonly approvalSource: 'default' | 'session' | 'persistent' | 'global-auto' | 'strictness' | 'missing-permission-service';
-  readonly source?: 'built-in' | 'bridge';
+  readonly source?: 'built-in' | 'bridge' | 'mcp';
   readonly ownerToolId?: string;
   readonly description?: string;
 }
