@@ -265,65 +265,55 @@ D3 (Steer) → D1 (Followup) → D2 (Heartbeat) → D4 (Cron) → D5 (Sub-Agent)
 
 ## Iteration Tracking
 
-### D3: Steer Check
+### D3: Steer Check — CLOSED ✅
 
 | Iteration | Audit | Gap Map | Code | Verify | UX | Status |
 |-----------|-------|---------|------|--------|----|--------|
-| 1 | | | | | | NOT STARTED |
-| 2 | | | | | | NOT STARTED |
-| 3 | | | | | | NOT STARTED |
+| 1 | ✅ 5/5 ALIGNED | ✅ 2 doc fixes | ✅ header + matrix | ✅ 2594 pass | ✅ 6/6 OK | CLOSED |
 
-### D1: Followup Runner
+### D1: Followup Runner — CLOSED ✅
 
 | Iteration | Audit | Gap Map | Code | Verify | UX | Status |
 |-----------|-------|---------|------|--------|----|--------|
-| 1 | | | | | | NOT STARTED |
-| 2 | | | | | | NOT STARTED |
-| 3 | | | | | | NOT STARTED |
+| 1 | ✅ 4A/2M/2X | ✅ 3 changes | ✅ Gate 5 + delay + JSDoc | ✅ 2600 pass | ✅ 6/6 OK | CLOSED |
 
-### D2: Heartbeat Runner
+### D2: Heartbeat Runner — CLOSED ✅
 
 | Iteration | Audit | Gap Map | Code | Verify | UX | Status |
 |-----------|-------|---------|------|--------|----|--------|
-| 1 | | | | | | NOT STARTED |
-| 2 | | | | | | NOT STARTED |
-| 3 | | | | | | NOT STARTED |
+| 1 | ✅ 10A/3M | ✅ 1 code + 2 doc | ✅ setTimeout chain + @deviation | ✅ 2602 pass | ✅ 6/6 OK | CLOSED |
 
-### D4: Cron & Scheduling
+### D4: Cron & Scheduling — CLOSED ✅
 
 | Iteration | Audit | Gap Map | Code | Verify | UX | Status |
 |-----------|-------|---------|------|--------|----|--------|
-| 1 | | | | | | NOT STARTED |
-| 2 | | | | | | NOT STARTED |
-| 3 | | | | | | NOT STARTED |
+| 1 | ✅ 8A/5M/3X | ✅ 2 req + 2 rec + 3 def | ✅ cron parser + bounds + fields + status | ✅ 2629 pass | ✅ 6/6 OK | CLOSED |
 
-### D5: Sub-Agent Spawning
+### D5: Sub-Agent Spawning — CLOSED ✅
 
 | Iteration | Audit | Gap Map | Code | Verify | UX | Status |
 |-----------|-------|---------|------|--------|----|--------|
-| 1 | | | | | | NOT STARTED |
-| 2 | | | | | | NOT STARTED |
-| 3 | | | | | | NOT STARTED |
+| 1 | ✅ 10A/3M | ✅ 1 rec + 3 def | ✅ pruning + @deviation | ✅ 2631 pass | ✅ 6/6 OK | CLOSED |
 
-### D6: Multi-Surface Output
+### D6: Multi-Surface Output — CLOSED ✅
 
 | Iteration | Audit | Gap Map | Code | Verify | UX | Status |
 |-----------|-------|---------|------|--------|----|--------|
-| 1 | | | | | | NOT STARTED |
-| 2 | | | | | | NOT STARTED |
-| 3 | | | | | | NOT STARTED |
+| 1 | ✅ 11A/1M | ✅ 1 change (3 steps) | ✅ backoff + permanent error | ✅ 2638 pass | ✅ 6/6 OK | CLOSED |
 
 ---
 
 ## Aggregate Status
 
-| Domain | Status | Capabilities | Tests |
-|--------|--------|-------------|-------|
-| D3 Steer Check | ✅ COMPLETE | 3/3 | 5 |
-| D1 Followup Runner | ✅ COMPLETE | 4/4 | 15 |
-| D2 Heartbeat Runner | ✅ COMPLETE | 6/6 | 20 |
-| D4 Cron & Scheduling | ✅ COMPLETE | 8/8 | 50 |
-| D5 Sub-Agent Spawning | ✅ COMPLETE | 6/6 | 32 |
-| D6 Multi-Surface Output | ✅ COMPLETE | 5/5 | 26 |
+| Domain | Status | Capabilities | Tests | Docs |
+|--------|--------|-------------|-------|------|
+| D3 Steer Check | ✅ CLOSED | 5/5 ALIGNED | 5 | AUDIT + GAP_MAP + TRACKER |
+| D1 Followup Runner | ✅ CLOSED | 8/8 ALIGNED | 21 | AUDIT + GAP_MAP + TRACKER |
+| D2 Heartbeat Runner | ✅ CLOSED | 13/13 ALIGNED | 22 | AUDIT + GAP_MAP + TRACKER |
+| D4 Cron & Scheduling | ✅ CLOSED | 17/17 ALIGNED | 77 | AUDIT + GAP_MAP + TRACKER |
+| D5 Sub-Agent Spawning | ✅ CLOSED | 15/15 ALIGNED | 34 | AUDIT + GAP_MAP + TRACKER |
+| D6 Multi-Surface Output | ✅ CLOSED | 13/13 ALIGNED | 33 | AUDIT + GAP_MAP + TRACKER |
 
-**Total: 137 test files, 2594 tests, 0 failures. TypeScript: 0 errors.**
+**Total: 137 test files, 2638 tests, 0 failures. TypeScript: 0 errors.**
+**Documentation: 18 artifacts (3 per domain × 6 domains).**
+**Commits: `4313415` (source), `eccc99f` (parity workflow).**
