@@ -1807,3 +1807,41 @@ export interface ISessionManager {
   readonly onDidChangeSession: Event<IWorkspaceSessionContext | undefined>;
 }
 export const ISessionManager = createServiceIdentifier<ISessionManager>('ISessionManager');
+
+// ─── IDiagnosticsService (D3) ──────────────────────────────────────────────
+
+export interface IDiagnosticResult {
+  readonly name: string;
+  readonly status: 'pass' | 'fail' | 'warn';
+  readonly detail: string;
+  readonly timestamp: number;
+  readonly category?: 'connection' | 'model' | 'rag' | 'config' | 'workspace';
+}
+
+export type IDiagnosticCheckProducer = (deps: IDiagnosticCheckDeps) => Promise<IDiagnosticResult>;
+
+export interface IDiagnosticCheckDeps {
+  readonly checkProviderStatus?: () => Promise<{ available: boolean; version?: string; error?: string }>;
+  readonly getActiveModel?: () => string | undefined;
+  readonly listModels?: () => Promise<readonly { id: string; name: string; size?: number }[]>;
+  readonly isRAGAvailable?: () => boolean;
+  readonly isIndexing?: () => boolean;
+  readonly getFileCount?: () => Promise<number>;
+  readonly getWorkspaceName: () => string;
+  readonly existsRelative?: (path: string) => Promise<boolean>;
+  readonly getModelContextLength?: () => number;
+  readonly getEffectiveConfig?: () => unknown;
+  readonly checkEmbedding?: () => Promise<boolean>;
+  readonly checkVectorStore?: () => Promise<boolean>;
+  readonly checkDocumentExtraction?: () => Promise<boolean>;
+  readonly checkMemoryService?: () => Promise<boolean>;
+}
+
+export interface IDiagnosticsService {
+  runChecks(): Promise<readonly IDiagnosticResult[]>;
+  getLastResults(): readonly IDiagnosticResult[];
+  updateDeps(patch: Partial<IDiagnosticCheckDeps>): void;
+  readonly onDidChange: Event<readonly IDiagnosticResult[]>;
+}
+
+export const IDiagnosticsService = createServiceIdentifier<IDiagnosticsService>('IDiagnosticsService');

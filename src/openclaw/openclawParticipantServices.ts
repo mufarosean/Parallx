@@ -68,6 +68,8 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly getSessionFlag?: IDefaultParticipantServices['getSessionFlag'];
   readonly setSessionFlag?: IDefaultParticipantServices['setSessionFlag'];
   readonly executeCommand?: IDefaultParticipantServices['executeCommand'];
+  // D3: Diagnostics service
+  readonly diagnosticsService?: IDefaultParticipantServices['diagnosticsService'];
 }
 
 export interface IOpenclawWorkspaceParticipantAdapterDeps {
@@ -170,6 +172,8 @@ export function buildOpenclawDefaultParticipantServices(
     getSessionFlag: deps.getSessionFlag,
     setSessionFlag: deps.setSessionFlag,
     executeCommand: deps.executeCommand,
+    // D3: Diagnostics service
+    diagnosticsService: deps.diagnosticsService,
   };
 }
 

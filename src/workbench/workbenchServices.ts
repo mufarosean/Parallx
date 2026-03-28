@@ -3,7 +3,7 @@
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager } from '../services/serviceTypes.js';
 import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
-import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService, IUnifiedAIConfigService, IDocumentExtractionService } from '../services/serviceTypes.js';
+import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService, IUnifiedAIConfigService, IDocumentExtractionService, IDiagnosticsService } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
@@ -40,6 +40,8 @@ import { AutoTaggingService } from '../services/autoTaggingService.js';
 import { ProactiveSuggestionsService } from '../services/proactiveSuggestionsService.js';
 import { DocumentExtractionService } from '../services/documentExtractionService.js';
 import { UnifiedAIConfigService } from '../aiSettings/unifiedAIConfigService.js';
+import { DiagnosticsService } from '../services/diagnosticsService.js';
+import { ALL_DIAGNOSTIC_CHECKS } from '../services/diagnosticChecks.js';
 import type { IStorage } from '../platform/storage.js';
 import type { ViewManager } from '../views/viewManager.js';
 
@@ -283,6 +285,19 @@ export function registerIndexingServices(
   services.registerInstance(IRelatedContentService, relatedContentService);
   services.registerInstance(IAutoTaggingService, autoTaggingService);
   services.registerInstance(IProactiveSuggestionsService, proactiveSuggestionsService);
+
+  // ── D3: Diagnostics Service ──
+  const diagnosticsService = new DiagnosticsService(
+    {
+      getWorkspaceName: () => workspaceService.workspaceName ?? '',
+      getEffectiveConfig: () => unifiedConfigService?.getEffectiveConfig(),
+      checkEmbedding: async () => { try { const r = await embeddingService.embedQuery('test'); return r.length > 0; } catch { return false; } },
+      checkVectorStore: async () => { try { const s = await vectorStoreService.getStats(); return s.totalChunks >= 0; } catch { return false; } },
+      checkMemoryService: async () => { try { await memoryService.getAllMemories(); return true; } catch { return false; } },
+    },
+    ALL_DIAGNOSTIC_CHECKS,
+  );
+  services.registerInstance(IDiagnosticsService, diagnosticsService);
 
   return { embeddingService, chunkingService, vectorStoreService, indexingPipeline, retrievalService, memoryService, relatedContentService, autoTaggingService, proactiveSuggestionsService };
 }

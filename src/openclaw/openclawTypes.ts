@@ -273,6 +273,8 @@ export interface IDefaultParticipantServices {
   setSessionFlag?(key: string, value: boolean): void;
   /** D2: Execute a UI command by ID (for /new → chat.newSession bridge). */
   executeCommand?(commandId: string, ...args: unknown[]): void;
+  /** D3: Diagnostics service for /doctor delegation. */
+  diagnosticsService?: import('../services/serviceTypes.js').IDiagnosticsService;
 }
 
 export interface IWorkspaceParticipantServices {

@@ -38,7 +38,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -719,7 +719,30 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       return (messages: Parameters<typeof dataService.sendChatRequest>[0], options?: Parameters<typeof dataService.sendChatRequest>[1], signal?: AbortSignal) =>
         _ollamaProvider!.sendChatRequest(modelId, messages as any, options as any, signal);
     } : undefined,
+    // D3: Diagnostics service
+    diagnosticsService: api.services.has(IDiagnosticsService)
+      ? api.services.get<import('../../services/serviceTypes.js').IDiagnosticsService>(IDiagnosticsService)
+      : undefined,
   });
+
+  // D3 R1: Supplement diagnostics deps now that OllamaProvider + dataService are available
+  if (api.services.has(IDiagnosticsService)) {
+    const diagSvc = api.services.get<import('../../services/serviceTypes.js').IDiagnosticsService>(IDiagnosticsService);
+    diagSvc.updateDeps({
+      checkProviderStatus: _ollamaProvider ? () => _ollamaProvider!.checkAvailability() : undefined,
+      getActiveModel: () => dataService.getActiveModel(),
+      listModels: _ollamaProvider ? async () => {
+        const models = await _ollamaProvider!.listModels();
+        return models.map(m => ({ id: m.id, name: m.displayName ?? m.id, size: typeof m.parameterSize === 'string' ? parseInt(m.parameterSize, 10) || undefined : m.parameterSize }));
+      } : undefined,
+      isRAGAvailable: () => dataService.isRAGAvailable(),
+      isIndexing: () => dataService.isIndexing(),
+      getFileCount: fsAccessor ? () => dataService.getFileCount() : undefined,
+      existsRelative: fsAccessor ? (r: string) => dataService.existsRelative(r) : undefined,
+      getModelContextLength: () => dataService.getModelContextLength(),
+      checkDocumentExtraction: async () => { try { return !!(api.services.has(IDocumentExtractionService)); } catch { return false; } },
+    });
+  }
   const openclawWorkspaceParticipantServices = buildOpenclawWorkspaceParticipantServices({
     sendChatRequest: (m, o, s) => dataService.sendChatRequest(m, o, s),
     getActiveModel: () => dataService.getActiveModel(),

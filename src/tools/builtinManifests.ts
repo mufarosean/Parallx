@@ -158,6 +158,26 @@ export const INDEXING_LOG_MANIFEST: IToolManifest = {
   },
 };
 
+// ── Diagnostics (D3) ─────────────────────────────────────────────────────
+
+export const DIAGNOSTICS_MANIFEST: IToolManifest = {
+  manifestVersion: 1,
+  id: 'parallx.diagnostics',
+  name: 'Diagnostics',
+  version: '1.0.0',
+  publisher: 'parallx',
+  description: 'AI runtime diagnostics — health checks for Ollama, RAG, embeddings, and configuration.',
+  main: './main.js',
+  engines: { parallx: '^0.1.0' },
+  activationEvents: ['onStartupFinished'],
+  contributes: {
+    commands: [
+      { id: 'diagnostics.runChecks', title: 'Diagnostics: Run Health Checks' },
+    ],
+    views: [{ id: 'view.diagnostics', name: 'Diagnostics', defaultContainerId: 'panel' }],
+  },
+};
+
 // ── Tool Gallery ─────────────────────────────────────────────────────────
 
 export const TOOL_GALLERY_MANIFEST: IToolManifest = {
