@@ -3,7 +3,7 @@
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager } from '../services/serviceTypes.js';
 import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
-import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService, IUnifiedAIConfigService, IDocumentExtractionService, IDiagnosticsService, IObservabilityService } from '../services/serviceTypes.js';
+import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService, IUnifiedAIConfigService, IDocumentExtractionService, IDiagnosticsService, IObservabilityService, IRuntimeHookRegistry } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
@@ -42,6 +42,7 @@ import { DocumentExtractionService } from '../services/documentExtractionService
 import { UnifiedAIConfigService } from '../aiSettings/unifiedAIConfigService.js';
 import { DiagnosticsService } from '../services/diagnosticsService.js';
 import { ObservabilityService } from '../services/observabilityService.js';
+import { RuntimeHookRegistry } from '../services/runtimeHookRegistry.js';
 import { ALL_DIAGNOSTIC_CHECKS } from '../services/diagnosticChecks.js';
 import type { IStorage } from '../platform/storage.js';
 import type { ViewManager } from '../views/viewManager.js';
@@ -303,6 +304,10 @@ export function registerIndexingServices(
   // ── D7: Observability Service ──
   const observabilityService = new ObservabilityService();
   services.registerInstance(IObservabilityService, observabilityService);
+
+  // ── D4: Runtime Hook Registry ──
+  const runtimeHookRegistry = new RuntimeHookRegistry();
+  services.registerInstance(IRuntimeHookRegistry, runtimeHookRegistry);
 
   // Wire observability into diagnostics (deferred — observability needs to exist first)
   diagnosticsService.updateDeps({

@@ -356,7 +356,7 @@ describe('openclaw default participant', () => {
 
     const firstMessages = sendChatRequest.mock.calls[0][0];
     expect(firstMessages[0].content).toContain('You are Parallx, a local AI assistant');
-    expect(invokeToolWithRuntimeControl).toHaveBeenCalledWith('read_file', { path: 'Policy.md' }, expect.objectContaining({ isCancellationRequested: false }));
+    expect(invokeToolWithRuntimeControl).toHaveBeenCalledWith('read_file', { path: 'Policy.md' }, expect.objectContaining({ isCancellationRequested: false }), undefined);
     expect(response.markdown).toHaveBeenCalledWith('Grounded OpenClaw answer');
   });
 

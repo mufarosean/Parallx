@@ -1902,3 +1902,27 @@ export interface IObservabilityService {
 }
 
 export const IObservabilityService = createServiceIdentifier<IObservabilityService>('IObservabilityService');
+
+// ---------------------------------------------------------------------------
+// D4: Runtime Hook Registry
+// ---------------------------------------------------------------------------
+
+/** D4-5: Observer for model call lifecycle events. */
+export interface IChatRuntimeMessageObserver {
+  onBeforeModelCall?(messages: readonly { role: string; content: string }[], model: string): void;
+  onAfterModelCall?(messages: readonly { role: string; content: string }[], model: string, durationMs: number): void;
+}
+
+/** D4-4: Registry for runtime hooks — tool observers and message observers. */
+export interface IRuntimeHookRegistry {
+  /** Register a tool invocation observer. Returns a disposable to unregister. */
+  registerToolObserver(observer: import('../services/chatRuntimeTypes.js').IChatRuntimeToolInvocationObserver): IDisposable;
+  /** Register a message lifecycle observer. Returns a disposable to unregister. */
+  registerMessageObserver(observer: IChatRuntimeMessageObserver): IDisposable;
+  /** Get a composite tool observer that fires all registered observers (error-isolated). */
+  getCompositeToolObserver(): import('../services/chatRuntimeTypes.js').IChatRuntimeToolInvocationObserver;
+  /** Get a composite message observer that fires all registered observers (error-isolated). */
+  getCompositeMessageObserver(): IChatRuntimeMessageObserver;
+}
+
+export const IRuntimeHookRegistry = createServiceIdentifier<IRuntimeHookRegistry>('IRuntimeHookRegistry');

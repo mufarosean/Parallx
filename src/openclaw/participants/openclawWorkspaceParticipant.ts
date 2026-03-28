@@ -335,6 +335,9 @@ async function runWorkspacePromptTurn(
       invokeToolWithRuntimeControl: services.invokeToolWithRuntimeControl
         ? (name, args, tok) => services.invokeToolWithRuntimeControl!(name, args, tok)
         : undefined,
+      toolObserver: services.runtimeHookRegistry?.getCompositeToolObserver(),
+      messageObserver: services.runtimeHookRegistry?.getCompositeMessageObserver(),
+      modelName: services.getActiveModel() ?? 'unknown',
     });
 
     // D7: Record turn metrics in observability service

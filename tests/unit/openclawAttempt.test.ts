@@ -181,6 +181,7 @@ describe('executeOpenclawAttempt', () => {
       'readFile',
       { path: 'test.md' },
       expect.anything(),
+      undefined,
     );
   });
 

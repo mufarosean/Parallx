@@ -123,6 +123,10 @@ export interface IOpenclawTurnContext {
     token: ICancellationToken,
     observer?: IChatRuntimeToolInvocationObserver,
   ) => Promise<IToolResult>;
+  /** D4: Optional tool invocation observer for runtime hooks. */
+  readonly toolObserver?: IChatRuntimeToolInvocationObserver;
+  /** D4: Optional message lifecycle observer for runtime hooks. */
+  readonly messageObserver?: import('../services/serviceTypes.js').IChatRuntimeMessageObserver;
 }
 
 /**
@@ -255,6 +259,12 @@ export async function executeOpenclawAttempt(
 
   try {
   while (!token.isCancellationRequested && iterations < context.maxToolIterations + 1) {
+    // D4: Fire before-model-call hook
+    const hookMessages = context.messageObserver ? currentMessages.map(m => ({ role: m.role, content: m.content })) : undefined;
+    if (context.messageObserver?.onBeforeModelCall && hookMessages) {
+      try { context.messageObserver.onBeforeModelCall(hookMessages, context.runtimeInfo.model); } catch (e) { console.warn('[D4] Message hook error:', e); }
+    }
+    const modelCallStart = Date.now();
     // Execute model call
     const turnResult = await executeModelStream(
       context.sendChatRequest,
@@ -263,6 +273,10 @@ export async function executeOpenclawAttempt(
       response,
       token,
     );
+    // D4: Fire after-model-call hook (reuses snapshot from before-hook)
+    if (context.messageObserver?.onAfterModelCall && hookMessages) {
+      try { context.messageObserver.onAfterModelCall(hookMessages, context.runtimeInfo.model, Date.now() - modelCallStart); } catch (e) { console.warn('[D4] Message hook error:', e); }
+    }
 
     markdown = turnResult.markdown;
     thinking = turnResult.thinking;
@@ -308,6 +322,7 @@ export async function executeOpenclawAttempt(
         toolCall.function.name,
         toolCall.function.arguments,
         token,
+        context.toolObserver,
       );
       toolCallCount++;
 

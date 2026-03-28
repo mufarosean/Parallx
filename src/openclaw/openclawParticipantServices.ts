@@ -72,6 +72,8 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly diagnosticsService?: IDefaultParticipantServices['diagnosticsService'];
   // D7: Observability service
   readonly observabilityService?: IDefaultParticipantServices['observabilityService'];
+  // D4: Runtime hook registry
+  readonly runtimeHookRegistry?: IDefaultParticipantServices['runtimeHookRegistry'];
 }
 
 export interface IOpenclawWorkspaceParticipantAdapterDeps {
@@ -91,6 +93,8 @@ export interface IOpenclawWorkspaceParticipantAdapterDeps {
   readonly reportRuntimeTrace?: IWorkspaceParticipantServices['reportRuntimeTrace'];
   readonly reportBootstrapDebug?: IWorkspaceParticipantServices['reportBootstrapDebug'];
   readonly observabilityService?: IWorkspaceParticipantServices['observabilityService'];
+  // D4: Runtime hook registry
+  readonly runtimeHookRegistry?: IWorkspaceParticipantServices['runtimeHookRegistry'];
 }
 
 export interface IOpenclawCanvasParticipantAdapterDeps {
@@ -108,6 +112,8 @@ export interface IOpenclawCanvasParticipantAdapterDeps {
   readonly reportRuntimeTrace?: ICanvasParticipantServices['reportRuntimeTrace'];
   readonly reportBootstrapDebug?: ICanvasParticipantServices['reportBootstrapDebug'];
   readonly observabilityService?: ICanvasParticipantServices['observabilityService'];
+  // D4: Runtime hook registry
+  readonly runtimeHookRegistry?: ICanvasParticipantServices['runtimeHookRegistry'];
 }
 
 export function buildOpenclawDefaultParticipantServices(
@@ -180,6 +186,8 @@ export function buildOpenclawDefaultParticipantServices(
     diagnosticsService: deps.diagnosticsService,
     // D7: Observability service
     observabilityService: deps.observabilityService,
+    // D4: Runtime hook registry
+    runtimeHookRegistry: deps.runtimeHookRegistry,
   };
 }
 
@@ -203,6 +211,7 @@ export function buildOpenclawWorkspaceParticipantServices(
     reportRuntimeTrace: deps.reportRuntimeTrace,
     reportBootstrapDebug: deps.reportBootstrapDebug,
     observabilityService: deps.observabilityService,
+    runtimeHookRegistry: deps.runtimeHookRegistry,
   };
 }
 
@@ -224,5 +233,6 @@ export function buildOpenclawCanvasParticipantServices(
     reportRuntimeTrace: deps.reportRuntimeTrace,
     reportBootstrapDebug: deps.reportBootstrapDebug,
     observabilityService: deps.observabilityService,
+    runtimeHookRegistry: deps.runtimeHookRegistry,
   };
 }

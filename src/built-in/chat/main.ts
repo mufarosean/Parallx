@@ -38,7 +38,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -727,6 +727,10 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     observabilityService: api.services.has(IObservabilityService)
       ? api.services.get<import('../../services/serviceTypes.js').IObservabilityService>(IObservabilityService)
       : undefined,
+    // D4: Runtime hook registry
+    runtimeHookRegistry: api.services.has(IRuntimeHookRegistry)
+      ? api.services.get<import('../../services/serviceTypes.js').IRuntimeHookRegistry>(IRuntimeHookRegistry)
+      : undefined,
   });
 
   // D3 R1: Supplement diagnostics deps now that OllamaProvider + dataService are available
@@ -766,6 +770,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     observabilityService: api.services.has(IObservabilityService)
       ? api.services.get<import('../../services/serviceTypes.js').IObservabilityService>(IObservabilityService)
       : undefined,
+    runtimeHookRegistry: api.services.has(IRuntimeHookRegistry)
+      ? api.services.get<import('../../services/serviceTypes.js').IRuntimeHookRegistry>(IRuntimeHookRegistry)
+      : undefined,
   });
   const openclawCanvasParticipantServices = buildOpenclawCanvasParticipantServices({
     sendChatRequest: (m, o, s) => dataService.sendChatRequest(m, o, s),
@@ -783,6 +790,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     reportBootstrapDebug: (debug) => dataService.reportBootstrapDebug(debug),
     observabilityService: api.services.has(IObservabilityService)
       ? api.services.get<import('../../services/serviceTypes.js').IObservabilityService>(IObservabilityService)
+      : undefined,
+    runtimeHookRegistry: api.services.has(IRuntimeHookRegistry)
+      ? api.services.get<import('../../services/serviceTypes.js').IRuntimeHookRegistry>(IRuntimeHookRegistry)
       : undefined,
   });
 

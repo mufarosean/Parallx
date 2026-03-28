@@ -277,6 +277,8 @@ export interface IDefaultParticipantServices {
   diagnosticsService?: import('../services/serviceTypes.js').IDiagnosticsService;
   /** D7: Observability service for turn metric recording. */
   observabilityService?: import('../services/serviceTypes.js').IObservabilityService;
+  /** D4: Runtime hook registry for tool and message observers. */
+  runtimeHookRegistry?: import('../services/serviceTypes.js').IRuntimeHookRegistry;
 }
 
 export interface IWorkspaceParticipantServices {
@@ -318,6 +320,8 @@ export interface IWorkspaceParticipantServices {
   agentRegistry?: IAgentRegistry;
   /** D7: Observability service for turn metric recording. */
   observabilityService?: import('../services/serviceTypes.js').IObservabilityService;
+  /** D4: Runtime hook registry for tool and message observers. */
+  runtimeHookRegistry?: import('../services/serviceTypes.js').IRuntimeHookRegistry;
 }
 
 export interface ICanvasParticipantServices {
@@ -357,6 +361,8 @@ export interface ICanvasParticipantServices {
   agentRegistry?: IAgentRegistry;
   /** D7: Observability service for turn metric recording. */
   observabilityService?: import('../services/serviceTypes.js').IObservabilityService;
+  /** D4: Runtime hook registry for tool and message observers. */
+  runtimeHookRegistry?: import('../services/serviceTypes.js').IRuntimeHookRegistry;
 }
 
 

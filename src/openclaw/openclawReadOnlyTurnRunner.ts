@@ -82,6 +82,12 @@ export interface IReadOnlyTurnOptions {
     args: Record<string, unknown>,
     token: ICancellationToken,
   ) => Promise<IToolResult>;
+  /** D4: Optional tool invocation observer for runtime hooks. */
+  readonly toolObserver?: import('../services/chatRuntimeTypes.js').IChatRuntimeToolInvocationObserver;
+  /** D4: Optional message lifecycle observer for runtime hooks. */
+  readonly messageObserver?: import('../services/serviceTypes.js').IChatRuntimeMessageObserver;
+  /** Model name for message hook metadata. */
+  readonly modelName?: string;
 }
 
 export interface IReadOnlyTurnResult {
@@ -138,6 +144,13 @@ export async function runOpenclawReadOnlyTurn(
     const toolCalls: Array<{ function: { name: string; arguments: Record<string, unknown> } }> = [];
 
     try {
+      // D4: Fire before-model-call hook
+      const modelName = options.modelName ?? 'unknown';
+      const hookMessages = options.messageObserver ? messages.map(m => ({ role: m.role, content: m.content })) : undefined;
+      if (options.messageObserver?.onBeforeModelCall && hookMessages) {
+        try { options.messageObserver.onBeforeModelCall(hookMessages, modelName); } catch (e) { console.warn('[D4] Message hook error:', e); }
+      }
+      const modelCallStart = Date.now();
       for await (const chunk of sendChatRequest(messages, effectiveRequestOptions)) {
         if (token.isCancellationRequested) {
           break;
@@ -156,6 +169,10 @@ export async function runOpenclawReadOnlyTurn(
         if (typeof chunk.evalCount === 'number') {
           completionTokens = chunk.evalCount;
         }
+      }
+      // D4: Fire after-model-call hook (reuses snapshot from before-hook)
+      if (options.messageObserver?.onAfterModelCall && hookMessages) {
+        try { options.messageObserver.onAfterModelCall(hookMessages, modelName, Date.now() - modelCallStart); } catch (e) { console.warn('[D4] Message hook error:', e); }
       }
     } catch (error) {
       // Transient → exponential backoff → retry
@@ -237,7 +254,17 @@ export async function runOpenclawReadOnlyTurn(
       }
 
       totalToolCalls++;
+      // D4: Fire before-tool hook
+      // INVARIANT: Readonly tools are always-allowed with no approval flow — only onValidated + onExecuted fire.
+      const hookMetadata = { name: toolName, permissionLevel: 'always-allowed' as const, enabled: true, requiresApproval: false, autoApproved: true, approvalSource: 'default' as const, source: 'built-in' as const };
+      if (options.toolObserver?.onValidated) {
+        try { options.toolObserver.onValidated(hookMetadata); } catch (e) { console.warn('[D4] Readonly tool hook error:', e); }
+      }
       const toolResult = await options.invokeToolWithRuntimeControl(toolName, toolCall.function.arguments, token);
+      // D4: Fire after-tool hook (approval hooks skipped — readonly tools have no approval flow)
+      if (options.toolObserver?.onExecuted) {
+        try { options.toolObserver.onExecuted(hookMetadata, toolResult); } catch (e) { console.warn('[D4] Readonly tool hook error:', e); }
+      }
       toolResultMessages.push({ role: 'tool', content: toolResult.content, toolName });
     }
 
