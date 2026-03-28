@@ -21,6 +21,8 @@ let rendererServerPort = null;
 let isAppQuitting = false;
 let lastEditableContextMenu = null;
 
+app.setAppUserModelId('com.parallx.app');
+
 const RENDERER_ROOT = path.join(__dirname, '..');
 const DEFAULT_RENDERER_PORT = 31789;
 const IS_TEST_MODE = process.env.PARALLX_TEST_MODE === '1';
