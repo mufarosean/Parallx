@@ -37,7 +37,7 @@ function createEvent(overrides?: Partial<IHeartbeatSystemEvent>): IHeartbeatSyst
 // ---------------------------------------------------------------------------
 
 describe('HeartbeatRunner', () => {
-  let executor: ReturnType<typeof vi.fn>;
+  let executor: any;
 
   beforeEach(() => {
     vi.useFakeTimers();

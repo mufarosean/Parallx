@@ -18,6 +18,7 @@ function createTurnResult(overrides?: Partial<IOpenclawTurnResult>): IOpenclawTu
     markdown: 'Hello world',
     thinking: '',
     toolCallCount: 0,
+    durationMs: 0,
     continuationRequested: false,
     ragSources: [],
     retrievedContextText: '',

@@ -34,9 +34,9 @@ function createParams(overrides?: Partial<ICronJobCreateParams>): ICronJobCreate
 // ---------------------------------------------------------------------------
 
 describe('CronService', () => {
-  let executor: ReturnType<typeof vi.fn>;
-  let contextFetcher: ReturnType<typeof vi.fn>;
-  let heartbeatWaker: ReturnType<typeof vi.fn>;
+  let executor: any;
+  let contextFetcher: any;
+  let heartbeatWaker: any;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -478,8 +478,8 @@ describe('CronService', () => {
 // ---------------------------------------------------------------------------
 
 describe('schedule validation', () => {
-  let executor: ReturnType<typeof vi.fn>;
-  let contextFetcher: ReturnType<typeof vi.fn>;
+  let executor: any;
+  let contextFetcher: any;
 
   beforeEach(() => {
     executor = vi.fn().mockResolvedValue(undefined);

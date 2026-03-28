@@ -221,7 +221,7 @@ describe('executeOpenclawAttempt', () => {
     // The tool was called, and the model received a second call with truncated content
     expect(result.toolCallCount).toBe(1);
     // Verify truncation happened by checking the messages sent to model on 2nd call
-    const secondCallMessages = sendChatRequest.mock.calls[1][0] as IChatMessage[];
+    const secondCallMessages = (sendChatRequest.mock.calls as any[][])[1][0] as IChatMessage[];
     const toolMsg = secondCallMessages.find(m => m.role === 'tool');
     expect(toolMsg).toBeDefined();
     expect(toolMsg!.content.length).toBeLessThan(longContent.length);
@@ -374,7 +374,7 @@ describe('executeOpenclawAttempt', () => {
     );
 
     // Verify the messages sent to model include the mention context
-    const messages = sendChatRequest.mock.calls[0][0] as IChatMessage[];
+    const messages = (sendChatRequest.mock.calls as any[][])[0][0] as IChatMessage[];
     const mentionMsg = messages.find(m => m.role === 'user' && m.content.includes('File: test.md'));
     expect(mentionMsg).toBeDefined();
   });

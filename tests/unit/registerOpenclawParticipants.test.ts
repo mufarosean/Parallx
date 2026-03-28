@@ -22,7 +22,7 @@ function stubDefaultServices(): IDefaultParticipantServices {
     sendChatRequest: vi.fn(),
     getActiveModel: vi.fn(() => 'test-model'),
     getWorkspaceName: vi.fn(() => 'test-ws'),
-    getPageCount: vi.fn(() => 0),
+    getPageCount: vi.fn(async () => 0),
     getCurrentPageTitle: vi.fn(() => undefined),
     getToolDefinitions: vi.fn(() => []),
     getReadOnlyToolDefinitions: vi.fn(() => []),
@@ -37,7 +37,7 @@ function stubWorkspaceServices(): IWorkspaceParticipantServices {
     listPages: vi.fn(async () => []),
     searchPages: vi.fn(async () => []),
     getPageContent: vi.fn(async () => ''),
-    getPageTitle: vi.fn(() => undefined),
+    getPageTitle: vi.fn(async () => null),
   };
 }
 
@@ -48,7 +48,7 @@ function stubCanvasServices(): ICanvasParticipantServices {
     getWorkspaceName: vi.fn(() => 'test-ws'),
     getCurrentPageId: vi.fn(() => undefined),
     getCurrentPageTitle: vi.fn(() => undefined),
-    getPageStructure: vi.fn(async () => ({ blocks: [] })),
+    getPageStructure: vi.fn(async () => ({ pageId: 'stub', title: 'Stub', blocks: [] })),
   };
 }
 

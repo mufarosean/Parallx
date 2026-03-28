@@ -238,8 +238,8 @@ describe('SubagentRegistry', () => {
 // ---------------------------------------------------------------------------
 
 describe('SubagentSpawner', () => {
-  let executor: ReturnType<typeof vi.fn>;
-  let announcer: ReturnType<typeof vi.fn>;
+  let executor: any;
+  let announcer: any;
 
   beforeEach(() => {
     vi.useFakeTimers();

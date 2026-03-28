@@ -136,7 +136,12 @@ describe('stripMentions', () => {
 function createMockServices(overrides: Partial<IDefaultParticipantServices> = {}): IDefaultParticipantServices {
   return {
     sendChatRequest: vi.fn() as any,
+    getActiveModel: () => undefined,
     getWorkspaceName: () => 'test-workspace',
+    getPageCount: async () => 0,
+    getCurrentPageTitle: () => undefined,
+    getToolDefinitions: () => [],
+    getReadOnlyToolDefinitions: () => [],
     readFileRelative: vi.fn().mockResolvedValue('file content'),
     listFolderFiles: vi.fn().mockResolvedValue([
       { relativePath: 'src/a.ts', content: 'const a = 1;' },

@@ -25,6 +25,7 @@ function skill(name: string, kind: 'tool' | 'prompt' = 'tool'): ISkillCatalogEnt
     name,
     kind,
     description: `${name} skill`,
+    tags: [],
     location: `/skills/${name}`,
     parameters: [{ name: 'input', type: 'string', description: 'input', required: true }],
   };
@@ -341,7 +342,7 @@ describe('buildToolDefinitionFromSkillCatalogEntry', () => {
   });
 
   it('handles skill with no parameters', () => {
-    const s: ISkillCatalogEntry = { name: 'empty', kind: 'tool', description: 'empty', location: '/skills/empty' };
+    const s: ISkillCatalogEntry = { name: 'empty', kind: 'tool', description: 'empty', tags: [], location: '/skills/empty' };
     const def = buildToolDefinitionFromSkillCatalogEntry(s);
     const params = def.parameters as { type: string; properties: Record<string, any> };
     expect(params.type).toBe('object');
