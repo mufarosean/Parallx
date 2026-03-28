@@ -946,9 +946,6 @@ export class ChatDataService {
     }
 
     try {
-      // No hardcoded overrides — retrieval parameters come from AI Settings
-      // (ragTopK, ragMaxPerSource, ragTokenBudget, etc.) via the config
-      // provider bound to the retrieval service. Users control the limits.
       const chunks = await this._d.retrievalService.retrieve(query, pathPrefixes?.length ? { pathPrefixes } : undefined);
       const retrievalTrace = this._d.retrievalService.getLastTrace?.();
       if (chunks.length === 0) {

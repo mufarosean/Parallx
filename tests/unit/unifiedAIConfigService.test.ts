@@ -51,8 +51,6 @@ describe('IUnifiedAIConfig defaults', () => {
 
   it('retrieval defaults match retrievalService constants', () => {
     // These must match the hardcoded values in retrievalService.ts
-    expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragDecompositionMode).toBe('auto');
-    expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragCandidateBreadth).toBe('balanced');
     expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragTopK).toBe(20);
     expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragScoreThreshold).toBe(0.01);
   });
@@ -591,8 +589,6 @@ describe('A.4 Consumer wiring', () => {
         getEffectiveConfig: () => ({
           retrieval: {
             ragTopK: 3,
-            ragMaxPerSource: 2,
-            ragTokenBudget: 1200,
             ragScoreThreshold: 0.5,
           },
         }),
@@ -601,9 +597,9 @@ describe('A.4 Consumer wiring', () => {
       const results = await svc.retrieve('test query');
       // Search was called (proving the config path was reached without error)
       expect(mockVector.search).toHaveBeenCalled();
-      // The search options should contain topK = 3 * overfetchFactor = 9
+      // The search options should contain topK = 3 (direct from config)
       const searchOpts = mockVector.search.mock.calls[0][2];
-      expect(searchOpts.topK).toBe(9); // 3 × 3 (overfetch factor)
+      expect(searchOpts.topK).toBe(3);
       expect(results).toEqual([]);
     });
   });

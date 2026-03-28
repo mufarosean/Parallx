@@ -104,17 +104,9 @@ export interface IUnifiedContextBudgetConfig {
 export interface IUnifiedRetrievalConfig {
   /** @parallx-specific No upstream OpenClaw equivalent. Upstream context engine always runs if registered. Desktop toggle to disable RAG when workspace is empty. */
   readonly autoRag: boolean;
-  /** @parallx-specific No upstream equivalent. Decomposes user query into sub-queries for broader recall via retrievalService._buildQueryPlan. */
-  readonly ragDecompositionMode: 'auto' | 'off';
-  /** @parallx-specific Loosely inspired by upstream candidateMultiplier (numeric), remapped to balanced/broad enum for retrievalService. */
-  readonly ragCandidateBreadth: 'balanced' | 'broad';
-  /** @parallx-specific Upstream has memorySearch.query.maxResults (YAML) but configures a different retrieval system. Controls retrievalService top-K. */
+  /** Upstream: memorySearch.query.maxResults. Controls retrievalService top-K. */
   readonly ragTopK: number;
-  /** @parallx-specific No upstream equivalent. Caps chunks from a single source to prevent context monopolization in retrievalService. */
-  readonly ragMaxPerSource: number;
-  /** @parallx-specific No upstream equivalent. Upstream memory search has no token budget concept; budgeting happens at context engine assembly. */
-  readonly ragTokenBudget: number;
-  /** @parallx-specific Upstream has memorySearch.query.minScore (YAML) but configures a different retrieval system. RRF noise floor for retrievalService. */
+  /** Upstream: memorySearch.query.minScore. RRF noise floor for retrievalService. */
   readonly ragScoreThreshold: number;
   /** Token budget allocation across system/RAG/history/user */
   readonly contextBudget: IUnifiedContextBudgetConfig;
@@ -403,11 +395,7 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
   },
   retrieval: {
     autoRag: true,
-    ragDecompositionMode: 'auto',
-    ragCandidateBreadth: 'balanced',
     ragTopK: 20,
-    ragMaxPerSource: 5,
-    ragTokenBudget: 0,         // 0 = auto (30% of model context window)
     ragScoreThreshold: 0.01,
     contextBudget: {
       trimPriority: {

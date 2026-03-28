@@ -67,7 +67,7 @@
 | Upstream Capability | Upstream Location | Parallx Status | Parallx Location | Gap | Fix |
 |---|---|---|---|---|---|
 | Memory manager | memory/manager.ts | **ALIGNED** | `services.recallMemories` / `services.storeSessionMemory` | Memory via service layer abstraction. Documented Parallx adaptation — service layer provides equivalent functionality. | — |
-| Hybrid search | memory/search-manager.ts | **ALIGNED** | RAG via `services.retrieveContext` | Vector + keyword search via platform. Documented Parallx adaptation — platform handles hybrid search. | — |
+| Hybrid search | memory/search-manager.ts | **ALIGNED** | RAG via `services.retrieveContext` → `retrievalService.ts` (291 lines) | Vector + keyword hybrid search (RRF). Platform retrieval rewritten in F9-R2 (1,005→291 lines) to match upstream: embed → single search → score filter → return top N. Two config knobs (topK, minScore). | — |
 | Embedding (Ollama) | memory/embeddings.ts:100-150 | **ALIGNED** | nomic-embed-text via Ollama | Configured in ai-config.json | — |
 | Memory flush on compaction | Triggered by context compaction | **ALIGNED** | `openclawContextEngine.ts` `compact()` → `services.storeSessionMemory()` | compact() calls storeSessionMemory after successful summarization. Wrapped in try/catch (non-fatal). F8-8 confirmed ALIGNED. | — |
 | Session transcript persistence | sessions/*.jsonl | **ALIGNED** | Platform session storage | Transcripts stored by platform. Documented Parallx adaptation — different storage backend, equivalent functionality. | — |

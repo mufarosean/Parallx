@@ -1531,12 +1531,6 @@ export interface IRetrievalService extends IDisposable {
     chunks: import('./retrievalService.js').RetrievedContext[],
   ): string;
 
-  /** Run multiple queries in parallel, merge and deduplicate results (M12). */
-  retrieveMulti(
-    queries: string[],
-    options?: import('./retrievalService.js').RetrievalOptions,
-  ): Promise<import('./retrievalService.js').RetrievedContext[]>;
-
   /** Get trace information for the most recent retrieval request. */
   getLastTrace?(): import('./retrievalService.js').RetrievalTrace | undefined;
 }

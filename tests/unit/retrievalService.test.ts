@@ -1,4 +1,4 @@
-// Unit tests for RetrievalService — M10 Phase 3 Task 3.1
+// Unit tests for RetrievalService
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RetrievalService, dotProduct, cosineSimilarity } from '../../src/services/retrievalService';
@@ -108,12 +108,9 @@ describe('RetrievalService', () => {
     });
 
     it('embeds query and calls hybrid search', async () => {
-      const queryEmb = new Array(768).fill(0.1);
-      const storedEmb = new Array(768).fill(0.1); // identical → cosine ~1.0
       vectorStore.search.mockResolvedValue([
         makeResult({ rowid: 1, score: 0.05, chunkText: 'JWT tokens' }),
       ]);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, storedEmb]]));
 
       const results = await service.retrieve('authentication approach');
 
@@ -121,7 +118,7 @@ describe('RetrievalService', () => {
       expect(vectorStore.search).toHaveBeenCalledWith(
         expect.any(Array),
         'authentication approach',
-        expect.objectContaining({ topK: 60, includeKeyword: true }),
+        expect.objectContaining({ topK: 20, includeKeyword: true }),
       );
       expect(results).toHaveLength(1);
       expect(results[0].text).toBe('JWT tokens');
@@ -129,89 +126,24 @@ describe('RetrievalService', () => {
     });
 
     it('filters out results below minScore', async () => {
-      const highEmb = new Array(768).fill(0.1);
       vectorStore.search.mockResolvedValue([
         makeResult({ rowid: 1, score: 0.05 }),
         makeResult({ rowid: 2, score: 0.001, chunkText: 'low score' }),
       ]);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, highEmb]]));
 
       const results = await service.retrieve('query');
       expect(results).toHaveLength(1);
-      expect(results[0].score).toBeGreaterThanOrEqual(0.05);
+      expect(results[0].score).toBeGreaterThanOrEqual(0.01);
     });
 
     it('respects custom minScore option', async () => {
-      const emb = new Array(768).fill(0.1);
       vectorStore.search.mockResolvedValue([
         makeResult({ rowid: 1, score: 0.05 }),
         makeResult({ rowid: 2, score: 0.02 }),
       ]);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb]]));
 
       const results = await service.retrieve('query', { minScore: 0.04 });
       expect(results).toHaveLength(1);
-    });
-
-    it('deduplicates sources — max 5 chunks per source by default', async () => {
-      const emb = new Array(768).fill(0.1);
-      vectorStore.search.mockResolvedValue([
-        makeResult({ rowid: 1, sourceId: 'p1', chunkIndex: 0, score: 0.10 }),
-        makeResult({ rowid: 2, sourceId: 'p1', chunkIndex: 1, score: 0.09 }),
-        makeResult({ rowid: 3, sourceId: 'p1', chunkIndex: 2, score: 0.08 }), // kept (3rd of 5 allowed)
-        makeResult({ rowid: 4, sourceId: 'p2', chunkIndex: 0, score: 0.07 }),
-        makeResult({ rowid: 5, sourceId: 'p2', chunkIndex: 1, score: 0.06 }),
-      ]);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map(
-        [1, 2, 3, 4, 5].map(id => [id, emb] as [number, number[]]),
-      ));
-
-      const results = await service.retrieve('query');
-      const p1Chunks = results.filter((r) => r.sourceId === 'p1');
-      expect(p1Chunks).toHaveLength(3);
-      expect(results).toHaveLength(5); // 3 from p1 + 2 from p2
-    });
-
-    it('respects custom maxPerSource option', async () => {
-      const emb = new Array(768).fill(0.1);
-      vectorStore.search.mockResolvedValue([
-        makeResult({ rowid: 1, sourceId: 'p1', chunkIndex: 0, score: 0.10 }),
-        makeResult({ rowid: 2, sourceId: 'p1', chunkIndex: 1, score: 0.09 }),
-        makeResult({ rowid: 3, sourceId: 'p2', chunkIndex: 0, score: 0.08 }),
-      ]);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map(
-        [1, 2, 3].map(id => [id, emb] as [number, number[]]),
-      ));
-
-      const results = await service.retrieve('query', { maxPerSource: 1 });
-      expect(results).toHaveLength(2); // 1 from each source
-    });
-
-    it('enforces token budget', async () => {
-      const emb = new Array(768).fill(0.1);
-      // Each chunk ~5 tokens (20 chars / 4)
-      vectorStore.search.mockResolvedValue([
-        makeResult({ rowid: 1, sourceId: 'p1', score: 0.10, chunkText: 'A'.repeat(400) }), // 100 tokens
-        makeResult({ rowid: 2, sourceId: 'p2', score: 0.09, chunkText: 'B'.repeat(400) }), // 100 tokens
-        makeResult({ rowid: 3, sourceId: 'p3', score: 0.08, chunkText: 'C'.repeat(400) }), // 100 tokens
-      ]);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map(
-        [1, 2, 3].map(id => [id, emb] as [number, number[]]),
-      ));
-
-      const results = await service.retrieve('query', { tokenBudget: 200 });
-      expect(results).toHaveLength(2); // 100 + 100 = 200, third would exceed
-    });
-
-    it('always includes at least one chunk even if it exceeds budget', async () => {
-      const emb = new Array(768).fill(0.1);
-      vectorStore.search.mockResolvedValue([
-        makeResult({ rowid: 1, score: 0.10, chunkText: 'A'.repeat(2000) }), // 500 tokens
-      ]);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb]]));
-
-      const results = await service.retrieve('query', { tokenBudget: 100 });
-      expect(results).toHaveLength(1); // Included despite exceeding budget
     });
 
     it('passes sourceFilter to VectorStoreService', async () => {
@@ -227,39 +159,115 @@ describe('RetrievalService', () => {
     });
 
     it('respects topK option', async () => {
-      const emb = new Array(768).fill(0.1);
       const results = Array.from({ length: 15 }, (_, i) =>
         makeResult({ rowid: i + 1, sourceId: `p${i}`, score: 0.10 - i * 0.001 }),
       );
       vectorStore.search.mockResolvedValue(results);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map(
-        Array.from({ length: 15 }, (_, i) => [i + 1, emb] as [number, number[]]),
-      ));
 
       const retrieved = await service.retrieve('query', { topK: 5 });
       expect(retrieved.length).toBeLessThanOrEqual(5);
     });
 
     it('includes tokenCount in results', async () => {
-      const emb = new Array(768).fill(0.1);
       vectorStore.search.mockResolvedValue([
         makeResult({ rowid: 1, score: 0.10, chunkText: 'Hello world' }),
       ]);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb]]));
 
       const results = await service.retrieve('query');
       expect(results[0].tokenCount).toBe(Math.ceil('Hello world'.length / 4));
     });
 
-    it('does not apply drop-off filter when only one result', async () => {
-      const emb = new Array(768).fill(0.1);
+    it('returns single result without dropping it', async () => {
       vectorStore.search.mockResolvedValue([
         makeResult({ rowid: 1, sourceId: 'p1', score: 0.03 }),
       ]);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb]]));
 
       const results = await service.retrieve('query');
       expect(results).toHaveLength(1);
+    });
+
+    it('reads topK and minScore from config provider', async () => {
+      service.setConfigProvider({
+        getEffectiveConfig: () => ({
+          retrieval: {
+            ragTopK: 5,
+            ragScoreThreshold: 0.05,
+          },
+        }),
+      });
+      vectorStore.search.mockResolvedValue([
+        makeResult({ rowid: 1, score: 0.06 }),
+        makeResult({ rowid: 2, score: 0.03 }),
+      ]);
+
+      const results = await service.retrieve('query');
+      expect(results).toHaveLength(1); // 0.03 < minScore 0.05
+      expect(vectorStore.search).toHaveBeenCalledWith(
+        expect.any(Array),
+        'query',
+        expect.objectContaining({ topK: 5 }),
+      );
+    });
+
+    it('excludes .parallx internal artifacts from generic retrieval by default', async () => {
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: '.parallx/ai-config.json',
+          sourceType: 'file_chunk',
+          score: 0.070,
+          chunkText: '{"models": ["gpt-oss:20b"]}',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'Claims Guide.md',
+          sourceType: 'file_chunk',
+          score: 0.061,
+          chunkText: 'File the claim within 72 hours.',
+        }),
+      ]);
+
+      const results = await service.retrieve('How do I file a claim after an accident?');
+
+      expect(results).toHaveLength(1);
+      expect(results[0].sourceId).toBe('Claims Guide.md');
+    });
+
+    it('includes .parallx artifacts when query explicitly targets them', async () => {
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: '.parallx/memory/MEMORY.md',
+          sourceType: 'file_chunk',
+          score: 0.072,
+          chunkText: 'Preferred answer style: structured brevity.',
+        }),
+      ]);
+
+      const results = await service.retrieve('show me my parallx memory file');
+
+      expect(results).toHaveLength(1);
+      expect(results[0].sourceId).toBe('.parallx/memory/MEMORY.md');
+    });
+
+    it('builds a trace with simplified fields', async () => {
+      vectorStore.search.mockResolvedValue([
+        makeResult({ rowid: 1, sourceId: 'policy', score: 0.12, chunkText: 'Collision deductible is $500.' }),
+        makeResult({ rowid: 2, sourceId: 'contacts', score: 0.05, chunkText: 'Agent contact details.' }),
+        makeResult({ rowid: 3, sourceId: 'noise', score: 0.005, chunkText: 'Irrelevant noise.' }),
+      ]);
+
+      await service.retrieve('collision deductible', { topK: 5 });
+      const trace = service.getLastTrace();
+
+      expect(trace).toBeDefined();
+      expect(trace?.query).toBe('collision deductible');
+      expect(trace?.topK).toBe(5);
+      expect(trace?.minScore).toBe(0.01);
+      expect(trace?.rawCandidateCount).toBe(3);
+      expect(trace?.afterScoreFilterCount).toBe(2); // 0.005 filtered
+      expect(trace?.finalCount).toBe(2);
+      expect(trace?.finalChunks).toHaveLength(2);
     });
   });
 
@@ -349,252 +357,11 @@ describe('RetrievalService', () => {
       ];
 
       const formatted = service.formatContext(chunks);
-      // Both auth.ts chunks get [1], the page gets [2]
       const lines = formatted.split('\n');
       const sourceLines = lines.filter(l => l.includes('Source:'));
       expect(sourceLines[0]).toBe('[1] Source: src/auth.ts');
       expect(sourceLines[1]).toBe('[1] Source: src/auth.ts');
       expect(sourceLines[2]).toBe('[2] Source: Notes');
-    });
-  });
-
-  describe('query planning & retrieval pipeline', () => {
-    it('decomposes hard multi-clause queries and merges candidates', async () => {
-      const emb = new Array(768).fill(0.1);
-      embeddingService.embedQuery.mockResolvedValue(emb);
-
-      vectorStore.search.mockImplementation(async (_queryEmbedding: number[], queryText: string) => {
-        if (/who do i call/i.test(queryText)) {
-          return [makeResult({ rowid: 2, sourceId: 'contacts', score: 0.08, chunkText: 'Call Sarah to start a claim.' })];
-        }
-        return [makeResult({ rowid: 1, sourceId: 'accident-guide', score: 0.09, chunkText: 'Take photos and document the scene.' })];
-      });
-      vectorStore.getEmbeddings.mockResolvedValue(new Map([
-        [1, emb],
-        [2, emb],
-      ]));
-
-      const results = await service.retrieve('What should I do after an accident and who do I call to start a claim?');
-
-      expect(vectorStore.search.mock.calls.length).toBeGreaterThan(1);
-      expect(results.map((result) => result.sourceId)).toEqual(expect.arrayContaining(['accident-guide', 'contacts']));
-
-      const trace = service.getLastTrace();
-      expect(trace?.queryPlan?.complexity).toBe('hard');
-      expect(trace?.queryPlan?.strategy).toBe('decomposed');
-      expect(trace?.queryPlan?.variants.length).toBeGreaterThan(1);
-    });
-
-    it('keeps identifier-heavy queries on the single-query fast path', async () => {
-      const emb = new Array(768).fill(0.1);
-      embeddingService.embedQuery.mockResolvedValue(emb);
-      vectorStore.search.mockResolvedValue([
-        makeResult({ rowid: 1, sourceId: 'vehicle-info', score: 0.08, chunkText: 'The total loss threshold is 75% of KBB value.' }),
-      ]);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb]]));
-
-      await service.retrieve('What is the 75% KBB total loss rule? Please find it.');
-
-      expect(vectorStore.search).toHaveBeenCalledTimes(1);
-      expect(vectorStore.search).toHaveBeenCalledWith(
-        expect.any(Array),
-        'What is the 75% KBB total loss rule? Please find it.',
-        expect.objectContaining({ topK: 40 }),
-      );
-
-      const trace = service.getLastTrace();
-      expect(trace?.queryPlan?.exactMatchBias).toBe(true);
-      expect(trace?.queryPlan?.strategy).toBe('single');
-      expect(trace?.queryPlan?.identifiers).toEqual(expect.arrayContaining(['75%', 'KBB']));
-    });
-
-    it('uses a keyword-focused lexical query for simple non-identifier prompts', async () => {
-      const emb = new Array(768).fill(0.1);
-      embeddingService.embedQuery.mockResolvedValue(emb);
-      vectorStore.search.mockResolvedValue([
-        makeResult({ rowid: 1, sourceId: 'contacts', score: 0.08, chunkText: 'AutoCraft Collision Center and Precision Auto Body are preferred repair shops.' }),
-      ]);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb]]));
-
-      await service.retrieve('Which repair shops are recommended under my policy? Please cite your sources.');
-
-      expect(vectorStore.search).toHaveBeenCalledWith(
-        expect.any(Array),
-        'repair shops recommended',
-        expect.objectContaining({ topK: 60 }),
-      );
-
-      const trace = service.getLastTrace();
-      expect(trace?.queryPlan?.strategy).toBe('single');
-      expect(trace?.queryPlan?.reasons).toContain('keyword-focused-lexical');
-      expect(trace?.queryPlan?.variants[0]?.keywordQuery).toBe('repair shops recommended');
-    });
-
-    it('keeps short what-about follow-ups on the simple keyword-focused path', async () => {
-      const emb = new Array(768).fill(0.1);
-      embeddingService.embedQuery.mockResolvedValue(emb);
-      vectorStore.search.mockResolvedValue([
-        makeResult({ rowid: 1, sourceId: 'policy', score: 0.08, chunkText: 'Comprehensive deductible is $250.' }),
-      ]);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb]]));
-
-      await service.retrieve('And what about comprehensive?');
-
-      const [, queryText, searchOptions] = vectorStore.search.mock.calls[0];
-      expect(queryText).toBe('And what about comprehensive?');
-      expect(searchOptions).toEqual(expect.objectContaining({ topK: 60 }));
-
-      const trace = service.getLastTrace();
-      expect(trace?.queryPlan?.complexity).toBe('simple');
-      expect(trace?.queryPlan?.strategy).toBe('single');
-      expect(trace?.queryPlan?.reasons).not.toContain('multi-clause-question');
-    });
-
-    it('widens hard-query candidate breadth when broad mode is enabled', async () => {
-      const emb = new Array(768).fill(0.1);
-      embeddingService.embedQuery.mockResolvedValue(emb);
-      service.setConfigProvider({
-        getEffectiveConfig: () => ({
-          retrieval: {
-            ragCandidateBreadth: 'broad',
-            ragTopK: 20,
-            ragMaxPerSource: 5,
-            ragTokenBudget: 0,
-            ragScoreThreshold: 0.01,
-          },
-          model: { contextWindow: 8192 },
-        }),
-      });
-      vectorStore.search.mockResolvedValue([
-        makeResult({ rowid: 1, sourceId: 'Claims Guide.md', score: 0.06, chunkText: 'Call the police and document the scene.' }),
-      ]);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb]]));
-
-      await service.retrieve('I was rear-ended by an uninsured driver. What should I do and what does my policy cover?');
-
-      const trace = service.getLastTrace();
-      expect(trace?.queryPlan?.candidateMultiplier).toBe(6);
-      expect(trace?.queryPlan?.reasons).toContain('broad-candidate-breadth');
-    });
-
-    it('keeps hard queries on a single-query plan when decomposition mode is off', async () => {
-      const emb = new Array(768).fill(0.1);
-      embeddingService.embedQuery.mockResolvedValue(emb);
-      service.setConfigProvider({
-        getEffectiveConfig: () => ({
-          retrieval: {
-            ragDecompositionMode: 'off',
-            ragCandidateBreadth: 'balanced',
-            ragTopK: 20,
-            ragMaxPerSource: 5,
-            ragTokenBudget: 0,
-            ragScoreThreshold: 0.01,
-          },
-          model: { contextWindow: 8192 },
-        }),
-      });
-      vectorStore.search.mockResolvedValue([
-        makeResult({ rowid: 1, sourceId: 'Claims Guide.md', score: 0.06, chunkText: 'Call the police and document the scene.' }),
-      ]);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb]]));
-
-      await service.retrieve('I was rear-ended by an uninsured driver. What should I do and what does my policy cover?');
-
-      const trace = service.getLastTrace();
-      expect(trace?.queryPlan?.strategy).toBe('single');
-      expect(trace?.queryPlan?.variants).toHaveLength(1);
-      expect(trace?.queryPlan?.reasons).toContain('decomposition-disabled');
-    });
-
-    it('captures developer-facing retrieval diagnostics for queries, candidates, rerank scores, dropped evidence, and final packed context', async () => {
-      const emb = new Array(768).fill(0.1);
-      embeddingService.embedQuery.mockResolvedValue(emb);
-      vectorStore.search.mockResolvedValue([
-        makeResult({ rowid: 1, sourceId: 'Claims Guide.md', score: 0.090, headingPath: 'At the Scene', contextPrefix: 'Claims Guide > At the Scene', chunkText: 'Call the police and take photos of the scene.', sourceType: 'file_chunk' }),
-        makeResult({ rowid: 2, sourceId: 'Claims Guide.md', score: 0.089, headingPath: 'At the Scene', contextPrefix: 'Claims Guide > At the Scene', chunkText: 'Exchange information with the other driver and gather witnesses.', sourceType: 'file_chunk' }),
-        makeResult({ rowid: 3, sourceId: 'Auto Insurance Policy.md', score: 0.088, headingPath: 'Uninsured / Underinsured Motorist (UM/UIM)', contextPrefix: 'Auto Insurance Policy > Uninsured / Underinsured Motorist (UM/UIM)', chunkText: 'UM coverage applies when the at-fault driver has no insurance.', sourceType: 'file_chunk' }),
-        makeResult({ rowid: 4, sourceId: 'Concept Coverage', score: 0.005, contextPrefix: 'Coverage Concepts', chunkText: 'Coverage concepts overview.', sourceType: 'concept' }),
-      ]);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map([
-        [1, emb],
-        [2, emb],
-        [3, emb],
-        [4, new Array(768).fill(0)],
-      ]));
-
-      await service.retrieve(
-        'I was rear-ended by an uninsured driver. What should I do and what does my policy cover?',
-        { topK: 2, maxPerSource: 1, tokenBudget: 80 },
-      );
-
-      const trace = service.getLastTrace();
-      expect(trace?.diagnostics?.generatedQueries.length).toBeGreaterThan(0);
-      expect(trace?.diagnostics?.firstStageCandidates.length).toBeGreaterThan(0);
-      expect(trace?.diagnostics?.droppedEvidence).toEqual(expect.arrayContaining([
-        expect.objectContaining({ droppedAt: 'score-threshold', sourceId: 'Concept Coverage' }),
-        expect.objectContaining({ droppedAt: 'dedup', sourceId: 'Claims Guide.md' }),
-      ]));
-      expect(trace?.diagnostics?.finalPackedContext).toHaveLength(2);
-      expect(trace?.diagnostics?.finalPackedContextText).toContain('[Retrieved Context]');
-      expect(trace?.diagnostics?.finalPackedContextText).toContain('Claims Guide.md');
-    });
-
-    it('excludes .parallx internal artifacts from generic grounded retrieval by default', async () => {
-      const emb = new Array(768).fill(0.1);
-      embeddingService.embedQuery.mockResolvedValue(emb);
-      vectorStore.search.mockResolvedValue([
-        makeResult({
-          rowid: 1,
-          sourceId: '.parallx/ai-config.json',
-          sourceType: 'file_chunk',
-          score: 0.070,
-          contextPrefix: '.parallx/ai-config.json',
-          chunkText: '{"models": ["gpt-oss:20b"]}',
-        }),
-        makeResult({
-          rowid: 2,
-          sourceId: 'Claims Guide.md',
-          sourceType: 'file_chunk',
-          score: 0.061,
-          contextPrefix: 'Claims Guide > Filing Basics',
-          chunkText: 'File the claim within 72 hours and call the claims hotline.',
-        }),
-      ]);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map([
-        [1, emb],
-        [2, emb],
-      ]));
-
-      const results = await service.retrieve('How do I file a claim after an accident?');
-
-      expect(results).toHaveLength(1);
-      expect(results[0].sourceId).toBe('Claims Guide.md');
-      expect(service.getLastTrace()?.corpusHygieneDrops).toBe(1);
-    });
-
-    it('can include .parallx artifacts when a caller explicitly opts in', async () => {
-      const emb = new Array(768).fill(0.1);
-      embeddingService.embedQuery.mockResolvedValue(emb);
-      vectorStore.search.mockResolvedValue([
-        makeResult({
-          rowid: 1,
-          sourceId: '.parallx/memory/MEMORY.md',
-          sourceType: 'file_chunk',
-          score: 0.072,
-          contextPrefix: 'Durable memory',
-          chunkText: 'Preferred answer style: structured brevity.',
-        }),
-      ]);
-      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb]]));
-
-      const results = await service.retrieve('answer style memory', {
-        sourceFilter: 'file_chunk',
-        internalArtifactPolicy: 'include',
-      });
-
-      expect(results).toHaveLength(1);
-      expect(results[0].sourceId).toBe('.parallx/memory/MEMORY.md');
-      expect(service.getLastTrace()?.corpusHygieneDrops).toBe(0);
     });
   });
 });
