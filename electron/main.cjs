@@ -22,6 +22,7 @@ let isAppQuitting = false;
 let lastEditableContextMenu = null;
 
 app.setAppUserModelId('com.parallx.app');
+app.name = 'Parallx';
 
 const RENDERER_ROOT = path.join(__dirname, '..');
 const DEFAULT_RENDERER_PORT = 31789;
@@ -329,6 +330,15 @@ async function createWindow() {
   };
 
   mainWindow = new BrowserWindow(opts);
+
+  // Tell Windows taskbar this is "Parallx", not "Electron"
+  mainWindow.setAppDetails({
+    appId: 'com.parallx.app',
+    appIconPath: path.join(__dirname, 'parallx.ico'),
+    appIconIndex: 0,
+    relaunchDisplayName: 'Parallx',
+  });
+
   configureSpellCheckerForWindow(mainWindow);
 
   mainWindow.webContents.on('context-menu', (event, params) => {
