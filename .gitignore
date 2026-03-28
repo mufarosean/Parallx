@@ -1,9 +1,6 @@
 node_modules/
 dist/
 .parallx/
-!demo-workspace/.parallx/
-demo-workspace/.parallx/data.db
-demo-workspace/.parallx/workspace-identity.json
 
 # Build artifacts
 *.js
