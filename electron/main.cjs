@@ -127,7 +127,22 @@ async function ensureRendererServer() {
   });
 
   await new Promise((resolve, reject) => {
-    rendererServer.once('error', reject);
+    rendererServer.once('error', (err) => {
+      // Port in use (another Parallx instance) — retry on a random free port
+      if (err.code === 'EADDRINUSE') {
+        rendererServer.listen(0, '127.0.0.1', () => {
+          const address = rendererServer.address();
+          if (address && typeof address === 'object') {
+            rendererServerPort = address.port;
+            resolve();
+          } else {
+            reject(new Error('Failed to bind renderer server on fallback port'));
+          }
+        });
+        return;
+      }
+      reject(err);
+    });
     rendererServer.listen(RENDERER_PORT, '127.0.0.1', () => {
       const address = rendererServer.address();
       if (address && typeof address === 'object') {
