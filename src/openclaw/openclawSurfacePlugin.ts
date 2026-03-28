@@ -31,6 +31,9 @@ export const MAX_DELIVERY_QUEUE_SIZE = 100;
 /** Delivery retry limit before marking as failed. */
 export const MAX_DELIVERY_RETRIES = 3;
 
+/** Backoff schedule for delivery retries (ms). Upstream: exponential [5s, 25s, 2m, ...] */
+export const DELIVERY_BACKOFF_MS = [100, 500, 2000] as const;
+
 /** Well-known surface IDs. */
 export const SURFACE_CHAT = 'chat';
 export const SURFACE_CANVAS = 'canvas';
@@ -312,6 +315,12 @@ export class SurfaceRouter implements IDisposable {
     let current = delivery;
 
     for (let attempt = 0; attempt <= MAX_DELIVERY_RETRIES; attempt++) {
+      // Backoff delay before retry attempts (not before first attempt)
+      if (attempt > 0) {
+        const delayMs = DELIVERY_BACKOFF_MS[Math.min(attempt - 1, DELIVERY_BACKOFF_MS.length - 1)];
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+
       try {
         const success = await surface.deliver(current);
 
@@ -335,6 +344,24 @@ export class SurfaceRouter implements IDisposable {
         current = { ...current, retries: attempt + 1 };
 
       } catch (err) {
+        // Permanent errors: stop immediately, don't waste remaining retries
+        if (isPermanentDeliveryError(err)) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          const failed: ISurfaceDelivery = { ...current, status: 'failed', error: errorMsg };
+          this._deliveryHistory.push(failed);
+
+          if (this._deliveryHistory.length > MAX_DELIVERY_QUEUE_SIZE) {
+            this._deliveryHistory.splice(0, this._deliveryHistory.length - MAX_DELIVERY_QUEUE_SIZE);
+          }
+
+          return {
+            deliveryId: failed.id,
+            surfaceId: failed.surfaceId,
+            status: 'failed',
+            error: errorMsg,
+          };
+        }
+
         const errorMsg = err instanceof Error ? err.message : String(err);
         current = {
           ...current,
@@ -394,4 +421,12 @@ function isContentSupported(
     case 'action': return capabilities.supportsActions;
     default: return false;
   }
+}
+
+export function isPermanentDeliveryError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    return msg.includes('not supported') || msg.includes('not available');
+  }
+  return false;
 }

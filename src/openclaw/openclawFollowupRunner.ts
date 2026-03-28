@@ -120,6 +120,21 @@ export function evaluateFollowup(
     return { shouldFollowup: false, reason: 'empty-response' };
   }
 
+  // Gate 5: tool continuation signal — upstream: enqueueFollowupRun (agent-runner.ts:236-244)
+  // When the tool loop hits the iteration cap while the model still wants to
+  // call tools, the turn result carries continuationRequested = true.
+  // Upstream: finalizeWithFollowup (agent-runner-helpers.ts:55-58) always
+  // schedules a drain; if the queue has items, the drain executes them.
+  // Parallx: continuationRequested is the single-user equivalent of
+  // "queue has pending items".
+  if (turnResult.continuationRequested) {
+    return {
+      shouldFollowup: true,
+      message: 'Continue processing from where you left off.',
+      reason: 'tool-continuation',
+    };
+  }
+
   // No followup signals detected — model completed normally
   return { shouldFollowup: false, reason: 'turn-complete' };
 }
@@ -129,15 +144,25 @@ export function evaluateFollowup(
 // ---------------------------------------------------------------------------
 
 /**
- * Create a followup runner that manages the followup turn lifecycle.
+ * Create a followup runner that evaluates and dispatches followup turns.
  *
- * Upstream: createFollowupRunner() — factory that returns an async closure.
- * Called at L1 step 3, the returned closure is invoked at L1 step 6.
+ * Upstream: createFollowupRunner (followup-runner.ts:42-412)
+ * Upstream factory captures full runtime context and self-contains the
+ * entire followup turn execution lifecycle (~370 lines): model call with
+ * fallback, payload sanitization, reply routing, compaction tracking,
+ * usage persistence, typing cleanup, and session refresh.
  *
- * The runner:
- *   1. Evaluates whether followup is needed
- *   2. If yes, queues the followup turn via the sender delegate
- *   3. Tracks depth to prevent infinite loops
+ * Parallx adaptation — evaluation + dispatch, not execution:
+ * The Parallx factory returns an evaluator, not an executor. Turn execution
+ * is delegated to the platform via FollowupTurnSender, which maps to
+ * chatService.sendRequest() or chatService.queueRequest(). This separation
+ * is intentional for VS Code architecture where the participant runtime owns
+ * turn execution. The runner owns the decision (should we follow up?) and the
+ * caller owns the execution (how to send the turn).
+ *
+ * The upstream pattern inlines execution because it owns the full gateway
+ * stack (typing, routing, session persistence). Parallx delegates these to
+ * the VS Code chat participant API.
  *
  * @param sender Delegate that sends the followup turn to the chat service
  * @param options Configuration for followup behavior
@@ -161,6 +186,11 @@ export function createFollowupRunner(
     });
 
     if (evaluation.shouldFollowup && evaluation.message) {
+      // Upstream: queue debounce via DEFAULT_QUEUE_DEBOUNCE_MS (queue/state.ts:18)
+      // and waitForQueueDebounce in drain.ts prevents rapid-fire followup turns.
+      // Parallx: explicit delay since we have no queue drain mechanism.
+      await new Promise<void>(resolve => setTimeout(resolve, FOLLOWUP_DELAY_MS));
+
       const followupRun: IOpenclawFollowupRun = {
         message: evaluation.message,
         reason: evaluation.reason,

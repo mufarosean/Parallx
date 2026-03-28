@@ -22,16 +22,40 @@ import type { IDisposable } from '../platform/lifecycle.js';
 // Constants (from upstream heartbeat-runner.ts)
 // ---------------------------------------------------------------------------
 
-/** Default heartbeat interval in milliseconds (5 minutes). */
+/**
+ * Default heartbeat interval in milliseconds (5 minutes).
+ *
+ * @deviation D2.11 — Upstream default is 30 minutes (DEFAULT_HEARTBEAT_EVERY
+ * in heartbeat.ts) to account for API token cost and rate limits. Parallx
+ * uses 5 minutes because: (1) local Ollama has no per-token cost, (2) desktop
+ * latency is low, (3) proactive check-ins benefit from faster response to
+ * workspace changes. Configurable via AI settings.
+ */
 export const DEFAULT_HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
 
-/** Minimum heartbeat interval — prevents runaway timers. */
+/**
+ * Minimum heartbeat interval — prevents runaway timers.
+ *
+ * @deviation D2.11 — Upstream has no min/max bounds (relies on config
+ * validation via Zod schema). Parallx adds runtime clamping as a desktop
+ * guardrail since users can edit settings directly.
+ */
 export const MIN_HEARTBEAT_INTERVAL_MS = 30 * 1000;
 
-/** Maximum heartbeat interval — 1 hour. */
+/** Maximum heartbeat interval — 1 hour. @deviation D2.11 — see MIN above. */
 export const MAX_HEARTBEAT_INTERVAL_MS = 60 * 60 * 1000;
 
-/** Duplicate suppression window — same event within 60s is ignored. */
+/**
+ * Duplicate suppression window — same event within 60s is ignored.
+ *
+ * @deviation D2.6 — Upstream uses output-level dedup (24h window on model
+ * response text via isDuplicateMain, heartbeat-runner.ts L798-833). Parallx
+ * uses input-level dedup (60s window on event type+payload). This is a
+ * complementary mechanism: upstream prevents repeated model output, Parallx
+ * prevents redundant event processing. Desktop-appropriate because heartbeat
+ * turns are internal (not user-visible), so output-level nagging is not a
+ * concern. If heartbeat turns become user-visible, add output-level dedup.
+ */
 export const DUPLICATE_SUPPRESSION_WINDOW_MS = 60 * 1000;
 
 // ---------------------------------------------------------------------------
@@ -118,7 +142,7 @@ export interface IHeartbeatConfig {
  */
 export class HeartbeatRunner implements IDisposable {
   private _state: IHeartbeatState;
-  private _timer: ReturnType<typeof setInterval> | null = null;
+  private _timer: ReturnType<typeof setTimeout> | null = null;
   private _pendingEvents: IHeartbeatSystemEvent[] = [];
   private _recentPayloads = new Map<string, number>(); // payload hash → timestamp
   private _disposed = false;
@@ -165,9 +189,21 @@ export class HeartbeatRunner implements IDisposable {
 
     if (!this._state.enabled) return;
 
-    this._timer = setInterval(() => {
-      this._tick('interval');
-    }, interval);
+    this._scheduleNext();
+  }
+
+  /**
+   * Schedule the next heartbeat tick using setTimeout chaining.
+   * Upstream: scheduleNext() — one-shot timer re-armed after each tick.
+   * This prevents overlapping heartbeats and allows dynamic interval changes.
+   */
+  private _scheduleNext(): void {
+    if (this._disposed || !this._state.enabled) return;
+    this._timer = setTimeout(async () => {
+      await this._tick('interval');
+      this._timer = null;
+      this._scheduleNext();
+    }, this._state.intervalMs);
   }
 
   /**
@@ -175,7 +211,7 @@ export class HeartbeatRunner implements IDisposable {
    */
   stop(): void {
     if (this._timer) {
-      clearInterval(this._timer);
+      clearTimeout(this._timer);
       this._timer = null;
     }
   }
@@ -190,8 +226,9 @@ export class HeartbeatRunner implements IDisposable {
   pushEvent(event: IHeartbeatSystemEvent): void {
     if (this._disposed) return;
 
-    // Duplicate suppression — same payload within window is ignored
-    // Upstream: 24h window for duplicate suppression
+    // Input-level duplicate suppression — @deviation D2.6
+    // Upstream deduplicates at the output level (isDuplicateMain, 24h window).
+    // Parallx deduplicates at the input level (same event type+payload, 60s window).
     const payloadKey = `${event.type}:${JSON.stringify(event.payload)}`;
     const lastSeen = this._recentPayloads.get(payloadKey);
     if (lastSeen && (Date.now() - lastSeen) < DUPLICATE_SUPPRESSION_WINDOW_MS) {

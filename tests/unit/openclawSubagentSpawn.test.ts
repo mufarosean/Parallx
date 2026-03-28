@@ -6,6 +6,7 @@ import {
   DEFAULT_MAX_SPAWN_DEPTH,
   DEFAULT_RUN_TIMEOUT_SECONDS,
   MAX_CONCURRENT_RUNS,
+  MAX_REGISTRY_HISTORY,
   type ISubagentSpawnParams,
   type SubagentTurnExecutor,
   type SubagentAnnouncer,
@@ -164,6 +165,71 @@ describe('SubagentRegistry', () => {
     reg.dispose();
 
     expect(reg.runs).toHaveLength(0);
+  });
+
+  describe('history pruning', () => {
+    it('prunes oldest completed runs when exceeding MAX_REGISTRY_HISTORY', () => {
+      const reg = new SubagentRegistry();
+
+      // Register and complete MAX_REGISTRY_HISTORY + 10 runs
+      const runIds: string[] = [];
+      for (let i = 0; i < MAX_REGISTRY_HISTORY + 10; i++) {
+        const run = reg.register(createParams({ task: `task-${i}` }));
+        reg.update(run.id, { status: 'completed', completedAt: 1000 + i });
+        runIds.push(run.id);
+      }
+
+      // Register one more to trigger final prune (gap map verify pattern)
+      const trigger = reg.register(createParams({ task: 'trigger' }));
+
+      // Completed runs should be capped at MAX_REGISTRY_HISTORY
+      const completedRuns = reg.runs.filter(r => r.status === 'completed');
+      expect(completedRuns.length).toBe(MAX_REGISTRY_HISTORY);
+
+      // Oldest completed should have been pruned
+      for (let i = 0; i < 10; i++) {
+        expect(reg.get(runIds[i])).toBeUndefined();
+      }
+
+      // Newest completed should still exist
+      expect(reg.get(runIds[runIds.length - 1])).toBeDefined();
+
+      reg.dispose();
+    });
+
+    it('preserves active runs during pruning', () => {
+      const reg = new SubagentRegistry();
+
+      // Create some active (running) runs first
+      const activeIds: string[] = [];
+      for (let i = 0; i < 5; i++) {
+        const run = reg.register(createParams({ task: `active-${i}` }));
+        reg.update(run.id, { status: 'running' });
+        activeIds.push(run.id);
+      }
+
+      // Fill beyond MAX_REGISTRY_HISTORY with completed runs
+      for (let i = 0; i < MAX_REGISTRY_HISTORY + 5; i++) {
+        const run = reg.register(createParams({ task: `completed-${i}` }));
+        reg.update(run.id, { status: 'completed', completedAt: 2000 + i });
+      }
+
+      // Register one more to trigger final prune
+      reg.register(createParams({ task: 'trigger' }));
+
+      // All active runs must still be present
+      for (const id of activeIds) {
+        const run = reg.get(id);
+        expect(run).toBeDefined();
+        expect(run!.status).toBe('running');
+      }
+
+      // Completed runs capped at MAX_REGISTRY_HISTORY
+      const completedRuns = reg.runs.filter(r => r.status === 'completed');
+      expect(completedRuns.length).toBe(MAX_REGISTRY_HISTORY);
+
+      reg.dispose();
+    });
   });
 });
 

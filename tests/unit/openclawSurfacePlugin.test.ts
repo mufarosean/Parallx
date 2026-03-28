@@ -4,6 +4,8 @@ import {
   SurfaceRouter,
   MAX_DELIVERY_RETRIES,
   MAX_DELIVERY_QUEUE_SIZE,
+  DELIVERY_BACKOFF_MS,
+  isPermanentDeliveryError,
   SURFACE_CHAT,
   SURFACE_CANVAS,
   SURFACE_FILESYSTEM,
@@ -233,6 +235,9 @@ describe('SurfaceRouter', () => {
   });
 
   describe('retry logic', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
     it('retries on delivery failure', async () => {
       const router = new SurfaceRouter();
       const surface = createMockSurface('chat');
@@ -242,11 +247,13 @@ describe('SurfaceRouter', () => {
         .mockResolvedValueOnce(true);
       router.registerSurface(surface);
 
-      const result = await router.send({
+      const promise = router.send({
         surfaceId: 'chat',
         contentType: 'text',
         content: 'retry me',
       });
+      await vi.advanceTimersByTimeAsync(3000);
+      const result = await promise;
 
       expect(result.status).toBe('delivered');
       expect(surface.deliver).toHaveBeenCalledTimes(2);
@@ -262,11 +269,13 @@ describe('SurfaceRouter', () => {
         .mockResolvedValueOnce(true);
       router.registerSurface(surface);
 
-      const result = await router.send({
+      const promise = router.send({
         surfaceId: 'chat',
         contentType: 'text',
         content: 'retry me',
       });
+      await vi.advanceTimersByTimeAsync(3000);
+      const result = await promise;
 
       expect(result.status).toBe('delivered');
       expect(surface.deliver).toHaveBeenCalledTimes(2);
@@ -279,11 +288,13 @@ describe('SurfaceRouter', () => {
       const surface = createMockSurface('chat', { deliverThrows: true });
       router.registerSurface(surface);
 
-      const result = await router.send({
+      const promise = router.send({
         surfaceId: 'chat',
         contentType: 'text',
         content: 'fail forever',
       });
+      await vi.advanceTimersByTimeAsync(3000);
+      const result = await promise;
 
       expect(result.status).toBe('failed');
       expect(result.error).toBeTruthy();
@@ -297,14 +308,92 @@ describe('SurfaceRouter', () => {
       const router = new SurfaceRouter();
       router.registerSurface(createMockSurface('chat', { deliverThrows: true }));
 
-      await router.send({
+      const promise = router.send({
         surfaceId: 'chat',
         contentType: 'text',
         content: 'fail',
       });
+      await vi.advanceTimersByTimeAsync(3000);
+      await promise;
 
       expect(router.deliveryHistory).toHaveLength(1);
       expect(router.deliveryHistory[0].status).toBe('failed');
+
+      router.dispose();
+    });
+
+    it('applies backoff delay between retries', async () => {
+      const router = new SurfaceRouter();
+      const surface = createMockSurface('chat');
+      surface.deliver
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true);
+      router.registerSurface(surface);
+
+      const promise = router.send({
+        surfaceId: 'chat',
+        contentType: 'text',
+        content: 'backoff test',
+      });
+
+      // Attempt 0 runs immediately
+      await vi.advanceTimersByTimeAsync(0);
+      expect(surface.deliver).toHaveBeenCalledTimes(1);
+
+      // Advance past first backoff (100ms)
+      await vi.advanceTimersByTimeAsync(DELIVERY_BACKOFF_MS[0]);
+      expect(surface.deliver).toHaveBeenCalledTimes(2);
+
+      // Advance past second backoff (500ms)
+      await vi.advanceTimersByTimeAsync(DELIVERY_BACKOFF_MS[1]);
+      expect(surface.deliver).toHaveBeenCalledTimes(3);
+
+      const result = await promise;
+      expect(result.status).toBe('delivered');
+
+      router.dispose();
+    });
+
+    it('does not retry on permanent errors', async () => {
+      const router = new SurfaceRouter();
+      const surface = createMockSurface('chat');
+      surface.deliver.mockRejectedValueOnce(new Error('content type not supported'));
+      router.registerSurface(surface);
+
+      const promise = router.send({
+        surfaceId: 'chat',
+        contentType: 'text',
+        content: 'permanent fail',
+      });
+      await vi.advanceTimersByTimeAsync(3000);
+      const result = await promise;
+
+      expect(result.status).toBe('failed');
+      expect(result.error).toMatch(/not supported/i);
+      expect(surface.deliver).toHaveBeenCalledTimes(1);
+
+      router.dispose();
+    });
+
+    it('retries on transient errors with backoff', async () => {
+      const router = new SurfaceRouter();
+      const surface = createMockSurface('chat');
+      surface.deliver
+        .mockRejectedValueOnce(new Error('timeout'))
+        .mockResolvedValueOnce(true);
+      router.registerSurface(surface);
+
+      const promise = router.send({
+        surfaceId: 'chat',
+        contentType: 'text',
+        content: 'transient then succeed',
+      });
+      await vi.advanceTimersByTimeAsync(3000);
+      const result = await promise;
+
+      expect(result.status).toBe('delivered');
+      expect(surface.deliver).toHaveBeenCalledTimes(2);
 
       router.dispose();
     });
@@ -411,5 +500,25 @@ describe('surface constants', () => {
   it('MAX_DELIVERY_RETRIES is reasonable', () => {
     expect(MAX_DELIVERY_RETRIES).toBeGreaterThanOrEqual(1);
     expect(MAX_DELIVERY_RETRIES).toBeLessThanOrEqual(10);
+  });
+});
+
+describe('isPermanentDeliveryError', () => {
+  it('detects "not supported" as permanent', () => {
+    expect(isPermanentDeliveryError(new Error('content type not supported'))).toBe(true);
+  });
+
+  it('detects "not available" as permanent', () => {
+    expect(isPermanentDeliveryError(new Error('Surface not available'))).toBe(true);
+  });
+
+  it('treats transient errors as non-permanent', () => {
+    expect(isPermanentDeliveryError(new Error('timeout'))).toBe(false);
+    expect(isPermanentDeliveryError(new Error('connection reset'))).toBe(false);
+  });
+
+  it('handles non-Error values', () => {
+    expect(isPermanentDeliveryError('some string')).toBe(false);
+    expect(isPermanentDeliveryError(null)).toBe(false);
   });
 });

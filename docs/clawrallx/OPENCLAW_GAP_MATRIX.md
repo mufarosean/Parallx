@@ -24,7 +24,8 @@
 | Upstream Capability | Upstream Location | Parallx Status | Parallx Location | Gap | Fix |
 |---|---|---|---|---|---|
 | 4-layer pipeline (L1→L2→L3→L4) | agent-runner.ts → attempt.ts | **ALIGNED** | `openclawTurnRunner.ts` (retry+recovery) + `openclawAttempt.ts` (attempt execution) | 2-layer Parallx adaptation of L1-L4. L1 (queue/steer) and L3 (lanes/auth) N/A for single-user desktop. Documented in file header. | — |
-| Queue policy / steer check (L1) | agent-runner.ts:97-140 | **N/A** | — | Not needed for single-user desktop app | Skip — no multi-user concurrency |
+| Queue policy (L1) | agent-runner.ts:97-140 | **N/A** | — | Not needed for single-user desktop app | Skip — no multi-user concurrency |
+| Steer check (L1) | agent-runner.ts:97-140 | **ALIGNED** | `chatService.ts` `isSteeringTurn` + `openclawTurnRunner.ts` steer gate | Implemented in D3 — steer flag flows through chatTypes → chatService → turnRunner | — |
 | Context overflow retry (L2) | agent-runner-execution.ts:113-380 | **ALIGNED** | `openclawTurnRunner.ts` lines 32-35 (constants), 127-138 (retry logic) | `MAX_OVERFLOW_COMPACTION = 3` matches upstream. Detection via `isContextOverflow()` → `engine.compact()` → re-assemble → retry. Also includes proactive compaction at 80% capacity. | — |
 | Transient HTTP error retry (L2) | agent-runner-execution.ts (2500ms delay) | **ALIGNED** | `openclawTurnRunner.ts` lines 147-154 + `openclawErrorClassification.ts` lines 56-64 | Exponential backoff (2500→5000→10000ms, capped 15000ms). Patterns: `ECONNREFUSED|ETIMEDOUT|ECONNRESET|ENOTFOUND|503|502|EPIPE|unexpected EOF|socket hang up|fetch failed`. | — |
 | Model fallback (L2) | model-fallback.ts:759-785 | **ALIGNED** | `openclawTurnRunner.ts` — fallback retry branch | `isModelError` classifier + `fallbackModels` on `IOpenclawTurnContext`. Counters reset on model switch (iter 2 fix). Requires `rebuildSendChatRequest` (iter 2 fix). | — |

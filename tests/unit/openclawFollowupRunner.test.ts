@@ -18,6 +18,7 @@ function createTurnResult(overrides?: Partial<IOpenclawTurnResult>): IOpenclawTu
     markdown: 'Hello world',
     thinking: '',
     toolCallCount: 0,
+    continuationRequested: false,
     ragSources: [],
     retrievedContextText: '',
     overflowCompactions: 0,
@@ -96,11 +97,52 @@ describe('evaluateFollowup', () => {
   it('gate evaluation order: disabled > steer > depth > empty > signals', () => {
     // Disabled takes precedence even when steering and at depth limit
     const result = evaluateFollowup(
-      createTurnResult({ isSteeringTurn: true, markdown: '' }),
+      createTurnResult({ isSteeringTurn: true, markdown: '', continuationRequested: true }),
       { currentDepth: MAX_FOLLOWUP_DEPTH, followupEnabled: false },
     );
 
     expect(result.reason).toBe('followup-disabled');
+  });
+
+  it('triggers followup when continuationRequested is true', () => {
+    const result = evaluateFollowup(
+      createTurnResult({ continuationRequested: true }),
+      { currentDepth: 0 },
+    );
+
+    expect(result.shouldFollowup).toBe(true);
+    expect(result.reason).toBe('tool-continuation');
+    expect(result.message).toBeDefined();
+  });
+
+  it('does not trigger followup when continuationRequested is false', () => {
+    const result = evaluateFollowup(
+      createTurnResult({ continuationRequested: false }),
+      { currentDepth: 0 },
+    );
+
+    expect(result.shouldFollowup).toBe(false);
+    expect(result.reason).toBe('turn-complete');
+  });
+
+  it('steer still suppresses even with continuationRequested', () => {
+    const result = evaluateFollowup(
+      createTurnResult({ isSteeringTurn: true, continuationRequested: true }),
+      { currentDepth: 0 },
+    );
+
+    expect(result.shouldFollowup).toBe(false);
+    expect(result.reason).toBe('steer-suppressed');
+  });
+
+  it('depth limit still suppresses even with continuationRequested', () => {
+    const result = evaluateFollowup(
+      createTurnResult({ continuationRequested: true }),
+      { currentDepth: MAX_FOLLOWUP_DEPTH },
+    );
+
+    expect(result.shouldFollowup).toBe(false);
+    expect(result.reason).toBe('depth-limit-reached');
   });
 });
 
@@ -146,6 +188,45 @@ describe('createFollowupRunner', () => {
     expect(evaluation.shouldFollowup).toBe(false);
     expect(evaluation.reason).toBe('depth-limit-reached');
     expect(sender).not.toHaveBeenCalled();
+  });
+
+  it('runner calls sender when continuationRequested triggers followup', async () => {
+    vi.useFakeTimers();
+    const sender = vi.fn().mockResolvedValue(undefined);
+    const runner = createFollowupRunner(sender);
+
+    const promise = runner(createTurnResult({ continuationRequested: true }), 0);
+    await vi.advanceTimersByTimeAsync(FOLLOWUP_DELAY_MS);
+    const evaluation = await promise;
+
+    expect(evaluation.shouldFollowup).toBe(true);
+    expect(evaluation.reason).toBe('tool-continuation');
+    expect(sender).toHaveBeenCalledOnce();
+    expect(sender).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: 'tool-continuation',
+        depth: 1,
+        message: expect.any(String),
+      }),
+    );
+    vi.useRealTimers();
+  });
+
+  it('runner applies FOLLOWUP_DELAY_MS before calling sender', async () => {
+    vi.useFakeTimers();
+    const sender = vi.fn().mockResolvedValue(undefined);
+    const runner = createFollowupRunner(sender);
+
+    const promise = runner(createTurnResult({ continuationRequested: true }), 0);
+
+    // Sender should not be called yet (delay not elapsed)
+    expect(sender).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(FOLLOWUP_DELAY_MS);
+    await promise;
+
+    expect(sender).toHaveBeenCalledOnce();
+    vi.useRealTimers();
   });
 });
 

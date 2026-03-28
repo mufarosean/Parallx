@@ -37,6 +37,9 @@ export const CRON_CHECK_INTERVAL_MS = 60 * 1000;
 /** Minimum "every" interval to prevent runaway timers (1 minute). */
 export const MIN_EVERY_INTERVAL_MS = 60 * 1000;
 
+/** Maximum number of run-history entries (oldest trimmed when exceeded). */
+export const MAX_RUN_HISTORY = 200;
+
 // ---------------------------------------------------------------------------
 // Types (from upstream cron-tool.ts job schema)
 // ---------------------------------------------------------------------------
@@ -90,6 +93,12 @@ export interface ICronJob {
   readonly lastRunAt: number | null;
   readonly nextRunAt: number | null;
   readonly runCount: number;
+  /** Human-readable job description. Upstream: CronJobBase.description */
+  readonly description?: string;
+  /** Auto-remove after successful execution. Upstream: CronJobBase.deleteAfterRun */
+  readonly deleteAfterRun?: boolean;
+  /** Timestamp of last update. Upstream: CronJobBase.updatedAtMs */
+  readonly updatedAt?: number;
 }
 
 /**
@@ -102,6 +111,8 @@ export interface ICronJobCreateParams {
   readonly wakeMode?: CronWakeMode;
   readonly contextMessages?: number;
   readonly enabled?: boolean;
+  readonly description?: string;
+  readonly deleteAfterRun?: boolean;
 }
 
 /**
@@ -114,6 +125,8 @@ export interface ICronJobUpdateParams {
   readonly wakeMode?: CronWakeMode;
   readonly contextMessages?: number;
   readonly enabled?: boolean;
+  readonly description?: string;
+  readonly deleteAfterRun?: boolean;
 }
 
 /**
@@ -200,6 +213,31 @@ export class CronService implements IDisposable {
     return this._timer !== null;
   }
 
+  /**
+   * Run history filtered to a single job.
+   * Upstream: cron-tool.ts "runs" action returns per-job history.
+   */
+  getJobRuns(jobId: string): readonly ICronRunResult[] {
+    return this._runHistory.filter(r => r.jobId === jobId);
+  }
+
+  /**
+   * Service status summary.
+   * Upstream: cron-tool.ts "status" action.
+   */
+  status(): { jobCount: number; runningJobs: number; timerActive: boolean; totalRuns: number } {
+    let runningJobs = 0;
+    for (const job of this._jobs.values()) {
+      if (job.enabled && job.nextRunAt !== null) runningJobs++;
+    }
+    return {
+      jobCount: this._jobs.size,
+      runningJobs,
+      timerActive: this._timer !== null,
+      totalRuns: this._runHistory.length,
+    };
+  }
+
   // -----------------------------------------------------------------------
   // Job CRUD — upstream: cron-tool.ts actions add/update/remove/list
   // -----------------------------------------------------------------------
@@ -231,6 +269,9 @@ export class CronService implements IDisposable {
       lastRunAt: null,
       nextRunAt: computeNextRun(params.schedule, now),
       runCount: 0,
+      description: params.description,
+      deleteAfterRun: params.deleteAfterRun,
+      updatedAt: now,
     };
 
     this._jobs.set(id, job);
@@ -261,6 +302,9 @@ export class CronService implements IDisposable {
       nextRunAt: params.schedule
         ? computeNextRun(params.schedule, Date.now())
         : existing.nextRunAt,
+      description: params.description !== undefined ? params.description : existing.description,
+      deleteAfterRun: params.deleteAfterRun !== undefined ? params.deleteAfterRun : existing.deleteAfterRun,
+      updatedAt: Date.now(),
     };
 
     this._jobs.set(id, updated);
@@ -413,6 +457,13 @@ export class CronService implements IDisposable {
         success: true,
       };
       this._runHistory.push(result);
+      this._trimRunHistory();
+
+      // Upstream: deleteAfterRun — auto-remove after successful one-shot
+      if (job.deleteAfterRun) {
+        this._jobs.delete(job.id);
+      }
+
       return result;
 
     } catch (err) {
@@ -425,7 +476,17 @@ export class CronService implements IDisposable {
         error: err instanceof Error ? err.message : String(err),
       };
       this._runHistory.push(result);
+      this._trimRunHistory();
       return result;
+    }
+  }
+
+  /**
+   * Trim run history to MAX_RUN_HISTORY, dropping oldest entries.
+   */
+  private _trimRunHistory(): void {
+    if (this._runHistory.length > MAX_RUN_HISTORY) {
+      this._runHistory.splice(0, this._runHistory.length - MAX_RUN_HISTORY);
     }
   }
 
@@ -470,10 +531,18 @@ function validateSchedule(schedule: ICronSchedule): void {
   }
 
   if (schedule.cron) {
-    // Basic validation: 5 fields separated by spaces
-    const fields = schedule.cron.trim().split(/\s+/);
-    if (fields.length !== 5) {
+    // Validate by attempting to parse all 5 fields
+    const parts = schedule.cron.trim().split(/\s+/);
+    if (parts.length !== 5) {
       throw new Error(`Invalid cron expression (expected 5 fields): ${schedule.cron}`);
+    }
+    const ranges: [number, number][] = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 6]];
+    for (let i = 0; i < 5; i++) {
+      try {
+        parseCronField(parts[i], ranges[i][0], ranges[i][1]);
+      } catch {
+        throw new Error(`Invalid cron expression: ${schedule.cron}`);
+      }
     }
   }
 }
@@ -494,11 +563,7 @@ function computeNextRun(schedule: ICronSchedule, fromMs: number): number | null 
   }
 
   if (schedule.cron) {
-    // Simplified cron: compute next minute-aligned run
-    // Full cron parsing is complex — for now, use the interval as 1 minute
-    // and let the check loop handle matching. This is a placeholder for
-    // a proper cron parser (upstream uses a full cron library).
-    return fromMs + 60_000;
+    return computeNextCronRun(schedule.cron, fromMs);
   }
 
   return null;
@@ -529,4 +594,134 @@ export function parseDuration(input: string): number {
 
 function clampContextMessages(n: number): number {
   return Math.max(0, Math.min(MAX_CONTEXT_MESSAGES, Math.floor(n)));
+}
+
+// ---------------------------------------------------------------------------
+// Minimal 5-field cron parser
+// Upstream ref: src/cron/schedule.ts — computeNextRunAtMs()
+// Supports: numbers, *, ranges (1-5), steps (*/5), lists (1,3,5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse a single cron field into an array of matching values.
+ * Handles: *, N, N-M, star/N, N-M/S, and comma-separated lists.
+ */
+export function parseCronField(field: string, min: number, max: number): number[] {
+  const result = new Set<number>();
+
+  for (const part of field.split(',')) {
+    const trimmed = part.trim();
+    if (!trimmed) throw new Error(`Empty cron field segment`);
+
+    // Check for step: "*/5" or "1-10/2"
+    const slashIdx = trimmed.indexOf('/');
+    let rangePart = trimmed;
+    let step = 1;
+
+    if (slashIdx !== -1) {
+      rangePart = trimmed.slice(0, slashIdx);
+      step = parseInt(trimmed.slice(slashIdx + 1), 10);
+      if (isNaN(step) || step < 1) throw new Error(`Invalid step: ${trimmed}`);
+    }
+
+    let rangeStart: number;
+    let rangeEnd: number;
+
+    if (rangePart === '*') {
+      rangeStart = min;
+      rangeEnd = max;
+    } else if (rangePart.includes('-')) {
+      const [lo, hi] = rangePart.split('-').map(s => parseInt(s, 10));
+      if (isNaN(lo) || isNaN(hi)) throw new Error(`Invalid range: ${rangePart}`);
+      if (lo < min || hi > max || lo > hi) throw new Error(`Range out of bounds: ${rangePart}`);
+      rangeStart = lo;
+      rangeEnd = hi;
+    } else {
+      const val = parseInt(rangePart, 10);
+      if (isNaN(val) || val < min || val > max) throw new Error(`Value out of range: ${rangePart}`);
+      if (slashIdx === -1) {
+        result.add(val);
+        continue;
+      }
+      rangeStart = val;
+      rangeEnd = max;
+    }
+
+    for (let v = rangeStart; v <= rangeEnd; v += step) {
+      result.add(v);
+    }
+  }
+
+  if (result.size === 0) throw new Error(`Cron field produced no values: ${field}`);
+  return [...result].sort((a, b) => a - b);
+}
+
+/**
+ * Compute next run time for a 5-field cron expression.
+ * Fields: minute hour day-of-month month day-of-week
+ * Iterates forward from fromMs + 1 minute, up to 366 days.
+ * Returns null if no match found.
+ *
+ * Upstream ref: src/cron/schedule.ts — computeNextRunAtMs()
+ */
+function computeNextCronRun(expr: string, fromMs: number): number | null {
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length !== 5) return null;
+
+  const minutes = parseCronField(parts[0], 0, 59);
+  const hours = parseCronField(parts[1], 0, 23);
+  const daysOfMonth = parseCronField(parts[2], 1, 31);
+  const months = parseCronField(parts[3], 1, 12);
+  const daysOfWeek = parseCronField(parts[4], 0, 6);
+
+  const minuteSet = new Set(minutes);
+  const hourSet = new Set(hours);
+  const domSet = new Set(daysOfMonth);
+  const monthSet = new Set(months);
+  const dowSet = new Set(daysOfWeek);
+
+  // Start from the next whole minute after fromMs
+  const start = new Date(fromMs);
+  start.setUTCSeconds(0, 0);
+  start.setUTCMinutes(start.getUTCMinutes() + 1);
+
+  const limit = fromMs + 366 * 86_400_000; // 366 days max lookahead
+
+  const cursor = start;
+  while (cursor.getTime() <= limit) {
+    const month = cursor.getUTCMonth() + 1; // 1-12
+    if (!monthSet.has(month)) {
+      // Skip to first day of next month
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1, 1);
+      cursor.setUTCHours(0, 0, 0, 0);
+      continue;
+    }
+
+    const dom = cursor.getUTCDate();
+    const dow = cursor.getUTCDay(); // 0=Sun
+    if (!domSet.has(dom) || !dowSet.has(dow)) {
+      // Skip to next day
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+      cursor.setUTCHours(0, 0, 0, 0);
+      continue;
+    }
+
+    const hour = cursor.getUTCHours();
+    if (!hourSet.has(hour)) {
+      // Skip to next hour
+      cursor.setUTCHours(cursor.getUTCHours() + 1, 0, 0, 0);
+      continue;
+    }
+
+    const minute = cursor.getUTCMinutes();
+    if (!minuteSet.has(minute)) {
+      // Skip to next minute
+      cursor.setUTCMinutes(cursor.getUTCMinutes() + 1, 0, 0);
+      continue;
+    }
+
+    return cursor.getTime();
+  }
+
+  return null;
 }

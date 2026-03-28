@@ -9,7 +9,7 @@
  *   - agent-runner-execution.ts — transient retry delay: 2500ms
  *
  * Parallx adaptation:
- *   - Single-user (no queue/steer from L1)
+ *   - Single-user (steer check implemented via D3, queue policy N/A)
  *   - Wraps executeOpenclawAttempt in error-handling retry loop
  *   - Context overflow → compact → re-assemble → retry (max 3)
  *   - Timeout → compact(force) → re-assemble → retry (max 2)
@@ -68,6 +68,8 @@ export interface IOpenclawTurnResult {
   readonly isFollowupTurn: boolean;
   /** Current depth in the followup chain (0 = user-initiated turn). */
   readonly followupDepth: number;
+  /** True when the tool loop hit the iteration cap while the model still wanted to call tools. */
+  readonly continuationRequested: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -259,6 +261,7 @@ export async function runOpenclawTurn(
     isSteeringTurn: steered,
     isFollowupTurn: isFollowup,
     followupDepth,
+    continuationRequested: false,
   };
 }
 

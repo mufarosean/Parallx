@@ -128,6 +128,8 @@ export interface IOpenclawAttemptResult {
   readonly markdown: string;
   readonly thinking: string;
   readonly toolCallCount: number;
+  /** True when the tool loop hit the iteration cap while the model still wanted to call tools. */
+  readonly continuationRequested: boolean;
   readonly promptTokens?: number;
   readonly completionTokens?: number;
   readonly ragSources: readonly { uri: string; label: string; index: number }[];
@@ -242,6 +244,8 @@ export async function executeOpenclawAttempt(
   let completionTokens: number | undefined;
   let currentMessages = messages;
   let iterations = 0;
+  let lastHadToolCalls = false;
+  let loopBlocked = false;
 
   try {
   while (!token.isCancellationRequested && iterations < context.maxToolIterations + 1) {
@@ -261,8 +265,10 @@ export async function executeOpenclawAttempt(
 
     // No tool calls → done
     if (turnResult.toolCalls.length === 0) {
+      lastHadToolCalls = false;
       break;
     }
+    lastHadToolCalls = true;
 
     // Process tool calls
     if (!context.invokeToolWithRuntimeControl) {
@@ -273,7 +279,7 @@ export async function executeOpenclawAttempt(
     // This avoids duplicating the assistant message for each tool result
     // when the model returns multiple tool calls in a single turn.
     const toolResultMessages: IChatMessage[] = [];
-    let loopBlocked = false;
+    loopBlocked = false;
 
     for (const toolCall of turnResult.toolCalls) {
       if (token.isCancellationRequested) break;
@@ -388,6 +394,7 @@ export async function executeOpenclawAttempt(
     markdown: displayMarkdown,
     thinking,
     toolCallCount,
+    continuationRequested: lastHadToolCalls && !loopBlocked,
     promptTokens,
     completionTokens,
     ragSources: assembled.ragSources,

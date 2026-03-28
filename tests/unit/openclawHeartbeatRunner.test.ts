@@ -238,6 +238,50 @@ describe('HeartbeatRunner', () => {
     });
   });
 
+  describe('setTimeout chaining (D2.4)', () => {
+    it('re-arms timer after each tick', async () => {
+      const runner = new HeartbeatRunner(executor, () => createConfig({ intervalMs: MIN_HEARTBEAT_INTERVAL_MS }));
+      runner.start();
+
+      // Advance through 3 intervals — each fires setTimeout, _tick skips (no events), re-arms
+      for (let i = 0; i < 3; i++) {
+        await vi.advanceTimersByTimeAsync(MIN_HEARTBEAT_INTERVAL_MS);
+      }
+
+      // Timer is still alive — stop should clear it without error
+      runner.stop();
+      expect(executor).not.toHaveBeenCalled(); // no events → all skipped
+      runner.dispose();
+    });
+
+    it('slow executor does not cause overlapping timer ticks', async () => {
+      let concurrentCalls = 0;
+      let maxConcurrent = 0;
+      const slowExecutor = vi.fn().mockImplementation(async () => {
+        concurrentCalls++;
+        maxConcurrent = Math.max(maxConcurrent, concurrentCalls);
+        await new Promise(r => setTimeout(r, MIN_HEARTBEAT_INTERVAL_MS * 2));
+        concurrentCalls--;
+      });
+
+      const runner = new HeartbeatRunner(slowExecutor, () => createConfig({ intervalMs: MIN_HEARTBEAT_INTERVAL_MS }));
+
+      // Push event — triggers immediate _tick('system-event') with slow executor
+      runner.pushEvent(createEvent());
+      runner.start();
+
+      // Advance past 5 intervals while executor is still running
+      await vi.advanceTimersByTimeAsync(MIN_HEARTBEAT_INTERVAL_MS * 5);
+
+      // Timer ticks during this time all skip (no pending events)
+      // The only executor call is from pushEvent
+      expect(slowExecutor).toHaveBeenCalledTimes(1);
+      expect(maxConcurrent).toBe(1);
+
+      runner.dispose();
+    });
+  });
+
   describe('dispose', () => {
     it('clears all state', () => {
       const runner = new HeartbeatRunner(executor, () => createConfig());

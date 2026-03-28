@@ -37,6 +37,9 @@ export const DEFAULT_RUN_TIMEOUT_SECONDS = 120;
 /** Maximum concurrent sub-agent runs. Safety limit. */
 export const MAX_CONCURRENT_RUNS = 5;
 
+/** Maximum completed runs to retain in registry history. */
+export const MAX_REGISTRY_HISTORY = 100;
+
 // ---------------------------------------------------------------------------
 // Types (from upstream subagent-spawn.ts)
 // ---------------------------------------------------------------------------
@@ -62,7 +65,12 @@ export type SubagentRunStatus =
 
 /**
  * Parameters for spawning a sub-agent.
- * Upstream: SpawnSubagentParams.
+ * Upstream: SpawnSubagentParams (src/agents/subagent-spawn.ts:52-76).
+ *
+ * @deviation D5.3 — Upstream defines agentId, thinking, thread, mode, cleanup,
+ * sandbox, expectsCompletionMessage, attachments, attachMountPath. All N/A for
+ * single-agent desktop (no cross-agent routing, no persistent sub-sessions,
+ * no sandbox runtimes, no file-mount workflow).
  */
 export interface ISubagentSpawnParams {
   /** The task description for the sub-agent. */
@@ -79,7 +87,16 @@ export interface ISubagentSpawnParams {
 
 /**
  * A tracked sub-agent run.
- * Upstream: registerSubagentRun produces tracked run records.
+ * Upstream: SubagentRunRecord (src/agents/subagent-registry.types.ts).
+ *
+ * @deviation D5.4 — Upstream tracks 25+ fields for multi-session server with
+ * persistence, tree queries, and announce retry. Parallx tracks 11 fields for
+ * single-agent desktop with in-memory runs consumed immediately. Missing:
+ * parentRunId/childRunIds (D5.2b), session keys (N/A), archiveAtMs (N/A),
+ * announceRetryCount (N/A), outputTokens (future metrics).
+ *
+ * @deviation D5.2b — Upstream tracks parentRunId/childRunIds for tree queries.
+ * Deferred: single-agent desktop has shallow spawn trees with no tree-query consumers.
  */
 export interface ISubagentRun {
   readonly id: string;
@@ -131,6 +148,9 @@ export type SubagentAnnouncer = (
 /**
  * Tracks active and historical sub-agent runs.
  * Upstream: registerSubagentRun in subagent-spawn.ts.
+ *
+ * @deviation D5.2b — Upstream tracks parentRunId/childRunIds for tree queries.
+ * Deferred: single-agent desktop has shallow spawn trees with no tree-query consumers.
  */
 export class SubagentRegistry implements IDisposable {
   private readonly _runs = new Map<string, ISubagentRun>();
@@ -172,7 +192,23 @@ export class SubagentRegistry implements IDisposable {
     };
 
     this._runs.set(id, run);
+    this._pruneCompletedRuns();
     return { ...run };
+  }
+
+  /**
+   * Remove oldest completed/failed/timeout/cancelled runs when total
+   * completed runs exceed MAX_REGISTRY_HISTORY. Active runs are never pruned.
+   */
+  private _pruneCompletedRuns(): void {
+    const completed = [...this._runs.values()]
+      .filter(r => r.status !== 'spawning' && r.status !== 'running');
+    if (completed.length <= MAX_REGISTRY_HISTORY) return;
+    completed.sort((a, b) => (a.completedAt ?? a.spawnedAt) - (b.completedAt ?? b.spawnedAt));
+    const excess = completed.length - MAX_REGISTRY_HISTORY;
+    for (let i = 0; i < excess; i++) {
+      this._runs.delete(completed[i].id);
+    }
   }
 
   /** Update a run's status. */

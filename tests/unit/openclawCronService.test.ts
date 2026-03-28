@@ -6,7 +6,9 @@ import {
   MAX_CRON_JOBS,
   CRON_CHECK_INTERVAL_MS,
   MIN_EVERY_INTERVAL_MS,
+  MAX_RUN_HISTORY,
   parseDuration,
+  parseCronField,
   type ICronJobCreateParams,
   type ICronSchedule,
   type CronTurnExecutor,
@@ -578,5 +580,407 @@ describe('cron constants', () => {
 
   it('MIN_EVERY_INTERVAL_MS is 1 minute', () => {
     expect(MIN_EVERY_INTERVAL_MS).toBe(60_000);
+  });
+
+  it('MAX_RUN_HISTORY is 200', () => {
+    expect(MAX_RUN_HISTORY).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cron expression parsing (D4.13)
+// ---------------------------------------------------------------------------
+
+describe('parseCronField', () => {
+  it('parses wildcard *', () => {
+    expect(parseCronField('*', 0, 59)).toHaveLength(60);
+    expect(parseCronField('*', 1, 12)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  });
+
+  it('parses single number', () => {
+    expect(parseCronField('5', 0, 59)).toEqual([5]);
+  });
+
+  it('parses range', () => {
+    expect(parseCronField('1-5', 0, 59)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('parses step with wildcard', () => {
+    const result = parseCronField('*/15', 0, 59);
+    expect(result).toEqual([0, 15, 30, 45]);
+  });
+
+  it('parses step with range', () => {
+    expect(parseCronField('1-10/3', 0, 59)).toEqual([1, 4, 7, 10]);
+  });
+
+  it('parses comma-separated list', () => {
+    expect(parseCronField('1,3,5', 0, 59)).toEqual([1, 3, 5]);
+  });
+
+  it('parses mixed list with range and step', () => {
+    const result = parseCronField('1-3,10,*/20', 0, 59);
+    expect(result).toContain(1);
+    expect(result).toContain(2);
+    expect(result).toContain(3);
+    expect(result).toContain(10);
+    expect(result).toContain(0);
+    expect(result).toContain(20);
+    expect(result).toContain(40);
+  });
+
+  it('rejects out-of-range value', () => {
+    expect(() => parseCronField('60', 0, 59)).toThrow();
+  });
+
+  it('rejects invalid range', () => {
+    expect(() => parseCronField('5-3', 0, 59)).toThrow();
+  });
+});
+
+describe('cron expression scheduling', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('*/5 * * * * — next run within 5 minutes', () => {
+    const now = new Date('2026-03-28T10:00:00Z').getTime();
+    vi.setSystemTime(now);
+
+    const executor = vi.fn().mockResolvedValue(undefined);
+    const svc = new CronService(executor, vi.fn().mockResolvedValue([]), null);
+    const job = svc.addJob({ name: 'x', schedule: { cron: '*/5 * * * *' }, payload: {} });
+
+    expect(job.nextRunAt).not.toBeNull();
+    // Should be at 10:01, 10:05, or 10:05 — within 5 minutes
+    expect(job.nextRunAt! - now).toBeLessThanOrEqual(5 * 60_000);
+    expect(job.nextRunAt! - now).toBeGreaterThan(0);
+
+    svc.dispose();
+  });
+
+  it('0 9 * * 1 — Monday at 9am, from Monday 8am gives same-day 9am', () => {
+    // 2026-03-30 is a Monday
+    const mondayAt8am = new Date('2026-03-30T08:00:00.000Z').getTime();
+    vi.setSystemTime(mondayAt8am);
+
+    const svc = new CronService(vi.fn().mockResolvedValue(undefined), vi.fn().mockResolvedValue([]), null);
+    const job = svc.addJob({ name: 'x', schedule: { cron: '0 9 * * 1' }, payload: {} });
+
+    const expected = new Date('2026-03-30T09:00:00.000Z').getTime();
+    expect(job.nextRunAt).toBe(expected);
+
+    svc.dispose();
+  });
+
+  it('0 9 * * 1 — Monday at 9am, from Monday 10am gives NEXT Monday', () => {
+    // 2026-03-30 is a Monday
+    const mondayAt10am = new Date('2026-03-30T10:00:00.000Z').getTime();
+    vi.setSystemTime(mondayAt10am);
+
+    const svc = new CronService(vi.fn().mockResolvedValue(undefined), vi.fn().mockResolvedValue([]), null);
+    const job = svc.addJob({ name: 'x', schedule: { cron: '0 9 * * 1' }, payload: {} });
+
+    const nextMonday9am = new Date('2026-04-06T09:00:00.000Z').getTime();
+    expect(job.nextRunAt).toBe(nextMonday9am);
+
+    svc.dispose();
+  });
+
+  it('30 14 1 * * — 1st of month at 2:30pm', () => {
+    const march15 = new Date('2026-03-15T00:00:00.000Z').getTime();
+    vi.setSystemTime(march15);
+
+    const svc = new CronService(vi.fn().mockResolvedValue(undefined), vi.fn().mockResolvedValue([]), null);
+    const job = svc.addJob({ name: 'x', schedule: { cron: '30 14 1 * *' }, payload: {} });
+
+    // Next 1st-of-month at 14:30 — need to find a 1st that also matches day-of-week=*
+    expect(job.nextRunAt).not.toBeNull();
+    const d = new Date(job.nextRunAt!);
+    expect(d.getUTCDate()).toBe(1);
+    expect(d.getUTCHours()).toBe(14);
+    expect(d.getUTCMinutes()).toBe(30);
+
+    svc.dispose();
+  });
+
+  it('rejects invalid cron fields during validation', () => {
+    const svc = new CronService(vi.fn().mockResolvedValue(undefined), vi.fn().mockResolvedValue([]), null);
+
+    expect(() => svc.addJob({
+      name: 'x', schedule: { cron: '60 * * * *' }, payload: {},
+    })).toThrow(/invalid cron/i);
+
+    expect(() => svc.addJob({
+      name: 'x', schedule: { cron: '* 25 * * *' }, payload: {},
+    })).toThrow(/invalid cron/i);
+
+    svc.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Run history bounding (D4.10)
+// ---------------------------------------------------------------------------
+
+describe('run history bounding', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('caps run history at MAX_RUN_HISTORY', async () => {
+    const executor = vi.fn().mockResolvedValue(undefined);
+    const svc = new CronService(executor, vi.fn().mockResolvedValue([]), null);
+    const job = svc.addJob({ name: 'flood', schedule: { every: '1m' }, payload: {} });
+
+    for (let i = 0; i < MAX_RUN_HISTORY + 50; i++) {
+      await svc.runJob(job.id);
+    }
+
+    expect(svc.runHistory.length).toBe(MAX_RUN_HISTORY);
+
+    svc.dispose();
+  });
+
+  it('oldest entries are trimmed first', async () => {
+    const executor = vi.fn().mockResolvedValue(undefined);
+    const svc = new CronService(executor, vi.fn().mockResolvedValue([]), null);
+
+    const job1 = svc.addJob({ name: 'job-a', schedule: { every: '1m' }, payload: {} });
+    const job2 = svc.addJob({ name: 'job-b', schedule: { every: '1m' }, payload: {} });
+
+    // Fill with job1 runs
+    for (let i = 0; i < MAX_RUN_HISTORY; i++) {
+      await svc.runJob(job1.id);
+    }
+    // Add job2 runs — should push out oldest job1 runs
+    for (let i = 0; i < 10; i++) {
+      await svc.runJob(job2.id);
+    }
+
+    expect(svc.runHistory.length).toBe(MAX_RUN_HISTORY);
+    // Last 10 should be job2
+    const last10 = svc.runHistory.slice(-10);
+    expect(last10.every(r => r.jobId === job2.id)).toBe(true);
+
+    svc.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getJobRuns (D4.10)
+// ---------------------------------------------------------------------------
+
+describe('getJobRuns', () => {
+  it('filters run history by jobId', async () => {
+    vi.useFakeTimers();
+    const executor = vi.fn().mockResolvedValue(undefined);
+    const svc = new CronService(executor, vi.fn().mockResolvedValue([]), null);
+
+    const jobA = svc.addJob({ name: 'a', schedule: { every: '1m' }, payload: {} });
+    const jobB = svc.addJob({ name: 'b', schedule: { every: '1m' }, payload: {} });
+
+    await svc.runJob(jobA.id);
+    await svc.runJob(jobA.id);
+    await svc.runJob(jobB.id);
+
+    expect(svc.getJobRuns(jobA.id)).toHaveLength(2);
+    expect(svc.getJobRuns(jobB.id)).toHaveLength(1);
+    expect(svc.getJobRuns('nonexistent')).toHaveLength(0);
+
+    svc.dispose();
+    vi.useRealTimers();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// status() method (D4.status)
+// ---------------------------------------------------------------------------
+
+describe('status', () => {
+  it('returns correct status summary', async () => {
+    vi.useFakeTimers();
+    const executor = vi.fn().mockResolvedValue(undefined);
+    const svc = new CronService(executor, vi.fn().mockResolvedValue([]), null);
+
+    const job1 = svc.addJob({ name: 'enabled', schedule: { every: '5m' }, payload: {} });
+    svc.addJob({ name: 'disabled', schedule: { every: '5m' }, payload: {}, enabled: false });
+
+    await svc.runJob(job1.id);
+
+    const s = svc.status();
+    expect(s.jobCount).toBe(2);
+    expect(s.runningJobs).toBe(1); // only the enabled job with nextRunAt
+    expect(s.timerActive).toBe(false);
+    expect(s.totalRuns).toBe(1);
+
+    svc.start();
+    expect(svc.status().timerActive).toBe(true);
+
+    svc.dispose();
+    vi.useRealTimers();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deleteAfterRun (D4.2)
+// ---------------------------------------------------------------------------
+
+describe('deleteAfterRun', () => {
+  it('auto-removes job after successful execution', async () => {
+    vi.useFakeTimers();
+    const executor = vi.fn().mockResolvedValue(undefined);
+    const svc = new CronService(executor, vi.fn().mockResolvedValue([]), null);
+
+    const job = svc.addJob({
+      name: 'one-shot',
+      schedule: { every: '5m' },
+      payload: {},
+      deleteAfterRun: true,
+    });
+
+    expect(svc.jobCount).toBe(1);
+    const result = await svc.runJob(job.id);
+    expect(result.success).toBe(true);
+    expect(svc.jobCount).toBe(0);
+    expect(svc.getJob(job.id)).toBeUndefined();
+
+    svc.dispose();
+    vi.useRealTimers();
+  });
+
+  it('does NOT remove job if execution fails', async () => {
+    vi.useFakeTimers();
+    const executor = vi.fn().mockRejectedValue(new Error('fail'));
+    const svc = new CronService(executor, vi.fn().mockResolvedValue([]), null);
+
+    const job = svc.addJob({
+      name: 'one-shot-fail',
+      schedule: { every: '5m' },
+      payload: {},
+      deleteAfterRun: true,
+    });
+
+    const result = await svc.runJob(job.id);
+    expect(result.success).toBe(false);
+    expect(svc.jobCount).toBe(1); // still present
+    expect(svc.getJob(job.id)).toBeDefined();
+
+    svc.dispose();
+    vi.useRealTimers();
+  });
+
+  it('does NOT remove job when deleteAfterRun is not set', async () => {
+    vi.useFakeTimers();
+    const executor = vi.fn().mockResolvedValue(undefined);
+    const svc = new CronService(executor, vi.fn().mockResolvedValue([]), null);
+
+    const job = svc.addJob({
+      name: 'normal',
+      schedule: { every: '5m' },
+      payload: {},
+    });
+
+    await svc.runJob(job.id);
+    expect(svc.jobCount).toBe(1);
+
+    svc.dispose();
+    vi.useRealTimers();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// description and updatedAt field propagation (D4.2)
+// ---------------------------------------------------------------------------
+
+describe('optional ICronJob fields', () => {
+  it('description round-trips through add → getJob', () => {
+    vi.useFakeTimers();
+    const svc = new CronService(vi.fn().mockResolvedValue(undefined), vi.fn().mockResolvedValue([]), null);
+
+    const job = svc.addJob({
+      name: 'desc-test',
+      schedule: { every: '5m' },
+      payload: {},
+      description: 'Health check every 5 min',
+    });
+
+    expect(job.description).toBe('Health check every 5 min');
+    expect(svc.getJob(job.id)!.description).toBe('Health check every 5 min');
+
+    svc.dispose();
+    vi.useRealTimers();
+  });
+
+  it('updatedAt is set on addJob', () => {
+    vi.useFakeTimers();
+    const now = Date.now();
+    vi.setSystemTime(now);
+
+    const svc = new CronService(vi.fn().mockResolvedValue(undefined), vi.fn().mockResolvedValue([]), null);
+    const job = svc.addJob({ name: 'x', schedule: { every: '5m' }, payload: {} });
+
+    expect(job.updatedAt).toBe(now);
+
+    svc.dispose();
+    vi.useRealTimers();
+  });
+
+  it('updatedAt advances on updateJob', () => {
+    vi.useFakeTimers();
+    const t1 = new Date('2026-03-28T10:00:00Z').getTime();
+    vi.setSystemTime(t1);
+
+    const svc = new CronService(vi.fn().mockResolvedValue(undefined), vi.fn().mockResolvedValue([]), null);
+    const job = svc.addJob({ name: 'x', schedule: { every: '5m' }, payload: {} });
+    expect(job.updatedAt).toBe(t1);
+
+    const t2 = t1 + 60_000;
+    vi.setSystemTime(t2);
+    const updated = svc.updateJob(job.id, { name: 'renamed' });
+    expect(updated.updatedAt).toBe(t2);
+
+    svc.dispose();
+    vi.useRealTimers();
+  });
+
+  it('description can be updated', () => {
+    vi.useFakeTimers();
+    const svc = new CronService(vi.fn().mockResolvedValue(undefined), vi.fn().mockResolvedValue([]), null);
+
+    const job = svc.addJob({
+      name: 'x',
+      schedule: { every: '5m' },
+      payload: {},
+      description: 'original',
+    });
+
+    const updated = svc.updateJob(job.id, { description: 'changed' });
+    expect(updated.description).toBe('changed');
+
+    svc.dispose();
+    vi.useRealTimers();
+  });
+
+  it('deleteAfterRun can be set on update', () => {
+    vi.useFakeTimers();
+    const svc = new CronService(vi.fn().mockResolvedValue(undefined), vi.fn().mockResolvedValue([]), null);
+
+    const job = svc.addJob({ name: 'x', schedule: { every: '5m' }, payload: {} });
+    expect(job.deleteAfterRun).toBeUndefined();
+
+    const updated = svc.updateJob(job.id, { deleteAfterRun: true });
+    expect(updated.deleteAfterRun).toBe(true);
+
+    svc.dispose();
+    vi.useRealTimers();
   });
 });
