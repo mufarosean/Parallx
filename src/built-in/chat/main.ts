@@ -731,6 +731,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     runtimeHookRegistry: api.services.has(IRuntimeHookRegistry)
       ? api.services.get<import('../../services/serviceTypes.js').IRuntimeHookRegistry>(IRuntimeHookRegistry)
       : undefined,
+    // D5: Vision model capability detection
+    getActiveModelCapabilities: () => (languageModelsService as any).getActiveModelCapabilities?.() ?? ['completion'],
   });
 
   // D3 R1: Supplement diagnostics deps now that OllamaProvider + dataService are available

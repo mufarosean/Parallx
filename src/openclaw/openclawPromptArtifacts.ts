@@ -31,6 +31,8 @@ export interface IOpenclawPromptArtifactInput {
   readonly modelTier?: 'small' | 'medium' | 'large';
   /** Whether the model supports native tool calling (orthogonal to tool count). */
   readonly supportsTools?: boolean;
+  /** D5: Whether the model supports vision/image input. */
+  readonly supportsVision?: boolean;
   /** Token budget for system prompt (typically 10% of context window). */
   readonly systemBudgetTokens?: number;
   /** D8: Per-agent identity overlay. */
@@ -58,6 +60,7 @@ export function buildOpenclawPromptArtifacts(
     promptOverlay: input.promptOverlay,
     modelTier: input.modelTier,
     supportsTools: input.supportsTools ?? input.toolState.availableDefinitions.length > 0,
+    supportsVision: input.supportsVision,
     systemBudgetTokens: input.systemBudgetTokens,
     agentIdentity: input.agentIdentity,
     agentSystemPromptOverlay: input.agentSystemPromptOverlay,

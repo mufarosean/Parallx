@@ -279,6 +279,8 @@ export interface IDefaultParticipantServices {
   observabilityService?: import('../services/serviceTypes.js').IObservabilityService;
   /** D4: Runtime hook registry for tool and message observers. */
   runtimeHookRegistry?: import('../services/serviceTypes.js').IRuntimeHookRegistry;
+  /** D5: Get active model capabilities (cached from Ollama probe). */
+  getActiveModelCapabilities?(): readonly import('../services/chatTypes.js').ModelCapability[];
 }
 
 export interface IWorkspaceParticipantServices {

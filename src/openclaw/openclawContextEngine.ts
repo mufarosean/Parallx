@@ -387,7 +387,13 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
 
     // Build a transcript of history for summarization
     const transcript = history
-      .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+      .map((msg) => {
+        let line = `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`;
+        if (msg.role === 'user' && msg.images?.length) {
+          line += ` [attached ${msg.images.length} image(s)]`;
+        }
+        return line;
+      })
       .join('\n\n');
 
     // D6-4: Extract and store concepts before summarization (preserves entities from compacted history)

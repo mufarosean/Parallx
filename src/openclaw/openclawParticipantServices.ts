@@ -74,6 +74,8 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly observabilityService?: IDefaultParticipantServices['observabilityService'];
   // D4: Runtime hook registry
   readonly runtimeHookRegistry?: IDefaultParticipantServices['runtimeHookRegistry'];
+  // D5: Vision model capability detection
+  readonly getActiveModelCapabilities?: IDefaultParticipantServices['getActiveModelCapabilities'];
 }
 
 export interface IOpenclawWorkspaceParticipantAdapterDeps {
@@ -188,6 +190,8 @@ export function buildOpenclawDefaultParticipantServices(
     observabilityService: deps.observabilityService,
     // D4: Runtime hook registry
     runtimeHookRegistry: deps.runtimeHookRegistry,
+    // D5: Vision model capability detection
+    getActiveModelCapabilities: deps.getActiveModelCapabilities,
   };
 }
 

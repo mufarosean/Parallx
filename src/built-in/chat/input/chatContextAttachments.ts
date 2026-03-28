@@ -42,6 +42,7 @@ export class ChatContextAttachments extends Disposable {
   private readonly _dismissed = new Set<string>();
 
   private _visionSupported = false;
+  private _onRequestVisionModel?: () => void;
 
   // ── Events ──
 
@@ -49,8 +50,10 @@ export class ChatContextAttachments extends Disposable {
   /** Fires when the set of attachments changes. */
   readonly onDidChange: Event<void> = this._onDidChange.event;
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, onRequestVisionModel?: () => void) {
     super();
+
+    this._onRequestVisionModel = onRequestVisionModel;
 
     this._root = $('div.parallx-chat-context-ribbon');
     container.appendChild(this._root);
@@ -230,6 +233,19 @@ export class ChatContextAttachments extends Disposable {
     if (isChatImageAttachment(attachment) && !this._visionSupported) {
       const status = $('span.parallx-chat-context-chip-status', 'Vision required');
       chip.appendChild(status);
+
+      if (this._onRequestVisionModel) {
+        const switchLink = document.createElement('button');
+        switchLink.className = 'parallx-chat-context-chip-action';
+        switchLink.type = 'button';
+        switchLink.textContent = 'Switch model';
+        switchLink.title = 'Switch to a vision-capable model';
+        switchLink.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this._onRequestVisionModel?.();
+        });
+        chip.appendChild(switchLink);
+      }
     }
 
     // × close button

@@ -11,6 +11,7 @@
  */
 
 import { estimateTokens } from '../services/tokenBudgetService.js';
+import type { IChatMessage } from '../services/chatTypes.js';
 
 // Re-export the shared estimator so existing OpenClaw consumers don't break.
 export { estimateTokens };
@@ -115,15 +116,27 @@ export function computeElasticBudget(params: IOpenclawElasticBudgetParams): IOpe
 // ---------------------------------------------------------------------------
 
 /**
+ * D5: Fixed per-image token cost for VLM models.
+ * Most CLIP-based VLMs (llava, llama3.2-vision) resize to 336×336 and encode
+ * as ~576 patch tokens. We use 768 as a conservative estimate that accounts
+ * for higher-resolution models and image preprocessing overhead.
+ */
+export const VISION_TOKENS_PER_IMAGE = 768;
+
+/**
  * Estimate token count from an array of chat messages.
+ * D5: includes fixed per-image token cost when images are present.
  */
 export function estimateMessagesTokens(
-  messages: readonly { role: string; content: string }[],
+  messages: readonly IChatMessage[],
 ): number {
   let total = 0;
   for (const msg of messages) {
     // Each message has role overhead (~4 tokens) + content
     total += 4 + estimateTokens(msg.content);
+    if (msg.images?.length) {
+      total += msg.images.length * VISION_TOKENS_PER_IMAGE;
+    }
   }
   return total;
 }

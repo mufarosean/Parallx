@@ -102,6 +102,8 @@ export interface IOpenclawTurnContext {
   readonly isFollowupTurn?: boolean;
   /** Current depth in the followup chain (0 = user-initiated turn). */
   readonly followupDepth?: number;
+  /** D5: Whether this turn has image attachments requiring vision support. */
+  readonly supportsVision?: boolean;
 
   // Tool inputs
   readonly toolState: IOpenclawRuntimeToolState;
@@ -185,6 +187,7 @@ export async function executeOpenclawAttempt(
     systemBudgetTokens: Math.floor(context.tokenBudget * 0.10),
     agentIdentity: context.agentConfig?.identity,
     agentSystemPromptOverlay: context.agentConfig?.systemPromptOverlay,
+    supportsVision: context.supportsVision,
     promptProvenance: {
       rawUserInput: request.text,
       parsedUserText: request.text,

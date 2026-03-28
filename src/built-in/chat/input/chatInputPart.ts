@@ -66,7 +66,7 @@ export class ChatInputPart extends Disposable {
   /** Fired when the wrench icon is clicked — opens AI Hub → Tools section. */
   readonly onDidRequestOpenToolSettings: Event<void> = this._onDidRequestOpenToolSettings.event;
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, onRequestVisionModel?: () => void) {
     super();
 
     // Root
@@ -74,7 +74,7 @@ export class ChatInputPart extends Disposable {
     container.appendChild(this._root);
 
     // Context attachment ribbon (ABOVE the textarea, VS Code style)
-    this._contextRibbon = this._register(new ChatContextAttachments(this._root));
+    this._contextRibbon = this._register(new ChatContextAttachments(this._root, onRequestVisionModel));
     this._register(this._contextRibbon.onDidChange(() => {
       this._updateAttachBtnLabel();
       this._onDidChangeAttachments.fire();

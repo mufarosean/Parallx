@@ -68,6 +68,8 @@ export interface IOpenclawSystemPromptParams {
   readonly modelTier?: 'small' | 'medium' | 'large';
   /** M42: Whether the model supports tool calling */
   readonly supportsTools?: boolean;
+  /** D5: Whether the model supports vision/image input */
+  readonly supportsVision?: boolean;
   /** Token budget for system prompt (typically 10% of context window).
    *  When set, variable sections are truncated if total exceeds budget. */
   readonly systemBudgetTokens?: number;
@@ -169,6 +171,11 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
   // 10. M42: No-tools fallback note
   if (params.supportsTools === false) {
     sections.push(buildNoToolsFallbackNote());
+  }
+
+  // 11. D5: Vision model guidance
+  if (params.supportsVision) {
+    sections.push(buildVisionGuidanceSection());
   }
 
   let result = sections.join('\n\n');
@@ -339,6 +346,17 @@ This model does not support native tool calling. When you need to perform action
 - Action: [tool name]
 - Input: [parameters]
 The system will interpret these and execute them on your behalf.`;
+}
+
+function buildVisionGuidanceSection(): string {
+  return [
+    '## Vision Capabilities',
+    'You can analyze images attached to user messages. When the user includes an image:',
+    '- Describe what you see clearly and specifically',
+    '- Reference visual elements (text, diagrams, UI, photos) in your response',
+    '- If the image relates to the workspace content, connect visual observations to workspace context',
+    'When no image is attached, respond normally to text input.',
+  ].join('\n');
 }
 
 // ---------------------------------------------------------------------------

@@ -392,6 +392,7 @@ async function buildOpenclawTurnContext(
       : undefined,
     toolObserver: services.runtimeHookRegistry?.getCompositeToolObserver(),
     messageObserver: services.runtimeHookRegistry?.getCompositeMessageObserver(),
+    supportsVision: services.getActiveModelCapabilities?.().includes('vision') ?? false,
   };
 }
 

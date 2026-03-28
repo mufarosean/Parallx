@@ -247,7 +247,20 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       void this._handleAgentApproval(e.detail);
     }) as EventListener));
 
-    this._inputPart = this._register(new ChatInputPart(this._inputAreaContainer));
+    this._inputPart = this._register(new ChatInputPart(this._inputAreaContainer, () => {
+      const modelPicker = this._services.modelPicker;
+      if (!modelPicker) { return; }
+      modelPicker.getModels().then((models) => {
+        const visionModel = models.find(m => m.capabilities?.includes('vision'));
+        if (visionModel) {
+          modelPicker.setActiveModel(visionModel.id);
+        } else {
+          console.warn('[ChatWidget] No vision-capable model available to switch to');
+        }
+      }).catch(() => {
+        // Model query failed — no-op
+      });
+    }));
     this._register(this._inputPart.onDidAcceptInput((text) => this._handleSubmit(text)));
     this._register(this._inputPart.onDidRequestStop(() => this._handleStop()));
     this._register(this._inputPart.onDidRequestOpenToolSettings(() => this._onDidRequestOpenToolSettings.fire()));
