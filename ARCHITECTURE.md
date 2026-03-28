@@ -311,7 +311,6 @@ The chat built-in is the AI assistant — Parallx's "Jarvis". It runs entirely l
 |------|---------------|
 | `chatTool.ts` | **Central activation** (~1700 lines). Constructs all chat services, builds `defaultParticipantServices` and `widgetServices`, wires providers, assembles workspace digest. |
 | `chatWidget.ts` | Chat panel UI — TipTap input, message list, context pills, code action handling |
-| `chatSystemPrompts.ts` | Mode-aware system prompt builder (Ask/Edit/Agent). Injects PARALLX_IDENTITY, prompt file layers, workspace digest. |
 | `chatContextPills.ts` | Visual context chips above chat input — shows attached files, RAG results, token counts |
 | `chatSessionSidebar.ts` | Session list with full-text search |
 | `chatListRenderer.ts` | Renders chat messages — markdown, code blocks with action buttons, token counts |

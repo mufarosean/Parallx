@@ -60,7 +60,7 @@ import { buildChatWidgetAttachmentServices } from '../utilities/chatWidgetAttach
 import { buildChatWidgetPickerServices } from '../utilities/chatWidgetPickerAdapter.js';
 import { buildChatWidgetRequestServices } from '../utilities/chatWidgetRequestAdapter.js';
 import { buildChatWidgetSessionServices } from '../utilities/chatWidgetSessionAdapter.js';
-import { composeChatSystemPrompt } from '../utilities/chatSystemPromptComposer.js';
+
 import { buildChatTokenBarServices } from '../utilities/chatTokenBarAdapter.js';
 import { openChatFile, openChatMemoryViewer } from '../utilities/chatViewerOpeners.js';
 import { computeChatWorkspaceDigest } from '../utilities/chatWorkspaceDigest.js';
@@ -2131,25 +2131,10 @@ export class ChatDataService {
       getSessions: () => this._d.chatService.getSessions(),
       getSession: (id: string) => this._d.chatService.getSession(id),
       deleteSession: (id: string) => this._d.chatService.deleteSession(id),
-      getSystemPrompt: () => composeChatSystemPrompt({
-        workspaceName: this._d.workspaceService?.activeWorkspace?.name ?? 'Parallx Workspace',
-        getPageCount: async () => this._d.databaseService?.isOpen
-          ? (await this._d.databaseService.all<{ id: string }>('SELECT id FROM pages')).length
-          : 0,
-        getFileCount: async () => {
-          if (!this._d.fsAccessor) {
-            return 0;
-          }
-          try {
-            return (await this._d.fsAccessor.readdir('')).length;
-          } catch {
-            return 0;
-          }
-        },
-        getToolDefinitions: () => this._d.languageModelToolsService?.getToolDefinitions() ?? [],
-        isRAGAvailable: !!this._d.retrievalService,
-        promptFileService: this._d.promptFileService,
-      }),
+      getSystemPrompt: async () => {
+        const report = this.getLastSystemPromptReport();
+        return report?.promptText ?? '(No system prompt generated yet — send a message first)';
+      },
       readFileRelative: this._d.fsAccessor
         ? (relativePath: string) => this.readFileRelative(relativePath)
         : undefined,

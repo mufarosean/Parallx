@@ -70,6 +70,7 @@ export function buildOpenclawPromptArtifacts(
       source: input.source,
       generatedAt: Date.now(),
       workspaceName: input.workspaceName,
+      promptText: systemPrompt,
       bootstrapMaxChars: input.bootstrapReport.maxChars,
       bootstrapTotalMaxChars: input.bootstrapReport.totalMaxChars,
       systemPrompt: {

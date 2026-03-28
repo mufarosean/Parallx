@@ -20,9 +20,7 @@ import { Disposable, toDisposable, type IDisposable } from '../../../platform/li
 import { layoutPopup } from '../../../ui/dom.js';
 import { $ } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
-import { buildSystemPrompt } from '../config/chatSystemPrompts.js';
-import type { ISystemPromptContext } from '../chatTypes.js';
-import { ChatMode } from '../../../services/chatTypes.js';
+
 import './chatTokenStatusBar.css';
 import type { ITokenStatusBarServices } from '../chatTypes.js';
 
@@ -235,8 +233,6 @@ export class ChatTokenStatusBar extends Disposable {
   private async _computeBreakdown(): Promise<ITokenBreakdown> {
     const session = this._services.getActiveSession();
     const contextLength = await this._services.getContextLength();
-    const mode = this._services.getMode();
-
     // ── Check for real Ollama-reported token counts ──
     // The last response in the session has promptTokens (= total input tokens
     // for that request, including system prompt + all messages). This is the
@@ -272,53 +268,13 @@ export class ChatTokenStatusBar extends Disposable {
 
     try {
       // Prefer OpenClaw runtime's cached prompt report (accurate post-turn data)
+      // Use OpenClaw runtime's cached prompt report (accurate post-turn data).
+      // Before the first turn, estimates stay at 0 — no legacy fallback.
       const promptReport = this._services.getLastSystemPromptReport?.();
       if (promptReport) {
         systemInstructionsEst = Math.ceil(promptReport.systemPrompt.nonProjectContextChars / 4);
         toolDefinitionsEst = Math.ceil(promptReport.tools.schemaChars / 4);
         filesEst = Math.ceil(promptReport.systemPrompt.projectContextChars / 4);
-      } else {
-        // Fallback: legacy buildSystemPrompt estimation (before first OpenClaw turn)
-        const pageCount = await this._services.getPageCount();
-        const fileCount = await this._services.getFileCount();
-        const toolDefs = this._services.getToolDefinitions();
-        const isRAGAvailable = this._services.isRAGAvailable();
-        const isIndexing = this._services.isIndexing();
-
-        const fullCtx: ISystemPromptContext = {
-          workspaceName: this._services.getWorkspaceName(),
-          pageCount,
-          currentPageTitle: this._services.getCurrentPageTitle(),
-          tools: mode === ChatMode.Agent ? toolDefs : undefined,
-          fileCount,
-          isRAGAvailable,
-          isIndexing,
-        };
-        const fullSystemPrompt = buildSystemPrompt(mode, fullCtx);
-
-        const baseCtx: ISystemPromptContext = {
-          workspaceName: this._services.getWorkspaceName(),
-          pageCount,
-          currentPageTitle: this._services.getCurrentPageTitle(),
-          fileCount,
-          isRAGAvailable,
-          isIndexing,
-        };
-        const basePrompt = buildSystemPrompt(mode, baseCtx);
-
-        systemInstructionsEst = Math.ceil(basePrompt.length / 4);
-        toolDefinitionsEst = Math.ceil((fullSystemPrompt.length - basePrompt.length) / 4);
-        filesEst = 0;
-
-        if (mode === ChatMode.Agent && toolDefs.length > 0) {
-          const toolJsonChars = JSON.stringify(
-            toolDefs.map(t => ({
-              type: 'function',
-              function: { name: t.name, description: t.description, parameters: t.parameters },
-            })),
-          ).length;
-          toolDefinitionsEst += Math.ceil(toolJsonChars / 4);
-        }
       }
     } catch {
       // Best-effort

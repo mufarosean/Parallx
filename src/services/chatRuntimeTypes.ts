@@ -113,6 +113,7 @@ export interface IOpenclawSystemPromptReport {
   readonly source: 'run' | 'estimate';
   readonly generatedAt: number;
   readonly workspaceName?: string;
+  readonly promptText?: string;
   readonly bootstrapMaxChars: number;
   readonly bootstrapTotalMaxChars: number;
   readonly systemPrompt: {

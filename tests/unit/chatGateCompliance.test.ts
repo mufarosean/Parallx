@@ -54,7 +54,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   // chatTypes.ts and chatIcons.ts have their own purity tests below.
 
   // ── config/ — imports only chatTypes ────────────────────────────────────
-  'config/chatSystemPrompts.ts':    [],
+
 
   // ── data/ — data service hub ────────────────────────────────────────────
   'data/chatDataService.ts': ['providers/', 'widgets/', 'config/', 'tools/', 'utilities/'],
@@ -87,7 +87,7 @@ const FOLDER_RULES: Record<string, string[]> = {
 
   // ── widgets/ — chat widget components ───────────────────────────────────
   'widgets/chatSessionSidebar.ts': ['chatIcons'],
-  'widgets/chatTokenStatusBar.ts': ['chatIcons', 'config/'],
+  'widgets/chatTokenStatusBar.ts': ['chatIcons'],
   'widgets/chatView.ts':          ['providers/', 'widgets/'],
   'widgets/chatWidget.ts':        ['chatIcons', 'input/', 'rendering/', 'pickers/', 'providers/', 'widgets/'],
 
@@ -107,7 +107,6 @@ const FOLDER_RULES: Record<string, string[]> = {
   'utilities/chatParticipantRuntimeTrace.ts': [],
   'utilities/chatRuntimePromptMessages.ts': [],
   'utilities/chatScopeResolver.ts':          [],
-  'utilities/chatSystemPromptComposer.ts': ['config/'],
   'utilities/chatTokenBarAdapter.ts':        ['widgets/'],
   'utilities/chatTurnRouter.ts':             ['utilities/'],
   'utilities/chatTurnSemantics.ts':          [],
