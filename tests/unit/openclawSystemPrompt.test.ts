@@ -233,6 +233,23 @@ describe('buildSkillsSection', () => {
     expect(section).toContain('prefer fewer larger writes');
   });
 
+  it('names read_file tool explicitly', () => {
+    const section = buildSkillsSection(createSkills());
+    expect(section).toContain('using read_file');
+  });
+
+  it('includes fabrication guard', () => {
+    const section = buildSkillsSection(createSkills());
+    expect(section).toContain('NEVER describe a skill');
+    expect(section).toContain('always read the actual SKILL.md file first');
+  });
+
+  it('includes explicit user naming case', () => {
+    const section = buildSkillsSection(createSkills());
+    expect(section).toContain('user explicitly names a skill');
+    expect(section).toContain('using read_file');
+  });
+
   it('escapes XML special characters', () => {
     const section = buildSkillsSection([
       { name: 'find & replace', description: 'Search <regex> patterns', location: '/skills/"test".md' },

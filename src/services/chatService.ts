@@ -271,12 +271,13 @@ class ChatResponseStream implements IChatResponseStream {
       }
     }
 
-    // Strip transient standalone parts
+    // Strip transient standalone parts (Progress spinners, Reference stragglers).
+    // ToolInvocation parts are kept — completed tool calls persist in the message
+    // so the user can see what tools were called, their args, and results.
     for (let i = parts.length - 1; i >= 0; i--) {
       const kind = parts[i].kind;
       if (
         kind === ChatContentPartKind.Progress ||
-        kind === ChatContentPartKind.ToolInvocation ||
         kind === ChatContentPartKind.Reference
       ) {
         parts.splice(i, 1);

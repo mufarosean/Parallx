@@ -179,9 +179,11 @@ export function buildSkillsSection(skills: readonly ISkillEntry[]): string {
 
   return `## Skills (mandatory)
 Before replying: scan <available_skills> <description> entries.
-- If exactly one skill clearly applies: read its SKILL.md at <location>, then follow it.
-- If multiple could apply: choose the most specific one, then read/follow it.
+- If exactly one skill clearly applies: read its SKILL.md at <location> using read_file, then follow its instructions step by step.
+- If the user explicitly names a skill (e.g. "use the X skill"): read that skill's SKILL.md at <location> using read_file, then follow its instructions.
+- If multiple could apply: choose the most specific one.
 - If none clearly apply: do not read any SKILL.md.
+- NEVER describe a skill's instructions from memory or the description alone — always read the actual SKILL.md file first.
 Constraints: never read more than one skill up front; only read after selecting.
 When a skill drives external API writes, assume rate limits: prefer fewer larger writes, avoid tight one-item loops, serialize bursts when possible, and respect 429/Retry-After.
 <available_skills>
