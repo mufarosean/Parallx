@@ -260,47 +260,6 @@ describe('executeOpenclawAttempt', () => {
     expect(result.toolCallCount).toBeLessThanOrEqual(8);
   });
 
-  it('all tools failed → loop stops early', async () => {
-    let callCount = 0;
-    const sendChatRequest = vi.fn(() => {
-      callCount++;
-      if (callCount <= 3) {
-        return streamChunks([
-          toolCallChunk('Trying...', [{ function: { name: 'readFile', arguments: { path: `file${callCount}` } } }]),
-        ]);
-      }
-      return streamChunks([textChunk('Done.')]);
-    });
-
-    const invokeToolWithRuntimeControl = vi.fn(async (): Promise<IToolResult> => ({
-      content: 'Error: file not found',
-      isError: true,
-    }));
-
-    const context = createContext({
-      sendChatRequest,
-      invokeToolWithRuntimeControl,
-      toolState: {
-        availableDefinitions: [{ name: 'readFile', description: 'Read', parameters: {} }],
-      } as any,
-    });
-
-    const response = createResponse();
-    const result = await executeOpenclawAttempt(
-      createRequest(),
-      context,
-      createAssembled(),
-      response,
-      createToken(),
-    );
-
-    // After first iteration where all tools failed, loop stops
-    expect(result.toolCallCount).toBe(1);
-    expect(response.progress).toHaveBeenCalledWith(
-      expect.stringContaining('All tool invocations returned errors'),
-    );
-  });
-
   it('maxToolIterations respected', async () => {
     // Model always returns a tool call
     const sendChatRequest = vi.fn(() =>

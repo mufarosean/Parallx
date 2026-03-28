@@ -218,9 +218,9 @@ async function runOpenclawDefaultTurn(
 // Turn context builder — maps platform services to IOpenclawTurnContext
 // ---------------------------------------------------------------------------
 
-const OPENCLAW_MAX_AGENT_ITERATIONS = 6;
-const OPENCLAW_MIN_AGENT_ITERATIONS = 4;
-const OPENCLAW_MAX_READONLY_ITERATIONS = 3;
+/** Safety ceiling — prevents runaway loops regardless of user setting. */
+const OPENCLAW_MAX_ITERATIONS_CEILING = 50;
+const OPENCLAW_MAX_READONLY_ITERATIONS = 10;
 
 async function buildOpenclawTurnContext(
   services: IDefaultParticipantServices,
@@ -259,9 +259,9 @@ async function buildOpenclawTurnContext(
     parallxVersion: '0.1.0',
   };
 
-  // Max tool iterations — Agent gets full autonomy, Ask/Edit get short loops
+  // Max tool iterations — Agent gets full autonomy from user setting, Ask/Edit get short loops
   const maxToolIterations = request.mode === ChatMode.Agent
-    ? Math.max(OPENCLAW_MIN_AGENT_ITERATIONS, Math.min(services.maxIterations ?? OPENCLAW_MAX_AGENT_ITERATIONS, OPENCLAW_MAX_AGENT_ITERATIONS))
+    ? Math.min(services.maxIterations ?? 25, OPENCLAW_MAX_ITERATIONS_CEILING)
     : OPENCLAW_MAX_READONLY_ITERATIONS;
 
   const toolState = buildOpenclawRuntimeToolState({

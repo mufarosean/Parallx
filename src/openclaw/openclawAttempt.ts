@@ -348,15 +348,6 @@ export async function executeOpenclawAttempt(
       }
     }
 
-    // Detect all-tools-failed: if every tool result was an error, stop looping
-    // to avoid pointless retries that waste tokens.
-    const allToolsFailed = toolResultMessages.length > 0
-      && toolResultMessages.every(m => m.content.startsWith('Error:') || m.content.startsWith('error:'));
-    if (allToolsFailed) {
-      response.progress('All tool invocations returned errors, stopping tool loop.');
-      break;
-    }
-
     iterations++;
     // Preserve accumulated markdown for streaming; next iteration appends
     markdown = '';

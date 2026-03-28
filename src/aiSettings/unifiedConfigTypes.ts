@@ -148,7 +148,7 @@ export const AGENT_PROACTIVITY_OPTIONS = ['low', 'balanced', 'high'] as const;
 export type AgentProactivityPreference = typeof AGENT_PROACTIVITY_OPTIONS[number];
 
 export interface IUnifiedAgentConfig {
-  /** @parallx-specific Upstream hardcodes MAX_RUN_LOOP_ITERATIONS = 24 + 8/profile. Parallx exposes as user setting with floor guard (min 4, max 6). */
+  /** @parallx-specific Upstream hardcodes MAX_RUN_LOOP_ITERATIONS = 24 + 8/profile. Parallx exposes as user setting (default 25, ceiling 50). */
   readonly maxIterations: number;
   /** @deprecated F11: No OpenClaw consumer. */
   readonly verbosity: AgentVerbosityPreference;

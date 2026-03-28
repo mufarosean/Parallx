@@ -16,7 +16,7 @@
 import type { IChatMessage } from '../services/chatTypes.js';
 import type { IDefaultParticipantServices } from './openclawTypes.js';
 import { computeElasticBudget, estimateTokens, estimateMessagesTokens } from './openclawTokenBudget.js';
-import { assessEvidence, buildEvidenceConstraint } from './openclawResponseValidation.js';
+
 
 // ---------------------------------------------------------------------------
 // Types
@@ -296,45 +296,6 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
       }
     }
 
-    // ── M5 + C5: Assess evidence quality; re-retrieve on insufficient ──
-    if (retrievedContextText.trim()) {
-      let evidence = assessEvidence(params.prompt, retrievedContextText, ragSources);
-      // C5: Re-retrieval — when evidence is insufficient, reformulate and try again
-      if (evidence.status === 'insufficient' && this._ragReady && this.services.retrieveContext) {
-        const reQuery = buildRetrieveAgainQuery(params.prompt, evidence.reasons);
-        if (reQuery) {
-          const reResult = await this.services.retrieveContext(reQuery).catch(() => undefined);
-          if (reResult?.text) {
-            // Merge re-retrieved context
-            retrievedContextText = retrievedContextText + '\n\n' + reResult.text;
-            const combinedTokens = estimateTokens(retrievedContextText);
-            const maxChars = ragLaneBudget * 4;
-            const combinedText = combinedTokens <= ragLaneBudget
-              ? retrievedContextText
-              : retrievedContextText.slice(0, maxChars);
-            // Replace the RAG section in contextSections
-            const ragIdx = contextSections.findIndex(s => s.startsWith('## Retrieved Context\n'));
-            if (ragIdx >= 0) {
-              contextSections[ragIdx] = `## Retrieved Context\n${combinedText}`;
-            }
-            // Merge sources, dedup by uri
-            const existingUris = new Set(ragSources.map(s => s.uri));
-            for (const s of reResult.sources) {
-              if (!existingUris.has(s.uri)) {
-                ragSources.push({ uri: s.uri, label: s.label, index: ragSources.length });
-              }
-            }
-            // Re-assess with augmented context
-            evidence = assessEvidence(params.prompt, retrievedContextText, ragSources);
-          }
-        }
-      }
-      if (evidence.status !== 'sufficient') {
-        const constraint = buildEvidenceConstraint(params.prompt, evidence);
-        systemPromptAddition = constraint;
-      }
-    }
-
     // ── Deliver retrieval content via messages (upstream pattern) ──
     // Upstream: AssembleResult.messages is the primary delivery channel.
     // RAG content goes in a context message BEFORE history, not in the system prompt.
@@ -575,34 +536,4 @@ function trimHistoryToBudget(
   }
 
   return result;
-}
-
-// ---------------------------------------------------------------------------
-// C5: Re-retrieval query reformulation
-// ---------------------------------------------------------------------------
-
-/**
- * Build a reformulated query for re-retrieval when evidence is insufficient.
- *
- * Strategy: strip question wrappers, extract core noun phrases,
- * and produce a keyword-focused search string that may retrieve
- * different chunks from the vector store.
- */
-function buildRetrieveAgainQuery(
-  originalQuery: string,
-  reasons: readonly string[],
-): string | undefined {
-  // Only re-retrieve for meaningful gaps — skip if we simply have no sources at all
-  if (reasons.includes('no-grounded-sources')) return undefined;
-
-  // Strip question framing to extract core search terms
-  const stripped = originalQuery
-    .replace(/^(?:what|how|where|who|when|which|does|do|is|are|can|could|should|would|will|tell me|show me|explain)\s+/i, '')
-    .replace(/\?+$/, '')
-    .trim();
-
-  if (stripped.length < 5) return undefined;
-
-  // Add "details about" prefix to bias toward explanatory chunks
-  return `details about ${stripped}`;
 }
