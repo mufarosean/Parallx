@@ -1,9 +1,9 @@
 // promptFileService.ts — Prompt file loader (M11 Task 1.1)
 //
-// Reads layered prompt files from the workspace root:
-//   AGENTS.md  — Project context for the agent
-//   SOUL.md    — Agent personality and constraints
-//   TOOLS.md   — Tool usage instructions
+// Reads layered prompt files from .parallx/:
+//   .parallx/AGENTS.md  — Project context for the agent
+//   .parallx/SOUL.md    — Agent personality and constraints
+//   .parallx/TOOLS.md   — Tool usage instructions
 //   .parallx/rules/*.md — Pattern-scoped rules
 //
 // OpenClaw-inspired, non-negotiable architecture (NN-1, NN-2).
@@ -217,7 +217,7 @@ export class PromptFileService extends Disposable {
 
   /**
    * Invalidate the cache and fire change event.
-   * Call when file watchers detect AGENTS.md / SOUL.md / TOOLS.md changes.
+   * Call when file watchers detect .parallx/AGENTS.md, SOUL.md, or TOOLS.md changes.
    */
   invalidate(): void {
     this._cache = undefined;
@@ -245,9 +245,9 @@ export class PromptFileService extends Disposable {
     }
 
     const [soul, agents, tools, rules] = await Promise.all([
-      this._loadFile('SOUL.md', DEFAULT_SOUL),
-      this._loadFile('AGENTS.md', ''),
-      this._loadFile('TOOLS.md', this._autoToolsContent),
+      this._loadFile('.parallx/SOUL.md', DEFAULT_SOUL),
+      this._loadFile('.parallx/AGENTS.md', ''),
+      this._loadFile('.parallx/TOOLS.md', this._autoToolsContent),
       this._loadRules(),
     ]);
 

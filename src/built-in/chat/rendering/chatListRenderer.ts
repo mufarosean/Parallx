@@ -131,6 +131,14 @@ export class ChatListRenderer extends Disposable {
         thinkingEl.replaceWith(newThinkingEl);
       }
 
+      // Re-render tool invocation parts whose status may have changed
+      for (let i = 0; i < newPartCount; i++) {
+        if (response.parts[i].kind === ChatContentPartKind.ToolInvocation) {
+          const oldEl = existingParts[i] as HTMLElement;
+          oldEl.replaceWith(renderContentPart(response.parts[i]));
+        }
+      }
+
       // Re-render the last part (streaming appends to last markdown part)
       const lastIdx2 = existingParts.length - 1;
       if (lastIdx2 > 0 || response.parts[0]?.kind !== ChatContentPartKind.Thinking) {

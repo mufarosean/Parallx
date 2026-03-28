@@ -315,11 +315,13 @@ export async function executeOpenclawAttempt(
       }
 
       // Execute the tool
+      const toolCallId = `${toolCall.function.name}-${toolCallCount}`;
       response.beginToolInvocation(
-        `${toolCall.function.name}-${toolCallCount}`,
+        toolCallId,
         toolCall.function.name,
         toolCall.function.arguments,
       );
+      response.updateToolInvocation(toolCallId, { status: 'running' });
 
       const toolResult = await context.invokeToolWithRuntimeControl(
         toolCall.function.name,
@@ -329,10 +331,12 @@ export async function executeOpenclawAttempt(
       );
       toolCallCount++;
 
-      response.updateToolInvocation(
-        `${toolCall.function.name}-${toolCallCount - 1}`,
-        { isComplete: true, isError: toolResult.isError, result: toolResult },
-      );
+      response.updateToolInvocation(toolCallId, {
+        status: toolResult.isError ? 'rejected' : 'completed',
+        isComplete: true,
+        isError: toolResult.isError,
+        result: toolResult,
+      });
 
       // Truncate oversized results to stay within token budget
       let resultContent = toolResult.content;

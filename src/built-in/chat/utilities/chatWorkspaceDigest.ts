@@ -119,7 +119,7 @@ export async function computeChatWorkspaceDigest(
   }
 
   if (deps.fsAccessor) {
-    const keyFiles = ['README.md', 'README.txt', 'README', 'SOUL.md', 'AGENTS.md'];
+    const keyFiles = ['README.md', 'README.txt', 'README', '.parallx/SOUL.md', '.parallx/AGENTS.md'];
     for (const fileName of keyFiles) {
       if (totalChars >= maxDigestChars) {
         break;

@@ -64,7 +64,7 @@ describe('openclaw scoped participants', () => {
       searchPages: vi.fn(async () => [{ id: 'page-1', title: 'Claims Guide', icon: '📄' }]),
       getPageContent: vi.fn(async () => 'Plain content'),
       getPageTitle: vi.fn(async () => 'Claims Guide'),
-      readFileContent: vi.fn(async (relativePath: string) => (relativePath === 'AGENTS.md' ? 'agent rules' : null as any)),
+      readFileContent: vi.fn(async (relativePath: string) => (relativePath === '.parallx/AGENTS.md' ? 'agent rules' : null as any)),
       getReadOnlyToolDefinitions: () => [],
       reportBootstrapDebug,
       reportRuntimeTrace: vi.fn(),
@@ -86,11 +86,11 @@ describe('openclaw scoped participants', () => {
     const messages = sendChatRequest.mock.calls[0][0];
     const bootstrapDebug = reportBootstrapDebug.mock.calls[0][0];
     expect(messages[0].content).toContain('OpenClaw workspace lane');
-    expect(messages[0].content).toContain('### AGENTS.md');
+    expect(messages[0].content).toContain('### .parallx/AGENTS.md');
     expect(messages[0].content).toContain('agent rules');
     expect(bootstrapDebug.files).toEqual(expect.arrayContaining([
-      expect.objectContaining({ name: 'AGENTS.md', rawChars: expect.any(Number) }),
-      expect.objectContaining({ name: 'SOUL.md', missing: false, rawChars: expect.any(Number) }),
+      expect.objectContaining({ name: '.parallx/AGENTS.md', rawChars: expect.any(Number) }),
+      expect.objectContaining({ name: '.parallx/SOUL.md', missing: false, rawChars: expect.any(Number) }),
     ]));
     expect(response.markdown).toHaveBeenCalledWith('workspace answer');
   });

@@ -19,9 +19,9 @@ import type {
 } from '../openclawTypes.js';
 
 export const OPENCLAW_BOOTSTRAP_FILES = [
-  'SOUL.md',
-  'AGENTS.md',
-  'TOOLS.md',
+  '.parallx/SOUL.md',
+  '.parallx/AGENTS.md',
+  '.parallx/TOOLS.md',
 ] as const;
 
 /**
@@ -30,7 +30,7 @@ export const OPENCLAW_BOOTSTRAP_FILES = [
  * instead of marking them [MISSING]. Mirrors upstream's scaffold-on-create.
  */
 export const OPENCLAW_BOOTSTRAP_DEFAULTS = new Map<string, string>([
-  ['SOUL.md', `# Parallx AI Assistant
+  ['.parallx/SOUL.md', `# Parallx AI Assistant
 
 You are Parallx, a local AI assistant running entirely on the user's machine.
 You help the user understand and work with their project files and canvas pages.
@@ -53,7 +53,7 @@ You help the user understand and work with their project files and canvas pages.
 - Reference file paths relative to workspace root
 - When showing diffs, use unified diff format
 - For long explanations, use headers and bullet points`],
-  ['TOOLS.md', `# Tool Usage Guidelines
+  ['.parallx/TOOLS.md', `# Tool Usage Guidelines
 
 ## When to Use Tools
 - Use file read/search tools to answer questions about workspace content

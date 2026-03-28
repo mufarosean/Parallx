@@ -288,15 +288,15 @@ async function executeOpenclawInitCommand(
 
   if (services.writeFile) {
     try {
-      await services.writeFile('AGENTS.md', `${generatedContent.trim()}\n`);
-      response.markdown('\n\n---\n✅ **AGENTS.md** has been created at the workspace root.');
+      await services.writeFile('.parallx/AGENTS.md', `${generatedContent.trim()}\n`);
+      response.markdown('\n\n---\n✅ **AGENTS.md** has been created in `.parallx/`.');
 
       // Scaffold SOUL.md and TOOLS.md if missing (from bootstrap defaults)
-      for (const [filename, defaultContent] of OPENCLAW_BOOTSTRAP_DEFAULTS) {
-        const fileExists = await services.exists?.(filename);
+      for (const [filePath, defaultContent] of OPENCLAW_BOOTSTRAP_DEFAULTS) {
+        const fileExists = await services.exists?.(filePath);
         if (!fileExists) {
-          await services.writeFile(filename, `${defaultContent.trim()}\n`);
-          response.markdown(`\n✅ **${filename}** has been created with default content.`);
+          await services.writeFile(filePath, `${defaultContent.trim()}\n`);
+          response.markdown(`\n✅ **${filePath}** has been created with default content.`);
         }
       }
 

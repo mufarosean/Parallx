@@ -135,11 +135,11 @@ export async function executeInitCommand(
     return;
   }
 
-  // 5. Write AGENTS.md to workspace root
+  // 5. Write AGENTS.md to .parallx/
   if (services.writeFile) {
     try {
-      await services.writeFile('AGENTS.md', generatedContent.trim() + '\n');
-      response.markdown('\n\n---\n✅ **AGENTS.md** has been created at the workspace root.');
+      await services.writeFile('.parallx/AGENTS.md', generatedContent.trim() + '\n');
+      response.markdown('\n\n---\n✅ **AGENTS.md** has been created in `.parallx/`.');
 
       // 6. Create .parallx/ directory structure if it doesn't exist
       const dirs = ['.parallx', '.parallx/rules', '.parallx/commands', '.parallx/skills'];
@@ -172,7 +172,7 @@ export async function executeInitCommand(
       response.warning(`Could not write AGENTS.md: ${err instanceof Error ? err.message : String(err)}`);
     }
   } else {
-    response.markdown('\n\n---\nCopy the content above and save it as `AGENTS.md` at your workspace root.');
+    response.markdown('\n\n---\nCopy the content above and save it as `.parallx/AGENTS.md` in your workspace.');
   }
 }
 

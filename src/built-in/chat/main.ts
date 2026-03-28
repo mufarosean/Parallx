@@ -23,6 +23,7 @@ import {
 } from '../../openclaw/openclawParticipantServices.js';
 import { buildToolDefinitionFromSkillCatalogEntry } from '../../openclaw/openclawToolState.js';
 import { registerOpenclawParticipants } from '../../openclaw/registerOpenclawParticipants.js';
+import { createOpenclawCommandRegistry } from '../../openclaw/openclawDefaultRuntimeSupport.js';
 import { registerBuiltInTools } from './tools/builtInTools.js';
 import type { IBuiltInToolFileWriter } from './chatTypes.js';
 import { ChatTokenStatusBar } from './widgets/chatTokenStatusBar.js';
@@ -318,7 +319,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
   // ── 1b2. Prompt file service (M11 Task 1.1 + 1.4) ──
   //
-  // Reads SOUL.md / AGENTS.md / TOOLS.md / .parallx/rules/*.md from workspace root.
+  // Reads .parallx/SOUL.md, .parallx/AGENTS.md, .parallx/TOOLS.md, .parallx/rules/*.md from workspace.
   // Falls back to built-in defaults when files don't exist.
 
   _promptFileService = new PromptFileService();
@@ -1528,7 +1529,16 @@ export function setActiveWidget(widget: ChatWidget | undefined): void {
       });
     }
 
-    // Slash commands are handled by OpenClaw runtime via openclawDefaultRuntimeSupport
+    // Wire slash command autocomplete from the OpenClaw command registry
+    const cmdRegistry = createOpenclawCommandRegistry();
+    widget.setSlashCommandProvider({
+      getCommands() {
+        return (cmdRegistry.getRegisteredCommands?.() ?? []).map(c => ({
+          name: c.name,
+          description: c.description ?? '',
+        }));
+      },
+    });
   }
 }
 

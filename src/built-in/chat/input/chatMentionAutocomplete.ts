@@ -219,7 +219,9 @@ export class ChatMentionAutocomplete extends Disposable {
   // ── @Mention Dropdown ──
 
   private _openMentionDropdown(): void {
+    const savedTriggerStart = this._triggerStart;
     this.close();
+    this._triggerStart = savedTriggerStart;
     this._triggerChar = '@';
     this._isOpen = true;
 
@@ -245,7 +247,7 @@ export class ChatMentionAutocomplete extends Disposable {
     // Built-in scopes
     for (const scope of BUILTIN_SCOPES) {
       const score = query ? fuzzyScore(query, scope.label) : (scope.sortOrder ?? 0);
-      if (score >= 0 || !query) {
+      if (score !== -1 || !query) {
         suggestions.push({ ...scope, score: query ? score : (scope.sortOrder ?? 0) });
       }
     }
@@ -308,6 +310,7 @@ export class ChatMentionAutocomplete extends Disposable {
 
   private _openCommandDropdown(): void {
     this.close();
+    this._triggerStart = 0;
     this._triggerChar = '/';
     this._isOpen = true;
 
@@ -329,7 +332,7 @@ export class ChatMentionAutocomplete extends Disposable {
 
     for (const cmd of commands) {
       const score = query ? fuzzyScore(query, cmd.name) : 0;
-      if (score >= 0 || !query) {
+      if (score !== -1 || !query) {
         scored.push({ ...cmd, score: query ? score : 0 });
       }
     }

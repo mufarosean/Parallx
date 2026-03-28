@@ -65,10 +65,10 @@ describe('openclaw default participant', () => {
       getToolDefinitions: () => [],
       getReadOnlyToolDefinitions: () => [],
       readFileRelative: vi.fn(async (path: string) => {
-        if (path === 'AGENTS.md') {
+        if (path === '.parallx/AGENTS.md') {
           return 'workspace instructions';
         }
-        if (path === 'SOUL.md') {
+        if (path === '.parallx/SOUL.md') {
           return 'persona';
         }
         if (path === 'memory/2026-03-24.md') {
@@ -103,9 +103,9 @@ describe('openclaw default participant', () => {
     expect(sentMessages[0].role).toBe('system');
     expect(sentMessages[0].content).toContain('You are Parallx, a local AI assistant');
     expect(sentMessages[0].content).toContain('## Workspace Context');
-    expect(sentMessages[0].content).toContain('### AGENTS.md');
+    expect(sentMessages[0].content).toContain('### .parallx/AGENTS.md');
     expect(sentMessages[0].content).toContain('workspace instructions');
-    expect(sentMessages[0].content).toContain('### SOUL.md');
+    expect(sentMessages[0].content).toContain('### .parallx/SOUL.md');
     expect(sentMessages[0].content).toContain('persona');
     expect(sentMessages[0].content).toContain('## Response Guidelines');
     expect(sentMessages[0].content).not.toContain('should not be injected');
@@ -127,7 +127,7 @@ describe('openclaw default participant', () => {
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [{ name: 'read_file', description: 'Read file', parameters: { type: 'object', properties: { path: { type: 'string' } } } }],
       getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read file', parameters: { type: 'object', properties: { path: { type: 'string' } } } }],
-      readFileRelative: vi.fn(async (path: string) => (path === 'AGENTS.md' ? 'workspace instructions' : null)),
+      readFileRelative: vi.fn(async (path: string) => (path === '.parallx/AGENTS.md' ? 'workspace instructions' : null)),
       unifiedConfigService: {
         getEffectiveConfig: () => ({
           chat: { workspaceDescription: 'Insurance workspace' },
