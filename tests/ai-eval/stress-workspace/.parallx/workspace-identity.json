@@ -1,7 +1,0 @@
-{
-  "name": "Stress Test Insurance Workspace",
-  "version": "1.0.0",
-  "domain": "auto-insurance",
-  "createdAt": "2024-01-01T00:00:00.000Z",
-  "testPurpose": "M39 stress-test workspace for skill-based workflow engine validation"
-}
