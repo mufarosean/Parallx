@@ -71,6 +71,12 @@ function contentTypeFor(filePath) {
 function resolveRendererFile(requestPathname) {
   const safePathname = decodeURIComponent(requestPathname || '/');
   const normalizedPathname = safePathname === '/' ? '/index.html' : safePathname;
+  // index.html lives in electron/, everything else (dist/, src/) in RENDERER_ROOT
+  if (normalizedPathname === '/index.html') {
+    const indexFile = path.join(__dirname, 'index.html');
+    if (fsSync.existsSync(indexFile)) { return indexFile; }
+    return null;
+  }
   const candidate = path.normalize(path.join(RENDERER_ROOT, normalizedPathname));
 
   if (!candidate.startsWith(RENDERER_ROOT)) {
@@ -82,7 +88,7 @@ function resolveRendererFile(requestPathname) {
   }
 
   // SPA-style fallback for app routes
-  const indexFile = path.join(RENDERER_ROOT, 'index.html');
+  const indexFile = path.join(__dirname, 'index.html');
   if (fsSync.existsSync(indexFile)) {
     return indexFile;
   }

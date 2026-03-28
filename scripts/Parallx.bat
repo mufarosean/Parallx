@@ -5,5 +5,5 @@ if not defined PARALLX_HIDDEN (
   wscript.exe "%~dp0Parallx.vbs"
   exit /b
 )
-cd /d "%~dp0"
+cd /d "%~dp0.."
 npm run start

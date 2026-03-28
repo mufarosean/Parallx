@@ -3,7 +3,7 @@
 Dim fso, shell, root
 Set fso   = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
-root = fso.GetParentFolderName(WScript.ScriptFullName)
+root = fso.GetParentFolderName(fso.GetParentFolderName(WScript.ScriptFullName))
 shell.CurrentDirectory = root
 
 ' Launch: build then run electron.  Window style 0 = hidden.
