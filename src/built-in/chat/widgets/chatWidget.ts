@@ -30,6 +30,7 @@ import type {
   ILanguageModelInfo,
 } from '../../../services/chatTypes.js';
 import { ChatRequestQueueKind } from '../../../services/chatTypes.js';
+import type { IChatSelectionAttachment } from '../../../services/chatTypes.js';
 import type {
   IChatWidgetServices,
   ICodeActionRequest,
@@ -375,6 +376,16 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
    */
   focus(): void {
     this._inputPart.focus();
+  }
+
+  /** Add a text selection as context (M48). */
+  addSelectionAttachment(attachment: IChatSelectionAttachment): void {
+    this._inputPart.addSelectionAttachment(attachment);
+  }
+
+  /** Set the input text (M48 — programmatic access). */
+  setInputValue(text: string): void {
+    this._inputPart.setValue(text);
   }
 
   /**

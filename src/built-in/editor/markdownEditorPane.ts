@@ -16,6 +16,7 @@ import { FileEditorInput } from './fileEditorInput.js';
 import { MarkdownPreviewInput } from './markdownPreviewInput.js';
 import { ReadonlyMarkdownInput } from './readonlyMarkdownInput.js';
 import { $ } from '../../ui/dom.js';
+import { ContextMenu } from '../../ui/contextMenu.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -29,6 +30,7 @@ export class MarkdownEditorPane extends EditorPane {
   private _scrollContainer!: HTMLElement;
   private _contentEl!: HTMLElement;
   private _inputListeners = new DisposableStore();
+  private _activeContextMenu: ReturnType<typeof ContextMenu.show> | null = null;
 
   constructor() {
     super(PANE_ID);
@@ -48,6 +50,9 @@ export class MarkdownEditorPane extends EditorPane {
 
     this._scrollContainer.appendChild(this._contentEl);
     container.appendChild(this._scrollContainer);
+
+    // M48: Context menu for selection AI actions
+    this._scrollContainer.addEventListener('contextmenu', this._onContextMenu);
   }
 
   protected override async renderInput(
@@ -296,6 +301,93 @@ export class MarkdownEditorPane extends EditorPane {
     s = s.replace(/\n/g, '<br />');
 
     return s;
+  }
+
+  // ── M48: Selection API & Context Menu ──────────────────────────────
+
+  /** Get the currently selected text in the markdown preview (M48). */
+  getSelectedText(): string | undefined {
+    const sel = window.getSelection();
+    const text = sel?.toString()?.trim();
+    return text && text.length > 0 ? text : undefined;
+  }
+
+  /** Get selection source metadata for the AI action system (M48). */
+  getSelectionSource(): { fileName: string; filePath: string } | undefined {
+    const text = this.getSelectedText();
+    if (!text || !this.input) return undefined;
+    return {
+      fileName: this.input.name ?? 'untitled',
+      filePath: (this.input as any).uri?.fsPath ?? (this.input as any)?.sourceInput?.uri?.fsPath ?? this.input.name ?? 'untitled',
+    };
+  }
+
+  private readonly _onContextMenu = (e: MouseEvent): void => {
+    const selected = this.getSelectedText();
+    if (!selected) return; // Only show AI menu when text is selected
+
+    e.preventDefault();
+    this._dismissContextMenu();
+
+    const menu = ContextMenu.show({
+      items: [
+        {
+          id: 'md.copy',
+          label: 'Copy',
+          keybinding: 'Ctrl+C',
+        },
+        // M48 Phase 4: Single AI action
+        {
+          id: 'ai.addToChat',
+          label: '💬 Add Selection to Chat',
+          group: 'ai',
+        },
+      ],
+      anchor: { x: e.clientX, y: e.clientY },
+    });
+
+    menu.onDidSelect((ev) => {
+      if (ev.item.id === 'md.copy') {
+        void navigator.clipboard.writeText(selected);
+      } else if (ev.item.id === 'ai.addToChat') {
+        this._dispatchSelectionAction(ev.item.id);
+      }
+    });
+
+    this._activeContextMenu = menu;
+  };
+
+  /** Dispatch a selection action to the unified dispatcher (M48 Phase 4). */
+  private _dispatchSelectionAction(_menuItemId: string): void {
+    const selected = this.getSelectedText();
+    const source = this.getSelectionSource();
+    if (!selected || !source) return;
+    const actionId = 'add-to-chat';
+
+    this._scrollContainer.dispatchEvent(
+      new CustomEvent('parallx-selection-action', {
+        bubbles: true,
+        detail: {
+          selectedText: selected,
+          surface: 'markdown',
+          actionId,
+          source,
+        },
+      }),
+    );
+  }
+
+  private _dismissContextMenu(): void {
+    if (this._activeContextMenu) {
+      this._activeContextMenu.dispose();
+      this._activeContextMenu = null;
+    }
+  }
+
+  override dispose(): void {
+    this._dismissContextMenu();
+    this._scrollContainer?.removeEventListener('contextmenu', this._onContextMenu);
+    super.dispose();
   }
 
   /** HTML-escape a string. */

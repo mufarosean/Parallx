@@ -10,6 +10,7 @@ import type {
   IChatFollowup,
 } from '../../services/chatTypes.js';
 import { ChatMode, ChatContentPartKind, isChatFileAttachment } from '../../services/chatTypes.js';
+import { isChatSelectionAttachment } from '../../services/selectionActionTypes.js';
 import type {
   IDefaultParticipantServices,
   IOpenclawCommandRegistryFacade,
@@ -70,6 +71,7 @@ export function createOpenclawDefaultParticipant(services: IDefaultParticipantSe
       { name: 'usage', description: 'Show token usage statistics for this session' },
       { name: 'tools', description: 'List available tools and their status' },
       { name: 'verbose', description: 'Toggle verbose debug output for this session' },
+      { name: 'skill', description: 'Run a skill by name' },
     ],
     handler,
     runtime: { handleTurn: handler },
@@ -146,11 +148,25 @@ async function runOpenclawDefaultTurn(
     }
   }
 
-  // Combine mention + variable + file attachment context blocks
+  // M48: Resolve selection attachments into context blocks
+  const selectionAttachmentBlocks: string[] = [];
+  if (request.attachments?.length) {
+    const selectionAttachments = request.attachments.filter(isChatSelectionAttachment);
+    for (const att of selectionAttachments) {
+      const lines = att.startLine && att.endLine ? ` (lines ${att.startLine}–${att.endLine})` : '';
+      const page = att.pageNumber ? ` (page ${att.pageNumber})` : '';
+      selectionAttachmentBlocks.push(
+        `## Selected Text from: ${att.name}${lines}${page}\n\n> ${att.selectedText.split('\n').join('\n> ')}`,
+      );
+    }
+  }
+
+  // Combine mention + variable + file attachment + selection context blocks
   const allContextBlocks = [
     ...(mentionResult.contextBlocks.length > 0 ? mentionResult.contextBlocks : []),
     ...(variableResult.contextBlocks.length > 0 ? variableResult.contextBlocks : []),
     ...fileAttachmentBlocks,
+    ...selectionAttachmentBlocks,
   ];
 
   // Build turn context for the new OpenClaw execution pipeline

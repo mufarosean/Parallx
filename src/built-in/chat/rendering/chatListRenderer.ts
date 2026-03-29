@@ -15,7 +15,7 @@ import { Disposable } from '../../../platform/lifecycle.js';
 import { $ } from '../../../ui/dom.js';
 import { renderContentPart } from './chatContentParts.js';
 import { chatIcons } from '../chatIcons.js';
-import { isChatImageAttachment } from '../../../services/chatTypes.js';
+import { isChatImageAttachment, isChatSelectionAttachment } from '../../../services/chatTypes.js';
 import type { IChatRequestResponsePair, IChatAssistantResponse, IChatUserMessage } from '../../../services/chatTypes.js';
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
 import type { OpenAttachmentHandler, RegenerateMessageHandler } from '../chatTypes.js';
@@ -275,14 +275,43 @@ export class ChatListRenderer extends Disposable {
       for (const attachment of request.attachments) {
         const chip = $('div.parallx-chat-message-attachment-chip');
         chip.title = attachment.fullPath;
-        if (isChatImageAttachment(attachment)) {
-          chip.classList.add('parallx-chat-message-attachment-chip--image');
-        }
 
-        // File icon
-        const icon = document.createElement('span');
-        icon.className = 'parallx-chat-message-attachment-icon';
-        if (isChatImageAttachment(attachment)) {
+        if (isChatSelectionAttachment(attachment)) {
+          // M48: Selection attachments show excerpt + source
+          chip.classList.add('parallx-chat-message-attachment-chip--selection');
+
+          const icon = document.createElement('span');
+          icon.className = 'parallx-chat-message-attachment-icon';
+          icon.innerHTML = chatIcons.selection;
+          chip.appendChild(icon);
+
+          // Truncated excerpt
+          const excerpt = document.createElement('span');
+          excerpt.className = 'parallx-chat-message-attachment-excerpt';
+          const rawText = attachment.selectedText.replace(/\n/g, ' ').trim();
+          excerpt.textContent = rawText.length > 60 ? rawText.slice(0, 57) + '\u2026' : rawText;
+          chip.appendChild(excerpt);
+
+          // Source label (filename + location)
+          const source = document.createElement('span');
+          source.className = 'parallx-chat-message-attachment-source';
+          const loc = attachment.startLine && attachment.endLine
+            ? ` L${attachment.startLine}\u2013${attachment.endLine}`
+            : attachment.pageNumber ? ` p${attachment.pageNumber}` : '';
+          source.textContent = `\u2014 ${attachment.name}${loc}`;
+          chip.appendChild(source);
+
+          // Full text in tooltip
+          chip.title = attachment.selectedText;
+
+          chip.addEventListener('click', () => {
+            this._onOpenAttachment?.(attachment.fullPath);
+          });
+        } else if (isChatImageAttachment(attachment)) {
+          chip.classList.add('parallx-chat-message-attachment-chip--image');
+
+          const icon = document.createElement('span');
+          icon.className = 'parallx-chat-message-attachment-icon';
           const preview = document.createElement('span');
           preview.className = 'parallx-chat-message-attachment-preview';
           preview.style.backgroundImage = `url(data:${attachment.mimeType};base64,${attachment.data})`;
@@ -292,18 +321,22 @@ export class ChatListRenderer extends Disposable {
           glyph.className = 'parallx-chat-message-attachment-glyph';
           glyph.innerHTML = chatIcons.image;
           icon.appendChild(glyph);
+          chip.appendChild(icon);
+
+          const label = document.createElement('span');
+          label.textContent = attachment.name;
+          chip.appendChild(label);
         } else {
+          // File attachment
+          const icon = document.createElement('span');
+          icon.className = 'parallx-chat-message-attachment-icon';
           icon.innerHTML = chatIcons.file;
-        }
-        chip.appendChild(icon);
+          chip.appendChild(icon);
 
-        // File name
-        const label = document.createElement('span');
-        label.textContent = attachment.name;
-        chip.appendChild(label);
+          const label = document.createElement('span');
+          label.textContent = attachment.name;
+          chip.appendChild(label);
 
-        // Click to open in editor
-        if (!isChatImageAttachment(attachment)) {
           chip.addEventListener('click', () => {
             this._onOpenAttachment?.(attachment.fullPath);
           });

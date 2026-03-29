@@ -17,7 +17,7 @@ import type { Event } from '../../../platform/events.js';
 import { $ } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
 import { isChatImageAttachment } from '../../../services/chatTypes.js';
-import type { IChatAttachment, IChatImageAttachment } from '../../../services/chatTypes.js';
+import type { IChatAttachment, IChatImageAttachment, IChatSelectionAttachment } from '../../../services/chatTypes.js';
 import type { IOpenEditorFile, IAttachmentServices } from '../chatTypes.js';
 
 // IOpenEditorFile, IWorkspaceFileEntry, IAttachmentServices — now defined in chatTypes.ts (M13 Phase 1)
@@ -118,6 +118,19 @@ export class ChatContextAttachments extends Disposable {
     this._onDidChange.fire();
   }
 
+  /** Add a text selection as an explicit attachment (M48). */
+  addSelectionAttachment(attachment: IChatSelectionAttachment): void {
+    // Replace any existing selection attachment — only one at a time
+    for (const [key, existing] of this._explicit) {
+      if ((existing as any).kind === 'selection') {
+        this._explicit.delete(key);
+      }
+    }
+    this._explicit.set(attachment.id, attachment);
+    this._render();
+    this._onDidChange.fire();
+  }
+
   /** Remove an explicit attachment. */
   removeAttachment(fullPath: string): void {
     if (this._explicit.delete(fullPath)) {
@@ -198,12 +211,20 @@ export class ChatContextAttachments extends Disposable {
   /** Create an explicit attachment chip with × close button. */
   private _createChip(attachment: IChatAttachment, _isImplicit: boolean, onRemove: () => void): HTMLElement {
     const chip = $('div.parallx-chat-context-chip');
+    const isSelection = (attachment as IChatSelectionAttachment).kind === 'selection';
     if (isChatImageAttachment(attachment)) {
       chip.classList.add('parallx-chat-context-chip--image');
       if (!this._visionSupported) {
         chip.classList.add('parallx-chat-context-chip--disabled');
         chip.title = 'Active model does not support vision. Switch to a vision-capable model to send this image.';
       }
+    }
+    if (isSelection) {
+      chip.classList.add('parallx-chat-context-chip--selection');
+      const sel = attachment as IChatSelectionAttachment;
+      const lines = sel.startLine && sel.endLine ? ` (lines ${sel.startLine}–${sel.endLine})` : '';
+      const page = sel.pageNumber ? ` (page ${sel.pageNumber})` : '';
+      chip.title = `Selected text from ${sel.name}${lines}${page}`;
     }
 
     // File icon
@@ -219,6 +240,8 @@ export class ChatContextAttachments extends Disposable {
       glyph.className = 'parallx-chat-context-chip-glyph';
       glyph.innerHTML = chatIcons.image;
       icon.appendChild(glyph);
+    } else if (isSelection) {
+      icon.textContent = '📋';
     } else {
       icon.innerHTML = chatIcons.file;
     }
@@ -227,7 +250,15 @@ export class ChatContextAttachments extends Disposable {
     // Label
     const name = document.createElement('span');
     name.className = 'parallx-chat-context-chip-label';
-    name.textContent = attachment.name;
+    if (isSelection) {
+      const sel = attachment as IChatSelectionAttachment;
+      const preview = sel.selectedText.length > 40
+        ? sel.selectedText.slice(0, 37) + '…'
+        : sel.selectedText;
+      name.textContent = `"${preview}" — ${sel.name}`;
+    } else {
+      name.textContent = attachment.name;
+    }
     chip.appendChild(name);
 
     if (isChatImageAttachment(attachment) && !this._visionSupported) {

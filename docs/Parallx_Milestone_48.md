@@ -413,16 +413,53 @@ Commands are also invokable from the command palette. The `when` clause activate
 | 3.5 | Edge cases: empty selection (no menu items shown), very long selection (truncation), selection across page boundaries (PDF) | surface adapters |
 | 3.6 | Context menu visual polish — AI items get a distinctive icon/separator group | surface adapters + CSS |
 
-### Phase 4 — Canvas Migration (Future Milestone)
+### Phase 4 — Simplification: Model-Driven Skill Invocation
+
+**Goal:** Walk back the three code-level command handlers (`/explain`, `/summarize`, `/ask-ai`)
+in favour of a single "Add Selection to Chat" action. Let the model-driven skill system handle
+specific actions via upstream-compatible `/skill <name>` forwarding.
+
+**Motivation:** Live testing + upstream OpenClaw research (see below) showed that code-level
+slash commands that auto-submit (`/explain`, `/summarize`) are the wrong abstraction. The
+upstream pattern is: skills are listed in `<available_skills>` in the system prompt, the model
+scans descriptions naturally, and an explicit `/skill <name>` command simply forwards the
+request to the model — no code-level routing. The explain-selection and summarize-selection
+skills in `defaultSkillContents.ts` are the correct implementation; the slash commands were
+redundant.
+
+**Research finding:** In upstream OpenClaw and Claude Code, skill descriptions in the system
+prompt ARE the primary trigger mechanism. `/skill <name> [input]` is a convenience that
+forwards to the model as a normal request. Per-skill slash commands are auto-generated from
+`user-invocable` skills and also forwarded. Two independent flags control visibility:
+`userInvocable` (slash menu) and `disableModelInvocation` (prompt).
+
+| # | Task | Files |
+|---|------|-------|
+| 4.1 | Replace 3 action handlers (Explain, Summarize, AskAI) with single `AddSelectionToChatHandler` | `src/services/selectionActionHandlers.ts` |
+| 4.2 | Simplify `SelectionActionId` type to `'add-to-chat' \| 'send-to-canvas' \| string` | `src/services/selectionActionTypes.ts` |
+| 4.3 | Replace 3 editor commands with single `addSelectionToChat` | `src/commands/editorCommands.ts` |
+| 4.4 | Update command registry imports and array | `src/commands/structuralCommands.ts` |
+| 4.5 | Simplify context menus in all 3 editors to single "Add Selection to Chat" item | `pdfEditorPane.ts`, `markdownEditorPane.ts`, `textEditorPane.ts` |
+| 4.6 | Remove `/explain` and `/summarize` from `OPENCLAW_COMMANDS` | `src/openclaw/openclawDefaultRuntimeSupport.ts` |
+| 4.7 | Add `/skill` command to `OPENCLAW_COMMANDS` and participant commands list | `openclawDefaultRuntimeSupport.ts`, `openclawDefaultParticipant.ts` |
+
+**What stays:**
+- `explain-selection` and `summarize-selection` skills in `defaultSkillContents.ts` (model-driven)
+- Selection pill rendering in `chatListRenderer.ts` (excerpt + source label)
+- `SelectionActionDispatcher` + `ChatProgrammaticAccess` (still needed for the single action)
+- `SendSelectionToCanvasHandler` (unchanged)
+- `IChatSelectionAttachment` type and prompt assembly
+
+### Phase 5 — Canvas Migration (Future Milestone)
 
 **Goal:** Not in scope for M48. Documented here for continuity.
 
 | # | Task | Notes |
 |---|------|-------|
-| 4.1 | Build canvas `ISurfaceSelectionAdapter` using `editor.state.doc.textBetween()` | Leverages existing selection tracking |
-| 4.2 | Add dispatch-category actions (Ask AI, Send to Canvas) to canvas right-click context menu | Alongside existing inline AI in bubble menu |
-| 4.3 | Evaluate migrating InlineAIMenu's streaming to go through the dispatcher where possible | May keep inline overlay as a canvas-specific handler that consumes `ISelectionActionPayload` |
-| 4.4 | Consolidate `chat.getInlineAIProvider` bridge — canvas inline AI routes through `IActionHandlerServices` instead of a direct `SendChatRequestFn` | Reduces coupling between canvas and chat internals |
+| 5.1 | Build canvas `ISurfaceSelectionAdapter` using `editor.state.doc.textBetween()` | Leverages existing selection tracking |
+| 5.2 | Add dispatch-category actions (Add to Chat, Send to Canvas) to canvas right-click context menu | Alongside existing inline AI in bubble menu |
+| 5.3 | Evaluate migrating InlineAIMenu's streaming to go through the dispatcher where possible | May keep inline overlay as a canvas-specific handler that consumes `ISelectionActionPayload` |
+| 5.4 | Consolidate `chat.getInlineAIProvider` bridge — canvas inline AI routes through `IActionHandlerServices` instead of a direct `SendChatRequestFn` | Reduces coupling between canvas and chat internals |
 
 ---
 
@@ -439,19 +476,16 @@ When a user right-clicks selected text, the context menu items should be grouped
 ────────────────────────
   Find in Document       Ctrl+F         ← editor-specific group (PDF only)
 ────────────────────────
-  ✨ Explain Selection                  ← AI group
-  ✨ Summarize Selection
-  ✨ Ask AI...
-  ✨ Send to Canvas
+  💬 Add Selection to Chat              ← AI group
 ────────────────────────
 ```
 
 **Rules:**
-- AI items appear in a dedicated `'ai'` group, separated by a divider from standard items
-- AI items only appear when there is a non-empty selection
-- Each AI item uses a sparkle icon (✨) or similar visual distinguisher
-- The "Ask AI..." item has an ellipsis — it opens the chat but doesn't auto-submit
-- If the chat panel is not visible, Explain/Summarize/Ask AI will auto-reveal it
+- The AI item appears in a dedicated `'ai'` group, separated by a divider from standard items
+- The AI item only appears when there is a non-empty selection
+- The action attaches the selection as a pill in the chat input and focuses it — it does NOT auto-submit
+- The user then types their own question naturally (or uses `/skill explain-selection`, etc.)
+- If the chat panel is not visible, the action will auto-reveal it
 
 ---
 
@@ -474,15 +508,14 @@ They are complementary, not conflicting. In Phase 4, both will coexist on the ca
 
 ## Success Criteria
 
-- [ ] **P1.** Right-click selected text in PDF viewer → "Explain Selection" → chat opens with selection context → AI explains the text
-- [ ] **P1.** Right-click selected text in text editor → "Summarize Selection" → chat opens → AI summarizes
-- [ ] **P1.** Right-click selected text in any editor → "Ask AI..." → chat opens with selection attached as pill → user types question → AI responds with selection as context
+- [ ] **P1.** Right-click selected text in any editor → "Add Selection to Chat" → chat opens with selection attached as pill → user types question → AI responds with selection as context
+- [ ] **P1.** Selection pills render with source metadata: `📎 filename (lines X-Y)` or `📎 filename (page N)` plus truncated excerpt
+- [ ] **P1.** `/skill explain-selection` in chat with selection attached → AI explains the text (model-driven via skill description)
+- [ ] **P1.** `/skill summarize-selection` in chat with selection attached → AI summarizes (model-driven via skill description)
 - [ ] **P1.** Right-click selected text → "Send to Canvas" → new canvas page created with quoted selection
-- [ ] **P1.** `/explain` and `/summarize` work as standalone slash commands in chat
-- [ ] **P1.** Selection pills render with source metadata: `📎 filename (lines X-Y)` or `📎 filename (page N)`
-- [ ] **P2.** Commands registered and discoverable in command palette
-- [ ] **P2.** `Ctrl+Shift+E` shortcut triggers Ask AI from any editor
+- [ ] **P2.** `addSelectionToChat` command registered and discoverable in command palette
 - [ ] **P3.** Dispatcher architecture allows new surface to integrate by implementing `ISurfaceSelectionAdapter` only
+- [ ] **P3.** No dead code from removed `/explain`, `/summarize`, `/ask-ai` commands remains
 
 ---
 

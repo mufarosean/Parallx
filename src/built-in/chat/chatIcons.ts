@@ -195,6 +195,12 @@ export const chatIcons = {
     <path d="M2 11l3-3 2.5 2.5L10 8l4 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>`,
 
+  /** Text selection / excerpt icon */
+  selection: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M3 4h10M3 7h7M3 10h10M3 13h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+    <rect x="10" y="6" width="4" height="8" rx="0.5" fill="currentColor" opacity="0.25" stroke="currentColor" stroke-width="0.8"/>
+  </svg>`,
+
 } as const;
 
 // ─── Register all chat icons into the shared app-wide icon registry ──────────

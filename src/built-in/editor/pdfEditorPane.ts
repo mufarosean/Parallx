@@ -1355,7 +1355,25 @@ export class PdfEditorPane extends EditorPane {
 
   // ── Text selection context menu ────────────────────────────────────
 
+  /** Get the currently selected text in the PDF viewer (M48). */
+  getSelectedText(): string {
+    return this._capturedSelection;
+  }
+
+  /** Get selection source metadata for the AI action system (M48). */
+  getSelectionSource(): { fileName: string; filePath: string; pageNumber?: number } | undefined {
+    if (!this._capturedSelection || !this._currentInput) return undefined;
+    return {
+      fileName: this._currentInput.name,
+      filePath: this._currentInput.uri.fsPath,
+      pageNumber: this._pdfViewer?.currentPageNumber,
+    };
+  }
+
   private _wireContextMenu(): void {
+    const controller = new AbortController();
+    this._register(toDisposable(() => controller.abort()));
+
     // Show shared ContextMenu on mouseup when text is selected
     this._viewerContainer.addEventListener('mouseup', (e) => {
       requestAnimationFrame(() => {
@@ -1370,13 +1388,13 @@ export class PdfEditorPane extends EditorPane {
           this._dismissContextMenu();
         }
       });
-    });
+    }, { signal: controller.signal });
 
     // Dismiss on scroll
     this._viewerContainer.addEventListener('scroll', () => {
       this._dismissContextMenu();
       this._scheduleSelectionOverlayUpdate();
-    });
+    }, { signal: controller.signal });
   }
 
   private _showSelectionMenu(x: number, y: number): void {
@@ -1398,6 +1416,13 @@ export class PdfEditorPane extends EditorPane {
           keybinding: 'Ctrl+F',
           disabled: !hasSel,
         },
+        // M48 Phase 4: Single AI action
+        {
+          id: 'ai.addToChat',
+          label: '💬 Add Selection to Chat',
+          disabled: !hasSel,
+          group: 'ai',
+        },
       ],
       anchor: { x, y },
     });
@@ -1414,10 +1439,35 @@ export class PdfEditorPane extends EditorPane {
           this._searchInput.value = sel;
           this._dispatchFind('find');
         }
+      } else if (e.item.id === 'ai.addToChat') {
+        this._dispatchSelectionAction(e.item.id);
       }
     });
 
     this._activeContextMenu = menu;
+  }
+
+  /** Dispatch a selection action to the unified dispatcher (M48 Phase 4). */
+  private _dispatchSelectionAction(_menuItemId: string): void {
+    if (!this._capturedSelection || !this._currentInput) return;
+    const actionId = 'add-to-chat';
+
+    const detail = {
+      selectedText: this._capturedSelection,
+      surface: 'pdf',
+      actionId,
+      source: {
+        fileName: this._currentInput.name,
+        filePath: this._currentInput.uri.fsPath,
+        pageNumber: this._pdfViewer?.currentPageNumber,
+      },
+    };
+
+    // Fire a bubbling custom event — the workbench picks this up and
+    // routes it to the SelectionActionDispatcher.
+    this._viewerContainer.dispatchEvent(
+      new CustomEvent('parallx-selection-action', { bubbles: true, detail }),
+    );
   }
 
   private _dismissContextMenu(): void {

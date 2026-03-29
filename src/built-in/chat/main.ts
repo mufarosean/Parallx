@@ -39,7 +39,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -54,6 +54,11 @@ import { searchWorkspaceTranscripts } from '../../services/transcriptSearch.js';
 import {
   resolveChatRuntimeParticipantId,
 } from '../../services/chatRuntimeSelector.js';
+
+import { SelectionActionDispatcher } from '../../services/selectionActionDispatcher.js';
+import { createBuiltInActionHandlers } from '../../services/selectionActionHandlers.js';
+import { ChatProgrammaticAccess } from './chatProgrammaticAccess.js';
+import type { IChatSelectionAttachment } from '../../services/selectionActionTypes.js';
 
 // ── Local API type — only the subset we use ──
 
@@ -215,6 +220,10 @@ let _permissionService: PermissionService | undefined;
 const _sessionFlags = new Map<string, boolean>();
 let _fsAccessor: IBuiltInToolFileSystem | undefined;
 let _api: ParallxApi | undefined;
+
+// M48: Unified Selection → AI Action System
+let _selectionDispatcher: SelectionActionDispatcher | undefined;
+let _chatProgrammaticAccess: ChatProgrammaticAccess | undefined;
 
 // Writer-accessor .parallxignore cache — module-level so the workspace
 // switch handler (§11) can invalidate it.
@@ -1049,6 +1058,18 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
+  // M48: Ensure chat panel is visible (no-op if already shown)
+  context.subscriptions.push(
+    api.commands.registerCommand('chat.show', () => {
+      const layout = api.services.has(ILayoutService)
+        ? api.services.get<import('../../services/serviceTypes.js').ILayoutService>(ILayoutService)
+        : undefined;
+      if (layout && !layout.isVisible('workbench.parts.auxiliarybar')) {
+        api.commands.executeCommand('workbench.action.toggleAuxiliaryBar');
+      }
+    }),
+  );
+
   context.subscriptions.push(
     api.commands.registerCommand('chat.newSession', () => {
       // Create a new session and bind it to the active widget
@@ -1487,6 +1508,57 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     }).catch(() => { /* optional service */ });
   }
 
+  // ── M48: Unified Selection → AI Action System ──
+
+  _selectionDispatcher = new SelectionActionDispatcher();
+  _chatProgrammaticAccess = new ChatProgrammaticAccess(
+    () => _activeWidget,
+    (id: string, ...args: unknown[]) => api.commands.executeCommand(id, ...args),
+  );
+
+  _selectionDispatcher.setServices({
+    chatAccess: _chatProgrammaticAccess,
+    executeCommand: (id: string, ...args: unknown[]) => api.commands.executeCommand(id, ...args),
+  });
+
+  // Register built-in action handlers (add-to-chat, send-to-canvas)
+  for (const handler of createBuiltInActionHandlers()) {
+    context.subscriptions.push(_selectionDispatcher.registerHandler(handler));
+  }
+
+  // Expose the dispatcher to other built-in tools via command
+  context.subscriptions.push(
+    api.commands.registerCommand('chat.getSelectionActionDispatcher', () => _selectionDispatcher),
+  );
+
+  // Direct selection-context command for editor surface adapters
+  context.subscriptions.push(
+    api.commands.registerCommand('chat.addSelectionContext', (...args: unknown[]) => {
+      const attachment = args[0] as IChatSelectionAttachment | undefined;
+      if (_chatProgrammaticAccess && attachment) {
+        _chatProgrammaticAccess.addSelectionAttachment(attachment);
+      }
+    }),
+  );
+
+  context.subscriptions.push(_selectionDispatcher);
+
+  // Global listener for bubbling selection-action events from editor panes
+  const onSelectionAction = (e: globalThis.Event): void => {
+    const detail = (e as CustomEvent).detail;
+    if (!detail || !detail.actionId || !detail.selectedText) return;
+    _selectionDispatcher?.dispatch({
+      selectedText: detail.selectedText,
+      surface: detail.surface ?? 'unknown',
+      actionId: detail.actionId,
+      source: detail.source ?? { fileName: 'unknown', filePath: 'unknown' },
+    });
+  };
+  document.addEventListener('parallx-selection-action', onSelectionAction);
+  context.subscriptions.push({
+    dispose: () => document.removeEventListener('parallx-selection-action', onSelectionAction),
+  });
+
   // ── 11. Workspace switch ──
   //
   // No manual reset handler needed. The workbench reloads the renderer
@@ -1557,4 +1629,7 @@ export function deactivate(): void {
   _api = undefined;
   _writerIgnoreInstance = undefined;
   _loadWriterIgnore = undefined;
+  _selectionDispatcher?.dispose();
+  _selectionDispatcher = undefined;
+  _chatProgrammaticAccess = undefined;
 }

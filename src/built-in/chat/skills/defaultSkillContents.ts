@@ -394,4 +394,65 @@ Use \`read_file\` on the PDF path. Docling integration will automatically extrac
 
 If extraction fails (e.g., scanned image PDF without OCR), report the limitation.
 `],
+
+  ['explain-selection', `---
+name: explain-selection
+description: "Explain a selected text excerpt in detail. Triggered by the /explain command or when the user asks to explain attached text."
+version: 1.0.0
+author: parallx
+kind: prompt
+permission: auto-allow
+user-invocable: true
+tags: [explain, selection, analysis]
+---
+
+# Explain Selection
+
+The user has selected a text excerpt and asked you to explain it.
+The selected text is provided as a "Selected Text from:" context block in the conversation.
+
+## Instructions
+
+1. Read the selected text carefully.
+2. Provide a clear, detailed explanation:
+   - Break down any **complex concepts**, terminology, or jargon.
+   - Explain the **logic or reasoning** behind statements.
+   - Clarify any **abbreviations or acronyms**.
+   - If the text references external concepts the user may not know, briefly explain those too.
+3. Structure your explanation with headings or bullet points when the excerpt covers multiple topics.
+4. If the excerpt is from a specific domain (legal, medical, technical, financial), adapt your language to be accessible while remaining accurate.
+5. End with a brief one-sentence summary of what the excerpt means overall.
+
+Do NOT just paraphrase the text. Add genuine explanatory value.
+`],
+
+  ['summarize-selection', `---
+name: summarize-selection
+description: "Summarize a selected text excerpt concisely. Triggered by the /summarize command or when the user asks to summarize attached text."
+version: 1.0.0
+author: parallx
+kind: prompt
+permission: auto-allow
+user-invocable: true
+tags: [summarize, selection, concise]
+---
+
+# Summarize Selection
+
+The user has selected a text excerpt and asked you to summarize it.
+The selected text is provided as a "Selected Text from:" context block in the conversation.
+
+## Instructions
+
+1. Read the selected text carefully.
+2. Provide a **concise summary** that captures the essential meaning:
+   - Identify and state the **main point** or thesis first.
+   - List the **key supporting points** (3-5 bullets max).
+   - Note any **critical details** (numbers, dates, names) that are essential to understanding.
+3. Keep the summary to roughly 20-30% of the original length.
+4. Use clear, direct language. Avoid filler phrases.
+5. If the excerpt contains actionable items or decisions, highlight those prominently.
+
+Do NOT add information that isn't in the original text. Summarize only what is there.
+`],
 ]);

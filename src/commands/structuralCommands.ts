@@ -29,6 +29,7 @@ export {
 export {
   splitEditor, splitEditorOrthogonal, closeActiveEditor, nextEditor, previousEditor,
   markdownOpenPreviewToSide, markdownOpenPreview,
+  addSelectionToChat,
 } from './editorCommands.js';
 export {
   workspaceSave, workspaceSwitch, workspaceDuplicate,
@@ -56,6 +57,7 @@ import {
 import {
   splitEditor, splitEditorOrthogonal, closeActiveEditor, nextEditor, previousEditor,
   markdownOpenPreviewToSide, markdownOpenPreview,
+  addSelectionToChat,
 } from './editorCommands.js';
 import {
   workspaceSave, workspaceSwitch, workspaceDuplicate,
@@ -287,6 +289,8 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   selectColorTheme,
   // Docling (M21)
   installDocling,
+  // M48: Selection → AI command
+  addSelectionToChat,
 ];
 
 /**

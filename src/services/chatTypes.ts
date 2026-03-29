@@ -291,7 +291,22 @@ export interface IChatImageAttachment extends IChatAttachmentBase {
   readonly origin?: 'clipboard' | 'file';
 }
 
-export type IChatAttachment = IChatFileAttachment | IChatImageAttachment;
+/** A text selection attached as context to a chat message (M48). */
+export interface IChatSelectionAttachment extends IChatAttachmentBase {
+  readonly kind: 'selection';
+  /** The selected text content. */
+  readonly selectedText: string;
+  /** Source surface identifier (e.g. 'pdf', 'text', 'markdown', 'canvas'). */
+  readonly surface: string;
+  /** 1-based start line (text/markdown editors). */
+  readonly startLine?: number;
+  /** 1-based end line (text/markdown editors). */
+  readonly endLine?: number;
+  /** PDF page number (1-based). */
+  readonly pageNumber?: number;
+}
+
+export type IChatAttachment = IChatFileAttachment | IChatImageAttachment | IChatSelectionAttachment;
 
 export function isChatImageAttachment(attachment: IChatAttachment): attachment is IChatImageAttachment {
   return attachment.kind === 'image';
@@ -299,6 +314,10 @@ export function isChatImageAttachment(attachment: IChatAttachment): attachment i
 
 export function isChatFileAttachment(attachment: IChatAttachment): attachment is IChatFileAttachment {
   return attachment.kind === 'file';
+}
+
+export function isChatSelectionAttachment(attachment: IChatAttachment): attachment is IChatSelectionAttachment {
+  return attachment.kind === 'selection';
 }
 
 /**

@@ -92,6 +92,13 @@ const OPENCLAW_COMMANDS: Record<string, IChatSlashCommand> = {
     promptTemplate: '{input}',
     isBuiltIn: true,
   },
+  // M48 Phase 4: /skill forwards to model for skill invocation
+  skill: {
+    name: 'skill',
+    description: 'Run a skill by name — forwards the request to the model',
+    promptTemplate: '{input}',
+    isBuiltIn: true,
+  },
 };
 
 export function createOpenclawCommandRegistry(): IOpenclawCommandRegistryFacade {

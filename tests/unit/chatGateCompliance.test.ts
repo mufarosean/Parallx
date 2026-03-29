@@ -35,6 +35,7 @@ const EXEMPT_FILES = new Set([
   'skills/scoped-extraction/SKILL.md',    // Built-in workflow skill (M39)
   'skills/builtInSkillManifests.ts',      // Built-in skill manifest registry (M41)
   'skills/defaultSkillContents.ts',       // Default skill file contents for /init (M45)
+  'chatProgrammaticAccess.ts',            // M48 selection→AI bridge (thin ChatWidget wrapper)
 ]);
 
 // ── Per-file import rules ───────────────────────────────────────────────────
