@@ -632,7 +632,7 @@
   min-width: 100px;
   height: 24px;
   padding: 0 6px;
-  border: 1px solid var(--vscode-inputOption-activeBackground, #007acc00);
+  border: 1px solid var(--vscode-inputOption-activeBackground, #9333ea00);
   border-color: var(--vscode-input-border, #3c3c3c);
   background: var(--vscode-input-background, #3c3c3c);
   color: var(--vscode-input-foreground, #cccccc);
@@ -644,7 +644,7 @@
 }
 
 .find-replace-input:focus {
-  border-color: var(--vscode-focusBorder, #007acc);
+  border-color: var(--vscode-focusBorder, #9333ea);
 }
 
 .find-replace-input::placeholder {
@@ -678,9 +678,9 @@
 }
 
 .find-replace-option-btn.active {
-  background: var(--vscode-inputOption-activeBackground, #007acc66);
+  background: var(--vscode-inputOption-activeBackground, #9333ea66);
   color: var(--vscode-inputOption-activeForeground, #ffffff);
-  border-color: var(--vscode-inputOption-activeBorder, #007acc);
+  border-color: var(--vscode-inputOption-activeBorder, #9333ea);
 }
 
 .find-replace-match-count {

@@ -405,7 +405,7 @@
 
 .db-table-resize-handle:hover,
 .db-table-resize-handle.db-table-resize-handle--active {
-  background: var(--vscode-focusBorder, #007acc);
+  background: var(--vscode-focusBorder, #9333ea);
 }
 
 /* Prevent text selection while resizing */
@@ -817,7 +817,7 @@
 .db-cell-editor-input {
   width: 100%;
   padding: 4px 8px;
-  border: 1.5px solid var(--vscode-focusBorder, #007acc);
+  border: 1.5px solid var(--vscode-focusBorder, #9333ea);
   border-radius: 4px;
   background: var(--vscode-input-background, rgba(0, 0, 0, 0.3));
   color: var(--vscode-input-foreground, var(--vscode-foreground));
@@ -829,8 +829,8 @@
 }
 
 .db-cell-editor-input:focus {
-  border-color: var(--vscode-focusBorder, #007acc);
-  box-shadow: 0 0 0 1px var(--vscode-focusBorder, #007acc);
+  border-color: var(--vscode-focusBorder, #9333ea);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, #9333ea);
 }
 
 /* Date editor variant */
@@ -846,7 +846,7 @@
 .db-header-rename-input {
   width: 100%;
   padding: 2px 4px;
-  border: 1px solid var(--vscode-focusBorder, #007acc);
+  border: 1px solid var(--vscode-focusBorder, #9333ea);
   border-radius: var(--parallx-radius-sm);
   background: var(--vscode-input-background, rgba(0, 0, 0, 0.3));
   color: var(--vscode-foreground);
@@ -1405,7 +1405,7 @@
 }
 
 .db-props-row--dragover {
-  border-top: 2px solid var(--vscode-focusBorder, #007acc);
+  border-top: 2px solid var(--vscode-focusBorder, #9333ea);
 }
 
 .db-props-drag-handle {

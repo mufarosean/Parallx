@@ -32,7 +32,7 @@
 }
 
 .ui-segmented-control__segment:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #007acc);
+  outline: 1px solid var(--vscode-focusBorder, #9333ea);
   outline-offset: -1px;
   z-index: 1;
 }

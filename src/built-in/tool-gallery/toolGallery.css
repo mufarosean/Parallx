@@ -51,7 +51,7 @@
 }
 
 .tool-gallery-search-input:focus {
-  border-color: var(--vscode-focusBorder, #007acc);
+  border-color: var(--vscode-focusBorder, #9333ea);
 }
 
 /* ── Install button (icon action inside search bar) ── */
@@ -408,7 +408,7 @@
 
 .tool-editor-tab-active {
   color: var(--vscode-foreground);
-  border-bottom-color: var(--vscode-focusBorder, #007acc);
+  border-bottom-color: var(--vscode-focusBorder, #9333ea);
   font-weight: 500;
 }
 

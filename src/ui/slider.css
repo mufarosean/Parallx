@@ -5,7 +5,7 @@
   --slider-track-height: 6px;
   --slider-thumb-size: 16px;
   --slider-track-bg: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
-  --slider-fill-bg: var(--vscode-button-background, #007acc);
+  --slider-fill-bg: var(--vscode-button-background, #9333ea);
 
   display: flex;
   flex-direction: column;
@@ -91,7 +91,7 @@
 /* ── Focus ── */
 
 .ui-slider__input:focus-visible::-webkit-slider-thumb {
-  outline: 2px solid var(--vscode-focusBorder, #007acc);
+  outline: 2px solid var(--vscode-focusBorder, #9333ea);
   outline-offset: 2px;
 }
 
