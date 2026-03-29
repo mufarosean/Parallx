@@ -88,6 +88,11 @@ export class BubbleMenuController implements ICanvasMenu {
         active: (e) => e.isActive('highlight'),
       },
       {
+        label: '✨', title: 'AI',
+        command: () => this._registry.toggleAIChat(),
+        active: () => this._registry.isAIChatVisible(),
+      },
+      {
         label: svgIcon('math'), title: 'Inline equation',
         command: (e) => {
           const { from, to } = e.state.selection;
@@ -277,6 +282,7 @@ export class BubbleMenuController implements ICanvasMenu {
       (e: Editor) => e.isActive('code'),
       (e: Editor) => e.isActive('link'),
       (e: Editor) => e.isActive('highlight'),
+      () => this._registry.isAIChatVisible(),  // AI chat toggle
       (_e: Editor) => false,  // inline equation — node, never "active" as toggle
     ];
     buttons.forEach((btn, i) => {

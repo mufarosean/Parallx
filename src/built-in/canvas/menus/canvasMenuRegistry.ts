@@ -21,6 +21,7 @@ import { BlockActionMenuController, type BlockActionMenuHost } from './blockActi
 import { IconMenuController, type IconMenuHost, type IconMenuOptions } from './iconMenu.js';
 import { CoverMenuController, type CoverMenuHost, type CoverMenuOptions } from './coverMenu.js';
 import { InlineMathEditorController, type InlineMathEditorHost } from '../math/inlineMathEditor.js';
+import { InlineAIChatController, type InlineAIChatHost, type SendChatRequestFn, type RetrieveContextFn } from './inlineAIChat.js';
 import { showImageInsertPopup as _showImageInsertPopup } from './imageInsertPopup.js';
 import { showMediaInsertPopup as _showMediaInsertPopup } from './mediaInsertPopup.js';
 import { showBookmarkInsertPopup as _showBookmarkInsertPopup } from './bookmarkInsertPopup.js';
@@ -151,7 +152,10 @@ export interface IBlockActionMenu extends ICanvasMenu {
 
 // ── Combined host type (union of all menu hosts) ────────────────────────────
 
-export type CanvasMenuHost = SlashMenuHost & BubbleMenuHost & BlockActionMenuHost & IconMenuHost & CoverMenuHost & InlineMathEditorHost;
+export type CanvasMenuHost = SlashMenuHost & BubbleMenuHost & BlockActionMenuHost & IconMenuHost & CoverMenuHost & InlineMathEditorHost & InlineAIChatHost;
+
+// Re-export AI chat types so canvasEditorProvider imports them through the registry gate
+export type { SendChatRequestFn, RetrieveContextFn } from './inlineAIChat.js';
 
 // ── Registry ────────────────────────────────────────────────────────────────
 
@@ -161,6 +165,7 @@ export class CanvasMenuRegistry {
   private _iconMenu: IconMenuController | null = null;
   private _coverMenu: CoverMenuController | null = null;
   private _inlineMathEditor: InlineMathEditorController | null = null;
+  private _aiChat: InlineAIChatController | null = null;
   private _contextMenuGestureUntil = 0;
 
   // Bound once so we can remove the same reference on dispose.
@@ -212,6 +217,9 @@ export class CanvasMenuRegistry {
     const inlineMath = new InlineMathEditorController(host, this);
     inlineMath.create();
     this._inlineMathEditor = inlineMath;
+
+    // InlineAIChatController is created lazily via createAIChat() after
+    // the AI provider is available — not in this factory.
 
     return blockAction;
   }
@@ -329,6 +337,33 @@ export class CanvasMenuRegistry {
    */
   showInlineMathEditor(pos: number, latex: string, anchorEl: HTMLElement): void {
     this._inlineMathEditor?.show(pos, latex, anchorEl);
+  }
+
+  // ── Inline AI Chat ──────────────────────────────────────────────────────
+
+  /**
+   * Create the inline AI chat controller.  Called from canvasEditorProvider
+   * after the chat tool's AI provider has been registered.
+   */
+  createAIChat(
+    host: InlineAIChatHost,
+    sendChatRequest: SendChatRequestFn,
+    retrieveContext?: RetrieveContextFn,
+  ): void {
+    if (this._aiChat) return;
+    const chat = new InlineAIChatController(host, this, sendChatRequest, retrieveContext);
+    chat.create();
+    this._aiChat = chat;
+  }
+
+  /** Toggle the inline AI chat (called by the bubble menu ✨ button). */
+  toggleAIChat(): void {
+    this._aiChat?.toggle();
+  }
+
+  /** Whether the inline AI chat is currently visible. */
+  isAIChatVisible(): boolean {
+    return this._aiChat?.visible ?? false;
   }
 
   /** `true` if at least one registered menu is visible. */

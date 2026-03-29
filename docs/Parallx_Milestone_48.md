@@ -450,16 +450,72 @@ forwards to the model as a normal request. Per-skill slash commands are auto-gen
 - `SendSelectionToCanvasHandler` (unchanged)
 - `IChatSelectionAttachment` type and prompt assembly
 
-### Phase 5 — Canvas Migration (Future Milestone)
+### Phase 5 — Canvas Floating AI Chat
+
+**Goal:** Replace the preset-action `InlineAIMenuController` (4 buttons: Summarize, Expand,
+Fix Grammar, Translate) with a free-form **floating mini-chat** triggered from the bubble menu.
+The user selects text, clicks an AI button in the bubble menu, and gets a multi-turn chat box
+anchored below the selection where they can type anything.
+
+**Design decisions:**
+
+1. **Multi-turn.** The user can refine ("Make it more formal" → "Actually shorter too") within the
+   same floating chat session. Conversation history is maintained until the box is dismissed.
+2. **Always show both actions.** AI responses always show "✓ Replace Selection" and "💬 Send to Chat"
+   buttons. The AI doesn't decide which to show — the user picks the appropriate action.
+3. **Send to Chat bridge.** "Send to Chat" sends the selection + the full conversation history
+   from the mini-chat to the main chat panel, so the user can continue a deeper discussion.
+4. **No hardcoded skill presets.** The mini-chat is pure free-form input. Skills and tools
+   are invoked naturally by the model based on what the user types.
+5. **AI button in bubble menu.** A ✨ button is added to the existing formatting button row.
+   Clicking it toggles the floating AI chat box.
+
+**Architecture:**
+
+- `InlineAIChatController` (new) — implements `ICanvasMenu`, child of `CanvasMenuRegistry`
+- Replaces `InlineAIMenuController` (removed)
+- Uses the same `SendChatRequestFn` + `RetrieveContextFn` bridge from `chat.getInlineAIProvider`
+- Gate-compliant: imports only from `canvasMenuRegistry.ts` (parent gate)
+- The bubble menu gets a reference to the AI chat controller via the menu registry, toggling it
+  on button click
+
+**Floating mini-chat DOM structure:**
+
+```
+.canvas-ai-chat (fixed, below selection)
+  ├─ .canvas-ai-chat-messages (scrollable)
+  │   ├─ .canvas-ai-chat-msg.user    "Improve the writing"
+  │   ├─ .canvas-ai-chat-msg.ai      "Here's an improved version..."
+  │   │   └─ .canvas-ai-chat-actions
+  │   │       ├─ button "✓ Replace"
+  │   │       └─ button "💬 Send to Chat"
+  │   └─ ... (multi-turn)
+  └─ .canvas-ai-chat-input-row
+      ├─ input.canvas-ai-chat-input   "Type your request..."
+      └─ button.canvas-ai-chat-send   "↑"
+```
+
+| # | Task | Files |
+|---|------|-------|
+| 5.1 | Create `InlineAIChatController` with multi-turn chat, streaming, Replace/Send to Chat actions | `src/built-in/canvas/menus/inlineAIChat.ts` (new) |
+| 5.2 | Add ✨ AI button to bubble menu that toggles the floating AI chat | `src/built-in/canvas/menus/bubbleMenu.ts` |
+| 5.3 | Wire `InlineAIChatController` in `CanvasMenuRegistry.createStandardMenus()` | `src/built-in/canvas/menus/canvasMenuRegistry.ts` |
+| 5.4 | Add CSS for the floating AI chat box | `src/built-in/canvas/canvas.css` |
+| 5.5 | Remove old `InlineAIMenuController` and its CSS | `inlineAIMenu.ts` (delete), `canvas.css` |
+| 5.6 | Update `canvasEditorProvider.ts` to wire new controller instead of old | `src/built-in/canvas/canvasEditorProvider.ts` |
+| 5.7 | Update gate compliance test for new file, remove old file entry | `tests/unit/gateCompliance.test.ts` |
+| 5.8 | Move `SendChatRequestFn` / `RetrieveContextFn` types to `canvasMenuRegistry.ts` re-exports | `canvasMenuRegistry.ts` |
+
+**Status:** All 8 tasks complete. 0 type errors, 2855/2855 tests, 73/73 gate compliance tests.
+
+### Phase 6 — Canvas Migration (Future Milestone)
 
 **Goal:** Not in scope for M48. Documented here for continuity.
 
 | # | Task | Notes |
 |---|------|-------|
-| 5.1 | Build canvas `ISurfaceSelectionAdapter` using `editor.state.doc.textBetween()` | Leverages existing selection tracking |
-| 5.2 | Add dispatch-category actions (Add to Chat, Send to Canvas) to canvas right-click context menu | Alongside existing inline AI in bubble menu |
-| 5.3 | Evaluate migrating InlineAIMenu's streaming to go through the dispatcher where possible | May keep inline overlay as a canvas-specific handler that consumes `ISelectionActionPayload` |
-| 5.4 | Consolidate `chat.getInlineAIProvider` bridge — canvas inline AI routes through `IActionHandlerServices` instead of a direct `SendChatRequestFn` | Reduces coupling between canvas and chat internals |
+| 6.1 | Build canvas `ISurfaceSelectionAdapter` using `editor.state.doc.textBetween()` | Leverages existing selection tracking |
+| 6.2 | Evaluate consolidating `chat.getInlineAIProvider` bridge with `IActionHandlerServices` | Reduces coupling between canvas and chat internals |
 
 ---
 
@@ -489,20 +545,30 @@ When a user right-clicks selected text, the context menu items should be grouped
 
 ---
 
-## Relationship to Canvas Inline AI
+## Canvas Bubble Menu with AI
 
-The existing `InlineAIMenuController` and this new system serve **different UX patterns**:
+When the user selects text on a canvas page, the bubble menu appears with formatting buttons
+plus an AI button:
 
-| Aspect | Canvas Inline AI (existing) | Unified Dispatch (this milestone) |
-|--------|----------------------------|-----------------------------------|
-| **Trigger** | Selection → floating menu below bubble | Selection → right-click context menu |
-| **Result destination** | In-place overlay with Accept/Reject | Chat panel (or new canvas page) |
-| **Actions** | Summarize, Expand, Fix Grammar, Translate | Explain, Summarize, Ask AI, Send to Canvas |
-| **Streaming** | Direct `SendChatRequestFn` → overlay | Through chat panel's normal streaming |
-| **Scope** | Canvas-only | Any editor surface |
-| **Text replacement** | Yes (Accept replaces selection) | No (results go to chat or canvas) |
+```
+┌─────────────────────────────────────────────────┐
+│  B   I   U   S   </>   🔗   H   √x   ✨       │
+└─────────────────────────────────────────────────┘
+```
 
-They are complementary, not conflicting. In Phase 4, both will coexist on the canvas surface: inline actions for in-place edits, dispatch actions for chat/canvas routing.
+Clicking ✨ toggles the floating AI chat below the selection:
+
+```
+┌─────────────────────────────────────────────────┐
+│  You: Improve the writing of this passage       │
+│───────────────────────────────────────────────── │
+│  AI: Here's an improved version that maintains   │
+│  the original meaning while enhancing clarity... │
+│                      ✓ Replace    💬 Send to Chat │
+│───────────────────────────────────────────────── │
+│  [Type your request...]                      ↑  │
+└─────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -512,12 +578,14 @@ They are complementary, not conflicting. In Phase 4, both will coexist on the ca
 - [ ] **P1.** Selection pills render with source metadata: `📎 filename (lines X-Y)` or `📎 filename (page N)` plus truncated excerpt
 - [ ] **P1.** `/skill explain-selection` in chat with selection attached → AI explains the text (model-driven via skill description)
 - [ ] **P1.** `/skill summarize-selection` in chat with selection attached → AI summarizes (model-driven via skill description)
-- [ ] **P1.** Right-click selected text → "Send to Canvas" → new canvas page created with quoted selection
+- [ ] **P1.** Canvas: select text → click ✨ in bubble menu → floating AI chat opens → type request → AI streams response
+- [ ] **P1.** Canvas: "✓ Replace" button replaces selected text with AI response
+- [ ] **P1.** Canvas: "💬 Send to Chat" sends selection + conversation history to main chat panel
+- [ ] **P1.** Canvas: multi-turn conversation works (follow-up messages in the floating chat)
 - [ ] **P2.** `addSelectionToChat` command registered and discoverable in command palette
 - [ ] **P3.** Dispatcher architecture allows new surface to integrate by implementing `ISurfaceSelectionAdapter` only
 - [ ] **P3.** No dead code from removed `/explain`, `/summarize`, `/ask-ai` commands remains
-
----
+- [ ] **P3.** Gate compliance tests pass — new `inlineAIChat.ts` respects the `CanvasMenuRegistry` gate
 
 ## Files to Create
 
