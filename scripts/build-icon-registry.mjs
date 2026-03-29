@@ -115,6 +115,7 @@ const icons = {
   'rocket':            L('rocket'),
   'book':              L('book-open'),
   'book-open':         L('book-open'),
+  'notebook':          L('notebook'),
   'compass':           L('compass'),
   'puzzle':            L('puzzle'),
   'terminal':          L('terminal'),
@@ -302,9 +303,24 @@ const icons = {
 
 // ─── Generate the TypeScript file ───────────────────────────────────────────
 
-const entries = Object.entries(icons).map(([key, svg]) => {
-  return `  '${key}': '${svg.replace(/'/g, "\\'")}',`;
-});
+// Step 1: Import ALL Lucide icons by their native filename
+const allFiles = readdirSync(LUCIDE_DIR).filter(f => f.endsWith('.svg')).sort();
+const allIcons = {};
+for (const file of allFiles) {
+  const key = file.replace('.svg', '');
+  allIcons[key] = lucide(file);
+}
+
+// Step 2: Layer our semantic aliases on top (these override native names where needed)
+for (const [key, svg] of Object.entries(icons)) {
+  allIcons[key] = svg;
+}
+
+const entries = Object.entries(allIcons)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([key, svg]) => {
+    return `  '${key}': '${svg.replace(/'/g, "\\'")}',`;
+  });
 
 const output = `// AUTO-GENERATED — DO NOT EDIT MANUALLY
 // Generated from Lucide v1.7.0 by scripts/build-icon-registry.mjs
@@ -317,13 +333,12 @@ export const LUCIDE_ICONS: Record<string, string> = {
 ${entries.join('\n')}
 };
 
-// Total icons: ${Object.keys(icons).length}
+// Total icons: ${Object.keys(allIcons).length} (${allFiles.length} native Lucide + ${Object.keys(icons).length} semantic aliases)
 `;
 
 writeFileSync(OUTPUT, output, 'utf8');
-console.log(`Generated ${OUTPUT} with ${Object.keys(icons).length} icons`);
+console.log(`Generated ${OUTPUT} with ${Object.keys(allIcons).length} icons (${allFiles.length} native + ${Object.keys(icons).length} aliases)`);
 
-// Verify no duplicates in values (same Lucide source mapped to multiple keys is fine)
-const keySet = new Set(Object.keys(icons));
+const keySet = new Set(Object.keys(allIcons));
 console.log(`Unique keys: ${keySet.size}`);
 
