@@ -1419,7 +1419,7 @@ export class PdfEditorPane extends EditorPane {
         // M48 Phase 4: Single AI action
         {
           id: 'ai.addToChat',
-          label: '💬 Add Selection to Chat',
+          label: 'Add Selection to Chat',
           disabled: !hasSel,
           group: 'ai',
         },

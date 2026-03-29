@@ -88,7 +88,7 @@ export class BubbleMenuController implements ICanvasMenu {
         active: (e) => e.isActive('highlight'),
       },
       {
-        label: '✨', title: 'AI',
+        label: 'AI', title: 'AI',
         command: () => this._registry.toggleAIChat(),
         active: () => this._registry.isAIChatVisible(),
       },

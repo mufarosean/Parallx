@@ -35,7 +35,7 @@ function payloadToAttachment(payload: ISelectionActionPayload): IChatSelectionAt
 export class AddSelectionToChatHandler implements ISelectionActionHandler {
   readonly actionId = 'add-to-chat';
   readonly label = 'Add Selection to Chat';
-  readonly icon = '💬';
+  readonly icon = 'ui-message';
 
   async execute(payload: ISelectionActionPayload, services: IActionHandlerServices): Promise<void> {
     const { chatAccess } = services;
@@ -50,7 +50,7 @@ export class AddSelectionToChatHandler implements ISelectionActionHandler {
 export class SendSelectionToCanvasHandler implements ISelectionActionHandler {
   readonly actionId = 'send-to-canvas';
   readonly label = 'Send to Canvas';
-  readonly icon = '🎨';
+  readonly icon = 'ui-palette';
 
   async execute(payload: ISelectionActionPayload, services: IActionHandlerServices): Promise<void> {
     await services.executeCommand('canvas.appendText', payload.selectedText, payload.source.fileName);

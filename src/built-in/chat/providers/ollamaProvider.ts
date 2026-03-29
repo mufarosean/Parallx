@@ -493,7 +493,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
             chunk = JSON.parse(trimmed) as OllamaChatChunk;
           } catch {
             console.warn('[OllamaProvider] Malformed streaming chunk:', trimmed);
-            yield { content: '\n\n⚠️ *[Malformed response chunk — partial data may be missing]*', done: false } as IChatResponseChunk;
+            yield { content: '\n\n**Warning:** *[Malformed response chunk — partial data may be missing]*', done: false } as IChatResponseChunk;
             continue;
           }
 
@@ -508,7 +508,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
             for (const tc of chunk.message.tool_calls) {
               if (!tc.function?.name || typeof tc.function.arguments !== 'object') {
                 console.warn('[OllamaProvider] Invalid tool call structure:', JSON.stringify(tc));
-                yield { content: `\n\n⚠️ *[Tool call error: malformed call to "${tc.function?.name ?? 'unknown'}"]*`, done: false } as IChatResponseChunk;
+                yield { content: `\n\n**Warning:** *[Tool call error: malformed call to "${tc.function?.name ?? 'unknown'}"]*`, done: false } as IChatResponseChunk;
               }
             }
           }
@@ -535,7 +535,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       // Stream ended without a done:true final chunk — connection dropped
       if (!receivedDone) {
         console.warn('[OllamaProvider] Stream ended without done:true — connection may have dropped');
-        yield { content: '\n\n⚠️ *[Response interrupted — connection lost. Try sending your message again.]*', done: true } as IChatResponseChunk;
+        yield { content: '\n\n**Warning:** *[Response interrupted — connection lost. Try sending your message again.]*', done: true } as IChatResponseChunk;
       }
     } finally {
       reader.releaseLock();

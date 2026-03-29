@@ -163,7 +163,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       const wsOverride = unifiedConfigService.getWorkspaceOverride();
       const overriddenKeys = unifiedConfigService.getOverriddenKeys();
       if (wsOverride && (wsOverride._presetId || overriddenKeys.length > 0)) {
-        text += ' \u2699'; // ⚙ gear symbol
+        text += ' [ws]'; // workspace override indicator
         const parts: string[] = [`Active preset: ${presetName}`];
         if (wsOverride._presetId) {
           parts.push('Workspace preset pinned');

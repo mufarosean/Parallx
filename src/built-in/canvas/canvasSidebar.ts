@@ -308,8 +308,8 @@ export class CanvasSidebar {
         // Show menu with "New Page" + "New Database" options
         const rect = addBtn.getBoundingClientRect();
         const items: IContextMenuItem[] = [
-          { id: 'new-page', label: '📄  New Page' },
-          { id: 'new-database', label: '📊  New Database' },
+          { id: 'new-page', label: 'New Page' },
+          { id: 'new-database', label: 'New Database' },
         ];
         const menu = ContextMenu.show({
           items,

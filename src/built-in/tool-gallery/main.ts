@@ -108,7 +108,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     createView(container: HTMLElement): IDisposable {
       return renderToolSidebar(container, api);
     },
-  }, { name: 'Installed Tools', icon: '🧩' });
+  }, { name: 'Installed Tools', icon: 'puzzle' });
   context.subscriptions.push(viewDisposable);
 
   // Command to refresh the sidebar

@@ -88,7 +88,7 @@ export async function computeChatWorkspaceDigest(
           if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === '__pycache__' || entry.name === '.git') {
             continue;
           }
-          const icon = entry.type === 'directory' ? '📁' : '📄';
+          const icon = entry.type === 'directory' ? '[dir]' : '[file]';
           const relPath = dir === '.' ? entry.name : `${dir}/${entry.name}`;
           const fileSummary = entry.type !== 'directory' ? summaries.get(relPath) : undefined;
           const line = fileSummary

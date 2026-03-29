@@ -61,7 +61,7 @@ export function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): ICh
         }
 
         const lines = entries.map((e) => {
-          const typeLabel = e.type === 'directory' ? '📁' : '📄';
+          const typeLabel = e.type === 'directory' ? '[dir]' : '[file]';
           const sizeLabel = e.type === 'file' ? ` (${formatSize(e.size)})` : '';
           return `${typeLabel} ${e.name}${sizeLabel}`;
         });

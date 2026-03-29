@@ -127,7 +127,7 @@ function renderDiagnosticsView(container: HTMLElement): IDisposable {
     const pass = results.filter(r => r.status === 'pass').length;
     const fail = results.filter(r => r.status === 'fail').length;
     const warn = results.filter(r => r.status === 'warn').length;
-    const icon = fail > 0 ? '❌' : warn > 0 ? '⚠️' : '✅';
+    const icon = fail > 0 ? 'FAIL' : warn > 0 ? 'WARN' : 'PASS';
     summary.textContent = `${icon} ${pass} pass, ${fail} fail, ${warn} warn`;
     summary.className = `diagnostics-summary ${fail > 0 ? 'diagnostics-summary--fail' : warn > 0 ? 'diagnostics-summary--warn' : 'diagnostics-summary--pass'}`;
 

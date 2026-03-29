@@ -84,7 +84,7 @@ export class InlineAIChatController implements ICanvasMenu {
     // Header
     const header = $('div.canvas-ai-chat-header');
     const headerTitle = $('span.canvas-ai-chat-title');
-    headerTitle.textContent = '✨ AI';
+    headerTitle.textContent = 'AI';
     header.appendChild(headerTitle);
     const closeBtn = $('button.canvas-ai-chat-close');
     closeBtn.textContent = '✕';
@@ -367,7 +367,7 @@ export class InlineAIChatController implements ICanvasMenu {
 
     // 💬 Send to Chat
     const sendToChatBtn = $('button.canvas-ai-chat-action-btn.canvas-ai-chat-send-to-chat');
-    sendToChatBtn.textContent = '💬 Send to Chat';
+    sendToChatBtn.textContent = 'Send to Chat';
     sendToChatBtn.title = 'Send selection + conversation to main chat';
     sendToChatBtn.addEventListener('mousedown', (ev) => {
       ev.preventDefault();

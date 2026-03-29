@@ -476,7 +476,7 @@ export class EditorGroupView extends Disposable implements IGridView {
       label: editor.name,
       tooltip: editor.description || editor.name,
       italic: this.model.isPreview(i),
-      stickyContent: this.model.isSticky(i) ? '📌 ' : undefined,
+      stickyContent: this.model.isSticky(i) ? 'pinned' : undefined,
       decorations: {
         dirty: editor.isDirty,
         pinned: this.model.isSticky(i),

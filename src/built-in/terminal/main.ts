@@ -245,7 +245,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         },
       };
     },
-  }, { name: 'Terminal', icon: '⌨' });
+  }, { name: 'Terminal', icon: 'terminal' });
 
   context.subscriptions.push(viewDisposable);
 

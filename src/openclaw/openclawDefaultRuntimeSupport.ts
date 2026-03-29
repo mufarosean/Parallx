@@ -296,14 +296,14 @@ async function executeOpenclawInitCommand(
   if (services.writeFile) {
     try {
       await services.writeFile('.parallx/AGENTS.md', `${generatedContent.trim()}\n`);
-      response.markdown('\n\n---\n✅ **AGENTS.md** has been created in `.parallx/`.');
+      response.markdown('\n\n---\n**Done.** **AGENTS.md** has been created in `.parallx/`.');
 
       // Scaffold SOUL.md and TOOLS.md if missing (from bootstrap defaults)
       for (const [filePath, defaultContent] of OPENCLAW_BOOTSTRAP_DEFAULTS) {
         const fileExists = await services.exists?.(filePath);
         if (!fileExists) {
           await services.writeFile(filePath, `${defaultContent.trim()}\n`);
-          response.markdown(`\n✅ **${filePath}** has been created with default content.`);
+          response.markdown(`\n**Done.** **${filePath}** has been created with default content.`);
         }
       }
 
@@ -313,7 +313,7 @@ async function executeOpenclawInitCommand(
           await services.writeFile(`${dir}/.gitkeep`, '');
         }
       }
-      response.markdown('\nðŸ“ `.parallx/` directory structure created (rules, commands, skills).');
+      response.markdown('\n`.parallx/` directory structure created (rules, commands, skills).');
       services.invalidatePromptFiles?.();
     } catch (err) {
       response.warning(`Could not write AGENTS.md: ${err instanceof Error ? err.message : String(err)}`);

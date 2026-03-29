@@ -36,7 +36,7 @@ describe('chat workspace digest', () => {
     expect(digest).toContain('CANVAS PAGES (1):');
     expect(digest).toContain('Claims Page — Claim workflow summary');
     expect(digest).toContain('WORKSPACE FILES:');
-    expect(digest).toContain('📄 Claims Guide.md — Guide summary');
+    expect(digest).toContain('[file] Claims Guide.md — Guide summary');
     expect(digest).toContain('KEY FILE — README.md:');
     expect(digest).toContain('Workspace readme');
   });

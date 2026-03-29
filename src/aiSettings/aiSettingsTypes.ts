@@ -27,7 +27,7 @@ export interface AIPersonaSettings {
   name: string;
   /** One-sentence description shown under the name */
   description: string;
-  /** Emoji or icon key used as the avatar (e.g. "🧠", "💼", "✍️") */
+  /** Icon key used as the avatar (e.g. "avatar-brain", "avatar-briefcase") */
   avatarEmoji: string;
 }
 
