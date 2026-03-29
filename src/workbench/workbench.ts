@@ -136,6 +136,7 @@ import * as CanvasTool from '../built-in/canvas/main.js';
 import * as ChatTool from '../built-in/chat/main.js';
 import * as AISettingsTool from '../built-in/ai-settings/main.js';
 import * as DiagnosticsTool from '../built-in/diagnostics/main.js';
+import * as ThemeEditorTool from '../built-in/theme-editor/main.js';
 import type { IToolManifest, IToolDescription } from '../tools/toolManifest.js';
 import {
   EXPLORER_MANIFEST,
@@ -149,6 +150,7 @@ import {
   CHAT_MANIFEST,
   AI_SETTINGS_MANIFEST,
   DIAGNOSTICS_MANIFEST,
+  THEME_EDITOR_MANIFEST,
 } from '../tools/builtinManifests.js';
 
 // File Editor Resolver (M4 Capability 4)
@@ -2549,6 +2551,7 @@ export class Workbench extends Layout {
       { manifest: CANVAS_MANIFEST, module: CanvasTool },
       { manifest: CHAT_MANIFEST, module: ChatTool },
       { manifest: AI_SETTINGS_MANIFEST, module: AISettingsTool },
+      { manifest: THEME_EDITOR_MANIFEST, module: ThemeEditorTool },
     ];
 
     const activationPromises: Promise<void>[] = [];

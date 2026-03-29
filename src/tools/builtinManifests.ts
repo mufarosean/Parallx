@@ -292,3 +292,31 @@ export const CANVAS_MANIFEST: IToolManifest = {
     ],
   },
 };
+
+// ── Theme Editor ─────────────────────────────────────────────────────────
+
+export const THEME_EDITOR_MANIFEST: IToolManifest = {
+  manifestVersion: 1,
+  id: 'parallx.theme-editor',
+  name: 'Theme Editor',
+  version: '1.0.0',
+  publisher: 'parallx',
+  description: 'Customize colors, fonts, and shape with real-time preview.',
+  main: './main.js',
+  engines: { parallx: '^0.1.0' },
+  activationEvents: ['onStartupFinished'],
+  contributes: {
+    commands: [
+      { id: 'theme-editor.open', title: 'Parallx: Open Theme Editor' },
+    ],
+    keybindings: [
+      { command: 'theme-editor.open', key: 'Ctrl+Shift+T' },
+    ],
+    viewContainers: [
+      { id: 'theme-editor-container', title: 'Theme Editor', icon: 'palette', location: 'auxiliaryBar' as const, hidden: true },
+    ],
+    views: [
+      { id: 'view.themeEditor', name: 'Theme Editor', defaultContainerId: 'theme-editor-container' },
+    ],
+  },
+};

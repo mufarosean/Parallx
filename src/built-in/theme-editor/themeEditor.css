@@ -1,0 +1,267 @@
+/* Theme Editor — M49 Phase 4 */
+
+.theme-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--parallx-fontFamily-ui);
+  font-size: var(--parallx-fontSize-sm);
+  color: var(--vscode-foreground);
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+}
+
+/* ─── Header ─────────────────────────────────────────────────── */
+
+.theme-editor__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.2));
+  flex-shrink: 0;
+}
+
+.theme-editor__title {
+  font-size: var(--parallx-fontSize-lg);
+  font-weight: 600;
+}
+
+.theme-editor__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.theme-editor__action-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: var(--parallx-radius-sm);
+  background: var(--vscode-button-secondaryBackground, rgba(128,128,128,0.15));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  font-size: var(--parallx-fontSize-xs);
+  cursor: pointer;
+}
+
+.theme-editor__action-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, rgba(128,128,128,0.25));
+}
+
+.theme-editor__action-btn--primary {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border-color: transparent;
+}
+
+.theme-editor__action-btn--primary:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+/* ─── Theme Picker Strip ─────────────────────────────────────── */
+
+.theme-editor__picker {
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.2));
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.theme-editor__picker-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border: 2px solid transparent;
+  border-radius: var(--parallx-radius-md);
+  background: transparent;
+  cursor: pointer;
+  min-width: 64px;
+  color: var(--vscode-foreground);
+  font-size: var(--parallx-fontSize-xs);
+}
+
+.theme-editor__picker-item:hover {
+  background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.1));
+}
+
+.theme-editor__picker-item--active {
+  border-color: var(--vscode-focusBorder, var(--vscode-button-background));
+  background: var(--vscode-list-activeSelectionBackground, rgba(128,128,128,0.15));
+}
+
+.theme-editor__picker-swatch {
+  width: 32px;
+  height: 22px;
+  border-radius: var(--parallx-radius-sm);
+  border: 1px solid rgba(128,128,128,0.3);
+}
+
+/* ─── Content / Sections ─────────────────────────────────────── */
+
+.theme-editor__content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 24px;
+}
+
+.theme-editor__section {
+  margin-top: 20px;
+}
+
+.theme-editor__section-title {
+  font-size: var(--parallx-fontSize-base);
+  font-weight: 600;
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.12));
+}
+
+/* ─── Color Grid ─────────────────────────────────────────────── */
+
+.theme-editor__color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.theme-editor__color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.theme-editor__color-input {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(128,128,128,0.3);
+  border-radius: var(--parallx-radius-sm);
+  padding: 0;
+  cursor: pointer;
+  background: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.theme-editor__color-input::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.theme-editor__color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 2px;
+}
+
+.theme-editor__color-label {
+  font-size: var(--parallx-fontSize-xs);
+  color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── Slider Row ─────────────────────────────────────────────── */
+
+.theme-editor__slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.theme-editor__slider-label {
+  min-width: 100px;
+  font-size: var(--parallx-fontSize-xs);
+  color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+}
+
+.theme-editor__slider {
+  flex: 1;
+  accent-color: var(--vscode-button-background);
+}
+
+.theme-editor__slider-value {
+  min-width: 42px;
+  text-align: right;
+  font-size: var(--parallx-fontSize-xs);
+  font-family: var(--parallx-fontFamily-mono);
+}
+
+/* ─── Font Dropdown ──────────────────────────────────────────── */
+
+.theme-editor__font-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.theme-editor__font-label {
+  min-width: 100px;
+  font-size: var(--parallx-fontSize-xs);
+  color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+}
+
+.theme-editor__font-select {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.3));
+  border-radius: var(--parallx-radius-sm);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  font-size: var(--parallx-fontSize-sm);
+  font-family: var(--parallx-fontFamily-ui);
+}
+
+/* ─── User Theme Name Input ──────────────────────────────────── */
+
+.theme-editor__name-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.theme-editor__name-input {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.3));
+  border-radius: var(--parallx-radius-sm);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  font-size: var(--parallx-fontSize-sm);
+  font-family: var(--parallx-fontFamily-ui);
+}
+
+/* ─── Presets ────────────────────────────────────────────────── */
+
+.theme-editor__presets {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.theme-editor__preset-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: var(--parallx-radius-md);
+  background: var(--vscode-button-secondaryBackground, rgba(128,128,128,0.15));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  font-size: var(--parallx-fontSize-xs);
+  cursor: pointer;
+}
+
+.theme-editor__preset-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, rgba(128,128,128,0.25));
+}
+
+/* ─── Status Messages ────────────────────────────────────────── */
+
+.theme-editor__status {
+  padding: 6px 16px;
+  font-size: var(--parallx-fontSize-xs);
+  color: var(--vscode-descriptionForeground);
+  border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.12));
+  flex-shrink: 0;
+}
