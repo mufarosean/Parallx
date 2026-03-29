@@ -61,6 +61,7 @@ const icons = {
   'download':          L('download'),
   'upload':            L('upload'),
   'refresh':           L('refresh-cw'),
+  'rotate':            L('rotate-cw'),
   'rotate-ccw':        L('rotate-ccw'),
   'rotate-cw':         L('rotate-cw'),
   'undo':              L('undo-2'),

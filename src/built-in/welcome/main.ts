@@ -138,9 +138,9 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
   leftCol.appendChild(startTitle);
 
   const startItems = [
-    { icon: 'ui-file-text', text: 'New File', command: 'workbench.action.files.newUntitledFile' },
-    { icon: 'ui-folder-open', text: 'Open File…', command: 'workbench.action.files.openFile' },
-    { icon: 'file-folder', text: 'Open Folder…', command: 'workbench.action.files.openFolder' },
+    { icon: 'file-text', text: 'New File', command: 'workbench.action.files.newUntitledFile' },
+    { icon: 'folder-open', text: 'Open File…', command: 'workbench.action.files.openFile' },
+    { icon: 'folder', text: 'Open Folder…', command: 'workbench.action.files.openFolder' },
   ];
 
   for (const item of startItems) {

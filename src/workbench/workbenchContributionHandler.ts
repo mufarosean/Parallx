@@ -409,16 +409,11 @@ export class WorkbenchContributionHandler extends Disposable {
   }
 
   private _resolveCodiconSvg(icon?: string): string | undefined {
-    // First check the central icon registry (ui-* prefix)
-    if (icon) {
-      const fromRegistry = getIcon(`ui-${icon}`);
-      if (fromRegistry) return fromRegistry;
-    }
-    const codiconMap: Record<string, string> = {
-      'codicon-extensions': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4a1 1 0 0 0 1.5.87A2.5 2.5 0 1 1 10.5 9.5 1 1 0 0 0 10 8.63V2h8a2 2 0 0 1 2 2v6a1 1 0 0 0 .87 1A2.5 2.5 0 1 1 18.37 14 1 1 0 0 0 16 14h-2a2 2 0 0 1 2 2v6H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>',
-      'gear': getIcon('gear') ?? '',
-    };
-    return icon ? codiconMap[icon] : undefined;
+    if (!icon) return undefined;
+    // Check the central icon registry directly
+    const fromRegistry = getIcon(icon);
+    if (fromRegistry) return fromRegistry;
+    return undefined;
   }
 
   private _removeContributedActivityBarIcon(containerId: string): void {

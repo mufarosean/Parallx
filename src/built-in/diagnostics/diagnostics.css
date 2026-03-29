@@ -116,6 +116,11 @@
   width: 28px;
   text-align: center;
 }
+.diagnostics-icon svg {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+}
 
 .diagnostics-row--pass .diagnostics-icon { color: var(--parallx-success-fg, #4ec9b0); }
 .diagnostics-row--fail .diagnostics-icon { color: var(--parallx-error-fg, #f44747); }

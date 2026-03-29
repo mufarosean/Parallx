@@ -37,6 +37,9 @@ interface ParallxApi {
 let diagnosticsService: InstanceType<typeof import('../../services/diagnosticsService.js').DiagnosticsService> | undefined;
 let currentResults: readonly IDiagnosticResult[] = [];
 let renderCallback: (() => void) | undefined;
+let _autoRefreshTimer: ReturnType<typeof setInterval> | undefined;
+
+const AUTO_REFRESH_MS = 30_000; // 30 seconds
 
 export function activate(api: ParallxApi, context: ToolContext): void {
   // Resolve diagnostics service from DI via api.services
@@ -77,10 +80,16 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       currentResults = results;
       renderCallback?.();
     }).catch(() => { /* swallow startup errors */ });
+
+    // Live auto-refresh: re-run checks periodically
+    _autoRefreshTimer = setInterval(() => {
+      diagnosticsService?.runChecks().catch(() => {});
+    }, AUTO_REFRESH_MS);
   }
 }
 
 export function deactivate(): void {
+  if (_autoRefreshTimer) { clearInterval(_autoRefreshTimer); _autoRefreshTimer = undefined; }
   diagnosticsService = undefined;
   renderCallback = undefined;
 }
