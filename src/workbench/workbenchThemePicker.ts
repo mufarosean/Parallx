@@ -12,6 +12,7 @@
 import type { ThemeService } from '../services/themeService.js';
 import type { ThemeCatalogEntry } from '../theme/themeCatalog.js';
 import { colorRegistry } from '../theme/colorRegistry.js';
+import { designTokenRegistry } from '../theme/designTokenRegistry.js';
 import {
   getAvailableThemes,
   findThemeById,
@@ -169,12 +170,12 @@ export function showColorThemePicker(
   };
 
   const previewTheme = (entry: ThemeCatalogEntry): void => {
-    const td = resolveTheme(entry, colorRegistry);
+    const td = resolveTheme(entry, colorRegistry, designTokenRegistry);
     themeService.applyTheme(td);
   };
 
   const applyAndConfirm = (entry: ThemeCatalogEntry): void => {
-    const td = resolveTheme(entry, colorRegistry);
+    const td = resolveTheme(entry, colorRegistry, designTokenRegistry);
     themeService.applyTheme(td);
     localStorage.setItem(THEME_STORAGE_KEY, entry.id);
     cleanup();
@@ -183,7 +184,7 @@ export function showColorThemePicker(
   const revert = (): void => {
     const prev = findThemeById(previousThemeId);
     if (prev) {
-      const td = resolveTheme(prev, colorRegistry);
+      const td = resolveTheme(prev, colorRegistry, designTokenRegistry);
       themeService.applyTheme(td);
     }
     cleanup();

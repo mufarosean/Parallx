@@ -15,7 +15,7 @@
   overflow: hidden;
   position: relative;
   contain: layout style;
-  font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
+  font-family: var(--parallx-fontFamily-ui);
   font-size: var(--vscode-font-size, 13px);
   line-height: 1.5;
 }
@@ -62,7 +62,7 @@
 }
 
 .parallx-chat-agent-task-rail-title {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -70,7 +70,7 @@
 }
 
 .parallx-chat-agent-task-rail-subtitle {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-descriptionForeground, #999999);
 }
 
@@ -111,25 +111,25 @@
 }
 
 .parallx-chat-agent-task-card-eyebrow {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #999999);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .parallx-chat-agent-task-card-title {
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   font-weight: 600;
   color: var(--vscode-foreground, #cccccc);
 }
 
 .parallx-chat-agent-task-status {
   flex: 0 0 auto;
-  border-radius: 999px;
+  border-radius: var(--parallx-radius-full);
   padding: 2px 8px;
   background: var(--vscode-badge-background, #4d4d4d);
   color: var(--vscode-badge-foreground, #ffffff);
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
 }
 
 .parallx-chat-agent-task-card-meta,
@@ -140,11 +140,11 @@
 }
 
 .parallx-chat-agent-task-pill {
-  border-radius: 999px;
+  border-radius: var(--parallx-radius-full);
   padding: 2px 8px;
   background: var(--vscode-list-hoverBackground, #2a2d2e);
   color: var(--vscode-foreground, #cccccc);
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
 }
 
 .parallx-chat-agent-task-summary,
@@ -153,7 +153,7 @@
 .parallx-chat-agent-approval-targets,
 .parallx-chat-agent-task-details-empty,
 .parallx-chat-agent-task-trace-meta {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-descriptionForeground, #999999);
 }
 
@@ -171,11 +171,11 @@
 .parallx-chat-agent-task-button,
 .parallx-chat-agent-approval-button {
   border: 1px solid var(--vscode-button-border, transparent);
-  border-radius: 6px;
+  border-radius: var(--parallx-radius-md);
   background: var(--vscode-button-secondaryBackground, #3a3d41);
   color: var(--vscode-button-secondaryForeground, #ffffff);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   padding: 6px 10px;
 }
 
@@ -186,7 +186,7 @@
 
 .parallx-chat-agent-approval-card {
   border: 1px solid var(--vscode-widget-border, #454545);
-  border-radius: 8px;
+  border-radius: var(--parallx-radius-lg);
   background: color-mix(in srgb, var(--vscode-sideBar-background, #1e1e1e) 85%, transparent);
   padding: 10px;
   display: flex;
@@ -196,7 +196,7 @@
 
 .parallx-chat-agent-approval-title,
 .parallx-chat-agent-task-trace-message {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   font-weight: 600;
   color: var(--vscode-foreground, #cccccc);
 }
@@ -217,7 +217,7 @@
 
 .parallx-chat-agent-task-artifacts-title,
 .parallx-chat-agent-task-artifact-label {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   font-weight: 600;
   color: var(--vscode-foreground, #cccccc);
 }
@@ -237,7 +237,7 @@
 }
 
 .parallx-chat-agent-task-artifact-item {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-descriptionForeground, #999999);
 }
 
@@ -347,12 +347,12 @@
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--parallx-radius-full);
   border: 1px solid color-mix(in srgb, var(--vscode-widget-border, #454545) 60%, transparent);
   background: color-mix(in srgb, var(--vscode-editorWidget-background, #252526) 84%, transparent);
   color: var(--vscode-foreground, #cccccc);
-  font-size: 11px;
-  font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
+  font-size: var(--parallx-fontSize-sm);
+  font-family: var(--parallx-fontFamily-ui);
   cursor: pointer;
   white-space: nowrap;
   transition: background 100ms ease;
@@ -380,7 +380,7 @@
 .parallx-chat-message-attachment-source {
   display: inline;
   opacity: 0.55;
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   white-space: nowrap;
 }
 
@@ -474,7 +474,7 @@
   height: 26px;
   padding: 0 8px;
   border: 1px solid color-mix(in srgb, var(--vscode-widget-border, #454545) 74%, transparent);
-  border-radius: 999px;
+  border-radius: var(--parallx-radius-full);
   background: color-mix(in srgb, var(--vscode-editorWidget-background, #252526) 84%, transparent);
   color: var(--vscode-descriptionForeground, #b0b0b0);
   cursor: pointer;
@@ -571,14 +571,14 @@
 }
 
 .parallx-chat-empty-state-title {
-  font-size: 14px;
+  font-size: var(--parallx-fontSize-lg);
   font-weight: 500;
   color: var(--vscode-foreground, #cccccc);
   margin-bottom: 8px;
 }
 
 .parallx-chat-empty-state-subtitle {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   line-height: 1.5;
   max-width: 280px;
   color: var(--vscode-descriptionForeground, #989898);
@@ -587,7 +587,7 @@
 .parallx-chat-empty-state-note {
   margin-top: 10px;
   max-width: 360px;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   line-height: 1.5;
   color: var(--vscode-descriptionForeground, #8b8b8b);
 }
@@ -621,14 +621,14 @@
 }
 
 .parallx-chat-offline-title {
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   font-weight: 500;
   color: var(--vscode-descriptionForeground, #989898);
   margin-bottom: 8px;
 }
 
 .parallx-chat-offline-instruction {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   line-height: 1.5;
   max-width: 280px;
 }
@@ -636,16 +636,16 @@
 .parallx-chat-offline-instruction code {
   background: var(--vscode-textCodeBlock-background, #2d2d2d);
   padding: 1px 4px;
-  border-radius: 3px;
-  font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 12px;
+  border-radius: var(--parallx-radius-sm);
+  font-family: var(--parallx-fontFamily-mono);
+  font-size: var(--parallx-fontSize-base);
 }
 
 /* ── Markdown body styles ── */
 
 .parallx-chat-markdown {
   line-height: 1.6;
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   color: var(--vscode-foreground, #cccccc);
 }
 
@@ -674,13 +674,13 @@
 
 .parallx-chat-markdown h1 { font-size: 17px; }
 .parallx-chat-markdown h2 { font-size: 15px; }
-.parallx-chat-markdown h3 { font-size: 14px; }
+.parallx-chat-markdown h3 { font-size: var(--parallx-fontSize-lg); }
 
 .parallx-chat-markdown code {
   background: var(--vscode-textCodeBlock-background, #2d2d2d);
   padding: 2px 5px;
   border-radius: 4px;
-  font-family: var(--vscode-editor-font-family, monospace);
+  font-family: var(--parallx-fontFamily-mono);
   font-size: 0.9em;
   color: var(--vscode-textPreformat-foreground, #d4d4d4);
 }
@@ -689,7 +689,7 @@
   margin: 8px 0;
   padding: 10px 12px;
   background: var(--vscode-textCodeBlock-background, #2d2d2d);
-  border-radius: 6px;
+  border-radius: var(--parallx-radius-md);
   overflow-x: auto;
 }
 
@@ -834,11 +834,11 @@
   justify-content: space-between;
   padding: 6px 10px;
   margin: 4px 0;
-  border-radius: 6px;
+  border-radius: var(--parallx-radius-md);
   background: var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.08));
   border: 1px dashed var(--vscode-widget-border, rgba(127, 127, 127, 0.25));
   opacity: 0.6;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-descriptionForeground, #989898);
   transition: opacity 150ms ease;
 }
@@ -881,7 +881,7 @@
   color: var(--vscode-descriptionForeground, #989898);
   cursor: pointer;
   padding: 0;
-  font-size: 14px;
+  font-size: var(--parallx-fontSize-lg);
   transition: background 120ms ease, color 120ms ease;
 }
 
@@ -906,7 +906,7 @@
 .parallx-chat-code-block {
   position: relative;
   margin: 8px 0;
-  border-radius: 6px;
+  border-radius: var(--parallx-radius-md);
   background: var(--vscode-textCodeBlock-background, #1a1a1a);
   border: 1px solid var(--vscode-widget-border, #2d2d2d);
   overflow: hidden;
@@ -917,7 +917,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 4px 10px;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #989898);
   background: var(--vscode-editor-background, #1e1e1e);
   border-bottom: 1px solid var(--vscode-widget-border, #2d2d2d);
@@ -934,7 +934,7 @@
   border: none;
   color: var(--vscode-descriptionForeground, #989898);
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   transition: background 100ms ease, color 100ms ease;
 }
 
@@ -952,7 +952,7 @@
   margin: 0;
   padding: 10px 12px;
   overflow-x: auto;
-  font-family: var(--vscode-editor-font-family, monospace);
+  font-family: var(--parallx-fontFamily-mono);
   font-size: var(--vscode-editor-font-size, 13px);
   line-height: 1.45;
   white-space: pre;
@@ -972,20 +972,20 @@
 }
 
 .parallx-chat-code-actions-path {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #989898);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
   min-width: 0;
-  font-family: var(--vscode-editor-font-family, monospace);
+  font-family: var(--parallx-fontFamily-mono);
 }
 
 .parallx-chat-code-action-btn {
   padding: 3px 10px;
-  border-radius: 3px;
-  font-size: 11px;
+  border-radius: var(--parallx-radius-sm);
+  font-size: var(--parallx-fontSize-sm);
   cursor: pointer;
   border: 1px solid transparent;
   transition: background 100ms ease;
@@ -1013,7 +1013,7 @@
 }
 
 .parallx-chat-code-action-result {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   font-weight: 500;
 }
 
@@ -1028,7 +1028,7 @@
 /* Thinking block — unified context/thinking section */
 .parallx-chat-thinking {
   margin: 4px 0 8px;
-  border-radius: 6px;
+  border-radius: var(--parallx-radius-md);
   background: color-mix(in srgb, var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.08)) 72%, transparent);
   border: 1px solid color-mix(in srgb, var(--vscode-widget-border, rgba(127, 127, 127, 0.2)) 78%, transparent);
   overflow: hidden;
@@ -1036,7 +1036,7 @@
 
 .parallx-chat-thinking-toggle {
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-descriptionForeground, #989898);
   user-select: none;
   padding: 5px 10px;
@@ -1070,7 +1070,7 @@
 
 .parallx-chat-thinking-sep {
   color: var(--vscode-descriptionForeground, #666);
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   opacity: 0.5;
 }
 
@@ -1078,7 +1078,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #989898);
 }
 
@@ -1093,13 +1093,13 @@
 }
 
 .parallx-chat-thinking-source-count {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #989898);
 }
 
 .parallx-chat-thinking-content {
   padding: 0 10px 6px;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-descriptionForeground, #989898);
   line-height: 1.5;
   border-top: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.15));
@@ -1108,7 +1108,7 @@
 .parallx-chat-thinking-text {
   white-space: pre-wrap;
   padding: 6px 0 2px;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   line-height: 1.5;
   color: var(--vscode-descriptionForeground, #b0b0b0);
 }
@@ -1131,7 +1131,7 @@
   background: transparent;
   color: var(--vscode-descriptionForeground, #888);
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
 }
 
 .parallx-chat-thinking-sources-toggle:hover {
@@ -1151,7 +1151,7 @@
 }
 
 .parallx-chat-thinking-sources-label {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   font-weight: 500;
   color: var(--vscode-descriptionForeground, #888);
   text-transform: uppercase;
@@ -1159,7 +1159,7 @@
 }
 
 .parallx-chat-thinking-sources-meta {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #888);
   opacity: 0.85;
 }
@@ -1177,7 +1177,7 @@
 }
 
 .parallx-chat-thinking-sources .parallx-chat-reference {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   padding: 2px 8px 2px 6px;
   opacity: 0.85;
 }
@@ -1188,7 +1188,7 @@
   align-items: center;
   gap: 8px;
   padding: 4px 0;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-descriptionForeground, #989898);
 }
 
@@ -1215,7 +1215,7 @@
   border-radius: 4px;
   background: var(--vscode-inputValidation-warningBackground, #352a05);
   border: 1px solid var(--vscode-inputValidation-warningBorder, #9b6800);
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-foreground, #cccccc);
 }
 
@@ -1235,7 +1235,7 @@
   border-radius: 10px;
   background: var(--vscode-badge-background, #4d4d4d);
   color: var(--vscode-badge-foreground, #ffffff);
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   line-height: 18px;
   cursor: pointer;
   transition: background 120ms ease;
@@ -1276,10 +1276,10 @@
   height: 16px;
   padding: 0 4px;
   margin: 0 1px;
-  border-radius: 8px;
+  border-radius: var(--parallx-radius-lg);
   background: var(--vscode-badge-background, #4d4d4d);
   color: var(--vscode-badge-foreground, #ffffff);
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   font-weight: 600;
   line-height: 16px;
   cursor: pointer;
@@ -1313,7 +1313,7 @@
 .parallx-chat-tool-invocation {
   margin: 6px 0;
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: var(--parallx-radius-md);
   background: var(--vscode-editorWidget-background, #252526);
   border: 1px solid var(--vscode-editorWidget-border, #454545);
   transition: border-color 120ms ease;
@@ -1343,7 +1343,7 @@
 
 .parallx-chat-tool-invocation-name {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   color: var(--vscode-foreground, #cccccc);
 }
 
@@ -1353,7 +1353,7 @@
   margin-left: auto;
   padding: 1px 8px;
   border-radius: 10px;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   font-weight: 500;
 }
 
@@ -1380,7 +1380,7 @@
 /* ── Tool Arguments ── */
 
 .parallx-chat-tool-invocation-args {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #8b8b8b);
   white-space: nowrap;
   overflow: hidden;
@@ -1394,7 +1394,7 @@
   margin-top: 6px;
   padding: 6px 8px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   background: var(--vscode-textBlockQuote-background, #2a2a2a);
   border-left: 3px solid var(--vscode-testing-iconPassed, #388a34);
   color: var(--vscode-foreground, #cccccc);
@@ -1411,7 +1411,7 @@
   border: none;
   color: var(--vscode-textLink-foreground, #3794ff);
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   padding: 2px 0;
 }
 
@@ -1424,13 +1424,13 @@
 .parallx-chat-confirmation {
   margin: 6px 0;
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: var(--parallx-radius-md);
   background: var(--vscode-editorWidget-background, #252526);
   border: 1px solid var(--vscode-editorWidget-border, #454545);
 }
 
 .parallx-chat-confirmation-message {
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   color: var(--vscode-foreground, #cccccc);
   margin-bottom: 8px;
 }
@@ -1440,8 +1440,8 @@
 }
 
 .parallx-chat-confirmation-args pre {
-  font-family: var(--vscode-editor-font-family, 'Cascadia Code', Consolas, monospace);
-  font-size: 11px;
+  font-family: var(--parallx-fontFamily-mono);
+  font-size: var(--parallx-fontSize-sm);
   line-height: 1.4;
   color: var(--vscode-descriptionForeground, #9d9d9d);
   background: var(--vscode-textCodeBlock-background, #1e1e1e);
@@ -1463,7 +1463,7 @@
 .parallx-chat-confirmation-btn {
   padding: 4px 14px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   cursor: pointer;
   border: 1px solid transparent;
   transition: background 100ms ease;
@@ -1510,7 +1510,7 @@
 }
 
 .parallx-chat-confirmation-result {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   font-weight: 500;
 }
 
@@ -1527,12 +1527,12 @@
 
 .parallx-chat-diff-viewer {
   margin: 8px 0;
-  border-radius: 6px;
+  border-radius: var(--parallx-radius-md);
   background: var(--vscode-editorWidget-background, #252526);
   border: 1px solid var(--vscode-editorWidget-border, #454545);
   overflow: hidden;
-  font-family: var(--vscode-editor-font-family, 'Cascadia Code', Consolas, monospace);
-  font-size: 12px;
+  font-family: var(--parallx-fontFamily-mono);
+  font-size: var(--parallx-fontSize-base);
   line-height: 1.5;
 }
 
@@ -1549,7 +1549,7 @@
 .parallx-chat-diff-filepath {
   font-weight: 600;
   color: var(--vscode-foreground, #cccccc);
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1558,10 +1558,10 @@
 }
 
 .parallx-chat-diff-summary {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   font-weight: 500;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   white-space: nowrap;
 }
 
@@ -1581,7 +1581,7 @@
 }
 
 .parallx-chat-diff-tokens {
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   color: var(--vscode-descriptionForeground, #9d9d9d);
   white-space: nowrap;
 }
@@ -1602,7 +1602,7 @@
 
 .parallx-chat-diff-hunk-header {
   padding: 2px 12px;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-editorLineNumber-foreground, #858585);
   background: var(--vscode-diffEditor-unchangedRegionBackground, #1e1e1e);
   border-bottom: 1px solid var(--vscode-editorWidget-border, #454545);
@@ -1679,7 +1679,7 @@
 
 .parallx-chat-diff-truncated {
   padding: 6px 12px;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #9d9d9d);
   font-style: italic;
   text-align: center;
@@ -1699,11 +1699,11 @@
 .parallx-chat-diff-btn {
   padding: 4px 14px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   cursor: pointer;
   border: 1px solid transparent;
   transition: background 100ms ease;
-  font-family: var(--vscode-font-family, sans-serif);
+  font-family: var(--parallx-fontFamily-ui);
 }
 
 .parallx-chat-diff-btn:disabled {
@@ -1734,7 +1734,7 @@
 /* ── Diff result label ── */
 
 .parallx-chat-diff-result {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   font-weight: 500;
 }
 
@@ -1762,7 +1762,7 @@
   height: 22px;
   padding: 0;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   background: transparent;
   color: var(--vscode-icon-foreground, var(--vscode-foreground, #cccccc));
   cursor: pointer;
@@ -1834,7 +1834,7 @@
 }
 
 .parallx-chat-session-sidebar-title {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -1855,7 +1855,7 @@
   height: 22px;
   padding: 0;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   background: transparent;
   color: var(--vscode-icon-foreground, var(--vscode-foreground, #cccccc));
   cursor: pointer;
@@ -1872,7 +1872,7 @@
 }
 
 .parallx-chat-sidebar-btn--new {
-  font-size: 16px;
+  font-size: var(--parallx-fontSize-xl);
   font-weight: 600;
 }
 
@@ -1892,7 +1892,7 @@
   border-radius: 4px;
   background: var(--vscode-input-background, #3c3c3c);
   color: var(--vscode-input-foreground, #cccccc);
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   font-family: inherit;
   outline: none;
 }
@@ -1944,7 +1944,7 @@
 }
 
 .parallx-chat-session-sidebar-section-label {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -1952,7 +1952,7 @@
 }
 
 .parallx-chat-session-sidebar-section-count {
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   color: var(--vscode-descriptionForeground, #8b8b8b);
   margin-left: auto;
 }
@@ -1992,7 +1992,7 @@
 
 .parallx-chat-session-sidebar-item-title {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   font-weight: 500;
   color: var(--vscode-foreground, #cccccc);
   white-space: nowrap;
@@ -2006,7 +2006,7 @@
 
 .parallx-chat-session-sidebar-item-time {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   color: var(--vscode-descriptionForeground, #8b8b8b);
 }
 
@@ -2015,7 +2015,7 @@
 }
 
 .parallx-chat-session-sidebar-item-meta {
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   color: var(--vscode-descriptionForeground, #8b8b8b);
   margin-top: 1px;
 }
@@ -2025,7 +2025,7 @@
 }
 
 .parallx-chat-session-sidebar-item-preview {
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   color: var(--vscode-descriptionForeground, #8b8b8b);
   margin-top: 2px;
   white-space: nowrap;
@@ -2046,7 +2046,7 @@
   height: 20px;
   padding: 0;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   background: transparent;
   color: var(--vscode-descriptionForeground, #8b8b8b);
   cursor: pointer;
@@ -2073,7 +2073,7 @@
 .parallx-chat-session-sidebar-empty {
   padding: 24px 12px;
   text-align: center;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #8b8b8b);
   font-style: italic;
 }
@@ -2097,7 +2097,7 @@
   gap: 8px;
   min-width: 0;
   padding: 6px 10px;
-  border-radius: 6px;
+  border-radius: var(--parallx-radius-md);
   border: 1px solid var(--vscode-widget-border, #2d2d2d);
   background: var(--vscode-editorWidget-background, #252526);
   cursor: pointer;
@@ -2131,7 +2131,7 @@
 }
 
 .parallx-chat-hint-label {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   font-weight: 600;
   color: var(--vscode-foreground, #cccccc);
   white-space: nowrap;
@@ -2140,7 +2140,7 @@
 }
 
 .parallx-chat-hint-desc {
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   color: var(--vscode-descriptionForeground, #8b8b8b);
   white-space: nowrap;
   overflow: hidden;
@@ -2165,12 +2165,12 @@
 }
 
 .parallx-chat-widget--narrow .parallx-chat-empty-state-title {
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
 }
 
 .parallx-chat-widget--narrow .parallx-chat-empty-state-subtitle {
   max-width: 220px;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
 }
 
 .parallx-chat-widget--narrow .parallx-chat-empty-state-hints {
@@ -2215,7 +2215,7 @@
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  border-radius: 8px;
+  border-radius: var(--parallx-radius-lg);
   background: var(--vscode-editorWidget-background, #252526);
   border: 1px solid var(--vscode-editorWidget-border, #454545);
   box-shadow: 0 8px 32px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.6));
@@ -2232,13 +2232,13 @@
 }
 
 .parallx-system-prompt-title {
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   font-weight: 600;
   color: var(--vscode-foreground, #cccccc);
 }
 
 .parallx-system-prompt-tokens {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #8b8b8b);
 }
 
@@ -2251,7 +2251,7 @@
   height: 22px;
   padding: 0;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   background: transparent;
   color: var(--vscode-foreground, #cccccc);
   cursor: pointer;
@@ -2274,9 +2274,9 @@
 
 .parallx-system-prompt-text {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   line-height: 1.6;
-  font-family: var(--vscode-editor-font-family, Consolas, monospace);
+  font-family: var(--parallx-fontFamily-mono);
   color: var(--vscode-editor-foreground, #d4d4d4);
   white-space: pre-wrap;
   word-break: break-word;
@@ -2294,9 +2294,9 @@
 .parallx-system-prompt-copy {
   padding: 4px 12px;
   border: none;
-  border-radius: 3px;
-  font-size: 12px;
-  font-family: var(--vscode-font-family, system-ui, sans-serif);
+  border-radius: var(--parallx-radius-sm);
+  font-size: var(--parallx-fontSize-base);
+  font-family: var(--parallx-fontFamily-ui);
   background: var(--vscode-button-background, #0e639c);
   color: var(--vscode-button-foreground, #ffffff);
   cursor: pointer;

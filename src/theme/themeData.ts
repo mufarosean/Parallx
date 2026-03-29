@@ -7,6 +7,7 @@ import { ThemeType } from './themeTypes.js';
 import type { ThemeSource, IColorTheme } from './themeTypes.js';
 export type { ThemeSource, IColorTheme } from './themeTypes.js';
 import { IColorRegistry } from './colorRegistry.js';
+import type { IDesignTokenRegistry } from './designTokenRegistry.js';
 
 // ─── ColorThemeData ──────────────────────────────────────────────────────────
 
@@ -20,28 +21,35 @@ export class ColorThemeData implements IColorTheme {
   readonly label: string;
   readonly type: ThemeType;
   private readonly _colors: Map<string, string>;
+  private readonly _designTokens: Map<string, string>;
 
-  private constructor(id: string, label: string, type: ThemeType, colors: Map<string, string>) {
+  private constructor(id: string, label: string, type: ThemeType, colors: Map<string, string>, designTokens: Map<string, string>) {
     this.id = id;
     this.label = label;
     this.type = type;
     this._colors = colors;
+    this._designTokens = designTokens;
   }
 
   getColor(colorId: string): string | undefined {
     return this._colors.get(colorId);
   }
 
+  getDesignToken(tokenId: string): string | undefined {
+    return this._designTokens.get(tokenId);
+  }
+
   /**
    * Parse a raw ThemeSource into a resolved ColorThemeData.
    * Validates color keys against the registry and logs warnings for unknown keys.
+   * Optionally validates design token keys if a design token registry is provided.
    */
-  static fromSource(source: ThemeSource, registry: IColorRegistry): ColorThemeData {
+  static fromSource(source: ThemeSource, colorRegistry: IColorRegistry, designTokenRegistry?: IDesignTokenRegistry): ColorThemeData {
     const type = uiThemeToThemeType(source.uiTheme);
     const colors = new Map<string, string>();
 
     for (const [key, value] of Object.entries(source.colors)) {
-      const registered = registry.getRegisteredColor(key);
+      const registered = colorRegistry.getRegisteredColor(key);
       if (!registered) {
         console.warn(`[ThemeData] Unknown color key '${key}' in theme '${source.id}' — ignoring`);
         continue;
@@ -49,7 +57,19 @@ export class ColorThemeData implements IColorTheme {
       colors.set(key, value);
     }
 
-    return new ColorThemeData(source.id, source.label, type, colors);
+    const designTokens = new Map<string, string>();
+    if (source.designTokens && designTokenRegistry) {
+      for (const [key, value] of Object.entries(source.designTokens)) {
+        const registered = designTokenRegistry.getRegisteredToken(key);
+        if (!registered) {
+          console.warn(`[ThemeData] Unknown design token '${key}' in theme '${source.id}' — ignoring`);
+          continue;
+        }
+        designTokens.set(key, value);
+      }
+    }
+
+    return new ColorThemeData(source.id, source.label, type, colors, designTokens);
   }
 }
 

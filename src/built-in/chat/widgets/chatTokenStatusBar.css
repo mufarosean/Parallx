@@ -16,7 +16,7 @@
 }
 
 .parallx-token-statusbar-label {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   white-space: nowrap;
   color: inherit;
   line-height: 22px;
@@ -43,15 +43,15 @@
 }
 
 .parallx-health-dot--connected {
-  background-color: #4ec9b0; /* teal/green */
+  background-color: var(--vscode-testing-iconPassed); /* teal/green */
 }
 
 .parallx-health-dot--disconnected {
-  background-color: #f14c4c; /* red */
+  background-color: var(--vscode-errorForeground); /* red */
 }
 
 .parallx-health-dot--connecting {
-  background-color: #cca700; /* amber */
+  background-color: var(--vscode-editorWarning-foreground); /* amber */
   animation: parallx-health-pulse 1.5s ease-in-out infinite;
 }
 
@@ -65,23 +65,23 @@
 .parallx-token-popup {
   position: fixed;
   z-index: 10000;
-  background: var(--parallx-menu-background, #252526);
-  border: 1px solid var(--parallx-menu-border, #454545);
-  border-radius: 6px;
+  background: var(--vscode-menu-background);
+  border: 1px solid var(--vscode-menu-border);
+  border-radius: var(--parallx-radius-md);
   padding: 12px 16px;
   min-width: 220px;
   max-width: 280px;
   box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
-  font-size: 12px;
-  color: var(--parallx-foreground, #ccc);
+  font-size: var(--parallx-fontSize-base);
+  color: var(--vscode-foreground);
   line-height: 1.4;
 }
 
 /* Header */
 .parallx-token-popup-header {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   font-weight: 600;
-  color: var(--parallx-foreground, #e0e0e0);
+  color: var(--vscode-foreground);
   margin-bottom: 4px;
 }
 
@@ -93,8 +93,8 @@
 }
 
 .parallx-token-popup-summary-text {
-  font-size: 11px;
-  color: var(--parallx-descriptionForeground, #999);
+  font-size: var(--parallx-fontSize-sm);
+  color: var(--vscode-descriptionForeground);
 }
 
 /* Full-width bar */
@@ -117,12 +117,12 @@
 }
 
 .parallx-token-popup-section-title {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   font-weight: 600;
-  color: var(--parallx-foreground, #e0e0e0);
+  color: var(--vscode-foreground);
   margin-bottom: 4px;
   padding-top: 4px;
-  border-top: 1px solid var(--parallx-menu-separatorBackground, #3c3c3c);
+  border-top: 1px solid var(--vscode-menu-separatorBackground);
 }
 
 .parallx-token-popup-section:first-of-type .parallx-token-popup-section-title {
@@ -139,14 +139,14 @@
 }
 
 .parallx-token-popup-row-label {
-  font-size: 11px;
-  color: var(--parallx-descriptionForeground, #999);
+  font-size: var(--parallx-fontSize-sm);
+  color: var(--vscode-descriptionForeground);
   padding-left: 8px;
 }
 
 .parallx-token-popup-row-value {
-  font-size: 11px;
-  color: var(--parallx-foreground, #ccc);
+  font-size: var(--parallx-fontSize-sm);
+  color: var(--vscode-foreground);
   font-variant-numeric: tabular-nums;
   min-width: 40px;
   text-align: right;
@@ -155,11 +155,11 @@
 /* ── Indexing indicator (M10 Phase 6 — Task 6.1) ── */
 
 .parallx-token-statusbar-indexing {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   white-space: nowrap;
   line-height: 22px;
   padding-left: 6px;
-  border-left: 1px solid var(--parallx-menu-separatorBackground, #3c3c3c);
+  border-left: 1px solid var(--vscode-menu-separatorBackground);
   margin-left: 2px;
 }
 
@@ -168,7 +168,7 @@
 }
 
 .parallx-token-statusbar-indexing-complete {
-  color: var(--parallx-descriptionForeground, #999);
+  color: var(--vscode-descriptionForeground);
 }
 
 .parallx-token-statusbar-indexing-icon {

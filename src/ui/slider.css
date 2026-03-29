@@ -102,7 +102,7 @@
   display: flex;
   justify-content: space-between;
   height: 18px;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #717171);
   user-select: none;
 }

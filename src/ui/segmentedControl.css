@@ -2,7 +2,7 @@
 
 .ui-segmented-control {
   display: inline-flex;
-  border-radius: 6px;
+  border-radius: var(--parallx-radius-md);
   overflow: hidden;
   border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
   background: var(--vscode-input-background, #3c3c3c);
@@ -12,7 +12,7 @@
 
 .ui-segmented-control__segment {
   padding: 4px 14px;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   font-family: inherit;
   line-height: 20px;
   color: var(--vscode-descriptionForeground, #999);

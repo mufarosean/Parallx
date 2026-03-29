@@ -9,7 +9,7 @@
   overflow: hidden;
   background: var(--vscode-sideBar-background, #181818);
   color: var(--vscode-foreground, #ccc);
-  font-family: var(--vscode-font-family, sans-serif);
+  font-family: var(--parallx-fontFamily-ui);
   font-size: var(--vscode-font-size, 13px);
 }
 
@@ -58,7 +58,7 @@
   background: none;
   border: none;
   text-align: left;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-foreground, #ccc);
   cursor: pointer;
 }
@@ -82,7 +82,7 @@
 
 .ai-settings-preset-switcher__header {
   padding: 0 16px 8px;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   font-weight: 600;
   text-transform: uppercase;
   color: var(--vscode-descriptionForeground, #888);
@@ -113,7 +113,7 @@
 }
 
 .ai-settings-preset-switcher__indicator {
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   flex-shrink: 0;
   width: 14px;
   text-align: center;
@@ -122,16 +122,16 @@
 
 .ai-settings-preset-switcher__label {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .ai-settings-preset-switcher__badge {
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   padding: 1px 6px;
-  border-radius: 8px;
+  border-radius: var(--parallx-radius-lg);
   background: var(--vscode-badge-background, #4d4d4d);
   color: var(--vscode-badge-foreground, #ccc);
   flex-shrink: 0;
@@ -143,7 +143,7 @@
 
 .ai-settings-preset-switcher__new .ui-button {
   width: 100%;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   background: transparent;
   border: 1px dashed var(--vscode-widget-border, rgba(255, 255, 255, 0.15));
   color: var(--vscode-descriptionForeground, #888);
@@ -173,7 +173,7 @@
 }
 
 .ai-settings-section__header {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   font-weight: 600;
   text-transform: uppercase;
   color: var(--vscode-descriptionForeground, #888);
@@ -192,7 +192,7 @@
   background: none;
   border: none;
   color: var(--vscode-textLink-foreground, #3794ff);
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   cursor: pointer;
   padding: 8px 0;
   text-align: left;
@@ -219,14 +219,14 @@
 }
 
 .ai-settings-row__label {
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   font-weight: 500;
   color: var(--vscode-foreground, #ccc);
   flex: 1;
 }
 
 .ai-settings-row__description {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #888);
   margin-top: 2px;
   line-height: 1.3;
@@ -242,7 +242,7 @@
   border: none;
   color: var(--vscode-descriptionForeground, #888);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--parallx-fontSize-lg);
   padding: 2px 4px;
   opacity: 0;
   transition: opacity 0.15s;
@@ -283,7 +283,7 @@
   justify-content: center;
   background: var(--vscode-input-background, #3c3c3c);
   border: 2px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--parallx-radius-md);
   cursor: pointer;
   transition: border-color 0.15s, transform 0.1s;
   color: var(--vscode-descriptionForeground, rgba(204, 204, 204, 0.7));
@@ -313,7 +313,7 @@
   background: none;
   border: none;
   color: var(--vscode-textLink-foreground, #3794ff);
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   cursor: pointer;
   padding: 4px 0;
   text-align: left;
@@ -330,7 +330,7 @@
 /* ── Warning / Link ───────────────────────────────────────────────────── */
 
 .ai-settings-warning {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-editorWarning-foreground, #cca700);
   margin-top: 4px;
   line-height: 1.4;
@@ -340,7 +340,7 @@
   background: none;
   border: none;
   color: var(--vscode-textLink-foreground, #3794ff);
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   cursor: pointer;
   padding: 0;
 }
@@ -355,10 +355,10 @@
   background: none;
   border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
   color: var(--vscode-foreground, #ccc);
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   cursor: pointer;
   padding: 2px 8px;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   margin-top: 4px;
 }
 
@@ -381,7 +381,7 @@
 /* ── Import Status ────────────────────────────────────────────────────── */
 
 .ai-settings-import-status {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   margin-top: 4px;
   min-height: 16px;
 }
@@ -409,13 +409,13 @@
 
 .ai-settings-confirm-dialog__msg {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
 }
 
 /* ── Confidence Description ───────────────────────────────────────────── */
 
 .ai-settings-confidence-desc {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #888);
   margin-top: 4px;
   font-style: italic;
@@ -424,10 +424,10 @@
 /* ── Temperature Value ────────────────────────────────────────────────── */
 
 .ai-settings-temperature-value {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-descriptionForeground, #888);
   margin-top: 4px;
-  font-family: var(--vscode-editor-font-family, monospace);
+  font-family: var(--parallx-fontFamily-mono);
 }
 
 /* ── Preview Section ──────────────────────────────────────────────────── */
@@ -443,9 +443,9 @@
   background: var(--vscode-input-background, #3c3c3c);
   border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
   color: var(--vscode-foreground, #ccc);
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   padding: 4px 10px;
-  border-radius: 12px;
+  border-radius: var(--parallx-radius-xl);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -466,7 +466,7 @@
 }
 
 .ai-settings-preview__metadata {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #888);
   margin: 8px 0 4px;
 }
@@ -477,7 +477,7 @@
   border-radius: 4px;
   padding: 12px;
   min-height: 80px;
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   line-height: 1.5;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -491,7 +491,7 @@
 }
 
 .ai-settings-preview__spinner {
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
 }
 
 .ai-settings-preview__error {
@@ -503,10 +503,10 @@
   background: none;
   border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
   color: var(--vscode-textLink-foreground, #3794ff);
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   cursor: pointer;
   padding: 2px 10px;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
 }
 
 .ai-settings-preview__retry:hover {
@@ -531,7 +531,7 @@
 }
 
 .ai-settings-row .ui-slider__stop {
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   color: var(--vscode-descriptionForeground, #888);
   cursor: pointer;
   transition: color 0.12s;
@@ -544,9 +544,9 @@
 /* ── Scope Indicator (M20 C.2) ────────────────────────────────────────── */
 
 .ai-settings-row__scope {
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   background: var(--vscode-badge-background, rgba(255, 255, 255, 0.08));
   color: var(--vscode-descriptionForeground, #888);
   margin-left: auto;
@@ -570,7 +570,7 @@
   display: inline-block;
   min-width: 36px;
   text-align: right;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-foreground, #ccc);
   font-variant-numeric: tabular-nums;
   margin-left: 8px;
@@ -581,11 +581,11 @@
 .ai-settings-section__info {
   padding: 8px 12px;
   margin-top: 8px;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-descriptionForeground, #888);
   background: var(--vscode-textBlockQuote-background, rgba(255, 255, 255, 0.04));
   border-left: 3px solid var(--vscode-textBlockQuote-border, rgba(255, 255, 255, 0.1));
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
 }
 
 /* ── Save Indicator (D.1) ─────────────────────────────────────────────── */
@@ -593,7 +593,7 @@
 .ai-settings-save-indicator {
   display: inline-block;
   margin-left: 8px;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-testing-iconPassed, #73c991);
   opacity: 0;
   transition: opacity 0.2s ease-in-out;
@@ -609,7 +609,7 @@
 
 .ai-settings-tools-summary {
   margin-left: 8px;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   font-weight: normal;
   color: var(--vscode-descriptionForeground, #888);
 }
@@ -659,7 +659,7 @@
 .ai-settings-tools-chevron {
   width: 16px;
   text-align: center;
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   flex-shrink: 0;
   color: var(--vscode-foreground, #ccc);
 }
@@ -673,17 +673,17 @@
 
 .ai-settings-tools-group-label {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
 }
 
 .ai-settings-tools-cat-label {
   font-weight: 500;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
 }
 
 .ai-settings-tools-cat-desc {
   margin-left: auto;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #888);
 }
 
@@ -709,14 +709,14 @@
 }
 
 .ai-settings-tools-tool-name {
-  font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 12px;
+  font-family: var(--parallx-fontFamily-mono);
+  font-size: var(--parallx-fontSize-base);
   font-weight: 500;
   white-space: nowrap;
 }
 
 .ai-settings-tools-tool-desc {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #888);
   white-space: nowrap;
   overflow: hidden;
@@ -727,14 +727,14 @@
 
 .ai-settings-memory-summary {
   margin-left: 8px;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   font-weight: normal;
   color: var(--vscode-descriptionForeground, #888);
 }
 
 .ai-settings-memory-stats {
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-descriptionForeground, #888);
   background: var(--vscode-textBlockQuote-background, rgba(255, 255, 255, 0.04));
   border-radius: 4px;
@@ -743,7 +743,7 @@
 
 .ai-settings-memory-subheader {
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-foreground, #ccc);
   margin: 12px 0 6px;
   padding-bottom: 4px;
@@ -763,7 +763,7 @@
   padding: 12px 16px;
   font-style: italic;
   color: var(--vscode-descriptionForeground, #888);
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
 }
 
 .ai-settings-memory-item {
@@ -787,13 +787,13 @@
 }
 
 .ai-settings-memory-item-date {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   font-weight: 500;
   color: var(--vscode-foreground, #ccc);
 }
 
 .ai-settings-memory-item-meta {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #888);
 }
 
@@ -802,10 +802,10 @@
   background: none;
   border: none;
   color: var(--vscode-descriptionForeground, #888);
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   cursor: pointer;
   padding: 2px 6px;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   line-height: 1;
   opacity: 0;
   transition: opacity 0.12s, color 0.12s;
@@ -821,7 +821,7 @@
 }
 
 .ai-settings-memory-item-summary {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-descriptionForeground, #888);
   margin-top: 4px;
   line-height: 1.4;
@@ -837,15 +837,15 @@
 
 .ai-settings-memory-concept-name {
   font-weight: 500;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-foreground, #ccc);
 }
 
 .ai-settings-memory-concept-category {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #888);
   padding: 1px 6px;
-  border-radius: 8px;
+  border-radius: var(--parallx-radius-lg);
   background: var(--vscode-badge-background, rgba(255, 255, 255, 0.08));
 }
 
@@ -854,7 +854,7 @@
   align-items: center;
   gap: 10px;
   margin-top: 4px;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
 }
 
 .ai-settings-memory-mastery-wrap {
@@ -864,7 +864,7 @@
 }
 
 .ai-settings-memory-mastery-label {
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   color: var(--vscode-descriptionForeground, #888);
 }
 
@@ -873,7 +873,7 @@
   width: 60px;
   height: 6px;
   background: var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   overflow: hidden;
 }
 
@@ -881,12 +881,12 @@
   display: block;
   height: 100%;
   background: var(--vscode-testing-iconPassed, #73c991);
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   transition: width 0.15s ease;
 }
 
 .ai-settings-memory-decay {
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   color: var(--vscode-descriptionForeground, #888);
 }
 
@@ -896,13 +896,13 @@
 
 .ai-settings-memory-pref-key {
   font-weight: 500;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-foreground, #ccc);
-  font-family: var(--vscode-editor-font-family, monospace);
+  font-family: var(--parallx-fontFamily-mono);
 }
 
 .ai-settings-memory-pref-value {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-descriptionForeground, #888);
   flex: 1;
   min-width: 0;
@@ -912,7 +912,7 @@
 }
 
 .ai-settings-memory-pref-meta {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #888);
   margin-top: 2px;
 }
@@ -927,9 +927,9 @@
   background: none;
   border: 1px solid var(--vscode-errorForeground, #f48771);
   color: var(--vscode-errorForeground, #f48771);
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   padding: 4px 12px;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   cursor: pointer;
   transition: background 0.12s;
 }
@@ -944,7 +944,7 @@
   background: var(--vscode-inputValidation-warningBackground, rgba(204, 167, 0, 0.1));
   border: 1px solid var(--vscode-editorWarning-foreground, #cca700);
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-foreground, #ccc);
 }
 
@@ -952,10 +952,10 @@
   background: var(--vscode-errorForeground, #f48771);
   border: none;
   color: var(--vscode-editor-background, #1e1e1e);
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   font-weight: 600;
   padding: 3px 10px;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   cursor: pointer;
   margin-left: 8px;
 }
@@ -968,9 +968,9 @@
   background: none;
   border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
   color: var(--vscode-foreground, #ccc);
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   padding: 3px 10px;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   cursor: pointer;
   margin-left: 4px;
 }
@@ -985,7 +985,7 @@
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   font-weight: 600;
   color: var(--vscode-foreground, #ccc);
   margin-bottom: 8px;
@@ -993,7 +993,7 @@
 
 .ai-settings-agent-list__header-desc {
   font-weight: normal;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #888);
 }
 
@@ -1034,7 +1034,7 @@
 }
 
 .ai-settings-agent-card__name {
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   font-weight: 500;
   color: var(--vscode-foreground, #ccc);
   min-width: 0;
@@ -1048,9 +1048,9 @@
 }
 
 .ai-settings-agent-card__badge {
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   padding: 1px 6px;
-  border-radius: 8px;
+  border-radius: var(--parallx-radius-lg);
   background: var(--vscode-badge-background, rgba(255, 255, 255, 0.08));
   color: var(--vscode-descriptionForeground, #888);
   white-space: nowrap;
@@ -1063,12 +1063,12 @@
 
 .ai-settings-agent-card__meta {
   margin-left: auto;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #888);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: var(--vscode-editor-font-family, monospace);
+  font-family: var(--parallx-fontFamily-mono);
 }
 
 .ai-settings-agent-card__actions {
@@ -1087,10 +1087,10 @@
   background: none;
   border: none;
   color: var(--vscode-descriptionForeground, #888);
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   cursor: pointer;
   padding: 2px 4px;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   line-height: 1;
 }
 
@@ -1117,7 +1117,7 @@
 
 .ai-settings-agent-card__field-label {
   display: block;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   font-weight: 500;
   color: var(--vscode-descriptionForeground, #888);
   margin-bottom: 4px;
@@ -1129,10 +1129,10 @@
   background: var(--vscode-input-background, #3c3c3c);
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, rgba(255, 255, 255, 0.1));
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   padding: 4px 8px;
-  font-size: 12px;
-  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
+  font-size: var(--parallx-fontSize-base);
+  font-family: var(--parallx-fontFamily-ui);
   outline: none;
   transition: border-color 0.12s;
 }
@@ -1149,7 +1149,7 @@ textarea.ai-settings-agent-card__field-input {
 
 input[type="number"].ai-settings-agent-card__field-input {
   max-width: 100px;
-  font-family: var(--vscode-editor-font-family, monospace);
+  font-family: var(--parallx-fontFamily-mono);
 }
 
 .ai-settings-agent-card__btn-row {
@@ -1162,9 +1162,9 @@ input[type="number"].ai-settings-agent-card__field-input {
   background: var(--vscode-button-background, #0e639c);
   color: var(--vscode-button-foreground, #fff);
   border: none;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   padding: 4px 14px;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   cursor: pointer;
   transition: opacity 0.12s;
 }
@@ -1177,9 +1177,9 @@ input[type="number"].ai-settings-agent-card__field-input {
   background: none;
   border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
   color: var(--vscode-foreground, #ccc);
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   padding: 4px 14px;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   cursor: pointer;
 }
 
@@ -1193,7 +1193,7 @@ input[type="number"].ai-settings-agent-card__field-input {
   background: none;
   border: 1px dashed var(--vscode-widget-border, rgba(255, 255, 255, 0.15));
   color: var(--vscode-textLink-foreground, #3794ff);
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   padding: 6px 12px;
   border-radius: 4px;
   cursor: pointer;

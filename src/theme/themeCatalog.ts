@@ -8,6 +8,7 @@ import type { ThemeSource } from './themeTypes.js';
 import type { ThemeCatalogEntry } from './themeTypes.js';
 export type { ThemeCatalogEntry } from './themeTypes.js';
 import { IColorRegistry } from './colorRegistry.js';
+import type { IDesignTokenRegistry } from './designTokenRegistry.js';
 
 // ─── Static imports of built-in theme JSON ───────────────────────────────────
 
@@ -37,8 +38,8 @@ export function getAvailableThemes(): readonly ThemeCatalogEntry[] {
 /**
  * Resolve a catalog entry to a ColorThemeData ready for application.
  */
-export function resolveTheme(entry: ThemeCatalogEntry, registry: IColorRegistry): ColorThemeData {
-  return ColorThemeData.fromSource(entry.source, registry);
+export function resolveTheme(entry: ThemeCatalogEntry, registry: IColorRegistry, designTokenRegistry?: IDesignTokenRegistry): ColorThemeData {
+  return ColorThemeData.fromSource(entry.source, registry, designTokenRegistry);
 }
 
 /**

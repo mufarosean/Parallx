@@ -27,6 +27,7 @@ export interface ThemeSource {
   readonly label: string;
   readonly uiTheme: 'vs-dark' | 'vs' | 'hc-black' | 'hc-light';
   readonly colors: Record<string, string>;
+  readonly designTokens?: Record<string, string>;
 }
 
 // ─── Color Theme ─────────────────────────────────────────────────────────────

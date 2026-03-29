@@ -158,6 +158,8 @@ import { initFileEditorSetup } from './workbenchFileEditorSetup.js';
 // Theme System (M5 Capability 1–3)
 import { colorRegistry } from '../theme/colorRegistry.js';
 import '../theme/workbenchColors.js'; // side-effect: registers all color tokens
+import { designTokenRegistry } from '../theme/designTokenRegistry.js';
+import '../theme/workbenchDesignTokens.js'; // side-effect: registers all design tokens
 import { ThemeService } from '../services/themeService.js';
 import {
   findThemeById,
@@ -828,8 +830,8 @@ export class Workbench extends Layout {
     // Restore persisted theme or fall back to Dark Modern.
     const persistedThemeId = localStorage.getItem(THEME_STORAGE_KEY) ?? DEFAULT_THEME_ID;
     const themeEntry = findThemeById(persistedThemeId) ?? findThemeById(DEFAULT_THEME_ID)!;
-    const themeData = resolveTheme(themeEntry, colorRegistry);
-    const themeService = this._register(new ThemeService(colorRegistry, themeData));
+    const themeData = resolveTheme(themeEntry, colorRegistry, designTokenRegistry);
+    const themeService = this._register(new ThemeService(colorRegistry, themeData, designTokenRegistry));
     themeService.applyTheme(themeData);
     this._services.registerInstance(IThemeService, themeService);
 

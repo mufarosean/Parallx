@@ -52,7 +52,7 @@
 /* ── Label ── */
 
 .ui-toggle__label {
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   line-height: 20px;
   color: var(--vscode-foreground, #ccc);
 }

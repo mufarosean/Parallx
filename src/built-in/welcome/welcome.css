@@ -11,7 +11,7 @@
   overflow-y: auto;
   background: var(--vscode-editor-background, #1e1e1e);
   color: var(--vscode-foreground, #cccccc);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--parallx-fontFamily-ui);
 }
 
 .welcome-wrapper {
@@ -38,7 +38,7 @@
 
 /* Version label */
 .welcome-version {
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   color: var(--vscode-descriptionForeground, #888);
   margin-bottom: 32px;
 }
@@ -66,7 +66,7 @@
 
 /* Section headings (Start, Help, Recent) */
 .welcome-section-title {
-  font-size: 16px;
+  font-size: var(--parallx-fontSize-xl);
   font-weight: 600;
   color: var(--vscode-foreground, #e0e0e0);
   margin: 0 0 12px;
@@ -87,7 +87,7 @@
   align-items: center;
   gap: 8px;
   padding: 4px 0;
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   cursor: pointer;
 }
 
@@ -96,7 +96,7 @@
 }
 
 .welcome-action-icon {
-  font-size: 16px;
+  font-size: var(--parallx-fontSize-xl);
 }
 
 .welcome-action-text {
@@ -105,7 +105,7 @@
 
 .welcome-action-hint {
   color: var(--vscode-descriptionForeground, #888);
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   margin-left: auto;
 }
 
@@ -113,7 +113,7 @@
 
 /* Category labels (Workspaces / Files) */
 .welcome-category-label {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--vscode-descriptionForeground, #888);
@@ -126,7 +126,7 @@
 
 /* Empty placeholder */
 .welcome-empty {
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   color: var(--vscode-descriptionForeground, #888);
   padding: 4px 0;
 }
@@ -137,9 +137,9 @@
   align-items: center;
   gap: 8px;
   padding: 3px 4px;
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
 }
 
 .welcome-recent-row:hover {
@@ -147,7 +147,7 @@
 }
 
 .welcome-recent-icon {
-  font-size: 14px;
+  font-size: var(--parallx-fontSize-lg);
   flex-shrink: 0;
 }
 
@@ -165,7 +165,7 @@
 
 .welcome-recent-detail {
   color: var(--vscode-descriptionForeground, #888);
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -173,7 +173,7 @@
 
 /* Footer */
 .welcome-footer {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-descriptionForeground, #555);
   margin-top: 24px;
   text-align: center;

@@ -35,7 +35,7 @@
 
 .image-error {
   color: var(--vscode-errorForeground, #f48771);
-  font-size: 14px;
+  font-size: var(--parallx-fontSize-lg);
   padding: 24px;
   text-align: center;
 }
@@ -44,7 +44,7 @@
   height: 24px;
   line-height: 24px;
   padding: 0 12px;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-statusBar-foreground, #ccc);
   background: var(--vscode-statusBar-background, #007acc);
   text-align: center;
