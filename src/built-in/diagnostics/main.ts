@@ -8,12 +8,14 @@ import { $ } from '../../ui/dom.js';
 import type { IDiagnosticResult } from '../../services/serviceTypes.js';
 import { IDiagnosticsService } from '../../services/serviceTypes.js';
 
-// ── SVG Icons (Lucide spec: 24×24, stroke-width 2, round caps/joins) ────────
+import { getIcon } from '../../ui/iconRegistry.js';
 
-const ICON_PASS = `<svg viewBox="0 0 24 24" fill="none" stroke="var(--parallx-success-fg, #4ec9b0)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-const ICON_FAIL = `<svg viewBox="0 0 24 24" fill="none" stroke="var(--parallx-error-fg, #f44747)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
-const ICON_WARN = `<svg viewBox="0 0 24 24" fill="none" stroke="var(--parallx-warning-fg, #cca700)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
-const ICON_REFRESH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15A9 9 0 1 1 21 12"/></svg>`;
+// ── SVG Icons — from the central Lucide icon registry ────────────────────────
+
+const ICON_PASS = getIcon('check')!;
+const ICON_FAIL = getIcon('close')!;
+const ICON_WARN = getIcon('alert-triangle')!;
+const ICON_REFRESH = getIcon('refresh')!;
 
 // ── Local API type ───────────────────────────────────────────────────────────
 

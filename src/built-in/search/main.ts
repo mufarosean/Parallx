@@ -14,7 +14,7 @@
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $,  hide, show } from '../../ui/dom.js';
-import { getFileTypeIcon } from '../../ui/iconRegistry.js';
+import { getFileTypeIcon, getIcon } from '../../ui/iconRegistry.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -202,7 +202,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   _toggleReplaceBtn = $('button');
   _toggleReplaceBtn.className = 'search-toggle-replace';
   _toggleReplaceBtn.title = 'Toggle Replace';
-  _toggleReplaceBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/></svg>';
+  _toggleReplaceBtn.innerHTML = getIcon('toggle-replace')!;
   _toggleReplaceBtn.addEventListener('click', () => {
     _showReplace = !_showReplace;
     _toggleReplaceBtn!.classList.toggle('active', _showReplace);

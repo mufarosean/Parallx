@@ -47,6 +47,7 @@ import { PdfEditorInput } from './pdfEditorInput.js';
 import { $, hide, show, startDrag, endDrag } from '../../ui/dom.js';
 import { ContextMenu } from '../../ui/contextMenu.js';
 import { toDisposable } from '../../platform/lifecycle.js';
+import { getIcon } from '../../ui/iconRegistry.js';
 
 const PANE_ID = 'pdf-editor-pane';
 const PDFJS_CMAP_URL = './dist/renderer/pdfjs/cmaps/';
@@ -56,25 +57,25 @@ const PDFJS_WASM_URL = './dist/renderer/pdfjs/wasm/';
 // TextLayerMode is not exported from pdf_viewer.mjs
 const TEXT_LAYER_ENABLE = 1;
 
-// ─── SVG icons (Lucide spec: 24×24, stroke-width 2, round caps/joins) ─────
+// ─── SVG icons — from the central Lucide icon registry ─────────────────────
 
 const ICON = {
-  chevronLeft:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>',
-  chevronRight: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
-  chevronUp:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>',
-  chevronDown:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
-  zoomOut:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>',
-  zoomIn:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>',
-  fitWidth:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8l4 4-4 4M6 8l-4 4 4 4"/><line x1="2" y1="12" x2="22" y2="12"/></svg>',
-  fitPage:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>',
-  search:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
-  listTree:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="7" y1="12" x2="21" y2="12"/><line x1="11" y1="18" x2="21" y2="18"/></svg>',
-  grid:         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>',
-  rotate:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15A9 9 0 1 1 21 12"/></svg>',
-  spread:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="8" height="18" rx="1"/><rect x="14" y="3" width="8" height="18" rx="1"/></svg>',
-  print:        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>',
-  openExt:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
-  close:        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+  chevronLeft:  getIcon('chevron-left')!,
+  chevronRight: getIcon('chevron-right')!,
+  chevronUp:    getIcon('chevron-up')!,
+  chevronDown:  getIcon('chevron-down')!,
+  zoomOut:      getIcon('zoom-out')!,
+  zoomIn:       getIcon('zoom-in')!,
+  fitWidth:     getIcon('fit-width')!,
+  fitPage:      getIcon('fit-page')!,
+  search:       getIcon('search')!,
+  listTree:     getIcon('list-tree')!,
+  grid:         getIcon('grid')!,
+  rotate:       getIcon('rotate')!,
+  spread:       getIcon('spread')!,
+  print:        getIcon('printer')!,
+  openExt:      getIcon('open')!,
+  close:        getIcon('close')!,
 } as const;
 
 // ─── Outline types ───────────────────────────────────────────────────────

@@ -13,15 +13,17 @@ import { IIndexingPipelineService, IVectorStoreService } from '../../services/se
 import type { IIndexingPipelineService as IndexingPipelineServiceShape } from '../../services/serviceTypes.js';
 import type { IndexingProgress, IndexingSourceResult } from '../../services/indexingPipeline.js';
 
-// ── SVG Icons (Lucide spec: 24×24, stroke-width 2, round caps/joins) ────────
+import { getIcon } from '../../ui/iconRegistry.js';
 
-const ICON_CHECK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-const ICON_SKIP = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
-const ICON_ERROR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
-const ICON_PAGE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg>`;
-const ICON_FILE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v6h6"/></svg>`;
-const ICON_CLEAR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
-const ICON_FILTER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>`;
+// ── SVG Icons — from the central Lucide icon registry ────────────────────────
+
+const ICON_CHECK = getIcon('check')!;
+const ICON_SKIP = getIcon('ban')!;
+const ICON_ERROR = getIcon('close')!;
+const ICON_PAGE = getIcon('page')!;
+const ICON_FILE = getIcon('file')!;
+const ICON_CLEAR = getIcon('circle-x')!;
+const ICON_FILTER = getIcon('db-filter')!;
 
 // ── Local API type ───────────────────────────────────────────────────────────
 
