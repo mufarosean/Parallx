@@ -623,7 +623,7 @@ export class EditorGroupView extends Disposable implements IGridView {
       const name = activeEditor.name.toLowerCase();
       if (name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.mdx')) {
         const previewBtn = this._createToolbarButton(
-          `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h12v12H2V2zm1 1v10h10V3H3zm1 1h5v2H4V4zm0 3h8v1H4V7zm0 2h8v1H4V9zm0 2h5v1H4v-1z"/></svg>`,
+          `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`,
           'Open Markdown Preview to the Side (Ctrl+K V)',
           () => { this._onDidRequestMarkdownPreview.fire(); },
           true
@@ -635,7 +635,7 @@ export class EditorGroupView extends Disposable implements IGridView {
 
     // Split button — SVG matching VS Code's split-editor codicon
     const splitBtn = this._createToolbarButton(
-      `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M14 1H2a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zm0 13H9V2h5v12zM2 2h6v12H2V2z"/></svg>`,
+      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>`,
       'Split Editor Right',
       () => { this._onDidRequestSplit.fire(GroupDirection.Right); },
       true

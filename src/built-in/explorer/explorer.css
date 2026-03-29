@@ -119,8 +119,8 @@
   align-items: center;
   margin-right: 4px;
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: var(--parallx-icon-size-sm, 16px);
+  height: var(--parallx-icon-size-sm, 16px);
 }
 
 /* ── Label ── */
@@ -242,8 +242,8 @@
 
 .open-editors-icon {
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: var(--parallx-icon-size-sm, 16px);
+  height: var(--parallx-icon-size-sm, 16px);
   margin-right: 4px;
   font-size: 9px;
   font-weight: 600;
@@ -262,8 +262,8 @@
 
 .open-editors-close {
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: var(--parallx-icon-size-sm, 16px);
+  height: var(--parallx-icon-size-sm, 16px);
   display: flex;
   align-items: center;
   justify-content: center;

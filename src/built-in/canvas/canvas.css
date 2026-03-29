@@ -1606,8 +1606,8 @@
 }
 
 .canvas-file-icon {
-  width: 32px;
-  height: 32px;
+  width: var(--parallx-icon-size-xl, 32px);
+  height: var(--parallx-icon-size-xl, 32px);
   color: rgba(255, 255, 255, 0.5);
   display: flex;
   align-items: center;

@@ -202,7 +202,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   _toggleReplaceBtn = $('button');
   _toggleReplaceBtn.className = 'search-toggle-replace';
   _toggleReplaceBtn.title = 'Toggle Replace';
-  _toggleReplaceBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M11 3.5L7.5 0 6 1.5 8 3.5H4.5A3.5 3.5 0 001 7v1h1.5V7A2 2 0 014.5 5H8l-2 2L7.5 8.5 11 5V3.5z" fill="currentColor"/></svg>';
+  _toggleReplaceBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/></svg>';
   _toggleReplaceBtn.addEventListener('click', () => {
     _showReplace = !_showReplace;
     _toggleReplaceBtn!.classList.toggle('active', _showReplace);

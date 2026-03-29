@@ -97,8 +97,8 @@
 }
 
 .parallx-terminal-toolbar-btn svg {
-  width: 14px;
-  height: 14px;
+  width: var(--parallx-icon-size-xs, 14px);
+  height: var(--parallx-icon-size-xs, 14px);
 }
 
 /* ── ANSI color support (basic) ── */

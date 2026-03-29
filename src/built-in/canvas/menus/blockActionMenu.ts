@@ -159,7 +159,7 @@ export class BlockActionMenuController implements ICanvasMenu {
     this._blockActionMenu.appendChild(header);
 
     // Turn into
-    const turnIntoSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 7C13 4.24 10.76 2 8 2C5.24 2 3 4.24 3 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M3 9C3 11.76 5.24 14 8 14C10.76 14 13 11.76 13 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M1 7L3 5L5 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 9L13 11L11 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const turnIntoSvg = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.33" stroke-linecap="round" stroke-linejoin="round"><path d="M13 7C13 4.24 10.76 2 8 2C5.24 2 3 4.24 3 7"/><path d="M3 9C3 11.76 5.24 14 8 14C10.76 14 13 11.76 13 9"/><path d="M1 7L3 5L5 7"/><path d="M15 9L13 11L11 9"/></svg>';
     const turnIntoItem = this._createActionItem('Turn into', turnIntoSvg, true);
     turnIntoItem.addEventListener('mouseenter', () => {
       if (this._turnIntoHideTimer) { clearTimeout(this._turnIntoHideTimer); this._turnIntoHideTimer = null; }
@@ -174,7 +174,7 @@ export class BlockActionMenuController implements ICanvasMenu {
     this._blockActionMenu.appendChild(turnIntoItem);
 
     // Color
-    const colorSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><text x="3" y="11" font-size="11" font-weight="700" fill="currentColor" font-family="sans-serif">A</text><rect x="2" y="13" width="12" height="2" rx="0.5" fill="currentColor" opacity="0.5"/></svg>';
+    const colorSvg = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.33" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2L4 12"/><path d="M8 2l4 10"/><path d="M5.5 8.5h5"/><line x1="3" y1="14" x2="13" y2="14" stroke-width="2" stroke-opacity="0.5"/></svg>';
     const colorItem = this._createActionItem('Color', colorSvg, true);
     colorItem.addEventListener('mouseenter', () => {
       if (this._colorHideTimer) { clearTimeout(this._colorHideTimer); this._colorHideTimer = null; }

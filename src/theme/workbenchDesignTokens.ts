@@ -94,3 +94,11 @@ reg('shadow.lg',
   '0 4px 16px rgba(0,0,0,0.6)',
   '0 4px 16px rgba(0,0,0,0.2)',
 );
+
+// ─── Icon Size ───────────────────────────────────────────────────────────────
+
+reg('icon.size.xs', 'Extra small icons (inline indicators)',  '14px', '14px', '14px', '14px');
+reg('icon.size.sm', 'Small icons (tree items, badges)',       '16px', '16px', '16px', '16px');
+reg('icon.size.md', 'Medium icons (action buttons)',          '18px', '18px', '18px', '18px');
+reg('icon.size.lg', 'Large icons (activity bar, toolbar)',    '24px', '24px', '24px', '24px');
+reg('icon.size.xl', 'Extra large icons (empty states)',       '32px', '32px', '32px', '32px');

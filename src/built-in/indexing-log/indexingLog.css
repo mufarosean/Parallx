@@ -150,27 +150,27 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: var(--parallx-icon-size-sm, 16px);
+  height: var(--parallx-icon-size-sm, 16px);
 }
 
 .indexing-log-icon svg {
-  width: 16px;
-  height: 16px;
+  width: var(--parallx-icon-size-sm, 16px);
+  height: var(--parallx-icon-size-sm, 16px);
 }
 
 .indexing-log-type-icon {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: var(--parallx-icon-size-sm, 16px);
+  height: var(--parallx-icon-size-sm, 16px);
   color: var(--vscode-descriptionForeground, #888);
 }
 
 .indexing-log-type-icon svg {
-  width: 14px;
-  height: 14px;
+  width: var(--parallx-icon-size-xs, 14px);
+  height: var(--parallx-icon-size-xs, 14px);
 }
 
 .indexing-log-name {

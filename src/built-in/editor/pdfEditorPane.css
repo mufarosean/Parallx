@@ -74,8 +74,8 @@
 }
 
 .pdf-toolbar-btn svg {
-  width: 16px;
-  height: 16px;
+  width: var(--parallx-icon-size-sm, 16px);
+  height: var(--parallx-icon-size-sm, 16px);
   flex-shrink: 0;
 }
 

@@ -16,6 +16,7 @@ import { $ } from '../ui/dom.js';
 import type { TitlebarPart } from '../parts/titlebarPart.js';
 import type { ActivityBarPart } from '../parts/activityBarPart.js';
 import type { KeybindingService } from '../services/keybindingService.js';
+import { getIcon } from '../ui/iconRegistry.js';
 
 // ─── Dependencies ────────────────────────────────────────────────────────────
 
@@ -162,19 +163,10 @@ export class MenuBuilder extends Disposable {
     gearBtn.dataset.iconId = 'manage-gear';
     gearBtn.title = 'Manage';
 
-    // Use VS Code's codicon gear SVG (16×16 viewBox for proper sizing)
+    // Use registered stroke-based gear icon
     const iconLabel = $('span');
     iconLabel.classList.add('activity-bar-icon-label');
-    iconLabel.innerHTML =
-      '<svg width="24" height="24" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">' +
-      '<path fill-rule="evenodd" clip-rule="evenodd" d="M14.54 11.81L13.12 ' +
-      '11.03L13.56 10.05L15.18 9.72L15.18 7.28L13.56 6.95L13.12 5.97L14.54 ' +
-      '4.19L12.81 2.46L11.03 3.88L10.05 3.44L9.72 1.82L7.28 1.82L6.95 ' +
-      '3.44L5.97 3.88L4.19 2.46L2.46 4.19L3.88 5.97L3.44 6.95L1.82 7.28' +
-      'L1.82 9.72L3.44 10.05L3.88 11.03L2.46 12.81L4.19 14.54L5.97 13.12' +
-      'L6.95 13.56L7.28 15.18L9.72 15.18L10.05 13.56L11.03 13.12L12.81 ' +
-      '14.54L14.54 11.81ZM8.5 11C9.88 11 11 9.88 11 8.5C11 7.12 9.88 6 ' +
-      '8.5 6C7.12 6 6 7.12 6 8.5C6 9.88 7.12 11 8.5 11Z" fill="currentColor"/></svg>';
+    iconLabel.innerHTML = getIcon('gear');
     gearBtn.appendChild(iconLabel);
 
     // Toggle: click opens menu, click again closes it

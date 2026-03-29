@@ -403,9 +403,9 @@ html, body {
 }
 
 .activity-bar-icon-label svg {
-  width: 24px;
-  height: 24px;
-  fill: currentColor;
+  width: var(--parallx-icon-size-lg, 24px);
+  height: var(--parallx-icon-size-lg, 24px);
+  color: currentColor;
 }
 
 /* ── Activity Bar — Active Item Indicator ──

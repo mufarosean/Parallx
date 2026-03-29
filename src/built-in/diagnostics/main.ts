@@ -8,12 +8,12 @@ import { $ } from '../../ui/dom.js';
 import type { IDiagnosticResult } from '../../services/serviceTypes.js';
 import { IDiagnosticsService } from '../../services/serviceTypes.js';
 
-// ── SVG Icons ────────────────────────────────────────────────────────────────
+// ── SVG Icons (Lucide spec: 24×24, stroke-width 2, round caps/joins) ────────
 
-const ICON_PASS = `<svg width="16" height="16" viewBox="0 0 16 16" fill="var(--parallx-success-fg, #4ec9b0)"><path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/></svg>`;
-const ICON_FAIL = `<svg width="16" height="16" viewBox="0 0 16 16" fill="var(--parallx-error-fg, #f44747)"><path d="M11.06 4.94a.75.75 0 010 1.06L9.06 8l2 2a.75.75 0 11-1.06 1.06L8 9.06l-2 2a.75.75 0 01-1.06-1.06l2-2-2-2a.75.75 0 011.06-1.06L8 6.94l2-2a.75.75 0 011.06 0z"/></svg>`;
-const ICON_WARN = `<svg width="16" height="16" viewBox="0 0 16 16" fill="var(--parallx-warning-fg, #cca700)"><path d="M8 1l7 14H1L8 1zm0 3L3.2 13h9.6L8 4zm-.75 3.5h1.5v3h-1.5v-3zm0 4h1.5v1.5h-1.5v-1.5z"/></svg>`;
-const ICON_REFRESH = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M13.45 5.66A6 6 0 003.17 4.5H5V6H1V2h1.5v1.76A7.5 7.5 0 0115 7.5h-1.5a.11.11 0 00-.05-.16v-.02l-.01-.02A5.97 5.97 0 0013.45 5.66zM2.55 10.34A6 6 0 0012.83 11.5H11V10h4v4h-1.5v-1.76A7.5 7.5 0 011 8.5h1.5l.01.02.01.02c.08.6.26 1.2.53 1.76l.01.02.01.02z"/></svg>`;
+const ICON_PASS = `<svg viewBox="0 0 24 24" fill="none" stroke="var(--parallx-success-fg, #4ec9b0)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+const ICON_FAIL = `<svg viewBox="0 0 24 24" fill="none" stroke="var(--parallx-error-fg, #f44747)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+const ICON_WARN = `<svg viewBox="0 0 24 24" fill="none" stroke="var(--parallx-warning-fg, #cca700)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+const ICON_REFRESH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15A9 9 0 1 1 21 12"/></svg>`;
 
 // ── Local API type ───────────────────────────────────────────────────────────
 

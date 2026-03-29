@@ -125,8 +125,8 @@
 }
 
 .parallx-chat-input-submit svg {
-  width: 16px;
-  height: 16px;
+  width: var(--parallx-icon-size-sm, 16px);
+  height: var(--parallx-icon-size-sm, 16px);
 }
 
 .parallx-chat-input-submit:hover {
@@ -1279,8 +1279,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: var(--parallx-icon-size-sm, 16px);
+  height: var(--parallx-icon-size-sm, 16px);
   flex-shrink: 0;
   color: var(--vscode-descriptionForeground, #999);
 }
@@ -1290,8 +1290,8 @@
 }
 
 .parallx-mention-item-icon svg {
-  width: 14px;
-  height: 14px;
+  width: var(--parallx-icon-size-xs, 14px);
+  height: var(--parallx-icon-size-xs, 14px);
 }
 
 .parallx-mention-item-text {
