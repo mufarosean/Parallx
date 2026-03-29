@@ -48,6 +48,7 @@ import { $, hide, show, startDrag, endDrag } from '../../ui/dom.js';
 import { ContextMenu } from '../../ui/contextMenu.js';
 import { toDisposable } from '../../platform/lifecycle.js';
 import { getIcon } from '../../ui/iconRegistry.js';
+import { setupTooltip } from '../../ui/tooltip.js';
 
 const PANE_ID = 'pdf-editor-pane';
 const PDFJS_CMAP_URL = './dist/renderer/pdfjs/cmaps/';
@@ -668,7 +669,7 @@ export class PdfEditorPane extends EditorPane {
     const b = document.createElement('button');
     b.classList.add('pdf-toolbar-btn');
     b.innerHTML = svgOrText;
-    b.title = title;
+    setupTooltip(b, title);
     return b;
   }
 
@@ -1313,13 +1314,13 @@ export class PdfEditorPane extends EditorPane {
     const current = this._pdfViewer.spreadMode;
     if (current === SpreadMode.NONE) {
       this._pdfViewer.spreadMode = SpreadMode.ODD;
-      this._spreadBtn.title = 'Spread: Odd (click to cycle)';
+      setupTooltip(this._spreadBtn, 'Spread: Odd (click to cycle)');
     } else if (current === SpreadMode.ODD) {
       this._pdfViewer.spreadMode = SpreadMode.EVEN;
-      this._spreadBtn.title = 'Spread: Even (click to cycle)';
+      setupTooltip(this._spreadBtn, 'Spread: Even (click to cycle)');
     } else {
       this._pdfViewer.spreadMode = SpreadMode.NONE;
-      this._spreadBtn.title = 'Spread: Off (click to cycle)';
+      setupTooltip(this._spreadBtn, 'Spread: Off (click to cycle)');
     }
   }
 

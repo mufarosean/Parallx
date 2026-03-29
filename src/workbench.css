@@ -1943,3 +1943,31 @@ html, body {
   height: 100%;
   overflow: auto;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Custom Tooltip (replaces native title attribute)
+   VS Code ref: src/vs/base/browser/ui/hover/hoverWidget.ts
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+.parallx-tooltip {
+  position: fixed;
+  z-index: 100000;
+  max-width: 400px;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  color: var(--vscode-editorHoverWidget-foreground, #cccccc);
+  background: var(--vscode-editorHoverWidget-background, #252526);
+  border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+  border-radius: 3px;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+  animation: parallx-tooltip-fadein 0.1s ease-out;
+}
+
+@keyframes parallx-tooltip-fadein {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

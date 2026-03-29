@@ -30,6 +30,7 @@ import { SizeConstraints } from '../layout/layoutTypes.js';
 import { Emitter, Event } from '../platform/events.js';
 import { IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { $ } from '../ui/dom.js';
+import { setupTooltip } from '../ui/tooltip.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -451,7 +452,6 @@ export class ActivityBarPart extends Part {
     const btn = $('button');
     btn.classList.add('activity-bar-item');
     btn.dataset.iconId = descriptor.id;
-    btn.title = descriptor.label;
     btn.setAttribute('role', 'tab');
     btn.setAttribute('aria-label', descriptor.label);
     btn.setAttribute('aria-selected', 'false');
@@ -483,6 +483,9 @@ export class ActivityBarPart extends Part {
     const indicator = $('div');
     indicator.classList.add('activity-bar-active-indicator');
     btn.appendChild(indicator);
+
+    // Custom themed tooltip (replaces native title attribute)
+    setupTooltip(btn, descriptor.label, { placement: 'right' });
 
     btn.addEventListener('click', () => {
       this._onDidClickIcon.fire({

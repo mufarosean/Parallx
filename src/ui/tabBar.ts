@@ -12,6 +12,7 @@
 import { Disposable, DisposableStore, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { $, clearNode, addDisposableListener, toggleClass } from './dom.js';
+import { setupTooltip } from './tooltip.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -347,7 +348,7 @@ export class TabBar extends Disposable {
     tab.setAttribute('aria-selected', 'false');
     tab.dataset.tabId = item.id;
 
-    if (item.tooltip) tab.title = item.tooltip;
+    if (item.tooltip) setupTooltip(tab, item.tooltip);
 
     toggleClass(tab, 'ui-tab--italic', !!item.italic);
     toggleClass(tab, 'ui-tab--sticky', !!item.decorations?.pinned);
@@ -379,7 +380,7 @@ export class TabBar extends Disposable {
     const closable = item.closable ?? true;
     if (closable) {
       const closeEl = $('span.ui-tab-close', '×');
-      closeEl.title = 'Close';
+      setupTooltip(closeEl, 'Close');
       this._tabListeners.add(addDisposableListener(closeEl, 'click', (e) => {
         e.stopPropagation();
         this._onDidClose.fire(item.id);

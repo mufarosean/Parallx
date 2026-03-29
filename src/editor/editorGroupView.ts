@@ -28,6 +28,7 @@ import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
 import { TabBar, type ITabBarItem } from '../ui/tabBar.js';
 import { $, addDisposableListener } from '../ui/dom.js';
 import { getIcon } from '../ui/iconRegistry.js';
+import { setupTooltip } from '../ui/tooltip.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -651,7 +652,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     } else {
       btn.textContent = content;
     }
-    btn.title = title;
+    setupTooltip(btn, title);
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       onClick();
