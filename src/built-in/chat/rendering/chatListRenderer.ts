@@ -424,12 +424,12 @@ export class ChatListRenderer extends Disposable {
     root.appendChild(actions);
   }
 
-  /** Create the typing indicator (bouncing dots). */
+  /** Create the typing indicator (shimmer skeleton lines). */
   private _createTypingIndicator(): HTMLElement {
     const indicator = $('div.parallx-chat-typing-indicator');
     for (let i = 0; i < 3; i++) {
-      const dot = $('span.parallx-chat-typing-dot');
-      indicator.appendChild(dot);
+      const line = $('div.parallx-chat-typing-line');
+      indicator.appendChild(line);
     }
     return indicator;
   }

@@ -129,7 +129,7 @@ export class ChatInputPart extends Disposable {
     this._toolsBtn.setAttribute('aria-label', 'Configure AI Tools');
     this._toolsBtn.innerHTML = chatIcons.tools;
     this._toolsBtn.style.display = 'none'; // hidden until services wired
-    this._toolbar.appendChild(this._toolsBtn);
+    this._pickerSlot.appendChild(this._toolsBtn);
 
     this._register(addDisposableListener(this._toolsBtn, 'click', () => {
       this._onDidRequestOpenToolSettings.fire();

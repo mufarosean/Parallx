@@ -278,6 +278,12 @@ export interface IChatAttachmentBase {
  */
 export interface IChatFileAttachment extends IChatAttachmentBase {
   readonly kind: 'file';
+  /**
+   * Pre-resolved text content, populated at send time before reaching the participant.
+   * When present, the participant uses this directly (no I/O needed).
+   * When absent, falls back to reading from disk (legacy path).
+   */
+  readonly resolvedContent?: string;
 }
 
 /** A pasted or uploaded image attachment for multimodal chat turns. */
