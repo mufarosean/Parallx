@@ -312,11 +312,5 @@ export const THEME_EDITOR_MANIFEST: IToolManifest = {
     keybindings: [
       { command: 'theme-editor.open', key: 'Ctrl+Shift+T' },
     ],
-    viewContainers: [
-      { id: 'theme-editor-container', title: 'Theme Editor', icon: 'palette', location: 'auxiliaryBar' as const, hidden: true },
-    ],
-    views: [
-      { id: 'view.themeEditor', name: 'Theme Editor', defaultContainerId: 'theme-editor-container' },
-    ],
   },
 };

@@ -147,6 +147,20 @@
   font-style: italic;
 }
 
+.settings-quick-action-btn {
+  padding: 5px 14px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: var(--parallx-radius-sm, 4px);
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  font-size: var(--parallx-fontSize-sm);
+  cursor: pointer;
+}
+
+.settings-quick-action-btn:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
 .settings-empty-message {
   display: flex;
   align-items: center;

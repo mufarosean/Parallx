@@ -11,10 +11,11 @@ import './settingsEditorPane.css';
 import { EditorPane } from '../../editor/editorPane.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import type { IConfigurationPropertySchema } from '../../configuration/configurationTypes.js';
-import { IConfigurationService } from '../../services/serviceTypes.js';
+import { IConfigurationService, ICommandService } from '../../services/serviceTypes.js';
 import type { ServiceCollection } from '../../services/serviceCollection.js';
 import type { ConfigurationService } from '../../configuration/configurationService.js';
 import { $,  hide, show } from '../../ui/dom.js';
+import type { ICommandService as ICommandServiceType } from '../../services/serviceTypes.js';
 
 // ─── Pane ────────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,7 @@ export class SettingsEditorPane extends EditorPane {
   private _countLabel: HTMLElement | undefined;
   private _emptyMessage: HTMLElement | undefined;
   private _configService: ConfigurationService | undefined;
+  private _commandService: ICommandServiceType | undefined;
   private _allSchemas: IConfigurationPropertySchema[] = [];
   private _changeListener: { dispose(): void } | undefined;
 
@@ -76,9 +78,12 @@ export class SettingsEditorPane extends EditorPane {
   // ── Render input ──
 
   protected override async renderInput(_input: IEditorInput): Promise<void> {
-    // Resolve configuration service
+    // Resolve services
     this._configService = this._services.has(IConfigurationService)
       ? (this._services.get(IConfigurationService) as unknown as ConfigurationService)
+      : undefined;
+    this._commandService = this._services.has(ICommandService)
+      ? (this._services.get(ICommandService) as unknown as ICommandServiceType)
       : undefined;
 
     if (!this._configService) {
@@ -136,6 +141,11 @@ export class SettingsEditorPane extends EditorPane {
     // Render sections
     const fragment = document.createDocumentFragment();
 
+    // Always show the quick-actions section (Appearance, AI Settings, etc.)
+    if (!query) {
+      fragment.appendChild(this._createQuickActionsSection());
+    }
+
     if (grouped.size === 0 && this._allSchemas.length > 0) {
       // No matches
       if (this._emptyMessage) {
@@ -143,11 +153,8 @@ export class SettingsEditorPane extends EditorPane {
         show(this._emptyMessage, 'flex');
       }
     } else if (this._allSchemas.length === 0) {
-      // No registered settings at all
-      if (this._emptyMessage) {
-        this._emptyMessage.textContent = 'No settings have been registered by tools yet.';
-        show(this._emptyMessage, 'flex');
-      }
+      // No registered tool settings — quick actions section is still shown above
+      if (this._emptyMessage) hide(this._emptyMessage);
     } else {
       if (this._emptyMessage) hide(this._emptyMessage);
 
@@ -176,6 +183,87 @@ export class SettingsEditorPane extends EditorPane {
         ? `${filtered.length} of ${this._allSchemas.length}`
         : `${this._allSchemas.length} settings`;
     }
+  }
+
+  // ── Quick Actions Section ──
+
+  private _createQuickActionsSection(): HTMLElement {
+    const section = $('div');
+    section.classList.add('settings-section');
+
+    const title = $('h3');
+    title.classList.add('settings-section-title');
+    title.textContent = 'Appearance';
+    section.appendChild(title);
+
+    // Theme Editor button
+    const item = $('div');
+    item.classList.add('settings-item');
+
+    const keyRow = $('div');
+    keyRow.classList.add('settings-item-key-row');
+    const keyEl = $('span');
+    keyEl.classList.add('settings-item-key');
+    keyEl.textContent = 'Theme';
+    keyRow.appendChild(keyEl);
+    item.appendChild(keyRow);
+
+    const desc = $('div');
+    desc.classList.add('settings-item-description');
+    desc.textContent = 'Customize colors, fonts, and visual appearance of Parallx.';
+    item.appendChild(desc);
+
+    const controlEl = $('div');
+    controlEl.classList.add('settings-item-control');
+
+    const btn = $('button');
+    btn.classList.add('settings-quick-action-btn');
+    btn.textContent = 'Open Theme Editor';
+    btn.addEventListener('click', () => {
+      this._commandService?.executeCommand('theme-editor.open');
+    });
+    controlEl.appendChild(btn);
+
+    const hint = $('span');
+    hint.classList.add('settings-item-default');
+    hint.textContent = 'Ctrl+Shift+T';
+    controlEl.appendChild(hint);
+
+    item.appendChild(controlEl);
+    section.appendChild(item);
+
+    // AI Settings button
+    const aiItem = $('div');
+    aiItem.classList.add('settings-item');
+
+    const aiKeyRow = $('div');
+    aiKeyRow.classList.add('settings-item-key-row');
+    const aiKeyEl = $('span');
+    aiKeyEl.classList.add('settings-item-key');
+    aiKeyEl.textContent = 'AI Configuration';
+    aiKeyRow.appendChild(aiKeyEl);
+    aiItem.appendChild(aiKeyRow);
+
+    const aiDesc = $('div');
+    aiDesc.classList.add('settings-item-description');
+    aiDesc.textContent = 'Configure AI model, provider, and runtime settings.';
+    aiItem.appendChild(aiDesc);
+
+    const aiControlEl = $('div');
+    aiControlEl.classList.add('settings-item-control');
+
+    const aiBtn = $('button');
+    aiBtn.classList.add('settings-quick-action-btn');
+    aiBtn.textContent = 'Open AI Settings';
+    aiBtn.addEventListener('click', () => {
+      this._commandService?.executeCommand('ai-settings.open');
+    });
+    aiControlEl.appendChild(aiBtn);
+
+    aiItem.appendChild(aiControlEl);
+    section.appendChild(aiItem);
+
+    return section;
   }
 
   // ── Create individual setting item ──
