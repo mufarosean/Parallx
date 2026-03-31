@@ -245,9 +245,9 @@ export class ChatListRenderer extends Disposable {
     if (requestInProgress && messages.length > 0) {
       const lastAssistant = container.querySelector('.parallx-chat-message:last-child .parallx-chat-message-body');
       if (lastAssistant) {
-        // If no content yet, show typing indicator
+        // If no content yet and no typing indicator already present, show one
         const lastResponse = messages[messages.length - 1].response;
-        if (lastResponse.parts.length === 0) {
+        if (lastResponse.parts.length === 0 && !lastAssistant.querySelector('.parallx-chat-typing-indicator')) {
           const typing = this._createTypingIndicator();
           lastAssistant.appendChild(typing);
         }
@@ -424,12 +424,11 @@ export class ChatListRenderer extends Disposable {
     root.appendChild(actions);
   }
 
-  /** Create the typing indicator (shimmer skeleton lines). */
+  /** Create the typing indicator (compact dot pulse). */
   private _createTypingIndicator(): HTMLElement {
     const indicator = $('div.parallx-chat-typing-indicator');
     for (let i = 0; i < 3; i++) {
-      const line = $('div.parallx-chat-typing-line');
-      indicator.appendChild(line);
+      indicator.appendChild($('span.parallx-chat-typing-dot'));
     }
     return indicator;
   }

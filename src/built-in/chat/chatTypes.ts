@@ -416,6 +416,7 @@ export interface IChatWidgetServices {
   readonly getSession?: (sessionId: string) => IChatSession | undefined;
   readonly getSessions?: () => readonly IChatSession[];
   readonly deleteSession?: (sessionId: string) => void;
+  readonly updateSessionModel?: (sessionId: string, modelId: string) => void;
   readonly openFile?: (fullPath: string) => void;
   readonly openPage?: (pageId: string) => void;
   readonly openMemory?: (sessionId: string) => void;

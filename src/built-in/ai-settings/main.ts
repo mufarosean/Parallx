@@ -5,7 +5,7 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { IAISettingsService, IUnifiedAIConfigService, INotificationService, IWorkspaceMemoryService } from '../../services/serviceTypes.js';
+import { IAISettingsService, IUnifiedAIConfigService, INotificationService, IWorkspaceMemoryService, IMcpClientService } from '../../services/serviceTypes.js';
 import { ILanguageModelsService, ILanguageModelToolsService } from '../../services/chatTypes.js';
 import type { IToolPickerServices } from '../../services/chatTypes.js';
 import { AISettingsPanel } from '../../aiSettings/ui/aiSettingsPanel.js';
@@ -96,11 +96,16 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       }
     : undefined;
 
+  // Get the MCP Client service for MCP section (D1)
+  const mcpClientService = api.services.has(IMcpClientService)
+    ? api.services.get<import('../../openclaw/mcp/mcpClientService.js').McpClientService>(IMcpClientService)
+    : undefined;
+
   // Register view provider
   context.subscriptions.push(
     api.views.registerViewProvider('view.aiSettings', {
       createView(container: HTMLElement): IDisposable {
-        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService, toolPickerServices);
+        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService, toolPickerServices, mcpClientService);
         return _panel;
       },
     }),

@@ -835,6 +835,14 @@ export class ChatService extends Disposable implements IChatService {
     return session;
   }
 
+  updateSessionModel(sessionId: string, modelId: string): void {
+    const session = this._sessions.get(sessionId);
+    if (!session || session.modelId === modelId) return;
+    session.modelId = modelId;
+    this._schedulePersist(sessionId);
+    this._onDidChangeSession.fire(sessionId);
+  }
+
   deleteSession(sessionId: string): void {
     // Cancel any in-progress request
     const cts = this._activeCancellations.get(sessionId);

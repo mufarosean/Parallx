@@ -1037,6 +1037,8 @@ export interface IChatService extends IDisposable {
   setRuntimeTraceReporter?(reporter: ((trace: unknown) => void) | undefined): void;
   /** Late-bind a participant selector for switching the default chat surface between implementations. */
   setRuntimeParticipantResolver?(resolver: ((participantId: string) => string) | undefined): void;
+  /** Update the model ID for an existing session and persist. */
+  updateSessionModel(sessionId: string, modelId: string): void;
   /** Send a user message and orchestrate the full request pipeline. */
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<IChatParticipantResult>;
   /** Cancel the in-progress request for a session. */

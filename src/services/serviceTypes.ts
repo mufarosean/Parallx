@@ -1929,16 +1929,23 @@ export const IRuntimeHookRegistry = createServiceIdentifier<IRuntimeHookRegistry
 
 // ── D1: MCP Client Service ──────────────────────────────────────────────────
 
-import type { IMcpServerConfig, IMcpToolSchema, IMcpToolCallResult, McpConnectionState } from '../openclaw/mcp/mcpTypes.js';
+import type { IMcpServerConfig, IMcpToolSchema, IMcpToolCallResult, McpConnectionState, IMcpHealthInfo } from '../openclaw/mcp/mcpTypes.js';
 
 export interface IMcpClientService extends IDisposable {
+  initStorage(storage: IStorage): Promise<void>;
+  getConfiguredServers(): readonly IMcpServerConfig[];
+  addServerConfig(config: IMcpServerConfig): Promise<void>;
+  removeServerConfig(serverId: string): Promise<void>;
   connectServer(config: IMcpServerConfig): Promise<void>;
   disconnectServer(serverId: string): Promise<void>;
   getServerStatus(serverId: string): McpConnectionState;
   getConnectedServers(): readonly string[];
   listTools(serverId: string): Promise<readonly IMcpToolSchema[]>;
   callTool(serverId: string, toolName: string, args: Record<string, unknown>): Promise<IMcpToolCallResult>;
+  ping(serverId: string): Promise<number>;
+  getHealthInfo(serverId: string): IMcpHealthInfo | undefined;
   readonly onDidChangeStatus: Event<{ serverId: string; status: McpConnectionState }>;
+  readonly onDidReceiveNotification: Event<{ serverId: string; method: string; params?: Record<string, unknown> }>;
 }
 
 export const IMcpClientService = createServiceIdentifier<IMcpClientService>('IMcpClientService');

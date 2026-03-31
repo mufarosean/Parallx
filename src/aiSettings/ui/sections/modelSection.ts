@@ -1,11 +1,9 @@
-// modelSection.ts — Model settings section (M15 Task 2.6, F11-R3 stripped)
+// modelSection.ts — Model settings section (M15 Task 2.6)
 //
-// Fields (after F11-R3 dead settings removal):
+// Fields:
+//   - Default Model (dropdown populated from available Ollama models)
 //   - Creativity / Temperature (Slider 0.0–1.0, 5 labeled stops)
 //   - Max Response Tokens (InputBox, number, 0 = model default)
-//
-// Removed (F11-R3): Default Model (dead — runtime reads chatConfig, not unified config),
-// Context Window (dead — runtime reads from Ollama API getModelContextLength()).
 //
 // Temperature slider has labeled stops: Precise (0) · Focused (0.25) ·
 // Balanced (0.5) · Expressive (0.75) · Creative (1.0).
@@ -17,6 +15,7 @@ import { InputBox } from '../../../ui/inputBox.js';
 import type { IAISettingsService, AISettingsProfile } from '../../aiSettingsTypes.js';
 import { DEFAULT_PROFILE } from '../../aiSettingsDefaults.js';
 import { SettingsSection, createSettingRow } from '../sectionBase.js';
+import type { ILanguageModelsService } from '../../../services/chatTypes.js';
 
 // ─── ModelSection ────────────────────────────────────────────────────────────
 
@@ -26,12 +25,42 @@ export class ModelSection extends SettingsSection {
   private _temperatureValue!: HTMLElement;
   private _maxTokensInput!: InputBox;
   private _maxTokensWarning!: HTMLElement;
+  private _defaultModelSelect!: HTMLSelectElement;
 
-  constructor(service: IAISettingsService) {
+  constructor(service: IAISettingsService, private readonly _languageModelsService?: ILanguageModelsService) {
     super(service, 'model', 'Model');
   }
 
   build(): void {
+    // ── Default Model ──
+    const defaultModelRow = createSettingRow({
+      label: 'Default Model',
+      description: 'Model used for new chat sessions. Empty = auto-select the most recently used model.',
+      key: 'model.defaultModel',
+      onReset: () => this._service.updateActiveProfile({
+        model: { defaultModel: DEFAULT_PROFILE.model.defaultModel },
+      }),
+    });
+    this._defaultModelSelect = document.createElement('select');
+    this._defaultModelSelect.className = 'ai-settings-select';
+    this._defaultModelSelect.setAttribute('aria-label', 'Default model');
+    defaultModelRow.controlSlot.appendChild(this._defaultModelSelect);
+
+    // Populate model list
+    this._populateModelDropdown();
+
+    // Re-populate when models change
+    if (this._languageModelsService) {
+      this._register(this._languageModelsService.onDidChangeModels(() => this._populateModelDropdown()));
+    }
+
+    this._defaultModelSelect.addEventListener('change', () => {
+      const selected = this._defaultModelSelect.value;
+      this._service.updateActiveProfile({ model: { defaultModel: selected } });
+      this._notifySaved('model.defaultModel');
+    });
+    this._addRow(defaultModelRow.row);
+
     // ── Temperature ──
     const tempRow = createSettingRow({
       label: 'Creativity / Temperature',
@@ -104,6 +133,11 @@ export class ModelSection extends SettingsSection {
   }
 
   update(profile: AISettingsProfile): void {
+    // Default model
+    if (this._defaultModelSelect.value !== profile.model.defaultModel) {
+      this._defaultModelSelect.value = profile.model.defaultModel;
+    }
+
     // Temperature (service stores 0–1, slider uses 0–100)
     const tempPct = Math.round(profile.model.temperature * 100);
     if (this._temperatureSlider.value !== tempPct) {
@@ -118,5 +152,31 @@ export class ModelSection extends SettingsSection {
     }
     this._maxTokensWarning.style.display =
       (profile.model.maxTokens > 0 && profile.model.maxTokens < 200) ? '' : 'none';
+  }
+
+  private _populateModelDropdown(): void {
+    this._defaultModelSelect.innerHTML = '';
+
+    // "Auto" option (empty string = auto-select)
+    const autoOpt = document.createElement('option');
+    autoOpt.value = '';
+    autoOpt.textContent = 'Auto (most recently used)';
+    this._defaultModelSelect.appendChild(autoOpt);
+
+    if (!this._languageModelsService) return;
+
+    this._languageModelsService.getModels().then((models) => {
+      for (const model of models) {
+        const opt = document.createElement('option');
+        opt.value = model.id;
+        opt.textContent = `${model.displayName} (${model.parameterSize})`;
+        this._defaultModelSelect.appendChild(opt);
+      }
+      // Restore selection
+      const profile = this._service.getActiveProfile();
+      this._defaultModelSelect.value = profile.model.defaultModel || '';
+    }).catch(() => {
+      // Models not available — keep auto option only
+    });
   }
 }

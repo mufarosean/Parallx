@@ -23,10 +23,13 @@ function setupMcpBridge(ipcMain, getMainWindow) {
         ? args.filter((a) => typeof a === 'string')
         : [];
 
-      // Security: Use spawn (not exec), no shell, explicit args array
+      // Security: Use spawn (not exec), explicit args array.
+      // On Windows, shell: true is needed to resolve .cmd/.bat wrappers (e.g. npx.cmd).
+      // This is safe because args are an explicit array, not concatenated into a string.
+      const isWin = process.platform === 'win32';
       const child = spawn(command, safeArgs, {
         stdio: ['pipe', 'pipe', 'pipe'],
-        shell: false,
+        shell: isWin,
         env: { ...filterEnv(env) },
         windowsHide: true,
       });

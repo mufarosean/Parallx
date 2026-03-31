@@ -18,6 +18,7 @@ import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandServ
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices, registerUnifiedAIConfigService } from './workbenchServices.js';
 import { IChatService, ILanguageModelsService } from '../services/chatTypes.js';
+import { consolidateOrphanedSessions } from '../services/chatSessionPersistence.js';
 
 // Layout base class (VS Code: Layout → Workbench extends Layout)
 import {
@@ -2156,7 +2157,16 @@ export class Workbench extends Layout {
         chatService.setSessionManager(this._services.get(ISessionManager));
       }
 
-      chatService.restoreSessions().catch(() => { /* best-effort */ });
+      // Consolidate orphaned sessions from workspace ID drift, then restore.
+      const wsId = this._workspace?.id ?? '';
+      consolidateOrphanedSessions(this._databaseService as any, wsId)
+        .then((migrated) => {
+          if (migrated > 0) {
+            console.log('[Workbench] Consolidated %d orphaned sessions to workspace %s', migrated, wsId);
+          }
+          return chatService.restoreSessions();
+        })
+        .catch(() => { /* best-effort */ });
     }
 
     // ── RAG Indexing Services (M10 Phase 1–2) ──
@@ -2345,7 +2355,7 @@ export class Workbench extends Layout {
       }
     }
 
-    const result = registerIndexingServices(this._services);
+    const result = registerIndexingServices(this._services, this._storage);
 
     // M20: Wire retrieval service to read defaults from unified config
     if (this._services.has(IUnifiedAIConfigService)) {
@@ -2427,8 +2437,6 @@ export class Workbench extends Layout {
 
     try {
       const exists: boolean = await fs.exists(identityPath);
-      const restoredFromSavedState = !!this._restoredState
-        && this._restoredState.identity.id === this._workspace.id;
 
       if (exists) {
         // Read the stored identity
@@ -2436,12 +2444,12 @@ export class Workbench extends Layout {
         if (result?.content) {
           const stored = JSON.parse(result.content);
           if (stored?.id && stored.id !== this._workspace.id) {
-            if (restoredFromSavedState) {
-              console.log('[Workbench] Keeping restored workspace identity %s; folder durable identity %s belongs to a different workspace', this._workspace.id, stored.id);
-              return;
-            }
-
-            console.log('[Workbench] Recovering durable workspace identity from %s', identityPath);
+            // Always adopt the durable identity — a folder's sessions must
+            // stay under one stable UUID regardless of how the workspace was
+            // launched. Previous logic skipped adoption when the workspace was
+            // restored from saved state, which caused workspace ID drift and
+            // fragmented session history across multiple UUIDs.
+            console.log('[Workbench] Adopting durable workspace identity %s (was %s)', stored.id, this._workspace.id);
             this._workspace.adoptId(stored.id);
 
             // Re-sync localStorage so next launch uses the correct ID

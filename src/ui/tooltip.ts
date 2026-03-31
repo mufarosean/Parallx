@@ -141,6 +141,9 @@ export function setupTooltip(
 
   // Remove native tooltip so it doesn't double-show
   target.removeAttribute('title');
+  target.removeAttribute(TITLE_DATA_ATTR);
+  // Mark as managed so the global delegate skips this element
+  target.setAttribute('data-parallx-tooltip-managed', '');
 
   const onEnter = () => showTooltip(target, text, placement);
   const onLeave = () => hideTooltip();
@@ -171,4 +174,72 @@ export function updateTooltip(
   options?: TooltipOptions,
 ): IDisposable {
   return setupTooltip(target, text, options);
+}
+
+// ─── Global Delegate ─────────────────────────────────────────────────────────
+// Intercepts every element with a `title` attribute and shows the custom
+// tooltip instead of the browser-native one. This ensures a single tooltip
+// style across ALL surfaces without modifying individual call sites.
+
+const TITLE_DATA_ATTR = 'data-parallx-title';
+let _delegateInstalled = false;
+let _delegateTarget: HTMLElement | null = null;
+let _delegateLeaveHandler: (() => void) | null = null;
+let _delegateDownHandler: (() => void) | null = null;
+
+/**
+ * Install a global tooltip delegate on `document`.
+ *
+ * After this call, any element with a `title` attribute will automatically
+ * use the custom themed tooltip. The native `title` is stripped on first
+ * hover and stored in `data-parallx-title` so it's not lost.
+ *
+ * Call once at app startup.
+ */
+export function installGlobalTooltipDelegate(): void {
+  if (_delegateInstalled) return;
+  _delegateInstalled = true;
+
+  document.addEventListener('mouseover', (e) => {
+    const target = (e.target as HTMLElement)?.closest?.<HTMLElement>('[title], [data-parallx-title]');
+    if (!target || target === _delegateTarget) return;
+
+    // Skip elements that already have setupTooltip wired (they handle themselves)
+    if (target.hasAttribute('data-parallx-tooltip-managed')) return;
+
+    // Get the tooltip text: prefer the stashed data attribute, fall back to title
+    let text = target.getAttribute(TITLE_DATA_ATTR) || target.getAttribute('title') || '';
+    if (!text.trim()) return;
+
+    // Strip the native title to prevent the browser's built-in tooltip
+    if (target.hasAttribute('title')) {
+      target.setAttribute(TITLE_DATA_ATTR, text);
+      target.removeAttribute('title');
+    }
+
+    // Clean up previous delegate listeners
+    _cleanupDelegateTarget();
+
+    _delegateTarget = target;
+    showTooltip(target, text, 'top');
+
+    _delegateLeaveHandler = () => {
+      hideTooltip();
+      _cleanupDelegateTarget();
+    };
+    _delegateDownHandler = _delegateLeaveHandler;
+
+    target.addEventListener('mouseleave', _delegateLeaveHandler);
+    target.addEventListener('mousedown', _delegateDownHandler);
+  });
+}
+
+function _cleanupDelegateTarget(): void {
+  if (_delegateTarget && _delegateLeaveHandler) {
+    _delegateTarget.removeEventListener('mouseleave', _delegateLeaveHandler);
+    _delegateTarget.removeEventListener('mousedown', _delegateDownHandler!);
+  }
+  _delegateTarget = null;
+  _delegateLeaveHandler = null;
+  _delegateDownHandler = null;
 }

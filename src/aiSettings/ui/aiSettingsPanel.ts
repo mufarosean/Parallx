@@ -25,7 +25,9 @@ import { AgentSection } from './sections/agentSection.js';
 import { ToolsSection } from './sections/toolsSection.js';
 import { AdvancedSection } from './sections/advancedSection.js';
 import { PreviewSection } from './sections/previewSection.js';
+import { McpSection } from './sections/mcpSection.js';
 import type { IToolPickerServices } from '../../services/chatTypes.js';
+import type { IMcpClientService } from '../../services/serviceTypes.js';
 import './aiSettings.css';
 
 // ─── AISettingsPanel ─────────────────────────────────────────────────────────
@@ -44,6 +46,7 @@ export class AISettingsPanel extends Disposable {
     _languageModelsService?: ILanguageModelsService,
     private readonly _unifiedConfigService?: IUnifiedAIConfigService,
     private readonly _toolPickerServices?: IToolPickerServices,
+    private readonly _mcpClientService?: IMcpClientService,
   ) {
     super();
 
@@ -82,12 +85,13 @@ export class AISettingsPanel extends Disposable {
     // ── Build Sections ──
     this._sections = [
       this._register(new ChatSection(this._service, this._unifiedConfigService)),
-      this._register(new ModelSection(this._service)),
+      this._register(new ModelSection(this._service, _languageModelsService)),
       this._register(new RetrievalSection(this._service, this._unifiedConfigService)),
       this._register(new AgentSection(this._service, this._unifiedConfigService)),
       this._register(new ToolsSection(this._service, this._toolPickerServices, this._unifiedConfigService)),
       this._register(new AdvancedSection(this._service)),
       this._register(new PreviewSection(this._service)),
+      this._register(new McpSection(this._service, this._mcpClientService)),
     ];
 
     for (const section of this._sections) {
@@ -126,6 +130,7 @@ export class AISettingsPanel extends Disposable {
       { id: 'tools', label: 'Tools' },
       { id: 'advanced', label: 'Advanced' },
       { id: 'preview', label: 'Preview' },
+      { id: 'mcp', label: 'MCP Servers' },
     ];
 
     for (const s of navSections) {

@@ -85,7 +85,7 @@ export class IconPicker extends Disposable {
   /** The root DOM element of the picker overlay. */
   get element(): HTMLElement { return this._el; }
 
-  constructor(container: HTMLElement, private readonly _options: IIconPickerOptions) {
+  constructor(_container: HTMLElement, private readonly _options: IIconPickerOptions) {
     super();
 
     const iconSize = _options.iconSize ?? 22;
@@ -176,8 +176,10 @@ export class IconPicker extends Disposable {
       });
     }
 
-    // Mount
-    container.appendChild(this._el);
+    // Mount at document.body to avoid `contain: layout` on ancestor
+    // elements (e.g. `.part`, `.grid-branch`) that would shift the
+    // `position: fixed` reference frame away from the viewport.
+    document.body.appendChild(this._el);
 
     // Position near anchor, clamped to viewport
     this._positionNearAnchor();

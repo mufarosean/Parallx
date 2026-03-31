@@ -2131,6 +2131,7 @@ export class ChatDataService {
       getSessions: () => this._d.chatService.getSessions(),
       getSession: (id: string) => this._d.chatService.getSession(id),
       deleteSession: (id: string) => this._d.chatService.deleteSession(id),
+      updateSessionModel: (id: string, modelId: string) => this._d.chatService.updateSessionModel(id, modelId),
       getSystemPrompt: async () => {
         const report = this.getLastSystemPromptReport();
         return report?.promptText ?? '(No system prompt generated yet — send a message first)';

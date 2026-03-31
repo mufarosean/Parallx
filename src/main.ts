@@ -4,6 +4,7 @@
 
 import './workbench.css';
 import { Workbench } from './workbench/workbench.js';
+import { installGlobalTooltipDelegate } from './ui/tooltip.js';
 
 // ── Electron window controls bridge ──
 
@@ -105,6 +106,7 @@ async function bootstrap(): Promise<void> {
 
   // Create and initialize the workbench (runs 5-phase lifecycle)
   const workbench = new Workbench(container);
+  installGlobalTooltipDelegate();
   await workbench.initialize();
 
   // In test mode, expose the workbench instance for E2E test automation

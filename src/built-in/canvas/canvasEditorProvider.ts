@@ -413,6 +413,14 @@ class CanvasEditorPane implements IDisposable {
       }),
     );
 
+    // Reload editor content when an external consumer (sidebar) changed it
+    this._saveDisposables.add(
+      this._dataService.onRequestContentReload((reloadPageId) => {
+        if (reloadPageId !== this._pageId) return;
+        this._loadContent();
+      }),
+    );
+
     // Register page-menu handler so the external ribbon's ⋯ button can
     // trigger the full page menu (which lives in PageChromeController).
     this._saveDisposables.add(
@@ -449,6 +457,8 @@ class CanvasEditorPane implements IDisposable {
       console.error(`[CanvasEditorPane] Failed to load page "${this._pageId}":`, err);
     }
   }
+
+
 
   // ══════════════════════════════════════════════════════════════════════════════  // Dispose
   // ══════════════════════════════════════════════════════════════════════════

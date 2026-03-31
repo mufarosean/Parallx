@@ -553,3 +553,27 @@ export async function searchSessionsSemantic(
 
   return results;
 }
+
+/**
+ * Consolidate orphaned sessions: reassign all sessions with a non-matching
+ * workspace_id to the current workspace ID. This handles workspace ID drift
+ * that fragments session history across multiple UUIDs.
+ *
+ * Returns the number of sessions migrated.
+ */
+export async function consolidateOrphanedSessions(
+  db: IChatPersistenceDatabase,
+  currentWorkspaceId: string,
+): Promise<number> {
+  if (!db.isOpen || !currentWorkspaceId) { return 0; }
+  try {
+    const result = await db.run(
+      `UPDATE chat_sessions SET workspace_id = ? WHERE workspace_id != ?`,
+      [currentWorkspaceId, currentWorkspaceId],
+    );
+    return result.changes;
+  } catch (e) {
+    console.warn('[ChatPersistence] Failed to consolidate orphaned sessions:', e);
+    return 0;
+  }
+}

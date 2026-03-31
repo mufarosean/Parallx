@@ -276,7 +276,14 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     }
 
     if (services.modelPicker) {
-      this._register(new ChatModelPicker(pickerSlot, services.modelPicker));
+      const picker = this._register(new ChatModelPicker(pickerSlot, services.modelPicker));
+      this._register(picker.onDidSelectModel((modelId) => {
+        // Sync the session's persisted modelId when user picks a different model
+        if (this._session && this._session.modelId !== modelId) {
+          this._session.modelId = modelId;
+          this._services.updateSessionModel?.(this._session.id, modelId);
+        }
+      }));
       this._register(services.modelPicker.onDidChangeModels(() => {
         void this._syncVisionSupport();
       }));
@@ -352,6 +359,15 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   setSession(session: IChatSession): void {
     this._sessionDisposables.clear();
     this._session = session;
+
+    // Restore the session's model as the global active model
+    if (session.modelId && this._services.modelPicker) {
+      const currentModel = this._services.modelPicker.getActiveModel();
+      if (currentModel !== session.modelId) {
+        this._services.modelPicker.setActiveModel(session.modelId);
+      }
+    }
+
     this._renderMessages();
     this._updateVisibility();
     this._sessionSidebar.setActiveSession(session.id);

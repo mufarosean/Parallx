@@ -226,7 +226,10 @@ export class CoverMenuController implements ICanvasMenu {
     });
 
     // ── Mount & position ──
-    this._host.container.appendChild(picker);
+    // Mount at document.body to avoid `contain: layout` on ancestor
+    // elements (e.g. `.part`, `.grid-branch`) that would shift the
+    // `position: fixed` reference frame away from the viewport.
+    document.body.appendChild(picker);
     this._element = picker;
     this._visible = true;
 

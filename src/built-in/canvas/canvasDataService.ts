@@ -76,39 +76,6 @@ export function rowToPage(row: Record<string, unknown>): IPage {
   };
 }
 
-function collectLinkedChildPageIds(node: any, result: Set<string>): void {
-  if (!node || typeof node !== 'object') return;
-
-  const nodeType = typeof node.type === 'string' ? node.type : '';
-  const attrs = (node.attrs && typeof node.attrs === 'object') ? node.attrs as Record<string, unknown> : undefined;
-
-  if (nodeType === 'pageBlock') {
-    const pageId = attrs?.pageId;
-    if (typeof pageId === 'string' && pageId.trim().length > 0) {
-      result.add(pageId);
-    }
-  }
-
-  if (nodeType === 'databaseInline') {
-    const databaseId = attrs?.databaseId;
-    if (typeof databaseId === 'string' && databaseId.trim().length > 0) {
-      result.add(databaseId);
-    }
-  }
-
-  if (nodeType === 'databaseFullPage') {
-    const databaseId = attrs?.databaseId;
-    if (typeof databaseId === 'string' && databaseId.trim().length > 0) {
-      result.add(databaseId);
-    }
-  }
-
-  const children = Array.isArray((node as any).content) ? (node as any).content : [];
-  for (const child of children) {
-    collectLinkedChildPageIds(child, result);
-  }
-}
-
 // ─── CanvasDataService ───────────────────────────────────────────────────────
 
 /**
@@ -131,6 +98,14 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   /** Fires when save lifecycle state changes (pending/flushing/saved/failed). */
   private readonly _onDidChangeSaveState = this._register(new Emitter<SaveStateEvent>());
   readonly onDidChangeSaveState: Event<SaveStateEvent> = this._onDidChangeSaveState.event;
+
+  /** Fires when an external consumer changed a page's content and open editors should reload. */
+  private readonly _onRequestContentReload = this._register(new Emitter<string>());
+  readonly onRequestContentReload: Event<string> = this._onRequestContentReload.event;
+
+  fireContentReload(pageId: string): void {
+    this._onRequestContentReload.fire(pageId);
+  }
 
   // ── Auto-save debounce state ──
 
@@ -285,19 +260,12 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   }
 
   /**
-   * Full-pass reconciliation used at startup to enforce block-driven hierarchy.
-   * A page is nested only when referenced by a pageBlock/databaseInline block.
+   * @deprecated No-op. parentId is the single source of truth for hierarchy;
+   * pageBlock content is a visual subsystem that follows parentId, not the
+   * other way around. Retained for API compatibility.
    */
   async reconcileEmbeddedHierarchyForAllPages(): Promise<void> {
-    const result = await this._db.all('SELECT id, content FROM pages WHERE is_archived = 0');
-    if (result.error) throw new Error(result.error.message);
-
-    for (const row of result.rows ?? []) {
-      const pageId = row.id;
-      const content = row.content;
-      if (typeof pageId !== 'string' || typeof content !== 'string') continue;
-      await this._reconcileEmbeddedChildren(pageId, content);
-    }
+    // Intentionally empty — hierarchy is driven by parentId, not content.
   }
 
   /**
@@ -389,14 +357,6 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
 
     const page = await this.getPage(pageId);
     if (!page) throw new Error(`[CanvasDataService] Page "${pageId}" not found after update`);
-
-    if (updates.content !== undefined) {
-      try {
-        await this._reconcileEmbeddedChildren(pageId, page.content);
-      } catch (err) {
-        console.error(`[CanvasDataService] Embedded hierarchy reconcile failed for page "${pageId}":`, err);
-      }
-    }
 
     this._rememberPageState(page);
     this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId, page, changedFields });
@@ -1137,13 +1097,6 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     return roots;
   }
 
-  private _extractLinkedChildPageIds(storedContent: string): Set<string> {
-    const decoded = decodeCanvasContent(storedContent);
-    const linkedIds = new Set<string>();
-    collectLinkedChildPageIds(decoded.doc, linkedIds);
-    return linkedIds;
-  }
-
   private _pruneLinkedBlocks(node: any, targetPageId: string): { node: any; changed: boolean } {
     if (!node || typeof node !== 'object') {
       return { node, changed: false };
@@ -1212,12 +1165,6 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       );
       if (updateResult.error) throw new Error(updateResult.error.message);
 
-      try {
-        await this._reconcileEmbeddedChildren(pageId, encoded.storedContent);
-      } catch (err) {
-        console.error(`[CanvasDataService] Embedded hierarchy reconcile failed for page "${pageId}" after block prune:`, err);
-      }
-
       const updated = await this.getPage(pageId);
       if (updated) {
         this._knownRevisions.set(pageId, updated.revision);
@@ -1277,43 +1224,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     return ids;
   }
 
-  private async _reconcileEmbeddedChildren(parentPageId: string, storedContent: string): Promise<void> {
-    const linkedChildIds = this._extractLinkedChildPageIds(storedContent);
 
-    for (const childId of linkedChildIds) {
-      if (childId === parentPageId) continue;
-      const childResult = await this._db.get(
-        'SELECT id, parent_id, is_archived FROM pages WHERE id = ?',
-        [childId],
-      );
-      if (childResult.error) throw new Error(childResult.error.message);
-      const row = childResult.row;
-      if (!row) continue;
-
-      if ((row.is_archived as number) === 1) {
-        const restoreResult = await this._db.run(
-          `UPDATE pages
-           SET is_archived = 0,
-               parent_id = ?,
-               updated_at = datetime('now')
-           WHERE id = ?`,
-          [parentPageId, childId],
-        );
-        if (restoreResult.error) throw new Error(restoreResult.error.message);
-
-        const restored = await this.getPage(childId);
-        if (restored) {
-          this._knownRevisions.set(childId, restored.revision);
-          this._onDidChangePage.fire({ kind: PageChangeKind.Created, pageId: childId, page: restored });
-        }
-        continue;
-      }
-
-      if ((row.parent_id as string | null) !== parentPageId) {
-        await this.movePage(childId, parentPageId);
-      }
-    }
-  }
 
   override dispose(): void {
     // Cancel all pending debounce timers
