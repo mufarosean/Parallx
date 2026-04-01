@@ -190,15 +190,11 @@ export class ChatContextAttachments extends Disposable {
       this._root.appendChild(chip);
     }
 
-    // 2. Render implicit suggestions from open editors
+    // 2. Render implicit suggestion — only the active editor file (not all open editors)
     if (this._services) {
-      const openFiles = this._services.getOpenEditorFiles();
-      for (const file of openFiles) {
-        // Skip if already explicitly attached or dismissed
-        if (this._explicit.has(file.fullPath) || this._dismissed.has(file.fullPath)) {
-          continue;
-        }
-        const chip = this._createImplicitChip(file);
+      const activeFile = this._services.getActiveEditorFile();
+      if (activeFile && !this._explicit.has(activeFile.fullPath) && !this._dismissed.has(activeFile.fullPath)) {
+        const chip = this._createImplicitChip(activeFile);
         this._root.appendChild(chip);
       }
     }

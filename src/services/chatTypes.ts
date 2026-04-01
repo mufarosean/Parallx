@@ -960,6 +960,8 @@ export interface ILanguageModelProvider {
   ): AsyncIterable<IChatResponseChunk>;
   /** Get detailed model info. */
   getModelInfo(modelId: string): Promise<ILanguageModelInfo>;
+  /** Optional: fires when the provider's connectivity status changes. */
+  readonly onDidChangeStatus?: Event<IProviderStatus>;
 }
 
 // ── ILanguageModelsService ──

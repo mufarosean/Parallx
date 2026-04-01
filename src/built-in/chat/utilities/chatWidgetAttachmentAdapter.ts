@@ -3,6 +3,7 @@ import type { IChatWidgetServices, IWorkspaceFileEntry } from '../chatTypes.js';
 
 export interface IChatWidgetAttachmentAdapterDeps {
   readonly getOpenEditorFiles?: () => Array<{ name: string; fullPath: string }>;
+  readonly getActiveEditorFile?: () => { name: string; fullPath: string } | undefined;
   readonly onDidChangeOpenEditors?: Event<void>;
   readonly listWorkspaceFiles?: () => Promise<readonly IWorkspaceFileEntry[]>;
   readonly openFile?: (fullPath: string) => void;
@@ -17,6 +18,7 @@ export function buildChatWidgetAttachmentServices(
     attachmentServices: (deps.getOpenEditorFiles && deps.onDidChangeOpenEditors)
       ? {
           getOpenEditorFiles: deps.getOpenEditorFiles,
+          getActiveEditorFile: deps.getActiveEditorFile ?? (() => undefined),
           onDidChangeOpenEditors: deps.onDidChangeOpenEditors,
           listWorkspaceFiles: deps.listWorkspaceFiles
             ? async () => [...await deps.listWorkspaceFiles!()]

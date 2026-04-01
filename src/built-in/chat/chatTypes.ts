@@ -468,6 +468,7 @@ export interface ISessionSidebarServices {
 /** Services needed by the attachment ribbon. */
 export interface IAttachmentServices {
   getOpenEditorFiles(): IOpenEditorFile[];
+  getActiveEditorFile(): IOpenEditorFile | undefined;
   readonly onDidChangeOpenEditors: Event<void>;
   listWorkspaceFiles?(): Promise<IWorkspaceFileEntry[]>;
 }
