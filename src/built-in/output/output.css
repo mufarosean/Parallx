@@ -22,7 +22,7 @@
 
 .output-toolbar-title {
   color: var(--vscode-foreground);
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   font-weight: 600;
   flex: 1;
 }
@@ -31,10 +31,10 @@
   background: none;
   border: 1px solid var(--vscode-input-border, #555);
   color: var(--vscode-foreground);
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   padding: 2px 6px;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
 }
 
 .output-toolbar-btn:hover {
@@ -51,8 +51,8 @@
 /* ── Log row ── */
 .output-row {
   padding: 2px 8px;
-  font-family: 'Consolas', 'Courier New', monospace;
-  font-size: 12px;
+  font-family: var(--parallx-fontFamily-mono);
+  font-size: var(--parallx-fontSize-base);
   border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
   white-space: pre-wrap;
   word-break: break-all;

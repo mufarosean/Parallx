@@ -36,7 +36,7 @@ import { $ } from '../../ui/dom.js';
 import { createEditorExtensions, PageChromeController } from './config/blockRegistry.js';
 import { BlockHandlesController, BlockSelectionController, BlockMarqueeController, createBlockSelectionPlugin } from './handles/handleRegistry.js';
 import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuRegistry.js';
-import { InlineAIMenuController, type SendChatRequestFn, type RetrieveContextFn } from './menus/inlineAIMenu.js';
+import type { SendChatRequestFn, RetrieveContextFn } from './menus/canvasMenuRegistry.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
@@ -343,14 +343,13 @@ class CanvasEditorPane implements IDisposable {
     this._menuRegistry = new CanvasMenuRegistry(() => this._editor);
     this._blockActionMenu = this._menuRegistry.createStandardMenus(this);
 
-    // ── Create inline AI menu if chat tool has registered its provider ──
+    // ── Create inline AI chat if chat tool has registered its provider ──
     if (this._provider.hasInlineAI) {
-      const inlineAI = new InlineAIMenuController(
-        this, this._menuRegistry,
+      this._menuRegistry.createAIChat(
+        this,
         this._provider.inlineAISendChat!,
         this._provider.inlineAIRetrieveContext,
       );
-      inlineAI.create();
     }
 
     // Setup block handles (+ button, drag-handle click menu)
@@ -414,6 +413,14 @@ class CanvasEditorPane implements IDisposable {
       }),
     );
 
+    // Reload editor content when an external consumer (sidebar) changed it
+    this._saveDisposables.add(
+      this._dataService.onRequestContentReload((reloadPageId) => {
+        if (reloadPageId !== this._pageId) return;
+        this._loadContent();
+      }),
+    );
+
     // Register page-menu handler so the external ribbon's ⋯ button can
     // trigger the full page menu (which lives in PageChromeController).
     this._saveDisposables.add(
@@ -450,6 +457,8 @@ class CanvasEditorPane implements IDisposable {
       console.error(`[CanvasEditorPane] Failed to load page "${this._pageId}":`, err);
     }
   }
+
+
 
   // ══════════════════════════════════════════════════════════════════════════════  // Dispose
   // ══════════════════════════════════════════════════════════════════════════

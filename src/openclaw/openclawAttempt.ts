@@ -188,6 +188,8 @@ export async function executeOpenclawAttempt(
     agentIdentity: context.agentConfig?.identity,
     agentSystemPromptOverlay: context.agentConfig?.systemPromptOverlay,
     supportsVision: context.supportsVision,
+    hasExplicitAttachments: (context.mentionContextBlocks?.length ?? 0) > 0
+      && request.attachments?.some(a => a.kind === 'file' || a.kind === 'selection'),
     promptProvenance: {
       rawUserInput: request.text,
       parsedUserText: request.text,
@@ -197,11 +199,10 @@ export async function executeOpenclawAttempt(
       attachmentCount: request.attachments?.length ?? 0,
       historyTurns: Math.floor(context.history.length / 2),
       seedMessageCount: assembled.messages.length + 2,
-      modelMessageCount: assembled.messages.length + (context.mentionContextBlocks?.length ? 3 : 2),
+      modelMessageCount: assembled.messages.length + 2,
       modelMessageRoles: [
         'system',
         ...assembled.messages.map((message) => message.role),
-        ...(context.mentionContextBlocks?.length ? ['user'] : []),
         'user',
       ],
       finalUserMessage: request.text,
@@ -225,17 +226,23 @@ export async function executeOpenclawAttempt(
     }
   }
 
-  // 4. Build messages: [system, ...context history, mention context, user]
-  //    M2: Inject mention context blocks between assembled context and user query
-  const mentionMessages: IChatMessage[] = context.mentionContextBlocks?.length
-    ? [{ role: 'user' as const, content: context.mentionContextBlocks.join('\n\n---\n\n') }]
-    : [];
+  // 4. Build messages: [system, ...context history, user (with mention context prepended)]
+  //    M2: Merge mention context blocks INTO the user message to avoid consecutive
+  //    user-role messages.  Ollama/LLMs expect alternating user/assistant turns;
+  //    two consecutive user messages causes models to ignore the first one (the
+  //    attachment content).  Prepending to the user message ensures the model
+  //    sees attachment context and query in a single turn.
+  let userContent = request.text;
+  if (context.mentionContextBlocks?.length) {
+    const contextSection = context.mentionContextBlocks.join('\n\n---\n\n');
+    console.log(`[OpenClaw:Attempt] Prepending ${context.mentionContextBlocks.length} mention/attachment context block(s) to user message, total chars: ${contextSection.length}`);
+    userContent = contextSection + '\n\n---\n\n' + request.text;
+  }
 
   const messages: IChatMessage[] = [
     { role: 'system', content: effectiveSystemPrompt },
     ...assembled.messages,
-    ...mentionMessages,
-    { role: 'user', content: request.text, images: request.attachments?.filter(a => a.kind === 'image') },
+    { role: 'user', content: userContent, images: request.attachments?.filter(a => a.kind === 'image') },
   ];
 
   // 5. Execute model turn with tool loop
@@ -384,12 +391,11 @@ export async function executeOpenclawAttempt(
           prompt: request.text,
         });
         // Rebuild messages: system prompt stays, use re-assembled history,
-        // keep recent tool exchange, add user message
+        // keep recent tool exchange, add user message (with context prepended)
         currentMessages = [
           currentMessages[0], // system prompt
           ...reAssembled.messages,
-          ...mentionMessages,
-          { role: 'user', content: request.text, images: request.attachments?.filter(a => a.kind === 'image') },
+          { role: 'user', content: userContent, images: request.attachments?.filter(a => a.kind === 'image') },
           { role: 'assistant', content: markdown, toolCalls: turnResult.toolCalls },
           ...toolResultMessages,
         ];

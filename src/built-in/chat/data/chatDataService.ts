@@ -2092,13 +2092,23 @@ export class ChatDataService {
     const attachmentServices = buildChatWidgetAttachmentServices({
       getOpenEditorFiles: this._d.editorService
         ? () => this._d.editorService!.getOpenEditors().map((ed) => {
-            const parts = ed.id.split(':');
-            if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
-              const pageId = parts.slice(2).join(':');
-              return { name: ed.name, fullPath: `parallx-page://${pageId}` };
+            // Canvas/database editors: description is "Tool editor: canvas" / "Tool editor: database"
+            // and id is the raw page UUID
+            if (ed.description === 'Tool editor: canvas' || ed.description === 'Tool editor: database') {
+              return { name: ed.name, fullPath: `parallx-page://${ed.id}` };
             }
             return { name: ed.name, fullPath: ed.description || ed.name };
           })
+        : undefined,
+      getActiveEditorFile: this._d.editorService
+        ? () => {
+            const active = this._d.editorService!.activeEditor;
+            if (!active) return undefined;
+            if (active.typeId === 'canvas' || active.typeId === 'database') {
+              return { name: active.name, fullPath: `parallx-page://${active.id}` };
+            }
+            return { name: active.name, fullPath: active.description || active.name };
+          }
         : undefined,
       onDidChangeOpenEditors: this._d.editorService?.onDidChangeOpenEditors,
       listWorkspaceFiles: this._d.fsAccessor
@@ -2131,6 +2141,7 @@ export class ChatDataService {
       getSessions: () => this._d.chatService.getSessions(),
       getSession: (id: string) => this._d.chatService.getSession(id),
       deleteSession: (id: string) => this._d.chatService.deleteSession(id),
+      updateSessionModel: (id: string, modelId: string) => this._d.chatService.updateSessionModel(id, modelId),
       getSystemPrompt: async () => {
         const report = this.getLastSystemPromptReport();
         return report?.promptText ?? '(No system prompt generated yet — send a message first)';

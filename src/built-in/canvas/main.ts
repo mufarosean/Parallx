@@ -193,12 +193,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   _dataService = new CanvasDataService();
   context.subscriptions.push(_dataService);
 
-  // 2a. Reconcile page hierarchy from embedded blocks (pageBlock/databaseInline)
-  try {
-    await _dataService.reconcileEmbeddedHierarchyForAllPages();
-  } catch (err) {
-    console.warn('[Canvas] Embedded hierarchy reconciliation failed:', err);
-  }
+  // 2a. parentId is the source of truth for hierarchy — no content reconciliation needed.
 
   // 2b. Create DatabaseDataService (M8 Phase 1)
   _databaseDataService = new DatabaseDataService();

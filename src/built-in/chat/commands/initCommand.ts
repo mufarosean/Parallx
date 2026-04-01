@@ -139,7 +139,7 @@ export async function executeInitCommand(
   if (services.writeFile) {
     try {
       await services.writeFile('.parallx/AGENTS.md', generatedContent.trim() + '\n');
-      response.markdown('\n\n---\n✅ **AGENTS.md** has been created in `.parallx/`.');
+      response.markdown('\n\n---\n**AGENTS.md** has been created in `.parallx/`.');
 
       // 6. Create .parallx/ directory structure if it doesn't exist
       const dirs = ['.parallx', '.parallx/rules', '.parallx/commands', '.parallx/skills'];
@@ -150,7 +150,7 @@ export async function executeInitCommand(
           await services.writeFile(`${dir}/.gitkeep`, '');
         }
       }
-      response.markdown('\n📁 `.parallx/` directory structure created (rules, commands, skills).');
+      response.markdown('\n`.parallx/` directory structure created (rules, commands, skills).');
 
       // 7. Write default skills (skip any that already exist)
       let skillsWritten = 0;

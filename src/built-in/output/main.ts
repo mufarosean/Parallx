@@ -60,7 +60,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     createView(container: HTMLElement): IDisposable {
       return renderOutputView(container);
     },
-  }, { name: 'Output', icon: '📋' });
+  }, { name: 'Output', icon: 'terminal' });
   context.subscriptions.push(viewDisposable);
 
   // Register commands
@@ -171,7 +171,7 @@ function renderOutputView(container: HTMLElement): IDisposable {
 
   const clearBtn = $('button');
   clearBtn.classList.add('output-toolbar-btn');
-  clearBtn.textContent = '🗑 Clear';
+  clearBtn.textContent = 'Clear';
   clearBtn.title = 'Clear output';
   clearBtn.addEventListener('click', () => {
     logEntries.length = 0;

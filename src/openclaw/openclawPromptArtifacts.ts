@@ -39,6 +39,8 @@ export interface IOpenclawPromptArtifactInput {
   readonly agentIdentity?: IAgentIdentityConfig;
   /** D8: Per-agent system prompt overlay text. */
   readonly agentSystemPromptOverlay?: string;
+  /** Whether this turn includes explicit file or selection attachments. */
+  readonly hasExplicitAttachments?: boolean;
 }
 
 export function buildOpenclawPromptArtifacts(
@@ -61,6 +63,7 @@ export function buildOpenclawPromptArtifacts(
     modelTier: input.modelTier,
     supportsTools: input.supportsTools ?? input.toolState.availableDefinitions.length > 0,
     supportsVision: input.supportsVision,
+    hasExplicitAttachments: input.hasExplicitAttachments,
     systemBudgetTokens: input.systemBudgetTokens,
     agentIdentity: input.agentIdentity,
     agentSystemPromptOverlay: input.agentSystemPromptOverlay,

@@ -17,6 +17,7 @@ import { Emitter, Event } from '../../platform/events.js';
 import { FileEditorInput } from './fileEditorInput.js';
 import { UntitledEditorInput } from './untitledEditorInput.js';
 import { FindReplaceWidget } from '../../ui/findReplaceWidget.js';
+import { ContextMenu } from '../../ui/contextMenu.js';
 import { $,  hide, show } from '../../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -45,6 +46,7 @@ export class TextEditorPane extends EditorPane {
   private _inputListeners = new DisposableStore();
   private _suppressModelUpdate = false;
   private _findWidget: FindReplaceWidget | undefined;
+  private _activeContextMenu: ReturnType<typeof ContextMenu.show> | null = null;
 
   // Minimap
   private _minimapContainer!: HTMLElement;
@@ -142,6 +144,9 @@ export class TextEditorPane extends EditorPane {
     // Selection changes → redraw minimap to show highlight
     this._textarea.addEventListener('select', this._renderMinimap.bind(this));
     this._textarea.addEventListener('mouseup', this._renderMinimap.bind(this));
+
+    // M48: Context menu for text selection AI actions
+    this._textarea.addEventListener('contextmenu', this._onContextMenu);
 
     container.appendChild(this._editorBody);
 
@@ -700,6 +705,96 @@ export class TextEditorPane extends EditorPane {
     document.removeEventListener('mouseup', this._onMinimapMouseUp);
   };
 
+  // ── M48: Selection API & Context Menu ──────────────────────────────
+
+  /** Get the currently selected text in the textarea (M48). */
+  getSelectedText(): string | undefined {
+    if (!this._textarea) return undefined;
+    const start = this._textarea.selectionStart;
+    const end = this._textarea.selectionEnd;
+    if (start === end) return undefined;
+    return this._textarea.value.substring(start, end);
+  }
+
+  /** Get selection source metadata for the AI action system (M48). */
+  getSelectionSource(): { fileName: string; filePath: string; startLine?: number; endLine?: number } | undefined {
+    const text = this.getSelectedText();
+    if (!text || !this.input) return undefined;
+    const ta = this._textarea;
+    const before = ta.value.substring(0, ta.selectionStart);
+    const selected = ta.value.substring(ta.selectionStart, ta.selectionEnd);
+    const startLine = before.split('\n').length;
+    const endLine = startLine + selected.split('\n').length - 1;
+    return {
+      fileName: this.input.name ?? 'untitled',
+      filePath: (this.input as any).uri?.fsPath ?? this.input.name ?? 'untitled',
+      startLine,
+      endLine,
+    };
+  }
+
+  private readonly _onContextMenu = (e: MouseEvent): void => {
+    const selected = this.getSelectedText();
+    if (!selected) return; // Only show AI menu when text is selected
+
+    e.preventDefault();
+    this._dismissContextMenu();
+
+    const menu = ContextMenu.show({
+      items: [
+        {
+          id: 'text.copy',
+          label: 'Copy',
+          keybinding: 'Ctrl+C',
+        },
+        // M48 Phase 4: Single AI action
+        {
+          id: 'ai.addToChat',
+          label: 'Add Selection to Chat',
+          group: 'ai',
+        },
+      ],
+      anchor: { x: e.clientX, y: e.clientY },
+    });
+
+    menu.onDidSelect((ev) => {
+      if (ev.item.id === 'text.copy') {
+        void navigator.clipboard.writeText(selected);
+      } else if (ev.item.id === 'ai.addToChat') {
+        this._dispatchSelectionAction(ev.item.id);
+      }
+    });
+
+    this._activeContextMenu = menu;
+  };
+
+  /** Dispatch a selection action to the unified dispatcher (M48 Phase 4). */
+  private _dispatchSelectionAction(_menuItemId: string): void {
+    const selected = this.getSelectedText();
+    const source = this.getSelectionSource();
+    if (!selected || !source) return;
+    const actionId = 'add-to-chat';
+
+    this._textarea.dispatchEvent(
+      new CustomEvent('parallx-selection-action', {
+        bubbles: true,
+        detail: {
+          selectedText: selected,
+          surface: 'text',
+          actionId,
+          source,
+        },
+      }),
+    );
+  }
+
+  private _dismissContextMenu(): void {
+    if (this._activeContextMenu) {
+      this._activeContextMenu.dispose();
+      this._activeContextMenu = null;
+    }
+  }
+
   // ── Accessor for external use ──
 
   get textarea(): HTMLTextAreaElement {
@@ -709,6 +804,7 @@ export class TextEditorPane extends EditorPane {
   // ── Dispose ──
 
   override dispose(): void {
+    this._dismissContextMenu();
     this._textarea?.removeEventListener('keydown', this._onKeyDown);
     this._textarea?.removeEventListener('input', this._onTextInput);
     this._textarea?.removeEventListener('keyup', this._updateCursorPosition);
@@ -716,6 +812,7 @@ export class TextEditorPane extends EditorPane {
     this._textarea?.removeEventListener('select', this._updateCursorPosition);
     this._textarea?.removeEventListener('scroll', this._syncGutterScroll);
     this._textarea?.removeEventListener('scroll', this._updateMinimapSlider);
+    this._textarea?.removeEventListener('contextmenu', this._onContextMenu);
     this._gutter?.removeEventListener('mousedown', this._onGutterClick);
     this._minimapContainer?.removeEventListener('mousedown', this._onMinimapMouseDown);
     document.removeEventListener('mousemove', this._onMinimapMouseMove);

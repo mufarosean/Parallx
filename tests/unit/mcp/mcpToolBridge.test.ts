@@ -10,6 +10,7 @@ import type { IDisposable } from '../../../src/platform/lifecycle.js';
 
 function createMockMcpClient() {
   const statusEmitter = new Emitter<{ serverId: string; status: McpConnectionState }>();
+  const notificationEmitter = new Emitter<{ serverId: string; method: string; params?: Record<string, unknown> }>();
   return {
     connectServer: vi.fn(),
     disconnectServer: vi.fn(),
@@ -17,9 +18,13 @@ function createMockMcpClient() {
     getConnectedServers: vi.fn(() => []),
     listTools: vi.fn(async (): Promise<readonly IMcpToolSchema[]> => []),
     callTool: vi.fn(async (): Promise<IMcpToolCallResult> => ({ content: [], isError: false })),
+    ping: vi.fn(async () => 10),
+    getHealthInfo: vi.fn(() => undefined),
     onDidChangeStatus: statusEmitter.event,
+    onDidReceiveNotification: notificationEmitter.event,
     dispose: vi.fn(),
     _statusEmitter: statusEmitter,
+    _notificationEmitter: notificationEmitter,
   };
 }
 
@@ -71,6 +76,7 @@ describe('McpToolBridge', () => {
   afterEach(() => {
     bridge.dispose();
     mcpClient._statusEmitter.dispose();
+    mcpClient._notificationEmitter.dispose();
     toolsService._toolsEmitter.dispose();
   });
 
@@ -252,5 +258,41 @@ describe('McpToolBridge', () => {
     mcpClient._statusEmitter.fire({ serverId: 'srv-1', status: 'connecting' });
 
     expect(reg.disposable.dispose).not.toHaveBeenCalled();
+  });
+
+  // ─── D1b-6: notifications/tools/list_changed ────────────────
+
+  it('refreshes tools when server sends notifications/tools/list_changed', async () => {
+    mcpClient.listTools.mockResolvedValue(makeToolSchemas(2));
+    await bridge.refreshTools('srv-1');
+
+    // Update mock to return different tools
+    mcpClient.listTools.mockResolvedValue(makeToolSchemas(3));
+
+    // Simulate the notification
+    mcpClient._notificationEmitter.fire({
+      serverId: 'srv-1',
+      method: 'notifications/tools/list_changed',
+    });
+
+    // refreshTools is async — wait for listTools to be called again
+    await vi.waitFor(() => {
+      // First call from initial refreshTools, second from notification-triggered refresh
+      expect(mcpClient.listTools).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('ignores non-tool-change notifications', async () => {
+    mcpClient.listTools.mockResolvedValue(makeToolSchemas(1));
+    await bridge.refreshTools('srv-1');
+    const callCount = (mcpClient.listTools as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    mcpClient._notificationEmitter.fire({
+      serverId: 'srv-1',
+      method: 'notifications/resources/list_changed',
+    });
+
+    // listTools should NOT be called again
+    expect(mcpClient.listTools).toHaveBeenCalledTimes(callCount);
   });
 });

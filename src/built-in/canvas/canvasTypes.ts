@@ -153,6 +153,12 @@ export interface ICanvasDataService {
   /** Fires after an auto-save flush completes for a specific page. */
   readonly onDidSavePage: Event<string>;
 
+  /** Fires when an external consumer (e.g. sidebar) changed a page's content and open editors should reload. */
+  readonly onRequestContentReload: Event<string>;
+
+  /** Signal that a page's stored content was changed externally and open editors should reload. */
+  fireContentReload(pageId: string): void;
+
   // ── Page CRUD ──
 
   createPage(parentId?: string | null, title?: string): Promise<IPage>;

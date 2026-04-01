@@ -278,6 +278,12 @@ export interface IChatAttachmentBase {
  */
 export interface IChatFileAttachment extends IChatAttachmentBase {
   readonly kind: 'file';
+  /**
+   * Pre-resolved text content, populated at send time before reaching the participant.
+   * When present, the participant uses this directly (no I/O needed).
+   * When absent, falls back to reading from disk (legacy path).
+   */
+  readonly resolvedContent?: string;
 }
 
 /** A pasted or uploaded image attachment for multimodal chat turns. */
@@ -291,7 +297,22 @@ export interface IChatImageAttachment extends IChatAttachmentBase {
   readonly origin?: 'clipboard' | 'file';
 }
 
-export type IChatAttachment = IChatFileAttachment | IChatImageAttachment;
+/** A text selection attached as context to a chat message (M48). */
+export interface IChatSelectionAttachment extends IChatAttachmentBase {
+  readonly kind: 'selection';
+  /** The selected text content. */
+  readonly selectedText: string;
+  /** Source surface identifier (e.g. 'pdf', 'text', 'markdown', 'canvas'). */
+  readonly surface: string;
+  /** 1-based start line (text/markdown editors). */
+  readonly startLine?: number;
+  /** 1-based end line (text/markdown editors). */
+  readonly endLine?: number;
+  /** PDF page number (1-based). */
+  readonly pageNumber?: number;
+}
+
+export type IChatAttachment = IChatFileAttachment | IChatImageAttachment | IChatSelectionAttachment;
 
 export function isChatImageAttachment(attachment: IChatAttachment): attachment is IChatImageAttachment {
   return attachment.kind === 'image';
@@ -299,6 +320,10 @@ export function isChatImageAttachment(attachment: IChatAttachment): attachment i
 
 export function isChatFileAttachment(attachment: IChatAttachment): attachment is IChatFileAttachment {
   return attachment.kind === 'file';
+}
+
+export function isChatSelectionAttachment(attachment: IChatAttachment): attachment is IChatSelectionAttachment {
+  return attachment.kind === 'selection';
 }
 
 /**
@@ -935,6 +960,8 @@ export interface ILanguageModelProvider {
   ): AsyncIterable<IChatResponseChunk>;
   /** Get detailed model info. */
   getModelInfo(modelId: string): Promise<ILanguageModelInfo>;
+  /** Optional: fires when the provider's connectivity status changes. */
+  readonly onDidChangeStatus?: Event<IProviderStatus>;
 }
 
 // ── ILanguageModelsService ──
@@ -1012,6 +1039,8 @@ export interface IChatService extends IDisposable {
   setRuntimeTraceReporter?(reporter: ((trace: unknown) => void) | undefined): void;
   /** Late-bind a participant selector for switching the default chat surface between implementations. */
   setRuntimeParticipantResolver?(resolver: ((participantId: string) => string) | undefined): void;
+  /** Update the model ID for an existing session and persist. */
+  updateSessionModel(sessionId: string, modelId: string): void;
   /** Send a user message and orchestrate the full request pipeline. */
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<IChatParticipantResult>;
   /** Cancel the in-progress request for a session. */

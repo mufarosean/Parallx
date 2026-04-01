@@ -26,6 +26,7 @@ export class ChatModelPicker extends Disposable {
   private readonly _button: HTMLButtonElement;
   private _dropdown: HTMLElement | undefined;
   private _closeHandler: ((e: MouseEvent) => void) | undefined;
+  private _opening = false;
   private _services: IModelPickerServices;
 
   private readonly _onDidSelectModel = this._register(new Emitter<string>());
@@ -82,9 +83,17 @@ export class ChatModelPicker extends Disposable {
   }
 
   private async _openDropdown(): Promise<void> {
+    if (this._opening) return; // Re-entry guard: ignore clicks while loading
+    this._opening = true;
     this._closeDropdown();
 
-    const models = await this._services.getModels();
+    let models: readonly { id: string; displayName: string; parameterSize: string; contextLength: number; capabilities?: readonly string[] }[];
+    try {
+      models = await this._services.getModels();
+    } catch {
+      this._opening = false;
+      return;
+    }
     const activeId = this._services.getActiveModel();
 
     const dropdown = $('div.parallx-chat-picker-dropdown');
@@ -95,18 +104,6 @@ export class ChatModelPicker extends Disposable {
       const empty = $('div.parallx-chat-picker-item.parallx-chat-picker-item--empty', 'No models available');
       dropdown.appendChild(empty);
     } else {
-      // Fetch context lengths for all models in parallel
-      const ctxLengths = new Map<string, number>();
-      if (this._services.getModelContextLength) {
-        const entries = await Promise.all(
-          models.map(async (m) => {
-            const len = await this._services.getModelContextLength!(m.id).catch(() => 0);
-            return [m.id, len] as const;
-          }),
-        );
-        for (const [id, len] of entries) { ctxLengths.set(id, len); }
-      }
-
       for (const model of models) {
         const item = $('div.parallx-chat-picker-item');
         const isActive = model.id === activeId;
@@ -115,9 +112,8 @@ export class ChatModelPicker extends Disposable {
         }
 
         const name = $('span.parallx-chat-picker-item-name', model.displayName);
-        // Show parameter size + context length (e.g. "32.5B · 128K")
-        const ctxLen = ctxLengths.get(model.id) || model.contextLength;
-        const ctxLabel = ctxLen > 0 ? ` · ${this._formatContextLength(ctxLen)}` : '';
+        // Use contextLength already on the model object (populated by probe)
+        const ctxLabel = model.contextLength > 0 ? ` · ${this._formatContextLength(model.contextLength)}` : '';
         const size = $('span.parallx-chat-picker-item-size', `${model.parameterSize}${ctxLabel}`);
         item.appendChild(name);
         item.appendChild(size);
@@ -139,6 +135,7 @@ export class ChatModelPicker extends Disposable {
 
     document.body.appendChild(dropdown);
     this._dropdown = dropdown;
+    this._opening = false;
 
     // Close on outside click
     const closeHandler = (e: MouseEvent) => {
@@ -151,6 +148,7 @@ export class ChatModelPicker extends Disposable {
   }
 
   private _closeDropdown(): void {
+    this._opening = false;
     if (this._dropdown) {
       this._dropdown.remove();
       this._dropdown = undefined;

@@ -12,6 +12,22 @@ import { $, layoutPopup } from '../../../ui/dom.js';
 import { tiptapJsonToMarkdown } from '../markdownExport.js';
 import { createIconElement, resolvePageIcon, svgIcon } from '../config/blockRegistry.js';
 
+// Default gradient presets for "Add cover" — same set as the cover picker gallery.
+const DEFAULT_COVER_GRADIENTS = [
+  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+  'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+  'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+  'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+  'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)',
+  'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
+  'linear-gradient(135deg, #667eea 0%, #f093fb 100%)',
+  'linear-gradient(180deg, #2c3e50 0%, #3498db 100%)',
+  'linear-gradient(180deg, #141e30 0%, #243b55 100%)',
+  'linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 100%)',
+  'linear-gradient(180deg, #232526 0%, #414345 100%)',
+];
+
 // ── Host Interface ──────────────────────────────────────────────────────────
 
 export interface PageChromeHost {
@@ -393,7 +409,9 @@ export class PageChromeController {
       addCoverBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addCoverBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        this._showCoverPicker(e.currentTarget as HTMLElement);
+        // Notion-like: immediately apply a random gradient cover
+        const gradient = DEFAULT_COVER_GRADIENTS[Math.floor(Math.random() * DEFAULT_COVER_GRADIENTS.length)];
+        this._host.dataService.updatePage(this._host.pageId, { coverUrl: gradient });
       });
       this._hoverAffordances.appendChild(addCoverBtn);
     }
@@ -591,7 +609,9 @@ export class PageChromeController {
       addCoverBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addCoverBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        this._showCoverPicker(e.currentTarget as HTMLElement);
+        // Notion-like: immediately apply a random gradient cover
+        const gradient = DEFAULT_COVER_GRADIENTS[Math.floor(Math.random() * DEFAULT_COVER_GRADIENTS.length)];
+        this._host.dataService.updatePage(this._host.pageId, { coverUrl: gradient });
       });
       this._hoverAffordances.appendChild(addCoverBtn);
     }

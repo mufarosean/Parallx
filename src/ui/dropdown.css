@@ -12,13 +12,13 @@
   justify-content: space-between;
   width: 100%;
   padding: 4px 8px;
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   font-family: inherit;
   line-height: 20px;
   color: var(--vscode-dropdown-foreground, var(--vscode-foreground, #ccc));
   background: var(--vscode-dropdown-background, var(--vscode-input-background, #3c3c3c));
   border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, #3c3c3c));
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   cursor: pointer;
   outline: none;
   text-align: left;
@@ -29,17 +29,17 @@
 
 .ui-dropdown__button:hover {
   background: var(--vscode-dropdown-background, var(--vscode-input-background, #454545));
-  border-color: var(--vscode-focusBorder, #007acc);
+  border-color: var(--vscode-focusBorder, #9333ea);
 }
 
 .ui-dropdown__button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #007acc);
+  outline: 1px solid var(--vscode-focusBorder, #9333ea);
   outline-offset: -1px;
 }
 
 .ui-dropdown__chevron {
   margin-left: 6px;
-  font-size: 10px;
+  font-size: var(--parallx-fontSize-xs);
   opacity: 0.7;
   flex-shrink: 0;
 }
@@ -57,7 +57,7 @@
   padding: 4px 0;
   background: var(--vscode-dropdown-listBackground, var(--vscode-editorWidget-background, #252526));
   border: 1px solid var(--vscode-dropdown-border, var(--vscode-widget-border, #454545));
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm);
   box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
   max-height: 200px;
   overflow-y: auto;
@@ -69,7 +69,7 @@
 
 .ui-dropdown__item {
   padding: 4px 8px;
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   line-height: 20px;
   color: var(--vscode-foreground, #ccc);
   cursor: pointer;

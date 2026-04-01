@@ -12,6 +12,7 @@ import type { IMcpToolSchema } from './mcpTypes.js';
 export class McpToolBridge implements IDisposable {
   private readonly _registrations = new Map<string, IDisposable[]>();
   private _statusSubscription?: IDisposable;
+  private _notificationSubscription?: IDisposable;
 
   constructor(
     private readonly _mcpClient: IMcpClientService,
@@ -21,6 +22,13 @@ export class McpToolBridge implements IDisposable {
     this._statusSubscription = this._mcpClient.onDidChangeStatus(({ serverId, status }) => {
       if (status === 'disconnected') {
         this.removeTools(serverId);
+      }
+    });
+
+    // D1b-6: Re-fetch tools when server sends notifications/tools/list_changed
+    this._notificationSubscription = this._mcpClient.onDidReceiveNotification(({ serverId, method }) => {
+      if (method === 'notifications/tools/list_changed') {
+        this.refreshTools(serverId);
       }
     });
   }
@@ -63,6 +71,7 @@ export class McpToolBridge implements IDisposable {
       this.removeTools(id);
     }
     this._statusSubscription?.dispose();
+    this._notificationSubscription?.dispose();
   }
 
   // ─── Private ───────────────────────────────────────────────────────

@@ -26,8 +26,8 @@
 
 /* Active highlight — applied when cursor is over a zone */
 .drop-highlight {
-  background-color: var(--vscode-editorGroup-dropBackground, rgba(0, 120, 212, 0.15));
-  border: 2px solid var(--vscode-editorGroup-dropBorder, rgba(0, 120, 212, 0.6));
+  background-color: var(--vscode-editorGroup-dropBackground, rgba(168, 85, 247, 0.15));
+  border: 2px solid var(--vscode-editorGroup-dropBorder, rgba(168, 85, 247, 0.5));
 }
 
 /* Invalid drop target */

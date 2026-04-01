@@ -10,7 +10,7 @@
 }
 
 .ui-toggle:focus-visible .ui-toggle__track {
-  outline: 2px solid var(--vscode-focusBorder, #007acc);
+  outline: 2px solid var(--vscode-focusBorder, #9333ea);
   outline-offset: 2px;
 }
 
@@ -40,8 +40,8 @@
 /* ── Checked state ── */
 
 .ui-toggle--checked .ui-toggle__track {
-  background: var(--vscode-button-background, #007acc);
-  border-color: var(--vscode-button-background, #007acc);
+  background: var(--vscode-button-background, #9333ea);
+  border-color: var(--vscode-button-background, #9333ea);
 }
 
 .ui-toggle--checked .ui-toggle__thumb {
@@ -52,7 +52,7 @@
 /* ── Label ── */
 
 .ui-toggle__label {
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   line-height: 20px;
   color: var(--vscode-foreground, #ccc);
 }

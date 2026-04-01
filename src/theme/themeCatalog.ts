@@ -8,6 +8,7 @@ import type { ThemeSource } from './themeTypes.js';
 import type { ThemeCatalogEntry } from './themeTypes.js';
 export type { ThemeCatalogEntry } from './themeTypes.js';
 import { IColorRegistry } from './colorRegistry.js';
+import type { IDesignTokenRegistry } from './designTokenRegistry.js';
 
 // ─── Static imports of built-in theme JSON ───────────────────────────────────
 
@@ -27,25 +28,56 @@ const BUILTIN_THEMES: ThemeCatalogEntry[] = [
 
 // ─── Theme catalog API ───────────────────────────────────────────────────────
 
+/** localStorage key for user-created themes. */
+export const USER_THEMES_KEY = 'parallx.userThemes';
+
 /**
- * Returns all available theme catalog entries.
+ * Load user themes from localStorage.
+ */
+function loadUserThemes(): ThemeCatalogEntry[] {
+  try {
+    const raw = localStorage.getItem(USER_THEMES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (t: unknown): t is ThemeSource =>
+          typeof t === 'object' && t !== null &&
+          typeof (t as ThemeSource).id === 'string' &&
+          typeof (t as ThemeSource).label === 'string' &&
+          typeof (t as ThemeSource).colors === 'object',
+      )
+      .map((source: ThemeSource) => ({
+        id: source.id,
+        label: source.label,
+        uiTheme: source.uiTheme,
+        source,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Returns all available theme catalog entries (built-in + user themes).
  */
 export function getAvailableThemes(): readonly ThemeCatalogEntry[] {
-  return BUILTIN_THEMES;
+  return [...BUILTIN_THEMES, ...loadUserThemes()];
 }
 
 /**
  * Resolve a catalog entry to a ColorThemeData ready for application.
  */
-export function resolveTheme(entry: ThemeCatalogEntry, registry: IColorRegistry): ColorThemeData {
-  return ColorThemeData.fromSource(entry.source, registry);
+export function resolveTheme(entry: ThemeCatalogEntry, registry: IColorRegistry, designTokenRegistry?: IDesignTokenRegistry): ColorThemeData {
+  return ColorThemeData.fromSource(entry.source, registry, designTokenRegistry);
 }
 
 /**
  * Look up a theme by ID. Returns undefined if not found.
  */
 export function findThemeById(themeId: string): ThemeCatalogEntry | undefined {
-  return BUILTIN_THEMES.find(t => t.id === themeId);
+  return getAvailableThemes().find(t => t.id === themeId);
 }
 
 /** The default theme ID for fresh installations. */

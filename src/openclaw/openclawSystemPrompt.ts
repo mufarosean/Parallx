@@ -70,6 +70,8 @@ export interface IOpenclawSystemPromptParams {
   readonly supportsTools?: boolean;
   /** D5: Whether the model supports vision/image input */
   readonly supportsVision?: boolean;
+  /** Whether this turn has explicit file or selection attachments. */
+  readonly hasExplicitAttachments?: boolean;
   /** Token budget for system prompt (typically 10% of context window).
    *  When set, variable sections are truncated if total exceeds budget. */
   readonly systemBudgetTokens?: number;
@@ -176,6 +178,11 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
   // 11. D5: Vision model guidance
   if (params.supportsVision) {
     sections.push(buildVisionGuidanceSection());
+  }
+
+  // 12. File attachment guidance (when user explicitly attaches files/selections)
+  if (params.hasExplicitAttachments) {
+    sections.push(buildAttachmentGuidanceSection());
   }
 
   let result = sections.join('\n\n');
@@ -356,6 +363,19 @@ function buildVisionGuidanceSection(): string {
     '- Reference visual elements (text, diagrams, UI, photos) in your response',
     '- If the image relates to the workspace content, connect visual observations to workspace context',
     'When no image is attached, respond normally to text input.',
+  ].join('\n');
+}
+
+function buildAttachmentGuidanceSection(): string {
+  return [
+    '## Attached Context',
+    'The user has explicitly attached files or text selections to this message.',
+    'Their content appears at the beginning of the user message, marked with `## Attached File:` or `## Selected Text from:`, followed by `---` and the user\'s actual question.',
+    'Treat the attached content as the primary context for your response:',
+    '- Answer based on the attached content first, supplementing with workspace context when relevant.',
+    '- Quote specific sections from the attached content when citing facts.',
+    '- If the user\'s question can be fully answered from the attachment, do so directly.',
+    '- The attachment content IS present in the message — look for `## Attached File:` headers.',
   ].join('\n');
 }
 

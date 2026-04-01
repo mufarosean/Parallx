@@ -27,6 +27,8 @@ import { URI } from '../platform/uri.js';
 import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
 import { TabBar, type ITabBarItem } from '../ui/tabBar.js';
 import { $, addDisposableListener } from '../ui/dom.js';
+import { getIcon } from '../ui/iconRegistry.js';
+import { setupTooltip } from '../ui/tooltip.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -476,7 +478,7 @@ export class EditorGroupView extends Disposable implements IGridView {
       label: editor.name,
       tooltip: editor.description || editor.name,
       italic: this.model.isPreview(i),
-      stickyContent: this.model.isSticky(i) ? '📌 ' : undefined,
+      stickyContent: this.model.isSticky(i) ? 'pinned' : undefined,
       decorations: {
         dirty: editor.isDirty,
         pinned: this.model.isSticky(i),
@@ -623,7 +625,7 @@ export class EditorGroupView extends Disposable implements IGridView {
       const name = activeEditor.name.toLowerCase();
       if (name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.mdx')) {
         const previewBtn = this._createToolbarButton(
-          `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h12v12H2V2zm1 1v10h10V3H3zm1 1h5v2H4V4zm0 3h8v1H4V7zm0 2h8v1H4V9zm0 2h5v1H4v-1z"/></svg>`,
+          getIcon('markdown-preview')!,
           'Open Markdown Preview to the Side (Ctrl+K V)',
           () => { this._onDidRequestMarkdownPreview.fire(); },
           true
@@ -635,7 +637,7 @@ export class EditorGroupView extends Disposable implements IGridView {
 
     // Split button — SVG matching VS Code's split-editor codicon
     const splitBtn = this._createToolbarButton(
-      `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M14 1H2a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zm0 13H9V2h5v12zM2 2h6v12H2V2z"/></svg>`,
+      getIcon('split-editor')!,
       'Split Editor Right',
       () => { this._onDidRequestSplit.fire(GroupDirection.Right); },
       true
@@ -650,7 +652,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     } else {
       btn.textContent = content;
     }
-    btn.title = title;
+    setupTooltip(btn, title);
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       onClick();

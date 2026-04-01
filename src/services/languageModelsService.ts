@@ -98,7 +98,20 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
     // Refresh model list asynchronously after provider registration
     this._refreshModels();
 
+    // When the provider's status changes (e.g. Ollama comes online after
+    // Parallx is already running), refresh the model list so the UI
+    // picks up newly available models without requiring a click.
+    let statusSub: IDisposable | undefined;
+    if (provider.onDidChangeStatus) {
+      statusSub = provider.onDidChangeStatus((status) => {
+        if (status.available) {
+          this._refreshModels();
+        }
+      });
+    }
+
     return toDisposable(() => {
+      statusSub?.dispose();
       this._providers.delete(provider.id);
 
       // BUG FIX: Check whether the active model belongs to this provider
@@ -129,7 +142,10 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
   // ── Model Enumeration ──
 
   async getModels(): Promise<readonly ILanguageModelInfo[]> {
-    await this._refreshModels();
+    if (this._cachedModels.length === 0) {
+      // First call ever — must await to populate
+      await this._refreshModels();
+    }
     return this._cachedModels;
   }
 

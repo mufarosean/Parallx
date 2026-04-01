@@ -235,7 +235,7 @@ export class StatusBarController extends Disposable {
       : undefined;
     if (!notifService) return;
 
-    const bellSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M13.377 10.573a7.63 7.63 0 0 1-.383-2.38V6.195a5.115 5.115 0 0 0-1.268-3.446 5.138 5.138 0 0 0-3.242-1.722c-.694-.072-1.4 0-2.07.227-.67.215-1.28.574-1.794 1.053a4.923 4.923 0 0 0-1.208 1.675 5.067 5.067 0 0 0-.431 2.022v2.2a7.61 7.61 0 0 1-.383 2.37L2 12.343l.479.658h3.505c0 .526.215 1.04.586 1.412.37.37.885.586 1.412.586.526 0 1.04-.215 1.411-.586s.587-.886.587-1.412h3.505l.478-.658-.586-1.77zm-4.69 3.147a.997.997 0 0 1-.705.299.997.997 0 0 1-.706-.3.997.997 0 0 1-.3-.705h1.999a.939.939 0 0 1-.287.706zm-5.515-1.71l.371-1.114a8.633 8.633 0 0 0 .443-2.691V6.004c0-.563.12-1.113.347-1.616.227-.514.55-.969.96-1.35.41-.37.885-.66 1.408-.844a4.14 4.14 0 0 1 1.635-.193 4.13 4.13 0 0 1 2.617 1.377c.37.44.636.96.78 1.52.145.56.193 1.145.143 1.724v2.2c0 .907.152 1.808.443 2.659l.371 1.113H3.172z" fill="currentColor"/></svg>';
+    const bellSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
 
     const bellAccessor = sb.addEntry({
       id: 'status.notifications',
@@ -415,7 +415,7 @@ export class StatusBarController extends Disposable {
       : undefined;
     if (!extractionService) return;
 
-    const docSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3 1h7l3 3v9.5a1.5 1.5 0 01-1.5 1.5h-7A1.5 1.5 0 013 13.5v-11A1.5 1.5 0 014.5 1H3zm7 0v3h3M6 8h4M6 10h4M6 6h2"/></svg>';
+    const docSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h8M8 9h2"/></svg>';
 
     const accessor = sb.addEntry({
       id: 'status.docling',

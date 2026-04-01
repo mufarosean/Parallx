@@ -44,6 +44,7 @@ import { DiagnosticsService } from '../services/diagnosticsService.js';
 import { ObservabilityService } from '../services/observabilityService.js';
 import { RuntimeHookRegistry } from '../services/runtimeHookRegistry.js';
 import { McpClientService } from '../openclaw/mcp/mcpClientService.js';
+import { McpToolBridge } from '../openclaw/mcp/mcpToolBridge.js';
 import { ALL_DIAGNOSTIC_CHECKS } from '../services/diagnosticChecks.js';
 import type { IStorage } from '../platform/storage.js';
 import type { ViewManager } from '../views/viewManager.js';
@@ -229,6 +230,7 @@ export function registerChatServices(
  */
 export function registerIndexingServices(
   services: ServiceCollection,
+  storage: IStorage,
 ): {
   embeddingService: EmbeddingService;
   chunkingService: ChunkingService;
@@ -313,6 +315,31 @@ export function registerIndexingServices(
   // ── D1: MCP Client Service ──
   const mcpClientService = new McpClientService();
   services.registerInstance(IMcpClientService, mcpClientService);
+
+  // ── D1: MCP Tool Bridge — auto-registers MCP tools into tool system ──
+  const languageModelToolsService = services.get(ILanguageModelToolsService);
+  const mcpToolBridge = new McpToolBridge(mcpClientService, languageModelToolsService);
+  mcpClientService.onDidChangeStatus(({ serverId, status }) => {
+    if (status === 'connected') {
+      mcpToolBridge.refreshTools(serverId).catch((err) => {
+        console.warn(`[MCP] Failed to refresh tools for ${serverId}:`, err);
+      });
+    }
+  });
+
+  // Initialize MCP server config persistence + auto-connect
+  mcpClientService.initStorage(storage).then(() => {
+    const servers = mcpClientService.getConfiguredServers();
+    for (const server of servers) {
+      if (server.enabled) {
+        mcpClientService.connectServer(server).catch((err) => {
+          console.warn(`[MCP] Auto-connect failed for ${server.id}:`, err);
+        });
+      }
+    }
+  }).catch((err) => {
+    console.warn('[MCP] Failed to initialize MCP storage:', err);
+  });
 
   // Wire observability into diagnostics (deferred — observability needs to exist first)
   diagnosticsService.updateDeps({

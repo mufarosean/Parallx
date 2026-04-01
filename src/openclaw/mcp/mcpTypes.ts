@@ -33,6 +33,19 @@ export interface IJsonRpcNotification {
   readonly params?: Record<string, unknown>;
 }
 
+/**
+ * Server-initiated JSON-RPC request (has both id and method).
+ * Unlike a notification, this requires a response from the client.
+ * Example: MCP `ping` — server sends `{ id: N, method: "ping" }`,
+ * client MUST respond with `{ id: N, result: {} }`.
+ */
+export interface IJsonRpcServerRequest {
+  readonly jsonrpc: '2.0';
+  readonly id: number | string;
+  readonly method: string;
+  readonly params?: Record<string, unknown>;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // MCP Tool Schema
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -101,6 +114,10 @@ export interface IMcpServerConfig {
   readonly url?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly enabled: boolean;
+  // D1b-8: Reconnection config
+  readonly autoReconnect?: boolean;         // default: true
+  readonly maxReconnectAttempts?: number;    // default: 5
+  readonly reconnectBaseDelayMs?: number;    // default: 1000
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -115,4 +132,15 @@ export interface IUnifiedMcpConfig {
 // Connection State
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export type McpConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
+export type McpConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'error';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Health Monitoring
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface IMcpHealthInfo {
+  readonly lastPingAt: number | null;
+  readonly lastPingLatencyMs: number | null;
+  readonly consecutiveFailures: number;
+  readonly isHealthy: boolean;
+}

@@ -144,7 +144,7 @@ export class AgentSection extends SettingsSection {
     // Actions (appear on hover)
     const actions = $('span.ai-settings-agent-card__actions');
     const editBtn = $('button.ai-settings-agent-card__action-btn');
-    editBtn.textContent = '⚙';
+    editBtn.textContent = 'Configure';
     editBtn.title = `Configure ${agent.name}`;
     actions.appendChild(editBtn);
 

@@ -24,6 +24,7 @@ import { StatusBarAlignment, StatusBarEntry, StatusBarEntryAccessor } from '../s
 import { Emitter, Event } from '../platform/events.js';
 import { toDisposable } from '../platform/lifecycle.js';
 import { $ } from '../ui/dom.js';
+import { setupTooltip } from '../ui/tooltip.js';
 
 export { StatusBarAlignment };
 export type { StatusBarEntry, StatusBarEntryAccessor };
@@ -258,7 +259,7 @@ export class StatusBarPart extends Part {
     if (entry.htmlElement) {
       label.appendChild(entry.htmlElement);
       if (entry.tooltip) {
-        label.title = entry.tooltip;
+        setupTooltip(label, entry.tooltip);
       } else {
         label.removeAttribute('title');
       }
@@ -287,7 +288,7 @@ export class StatusBarPart extends Part {
       label.appendChild(textSpan);
     }
     if (entry.tooltip) {
-      label.title = entry.tooltip;
+      setupTooltip(label, entry.tooltip);
     } else {
       label.removeAttribute('title');
     }

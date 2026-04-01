@@ -416,6 +416,7 @@ export interface IChatWidgetServices {
   readonly getSession?: (sessionId: string) => IChatSession | undefined;
   readonly getSessions?: () => readonly IChatSession[];
   readonly deleteSession?: (sessionId: string) => void;
+  readonly updateSessionModel?: (sessionId: string, modelId: string) => void;
   readonly openFile?: (fullPath: string) => void;
   readonly openPage?: (pageId: string) => void;
   readonly openMemory?: (sessionId: string) => void;
@@ -467,6 +468,7 @@ export interface ISessionSidebarServices {
 /** Services needed by the attachment ribbon. */
 export interface IAttachmentServices {
   getOpenEditorFiles(): IOpenEditorFile[];
+  getActiveEditorFile(): IOpenEditorFile | undefined;
   readonly onDidChangeOpenEditors: Event<void>;
   listWorkspaceFiles?(): Promise<IWorkspaceFileEntry[]>;
 }

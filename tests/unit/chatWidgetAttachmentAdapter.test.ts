@@ -5,11 +5,13 @@ import { buildChatWidgetAttachmentServices } from '../../src/built-in/chat/utili
 describe('chat widget attachment adapter', () => {
   it('builds attachment services when editor callbacks are available', async () => {
     const getOpenEditorFiles = vi.fn(() => [{ name: 'Claims Guide.md', fullPath: 'Claims Guide.md' }]);
+    const getActiveEditorFile = vi.fn(() => ({ name: 'Claims Guide.md', fullPath: 'Claims Guide.md' }));
     const onDidChangeOpenEditors = vi.fn() as any;
     const listWorkspaceFiles = vi.fn().mockResolvedValue([{ name: 'docs', isDirectory: true }]);
 
     const services = buildChatWidgetAttachmentServices({
       getOpenEditorFiles,
+      getActiveEditorFile,
       onDidChangeOpenEditors,
       listWorkspaceFiles,
     });
@@ -17,6 +19,9 @@ describe('chat widget attachment adapter', () => {
     expect(services.attachmentServices?.getOpenEditorFiles()).toEqual([
       { name: 'Claims Guide.md', fullPath: 'Claims Guide.md' },
     ]);
+    expect(services.attachmentServices?.getActiveEditorFile()).toEqual(
+      { name: 'Claims Guide.md', fullPath: 'Claims Guide.md' },
+    );
     await expect(services.attachmentServices?.listWorkspaceFiles?.()).resolves.toEqual([
       { name: 'docs', isDirectory: true },
     ]);

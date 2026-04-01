@@ -9,6 +9,7 @@
 import { Disposable, DisposableStore } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { $, clearNode, addDisposableListener, toggleClass } from './dom.js';
+import { setupTooltip } from './tooltip.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -83,7 +84,8 @@ export class ActionBar extends Disposable {
       const btn = document.createElement('button');
       btn.className = 'ui-action-bar-item';
       btn.type = 'button';
-      btn.title = action.title ?? action.label;
+
+      setupTooltip(btn, action.title ?? action.label);
 
       const isEnabled = action.enabled ?? true;
       btn.disabled = !isEnabled;
@@ -98,6 +100,7 @@ export class ActionBar extends Disposable {
       // Label (used as tooltip when icon is present, otherwise shown as text)
       if (!action.icon) {
         const labelEl = $('span.ui-action-bar-label', action.label);
+
         btn.appendChild(labelEl);
       }
 

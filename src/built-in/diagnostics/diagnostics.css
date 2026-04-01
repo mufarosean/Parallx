@@ -4,9 +4,9 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  font-size: 13px;
-  color: var(--parallx-fg, #cccccc);
-  background: var(--parallx-editor-bg, #1e1e1e);
+  font-size: var(--parallx-fontSize-md);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
   overflow: hidden;
 }
 
@@ -14,13 +14,13 @@
   display: flex;
   align-items: center;
   padding: 6px 12px;
-  border-bottom: 1px solid var(--parallx-border, #3c3c3c);
+  border-bottom: 1px solid var(--vscode-input-border);
   flex-shrink: 0;
 }
 
 .diagnostics-title {
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   opacity: 0.8;
@@ -43,7 +43,7 @@
 }
 
 .diagnostics-toolbar-btn:hover {
-  background: var(--parallx-toolbar-hover, rgba(255, 255, 255, 0.1));
+  background: var(--vscode-toolbar-hoverBackground);
   opacity: 1;
 }
 
@@ -58,15 +58,15 @@
 
 .diagnostics-summary {
   padding: 8px 12px;
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   font-weight: 500;
-  border-bottom: 1px solid var(--parallx-border, #3c3c3c);
+  border-bottom: 1px solid var(--vscode-input-border);
   flex-shrink: 0;
 }
 
-.diagnostics-summary--pass { color: var(--parallx-success-fg, #4ec9b0); }
-.diagnostics-summary--warn { color: var(--parallx-warning-fg, #cca700); }
-.diagnostics-summary--fail { color: var(--parallx-error-fg, #f44747); }
+.diagnostics-summary--pass { color: var(--vscode-testing-iconPassed); }
+.diagnostics-summary--warn { color: var(--vscode-editorWarning-foreground); }
+.diagnostics-summary--fail { color: var(--vscode-testing-iconFailed); }
 
 .diagnostics-table-container {
   flex: 1;
@@ -88,11 +88,11 @@
 .diagnostics-table th {
   text-align: left;
   padding: 4px 12px;
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   opacity: 0.6;
-  border-bottom: 1px solid var(--parallx-border, #3c3c3c);
+  border-bottom: 1px solid var(--vscode-input-border);
 }
 
 .diagnostics-table td {
@@ -101,11 +101,11 @@
 }
 
 .diagnostics-row {
-  border-bottom: 1px solid var(--parallx-border, rgba(60, 60, 60, 0.5));
+  border-bottom: 1px solid var(--vscode-input-border);
 }
 
 .diagnostics-row:hover {
-  background: var(--parallx-list-hover, rgba(255, 255, 255, 0.04));
+  background: var(--vscode-list-hoverBackground);
 }
 
 .diagnostics-row--fail {
@@ -116,6 +116,15 @@
   width: 28px;
   text-align: center;
 }
+.diagnostics-icon svg {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+}
+
+.diagnostics-row--pass .diagnostics-icon { color: var(--parallx-success-fg, #4ec9b0); }
+.diagnostics-row--fail .diagnostics-icon { color: var(--parallx-error-fg, #f44747); }
+.diagnostics-row--warn .diagnostics-icon { color: var(--parallx-warning-fg, #cca700); }
 
 .diagnostics-name {
   font-weight: 500;
@@ -132,6 +141,6 @@
 
 .diagnostics-time {
   opacity: 0.5;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   white-space: nowrap;
 }

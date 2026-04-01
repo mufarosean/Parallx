@@ -10,6 +10,7 @@ import type {
   IChatFollowup,
 } from '../../services/chatTypes.js';
 import { ChatMode, ChatContentPartKind, isChatFileAttachment } from '../../services/chatTypes.js';
+import { isChatSelectionAttachment } from '../../services/selectionActionTypes.js';
 import type {
   IDefaultParticipantServices,
   IOpenclawCommandRegistryFacade,
@@ -70,6 +71,7 @@ export function createOpenclawDefaultParticipant(services: IDefaultParticipantSe
       { name: 'usage', description: 'Show token usage statistics for this session' },
       { name: 'tools', description: 'List available tools and their status' },
       { name: 'verbose', description: 'Toggle verbose debug output for this session' },
+      { name: 'skill', description: 'Run a skill by name' },
     ],
     handler,
     runtime: { handleTurn: handler },
@@ -134,24 +136,65 @@ async function runOpenclawDefaultTurn(
 
   const effectiveOverlay = patternRulesOverlay || undefined;
 
-  // C3: Resolve non-image file attachments into context blocks
+  // C3: Resolve non-image file attachments into context blocks.
+  //     Prefer pre-resolved content (populated at send time by chatWidget)
+  //     which makes file attachments as reliable as selection attachments.
+  //     Falls back to disk I/O only if resolvedContent is absent (legacy path).
+  //     NEVER silently drop an attachment — if we can't read it, tell the model.
+  const MAX_ATTACHMENT_CHARS = 100_000; // ~25K tokens — caps large documents
   const fileAttachmentBlocks: string[] = [];
-  if (request.attachments?.length && services.readFileRelative) {
+  if (request.attachments?.length) {
     const fileAttachments = request.attachments.filter(isChatFileAttachment);
+    console.log(`[OpenClaw:C3] ${fileAttachments.length} file attachment(s) to resolve`);
     for (const att of fileAttachments) {
-      const content = await services.readFileRelative(att.fullPath).catch(() => null);
+      let content = att.resolvedContent ?? null;
+      if (!content && services.readFileRelative) {
+        console.log(`[OpenClaw:C3] Fallback read for: ${att.name} (${att.fullPath})`);
+        content = await services.readFileRelative(att.fullPath).catch((err) => {
+          console.warn(`[OpenClaw:C3] Fallback read failed for ${att.name}:`, err);
+          return null;
+        });
+      }
       if (content) {
-        fileAttachmentBlocks.push(`## Attached File: ${att.name}\n${content}`);
+        const truncated = content.length > MAX_ATTACHMENT_CHARS;
+        const displayContent = truncated ? content.slice(0, MAX_ATTACHMENT_CHARS) : content;
+        const truncNote = truncated ? `\n\n(Content truncated — showing first ${MAX_ATTACHMENT_CHARS} of ${content.length} characters)` : '';
+        console.log(`[OpenClaw:C3] Resolved: ${att.name} (${content.length} chars${truncated ? ', truncated' : ''})`);
+        fileAttachmentBlocks.push(`## Attached File: ${att.name}\n\`\`\`\n${displayContent}\n\`\`\`${truncNote}`);
+      } else {
+        // Content unavailable — still inform the model that user explicitly attached this file
+        console.warn(`[OpenClaw:C3] Could not read: ${att.name} — adding placeholder`);
+        fileAttachmentBlocks.push(`## Attached File: ${att.name}\n(Unable to read file content. The user attached this file: "${att.name}" at path: ${att.fullPath})`);
       }
     }
   }
 
-  // Combine mention + variable + file attachment context blocks
+  // M48: Resolve selection attachments into context blocks
+  const selectionAttachmentBlocks: string[] = [];
+  if (request.attachments?.length) {
+    const selectionAttachments = request.attachments.filter(isChatSelectionAttachment);
+    for (const att of selectionAttachments) {
+      const lines = att.startLine && att.endLine ? ` (lines ${att.startLine}–${att.endLine})` : '';
+      const page = att.pageNumber ? ` (page ${att.pageNumber})` : '';
+      selectionAttachmentBlocks.push(
+        `## Selected Text from: ${att.name}${lines}${page}\n\n> ${att.selectedText.split('\n').join('\n> ')}`,
+      );
+    }
+  }
+
+  // Combine context blocks with explicit attachments FIRST (highest priority).
+  // User-attached files/selections are deliberate context — they take precedence
+  // over @mention and #variable resolved content.
   const allContextBlocks = [
+    ...fileAttachmentBlocks,
+    ...selectionAttachmentBlocks,
     ...(mentionResult.contextBlocks.length > 0 ? mentionResult.contextBlocks : []),
     ...(variableResult.contextBlocks.length > 0 ? variableResult.contextBlocks : []),
-    ...fileAttachmentBlocks,
   ];
+
+  if (allContextBlocks.length > 0) {
+    console.log(`[OpenClaw] Context blocks: ${allContextBlocks.length} total (${fileAttachmentBlocks.length} files, ${selectionAttachmentBlocks.length} selections, ${mentionResult.contextBlocks.length} mentions, ${variableResult.contextBlocks.length} variables)`);
+  }
 
   // Build turn context for the new OpenClaw execution pipeline
   const turnContext = await buildOpenclawTurnContext(services, request, context, {

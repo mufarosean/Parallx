@@ -30,6 +30,8 @@ import type {
   ILanguageModelInfo,
 } from '../../../services/chatTypes.js';
 import { ChatRequestQueueKind } from '../../../services/chatTypes.js';
+import type { IChatSelectionAttachment, IChatAttachment, IChatFileAttachment } from '../../../services/chatTypes.js';
+import { isChatFileAttachment } from '../../../services/chatTypes.js';
 import type {
   IChatWidgetServices,
   ICodeActionRequest,
@@ -274,7 +276,14 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     }
 
     if (services.modelPicker) {
-      this._register(new ChatModelPicker(pickerSlot, services.modelPicker));
+      const picker = this._register(new ChatModelPicker(pickerSlot, services.modelPicker));
+      this._register(picker.onDidSelectModel((modelId) => {
+        // Sync the session's persisted modelId when user picks a different model
+        if (this._session && this._session.modelId !== modelId) {
+          this._session.modelId = modelId;
+          this._services.updateSessionModel?.(this._session.id, modelId);
+        }
+      }));
       this._register(services.modelPicker.onDidChangeModels(() => {
         void this._syncVisionSupport();
       }));
@@ -350,6 +359,15 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   setSession(session: IChatSession): void {
     this._sessionDisposables.clear();
     this._session = session;
+
+    // Restore the session's model as the global active model
+    if (session.modelId && this._services.modelPicker) {
+      const currentModel = this._services.modelPicker.getActiveModel();
+      if (currentModel !== session.modelId) {
+        this._services.modelPicker.setActiveModel(session.modelId);
+      }
+    }
+
     this._renderMessages();
     this._updateVisibility();
     this._sessionSidebar.setActiveSession(session.id);
@@ -375,6 +393,16 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
    */
   focus(): void {
     this._inputPart.focus();
+  }
+
+  /** Add a text selection as context (M48). */
+  addSelectionAttachment(attachment: IChatSelectionAttachment): void {
+    this._inputPart.addSelectionAttachment(attachment);
+  }
+
+  /** Set the input text (M48 — programmatic access). */
+  setInputValue(text: string): void {
+    this._inputPart.setValue(text);
   }
 
   /**
@@ -434,7 +462,13 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const sessionId = this._session.id;
 
     // Collect attachments before clearing (must be before early-return branch)
-    const attachments = this._inputPart.getAttachments();
+    const rawAttachments = this._inputPart.getAttachments();
+
+    // Resolve file attachment content before sending (VS Code / Claude pattern).
+    // File attachments carry only fullPath at attachment time. We read file
+    // content here so the participant receives pre-resolved content inline —
+    // same reliability as selection attachments which carry selectedText.
+    const attachments = await this._resolveFileAttachmentContent(rawAttachments);
 
     // If a request is already in progress, queue the message
     if (this._session.requestInProgress) {
@@ -465,6 +499,53 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       // Clear pending message UI for any that were processed
       this._clearProcessedPendingMessages();
     }
+  }
+
+  /**
+   * Resolve file attachment content before sending to the participant.
+   *
+   * Reads file content via readFileRelative and populates `resolvedContent`
+   * on each file attachment. This makes file attachments behave like selection
+   * attachments — content travels inline, no I/O needed downstream.
+   *
+   * If a file cannot be read, it is dropped and a warning is logged.
+   * Non-file attachments (images, selections) pass through unchanged.
+   */
+  private async _resolveFileAttachmentContent(attachments: readonly IChatAttachment[]): Promise<IChatAttachment[]> {
+    if (attachments.length === 0) {
+      return [];
+    }
+    console.log(`[ChatWidget] Resolving ${attachments.length} attachment(s), readFileRelative available: ${!!this._services.readFileRelative}`);
+
+    if (!this._services.readFileRelative) {
+      // No file reader — pass attachments through as-is (participant fallback will try)
+      return [...attachments];
+    }
+
+    const resolved: IChatAttachment[] = [];
+    for (const att of attachments) {
+      if (isChatFileAttachment(att) && !att.resolvedContent) {
+        console.log(`[ChatWidget] Reading file attachment: ${att.name} (${att.fullPath})`);
+        try {
+          const content = await this._services.readFileRelative(att.fullPath);
+          if (content) {
+            console.log(`[ChatWidget] Resolved file attachment: ${att.name} (${content.length} chars)`);
+            resolved.push({ ...att, resolvedContent: content } as IChatFileAttachment);
+          } else {
+            // Content empty/null — still pass the attachment so participant can inform model
+            console.warn(`[ChatWidget] File attachment returned empty: ${att.name}`);
+            resolved.push(att);
+          }
+        } catch (err) {
+          // Read failed — still pass the attachment through (don't silently drop)
+          console.warn(`[ChatWidget] Failed to read attached file: ${att.name}`, err);
+          resolved.push(att);
+        }
+      } else {
+        resolved.push(att);
+      }
+    }
+    return resolved;
   }
 
   private _handleStop(): void {

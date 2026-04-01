@@ -277,7 +277,7 @@ export class NotificationService extends Disposable {
   private _getSeverityIcon(severity: NotificationSeverity): string {
     switch (severity) {
       case NotificationSeverity.Information: return 'ℹ';
-      case NotificationSeverity.Warning: return '⚠';
+      case NotificationSeverity.Warning: return '!';
       case NotificationSeverity.Error: return '✕';
     }
   }

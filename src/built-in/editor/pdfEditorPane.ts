@@ -47,6 +47,8 @@ import { PdfEditorInput } from './pdfEditorInput.js';
 import { $, hide, show, startDrag, endDrag } from '../../ui/dom.js';
 import { ContextMenu } from '../../ui/contextMenu.js';
 import { toDisposable } from '../../platform/lifecycle.js';
+import { getIcon } from '../../ui/iconRegistry.js';
+import { setupTooltip } from '../../ui/tooltip.js';
 
 const PANE_ID = 'pdf-editor-pane';
 const PDFJS_CMAP_URL = './dist/renderer/pdfjs/cmaps/';
@@ -56,25 +58,25 @@ const PDFJS_WASM_URL = './dist/renderer/pdfjs/wasm/';
 // TextLayerMode is not exported from pdf_viewer.mjs
 const TEXT_LAYER_ENABLE = 1;
 
-// ─── SVG icons (16×16 codicon-style, fill="currentColor") ────────────────
+// ─── SVG icons — from the central Lucide icon registry ─────────────────────
 
 const ICON = {
-  chevronLeft:  '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M10.07 2.22L4.29 8l5.78 5.78.71-.71L5.71 8l5.07-5.07-.71-.71z"/></svg>',
-  chevronRight: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M5.93 2.22L11.71 8 5.93 13.78l-.71-.71L10.29 8 5.22 2.93l.71-.71z"/></svg>',
-  chevronUp:    '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2.22 10.07L8 4.29l5.78 5.78-.71.71L8 5.71l-5.07 5.07-.71-.71z"/></svg>',
-  chevronDown:  '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2.22 5.93L8 11.71l5.78-5.78-.71-.71L8 10.29 2.93 5.22l-.71.71z"/></svg>',
-  zoomOut:      '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zM2.5 8a5.5 5.5 0 1 1 11 0 5.5 5.5 0 0 1-11 0z"/><path d="M5 7.25h6v1.5H5z"/></svg>',
-  zoomIn:       '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zM2.5 8a5.5 5.5 0 1 1 11 0 5.5 5.5 0 0 1-11 0z"/><path d="M5 7.25h6v1.5H5z"/><path d="M7.25 5v6h1.5V5z"/></svg>',
-  fitWidth:     '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 8l3-3v2h8V5l3 3-3 3V9H4v2L1 8z"/></svg>',
-  fitPage:      '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3 3h10v10H3V3zm1 1v8h8V4H4z"/><path d="M1 1h4v1H2v3H1V1zM11 1h4v4h-1V2h-3V1zM1 11h1v3h3v1H1v-4zM14 11h1v4h-4v-1h3v-3z"/></svg>',
-  search:       '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M6.5 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0 1.75a2.75 2.75 0 1 1 0 5.5 2.75 2.75 0 0 1 0-5.5z"/><path d="M9.9 8.5L14.7 13.3 13.3 14.7 8.5 9.9z"/></svg>',
-  listTree:     '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2h14v1H1V2zm2 3h12v1H3V5zm2 3h10v1H5V8zm2 3h8v1H7v-1zm-6 3h14v1H1v-1z"/></svg>',
-  grid:         '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h5v5H2V2zm1 1v3h3V3H3zm6-1h5v5H9V2zm1 1v3h3V3h-3zM2 9h5v5H2V9zm1 1v3h3v-3H3zm6-1h5v5H9V9zm1 1v3h3v-3h-3z"/></svg>',
-  rotate:       '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M13.45 5.67A6 6 0 0 0 2 8h1a5 5 0 0 1 9.55-2H10v1h4.5V2.5h-1v3.17zM2.55 10.33A6 6 0 0 0 14 8h-1a5 5 0 0 1-9.55 2H6v1H1.5V15.5h1v-3.17z"/></svg>',
-  spread:       '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2h6v12H1V2zm1 1v10h4V3H2zm7-1h6v12H9V2zm1 1v10h4V3h-4z"/></svg>',
-  print:        '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 1h8v3h3v7h-3v4H4v-4H1V4h3V1zm1 3h6V2H5v2zm-3 1v5h2V8h8v2h2V5H2zm3 4v5h6V9H5z"/></svg>',
-  openExt:      '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 1H8v1H2.5A.5.5 0 0 0 2 2.5v11a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5V8h1v5.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 13.5v-11A1.5 1.5 0 0 1 2.5 1h-.001zM10 1h5v5h-1V2.707L8.354 8.354l-.708-.708L13.293 2H10V1z"/></svg>',
-  close:        '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 7.29L12.15 3.14l.71.71L8.71 8l4.14 4.15-.71.71L8 8.71l-4.15 4.14-.71-.71L7.29 8 3.14 3.85l.71-.71L8 7.29z"/></svg>',
+  chevronLeft:  getIcon('chevron-left')!,
+  chevronRight: getIcon('chevron-right')!,
+  chevronUp:    getIcon('chevron-up')!,
+  chevronDown:  getIcon('chevron-down')!,
+  zoomOut:      getIcon('zoom-out')!,
+  zoomIn:       getIcon('zoom-in')!,
+  fitWidth:     getIcon('fit-width')!,
+  fitPage:      getIcon('fit-page')!,
+  search:       getIcon('search')!,
+  listTree:     getIcon('list-tree')!,
+  grid:         getIcon('grid')!,
+  rotate:       getIcon('rotate')!,
+  spread:       getIcon('spread')!,
+  print:        getIcon('printer')!,
+  openExt:      getIcon('open')!,
+  close:        getIcon('close')!,
 } as const;
 
 // ─── Outline types ───────────────────────────────────────────────────────
@@ -667,7 +669,7 @@ export class PdfEditorPane extends EditorPane {
     const b = document.createElement('button');
     b.classList.add('pdf-toolbar-btn');
     b.innerHTML = svgOrText;
-    b.title = title;
+    setupTooltip(b, title);
     return b;
   }
 
@@ -1312,13 +1314,13 @@ export class PdfEditorPane extends EditorPane {
     const current = this._pdfViewer.spreadMode;
     if (current === SpreadMode.NONE) {
       this._pdfViewer.spreadMode = SpreadMode.ODD;
-      this._spreadBtn.title = 'Spread: Odd (click to cycle)';
+      setupTooltip(this._spreadBtn, 'Spread: Odd (click to cycle)');
     } else if (current === SpreadMode.ODD) {
       this._pdfViewer.spreadMode = SpreadMode.EVEN;
-      this._spreadBtn.title = 'Spread: Even (click to cycle)';
+      setupTooltip(this._spreadBtn, 'Spread: Even (click to cycle)');
     } else {
       this._pdfViewer.spreadMode = SpreadMode.NONE;
-      this._spreadBtn.title = 'Spread: Off (click to cycle)';
+      setupTooltip(this._spreadBtn, 'Spread: Off (click to cycle)');
     }
   }
 
@@ -1355,7 +1357,25 @@ export class PdfEditorPane extends EditorPane {
 
   // ── Text selection context menu ────────────────────────────────────
 
+  /** Get the currently selected text in the PDF viewer (M48). */
+  getSelectedText(): string {
+    return this._capturedSelection;
+  }
+
+  /** Get selection source metadata for the AI action system (M48). */
+  getSelectionSource(): { fileName: string; filePath: string; pageNumber?: number } | undefined {
+    if (!this._capturedSelection || !this._currentInput) return undefined;
+    return {
+      fileName: this._currentInput.name,
+      filePath: this._currentInput.uri.fsPath,
+      pageNumber: this._pdfViewer?.currentPageNumber,
+    };
+  }
+
   private _wireContextMenu(): void {
+    const controller = new AbortController();
+    this._register(toDisposable(() => controller.abort()));
+
     // Show shared ContextMenu on mouseup when text is selected
     this._viewerContainer.addEventListener('mouseup', (e) => {
       requestAnimationFrame(() => {
@@ -1370,13 +1390,13 @@ export class PdfEditorPane extends EditorPane {
           this._dismissContextMenu();
         }
       });
-    });
+    }, { signal: controller.signal });
 
     // Dismiss on scroll
     this._viewerContainer.addEventListener('scroll', () => {
       this._dismissContextMenu();
       this._scheduleSelectionOverlayUpdate();
-    });
+    }, { signal: controller.signal });
   }
 
   private _showSelectionMenu(x: number, y: number): void {
@@ -1398,6 +1418,13 @@ export class PdfEditorPane extends EditorPane {
           keybinding: 'Ctrl+F',
           disabled: !hasSel,
         },
+        // M48 Phase 4: Single AI action
+        {
+          id: 'ai.addToChat',
+          label: 'Add Selection to Chat',
+          disabled: !hasSel,
+          group: 'ai',
+        },
       ],
       anchor: { x, y },
     });
@@ -1414,10 +1441,35 @@ export class PdfEditorPane extends EditorPane {
           this._searchInput.value = sel;
           this._dispatchFind('find');
         }
+      } else if (e.item.id === 'ai.addToChat') {
+        this._dispatchSelectionAction(e.item.id);
       }
     });
 
     this._activeContextMenu = menu;
+  }
+
+  /** Dispatch a selection action to the unified dispatcher (M48 Phase 4). */
+  private _dispatchSelectionAction(_menuItemId: string): void {
+    if (!this._capturedSelection || !this._currentInput) return;
+    const actionId = 'add-to-chat';
+
+    const detail = {
+      selectedText: this._capturedSelection,
+      surface: 'pdf',
+      actionId,
+      source: {
+        fileName: this._currentInput.name,
+        filePath: this._currentInput.uri.fsPath,
+        pageNumber: this._pdfViewer?.currentPageNumber,
+      },
+    };
+
+    // Fire a bubbling custom event — the workbench picks this up and
+    // routes it to the SelectionActionDispatcher.
+    this._viewerContainer.dispatchEvent(
+      new CustomEvent('parallx-selection-action', { bubbles: true, detail }),
+    );
   }
 
   private _dismissContextMenu(): void {

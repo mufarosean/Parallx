@@ -8,12 +8,14 @@ import { $ } from '../../ui/dom.js';
 import type { IDiagnosticResult } from '../../services/serviceTypes.js';
 import { IDiagnosticsService } from '../../services/serviceTypes.js';
 
-// ── SVG Icons ────────────────────────────────────────────────────────────────
+import { getIcon } from '../../ui/iconRegistry.js';
 
-const ICON_PASS = `<svg width="16" height="16" viewBox="0 0 16 16" fill="var(--parallx-success-fg, #4ec9b0)"><path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/></svg>`;
-const ICON_FAIL = `<svg width="16" height="16" viewBox="0 0 16 16" fill="var(--parallx-error-fg, #f44747)"><path d="M11.06 4.94a.75.75 0 010 1.06L9.06 8l2 2a.75.75 0 11-1.06 1.06L8 9.06l-2 2a.75.75 0 01-1.06-1.06l2-2-2-2a.75.75 0 011.06-1.06L8 6.94l2-2a.75.75 0 011.06 0z"/></svg>`;
-const ICON_WARN = `<svg width="16" height="16" viewBox="0 0 16 16" fill="var(--parallx-warning-fg, #cca700)"><path d="M8 1l7 14H1L8 1zm0 3L3.2 13h9.6L8 4zm-.75 3.5h1.5v3h-1.5v-3zm0 4h1.5v1.5h-1.5v-1.5z"/></svg>`;
-const ICON_REFRESH = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M13.45 5.66A6 6 0 003.17 4.5H5V6H1V2h1.5v1.76A7.5 7.5 0 0115 7.5h-1.5a.11.11 0 00-.05-.16v-.02l-.01-.02A5.97 5.97 0 0013.45 5.66zM2.55 10.34A6 6 0 0012.83 11.5H11V10h4v4h-1.5v-1.76A7.5 7.5 0 011 8.5h1.5l.01.02.01.02c.08.6.26 1.2.53 1.76l.01.02.01.02z"/></svg>`;
+// ── SVG Icons — from the central Lucide icon registry ────────────────────────
+
+const ICON_PASS = getIcon('check')!;
+const ICON_FAIL = getIcon('close')!;
+const ICON_WARN = getIcon('alert-triangle')!;
+const ICON_REFRESH = getIcon('refresh')!;
 
 // ── Local API type ───────────────────────────────────────────────────────────
 
@@ -35,6 +37,9 @@ interface ParallxApi {
 let diagnosticsService: InstanceType<typeof import('../../services/diagnosticsService.js').DiagnosticsService> | undefined;
 let currentResults: readonly IDiagnosticResult[] = [];
 let renderCallback: (() => void) | undefined;
+let _autoRefreshTimer: ReturnType<typeof setInterval> | undefined;
+
+const AUTO_REFRESH_MS = 30_000; // 30 seconds
 
 export function activate(api: ParallxApi, context: ToolContext): void {
   // Resolve diagnostics service from DI via api.services
@@ -75,10 +80,16 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       currentResults = results;
       renderCallback?.();
     }).catch(() => { /* swallow startup errors */ });
+
+    // Live auto-refresh: re-run checks periodically
+    _autoRefreshTimer = setInterval(() => {
+      diagnosticsService?.runChecks().catch(() => {});
+    }, AUTO_REFRESH_MS);
   }
 }
 
 export function deactivate(): void {
+  if (_autoRefreshTimer) { clearInterval(_autoRefreshTimer); _autoRefreshTimer = undefined; }
   diagnosticsService = undefined;
   renderCallback = undefined;
 }
@@ -127,7 +138,7 @@ function renderDiagnosticsView(container: HTMLElement): IDisposable {
     const pass = results.filter(r => r.status === 'pass').length;
     const fail = results.filter(r => r.status === 'fail').length;
     const warn = results.filter(r => r.status === 'warn').length;
-    const icon = fail > 0 ? '❌' : warn > 0 ? '⚠️' : '✅';
+    const icon = fail > 0 ? 'FAIL' : warn > 0 ? 'WARN' : 'PASS';
     summary.textContent = `${icon} ${pass} pass, ${fail} fail, ${warn} warn`;
     summary.className = `diagnostics-summary ${fail > 0 ? 'diagnostics-summary--fail' : warn > 0 ? 'diagnostics-summary--warn' : 'diagnostics-summary--pass'}`;
 

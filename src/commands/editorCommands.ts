@@ -156,3 +156,47 @@ export const markdownOpenPreview: CommandDescriptor = {
     activeGroup.openEditor(previewInput, { pinned: true });
   },
 };
+
+// ─── M48: Selection → AI Action Commands ─────────────────────────────────────
+
+/**
+ * Helper: get the selected text and source from the active editor pane.
+ * Works across PDF, text, and markdown panes.
+ */
+function getActiveSelectionPayload(
+  ctx: Parameters<CommandDescriptor['handler']>[0],
+  actionId: string,
+): { selectedText: string; surface: string; actionId: string; source: { fileName: string; filePath: string; startLine?: number; endLine?: number; pageNumber?: number } } | undefined {
+  const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
+  if (!editorGroupService) return undefined;
+  const group = editorGroupService.activeGroup;
+  if (!group) return undefined;
+  const pane = (group as any).activePane;
+  if (!pane || typeof pane.getSelectedText !== 'function') return undefined;
+
+  const text = pane.getSelectedText();
+  if (!text) return undefined;
+
+  const source = typeof pane.getSelectionSource === 'function'
+    ? pane.getSelectionSource()
+    : { fileName: pane.input?.name ?? 'unknown', filePath: pane.input?.name ?? 'unknown' };
+
+  const surface = pane.id?.includes('pdf') ? 'pdf'
+    : pane.id?.includes('markdown') ? 'markdown'
+    : 'text';
+
+  return { selectedText: text, surface, actionId, source: source ?? { fileName: 'unknown', filePath: 'unknown' } };
+}
+
+export const addSelectionToChat: CommandDescriptor = {
+  id: 'editor.addSelectionToChat',
+  title: 'Add Selection to Chat',
+  category: 'AI',
+  handler(ctx) {
+    const payload = getActiveSelectionPayload(ctx, 'add-to-chat');
+    if (!payload) return;
+    document.dispatchEvent(
+      new CustomEvent('parallx-selection-action', { bubbles: true, detail: payload }),
+    );
+  },
+};

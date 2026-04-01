@@ -328,24 +328,22 @@ describe('AutoTaggingService', () => {
   });
 });
 
-// ── Task 7.3: InlineAIMenuController ─────────────────────────────────────────
+// ── Task 7.3: InlineAIChatController (M48 Phase 5 — replaced InlineAIMenu) ─────
 
-describe('InlineAIMenuController', () => {
+describe('InlineAIChatController', () => {
   it('module exports the controller class', async () => {
-    const mod = await import('../../src/built-in/canvas/menus/inlineAIMenu');
-    expect(mod.InlineAIMenuController).toBeDefined();
-    expect(typeof mod.InlineAIMenuController).toBe('function');
+    const mod = await import('../../src/built-in/canvas/menus/inlineAIChat');
+    expect(mod.InlineAIChatController).toBeDefined();
+    expect(typeof mod.InlineAIChatController).toBe('function');
   });
 
-  it('defines AI action types (summarize, expand, fix-grammar, translate)', async () => {
-    // The controller is tightly coupled to the Tiptap editor, so we
-    // verify its interface exists rather than full DOM testing.
-    const mod = await import('../../src/built-in/canvas/menus/inlineAIMenu');
-    const ctrl = Object.getOwnPropertyNames(mod.InlineAIMenuController.prototype);
+  it('defines expected interface methods', async () => {
+    const mod = await import('../../src/built-in/canvas/menus/inlineAIChat');
+    const ctrl = Object.getOwnPropertyNames(mod.InlineAIChatController.prototype);
     expect(ctrl).toContain('create');
     expect(ctrl).toContain('hide');
     expect(ctrl).toContain('dispose');
-    expect(ctrl).toContain('onSelectionUpdate');
+    expect(ctrl).toContain('toggle');
     expect(ctrl).toContain('containsTarget');
   });
 });

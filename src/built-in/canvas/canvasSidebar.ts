@@ -308,8 +308,8 @@ export class CanvasSidebar {
         // Show menu with "New Page" + "New Database" options
         const rect = addBtn.getBoundingClientRect();
         const items: IContextMenuItem[] = [
-          { id: 'new-page', label: '📄  New Page' },
-          { id: 'new-database', label: '📊  New Database' },
+          { id: 'new-page', label: 'New Page' },
+          { id: 'new-database', label: 'New Database' },
         ];
         const menu = ContextMenu.show({
           items,
@@ -1153,6 +1153,7 @@ export class CanvasSidebar {
 
       if (parentId) {
         await this._appendPageBlockToParent(parentId, page);
+        this._dataService.fireContentReload(parentId);
       }
 
       const createdPage = page;
@@ -1201,6 +1202,7 @@ export class CanvasSidebar {
 
       if (parentId) {
         await this._appendDatabaseInlineToParent(parentId, page);
+        this._dataService.fireContentReload(parentId);
       }
 
       const createdPage = page;
@@ -1237,6 +1239,28 @@ export class CanvasSidebar {
       }
       console.error('[CanvasSidebar] Failed to create database:', err);
     }
+  }
+
+  /**
+   * Remove a pageBlock referencing `childPageId` from the parent's stored content.
+   */
+  private async _removePageBlockFromParent(parentPageId: string, childPageId: string): Promise<void> {
+    const parent = await this._dataService.getPage(parentPageId);
+    if (!parent) return;
+
+    const decoded = await this._dataService.decodePageContentForEditor(parent);
+    const content = Array.isArray(decoded.doc?.content) ? decoded.doc.content : [];
+
+    const filtered = content.filter((node: any) => {
+      if (node?.type === 'pageBlock' && node?.attrs?.pageId === childPageId) return false;
+      return true;
+    });
+
+    // Only flush if something was actually removed
+    if (filtered.length === content.length) return;
+
+    const nextDoc = { type: 'doc', content: filtered };
+    await this._dataService.flushContentSave(parentPageId, nextDoc);
   }
 
   private async _appendPageBlockToParent(parentPageId: string, childPage: IPage): Promise<void> {
@@ -1397,14 +1421,53 @@ export class CanvasSidebar {
     if (!this._draggedPageId || !this._dropTarget) return;
 
     const pageId = this._draggedPageId;
-    const { parentId, afterSiblingId } = this._dropTarget;
+    const { parentId: newParentId, afterSiblingId } = this._dropTarget;
+
+    // Capture the old parentId from the tree before it refreshes
+    const draggedNode = this._findNode(this._tree, pageId);
+    const oldParentId = draggedNode?.parentId ?? null;
 
     this._draggedPageId = null;
     this._dropTarget = null;
 
-    this._dataService.movePage(pageId, parentId, afterSiblingId).catch((err) => {
+    this._performDrop(pageId, oldParentId, newParentId, afterSiblingId).catch((err) => {
       console.error('[CanvasSidebar] Move failed:', err);
     });
+  }
+
+  /**
+   * Perform the drop: move the page in the DB, then sync pageBlock content
+   * so the old parent loses the block and the new parent gains it.
+   */
+  private async _performDrop(
+    pageId: string,
+    oldParentId: string | null,
+    newParentId: string | null,
+    afterSiblingId: string | undefined,
+  ): Promise<void> {
+    await this._dataService.movePage(pageId, newParentId, afterSiblingId);
+
+    const page = await this._dataService.getPage(pageId);
+    if (!page) return;
+
+    // If the parent actually changed, sync pageBlock content
+    if (oldParentId !== newParentId) {
+      // Remove pageBlock from the old parent's content (if it had one)
+      if (oldParentId) {
+        await this._removePageBlockFromParent(oldParentId, pageId).catch((err) => {
+          console.error('[CanvasSidebar] Failed to remove pageBlock from old parent:', err);
+        });
+        this._dataService.fireContentReload(oldParentId);
+      }
+
+      // Append pageBlock to the new parent's content
+      if (newParentId) {
+        await this._appendPageBlockToParent(newParentId, page).catch((err) => {
+          console.error('[CanvasSidebar] Failed to append pageBlock to new parent:', err);
+        });
+        this._dataService.fireContentReload(newParentId);
+      }
+    }
   }
 
   private _onDragEnd(): void {

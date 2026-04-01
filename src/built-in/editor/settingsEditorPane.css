@@ -7,7 +7,7 @@
   overflow: hidden;
   background: var(--vscode-editor-background, #1e1e1e);
   color: var(--vscode-editor-foreground, #cccccc);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--parallx-fontFamily-ui);
 }
 
 .settings-editor-header {
@@ -21,7 +21,7 @@
 
 .settings-editor-header h2 {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -33,7 +33,7 @@
   border-radius: 2px;
   background: var(--vscode-input-background, #3c3c3c);
   color: var(--vscode-input-foreground, #cccccc);
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   outline: none;
 }
 
@@ -56,7 +56,7 @@
 }
 
 .settings-section-title {
-  font-size: 14px;
+  font-size: var(--parallx-fontSize-lg);
   font-weight: 600;
   color: var(--vscode-foreground, #e0e0e0);
   margin: 0 0 12px;
@@ -76,7 +76,7 @@
 }
 
 .settings-item-key {
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   font-weight: 500;
   color: var(--vscode-foreground, #ddd);
 }
@@ -88,11 +88,11 @@
 }
 
 .settings-control-label {
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
 }
 
 .settings-item-description {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-descriptionForeground, #888);
   margin-bottom: 4px;
 }
@@ -110,7 +110,7 @@
   border-radius: 2px;
   background: var(--vscode-input-background, #3c3c3c);
   color: var(--vscode-input-foreground, #cccccc);
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   outline: none;
   min-width: 200px;
 }
@@ -126,7 +126,7 @@
   border-radius: 2px;
   background: var(--vscode-input-background, #3c3c3c);
   color: var(--vscode-input-foreground, #cccccc);
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
   outline: none;
   min-width: 200px;
 }
@@ -142,9 +142,23 @@
 }
 
 .settings-item-default {
-  font-size: 11px;
+  font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #666);
   font-style: italic;
+}
+
+.settings-quick-action-btn {
+  padding: 5px 14px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: var(--parallx-radius-sm, 4px);
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  font-size: var(--parallx-fontSize-sm);
+  cursor: pointer;
+}
+
+.settings-quick-action-btn:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
 }
 
 .settings-empty-message {
@@ -153,11 +167,11 @@
   justify-content: center;
   height: 60px;
   color: var(--vscode-descriptionForeground, #888);
-  font-size: 13px;
+  font-size: var(--parallx-fontSize-md);
 }
 
 .settings-result-count {
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base);
   color: var(--vscode-descriptionForeground, #888);
   white-space: nowrap;
   flex-shrink: 0;

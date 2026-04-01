@@ -36,7 +36,7 @@ export const EXPLORER_MANIFEST: IToolManifest = {
       { command: 'explorer.delete', key: 'Delete', when: "focusedView == 'view.explorer'" },
     ],
     viewContainers: [
-      { id: 'explorer-container', title: 'Explorer', icon: '📁', location: 'sidebar' as const },
+      { id: 'explorer-container', title: 'Explorer', icon: 'folder', location: 'sidebar' as const },
     ],
     views: [
       { id: 'view.openEditors', name: 'Open Editors', defaultContainerId: 'explorer-container' },
@@ -68,7 +68,7 @@ export const SEARCH_MANIFEST: IToolManifest = {
       { command: 'search.findInFiles', key: 'Ctrl+Shift+F' },
     ],
     viewContainers: [
-      { id: 'search-container', title: 'Search', icon: '🔍', location: 'sidebar' as const },
+      { id: 'search-container', title: 'Search', icon: 'search', location: 'sidebar' as const },
     ],
     views: [
       { id: 'view.search', name: 'Search', defaultContainerId: 'search-container' },
@@ -193,7 +193,7 @@ export const TOOL_GALLERY_MANIFEST: IToolManifest = {
   contributes: {
     commands: [{ id: 'tools.showInstalled', title: 'Tools: Show Installed Tools' }],
     viewContainers: [
-      { id: 'tools-container', title: 'Tools', icon: '🧩', location: 'sidebar' as const },
+      { id: 'tools-container', title: 'Tools', icon: 'puzzle', location: 'sidebar' as const },
     ],
     views: [{ id: 'view.tools', name: 'Installed Tools', defaultContainerId: 'tools-container' }],
   },
@@ -224,7 +224,7 @@ export const CHAT_MANIFEST: IToolManifest = {
       { command: 'chat.focus', key: 'Ctrl+L' },
     ],
     viewContainers: [
-      { id: 'chat-container', title: 'Chat', icon: '💬', location: 'auxiliaryBar' as const },
+      { id: 'chat-container', title: 'Chat', icon: 'message', location: 'auxiliaryBar' as const },
     ],
     views: [
       { id: 'view.chat', name: 'Chat', defaultContainerId: 'chat-container' },
@@ -285,10 +285,32 @@ export const CANVAS_MANIFEST: IToolManifest = {
       { command: 'canvas.newPage', key: 'Ctrl+N', when: "focusedView == 'view.canvas'" },
     ],
     viewContainers: [
-      { id: 'canvas-container', title: 'Canvas', icon: '📓', location: 'sidebar' as const },
+      { id: 'canvas-container', title: 'Canvas', icon: 'notebook', location: 'sidebar' as const },
     ],
     views: [
       { id: 'view.canvas', name: 'Pages', defaultContainerId: 'canvas-container' },
+    ],
+  },
+};
+
+// ── Theme Editor ─────────────────────────────────────────────────────────
+
+export const THEME_EDITOR_MANIFEST: IToolManifest = {
+  manifestVersion: 1,
+  id: 'parallx.theme-editor',
+  name: 'Theme Editor',
+  version: '1.0.0',
+  publisher: 'parallx',
+  description: 'Customize colors, fonts, and shape with real-time preview.',
+  main: './main.js',
+  engines: { parallx: '^0.1.0' },
+  activationEvents: ['onStartupFinished'],
+  contributes: {
+    commands: [
+      { id: 'theme-editor.open', title: 'Parallx: Open Theme Editor' },
+    ],
+    keybindings: [
+      { command: 'theme-editor.open', key: 'Ctrl+Shift+T' },
     ],
   },
 };

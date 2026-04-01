@@ -72,18 +72,18 @@ export class ExplorerPlaceholderView extends PlaceholderView {
     container.classList.add('placeholder-explorer');
 
     const tree = [
-      { label: 'src', indent: 0, icon: '📁' },
-      { label: 'main.ts', indent: 1, icon: '📄' },
-      { label: 'workbench.css', indent: 1, icon: '🎨' },
-      { label: 'platform', indent: 1, icon: '📁' },
-      { label: 'types.ts', indent: 2, icon: '📄' },
-      { label: 'lifecycle.ts', indent: 2, icon: '📄' },
-      { label: 'views', indent: 1, icon: '📁' },
-      { label: 'view.ts', indent: 2, icon: '📄' },
-      { label: 'viewContainer.ts', indent: 2, icon: '📄' },
-      { label: 'docs', indent: 0, icon: '📁' },
-      { label: 'package.json', indent: 0, icon: '📄' },
-      { label: 'tsconfig.json', indent: 0, icon: '⚙️' },
+      { label: 'src', indent: 0, icon: '/' },
+      { label: 'main.ts', indent: 1, icon: '·' },
+      { label: 'workbench.css', indent: 1, icon: '·' },
+      { label: 'platform', indent: 1, icon: '/' },
+      { label: 'types.ts', indent: 2, icon: '·' },
+      { label: 'lifecycle.ts', indent: 2, icon: '·' },
+      { label: 'views', indent: 1, icon: '/' },
+      { label: 'view.ts', indent: 2, icon: '·' },
+      { label: 'viewContainer.ts', indent: 2, icon: '·' },
+      { label: 'docs', indent: 0, icon: '/' },
+      { label: 'package.json', indent: 0, icon: '·' },
+      { label: 'tsconfig.json', indent: 0, icon: '·' },
     ];
 
     for (const item of tree) {

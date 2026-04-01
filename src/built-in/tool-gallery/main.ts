@@ -12,6 +12,7 @@ import './toolGallery.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $, clearNode } from '../../ui/dom.js';
+import { getIcon } from '../../ui/iconRegistry.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -66,22 +67,22 @@ interface ParallxApi {
   };
 }
 
-// ─── SVG Icon Constants ──────────────────────────────────────────────────────
+// ─── SVG Icon Constants — from the central Lucide icon registry ──────────────
 
-/** Built-in tool icon — package/cube (codicon-package style, 16×16). */
-const SVG_ICON_BUILTIN = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 4.5V14.5C14 15.33 13.33 16 12.5 16H3.5C2.67 16 2 15.33 2 14.5V1.5C2 0.67 2.67 0 3.5 0H9.5L14 4.5ZM9.5 1H3.5C3.22 1 3 1.22 3 1.5V14.5C3 14.78 3.22 15 3.5 15H12.5C12.78 15 13 14.78 13 14.5V5H10C9.72 5 9.5 4.78 9.5 4.5V1Z" fill="currentColor"/></svg>';
+/** Built-in tool icon — package/cube. */
+const SVG_ICON_BUILTIN = getIcon('package')!;
 
-/** External tool icon — plug (codicon-plug style, 16×16). */
-const SVG_ICON_EXTERNAL = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 1V5H5V1H6ZM11 1V5H10V1H11ZM3 6H13V8C13 9.86 11.72 11.41 10 11.87V15H6V11.87C4.28 11.41 3 9.86 3 8V6Z" fill="currentColor"/></svg>';
+/** External tool icon — plug connector. */
+const SVG_ICON_EXTERNAL = getIcon('plug')!;
 
-/** Large built-in tool icon for editor pane header (28×28). */
-const SVG_ICON_BUILTIN_LG = '<svg width="28" height="28" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 4.5V14.5C14 15.33 13.33 16 12.5 16H3.5C2.67 16 2 15.33 2 14.5V1.5C2 0.67 2.67 0 3.5 0H9.5L14 4.5ZM9.5 1H3.5C3.22 1 3 1.22 3 1.5V14.5C3 14.78 3.22 15 3.5 15H12.5C12.78 15 13 14.78 13 14.5V5H10C9.72 5 9.5 4.78 9.5 4.5V1Z" fill="currentColor"/></svg>';
+/** Large built-in tool icon for editor pane header. */
+const SVG_ICON_BUILTIN_LG = SVG_ICON_BUILTIN;
 
-/** Large external tool icon for editor pane header (28×28). */
-const SVG_ICON_EXTERNAL_LG = '<svg width="28" height="28" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 1V5H5V1H6ZM11 1V5H10V1H11ZM3 6H13V8C13 9.86 11.72 11.41 10 11.87V15H6V11.87C4.28 11.41 3 9.86 3 8V6Z" fill="currentColor"/></svg>';
+/** Large external tool icon for editor pane header. */
+const SVG_ICON_EXTERNAL_LG = SVG_ICON_EXTERNAL;
 
-/** Install/download icon for the install button (14×14). */
-const SVG_ICON_INSTALL = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.5 1V9.79L11.15 7.15L12 8L8 12L4 8L4.85 7.15L7.5 9.79V1H8.5ZM3 13H13V14H3V13Z" fill="currentColor"/></svg>';
+/** Install/download icon for the install button. */
+const SVG_ICON_INSTALL = getIcon('export')!;
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
@@ -108,7 +109,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     createView(container: HTMLElement): IDisposable {
       return renderToolSidebar(container, api);
     },
-  }, { name: 'Installed Tools', icon: '🧩' });
+  }, { name: 'Installed Tools', icon: 'puzzle' });
   context.subscriptions.push(viewDisposable);
 
   // Command to refresh the sidebar

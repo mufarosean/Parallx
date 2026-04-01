@@ -13,15 +13,17 @@ import { IIndexingPipelineService, IVectorStoreService } from '../../services/se
 import type { IIndexingPipelineService as IndexingPipelineServiceShape } from '../../services/serviceTypes.js';
 import type { IndexingProgress, IndexingSourceResult } from '../../services/indexingPipeline.js';
 
-// ── SVG Icons (Codicon-style, 16×16) ────────────────────────────────────────
+import { getIcon } from '../../ui/iconRegistry.js';
 
-const ICON_CHECK = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/></svg>`;
-const ICON_SKIP = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 8a.75.75 0 01.75-.75h6.5a.75.75 0 010 1.5h-6.5A.75.75 0 014 8z"/></svg>`;
-const ICON_ERROR = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M11.06 4.94a.75.75 0 010 1.06L9.06 8l2 2a.75.75 0 11-1.06 1.06L8 9.06l-2 2a.75.75 0 01-1.06-1.06l2-2-2-2a.75.75 0 011.06-1.06L8 6.94l2-2a.75.75 0 011.06 0z"/></svg>`;
-const ICON_PAGE = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3 1h7l3 3v9.5a1.5 1.5 0 01-1.5 1.5h-7A1.5 1.5 0 013 13.5v-11A1.5 1.5 0 014.5 1H3zm7 0v3h3"/></svg>`;
-const ICON_FILE = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M10.57 1H4.5A1.5 1.5 0 003 2.5v11A1.5 1.5 0 004.5 15h7a1.5 1.5 0 001.5-1.5V3.43L10.57 1zM10 2l2 2h-2V2zM4.5 2H9v3h3v8.5a.5.5 0 01-.5.5h-7a.5.5 0 01-.5-.5v-11a.5.5 0 01.5-.5z"/></svg>`;
-const ICON_CLEAR = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 1a6 6 0 110 12A6 6 0 018 2zm2.78 3.22a.75.75 0 010 1.06L9.06 8l1.72 1.72a.75.75 0 11-1.06 1.06L8 9.06l-1.72 1.72a.75.75 0 01-1.06-1.06L6.94 8 5.22 6.28a.75.75 0 011.06-1.06L8 6.94l1.72-1.72a.75.75 0 011.06 0z"/></svg>`;
-const ICON_FILTER = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 2h13l-5 6v4.5L7.5 14V8L1.5 2z"/></svg>`;
+// ── SVG Icons — from the central Lucide icon registry ────────────────────────
+
+const ICON_CHECK = getIcon('check')!;
+const ICON_SKIP = getIcon('ban')!;
+const ICON_ERROR = getIcon('close')!;
+const ICON_PAGE = getIcon('page')!;
+const ICON_FILE = getIcon('file')!;
+const ICON_CLEAR = getIcon('circle-x')!;
+const ICON_FILTER = getIcon('db-filter')!;
 
 // ── Local API type ───────────────────────────────────────────────────────────
 

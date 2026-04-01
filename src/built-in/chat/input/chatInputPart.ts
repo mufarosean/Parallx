@@ -20,7 +20,7 @@ import { $, addDisposableListener } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
 import { ChatContextAttachments } from './chatContextAttachments.js';
 import type { IAttachmentServices, IWorkspaceFileEntry } from '../chatTypes.js';
-import type { IChatAttachment, IContextPill } from '../../../services/chatTypes.js';
+import type { IChatAttachment, IChatSelectionAttachment, IContextPill } from '../../../services/chatTypes.js';
 import { ChatContextPills } from './chatContextPills.js';
 import { ChatMentionAutocomplete } from './chatMentionAutocomplete.js';
 import type { IMentionSuggestionProvider, ISlashCommandProvider } from '../chatTypes.js';
@@ -129,7 +129,7 @@ export class ChatInputPart extends Disposable {
     this._toolsBtn.setAttribute('aria-label', 'Configure AI Tools');
     this._toolsBtn.innerHTML = chatIcons.tools;
     this._toolsBtn.style.display = 'none'; // hidden until services wired
-    this._toolbar.appendChild(this._toolsBtn);
+    this._pickerSlot.appendChild(this._toolsBtn);
 
     this._register(addDisposableListener(this._toolsBtn, 'click', () => {
       this._onDidRequestOpenToolSettings.fire();
@@ -287,6 +287,11 @@ export class ChatInputPart extends Disposable {
   /** Get current explicit attachments (to include in the request). */
   getAttachments(): readonly IChatAttachment[] {
     return this._contextRibbon.getAttachments();
+  }
+
+  /** Add a text selection as context (M48). */
+  addSelectionAttachment(attachment: IChatSelectionAttachment): void {
+    this._contextRibbon.addSelectionAttachment(attachment);
   }
 
   setVisionSupported(visionSupported: boolean): void {

@@ -18,6 +18,7 @@ import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandServ
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices, registerUnifiedAIConfigService } from './workbenchServices.js';
 import { IChatService, ILanguageModelsService } from '../services/chatTypes.js';
+import { consolidateOrphanedSessions } from '../services/chatSessionPersistence.js';
 
 // Layout base class (VS Code: Layout → Workbench extends Layout)
 import {
@@ -136,6 +137,7 @@ import * as CanvasTool from '../built-in/canvas/main.js';
 import * as ChatTool from '../built-in/chat/main.js';
 import * as AISettingsTool from '../built-in/ai-settings/main.js';
 import * as DiagnosticsTool from '../built-in/diagnostics/main.js';
+import * as ThemeEditorTool from '../built-in/theme-editor/main.js';
 import type { IToolManifest, IToolDescription } from '../tools/toolManifest.js';
 import {
   EXPLORER_MANIFEST,
@@ -149,6 +151,7 @@ import {
   CHAT_MANIFEST,
   AI_SETTINGS_MANIFEST,
   DIAGNOSTICS_MANIFEST,
+  THEME_EDITOR_MANIFEST,
 } from '../tools/builtinManifests.js';
 
 // File Editor Resolver (M4 Capability 4)
@@ -158,6 +161,8 @@ import { initFileEditorSetup } from './workbenchFileEditorSetup.js';
 // Theme System (M5 Capability 1–3)
 import { colorRegistry } from '../theme/colorRegistry.js';
 import '../theme/workbenchColors.js'; // side-effect: registers all color tokens
+import { designTokenRegistry } from '../theme/designTokenRegistry.js';
+import '../theme/workbenchDesignTokens.js'; // side-effect: registers all design tokens
 import { ThemeService } from '../services/themeService.js';
 import {
   findThemeById,
@@ -828,8 +833,8 @@ export class Workbench extends Layout {
     // Restore persisted theme or fall back to Dark Modern.
     const persistedThemeId = localStorage.getItem(THEME_STORAGE_KEY) ?? DEFAULT_THEME_ID;
     const themeEntry = findThemeById(persistedThemeId) ?? findThemeById(DEFAULT_THEME_ID)!;
-    const themeData = resolveTheme(themeEntry, colorRegistry);
-    const themeService = this._register(new ThemeService(colorRegistry, themeData));
+    const themeData = resolveTheme(themeEntry, colorRegistry, designTokenRegistry);
+    const themeService = this._register(new ThemeService(colorRegistry, themeData, designTokenRegistry));
     themeService.applyTheme(themeData);
     this._services.registerInstance(IThemeService, themeService);
 
@@ -1588,8 +1593,8 @@ export class Workbench extends Layout {
     // single container.
     // ─────────────────────────────────────────────────────────────────────
 
-    const codiconExplorer = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17.5 0H8.5L7 1.5V6H2.5L1 7.5V22.5699L2.5 24H14.5699L16 22.5699V18H20.7L22 16.5699V4.5L17.5 0ZM17.5 2.12L19.88 4.5H17.5V2.12ZM14.5 22.5H2.5V7.5H7V16.5699L8.5 18H14.5V22.5ZM20.5 16.5H8.5V1.5H16V6H20.5V16.5Z" fill="currentColor"/></svg>';
-    const codiconSearch = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15.25 1C11.524 1 8.5 4.024 8.5 7.75C8.5 9.247 9.012 10.622 9.873 11.72L1.939 19.655L3.0 20.716L10.934 12.781C12.06 13.7 13.49 14.25 15.05 14.25C18.776 14.25 21.8 11.226 21.8 7.5C21.8 3.774 18.776 0.75 15.05 0.75C15.117 0.75 15.183 0.753 15.25 0.757V1ZM15.25 2.5C17.873 2.5 20 4.627 20 7.25C20 9.873 17.873 12 15.25 12C12.627 12 10.5 9.873 10.5 7.25C10.5 4.627 12.627 2.5 15.25 2.5Z" fill="currentColor"/></svg>';
+    const codiconExplorer = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+    const codiconSearch = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
     const views = [
       { id: 'view.explorer', icon: codiconExplorer, label: 'Explorer', isSvg: true },
       { id: 'view.search', icon: codiconSearch, label: 'Search', isSvg: true },
@@ -2152,7 +2157,16 @@ export class Workbench extends Layout {
         chatService.setSessionManager(this._services.get(ISessionManager));
       }
 
-      chatService.restoreSessions().catch(() => { /* best-effort */ });
+      // Consolidate orphaned sessions from workspace ID drift, then restore.
+      const wsId = this._workspace?.id ?? '';
+      consolidateOrphanedSessions(this._databaseService as any, wsId)
+        .then((migrated) => {
+          if (migrated > 0) {
+            console.log('[Workbench] Consolidated %d orphaned sessions to workspace %s', migrated, wsId);
+          }
+          return chatService.restoreSessions();
+        })
+        .catch(() => { /* best-effort */ });
     }
 
     // ── RAG Indexing Services (M10 Phase 1–2) ──
@@ -2341,7 +2355,7 @@ export class Workbench extends Layout {
       }
     }
 
-    const result = registerIndexingServices(this._services);
+    const result = registerIndexingServices(this._services, this._storage);
 
     // M20: Wire retrieval service to read defaults from unified config
     if (this._services.has(IUnifiedAIConfigService)) {
@@ -2423,8 +2437,6 @@ export class Workbench extends Layout {
 
     try {
       const exists: boolean = await fs.exists(identityPath);
-      const restoredFromSavedState = !!this._restoredState
-        && this._restoredState.identity.id === this._workspace.id;
 
       if (exists) {
         // Read the stored identity
@@ -2432,12 +2444,12 @@ export class Workbench extends Layout {
         if (result?.content) {
           const stored = JSON.parse(result.content);
           if (stored?.id && stored.id !== this._workspace.id) {
-            if (restoredFromSavedState) {
-              console.log('[Workbench] Keeping restored workspace identity %s; folder durable identity %s belongs to a different workspace', this._workspace.id, stored.id);
-              return;
-            }
-
-            console.log('[Workbench] Recovering durable workspace identity from %s', identityPath);
+            // Always adopt the durable identity — a folder's sessions must
+            // stay under one stable UUID regardless of how the workspace was
+            // launched. Previous logic skipped adoption when the workspace was
+            // restored from saved state, which caused workspace ID drift and
+            // fragmented session history across multiple UUIDs.
+            console.log('[Workbench] Adopting durable workspace identity %s (was %s)', stored.id, this._workspace.id);
             this._workspace.adoptId(stored.id);
 
             // Re-sync localStorage so next launch uses the correct ID
@@ -2547,6 +2559,7 @@ export class Workbench extends Layout {
       { manifest: CANVAS_MANIFEST, module: CanvasTool },
       { manifest: CHAT_MANIFEST, module: ChatTool },
       { manifest: AI_SETTINGS_MANIFEST, module: AISettingsTool },
+      { manifest: THEME_EDITOR_MANIFEST, module: ThemeEditorTool },
     ];
 
     const activationPromises: Promise<void>[] = [];

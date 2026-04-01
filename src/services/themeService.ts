@@ -10,6 +10,7 @@
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { IColorRegistry } from '../theme/colorRegistry.js';
+import type { IDesignTokenRegistry } from '../theme/designTokenRegistry.js';
 import { IColorTheme, ColorThemeData } from '../theme/themeData.js';
 import { $ } from '../ui/dom.js';
 import type { IThemeService } from './serviceTypes.js';
@@ -28,13 +29,15 @@ const THEME_STYLE_ID = 'parallx-theme-colors';
 export class ThemeService extends Disposable implements IThemeService {
   private _activeTheme: ColorThemeData;
   private readonly _registry: IColorRegistry;
+  private readonly _designTokenRegistry: IDesignTokenRegistry | undefined;
   private readonly _onDidChangeTheme = this._register(new Emitter<IColorTheme>());
   readonly onDidChangeTheme: Event<IColorTheme> = this._onDidChangeTheme.event;
   private _styleElement: HTMLStyleElement | null = null;
 
-  constructor(registry: IColorRegistry, initialTheme: ColorThemeData) {
+  constructor(registry: IColorRegistry, initialTheme: ColorThemeData, designTokenRegistry?: IDesignTokenRegistry) {
     super();
     this._registry = registry;
+    this._designTokenRegistry = designTokenRegistry;
     this._activeTheme = initialTheme;
   }
 
@@ -78,6 +81,17 @@ export class ThemeService extends Disposable implements IThemeService {
       const varName = this._registry.asCssVariableName(reg.id);
       const value = this.getColor(reg.id);
       lines.push(`  ${varName}: ${value};`);
+    }
+
+    // Design tokens (fonts, radius, spacing, shadows)
+    if (this._designTokenRegistry) {
+      const tokens = this._designTokenRegistry.getRegisteredTokens();
+      for (const reg of tokens) {
+        const varName = this._designTokenRegistry.asCssVariableName(reg.id);
+        const themeValue = this._activeTheme.getDesignToken(reg.id);
+        const value = themeValue ?? this._designTokenRegistry.resolveDefault(reg.id, this._activeTheme.type) ?? 'inherit';
+        lines.push(`  ${varName}: ${value};`);
+      }
     }
 
     const css = `body {\n${lines.join('\n')}\n}`;

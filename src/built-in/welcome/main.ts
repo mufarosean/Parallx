@@ -7,6 +7,7 @@ import './welcome.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
+import { getIcon } from '../../ui/iconRegistry.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -82,10 +83,14 @@ function openWelcome(api: ParallxApi): void {
   api.editors.openEditor({
     typeId: EDITOR_TYPE_ID,
     title: 'Welcome',
-    icon: '🏠',
   }).catch((err) => {
     console.error('[Welcome] Failed to open welcome editor:', err);
   });
+}
+
+function _sizeIconSvg(el: HTMLElement, size: number): void {
+  const svg = el.querySelector('svg');
+  if (svg) { svg.setAttribute('width', String(size)); svg.setAttribute('height', String(size)); }
 }
 
 function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable {
@@ -133,17 +138,18 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
   leftCol.appendChild(startTitle);
 
   const startItems = [
-    { icon: '📄', text: 'New File', command: 'workbench.action.files.newUntitledFile' },
-    { icon: '📂', text: 'Open File…', command: 'workbench.action.files.openFile' },
-    { icon: '📁', text: 'Open Folder…', command: 'workbench.action.files.openFolder' },
+    { icon: 'file-text', text: 'New File', command: 'workbench.action.files.newUntitledFile' },
+    { icon: 'folder-open', text: 'Open File…', command: 'workbench.action.files.openFile' },
+    { icon: 'folder', text: 'Open Folder…', command: 'workbench.action.files.openFolder' },
   ];
 
   for (const item of startItems) {
     const row = $('div');
     row.classList.add('welcome-action-row');
     const iconSpan = $('span');
-    iconSpan.textContent = item.icon;
+    iconSpan.innerHTML = getIcon(item.icon);
     iconSpan.classList.add('welcome-action-icon');
+    _sizeIconSvg(iconSpan, 18);
     const textSpan = $('span');
     textSpan.textContent = item.text;
     textSpan.classList.add('welcome-action-text');
@@ -162,17 +168,18 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
   leftCol.appendChild(helpTitle);
 
   const helpItems = [
-    { icon: '⌨️', text: 'Command Palette', hint: 'Ctrl+Shift+P', command: 'workbench.action.showCommands' },
-    { icon: '⚙️', text: 'Settings', hint: 'Ctrl+,', command: 'workbench.action.openSettings' },
-    { icon: '🎹', text: 'Keyboard Shortcuts', hint: 'Ctrl+K Ctrl+S', command: 'workbench.action.openKeybindings' },
+    { icon: 'ui-keyboard', text: 'Command Palette', hint: 'Ctrl+Shift+P', command: 'workbench.action.showCommands' },
+    { icon: 'gear', text: 'Settings', hint: 'Ctrl+,', command: 'workbench.action.openSettings' },
+    { icon: 'ui-keyboard', text: 'Keyboard Shortcuts', hint: 'Ctrl+K Ctrl+S', command: 'workbench.action.openKeybindings' },
   ];
 
   for (const item of helpItems) {
     const row = $('div');
     row.classList.add('welcome-action-row');
     const iconSpan = $('span');
-    iconSpan.textContent = item.icon;
+    iconSpan.innerHTML = getIcon(item.icon);
     iconSpan.classList.add('welcome-action-icon');
+    _sizeIconSvg(iconSpan, 18);
     const textSpan = $('span');
     textSpan.textContent = item.text;
     textSpan.classList.add('welcome-action-text');
@@ -195,18 +202,19 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
   leftCol.appendChild(aiTitle);
 
   const aiItems = [
-    { icon: '✨', text: 'Open AI Chat', hint: 'Ctrl+Shift+I', command: 'workbench.action.chat.open' },
-    { icon: '🪄', text: 'Set Up Workspace AI', hint: '/init', command: 'parallx.chat.openWithInit' },
-    { icon: '📖', text: 'AI User Guide', hint: '', command: 'parallx.openAIUserGuide' },
-    { icon: '⚙️', text: 'Workspace AI Config', hint: '.parallx/', command: 'parallx.openWorkspaceAIConfig' },
+    { icon: 'ui-sparkle', text: 'Open AI Chat', hint: 'Ctrl+Shift+I', command: 'workbench.action.chat.open' },
+    { icon: 'ui-wand', text: 'Set Up Workspace AI', hint: '/init', command: 'parallx.chat.openWithInit' },
+    { icon: 'ui-book-open', text: 'AI User Guide', hint: '', command: 'parallx.openAIUserGuide' },
+    { icon: 'gear', text: 'Workspace AI Config', hint: '.parallx/', command: 'parallx.openWorkspaceAIConfig' },
   ];
 
   for (const item of aiItems) {
     const row = $('div');
     row.classList.add('welcome-action-row');
     const iconSpan = $('span');
-    iconSpan.textContent = item.icon;
+    iconSpan.innerHTML = getIcon(item.icon);
     iconSpan.classList.add('welcome-action-icon');
+    _sizeIconSvg(iconSpan, 18);
     const textSpan = $('span');
     textSpan.textContent = item.text;
     textSpan.classList.add('welcome-action-text');
@@ -256,7 +264,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
     rightCol.appendChild(wsLabel);
 
     for (const ws of recentWorkspaces.slice(0, 5)) {
-      const row = _createRecentRow('📁', ws.name, ws.path || '', () => {
+      const row = _createRecentRow('file-folder', ws.name, ws.path || '', () => {
         api.commands.executeCommand('workspace.switch', ws.id).catch((err) => {
           console.error('[Welcome] Failed to switch workspace:', err);
         });
@@ -274,7 +282,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
     for (const fileUri of recentFiles.slice(0, 8)) {
       const fileName = fileUri.split('/').pop() || fileUri;
       const filePath = _uriToDisplayPath(fileUri);
-      const row = _createRecentRow('📄', fileName, filePath, () => {
+      const row = _createRecentRow('ui-file-text', fileName, filePath, () => {
         api.commands.executeCommand('workbench.action.quickOpen', fileUri).catch(() => {});
       });
       rightCol.appendChild(row);
@@ -353,8 +361,9 @@ function _createRecentRow(icon: string, label: string, detail: string, onClick: 
   row.classList.add('welcome-recent-row');
 
   const iconSpan = $('span');
-  iconSpan.textContent = icon;
+  iconSpan.innerHTML = getIcon(icon);
   iconSpan.classList.add('welcome-recent-icon');
+  _sizeIconSvg(iconSpan, 16);
 
   const textWrap = $('div');
   textWrap.classList.add('welcome-recent-text-wrap');
