@@ -1,102 +1,52 @@
-# Milestone 40 Grounding Instructions
+# Extension Development Agent Framework
 
-This file is the grounding document for Milestone 40 work.
+This file documents the agent framework used for building Parallx extensions
+by studying upstream open-source reference projects.
 
-Read this file, [../instructions/parallx-instructions.instructions.md](./instructions/parallx-instructions.instructions.md), and [../../docs/Parallx_Milestone_40.md](../docs/Parallx_Milestone_40.md) before starting or resuming any Milestone 40 phase.
+## Agent Overview
 
-## Purpose
+| Agent | Purpose |
+|-------|---------|
+| **Extension Orchestrator** | Master orchestrator — drives the full lifecycle from feature inventory through 3-iteration implementation cycles |
+| **Source Analyst** | Reads upstream source code, produces research with explicit snippets and architectural analysis |
+| **Architecture Mapper** | Maps research to Parallx extension architecture — defines files, data flow, API usage, enforces extension boundary |
+| **Code Executor** | Implements from architecture plans — minimum code, source-traced, stays inside extension directory |
+| **Verification Agent** | Deep verification across 5 dimensions: logic, tests, contract compliance, upstream fidelity, code quality |
+| **UX Guardian** | Validates extension UX and ensures core workbench surfaces are not impacted |
 
-Milestone 40 is not a patch milestone. It is an end-to-end redesign of the AI
-request stack so Parallx can be defended and explained front-to-end.
+## Workflow
 
-The objective is to build one unified AI system across:
+```
+Phase 0: Feature Inventory (milestone doc)
+  └─ User approves milestone doc
 
-- default chat
-- explicit participants such as `@workspace` and `@canvas`
-- tool-contributed participants
-- planning/evidence layers
-- configuration and policy behavior
-- agent execution surfaces where behavior overlaps
+For each feature domain (D1 → D2 → ...):
+  For each feature:
+    Iteration 1 (Major Implementation):
+      Source Analyst → Architecture Mapper → [Approval Gate] → Code Executor → Verification
+    Iteration 2 (Gap Closure):
+      Source Analyst → Architecture Mapper → Code Executor → Verification
+    Iteration 3 (Final Refinement):
+      Source Analyst → Architecture Mapper → Code Executor → Verification → UX Guardian
+  Domain CLOSED → Commit
+```
 
-## Non-Negotiables
+## Core Rules
 
-1. No split-brain architecture.
-   Do not introduce a new path without explicitly tracking the old path it
-   replaces, the switch-over condition, and the removal task.
+1. **Study source, then build** — the Source Analyst reads upstream code before ANY implementation.
+2. **Extension boundary is sacred** — all code stays in the extension directory.
+3. **3-iteration discipline** — every feature: major implementation → gap closure → refinement.
+4. **No core changes without user approval** — the Architecture Mapper flags, the Orchestrator asks.
+5. **Trace every feature** — every piece of code cites its upstream source.
 
-2. Preserve working foundations.
-   Indexing, retrieval substrate, vector store, memory storage, unified AI
-   config, session persistence, and approval/trace foundations are not to be
-   casually replaced.
+## Agent Files
 
-3. Redesign the right layers.
-   Request interpretation, routing policy, prelude flow, participant
-   orchestration boundaries, and shared prompt behavior are redesign targets.
-
-4. Evidence before invention.
-   Read the relevant VS Code references and Milestone 40 evidence ledger before
-   making architecture claims.
-
-5. Tests define truth.
-   If a real failure matters, encode it as a regression test before relying on
-   memory or prose.
-
-## Developer Conduct for Milestone 40
-
-Act like a serious systems developer working on a risky architectural redesign.
-
-- Be conservative with architecture changes and explicit about tradeoffs.
-- Prefer centralized shared layers over clever local fixes.
-- Do not hide compatibility paths.
-- Do not describe work as complete unless the milestone matrix, tests, and
-  affected surfaces agree.
-- Keep implementation steps small enough that regressions can be traced.
-- When uncertain, stop widening scope and re-read the grounding files.
-
-## Required Reading Order
-
-Before any Milestone 40 work session:
-
-1. Read this file.
-2. Read `.github/instructions/parallx-instructions.instructions.md`.
-3. Read `docs/Parallx_Milestone_40.md`.
-4. Read any phase-specific companion artifact already created for the current
-   phase.
-
-If the work resumes after a long context gap or a new phase begins, repeat the
-same reading order.
-
-## Phase Procedure
-
-For every Milestone 40 phase:
-
-1. Re-read the grounding files before editing code.
-2. State the phase objective and success test in working notes or the current
-   task context.
-3. Identify which AI surfaces are touched.
-4. Identify which shared layer is being centralized.
-5. Identify which old path remains and how it will be removed.
-6. Run the required verification commands for that phase.
-7. Update the milestone doc or companion artifact with factual outcomes.
-
-## Commit Procedure
-
-Milestone 40 should have disciplined commit boundaries, but commits must still
-follow the current user/session policy.
-
-- Prepare work in small, reviewable phase-task units.
-- Keep each unit scoped to one milestone task or one tightly coupled pair of
-  tasks.
-- Record the intended commit boundary and suggested commit message in notes if
-  needed.
-- Do not create the git commit unless the user explicitly asks for it.
-- Do not mix unrelated cleanup into a milestone task commit boundary.
-
-Suggested commit message pattern when commits are requested:
-
-- `M40 P1.2 add greeting parity regressions`
-- `M40 P2.1 introduce shared request interpretation contract`
-- `M40 P3.1 extract shared participant orchestration`
+- `.github/agents/Extension Orchestrator.agent.md`
+- `.github/agents/Source Analyst.agent.md`
+- `.github/agents/Architecture Mapper.agent.md`
+- `.github/agents/Code Executor.agent.md`
+- `.github/agents/Verification Agent.agent.md`
+- `.github/agents/UX Guardian.agent.md`
 
 ## Completion Procedure
 
