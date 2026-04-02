@@ -1634,11 +1634,618 @@ const VideoFileQueries = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 12: SCAN CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: pkg/manager/config.go — scan configuration defaults
+
+const IMAGE_EXTENSIONS = new Set([
+  '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif',
+  '.heic', '.heif', '.avif', '.svg', '.ico', '.raw', '.cr2', '.nef',
+  '.arw', '.dng', '.orf', '.rw2', '.pef', '.srw',
+]);
+
+const VIDEO_EXTENSIONS = new Set([
+  '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v',
+  '.mpg', '.mpeg', '.3gp', '.ogv', '.ts', '.mts', '.m2ts', '.vob',
+]);
+
+const SCAN_DEFAULTS = {
+  chunkSize: 5,
+  yieldMs: 0,
+  excludePatterns: [],
+  minFileSize: 1,
+  ffprobeTimeout: 15000,
+  exiftoolTimeout: 10000,
+  hashTimeout: 30000,
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 13: EXTERNAL TOOL DETECTION
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: pkg/manager/manager.go — external binary detection
+
+let _toolPaths = { ffprobe: null, exiftool: null, node: null };
+let _toolsDetected = false;
+
+const _isWindows = window.parallxElectron.platform === 'win32';
+
+/**
+ * Shell-safe path quoting. On Unix, wraps in single quotes with internal
+ * single-quote escaping. On Windows PowerShell, wraps in single quotes
+ * (no interpolation) with internal single-quote doubling.
+ * Prevents $(), backtick, pipe, semicolon injection.
+ * Adapted from: Go exec.Command passes args directly — we emulate that safety.
+ */
+function shellQuote(str) {
+  if (_isWindows) {
+    // PowerShell single-quoted strings: only escape is '' for literal '
+    return "'" + str.replace(/'/g, "''") + "'";
+  }
+  // POSIX sh single-quoted strings: end quote, escaped quote, restart quote
+  return "'" + str.replace(/'/g, "'\\''") + "'";
+}
+
+async function detectTool(name) {
+  try {
+    const cmd = _isWindows ? `where.exe ${name}` : `which ${name}`;
+    const result = await window.parallxElectron.terminal.exec(cmd, { timeout: 5000 });
+    if (result.exitCode === 0 && result.stdout.trim()) {
+      return result.stdout.trim().split(/\r?\n/)[0];
+    }
+    return null;
+  } catch { return null; }
+}
+
+async function detectAllTools() {
+  if (_toolsDetected) return _toolPaths;
+  const [ffprobe, exiftool, node] = await Promise.all([
+    detectTool('ffprobe'),
+    detectTool('exiftool'),
+    detectTool('node'),
+  ]);
+  _toolPaths = { ffprobe, exiftool, node };
+  _toolsDetected = true;
+  if (!ffprobe) console.warn('[MediaOrganizer] ffprobe not found — video metadata will be unavailable');
+  if (!exiftool) console.warn('[MediaOrganizer] exiftool not found — EXIF data will be unavailable');
+  if (!node) console.warn('[MediaOrganizer] node not found — oshash unavailable, using MD5 only');
+  return _toolPaths;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 14: FINGERPRINT SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: pkg/file/hash.go — oshash + MD5 computation
+
+const OSHASH_CHUNK = 65536;
+
+async function computeOshash(filePath) {
+  if (!_toolPaths.node) return null;
+  // Inline Node.js script — reads 64KB head + 64KB tail, sums uint64LE + filesize
+  // Security: filePath passed via process.argv, not embedded in script
+  const script = [
+    `const fs=require('fs');const p=process.argv[1];`,
+    `const s=fs.statSync(p).size;`,
+    `if(s<${OSHASH_CHUNK * 2}){`,
+    `const b=fs.readFileSync(p);let h=BigInt(s);`,
+    `for(let i=0;i+7<b.length;i+=8){h=(h+b.readBigUInt64LE(i))&0xFFFFFFFFFFFFFFFFn;}`,
+    `process.stdout.write(h.toString(16).padStart(16,'0'));}`,
+    `else{const fd=fs.openSync(p,'r');`,
+    `const hd=Buffer.alloc(${OSHASH_CHUNK});const tl=Buffer.alloc(${OSHASH_CHUNK});`,
+    `fs.readSync(fd,hd,0,${OSHASH_CHUNK},0);`,
+    `fs.readSync(fd,tl,0,${OSHASH_CHUNK},s-${OSHASH_CHUNK});fs.closeSync(fd);`,
+    `let h=BigInt(s);`,
+    `for(let i=0;i<${OSHASH_CHUNK};i+=8){h=(h+hd.readBigUInt64LE(i))&0xFFFFFFFFFFFFFFFFn;}`,
+    `for(let i=0;i<${OSHASH_CHUNK};i+=8){h=(h+tl.readBigUInt64LE(i))&0xFFFFFFFFFFFFFFFFn;}`,
+    `process.stdout.write(h.toString(16).padStart(16,'0'));}`
+  ].join('');
+  try {
+    // Script is a fixed string (no user data); filePath is shell-quoted as a separate argument
+    const cmd = `${shellQuote(_toolPaths.node)} -e ${shellQuote(script)} ${shellQuote(filePath)}`;
+    const result = await window.parallxElectron.terminal.exec(cmd, { timeout: SCAN_DEFAULTS.hashTimeout });
+    if (result.exitCode === 0 && result.stdout.trim()) return result.stdout.trim();
+    return null;
+  } catch { return null; }
+}
+
+async function computeMD5(filePath) {
+  try {
+    let cmd;
+    if (_isWindows) {
+      cmd = `certutil -hashfile ${shellQuote(filePath)} MD5`;
+    } else {
+      cmd = `md5sum ${shellQuote(filePath)}`;
+    }
+    const result = await window.parallxElectron.terminal.exec(cmd, { timeout: SCAN_DEFAULTS.hashTimeout });
+    if (result.exitCode !== 0) return null;
+    if (_isWindows) {
+      // certutil output: line 0 = header, line 1 = hash, line 2 = status
+      const lines = result.stdout.trim().split(/\r?\n/);
+      return lines.length > 1 ? lines[1].trim().replace(/\s/g, '') : null;
+    } else {
+      return result.stdout.trim().split(/\s/)[0] || null;
+    }
+  } catch { return null; }
+}
+
+async function fingerprintFile(filePath, fileType) {
+  const fps = [];
+  if (fileType === 'video') {
+    const oshash = await computeOshash(filePath);
+    if (oshash) fps.push({ type: 'oshash', value: oshash });
+  }
+  const md5 = await computeMD5(filePath);
+  if (md5) fps.push({ type: 'md5', value: md5 });
+  return fps;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 15: METADATA EXTRACTION SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: pkg/ffmpeg/ffprobe.go — ffprobe JSON parsing
+// Adapted from stash: internal/manager/task_scan.go — EXIF extraction
+
+async function extractVideoMeta(filePath) {
+  if (!_toolPaths.ffprobe) return null;
+  try {
+    const cmd = `${shellQuote(_toolPaths.ffprobe)} -v quiet -print_format json -show_format -show_streams ${shellQuote(filePath)}`;
+    const result = await window.parallxElectron.terminal.exec(cmd, { timeout: SCAN_DEFAULTS.ffprobeTimeout });
+    if (result.exitCode !== 0 || !result.stdout.trim()) return null;
+    const data = JSON.parse(result.stdout);
+    const videoStream = (data.streams || []).find(s => s.codec_type === 'video');
+    const format = data.format || {};
+    return {
+      duration: parseFloat(format.duration) || 0,
+      width: videoStream ? (videoStream.width || 0) : 0,
+      height: videoStream ? (videoStream.height || 0) : 0,
+      codec: videoStream ? (videoStream.codec_name || '') : '',
+      audioCodec: ((data.streams || []).find(s => s.codec_type === 'audio') || {}).codec_name || '',
+      bitRate: parseInt(format.bit_rate) || 0,
+      frameRate: videoStream ? parseFrameRate(videoStream.r_frame_rate) : 0,
+      format: format.format_name || '',
+    };
+  } catch { return null; }
+}
+
+function parseFrameRate(rateStr) {
+  if (!rateStr) return 0;
+  const parts = rateStr.split('/');
+  if (parts.length === 2) {
+    const num = parseFloat(parts[0]);
+    const den = parseFloat(parts[1]);
+    return den > 0 ? Math.round((num / den) * 100) / 100 : 0;
+  }
+  return parseFloat(rateStr) || 0;
+}
+
+async function extractImageDimensions(filePath) {
+  if (!_toolPaths.ffprobe) return null;
+  try {
+    const cmd = `${shellQuote(_toolPaths.ffprobe)} -v quiet -print_format json -show_streams ${shellQuote(filePath)}`;
+    const result = await window.parallxElectron.terminal.exec(cmd, { timeout: SCAN_DEFAULTS.ffprobeTimeout });
+    if (result.exitCode !== 0 || !result.stdout.trim()) return null;
+    const data = JSON.parse(result.stdout);
+    const stream = (data.streams || []).find(s => s.codec_type === 'video');
+    if (!stream) return null;
+    return {
+      width: stream.width || 0,
+      height: stream.height || 0,
+      format: stream.codec_name || '',
+    };
+  } catch { return null; }
+}
+
+async function extractEXIF(filePath) {
+  if (!_toolPaths.exiftool) return null;
+  try {
+    const cmd = `${shellQuote(_toolPaths.exiftool)} -json -n ${shellQuote(filePath)}`;
+    const result = await window.parallxElectron.terminal.exec(cmd, { timeout: SCAN_DEFAULTS.exiftoolTimeout });
+    if (result.exitCode !== 0 || !result.stdout.trim()) return null;
+    const arr = JSON.parse(result.stdout);
+    if (!arr || !arr.length) return null;
+    const d = arr[0];
+    return {
+      cameraMake: d.Make || null,
+      cameraModel: d.Model || null,
+      lens: d.LensModel || d.Lens || null,
+      iso: d.ISO != null ? Number(d.ISO) : null,
+      aperture: d.FNumber != null ? Number(d.FNumber) : null,
+      shutterSpeed: d.ExposureTime != null ? String(d.ExposureTime) : null,
+      focalLength: d.FocalLength != null ? Number(d.FocalLength) : null,
+      gpsLatitude: d.GPSLatitude != null ? Number(d.GPSLatitude) : null,
+      gpsLongitude: d.GPSLongitude != null ? Number(d.GPSLongitude) : null,
+      takenAt: d.DateTimeOriginal ? parseExifDate(d.DateTimeOriginal) : null,
+    };
+  } catch { return null; }
+}
+
+function parseExifDate(raw) {
+  // ExifTool with -n returns "YYYY:MM:DD HH:MM:SS" → ISO 8601
+  if (typeof raw !== 'string') return null;
+  const iso = raw.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+async function extractMetadata(filePath, fileType) {
+  if (fileType === 'video') {
+    const videoMeta = await extractVideoMeta(filePath);
+    return { typeSpecific: videoMeta, exif: null };
+  }
+  // Image: extract dimensions and EXIF in parallel
+  const [dims, exif] = await Promise.all([
+    extractImageDimensions(filePath),
+    extractEXIF(filePath),
+  ]);
+  return { typeSpecific: dims, exif };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 16: DIRECTORY WALKER & FILTER PIPELINE
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: internal/manager/task_scan.go — recursive directory walk
+
+function classifyFile(name) {
+  const dot = name.lastIndexOf('.');
+  if (dot < 0) return null;
+  const ext = name.slice(dot).toLowerCase();
+  if (IMAGE_EXTENSIONS.has(ext)) return 'image';
+  if (VIDEO_EXTENSIONS.has(ext)) return 'video';
+  return null;
+}
+
+function shouldExclude(relPath, excludePatterns) {
+  for (const pattern of excludePatterns) {
+    if (pattern.test(relPath)) return true;
+  }
+  return false;
+}
+
+// Folder path→ID cache (cleared each scan)
+// Adapted from stash: pkg/file/scan.go — folderPathToID sync.Map
+let _folderIdCache = new Map();
+
+async function walkDirectory(rootPath, options, onProgress) {
+  const { excludePatterns = [], minFileSize = 1 } = options;
+  const compiledExcludes = excludePatterns.map(p => new RegExp(p, 'i'));
+  const entries = [];
+
+  async function recurse(dirPath) {
+    if (_scanCancelled) return;
+    onProgress(dirPath);
+
+    const result = await window.parallxElectron.fs.readdir(dirPath);
+    if (result.error) {
+      console.warn(`[MediaOrganizer] Cannot read directory: ${dirPath}`, result.error);
+      return;
+    }
+
+    // Register folder in database (cached)
+    let folderId;
+    if (_folderIdCache.has(dirPath)) {
+      folderId = _folderIdCache.get(dirPath);
+    } else {
+      const folder = await FolderQueries.findOrCreate(dirPath);
+      folderId = folder.id;
+      _folderIdCache.set(dirPath, folderId);
+    }
+
+    for (const item of result.entries) {
+      if (_scanCancelled) return;
+      if (!item.name || item.type == null) continue; // skip invalid entries
+
+      const sep = _isWindows ? '\\' : '/';
+      const fullPath = dirPath.replace(/[\\/]$/, '') + sep + item.name;
+      const relPath = fullPath.slice(rootPath.length);
+
+      if (item.type === 'directory') {
+        if (item.name.startsWith('.') || shouldExclude(relPath, compiledExcludes)) continue;
+        await recurse(fullPath);
+        continue;
+      }
+
+      // File
+      const fileType = classifyFile(item.name);
+      if (!fileType) continue;
+      if (item.size < minFileSize) continue;
+      if (shouldExclude(relPath, compiledExcludes)) continue;
+
+      entries.push({
+        path: fullPath,
+        name: item.name,
+        size: item.size,
+        mtime: item.mtime,
+        fileType,
+        folderId,
+      });
+    }
+  }
+
+  await recurse(rootPath);
+  return entries;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 17: SCAN ORCHESTRATOR
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: internal/manager/task_scan.go — scan orchestration
+
+let _scanRunning = false;
+let _scanCancelled = false;
+let _statusBarItem = null;
+
+async function processFile(entry) {
+  // 1. Check if file exists in DB
+  const existing = await FileQueries.findByFolderAndName(entry.folderId, entry.name);
+
+  if (existing) {
+    // If mtime matches, check for missing data before skipping
+    // Adapted from stash: pkg/file/scan.go — onUnchangedFile / setMissingFingerprints
+    if (Number(existing.modTime) === Number(entry.mtime)) {
+      let recovered = false;
+
+      // Check for missing fingerprints (tools may have been installed since last scan)
+      const existingFps = await FingerprintQueries.findByFile(existing.id);
+      if (existingFps.length === 0) {
+        const fps = await fingerprintFile(entry.path, entry.fileType);
+        for (const fp of fps) {
+          await FingerprintQueries.upsert({ fileId: existing.id, type: fp.type, value: fp.value });
+        }
+        if (fps.length > 0) recovered = true;
+      }
+
+      // Check for missing metadata (ffprobe/exiftool may now be available)
+      const hasTypeMeta = entry.fileType === 'image'
+        ? await ImageFileQueries.findByFileId(existing.id)
+        : await VideoFileQueries.findByFileId(existing.id);
+      if (!hasTypeMeta) {
+        const meta = await extractMetadata(entry.path, entry.fileType);
+        if (entry.fileType === 'image' && meta.typeSpecific) {
+          await ImageFileQueries.upsert({ fileId: existing.id, width: meta.typeSpecific.width, height: meta.typeSpecific.height, format: meta.typeSpecific.format });
+          recovered = true;
+        }
+        if (entry.fileType === 'video' && meta.typeSpecific) {
+          await VideoFileQueries.upsert({ fileId: existing.id, ...meta.typeSpecific });
+          recovered = true;
+        }
+      }
+
+      return recovered
+        ? { action: 'updated', fileId: existing.id }
+        : { action: 'skipped', fileId: existing.id };
+    }
+    // mtime changed: update file record
+    await db.run(
+      'UPDATE mo_files SET size = ?, mod_time = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [entry.size, entry.mtime, existing.id]
+    );
+    // Update fingerprints
+    const fps = await fingerprintFile(entry.path, entry.fileType);
+    for (const fp of fps) {
+      await FingerprintQueries.upsert({ fileId: existing.id, type: fp.type, value: fp.value });
+    }
+    // Update metadata
+    const meta = await extractMetadata(entry.path, entry.fileType);
+    if (entry.fileType === 'image' && meta.typeSpecific) {
+      await ImageFileQueries.upsert({ fileId: existing.id, width: meta.typeSpecific.width, height: meta.typeSpecific.height, format: meta.typeSpecific.format });
+    }
+    if (entry.fileType === 'video' && meta.typeSpecific) {
+      await VideoFileQueries.upsert({ fileId: existing.id, ...meta.typeSpecific });
+    }
+    // Update domain entity on rescan
+    // Adapted from stash: pkg/scene/scan.go — associateExisting always touches updated_at
+    if (entry.fileType === 'image') {
+      const photoRow = await db.get('SELECT photo_id FROM mo_photos_files WHERE file_id = ?', [existing.id]);
+      if (photoRow) {
+        const photoUpdate = {};
+        if (meta.exif) Object.assign(photoUpdate, meta.exif);
+        await db.run('UPDATE mo_photos SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [photoRow.photo_id]);
+        if (Object.keys(photoUpdate).length > 0) {
+          await PhotoQueries.update(photoRow.photo_id, photoUpdate);
+        }
+      }
+    }
+    if (entry.fileType === 'video') {
+      const videoRow = await db.get('SELECT video_id FROM mo_videos_files WHERE file_id = ?', [existing.id]);
+      if (videoRow) {
+        const videoUpdate = {};
+        if (meta.typeSpecific && meta.typeSpecific.duration != null) {
+          videoUpdate.duration = meta.typeSpecific.duration;
+        }
+        await db.run('UPDATE mo_videos SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [videoRow.video_id]);
+        if (Object.keys(videoUpdate).length > 0) {
+          await VideoQueries.update(videoRow.video_id, videoUpdate);
+        }
+      }
+    }
+    return { action: 'updated', fileId: existing.id };
+  }
+
+  // 2. New file — compute fingerprints first for dedup/rename check
+  const fps = await fingerprintFile(entry.path, entry.fileType);
+
+  // 3. Dedup/rename check via fingerprint
+  // Adapted from stash: pkg/file/scan.go — handleRename
+  // Same fingerprint + original missing = rename; same fingerprint + original exists = duplicate
+  for (const fp of fps) {
+    const matches = await FingerprintQueries.findByValue(fp.type, fp.value);
+    if (matches.length > 0) {
+      const match = matches[0];
+      const matchedFile = await FileQueries.findById(match.fileId);
+      if (!matchedFile) continue; // Orphan fingerprint — skip
+      const matchedFolder = await db.get('SELECT path FROM mo_folders WHERE id = ?', [matchedFile.folderId]);
+      if (!matchedFolder) continue; // Orphan folder — skip
+      const sep = _isWindows ? '\\' : '/';
+      const originalPath = matchedFolder.path + sep + matchedFile.basename;
+      const stillExists = await window.parallxElectron.fs.exists(originalPath);
+      if (!stillExists) {
+        // Original gone — this is a rename
+        await db.run(
+          'UPDATE mo_files SET basename = ?, folder_id = ?, size = ?, mod_time = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+          [entry.name, entry.folderId, entry.size, entry.mtime, matchedFile.id]
+        );
+        // Touch domain entity updated_at
+        const photoLink = await db.get('SELECT photo_id FROM mo_photos_files WHERE file_id = ?', [matchedFile.id]);
+        if (photoLink) await db.run('UPDATE mo_photos SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [photoLink.photo_id]);
+        const videoLink = await db.get('SELECT video_id FROM mo_videos_files WHERE file_id = ?', [matchedFile.id]);
+        if (videoLink) await db.run('UPDATE mo_videos SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [videoLink.video_id]);
+        return { action: 'renamed', fileId: matchedFile.id };
+      }
+      // Original still exists — treat as duplicate
+      return { action: 'duplicate', fileId: match.fileId };
+    }
+  }
+
+  // 4-8. Create file + fingerprints + metadata + domain entity in transaction
+  // Adapted from stash: pkg/file/scan.go — onNewFile wraps Create+Handlers in WithTxn
+  const meta = await extractMetadata(entry.path, entry.fileType);
+
+  const txnOps = [
+    { type: 'run',
+      sql: `INSERT INTO mo_files (basename, size, mod_time, folder_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      params: [entry.name, entry.size, entry.mtime, entry.folderId] },
+  ];
+
+  const txnResult = await db.transaction(txnOps);
+  const fileId = txnResult[0].lastInsertRowid;
+
+  // 5. Store fingerprints (outside txn — these are idempotent via upsert)
+  for (const fp of fps) {
+    await FingerprintQueries.upsert({ fileId, type: fp.type, value: fp.value });
+  }
+
+  // 7. Upsert type-specific file record
+  if (entry.fileType === 'image' && meta.typeSpecific) {
+    await ImageFileQueries.upsert({ fileId, width: meta.typeSpecific.width, height: meta.typeSpecific.height, format: meta.typeSpecific.format });
+  }
+  if (entry.fileType === 'video' && meta.typeSpecific) {
+    await VideoFileQueries.upsert({ fileId, ...meta.typeSpecific });
+  }
+
+  // 8. Create domain entity (Photo or Video) + link
+  if (entry.fileType === 'image') {
+    const photoData = { title: entry.name };
+    if (meta.exif) Object.assign(photoData, meta.exif);
+    const photo = await PhotoQueries.create(photoData);
+    await db.run('INSERT INTO mo_photos_files (photo_id, file_id, is_primary) VALUES (?, ?, 1)', [photo.id, fileId]);
+  } else {
+    const videoData = { title: entry.name };
+    if (meta.typeSpecific) videoData.duration = meta.typeSpecific.duration || 0;
+    const video = await VideoQueries.create(videoData);
+    await db.run('INSERT INTO mo_videos_files (video_id, file_id, is_primary) VALUES (?, ?, 1)', [video.id, fileId]);
+  }
+
+  return { action: 'created', fileId };
+}
+
+async function processChunk(chunk) {
+  const results = await Promise.allSettled(chunk.map(entry => processFile(entry)));
+  return results.map((r, i) => {
+    if (r.status === 'fulfilled') return r.value;
+    console.error(`[MediaOrganizer] Error processing ${chunk[i].path}:`, r.reason);
+    return { action: 'error', fileId: null };
+  });
+}
+
+async function runScan(rootPath, api) {
+  if (_scanRunning) {
+    api.window.showWarningMessage('A scan is already in progress.');
+    return null;
+  }
+
+  const startTime = Date.now();
+  _scanRunning = true;
+  _scanCancelled = false;
+
+  const stats = { total: 0, created: 0, updated: 0, renamed: 0, skipped: 0, duplicates: 0, errors: 0, cancelled: false };
+
+  try {
+    // Ensure tools are detected
+    await detectAllTools();
+
+    // Phase 1: Walk
+    if (_statusBarItem) {
+      _statusBarItem.text = '$(search) Scanning directories\u2026';
+      _statusBarItem.show();
+    }
+
+    const entries = await walkDirectory(rootPath, {
+      excludePatterns: SCAN_DEFAULTS.excludePatterns,
+      minFileSize: SCAN_DEFAULTS.minFileSize,
+    }, (dir) => {
+      if (_statusBarItem) _statusBarItem.text = '$(search) Walking\u2026';
+    });
+
+    if (_scanCancelled) {
+      stats.cancelled = true;
+      return stats;
+    }
+
+    stats.total = entries.length;
+
+    // Phase 2: Process in chunks
+    for (let i = 0; i < entries.length; i += SCAN_DEFAULTS.chunkSize) {
+      if (_scanCancelled) { stats.cancelled = true; break; }
+
+      const chunk = entries.slice(i, i + SCAN_DEFAULTS.chunkSize);
+      const results = await processChunk(chunk);
+
+      for (const r of results) {
+        if (r.action === 'created') stats.created++;
+        else if (r.action === 'updated') stats.updated++;
+        else if (r.action === 'renamed') stats.renamed++;
+        else if (r.action === 'skipped') stats.skipped++;
+        else if (r.action === 'duplicate') stats.duplicates++;
+        else if (r.action === 'error') stats.errors++;
+      }
+
+      const done = Math.min(i + chunk.length, entries.length);
+      if (_statusBarItem) {
+        _statusBarItem.text = `$(sync~spin) ${done}/${stats.total} files`;
+      }
+
+      // Yield to event loop
+      await new Promise(r => setTimeout(r, SCAN_DEFAULTS.yieldMs));
+    }
+
+    return stats;
+  } catch (err) {
+    console.error('[MediaOrganizer] Scan error:', err);
+    stats.errors++;
+    return stats;
+  } finally {
+    _scanRunning = false;
+    _folderIdCache.clear();
+    const durationMs = Date.now() - startTime;
+    const durationSec = (durationMs / 1000).toFixed(1);
+
+    if (_statusBarItem) {
+      if (stats.cancelled) {
+        _statusBarItem.text = '$(warning) Scan cancelled';
+      } else {
+        _statusBarItem.text = `$(check) Scan done \u2014 ${stats.total} files (${durationSec}s)`;
+      }
+      setTimeout(() => { if (_statusBarItem) _statusBarItem.hide(); }, 5000);
+    }
+
+    const msg = stats.cancelled
+      ? `Scan cancelled: ${stats.created + stats.updated + stats.renamed} files processed before cancellation.`
+      : `Scan complete: ${stats.total} files (${stats.created} new, ${stats.updated} updated, ${stats.renamed} renamed, ${stats.skipped} unchanged, ${stats.duplicates} duplicates, ${stats.errors} errors) in ${durationSec}s`;
+    api.window.showInformationMessage(msg);
+  }
+}
+
+function cancelScan() {
+  if (_scanRunning) _scanCancelled = true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 11: ACTIVATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
 let _toolPath = '';
 let _activated = false;
+let _commandDisposables = [];
 
 async function ensureDatabase(toolPath) {
   const status = await window.parallxElectron.database.isOpen();
@@ -1665,9 +2272,40 @@ export async function activate(api, context) {
     console.error('[MediaOrganizer] Activation failed — database not ready');
     return;
   }
-  console.log('[MediaOrganizer] Activated — D1 data layer ready');
+
+  // Status bar item for scan progress
+  _statusBarItem = api.window.createStatusBarItem(1, 100);
+
+  // Register scan command
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.scan', async () => {
+      const result = await window.parallxElectron.dialog.openFolder({
+        title: 'Select folder to scan',
+      });
+      if (!result || result.length === 0) return;
+      const folder = result[0];
+      await runScan(folder, api);
+    })
+  );
+
+  // Register cancel command
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.cancelScan', () => cancelScan())
+  );
+
+  console.log('[MediaOrganizer] Activated — D1 data layer + D2 scan pipeline ready');
 }
 
 export function deactivate() {
+  cancelScan();
+  for (const d of _commandDisposables) {
+    if (d && typeof d.dispose === 'function') d.dispose();
+  }
+  _commandDisposables = [];
+  if (_statusBarItem) _statusBarItem.dispose();
+  _statusBarItem = null;
+  _toolsDetected = false;
+  _toolPaths = { ffprobe: null, exiftool: null, node: null };
+  _activated = false;
   console.log('[MediaOrganizer] Deactivated');
 }

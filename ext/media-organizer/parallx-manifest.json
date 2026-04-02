@@ -11,7 +11,10 @@
     "parallx": "^0.1.0"
   },
   "contributes": {
-    "commands": [],
+    "commands": [
+      { "id": "media-organizer.scan", "title": "Scan Directory", "category": "Media Organizer" },
+      { "id": "media-organizer.cancelScan", "title": "Cancel Scan", "category": "Media Organizer" }
+    ],
     "editors": [],
     "views": {}
   }
