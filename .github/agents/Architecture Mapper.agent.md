@@ -290,3 +290,23 @@ When designing, consult these files to understand what APIs are actually availab
 
 If the feature requires an API that doesn't exist, this is a legitimate
 `REQUIRES_API_EXTENSION` finding — not a failure.
+
+---
+
+## API Surface Validation Checklist
+
+Before submitting the architecture plan, verify every API call used:
+
+1. **List every `parallx.*` call** the plan proposes.
+2. **For each call**, read the corresponding bridge file to confirm it exists:
+   | API Namespace | Verify In |
+   |---------------|-----------|
+   | `parallx.views.*` | `src/api/bridges/viewsBridge.ts` |
+   | `parallx.editors.*` | `src/api/bridges/editorsBridge.ts` |
+   | `parallx.commands.*` | `src/api/bridges/commandsBridge.ts` |
+   | `parallx.fs.*` | `src/api/bridges/fileSystemBridge.ts` |
+   | `parallx.window.*` | `src/api/bridges/windowBridge.ts` |
+   | `parallx.database.*` | Search `src/api/` for database bridge |
+   | Any other | Check `src/api/apiFactory.ts` for exports |
+3. **If a needed API is missing**: flag as `REQUIRES_API_EXTENSION`, describe
+   what the extension needs, and STOP — do not design around a nonexistent API.

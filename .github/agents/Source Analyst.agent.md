@@ -182,14 +182,34 @@ CREATE TABLE images (
 
 ### Iteration 2 — Gap Hunting
 
-- Re-read the same upstream files, but now focus on:
-  - Error handling paths
-  - Edge cases (empty data, missing files, corrupt data, large datasets)
-  - Secondary behaviors (events/hooks triggered, cache invalidation, cleanup)
-  - Validation logic
-  - Concurrency considerations
-- Compare what was implemented in iteration 1 against what upstream actually does
-- Report only **new findings** — don't repeat iteration 1's analysis
+Re-read the same upstream files with a structured focus on what iteration 1 missed.
+Go through each category systematically:
+
+**1. Error Paths**
+- What errors can this operation raise? (file not found, permission denied, etc.)
+- How does upstream handle each one?
+
+**2. Boundary Conditions**
+- Empty inputs (no files, no results)?
+- Large inputs (thousands of files, GB-scale data)?
+- Null/undefined values, special characters in paths/names?
+
+**3. State Transitions**
+- What state must the system be in before this operation?
+- What state does it leave the system in?
+- Can it be called twice in a row or while already running?
+
+**4. Concurrency & Timing**
+- If the operation takes time, what happens if it's triggered again mid-run?
+- Are there races, deadlocks, or ordering dependencies?
+
+**5. Resource Cleanup**
+- File handles, connections, timers, event listeners?
+- What happens if the operation is cancelled mid-way?
+
+**Compare iteration 1 implementation vs. upstream**: For each category above,
+answer "Did iteration 1 address this? How does it compare to upstream?"
+Report ONLY gaps — don't repeat what iteration 1 did correctly.
 
 ### Iteration 3 — Final Polish
 

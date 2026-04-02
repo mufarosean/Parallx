@@ -261,6 +261,12 @@ If the Architecture Mapper flagged any core file changes:
 3. Wait for explicit approval
 4. If denied, ask the Architecture Mapper to find an alternative approach
 
+**Integrity check** — before accepting the Architecture Mapper's output:
+1. List every file the plan proposes to create or modify.
+2. Verify each file path starts with `ext/`. If any does not → it is a core change.
+3. If an unflagged core change is found, REJECT the plan: "Core file change not flagged."
+4. Never allow an unflagged core change to reach the Code Executor.
+
 If no core changes are needed, proceed directly to step 4.
 
 ### Step 4: CODE EXECUTION
@@ -281,16 +287,32 @@ Invoke `@Verification Agent` with:
 **Output**: Verification report covering logic correctness, test results,
 and extension contract compliance.
 
-If verification finds issues:
-- **Minor issues** (iteration 1-2): Note them for the next iteration
-- **Critical issues** (any iteration): Fix immediately before proceeding
-- **Logic errors** (any iteration): Return to Code Executor with specific fix instructions
+If verification finds issues, follow the **Error Recovery Protocol** in `AGENTS.md`:
+- **Critical issues** (any iteration): Fix immediately — Code Executor → re-verify.
+- **Logic errors** (any iteration): Return to Code Executor, do NOT advance iteration.
+- **Minor issues** (iteration 1–2): Log for next iteration, proceed.
 
 ### Step 6: UX VALIDATION (Iteration 3 only)
 
 Invoke `@UX Guardian` after the final iteration to validate:
 - Extension UX is polished and functional
+- UI visual consistency with Parallx design system (tokens, icons, colors)
 - Core workbench surfaces are not impacted
+
+#### UX Guardian invocation criteria
+
+UX Guardian runs for features that contribute user-facing surfaces:
+- New views (`viewContainers`, `views` in the manifest)
+- New editors (editor pane providers)
+- New commands that appear in palettes or menus
+- CSS or styling changes
+
+UX Guardian is skipped for features that are purely internal:
+- Database schema changes with no UI
+- Service refactoring with no new surfaces
+- Internal algorithm improvements
+
+**When in doubt, invoke.** Extra validation catches issues early.
 
 ---
 

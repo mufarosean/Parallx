@@ -129,7 +129,18 @@ If the plan adds new:
 - Configuration → add to `contributes.configuration`
 - Activation events → add to `activationEvents`
 
-### 7. Report results
+### 7. Write tests
+
+Code Executor is responsible for writing unit tests alongside the implementation:
+
+- **Iteration 1**: Happy-path tests for each public service function.
+- **Iteration 2**: Edge-case and error-path tests for the gaps being closed.
+- **Iteration 3**: Any remaining test gaps; verify integration between views and services.
+
+Tests live at `ext/<ext-id>/tests/<feature>.test.ts`. Follow the same naming
+and assertion patterns as existing tests in the workspace.
+
+### 8. Report results
 
 After all changes are applied:
 
@@ -247,3 +258,51 @@ export function deactivate(): void {
   // Clean up resources
 }
 ```
+
+---
+
+## Extension Manifest Template
+
+Every extension must have `parallx-manifest.json` at the extension root:
+
+```json
+{
+  "manifestVersion": 1,
+  "id": "<publisher>.<extension-name>",
+  "name": "<Display Name>",
+  "version": "0.1.0",
+  "publisher": "<publisher>",
+  "description": "<feature description>",
+  "main": "main.js",
+  "activationEvents": ["onStartupFinished"],
+  "engines": { "parallx": "^0.1.0" },
+  "contributes": {
+    "commands": [],
+    "viewContainers": [],
+    "views": [],
+    "configuration": []
+  }
+}
+```
+
+See `ext/text-generator/parallx-manifest.json` for a working reference.
+
+---
+
+## Upstream Source Citation Format
+
+Every function adapted from upstream must cite its source consistently:
+
+```typescript
+// Adapted from <UPSTREAM_REPO>: <FILE_PATH> — <FUNCTION_NAME>()
+async function scanDirectory(path: string): Promise<MediaItem[]> {
+  // ...
+}
+
+// Original implementation (no upstream analog)
+function formatTimestamp(date: Date): string {
+  // ...
+}
+```
+
+The Verification Agent will cross-check that citations match actual upstream code.
