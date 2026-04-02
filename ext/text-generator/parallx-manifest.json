@@ -1,0 +1,74 @@
+{
+  "manifestVersion": 1,
+  "id": "parallx-community.text-generator",
+  "name": "Text Generator",
+  "version": "0.2.0",
+  "publisher": "parallx-community",
+  "description": "Character chat and interactive fiction generator using local Ollama models.",
+  "main": "main.js",
+  "activationEvents": ["*"],
+  "engines": {
+    "parallx": "^0.1.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "id": "textGenerator.newChat",
+        "title": "Text Generator: New Chat",
+        "category": "Text Generator"
+      },
+      {
+        "id": "textGenerator.openHome",
+        "title": "Text Generator: Home",
+        "category": "Text Generator"
+      },
+      {
+        "id": "textGenerator.openCharacters",
+        "title": "Text Generator: Characters",
+        "category": "Text Generator"
+      },
+      {
+        "id": "textGenerator.openSettings",
+        "title": "Text Generator: Settings",
+        "category": "Text Generator"
+      }
+    ],
+    "editors": [
+      {
+        "typeId": "text-generator-chat",
+        "displayName": "Chat"
+      },
+      {
+        "typeId": "text-generator-home",
+        "displayName": "Text Generator"
+      },
+      {
+        "typeId": "text-generator-characters",
+        "displayName": "Characters"
+      },
+      {
+        "typeId": "text-generator-settings",
+        "displayName": "Settings"
+      },
+      {
+        "typeId": "text-generator-chat-settings",
+        "displayName": "Chat Settings"
+      }
+    ],
+    "viewContainers": [
+      {
+        "id": "text-generator-container",
+        "title": "Text Generator",
+        "icon": "book-open",
+        "location": "sidebar"
+      }
+    ],
+    "views": [
+      {
+        "id": "textGenerator.home",
+        "name": "Text Generator",
+        "defaultContainerId": "text-generator-container"
+      }
+    ]
+  }
+}

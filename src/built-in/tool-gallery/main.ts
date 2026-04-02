@@ -64,6 +64,7 @@ interface ParallxApi {
     uninstall(toolId: string): Promise<void>;
     onDidInstallTool: (listener: (e: { toolId: string }) => void) => IDisposable;
     onDidUninstallTool: (listener: (e: { toolId: string }) => void) => IDisposable;
+    onDidRegisterTool: (listener: (e: { toolId: string }) => void) => IDisposable;
   };
 }
 
@@ -127,7 +128,7 @@ export function deactivate(): void {
 // SIDEBAR VIEW — search input, grouped tool list
 // ═══════════════════════════════════════════════════════════════════════════════
 
-type FilterMode = 'installed' | 'enabled' | 'disabled' | 'builtin' | 'search';
+type FilterMode = 'installed' | 'active' | 'available' | 'builtin' | 'search';
 
 function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable {
   container.classList.add('tool-gallery-container');
@@ -138,7 +139,7 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
   const searchInput = $('input') as HTMLInputElement;
   searchInput.classList.add('tool-gallery-search-input');
   searchInput.type = 'text';
-  searchInput.placeholder = 'Search tools…  (@enabled, @disabled, @builtin)';
+  searchInput.placeholder = 'Search tools…  (@active, @available, @builtin)';
   searchInput.spellcheck = false;
   searchWrap.appendChild(searchInput);
 
@@ -190,8 +191,8 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
   // ── Parse search text ──
   function parseSearch(raw: string): { filter: FilterMode; text: string } {
     const trimmed = raw.trim();
-    if (trimmed.startsWith('@enabled')) return { filter: 'enabled', text: trimmed.slice(8).trim() };
-    if (trimmed.startsWith('@disabled')) return { filter: 'disabled', text: trimmed.slice(9).trim() };
+    if (trimmed.startsWith('@active')) return { filter: 'active', text: trimmed.slice(7).trim() };
+    if (trimmed.startsWith('@available')) return { filter: 'available', text: trimmed.slice(10).trim() };
     if (trimmed.startsWith('@builtin')) return { filter: 'builtin', text: trimmed.slice(8).trim() };
     if (trimmed.startsWith('@installed')) return { filter: 'installed', text: trimmed.slice(10).trim() };
     if (trimmed.length > 0) return { filter: 'search', text: trimmed };
@@ -202,10 +203,10 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
   function filterTools(tools: ToolInfo[]): ToolInfo[] {
     let result = tools;
     switch (currentFilter) {
-      case 'enabled':
+      case 'active':
         result = tools.filter(t => api.tools.isEnabled(t.id));
         break;
-      case 'disabled':
+      case 'available':
         result = tools.filter(t => !api.tools.isEnabled(t.id));
         break;
       case 'builtin':
@@ -262,11 +263,11 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
       badge.textContent = 'built-in';
       nameRow.appendChild(badge);
     }
-    if (!enabled) {
-      const disabledBadge = $('span');
-      disabledBadge.classList.add('tool-gallery-row-badge', 'tool-gallery-row-badge-disabled');
-      disabledBadge.textContent = 'disabled';
-      nameRow.appendChild(disabledBadge);
+    if (!enabled && !tool.isBuiltin) {
+      const availableBadge = $('span');
+      availableBadge.classList.add('tool-gallery-row-badge', 'tool-gallery-row-badge-disabled');
+      availableBadge.textContent = 'available';
+      nameRow.appendChild(availableBadge);
     }
     info.appendChild(nameRow);
 
@@ -288,13 +289,13 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
     const toggle = $('button');
     toggle.classList.add('tool-gallery-toggle');
     if (tool.isBuiltin) {
-      toggle.textContent = 'Disable';
-      toggle.title = 'Built-in tools cannot be disabled';
+      toggle.textContent = 'Deactivate';
+      toggle.title = 'Built-in tools cannot be deactivated';
       toggle.disabled = true;
       toggle.classList.add('tool-gallery-toggle-builtin');
     } else {
-      toggle.textContent = enabled ? 'Disable' : 'Enable';
-      toggle.title = enabled ? `Disable ${tool.name}` : `Enable ${tool.name}`;
+      toggle.textContent = enabled ? 'Deactivate' : 'Activate';
+      toggle.title = enabled ? `Deactivate ${tool.name} in this workspace` : `Activate ${tool.name} in this workspace`;
       if (!enabled) toggle.classList.add('tool-gallery-toggle-enable');
       toggle.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -303,7 +304,7 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
         api.tools.setEnabled(tool.id, !enabled).catch((err: unknown) => {
           console.error(`[ToolGallery] Toggle failed for "${tool.id}":`, err);
           toggle.disabled = false;
-          toggle.textContent = enabled ? 'Disable' : 'Enable';
+          toggle.textContent = enabled ? 'Deactivate' : 'Activate';
         });
       });
     }
@@ -370,22 +371,22 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
 
     // Group by enabled/disabled when in "installed" mode
     if (currentFilter === 'installed' && !searchText) {
-      const enabled = tools.filter(t => api.tools.isEnabled(t.id));
-      const disabled = tools.filter(t => !api.tools.isEnabled(t.id));
+      const active = tools.filter(t => api.tools.isEnabled(t.id));
+      const available = tools.filter(t => !api.tools.isEnabled(t.id));
 
-      if (enabled.length > 0) {
-        list.appendChild(createGroupHeader('Enabled', enabled.length, 'enabled'));
-        if (!collapsedGroups.has('enabled')) {
-          for (const tool of enabled) {
+      if (active.length > 0) {
+        list.appendChild(createGroupHeader('Active', active.length, 'active'));
+        if (!collapsedGroups.has('active')) {
+          for (const tool of active) {
             list.appendChild(createToolRow(tool));
           }
         }
       }
 
-      if (disabled.length > 0) {
-        list.appendChild(createGroupHeader('Disabled', disabled.length, 'disabled'));
-        if (!collapsedGroups.has('disabled')) {
-          for (const tool of disabled) {
+      if (available.length > 0) {
+        list.appendChild(createGroupHeader('Available', available.length, 'available'));
+        if (!collapsedGroups.has('available')) {
+          for (const tool of available) {
             list.appendChild(createToolRow(tool));
           }
         }
@@ -409,9 +410,10 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
   // Listen for enablement changes
   const enablementListener = api.tools.onDidChangeEnablement(() => { refresh(); });
 
-  // Listen for tool install/uninstall events to auto-refresh
+  // Listen for tool install/uninstall/register events to auto-refresh
   const installListener = api.tools.onDidInstallTool(() => { refresh(); });
   const uninstallListener = api.tools.onDidUninstallTool(() => { refresh(); });
+  const registerListener = api.tools.onDidRegisterTool(() => { refresh(); });
 
   _sidebarRefresh = refresh;
   refresh();
@@ -422,6 +424,7 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
       enablementListener.dispose();
       installListener.dispose();
       uninstallListener.dispose();
+      registerListener.dispose();
       container.innerHTML = '';
     },
   };
@@ -484,12 +487,12 @@ function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: strin
   const toggleBtn = $('button');
   toggleBtn.classList.add('tool-editor-action-btn');
   if (tool.isBuiltin) {
-    toggleBtn.textContent = 'Disable';
-    toggleBtn.title = 'Built-in tools cannot be disabled';
+    toggleBtn.textContent = 'Deactivate';
+    toggleBtn.title = 'Built-in tools cannot be deactivated';
     toggleBtn.disabled = true;
     toggleBtn.classList.add('tool-editor-action-builtin');
   } else {
-    toggleBtn.textContent = enabled ? 'Disable' : 'Enable';
+    toggleBtn.textContent = enabled ? 'Deactivate' : 'Activate';
     if (!enabled) toggleBtn.classList.add('tool-editor-action-enable');
     toggleBtn.addEventListener('click', () => {
       toggleBtn.disabled = true;
@@ -497,7 +500,7 @@ function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: strin
       api.tools.setEnabled(tool.id, !enabled).catch((err: unknown) => {
         console.error(`[ToolGallery] Toggle failed for "${tool.id}":`, err);
         toggleBtn.disabled = false;
-        toggleBtn.textContent = enabled ? 'Disable' : 'Enable';
+        toggleBtn.textContent = enabled ? 'Deactivate' : 'Activate';
       });
     });
   }

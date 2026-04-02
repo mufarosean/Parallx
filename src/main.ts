@@ -20,6 +20,7 @@ declare global {
       onMaximizedChange: (cb: (maximized: boolean) => void) => void;
       scanToolDirectory: (dirPath: string) => Promise<{ entries: { toolPath: string; manifestJson?: unknown; error?: string }[]; error: string | null }>;
       getToolDirectories: () => Promise<{ builtinDir: string; userDir: string }>;
+      readToolModule: (filePath: string) => Promise<{ source: string } | { error: string }>;
 
       // ── Filesystem API (M4 Cap 0) ──
       fs: {

@@ -684,6 +684,41 @@ ipcMain.handle('tools:uninstall', async (_event, toolId) => {
   }
 });
 
+/**
+ * Read a tool module's JavaScript source code.
+ * The renderer uses this to create a blob URL for dynamic import(),
+ * since file:// URLs cannot be imported from an http:// origin.
+ *
+ * @param {string} filePath — Absolute path to the .js file.
+ * @returns {{ source: string }} on success or {{ error: string }} on failure.
+ */
+ipcMain.handle('tools:read-module', async (_event, filePath) => {
+  try {
+    if (!filePath || typeof filePath !== 'string') {
+      return { error: 'Invalid file path' };
+    }
+
+    // Security: only allow reading from the user tools directory or builtin tools directory
+    const userToolsDir = path.join(app.getPath('home'), '.parallx', 'tools');
+    const builtinToolsDir = path.join(app.getAppPath(), 'tools');
+    const normalized = path.normalize(filePath);
+
+    if (!normalized.startsWith(userToolsDir) && !normalized.startsWith(builtinToolsDir)) {
+      return { error: 'Access denied: path is outside tool directories' };
+    }
+
+    // Only allow .js files
+    if (!normalized.endsWith('.js')) {
+      return { error: 'Only .js files can be loaded as tool modules' };
+    }
+
+    const source = await fs.readFile(normalized, 'utf-8');
+    return { source };
+  } catch (err) {
+    return { error: `Failed to read module: ${err.message}` };
+  }
+});
+
 app.on('window-all-closed', () => {
   // On macOS, apps stay active until Cmd+Q
   if (process.platform !== 'darwin') {
