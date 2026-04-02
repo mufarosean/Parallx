@@ -626,3 +626,76 @@ If Parallx ever needs true multi-window support:
 3. Services reading `sessionManager.activeContext` would continue working unchanged
 4. The `captureSession()` guard pattern is window-agnostic — it only compares session IDs
 5. Database path is already workspace-scoped (`.parallx/data.db`) — no change needed
+
+---
+
+## LLM Request Isolation (M52)
+
+### The Problem: Global Active Model Mutation
+
+`ILanguageModelsService` maintains a global `_activeModelId` — the user's currently selected model in the UI. The original `sendChatRequest(messages)` method reads from this global slot. When any caller needed a specific model, it had to call `setActiveModel(modelId)` first, which:
+
+1. Overwrites `_activeModelId` (global mutation)
+2. Persists to storage (disk write)
+3. Probes the model via `/api/show` (network request)
+4. Resets streaming parser state across ALL providers
+5. Fires `onDidChangeModels` (UI update cascade)
+
+This design is safe when only one caller exists (the chat UI). It becomes a **race condition** when multiple callers exist — OpenClaw's autonomous behaviors (heartbeat, MCP event triggers, agentic loops) and external extensions (text-generator) can call `sendChatRequest` concurrently, causing model slot collisions, streaming parser corruption, and VRAM churn on the Ollama backend.
+
+### The Fix: `sendChatRequestForModel(modelId, messages)`
+
+Two entry points now exist on `ILanguageModelsService`:
+
+| Method | Mutates global state? | Used by |
+|--------|----------------------|---------|
+| `sendChatRequest(messages)` | Yes — reads `_activeModelId` | Internal callers already operating on the UI-selected model (chat UI, AI settings) |
+| `sendChatRequestForModel(modelId, messages)` | **No** — resolves provider directly from `modelId` | Extension API bridge (`parallx.lm`), any caller that knows its target model |
+
+The extension API bridge (`LanguageModelBridge`) calls `sendChatRequestForModel` exclusively. Extensions never touch the global active model — they specify which model they want and the service routes directly to the correct provider.
+
+### Request Routing
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Callers                                     │
+│                                                                 │
+│  OpenClaw (chat UI)          Extension (parallx.lm)             │
+│  AI Settings service         Another extension                  │
+│       │                           │                             │
+│       │ sendChatRequest()         │ sendChatRequestForModel()   │
+│       │ (uses _activeModelId)     │ (modelId passed directly)   │
+│       ▼                           ▼                             │
+│  ┌─────────────────────────────────────────────┐                │
+│  │          LanguageModelsService               │                │
+│  │                                             │                │
+│  │  _modelToProvider: Map<modelId, providerId> │                │
+│  │  _providers: Map<providerId, provider>      │                │
+│  │                                             │                │
+│  │  Both methods resolve: modelId → provider   │                │
+│  │  Then call: provider.sendChatRequest(...)   │                │
+│  └──────────────────┬──────────────────────────┘                │
+│                     │                                           │
+│                     ▼                                           │
+│  ┌─────────────────────────────────┐                            │
+│  │  OllamaProvider                 │                            │
+│  │  (handles concurrent requests   │                            │
+│  │   to different models natively) │                            │
+│  └─────────────────────────────────┘                            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Invariants
+
+- **`setActiveModel()` is UI-only.** Called by model picker, chat widget, session restore. Never called in the request dispatch path.
+- **Extensions cannot mutate global model state.** The `parallx.lm` API surface does not expose `setActiveModel`.
+- **OpenClaw has unconditional priority.** Because there is no shared mutable state in the request path, OpenClaw's autonomous behaviors (heartbeat, MCP triggers, agentic loops) cannot be disrupted by extension LLM calls — and vice versa.
+- **Ollama handles concurrency.** Ollama natively supports multiple loaded models (`OLLAMA_MAX_LOADED_MODELS`). Routing requests directly means Ollama manages model scheduling without Parallx forcing unnecessary swaps.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/services/chatTypes.ts` | Added `sendChatRequestForModel` to `ILanguageModelsService` interface |
+| `src/services/languageModelsService.ts` | Implemented `sendChatRequestForModel` — provider lookup by modelId, no global mutation |
+| `src/api/bridges/languageModelBridge.ts` | Switched from `setActiveModel` + `sendChatRequest` to `sendChatRequestForModel` |

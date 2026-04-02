@@ -38,8 +38,9 @@ export class LanguageModelBridge {
   /**
    * Send a chat request to a specific model.
    *
-   * Note: The internal service uses the active model by default.
-   * The bridge delegates to the provider based on modelId.
+   * Routes directly to the provider via `sendChatRequestForModel` — no
+   * global active-model mutation.  This allows concurrent callers
+   * (OpenClaw, extensions) to target different models without racing.
    */
   sendChatRequest(
     modelId: string,
@@ -47,12 +48,7 @@ export class LanguageModelBridge {
     options?: IChatRequestOptions,
   ): AsyncIterable<IChatResponseChunk> {
     this._throwIfDisposed();
-    // The internal service doesn't take modelId directly on sendChatRequest —
-    // it routes based on the active model. For the API, we set the active
-    // model before sending. This is a simplification; a future version may
-    // support concurrent model requests.
-    this._service.setActiveModel(modelId);
-    return this._service.sendChatRequest(messages, options);
+    return this._service.sendChatRequestForModel(modelId, messages, options);
   }
 
   /**

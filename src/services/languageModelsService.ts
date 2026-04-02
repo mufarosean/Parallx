@@ -332,6 +332,52 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
     }
   }
 
+  /**
+   * Send a chat request to a **specific model** without mutating the global
+   * active-model state.
+   *
+   * This is the isolation-safe entry point used by the extension API bridge
+   * (`parallx.lm.sendChatRequest`).  It resolves the provider for `modelId`
+   * directly — no call to `setActiveModel`, no storage write, no streaming-
+   * state reset, no `onDidChangeModels` event.  Multiple concurrent callers
+   * (OpenClaw, text-generator, inline AI) can therefore dispatch requests to
+   * different models without interfering with each other.
+   *
+   * The existing `sendChatRequest(messages)` (no modelId) is preserved for
+   * internal callers that operate on the UI-selected active model.
+   */
+  async *sendChatRequestForModel(
+    modelId: string,
+    messages: readonly IChatMessage[],
+    options?: IChatRequestOptions,
+    signal?: AbortSignal,
+  ): AsyncIterable<IChatResponseChunk> {
+    if (!modelId) {
+      throw new Error('No model ID provided.');
+    }
+
+    const providerId = this._modelToProvider.get(modelId);
+    if (!providerId) {
+      throw new Error(`No provider found for model '${modelId}'. The model may no longer be available.`);
+    }
+
+    const provider = this._providers.get(providerId);
+    if (!provider) {
+      throw new Error(`Provider '${providerId}' is no longer registered.`);
+    }
+
+    try {
+      yield* provider.sendChatRequest(modelId, messages, options, signal);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return;
+      }
+      throw new Error(
+        `Chat request failed for model '${modelId}': ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   // ── Provider Status ──
 
   async checkStatus(): Promise<IProviderStatus> {

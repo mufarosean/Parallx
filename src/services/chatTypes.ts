@@ -990,8 +990,19 @@ export interface ILanguageModelsService extends IDisposable {
   setStorage(storage: IStorage): Promise<void>;
   /** Set the AI Settings default model (used as fallback in the selection chain). */
   setDefaultModel(modelId: string | undefined): void;
-  /** Delegate a chat request to the appropriate provider. */
+  /** Delegate a chat request to the appropriate provider (uses active model). */
   sendChatRequest(
+    messages: readonly IChatMessage[],
+    options?: IChatRequestOptions,
+    signal?: AbortSignal,
+  ): AsyncIterable<IChatResponseChunk>;
+  /**
+   * Send a chat request to a specific model without mutating global active
+   * model state.  Used by the extension API bridge (`parallx.lm`) so that
+   * concurrent callers (OpenClaw, extensions) never race on `setActiveModel`.
+   */
+  sendChatRequestForModel(
+    modelId: string,
     messages: readonly IChatMessage[],
     options?: IChatRequestOptions,
     signal?: AbortSignal,

@@ -39,7 +39,7 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   installToolFromFile: () => ipcRenderer.invoke('tools:install-from-file'),
   /** Remove an external tool's directory. Returns { error: null } on success. */
   uninstallTool: (toolId) => ipcRenderer.invoke('tools:uninstall', toolId),
-  /** Read a tool module's source code for blob URL loading. Returns { source } or { error }. */
+  /** Read a tool module's source code for blob URL loading (external tools only). Returns { source } or { error }. */
   readToolModule: (filePath) => ipcRenderer.invoke('tools:read-module', filePath),
 
   // ══════════════════════════════════════════════════════════════════════════

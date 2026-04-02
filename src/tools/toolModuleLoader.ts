@@ -38,6 +38,7 @@ export class ToolModuleLoader {
   /**
    * Load a tool's entry point module.
    *
+   * Built-in tools are loaded via the existing file:// URL path.
    * External tools are loaded via the Electron IPC bridge: the main process
    * reads the JS source, the renderer creates a blob URL, and dynamic import()
    * loads it. This avoids Chromium's cross-origin restriction that blocks
@@ -47,23 +48,39 @@ export class ToolModuleLoader {
    * @returns A LoadModuleResult indicating success or failure.
    */
   async loadModule(toolDescription: IToolDescription): Promise<LoadModuleResult> {
-    const { manifest, toolPath } = toolDescription;
+    const { manifest, toolPath, isBuiltin } = toolDescription;
     const mainEntry = manifest.main;
 
-    // Resolve the full filesystem path to the entry module
-    const resolvedFsPath = this._resolveFileSystemPath(toolPath, mainEntry);
-
-    console.log(`[ToolModuleLoader] Loading tool "${manifest.id}" from: ${resolvedFsPath}`);
-
     let rawModule: Record<string, unknown>;
-    try {
-      rawModule = await this._loadViaBlob(manifest.id, resolvedFsPath);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      return {
-        success: false,
-        error: `Failed to load module for tool "${manifest.id}" at "${resolvedFsPath}": ${errorMsg}`,
-      };
+
+    if (isBuiltin) {
+      // ── Built-in tools: existing file:// URL path (unchanged) ──
+      const resolvedPath = this._resolveEntryPath(toolPath, mainEntry);
+      console.log(`[ToolModuleLoader] Loading built-in tool "${manifest.id}" from: ${resolvedPath}`);
+
+      try {
+        rawModule = await import(/* webpackIgnore: true */ resolvedPath);
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        return {
+          success: false,
+          error: `Failed to load module for tool "${manifest.id}" at "${resolvedPath}": ${errorMsg}`,
+        };
+      }
+    } else {
+      // ── External tools: blob URL path via IPC ──
+      const resolvedFsPath = this._resolveFileSystemPath(toolPath, mainEntry);
+      console.log(`[ToolModuleLoader] Loading external tool "${manifest.id}" from: ${resolvedFsPath}`);
+
+      try {
+        rawModule = await this._loadViaBlob(manifest.id, resolvedFsPath);
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        return {
+          success: false,
+          error: `Failed to load module for tool "${manifest.id}" at "${resolvedFsPath}": ${errorMsg}`,
+        };
+      }
     }
 
     // Validate the module exports an `activate` function
@@ -97,11 +114,84 @@ export class ToolModuleLoader {
   }
 
   /**
-   * Load a module by reading its source via IPC and importing from a data URL.
+   * Resolve the entry path for a tool module.
+   *
+   * External tools live on disk and are loaded via dynamic `import()` in the
+   * Electron renderer. The browser's `import()` requires a URL, so we convert
+   * absolute filesystem paths to `file:///` URLs. This mirrors VS Code's
+   * extension loader which converts paths before calling `require()` /
+   * `import()` inside the Extension Host.
+   *
+   * The returned value is always a `file:///` URL for external (non-builtin)
+   * tools, ensuring the browser's module loader can find the file and resolve
+   * any relative imports within the tool directory.
+   */
+  private _resolveEntryPath(toolPath: string, mainEntry: string): string {
+    // Security: reject http/https URLs to prevent remote code execution
+    if (mainEntry.startsWith('http://') || mainEntry.startsWith('https://')) {
+      throw new Error(
+        `Refusing to load remote entry point "${mainEntry}". ` +
+        `Tool entry points must be local file paths.`,
+      );
+    }
+
+    // Already a file: URL — use as-is
+    if (mainEntry.startsWith('file:')) {
+      return mainEntry;
+    }
+
+    // Absolute POSIX path
+    if (mainEntry.startsWith('/')) {
+      return this._pathToFileUrl(mainEntry);
+    }
+
+    // Absolute Windows path (e.g., C:\Users\...)
+    if (/^[A-Za-z]:[\\/]/.test(mainEntry)) {
+      return this._pathToFileUrl(mainEntry);
+    }
+
+    // Relative path — resolve against toolPath, then convert to file:// URL
+    const sep = toolPath.includes('\\') ? '\\' : '/';
+    const base = toolPath.endsWith('/') || toolPath.endsWith('\\')
+      ? toolPath
+      : toolPath + sep;
+    const resolved = base + mainEntry;
+
+    // If toolPath looks like a real filesystem path, convert to file:// URL
+    if (/^[A-Za-z]:[\\/]/.test(resolved) || resolved.startsWith('/')) {
+      return this._pathToFileUrl(resolved);
+    }
+
+    // Built-in tools use a virtual path like "built-in/parallx.explorer"
+    // — these are never loaded via ToolModuleLoader (activateBuiltin skips it)
+    return resolved;
+  }
+
+  /**
+   * Convert a filesystem path to a file:// URL.
+   * Handles Windows drive letters (C:\...) and POSIX paths alike.
+   */
+  private _pathToFileUrl(fsPath: string): string {
+    // Normalize backslashes to forward slashes
+    let normalized = fsPath.replace(/\\/g, '/');
+
+    // Windows drive letter: ensure leading slash (C:/... → /C:/...)
+    if (/^[A-Za-z]:\//.test(normalized)) {
+      normalized = '/' + normalized;
+    }
+
+    return 'file://' + normalized;
+  }
+
+  // ── External tool loading (blob URL path) ──────────────────────────────────
+
+  /**
+   * Load an external tool module by reading its source via IPC and importing
+   * from a blob URL.
    *
    * Chromium blocks dynamic import() of file:// URLs from http:// origins.
-   * Instead, we ask the Electron main process to read the file, then encode
-   * the source as a data: URL and import that.
+   * Instead, we ask the Electron main process to read the file, then create
+   * a blob URL and import that.
    */
   private async _loadViaBlob(_toolId: string, fsPath: string): Promise<Record<string, unknown>> {
     const bridge = (globalThis as any).parallxElectron;
@@ -125,7 +215,7 @@ export class ToolModuleLoader {
   }
 
   /**
-   * Resolve the filesystem path for a tool's entry module.
+   * Resolve the filesystem path for an external tool's entry module.
    * Returns an absolute filesystem path (not a URL).
    */
   private _resolveFileSystemPath(toolPath: string, mainEntry: string): string {

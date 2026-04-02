@@ -688,6 +688,7 @@ ipcMain.handle('tools:uninstall', async (_event, toolId) => {
  * Read a tool module's JavaScript source code.
  * The renderer uses this to create a blob URL for dynamic import(),
  * since file:// URLs cannot be imported from an http:// origin.
+ * Only used for external (non-builtin) tool modules.
  *
  * @param {string} filePath — Absolute path to the .js file.
  * @returns {{ source: string }} on success or {{ error: string }} on failure.

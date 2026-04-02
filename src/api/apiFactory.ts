@@ -161,8 +161,6 @@ export interface ParallxApiObject {
     onDidInstallTool: (listener: (e: { toolId: string }) => void) => IDisposable;
     /** Fires when a tool is uninstalled. */
     onDidUninstallTool: (listener: (e: { toolId: string }) => void) => IDisposable;
-    /** Fires when a tool is registered (discovered at startup or hot-installed). */
-    onDidRegisterTool: (listener: (e: { toolId: string }) => void) => IDisposable;
   };
   readonly env: {
     readonly appName: string;
@@ -553,13 +551,6 @@ export function createToolApi(
       },
       onDidUninstallTool: (listener: (e: { toolId: string }) => void) => {
         const sub = _globalToolUninstallEmitter.event(listener);
-        subscriptions.push(sub);
-        return sub;
-      },
-      onDidRegisterTool: (listener: (e: { toolId: string }) => void) => {
-        const sub = deps.toolRegistry.onDidRegisterTool((e) => {
-          listener({ toolId: e.toolId });
-        });
         subscriptions.push(sub);
         return sub;
       },

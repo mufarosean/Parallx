@@ -2093,15 +2093,12 @@ export class Workbench extends Layout {
     }
 
     // Process contributions for future tool registrations.
-    // External tools that are not activated in the current workspace are
-    // registered (so the Tool Gallery can list them) but their contributions
-    // are NOT processed — no commands, views, or keybindings are wired.
-    // Contributions are processed later when the user activates the tool
-    // (via the onDidChangeEnablement handler below).
+    // External tools that are disabled skip contribution processing —
+    // no commands, views, or keybindings are wired until the user enables them.
     this._register(registry.onDidRegisterTool((event) => {
       const desc = event.description;
       if (!desc.isBuiltin && !this._toolEnablementService.isEnabled(desc.manifest.id)) {
-        return; // skip contribution processing for non-activated external tools
+        return; // skip contribution processing for disabled external tools
       }
       commandContribution.processContributions(desc);
       keybindingContribution.processContributions(desc);
@@ -2139,16 +2136,6 @@ export class Workbench extends Layout {
       new ToolEnablementService(this._storage, registry),
     );
     await this._toolEnablementService.load();
-
-    // Load workspace-scoped tool activation state from filesystem.
-    // External tools are only enabled in workspaces where the user has
-    // explicitly activated them. This must happen BEFORE external tool
-    // discovery so isEnabled() returns the correct value.
-    const folders = this._workspace.folders;
-    if (folders.length > 0) {
-      await this._toolEnablementService.loadWorkspaceActivation(folders[0].uri.fsPath);
-    }
-
     this._services.registerInstance(IToolEnablementService, this._toolEnablementService);
 
     // Wire enablement service into API factory deps (created before enablement service)
@@ -2221,29 +2208,18 @@ export class Workbench extends Layout {
     }));
 
     // ── Tool Enable/Disable Orchestration (M6 Capability 0) ──
-    // For external tools this now represents workspace-scoped activation.
-    // When a user activates a tool in this workspace the enablement event
-    // fires and we process contributions + activate. When they deactivate
-    // we tear down contributions + deactivate. The activation state is
-    // persisted to `<workspace>/.parallx/tool-activation.json` by the
-    // ToolEnablementService.
     this._register(this._toolEnablementService.onDidChangeEnablement(async (e) => {
       const { toolId, newState } = e;
       const entry = registry.getById(toolId);
       if (!entry) return;
 
       if (newState === 'EnabledGlobally') {
-        // ── ACTIVATE: process contributions, create extension folder, activate ──
-        console.log(`[Workbench] Activating tool "${toolId}" in workspace — processing contributions`);
+        // ── ENABLE: re-process contributions, then activate ──
+        console.log(`[Workbench] Enabling tool "${toolId}" — re-processing contributions and activating`);
         commandContribution.processContributions(entry.description);
         keybindingContribution.processContributions(entry.description);
         menuContribution.processContributions(entry.description);
         this._viewContribution.processContributions(entry.description);
-
-        // Ensure .parallx/extensions/<tool-id>/ exists for workspace-scoped storage
-        if (!entry.description.isBuiltin) {
-          await this._ensureExtensionFolder(toolId);
-        }
 
         // Re-register activation events
         activationEvents.registerToolEvents(toolId, entry.description.manifest.activationEvents);
@@ -2256,10 +2232,10 @@ export class Workbench extends Layout {
           await this._toolActivator.activate(toolId);
         }
       } else {
-        // ── DEACTIVATE: deactivate (contributions cleaned by onDidDeactivate) ──
-        console.log(`[Workbench] Deactivating tool "${toolId}" in workspace`);
+        // ── DISABLE: deactivate (contributions cleaned by onDidDeactivate) ──
+        console.log(`[Workbench] Disabling tool "${toolId}" — deactivating`);
         await this._toolActivator.deactivate(toolId);
-        // Also clear activation tracking so re-activate starts fresh
+        // Also clear activation tracking so re-enable starts fresh
         activationEvents.clearActivated(toolId);
       }
     }));
@@ -2287,11 +2263,10 @@ export class Workbench extends Layout {
 
     // ── Discover and register external tools (M6 Capability 0) ──
     // Scans ~/.parallx/tools/ for user-installed tools with parallx-manifest.json.
-    // External tools are registered in the ToolRegistry so the Tool Gallery can
-    // display them. However, contributions are only processed and activation only
-    // occurs for tools that are explicitly activated in the current workspace
-    // (per tool-activation.json). Tools not activated appear in the gallery as
-    // "Available" but do not load code, wire commands, or show UI.
+    // External tools are registered in the ToolRegistry and their activation events
+    // are wired up. Tools with `*` events are activated immediately. Tools with
+    // `onStartupFinished` will activate when fireStartupFinished() is called below.
+    // Tools with `onCommand:` / `onView:` activate lazily when those events fire.
     await this._discoverAndRegisterExternalTools(registry, activationEvents);
 
     // Fire startup finished — triggers * and onStartupFinished activation events
@@ -2314,19 +2289,16 @@ export class Workbench extends Layout {
         isBuiltin: false,
       };
 
-      // Register in the ToolRegistry (contributions auto-processed via onDidRegisterTool
-      // only if the tool is activated in the workspace — which it won't be yet)
+      // Register first so the tool exists in the registry.
+      // onDidRegisterTool will skip contributions (tool is not yet enabled).
       registry.register(description);
 
-      // Auto-activate in the current workspace (user explicitly chose to install)
-      // This writes to tool-activation.json and fires onDidChangeEnablement,
-      // which triggers contribution processing + activation.
+      // Now enable — onDidChangeEnablement fires, which re-processes
+      // contributions, wires activation events, and activates the tool.
       await this._toolEnablementService.setEnablement(manifest.id, true);
 
-      // Wire activation events
-      activationEvents.registerToolEvents(manifest.id, manifest.activationEvents ?? []);
+      console.log(`[Workbench] Hot-installed tool "${manifest.name}" (${manifest.id})`);
 
-      console.log(`[Workbench] Hot-installed tool "${manifest.name}" (${manifest.id}) — activated in current workspace`);
       return { toolId: manifest.id };
     };
 
@@ -2335,6 +2307,9 @@ export class Workbench extends Layout {
       if (this._toolActivator.isActivated(toolId)) {
         await this._toolActivator.deactivate(toolId);
       }
+
+      // Disable so it won't try to re-activate on next startup
+      await this._toolEnablementService.setEnablement(toolId, false);
 
       // Clear activation tracking
       activationEvents.clearActivated(toolId);
@@ -2495,36 +2470,6 @@ export class Workbench extends Layout {
     } catch (err) {
       // Best-effort — do not block workspace startup
       console.warn('[Workbench] Failed to reconcile durable workspace identity:', err);
-    }
-  }
-
-  /**
-   * Create the workspace-scoped extension folder for a tool when it is activated.
-   * Path: `<workspace>/.parallx/extensions/<toolId>/`
-   *
-   * This gives the tool a dedicated filesystem area for workspace-local
-   * data (databases, caches, user content, etc.) that does not bleed
-   * across workspaces.
-   */
-  private async _ensureExtensionFolder(toolId: string): Promise<void> {
-    const folders = this._workspace.folders;
-    if (folders.length === 0) return;
-
-    const fs = (window as any).parallxElectron?.fs;
-    if (!fs) return;
-
-    const folderPath = folders[0].uri.fsPath;
-    const sep = folderPath.includes('/') ? '/' : '\\';
-    const extDir = folderPath + sep + '.parallx' + sep + 'extensions' + sep + toolId;
-
-    try {
-      const exists: boolean = await fs.exists(extDir);
-      if (!exists) {
-        await fs.mkdir(extDir);
-        console.log(`[Workbench] Created extension folder: ${extDir}`);
-      }
-    } catch (err) {
-      console.warn(`[Workbench] Failed to create extension folder for "${toolId}":`, err);
     }
   }
 
@@ -2729,15 +2674,14 @@ export class Workbench extends Layout {
         // Register the tool in the registry (Registered state)
         registry.register(toolDesc);
 
-        // Check workspace activation — non-activated tools sit in the registry
-        // for the Tool Gallery but do not wire events or load code.
+        // Register activation events so the system knows when to activate
+        activationEvents.registerToolEvents(toolId, toolDesc.manifest.activationEvents);
+
+        // Check enablement — disabled tools are registered but NOT activated
         if (!this._toolEnablementService.isEnabled(toolId)) {
-          console.log(`[Workbench] External tool "${toolId}" registered but not activated in workspace — skipping`);
+          console.log(`[Workbench] External tool "${toolId}" registered but disabled — skipping activation`);
           continue;
         }
-
-        // Register activation events only for workspace-activated tools
-        activationEvents.registerToolEvents(toolId, toolDesc.manifest.activationEvents);
 
         // Eager activation for tools with `*` activation event
         // (onStartupFinished tools will be activated by fireStartupFinished() later)
