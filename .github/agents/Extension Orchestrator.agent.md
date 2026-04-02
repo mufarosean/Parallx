@@ -39,12 +39,18 @@ output drifts from the mission.
 
 ## Identity
 
+This orchestrator builds **external extensions** — standalone packages that live
+in `ext/<extension-id>/` and interact with Parallx only through the public
+extension API (`parallx.*`). External extensions are NOT built-in tools
+(`src/built-in/`). They are installed, activated, and deactivated per-workspace
+via the Tool Gallery.
+
 This orchestrator is **reusable**. It is not tied to a single extension or a
 single upstream project. When invoked, the user specifies:
 
 1. **Reference project** — the upstream open-source repo to study (e.g., `github.com/stashapp/stash`)
 2. **Extension ID** — the Parallx extension being built (e.g., `media-organizer`)
-3. **Extension directory** — where the extension lives (e.g., `ext/media-organizer/`)
+3. **Extension directory** — where the extension lives (always `ext/<extension-id>/`)
 
 All worker agents inherit these parameters from the orchestrator's invocation.
 

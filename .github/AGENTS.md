@@ -1,7 +1,12 @@
 # Extension Development Agent Framework
 
-This file documents the agent framework used for building Parallx extensions
-by studying upstream open-source reference projects.
+This file documents the agent framework used for building **external** Parallx
+extensions by studying upstream open-source reference projects.
+
+**External extensions** live in `ext/<extension-id>/` and communicate with Parallx
+exclusively through the public extension API (`parallx.*`). They are NOT built-in
+tools (`src/built-in/`) — they are standalone packages that can be installed,
+activated, and deactivated per-workspace via the Tool Gallery.
 
 ## Agent Overview
 
