@@ -2487,6 +2487,9 @@ async function processFile(entry) {
         console.warn(`[MediaOrganizer] Thumbnail generation failed for ${entry.path}:`, thumbErr);
       }
     }
+
+    // 10. Associate with folder-based auto-album (D8/F31)
+    await associateWithFolderAlbum(entry.folderId, 'photo', photo.id);
   } else {
     const videoData = { title: entry.name };
     if (meta.typeSpecific) videoData.duration = meta.typeSpecific.duration || 0;
@@ -2509,6 +2512,9 @@ async function processFile(entry) {
         console.warn(`[MediaOrganizer] Cover frame generation failed for ${entry.path}:`, coverErr);
       }
     }
+
+    // 10. Associate with folder-based auto-album (D8/F31)
+    await associateWithFolderAlbum(entry.folderId, 'video', video.id);
   }
 
   return { action: 'created', fileId };
@@ -2592,6 +2598,8 @@ async function runScan(rootPath, api) {
   } finally {
     _scanRunning = false;
     _folderIdCache.clear();
+    _folderAlbumCache.clear();
+    _folderAlbumInflight.clear();
     const durationMs = Date.now() - startTime;
     const durationSec = (durationMs / 1000).toFixed(1);
 
@@ -3789,6 +3797,13 @@ const MO_CSS = `
   font-family: var(--parallx-fontFamily-ui, system-ui, sans-serif);
   font-size: var(--parallx-fontSize-base, 12px);
 }
+.mo-grid-area {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
 
 /* ═══ Toolbar ═══ */
 .mo-toolbar {
@@ -3922,8 +3937,25 @@ const MO_CSS = `
   top: 4px;
   right: 4px;
   z-index: 2;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.mo-card:hover .mo-card-select,
+.mo-card-select.mo-selecting,
+.mo-card.mo-selected .mo-card-select {
+  opacity: 1;
 }
 .mo-card-select input { cursor: pointer; }
+.mo-list-select {
+  opacity: 0;
+  transition: opacity 0.15s;
+  cursor: pointer;
+}
+.mo-list-row:hover .mo-list-select,
+.mo-list-select.mo-selecting,
+.mo-list-row.mo-selected .mo-list-select {
+  opacity: 1;
+}
 .mo-card-info {
   padding: 5px 8px 6px;
 }
@@ -4179,7 +4211,7 @@ const MO_CSS = `
   transition: color 0.1s;
   user-select: none;
 }
-.mo-star.filled { color: var(--mo-rating-color, #f5c518); }
+.mo-star.filled, .mo-star.active { color: var(--mo-rating-color, #f5c518); }
 .mo-star:hover { color: var(--mo-rating-color, #f5c518); }
 .mo-star:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: 1px; border-radius: 2px; }
 .mo-filter-date-row {
@@ -4563,6 +4595,218 @@ const MO_CSS = `
   outline: 1px solid var(--vscode-focusBorder, #007fd4);
   border-radius: 2px;
 }
+/* D8: Selection Toolbar */
+.mo-selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--vscode-toolbar-activeBackground, rgba(90,93,110,.31));
+  border-bottom: 1px solid var(--vscode-panel-border, #333);
+  font-size: var(--parallx-fontSize-sm, 12px);
+}
+.mo-selection-bar .mo-sel-count {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mo-selection-bar button {
+  background: none;
+  border: 1px solid var(--vscode-button-secondaryBackground, #444);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+  padding: 2px 8px;
+  border-radius: var(--parallx-radius-sm, 3px);
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-xs, 10px);
+}
+.mo-selection-bar button:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #555);
+}
+.mo-selection-bar .mo-sel-spacer { flex: 1; }
+/* D8: Bulk Dialog */
+.mo-bulk-dialog-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.mo-bulk-dialog {
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid var(--vscode-panel-border, #333);
+  border-radius: var(--parallx-radius-sm, 3px);
+  padding: 16px;
+  min-width: 360px;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.mo-bulk-dialog h3 {
+  margin: 0 0 12px 0;
+  font-size: var(--parallx-fontSize-base, 13px);
+  font-weight: 600;
+}
+.mo-bulk-dialog-section {
+  margin-bottom: 12px;
+}
+.mo-bulk-dialog-section label {
+  display: block;
+  font-size: var(--parallx-fontSize-sm, 12px);
+  margin-bottom: 4px;
+  color: var(--vscode-descriptionForeground, #999);
+}
+.mo-bulk-dialog-section select,
+.mo-bulk-dialog-section input[type="number"] {
+  width: 100%;
+  padding: 4px 6px;
+  background: var(--vscode-input-background, #333);
+  color: var(--vscode-input-foreground, #ccc);
+  border: 1px solid var(--vscode-input-border, #555);
+  border-radius: var(--parallx-radius-sm, 3px);
+  font-size: var(--parallx-fontSize-sm, 12px);
+}
+.mo-bulk-mode-btns {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.mo-bulk-mode-btns button {
+  flex: 1;
+  padding: 3px 0;
+  border: 1px solid var(--vscode-button-secondaryBackground, #444);
+  background: none;
+  color: var(--vscode-button-secondaryForeground, #ccc);
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-xs, 10px);
+  border-radius: var(--parallx-radius-sm, 3px);
+}
+.mo-bulk-mode-btns button.active {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  border-color: var(--vscode-button-background, #0e639c);
+}
+.mo-bulk-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.mo-bulk-dialog-footer button {
+  padding: 4px 12px;
+  border-radius: var(--parallx-radius-sm, 3px);
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-sm, 12px);
+  border: 1px solid var(--vscode-button-secondaryBackground, #444);
+  background: none;
+  color: var(--vscode-button-secondaryForeground, #ccc);
+}
+.mo-bulk-dialog-footer button.primary {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  border-color: var(--vscode-button-background, #0e639c);
+}
+.mo-bulk-dialog-footer button:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #555);
+}
+.mo-bulk-dialog-footer button.primary:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+.mo-bulk-dialog-footer button:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+.mo-selection-bar button:focus-visible,
+.mo-bulk-dialog-footer button:focus-visible,
+.mo-bulk-mode-btns button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: -1px;
+}
+/* D8: Album Editor */
+.mo-album-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+.mo-album-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border, #333);
+}
+.mo-album-header h2 {
+  margin: 0;
+  font-size: var(--parallx-fontSize-base, 13px);
+  flex: 1;
+}
+.mo-album-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+.mo-album-field {
+  margin-bottom: 12px;
+}
+.mo-album-field label {
+  display: block;
+  font-size: var(--parallx-fontSize-sm, 12px);
+  margin-bottom: 4px;
+  color: var(--vscode-descriptionForeground, #999);
+}
+.mo-album-field input,
+.mo-album-field textarea {
+  width: 100%;
+  padding: 4px 6px;
+  background: var(--vscode-input-background, #333);
+  color: var(--vscode-input-foreground, #ccc);
+  border: 1px solid var(--vscode-input-border, #555);
+  border-radius: var(--parallx-radius-sm, 3px);
+  font-size: var(--parallx-fontSize-sm, 12px);
+  box-sizing: border-box;
+}
+.mo-album-field input:focus,
+.mo-album-field textarea:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+.mo-album-field textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+.mo-album-contents-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.mo-album-contents-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.mo-album-mini-card {
+  width: 120px;
+  cursor: pointer;
+}
+.mo-album-mini-card .mo-card-thumb {
+  position: relative;
+}
+.mo-album-remove-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  font-size: var(--parallx-fontSize-base, 14px);
+  padding: 0 4px;
+  z-index: 1;
+}
+.mo-album-empty {
+  opacity: 0.6;
+  padding: 16px 0;
+  text-align: center;
+}
 `;
 
 function moInjectStyles() {
@@ -4641,19 +4885,17 @@ function renderMediaCard(item, options) {
     thumb.appendChild(moEl('span', 'mo-card-rating', { textContent: stars }));
   }
 
-  // Selection checkbox
-  if (selecting) {
-    const selectWrap = moEl('label', 'mo-card-select');
-    const cb = moEl('input', null, { type: 'checkbox' });
-    cb.checked = isSelected;
-    cb.addEventListener('change', (e) => {
-      e.stopPropagation();
-      if (onSelect) onSelect(item, cb.checked);
-    });
-    cb.addEventListener('click', (e) => e.stopPropagation());
-    selectWrap.appendChild(cb);
-    thumb.appendChild(selectWrap);
-  }
+  // Selection checkbox — always render, show on hover or in selection mode
+  const selectWrap = moEl('label', `mo-card-select${selecting ? ' mo-selecting' : ''}`);
+  const cb = moEl('input', null, { type: 'checkbox' });
+  cb.checked = isSelected;
+  cb.addEventListener('change', (e) => {
+    e.stopPropagation();
+    if (onSelect) onSelect(item, cb.checked, e.shiftKey);
+  });
+  cb.addEventListener('click', (e) => e.stopPropagation());
+  selectWrap.appendChild(cb);
+  thumb.appendChild(selectWrap);
 
   card.appendChild(thumb);
 
@@ -4693,13 +4935,11 @@ function renderMediaListRow(item, options) {
   thumb.appendChild(img);
   row.appendChild(thumb);
 
-  if (selecting) {
-    const cb = moEl('input', null, { type: 'checkbox' });
-    cb.checked = isSelected;
-    cb.addEventListener('change', (e) => { e.stopPropagation(); if (onSelect) onSelect(item, cb.checked); });
-    cb.addEventListener('click', (e) => e.stopPropagation());
-    row.appendChild(cb);
-  }
+  const cb = moEl('input', `mo-list-select${selecting ? ' mo-selecting' : ''}`, { type: 'checkbox' });
+  cb.checked = isSelected;
+  cb.addEventListener('change', (e) => { e.stopPropagation(); if (onSelect) onSelect(item, cb.checked, e.shiftKey); });
+  cb.addEventListener('click', (e) => e.stopPropagation());
+  row.appendChild(cb);
 
   const title = item.title || `${item.type} #${item.id}`;
   row.appendChild(moEl('span', 'mo-list-title', { textContent: title, title: title }));
@@ -4925,8 +5165,53 @@ function renderBrowserSidebar(container, api) {
     }
   }
 
+  // Albums section (D8)
+  const { section: albumSection, body: albumBody } = sidebarSection('Albums', 'folder-library', false);
+  sections.appendChild(albumSection);
+
+  async function loadAlbums() {
+    try {
+      const result = await AlbumQueries.findMany({}, { field: 'title', direction: 'ASC' }, { page: 1, perPage: 200 });
+      albumBody.innerHTML = '';
+      // "Create Album" action
+      albumBody.appendChild(sidebarItem('add', 'Create Album...', null, () => {
+        api.editors.openEditor({
+          typeId: 'media-organizer-grid',
+          title: 'New Album',
+          icon: 'folder-library',
+          instanceId: 'album:new',
+        });
+      }));
+      if (!result.items || result.items.length === 0) {
+        albumBody.appendChild(moEl('div', 'mo-empty', { textContent: 'No albums yet' }));
+        return;
+      }
+      for (const album of result.items) {
+        const icon = album.folderId ? 'folder' : 'folder-library';
+        // Count items in album via efficient SQL
+        const countRow = await db.get(
+          `SELECT (SELECT COUNT(*) FROM mo_albums_photos WHERE album_id = ?) + (SELECT COUNT(*) FROM mo_albums_videos WHERE album_id = ?) AS total`,
+          [album.id, album.id]
+        );
+        const itemCount = countRow ? countRow.total : 0;
+        const badge = itemCount > 0 ? String(itemCount) : null;
+        albumBody.appendChild(sidebarItem(icon, album.title || `Album #${album.id}`, badge, () => {
+          api.editors.openEditor({
+            typeId: 'media-organizer-grid',
+            title: album.title || 'Album',
+            icon: 'folder-library',
+            instanceId: `album:${album.id}`,
+          });
+        }));
+      }
+    } catch {
+      albumBody.appendChild(moEl('div', 'mo-empty', { textContent: 'Could not load albums' }));
+    }
+  }
+
   loadFolders();
   loadTags();
+  loadAlbums();
 
   return { dispose() { container.innerHTML = ''; } };
 }
@@ -4962,6 +5247,7 @@ function renderGridBrowser(container, api, input) {
     items: [],
     selectedIds: new Set(),
     selecting: false,
+    lastClickedKey: null,
     filters: {
       tagIds: [],
       excludeTagIds: [],
@@ -5041,6 +5327,15 @@ function renderGridBrowser(container, api, input) {
   // Item count
   const countLabel = moEl('span', 'mo-toolbar-count', { textContent: '' });
   toolbar.appendChild(countLabel);
+
+  // ── Selection Toolbar (D8/F34) ──
+  let selectionBar = null;
+
+  function refreshGrid() {
+    if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+  }
+
+  selectionBar = buildSelectionToolbar(root, state, api, refreshGrid);
 
   // ── Filter Panel ──
   const filterPanel = moEl('div', 'mo-filter-panel');
@@ -5262,12 +5557,7 @@ function renderGridBrowser(container, api, input) {
   }
 
   // ── Grid area ──
-  const gridArea = moEl('div');
-  gridArea.style.flex = '1';
-  gridArea.style.overflow = 'hidden';
-  gridArea.style.display = 'flex';
-  gridArea.style.flexDirection = 'column';
-  gridArea.style.position = 'relative';
+  const gridArea = moEl('div', 'mo-grid-area');
   root.appendChild(gridArea);
 
   // Loading overlay
@@ -5594,11 +5884,30 @@ function renderGridBrowser(container, api, input) {
     if (scrollEl) scrollEl.scrollTop = 0;
   }
 
-  function handleSelect(item, checked) {
+  function handleSelect(item, checked, shiftKey) {
     const key = `${item.type}:${item.id}`;
-    if (checked) state.selectedIds.add(key);
-    else state.selectedIds.delete(key);
+
+    if (shiftKey && state.lastClickedKey) {
+      // Shift-click range selection — adapted from stash: useListSelect.multiSelect
+      const startIdx = state.items.findIndex(i => `${i.type}:${i.id}` === state.lastClickedKey);
+      const endIdx = state.items.findIndex(i => `${i.type}:${i.id}` === key);
+      if (startIdx >= 0 && endIdx >= 0) {
+        const lo = Math.min(startIdx, endIdx);
+        const hi = Math.max(startIdx, endIdx);
+        for (let j = lo; j <= hi; j++) {
+          const k = `${state.items[j].type}:${state.items[j].id}`;
+          state.selectedIds.add(k);
+        }
+      }
+    } else {
+      if (checked) state.selectedIds.add(key);
+      else state.selectedIds.delete(key);
+    }
+
+    state.lastClickedKey = key;
     state.selecting = state.selectedIds.size > 0;
+    if (selectionBar) selectionBar.update();
+    if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
   }
 
   function handleCardClick(item) {
@@ -5675,9 +5984,35 @@ function renderGridBrowser(container, api, input) {
   // Initial load
   loadPage();
 
+  // Keyboard shortcuts for grid — adapted from stash: useListSelect + KeyboardShortcuts.md
+  function handleGridKeydown(e) {
+    // Escape — deselect all
+    if (e.key === 'Escape' && state.selectedIds.size > 0) {
+      state.selectedIds.clear();
+      state.selecting = false;
+      if (selectionBar) selectionBar.update();
+      if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+      e.preventDefault();
+      return;
+    }
+    // Ctrl+A — select all on current page (adapted from stash: KeyboardShortcuts.md)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+      e.preventDefault();
+      for (const item of state.items) {
+        state.selectedIds.add(`${item.type}:${item.id}`);
+      }
+      state.selecting = true;
+      if (selectionBar) selectionBar.update();
+      if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+      return;
+    }
+  }
+  root.addEventListener('keydown', handleGridKeydown);
+
   return {
     dispose() {
       clearTimeout(searchTimer);
+      root.removeEventListener('keydown', handleGridKeydown);
       if (cardGrid) cardGrid.dispose();
       container.innerHTML = '';
     }
@@ -6088,7 +6423,7 @@ function buildEditableField(container, label, value, multiline, onSave) {
 }
 
 function buildTagEditor(container, tags, entityType, entityId, api, onRefresh) {
-  const Queries = entityType === 'video' ? VideoQueries : PhotoQueries;
+  const Queries = entityType === 'video' ? VideoQueries : entityType === 'album' ? AlbumQueries : PhotoQueries;
   let currentTags = [...tags];
 
   const wrap = moEl('div', 'mo-detail-tag-editor');
@@ -6384,6 +6719,664 @@ function formatBitRate(bps) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 30: AUTO-ALBUM FROM DIRECTORY STRUCTURE (F31)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: pkg/image/scan.go — getOrCreateFolderBasedGallery
+// During scan, each folder with media automatically gets an album entry.
+
+const _folderAlbumCache = new Map();
+const _folderAlbumInflight = new Map();
+
+async function getOrCreateFolderAlbum(folderId) {
+  if (_folderAlbumCache.has(folderId)) return _folderAlbumCache.get(folderId);
+
+  // Dedup concurrent calls for same folderId — prevents duplicate album creation
+  if (_folderAlbumInflight.has(folderId)) return _folderAlbumInflight.get(folderId);
+
+  const promise = _getOrCreateFolderAlbumImpl(folderId);
+  _folderAlbumInflight.set(folderId, promise);
+  try {
+    const result = await promise;
+    _folderAlbumCache.set(folderId, result);
+    return result;
+  } finally {
+    _folderAlbumInflight.delete(folderId);
+  }
+}
+
+async function _getOrCreateFolderAlbumImpl(folderId) {
+  // Check if album already exists for this folder
+  const existing = await AlbumQueries.findMany({ folderId }, {}, { page: 1, perPage: 1 });
+  if (existing.items.length > 0) return existing.items[0];
+
+  // Resolve folder path for title
+  const folder = await FolderQueries.findById(folderId);
+  const folderPath = folder ? folder.path : '';
+  const parts = folderPath.replace(/[\\/]+$/, '').split(/[\\/]/);
+  const title = parts[parts.length - 1] || folderPath || `Folder ${folderId}`;
+  return AlbumQueries.create({ title, folderId });
+}
+
+// Associate a media item with its folder's auto-album
+// Adapted from stash: pkg/image/scan.go — associateExisting / galleries_images join
+async function associateWithFolderAlbum(folderId, entityType, entityId) {
+  try {
+    const album = await getOrCreateFolderAlbum(folderId);
+    if (!album) return;
+    if (entityType === 'photo') {
+      await AlbumQueries.updatePhotos(album.id, { mode: 'ADD', ids: [entityId] });
+    } else if (entityType === 'video') {
+      await AlbumQueries.updateVideos(album.id, { mode: 'ADD', ids: [entityId] });
+    }
+  } catch (err) {
+    console.warn('[MO] Auto-album association failed:', err);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 31: ALBUM EDITOR VIEW (F32)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: ui/v2.5/src/components/Galleries/GalleryDetails/ — album detail + edit
+
+function renderAlbumEditor(container, api, input) {
+  moInjectStyles();
+  const root = moEl('div', 'mo-album-editor');
+  container.appendChild(root);
+
+  // Parse album:<id> or album:new
+  const instanceId = (input && input.id) || '';
+  const albumIdStr = instanceId.replace(/^album:/, '');
+  const isNew = albumIdStr === 'new';
+  const albumId = isNew ? null : parseInt(albumIdStr, 10);
+
+  // Loading state
+  const loadingEl = moEl('div', 'mo-detail-loading');
+  const spinner = moEl('span', 'mo-spinner');
+  spinner.setAttribute('role', 'status');
+  loadingEl.appendChild(spinner);
+  root.appendChild(loadingEl);
+
+  let album = null;
+
+  async function loadAndRender() {
+    try {
+      if (isNew) {
+        album = { id: null, title: '', description: '', rating: 0, folderId: null, date: null };
+      } else {
+        album = await AlbumQueries.findById(albumId);
+        if (!album) {
+          root.innerHTML = '';
+          root.appendChild(moEl('div', 'mo-album-empty', { textContent: 'Album not found.' }));
+          return;
+        }
+      }
+      root.innerHTML = '';
+      buildAlbumUI(root, album, api, isNew);
+    } catch (err) {
+      root.innerHTML = '';
+      root.appendChild(moEl('div', 'mo-album-empty', { textContent: 'Error loading album: ' + err.message }));
+    }
+  }
+
+  loadAndRender().catch((err) => console.error('[MO-Album] Load error:', err));
+
+  return { dispose() { container.innerHTML = ''; } };
+}
+
+function buildAlbumUI(root, album, api, isNew) {
+  // Header
+  const header = moEl('div', 'mo-album-header');
+  const titleEl = moEl('h2', null, { textContent: isNew ? 'New Album' : (album.title || 'Untitled Album') });
+  header.appendChild(titleEl);
+
+  if (isNew) {
+    const saveBtn = moEl('button', 'mo-toolbar-btn', { textContent: 'Create' });
+    saveBtn.addEventListener('click', async () => {
+      const titleInput = root.querySelector('.mo-album-title-input');
+      const descInput = root.querySelector('.mo-album-desc-input');
+      const title = titleInput ? titleInput.value.trim() : '';
+      if (!title) { api.window.showWarningMessage('Album title is required.'); return; }
+      try {
+        const newAlbum = await AlbumQueries.create({ title, description: descInput ? descInput.value : '' });
+        api.editors.openEditor({
+          typeId: 'media-organizer-grid',
+          title: newAlbum.title,
+          icon: 'folder-library',
+          instanceId: `album:${newAlbum.id}`,
+        });
+      } catch (err) {
+        api.window.showErrorMessage('Failed to create album: ' + err.message);
+      }
+    });
+    header.appendChild(saveBtn);
+  } else {
+    const deleteBtn = moEl('button', 'mo-toolbar-btn', { textContent: 'Delete', title: 'Delete album' });
+    deleteBtn.addEventListener('click', async () => {
+      const confirmed = await api.window.showWarningMessage(
+        `Delete album "${album.title}"? This cannot be undone.`,
+        { modal: true },
+        'Delete'
+      );
+      if (confirmed !== 'Delete') return;
+      try {
+        await AlbumQueries.destroy(album.id);
+        api.window.showInformationMessage(`Album "${album.title}" deleted.`);
+        // Replace editor content with deleted message
+        root.innerHTML = '';
+        root.appendChild(moEl('div', 'mo-album-empty', { textContent: 'Album has been deleted.' }));
+      } catch (err) {
+        api.window.showErrorMessage('Delete failed: ' + err.message);
+      }
+    });
+    header.appendChild(deleteBtn);
+  }
+  root.appendChild(header);
+
+  // Body
+  const body = moEl('div', 'mo-album-body');
+  root.appendChild(body);
+
+  // Title field
+  const titleField = moEl('div', 'mo-album-field');
+  titleField.appendChild(moEl('label', null, { textContent: 'Title' }));
+  const titleInput = moEl('input', 'mo-album-title-input', { type: 'text', value: album.title || '' });
+  if (!isNew) {
+    let titleTimer = null;
+    titleInput.addEventListener('input', () => {
+      clearTimeout(titleTimer);
+      titleTimer = setTimeout(async () => {
+        try {
+          await AlbumQueries.update(album.id, { title: titleInput.value });
+          titleEl.textContent = titleInput.value || 'Untitled Album';
+        } catch (err) { console.error('[MO-Album] Title save failed:', err); }
+      }, 800);
+    });
+  }
+  titleField.appendChild(titleInput);
+  body.appendChild(titleField);
+
+  // Description field
+  const descField = moEl('div', 'mo-album-field');
+  descField.appendChild(moEl('label', null, { textContent: 'Description' }));
+  const descInput = moEl('textarea', 'mo-album-desc-input');
+  descInput.value = album.description || '';
+  if (!isNew) {
+    let descTimer = null;
+    descInput.addEventListener('input', () => {
+      clearTimeout(descTimer);
+      descTimer = setTimeout(async () => {
+        try { await AlbumQueries.update(album.id, { description: descInput.value }); }
+        catch (err) { console.error('[MO-Album] Description save failed:', err); }
+      }, 800);
+    });
+  }
+  descField.appendChild(descInput);
+  body.appendChild(descField);
+
+  // Rating
+  if (!isNew) {
+    const ratingField = moEl('div', 'mo-album-field');
+    ratingField.appendChild(moEl('label', null, { textContent: 'Rating' }));
+    const starBar = moEl('div', 'mo-star-bar');
+    for (let i = 1; i <= 5; i++) {
+      const star = moEl('span', `mo-star${album.rating >= i ? ' active' : ''}`, { textContent: album.rating >= i ? '\u2605' : '\u2606' });
+      star.addEventListener('click', async () => {
+        const newRating = album.rating === i ? 0 : i;
+        try {
+          await AlbumQueries.update(album.id, { rating: newRating });
+          album.rating = newRating;
+          for (const s of starBar.children) {
+            const v = parseInt(s.dataset.value, 10);
+            s.textContent = newRating >= v ? '\u2605' : '\u2606';
+            s.classList.toggle('active', newRating >= v);
+          }
+        } catch (err) { console.error('[MO-Album] Rating save failed:', err); }
+      });
+      star.dataset.value = String(i);
+      starBar.appendChild(star);
+    }
+    ratingField.appendChild(starBar);
+    body.appendChild(ratingField);
+  }
+
+  // Tag editor (reuse pattern from detail editor)
+  if (!isNew) {
+    const tagField = moEl('div', 'mo-album-field');
+    tagField.appendChild(moEl('label', null, { textContent: 'Tags' }));
+    const tagContainer = moEl('div', 'mo-detail-tag-editor');
+    tagField.appendChild(tagContainer);
+    body.appendChild(tagField);
+
+    (async () => {
+      try {
+        const tags = await AlbumQueries.loadTags(album.id);
+        buildTagEditor(tagContainer, tags, 'album', album.id, api);
+      } catch (err) { console.error('[MO-Album] Tag load failed:', err); }
+    })();
+  }
+
+  // Folder info (for auto-albums)
+  if (album.folderId) {
+    const folderField = moEl('div', 'mo-album-field');
+    folderField.appendChild(moEl('label', null, { textContent: 'Source Folder' }));
+    (async () => {
+      try {
+        const folder = await FolderQueries.findById(album.folderId);
+        folderField.appendChild(moEl('span', null, { textContent: folder ? folder.path : 'Unknown' }));
+      } catch { folderField.appendChild(moEl('span', null, { textContent: 'Unknown' })); }
+    })();
+    body.appendChild(folderField);
+  }
+
+  // Album contents section (F32)
+  if (!isNew) {
+    body.appendChild(moEl('hr'));
+    const contentsLabel = moEl('label', 'mo-album-contents-label', { textContent: 'Contents' });
+    body.appendChild(contentsLabel);
+
+    const contentsGrid = moEl('div', 'mo-album-contents-grid');
+    body.appendChild(contentsGrid);
+
+    loadAlbumContents(album, contentsGrid, api);
+  }
+}
+
+async function loadAlbumContents(album, container, api) {
+  try {
+    const [photos, videos] = await Promise.all([
+      AlbumQueries.loadPhotos(album.id),
+      AlbumQueries.loadVideos(album.id),
+    ]);
+    const items = [
+      ...photos.map(p => ({ ...p, type: 'photo', _entity: p })),
+      ...videos.map(v => ({ ...v, type: 'video', _entity: v })),
+    ];
+
+    container.innerHTML = '';
+    if (items.length === 0) {
+      container.appendChild(moEl('div', 'mo-album-empty', { textContent: 'No items in this album yet.' }));
+      return;
+    }
+
+    for (const item of items) {
+      const miniCard = moEl('div', 'mo-album-mini-card mo-card zoom-0');
+      const thumb = moEl('div', 'mo-card-thumb');
+      const img = moEl('img');
+      img.alt = item.title || '';
+      img.loading = 'lazy';
+      thumb.appendChild(img);
+
+      // Remove button
+      const removeBtn = moEl('button', 'mo-toolbar-btn mo-album-remove-btn', { textContent: '×', title: 'Remove from album' });
+      removeBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try {
+          if (item.type === 'photo') {
+            await AlbumQueries.updatePhotos(album.id, { mode: 'REMOVE', ids: [item.id] });
+          } else {
+            await AlbumQueries.updateVideos(album.id, { mode: 'REMOVE', ids: [item.id] });
+          }
+          miniCard.remove();
+        } catch (err) { console.error('[MO-Album] Remove failed:', err); }
+      });
+      thumb.appendChild(removeBtn);
+      miniCard.appendChild(thumb);
+
+      const info = moEl('div', 'mo-card-info');
+      info.appendChild(moEl('div', 'mo-card-title', { textContent: item.title || `${item.type} #${item.id}`, title: item.title || '' }));
+      miniCard.appendChild(info);
+
+      miniCard.addEventListener('click', () => {
+        api.editors.openEditor({
+          typeId: 'media-organizer-grid',
+          title: item.title || `${item.type} #${item.id}`,
+          icon: item.type === 'video' ? 'file-media' : 'image',
+          instanceId: `detail:${item.type}:${item.id}`,
+        });
+      });
+
+      // Resolve thumbnail
+      miniCard._imgEl = img;
+      miniCard._thumbEl = thumb;
+      if (_api) {
+        resolveThumbnailForMiniCard(miniCard, item);
+      }
+
+      container.appendChild(miniCard);
+    }
+  } catch (err) {
+    container.innerHTML = '';
+    container.appendChild(moEl('div', 'mo-album-empty', { textContent: 'Error loading contents.' }));
+  }
+}
+
+async function resolveThumbnailForMiniCard(card, item) {
+  try {
+    const result = await resolveThumbnail(item.type === 'photo' ? 'photo' : 'video', item.id, _api);
+    if (result && result.path) {
+      const img = card._imgEl;
+      if (img) {
+        img.src = `file://${result.path.replace(/\\/g, '/')}`;
+      }
+    }
+  } catch { /* thumbnail resolution failure */ }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 32: BULK OPERATIONS (F33, F34)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: ui/v2.5/src/components/List/useListSelect, EditGalleriesDialog, MultiSet
+
+function buildSelectionToolbar(container, state, api, refreshFn) {
+  // Adapted from stash: FilteredListToolbar — selection mode toolbar
+  const bar = moEl('div', 'mo-selection-bar');
+
+  const countEl = moEl('span', 'mo-sel-count');
+  bar.appendChild(countEl);
+
+  const selectAllBtn = moEl('button', null, { textContent: 'Select All' });
+  selectAllBtn.addEventListener('click', () => {
+    for (const item of state.items) {
+      state.selectedIds.add(`${item.type}:${item.id}`);
+    }
+    state.selecting = true;
+    updateBar();
+    refreshFn();
+  });
+  bar.appendChild(selectAllBtn);
+
+  const deselectBtn = moEl('button', null, { textContent: 'Deselect All' });
+  deselectBtn.addEventListener('click', () => {
+    state.selectedIds.clear();
+    state.selecting = false;
+    updateBar();
+    refreshFn();
+  });
+  bar.appendChild(deselectBtn);
+
+  const invertBtn = moEl('button', null, { textContent: 'Invert' });
+  invertBtn.addEventListener('click', () => {
+    const newSelection = new Set();
+    for (const item of state.items) {
+      const key = `${item.type}:${item.id}`;
+      if (!state.selectedIds.has(key)) newSelection.add(key);
+    }
+    state.selectedIds.clear();
+    for (const k of newSelection) state.selectedIds.add(k);
+    state.selecting = state.selectedIds.size > 0;
+    updateBar();
+    refreshFn();
+  });
+  bar.appendChild(invertBtn);
+
+  bar.appendChild(moEl('span', 'mo-sel-spacer'));
+
+  // Bulk Tag button
+  const bulkTagBtn = moEl('button', null, { textContent: 'Tag...' });
+  bulkTagBtn.addEventListener('click', () => {
+    showBulkTagDialog(state, api, () => { updateBar(); refreshFn(); });
+  });
+  bar.appendChild(bulkTagBtn);
+
+  // Bulk Rating button
+  const bulkRatingBtn = moEl('button', null, { textContent: 'Rate...' });
+  bulkRatingBtn.addEventListener('click', () => {
+    showBulkRatingDialog(state, api, () => { updateBar(); refreshFn(); });
+  });
+  bar.appendChild(bulkRatingBtn);
+
+  // Add to Album button
+  const addToAlbumBtn = moEl('button', null, { textContent: 'Add to Album...' });
+  addToAlbumBtn.addEventListener('click', () => {
+    showAddToAlbumDialog(state, api, () => { updateBar(); refreshFn(); });
+  });
+  bar.appendChild(addToAlbumBtn);
+
+  function updateBar() {
+    const count = state.selectedIds.size;
+    countEl.textContent = `${count} selected`;
+    bar.style.display = count > 0 ? 'flex' : 'none';
+  }
+
+  updateBar();
+  container.appendChild(bar);
+
+  return { update: updateBar, element: bar };
+}
+
+// Parse selectedIds set into { photos: [id,...], videos: [id,...] }
+function parseSelectedIds(selectedIds) {
+  const photos = [];
+  const videos = [];
+  for (const key of selectedIds) {
+    const [type, idStr] = key.split(':');
+    const id = parseInt(idStr, 10);
+    if (type === 'photo') photos.push(id);
+    else if (type === 'video') videos.push(id);
+  }
+  return { photos, videos };
+}
+
+// Adapted from stash: EditGalleriesDialog — bulk tag with Set/Add/Remove modes
+function showBulkTagDialog(state, api, onComplete) {
+  const overlay = moEl('div', 'mo-bulk-dialog-overlay');
+  const dialog = moEl('div', 'mo-bulk-dialog');
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-label', 'Bulk Tag');
+  overlay.appendChild(dialog);
+
+  dialog.appendChild(moEl('h3', null, { textContent: `Bulk Tag (${state.selectedIds.size} items)` }));
+
+  // Mode selector (Add / Remove)
+  // Adapted from stash: MultiSet — BulkUpdateIdMode buttons
+  const modeSection = moEl('div', 'mo-bulk-dialog-section');
+  modeSection.appendChild(moEl('label', null, { textContent: 'Mode' }));
+  const modeBtns = moEl('div', 'mo-bulk-mode-btns');
+  let mode = 'ADD';
+  const addBtn = moEl('button', 'active', { textContent: 'Add' });
+  const removeBtn = moEl('button', null, { textContent: 'Remove' });
+  addBtn.addEventListener('click', () => { mode = 'ADD'; addBtn.classList.add('active'); removeBtn.classList.remove('active'); });
+  removeBtn.addEventListener('click', () => { mode = 'REMOVE'; removeBtn.classList.add('active'); addBtn.classList.remove('active'); });
+  modeBtns.append(addBtn, removeBtn);
+  modeSection.appendChild(modeBtns);
+  dialog.appendChild(modeSection);
+
+  // Tag selector
+  const tagSection = moEl('div', 'mo-bulk-dialog-section');
+  tagSection.appendChild(moEl('label', null, { textContent: 'Tag' }));
+  const tagSelect = moEl('select');
+  tagSelect.appendChild(moEl('option', null, { value: '', textContent: 'Select a tag...' }));
+  tagSection.appendChild(tagSelect);
+  dialog.appendChild(tagSection);
+
+  // Load tags
+  TagQueries.findMany({}, { field: 'name', direction: 'ASC' }, { page: 1, perPage: 500 })
+    .then(result => {
+      for (const tag of result.items) {
+        tagSelect.appendChild(moEl('option', null, { value: String(tag.id), textContent: tag.name }));
+      }
+    })
+    .catch(() => {});
+
+  // Footer
+  const footer = moEl('div', 'mo-bulk-dialog-footer');
+  const cancelBtn = moEl('button', null, { textContent: 'Cancel' });
+  cancelBtn.addEventListener('click', () => overlay.remove());
+  const applyBtn = moEl('button', 'primary', { textContent: 'Apply' });
+  applyBtn.addEventListener('click', async () => {
+    const tagId = parseInt(tagSelect.value, 10);
+    if (!tagId) { api.window.showWarningMessage('Please select a tag.'); return; }
+    applyBtn.disabled = true;
+    cancelBtn.disabled = true;
+    applyBtn.textContent = 'Applying…';
+    const { photos, videos } = parseSelectedIds(state.selectedIds);
+    try {
+      const txnOps = [];
+      for (const photoId of photos) {
+        if (mode === 'ADD') {
+          txnOps.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id) VALUES (?, ?)', params: [photoId, tagId] });
+        } else {
+          txnOps.push({ type: 'run', sql: 'DELETE FROM mo_photos_tags WHERE photo_id = ? AND tag_id = ?', params: [photoId, tagId] });
+        }
+      }
+      for (const videoId of videos) {
+        if (mode === 'ADD') {
+          txnOps.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_videos_tags (video_id, tag_id) VALUES (?, ?)', params: [videoId, tagId] });
+        } else {
+          txnOps.push({ type: 'run', sql: 'DELETE FROM mo_videos_tags WHERE video_id = ? AND tag_id = ?', params: [videoId, tagId] });
+        }
+      }
+      if (txnOps.length > 0) await db.transaction(txnOps);
+      api.window.showInformationMessage(`Tags ${mode === 'ADD' ? 'added to' : 'removed from'} ${photos.length + videos.length} items.`);
+      overlay.remove();
+      onComplete();
+    } catch (err) {
+      applyBtn.disabled = false;
+      cancelBtn.disabled = false;
+      applyBtn.textContent = 'Apply';
+      api.window.showErrorMessage('Bulk tag failed: ' + err.message);
+    }
+  });
+  footer.append(cancelBtn, applyBtn);
+  dialog.appendChild(footer);
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') overlay.remove(); });
+  document.body.appendChild(overlay);
+  overlay.setAttribute('tabindex', '-1');
+  overlay.focus();
+}
+
+function showBulkRatingDialog(state, api, onComplete) {
+  const overlay = moEl('div', 'mo-bulk-dialog-overlay');
+  const dialog = moEl('div', 'mo-bulk-dialog');
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-label', 'Set Rating');
+  overlay.appendChild(dialog);
+
+  dialog.appendChild(moEl('h3', null, { textContent: `Set Rating (${state.selectedIds.size} items)` }));
+
+  const ratingSection = moEl('div', 'mo-bulk-dialog-section');
+  ratingSection.appendChild(moEl('label', null, { textContent: 'Rating' }));
+  const starBar = moEl('div', 'mo-star-bar');
+  let selectedRating = 0;
+  for (let i = 1; i <= 5; i++) {
+    const star = moEl('span', 'mo-star', { textContent: '\u2606' });
+    star.dataset.value = String(i);
+    star.addEventListener('click', () => {
+      selectedRating = selectedRating === i ? 0 : i;
+      for (const s of starBar.children) {
+        const v = parseInt(s.dataset.value, 10);
+        s.textContent = selectedRating >= v ? '\u2605' : '\u2606';
+        s.classList.toggle('active', selectedRating >= v);
+      }
+    });
+    starBar.appendChild(star);
+  }
+  ratingSection.appendChild(starBar);
+  dialog.appendChild(ratingSection);
+
+  const footer = moEl('div', 'mo-bulk-dialog-footer');
+  const cancelBtn = moEl('button', null, { textContent: 'Cancel' });
+  cancelBtn.addEventListener('click', () => overlay.remove());
+  const applyBtn = moEl('button', 'primary', { textContent: 'Apply' });
+  applyBtn.addEventListener('click', async () => {
+    applyBtn.disabled = true;
+    cancelBtn.disabled = true;
+    applyBtn.textContent = 'Applying…';
+    const { photos, videos } = parseSelectedIds(state.selectedIds);
+    try {
+      const txnOps = [];
+      for (const id of photos) {
+        txnOps.push({ type: 'run', sql: 'UPDATE mo_photos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', params: [selectedRating, id] });
+      }
+      for (const id of videos) {
+        txnOps.push({ type: 'run', sql: 'UPDATE mo_videos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', params: [selectedRating, id] });
+      }
+      if (txnOps.length > 0) await db.transaction(txnOps);
+      api.window.showInformationMessage(`Rating set to ${selectedRating} for ${photos.length + videos.length} items.`);
+      overlay.remove();
+      onComplete();
+    } catch (err) {
+      applyBtn.disabled = false;
+      cancelBtn.disabled = false;
+      applyBtn.textContent = 'Apply';
+      api.window.showErrorMessage('Bulk rating failed: ' + err.message);
+    }
+  });
+  footer.append(cancelBtn, applyBtn);
+  dialog.appendChild(footer);
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') overlay.remove(); });
+  document.body.appendChild(overlay);
+  overlay.setAttribute('tabindex', '-1');
+  overlay.focus();
+}
+
+function showAddToAlbumDialog(state, api, onComplete) {
+  const overlay = moEl('div', 'mo-bulk-dialog-overlay');
+  const dialog = moEl('div', 'mo-bulk-dialog');
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-label', 'Add to Album');
+  overlay.appendChild(dialog);
+
+  dialog.appendChild(moEl('h3', null, { textContent: `Add to Album (${state.selectedIds.size} items)` }));
+
+  const albumSection = moEl('div', 'mo-bulk-dialog-section');
+  albumSection.appendChild(moEl('label', null, { textContent: 'Album' }));
+  const albumSelect = moEl('select');
+  albumSelect.appendChild(moEl('option', null, { value: '', textContent: 'Select an album...' }));
+  albumSection.appendChild(albumSelect);
+  dialog.appendChild(albumSection);
+
+  // Load albums (manual collections only — folderId IS NULL)
+  AlbumQueries.findMany({ folderId: null }, { field: 'title', direction: 'ASC' }, { page: 1, perPage: 500 })
+    .then(result => {
+      for (const album of result.items) {
+        albumSelect.appendChild(moEl('option', null, { value: String(album.id), textContent: album.title || `Album #${album.id}` }));
+      }
+    })
+    .catch(() => {});
+
+  const footer = moEl('div', 'mo-bulk-dialog-footer');
+  const cancelBtn = moEl('button', null, { textContent: 'Cancel' });
+  cancelBtn.addEventListener('click', () => overlay.remove());
+  const applyBtn = moEl('button', 'primary', { textContent: 'Add' });
+  applyBtn.addEventListener('click', async () => {
+    const albumId = parseInt(albumSelect.value, 10);
+    if (!albumId) { api.window.showWarningMessage('Please select an album.'); return; }
+    applyBtn.disabled = true;
+    cancelBtn.disabled = true;
+    applyBtn.textContent = 'Adding…';
+    const { photos, videos } = parseSelectedIds(state.selectedIds);
+    try {
+      if (photos.length > 0) await AlbumQueries.updatePhotos(albumId, { mode: 'ADD', ids: photos });
+      if (videos.length > 0) await AlbumQueries.updateVideos(albumId, { mode: 'ADD', ids: videos });
+      api.window.showInformationMessage(`${photos.length + videos.length} items added to album.`);
+      overlay.remove();
+      onComplete();
+    } catch (err) {
+      applyBtn.disabled = false;
+      cancelBtn.disabled = false;
+      applyBtn.textContent = 'Add';
+      api.window.showErrorMessage('Add to album failed: ' + err.message);
+    }
+  });
+  footer.append(cancelBtn, applyBtn);
+  dialog.appendChild(footer);
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') overlay.remove(); });
+  document.body.appendChild(overlay);
+  overlay.setAttribute('tabindex', '-1');
+  overlay.focus();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 11: ACTIVATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -6474,6 +7467,9 @@ export async function activate(api, context) {
         if (inputId.startsWith('detail:')) {
           return renderDetailEditor(container, api, input);
         }
+        if (inputId.startsWith('album:')) {
+          return renderAlbumEditor(container, api, input);
+        }
         return renderGridBrowser(container, api, input);
       },
     })
@@ -6490,7 +7486,19 @@ export async function activate(api, context) {
     })
   );
 
-  console.log('[MediaOrganizer] Activated — D1-D7 ready (data, scan, thumbnails, tags, grid, filter, detail)');
+  // D8: Create Album command
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.createAlbum', () => {
+      api.editors.openEditor({
+        typeId: 'media-organizer-grid',
+        title: 'New Album',
+        icon: 'folder-library',
+        instanceId: 'album:new',
+      });
+    })
+  );
+
+  console.log('[MediaOrganizer] Activated — D1-D8 ready (data, scan, thumbnails, tags, grid, filter, detail, albums)');
 }
 
 export function deactivate() {
@@ -6505,6 +7513,8 @@ export function deactivate() {
   _toolPaths = { ffprobe: null, exiftool: null, node: null, ffmpeg: null, vips: null };
   _thumbDir = null;
   _thumbInflight.clear();
+  _folderAlbumCache.clear();
+  _folderAlbumInflight.clear();
   _api = null;
   const moStyleEl = document.getElementById('media-organizer-styles');
   if (moStyleEl) moStyleEl.remove();
