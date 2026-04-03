@@ -3750,6 +3750,1126 @@ async function deleteEntityThumbnails(api, checksum) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 22: UI HELPERS & STYLES
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: ui/v2.5 — imperative DOM rendering for extension UI
+
+let _moStyleInjected = false;
+
+function moEl(tag, className, attrs) {
+  const e = document.createElement(tag);
+  if (className) e.className = className;
+  if (attrs) {
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'textContent') e.textContent = v;
+      else if (k === 'innerHTML') e.innerHTML = v;
+      else if (k === 'onclick') e.addEventListener('click', v);
+      else if (k === 'onchange') e.addEventListener('change', v);
+      else if (k === 'oninput') e.addEventListener('input', v);
+      else e.setAttribute(k, v);
+    }
+  }
+  return e;
+}
+
+function moIcon(name, size) {
+  if (_api?.icons) return _api.icons.createIconHtml(name, size || 16);
+  return '';
+}
+
+const MO_CSS = `
+/* ═══ Grid Browser ═══ */
+.mo-grid-browser {
+  --mo-rating-color: #f5c518;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  font-family: var(--parallx-fontFamily-ui, system-ui, sans-serif);
+  font-size: var(--parallx-fontSize-base, 12px);
+}
+
+/* ═══ Toolbar ═══ */
+.mo-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.mo-toolbar-search {
+  flex: 1;
+  min-width: 120px;
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #ccc);
+  border: 1px solid var(--vscode-input-border, #555);
+  border-radius: var(--parallx-radius-sm, 3px);
+  padding: 4px 8px;
+  font-size: var(--parallx-fontSize-base, 12px);
+  font-family: inherit;
+  outline: none;
+}
+.mo-toolbar-search:focus { border-color: var(--vscode-focusBorder, #007fd4); }
+.mo-toolbar-search::placeholder { color: var(--vscode-input-placeholderForeground, #888); }
+.mo-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.mo-toolbar-btn {
+  background: var(--vscode-button-secondaryBackground, #3a3a3a);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+  border: 1px solid var(--vscode-panel-border, #555);
+  border-radius: var(--parallx-radius-sm, 3px);
+  padding: 3px 8px;
+  font-size: var(--parallx-fontSize-sm, 11px);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.mo-toolbar-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
+.mo-toolbar-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: -1px; }
+.mo-toolbar-select {
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #ccc);
+  border: 1px solid var(--vscode-input-border, #555);
+  border-radius: var(--parallx-radius-sm, 3px);
+  padding: 3px 6px;
+  font-size: var(--parallx-fontSize-sm, 11px);
+  font-family: inherit;
+  outline: none;
+}
+.mo-toolbar-label {
+  font-size: var(--parallx-fontSize-sm, 11px);
+  color: var(--vscode-descriptionForeground, #888);
+  white-space: nowrap;
+}
+.mo-toolbar-count {
+  font-size: var(--parallx-fontSize-sm, 11px);
+  color: var(--vscode-descriptionForeground, #888);
+  white-space: nowrap;
+  margin-left: auto;
+}
+.mo-zoom-slider {
+  width: 72px;
+  accent-color: var(--vscode-focusBorder, #007fd4);
+}
+
+/* ═══ Grid ═══ */
+.mo-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+  align-content: flex-start;
+}
+
+/* ═══ Card ═══ */
+.mo-card {
+  border-radius: var(--parallx-radius-md, 6px);
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border, #333);
+  transition: border-color 0.15s;
+  flex-shrink: 0;
+}
+.mo-card:hover { border-color: var(--vscode-focusBorder, #007fd4); }
+.mo-card:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: -1px; }
+.mo-card.mo-selected { border-color: var(--vscode-focusBorder, #007fd4); box-shadow: 0 0 0 1px var(--vscode-focusBorder, #007fd4); }
+.mo-card-thumb {
+  position: relative;
+  overflow: hidden;
+  background: var(--vscode-input-background, #1a1a1a);
+}
+.mo-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.mo-card-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  font-size: var(--parallx-fontSize-xs, 10px);
+  padding: 1px 5px;
+  border-radius: var(--parallx-radius-sm, 3px);
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.mo-card-rating {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  font-size: var(--parallx-fontSize-xs, 10px);
+  color: var(--mo-rating-color, #f5c518);
+  pointer-events: none;
+}
+.mo-card-select {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+}
+.mo-card-select input { cursor: pointer; }
+.mo-card-info {
+  padding: 5px 8px 6px;
+}
+.mo-card-title {
+  font-size: var(--parallx-fontSize-sm, 11px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--vscode-editor-foreground);
+}
+.mo-card-detail {
+  font-size: var(--parallx-fontSize-xs, 10px);
+  color: var(--vscode-descriptionForeground, #888);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+/* Zoom-dependent thumb heights */
+.mo-card.zoom-0 .mo-card-thumb { height: 180px; }
+.mo-card.zoom-1 .mo-card-thumb { height: 240px; }
+.mo-card.zoom-2 .mo-card-thumb { height: 360px; }
+.mo-card.zoom-3 .mo-card-thumb { height: 480px; }
+
+/* ═══ Pagination ═══ */
+.mo-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--vscode-panel-border, #2a2a2a);
+  flex-shrink: 0;
+  font-size: var(--parallx-fontSize-sm, 11px);
+}
+.mo-page-btn {
+  background: var(--vscode-button-secondaryBackground, #3a3a3a);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+  border: 1px solid var(--vscode-panel-border, #555);
+  border-radius: var(--parallx-radius-sm, 3px);
+  padding: 2px 8px;
+  font-size: var(--parallx-fontSize-sm, 11px);
+  cursor: pointer;
+}
+.mo-page-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
+.mo-page-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: -1px; }
+.mo-page-btn:disabled { opacity: 0.4; cursor: default; }
+.mo-page-info { color: var(--vscode-descriptionForeground, #888); }
+
+/* ═══ Sidebar ═══ */
+.mo-sidebar {
+  --mo-rating-color: #f5c518;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  color: var(--vscode-sideBar-foreground, var(--vscode-editor-foreground));
+  font-family: var(--parallx-fontFamily-ui, system-ui, sans-serif);
+  font-size: var(--parallx-fontSize-base, 12px);
+  overflow: hidden;
+}
+.mo-sidebar-sections {
+  flex: 1;
+  overflow-y: auto;
+}
+.mo-sidebar-section {}
+.mo-sidebar-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: var(--parallx-fontSize-sm, 11px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--vscode-sideBarSectionHeader-foreground, #ccc);
+  background: var(--vscode-sideBarSectionHeader-background, transparent);
+  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  cursor: pointer;
+  user-select: none;
+}
+.mo-sidebar-section-header .mo-chevron {
+  margin-left: auto;
+  transition: transform 0.15s;
+}
+.mo-sidebar-section-header.collapsed .mo-chevron { transform: rotate(-90deg); }
+.mo-sidebar-section-body { padding: 2px 0; }
+.mo-sidebar-section-body.collapsed { display: none; }
+.mo-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 16px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mo-sidebar-item:hover { background: var(--vscode-list-hoverBackground, #2a2d2e); }
+.mo-sidebar-item:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: -1px; }
+.mo-sidebar-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.mo-sidebar-item-count {
+  font-size: var(--parallx-fontSize-xs, 10px);
+  color: var(--vscode-descriptionForeground, #888);
+  flex-shrink: 0;
+}
+.mo-sidebar-item .mo-icon-wrap { flex-shrink: 0; display: flex; align-items: center; }
+.mo-empty {
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--vscode-descriptionForeground, #888);
+  font-size: var(--parallx-fontSize-base, 12px);
+}
+.mo-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  background: var(--vscode-input-background, #2a2a2a);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-descriptionForeground, #555);
+}
+
+/* ═══ Display Mode Toggle ═══ */
+.mo-toolbar-btn.active {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  border-color: var(--vscode-button-background, #0e639c);
+}
+
+/* ═══ List Mode ═══ */
+.mo-grid.mo-list-mode {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 0;
+  padding: 0;
+}
+.mo-list-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  cursor: pointer;
+  min-height: 40px;
+}
+.mo-list-row:hover { background: var(--vscode-list-hoverBackground, #2a2d2e); }
+.mo-list-row:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: -1px; }
+.mo-list-row.mo-selected { background: var(--vscode-list-activeSelectionBackground, #094771); }
+.mo-list-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--parallx-radius-sm, 3px);
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--vscode-input-background, #1a1a1a);
+}
+.mo-list-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mo-list-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--parallx-fontSize-base, 12px); }
+.mo-list-type { font-size: var(--parallx-fontSize-xs, 10px); text-transform: uppercase; color: var(--vscode-descriptionForeground, #888); width: 50px; flex-shrink: 0; }
+.mo-list-rating { font-size: var(--parallx-fontSize-sm, 11px); color: var(--mo-rating-color, #f5c518); width: 60px; flex-shrink: 0; }
+.mo-list-date { font-size: var(--parallx-fontSize-xs, 10px); color: var(--vscode-descriptionForeground, #888); width: 80px; flex-shrink: 0; text-align: right; }
+
+/* ═══ Loading Spinner ═══ */
+.mo-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vscode-editor-background);
+  opacity: 0;
+  animation: mo-fade-in 200ms ease forwards;
+  z-index: 10;
+  pointer-events: none;
+}
+@keyframes mo-fade-in { to { opacity: 0.85; } }
+.mo-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--vscode-panel-border, #555);
+  border-top-color: var(--vscode-focusBorder, #007fd4);
+  border-radius: 50%;
+  animation: mo-spin 0.6s linear infinite;
+}
+@keyframes mo-spin { to { transform: rotate(360deg); } }
+`;
+
+function moInjectStyles() {
+  if (_moStyleInjected) return;
+  _moStyleInjected = true;
+  const style = document.createElement('style');
+  style.id = 'media-organizer-styles';
+  style.textContent = MO_CSS;
+  document.head.appendChild(style);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 23: GRID CARD RENDERING
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: ui/v2.5/src/components/Shared/GridCard/ — calculateCardWidth + card DOM
+
+const MO_ZOOM_WIDTHS  = [280, 340, 480, 640];
+const MO_ZOOM_HEIGHTS = [180, 240, 360, 480];
+const MO_CARD_GAP = 8;
+const MO_DEFAULT_ZOOM = 1;
+const MO_DEFAULT_PER_PAGE = 40;
+
+// Adapted from stash: GridCard.tsx — calculateCardWidth()
+function calculateCardWidth(containerWidth, preferredWidth) {
+  const count = Math.max(1, Math.floor((containerWidth + MO_CARD_GAP) / (preferredWidth + MO_CARD_GAP)));
+  return Math.floor((containerWidth - (count - 1) * MO_CARD_GAP) / count);
+}
+
+function formatDuration(seconds) {
+  if (!seconds || seconds <= 0) return '';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function formatShortDate(isoStr) {
+  if (!isoStr) return '';
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  } catch { return ''; }
+}
+
+function renderMediaCard(item, options) {
+  const { cardWidth, zoomIndex, selecting, isSelected, onSelect, onClick } = options;
+  const card = moEl('div', `mo-card zoom-${zoomIndex}${isSelected ? ' mo-selected' : ''}`);
+  card.style.width = `${cardWidth}px`;
+
+  // Thumbnail section
+  const thumb = moEl('div', 'mo-card-thumb');
+  const img = moEl('img');
+  img.alt = item.title || '';
+  img.loading = 'lazy';
+  if (item.thumbnailPath) {
+    img.src = `file://${item.thumbnailPath.replace(/\\/g, '/')}`;
+  } else {
+    // Placeholder
+    const placeholder = moEl('div', 'mo-thumb-placeholder', { innerHTML: moIcon('image', 32) });
+    thumb.appendChild(placeholder);
+    img.style.display = 'none';
+  }
+  img.addEventListener('error', () => { img.style.display = 'none'; });
+  thumb.appendChild(img);
+
+  // Badge (type or duration)
+  const badgeText = item.type === 'video' && item.duration
+    ? formatDuration(item.duration)
+    : item.type.toUpperCase();
+  thumb.appendChild(moEl('span', 'mo-card-badge', { textContent: badgeText }));
+
+  // Rating
+  if (item.rating && item.rating > 0) {
+    const stars = '\u2605'.repeat(Math.round(item.rating / 20));
+    thumb.appendChild(moEl('span', 'mo-card-rating', { textContent: stars }));
+  }
+
+  // Selection checkbox
+  if (selecting) {
+    const selectWrap = moEl('label', 'mo-card-select');
+    const cb = moEl('input', null, { type: 'checkbox' });
+    cb.checked = isSelected;
+    cb.addEventListener('change', (e) => {
+      e.stopPropagation();
+      if (onSelect) onSelect(item, cb.checked);
+    });
+    cb.addEventListener('click', (e) => e.stopPropagation());
+    selectWrap.appendChild(cb);
+    thumb.appendChild(selectWrap);
+  }
+
+  card.appendChild(thumb);
+
+  // Info section
+  const info = moEl('div', 'mo-card-info');
+  const title = item.title || (item.filePath ? item.filePath.split(/[/\\]/).pop() : `${item.type} #${item.id}`);
+  info.appendChild(moEl('div', 'mo-card-title', { textContent: title, title: title }));
+  const detail = item.takenAt ? formatShortDate(item.takenAt) : formatShortDate(item.createdAt);
+  if (detail) info.appendChild(moEl('div', 'mo-card-detail', { textContent: detail }));
+  card.appendChild(info);
+
+  card.addEventListener('click', () => { if (onClick) onClick(item); });
+
+  // Expose img element for async thumbnail loading
+  card._imgEl = img;
+  card._thumbEl = thumb;
+
+  return card;
+}
+
+// Adapted from stash: list display mode — compact row rendering
+function renderMediaListRow(item, options) {
+  const { selecting, isSelected, onSelect, onClick } = options;
+  const row = moEl('div', `mo-list-row${isSelected ? ' mo-selected' : ''}`);
+
+  // Thumb
+  const thumb = moEl('div', 'mo-list-thumb');
+  const img = moEl('img');
+  img.alt = item.title || '';
+  img.loading = 'lazy';
+  if (item.thumbnailPath) {
+    img.src = `file://${item.thumbnailPath.replace(/\\/g, '/')}`;
+  } else {
+    img.style.display = 'none';
+  }
+  img.addEventListener('error', () => { img.style.display = 'none'; });
+  thumb.appendChild(img);
+  row.appendChild(thumb);
+
+  if (selecting) {
+    const cb = moEl('input', null, { type: 'checkbox' });
+    cb.checked = isSelected;
+    cb.addEventListener('change', (e) => { e.stopPropagation(); if (onSelect) onSelect(item, cb.checked); });
+    cb.addEventListener('click', (e) => e.stopPropagation());
+    row.appendChild(cb);
+  }
+
+  const title = item.title || `${item.type} #${item.id}`;
+  row.appendChild(moEl('span', 'mo-list-title', { textContent: title, title: title }));
+  row.appendChild(moEl('span', 'mo-list-type', { textContent: item.type }));
+
+  const stars = item.rating > 0 ? '\u2605'.repeat(Math.round(item.rating / 20)) : '';
+  row.appendChild(moEl('span', 'mo-list-rating', { textContent: stars }));
+  row.appendChild(moEl('span', 'mo-list-date', { textContent: formatShortDate(item.createdAt) }));
+
+  row.addEventListener('click', () => { if (onClick) onClick(item); });
+  row._imgEl = img;
+  row._thumbEl = thumb;
+  return row;
+}
+
+function renderCardGrid(container, items, options) {
+  const { zoomIndex, selecting, selectedIds, onSelect, onClick } = options;
+  const grid = moEl('div', 'mo-grid');
+  container.appendChild(grid);
+
+  let currentWidth = 0;
+  let resizeTimer = null;
+
+  function getCardWidth() {
+    const cw = grid.clientWidth;
+    if (cw <= 0) return MO_ZOOM_WIDTHS[zoomIndex];
+    return calculateCardWidth(cw, MO_ZOOM_WIDTHS[zoomIndex]);
+  }
+
+  function renderAll(itemList, opts) {
+    grid.innerHTML = '';
+    const listMode = opts.displayMode === 'list';
+    grid.classList.toggle('mo-list-mode', listMode);
+    if (!itemList || itemList.length === 0) {
+      grid.appendChild(moEl('div', 'mo-empty', { textContent: 'No media items found' }));
+      return;
+    }
+
+    if (listMode) {
+      for (const item of itemList) {
+        const row = renderMediaListRow(item, {
+          selecting: opts.selecting ?? selecting,
+          isSelected: opts.selectedIds ? opts.selectedIds.has(`${item.type}:${item.id}`) : false,
+          onSelect: opts.onSelect ?? onSelect,
+          onClick: opts.onClick ?? onClick,
+        });
+        grid.appendChild(row);
+        if (!item.thumbnailPath && item.type && item.id) {
+          resolveThumbnailForCard(row, item);
+        }
+      }
+    } else {
+      const cardWidth = getCardWidth();
+      const zi = opts.zoomIndex ?? zoomIndex;
+      for (const item of itemList) {
+        const card = renderMediaCard(item, {
+          cardWidth,
+          zoomIndex: zi,
+          selecting: opts.selecting ?? selecting,
+          isSelected: opts.selectedIds ? opts.selectedIds.has(`${item.type}:${item.id}`) : false,
+          onSelect: opts.onSelect ?? onSelect,
+          onClick: opts.onClick ?? onClick,
+        });
+        grid.appendChild(card);
+
+        // Async thumbnail resolution
+        if (!item.thumbnailPath && item.type && item.id) {
+          resolveThumbnailForCard(card, item);
+        }
+      }
+    }
+  }
+
+  async function resolveThumbnailForCard(card, item) {
+    try {
+      const result = await resolveThumbnail(item.type === 'photo' ? 'photo' : 'video', item.id, _api);
+      if (result && result.path) {
+        item.thumbnailPath = result.path;
+        const img = card._imgEl;
+        if (img) {
+          img.src = `file://${result.path.replace(/\\/g, '/')}`;
+          img.style.display = '';
+          // Remove placeholder if present
+          const ph = card._thumbEl?.querySelector('.mo-thumb-placeholder');
+          if (ph) ph.remove();
+        }
+      }
+    } catch { /* thumbnail resolution failure — leave placeholder */ }
+  }
+
+  const ro = new ResizeObserver((entries) => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const newWidth = entries[0]?.contentRect?.width ?? 0;
+      if (Math.abs(newWidth - currentWidth) > 20) {
+        currentWidth = newWidth;
+        // Re-apply card widths
+        const cardWidth = calculateCardWidth(currentWidth, MO_ZOOM_WIDTHS[options.zoomIndex ?? zoomIndex]);
+        for (const card of grid.querySelectorAll('.mo-card')) {
+          card.style.width = `${cardWidth}px`;
+        }
+      }
+    }, 50);
+  });
+  ro.observe(grid);
+
+  renderAll(items, options);
+
+  return {
+    refresh(newItems, newOptions) {
+      renderAll(newItems, { ...options, ...newOptions });
+    },
+    dispose() {
+      clearTimeout(resizeTimer);
+      ro.disconnect();
+      grid.innerHTML = '';
+      grid.remove();
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 24: SIDEBAR VIEW
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: sidebar navigation pattern
+
+function renderBrowserSidebar(container, api) {
+  moInjectStyles();
+  const root = moEl('div', 'mo-sidebar');
+  container.appendChild(root);
+
+  const sections = moEl('div', 'mo-sidebar-sections');
+  root.appendChild(sections);
+
+  function openGrid(filterKey, title, icon) {
+    api.editors.openEditor({
+      typeId: 'media-organizer-grid',
+      title: title || 'Media Library',
+      icon: icon || 'image',
+      instanceId: `grid:${filterKey}`,
+    });
+  }
+
+  function sidebarSection(title, iconName, collapsed) {
+    const section = moEl('div', 'mo-sidebar-section');
+    const header = moEl('div', `mo-sidebar-section-header${collapsed ? ' collapsed' : ''}`);
+    header.innerHTML = moIcon(iconName, 12);
+    header.appendChild(moEl('span', null, { textContent: title }));
+    const chevron = moEl('span', 'mo-chevron', { innerHTML: moIcon('chevron-down', 10) });
+    header.appendChild(chevron);
+    section.appendChild(header);
+
+    const body = moEl('div', `mo-sidebar-section-body${collapsed ? ' collapsed' : ''}`);
+    section.appendChild(body);
+
+    header.addEventListener('click', () => {
+      header.classList.toggle('collapsed');
+      body.classList.toggle('collapsed');
+    });
+
+    return { section, body };
+  }
+
+  function sidebarItem(iconName, label, count, onClick) {
+    const item = moEl('div', 'mo-sidebar-item');
+    const iconWrap = moEl('span', 'mo-icon-wrap', { innerHTML: moIcon(iconName, 14) });
+    item.appendChild(iconWrap);
+    item.appendChild(moEl('span', 'mo-sidebar-item-label', { textContent: label }));
+    if (count !== undefined && count !== null) {
+      item.appendChild(moEl('span', 'mo-sidebar-item-count', { textContent: String(count) }));
+    }
+    item.addEventListener('click', onClick);
+    return item;
+  }
+
+  // Quick Filters
+  const { section: qfSection, body: qfBody } = sidebarSection('Quick Filters', 'filter', false);
+  qfBody.appendChild(sidebarItem('grid', 'All Media', null, () => openGrid('all', 'All Media')));
+  qfBody.appendChild(sidebarItem('image', 'Photos', null, () => openGrid('photos', 'Photos')));
+  qfBody.appendChild(sidebarItem('film', 'Videos', null, () => openGrid('videos', 'Videos')));
+  qfBody.appendChild(sidebarItem('star', 'Favorites', null, () => openGrid('favorites', 'Favorites')));
+  qfBody.appendChild(sidebarItem('clock', 'Recent', null, () => openGrid('recent', 'Recent')));
+  sections.appendChild(qfSection);
+
+  // Folders section
+  const { section: folderSection, body: folderBody } = sidebarSection('Folders', 'folder', false);
+  sections.appendChild(folderSection);
+
+  // Tags section
+  const { section: tagSection, body: tagBody } = sidebarSection('Tags', 'tag', false);
+  sections.appendChild(tagSection);
+
+  async function loadFolders() {
+    try {
+      const result = await FolderQueries.findMany({ parentFolderId: null }, { field: 'path', direction: 'ASC' }, { page: 1, perPage: 200 });
+      folderBody.innerHTML = '';
+      if (!result.items || result.items.length === 0) {
+        folderBody.appendChild(moEl('div', 'mo-empty', { textContent: 'No folders scanned yet' }));
+        return;
+      }
+      for (const folder of result.items) {
+        const name = folder.path ? folder.path.split(/[/\\]/).pop() || folder.path : `Folder ${folder.id}`;
+        folderBody.appendChild(sidebarItem('folder', name, null, () => openGrid(`folder:${folder.id}`, name, 'folder')));
+      }
+    } catch {
+      folderBody.appendChild(moEl('div', 'mo-empty', { textContent: 'Could not load folders' }));
+    }
+  }
+
+  async function loadTags() {
+    try {
+      const result = await TagQueries.findMany({ hasParents: false }, { field: 'name', direction: 'ASC' }, { page: 1, perPage: 200 });
+      tagBody.innerHTML = '';
+      if (!result.items || result.items.length === 0) {
+        tagBody.appendChild(moEl('div', 'mo-empty', { textContent: 'No tags created yet' }));
+        return;
+      }
+      for (const tag of result.items) {
+        tagBody.appendChild(sidebarItem('tag', tag.name, null, () => openGrid(`tag:${tag.id}`, tag.name, 'tag')));
+      }
+    } catch {
+      tagBody.appendChild(moEl('div', 'mo-empty', { textContent: 'Could not load tags' }));
+    }
+  }
+
+  loadFolders();
+  loadTags();
+
+  return { dispose() { container.innerHTML = ''; } };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 25: GRID BROWSER EDITOR
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: ui/v2.5/src/components/List/ItemList — grid browser with toolbar + pagination
+
+// Allowlist for SQL ORDER BY columns — prevents injection via sort field
+const MO_SAFE_SORT_COLUMNS = { created_at: 'created_at', title: 'title', rating: 'rating' };
+
+function renderGridBrowser(container, api, input) {
+  moInjectStyles();
+  const root = moEl('div', 'mo-grid-browser');
+  container.appendChild(root);
+
+  // Parse filter context from input.id
+  const instanceId = (input && input.id) || 'grid:all';
+  const parts = instanceId.replace(/^grid:/, '').split(':');
+  const filterType = parts[0] || 'all';
+  const filterId = parts[1] ? parseInt(parts[1], 10) : null;
+
+  const state = {
+    currentPage: 1,
+    perPage: MO_DEFAULT_PER_PAGE,
+    zoomIndex: MO_DEFAULT_ZOOM,
+    sortBy: 'created_at',
+    sortDir: 'DESC',
+    mediaType: (filterType === 'photos' || filterType === 'videos') ? filterType : 'all',
+    displayMode: 'grid',
+    totalCount: 0,
+    items: [],
+    selectedIds: new Set(),
+    selecting: false,
+  };
+
+  // If Recent, override sort
+  if (filterType === 'recent') {
+    state.sortBy = 'created_at';
+    state.sortDir = 'DESC';
+  }
+
+  // ── Toolbar ──
+  const toolbar = moEl('div', 'mo-toolbar');
+  root.appendChild(toolbar);
+
+  const searchInput = moEl('input', 'mo-toolbar-search', { type: 'text', placeholder: 'Filter by title...' });
+  toolbar.appendChild(searchInput);
+
+  // Sort controls
+  const sortGroup = moEl('div', 'mo-toolbar-group');
+  const sortSelect = moEl('select', 'mo-toolbar-select');
+  for (const [val, label] of [['created_at', 'Date Added'], ['title', 'Title'], ['rating', 'Rating']]) {
+    const opt = moEl('option', null, { value: val, textContent: label });
+    if (val === state.sortBy) opt.selected = true;
+    sortSelect.appendChild(opt);
+  }
+  sortGroup.appendChild(sortSelect);
+
+  const sortDirBtn = moEl('button', 'mo-toolbar-btn', { innerHTML: moIcon('arrow-down', 12), title: 'Sort direction' });
+  sortDirBtn.setAttribute('aria-label', 'Sort direction');
+  sortGroup.appendChild(sortDirBtn);
+  toolbar.appendChild(sortGroup);
+
+  // Zoom slider
+  const zoomGroup = moEl('div', 'mo-toolbar-group');
+  zoomGroup.appendChild(moEl('span', 'mo-toolbar-label', { textContent: 'Zoom' }));
+  const zoomSlider = moEl('input', 'mo-zoom-slider', { type: 'range', min: '0', max: '3', value: String(state.zoomIndex) });
+  zoomGroup.appendChild(zoomSlider);
+  toolbar.appendChild(zoomGroup);
+
+  // Display mode toggle (Grid / List)
+  const modeGroup = moEl('div', 'mo-toolbar-group');
+  const gridModeBtn = moEl('button', 'mo-toolbar-btn active', { title: 'Grid view' });
+  gridModeBtn.innerHTML = moIcon('grid', 12);
+  gridModeBtn.setAttribute('aria-label', 'Grid view');
+  const listModeBtn = moEl('button', 'mo-toolbar-btn', { title: 'List view' });
+  listModeBtn.innerHTML = moIcon('list-unordered', 12);
+  listModeBtn.setAttribute('aria-label', 'List view');
+  modeGroup.append(gridModeBtn, listModeBtn);
+  toolbar.appendChild(modeGroup);
+
+  // Item count
+  const countLabel = moEl('span', 'mo-toolbar-count', { textContent: '' });
+  toolbar.appendChild(countLabel);
+
+  // ── refreshOpts helper ──
+  function refreshOpts() {
+    return { zoomIndex: state.zoomIndex, displayMode: state.displayMode, selecting: state.selecting, selectedIds: state.selectedIds, onSelect: handleSelect, onClick: handleCardClick };
+  }
+
+  // ── Grid area ──
+  const gridArea = moEl('div');
+  gridArea.style.flex = '1';
+  gridArea.style.overflow = 'hidden';
+  gridArea.style.display = 'flex';
+  gridArea.style.flexDirection = 'column';
+  gridArea.style.position = 'relative';
+  root.appendChild(gridArea);
+
+  // Loading overlay
+  const loadingOverlay = moEl('div', 'mo-loading-overlay');
+  loadingOverlay.appendChild(moEl('div', 'mo-spinner'));
+  loadingOverlay.style.display = 'none';
+  gridArea.appendChild(loadingOverlay);
+
+  let cardGrid = null;
+
+  // ── Pagination ──
+  const paginationBar = moEl('div', 'mo-pagination');
+  const pageFirst = moEl('button', 'mo-page-btn', { textContent: '\u00AB', title: 'First page' });
+  const pagePrev = moEl('button', 'mo-page-btn', { textContent: '\u2039', title: 'Previous page' });
+  const pageInfo = moEl('span', 'mo-page-info');
+  const pageNext = moEl('button', 'mo-page-btn', { textContent: '\u203A', title: 'Next page' });
+  const pageLast = moEl('button', 'mo-page-btn', { textContent: '\u00BB', title: 'Last page' });
+  const perPageSelect = moEl('select', 'mo-toolbar-select');
+  for (const pp of [20, 40, 80, 120]) {
+    const opt = moEl('option', null, { value: String(pp), textContent: `${pp}/page` });
+    if (pp === state.perPage) opt.selected = true;
+    perPageSelect.appendChild(opt);
+  }
+  paginationBar.append(pageFirst, pagePrev, pageInfo, pageNext, pageLast, perPageSelect);
+  root.appendChild(paginationBar);
+
+  function updatePagination() {
+    const totalPages = Math.max(1, Math.ceil(state.totalCount / state.perPage));
+    pageInfo.textContent = `Page ${state.currentPage} of ${totalPages}`;
+    pageFirst.disabled = state.currentPage <= 1;
+    pagePrev.disabled = state.currentPage <= 1;
+    pageNext.disabled = state.currentPage >= totalPages;
+    pageLast.disabled = state.currentPage >= totalPages;
+  }
+
+  // ── Unified media query helpers ──
+  // Adapted from stash: unified query with UNION ALL for correct pagination across photo+video
+  function buildUnifiedQuery(filterType, filterId, searchText, safeColumn, safeDir, limit, offset) {
+    const photoWhere = [];
+    const videoWhere = [];
+    const photoParams = [];
+    const videoParams = [];
+    let photoJoin = '';
+    let videoJoin = '';
+
+    if (filterType === 'folder' && filterId) {
+      photoJoin = ` JOIN mo_photos_files pf ON pf.photo_id = p.id JOIN mo_files f ON f.id = pf.file_id`;
+      photoWhere.push('f.folder_id = ?'); photoParams.push(filterId);
+      videoJoin = ` JOIN mo_videos_files vf ON vf.video_id = v.id JOIN mo_files f2 ON f2.id = vf.file_id`;
+      videoWhere.push('f2.folder_id = ?'); videoParams.push(filterId);
+    } else if (filterType === 'tag' && filterId) {
+      photoJoin = ` JOIN mo_photos_tags pt ON pt.photo_id = p.id`;
+      photoWhere.push('pt.tag_id = ?'); photoParams.push(filterId);
+      videoJoin = ` JOIN mo_videos_tags vt ON vt.video_id = v.id`;
+      videoWhere.push('vt.tag_id = ?'); videoParams.push(filterId);
+    } else if (filterType === 'favorites') {
+      photoWhere.push('p.rating >= 5'); videoWhere.push('v.rating >= 5');
+    }
+
+    if (searchText) {
+      photoWhere.push('p.title LIKE ?'); photoParams.push(`%${searchText}%`);
+      videoWhere.push('v.title LIKE ?'); videoParams.push(`%${searchText}%`);
+    }
+
+    const pw = photoWhere.length > 0 ? ` WHERE ${photoWhere.join(' AND ')}` : '';
+    const vw = videoWhere.length > 0 ? ` WHERE ${videoWhere.join(' AND ')}` : '';
+
+    const dataQuery = `
+      SELECT * FROM (
+        SELECT 'photo' AS media_type, p.id, p.title, p.rating, p.created_at, p.taken_at, NULL AS duration
+        FROM mo_photos p${photoJoin}${pw}
+        UNION ALL
+        SELECT 'video' AS media_type, v.id, v.title, v.rating, v.created_at, NULL AS taken_at, v.duration
+        FROM mo_videos v${videoJoin}${vw}
+      ) combined
+      ORDER BY ${safeColumn} ${safeDir}
+      LIMIT ? OFFSET ?`;
+    const dataParams = [...photoParams, ...videoParams, limit, offset];
+
+    const countQuery = `
+      SELECT (
+        SELECT COUNT(*) FROM mo_photos p${photoJoin}${pw}
+      ) + (
+        SELECT COUNT(*) FROM mo_videos v${videoJoin}${vw}
+      ) AS count`;
+    const countParams = [...photoParams, ...videoParams];
+
+    return { dataQuery, dataParams, countQuery, countParams };
+  }
+
+  function buildSingleTypeQuery(type, filterType, filterId, searchText, safeColumn, safeDir, limit, offset) {
+    const table = type === 'photo' ? 'mo_photos' : 'mo_videos';
+    const alias = type === 'photo' ? 'p' : 'v';
+    const where = [];
+    const params = [];
+    let join = '';
+
+    if (filterType === 'folder' && filterId) {
+      const joinTable = type === 'photo' ? 'mo_photos_files' : 'mo_videos_files';
+      const joinCol = type === 'photo' ? 'photo_id' : 'video_id';
+      join = ` JOIN ${joinTable} jf ON jf.${joinCol} = ${alias}.id JOIN mo_files f ON f.id = jf.file_id`;
+      where.push('f.folder_id = ?'); params.push(filterId);
+    } else if (filterType === 'tag' && filterId) {
+      const tagTable = type === 'photo' ? 'mo_photos_tags' : 'mo_videos_tags';
+      const tagCol = type === 'photo' ? 'photo_id' : 'video_id';
+      join = ` JOIN ${tagTable} jt ON jt.${tagCol} = ${alias}.id`;
+      where.push('jt.tag_id = ?'); params.push(filterId);
+    } else if (filterType === 'favorites') {
+      where.push(`${alias}.rating >= 5`);
+    }
+
+    if (searchText) {
+      where.push(`${alias}.title LIKE ?`); params.push(`%${searchText}%`);
+    }
+
+    const w = where.length > 0 ? ` WHERE ${where.join(' AND ')}` : '';
+    const dataQuery = `SELECT ${alias}.* FROM ${table} ${alias}${join}${w} ORDER BY ${alias}.${safeColumn} ${safeDir} LIMIT ? OFFSET ?`;
+    const dataParams = [...params, limit, offset];
+    const countQuery = `SELECT COUNT(*) AS count FROM ${table} ${alias}${join}${w}`;
+    const countParams = [...params];
+
+    return { dataQuery, dataParams, countQuery, countParams };
+  }
+
+  function rowToMediaItem(row, type) {
+    if (type === 'photo') {
+      const p = PhotoQueries.fromRow(row);
+      return { type: 'photo', id: p.id, title: p.title, rating: p.rating, createdAt: p.createdAt, takenAt: p.takenAt, duration: null, thumbnailPath: null, thumbnailStatus: 'pending' };
+    }
+    if (type === 'video') {
+      const v = VideoQueries.fromRow(row);
+      return { type: 'video', id: v.id, title: v.title, rating: v.rating, createdAt: v.createdAt, takenAt: null, duration: v.duration, thumbnailPath: null, thumbnailStatus: 'pending' };
+    }
+    // UNION result row (media_type column present)
+    return {
+      type: row.media_type,
+      id: row.id,
+      title: row.title,
+      rating: row.rating,
+      createdAt: row.created_at,
+      takenAt: row.taken_at || null,
+      duration: row.duration || null,
+      thumbnailPath: null,
+      thumbnailStatus: 'pending',
+    };
+  }
+
+  // ── Data loading ──
+  let _pageRecursionGuard = false;
+  async function loadPage() {
+    // Show loading spinner
+    loadingOverlay.style.display = '';
+    loadingOverlay.style.animation = 'none';
+    loadingOverlay.offsetHeight; // reflow to restart animation
+    loadingOverlay.style.animation = '';
+
+    const searchText = searchInput.value.trim();
+    const safeColumn = MO_SAFE_SORT_COLUMNS[state.sortBy] || 'created_at';
+    const safeDir = state.sortDir === 'ASC' ? 'ASC' : 'DESC';
+    const limit = state.perPage;
+    const offset = (state.currentPage - 1) * state.perPage;
+
+    let items = [];
+    let totalCount = 0;
+
+    try {
+      if (state.mediaType === 'all') {
+        // Unified UNION ALL query for correct pagination
+        const q = buildUnifiedQuery(filterType, filterId, searchText, safeColumn, safeDir, limit, offset);
+        const rows = await db.all(q.dataQuery, q.dataParams);
+        const countRow = await db.get(q.countQuery, q.countParams);
+        items = (rows || []).map((r) => rowToMediaItem(r, null));
+        totalCount = countRow ? countRow.count : 0;
+      } else {
+        // Single-type query (photos or videos)
+        const q = buildSingleTypeQuery(state.mediaType === 'photos' ? 'photo' : 'video', filterType, filterId, searchText, safeColumn, safeDir, limit, offset);
+        const rows = await db.all(q.dataQuery, q.dataParams);
+        const countRow = await db.get(q.countQuery, q.countParams);
+        const type = state.mediaType === 'photos' ? 'photo' : 'video';
+        items = (rows || []).map((r) => rowToMediaItem(r, type));
+        totalCount = countRow ? countRow.count : 0;
+      }
+    } catch (err) {
+      console.error('[MO-Grid] load error:', err);
+    }
+
+    // Hide spinner
+    loadingOverlay.style.display = 'none';
+
+    // ensureValidPage — auto-correct if past last page
+    state.totalCount = totalCount;
+    const totalPages = Math.max(1, Math.ceil(totalCount / state.perPage));
+    if (state.currentPage > totalPages && totalPages > 0 && !_pageRecursionGuard) {
+      state.currentPage = totalPages;
+      _pageRecursionGuard = true;
+      return loadPage();
+    }
+    _pageRecursionGuard = false;
+
+    state.items = items;
+    countLabel.textContent = `${totalCount} items`;
+    updatePagination();
+
+    if (cardGrid) {
+      cardGrid.refresh(items, refreshOpts());
+    }
+
+    // Scroll grid to top on page change
+    const scrollEl = gridArea.querySelector('.mo-grid');
+    if (scrollEl) scrollEl.scrollTop = 0;
+  }
+
+  function handleSelect(item, checked) {
+    const key = `${item.type}:${item.id}`;
+    if (checked) state.selectedIds.add(key);
+    else state.selectedIds.delete(key);
+    state.selecting = state.selectedIds.size > 0;
+  }
+
+  function handleCardClick(item) {
+    // For now, open detail view (D7 will add this — no-op stub)
+    console.log('[MO-Grid] Card clicked:', item.type, item.id);
+  }
+
+  // Initialize grid
+  cardGrid = renderCardGrid(gridArea, [], refreshOpts());
+
+  // Event handlers
+  let searchTimer = null;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { state.currentPage = 1; loadPage(); }, 300);
+  });
+
+  sortSelect.addEventListener('change', () => {
+    state.sortBy = sortSelect.value;
+    state.currentPage = 1;
+    loadPage();
+  });
+
+  sortDirBtn.addEventListener('click', () => {
+    state.sortDir = state.sortDir === 'DESC' ? 'ASC' : 'DESC';
+    sortDirBtn.innerHTML = moIcon(state.sortDir === 'DESC' ? 'arrow-down' : 'arrow-up', 12);
+    state.currentPage = 1;
+    loadPage();
+  });
+
+  zoomSlider.addEventListener('input', () => {
+    state.zoomIndex = parseInt(zoomSlider.value, 10);
+    if (cardGrid) {
+      cardGrid.refresh(state.items, refreshOpts());
+    }
+  });
+
+  // Display mode toggle handlers
+  gridModeBtn.addEventListener('click', () => {
+    state.displayMode = 'grid';
+    gridModeBtn.classList.add('active');
+    listModeBtn.classList.remove('active');
+    zoomGroup.style.display = '';
+    if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+  });
+  listModeBtn.addEventListener('click', () => {
+    state.displayMode = 'list';
+    listModeBtn.classList.add('active');
+    gridModeBtn.classList.remove('active');
+    zoomGroup.style.display = 'none';
+    if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+  });
+
+  pageFirst.addEventListener('click', () => { state.currentPage = 1; loadPage(); });
+  pagePrev.addEventListener('click', () => { if (state.currentPage > 1) { state.currentPage--; loadPage(); } });
+  pageNext.addEventListener('click', () => {
+    const max = Math.ceil(state.totalCount / state.perPage);
+    if (state.currentPage < max) { state.currentPage++; loadPage(); }
+  });
+  pageLast.addEventListener('click', () => {
+    state.currentPage = Math.max(1, Math.ceil(state.totalCount / state.perPage));
+    loadPage();
+  });
+  perPageSelect.addEventListener('change', () => {
+    state.perPage = parseInt(perPageSelect.value, 10);
+    state.currentPage = 1;
+    loadPage();
+  });
+
+  // Initial load
+  loadPage();
+
+  return {
+    dispose() {
+      clearTimeout(searchTimer);
+      if (cardGrid) cardGrid.dispose();
+      container.innerHTML = '';
+    }
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 11: ACTIVATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -3822,7 +4942,37 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.cacheStats', () => getCacheStats(api))
   );
 
-  console.log('[MediaOrganizer] Activated — D1 data layer + D2 scan pipeline + D3 thumbnails ready');
+  // D5: Grid Browser
+  moInjectStyles();
+
+  _commandDisposables.push(
+    api.views.registerViewProvider('mediaOrganizer.browser', {
+      createView(container) {
+        return renderBrowserSidebar(container, api);
+      },
+    })
+  );
+
+  _commandDisposables.push(
+    api.editors.registerEditorProvider('media-organizer-grid', {
+      createEditorPane(container, input) {
+        return renderGridBrowser(container, api, input);
+      },
+    })
+  );
+
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.openGrid', () => {
+      api.editors.openEditor({
+        typeId: 'media-organizer-grid',
+        title: 'Media Library',
+        icon: 'image',
+        instanceId: 'grid:all',
+      });
+    })
+  );
+
+  console.log('[MediaOrganizer] Activated — D1 data layer + D2 scan pipeline + D3 thumbnails + D5 grid browser ready');
 }
 
 export function deactivate() {
@@ -3838,6 +4988,9 @@ export function deactivate() {
   _thumbDir = null;
   _thumbInflight.clear();
   _api = null;
+  const moStyleEl = document.getElementById('media-organizer-styles');
+  if (moStyleEl) moStyleEl.remove();
+  _moStyleInjected = false;
   _activated = false;
   console.log('[MediaOrganizer] Deactivated');
 }

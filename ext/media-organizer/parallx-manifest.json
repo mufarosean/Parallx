@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "parallx-community.media-organizer",
   "name": "Media Organizer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "parallx-community",
   "description": "Organize photos and videos with tags, albums, and EXIF metadata.",
   "main": "main.js",
@@ -16,9 +16,29 @@
       { "id": "media-organizer.cancelScan", "title": "Cancel Scan", "category": "Media Organizer" },
       { "id": "media-organizer.generateThumbnails", "title": "Generate Thumbnails", "category": "Media Organizer" },
       { "id": "media-organizer.cleanThumbnails", "title": "Clean Orphan Thumbnails", "category": "Media Organizer" },
-      { "id": "media-organizer.cacheStats", "title": "Show Thumbnail Cache Stats", "category": "Media Organizer" }
+      { "id": "media-organizer.cacheStats", "title": "Show Thumbnail Cache Stats", "category": "Media Organizer" },
+      { "id": "media-organizer.openGrid", "title": "Open Media Grid", "category": "Media Organizer" }
     ],
-    "editors": [],
-    "views": {}
+    "viewContainers": [
+      {
+        "id": "media-organizer-container",
+        "title": "Media Organizer",
+        "icon": "image",
+        "location": "sidebar"
+      }
+    ],
+    "views": [
+      {
+        "id": "mediaOrganizer.browser",
+        "name": "Media Library",
+        "defaultContainerId": "media-organizer-container"
+      }
+    ],
+    "editors": [
+      {
+        "typeId": "media-organizer-grid",
+        "displayName": "Media Grid"
+      }
+    ]
   }
 }
