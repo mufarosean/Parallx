@@ -127,6 +127,31 @@ Stash uses adult-content-centric terminology. This extension uses neutral terms:
   - IMPORTANT: 10
   - NICE-TO-HAVE: 8
 
+## Final Status: COMPLETE
+
+All 8 domains closed. 34 features implemented (F1-F34). 6 NICE-TO-HAVE features (F35-F40) deferred to future milestones.
+
+| Domain | Features | Status | Commit |
+|--------|----------|--------|--------|
+| D1: Data Model & Database Schema | F1-F4 | ✅ CLOSED | — |
+| D2: Scan Pipeline | F5-F10 | ✅ CLOSED | — |
+| D3: Thumbnail Generation | F11-F14 | ✅ CLOSED | 14405c0 |
+| D4: Hierarchical Tags | F15-F18 | ✅ CLOSED | e6defed |
+| D5: Grid Browser View | F19-F22 | ✅ CLOSED | f06f011 |
+| D6: Filter & Search | F23-F25 | ✅ CLOSED | — |
+| D7: Detail Editor View | F26-F30 | ✅ CLOSED | — |
+| D8: Albums & Collections | F31-F34 | ✅ CLOSED | d55a490 |
+
+### Deferred Features (Future Milestones)
+| ID | Feature | Reason |
+|----|---------|--------|
+| F35 | Perceptual hash for visual similarity | Requires additional hash library integration |
+| F36 | Sprite sheets for video scrubbing | Enhancement — basic video playback sufficient |
+| F37 | Map view (GPS-based) | Novel feature not in upstream — needs mapping library |
+| F38 | Export/import JSON backup | Utility feature — low priority |
+| F39 | `.mediaignore` directory exclusion | Enhancement to scan pipeline |
+| F40 | Custom fields | Schema extension — deferred to avoid over-engineering |
+
 ## Notes
 
 1. **EXIF extraction is the biggest gap** — Stash doesn't do it. The extension needs a JavaScript EXIF library (e.g., `exifr` or `exif-reader`) since this needs to run in the Electron renderer/Node context.
