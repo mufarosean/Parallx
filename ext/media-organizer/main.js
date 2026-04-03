@@ -3820,6 +3820,7 @@ const MO_CSS = `
   gap: 4px;
 }
 .mo-toolbar-btn {
+  position: relative;
   background: var(--vscode-button-secondaryBackground, #3a3a3a);
   color: var(--vscode-button-secondaryForeground, #ccc);
   border: 1px solid var(--vscode-panel-border, #555);
@@ -4087,6 +4088,146 @@ const MO_CSS = `
 .mo-list-rating { font-size: var(--parallx-fontSize-sm, 11px); color: var(--mo-rating-color, #f5c518); width: 60px; flex-shrink: 0; }
 .mo-list-date { font-size: var(--parallx-fontSize-xs, 10px); color: var(--vscode-descriptionForeground, #888); width: 80px; flex-shrink: 0; text-align: right; }
 
+/* ═══ Filter Panel ═══ */
+.mo-filter-panel {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border, #333);
+  background: var(--vscode-sideBar-background, #1e1e1e);
+  font-size: var(--parallx-fontSize-sm, 11px);
+}
+.mo-filter-section { display: flex; flex-direction: column; gap: 4px; }
+.mo-filter-section-label {
+  font-weight: 600;
+  font-size: var(--parallx-fontSize-xs, 10px);
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground, #888);
+  letter-spacing: 0.5px;
+}
+.mo-filter-tag-row { display: flex; align-items: flex-start; gap: 6px; }
+.mo-filter-row-label {
+  font-size: var(--parallx-fontSize-sm, 11px);
+  color: var(--vscode-foreground, #ccc);
+  min-width: 48px;
+  padding-top: 3px;
+  flex-shrink: 0;
+}
+.mo-filter-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1;
+  min-height: 24px;
+  align-items: center;
+}
+.mo-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: var(--parallx-radius-sm, 3px);
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #fff);
+  font-size: var(--parallx-fontSize-xs, 10px);
+  white-space: nowrap;
+}
+.mo-tag-pill.exclude {
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+}
+.mo-tag-pill-remove {
+  cursor: pointer;
+  opacity: 0.6;
+  font-size: var(--parallx-fontSize-xs, 10px);
+  line-height: 1;
+}
+.mo-tag-pill-remove:hover { opacity: 1; }
+.mo-tag-pill-remove:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); border-radius: 2px; }
+.mo-filter-tag-select {
+  flex: 1;
+  max-width: 200px;
+  font-size: var(--parallx-fontSize-sm, 11px);
+  padding: 2px 4px;
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #ccc);
+  border: 1px solid var(--vscode-input-border, #555);
+  border-radius: var(--parallx-radius-sm, 3px);
+}
+.mo-filter-tag-select:focus-visible, .mo-filter-date:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: -1px;
+}
+.mo-filter-depth-label {
+  font-size: var(--parallx-fontSize-xs, 10px);
+  color: var(--vscode-descriptionForeground, #888);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.mo-star-bar {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+.mo-star {
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-md, 16px);
+  color: var(--vscode-descriptionForeground, #555);
+  transition: color 0.1s;
+  user-select: none;
+}
+.mo-star.filled { color: var(--mo-rating-color, #f5c518); }
+.mo-star:hover { color: var(--mo-rating-color, #f5c518); }
+.mo-star:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: 1px; border-radius: 2px; }
+.mo-filter-date-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mo-filter-date {
+  font-size: var(--parallx-fontSize-sm, 11px);
+  padding: 2px 4px;
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #ccc);
+  border: 1px solid var(--vscode-input-border, #555);
+  border-radius: var(--parallx-radius-sm, 3px);
+  width: 130px;
+}
+.mo-filter-clear {
+  align-self: flex-start;
+  padding: 3px 8px;
+  font-size: var(--parallx-fontSize-xs, 10px);
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+  border: none;
+  border-radius: var(--parallx-radius-sm, 3px);
+  cursor: pointer;
+}
+.mo-filter-clear:hover { background: var(--vscode-button-secondaryHoverBackground, #45494e); }
+.mo-filter-empty {
+  font-size: var(--parallx-fontSize-xs, 10px);
+  color: var(--vscode-descriptionForeground, #666);
+  font-style: italic;
+}
+.mo-filter-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #fff);
+  font-size: var(--parallx-fontSize-xs, 10px);
+  line-height: 14px;
+  text-align: center;
+  padding: 0 3px;
+  font-weight: 600;
+}
+
 /* ═══ Loading Spinner ═══ */
 .mo-loading-overlay {
   position: absolute;
@@ -4182,7 +4323,7 @@ function renderMediaCard(item, options) {
 
   // Rating
   if (item.rating && item.rating > 0) {
-    const stars = '\u2605'.repeat(Math.round(item.rating / 20));
+    const stars = '\u2605'.repeat(item.rating);
     thumb.appendChild(moEl('span', 'mo-card-rating', { textContent: stars }));
   }
 
@@ -4250,7 +4391,7 @@ function renderMediaListRow(item, options) {
   row.appendChild(moEl('span', 'mo-list-title', { textContent: title, title: title }));
   row.appendChild(moEl('span', 'mo-list-type', { textContent: item.type }));
 
-  const stars = item.rating > 0 ? '\u2605'.repeat(Math.round(item.rating / 20)) : '';
+  const stars = item.rating > 0 ? '\u2605'.repeat(item.rating) : '';
   row.appendChild(moEl('span', 'mo-list-rating', { textContent: stars }));
   row.appendChild(moEl('span', 'mo-list-date', { textContent: formatShortDate(item.createdAt) }));
 
@@ -4482,7 +4623,7 @@ function renderBrowserSidebar(container, api) {
 // Adapted from stash: ui/v2.5/src/components/List/ItemList — grid browser with toolbar + pagination
 
 // Allowlist for SQL ORDER BY columns — prevents injection via sort field
-const MO_SAFE_SORT_COLUMNS = { created_at: 'created_at', title: 'title', rating: 'rating' };
+const MO_SAFE_SORT_COLUMNS = { created_at: 'created_at', title: 'title', rating: 'rating', taken_at: 'taken_at', file_mod_time: 'file_mod_time' };
 
 function renderGridBrowser(container, api, input) {
   moInjectStyles();
@@ -4507,6 +4648,14 @@ function renderGridBrowser(container, api, input) {
     items: [],
     selectedIds: new Set(),
     selecting: false,
+    filters: {
+      tagIds: [],
+      excludeTagIds: [],
+      tagDepth: 0,
+      ratingMin: null,
+      dateFrom: null,
+      dateTo: null,
+    },
   };
 
   // If Recent, override sort
@@ -4525,7 +4674,7 @@ function renderGridBrowser(container, api, input) {
   // Sort controls
   const sortGroup = moEl('div', 'mo-toolbar-group');
   const sortSelect = moEl('select', 'mo-toolbar-select');
-  for (const [val, label] of [['created_at', 'Date Added'], ['title', 'Title'], ['rating', 'Rating']]) {
+  for (const [val, label] of [['created_at', 'Date Added'], ['title', 'Title'], ['rating', 'Rating'], ['taken_at', 'Date Taken'], ['file_mod_time', 'File Modified']]) {
     const opt = moEl('option', null, { value: val, textContent: label });
     if (val === state.sortBy) opt.selected = true;
     sortSelect.appendChild(opt);
@@ -4555,9 +4704,243 @@ function renderGridBrowser(container, api, input) {
   modeGroup.append(gridModeBtn, listModeBtn);
   toolbar.appendChild(modeGroup);
 
+  // Filter toggle button + count badge
+  const filterToggleBtn = moEl('button', 'mo-toolbar-btn', { title: 'Toggle filters' });
+  filterToggleBtn.innerHTML = moIcon('filter', 12);
+  filterToggleBtn.setAttribute('aria-label', 'Toggle filters');
+  const filterBadge = moEl('span', 'mo-filter-badge');
+  filterBadge.style.display = 'none';
+  filterToggleBtn.appendChild(filterBadge);
+  toolbar.appendChild(filterToggleBtn);
+
+  function updateFilterBadge() {
+    let count = 0;
+    if (state.filters.tagIds.length > 0) count++;
+    if (state.filters.excludeTagIds.length > 0) count++;
+    if (state.filters.ratingMin != null) count++;
+    if (state.filters.dateFrom) count++;
+    if (state.filters.dateTo) count++;
+    filterBadge.textContent = count > 0 ? String(count) : '';
+    filterBadge.style.display = count > 0 ? '' : 'none';
+  }
+
   // Item count
   const countLabel = moEl('span', 'mo-toolbar-count', { textContent: '' });
   toolbar.appendChild(countLabel);
+
+  // ── Filter Panel ──
+  const filterPanel = moEl('div', 'mo-filter-panel');
+  filterPanel.style.display = 'none';
+  root.appendChild(filterPanel);
+
+  // -- Tag filter section --
+  const tagSection = moEl('div', 'mo-filter-section');
+  tagSection.appendChild(moEl('div', 'mo-filter-section-label', { textContent: 'Tags' }));
+
+  const tagIncludeRow = moEl('div', 'mo-filter-tag-row');
+  tagIncludeRow.appendChild(moEl('span', 'mo-filter-row-label', { textContent: 'Include:' }));
+  const tagIncludePills = moEl('div', 'mo-filter-pills');
+  tagIncludeRow.appendChild(tagIncludePills);
+  tagSection.appendChild(tagIncludeRow);
+
+  const tagExcludeRow = moEl('div', 'mo-filter-tag-row');
+  tagExcludeRow.appendChild(moEl('span', 'mo-filter-row-label', { textContent: 'Exclude:' }));
+  const tagExcludePills = moEl('div', 'mo-filter-pills');
+  tagExcludeRow.appendChild(tagExcludePills);
+  tagSection.appendChild(tagExcludeRow);
+
+  const tagAddRow = moEl('div', 'mo-filter-tag-row');
+  const tagAddSelect = moEl('select', 'mo-toolbar-select', {});
+  tagAddSelect.setAttribute('aria-label', 'Add tag filter');
+  tagAddSelect.appendChild(moEl('option', null, { value: '', textContent: '+ Add tag...' }));
+  tagAddRow.appendChild(tagAddSelect);
+  const tagAddExcludeBtn = moEl('button', 'mo-toolbar-btn', { textContent: 'Exclude', title: 'Add as excluded tag' });
+  tagAddExcludeBtn.setAttribute('aria-label', 'Exclude selected tag');
+  tagAddRow.appendChild(tagAddExcludeBtn);
+  const tagDepthCb = moEl('input', null, { type: 'checkbox' });
+  tagDepthCb.setAttribute('aria-label', 'Include sub-tags');
+  const tagDepthLabel = moEl('label', 'mo-filter-depth-label');
+  tagDepthLabel.appendChild(tagDepthCb);
+  tagDepthLabel.appendChild(document.createTextNode(' Include sub-tags'));
+  tagAddRow.appendChild(tagDepthLabel);
+  tagSection.appendChild(tagAddRow);
+  filterPanel.appendChild(tagSection);
+
+  // -- Rating filter section --
+  const ratingSection = moEl('div', 'mo-filter-section');
+  ratingSection.appendChild(moEl('div', 'mo-filter-section-label', { textContent: 'Min Rating' }));
+  const starBar = moEl('div', 'mo-star-bar');
+  starBar.setAttribute('role', 'radiogroup');
+  starBar.setAttribute('aria-label', 'Minimum rating');
+  for (let i = 1; i <= 5; i++) {
+    const star = moEl('span', 'mo-star', { textContent: '\u2606' });
+    star.dataset.value = String(i);
+    star.setAttribute('role', 'radio');
+    star.setAttribute('aria-label', `${i} star${i > 1 ? 's' : ''}`);
+    star.setAttribute('aria-checked', 'false');
+    star.setAttribute('tabindex', '0');
+    starBar.appendChild(star);
+  }
+  ratingSection.appendChild(starBar);
+  filterPanel.appendChild(ratingSection);
+
+  // -- Date range section --
+  const dateSection = moEl('div', 'mo-filter-section');
+  dateSection.appendChild(moEl('div', 'mo-filter-section-label', { textContent: 'Date Range' }));
+  const dateRow = moEl('div', 'mo-filter-date-row');
+  const dateFrom = moEl('input', 'mo-filter-date', { type: 'date', title: 'From date' });
+  dateFrom.setAttribute('aria-label', 'From date');
+  const dateTo = moEl('input', 'mo-filter-date', { type: 'date', title: 'To date' });
+  dateTo.setAttribute('aria-label', 'To date');
+  dateRow.appendChild(moEl('span', 'mo-filter-row-label', { textContent: 'From:' }));
+  dateRow.appendChild(dateFrom);
+  dateRow.appendChild(moEl('span', 'mo-filter-row-label', { textContent: 'To:' }));
+  dateRow.appendChild(dateTo);
+  dateSection.appendChild(dateRow);
+  filterPanel.appendChild(dateSection);
+
+  // -- Clear all button --
+  const clearFiltersBtn = moEl('button', 'mo-toolbar-btn mo-filter-clear', { textContent: 'Clear All Filters' });
+  clearFiltersBtn.setAttribute('aria-label', 'Clear all filters');
+  filterPanel.appendChild(clearFiltersBtn);
+
+  // ── Filter panel helpers ──
+  let _filterTagCache = null;
+  async function loadFilterTags() {
+    if (_filterTagCache) return _filterTagCache;
+    try {
+      const result = await TagQueries.findMany({}, { field: 'name', direction: 'ASC' }, { page: 1, perPage: 500 });
+      _filterTagCache = result.items || [];
+    } catch { _filterTagCache = []; }
+    return _filterTagCache;
+  }
+
+  function refreshTagDropdown() {
+    const usedIds = new Set([...state.filters.tagIds, ...state.filters.excludeTagIds]);
+    while (tagAddSelect.options.length > 1) tagAddSelect.remove(1);
+    if (_filterTagCache) {
+      for (const tag of _filterTagCache) {
+        if (!usedIds.has(tag.id)) {
+          tagAddSelect.appendChild(moEl('option', null, { value: String(tag.id), textContent: tag.name }));
+        }
+      }
+    }
+  }
+
+  function renderTagPills() {
+    tagIncludePills.innerHTML = '';
+    tagExcludePills.innerHTML = '';
+    if (!_filterTagCache) return;
+    const tagMap = new Map(_filterTagCache.map((t) => [t.id, t.name]));
+    for (const id of state.filters.tagIds) {
+      const pill = moEl('span', 'mo-tag-pill');
+      const tagName = tagMap.get(id) || `Tag ${id}`;
+      pill.textContent = tagName;
+      const removeBtn = moEl('span', 'mo-tag-pill-remove', { textContent: '\u00D7' });
+      removeBtn.setAttribute('role', 'button');
+      removeBtn.setAttribute('tabindex', '0');
+      removeBtn.setAttribute('aria-label', `Remove tag ${tagName}`);
+      removeBtn.addEventListener('click', () => {
+        state.filters.tagIds = state.filters.tagIds.filter((tid) => tid !== id);
+        renderTagPills(); refreshTagDropdown();
+        state.currentPage = 1; loadPage();
+      });
+      removeBtn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); removeBtn.click(); } });
+      pill.appendChild(removeBtn);
+      tagIncludePills.appendChild(pill);
+    }
+    for (const id of state.filters.excludeTagIds) {
+      const pill = moEl('span', 'mo-tag-pill exclude');
+      const tagName = tagMap.get(id) || `Tag ${id}`;
+      pill.textContent = tagName;
+      const removeBtn = moEl('span', 'mo-tag-pill-remove', { textContent: '\u00D7' });
+      removeBtn.setAttribute('role', 'button');
+      removeBtn.setAttribute('tabindex', '0');
+      removeBtn.setAttribute('aria-label', `Remove tag ${tagName}`);
+      removeBtn.addEventListener('click', () => {
+        state.filters.excludeTagIds = state.filters.excludeTagIds.filter((tid) => tid !== id);
+        renderTagPills(); refreshTagDropdown();
+        state.currentPage = 1; loadPage();
+      });
+      removeBtn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); removeBtn.click(); } });
+      pill.appendChild(removeBtn);
+      tagExcludePills.appendChild(pill);
+    }
+    if (state.filters.tagIds.length === 0) tagIncludePills.appendChild(moEl('span', 'mo-filter-empty', { textContent: 'none' }));
+    if (state.filters.excludeTagIds.length === 0) tagExcludePills.appendChild(moEl('span', 'mo-filter-empty', { textContent: 'none' }));
+  }
+
+  function updateStarBar() {
+    const stars = starBar.querySelectorAll('.mo-star');
+    for (const star of stars) {
+      const val = parseInt(star.dataset.value, 10);
+      const filled = state.filters.ratingMin !== null && val <= state.filters.ratingMin;
+      star.textContent = filled ? '\u2605' : '\u2606';
+      star.classList.toggle('filled', filled);
+      star.setAttribute('aria-checked', String(state.filters.ratingMin === val));
+    }
+  }
+
+  // ── Filter panel event handlers ──
+  filterToggleBtn.addEventListener('click', () => {
+    const visible = filterPanel.style.display === 'flex';
+    filterPanel.style.display = visible ? 'none' : 'flex';
+    filterToggleBtn.classList.toggle('active', !visible);
+    if (!visible) {
+      loadFilterTags().then(() => { refreshTagDropdown(); renderTagPills(); });
+    }
+  });
+
+  tagAddSelect.addEventListener('change', () => {
+    const tagId = parseInt(tagAddSelect.value, 10);
+    if (!tagId || state.filters.tagIds.includes(tagId)) return;
+    state.filters.tagIds.push(tagId);
+    tagAddSelect.value = '';
+    renderTagPills(); refreshTagDropdown();
+    state.currentPage = 1; loadPage();
+  });
+
+  tagAddExcludeBtn.addEventListener('click', () => {
+    const tagId = parseInt(tagAddSelect.value, 10);
+    if (!tagId || state.filters.excludeTagIds.includes(tagId)) return;
+    state.filters.excludeTagIds.push(tagId);
+    tagAddSelect.value = '';
+    renderTagPills(); refreshTagDropdown();
+    state.currentPage = 1; loadPage();
+  });
+
+  tagDepthCb.addEventListener('change', () => {
+    state.filters.tagDepth = tagDepthCb.checked ? -1 : 0;
+    state.currentPage = 1; loadPage();
+  });
+
+  starBar.addEventListener('click', (e) => {
+    const star = e.target.closest('.mo-star');
+    if (!star) return;
+    const val = parseInt(star.dataset.value, 10);
+    state.filters.ratingMin = (state.filters.ratingMin === val) ? null : val;
+    updateStarBar();
+    state.currentPage = 1; loadPage();
+  });
+
+  dateFrom.addEventListener('change', () => {
+    state.filters.dateFrom = dateFrom.value || null;
+    state.currentPage = 1; loadPage();
+  });
+
+  dateTo.addEventListener('change', () => {
+    state.filters.dateTo = dateTo.value || null;
+    state.currentPage = 1; loadPage();
+  });
+
+  clearFiltersBtn.addEventListener('click', () => {
+    state.filters = { tagIds: [], excludeTagIds: [], tagDepth: 0, ratingMin: null, dateFrom: null, dateTo: null };
+    tagDepthCb.checked = false;
+    dateFrom.value = '';
+    dateTo.value = '';
+    updateStarBar(); renderTagPills(); refreshTagDropdown();
+    state.currentPage = 1; loadPage();
+  });
 
   // ── refreshOpts helper ──
   function refreshOpts() {
@@ -4606,25 +4989,62 @@ function renderGridBrowser(container, api, input) {
     pageLast.disabled = state.currentPage >= totalPages;
   }
 
+  // ── Shared filter criteria applier ──
+  // Adapted from stash: pkg/sqlite/criterion_handlers.go — AND-combined criteria
+  function applyFilterCriteria(alias, where, params, joinParts, filters) {
+    const tagTable = alias === 'p' ? 'mo_photos_tags' : 'mo_videos_tags';
+    const tagFk = alias === 'p' ? 'photo_id' : 'video_id';
+
+    // Tag include via subquery with AND semantics (stash: IncludesAll — media must have ALL included tags)
+    if (filters.resolvedTagIds && filters.resolvedTagIds.length > 0) {
+      const placeholders = filters.resolvedTagIds.map(() => '?').join(',');
+      where.push(`${alias}.id IN (SELECT ${tagFk} FROM ${tagTable} WHERE tag_id IN (${placeholders}) GROUP BY ${tagFk} HAVING COUNT(DISTINCT tag_id) = ?)`);
+      params.push(...filters.resolvedTagIds, filters.resolvedTagIds.length);
+    }
+
+    // Tag exclude via subquery
+    if (filters.resolvedExcludeTagIds && filters.resolvedExcludeTagIds.length > 0) {
+      const placeholders = filters.resolvedExcludeTagIds.map(() => '?').join(',');
+      where.push(`${alias}.id NOT IN (SELECT ${tagFk} FROM ${tagTable} WHERE tag_id IN (${placeholders}))`);
+      params.push(...filters.resolvedExcludeTagIds);
+    }
+
+    // Rating min (schema stores 0-5 integers, no scale conversion needed)
+    if (filters.ratingMin != null) {
+      where.push(`${alias}.rating >= ?`);
+      params.push(filters.ratingMin);
+    }
+
+    // Date range
+    if (filters.dateFrom) {
+      where.push(`${alias}.created_at >= ?`);
+      params.push(filters.dateFrom);
+    }
+    if (filters.dateTo) {
+      where.push(`${alias}.created_at <= ?`);
+      params.push(filters.dateTo + 'T23:59:59');
+    }
+  }
+
   // ── Unified media query helpers ──
   // Adapted from stash: unified query with UNION ALL for correct pagination across photo+video
-  function buildUnifiedQuery(filterType, filterId, searchText, safeColumn, safeDir, limit, offset) {
+  function buildUnifiedQuery(filterType, filterId, searchText, safeColumn, safeDir, limit, offset, filters) {
     const photoWhere = [];
     const videoWhere = [];
     const photoParams = [];
     const videoParams = [];
-    let photoJoin = '';
-    let videoJoin = '';
+    const photoJoinParts = [];
+    const videoJoinParts = [];
 
     if (filterType === 'folder' && filterId) {
-      photoJoin = ` JOIN mo_photos_files pf ON pf.photo_id = p.id JOIN mo_files f ON f.id = pf.file_id`;
+      photoJoinParts.push(` JOIN mo_photos_files pf ON pf.photo_id = p.id JOIN mo_files f ON f.id = pf.file_id`);
       photoWhere.push('f.folder_id = ?'); photoParams.push(filterId);
-      videoJoin = ` JOIN mo_videos_files vf ON vf.video_id = v.id JOIN mo_files f2 ON f2.id = vf.file_id`;
+      videoJoinParts.push(` JOIN mo_videos_files vf ON vf.video_id = v.id JOIN mo_files f2 ON f2.id = vf.file_id`);
       videoWhere.push('f2.folder_id = ?'); videoParams.push(filterId);
     } else if (filterType === 'tag' && filterId) {
-      photoJoin = ` JOIN mo_photos_tags pt ON pt.photo_id = p.id`;
+      photoJoinParts.push(` JOIN mo_photos_tags pt ON pt.photo_id = p.id`);
       photoWhere.push('pt.tag_id = ?'); photoParams.push(filterId);
-      videoJoin = ` JOIN mo_videos_tags vt ON vt.video_id = v.id`;
+      videoJoinParts.push(` JOIN mo_videos_tags vt ON vt.video_id = v.id`);
       videoWhere.push('vt.tag_id = ?'); videoParams.push(filterId);
     } else if (filterType === 'favorites') {
       photoWhere.push('p.rating >= 5'); videoWhere.push('v.rating >= 5');
@@ -4635,18 +5055,42 @@ function renderGridBrowser(container, api, input) {
       videoWhere.push('v.title LIKE ?'); videoParams.push(`%${searchText}%`);
     }
 
+    if (filters) {
+      applyFilterCriteria('p', photoWhere, photoParams, photoJoinParts, filters);
+      applyFilterCriteria('v', videoWhere, videoParams, videoJoinParts, filters);
+    }
+
+    // file_mod_time sort requires JOIN to files table in each sub-query
+    const needsFileSort = safeColumn === 'file_mod_time';
+    if (needsFileSort) {
+      if (!photoJoinParts.some((j) => j.includes('mo_files'))) {
+        photoJoinParts.push(` JOIN mo_photos_files psf ON psf.photo_id = p.id JOIN mo_files pfs ON pfs.id = psf.file_id`);
+      }
+      if (!videoJoinParts.some((j) => j.includes('mo_files'))) {
+        videoJoinParts.push(` JOIN mo_videos_files vsf ON vsf.video_id = v.id JOIN mo_files vfs ON vfs.id = vsf.file_id`);
+      }
+    }
+    const photoFileAlias = photoJoinParts.some((j) => j.includes(' f ON ')) ? 'f' : 'pfs';
+    const videoFileAlias = videoJoinParts.some((j) => j.includes(' f2 ON ')) ? 'f2' : 'vfs';
+
+    const photoJoin = photoJoinParts.join('');
+    const videoJoin = videoJoinParts.join('');
     const pw = photoWhere.length > 0 ? ` WHERE ${photoWhere.join(' AND ')}` : '';
     const vw = videoWhere.length > 0 ? ` WHERE ${videoWhere.join(' AND ')}` : '';
 
+    const photoModTime = needsFileSort ? `, ${photoFileAlias}.mod_time AS file_mod_time` : '';
+    const videoModTime = needsFileSort ? `, ${videoFileAlias}.mod_time AS file_mod_time` : '';
+    const effectiveSort = safeColumn === 'file_mod_time' ? 'file_mod_time' : safeColumn;
+
     const dataQuery = `
       SELECT * FROM (
-        SELECT 'photo' AS media_type, p.id, p.title, p.rating, p.created_at, p.taken_at, NULL AS duration
+        SELECT 'photo' AS media_type, p.id, p.title, p.rating, p.created_at, p.taken_at, NULL AS duration${photoModTime}
         FROM mo_photos p${photoJoin}${pw}
         UNION ALL
-        SELECT 'video' AS media_type, v.id, v.title, v.rating, v.created_at, NULL AS taken_at, v.duration
+        SELECT 'video' AS media_type, v.id, v.title, v.rating, v.created_at, NULL AS taken_at, v.duration${videoModTime}
         FROM mo_videos v${videoJoin}${vw}
       ) combined
-      ORDER BY ${safeColumn} ${safeDir}
+      ORDER BY ${effectiveSort} ${safeDir}, COALESCE(title, '') COLLATE NOCASE ASC, id ASC
       LIMIT ? OFFSET ?`;
     const dataParams = [...photoParams, ...videoParams, limit, offset];
 
@@ -4661,22 +5105,22 @@ function renderGridBrowser(container, api, input) {
     return { dataQuery, dataParams, countQuery, countParams };
   }
 
-  function buildSingleTypeQuery(type, filterType, filterId, searchText, safeColumn, safeDir, limit, offset) {
+  function buildSingleTypeQuery(type, filterType, filterId, searchText, safeColumn, safeDir, limit, offset, filters) {
     const table = type === 'photo' ? 'mo_photos' : 'mo_videos';
     const alias = type === 'photo' ? 'p' : 'v';
     const where = [];
     const params = [];
-    let join = '';
+    const joinParts = [];
 
     if (filterType === 'folder' && filterId) {
       const joinTable = type === 'photo' ? 'mo_photos_files' : 'mo_videos_files';
       const joinCol = type === 'photo' ? 'photo_id' : 'video_id';
-      join = ` JOIN ${joinTable} jf ON jf.${joinCol} = ${alias}.id JOIN mo_files f ON f.id = jf.file_id`;
+      joinParts.push(` JOIN ${joinTable} jf ON jf.${joinCol} = ${alias}.id JOIN mo_files f ON f.id = jf.file_id`);
       where.push('f.folder_id = ?'); params.push(filterId);
     } else if (filterType === 'tag' && filterId) {
       const tagTable = type === 'photo' ? 'mo_photos_tags' : 'mo_videos_tags';
       const tagCol = type === 'photo' ? 'photo_id' : 'video_id';
-      join = ` JOIN ${tagTable} jt ON jt.${tagCol} = ${alias}.id`;
+      joinParts.push(` JOIN ${tagTable} jt ON jt.${tagCol} = ${alias}.id`);
       where.push('jt.tag_id = ?'); params.push(filterId);
     } else if (filterType === 'favorites') {
       where.push(`${alias}.rating >= 5`);
@@ -4686,8 +5130,32 @@ function renderGridBrowser(container, api, input) {
       where.push(`${alias}.title LIKE ?`); params.push(`%${searchText}%`);
     }
 
+    if (filters) {
+      applyFilterCriteria(alias, where, params, joinParts, filters);
+    }
+
+    // file_mod_time sort requires JOIN to files table
+    let hasFileJoin = joinParts.some((j) => j.includes('mo_files'));
+    if (safeColumn === 'file_mod_time' && !hasFileJoin) {
+      const joinTable = type === 'photo' ? 'mo_photos_files' : 'mo_videos_files';
+      const joinCol = type === 'photo' ? 'photo_id' : 'video_id';
+      joinParts.push(` JOIN ${joinTable} sf ON sf.${joinCol} = ${alias}.id JOIN mo_files fsort ON fsort.id = sf.file_id`);
+    }
+
+    // Fallback: videos lack taken_at column — use created_at instead
+    let effectiveColumn = (safeColumn === 'taken_at' && type === 'video') ? 'created_at' : safeColumn;
+    // file_mod_time → reference the files table column
+    let orderExpr;
+    if (effectiveColumn === 'file_mod_time') {
+      const fAlias = hasFileJoin ? 'f' : 'fsort';
+      orderExpr = `${fAlias}.mod_time`;
+    } else {
+      orderExpr = `${alias}.${effectiveColumn}`;
+    }
+
+    const join = joinParts.join('');
     const w = where.length > 0 ? ` WHERE ${where.join(' AND ')}` : '';
-    const dataQuery = `SELECT ${alias}.* FROM ${table} ${alias}${join}${w} ORDER BY ${alias}.${safeColumn} ${safeDir} LIMIT ? OFFSET ?`;
+    const dataQuery = `SELECT ${alias}.* FROM ${table} ${alias}${join}${w} ORDER BY ${orderExpr} ${safeDir}, COALESCE(${alias}.title, '') COLLATE NOCASE ASC, ${alias}.id ASC LIMIT ? OFFSET ?`;
     const dataParams = [...params, limit, offset];
     const countQuery = `SELECT COUNT(*) AS count FROM ${table} ${alias}${join}${w}`;
     const countParams = [...params];
@@ -4736,17 +5204,45 @@ function renderGridBrowser(container, api, input) {
     let items = [];
     let totalCount = 0;
 
+    // Resolve filter tag descendants (stash: hierarchical tag filtering via CTE)
+    const resolvedFilters = { ratingMin: state.filters.ratingMin, dateFrom: state.filters.dateFrom, dateTo: state.filters.dateTo };
+    if (state.filters.tagIds.length > 0) {
+      if (state.filters.tagDepth === -1) {
+        // Include descendants — flatten all descendant IDs
+        const allIds = new Set(state.filters.tagIds);
+        for (const tid of state.filters.tagIds) {
+          const desc = await TagQueries.getDescendants(tid);
+          for (const d of desc) allIds.add(d.id);
+        }
+        resolvedFilters.resolvedTagIds = [...allIds];
+      } else {
+        resolvedFilters.resolvedTagIds = [...state.filters.tagIds];
+      }
+    }
+    if (state.filters.excludeTagIds.length > 0) {
+      if (state.filters.tagDepth === -1) {
+        const allIds = new Set(state.filters.excludeTagIds);
+        for (const tid of state.filters.excludeTagIds) {
+          const desc = await TagQueries.getDescendants(tid);
+          for (const d of desc) allIds.add(d.id);
+        }
+        resolvedFilters.resolvedExcludeTagIds = [...allIds];
+      } else {
+        resolvedFilters.resolvedExcludeTagIds = [...state.filters.excludeTagIds];
+      }
+    }
+
     try {
       if (state.mediaType === 'all') {
         // Unified UNION ALL query for correct pagination
-        const q = buildUnifiedQuery(filterType, filterId, searchText, safeColumn, safeDir, limit, offset);
+        const q = buildUnifiedQuery(filterType, filterId, searchText, safeColumn, safeDir, limit, offset, resolvedFilters);
         const rows = await db.all(q.dataQuery, q.dataParams);
         const countRow = await db.get(q.countQuery, q.countParams);
         items = (rows || []).map((r) => rowToMediaItem(r, null));
         totalCount = countRow ? countRow.count : 0;
       } else {
         // Single-type query (photos or videos)
-        const q = buildSingleTypeQuery(state.mediaType === 'photos' ? 'photo' : 'video', filterType, filterId, searchText, safeColumn, safeDir, limit, offset);
+        const q = buildSingleTypeQuery(state.mediaType === 'photos' ? 'photo' : 'video', filterType, filterId, searchText, safeColumn, safeDir, limit, offset, resolvedFilters);
         const rows = await db.all(q.dataQuery, q.dataParams);
         const countRow = await db.get(q.countQuery, q.countParams);
         const type = state.mediaType === 'photos' ? 'photo' : 'video';
@@ -4773,6 +5269,7 @@ function renderGridBrowser(container, api, input) {
     state.items = items;
     countLabel.textContent = `${totalCount} items`;
     updatePagination();
+    updateFilterBadge();
 
     if (cardGrid) {
       cardGrid.refresh(items, refreshOpts());
@@ -4802,7 +5299,7 @@ function renderGridBrowser(container, api, input) {
   let searchTimer = null;
   searchInput.addEventListener('input', () => {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => { state.currentPage = 1; loadPage(); }, 300);
+    searchTimer = setTimeout(() => { state.currentPage = 1; loadPage(); }, 500);
   });
 
   sortSelect.addEventListener('change', () => {
