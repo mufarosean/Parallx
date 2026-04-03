@@ -4251,6 +4251,318 @@ const MO_CSS = `
   animation: mo-spin 0.6s linear infinite;
 }
 @keyframes mo-spin { to { transform: rotate(360deg); } }
+
+/* ── Detail Editor (D7) ── */
+.mo-detail-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+}
+.mo-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border, #333);
+  flex-shrink: 0;
+}
+.mo-detail-header-icon {
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+.mo-detail-header-title {
+  flex: 1;
+  font-size: var(--parallx-fontSize-base, 13px);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mo-detail-header-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.mo-detail-header-actions button {
+  background: none;
+  border: 1px solid var(--vscode-button-secondaryBackground, #333);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+  padding: 3px 8px;
+  border-radius: var(--parallx-radius-sm, 3px);
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-xs, 11px);
+}
+.mo-detail-header-actions button:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #444);
+}
+.mo-detail-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.mo-detail-preview {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vscode-sideBar-background, #1e1e1e);
+  overflow: hidden;
+  min-width: 200px;
+}
+.mo-detail-preview img,
+.mo-detail-preview video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.mo-detail-panel {
+  width: 320px;
+  min-width: 260px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--vscode-panel-border, #333);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.mo-detail-tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--vscode-panel-border, #333);
+  flex-shrink: 0;
+}
+.mo-detail-tab-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--vscode-foreground, #ccc);
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.7;
+}
+.mo-detail-tab-btn.active {
+  border-bottom-color: var(--vscode-focusBorder, #007fd4);
+  opacity: 1;
+}
+.mo-detail-tab-btn:hover {
+  opacity: 1;
+}
+.mo-detail-tab-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+.mo-detail-section {
+  margin-bottom: 16px;
+}
+.mo-detail-section-label {
+  font-size: var(--parallx-fontSize-xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.6;
+  margin-bottom: 6px;
+}
+.mo-detail-dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  font-size: var(--parallx-fontSize-xs, 11px);
+}
+.mo-detail-dl dt {
+  opacity: 0.6;
+  white-space: nowrap;
+}
+.mo-detail-dl dd {
+  margin: 0;
+  word-break: break-word;
+}
+.mo-detail-rating {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.mo-detail-star {
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-md, 16px);
+  color: var(--vscode-panel-border, #555);
+  transition: color 0.1s;
+  background: none;
+  border: none;
+  padding: 0;
+  line-height: 1;
+}
+.mo-detail-star.filled {
+  color: var(--mo-rating-color, #f5c518);
+}
+.mo-detail-star:hover {
+  color: var(--mo-rating-color, #f5c518);
+}
+.mo-detail-field {
+  margin-bottom: 8px;
+}
+.mo-detail-field label {
+  display: block;
+  font-size: var(--parallx-fontSize-xs, 11px);
+  opacity: 0.6;
+  margin-bottom: 3px;
+}
+.mo-detail-field input,
+.mo-detail-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--vscode-input-background, #1e1e1e);
+  color: var(--vscode-input-foreground, #ccc);
+  border: 1px solid var(--vscode-input-border, #333);
+  border-radius: var(--parallx-radius-sm, 3px);
+  padding: 4px 6px;
+  font-size: var(--parallx-fontSize-base, 13px);
+  font-family: inherit;
+}
+.mo-detail-field input:focus,
+.mo-detail-field textarea:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+  outline: none;
+}
+.mo-detail-field textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+.mo-detail-field input:read-only,
+.mo-detail-field textarea:read-only {
+  opacity: 0.7;
+  cursor: default;
+}
+.mo-detail-tag-editor {
+  position: relative;
+}
+.mo-detail-tag-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.mo-detail-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--vscode-badge-background, #333);
+  color: var(--vscode-badge-foreground, #fff);
+  padding: 2px 6px;
+  border-radius: var(--parallx-radius-sm, 3px);
+  font-size: var(--parallx-fontSize-xs, 11px);
+}
+.mo-detail-tag-pill button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 2px;
+  opacity: 0.7;
+  font-size: var(--parallx-fontSize-xs, 10px);
+  line-height: 1;
+}
+.mo-detail-tag-pill button:hover {
+  opacity: 1;
+}
+.mo-detail-autocomplete {
+  position: relative;
+}
+.mo-detail-autocomplete input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--vscode-input-background, #1e1e1e);
+  color: var(--vscode-input-foreground, #ccc);
+  border: 1px solid var(--vscode-input-border, #333);
+  border-radius: var(--parallx-radius-sm, 3px);
+  padding: 4px 6px;
+  font-size: var(--parallx-fontSize-xs, 11px);
+}
+.mo-detail-autocomplete input:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+  outline: none;
+}
+.mo-detail-autocomplete-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  border-radius: var(--parallx-radius-sm, 3px);
+  max-height: 150px;
+  overflow-y: auto;
+  z-index: 100;
+}
+.mo-detail-autocomplete-item {
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-xs, 11px);
+}
+.mo-detail-autocomplete-item:hover,
+.mo-detail-autocomplete-item.selected {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+.mo-detail-nav-btn {
+  background: none;
+  border: none;
+  color: var(--vscode-foreground, #ccc);
+  cursor: pointer;
+  padding: 4px;
+  opacity: 0.7;
+  border-radius: var(--parallx-radius-sm, 3px);
+}
+.mo-detail-nav-btn:hover {
+  opacity: 1;
+  background: var(--vscode-toolbar-hoverBackground, #333);
+}
+.mo-detail-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  opacity: 0;
+  animation: mo-fade-in 200ms ease 200ms forwards;
+}
+.mo-detail-loading .mo-spinner {
+  width: 20px;
+  height: 20px;
+}
+.mo-detail-loading span {
+  margin-left: 8px;
+  font-size: var(--parallx-fontSize-xs, 11px);
+  opacity: 0.7;
+}
+.mo-detail-autocomplete-create {
+  font-style: italic;
+  opacity: 0.8;
+}
+.mo-detail-empty-state {
+  opacity: 0.6;
+}
+/* Responsive: stack to vertical below 520px editor width */
+@container (max-width: 520px) {
+  .mo-detail-body { flex-direction: column; }
+  .mo-detail-panel { width: 100%; border-left: none; border-top: 1px solid var(--vscode-panel-border, #333); }
+  .mo-detail-preview { min-height: 200px; }
+}
+.mo-detail-star:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+.mo-detail-tab-btn:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: -1px;
+}
+.mo-detail-tag-pill button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  border-radius: 2px;
+}
 `;
 
 function moInjectStyles() {
@@ -4281,9 +4593,11 @@ function calculateCardWidth(containerWidth, preferredWidth) {
 
 function formatDuration(seconds) {
   if (!seconds || seconds <= 0) return '';
-  const m = Math.floor(seconds / 60);
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 function formatShortDate(isoStr) {
@@ -5288,8 +5602,12 @@ function renderGridBrowser(container, api, input) {
   }
 
   function handleCardClick(item) {
-    // For now, open detail view (D7 will add this — no-op stub)
-    console.log('[MO-Grid] Card clicked:', item.type, item.id);
+    api.editors.openEditor({
+      typeId: 'media-organizer-grid',
+      title: item.title || `${item.type} #${item.id}`,
+      icon: item.type === 'video' ? 'file-media' : 'image',
+      instanceId: `detail:${item.type}:${item.id}`,
+    });
   }
 
   // Initialize grid
@@ -5364,6 +5682,705 @@ function renderGridBrowser(container, api, input) {
       container.innerHTML = '';
     }
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 26: DETAIL EDITOR — CORE LAYOUT
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: ui/v2.5/src/components/Scenes/SceneDetails — detail view layout
+// Input ID format: 'detail:<type>:<id>' e.g. 'detail:photo:42'
+
+function parseDetailInput(inputId) {
+  const str = (inputId || '').replace(/^detail:/, '');
+  const [type, idStr] = str.split(':');
+  return { type: type || 'photo', id: parseInt(idStr, 10) || 0 };
+}
+
+async function loadDetailData(type, id) {
+  const Queries = type === 'video' ? VideoQueries : PhotoQueries;
+  const entity = await Queries.findById(id);
+  if (!entity) return null;
+
+  const tags = await Queries.loadTags(id);
+  const files = await Queries.loadFiles(id);
+  const primaryFile = files.find(f => f.isPrimary) || files[0] || null;
+
+  let folder = null;
+  let fullPath = null;
+  let imageFile = null;
+  let videoFile = null;
+
+  if (primaryFile) {
+    folder = await FolderQueries.findById(primaryFile.folderId);
+    if (folder) {
+      const sep = folder.path.includes('\\') ? '\\' : '/';
+      fullPath = folder.path.replace(/[\\/]+$/, '') + sep + primaryFile.basename;
+    }
+    if (type === 'photo') {
+      imageFile = await ImageFileQueries.findByFileId(primaryFile.id);
+    } else {
+      videoFile = await VideoFileQueries.findByFileId(primaryFile.id);
+    }
+  }
+
+  return { type, entity, tags, files, primaryFile, folder, fullPath, imageFile, videoFile };
+}
+
+function renderDetailEditor(container, api, input) {
+  moInjectStyles();
+  const root = moEl('div', 'mo-detail-editor');
+  container.appendChild(root);
+
+  const { type, id } = parseDetailInput(input && input.id);
+  if (!id) {
+    root.textContent = 'Invalid detail input.';
+    return { dispose() { container.innerHTML = ''; } };
+  }
+
+  const headerEl = moEl('div', 'mo-detail-header');
+  root.appendChild(headerEl);
+  const bodyEl = moEl('div', 'mo-detail-body');
+  root.appendChild(bodyEl);
+
+  // Show loading placeholder with delayed fade-in
+  const loadingEl = moEl('div', 'mo-detail-loading');
+  loadingEl.setAttribute('role', 'status');
+  const spinner = moEl('div', 'mo-spinner');
+  loadingEl.appendChild(spinner);
+  loadingEl.appendChild(moEl('span', null, { textContent: ' Loading...' }));
+  bodyEl.appendChild(loadingEl);
+
+  let currentCtx = null;
+
+  async function loadAndRender() {
+    if (bodyEl._moKeydownCleanup) { bodyEl._moKeydownCleanup(); bodyEl._moKeydownCleanup = null; }
+    const ctx = await loadDetailData(type, id);
+    if (!ctx) {
+      root.innerHTML = '';
+      root.textContent = `${type} #${id} not found.`;
+      return;
+    }
+    currentCtx = ctx;
+    headerEl.innerHTML = '';
+    bodyEl.innerHTML = '';
+    buildDetailHeader(ctx, api, headerEl, {
+      onPrev: null, // D7 iter 2+ can add navigation
+      onNext: null,
+    });
+    buildDetailLayout(ctx, api, bodyEl, loadAndRender);
+  }
+
+  loadAndRender().catch(err => { root.textContent = 'Error loading detail: ' + err.message; });
+
+  return {
+    dispose() {
+      if (bodyEl._moKeydownCleanup) bodyEl._moKeydownCleanup();
+      // Clear any pending save timers from editable fields
+      const tabContent = root.querySelector('.mo-detail-tab-content');
+      if (tabContent && tabContent._moSaveTimers) {
+        tabContent._moSaveTimers.forEach(t => t.clear());
+      }
+      container.innerHTML = '';
+    },
+  };
+}
+
+function buildDetailHeader(ctx, api, headerEl, callbacks) {
+  const iconSpan = moEl('span', 'mo-detail-header-icon');
+  iconSpan.innerHTML = moIcon(ctx.type === 'video' ? 'file-media' : 'image', 14);
+  headerEl.appendChild(iconSpan);
+
+  const titleText = ctx.entity.title || (ctx.primaryFile ? ctx.primaryFile.basename : `${ctx.type} #${ctx.entity.id}`);
+  const titleEl = moEl('span', 'mo-detail-header-title', { textContent: titleText });
+  headerEl.appendChild(titleEl);
+
+  const actions = moEl('div', 'mo-detail-header-actions');
+  // Navigation buttons (prev/next — stubs for now)
+  if (callbacks.onPrev) {
+    const prevBtn = moEl('button', 'mo-detail-nav-btn', { title: 'Previous' });
+    prevBtn.innerHTML = moIcon('arrow-left', 12);
+    prevBtn.addEventListener('click', callbacks.onPrev);
+    actions.appendChild(prevBtn);
+  }
+  if (callbacks.onNext) {
+    const nextBtn = moEl('button', 'mo-detail-nav-btn', { title: 'Next' });
+    nextBtn.innerHTML = moIcon('arrow-right', 12);
+    nextBtn.addEventListener('click', callbacks.onNext);
+    actions.appendChild(nextBtn);
+  }
+  headerEl.appendChild(actions);
+}
+
+function buildDetailLayout(ctx, api, bodyEl, onRefresh) {
+  // Left: media preview
+  const preview = buildMediaPreview(ctx);
+  bodyEl.appendChild(preview);
+
+  // Right: tabbed panel
+  const panel = moEl('div', 'mo-detail-panel');
+  bodyEl.appendChild(panel);
+
+  const tabBar = moEl('div', 'mo-detail-tab-bar');
+  tabBar.setAttribute('role', 'tablist');
+  panel.appendChild(tabBar);
+
+  const tabContent = moEl('div', 'mo-detail-tab-content');
+  panel.appendChild(tabContent);
+
+  const tabs = [
+    { key: 'details', label: 'Details' },
+    { key: 'fileinfo', label: ctx.files && ctx.files.length > 1 ? `File Info (${ctx.files.length})` : 'File Info' },
+  ];
+
+  let activeTab = 'details';
+  const tabBtns = {};
+
+  function switchTab(key) {
+    activeTab = key;
+    for (const [k, btn] of Object.entries(tabBtns)) {
+      const isActive = k === key;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-selected', String(isActive));
+    }
+    tabContent.innerHTML = '';
+    tabContent.setAttribute('aria-labelledby', `mo-tab-${key}`);
+    if (key === 'details') {
+      buildDetailsTab(ctx, api, tabContent, onRefresh);
+    } else if (key === 'fileinfo') {
+      buildFileInfoTab(ctx, tabContent);
+    }
+  }
+
+  for (const tab of tabs) {
+    const btn = moEl('button', `mo-detail-tab-btn${tab.key === activeTab ? ' active' : ''}`, { textContent: tab.label });
+    btn.setAttribute('role', 'tab');
+    btn.setAttribute('aria-selected', String(tab.key === activeTab));
+    btn.setAttribute('aria-controls', 'mo-detail-tab-content');
+    btn.id = `mo-tab-${tab.key}`;
+    btn.addEventListener('click', () => switchTab(tab.key));
+    tabBar.appendChild(btn);
+    tabBtns[tab.key] = btn;
+  }
+
+  tabContent.setAttribute('role', 'tabpanel');
+  tabContent.setAttribute('aria-labelledby', `mo-tab-${activeTab}`);
+
+  // Tab bar arrow key navigation (WAI-ARIA tabs pattern)
+  tabBar.addEventListener('keydown', (e) => {
+    const tabKeys = Object.keys(tabBtns);
+    const currentIdx = tabKeys.indexOf(activeTab);
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const nextIdx = (currentIdx + 1) % tabKeys.length;
+      switchTab(tabKeys[nextIdx]);
+      tabBtns[tabKeys[nextIdx]].focus();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prevIdx = (currentIdx - 1 + tabKeys.length) % tabKeys.length;
+      switchTab(tabKeys[prevIdx]);
+      tabBtns[tabKeys[prevIdx]].focus();
+    }
+  });
+
+  // Keyboard shortcuts for tab switching — scoped to editor root
+  function handleKeydown(e) {
+    // Only when not focused on an input/textarea and within this editor
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (!bodyEl.closest('.mo-detail-editor')?.contains(document.activeElement) && document.activeElement !== document.body) return;
+    if (e.key === 'a' || e.key === 'A') { switchTab('details'); }
+    else if (e.key === 'i' || e.key === 'I') { switchTab('fileinfo'); }
+  }
+  document.addEventListener('keydown', handleKeydown);
+  bodyEl._moKeydownCleanup = () => document.removeEventListener('keydown', handleKeydown);
+
+  // Render initial tab
+  switchTab(activeTab);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 27: DETAIL EDITOR — MEDIA PREVIEW
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: ui/v2.5/src/components/Scenes/ScenePlayer
+
+function buildMediaPreview(ctx) {
+  const wrap = moEl('div', 'mo-detail-preview');
+  if (!ctx.fullPath) {
+    wrap.textContent = 'No file available';
+    return wrap;
+  }
+  if (ctx.type === 'video') {
+    buildVideoPlayer(wrap, ctx.fullPath);
+  } else {
+    buildPhotoPreview(wrap, ctx.fullPath);
+  }
+  return wrap;
+}
+
+function buildPhotoPreview(container, fullPath) {
+  const img = moEl('img');
+  img.src = 'file://' + fullPath.replace(/\\/g, '/');
+  img.alt = 'Photo preview';
+  img.addEventListener('error', () => { img.style.display = 'none'; container.textContent = 'Failed to load image'; });
+  container.appendChild(img);
+}
+
+function buildVideoPlayer(container, fullPath) {
+  const video = document.createElement('video');
+  video.controls = true;
+  video.preload = 'metadata';
+
+  const source = document.createElement('source');
+  source.src = 'file://' + fullPath.replace(/\\/g, '/');
+  video.appendChild(source);
+  video.addEventListener('error', () => { video.style.display = 'none'; container.textContent = 'Failed to load video'; });
+  container.appendChild(video);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 28: DETAIL EDITOR — DETAILS TAB
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: ui/v2.5/src/components/Scenes/SceneEditPanel — edit/detail tab
+
+function buildDetailsTab(ctx, api, container, onRefresh) {
+  const Queries = ctx.type === 'video' ? VideoQueries : PhotoQueries;
+
+  // Title field
+  buildEditableField(container, 'Title', ctx.entity.title || '', false, async (val) => {
+    try {
+      await Queries.update(ctx.entity.id, { title: val });
+      ctx.entity.title = val;
+    } catch (err) { console.error('[MO-Detail] Title save failed:', err); }
+  });
+
+  // Details/notes field
+  buildEditableField(container, 'Details', ctx.entity.details || '', true, async (val) => {
+    try {
+      await Queries.update(ctx.entity.id, { details: val });
+      ctx.entity.details = val;
+    } catch (err) { console.error('[MO-Detail] Details save failed:', err); }
+  });
+
+  // Rating — inline auto-save (fire-and-forget, per stash pattern)
+  const ratingSection = moEl('div', 'mo-detail-section');
+  const ratingLabel = moEl('div', 'mo-detail-section-label', { textContent: 'Rating' });
+  ratingSection.appendChild(ratingLabel);
+  buildRatingWidget(ratingSection, ctx.entity.rating || 0, async (newRating) => {
+    try {
+      await Queries.update(ctx.entity.id, { rating: newRating });
+      ctx.entity.rating = newRating;
+    } catch (err) { console.error('[MO-Detail] Rating save failed:', err); }
+  });
+  container.appendChild(ratingSection);
+
+  // Tags
+  const tagSection = moEl('div', 'mo-detail-section');
+  const tagLabel = moEl('div', 'mo-detail-section-label', { textContent: 'Tags' });
+  tagSection.appendChild(tagLabel);
+  buildTagEditor(tagSection, ctx.tags, ctx.type, ctx.entity.id, api, onRefresh);
+  container.appendChild(tagSection);
+
+  // Photo-specific fields
+  if (ctx.type === 'photo') {
+    buildEditableField(container, 'Photographer', ctx.entity.photographer || '', false, async (val) => {
+      try {
+        await Queries.update(ctx.entity.id, { photographer: val });
+        ctx.entity.photographer = val;
+      } catch (err) { console.error('[MO-Detail] Photographer save failed:', err); }
+    });
+  }
+
+  // Date taken (read-only display)
+  if (ctx.entity.takenAt) {
+    const dateSection = moEl('div', 'mo-detail-section');
+    const dateLabel = moEl('div', 'mo-detail-section-label', { textContent: 'Date Taken' });
+    dateSection.appendChild(dateLabel);
+    const dateVal = moEl('div', null, { textContent: new Date(ctx.entity.takenAt).toLocaleString() });
+    dateSection.appendChild(dateVal);
+    container.appendChild(dateSection);
+  }
+}
+
+function buildRatingWidget(container, currentRating, onRate) {
+  const wrap = moEl('div', 'mo-detail-rating');
+  wrap.setAttribute('role', 'radiogroup');
+  wrap.setAttribute('aria-label', 'Rating');
+
+  let focusedIndex = currentRating > 0 ? currentRating - 1 : 0;
+
+  for (let i = 1; i <= 5; i++) {
+    const star = moEl('button', `mo-detail-star${i <= currentRating ? ' filled' : ''}`, { textContent: '★' });
+    star.setAttribute('role', 'radio');
+    star.setAttribute('aria-checked', String(i <= currentRating));
+    star.setAttribute('aria-label', `${i} star${i > 1 ? 's' : ''}`);
+    // Roving tabindex: only focused star gets tabindex 0
+    star.setAttribute('tabindex', i - 1 === focusedIndex ? '0' : '-1');
+    star.title = i === currentRating ? 'Clear rating' : `Rate ${i} star${i > 1 ? 's' : ''}`;
+    star.addEventListener('click', async () => {
+      const newRating = i === currentRating ? 0 : i;
+      currentRating = newRating;
+      focusedIndex = i - 1;
+      updateStars();
+      await onRate(newRating);
+    });
+    star.addEventListener('keydown', (e) => {
+      const stars = wrap.querySelectorAll('.mo-detail-star');
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        focusedIndex = Math.min(focusedIndex + 1, 4);
+        updateTabindex(stars);
+        stars[focusedIndex].focus();
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        focusedIndex = Math.max(focusedIndex - 1, 0);
+        updateTabindex(stars);
+        stars[focusedIndex].focus();
+      }
+    });
+    wrap.appendChild(star);
+  }
+
+  function updateTabindex(stars) {
+    stars.forEach((s, idx) => s.setAttribute('tabindex', idx === focusedIndex ? '0' : '-1'));
+  }
+
+  function updateStars() {
+    const stars = wrap.querySelectorAll('.mo-detail-star');
+    stars.forEach((s, idx) => {
+      const starNum = idx + 1;
+      s.classList.toggle('filled', starNum <= currentRating);
+      s.setAttribute('aria-checked', String(starNum <= currentRating));
+      s.title = starNum === currentRating ? 'Clear rating' : `Rate ${starNum} star${starNum > 1 ? 's' : ''}`;
+    });
+    updateTabindex(stars);
+  }
+
+  container.appendChild(wrap);
+}
+
+function buildEditableField(container, label, value, multiline, onSave) {
+  const wrap = moEl('div', 'mo-detail-field');
+  const lbl = moEl('label', null, { textContent: label });
+  wrap.appendChild(lbl);
+
+  const input = multiline
+    ? moEl('textarea', null)
+    : moEl('input', null, { type: 'text', value: value });
+  if (multiline) input.value = value;
+
+  let saveTimer = null;
+  // Store timer for cleanup (detail editor dispose clears all timers)
+  if (!container._moSaveTimers) container._moSaveTimers = [];
+  const timerRef = { clear() { clearTimeout(saveTimer); } };
+  container._moSaveTimers.push(timerRef);
+
+  input.addEventListener('input', () => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { onSave(input.value); }, 800);
+  });
+  input.addEventListener('blur', () => {
+    clearTimeout(saveTimer);
+    onSave(input.value);
+  });
+
+  wrap.appendChild(input);
+  container.appendChild(wrap);
+}
+
+function buildTagEditor(container, tags, entityType, entityId, api, onRefresh) {
+  const Queries = entityType === 'video' ? VideoQueries : PhotoQueries;
+  let currentTags = [...tags];
+
+  const wrap = moEl('div', 'mo-detail-tag-editor');
+  container.appendChild(wrap);
+
+  const pillsWrap = moEl('div', 'mo-detail-tag-pills');
+  wrap.appendChild(pillsWrap);
+
+  function renderPills() {
+    pillsWrap.innerHTML = '';
+    for (const tag of currentTags) {
+      const pill = moEl('span', 'mo-detail-tag-pill');
+      pill.textContent = tag.name;
+      const removeBtn = moEl('button', null, { textContent: '×', title: `Remove ${tag.name}` });
+      removeBtn.setAttribute('aria-label', `Remove tag ${tag.name}`);
+      removeBtn.addEventListener('click', async () => {
+        try {
+          await Queries.updateTags(entityId, { mode: 'REMOVE', ids: [tag.id] });
+          currentTags = currentTags.filter(t => t.id !== tag.id);
+          renderPills();
+          // Focus next pill remove button or the add input
+          const nextBtn = pillsWrap.querySelector('.mo-detail-tag-pill button');
+          if (nextBtn) nextBtn.focus();
+          else { const addInput = wrap.querySelector('.mo-detail-autocomplete input'); if (addInput) addInput.focus(); }
+        } catch (err) { console.error('[MO-Detail] Tag remove failed:', err); }
+      });
+      pill.appendChild(removeBtn);
+      pillsWrap.appendChild(pill);
+    }
+  }
+
+  renderPills();
+
+  // Autocomplete for adding tags
+  buildTagAutocomplete(wrap, currentTags, async (selectedTag) => {
+    try {
+      await Queries.updateTags(entityId, { mode: 'ADD', ids: [selectedTag.id] });
+      currentTags.push(selectedTag);
+      renderPills();
+    } catch (err) { console.error('[MO-Detail] Tag add failed:', err); }
+  });
+}
+
+function buildTagAutocomplete(container, existingTags, onAdd) {
+  const autocomplete = moEl('div', 'mo-detail-autocomplete');
+  const input = moEl('input', null, { type: 'text', placeholder: 'Add tag...' });
+  input.setAttribute('aria-label', 'Search tags to add');
+  autocomplete.appendChild(input);
+  container.appendChild(autocomplete);
+
+  let dropdown = null;
+  let searchTimer = null;
+  let selectedIndex = -1;
+  let currentItems = [];
+
+  async function doSearch(query) {
+    if (!query || query.length < 1) {
+      closeDropdown();
+      return;
+    }
+    try {
+      const result = await TagQueries.findMany({ nameLike: `%${query}%` }, { field: 'name', direction: 'ASC' }, { page: 1, perPage: 10 });
+      const existingIds = new Set(existingTags.map(t => t.id));
+      const filtered = result.items.filter(t => !existingIds.has(t.id));
+      // Check if exact match exists — if not, offer "Create" option
+      const exactMatch = result.items.some(t => t.name.toLowerCase() === query.toLowerCase());
+      showDropdown(filtered, exactMatch ? null : query);
+    } catch (err) {
+      console.error('[MO-Detail] Tag search failed:', err);
+    }
+  }
+
+  function showDropdown(items, createName) {
+    closeDropdown();
+    currentItems = items;
+    selectedIndex = -1;
+    if (items.length === 0 && !createName) return;
+
+    dropdown = moEl('div', 'mo-detail-autocomplete-list');
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const row = moEl('div', 'mo-detail-autocomplete-item', { textContent: item.name });
+      row.addEventListener('click', () => selectItem(item));
+      row.addEventListener('mouseenter', () => highlightIndex(i));
+      dropdown.appendChild(row);
+    }
+
+    // "Create new tag" option
+    if (createName) {
+      const createRow = moEl('div', 'mo-detail-autocomplete-item mo-detail-autocomplete-create', { textContent: `Create "${createName}"` });
+      createRow.addEventListener('click', () => createAndAddTag(createName));
+      createRow.addEventListener('mouseenter', () => highlightIndex(items.length));
+      dropdown.appendChild(createRow);
+      currentItems = [...items, { _create: true, name: createName }];
+    }
+
+    autocomplete.appendChild(dropdown);
+  }
+
+  function highlightIndex(idx) {
+    selectedIndex = idx;
+    if (!dropdown) return;
+    const rows = dropdown.querySelectorAll('.mo-detail-autocomplete-item');
+    rows.forEach((r, i) => r.classList.toggle('selected', i === idx));
+  }
+
+  async function selectItem(item) {
+    await onAdd(item);
+    input.value = '';
+    closeDropdown();
+    input.focus();
+  }
+
+  async function createAndAddTag(name) {
+    try {
+      const newTag = await TagQueries.create({ name });
+      await onAdd(newTag);
+      input.value = '';
+      closeDropdown();
+      input.focus();
+    } catch (err) {
+      console.error('[MO-Detail] Tag creation failed:', err);
+    }
+  }
+
+  function closeDropdown() {
+    if (dropdown) { dropdown.remove(); dropdown = null; }
+    currentItems = [];
+    selectedIndex = -1;
+  }
+
+  input.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => doSearch(input.value.trim()), 300);
+  });
+
+  input.addEventListener('blur', () => {
+    setTimeout(closeDropdown, 200);
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { closeDropdown(); input.value = ''; return; }
+    if (!dropdown) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      highlightIndex(Math.min(selectedIndex + 1, currentItems.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      highlightIndex(Math.max(selectedIndex - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedIndex >= 0 && selectedIndex < currentItems.length) {
+        const sel = currentItems[selectedIndex];
+        if (sel._create) {
+          createAndAddTag(sel.name);
+        } else {
+          selectItem(sel);
+        }
+      }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 29: DETAIL EDITOR — FILE INFO TAB
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: ui/v2.5/src/components/Shared/DetailItem (definition list pattern)
+
+function buildFileInfoTab(ctx, container) {
+  // Empty state when no files
+  if (!ctx.primaryFile && (!ctx.files || ctx.files.length === 0)) {
+    const empty = moEl('div', 'mo-detail-section');
+    empty.textContent = 'No files associated with this item.';
+    empty.classList.add('mo-detail-empty-state');
+    container.appendChild(empty);
+    return;
+  }
+
+  // File info section
+  if (ctx.primaryFile) {
+    const fileSection = moEl('div', 'mo-detail-section');
+    const fileLbl = moEl('div', 'mo-detail-section-label', { textContent: ctx.files.length > 1 ? 'Primary File' : 'File' });
+    fileSection.appendChild(fileLbl);
+    const dl = moEl('dl', 'mo-detail-dl');
+    dlRow(dl, 'Filename', ctx.primaryFile.basename);
+    dlRow(dl, 'Size', formatFileSize(ctx.primaryFile.size));
+    if (ctx.fullPath) dlRow(dl, 'Path', ctx.fullPath);
+    if (ctx.primaryFile.modTime) dlRow(dl, 'Modified', new Date(ctx.primaryFile.modTime).toLocaleString());
+    fileSection.appendChild(dl);
+    container.appendChild(fileSection);
+  }
+
+  // Additional files (multi-file entities, adapted from stash accordion pattern)
+  if (ctx.files && ctx.files.length > 1) {
+    const otherFiles = ctx.files.filter(f => f.id !== (ctx.primaryFile && ctx.primaryFile.id));
+    for (const file of otherFiles) {
+      const fileSection = moEl('div', 'mo-detail-section');
+      const fileLbl = moEl('div', 'mo-detail-section-label', { textContent: `File: ${file.basename}` });
+      fileSection.appendChild(fileLbl);
+      const dl = moEl('dl', 'mo-detail-dl');
+      dlRow(dl, 'Size', formatFileSize(file.size));
+      if (file.modTime) dlRow(dl, 'Modified', new Date(file.modTime).toLocaleString());
+      fileSection.appendChild(dl);
+      container.appendChild(fileSection);
+    }
+  }
+
+  // Image-specific info
+  if (ctx.type === 'photo' && ctx.imageFile) {
+    buildCameraInfoDL(ctx, container);
+  }
+
+  // Video-specific info
+  if (ctx.type === 'video' && ctx.videoFile) {
+    buildVideoInfoDL(ctx, container);
+  }
+
+  // Folder info
+  if (ctx.folder) {
+    const folderSection = moEl('div', 'mo-detail-section');
+    const folderLbl = moEl('div', 'mo-detail-section-label', { textContent: 'Folder' });
+    folderSection.appendChild(folderLbl);
+    const dl = moEl('dl', 'mo-detail-dl');
+    dlRow(dl, 'Path', ctx.folder.path);
+    folderSection.appendChild(dl);
+    container.appendChild(folderSection);
+  }
+}
+
+function buildCameraInfoDL(ctx, container) {
+  const section = moEl('div', 'mo-detail-section');
+  const lbl = moEl('div', 'mo-detail-section-label', { textContent: 'Image Info' });
+  section.appendChild(lbl);
+  const dl = moEl('dl', 'mo-detail-dl');
+
+  if (ctx.imageFile) {
+    dlRow(dl, 'Dimensions', `${ctx.imageFile.width} × ${ctx.imageFile.height}`);
+    if (ctx.imageFile.format) dlRow(dl, 'Format', ctx.imageFile.format);
+  }
+
+  const e = ctx.entity;
+  if (e.cameraMake || e.cameraModel) dlRow(dl, 'Camera', [e.cameraMake, e.cameraModel].filter(Boolean).join(' '));
+  if (e.lens) dlRow(dl, 'Lens', e.lens);
+  if (e.iso) dlRow(dl, 'ISO', String(e.iso));
+  if (e.aperture) dlRow(dl, 'Aperture', `f/${e.aperture}`);
+  if (e.shutterSpeed) dlRow(dl, 'Shutter', e.shutterSpeed);
+  if (e.focalLength) dlRow(dl, 'Focal Length', `${e.focalLength}mm`);
+  if (e.gpsLatitude && e.gpsLongitude) dlRow(dl, 'GPS', `${e.gpsLatitude.toFixed(6)}, ${e.gpsLongitude.toFixed(6)}`);
+
+  section.appendChild(dl);
+  container.appendChild(section);
+}
+
+function buildVideoInfoDL(ctx, container) {
+  const section = moEl('div', 'mo-detail-section');
+  const lbl = moEl('div', 'mo-detail-section-label', { textContent: 'Video Info' });
+  section.appendChild(lbl);
+  const dl = moEl('dl', 'mo-detail-dl');
+
+  if (ctx.videoFile) {
+    dlRow(dl, 'Dimensions', `${ctx.videoFile.width} × ${ctx.videoFile.height}`);
+    if (ctx.videoFile.codec) dlRow(dl, 'Codec', ctx.videoFile.codec);
+    if (ctx.videoFile.bitRate) dlRow(dl, 'Bitrate', formatBitRate(ctx.videoFile.bitRate));
+    if (ctx.videoFile.frameRate) dlRow(dl, 'Frame Rate', `${ctx.videoFile.frameRate} fps`);
+  }
+
+  if (ctx.entity.duration) dlRow(dl, 'Duration', formatDuration(ctx.entity.duration));
+
+  section.appendChild(dl);
+  container.appendChild(section);
+}
+
+function dlRow(dl, term, definition) {
+  const dt = moEl('dt', null, { textContent: term });
+  const dd = moEl('dd', null, { textContent: definition || '—' });
+  dl.appendChild(dt);
+  dl.appendChild(dd);
+}
+
+function formatFileSize(bytes) {
+  if (!bytes || bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+}
+
+function formatBitRate(bps) {
+  if (!bps) return '—';
+  if (bps >= 1000000) return (bps / 1000000).toFixed(1) + ' Mbps';
+  if (bps >= 1000) return (bps / 1000).toFixed(0) + ' Kbps';
+  return bps + ' bps';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -5453,6 +6470,10 @@ export async function activate(api, context) {
   _commandDisposables.push(
     api.editors.registerEditorProvider('media-organizer-grid', {
       createEditorPane(container, input) {
+        const inputId = (input && input.id) || '';
+        if (inputId.startsWith('detail:')) {
+          return renderDetailEditor(container, api, input);
+        }
         return renderGridBrowser(container, api, input);
       },
     })
@@ -5469,7 +6490,7 @@ export async function activate(api, context) {
     })
   );
 
-  console.log('[MediaOrganizer] Activated — D1 data layer + D2 scan pipeline + D3 thumbnails + D5 grid browser ready');
+  console.log('[MediaOrganizer] Activated — D1-D7 ready (data, scan, thumbnails, tags, grid, filter, detail)');
 }
 
 export function deactivate() {
