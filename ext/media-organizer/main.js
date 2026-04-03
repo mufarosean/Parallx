@@ -1664,7 +1664,7 @@ const SCAN_DEFAULTS = {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: pkg/manager/manager.go — external binary detection
 
-let _toolPaths = { ffprobe: null, exiftool: null, node: null };
+let _toolPaths = { ffprobe: null, exiftool: null, node: null, ffmpeg: null, vips: null };
 let _toolsDetected = false;
 
 const _isWindows = window.parallxElectron.platform === 'win32';
@@ -1698,16 +1698,19 @@ async function detectTool(name) {
 
 async function detectAllTools() {
   if (_toolsDetected) return _toolPaths;
-  const [ffprobe, exiftool, node] = await Promise.all([
+  const [ffprobe, exiftool, node, ffmpeg, vips] = await Promise.all([
     detectTool('ffprobe'),
     detectTool('exiftool'),
     detectTool('node'),
+    detectTool('ffmpeg'),
+    detectTool('vips'),
   ]);
-  _toolPaths = { ffprobe, exiftool, node };
+  _toolPaths = { ffprobe, exiftool, node, ffmpeg, vips };
   _toolsDetected = true;
   if (!ffprobe) console.warn('[MediaOrganizer] ffprobe not found — video metadata will be unavailable');
   if (!exiftool) console.warn('[MediaOrganizer] exiftool not found — EXIF data will be unavailable');
   if (!node) console.warn('[MediaOrganizer] node not found — oshash unavailable, using MD5 only');
+  if (!ffmpeg && !vips) console.warn('[MediaOrganizer] Neither ffmpeg nor vips found — thumbnails will use canvas fallback');
   return _toolPaths;
 }
 
@@ -2128,11 +2131,44 @@ async function processFile(entry) {
     if (meta.exif) Object.assign(photoData, meta.exif);
     const photo = await PhotoQueries.create(photoData);
     await db.run('INSERT INTO mo_photos_files (photo_id, file_id, is_primary) VALUES (?, ?, 1)', [photo.id, fileId]);
+
+    // 9. Generate thumbnail for new photo (scan-time, synchronous, non-fatal)
+    // Adapted from stash: internal/manager/task_scan.go — imageGenerators.Generate
+    // Upstream treats thumbnail failure as non-fatal for the scan handler.
+    if (_api) {
+      try {
+        const checksum = fps.find(f => f.type === 'md5');
+        const imgW = meta.typeSpecific ? meta.typeSpecific.width : 0;
+        const imgH = meta.typeSpecific ? meta.typeSpecific.height : 0;
+        if (checksum) {
+          await generateImageThumbnail(checksum.value, entry.path, imgW, imgH, _api);
+        }
+      } catch (thumbErr) {
+        console.warn(`[MediaOrganizer] Thumbnail generation failed for ${entry.path}:`, thumbErr);
+      }
+    }
   } else {
     const videoData = { title: entry.name };
     if (meta.typeSpecific) videoData.duration = meta.typeSpecific.duration || 0;
     const video = await VideoQueries.create(videoData);
     await db.run('INSERT INTO mo_videos_files (video_id, file_id, is_primary) VALUES (?, ?, 1)', [video.id, fileId]);
+
+    // 9. Generate cover frame for new video (scan-time, synchronous, non-fatal)
+    // Adapted from stash: internal/manager/task_scan.go — sceneGenerators.Generate
+    // Upstream treats cover-generation failure as non-fatal for the scan handler.
+    if (_api) {
+      try {
+        const checksum = fps.find(f => f.type === 'md5');
+        const dur = meta.typeSpecific ? meta.typeSpecific.duration : 0;
+        const vidW = meta.typeSpecific ? (meta.typeSpecific.width || 0) : 0;
+        const vidH = meta.typeSpecific ? (meta.typeSpecific.height || 0) : 0;
+        if (checksum) {
+          await generateVideoCoverFrame(checksum.value, entry.path, dur, _api, false, null, vidW, vidH);
+        }
+      } catch (coverErr) {
+        console.warn(`[MediaOrganizer] Cover frame generation failed for ${entry.path}:`, coverErr);
+      }
+    }
   }
 
   return { action: 'created', fileId };
@@ -2240,12 +2276,1147 @@ function cancelScan() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 18: THUMBNAIL CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: pkg/models/model_gallery.go — DefaultGthumbWidth
+// Adapted from stash: pkg/models/paths/paths_generated.go — sharding constants
+// Adapted from stash: pkg/image/thumbnail.go — quality settings
+
+const THUMB_MAX_SIZE = 640;        // Stash DefaultGthumbWidth
+const THUMB_QUALITY_VIPS = 70;     // Stash vips Q=70
+const THUMB_QUALITY_FFMPEG = 5;    // Stash ffmpegImageQuality = 5
+const THUMB_DIR_DEPTH = 2;         // Stash thumbDirDepth
+const THUMB_DIR_LENGTH = 2;        // Stash thumbDirLength
+const THUMB_FORMAT = 'jpg';
+
+const THUMB_SUBFOLDER = '.parallx/extensions/media-organizer/thumbnails';
+
+// Video cover frame constants
+// Adapted from stash: pkg/scene/generate/screenshot.go — screenshotDurationProportion, screenshotQuality
+const COVER_TIMESTAMP_PERCENT = 0.2;  // Stash default: 20% into the video
+const COVER_QUALITY_FFMPEG = 2;        // Stash screenshotQuality (-q:v scale, lower = better)
+
+let _thumbDir = null;
+
+/**
+ * Convert a file:// URI to a filesystem path.
+ */
+function uriToFsPath(uri) {
+  try {
+    const url = new URL(uri);
+    let p = decodeURIComponent(url.pathname);
+    // Windows: /D:/folder → D:/folder
+    if (_isWindows && p.length >= 3 && p[0] === '/' && p[2] === ':') {
+      p = p.slice(1);
+    }
+    return p;
+  } catch {
+    return uri; // Already a plain path
+  }
+}
+
+/**
+ * Get the thumbnail root directory for the current workspace.
+ * Adapted from stash: pkg/models/paths/paths.go — Paths.Generated
+ * Uses the first workspace folder. Caches on first call.
+ */
+function getThumbDir(api) {
+  if (_thumbDir) return _thumbDir;
+  const folders = api.workspace.workspaceFolders;
+  if (!folders || folders.length === 0) return null;
+  const wsPath = uriToFsPath(folders[0].uri);
+  const sep = _isWindows ? '\\' : '/';
+  _thumbDir = wsPath + sep + THUMB_SUBFOLDER.replace(/\//g, sep);
+  return _thumbDir;
+}
+
+/**
+ * Compute intra-directory sharding path from checksum.
+ * Adapted from stash: pkg/fsutil/dir.go — GetIntraDir
+ * e.g. checksum "ab12cde..." with depth=2, length=2 → "ab/12"
+ */
+function getIntraDir(checksum) {
+  if (!checksum || checksum.length < THUMB_DIR_DEPTH * THUMB_DIR_LENGTH) return '';
+  const sep = _isWindows ? '\\' : '/';
+  const parts = [];
+  for (let i = 0; i < THUMB_DIR_DEPTH; i++) {
+    parts.push(checksum.slice(THUMB_DIR_LENGTH * i, THUMB_DIR_LENGTH * (i + 1)));
+  }
+  return parts.join(sep);
+}
+
+/**
+ * Construct full thumbnail path for a given checksum and width.
+ * Adapted from stash: pkg/models/paths/paths_generated.go — GetThumbnailPath
+ * Result: <thumbDir>/<intra>/<checksum>_<width>.jpg
+ */
+function getThumbnailPath(thumbDir, checksum, width) {
+  const sep = _isWindows ? '\\' : '/';
+  const intra = getIntraDir(checksum);
+  const fname = `${checksum}_${width}.${THUMB_FORMAT}`;
+  return thumbDir + sep + intra + sep + fname;
+}
+
+/**
+ * Construct full cover frame path for a given video checksum.
+ * Adapted from stash: pkg/models/paths/paths_scenes.go — GetLegacyScreenshotPath
+ * Uses "_cover" suffix to distinguish from image thumbnails ("_<width>").
+ * Result: <thumbDir>/<intra>/<checksum>_cover.jpg
+ */
+function getCoverFramePath(thumbDir, checksum) {
+  const sep = _isWindows ? '\\' : '/';
+  const intra = getIntraDir(checksum);
+  const fname = `${checksum}_cover.${THUMB_FORMAT}`;
+  return thumbDir + sep + intra + sep + fname;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 19: THUMBNAIL SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: pkg/image/thumbnail.go — ThumbnailEncoder
+// Adapted from stash: internal/manager/task_generate_image_thumbnail.go
+
+/**
+ * Check whether a file is an animated GIF — Stash treats ALL GIFs as animated.
+ * Adapted from stash: pkg/image/thumbnail.go — `animated := imageFile.Format == formatGif`
+ */
+function isAnimatedGif(filePath) {
+  return /\.gif$/i.test(filePath);
+}
+
+/**
+ * Check whether a WebP file is animated by reading the RIFF header.
+ * Adapted from stash: pkg/image/webp.go — isWebPAnimated()
+ * Reads the first 48 bytes: checks "WEBP" ident, animation bit at byte 20, "ANIM" chunk.
+ */
+async function isWebPAnimated(filePath) {
+  if (!/\.webp$/i.test(filePath)) return false;
+  try {
+    // Read file — main process returns base64 for binary files
+    const readResult = await window.parallxElectron.fs.readFile(filePath);
+    if (readResult.error) return false;
+
+    // Decode enough bytes for the header check
+    let bytes;
+    if (readResult.encoding === 'base64') {
+      const raw = atob(readResult.content.slice(0, 68)); // 48 bytes → ~64 base64 chars + padding
+      bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    } else {
+      return false; // text mode — shouldn't happen for WebP
+    }
+
+    // Check "WEBP" at bytes 8-11
+    if (bytes.length < 21) return false;
+    const webpIdent = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
+    if (webpIdent !== 'WEBP') return false;
+
+    // Check animation bit (bit 1) at byte 20
+    const animBit = 1 << 1;
+    if ((bytes[20] & animBit) !== animBit) return false;
+
+    // Check for "ANIM" chunk signature after byte 20
+    if (bytes.length < 25) return false;
+    const tail = String.fromCharCode(...bytes.slice(21, Math.min(bytes.length, 48)));
+    return tail.includes('ANIM');
+  } catch { return false; }
+}
+
+/**
+ * Check whether a thumbnail is needed for the given dimensions.
+ * Adapted from stash: task_generate_image_thumbnail.go — required()
+ * Skip if both dimensions are ≤ THUMB_MAX_SIZE.
+ */
+function isThumbnailRequired(width, height) {
+  if (!width || !height) return true; // Unknown dimensions → generate to be safe
+  return width > THUMB_MAX_SIZE || height > THUMB_MAX_SIZE;
+}
+
+/**
+ * Generate image thumbnail using vips (preferred).
+ * Adapted from stash: pkg/image/vips.go — ImageThumbnailPath
+ * vips outputs directly to file — avoids binary-through-terminal issues.
+ */
+async function generateThumbVips(inputPath, outputPath, maxSize) {
+  if (!_toolPaths.vips) return false;
+  try {
+    const outArg = outputPath + '[Q=' + THUMB_QUALITY_VIPS + ',strip]';
+    const cmd = [
+      shellQuote(_toolPaths.vips), 'thumbnail',
+      shellQuote(inputPath), shellQuote(outArg),
+      String(maxSize), '--size', 'down',
+    ].join(' ');
+    const result = await window.parallxElectron.terminal.exec(cmd, { timeout: 30000 });
+    if (result.exitCode !== 0) {
+      // Adapted from stash: task_generate_image_thumbnail.go — logStderr()
+      if (result.stderr) console.debug('[MediaOrganizer] vips stderr:', result.stderr);
+      return false;
+    }
+    // Validate output file exists and is non-empty
+    // Guards against partial writes from killed processes
+    const valid = await validateThumbnailFile(outputPath);
+    return valid;
+  } catch { return false; }
+}
+
+/**
+ * Generate image thumbnail using ffmpeg (fallback).
+ * Adapted from stash: pkg/ffmpeg/transcoder/image.go — ImageThumbnail
+ * ffmpeg outputs directly to file — avoids binary-through-terminal issues.
+ */
+async function generateThumbFfmpeg(inputPath, outputPath, maxSize) {
+  if (!_toolPaths.ffmpeg) return false;
+  try {
+    const vf = `scale='min(${maxSize},iw)':'min(${maxSize},ih)':force_original_aspect_ratio=decrease`;
+    const cmd = [
+      shellQuote(_toolPaths.ffmpeg),
+      '-hide_banner', '-loglevel', 'error', '-y',
+      '-i', shellQuote(inputPath),
+      '-vf', shellQuote(vf),
+      '-frames:v', '1',
+      '-q:v', String(THUMB_QUALITY_FFMPEG),
+      shellQuote(outputPath),
+    ].join(' ');
+    const result = await window.parallxElectron.terminal.exec(cmd, { timeout: 30000 });
+    if (result.exitCode !== 0) {
+      // Adapted from stash: task_generate_image_thumbnail.go — logStderr()
+      if (result.stderr) console.debug('[MediaOrganizer] ffmpeg stderr:', result.stderr);
+      return false;
+    }
+    // Validate output file exists and is non-empty
+    const valid = await validateThumbnailFile(outputPath);
+    return valid;
+  } catch { return false; }
+}
+
+/**
+ * Generate image thumbnail using Canvas API (last-resort browser-native fallback).
+ * No upstream analog — Stash always requires ffmpeg. This extension uses Canvas
+ * when no external tools are available.
+ * Supports: JPEG, PNG, WebP, GIF (first frame), BMP, SVG.
+ * Does NOT support: RAW, HEIC, AVIF, TIFF (Chromium lacks decoders).
+ * NOTE: Canvas does NOT auto-rotate based on EXIF orientation. Thumbnails from
+ * rotated photos may appear sideways. vips and ffmpeg handle this automatically.
+ */
+async function generateThumbCanvas(inputPath, outputPath, maxSize) {
+  try {
+    // Read image file — main process returns base64 for binary files
+    const readResult = await window.parallxElectron.fs.readFile(inputPath);
+    if (readResult.error) return false;
+
+    // Determine MIME type from extension
+    const ext = inputPath.slice(inputPath.lastIndexOf('.')).toLowerCase();
+    const mimeMap = {
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+      '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
+      '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
+    };
+    const mime = mimeMap[ext];
+    if (!mime) return false; // Unsupported format for Canvas
+
+    // Build data URL from base64 content
+    const dataUrl = readResult.encoding === 'base64'
+      ? `data:${mime};base64,${readResult.content}`
+      : `data:${mime};base64,${btoa(readResult.content)}`;
+
+    // Load into Image element
+    const img = new Image();
+    const loaded = new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+    });
+    img.src = dataUrl;
+    await loaded;
+
+    // Calculate thumbnail dimensions (fit within maxSize, maintain aspect ratio)
+    const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
+    const w = Math.round(img.width * scale);
+    const h = Math.round(img.height * scale);
+
+    // Render to OffscreenCanvas and export as JPEG blob
+    const canvas = new OffscreenCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+
+    const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.7 });
+    const arrayBuffer = await blob.arrayBuffer();
+    const uint8 = new Uint8Array(arrayBuffer);
+
+    // Convert to base64 for writeFile
+    let binary = '';
+    for (let i = 0; i < uint8.length; i++) {
+      binary += String.fromCharCode(uint8[i]);
+    }
+    const base64 = btoa(binary);
+
+    // Write file (parent dir auto-created by main process)
+    const writeResult = await window.parallxElectron.fs.writeFile(outputPath, base64, 'base64');
+    return !writeResult.error;
+  } catch (err) {
+    console.warn('[MediaOrganizer] Canvas thumbnail failed:', err);
+    return false;
+  }
+}
+
+/**
+ * Validate a thumbnail file after write — must exist and be non-empty.
+ * Adapted from stash: pkg/scene/generate/generator.go — stat check after generateFile
+ * Guards against partial writes from killed subprocesses.
+ */
+async function validateThumbnailFile(thumbPath) {
+  try {
+    const stat = await window.parallxElectron.fs.stat(thumbPath);
+    if (stat.error || stat.size === 0) {
+      // Remove corrupt/empty file
+      await window.parallxElectron.fs.delete(thumbPath);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Generate a cover frame (thumbnail) for a video file using ffmpeg.
+ * Adapted from stash: internal/manager/task_generate_screenshot.go — GenerateCoverTask
+ * Adapted from stash: pkg/scene/generate/screenshot.go — Screenshot()
+ * Adapted from stash: pkg/ffmpeg/transcoder/screenshot.go — ScreenshotTime()
+ *
+ * Extracts a single JPEG frame at 20% of video duration (configurable).
+ * Scales to THUMB_MAX_SIZE for grid view consistency.
+ * Requires ffmpeg — no canvas fallback for video frame extraction.
+ * Uses temp file + atomic rename to prevent partial writes.
+ * Adapted from stash: pkg/scene/generate/generator.go — generateFile() temp pattern
+ *
+ * @param {string} checksum  - File's MD5 checksum (used for sharded path)
+ * @param {string} filePath  - Full path to the source video
+ * @param {number} duration  - Video duration in seconds
+ * @param {object} api       - Parallx extension API
+ * @param {boolean} overwrite - Generate even if cover exists
+ * @param {number|null} timestampOverride - Explicit seek timestamp in seconds (null = auto 20%)
+ * @param {number} videoWidth  - Video width (0 = unknown)
+ * @param {number} videoHeight - Video height (0 = unknown)
+ * @returns {{ generated: boolean, path: string|null, encoder: string|null }}
+ */
+async function generateVideoCoverFrame(checksum, filePath, duration, api, overwrite = false, timestampOverride = null, videoWidth = 0, videoHeight = 0) {
+  const thumbDir = getThumbDir(api);
+  if (!thumbDir) return { generated: false, path: null, encoder: null };
+  if (!checksum) return { generated: false, path: null, encoder: null };
+  if (!_toolPaths.ffmpeg) return { generated: false, path: null, encoder: 'skip_no_ffmpeg' };
+
+  // Skip audio-only files (no video stream detected by ffprobe)
+  // Adapted from stash: internal/manager/task_generate_screenshot.go — videoFile == nil guard
+  if (videoWidth === 0 && videoHeight === 0) {
+    return { generated: false, path: null, encoder: 'skip_no_video_stream' };
+  }
+
+  const coverPath = getCoverFramePath(thumbDir, checksum);
+
+  // Check if already exists (unless overwrite)
+  // Adapted from stash: task_generate_screenshot.go — required()
+  if (!overwrite) {
+    const exists = await window.parallxElectron.fs.exists(coverPath);
+    if (exists) return { generated: false, path: coverPath, encoder: 'cached' };
+  }
+
+  // Ensure parent directory exists
+  const sep = _isWindows ? '\\' : '/';
+  const parentDir = coverPath.slice(0, coverPath.lastIndexOf(sep));
+  await window.parallxElectron.fs.mkdir(parentDir);
+
+  // Compute seek timestamp
+  // Adapted from stash: pkg/scene/generate/screenshot.go — screenshotDurationProportion = 0.2
+  // Adapted from stash: internal/manager/task_generate_screenshot.go — ScreenshotAt override
+  let seekSec;
+  if (timestampOverride !== null && timestampOverride >= 0) {
+    seekSec = timestampOverride;
+  } else if (duration && duration > 0) {
+    seekSec = duration * COVER_TIMESTAMP_PERCENT;
+  } else {
+    // Unknown duration — extract first frame (matches Stash: 0.2 * 0 = 0)
+    seekSec = 0;
+  }
+
+  // Build ffmpeg command: -ss before -i for fast seek (Stash pattern)
+  // Adapted from stash: pkg/ffmpeg/transcoder/screenshot.go — ScreenshotTime()
+  const tempPath = coverPath + '.tmp';
+  const vf = `scale='min(${THUMB_MAX_SIZE},iw)':'min(${THUMB_MAX_SIZE},ih)':force_original_aspect_ratio=decrease`;
+  const cmd = [
+    shellQuote(_toolPaths.ffmpeg),
+    '-hide_banner', '-loglevel', 'error', '-y',
+    '-ss', String(seekSec),
+    '-i', shellQuote(filePath),
+    '-frames:v', '1',
+    '-q:v', String(COVER_QUALITY_FFMPEG),
+    '-vf', shellQuote(vf),
+    '-f', 'image2',
+    shellQuote(tempPath),
+  ].join(' ');
+
+  try {
+    // NOTE: 30s timeout should be generous for single-frame extraction. If timeout fires,
+    // terminal.exec rejects but the ffmpeg child process may not be killed — this is a
+    // known limitation of the terminal API. Single-frame extraction rarely takes >5s.
+    // Adapted from stash: exec.CommandContext auto-kills on cancel (Go-specific, no analog here).
+    const result = await window.parallxElectron.terminal.exec(cmd, { timeout: 30000 });
+    if (result.exitCode !== 0) {
+      if (result.stderr) console.debug('[MediaOrganizer] ffmpeg cover stderr:', result.stderr);
+      // Clean up temp file on failure
+      await window.parallxElectron.fs.delete(tempPath).catch(() => {});
+      return { generated: false, path: null, encoder: null };
+    }
+    // Validate temp file — guards against partial writes
+    // Adapted from stash: pkg/scene/generate/generator.go — stat.Size() == 0 check
+    const valid = await validateThumbnailFile(tempPath);
+    if (!valid) return { generated: false, path: null, encoder: null };
+
+    // Atomic rename: temp → final path
+    // Adapted from stash: pkg/fsutil/file.go — SafeMove()
+    // Read temp file, write to final path, delete temp
+    const readResult = await window.parallxElectron.fs.readFile(tempPath);
+    if (readResult.error) {
+      await window.parallxElectron.fs.delete(tempPath).catch(() => {});
+      return { generated: false, path: null, encoder: null };
+    }
+    const writeResult = await window.parallxElectron.fs.writeFile(
+      coverPath, readResult.content, readResult.encoding || 'base64'
+    );
+    await window.parallxElectron.fs.delete(tempPath).catch(() => {});
+    if (writeResult.error) {
+      // Clean up potentially corrupt coverPath
+      await window.parallxElectron.fs.delete(coverPath).catch(() => {});
+      return { generated: false, path: null, encoder: null };
+    }
+
+    return { generated: true, path: coverPath, encoder: 'ffmpeg' };
+  } catch (err) {
+    console.warn('[MediaOrganizer] Video cover generation failed:', err);
+    // Clean up temp file in catch path
+    await window.parallxElectron.fs.delete(tempPath).catch(() => {});
+    return { generated: false, path: null, encoder: null };
+  }
+}
+
+/**
+ * Generate a thumbnail for a photo, routing to the best available encoder.
+ * Adapted from stash: pkg/image/thumbnail.go — GetThumbnail decision tree
+ * Priority: vips → ffmpeg → canvas
+ *
+ * @param {string} checksum  - File's MD5 checksum (used for sharded path)
+ * @param {string} filePath  - Full path to the source image
+ * @param {number} width     - Image width in pixels
+ * @param {number} height    - Image height in pixels
+ * @param {object} api       - Parallx extension API
+ * @param {boolean} overwrite - Generate even if thumbnail exists
+ * @returns {{ generated: boolean, path: string|null, encoder: string|null }}
+ */
+async function generateImageThumbnail(checksum, filePath, width, height, api, overwrite = false) {
+  const thumbDir = getThumbDir(api);
+  if (!thumbDir) return { generated: false, path: null, encoder: null };
+  if (!checksum) return { generated: false, path: null, encoder: null };
+
+  // Adapted from stash: pkg/image/thumbnail.go — animated image exclusion
+  // Stash treats all GIFs as animated and checks WebP header for animation bit.
+  if (isAnimatedGif(filePath)) {
+    return { generated: false, path: null, encoder: 'skip_animated' };
+  }
+  if (await isWebPAnimated(filePath)) {
+    return { generated: false, path: null, encoder: 'skip_animated' };
+  }
+
+  // Adapted from stash: task_generate_image_thumbnail.go — required()
+  if (!isThumbnailRequired(width, height)) {
+    return { generated: false, path: null, encoder: 'skip_small' };
+  }
+
+  const thumbPath = getThumbnailPath(thumbDir, checksum, THUMB_MAX_SIZE);
+
+  // Check if already exists (unless overwrite)
+  if (!overwrite) {
+    const exists = await window.parallxElectron.fs.exists(thumbPath);
+    if (exists) return { generated: false, path: thumbPath, encoder: 'cached' };
+  }
+
+  // Ensure parent directory exists
+  const sep = _isWindows ? '\\' : '/';
+  const parentDir = thumbPath.slice(0, thumbPath.lastIndexOf(sep));
+  await window.parallxElectron.fs.mkdir(parentDir);
+
+  // Adapted from stash: pkg/image/thumbnail.go — GetThumbnail encoder priority
+  if (_toolPaths.vips) {
+    const ok = await generateThumbVips(filePath, thumbPath, THUMB_MAX_SIZE);
+    if (ok) return { generated: true, path: thumbPath, encoder: 'vips' };
+    console.warn(`[MediaOrganizer] vips thumbnail failed for ${filePath}, trying ffmpeg`);
+  }
+
+  if (_toolPaths.ffmpeg) {
+    const ok = await generateThumbFfmpeg(filePath, thumbPath, THUMB_MAX_SIZE);
+    if (ok) return { generated: true, path: thumbPath, encoder: 'ffmpeg' };
+    console.warn(`[MediaOrganizer] ffmpeg thumbnail failed for ${filePath}, trying canvas`);
+  }
+
+  // Canvas fallback — no external tools needed
+  const ok = await generateThumbCanvas(filePath, thumbPath, THUMB_MAX_SIZE);
+  if (ok) return { generated: true, path: thumbPath, encoder: 'canvas' };
+
+  console.warn(`[MediaOrganizer] All thumbnail encoders failed for ${filePath}`);
+  return { generated: false, path: null, encoder: null };
+}
+
+/**
+ * Batch-generate thumbnails for all photos missing them.
+ * Adapted from stash: internal/manager/task_generate.go — queueImagesTasks
+ *
+ * @param {object} api       - Parallx extension API
+ * @param {boolean} overwrite - Regenerate existing thumbnails
+ */
+async function generateAllThumbnails(api, overwrite = false) {
+  const thumbDir = getThumbDir(api);
+  if (!thumbDir) {
+    api.window.showWarningMessage('No workspace folder found — cannot generate thumbnails.');
+    return;
+  }
+
+  await detectAllTools();
+
+  // Query all photos with their primary file's checksum and dimensions
+  const photos = await db.all(`
+    SELECT p.id, p.title,
+           f.id AS file_id, f.basename,
+           fp.value AS checksum,
+           imf.width, imf.height,
+           fo.path AS folder_path
+    FROM mo_photos p
+    JOIN mo_photos_files pf ON pf.photo_id = p.id AND pf.is_primary = 1
+    JOIN mo_files f ON f.id = pf.file_id
+    JOIN mo_folders fo ON fo.id = f.folder_id
+    LEFT JOIN mo_fingerprints fp ON fp.file_id = f.id AND fp.type = 'md5'
+    LEFT JOIN mo_image_files imf ON imf.file_id = f.id
+  `);
+
+  // Also query all videos for cover frame generation
+  // Adapted from stash: internal/manager/task_generate.go — queueSceneJobs
+  const videos = await db.all(`
+    SELECT v.id, v.title, v.duration,
+           f.id AS file_id, f.basename,
+           fp.value AS checksum,
+           fo.path AS folder_path,
+           vf2.width AS video_width, vf2.height AS video_height
+    FROM mo_videos v
+    JOIN mo_videos_files vf ON vf.video_id = v.id AND vf.is_primary = 1
+    JOIN mo_files f ON f.id = vf.file_id
+    JOIN mo_folders fo ON fo.id = f.folder_id
+    LEFT JOIN mo_fingerprints fp ON fp.file_id = f.id AND fp.type = 'md5'
+    LEFT JOIN mo_video_files vf2 ON vf2.file_id = f.id
+  `);
+
+  const total = photos.length + videos.length;
+  let generated = 0;
+  let skipped = 0;
+  let failed = 0;
+  let processed = 0;
+
+  if (_statusBarItem) {
+    _statusBarItem.text = `$(sync~spin) Generating thumbnails: 0/${total}`;
+    _statusBarItem.show();
+  }
+
+  // Process in batches with bounded concurrency.
+  // Adapted from stash: task_generate.go — SizedWaitGroup(parallelTasks)
+  // Default concurrency: (cpu count / 4) + 1, minimum 2.
+  const concurrency = Math.max(2, Math.floor((navigator.hardwareConcurrency || 4) / 4) + 1);
+
+  for (let i = 0; i < photos.length; i += concurrency) {
+    const batch = photos.slice(i, i + concurrency);
+    const results = await Promise.allSettled(batch.map(async (row) => {
+      if (!row.checksum) return { encoder: 'skip_no_checksum' };
+
+      const sep = _isWindows ? '\\' : '/';
+      const filePath = row.folder_path + sep + row.basename;
+
+      return generateImageThumbnail(
+        row.checksum, filePath, row.width || 0, row.height || 0, api, overwrite
+      );
+    }));
+
+    for (const r of results) {
+      processed++;
+      const result = r.status === 'fulfilled' ? r.value : null;
+      if (!result) { failed++; continue; }
+      if (result.generated) generated++;
+      else if (result.encoder === 'cached' || result.encoder === 'skip_small'
+            || result.encoder === 'skip_animated' || result.encoder === 'skip_no_checksum') skipped++;
+      else failed++;
+    }
+
+    if (_statusBarItem) {
+      _statusBarItem.text = `$(sync~spin) Thumbnails: ${processed}/${total}`;
+    }
+  }
+
+  // Phase 2: Video cover frames
+  // Adapted from stash: internal/manager/task_generate.go — queueSceneJobs
+  for (let i = 0; i < videos.length; i += concurrency) {
+    const batch = videos.slice(i, i + concurrency);
+    const results = await Promise.allSettled(batch.map(async (row) => {
+      if (!row.checksum) return { encoder: 'skip_no_checksum' };
+
+      const sep = _isWindows ? '\\' : '/';
+      const filePath = row.folder_path + sep + row.basename;
+
+      return generateVideoCoverFrame(
+        row.checksum, filePath, row.duration || 0, api, overwrite,
+        null, row.video_width || 0, row.video_height || 0
+      );
+    }));
+
+    for (const r of results) {
+      processed++;
+      const result = r.status === 'fulfilled' ? r.value : null;
+      if (!result) { failed++; continue; }
+      if (result.generated) generated++;
+      else if (result.encoder === 'cached' || result.encoder === 'skip_no_ffmpeg'
+            || result.encoder === 'skip_no_checksum'
+            || result.encoder === 'skip_no_video_stream') skipped++;
+      else failed++;
+    }
+
+    if (_statusBarItem) {
+      _statusBarItem.text = `$(sync~spin) Thumbnails: ${processed}/${total}`;
+    }
+  }
+
+  if (_statusBarItem) {
+    _statusBarItem.text = `$(check) Thumbnails done — ${generated} new, ${skipped} skipped, ${failed} failed`;
+    setTimeout(() => { if (_statusBarItem) _statusBarItem.hide(); }, 5000);
+  }
+
+  api.window.showInformationMessage(
+    `Thumbnail generation complete: ${generated} generated, ${skipped} skipped, ${failed} failed (${total} total).`
+  );
+}
+
+/**
+ * Clean orphaned thumbnail files whose source photos or videos no longer exist in the DB.
+ * Adapted from stash: internal/manager/task/clean_generated.go — cleanThumbnailFiles()
+ * Walks the thumbnail directory tree, parses {checksum}_{width}.jpg filenames,
+ * queries DB for matching fingerprints, deletes orphans.
+ */
+async function cleanOrphanThumbnails(api, options = {}) {
+  const { photoThumbnails = true, videoCoverFrames = true, dryRun = false } = options;
+  const thumbDir = getThumbDir(api);
+  if (!thumbDir) {
+    api.window.showWarningMessage('No workspace folder found — cannot clean thumbnails.');
+    return;
+  }
+
+  const dirExists = await window.parallxElectron.fs.exists(thumbDir);
+  if (!dirExists) {
+    api.window.showInformationMessage('No thumbnail directory found — nothing to clean.');
+    return;
+  }
+
+  const dryLabel = dryRun ? ' (dry run)' : '';
+  if (_statusBarItem) {
+    _statusBarItem.text = `$(sync~spin) Cleaning thumbnails${dryLabel}…`;
+    _statusBarItem.show();
+  }
+
+  let deleted = 0;
+  let kept = 0;
+  let errors = 0;
+  let skippedByFilter = 0;
+
+  // Walk the sharded directory tree: thumbDir/<2char>/<2char>/<checksum>_<width>.jpg
+  // Adapted from stash: cleanThumbnailFiles — filepath.Walk + getThumbnailFileHash
+  async function walkAndClean(dirPath, isTopLevel) {
+    const result = await window.parallxElectron.fs.readdir(dirPath);
+    if (result.error) return;
+
+    for (const item of (result.entries || [])) {
+      const sep = _isWindows ? '\\' : '/';
+      const fullPath = dirPath + sep + item.name;
+
+      if (item.type === 'directory') {
+        // Update progress for top-level shard directories (hex-prefixed)
+        if (isTopLevel && _statusBarItem && item.name.length >= 1) {
+          const pct = Math.round(hexPrefixProgress(item.name[0]) * 100);
+          _statusBarItem.text = `$(sync~spin) Cleaning thumbnails${dryLabel}… ${pct}%`;
+        }
+        await walkAndClean(fullPath, false);
+        continue;
+      }
+
+      // Parse filename: {checksum}_{width}.{ext}
+      // Match both image thumbnails (<hash>_<width>.jpg) and video covers (<hash>_cover.jpg)
+      const match = item.name.match(/^([a-f0-9]+)_(?:\d+|cover)\.jpg$/i);
+      if (!match) {
+        console.warn(`[MediaOrganizer] Ignoring unknown thumbnail file: ${item.name}`);
+        continue;
+      }
+
+      // Type filtering: skip files that don't match the requested types
+      const isCover = item.name.includes('_cover.');
+      if (isCover && !videoCoverFrames) { kept++; skippedByFilter++; continue; }
+      if (!isCover && !photoThumbnails) { kept++; skippedByFilter++; continue; }
+
+      const checksum = match[1];
+
+      // Check if any file (photo or video) has this checksum as MD5 fingerprint
+      const fpRows = await db.all(
+        'SELECT file_id FROM mo_fingerprints WHERE type = ? AND value = ? LIMIT 1',
+        ['md5', checksum]
+      );
+
+      if (fpRows.length === 0) {
+        // Orphan — delete (unless dry run)
+        if (dryRun) {
+          deleted++;
+          console.log(`[MediaOrganizer] Dry run — would delete orphan: ${fullPath}`);
+        } else {
+          try {
+            await window.parallxElectron.fs.delete(fullPath);
+            deleted++;
+          } catch (err) {
+            console.warn(`[MediaOrganizer] Failed to delete orphan thumbnail: ${fullPath}`, err);
+            errors++;
+          }
+        }
+      } else {
+        kept++;
+      }
+    }
+  }
+
+  try {
+    await walkAndClean(thumbDir, true);
+  } catch (err) {
+    console.error('[MediaOrganizer] Error cleaning thumbnails:', err);
+  }
+
+  const filterNote = skippedByFilter > 0 ? `, ${skippedByFilter} skipped by filter` : '';
+  if (_statusBarItem) {
+    _statusBarItem.text = `$(check) Cleanup done${dryLabel} — ${deleted} orphans ${dryRun ? 'found' : 'removed'}, ${kept} kept`;
+    setTimeout(() => { if (_statusBarItem) _statusBarItem.hide(); }, 5000);
+  }
+
+  api.window.showInformationMessage(
+    `Thumbnail cleanup${dryLabel}: ${deleted} orphans ${dryRun ? 'found' : 'removed'}, ${kept} kept, ${errors} errors${filterNote}.`
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 20: LAZY / ON-DEMAND THUMBNAIL RESOLUTION
+// ═══════════════════════════════════════════════════════════════════════════════
+// Adapted from stash: internal/api/routes_image.go — serveThumbnail()
+// Stash generates missing thumbnails synchronously during HTTP request handling,
+// then optionally caches to disk. Since Parallx extensions have no HTTP server,
+// this section provides a function-call API that the D5 Grid Browser (and any
+// other consumer) calls to resolve a thumbnail path — generating lazily if needed.
+
+/**
+ * Simple concurrency semaphore for on-demand thumbnail generation.
+ * Adapted from stash: internal/manager/manager.go — ImageThumbnailGenerateWaitGroup
+ * Prevents thumbnail request storms from spawning unbounded subprocesses when
+ * the grid browser loads many items concurrently.
+ */
+const _thumbSemaphore = {
+  _max: Math.max(2, Math.floor((typeof navigator !== 'undefined' ? navigator.hardwareConcurrency : 4) / 4) + 1),
+  _active: 0,
+  _queue: [],
+  async acquire() {
+    if (this._active < this._max) {
+      this._active++;
+      return;
+    }
+    await new Promise(resolve => this._queue.push(resolve));
+  },
+  release() {
+    this._active--;
+    if (this._queue.length > 0) {
+      this._active++;
+      const next = this._queue.shift();
+      next();
+    }
+  },
+};
+
+/**
+ * In-flight deduplication map — prevents redundant generation when the same
+ * entity is requested multiple times before the first request completes.
+ * Adapted from stash: pkg/utils/mutex.go — MutexManager pattern (per-key mutual exclusion),
+ * applied to thumbnail resolution rather than file locking.
+ */
+const _thumbInflight = new Map();
+
+/**
+ * Resolve a photo's thumbnail — return the path, generating lazily if needed.
+ * Adapted from stash: internal/api/routes_image.go — serveThumbnail() fallback chain:
+ *   1. Pre-existing file on disk → return path
+ *   2. Generate synchronously → persist → return path
+ *   3. Generation fails → return null
+ *
+ * @param {number} photoId - The photo entity ID
+ * @param {object} api     - Parallx extension API
+ * @returns {Promise<{ path: string|null, status: 'cached'|'generated'|'skip'|'failed' }>}
+ */
+async function resolvePhotoThumbnail(photoId, api) {
+  const thumbDir = getThumbDir(api);
+  if (!thumbDir) return { path: null, status: 'failed' };
+
+  // Fetch photo's primary file checksum + image dimensions in one query
+  const row = await db.get(`
+    SELECT fp.value AS checksum, imf.width, imf.height,
+           fo.path AS folder_path, f.basename
+    FROM mo_photos p
+    JOIN mo_photos_files pf ON pf.photo_id = p.id AND pf.is_primary = 1
+    JOIN mo_files f ON f.id = pf.file_id
+    JOIN mo_folders fo ON fo.id = f.folder_id
+    LEFT JOIN mo_fingerprints fp ON fp.file_id = f.id AND fp.type = 'md5'
+    LEFT JOIN mo_image_files imf ON imf.file_id = f.id
+    WHERE p.id = ?
+  `, [photoId]);
+
+  if (!row || !row.checksum) return { path: null, status: 'failed' };
+
+  // Fast path: check if thumbnail already exists on disk and is valid
+  // Adapted from stash: serveThumbnail — exists check before generation
+  const thumbPath = getThumbnailPath(thumbDir, row.checksum, THUMB_MAX_SIZE);
+  const valid = await validateCachedThumbnail(thumbPath);
+  if (valid) return { path: thumbPath, status: 'cached' };
+
+  // Lazy generation: ensure tools are available, then generate under semaphore
+  await detectAllTools();
+  await _thumbSemaphore.acquire();
+  try {
+    // Double-check after acquiring semaphore (another call may have generated it)
+    const validNow = await validateCachedThumbnail(thumbPath);
+    if (validNow) return { path: thumbPath, status: 'cached' };
+
+    const sep = _isWindows ? '\\' : '/';
+    const filePath = row.folder_path + sep + row.basename;
+    const result = await generateImageThumbnail(
+      row.checksum, filePath, row.width || 0, row.height || 0, api
+    );
+
+    if (result.generated) return { path: result.path, status: 'generated' };
+    if (result.encoder === 'skip_small' || result.encoder === 'skip_animated') {
+      return { path: null, status: 'skip' };
+    }
+    if (result.encoder === 'cached') return { path: result.path, status: 'cached' };
+    return { path: null, status: 'failed' };
+  } catch (err) {
+    console.warn('[MediaOrganizer] resolvePhotoThumbnail failed for photo', photoId, err);
+    return { path: null, status: 'failed' };
+  } finally {
+    _thumbSemaphore.release();
+  }
+}
+
+/**
+ * Resolve a video's cover frame — return the path, generating lazily if needed.
+ * Adapted from stash: internal/manager/running_streams.go — ServeScreenshot() fallback:
+ *   1. Pre-existing cover file on disk → return path
+ *   2. Generate synchronously via ffmpeg → persist → return path
+ *   3. No ffmpeg or generation fails → return null
+ *
+ * @param {number} videoId - The video entity ID
+ * @param {object} api     - Parallx extension API
+ * @returns {Promise<{ path: string|null, status: 'cached'|'generated'|'skip'|'failed' }>}
+ */
+async function resolveVideoThumbnail(videoId, api) {
+  const thumbDir = getThumbDir(api);
+  if (!thumbDir) return { path: null, status: 'failed' };
+
+  // Fetch video's primary file checksum + video dimensions + duration
+  const row = await db.get(`
+    SELECT fp.value AS checksum, v.duration,
+           vf2.width AS video_width, vf2.height AS video_height,
+           fo.path AS folder_path, f.basename
+    FROM mo_videos v
+    JOIN mo_videos_files vf ON vf.video_id = v.id AND vf.is_primary = 1
+    JOIN mo_files f ON f.id = vf.file_id
+    JOIN mo_folders fo ON fo.id = f.folder_id
+    LEFT JOIN mo_fingerprints fp ON fp.file_id = f.id AND fp.type = 'md5'
+    LEFT JOIN mo_video_files vf2 ON vf2.file_id = f.id
+    WHERE v.id = ?
+  `, [videoId]);
+
+  if (!row || !row.checksum) return { path: null, status: 'failed' };
+
+  // Fast path: check if cover already exists and is valid
+  const coverPath = getCoverFramePath(thumbDir, row.checksum);
+  const valid = await validateCachedThumbnail(coverPath);
+  if (valid) return { path: coverPath, status: 'cached' };
+
+  // Lazy generation under semaphore
+  await detectAllTools();
+  await _thumbSemaphore.acquire();
+  try {
+    const validNow = await validateCachedThumbnail(coverPath);
+    if (validNow) return { path: coverPath, status: 'cached' };
+
+    const sep = _isWindows ? '\\' : '/';
+    const filePath = row.folder_path + sep + row.basename;
+    const result = await generateVideoCoverFrame(
+      row.checksum, filePath, row.duration || 0, api, false, null,
+      row.video_width || 0, row.video_height || 0
+    );
+
+    if (result.generated) return { path: result.path, status: 'generated' };
+    if (result.encoder === 'cached') return { path: result.path, status: 'cached' };
+    if (result.encoder === 'skip_no_ffmpeg' || result.encoder === 'skip_no_video_stream') {
+      return { path: null, status: 'skip' };
+    }
+    return { path: null, status: 'failed' };
+  } catch (err) {
+    console.warn('[MediaOrganizer] resolveVideoThumbnail failed for video', videoId, err);
+    return { path: null, status: 'failed' };
+  } finally {
+    _thumbSemaphore.release();
+  }
+}
+
+/**
+ * Resolve a thumbnail for any entity by type and ID.
+ * This is the primary API that the D5 Grid Browser View will call.
+ * Adapted from stash: internal/api/routes_image.go — serveThumbnail() + routes_scene.go — ServeScreenshot()
+ *
+ * @param {'photo'|'video'} entityType - Entity type
+ * @param {number} entityId           - Entity ID
+ * @param {object} api                - Parallx extension API
+ * @returns {Promise<{ path: string|null, status: 'cached'|'generated'|'skip'|'failed' }>}
+ */
+async function resolveThumbnail(entityType, entityId, api) {
+  const key = `${entityType}:${entityId}`;
+  if (_thumbInflight.has(key)) return _thumbInflight.get(key);
+
+  let resolver;
+  if (entityType === 'photo') resolver = resolvePhotoThumbnail(entityId, api);
+  else if (entityType === 'video') resolver = resolveVideoThumbnail(entityId, api);
+  else return { path: null, status: 'failed' };
+
+  _thumbInflight.set(key, resolver);
+  try {
+    return await resolver;
+  } finally {
+    _thumbInflight.delete(key);
+  }
+}
+
+/**
+ * Batch-resolve thumbnails for multiple entities.
+ * Adapted from stash: internal/manager/task_generate.go — sizedwaitgroup worker-pool pattern;
+ * N workers each pull the next item as soon as they finish, avoiding fixed-window stalls
+ * when many items are already cached (instant resolution) alongside uncached items.
+ *
+ * @param {{ type: 'photo'|'video', id: number }[]} entities - Entities to resolve
+ * @param {object} api - Parallx extension API
+ * @returns {Promise<Map<string, { path: string|null, status: string }>>}
+ *          Map keyed by "{type}:{id}" (e.g. "photo:42")
+ */
+async function resolveThumbnailBatch(entities, api) {
+  const results = new Map();
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < entities.length) {
+      const idx = cursor++;
+      const e = entities[idx];
+      const key = `${e.type}:${e.id}`;
+      try {
+        results.set(key, await resolveThumbnail(e.type, e.id, api));
+      } catch {
+        results.set(key, { path: null, status: 'failed' });
+      }
+    }
+  }
+
+  const poolSize = _thumbSemaphore._max;
+  await Promise.all(Array.from({ length: poolSize }, () => worker()));
+  return results;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 21: THUMBNAIL CACHE MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+// F14 — cache stats, entity-level deletion, validation, progress helpers.
+
+/**
+ * Map a hex character ('0'–'f') to a linear progress value 0.0–1.0.
+ * Used to estimate cleanup/walk progress when iterating shard directories
+ * whose names are hex prefixes.
+ * Adapted from stash: internal/manager/task/clean_generated.go — progress heuristic
+ *
+ * @param {string} hexChar - Single hex character ('0'–'f')
+ * @returns {number} Progress ratio 0.0–1.0
+ */
+function hexPrefixProgress(hexChar) {
+  const val = parseInt(hexChar, 16);
+  if (isNaN(val)) return 0;
+  return val / 15; // 0x0 → 0.0, 0xf → 1.0
+}
+
+/**
+ * Validate that a cached thumbnail file exists AND has non-zero size.
+ * Zero-byte files are treated as corrupt — deleted and reported as invalid.
+ * Adapted from stash: implied validation in serveThumbnail (returns 500 on empty files)
+ *
+ * @param {string} thumbPath - Absolute path to thumbnail file
+ * @returns {Promise<boolean>} true if file exists and is valid, false otherwise
+ */
+async function validateCachedThumbnail(thumbPath) {
+  try {
+    const exists = await window.parallxElectron.fs.exists(thumbPath);
+    if (!exists) return false;
+
+    const stat = await window.parallxElectron.fs.stat(thumbPath);
+    if (stat.error || stat.size === 0) {
+      // Corrupt zero-byte file — remove it
+      console.warn(`[MediaOrganizer] Removing corrupt zero-byte thumbnail: ${thumbPath}`);
+      await window.parallxElectron.fs.delete(thumbPath).catch(() => {});
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(`[MediaOrganizer] validateCachedThumbnail error for ${thumbPath}:`, err);
+    return false;
+  }
+}
+
+/**
+ * Gather cache statistics by walking the entire thumbnail directory.
+ * Classifies files as photo thumbnails, video cover frames, or unknown.
+ * Adapted from stash: internal/manager/task/clean_generated.go — walkDir stats aggregation
+ *
+ * @param {object} api - Parallx extension API
+ * @returns {Promise<{ totalFiles: number, totalSizeBytes: number, photoThumbnails: number, videoCoverFrames: number, unknownFiles: number }|null>}
+ */
+async function getCacheStats(api) {
+  const thumbDir = getThumbDir(api);
+  if (!thumbDir) {
+    api.window.showWarningMessage('No workspace folder found — cannot get cache stats.');
+    return null;
+  }
+
+  const dirExists = await window.parallxElectron.fs.exists(thumbDir);
+  if (!dirExists) {
+    api.window.showInformationMessage('No thumbnail directory found — cache is empty.');
+    return { totalFiles: 0, totalSizeBytes: 0, photoThumbnails: 0, videoCoverFrames: 0, unknownFiles: 0 };
+  }
+
+  if (_statusBarItem) {
+    _statusBarItem.text = '$(sync~spin) Gathering cache stats…';
+    _statusBarItem.show();
+  }
+
+  let totalFiles = 0;
+  let totalSizeBytes = 0;
+  let photoThumbnails = 0;
+  let videoCoverFrames = 0;
+  let unknownFiles = 0;
+  let walkError = false;
+
+  async function walkStats(dirPath) {
+    const result = await window.parallxElectron.fs.readdir(dirPath);
+    if (result.error) return;
+
+    for (const item of (result.entries || [])) {
+      const sep = _isWindows ? '\\' : '/';
+      const fullPath = dirPath + sep + item.name;
+
+      if (item.type === 'directory') {
+        await walkStats(fullPath);
+        continue;
+      }
+
+      totalFiles++;
+      const stat = await window.parallxElectron.fs.stat(fullPath);
+      if (!stat.error) totalSizeBytes += (stat.size || 0);
+
+      if (/_cover\.jpg$/i.test(item.name)) {
+        videoCoverFrames++;
+      } else if (/_\d+\.jpg$/i.test(item.name)) {
+        photoThumbnails++;
+      } else {
+        unknownFiles++;
+      }
+    }
+  }
+
+  try {
+    await walkStats(thumbDir);
+  } catch (err) {
+    console.error('[MediaOrganizer] Error gathering cache stats:', err);
+    walkError = true;
+  }
+
+  const sizeMB = (totalSizeBytes / (1024 * 1024)).toFixed(1);
+  const partial = walkError ? ' (partial — errors occurred)' : '';
+  if (walkError) {
+    api.window.showWarningMessage(
+      `Thumbnail cache${partial}: ${totalFiles} files (${sizeMB} MB) — ${photoThumbnails} photo, ${videoCoverFrames} video, ${unknownFiles} unknown.`
+    );
+  } else {
+    api.window.showInformationMessage(
+      `Thumbnail cache: ${totalFiles} files (${sizeMB} MB) — ${photoThumbnails} photo, ${videoCoverFrames} video, ${unknownFiles} unknown.`
+    );
+  }
+
+  if (_statusBarItem) {
+    _statusBarItem.text = `$(check) Cache: ${totalFiles} files, ${sizeMB} MB`;
+    setTimeout(() => { if (_statusBarItem) _statusBarItem.hide(); }, 5000);
+  }
+
+  return { totalFiles, totalSizeBytes, photoThumbnails, videoCoverFrames, unknownFiles };
+}
+
+/**
+ * Delete all cached thumbnails for a specific entity identified by its MD5 checksum.
+ * Removes both the photo thumbnail and video cover frame if they exist.
+ * Adapted from stash: internal/manager/task/clean_generated.go — per-entity cleanup path
+ *
+ * @param {object} api      - Parallx extension API
+ * @param {string} checksum - MD5 checksum identifying the entity
+ * @returns {Promise<{ deleted: number, errors: number }>}
+ */
+async function deleteEntityThumbnails(api, checksum) {
+  const thumbDir = getThumbDir(api);
+  if (!thumbDir) return { deleted: 0, errors: 0 };
+
+  let deleted = 0;
+  let errors = 0;
+
+  const paths = [
+    getThumbnailPath(thumbDir, checksum, THUMB_MAX_SIZE),
+    getCoverFramePath(thumbDir, checksum),
+  ];
+
+  for (const p of paths) {
+    const exists = await window.parallxElectron.fs.exists(p);
+    if (!exists) continue;
+    try {
+      await window.parallxElectron.fs.delete(p);
+      deleted++;
+      console.log(`[MediaOrganizer] Deleted cached thumbnail: ${p}`);
+    } catch (err) {
+      console.warn(`[MediaOrganizer] Failed to delete thumbnail: ${p}`, err);
+      errors++;
+    }
+  }
+
+  return { deleted, errors };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 11: ACTIVATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
 let _toolPath = '';
 let _activated = false;
 let _commandDisposables = [];
+let _api = null;
 
 async function ensureDatabase(toolPath) {
   const status = await window.parallxElectron.database.isOpen();
@@ -2266,6 +3437,7 @@ async function ensureDatabase(toolPath) {
 export async function activate(api, context) {
   if (_activated) return;
   _activated = true;
+  _api = api;
   _toolPath = api.env.toolPath;
   const ok = await ensureDatabase(_toolPath);
   if (!ok) {
@@ -2293,7 +3465,24 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.cancelScan', () => cancelScan())
   );
 
-  console.log('[MediaOrganizer] Activated — D1 data layer + D2 scan pipeline ready');
+  // Register thumbnail generation command
+  // Adapted from stash: internal/manager/task_generate.go — Generate task
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.generateThumbnails', () => generateAllThumbnails(api))
+  );
+
+  // Register thumbnail cleanup command
+  // Adapted from stash: internal/manager/task/clean_generated.go — CleanGeneratedJob
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.cleanThumbnails', () => cleanOrphanThumbnails(api))
+  );
+
+  // Register cache stats command — F14: Thumbnail Cache Management
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.cacheStats', () => getCacheStats(api))
+  );
+
+  console.log('[MediaOrganizer] Activated — D1 data layer + D2 scan pipeline + D3 thumbnails ready');
 }
 
 export function deactivate() {
@@ -2305,7 +3494,10 @@ export function deactivate() {
   if (_statusBarItem) _statusBarItem.dispose();
   _statusBarItem = null;
   _toolsDetected = false;
-  _toolPaths = { ffprobe: null, exiftool: null, node: null };
+  _toolPaths = { ffprobe: null, exiftool: null, node: null, ffmpeg: null, vips: null };
+  _thumbDir = null;
+  _thumbInflight.clear();
+  _api = null;
   _activated = false;
   console.log('[MediaOrganizer] Deactivated');
 }

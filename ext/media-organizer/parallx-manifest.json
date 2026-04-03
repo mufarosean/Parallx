@@ -13,7 +13,10 @@
   "contributes": {
     "commands": [
       { "id": "media-organizer.scan", "title": "Scan Directory", "category": "Media Organizer" },
-      { "id": "media-organizer.cancelScan", "title": "Cancel Scan", "category": "Media Organizer" }
+      { "id": "media-organizer.cancelScan", "title": "Cancel Scan", "category": "Media Organizer" },
+      { "id": "media-organizer.generateThumbnails", "title": "Generate Thumbnails", "category": "Media Organizer" },
+      { "id": "media-organizer.cleanThumbnails", "title": "Clean Orphan Thumbnails", "category": "Media Organizer" },
+      { "id": "media-organizer.cacheStats", "title": "Show Thumbnail Cache Stats", "category": "Media Organizer" }
     ],
     "editors": [],
     "views": {}
