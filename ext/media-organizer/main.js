@@ -192,6 +192,30 @@ async function ensureUnique(tableName, column, value, excludeId = null) {
   if (row) throw new DuplicateError(tableName, column, value);
 }
 
+/**
+ * Ensure each alias is unique across all tag names and all other tags' aliases.
+ * Adapted from stash: pkg/tag/validate.go — EnsureTagNameUnique() + EnsureAliasesUnique()
+ *
+ * @param {number} tagId     - The tag owning these aliases (excluded from collision check)
+ * @param {string[]} aliases - Proposed alias values
+ */
+async function ensureAliasesUnique(tagId, aliases) {
+  for (const alias of aliases) {
+    const trimmed = typeof alias === 'string' ? alias.trim() : '';
+    if (!trimmed) continue;
+    const nameHit = await db.get(
+      `SELECT id FROM mo_tags WHERE name = ? AND id != ?`,
+      [trimmed, tagId]
+    );
+    if (nameHit) throw new DuplicateError('mo_tags', 'name', trimmed);
+    const aliasHit = await db.get(
+      `SELECT tag_id FROM mo_tag_aliases WHERE alias = ? AND tag_id != ?`,
+      [trimmed, tagId]
+    );
+    if (aliasHit) throw new DuplicateError('mo_tag_aliases', 'alias', trimmed);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 3: FOLDER QUERIES
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -527,6 +551,12 @@ const TagQueries = {
   async create(input) {
     ensureNameNotEmpty(input.name);
     await ensureUnique('mo_tags', 'name', input.name);
+    // Cross-check: name must not collide with existing aliases
+    // Adapted from stash: pkg/tag/validate.go — EnsureTagNameUnique
+    const aliasConflict = await db.get(
+      `SELECT tag_id FROM mo_tag_aliases WHERE alias = ?`, [input.name]
+    );
+    if (aliasConflict) throw new DuplicateError('mo_tag_aliases', 'alias', input.name);
     const res = await db.run(
       `INSERT INTO mo_tags (name, description, image_path, sort_name, favorite, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
@@ -545,6 +575,16 @@ const TagQueries = {
     return this.fromRow(row);
   },
 
+  // Adapted from stash: pkg/sqlite/tag.go — FindByNames()
+  async findByNames(names) {
+    if (!names || names.length === 0) return [];
+    const placeholders = names.map(() => '?').join(', ');
+    const rows = await db.all(
+      `SELECT * FROM mo_tags WHERE name IN (${placeholders})`, names
+    );
+    return rows.map((r) => this.fromRow(r));
+  },
+
   async findMany(filter = {}, sort = {}, pagination = {}) {
     const where = [];
     const params = [];
@@ -556,6 +596,25 @@ const TagQueries = {
     if (filter.favorite !== undefined) {
       where.push(`favorite = ?`);
       params.push(filter.favorite ? 1 : 0);
+    }
+    // Hierarchy filters — adapted from stash: pkg/sqlite/tag_filter.go
+    if (filter.parentId !== undefined) {
+      where.push(`id IN (SELECT child_id FROM mo_tags_relations WHERE parent_id = ?)`);
+      params.push(filter.parentId);
+    }
+    if (filter.childId !== undefined) {
+      where.push(`id IN (SELECT parent_id FROM mo_tags_relations WHERE child_id = ?)`);
+      params.push(filter.childId);
+    }
+    if (filter.hasParents === true) {
+      where.push(`id IN (SELECT child_id FROM mo_tags_relations)`);
+    } else if (filter.hasParents === false) {
+      where.push(`id NOT IN (SELECT child_id FROM mo_tags_relations)`);
+    }
+    if (filter.hasChildren === true) {
+      where.push(`id IN (SELECT parent_id FROM mo_tags_relations)`);
+    } else if (filter.hasChildren === false) {
+      where.push(`id NOT IN (SELECT parent_id FROM mo_tags_relations)`);
     }
 
     const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
@@ -578,6 +637,12 @@ const TagQueries = {
     if ('name' in partial && partial.name !== undefined) {
       ensureNameNotEmpty(partial.name);
       await ensureUnique('mo_tags', 'name', partial.name, id);
+      // Cross-check: name must not collide with existing aliases
+      const aliasConflict = await db.get(
+        `SELECT tag_id FROM mo_tag_aliases WHERE alias = ? AND tag_id != ?`,
+        [partial.name, id]
+      );
+      if (aliasConflict) throw new DuplicateError('mo_tag_aliases', 'alias', partial.name);
     }
     await buildPartialUpdate('mo_tags', id, partial, TAG_COL_MAP);
 
@@ -585,6 +650,7 @@ const TagQueries = {
     if (partial.parentIds) {
       const uniqueParentIds = [...new Set(partial.parentIds)];
       for (const pid of uniqueParentIds) {
+        await ensureExists('mo_tags', pid);
         if (await this.wouldCreateCycle(pid, id)) {
           throw new ValidationError(
             `Setting parent ${pid} on tag ${id} would create a cycle`
@@ -604,12 +670,188 @@ const TagQueries = {
       await db.transaction(ops);
     }
 
+    // Handle childIds reassignment with bidirectional cycle validation
+    // Adapted from stash: pkg/sqlite/tag.go — UpdateChildTags()
+    if (partial.childIds) {
+      const uniqueChildIds = [...new Set(partial.childIds)];
+      for (const cid of uniqueChildIds) {
+        await ensureExists('mo_tags', cid);
+        if (await this.wouldCreateCycle(id, cid)) {
+          throw new ValidationError(
+            `Setting child ${cid} on tag ${id} would create a cycle`
+          );
+        }
+      }
+      const childOps = [
+        { type: 'run', sql: `DELETE FROM mo_tags_relations WHERE parent_id = ?`, params: [id] },
+      ];
+      for (const cid of uniqueChildIds) {
+        childOps.push({
+          type: 'run',
+          sql: `INSERT INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`,
+          params: [id, cid],
+        });
+      }
+      await db.transaction(childOps);
+    }
+
     return this.findById(id);
   },
 
   async destroy(id) {
     await ensureExists('mo_tags', id);
     await db.run(`DELETE FROM mo_tags WHERE id = ?`, [id]);
+  },
+
+  // Adapted from stash: internal/api/resolver_mutation_tag.go — TagsDestroy
+  async destroyMany(ids) {
+    if (!ids || ids.length === 0) return;
+    const uniqueIds = [...new Set(ids)];
+    for (const id of uniqueIds) {
+      await ensureExists('mo_tags', id);
+    }
+    const ops = uniqueIds.map((id) => ({
+      type: 'run',
+      sql: `DELETE FROM mo_tags WHERE id = ?`,
+      params: [id],
+    }));
+    await db.transaction(ops);
+  },
+
+  // Adapted from stash: pkg/sqlite/tag.go — Merge()
+  async merge(sourceIds, destinationId) {
+    if (!sourceIds || sourceIds.length === 0) return this.findById(destinationId);
+    await ensureExists('mo_tags', destinationId);
+    const uniqueSources = [...new Set(sourceIds)];
+    for (const sid of uniqueSources) {
+      if (sid === destinationId) {
+        throw new ValidationError('Cannot merge a tag into itself');
+      }
+      await ensureExists('mo_tags', sid);
+    }
+    const placeholders = uniqueSources.map(() => '?').join(', ');
+    const ops = [];
+    // 1. Reassign photo tag associations (skip duplicates)
+    ops.push({
+      type: 'run',
+      sql: `UPDATE OR IGNORE mo_photos_tags SET tag_id = ? WHERE tag_id IN (${placeholders})`,
+      params: [destinationId, ...uniqueSources],
+    });
+    ops.push({
+      type: 'run',
+      sql: `DELETE FROM mo_photos_tags WHERE tag_id IN (${placeholders})`,
+      params: [...uniqueSources],
+    });
+    // 2. Reassign video tag associations
+    ops.push({
+      type: 'run',
+      sql: `UPDATE OR IGNORE mo_videos_tags SET tag_id = ? WHERE tag_id IN (${placeholders})`,
+      params: [destinationId, ...uniqueSources],
+    });
+    ops.push({
+      type: 'run',
+      sql: `DELETE FROM mo_videos_tags WHERE tag_id IN (${placeholders})`,
+      params: [...uniqueSources],
+    });
+    // 3. Reassign parent relations (skip self-references + dupes)
+    ops.push({
+      type: 'run',
+      sql: `UPDATE OR IGNORE mo_tags_relations SET parent_id = ? WHERE parent_id IN (${placeholders}) AND child_id != ?`,
+      params: [destinationId, ...uniqueSources, destinationId],
+    });
+    ops.push({
+      type: 'run',
+      sql: `DELETE FROM mo_tags_relations WHERE parent_id IN (${placeholders})`,
+      params: [...uniqueSources],
+    });
+    // 4. Reassign child relations
+    ops.push({
+      type: 'run',
+      sql: `UPDATE OR IGNORE mo_tags_relations SET child_id = ? WHERE child_id IN (${placeholders}) AND parent_id != ?`,
+      params: [destinationId, ...uniqueSources, destinationId],
+    });
+    ops.push({
+      type: 'run',
+      sql: `DELETE FROM mo_tags_relations WHERE child_id IN (${placeholders})`,
+      params: [...uniqueSources],
+    });
+    // 5. Add source names as aliases on destination
+    ops.push({
+      type: 'run',
+      sql: `INSERT OR IGNORE INTO mo_tag_aliases (tag_id, alias)
+            SELECT ?, name FROM mo_tags WHERE id IN (${placeholders})`,
+      params: [destinationId, ...uniqueSources],
+    });
+    // 6. Move existing aliases to destination
+    ops.push({
+      type: 'run',
+      sql: `UPDATE OR IGNORE mo_tag_aliases SET tag_id = ? WHERE tag_id IN (${placeholders})`,
+      params: [destinationId, ...uniqueSources],
+    });
+    ops.push({
+      type: 'run',
+      sql: `DELETE FROM mo_tag_aliases WHERE tag_id IN (${placeholders})`,
+      params: [...uniqueSources],
+    });
+    // 7. Delete source tags
+    for (const sid of uniqueSources) {
+      ops.push({ type: 'run', sql: `DELETE FROM mo_tags WHERE id = ?`, params: [sid] });
+    }
+    await db.transaction(ops);
+    return this.findById(destinationId);
+  },
+
+  // Adapted from stash: internal/api/resolver_mutation_tag.go — BulkTagUpdate
+  async bulkUpdate(ids, input) {
+    if (!ids || ids.length === 0) return [];
+    const uniqueIds = [...new Set(ids)];
+    for (const id of uniqueIds) {
+      await ensureExists('mo_tags', id);
+    }
+    const ops = [];
+    // Scalar fields
+    const setClauses = [];
+    const setParams = [];
+    if (input.description !== undefined) { setClauses.push('description = ?'); setParams.push(input.description); }
+    if (input.favorite !== undefined) { setClauses.push('favorite = ?'); setParams.push(input.favorite ? 1 : 0); }
+    if (setClauses.length > 0) {
+      setClauses.push("updated_at = datetime('now')");
+      const placeholders = uniqueIds.map(() => '?').join(', ');
+      ops.push({
+        type: 'run',
+        sql: `UPDATE mo_tags SET ${setClauses.join(', ')} WHERE id IN (${placeholders})`,
+        params: [...setParams, ...uniqueIds],
+      });
+    }
+    if (ops.length > 0) await db.transaction(ops);
+    // Relation updates per-tag (need individual cycle validation)
+    for (const id of uniqueIds) {
+      if (input.parentIds) {
+        const { mode, values = [] } = input.parentIds;
+        if (values.length > 0) {
+          if (mode === 'set') {
+            await this.update(id, { parentIds: values });
+          } else if (mode === 'add') {
+            for (const pid of values) await this.addParent(id, pid);
+          } else if (mode === 'remove') {
+            for (const pid of values) await this.removeParent(id, pid);
+          }
+        }
+      }
+      if (input.childIds) {
+        const { mode, values = [] } = input.childIds;
+        if (values.length > 0) {
+          if (mode === 'set') {
+            await this.updateChildTags(id, values);
+          } else if (mode === 'add') {
+            for (const cid of values) await this.addChild(id, cid);
+          } else if (mode === 'remove') {
+            for (const cid of values) await this.removeChild(id, cid);
+          }
+        }
+      }
+    }
+    return this.findManyByIds(uniqueIds);
   },
 
   async findManyByIds(ids) {
@@ -635,9 +877,26 @@ const TagQueries = {
     return row ? row.count : 0;
   },
 
+  // Adapted from stash: pkg/sqlite/tag.go — CountByParentTagID (counts parents of a tag)
+  async countParents(tagId) {
+    const row = await db.get(
+      `SELECT COUNT(*) as count FROM mo_tags_relations WHERE child_id = ?`, [tagId]
+    );
+    return row ? row.count : 0;
+  },
+
+  // Adapted from stash: pkg/sqlite/tag.go — CountByChildTagID (counts children of a tag)
+  async countChildren(tagId) {
+    const row = await db.get(
+      `SELECT COUNT(*) as count FROM mo_tags_relations WHERE parent_id = ?`, [tagId]
+    );
+    return row ? row.count : 0;
+  },
+
   // Adapted from stash: pkg/models/tag.go — alias management
   async updateAliases(tagId, aliases) {
     await ensureExists('mo_tags', tagId);
+    await ensureAliasesUnique(tagId, aliases);
     const ops = [
       { type: 'run', sql: `DELETE FROM mo_tag_aliases WHERE tag_id = ?`, params: [tagId] },
     ];
@@ -711,16 +970,50 @@ const TagQueries = {
     return rows.map((r) => this.fromRow(r));
   },
 
+  // Adapted from stash: pkg/sqlite/tag.go — FindBySceneID / FindByImageID
+  async findByPhotoId(photoId) {
+    const rows = await db.all(
+      `SELECT t.* FROM mo_tags t
+       INNER JOIN mo_photos_tags pt ON pt.tag_id = t.id
+       WHERE pt.photo_id = ?
+       ORDER BY t.name COLLATE NOCASE ASC`,
+      [photoId]
+    );
+    return rows.map((r) => this.fromRow(r));
+  },
+
+  async findByVideoId(videoId) {
+    const rows = await db.all(
+      `SELECT t.* FROM mo_tags t
+       INNER JOIN mo_videos_tags vt ON vt.tag_id = t.id
+       WHERE vt.video_id = ?
+       ORDER BY t.name COLLATE NOCASE ASC`,
+      [videoId]
+    );
+    return rows.map((r) => this.fromRow(r));
+  },
+
   // Adapted from stash: pkg/sqlite/tag.go — cycle validation
+  // Adapted from stash: pkg/tag/update.go — ValidateHierarchyExisting (bidirectional)
   async wouldCreateCycle(parentId, childId) {
     if (parentId === childId) return true;
+    // Upward: is childId an ancestor of parentId?
     const ancestors = await this.getAncestors(parentId);
-    return ancestors.some((a) => a.id === childId);
+    if (ancestors.some((a) => a.id === childId)) return true;
+    // Belt-and-suspenders: also check that parentId isn't already a descendant of childId.
+    // This is logically equivalent to the ancestor check above for acyclic graphs,
+    // but catches edge cases in corrupted data where traversal directions may diverge.
+    const descendants = await this.getDescendants(childId);
+    return descendants.some((d) => d.id === parentId);
   },
 
   async addParent(tagId, parentId) {
+    await ensureExists('mo_tags', tagId);
+    await ensureExists('mo_tags', parentId);
     if (await this.wouldCreateCycle(parentId, tagId)) {
-      throw new Error(`[MO-DB] Adding parent ${parentId} to tag ${tagId} would create a cycle`);
+      throw new ValidationError(
+        `Adding parent ${parentId} to tag ${tagId} would create a cycle`
+      );
     }
     await db.run(
       `INSERT OR IGNORE INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`,
@@ -733,6 +1026,53 @@ const TagQueries = {
       `DELETE FROM mo_tags_relations WHERE parent_id = ? AND child_id = ?`,
       [parentId, tagId]
     );
+  },
+
+  // Adapted from stash: pkg/sqlite/tag.go — child-side operations (symmetric to addParent)
+  async addChild(tagId, childId) {
+    await ensureExists('mo_tags', tagId);
+    await ensureExists('mo_tags', childId);
+    if (await this.wouldCreateCycle(tagId, childId)) {
+      throw new ValidationError(
+        `Adding child ${childId} to tag ${tagId} would create a cycle`
+      );
+    }
+    await db.run(
+      `INSERT OR IGNORE INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`,
+      [tagId, childId]
+    );
+  },
+
+  async removeChild(tagId, childId) {
+    await db.run(
+      `DELETE FROM mo_tags_relations WHERE parent_id = ? AND child_id = ?`,
+      [tagId, childId]
+    );
+  },
+
+  // Adapted from stash: pkg/sqlite/tag.go — UpdateChildTags()
+  async updateChildTags(tagId, childIds) {
+    await ensureExists('mo_tags', tagId);
+    const uniqueChildIds = [...new Set(childIds)];
+    for (const cid of uniqueChildIds) {
+      await ensureExists('mo_tags', cid);
+      if (await this.wouldCreateCycle(tagId, cid)) {
+        throw new ValidationError(
+          `Setting child ${cid} on tag ${tagId} would create a cycle`
+        );
+      }
+    }
+    const ops = [
+      { type: 'run', sql: `DELETE FROM mo_tags_relations WHERE parent_id = ?`, params: [tagId] },
+    ];
+    for (const cid of uniqueChildIds) {
+      ops.push({
+        type: 'run',
+        sql: `INSERT INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`,
+        params: [tagId, cid],
+      });
+    }
+    await db.transaction(ops);
   },
 };
 
