@@ -140,11 +140,15 @@ export class ChatModePicker extends Disposable {
       icon.innerHTML = meta.icon;
       item.appendChild(icon);
 
+      const textCol = $('div.parallx-chat-picker-item-text');
+
       const name = $('span.parallx-chat-picker-item-name', meta.label);
-      item.appendChild(name);
+      textCol.appendChild(name);
 
       const description = $('span.parallx-chat-picker-item-description', meta.description);
-      item.appendChild(description);
+      textCol.appendChild(description);
+
+      item.appendChild(textCol);
 
       item.addEventListener('click', () => {
         this._services.setMode(mode);
@@ -164,19 +168,28 @@ export class ChatModePicker extends Disposable {
       dropdown.appendChild(autonomyHeader);
 
       for (const level of AUTONOMY_LEVELS) {
-        const chip = $('div.parallx-chat-picker-autonomy-chip');
+        const row = $('div.parallx-chat-picker-autonomy-row');
         if (level.value === this._autonomyLevel) {
-          chip.classList.add('parallx-chat-picker-autonomy-chip--active');
+          row.classList.add('parallx-chat-picker-autonomy-row--active');
         }
-        chip.textContent = level.label;
-        chip.title = level.description;
-        chip.addEventListener('click', (e) => {
+
+        const textCol = $('div.parallx-chat-picker-item-text');
+
+        const name = $('span.parallx-chat-picker-item-name', level.label);
+        textCol.appendChild(name);
+
+        const desc = $('span.parallx-chat-picker-item-description', level.description);
+        textCol.appendChild(desc);
+
+        row.appendChild(textCol);
+
+        row.addEventListener('click', (e) => {
           e.stopPropagation();
           this._autonomyLevel = level.value;
           this._onDidChangeAutonomy.fire(level.value);
           this._closeDropdown();
         });
-        dropdown.appendChild(chip);
+        dropdown.appendChild(row);
       }
     }
 

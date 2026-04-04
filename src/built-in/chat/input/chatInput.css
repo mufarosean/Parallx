@@ -257,8 +257,8 @@
 
 /* Dropdown panel */
 .parallx-chat-picker-dropdown {
-  min-width: 180px;
-  max-height: 240px;
+  min-width: 240px;
+  max-height: 320px;
   overflow-y: auto;
   padding: 4px;
   border-radius: var(--parallx-radius-md);
@@ -269,9 +269,9 @@
 
 .parallx-chat-picker-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
-  padding: 4px 8px;
+  padding: 6px 8px;
   border-radius: 4px;
   cursor: pointer;
   font-size: var(--parallx-fontSize-base);
@@ -293,6 +293,13 @@
   cursor: default;
 }
 
+.parallx-chat-picker-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
 .parallx-chat-picker-item-name {
   flex: 0 0 auto;
 }
@@ -308,6 +315,7 @@
   justify-content: center;
   color: inherit;
   flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .parallx-chat-picker-item-icon svg {
@@ -318,7 +326,6 @@
 .parallx-chat-picker-item-description {
   font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #8b8b8b);
-  margin-left: auto;
   white-space: nowrap;
 }
 
@@ -343,31 +350,31 @@
 .parallx-chat-picker-autonomy-header {
   font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #8b8b8b);
-  padding: 2px 8px 4px;
+  padding: 4px 8px 2px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-.parallx-chat-picker-autonomy-chip {
-  display: inline-block;
-  padding: 2px 8px;
-  margin: 2px 4px;
-  border-radius: 10px;
-  font-size: var(--parallx-fontSize-sm);
+.parallx-chat-picker-autonomy-row {
+  display: flex;
+  align-items: flex-start;
+  padding: 4px 8px;
+  border-radius: 4px;
   cursor: pointer;
   color: var(--vscode-foreground, #cccccc);
-  background: var(--vscode-toolbar-hoverBackground, #383838);
-  border: 1px solid transparent;
 }
 
-.parallx-chat-picker-autonomy-chip:hover {
+.parallx-chat-picker-autonomy-row:hover {
   background: var(--vscode-list-hoverBackground, #2a2d2e);
 }
 
-.parallx-chat-picker-autonomy-chip--active {
+.parallx-chat-picker-autonomy-row--active {
   background: var(--vscode-list-activeSelectionBackground, #04395e);
   color: var(--vscode-list-activeSelectionForeground, #ffffff);
-  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.parallx-chat-picker-autonomy-row--active .parallx-chat-picker-item-description {
+  color: color-mix(in srgb, var(--vscode-list-activeSelectionForeground, #ffffff) 84%, transparent);
 }
 
 /* Picker chevron (shared by model + mode pickers) */
