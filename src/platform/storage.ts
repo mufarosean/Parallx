@@ -196,6 +196,9 @@ export class InMemoryStorage implements IStorage, ISyncStorage {
  * localStorage-backed storage implementation.
  * Implements both IStorage (async) and ISyncStorage (sync).
  * Reports quota-exceeded and access errors via onDidError.
+ *
+ * @deprecated M53 — No longer used in production. Kept for test harness compatibility.
+ * Production code uses {@link FileBackedGlobalStorage} and {@link FileBackedWorkspaceStorage}.
  */
 export class LocalStorage implements IStorage, ISyncStorage, IDisposable {
   private readonly _onDidError = new Emitter<StorageError>();
