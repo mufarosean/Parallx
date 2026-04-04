@@ -171,6 +171,12 @@ export class Workspace {
    * undefined if the URI is already present.
    */
   addFolder(uri: URI, name?: string): WorkspaceFolder | undefined {
+    // M53 D4.6: Single-folder workspaces only
+    if (this._folders.length >= 1) {
+      console.warn('[Workspace] Cannot add folder — single-folder workspace. Use openFolder() to switch.');
+      return undefined;
+    }
+
     // Reject duplicates
     const key = uri.toKey();
     if (this._folders.some((f) => f.uri.toKey() === key)) {
@@ -215,19 +221,8 @@ export class Workspace {
   /**
    * Reorder folders to match the given URI order.
    */
-  reorderFolders(uris: URI[]): void {
-    const byKey = new Map(this._folders.map((f) => [f.uri.toKey(), f]));
-    const reordered: WorkspaceFolder[] = [];
-    for (const u of uris) {
-      const f = byKey.get(u.toKey());
-      if (f) reordered.push(f);
-    }
-    // Append any that weren't in the URI list (shouldn't happen, but be safe)
-    for (const f of this._folders) {
-      if (!reordered.includes(f)) reordered.push(f);
-    }
-    this._folders = reordered;
-    this._reindex();
+  reorderFolders(_uris: URI[]): void {
+    // M53 D4.6: Single-folder workspaces — reordering is a no-op
   }
 
   /**

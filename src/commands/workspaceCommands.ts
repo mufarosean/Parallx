@@ -53,48 +53,16 @@ export const workspaceAddFolder: CommandDescriptor = {
   id: 'workspace.addFolderToWorkspace',
   title: 'Add Folder to Workspace...',
   category: 'Workspace',
+  // M53 D4.6: Single-folder workspaces only — redirect to open folder
   handler: async (ctx) => {
-    const w = wb(ctx);
     const bridge = electronBridge();
     if (!bridge) {
       console.warn('[Command] workspace.addFolderToWorkspace — no Electron bridge');
       return;
     }
-
-    const result = await bridge.dialog.openFolder({ title: 'Add Folder to Workspace' });
-    if (!result || result.length === 0) return; // cancelled
-    const folderPaths = result;
-
-    const wsService = ctx.getService<IWorkspaceService>('IWorkspaceService');
-    if (!wsService) {
-      console.warn('[Command] workspace.addFolderToWorkspace — IWorkspaceService not available');
-      return;
-    }
-
-    // A9.4: Detect first multi-root creation (going from 1 folder to 2+)
-    const wasSingleFolder = wsService.folders.length === 1;
-
-    for (const p of folderPaths) {
-      const uri = URI.file(p);
-      wsService.addFolder(uri);
-    }
-
-    // A9.4: Prompt for workspace name when creating a multi-root workspace
-    if (wasSingleFolder && wsService.folders.length > 1) {
-      const { showInputBoxModal } = await import('../api/notificationService.js');
-      const name = await showInputBoxModal(document.body, {
-        prompt: 'Name this workspace',
-        value: w.workspace.name === 'Default Workspace' ? '' : w.workspace.name,
-        placeholder: 'Enter a workspace name',
-        validateInput: (v: string) => (v.trim().length === 0 ? 'Name cannot be empty' : undefined),
-      });
-      if (name) {
-        w.workspace.rename(name.trim());
-      }
-    }
-
-    await w._workspaceSaver.save();
-    console.log('[Command] workspace.addFolderToWorkspace — added %d folder(s)', folderPaths.length);
+    const result = await bridge.dialog.openFolder({ title: 'Open Folder' });
+    if (!result || result.length === 0) return;
+    await wb(ctx).openFolder(result[0]);
   },
 };
 

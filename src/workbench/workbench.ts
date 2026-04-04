@@ -824,8 +824,9 @@ export class Workbench extends Layout {
     this._workspaceLoader = new WorkspaceLoader(this._storage);
     this._workspaceSaver = this._register(new WorkspaceSaver(this._storage));
 
-    // Create or identify the current workspace
-    this._workspace = Workspace.create('Default Workspace');
+    // M53 D4.1: The workspace object is a placeholder until Phase 4 restores the real workspace.
+    // On first launch (no folders), the user sees the welcome screen.
+    this._workspace = Workspace.create('Parallx');
 
     // Recent workspaces manager (stored in global storage — persists across workspaces)
     this._recentWorkspaces = new RecentWorkspaces(this._globalStorage);
@@ -1125,7 +1126,7 @@ export class Workbench extends Layout {
 
     // Update the titlebar IMMEDIATELY after folder restore, before any
     // fallible async operations.  Phase 3 ran before folders were loaded,
-    // so the label is still "Default Workspace".  Moving this here ensures
+    // so the label is still "Parallx".  Moving this here ensures
     // the correct name appears even if later operations throw (the
     // lifecycle catches & swallows errors, which would silently skip the
     // title update if it were at the end of this method).
@@ -1150,8 +1151,10 @@ export class Workbench extends Layout {
     // active workspace.
     await this._workspaceSaver.save();
 
-    // Track as recent
-    await this._recentWorkspaces.add(this._workspace);
+    // M53 D4.3: Only add to recent list if workspace has actual folders (not first-launch placeholder)
+    if (this._workspace.folders.length > 0) {
+      await this._recentWorkspaces.add(this._workspace);
+    }
 
     // Update context keys for workspace state
     if (this._workbenchContext) {

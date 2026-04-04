@@ -51,7 +51,7 @@ export const enum WorkbenchState {
   EMPTY = 1,
   /** Single folder open. */
   FOLDER = 2,
-  /** Multi-root workspace (reserved for future milestone). */
+  /** @deprecated M53: Multi-root workspaces removed. Single-folder only. */
   WORKSPACE = 3,
 }
 

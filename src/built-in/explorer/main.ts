@@ -183,7 +183,7 @@ function _getWorkspaceDisplayName(): string {
   if (folders && folders.length === 1) {
     return folders[0].name;
   }
-  if (wsName && wsName !== 'Default Workspace') {
+  if (wsName && wsName !== 'Parallx') {
     return wsName;
   }
   return folders?.[0]?.name ?? 'Explorer';
