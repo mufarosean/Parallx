@@ -37,6 +37,8 @@ app.setPath('userData', path.join(APP_ROOT, 'data', 'chromium-cache'));
 
 setupStorageHandlers(ipcMain, APP_ROOT);
 
+const USER_EXTENSIONS_DIR = path.join(APP_ROOT, 'data', 'extensions');
+
 const RENDERER_ROOT = path.join(__dirname, '..');
 const DEFAULT_RENDERER_PORT = 31789;
 const IS_TEST_MODE = process.env.PARALLX_TEST_MODE === '1';
@@ -470,11 +472,22 @@ ipcMain.handle('editableMenu:addToDictionary', (event, word) => {
 });
 
 app.whenReady().then(async () => {
-  // Ensure user tools directory exists before anything tries to scan it
-  const userToolsDir = path.join(app.getPath('home'), '.parallx', 'tools');
+  // ── M53: Migrate tools from ~/.parallx/tools/ → data/extensions/ ──
+  const oldToolsDir = path.join(app.getPath('home'), '.parallx', 'tools');
   try {
-    await fs.mkdir(userToolsDir, { recursive: true });
-  } catch { /* ignore — directory already exists */ }
+    const oldEntries = await fs.readdir(oldToolsDir).catch(() => []);
+    for (const entry of oldEntries) {
+      const oldPath = path.join(oldToolsDir, entry);
+      const newPath = path.join(USER_EXTENSIONS_DIR, entry);
+      const stat = await fs.stat(oldPath).catch(() => null);
+      if (stat && stat.isDirectory()) {
+        const exists = await fs.stat(newPath).catch(() => null);
+        if (!exists) {
+          await fs.cp(oldPath, newPath, { recursive: true });
+        }
+      }
+    }
+  } catch { /* old dir doesn't exist — nothing to migrate */ }
 
   await createWindow();
 });
@@ -546,7 +559,7 @@ ipcMain.handle('tools:scan-directory', async (_event, dirPath) => {
  */
 ipcMain.handle('tools:get-directories', async () => {
   const builtinDir = path.join(app.getAppPath(), 'tools');
-  const userDir = path.join(app.getPath('home'), '.parallx', 'tools');
+  const userDir = USER_EXTENSIONS_DIR;
   return { builtinDir, userDir };
 });
 
@@ -564,7 +577,7 @@ ipcMain.handle('tools:get-directories', async () => {
  * 1. Opens native file dialog filtered for .plx files
  * 2. Reads and validates the ZIP archive
  * 3. Validates the manifest inside the archive
- * 4. Extracts to ~/.parallx/tools/<tool-id>/
+ * 4. Extracts to data/extensions/<tool-id>/
  * 5. Returns the manifest + path for the renderer to register
  *
  * VS Code reference: ExtensionManagementService.install() for .vsix files
@@ -624,8 +637,8 @@ ipcMain.handle('tools:install-from-file', async (_event) => {
       return { error: 'Invalid manifest: missing or invalid "version" field' };
     }
 
-    // 5. Extract to ~/.parallx/tools/<tool-id>/
-    const userToolsDir = path.join(app.getPath('home'), '.parallx', 'tools');
+    // 5. Extract to data/extensions/<tool-id>/
+    const userToolsDir = USER_EXTENSIONS_DIR;
     const toolDir = path.join(userToolsDir, manifest.id);
 
     // Remove existing installation if present (upgrade flow)
@@ -654,7 +667,7 @@ ipcMain.handle('tools:install-from-file', async (_event) => {
 });
 
 /**
- * Uninstall an external tool by removing its directory from ~/.parallx/tools/.
+ * Uninstall an external tool by removing its directory from data/extensions/.
  *
  * @param {string} toolId — The tool's unique identifier (directory name).
  * @returns {{ error: null }} on success or {{ error: string }} on failure.
@@ -670,7 +683,7 @@ ipcMain.handle('tools:uninstall', async (_event, toolId) => {
       return { error: 'Invalid tool ID: path traversal not allowed' };
     }
 
-    const userToolsDir = path.join(app.getPath('home'), '.parallx', 'tools');
+    const userToolsDir = USER_EXTENSIONS_DIR;
     const toolDir = path.join(userToolsDir, toolId);
 
     // Verify the directory exists
@@ -710,7 +723,7 @@ ipcMain.handle('tools:read-module', async (_event, filePath) => {
     }
 
     // Security: only allow reading from the user tools directory or builtin tools directory
-    const userToolsDir = path.join(app.getPath('home'), '.parallx', 'tools');
+    const userToolsDir = USER_EXTENSIONS_DIR;
     const builtinToolsDir = path.join(app.getAppPath(), 'tools');
     const normalized = path.normalize(filePath);
 
