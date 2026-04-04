@@ -14,13 +14,16 @@ import type { IThemeService } from '../../services/serviceTypes.js';
 import {
   getAvailableThemes,
   THEME_STORAGE_KEY,
+  USER_THEMES_KEY,
+  updateUserThemesCache,
+  getUserThemeSources,
 } from '../../theme/themeCatalog.js';
+import type { IStorage } from '../../platform/storage.js';
 
 import './themeEditor.css';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const USER_THEMES_KEY = 'parallx.userThemes';
 const MAX_UNDO = 30;
 
 /** Color groups displayed in the editor, with the color IDs to show. */
@@ -141,6 +144,7 @@ export class ThemeEditorPanel implements IDisposable {
   private readonly _themeService: IThemeService;
   private readonly _colorRegistry: IColorRegistry;
   private readonly _designTokenRegistry: IDesignTokenRegistry;
+  private readonly _globalStorage: IStorage;
   private readonly _onClose?: () => void;
 
   /** Working copy of theme colors (mutated by pickers). */
@@ -190,12 +194,14 @@ export class ThemeEditorPanel implements IDisposable {
   constructor(
     container: HTMLElement,
     themeService: IThemeService,
+    globalStorage: IStorage,
     onClose?: () => void,
   ) {
     this._container = container;
     this._themeService = themeService;
     this._colorRegistry = colorRegistry;
     this._designTokenRegistry = designTokenRegistry;
+    this._globalStorage = globalStorage;
     this._onClose = onClose;
 
     this._render();
@@ -330,7 +336,7 @@ export class ThemeEditorPanel implements IDisposable {
     if (builtin) {
       const theme = ColorThemeData.fromSource(builtin.source, this._colorRegistry, this._designTokenRegistry);
       this._themeService.applyTheme(theme);
-      localStorage.setItem(THEME_STORAGE_KEY, id);
+      this._globalStorage.set(THEME_STORAGE_KEY, id);  // fire-and-forget
       this._loadThemeSourceAsWorking(builtin.source, id);
       this._refreshColorInputs();
       this._showToast(`Applied "${builtin.label}".`);
@@ -341,7 +347,7 @@ export class ThemeEditorPanel implements IDisposable {
     if (userTheme) {
       const theme = ColorThemeData.fromSource(userTheme, this._colorRegistry, this._designTokenRegistry);
       this._themeService.applyTheme(theme);
-      localStorage.setItem(THEME_STORAGE_KEY, id);
+      this._globalStorage.set(THEME_STORAGE_KEY, id);  // fire-and-forget
       this._loadThemeSourceAsWorking(userTheme, id);
       this._refreshColorInputs();
       this._showToast(`Applied "${userTheme.label}".`);
@@ -1019,8 +1025,9 @@ export class ThemeEditorPanel implements IDisposable {
       userThemes.push(source);
     }
 
-    localStorage.setItem(USER_THEMES_KEY, JSON.stringify(userThemes));
-    localStorage.setItem(THEME_STORAGE_KEY, id);
+    this._globalStorage.set(USER_THEMES_KEY, JSON.stringify(userThemes));  // fire-and-forget
+    updateUserThemesCache(userThemes);
+    this._globalStorage.set(THEME_STORAGE_KEY, id);  // fire-and-forget
     this._editingUserThemeId = id;
     this._workingLabel = label;
 
@@ -1032,21 +1039,7 @@ export class ThemeEditorPanel implements IDisposable {
   }
 
   private _loadUserThemes(): ThemeSource[] {
-    try {
-      const raw = localStorage.getItem(USER_THEMES_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter(
-        (t: unknown): t is ThemeSource =>
-          typeof t === 'object' && t !== null &&
-          typeof (t as ThemeSource).id === 'string' &&
-          typeof (t as ThemeSource).label === 'string' &&
-          typeof (t as ThemeSource).colors === 'object',
-      );
-    } catch {
-      return [];
-    }
+    return getUserThemeSources();
   }
 
   // ─── Import / Export ───────────────────────────────────────────────────
@@ -1092,12 +1085,13 @@ export class ThemeEditorPanel implements IDisposable {
 
           const userThemes = this._loadUserThemes();
           userThemes.push(source);
-          localStorage.setItem(USER_THEMES_KEY, JSON.stringify(userThemes));
+          this._globalStorage.set(USER_THEMES_KEY, JSON.stringify(userThemes));  // fire-and-forget
+          updateUserThemesCache(userThemes);
 
           this._loadThemeSourceAsWorking(source, source.id);
           const theme = ColorThemeData.fromSource(source, this._colorRegistry, this._designTokenRegistry);
           this._themeService.applyTheme(theme);
-          localStorage.setItem(THEME_STORAGE_KEY, source.id);
+          this._globalStorage.set(THEME_STORAGE_KEY, source.id);  // fire-and-forget
 
           this._rebuildThemeDropdown();
           this._rebuildContent();

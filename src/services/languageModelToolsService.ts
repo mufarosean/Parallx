@@ -15,6 +15,7 @@
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
 import type { Event } from '../platform/events.js';
+import type { IStorage } from '../platform/storage.js';
 import type {
   ILanguageModelToolsService,
   IChatTool,
@@ -78,6 +79,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
 
   private static readonly _STORAGE_KEY = 'parallx.chat.disabledTools';
   private readonly _disabledTools: Set<string>;
+  private _storage: IStorage | undefined;
 
   // ── Events ──
 
@@ -90,10 +92,20 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
 
   constructor() {
     super();
-    // Restore disabled tools from localStorage
+    // Start with empty set — populated when setStorage() is called
     this._disabledTools = new Set<string>();
+  }
+
+  // ── Storage binding (M53 D3.10) ──
+
+  /**
+   * Bind global storage and hydrate persisted disabled-tools set.
+   * Called from workbench Phase 1 after global storage is ready.
+   */
+  async setStorage(storage: IStorage): Promise<void> {
+    this._storage = storage;
     try {
-      const stored = localStorage.getItem(LanguageModelToolsService._STORAGE_KEY);
+      const stored = await storage.get(LanguageModelToolsService._STORAGE_KEY);
       if (stored) {
         const arr = JSON.parse(stored);
         if (Array.isArray(arr)) {
@@ -308,12 +320,10 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   }
 
   private _persistDisabledTools(): void {
-    try {
-      localStorage.setItem(
-        LanguageModelToolsService._STORAGE_KEY,
-        JSON.stringify([...this._disabledTools]),
-      );
-    } catch { /* storage full or unavailable */ }
+    this._storage?.set(
+      LanguageModelToolsService._STORAGE_KEY,
+      JSON.stringify([...this._disabledTools]),
+    );  // fire-and-forget
   }
 
   // ── Internal ──

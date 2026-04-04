@@ -309,6 +309,14 @@ import type {
 import type { IStorage } from '../platform/storage.js';
 import type { IWorkspaceSessionContext } from '../workspace/workspaceSessionContext.js';
 
+// ─── IGlobalStorageService ──────────────────────────────────────────────────
+
+/** M53 D3: Global storage exposed as a DI service for built-in tools. */
+export const IGlobalStorageService = createServiceIdentifier<IStorage>('IGlobalStorageService');
+
+/** M53 D3: Workspace storage exposed as a DI service for built-in tools. */
+export const IWorkspaceStorageService = createServiceIdentifier<IStorage>('IWorkspaceStorageService');
+
 /**
  * Centralized workspace boundary policy service.
  *

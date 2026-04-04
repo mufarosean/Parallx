@@ -23,6 +23,7 @@
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import type { CommandService } from './commandRegistry.js';
+import type { IStorage } from '../platform/storage.js';
 import { $ } from '../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -372,10 +373,13 @@ class GeneralProvider implements IQuickAccessProvider {
   private _fileScanner: WorkspaceFileScanner | undefined;
   private _openFileEditor: ((uri: string) => void) | undefined;
   private _recentFileUris: string[] = [];
+  private readonly _workspaceStorage: IStorage | undefined;
 
   constructor(
     private readonly _getWorkspaceService: () => IWorkspaceServiceLike | undefined,
+    workspaceStorage?: IStorage,
   ) {
+    this._workspaceStorage = workspaceStorage;
     this._loadRecentFiles();
   }
 
@@ -392,18 +396,16 @@ class GeneralProvider implements IQuickAccessProvider {
   // ── Recent files persistence (M4 Cap 6) ───────────────────────────────
 
   private _loadRecentFiles(): void {
-    try {
-      const raw = localStorage.getItem(RECENT_FILES_KEY);
-      this._recentFileUris = raw ? JSON.parse(raw) : [];
-    } catch {
-      this._recentFileUris = [];
+    if (this._workspaceStorage) {
+      this._workspaceStorage.get(RECENT_FILES_KEY).then(raw => {
+        try { this._recentFileUris = raw ? JSON.parse(raw) : []; }
+        catch { this._recentFileUris = []; }
+      });
     }
   }
 
   private _saveRecentFiles(): void {
-    try {
-      localStorage.setItem(RECENT_FILES_KEY, JSON.stringify(this._recentFileUris));
-    } catch { /* storage full */ }
+    this._workspaceStorage?.set(RECENT_FILES_KEY, JSON.stringify(this._recentFileUris));  // fire-and-forget
   }
 
   pushRecentFile(uri: string): void {
@@ -745,6 +747,7 @@ export class QuickAccessWidget extends Disposable {
   constructor(
     private readonly _commandService: CommandService,
     private readonly _container: HTMLElement,
+    private readonly _workspaceStorage?: IStorage,
   ) {
     super();
     this._loadRecent();
@@ -768,6 +771,7 @@ export class QuickAccessWidget extends Disposable {
 
     this._generalProvider = new GeneralProvider(
       () => this._workspaceService,
+      this._workspaceStorage,
     );
   }
 
@@ -884,18 +888,16 @@ export class QuickAccessWidget extends Disposable {
   // ── Recent commands persistence ────────────────────────────────────────
 
   private _loadRecent(): void {
-    try {
-      const raw = localStorage.getItem(RECENT_STORAGE_KEY);
-      this._recentCommandIds = raw ? JSON.parse(raw) : [];
-    } catch {
-      this._recentCommandIds = [];
+    if (this._workspaceStorage) {
+      this._workspaceStorage.get(RECENT_STORAGE_KEY).then(raw => {
+        try { this._recentCommandIds = raw ? JSON.parse(raw) : []; }
+        catch { this._recentCommandIds = []; }
+      });
     }
   }
 
   private _saveRecent(): void {
-    try {
-      localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(this._recentCommandIds));
-    } catch { /* storage full */ }
+    this._workspaceStorage?.set(RECENT_STORAGE_KEY, JSON.stringify(this._recentCommandIds));  // fire-and-forget
   }
 
   private _pushRecent(commandId: string): void {

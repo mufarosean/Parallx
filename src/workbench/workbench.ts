@@ -14,10 +14,10 @@ import { addDisposableListener } from '../ui/dom.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IWorkspaceTranscriptService } from '../services/serviceTypes.js';
+import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IWorkspaceTranscriptService, IGlobalStorageService, IWorkspaceStorageService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices, registerUnifiedAIConfigService } from './workbenchServices.js';
-import { IChatService, ILanguageModelsService } from '../services/chatTypes.js';
+import { IChatService, ILanguageModelsService, ILanguageModelToolsService } from '../services/chatTypes.js';
 import { consolidateOrphanedSessions } from '../services/chatSessionPersistence.js';
 
 // Layout base class (VS Code: Layout → Workbench extends Layout)
@@ -169,6 +169,7 @@ import {
   resolveTheme,
   DEFAULT_THEME_ID,
   THEME_STORAGE_KEY,
+  initUserThemesCache,
 } from '../theme/themeCatalog.js';
 import { showColorThemePicker } from './workbenchThemePicker.js';
 import { setupEditorWatermark, updateWatermarkKeybindings } from './workbenchWatermark.js';
@@ -353,7 +354,7 @@ export class Workbench extends Layout {
   selectColorTheme(): void {
     const themeService = this._services.get(IThemeService) as ThemeService | undefined;
     if (!themeService) return;
-    showColorThemePicker(this._container, themeService);
+    showColorThemePicker(this._container, themeService, this._globalStorage);
   }
 
   // ── Focus Model (Cap 8) ────────────────────────────────────────────────
@@ -829,6 +830,10 @@ export class Workbench extends Layout {
     // Recent workspaces manager (stored in global storage — persists across workspaces)
     this._recentWorkspaces = new RecentWorkspaces(this._globalStorage);
 
+    // M53 D3: Expose global storage via DI for built-in tools
+    this._services.registerInstance(IGlobalStorageService, this._globalStorage);
+    this._services.registerInstance(IWorkspaceStorageService, this._storage);
+
     // Configuration system (M2 Capability 4)
     const { configService, configRegistry } = registerConfigurationServices(
       this._services,
@@ -844,8 +849,10 @@ export class Workbench extends Layout {
     // ── Theme Service (M5 Capability 3) ──
     // Must be applied before layout rendering to avoid flash of unstyled content.
     // workbenchColors.ts import above ensures all tokens are registered.
+    // M53 D3: Init user themes cache from file-backed storage before theme lookup.
+    await initUserThemesCache(this._globalStorage);
     // Restore persisted theme or fall back to Dark Modern.
-    const persistedThemeId = localStorage.getItem(THEME_STORAGE_KEY) ?? DEFAULT_THEME_ID;
+    const persistedThemeId = await this._globalStorage.get(THEME_STORAGE_KEY) ?? DEFAULT_THEME_ID;
     const themeEntry = findThemeById(persistedThemeId) ?? findThemeById(DEFAULT_THEME_ID)!;
     const themeData = resolveTheme(themeEntry, colorRegistry, designTokenRegistry);
     const themeService = this._register(new ThemeService(colorRegistry, themeData, designTokenRegistry));
@@ -871,6 +878,12 @@ export class Workbench extends Layout {
           lms.setDefaultModel(p.model.defaultModel || undefined);
         });
       }
+    }
+
+    // ── Language Model Tools Service: late-bind storage (M53 D3.10) ──
+    const lmts = this._services.tryGet(ILanguageModelToolsService);
+    if (lmts && 'setStorage' in lmts) {
+      await (lmts as any).setStorage(this._globalStorage);
     }
 
     const agentTaskStore = this._services.tryGet(IAgentTaskStore);
@@ -1012,7 +1025,7 @@ export class Workbench extends Layout {
     this._register(registerBuiltinCommands(cmdService));
 
     // Quick Access — unified overlay for commands + workspace switching
-    this._commandPalette = new QuickAccessWidget(cmdService, this._container);
+    this._commandPalette = new QuickAccessWidget(cmdService, this._container, this._storage);
     this._register(this._commandPalette);
 
     // Wire editor group service for Go to Line provider

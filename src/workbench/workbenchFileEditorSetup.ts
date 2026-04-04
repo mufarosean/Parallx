@@ -20,6 +20,7 @@ import {
   ITextFileModelManager,
   IKeybindingService,
   ICommandService,
+  IGlobalStorageService,
 } from '../services/serviceTypes.js';
 import type { EditorPart } from '../parts/editorPart.js';
 import type { QuickAccessWidget } from '../commands/quickAccess.js';
@@ -107,6 +108,15 @@ function _initFileEditorResolver(
 
   // ── Register built-in format readers (priority-sorted) ──
 
+  // M53 D3.4: Helper to create PDF panes with global storage wired
+  const createPdfPane = (): PdfEditorPane => {
+    const pane = new PdfEditorPane();
+    if (services.has(IGlobalStorageService)) {
+      pane.setGlobalStorage(services.get(IGlobalStorageService));
+    }
+    return pane;
+  };
+
   // Image viewer
   disposables.add(resolver.registerEditor({
     id: ImageEditorInput.TYPE_ID,
@@ -124,7 +134,7 @@ function _initFileEditorResolver(
     extensions: ['.pdf'],
     priority: EditorResolverPriority.Default,
     createInput: (uri) => PdfEditorInput.create(uri),
-    createPane: () => new PdfEditorPane(),
+    createPane: () => createPdfPane(),
   }));
 
   // Text editor (fallback — matches everything)
@@ -142,7 +152,7 @@ function _initFileEditorResolver(
     if (input instanceof MarkdownPreviewInput) return new MarkdownEditorPane();
     if (input instanceof ReadonlyMarkdownInput) return new MarkdownEditorPane();
     if (input instanceof ImageEditorInput) return new ImageEditorPane();
-    if (input instanceof PdfEditorInput) return new PdfEditorPane();
+    if (input instanceof PdfEditorInput) return createPdfPane();
 
     if (input instanceof KeybindingsEditorInput) {
       const kbService = services.has(IKeybindingService)

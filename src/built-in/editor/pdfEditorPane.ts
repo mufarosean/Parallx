@@ -47,6 +47,7 @@ import { PdfEditorInput } from './pdfEditorInput.js';
 import { $, hide, show, startDrag, endDrag } from '../../ui/dom.js';
 import { ContextMenu } from '../../ui/contextMenu.js';
 import { toDisposable } from '../../platform/lifecycle.js';
+import type { IStorage } from '../../platform/storage.js';
 import { getIcon } from '../../ui/iconRegistry.js';
 import { setupTooltip } from '../../ui/tooltip.js';
 
@@ -156,9 +157,15 @@ export class PdfEditorPane extends EditorPane {
   private _resizeTimer: ReturnType<typeof setTimeout> | null = null;
   private _currentInput: PdfEditorInput | null = null;
   private _selectionOverlayFrame: number | null = null;
+  private _globalStorage: IStorage | undefined;
 
   constructor() {
     super(PANE_ID);
+  }
+
+  /** M53 D3.4: Late-bind global storage for preference persistence. */
+  setGlobalStorage(storage: IStorage): void {
+    this._globalStorage = storage;
   }
 
   private _installTestDebugHook(): void {
@@ -753,13 +760,14 @@ export class PdfEditorPane extends EditorPane {
       show(this._outlineSidebar);
       show(this._outlineSash);
       // Restore persisted width
-      const stored = localStorage.getItem('parallx.pdfOutlineWidth');
-      if (stored) {
-        const w = parseInt(stored, 10);
-        if (w >= 150 && w <= 500) {
-          this._outlineSidebar.style.width = `${w}px`;
+      this._globalStorage?.get('parallx.pdfOutlineWidth').then(stored => {
+        if (stored) {
+          const w = parseInt(stored, 10);
+          if (w >= 150 && w <= 500) {
+            this._outlineSidebar.style.width = `${w}px`;
+          }
         }
-      }
+      });
     } else {
       hide(this._outlineSidebar);
       hide(this._outlineSash);
@@ -791,7 +799,7 @@ export class PdfEditorPane extends EditorPane {
         this._outlineSash.classList.remove('active');
         endDrag();
         // Persist width
-        localStorage.setItem('parallx.pdfOutlineWidth', String(currentW));
+        this._globalStorage?.set('parallx.pdfOutlineWidth', String(currentW));  // fire-and-forget
       };
 
       document.addEventListener('mousemove', onMouseMove);
@@ -1121,7 +1129,7 @@ export class PdfEditorPane extends EditorPane {
 
       // Set initial scale after pages are initialized
       // B5.2: Restore user's persisted scale preference (fallback to 'page-fit')
-      const storedScale = localStorage.getItem('parallx.pdfScaleValue');
+      const storedScale = await this._globalStorage?.get('parallx.pdfScaleValue');
       if (storedScale) {
         this._scaleValue = storedScale;
       }
@@ -1175,7 +1183,7 @@ export class PdfEditorPane extends EditorPane {
       this._pdfViewer.currentScaleValue = value;
     }
     // B5.2: Persist user scale preference
-    localStorage.setItem('parallx.pdfScaleValue', value);
+    this._globalStorage?.set('parallx.pdfScaleValue', value);  // fire-and-forget
   }
 
   // ── Rotation ─────────────────────────────────────────────────────────

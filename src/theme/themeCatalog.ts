@@ -9,6 +9,7 @@ import type { ThemeCatalogEntry } from './themeTypes.js';
 export type { ThemeCatalogEntry } from './themeTypes.js';
 import { IColorRegistry } from './colorRegistry.js';
 import type { IDesignTokenRegistry } from './designTokenRegistry.js';
+import type { IStorage } from '../platform/storage.js';
 
 // ─── Static imports of built-in theme JSON ───────────────────────────────────
 
@@ -31,16 +32,22 @@ const BUILTIN_THEMES: ThemeCatalogEntry[] = [
 /** localStorage key for user-created themes. */
 export const USER_THEMES_KEY = 'parallx.userThemes';
 
+// ─── User theme cache (M53 D3) ──────────────────────────────────────────────
+
+/** Module-level cache for user themes, populated at startup from file-backed storage. */
+let _userThemesCache: ThemeCatalogEntry[] | undefined;
+
 /**
- * Load user themes from localStorage.
+ * Initialize the user themes cache from storage.
+ * Called once during workbench Phase 1 after global storage is ready.
  */
-function loadUserThemes(): ThemeCatalogEntry[] {
+export async function initUserThemesCache(globalStorage: IStorage): Promise<void> {
   try {
-    const raw = localStorage.getItem(USER_THEMES_KEY);
-    if (!raw) return [];
+    const raw = await globalStorage.get(USER_THEMES_KEY);
+    if (!raw) { _userThemesCache = []; return; }
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
+    if (!Array.isArray(parsed)) { _userThemesCache = []; return; }
+    _userThemesCache = parsed
       .filter(
         (t: unknown): t is ThemeSource =>
           typeof t === 'object' && t !== null &&
@@ -55,8 +62,44 @@ function loadUserThemes(): ThemeCatalogEntry[] {
         source,
       }));
   } catch {
-    return [];
+    _userThemesCache = [];
   }
+}
+
+/**
+ * Update the user themes cache when themes are modified at runtime.
+ * Call this after writing user themes to storage.
+ */
+export function updateUserThemesCache(themes: ThemeSource[]): void {
+  _userThemesCache = themes
+    .filter(
+      (t): t is ThemeSource =>
+        typeof t === 'object' && t !== null &&
+        typeof t.id === 'string' &&
+        typeof t.label === 'string' &&
+        typeof t.colors === 'object',
+    )
+    .map((source) => ({
+      id: source.id,
+      label: source.label,
+      uiTheme: source.uiTheme,
+      source,
+    }));
+}
+
+/**
+ * Load user themes from cache (populated at startup).
+ */
+function loadUserThemes(): ThemeCatalogEntry[] {
+  return _userThemesCache ?? [];
+}
+
+/**
+ * Return raw user theme sources from cache.
+ * Used by ThemeEditorPanel for save/load operations.
+ */
+export function getUserThemeSources(): ThemeSource[] {
+  return (_userThemesCache ?? []).map(e => e.source);
 }
 
 /**

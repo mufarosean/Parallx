@@ -6,6 +6,8 @@
 import './welcome.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
+import type { IStorage } from '../../platform/storage.js';
+import { IGlobalStorageService, IWorkspaceStorageService } from '../../services/serviceTypes.js';
 import { $ } from '../../ui/dom.js';
 import { getIcon } from '../../ui/iconRegistry.js';
 
@@ -24,6 +26,10 @@ interface ParallxApi {
     appName: string;
     appVersion: string;
   };
+  services: {
+    get<T>(id: { readonly id: string }): T;
+    has(id: { readonly id: string }): boolean;
+  };
 }
 
 // ─── Activation ──────────────────────────────────────────────────────────────
@@ -32,10 +38,34 @@ const EDITOR_TYPE_ID = 'parallx.welcome.editor';
 const FIRST_LAUNCH_KEY = 'welcome.hasShownWelcome';
 
 export function activate(api: ParallxApi, context: ToolContext): void {
+  // M53 D3.9: Pre-fetch recent data from file-backed storage
+  let globalStorage: IStorage | undefined;
+  let workspaceStorage: IStorage | undefined;
+  try {
+    globalStorage = api.services.get<IStorage>(IGlobalStorageService);
+  } catch { /* service may not be registered */ }
+  try {
+    workspaceStorage = api.services.get<IStorage>(IWorkspaceStorageService);
+  } catch { /* service may not be registered */ }
+
+  // Pre-fetch recent data so the sync renderWelcomePage can use it
+  let cachedWorkspaces: { id: string; name: string; path?: string }[] = [];
+  let cachedFiles: string[] = [];
+
+  const prefetch = async () => {
+    if (globalStorage) {
+      cachedWorkspaces = await _getRecentWorkspaces(globalStorage);
+    }
+    if (workspaceStorage) {
+      cachedFiles = await _getRecentFiles(workspaceStorage);
+    }
+  };
+  prefetch();
+
   // Register the welcome editor provider
   const editorDisposable = api.editors.registerEditorProvider(EDITOR_TYPE_ID, {
     createEditorPane(container: HTMLElement): IDisposable {
-      return renderWelcomePage(container, api);
+      return renderWelcomePage(container, api, cachedWorkspaces, cachedFiles);
     },
   });
   context.subscriptions.push(editorDisposable);
@@ -93,7 +123,7 @@ function _sizeIconSvg(el: HTMLElement, size: number): void {
   if (svg) { svg.setAttribute('width', String(size)); svg.setAttribute('height', String(size)); }
 }
 
-function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable {
+function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorkspaces: { id: string; name: string; path?: string }[], recentFiles: string[]): IDisposable {
   container.classList.add('welcome-container');
 
   const wrapper = $('div');
@@ -246,9 +276,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
   rightCol.appendChild(recentTitle);
 
   // Recent Workspaces
-  const recentWorkspaces = _getRecentWorkspaces();
   // Recent Files
-  const recentFiles = _getRecentFiles();
 
   if (recentWorkspaces.length === 0 && recentFiles.length === 0) {
     const emptyMsg = $('div');
@@ -307,10 +335,10 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
 const RECENT_WORKSPACES_STORAGE_KEY = 'parallx.recentWorkspaces';
 const RECENT_FILES_STORAGE_KEY = 'parallx:quickAccess:recentFiles';
 
-/** Read recent workspaces from localStorage. */
-function _getRecentWorkspaces(): { id: string; name: string; path?: string }[] {
+/** Read recent workspaces from global storage (M53 D3.9). */
+async function _getRecentWorkspaces(globalStorage: IStorage): Promise<{ id: string; name: string; path?: string }[]> {
   try {
-    const raw = localStorage.getItem(RECENT_WORKSPACES_STORAGE_KEY);
+    const raw = await globalStorage.get(RECENT_WORKSPACES_STORAGE_KEY);
     if (!raw) return [];
     const entries = JSON.parse(raw) as { identity: { id: string; name: string; path?: string } }[];
     return entries.map(e => ({
@@ -323,10 +351,10 @@ function _getRecentWorkspaces(): { id: string; name: string; path?: string }[] {
   }
 }
 
-/** Read recent file URIs from localStorage. */
-function _getRecentFiles(): string[] {
+/** Read recent file URIs from workspace storage (M53 D3.9). */
+async function _getRecentFiles(workspaceStorage: IStorage): Promise<string[]> {
   try {
-    const raw = localStorage.getItem(RECENT_FILES_STORAGE_KEY);
+    const raw = await workspaceStorage.get(RECENT_FILES_STORAGE_KEY);
     if (!raw) return [];
     return JSON.parse(raw) as string[];
   } catch {

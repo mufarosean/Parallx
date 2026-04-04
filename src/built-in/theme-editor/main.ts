@@ -5,7 +5,8 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { IThemeService } from '../../services/serviceTypes.js';
+import type { IStorage } from '../../platform/storage.js';
+import { IThemeService, IGlobalStorageService } from '../../services/serviceTypes.js';
 import { ThemeEditorPanel } from './themeEditorPanel.js';
 import { Overlay } from '../../ui/overlay.js';
 
@@ -42,6 +43,7 @@ function _closeEditor(): void {
 
 export function activate(api: ParallxApi, context: ToolContext): void {
   const themeService = api.services.get<import('../../services/serviceTypes.js').IThemeService>(IThemeService);
+  const globalStorage = api.services.get<IStorage>(IGlobalStorageService);
 
   // Register the "Open Theme Editor" command — opens as floating modal
   context.subscriptions.push(
@@ -58,7 +60,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         contentClass: 'theme-editor-modal',
       });
 
-      _panel = new ThemeEditorPanel(_overlay.contentElement, themeService, () => _closeEditor());
+      _panel = new ThemeEditorPanel(_overlay.contentElement, themeService, globalStorage, () => _closeEditor());
 
       _overlay.onDidClose(() => {
         _panel?.dispose();

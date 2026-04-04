@@ -11,6 +11,7 @@
 
 import type { ThemeService } from '../services/themeService.js';
 import type { ThemeCatalogEntry } from '../theme/themeCatalog.js';
+import type { IStorage } from '../platform/storage.js';
 import { colorRegistry } from '../theme/colorRegistry.js';
 import { designTokenRegistry } from '../theme/designTokenRegistry.js';
 import {
@@ -47,6 +48,7 @@ type PickerRow = PickerItem | PickerSeparator;
 export function showColorThemePicker(
   container: HTMLElement,
   themeService: ThemeService,
+  globalStorage: IStorage,
 ): void {
   const previousThemeId = themeService.activeTheme.id;
   const allThemes = getAvailableThemes();
@@ -177,7 +179,7 @@ export function showColorThemePicker(
   const applyAndConfirm = (entry: ThemeCatalogEntry): void => {
     const td = resolveTheme(entry, colorRegistry, designTokenRegistry);
     themeService.applyTheme(td);
-    localStorage.setItem(THEME_STORAGE_KEY, entry.id);
+    globalStorage.set(THEME_STORAGE_KEY, entry.id);  // fire-and-forget
     cleanup();
   };
 
