@@ -99,12 +99,87 @@ When the Verification Agent or UX Guardian finds blocking issues:
 
 ## Agent Files
 
+### Extension Development Workflow
 - `.github/agents/Extension Orchestrator.agent.md`
 - `.github/agents/Source Analyst.agent.md`
 - `.github/agents/Architecture Mapper.agent.md`
 - `.github/agents/Code Executor.agent.md`
 - `.github/agents/Verification Agent.agent.md`
 - `.github/agents/UX Guardian.agent.md`
+
+### Storage Migration Workflow (M53)
+- `.github/agents/Migration Orchestrator.agent.md`
+- `.github/agents/Impact Analyst.agent.md`
+- `.github/agents/Migration Executor.agent.md`
+- `.github/agents/Migration Verifier.agent.md`
+- `.github/agents/Regression Sentinel.agent.md`
+
+---
+
+# Storage Migration Agent Framework (Milestone 53)
+
+This section documents the agent framework used for the **Portable Storage
+Architecture** migration — moving Parallx from localStorage to file-backed
+storage in `data/` (global) and `.parallx/` (per-workspace).
+
+This is a **core system migration**, not an extension build. Every file touched
+is a core Parallx file. The governing document is `docs/Parallx_Milestone_53.md`.
+
+## Agent Overview (M53)
+
+| Agent | Purpose |
+|-------|---------|
+| **Migration Orchestrator** | Master coordinator — drives domain-by-domain execution through task-verify-advance cycle |
+| **Impact Analyst** | Pre-implementation analysis — reads call sites, maps data flow, produces impact reports with exact file:line references |
+| **Migration Executor** | Implements changes from impact reports — creates new files, modifies existing code, minimum diff |
+| **Migration Verifier** | Post-task verification — TypeScript check, tests, data integrity, no localStorage remnants |
+| **Regression Sentinel** | Post-domain full-codebase regression check — build, tests, localStorage audit, cross-domain interaction |
+
+## Workflow (M53)
+
+```
+For each domain (D0 → D1 → D2 → D3 → D4 → D5 → D6):
+  For each task:
+    Impact Analyst → [Approval Gate] → Migration Executor → Migration Verifier
+    If FAIL → fix cycle (max 2) → re-verify
+    If PASS → advance to next task
+
+  After all tasks in domain:
+    Regression Sentinel (6 dimensions)
+    If PASS → COMMIT domain → advance
+    If FAIL → fix cycle → re-run sentinel
+```
+
+## Core Rules (M53)
+
+1. **Verify before advancing** — no task or domain proceeds without passing verification.
+2. **Data integrity above all** — every change preserves existing data. No silent data loss.
+3. **Impact analysis first** — no code is written without a structured impact report.
+4. **One domain, one commit** — atomic, clean commits per completed domain.
+5. **IStorage is the abstraction boundary** — change the backend, not the consumers.
+6. **Backward-compatible migration** — old localStorage data must be readable and migratable.
+
+## Error Recovery Protocol (M53)
+
+### Task-level failures
+1. Migration Verifier reports FAIL with file:line and fix recommendation.
+2. Migration Orchestrator directs Migration Executor to fix.
+3. Migration Verifier re-checks only the failed checks.
+4. Max 2 fix cycles per task. After 2, escalate to user.
+
+### Domain-level regressions
+1. Regression Sentinel reports FAIL with dimension(s) and file:line.
+2. If caused by current domain → Migration Executor fixes → re-run sentinel.
+3. If caused by interaction with previous domain → STOP. Escalate to user.
+4. Max 2 fix rounds. After 2, escalate to user.
+
+### Design issues
+If any agent discovers the M53 plan is insufficient (e.g., a missed consumer,
+incorrect migration map, dependency loop between domains):
+1. STOP all work.
+2. Report the issue to the user with full details.
+3. Wait for the user to update the milestone doc.
+4. Resume only after the doc is updated.
 
 ## Completion Procedure
 
@@ -128,6 +203,11 @@ Re-read:
 
 - `.github/AGENTS.md`
 - `.github/instructions/parallx-instructions.instructions.md`
-- `docs/Parallx_Milestone_40.md`
+
+For Extension Development:
+- `docs/Parallx_Milestone_<current>.md`
+
+For Storage Migration (M53):
+- `docs/Parallx_Milestone_53.md`
 
 Then continue.

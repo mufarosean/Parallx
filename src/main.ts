@@ -22,6 +22,13 @@ declare global {
       getToolDirectories: () => Promise<{ builtinDir: string; userDir: string }>;
       readToolModule: (filePath: string) => Promise<{ source: string } | { error: string }>;
 
+      // ── Storage API (M53 — Portable file-backed storage) ──
+      storage: {
+        readJson(filePath: string): Promise<{ data: unknown | null; error?: undefined } | { error: string; data?: undefined }>;
+        writeJson(filePath: string, data: unknown): Promise<{ error: null } | { error: string }>;
+        exists(filePath: string): Promise<boolean>;
+      };
+
       // ── Filesystem API (M4 Cap 0) ──
       fs: {
         readFile(path: string, encoding?: string): Promise<{ content: string; encoding: string; size: number; mtime: number } | { error: { code: string; message: string; path: string } }>;

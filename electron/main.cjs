@@ -11,6 +11,7 @@ const { databaseManager } = require('./database.cjs');
 const { extractText, isRichDocument, RICH_DOCUMENT_EXTENSIONS } = require('./documentExtractor.cjs');
 const doclingBridge = require('./doclingBridge.cjs');
 const { setupMcpBridge, killAllMcpProcesses } = require('./mcpBridge.cjs');
+const { setupStorageHandlers } = require('./storageHandlers.cjs');
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
@@ -23,6 +24,18 @@ let lastEditableContextMenu = null;
 
 app.setAppUserModelId('com.parallx.app');
 app.name = 'Parallx';
+
+// ── M53: Portable data root ──────────────────────────────────────────────────
+const APP_ROOT = app.isPackaged
+  ? path.resolve(process.resourcesPath, '..')
+  : path.join(__dirname, '..');
+
+fsSync.mkdirSync(path.join(APP_ROOT, 'data', 'chromium-cache'), { recursive: true });
+fsSync.mkdirSync(path.join(APP_ROOT, 'data', 'extensions'), { recursive: true });
+
+app.setPath('userData', path.join(APP_ROOT, 'data', 'chromium-cache'));
+
+setupStorageHandlers(ipcMain, APP_ROOT);
 
 const RENDERER_ROOT = path.join(__dirname, '..');
 const DEFAULT_RENDERER_PORT = 31789;
@@ -161,10 +174,7 @@ async function ensureRendererServer() {
 // Save position, size, and maximized state to a JSON file so the window
 // reopens on the same monitor in the same spot.
 
-const WINDOW_STATE_FILE = path.join(
-  app.getPath('userData'),
-  'window-state.json',
-);
+const WINDOW_STATE_FILE = path.join(APP_ROOT, 'data', 'window-state.json');
 
 const DEFAULT_BOUNDS = { width: 1280, height: 800 };
 

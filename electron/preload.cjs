@@ -292,6 +292,16 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   },
 
   // ══════════════════════════════════════════════════════════════════════════
+  // Storage API (M53 — Portable file-backed storage)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  storage: {
+    readJson: (filePath) => ipcRenderer.invoke('storage:read-json', filePath),
+    writeJson: (filePath, data) => ipcRenderer.invoke('storage:write-json', filePath, data),
+    exists: (filePath) => ipcRenderer.invoke('storage:exists', filePath),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
   // Docling Bridge API (M21 Phase A)
   // ══════════════════════════════════════════════════════════════════════════
 
