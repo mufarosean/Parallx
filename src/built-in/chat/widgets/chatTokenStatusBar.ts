@@ -19,7 +19,6 @@
 import { Disposable, toDisposable, type IDisposable } from '../../../platform/lifecycle.js';
 import { layoutPopup } from '../../../ui/dom.js';
 import { $ } from '../../../ui/dom.js';
-import { chatIcons } from '../chatIcons.js';
 
 import './chatTokenStatusBar.css';
 import type { ITokenStatusBarServices } from '../chatTypes.js';
@@ -49,8 +48,8 @@ interface ITokenBreakdown {
 
 // ── Constants ──
 
-const BAR_WIDTH = 52;
-const BAR_HEIGHT = 10;
+const RING_SIZE = 16;
+const RING_STROKE = 2;
 
 // ── ChatTokenStatusBar ──
 
@@ -61,18 +60,14 @@ const BAR_HEIGHT = 10;
 export class ChatTokenStatusBar extends Disposable {
 
   private readonly _services: ITokenStatusBarServices;
-  private _statusBarItemContainer: HTMLElement | undefined;
   private _popupElement: HTMLElement | undefined;
   private _dismissListener: IDisposable | undefined;
   private _lastBreakdown: ITokenBreakdown | undefined;
 
-  // ── Status bar DOM elements (rendered directly into the status bar) ──
+  // ── DOM elements ──
   private readonly _root: HTMLElement;
-  private readonly _healthDot: HTMLElement;
-  private readonly _barSvg: HTMLElement;
+  private readonly _ring: HTMLElement;
   private readonly _label: HTMLElement;
-  private readonly _indexingIndicator: HTMLElement;
-  private _healthCheckTimer: ReturnType<typeof setInterval> | undefined;
 
   constructor(
     services: ITokenStatusBarServices,
@@ -80,37 +75,22 @@ export class ChatTokenStatusBar extends Disposable {
     super();
     this._services = services;
 
-    // Build a container for the status bar content
+    // Build a container for the token usage indicator
     this._root = $('div.parallx-token-statusbar');
 
-    // M42 Phase 3: Connection health dot
-    this._healthDot = $('span.parallx-health-dot');
-    this._healthDot.classList.add('parallx-health-dot--connecting');
-    this._healthDot.title = 'Checking connection...';
-    this._root.appendChild(this._healthDot);
-
-    this._barSvg = $('span.parallx-token-statusbar-bar');
-    this._barSvg.innerHTML = this._buildBarSvg(0);
-    this._root.appendChild(this._barSvg);
+    this._ring = $('span.parallx-token-statusbar-ring');
+    this._ring.innerHTML = this._buildRingSvg(0);
+    this._root.appendChild(this._ring);
 
     this._label = $('span.parallx-token-statusbar-label');
-    this._label.textContent = '— tokens';
+    this._label.textContent = '0%';
     this._root.appendChild(this._label);
-
-    // Indexing status indicator (M10 Phase 6 — Task 6.1)
-    this._indexingIndicator = $('span.parallx-token-statusbar-indexing');
-    this._indexingIndicator.style.display = 'none'; // Hidden until indexing starts
-    this._root.appendChild(this._indexingIndicator);
 
     // Click handler opens detail popup
     this._root.addEventListener('click', (e) => {
       e.stopPropagation();
       this._togglePopup();
     });
-
-    // M42 Phase 3: Start periodic health check
-    this._checkHealth();
-    this._healthCheckTimer = setInterval(() => this._checkHealth(), 30_000);
   }
 
   // ── Public API ──
@@ -123,27 +103,18 @@ export class ChatTokenStatusBar extends Disposable {
     const breakdown = await this._computeBreakdown();
     this._lastBreakdown = breakdown;
 
-    // Update SVG bar
-    this._barSvg.innerHTML = this._buildBarSvg(breakdown.percentage);
+    // Update ring
+    this._ring.innerHTML = this._buildRingSvg(breakdown.percentage);
 
-    // Update label text: "59.6K / 128K tokens · 47%"
-    const usedStr = this._formatTokens(breakdown.total);
-    const approx = breakdown.isReal ? '' : '~';
-    if (breakdown.contextLength > 0) {
-      const ctxStr = this._formatTokens(breakdown.contextLength);
-      this._label.textContent = `${approx}${usedStr} / ${ctxStr} tokens · ${Math.round(breakdown.percentage)}%`;
-    } else {
-      this._label.textContent = `${approx}${usedStr} tokens`;
-    }
-
-    // Update indexing indicator (M10 Phase 6 — Task 6.1)
-    this._updateIndexingIndicator();
+    // Update label text: "47%"
+    this._label.textContent = `${Math.round(breakdown.percentage)}%`;
 
     // Tooltip
+    const approx = breakdown.isReal ? '' : '~';
     const source = breakdown.isReal ? 'Ollama-reported' : 'Estimated';
     this._root.title = breakdown.contextLength > 0
-      ? `${source} token usage: ${approx}${breakdown.total.toLocaleString()} / ${breakdown.contextLength.toLocaleString()} (${breakdown.percentage.toFixed(1)}%) — click for details`
-      : `${source} tokens: ${approx}${breakdown.total.toLocaleString()} — click for details`;
+      ? `${source} token usage: ${approx}${this._formatTokens(breakdown.total)} / ${this._formatTokens(breakdown.contextLength)} (${breakdown.percentage.toFixed(1)}%) — click for details`
+      : `${source} tokens: ${approx}${this._formatTokens(breakdown.total)} — click for details`;
 
     // If popup is open, refresh it
     if (this._popupElement) {
@@ -151,81 +122,10 @@ export class ChatTokenStatusBar extends Disposable {
     }
   }
 
-  // ── Indexing Indicator (M10 Phase 6 — Task 6.1) ──
-
-  private _updateIndexingIndicator(): void {
-    const progress = this._services.getIndexingProgress?.();
-    const stats = this._services.getIndexStats?.();
-
-    if (!progress || progress.phase === 'idle') {
-      // Idle — show completed stats if available, else hide
-      if (stats) {
-        this._indexingIndicator.innerHTML = `<span class="parallx-token-statusbar-indexing-icon">${chatIcons.check}</span> ${stats.pages} pages, ${stats.files} files indexed`;
-        this._indexingIndicator.style.display = '';
-        this._indexingIndicator.className = 'parallx-token-statusbar-indexing parallx-token-statusbar-indexing-complete';
-      } else {
-        this._indexingIndicator.style.display = 'none';
-        this._indexingIndicator.innerHTML = '';
-      }
-      return;
-    }
-
-    // Active indexing — show progress
-    this._indexingIndicator.style.display = '';
-    this._indexingIndicator.className = 'parallx-token-statusbar-indexing parallx-token-statusbar-indexing-active';
-
-    switch (progress.phase) {
-      case 'pages':
-        this._indexingIndicator.innerHTML = `<span class="parallx-token-statusbar-indexing-icon">${chatIcons.search}</span> Indexing: ${progress.processed}/${progress.total} pages`;
-        break;
-      case 'files':
-        this._indexingIndicator.innerHTML = `<span class="parallx-token-statusbar-indexing-icon">${chatIcons.search}</span> Indexing: ${progress.processed}/${progress.total} files`;
-        break;
-      case 'incremental':
-        this._indexingIndicator.innerHTML = progress.total > 0
-          ? `<span class="parallx-token-statusbar-indexing-icon">${chatIcons.refresh}</span> Re-indexing ${progress.total} changed ${progress.total === 1 ? 'item' : 'items'}...`
-          : `<span class="parallx-token-statusbar-indexing-icon">${chatIcons.refresh}</span> Re-indexing...`;
-        break;
-    }
-  }
-
-  /** Store reference to the status bar item container (for popup anchoring). */
-  setStatusBarItemContainer(el: HTMLElement): void {
-    this._statusBarItemContainer = el;
-  }
-
   override dispose(): void {
-    if (this._healthCheckTimer) {
-      clearInterval(this._healthCheckTimer);
-      this._healthCheckTimer = undefined;
-    }
     this._dismissPopup();
     this._root.remove();
     super.dispose();
-  }
-
-  // ── Connection Health (M42 Phase 3) ──
-
-  private _checkHealth(): void {
-    if (!this._services.checkConnectionHealth) {
-      this._setHealthState('connected', 'Provider health check not available');
-      return;
-    }
-    this._services.checkConnectionHealth().then(result => {
-      if (result.available) {
-        const tip = result.model ? `Connected — ${result.model}` : 'Connected';
-        this._setHealthState('connected', tip);
-      } else {
-        this._setHealthState('disconnected', result.error ?? 'Disconnected');
-      }
-    }).catch(() => {
-      this._setHealthState('disconnected', 'Health check failed');
-    });
-  }
-
-  private _setHealthState(state: 'connected' | 'disconnected' | 'connecting', tooltip: string): void {
-    this._healthDot.className = `parallx-health-dot parallx-health-dot--${state}`;
-    this._healthDot.title = tooltip;
   }
 
   // ── Token Breakdown Calculation ──
@@ -353,22 +253,23 @@ export class ChatTokenStatusBar extends Disposable {
     return { total, contextLength, percentage, isReal, categories: cats };
   }
 
-  // ── SVG Bar Builder ──
+  // ── SVG Ring Builder ──
 
-  private _buildBarSvg(pct: number): string {
-    const w = BAR_WIDTH;
-    const h = BAR_HEIGHT;
-    const innerW = w - 2;
-    const fillW = Math.max(0, Math.min(innerW, (innerW * pct) / 100));
+  private _buildRingSvg(pct: number): string {
+    const size = RING_SIZE;
+    const stroke = RING_STROKE;
+    const radius = (size - stroke) / 2;
+    const circumference = 2 * Math.PI * radius;
+    const offset = circumference - (circumference * Math.min(pct, 100)) / 100;
 
     let fillColor = '#4ec9b0'; // teal/green
     if (pct >= 90) fillColor = '#f14c4c'; // red
     else if (pct >= 70) fillColor = '#cca700'; // amber
 
     return [
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;">`,
-      `<rect x="0" y="0" width="${w}" height="${h}" rx="2" ry="2" fill="#3c3c3c" stroke="#555" stroke-width="0.5"/>`,
-      fillW > 0 ? `<rect x="1" y="1" width="${fillW}" height="${h - 2}" rx="1" ry="1" fill="${fillColor}"/>` : '',
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`,
+      `<circle cx="${size / 2}" cy="${size / 2}" r="${radius}" fill="none" stroke="#3c3c3c" stroke-width="${stroke}"/>`,
+      `<circle cx="${size / 2}" cy="${size / 2}" r="${radius}" fill="none" stroke="${fillColor}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" transform="rotate(-90 ${size / 2} ${size / 2})"/>`,
       `</svg>`,
     ].join('');
   }
@@ -399,9 +300,8 @@ export class ChatTokenStatusBar extends Disposable {
     document.body.appendChild(popup);
     this._popupElement = popup;
 
-    // Position above the status bar item
-    const anchor = this._statusBarItemContainer?.getBoundingClientRect()
-      ?? this._root.getBoundingClientRect();
+    // Position above the indicator
+    const anchor = this._root.getBoundingClientRect();
     layoutPopup(popup, anchor, { position: 'above', gap: 4, margin: 8 });
 
     // Close on click outside (next tick to avoid the current click)
@@ -484,85 +384,6 @@ export class ChatTokenStatusBar extends Disposable {
       { label: 'Files', tokens: cats.files, total },
     ]);
 
-    // ── Knowledge Index section (M10 Phase 6 — Task 6.1) ──
-    this._renderIndexSection(popup);
-  }
-
-  /** Render the Knowledge Index section in the popup. */
-  private _renderIndexSection(container: HTMLElement): void {
-    const progress = this._services.getIndexingProgress?.();
-    const stats = this._services.getIndexStats?.();
-    const isIndexing = this._services.isIndexing();
-    const ragAvailable = this._services.isRAGAvailable();
-
-    // Only show if RAG is available or has stats
-    if (!ragAvailable && !stats) return;
-
-    const section = $('div.parallx-token-popup-section');
-    const sectionTitle = $('div.parallx-token-popup-section-title');
-    sectionTitle.textContent = 'Knowledge Index';
-    section.appendChild(sectionTitle);
-
-    // Status row
-    const statusRow = $('div.parallx-token-popup-row');
-    const statusLabel = $('span.parallx-token-popup-row-label');
-    statusLabel.textContent = 'Status';
-    statusRow.appendChild(statusLabel);
-
-    const statusValue = $('span.parallx-token-popup-row-value');
-    if (isIndexing && progress && progress.phase !== 'idle') {
-      switch (progress.phase) {
-        case 'pages':
-          statusValue.textContent = `Indexing pages (${progress.processed}/${progress.total})`;
-          break;
-        case 'files':
-          statusValue.textContent = `Indexing files (${progress.processed}/${progress.total})`;
-          break;
-        case 'incremental':
-          statusValue.textContent = 'Re-indexing changed items';
-          break;
-      }
-      statusValue.style.color = '#cca700'; // amber for in-progress
-    } else if (stats) {
-      statusValue.textContent = 'Ready';
-      statusValue.style.color = '#4ec9b0'; // teal for ready
-    } else {
-      statusValue.textContent = 'Not started';
-      statusValue.style.color = '#888';
-    }
-    statusRow.appendChild(statusValue);
-    section.appendChild(statusRow);
-
-    // Stats rows (if we have them)
-    if (stats) {
-      const pagesRow = $('div.parallx-token-popup-row');
-      const pagesLabel = $('span.parallx-token-popup-row-label');
-      pagesLabel.textContent = 'Pages Indexed';
-      pagesRow.appendChild(pagesLabel);
-      const pagesValue = $('span.parallx-token-popup-row-value');
-      pagesValue.textContent = `${stats.pages}`;
-      pagesRow.appendChild(pagesValue);
-      section.appendChild(pagesRow);
-
-      const filesRow = $('div.parallx-token-popup-row');
-      const filesLabel = $('span.parallx-token-popup-row-label');
-      filesLabel.textContent = 'Files Indexed';
-      filesRow.appendChild(filesLabel);
-      const filesValue = $('span.parallx-token-popup-row-value');
-      filesValue.textContent = `${stats.files}`;
-      filesRow.appendChild(filesValue);
-      section.appendChild(filesRow);
-    }
-
-    // Progress bar for active indexing
-    if (isIndexing && progress && progress.phase !== 'idle' && progress.total > 0) {
-      const barRow = $('div.parallx-token-popup-index-bar');
-      const pct = Math.min((progress.processed / progress.total) * 100, 100);
-      barRow.innerHTML = this._buildPopupBarSvg(pct);
-      section.appendChild(barRow);
-    }
-
-    container.appendChild(section);
   }
 
   private _renderSection(

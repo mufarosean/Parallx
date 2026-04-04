@@ -438,6 +438,8 @@ export interface IChatWidgetServices {
   readonly removePendingRequest?: (sessionId: string, requestId: string) => void;
   readonly requestYield?: (sessionId: string) => void;
   readonly onDidChangePendingRequests?: Event<string>;
+  // ── Token usage indicator ──
+  readonly tokenBarServices?: ITokenStatusBarServices;
 }
 
 /** Services needed by the model picker dropdown. */

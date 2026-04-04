@@ -139,6 +139,7 @@ export interface ViewContainerState {
   readonly activeViewId: string | undefined;
   readonly tabOrder: readonly string[];
   readonly collapsedSections?: readonly string[];
+  readonly hiddenTabs?: readonly string[];
 }
 
 // ─── View Manager ────────────────────────────────────────────────────────────

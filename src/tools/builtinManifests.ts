@@ -174,7 +174,7 @@ export const DIAGNOSTICS_MANIFEST: IToolManifest = {
     commands: [
       { id: 'diagnostics.runChecks', title: 'Diagnostics: Run Health Checks' },
     ],
-    views: [{ id: 'view.diagnostics', name: 'Diagnostics', defaultContainerId: 'panel' }],
+    views: [{ id: 'view.diagnostics', name: 'AI Diagnostics', defaultContainerId: 'panel' }],
   },
 };
 

@@ -274,12 +274,8 @@ function renderIndexingLogView(container: HTMLElement): IDisposable {
   // ── Header bar ──
   const header = $('div.indexing-log-header');
 
-  const titleSpan = $('span.indexing-log-title');
-  titleSpan.textContent = 'INDEXING';
-  header.appendChild(titleSpan);
-
   const phaseSpan = $('span.indexing-log-phase');
-  phaseSpan.textContent = currentPhaseLabel;
+  phaseSpan.textContent = `Status: ${currentPhaseLabel}`;
   header.appendChild(phaseSpan);
 
   // Spacer
@@ -371,7 +367,7 @@ function refreshView(): void {
 
 function refreshHeader(): void {
   if (headerEl) {
-    headerEl.textContent = currentPhaseLabel;
+    headerEl.textContent = `Status: ${currentPhaseLabel}`;
   }
 }
 

@@ -18,6 +18,7 @@ import { ChatInputPart } from '../input/chatInputPart.js';
 import { chatIcons } from '../chatIcons.js';
 import { ChatListRenderer } from '../rendering/chatListRenderer.js';
 import { renderAgentTaskRail } from '../rendering/chatTaskCards.js';
+import { ChatTokenStatusBar } from './chatTokenStatusBar.js';
 import { ChatModelPicker } from '../pickers/chatModelPicker.js';
 import { ChatModePicker } from '../pickers/chatModePicker.js';
 import { ChatSessionSidebar } from './chatSessionSidebar.js';
@@ -82,10 +83,12 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private readonly _pendingMessageEls = new Map<string, HTMLElement>();
 
   // ── Sidebar resize state ──
-  private _sidebarWidth = 260;
+  private static readonly SIDEBAR_DEFAULT_WIDTH = 200;
   private static readonly SIDEBAR_MIN_WIDTH = 140;
   private static readonly SIDEBAR_SNAP_THRESHOLD = 70;
   private static readonly SIDEBAR_MAX_WIDTH = 500;
+  private static readonly SIDEBAR_WIDTH_KEY = 'parallx.chat.sidebarWidth';
+  private _sidebarWidth = ChatWidget._restoreSidebarWidth();
 
   // ── Sub-components ──
 
@@ -166,6 +169,21 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // Input area (bottom-pinned)
     this._inputAreaContainer = $('div.parallx-chat-input-area');
     this._mainArea.appendChild(this._inputAreaContainer);
+
+    // Token usage indicator (below input)
+    if (services.tokenBarServices) {
+      const tokenBar = this._register(new ChatTokenStatusBar(services.tokenBarServices));
+      this._mainArea.appendChild(tokenBar.element);
+      tokenBar.update().catch(() => {});
+      // React to session/model/mode changes
+      this._register(services.onDidChangeSession(() => { tokenBar.update().catch(() => {}); }));
+      if (services.modePicker) {
+        this._register(services.modePicker.onDidChangeMode(() => { tokenBar.update().catch(() => {}); }));
+      }
+      if (services.modelPicker) {
+        this._register(services.modelPicker.onDidChangeModels(() => { tokenBar.update().catch(() => {}); }));
+      }
+    }
 
     // ── Sash (resize handle between main area and sidebar) ──
     this._sash = $('div.parallx-chat-sidebar-sash');
@@ -882,15 +900,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._sessionSidebar.refresh();
   }
 
-  private _handleClearSession(): void {
-    if (this._session) {
-      this._services.deleteSession?.(this._session.id);
-    }
-    const newSession = this._services.createSession();
-    this.setSession(newSession);
-    this._sessionSidebar.refresh();
-  }
-
   // ── Sash Drag Logic ──
 
   /**
@@ -941,6 +950,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       document.removeEventListener('mouseup', onMouseUp);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
+      ChatWidget._saveSidebarWidth(this._sidebarWidth);
     };
 
     this._register(addDisposableListener(this._sash, 'mousedown', (e: MouseEvent) => {
@@ -976,6 +986,25 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     }
   }
 
+  private static _restoreSidebarWidth(): number {
+    try {
+      const raw = localStorage.getItem(ChatWidget.SIDEBAR_WIDTH_KEY);
+      if (raw) {
+        const parsed = parseInt(raw, 10);
+        if (!isNaN(parsed) && parsed >= ChatWidget.SIDEBAR_MIN_WIDTH && parsed <= ChatWidget.SIDEBAR_MAX_WIDTH) {
+          return parsed;
+        }
+      }
+    } catch { /* localStorage unavailable */ }
+    return ChatWidget.SIDEBAR_DEFAULT_WIDTH;
+  }
+
+  private static _saveSidebarWidth(width: number): void {
+    try {
+      localStorage.setItem(ChatWidget.SIDEBAR_WIDTH_KEY, String(width));
+    } catch { /* localStorage unavailable */ }
+  }
+
   // ── Title Bar Actions ──
 
   /**
@@ -1001,13 +1030,9 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     historyBtn.addEventListener('click', (e) => { e.stopPropagation(); this._sessionSidebar.toggle(); });
     container.appendChild(historyBtn);
 
-    const clearBtn = createBtn(chatIcons.trash, 'Clear Session', 'parallx-chat-title-action--clear');
-    clearBtn.addEventListener('click', (e) => { e.stopPropagation(); this._handleClearSession(); });
-    container.appendChild(clearBtn);
-
     // System prompt viewer button (Task 4.10)
     if (this._services.getSystemPrompt) {
-      const promptBtn = createBtn(chatIcons.wrench, 'View System Prompt', 'parallx-chat-title-action--prompt');
+      const promptBtn = createBtn(chatIcons.scrollText, 'View System Prompt', 'parallx-chat-title-action--prompt');
       promptBtn.addEventListener('click', (e) => { e.stopPropagation(); this._showSystemPromptViewer(); });
       container.appendChild(promptBtn);
     }

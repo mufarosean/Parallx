@@ -117,6 +117,8 @@ export interface SerializedViewContainerSnapshot {
   readonly activeViewId: string | undefined;
   /** Ordered list of view IDs (tab order). */
   readonly tabOrder: readonly string[];
+  /** View IDs whose tabs are hidden by the user. */
+  readonly hiddenTabs?: readonly string[];
 }
 
 // ─── View Snapshot ───────────────────────────────────────────────────────────

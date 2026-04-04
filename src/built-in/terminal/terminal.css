@@ -4,7 +4,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--vscode-terminal-background, #1e1e1e);
+  background: var(--vscode-panel-background);
   color: var(--vscode-terminal-foreground, #cccccc);
   font-family: var(--parallx-fontFamily-mono);
   font-size: var(--parallx-fontSize-md);
@@ -41,7 +41,7 @@
   align-items: center;
   padding: 4px 12px 8px;
   border-top: 1px solid var(--vscode-panel-border, #333);
-  background: var(--vscode-terminal-background, #1e1e1e);
+  background: var(--vscode-panel-background);
   gap: 6px;
 }
 
@@ -76,7 +76,7 @@
   padding: 4px 8px;
   gap: 4px;
   border-bottom: 1px solid var(--vscode-panel-border, #333);
-  background: var(--vscode-terminal-background, #1e1e1e);
+  background: var(--vscode-panel-background);
 }
 
 .parallx-terminal-toolbar-btn {

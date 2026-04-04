@@ -35,7 +35,7 @@ export const ACTIVITY_BAR_WIDTH = 48;
 export const PART_HEADER_HEIGHT_PX = 35;
 export const DEFAULT_SIDEBAR_WIDTH = 202;
 export const DEFAULT_PANEL_HEIGHT = 200;
-export const DEFAULT_AUX_BAR_WIDTH = 250;
+export const DEFAULT_AUX_BAR_WIDTH = 480;
 export const MIN_EDITOR_WIDTH = 200;
 
 // ── Zen Mode Exit Info ──

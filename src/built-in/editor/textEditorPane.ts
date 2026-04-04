@@ -19,6 +19,7 @@ import { UntitledEditorInput } from './untitledEditorInput.js';
 import { FindReplaceWidget } from '../../ui/findReplaceWidget.js';
 import { ContextMenu } from '../../ui/contextMenu.js';
 import { $,  hide, show } from '../../ui/dom.js';
+import { getLanguageForFileName } from '../../services/languageDetection.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ export class TextEditorPane extends EditorPane {
   private _positionItem!: HTMLElement;
   private _encodingItem!: HTMLElement;
   private _eolItem!: HTMLElement;
+  private _languageItem!: HTMLElement;
   private _binaryOverlay!: HTMLElement;
 
   private _wordWrap = false;
@@ -176,9 +178,14 @@ export class TextEditorPane extends EditorPane {
     this._eolItem.classList.add('text-editor-status-item');
     this._eolItem.textContent = 'LF';
 
+    this._languageItem = $('span');
+    this._languageItem.classList.add('text-editor-status-item');
+    this._languageItem.textContent = 'Plain Text';
+
     this._statusBar.appendChild(this._positionItem);
     this._statusBar.appendChild(this._encodingItem);
     this._statusBar.appendChild(this._eolItem);
+    this._statusBar.appendChild(this._languageItem);
     container.appendChild(this._statusBar);
 
     // Find & Replace widget (overlay — positioned absolute inside .editor-pane)
@@ -200,6 +207,9 @@ export class TextEditorPane extends EditorPane {
     const ext = dotIdx >= 0 ? name.substring(dotIdx).toLowerCase() : '';
     this._wordWrap = WRAP_EXTENSIONS.has(ext);
     this._applyWordWrap();
+
+    // Update language indicator
+    this._languageItem.textContent = getLanguageForFileName(name);
 
     let content = '';
     let isBinary = false;

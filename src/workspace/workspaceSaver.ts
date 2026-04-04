@@ -184,6 +184,7 @@ export class WorkspaceSaver extends Disposable {
         containerId: c.id,
         activeViewId: state.activeViewId,
         tabOrder: [...state.tabOrder],
+        hiddenTabs: state.hiddenTabs ? [...state.hiddenTabs] : undefined,
       };
     });
   }

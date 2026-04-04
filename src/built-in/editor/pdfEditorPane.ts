@@ -159,6 +159,10 @@ export class PdfEditorPane extends EditorPane {
   private _selectionOverlayFrame: number | null = null;
   private _globalStorage: IStorage | undefined;
 
+  // ── View state (page + scale persistence) ────────────────────────────
+  /** Pending state set by restoreViewState() before the viewer is ready. */
+  private _pendingViewState: { page: number; scaleValue: string; scrollLeft?: number } | null = null;
+
   constructor() {
     super(PANE_ID);
   }
@@ -166,6 +170,33 @@ export class PdfEditorPane extends EditorPane {
   /** M53 D3.4: Late-bind global storage for preference persistence. */
   setGlobalStorage(storage: IStorage): void {
     this._globalStorage = storage;
+  }
+
+  // ── View state persistence ───────────────────────────────────────────
+
+  protected override savePaneViewState(): Record<string, unknown> {
+    const page = this._pdfViewer?.currentPageNumber ?? 1;
+    const scaleValue = this._pdfViewer?.currentScaleValue ?? this._scaleValue;
+    const scrollLeft = this._viewerContainer?.scrollLeft ?? 0;
+    return { page, scaleValue, scrollLeft };
+  }
+
+  protected override restorePaneViewState(state: Record<string, unknown>): void {
+    if (!state || typeof state.page !== 'number') return;
+    const page = state.page as number;
+    const scaleValue = (state.scaleValue as string) ?? this._scaleValue;
+    const scrollLeft = (state.scrollLeft as number) ?? 0;
+
+    // If the viewer is already loaded, apply immediately
+    if (this._pdfViewer && this._pdfDoc) {
+      this._pdfViewer.currentScaleValue = scaleValue;
+      this._scaleValue = scaleValue;
+      this._pdfViewer.currentPageNumber = page;
+      if (this._viewerContainer) this._viewerContainer.scrollLeft = scrollLeft;
+    } else {
+      // Store for deferred application after pagesinit
+      this._pendingViewState = { page, scaleValue, scrollLeft };
+    }
   }
 
   private _installTestDebugHook(): void {
@@ -1134,7 +1165,25 @@ export class PdfEditorPane extends EditorPane {
         this._scaleValue = storedScale;
       }
       this._eventBus.on('pagesinit', () => {
-        this._pdfViewer!.currentScaleValue = this._scaleValue;
+        // Apply pending view state (from workspace restore) if available,
+        // otherwise fall back to persisted scale preference.
+        const pending = this._pendingViewState;
+        this._pendingViewState = null;
+
+        if (pending) {
+          this._scaleValue = pending.scaleValue;
+          this._pdfViewer!.currentScaleValue = pending.scaleValue;
+          // Navigate to the saved page after the viewer has initialized
+          if (pending.page > 1 && pending.page <= (this._pdfDoc?.numPages ?? 1)) {
+            this._pdfViewer!.currentPageNumber = pending.page;
+          }
+          if (pending.scrollLeft && this._viewerContainer) {
+            this._viewerContainer.scrollLeft = pending.scrollLeft;
+          }
+        } else {
+          this._pdfViewer!.currentScaleValue = this._scaleValue;
+        }
+
         this._zoomLabelEl.textContent = `${Math.round(this._pdfViewer!.currentScale * 100)}%`;
         this._pdfViewer!.update();
         this._scheduleSelectionOverlayUpdate();
@@ -1548,10 +1597,21 @@ export class PdfEditorPane extends EditorPane {
       if (this._resizeTimer) clearTimeout(this._resizeTimer);
       this._resizeTimer = setTimeout(() => {
         if (this._pdfViewer) {
+          // Capture current page before re-applying scale — the scale
+          // recalculation changes page geometry which can shift the scroll
+          // position and cause PDFViewer to report a different page.
+          const currentPage = this._pdfViewer.currentPageNumber;
+
           // Re-apply the current scale value — the viewer recalculates
           // 'page-width' / 'page-fit' / 'auto' to the new container size.
           this._pdfViewer.currentScaleValue = this._pdfViewer.currentScaleValue;
           this._pdfViewer.update();
+
+          // Restore the page the user was on before the layout change.
+          if (currentPage && this._pdfViewer.currentPageNumber !== currentPage) {
+            this._pdfViewer.currentPageNumber = currentPage;
+          }
+
           this._scheduleSelectionOverlayUpdate();
         }
       }, 150);
@@ -1584,6 +1644,7 @@ export class PdfEditorPane extends EditorPane {
     this._outline = null;
     this._pageLabels = null;
     this._currentInput = null;
+    this._pendingViewState = null;
     this._removeTestDebugHook();
 
     // Reset UI

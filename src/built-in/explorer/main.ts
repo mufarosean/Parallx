@@ -100,6 +100,22 @@ let _openEditorsContainer: HTMLElement | null = null;
 let _openEditorsCountKey: ReturnType<ParallxApi['context']['createContextKey']>;
 let _activeContextMenu: ContextMenu | null = null;
 
+// ─── Clipboard State (Copy / Cut / Paste) ────────────────────────────────────
+
+interface ClipboardEntry {
+  uri: string;
+  name: string;
+  type: number;
+  mode: 'copy' | 'cut';
+}
+
+let _clipboard: ClipboardEntry | null = null;
+
+// ─── Drag & Drop State ──────────────────────────────────────────────────────
+
+let _dragSourceNode: TreeNode | null = null;
+let _dropTargetEl: HTMLElement | null = null;
+
 // ─── Activation ──────────────────────────────────────────────────────────────
 
 export function activate(api: ParallxApi, context: ToolContext): void {
@@ -300,7 +316,14 @@ function scheduleRender(): void {
 
 function renderTree(): void {
   if (!_treeContainer) return;
-  _treeContainer.innerHTML = '';
+
+  // Preserve scroll position and selection across re-renders to avoid visual stutter
+  const scrollTop = _treeContainer.scrollTop;
+  const selectedUri = _selectedNode?.uri ?? null;
+
+  // Build new DOM into a document fragment (off-screen) to avoid
+  // incremental reflow. Single swap at the end.
+  const fragment = document.createDocumentFragment();
 
   // Multi-root workspace: show workspace name header (VS Code behaviour)
   if (_roots.length > 1) {
@@ -308,15 +331,31 @@ function renderTree(): void {
     header.className = 'explorer-workspace-header';
     const displayName = _getWorkspaceDisplayName().toUpperCase();
     header.textContent = `${displayName} (WORKSPACE)`;
-    _treeContainer.appendChild(header);
+    fragment.appendChild(header);
   }
 
   for (const root of _roots) {
-    renderNodeFlat(_treeContainer, root);
+    renderNodeFlat(fragment, root);
+  }
+
+  // Single DOM swap: remove old children and append the new fragment
+  _treeContainer.innerHTML = '';
+  _treeContainer.appendChild(fragment);
+
+  // Restore scroll position and selection
+  _treeContainer.scrollTop = scrollTop;
+  if (selectedUri) {
+    const restored = findNodeByUri(selectedUri);
+    if (restored) {
+      _selectedNode = restored;
+      if (restored.element) {
+        restored.element.classList.add('tree-node--selected');
+      }
+    }
   }
 }
 
-function renderNodeFlat(container: HTMLElement, node: TreeNode): void {
+function renderNodeFlat(container: HTMLElement | DocumentFragment, node: TreeNode): void {
   const depth = Math.max(0, node.depth);
   const el = $('div');
   el.className = 'tree-node';
@@ -377,6 +416,14 @@ function renderNodeFlat(container: HTMLElement, node: TreeNode): void {
       openFile(node, true); // pinned
     }
   });
+
+  // Drag & drop support
+  setupDragAndDrop(el, node);
+
+  // Visual indicator for cut items
+  if (_clipboard?.mode === 'cut' && _clipboard.uri === node.uri) {
+    el.classList.add('tree-node--cut');
+  }
 
   container.appendChild(el);
 
@@ -670,6 +717,36 @@ function handleTreeKeydown(e: KeyboardEvent): void {
         }
       }
       break;
+    case 'F2':
+      e.preventDefault();
+      if (_selectedNode && !isRootNode(_selectedNode)) {
+        startInlineRename(_selectedNode);
+      }
+      break;
+    case 'Delete':
+      e.preventDefault();
+      if (_selectedNode && !isRootNode(_selectedNode)) {
+        confirmDelete(_selectedNode);
+      }
+      break;
+  }
+
+  // Ctrl/Cmd shortcuts (copy, cut, paste)
+  if (e.ctrlKey || e.metaKey) {
+    switch (e.key.toLowerCase()) {
+      case 'c':
+        e.preventDefault();
+        if (_selectedNode) setCopyClipboard(_selectedNode, 'copy');
+        break;
+      case 'x':
+        e.preventDefault();
+        if (_selectedNode && !isRootNode(_selectedNode)) setCopyClipboard(_selectedNode, 'cut');
+        break;
+      case 'v':
+        e.preventDefault();
+        if (_selectedNode) pasteFromClipboard(getTargetFolderForPaste(_selectedNode));
+        break;
+    }
   }
 }
 
@@ -686,6 +763,281 @@ function getAllVisibleNodes(): TreeNode[] {
     if (root.expanded) collect(root.children);
   }
   return result;
+}
+
+// ─── Copy / Cut / Paste ──────────────────────────────────────────────────────
+
+function isRootNode(node: TreeNode): boolean {
+  return _roots.some(r => r.uri === node.uri);
+}
+
+function setCopyClipboard(node: TreeNode, mode: 'copy' | 'cut'): void {
+  // Clear previous cut indicator
+  if (_clipboard?.mode === 'cut') {
+    const prevNode = findNodeByUri(_clipboard.uri);
+    if (prevNode?.element) {
+      prevNode.element.classList.remove('tree-node--cut');
+    }
+  }
+
+  _clipboard = {
+    uri: node.uri,
+    name: node.name,
+    type: node.type,
+    mode,
+  };
+
+  // Visual: dim cut items
+  if (mode === 'cut' && node.element) {
+    node.element.classList.add('tree-node--cut');
+  }
+}
+
+/**
+ * For paste: if the target is a file, use its parent folder.
+ * If it's a folder, use the folder itself.
+ */
+function getTargetFolderForPaste(node: TreeNode): TreeNode | null {
+  if (node.type === FILE_TYPE_DIRECTORY) return node;
+  return node.parent ?? getActiveRoot();
+}
+
+async function pasteFromClipboard(targetFolder: TreeNode | null): Promise<void> {
+  if (!_clipboard || !targetFolder) return;
+
+  const electronFs = (globalThis as any).parallxElectron?.fs;
+  if (!electronFs) return;
+
+  const sourcePath = uriToFsPath(_clipboard.uri);
+  let destName = _clipboard.name;
+  const destFolder = uriToFsPath(targetFolder.uri);
+
+  // Prevent pasting into self (for directories)
+  if (_clipboard.type === FILE_TYPE_DIRECTORY) {
+    const targetPath = uriToFsPath(targetFolder.uri);
+    const sourcePrefixed = sourcePath.replace(/\\/g, '/');
+    const targetPrefixed = targetPath.replace(/\\/g, '/');
+    if (targetPrefixed === sourcePrefixed || targetPrefixed.startsWith(sourcePrefixed + '/')) {
+      _api.window.showErrorMessage('Cannot paste a folder into itself.');
+      return;
+    }
+  }
+
+  // Handle name collisions: append " - Copy" or "(2)", "(3)" etc.
+  if (_clipboard.mode === 'copy') {
+    destName = await getUniqueDestName(destFolder, destName, electronFs);
+  }
+
+  const destPath = destFolder + '/' + destName;
+
+  try {
+    if (_clipboard.mode === 'cut') {
+      // Move = rename
+      const result = await electronFs.rename(sourcePath, destPath);
+      if (result?.error) throw new Error(result.error.message || 'Move failed');
+      _clipboard = null; // Clear clipboard after cut-paste
+    } else {
+      // Copy
+      const result = await electronFs.copy(sourcePath, destPath);
+      if (result?.error) throw new Error(result.error.message || 'Copy failed');
+    }
+
+    // Reload the target folder to show the new file
+    targetFolder.loaded = false;
+    targetFolder.children = [];
+    if (!targetFolder.expanded) {
+      targetFolder.expanded = true;
+      saveExpandState();
+    }
+    await loadChildren(targetFolder);
+
+    // If cut, also reload the source's parent
+    if (_clipboard === null) { // was cut
+      // A cut-paste clears clipboard. The source parent may need refresh
+      // which the file watcher will handle.
+    }
+
+    scheduleRender();
+  } catch (err) {
+    _api.window.showErrorMessage(`Failed to paste: ${err}`);
+  }
+}
+
+/**
+ * Generate a unique name in a directory if the target name already exists.
+ * For copy operations: "file.txt" → "file - Copy.txt" → "file - Copy 2.txt" etc.
+ */
+async function getUniqueDestName(
+  destFolder: string,
+  name: string,
+  electronFs: any,
+): Promise<string> {
+  // Check if the name conflicts
+  const destPath = destFolder + '/' + name;
+  const exists = await electronFs.stat(destPath).then(
+    (r: any) => !r?.error,
+    () => false,
+  );
+  if (!exists) return name;
+
+  // Split into stem and extension
+  const dotIdx = name.lastIndexOf('.');
+  const hasDot = dotIdx > 0;
+  const stem = hasDot ? name.slice(0, dotIdx) : name;
+  const ext = hasDot ? name.slice(dotIdx) : '';
+
+  // Try "stem - Copy.ext", "stem - Copy 2.ext", etc.
+  let candidate = `${stem} - Copy${ext}`;
+  let checkPath = destFolder + '/' + candidate;
+  let checkExists = await electronFs.stat(checkPath).then(
+    (r: any) => !r?.error,
+    () => false,
+  );
+  if (!checkExists) return candidate;
+
+  for (let i = 2; i < 100; i++) {
+    candidate = `${stem} - Copy ${i}${ext}`;
+    checkPath = destFolder + '/' + candidate;
+    checkExists = await electronFs.stat(checkPath).then(
+      (r: any) => !r?.error,
+      () => false,
+    );
+    if (!checkExists) return candidate;
+  }
+
+  // Fallback: timestamp
+  return `${stem} - Copy ${Date.now()}${ext}`;
+}
+
+// ─── Drag & Drop ─────────────────────────────────────────────────────────────
+
+function setupDragAndDrop(el: HTMLElement, node: TreeNode): void {
+  // Don't allow dragging workspace root folders
+  if (isRootNode(node)) {
+    el.draggable = false;
+    // Root folders can still be drop targets
+    setupDropTarget(el, node);
+    return;
+  }
+
+  el.draggable = true;
+
+  el.addEventListener('dragstart', (e) => {
+    _dragSourceNode = node;
+    e.dataTransfer!.effectAllowed = 'move';
+    e.dataTransfer!.setData('text/plain', node.uri);
+    el.classList.add('tree-node--dragging');
+  });
+
+  el.addEventListener('dragend', () => {
+    el.classList.remove('tree-node--dragging');
+    clearDropHighlight();
+    _dragSourceNode = null;
+  });
+
+  setupDropTarget(el, node);
+}
+
+function setupDropTarget(el: HTMLElement, node: TreeNode): void {
+  el.addEventListener('dragover', (e) => {
+    if (!_dragSourceNode) return;
+
+    // Only allow dropping onto directories (or files — we'll target their parent)
+    const targetFolder = node.type === FILE_TYPE_DIRECTORY ? node : node.parent;
+    if (!targetFolder) return;
+
+    // Don't allow dropping onto self or into own subtree
+    if (_dragSourceNode.uri === targetFolder.uri) return;
+    if (isDescendant(targetFolder, _dragSourceNode)) return;
+    // Don't allow dropping into the same parent (no-op move)
+    if (_dragSourceNode.parent?.uri === targetFolder.uri) return;
+
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = 'move';
+
+    // Highlight the drop target folder
+    const targetEl = node.type === FILE_TYPE_DIRECTORY ? el : node.parent?.element;
+    if (targetEl && targetEl !== _dropTargetEl) {
+      clearDropHighlight();
+      _dropTargetEl = targetEl as HTMLElement;
+      _dropTargetEl.classList.add('tree-node--drop-target');
+    }
+  });
+
+  el.addEventListener('dragleave', (e) => {
+    // Only clear if we're actually leaving this element (not entering a child)
+    if (el === _dropTargetEl && !el.contains(e.relatedTarget as Node)) {
+      clearDropHighlight();
+    }
+  });
+
+  el.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    clearDropHighlight();
+
+    if (!_dragSourceNode) return;
+
+    const targetFolder = node.type === FILE_TYPE_DIRECTORY ? node : node.parent;
+    if (!targetFolder) return;
+
+    // Validate
+    if (_dragSourceNode.uri === targetFolder.uri) return;
+    if (isDescendant(targetFolder, _dragSourceNode)) return;
+    if (_dragSourceNode.parent?.uri === targetFolder.uri) return;
+
+    const electronFs = (globalThis as any).parallxElectron?.fs;
+    if (!electronFs) return;
+
+    const sourcePath = uriToFsPath(_dragSourceNode.uri);
+    const destPath = uriToFsPath(targetFolder.uri) + '/' + _dragSourceNode.name;
+
+    try {
+      const result = await electronFs.rename(sourcePath, destPath);
+      if (result?.error) throw new Error(result.error.message || 'Move failed');
+
+      // Reload both source parent and target folder
+      const sourceParent = _dragSourceNode.parent;
+      if (sourceParent) {
+        sourceParent.loaded = false;
+        sourceParent.children = [];
+        await loadChildren(sourceParent);
+      }
+
+      targetFolder.loaded = false;
+      targetFolder.children = [];
+      if (!targetFolder.expanded) {
+        targetFolder.expanded = true;
+        saveExpandState();
+      }
+      await loadChildren(targetFolder);
+
+      scheduleRender();
+    } catch (err) {
+      _api.window.showErrorMessage(`Failed to move "${_dragSourceNode.name}": ${err}`);
+    }
+
+    _dragSourceNode = null;
+  });
+}
+
+function clearDropHighlight(): void {
+  if (_dropTargetEl) {
+    _dropTargetEl.classList.remove('tree-node--drop-target');
+    _dropTargetEl = null;
+  }
+}
+
+/**
+ * Check if `candidateChild` is a descendant of `ancestor` in the tree.
+ * Used to prevent dropping a folder into its own subtree.
+ */
+function isDescendant(candidateChild: TreeNode, ancestor: TreeNode): boolean {
+  let n: TreeNode | null = candidateChild;
+  while (n) {
+    if (n.uri === ancestor.uri) return true;
+    n = n.parent;
+  }
+  return false;
 }
 
 // ─── Context Menu (uses src/ui/ContextMenu) ──────────────────────────────────
@@ -731,25 +1083,37 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
       items.push({ id: 'openToSide', label: 'Open to the Side', group: '1_open' });
       items.push({ id: 'newFile', label: 'New File...', group: '2_create' });
       items.push({ id: 'newFolder', label: 'New Folder...', group: '2_create' });
-      items.push({ id: 'rename', label: 'Rename', keybinding: 'F2', group: '3_edit' });
-      items.push({ id: 'delete', label: 'Delete', keybinding: 'Delete', group: '3_edit' });
-      items.push({ id: 'copyPath', label: 'Copy Path', group: '4_copy' });
-      items.push({ id: 'copyRelativePath', label: 'Copy Relative Path', group: '4_copy' });
-      items.push({ id: 'revealInFileExplorer', label: 'Reveal in File Explorer', group: '5_reveal' });
+      items.push({ id: 'cut', label: 'Cut', keybinding: 'Ctrl+X', group: '3_clipboard' });
+      items.push({ id: 'copy', label: 'Copy', keybinding: 'Ctrl+C', group: '3_clipboard' });
+      if (_clipboard) {
+        items.push({ id: 'paste', label: 'Paste', keybinding: 'Ctrl+V', group: '3_clipboard' });
+      }
+      items.push({ id: 'rename', label: 'Rename', keybinding: 'F2', group: '4_edit' });
+      items.push({ id: 'delete', label: 'Delete', keybinding: 'Delete', group: '4_edit' });
+      items.push({ id: 'copyPath', label: 'Copy Path', group: '5_copy' });
+      items.push({ id: 'copyRelativePath', label: 'Copy Relative Path', group: '5_copy' });
+      items.push({ id: 'revealInFileExplorer', label: 'Reveal in File Explorer', group: '6_reveal' });
     } else {
       // Folder context — hide rename/delete for workspace root folders
       const isRootFolder = _roots.some(r => r.uri === node.uri);
       items.push({ id: 'newFile', label: 'New File...', group: '1_create' });
       items.push({ id: 'newFolder', label: 'New Folder...', group: '1_create' });
       if (!isRootFolder) {
-        items.push({ id: 'rename', label: 'Rename', keybinding: 'F2', group: '2_edit' });
-        items.push({ id: 'delete', label: 'Delete', keybinding: 'Delete', group: '2_edit' });
+        items.push({ id: 'cut', label: 'Cut', keybinding: 'Ctrl+X', group: '2_clipboard' });
       }
-      items.push({ id: 'copyPath', label: 'Copy Path', group: '3_copy' });
-      items.push({ id: 'copyRelativePath', label: 'Copy Relative Path', group: '3_copy' });
-      items.push({ id: 'revealInFileExplorer', label: 'Reveal in File Explorer', group: '4_reveal' });
+      items.push({ id: 'copy', label: 'Copy', keybinding: 'Ctrl+C', group: '2_clipboard' });
+      if (_clipboard) {
+        items.push({ id: 'paste', label: 'Paste', keybinding: 'Ctrl+V', group: '2_clipboard' });
+      }
+      if (!isRootFolder) {
+        items.push({ id: 'rename', label: 'Rename', keybinding: 'F2', group: '3_edit' });
+        items.push({ id: 'delete', label: 'Delete', keybinding: 'Delete', group: '3_edit' });
+      }
+      items.push({ id: 'copyPath', label: 'Copy Path', group: '4_copy' });
+      items.push({ id: 'copyRelativePath', label: 'Copy Relative Path', group: '4_copy' });
+      items.push({ id: 'revealInFileExplorer', label: 'Reveal in File Explorer', group: '5_reveal' });
       if (node.expanded) {
-        items.push({ id: 'collapseAll', label: 'Collapse All', group: '5_collapse' });
+        items.push({ id: 'collapseAll', label: 'Collapse All', group: '6_collapse' });
       }
     }
   } else {
@@ -772,6 +1136,9 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
       case 'openToSide': if (node) openFileToSide(node); break;
       case 'newFile': startInlineCreate(node ? getParentForCreate(node) : getActiveRoot(), 'file'); break;
       case 'newFolder': startInlineCreate(node ? getParentForCreate(node) : getActiveRoot(), 'folder'); break;
+      case 'cut': if (node && !isRootNode(node)) setCopyClipboard(node, 'cut'); break;
+      case 'copy': if (node) setCopyClipboard(node, 'copy'); break;
+      case 'paste': if (node) pasteFromClipboard(getTargetFolderForPaste(node)); break;
       case 'rename': if (node) startInlineRename(node); break;
       case 'delete': if (node) confirmDelete(node); break;
       case 'copyPath': if (node) copyToClipboard(uriToPath(node.uri)); break;
@@ -883,37 +1250,55 @@ function collapseAll(node: TreeNode): void {
 }
 
 function refreshTree(): void {
-  // Capture which URIs were expanded BEFORE wiping the tree, so we can
-  // restore them after reloading.  Without this, sub-folder expand state
-  // is lost because loadChildren always creates children with expanded=false.
-  const previouslyExpanded = new Set<string>();
-  function collectExpanded(nodes: TreeNode[]): void {
-    for (const n of nodes) {
-      if (n.expanded) {
-        previouslyExpanded.add(n.uri);
-        collectExpanded(n.children);
-      }
-    }
-  }
-  collectExpanded(_roots);
+  // Incremental refresh: reload expanded directories in-place, preserving
+  // expand/selection state and only re-rendering once at the end.
+  // This avoids the stutter of a full tree wipe + rebuild.
+  refreshExpandedNodes(_roots).then(() => {
+    scheduleRender();
+  });
+}
 
-  function unload(nodes: TreeNode[]): void {
-    for (const n of nodes) {
-      n.loaded = false;
-      // Recurse before clearing so nested nodes are also reset
-      unload(n.children);
-      n.children = [];
+/**
+ * Recursively reload the children of all expanded nodes.
+ * Preserves expand state on sub-directories that still exist after reload.
+ */
+async function refreshExpandedNodes(nodes: TreeNode[]): Promise<void> {
+  for (const node of nodes) {
+    if (node.type !== FILE_TYPE_DIRECTORY || !node.expanded) continue;
+
+    // Snapshot which children were expanded before reload
+    const expandedChildren = new Set<string>();
+    for (const c of node.children) {
+      if (c.expanded) expandedChildren.add(c.name);
     }
-  }
-  unload(_roots);
-  for (const root of _roots) {
-    root.loaded = false;
-    root.children = [];
-    if (root.expanded) {
-      loadChildrenDeep(root, previouslyExpanded);
+
+    // Reload directory contents
+    try {
+      const entries = await readDirectory(node.uri);
+      const filtered = entries
+        .filter(e => _showHidden || !e.name.startsWith('.'))
+        .sort(sortEntries);
+
+      // Build new children, restoring expand state for matching names
+      node.children = filtered.map(e => ({
+        uri: joinUri(node.uri, e.name),
+        name: e.name,
+        type: e.type,
+        depth: node.depth + 1,
+        expanded: e.type === FILE_TYPE_DIRECTORY && expandedChildren.has(e.name),
+        loaded: false,
+        loading: false,
+        children: [],
+        parent: node,
+      }));
+      node.loaded = true;
+    } catch (err) {
+      console.error('[Explorer] Failed to refresh directory:', node.uri, err);
     }
+
+    // Recursively refresh children that are still expanded
+    await refreshExpandedNodes(node.children);
   }
-  scheduleRender();
 }
 
 // ─── Inline Rename / Create ──────────────────────────────────────────────────

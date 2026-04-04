@@ -26,7 +26,6 @@ import { registerOpenclawParticipants } from '../../openclaw/registerOpenclawPar
 import { createOpenclawCommandRegistry } from '../../openclaw/openclawDefaultRuntimeSupport.js';
 import { registerBuiltInTools } from './tools/builtInTools.js';
 import type { IBuiltInToolFileWriter } from './chatTypes.js';
-import { ChatTokenStatusBar } from './widgets/chatTokenStatusBar.js';
 import {
   ILanguageModelsService,
   IChatService,
@@ -212,7 +211,6 @@ function buildTestPlanStepInput(
 let _ollamaProvider: OllamaProvider | undefined;
 let _activeWidget: ChatWidget | undefined;
 let _chatIsStreamingKey: { set(value: boolean): void } | undefined;
-let _tokenStatusBar: ChatTokenStatusBar | undefined;
 let _lastIndexStats: { pages: number; files: number } | undefined;
 let _promptFileService: PromptFileService | undefined;
 let _permissionService: PermissionService | undefined;
@@ -1039,6 +1037,10 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     api.commands.executeCommand('ai-settings.open');
   };
 
+  // Wire token bar services into widget services (for in-widget token indicator)
+  const tokenBarServices = dataService.buildTokenBarServices();
+  (widgetServices as unknown as Record<string, unknown>).tokenBarServices = tokenBarServices;
+
   // ── 5. Register the chat view in the Auxiliary Bar ──
 
   context.subscriptions.push(
@@ -1154,49 +1156,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // ── 6b. Status bar item — visual token usage with detail popup ──
+  // ── 6b. Index stats hydration ──
 
-  const tokenBarServices = dataService.buildTokenBarServices();
-
-  _tokenStatusBar = new ChatTokenStatusBar(tokenBarServices);
-  context.subscriptions.push(_tokenStatusBar);
-
-  // Create a status bar entry using the custom HTML element
-  const tokenStatusBarItem = api.window.createStatusBarItem(/* Right */ 2, 200);
-  tokenStatusBarItem.name = 'Token Usage';
-  tokenStatusBarItem.htmlElement = _tokenStatusBar.element;
-  tokenStatusBarItem.show();
-  context.subscriptions.push(tokenStatusBarItem as unknown as IDisposable);
-
-  // Find the rendered DOM container for popup anchoring (after show)
-  requestAnimationFrame(() => {
-    const sbItem = document.querySelector(`[id$="statusbar"][id*="chat"]`) as HTMLElement
-      ?? _tokenStatusBar!.element.closest('.statusbar-item') as HTMLElement;
-    if (sbItem) _tokenStatusBar!.setStatusBarItemContainer(sbItem);
-  });
-
-  // Initial update
-  _tokenStatusBar.update().catch(() => {});
-
-  // React to session changes
-  const tokenSessionListener = chatService.onDidChangeSession(() => {
-    _tokenStatusBar?.update().catch(() => {});
-  });
-  context.subscriptions.push(tokenSessionListener as unknown as IDisposable);
-
-  // Also update when models change (context length may differ)
-  const tokenModelListener = languageModelsService.onDidChangeModels(() => {
-    _tokenStatusBar?.update().catch(() => {});
-  });
-  context.subscriptions.push(tokenModelListener as unknown as IDisposable);
-
-  // Update when mode changes (system prompt breakdown changes)
-  const tokenModeListener = modeService.onDidChangeMode(() => {
-    _tokenStatusBar?.update().catch(() => {});
-  });
-  context.subscriptions.push(tokenModeListener as unknown as IDisposable);
-
-  // Update on indexing progress changes (M10 Phase 6 — Task 6.1)
   // Track these subscriptions so we can dispose/re-subscribe on workspace switch
   let _indexingSubs: IDisposable[] = [];
 
@@ -1210,7 +1171,6 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         files: stats.sourceCountByType['file_chunk'] ?? 0,
       };
       dataService.setLastIndexStats(_lastIndexStats);
-      _tokenStatusBar?.update().catch(() => {});
     } catch (err) {
       console.warn('[Chat] Failed to hydrate index stats:', err);
     }
@@ -1223,15 +1183,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
     if (!indexingPipelineService) return;
 
-    const progressSub = indexingPipelineService.onDidChangeProgress(() => {
-      _tokenStatusBar?.update().catch(() => {});
-    });
-    _indexingSubs.push(progressSub as unknown as IDisposable);
-
     const completeSub = indexingPipelineService.onDidCompleteInitialIndex((stats) => {
       _lastIndexStats = { pages: stats.pages, files: stats.files };
       dataService.setLastIndexStats(_lastIndexStats);
-      _tokenStatusBar?.update().catch(() => {});
     });
     _indexingSubs.push(completeSub as unknown as IDisposable);
 
@@ -1571,7 +1525,6 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 /** Set the active widget reference (called from chatView). */
 export function setActiveWidget(widget: ChatWidget | undefined): void {
   _activeWidget = widget;
-  _tokenStatusBar?.update().catch(() => {});
 
   // Wire mention/command providers once the widget is available
   if (widget) {
@@ -1623,7 +1576,6 @@ export function deactivate(): void {
   _ollamaProvider = undefined;
   _activeWidget = undefined;
   _chatIsStreamingKey = undefined;
-  _tokenStatusBar = undefined;
   _promptFileService = undefined;
   _fsAccessor = undefined;
   _api = undefined;

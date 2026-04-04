@@ -19,10 +19,10 @@ export const chatIcons = {
   // ── Header actions ──
   newChat:          g('plus'),
   history:          g('history'),
-  trash:            g('trash'),
   refresh:          g('refresh'),
   search:           g('search'),
   gear:             g('gear'),
+  scrollText:       g('scroll-text'),
 
   // ── Input actions ──
   send:             g('send'),
@@ -46,6 +46,7 @@ export const chatIcons = {
   // ── Sidebar ──
   chevronRight:     g('chevron-right'),
   sectionExpanded:  g('section-expanded'),
+  trash:            g('trash'),
 
   // ── Message actions ──
   copy:             g('copy'),

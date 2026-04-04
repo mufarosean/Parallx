@@ -548,25 +548,6 @@ describe('AI Settings built-in activation', () => {
     );
   });
 
-  it('creates status bar item with preset name', () => {
-    activate(mockApi, context as any);
-    const statusItem = mockApi.window.createStatusBarItem.mock.results[0].value;
-    expect(statusItem.text).toContain('AI:');
-    expect(statusItem.text).toContain('Default');
-    expect(statusItem.show).toHaveBeenCalled();
-  });
-
-  it('updates status bar text when profile changes', () => {
-    activate(mockApi, context as any);
-    const statusItem = mockApi.window.createStatusBarItem.mock.results[0].value;
-
-    const updatedProfile = structuredClone(DEFAULT_PROFILE);
-    updatedProfile.presetName = 'Custom Profile';
-    service._fireChange(updatedProfile);
-
-    expect(statusItem.text).toContain('Custom Profile');
-  });
-
   it('pushes subscriptions to context', () => {
     activate(mockApi, context as any);
     expect(context.subscriptions.length).toBeGreaterThan(0);

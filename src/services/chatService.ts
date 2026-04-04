@@ -944,9 +944,12 @@ export class ChatService extends Disposable implements IChatService {
       session.messages.push(pair);
     }
 
-    // 4. Auto-generate title from first message
-    if (!isReplayReplacement && session.messages.length === 1) {
-      session.title = message.length > 50 ? message.slice(0, 47) + '...' : message;
+    // 4. Auto-generate title from first substantive message (skip greetings)
+    if (!isReplayReplacement && (!session.title || session.title === 'New Chat')) {
+      const GREETING_RE = /^\s*(hi|hey|hello|howdy|yo|sup|what's up|hiya|good\s*(morning|afternoon|evening)|greetings)\s*[!.,?]*\s*$/i;
+      if (!GREETING_RE.test(message)) {
+        session.title = message.length > 50 ? message.slice(0, 47) + '...' : message;
+      }
     }
 
     session.requestInProgress = true;

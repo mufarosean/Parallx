@@ -9,7 +9,6 @@ import { IAISettingsService, IUnifiedAIConfigService, INotificationService, IWor
 import { ILanguageModelsService, ILanguageModelToolsService } from '../../services/chatTypes.js';
 import type { IToolPickerServices } from '../../services/chatTypes.js';
 import { AISettingsPanel } from '../../aiSettings/ui/aiSettingsPanel.js';
-import { getIcon } from '../../ui/iconRegistry.js';
 
 // ─── Local API type ──────────────────────────────────────────────────────────
 
@@ -152,58 +151,6 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       await openCanonicalMemoryFile(workspaceMemoryService.ensureDailyMemory());
     }),
   );
-
-  // Status bar entry: gear icon + AI: {presetName}
-  const statusItem = api.window.createStatusBarItem(
-    1, // Right alignment
-    100,
-  );
-  statusItem.iconSvg = getIcon('gear');
-
-  // Helper: build status text + tooltip with workspace scope indicator (M20 B.2)
-  function updateStatusBar(presetName: string): void {
-    let text = `AI: ${presetName}`;
-    let tooltip = 'Click to open AI Hub';
-    if (unifiedConfigService) {
-      const wsOverride = unifiedConfigService.getWorkspaceOverride();
-      const overriddenKeys = unifiedConfigService.getOverriddenKeys();
-      if (wsOverride && (wsOverride._presetId || overriddenKeys.length > 0)) {
-        text += ' [ws]'; // workspace override indicator
-        const parts: string[] = [`Active preset: ${presetName}`];
-        if (wsOverride._presetId) {
-          parts.push('Workspace preset pinned');
-        }
-        if (overriddenKeys.length > 0) {
-          parts.push(`Workspace overrides: ${overriddenKeys.length} field${overriddenKeys.length > 1 ? 's' : ''}`);
-        }
-        parts.push('Click to open AI Hub');
-        tooltip = parts.join('. ') + '.';
-      }
-    }
-    statusItem.text = text;
-    statusItem.tooltip = tooltip;
-  }
-
-  updateStatusBar(aiSettingsService.getActiveProfile().presetName);
-  statusItem.command = 'ai-settings.open';
-  statusItem.name = 'AI Settings';
-  statusItem.show();
-  context.subscriptions.push(statusItem);
-
-  // Update status bar when profile changes
-  const changeListener = aiSettingsService.onDidChange((profile) => {
-    updateStatusBar(profile.presetName);
-  });
-  context.subscriptions.push(changeListener);
-
-  // Also update when unified config changes (workspace overrides may change)
-  if (unifiedConfigService) {
-    const unifiedListener = unifiedConfigService.onDidChangeConfig(() => {
-      const profile = aiSettingsService.getActiveProfile();
-      updateStatusBar(profile.presetName);
-    });
-    context.subscriptions.push(unifiedListener);
-  }
 
   // ── Toast Notifications (M20 D.2) ──
 

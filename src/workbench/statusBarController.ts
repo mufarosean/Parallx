@@ -2,26 +2,22 @@
 //
 // Extracted from workbench.ts (Fix 2.1) to reduce god-object line count.
 // Owns:
-//   - Right-aligned editor indicators (cursor, indent, encoding, eol, language)
+//   - Right-aligned editor language indicator
 //   - Extension → language display name mapping
-//   - Live editor status bar tracking (cursor position, language mode)
 //   - Notification center bell badge + overlay
 //   - Window title updates
 
-import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { Disposable } from '../platform/lifecycle.js';
 import { URI } from '../platform/uri.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ICommandService, IEditorService, INotificationService, IDocumentExtractionService } from '../services/serviceTypes.js';
-import { StatusBarPart, StatusBarAlignment, StatusBarEntryAccessor } from '../parts/statusBarPart.js';
-import { getLanguageForFileName } from '../services/languageDetection.js';
+import { ICommandService, INotificationService } from '../services/serviceTypes.js';
+import { StatusBarPart, StatusBarAlignment } from '../parts/statusBarPart.js';
 import { EditorPart } from '../parts/editorPart.js';
-import { TextEditorPane } from '../built-in/editor/textEditorPane.js';
 import { ContextMenu } from '../ui/contextMenu.js';
 import { $ } from '../ui/dom.js';
 import type { IEditorInput } from '../editor/editorInput.js';
 import type { Workspace } from '../workspace/workspace.js';
 import type { WorkbenchContextManager } from '../context/workbenchContext.js';
-import type { EditorPane } from '../editor/editorPane.js';
 
 // ─── Dependencies ────────────────────────────────────────────────────────────
 
@@ -39,17 +35,7 @@ export interface StatusBarControllerDeps {
 // ─── Status Bar Controller ───────────────────────────────────────────────────
 
 export class StatusBarController extends Disposable {
-  /** Tracked status bar entry accessors for dynamic updates. */
-  private _accessors: {
-    cursor?: StatusBarEntryAccessor;
-    indent?: StatusBarEntryAccessor;
-    encoding?: StatusBarEntryAccessor;
-    eol?: StatusBarEntryAccessor;
-    language?: StatusBarEntryAccessor;
-  } = {};
-
   private readonly _statusBar: StatusBarPart;
-  private readonly _editorPart: EditorPart;
   private readonly _services: ServiceCollection;
   private readonly _container: HTMLElement;
   private readonly _keybindingHint: (commandId: string) => string | undefined;
@@ -60,7 +46,6 @@ export class StatusBarController extends Disposable {
   constructor(deps: StatusBarControllerDeps) {
     super();
     this._statusBar = deps.statusBar;
-    this._editorPart = deps.editorPart;
     this._services = deps.services;
     this._container = deps.container;
     this._keybindingHint = deps.keybindingHint;
@@ -81,64 +66,6 @@ export class StatusBarController extends Disposable {
         commandService.executeCommand(cmdId);
       });
     }
-
-    // ── Right-aligned editor indicators (VS Code parity) ──
-    const cursorAccessor = sb.addEntry({
-      id: 'status.editor.selection',
-      text: 'Ln 1, Col 1',
-      alignment: StatusBarAlignment.Right,
-      priority: 100,
-      tooltip: 'Go to Line/Column (Ctrl+G)',
-      command: 'workbench.action.gotoLine',
-      name: 'Cursor Position',
-    });
-
-    const indentAccessor = sb.addEntry({
-      id: 'status.editor.indentation',
-      text: 'Spaces: 2',
-      alignment: StatusBarAlignment.Right,
-      priority: 80,
-      tooltip: 'Indentation Settings',
-      name: 'Indentation',
-    });
-
-    const encodingAccessor = sb.addEntry({
-      id: 'status.editor.encoding',
-      text: 'UTF-8',
-      alignment: StatusBarAlignment.Right,
-      priority: 70,
-      tooltip: 'Select Encoding',
-      name: 'Encoding',
-    });
-
-    const eolAccessor = sb.addEntry({
-      id: 'status.editor.eol',
-      text: 'LF',
-      alignment: StatusBarAlignment.Right,
-      priority: 60,
-      tooltip: 'End of Line Sequence',
-      name: 'End of Line',
-    });
-
-    const languageAccessor = sb.addEntry({
-      id: 'status.editor.language',
-      text: 'Plain Text',
-      alignment: StatusBarAlignment.Right,
-      priority: 50,
-      tooltip: 'Select Language Mode',
-      name: 'Language',
-    });
-
-    this._accessors = {
-      cursor: cursorAccessor,
-      indent: indentAccessor,
-      encoding: encodingAccessor,
-      eol: eolAccessor,
-      language: languageAccessor,
-    };
-
-    // Wire active editor → status bar indicators
-    this._wireEditorStatusBarTracking();
 
     // Context menu on right-click
     this._register(sb.onDidContextMenu((event) => {
@@ -168,63 +95,6 @@ export class StatusBarController extends Disposable {
 
     // Notification Center Badge
     this._setupNotificationBadge(sb);
-
-    // M21 F.2: Docling status indicator
-    this._setupDoclingStatusIndicator(sb);
-  }
-
-  // ── Editor status tracking ─────────────────────────────────────────────
-
-  private _wireEditorStatusBarTracking(): void {
-    const editorService = this._services.has(IEditorService)
-      ? this._services.get(IEditorService) as import('../services/editorService.js').EditorService
-      : undefined;
-    if (!editorService) return;
-
-    const editorPart = this._editorPart;
-    const acc = this._accessors;
-    let cursorSub: IDisposable | undefined;
-
-    // Language indicator updates
-    const updateLanguage = (editor: IEditorInput | undefined) => {
-      if (!editor) {
-        acc.language?.update({ text: '' });
-        return;
-      }
-      const lang = getLanguageForFileName(editor.name ?? '');
-      acc.language?.update({ text: lang, tooltip: `${lang} — Select Language Mode` });
-    };
-
-    updateLanguage(editorService.activeEditor);
-    this._register(editorService.onDidActiveEditorChange(updateLanguage));
-
-    // Pane-dependent indicators (cursor, encoding, eol, indent)
-    const updatePaneIndicators = (pane: EditorPane | undefined) => {
-      cursorSub?.dispose();
-      cursorSub = undefined;
-
-      if (pane instanceof TextEditorPane) {
-        acc.encoding?.update({ text: 'UTF-8' });
-        acc.indent?.update({ text: 'Spaces: 2' });
-        acc.cursor?.update({
-          text: `Ln ${pane.cursorLine}, Col ${pane.cursorCol}`,
-        });
-        acc.eol?.update({ text: pane.eolLabel });
-
-        cursorSub = pane.onDidChangeCursorPosition(({ line, col }) => {
-          acc.cursor?.update({ text: `Ln ${line}, Col ${col}` });
-        });
-      } else {
-        acc.cursor?.update({ text: '' });
-        acc.eol?.update({ text: '' });
-        acc.indent?.update({ text: '' });
-        acc.encoding?.update({ text: '' });
-      }
-    };
-
-    this._register(editorPart.onDidActivePaneChange(updatePaneIndicators));
-    updatePaneIndicators(editorPart.activeGroup?.activePane);
-    this._register(toDisposable(() => cursorSub?.dispose()));
   }
 
   // ── Notification badge + center ────────────────────────────────────────
@@ -405,81 +275,5 @@ export class StatusBarController extends Disposable {
       wbCtx.setResourceExtname('');
       wbCtx.setResourceFilename('');
     }
-  }
-
-  // ── M21 F.2: Docling status indicator ──────────────────────────────────
-
-  private _setupDoclingStatusIndicator(sb: StatusBarPart): void {
-    const extractionService = this._services.has(IDocumentExtractionService)
-      ? this._services.get(IDocumentExtractionService) as import('../services/documentExtractionService.js').DocumentExtractionService
-      : undefined;
-    if (!extractionService) return;
-
-    const docSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h8M8 9h2"/></svg>';
-
-    const accessor = sb.addEntry({
-      id: 'status.docling',
-      text: 'Docling',
-      iconSvg: docSvg,
-      alignment: StatusBarAlignment.Right,
-      priority: 50,
-      tooltip: 'Docling: Checking…',
-      name: 'Docling Status',
-      command: 'parallx.installDocling',
-    });
-
-    const makeLabel = (text: string, color?: string): HTMLElement => {
-      const span = $('span');
-      span.textContent = text;
-      if (color) span.style.color = color;
-      return span;
-    };
-
-    const updateStatus = (): void => {
-      const status = extractionService.bridgeStatus;
-      const available = extractionService.isDoclingAvailable;
-
-      let text: string;
-      let tooltip: string;
-      let color: string | undefined;
-
-      switch (status) {
-        case 'available':
-          text = 'Docling';
-          tooltip = 'Docling: Available and healthy';
-          color = '#4ec9b0'; // green
-          break;
-        case 'starting':
-          text = 'Docling…';
-          tooltip = 'Docling: Starting bridge service…';
-          color = '#dcdcaa'; // yellow
-          break;
-        case 'downloading-models':
-          text = 'Docling ↓';
-          tooltip = 'Docling: Downloading models…';
-          color = '#dcdcaa'; // yellow
-          break;
-        case 'error':
-          text = 'Docling ✗';
-          tooltip = 'Docling: Service error — click for diagnostics';
-          color = '#f44747'; // red
-          break;
-        case 'unavailable':
-        default:
-          text = available ? 'Docling' : 'Docling —';
-          tooltip = 'Docling: Not installed — run: pip install docling';
-          color = undefined; // default/gray
-          break;
-      }
-
-      accessor.update({ text: '', tooltip, htmlElement: makeLabel(text, color) });
-    };
-
-    // Initial update
-    updateStatus();
-
-    // Subscribe to changes
-    this._register(extractionService.onDidChangeBridgeStatus(() => updateStatus()));
-    this._register(extractionService.onDidChangeAvailability(() => updateStatus()));
   }
 }

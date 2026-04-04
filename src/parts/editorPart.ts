@@ -535,6 +535,23 @@ export class EditorPart extends Part {
     return this._groups.get(groupId);
   }
 
+  /**
+   * Close all editors owned by a specific tool.
+   * Used when a tool is disabled or uninstalled to remove its orphaned tabs.
+   */
+  async closeEditorsByOwner(ownerToolId: string): Promise<void> {
+    for (const group of this._groups.values()) {
+      // Iterate from end to avoid index shifting as we close editors
+      for (let i = group.model.editors.length - 1; i >= 0; i--) {
+        const editor = group.model.editors[i];
+        if ((editor as any).ownerToolId === ownerToolId) {
+          await group.model.closeEditor(i, true); // force close
+        }
+      }
+    }
+    this._updateWatermark();
+  }
+
   // ── Active group ──
 
   private _setActiveGroup(group: EditorGroupView): void {

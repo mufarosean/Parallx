@@ -13,6 +13,10 @@
  *   - Registry exports: all Phase 7 symbols accessible
  */
 import { describe, it, expect, vi, type Mock } from 'vitest';
+
+// ─── Registry barrel (static import to avoid forks-pool race conditions) ─────
+import * as databaseRegistry from '../../src/built-in/canvas/database/databaseRegistry';
+
 import {
   addRelationLink,
   removeRelationLink,
@@ -766,31 +770,28 @@ describe('Relation & Rollup Renderers', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('Phase 7 Registry Exports', () => {
-  it('relation resolver functions are accessible from databaseRegistry', async () => {
-    const mod = await import('../../src/built-in/canvas/database/databaseRegistry');
-    expect(mod.resolveRelation).toBeTypeOf('function');
-    expect(mod.getRelationCandidates).toBeTypeOf('function');
-    expect(mod.addRelationLink).toBeTypeOf('function');
-    expect(mod.removeRelationLink).toBeTypeOf('function');
-    expect(mod.toggleRelationLink).toBeTypeOf('function');
-    expect(mod.createReciprocalRelation).toBeTypeOf('function');
-    expect(mod.syncReciprocal).toBeTypeOf('function');
-    expect(mod.setRelationWithSync).toBeTypeOf('function');
-    expect(mod.isSelfRelation).toBeTypeOf('function');
-    expect(mod.getSelfRelationCandidates).toBeTypeOf('function');
+  it('relation resolver functions are accessible from databaseRegistry', () => {
+    expect(databaseRegistry.resolveRelation).toBeTypeOf('function');
+    expect(databaseRegistry.getRelationCandidates).toBeTypeOf('function');
+    expect(databaseRegistry.addRelationLink).toBeTypeOf('function');
+    expect(databaseRegistry.removeRelationLink).toBeTypeOf('function');
+    expect(databaseRegistry.toggleRelationLink).toBeTypeOf('function');
+    expect(databaseRegistry.createReciprocalRelation).toBeTypeOf('function');
+    expect(databaseRegistry.syncReciprocal).toBeTypeOf('function');
+    expect(databaseRegistry.setRelationWithSync).toBeTypeOf('function');
+    expect(databaseRegistry.isSelfRelation).toBeTypeOf('function');
+    expect(databaseRegistry.getSelfRelationCandidates).toBeTypeOf('function');
   });
 
-  it('rollup engine functions are accessible from databaseRegistry', async () => {
-    const mod = await import('../../src/built-in/canvas/database/databaseRegistry');
-    expect(mod.evaluateRollupFunction).toBeTypeOf('function');
-    expect(mod.computeRollup).toBeTypeOf('function');
-    expect(mod.computeRollups).toBeTypeOf('function');
-    expect(mod.rollupResultToPropertyValue).toBeTypeOf('function');
+  it('rollup engine functions are accessible from databaseRegistry', () => {
+    expect(databaseRegistry.evaluateRollupFunction).toBeTypeOf('function');
+    expect(databaseRegistry.computeRollup).toBeTypeOf('function');
+    expect(databaseRegistry.computeRollups).toBeTypeOf('function');
+    expect(databaseRegistry.rollupResultToPropertyValue).toBeTypeOf('function');
   });
 
-  it('renderers are accessible from databaseRegistry', async () => {
-    const mod = await import('../../src/built-in/canvas/database/databaseRegistry');
-    expect(mod.renderRelation).toBeTypeOf('function');
-    expect(mod.renderRollup).toBeTypeOf('function');
+  it('renderers are accessible from databaseRegistry', () => {
+    expect(databaseRegistry.renderRelation).toBeTypeOf('function');
+    expect(databaseRegistry.renderRollup).toBeTypeOf('function');
   });
 });

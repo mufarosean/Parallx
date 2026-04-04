@@ -281,3 +281,20 @@
 .open-editors-close:hover {
   background: var(--vscode-toolbar-hoverBackground);
 }
+
+/* ─── Clipboard & Drag-and-Drop States ────────────────────────────────────── */
+
+.tree-node--cut {
+  opacity: 0.5;
+}
+
+.tree-node--dragging {
+  opacity: 0.4;
+}
+
+.tree-node--drop-target {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+  background: color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent);
+  border-radius: var(--parallx-radius-sm, 3px);
+}

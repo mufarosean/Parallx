@@ -85,7 +85,6 @@ describe('ChatSessionSidebar', () => {
     expect(sidebar.isExpanded).toBe(true); // alias
     expect(root!.classList.contains('parallx-chat-session-sidebar--visible')).toBe(true);
 
-    // Sessions should already be rendered
     const items = container.querySelectorAll('.parallx-chat-session-sidebar-item');
     expect(items.length).toBe(3);
 
@@ -121,6 +120,7 @@ describe('ChatSessionSidebar', () => {
       deleteSession: vi.fn(),
     });
 
+    sidebar.show();
     const sectionHeaders = container.querySelectorAll('.parallx-chat-session-sidebar-section-header');
     // Should have 3 groups: Today, Last 7 Days, Older
     expect(sectionHeaders.length).toBe(3);
@@ -147,7 +147,8 @@ describe('ChatSessionSidebar', () => {
       deleteSession: vi.fn(),
     });
 
-    // Initially 3 items (visible by default)
+    sidebar.show();
+    // Initially 3 items
     expect(container.querySelectorAll('.parallx-chat-session-sidebar-item').length).toBe(3);
 
     // Click the "Today" section header to collapse it
@@ -165,7 +166,7 @@ describe('ChatSessionSidebar', () => {
     sidebar.dispose();
   });
 
-  it('displays titles, metadata, and preview', async () => {
+  it('displays titles and relative time', async () => {
     const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
@@ -173,16 +174,17 @@ describe('ChatSessionSidebar', () => {
       deleteSession: vi.fn(),
     });
 
+    sidebar.show();
     const titles = container.querySelectorAll('.parallx-chat-session-sidebar-item-title');
     expect(titles[0]!.textContent).toBe('Today Chat');
 
-    const metas = container.querySelectorAll('.parallx-chat-session-sidebar-item-meta');
-    expect(metas[0]!.textContent).toContain('1 msg');
+    const times = container.querySelectorAll('.parallx-chat-session-sidebar-item-time');
+    expect(times.length).toBeGreaterThan(0);
+    expect(times[0]!.textContent).toBeTruthy();
 
-    // First session has a message preview
-    const previews = container.querySelectorAll('.parallx-chat-session-sidebar-item-preview');
-    expect(previews.length).toBeGreaterThan(0);
-    expect(previews[0]!.textContent).toBe('Hello world');
+    // Meta and preview rows no longer rendered
+    expect(container.querySelectorAll('.parallx-chat-session-sidebar-item-meta').length).toBe(0);
+    expect(container.querySelectorAll('.parallx-chat-session-sidebar-item-preview').length).toBe(0);
 
     sidebar.dispose();
   });
@@ -195,6 +197,7 @@ describe('ChatSessionSidebar', () => {
       deleteSession: vi.fn(),
     });
 
+    sidebar.show();
     const spy = vi.fn();
     sidebar.onDidSelectSession(spy);
 
@@ -231,7 +234,7 @@ describe('ChatSessionSidebar', () => {
       deleteSession: vi.fn(),
     });
 
-    // Visible by default — empty state should already be rendered
+    sidebar.show();
     const empty = container.querySelector('.parallx-chat-session-sidebar-empty');
     expect(empty).toBeTruthy();
     expect(empty!.textContent).toContain('No sessions yet');
@@ -247,6 +250,7 @@ describe('ChatSessionSidebar', () => {
       deleteSession: vi.fn(),
     });
 
+    sidebar.show();
     sidebar.setActiveSession('session-today');
 
     const activeItem = container.querySelector('.parallx-chat-session-sidebar-item--active');
@@ -266,29 +270,11 @@ describe('ChatSessionSidebar', () => {
       deleteSession: deleteSpy,
     });
 
+    sidebar.show();
     const deleteBtn = container.querySelector('.parallx-chat-session-sidebar-item-delete') as HTMLButtonElement;
     expect(deleteBtn).toBeTruthy();
     deleteBtn.click();
     expect(deleteSpy).toHaveBeenCalledWith('session-today');
-
-    sidebar.dispose();
-  });
-
-  it('fires onDidRequestNewSession from header new button', async () => {
-    const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
-
-    const sidebar = new ChatSessionSidebar(container, {
-      getSessions: () => mockSessions as any,
-      deleteSession: vi.fn(),
-    });
-
-    const spy = vi.fn();
-    sidebar.onDidRequestNewSession(spy);
-
-    const newBtn = container.querySelector('.parallx-chat-sidebar-btn--new') as HTMLButtonElement;
-    expect(newBtn).toBeTruthy();
-    newBtn.click();
-    expect(spy).toHaveBeenCalledTimes(1);
 
     sidebar.dispose();
   });
@@ -322,7 +308,8 @@ describe('ChatSessionSidebar', () => {
       deleteSession: vi.fn(),
     });
 
-    // Initially 3 sessions (visible by default)
+    sidebar.show();
+    // Initially 3 sessions
     expect(container.querySelectorAll('.parallx-chat-session-sidebar-item').length).toBe(3);
 
     // Toggle filter visible by clicking search button
@@ -353,7 +340,8 @@ describe('ChatSessionSidebar', () => {
       deleteSession: vi.fn(),
     });
 
-    // Toggle filter visible (sidebar already visible by default)
+    // Show sidebar first, then toggle filter visible
+    sidebar.show();
     const searchBtn = container.querySelectorAll('.parallx-chat-sidebar-btn')[1] as HTMLButtonElement;
     searchBtn.click();
 

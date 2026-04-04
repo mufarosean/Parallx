@@ -16,6 +16,9 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
+// ─── Registry barrel (static import to avoid forks-pool race conditions) ─────
+import * as databaseRegistry from '../../src/built-in/canvas/database/databaseRegistry';
+
 // ─── Imports from formulaEngine (via databaseRegistry gate in prod,
 //     but in tests we import directly for unit testing) ───────────────────────
 
@@ -818,23 +821,21 @@ describe('Formula Engine — renderFormula', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('Formula Engine — Registry Exports', () => {
-  it('exports formula engine functions from databaseRegistry', async () => {
-    const registry = await import('../../src/built-in/canvas/database/databaseRegistry');
-
+  it('exports formula engine functions from databaseRegistry', () => {
     // Functions
-    expect(typeof registry.tokenize).toBe('function');
-    expect(typeof registry.parseFormulaAST).toBe('function');
-    expect(typeof registry.evaluateFormulaAST).toBe('function');
-    expect(typeof registry.buildPropertyResolver).toBe('function');
-    expect(typeof registry.evaluateFormula).toBe('function');
-    expect(typeof registry.parseFormula).toBe('function');
-    expect(typeof registry.inferOutputType).toBe('function');
-    expect(typeof registry.extractPropReferences).toBe('function');
+    expect(typeof databaseRegistry.tokenize).toBe('function');
+    expect(typeof databaseRegistry.parseFormulaAST).toBe('function');
+    expect(typeof databaseRegistry.evaluateFormulaAST).toBe('function');
+    expect(typeof databaseRegistry.buildPropertyResolver).toBe('function');
+    expect(typeof databaseRegistry.evaluateFormula).toBe('function');
+    expect(typeof databaseRegistry.parseFormula).toBe('function');
+    expect(typeof databaseRegistry.inferOutputType).toBe('function');
+    expect(typeof databaseRegistry.extractPropReferences).toBe('function');
 
     // Class
-    expect(typeof registry.FormulaError).toBe('function');
+    expect(typeof databaseRegistry.FormulaError).toBe('function');
 
     // Renderer
-    expect(typeof registry.renderFormula).toBe('function');
+    expect(typeof databaseRegistry.renderFormula).toBe('function');
   });
 });

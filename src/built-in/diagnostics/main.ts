@@ -96,14 +96,17 @@ export function deactivate(): void {
 
 // ── View renderer ────────────────────────────────────────────────────────────
 
+/** Sort order: fail first, then warn, then pass. */
+const STATUS_ORDER: Record<string, number> = { fail: 0, warn: 1, pass: 2 };
+
 function renderDiagnosticsView(container: HTMLElement): IDisposable {
   container.classList.add('diagnostics-container');
 
-  // Header
+  // Header — summary counts + refresh button
   const header = $('div.diagnostics-header');
-  const title = $('span.diagnostics-title');
-  title.textContent = 'AI Runtime Diagnostics';
-  header.appendChild(title);
+
+  const badgeBar = $('span.diagnostics-badge-bar');
+  header.appendChild(badgeBar);
 
   const spacer = $('span.diagnostics-spacer');
   header.appendChild(spacer);
@@ -121,66 +124,69 @@ function renderDiagnosticsView(container: HTMLElement): IDisposable {
   });
   header.appendChild(refreshBtn);
 
-  // Summary line
-  const summary = $('div.diagnostics-summary');
+  // Status line
+  const statusLine = $('div.diagnostics-status');
 
-  // Results table
-  const tableContainer = $('div.diagnostics-table-container');
+  // Results list
+  const listContainer = $('div.diagnostics-list');
 
   container.appendChild(header);
-  container.appendChild(summary);
-  container.appendChild(tableContainer);
+  container.appendChild(statusLine);
+  container.appendChild(listContainer);
 
   function renderResults(): void {
-    const results = currentResults;
+    const results = [...currentResults].sort(
+      (a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9),
+    );
 
-    // Summary
+    // Badge bar counts
     const pass = results.filter(r => r.status === 'pass').length;
     const fail = results.filter(r => r.status === 'fail').length;
     const warn = results.filter(r => r.status === 'warn').length;
-    const icon = fail > 0 ? 'FAIL' : warn > 0 ? 'WARN' : 'PASS';
-    summary.textContent = `${icon} ${pass} pass, ${fail} fail, ${warn} warn`;
-    summary.className = `diagnostics-summary ${fail > 0 ? 'diagnostics-summary--fail' : warn > 0 ? 'diagnostics-summary--warn' : 'diagnostics-summary--pass'}`;
+    badgeBar.innerHTML = '';
+    const makeBadge = (count: number, label: string, cls: string): void => {
+      const badge = $('span.diagnostics-badge');
+      badge.classList.add(cls);
+      badge.textContent = `${label}: ${count}`;
+      badgeBar.appendChild(badge);
+    };
+    if (fail > 0) { makeBadge(fail, 'Fail', 'diagnostics-badge--fail'); }
+    if (warn > 0) { makeBadge(warn, 'Warn', 'diagnostics-badge--warn'); }
+    makeBadge(pass, 'Pass', 'diagnostics-badge--pass');
 
-    // Table
-    tableContainer.textContent = '';
+    // Status line
+    const lastTime = results.length > 0
+      ? new Date(Math.max(...results.map(r => r.timestamp))).toLocaleTimeString()
+      : '—';
+    statusLine.textContent = `Last checked: ${lastTime}`;
+
+    // List
+    listContainer.textContent = '';
     if (results.length === 0) {
       const empty = $('div.diagnostics-empty');
       empty.textContent = 'No diagnostic results yet. Click refresh to run checks.';
-      tableContainer.appendChild(empty);
+      listContainer.appendChild(empty);
       return;
     }
 
-    const table = $('table.diagnostics-table');
-    const thead = $('thead');
-    thead.innerHTML = '<tr><th></th><th>Check</th><th>Detail</th><th>Time</th></tr>';
-    table.appendChild(thead);
-
-    const tbody = $('tbody');
     for (const result of results) {
-      const row = $('tr.diagnostics-row');
+      const row = $('div.diagnostics-row');
       row.classList.add(`diagnostics-row--${result.status}`);
 
-      const iconCell = $('td.diagnostics-icon');
-      iconCell.innerHTML = result.status === 'pass' ? ICON_PASS : result.status === 'fail' ? ICON_FAIL : ICON_WARN;
+      const icon = $('span.diagnostics-row-icon');
+      icon.innerHTML = result.status === 'pass' ? ICON_PASS : result.status === 'fail' ? ICON_FAIL : ICON_WARN;
+      row.appendChild(icon);
 
-      const nameCell = $('td.diagnostics-name');
-      nameCell.textContent = result.name;
+      const name = $('span.diagnostics-row-name');
+      name.textContent = result.name;
+      row.appendChild(name);
 
-      const detailCell = $('td.diagnostics-detail');
-      detailCell.textContent = result.detail;
+      const detail = $('span.diagnostics-row-detail');
+      detail.textContent = result.detail;
+      row.appendChild(detail);
 
-      const timeCell = $('td.diagnostics-time');
-      timeCell.textContent = new Date(result.timestamp).toLocaleTimeString();
-
-      row.appendChild(iconCell);
-      row.appendChild(nameCell);
-      row.appendChild(detailCell);
-      row.appendChild(timeCell);
-      tbody.appendChild(row);
+      listContainer.appendChild(row);
     }
-    table.appendChild(tbody);
-    tableContainer.appendChild(table);
   }
 
   // Wire up render callback

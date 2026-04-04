@@ -551,10 +551,13 @@ export class Workbench extends Layout {
       // 3. Write workspace state to the NEW folder's storage file so the reload finds it.
       //    Without this, the reload creates FileBackedWorkspaceStorage for the new path
       //    but finds no data (the save above wrote to the old path).
+      //    Use an empty editor snapshot — the new workspace starts fresh, it should
+      //    not carry over editor tabs from the old workspace.
       const bridge = window.parallxElectron!.storage;
       const appPath = window.parallxElectron!.appPath;
       const state = this._workspaceSaver.collectState();
-      await bridge.writeJson(`${folderPath}/.parallx/workspace-state.json`, { version: 1, workbench: JSON.stringify(state) });
+      const freshState = { ...state, editors: createDefaultEditorSnapshot() };
+      await bridge.writeJson(`${folderPath}/.parallx/workspace-state.json`, { version: 1, workbench: JSON.stringify(freshState) });
 
       // 4. Write the folder path to last-workspace.json so the reload opens it
       await bridge.writeJson(`${appPath}/data/last-workspace.json`, { path: folderPath });
@@ -1363,6 +1366,7 @@ export class Workbench extends Layout {
       container.restoreContainerState({
         activeViewId: vcSnap.activeViewId,
         tabOrder: vcSnap.tabOrder,
+        hiddenTabs: vcSnap.hiddenTabs,
       });
     }
 
@@ -2273,6 +2277,8 @@ export class Workbench extends Layout {
       } else {
         // ── DISABLE: deactivate (contributions cleaned by onDidDeactivate) ──
         console.log(`[Workbench] Disabling tool "${toolId}" — deactivating`);
+        // Close all editor tabs owned by this tool before deactivation
+        await (this._editor as EditorPart).closeEditorsByOwner(toolId);
         await this._toolActivator.deactivate(toolId);
         // Also clear activation tracking so re-enable starts fresh
         activationEvents.clearActivated(toolId);
@@ -2344,6 +2350,8 @@ export class Workbench extends Layout {
     };
 
     (apiFactoryDeps as any).onToolUninstalled = async (toolId: string) => {
+      // Close all editor tabs owned by this tool before deactivation
+      await (this._editor as EditorPart).closeEditorsByOwner(toolId);
       // Deactivate the tool if active
       if (this._toolActivator.isActivated(toolId)) {
         await this._toolActivator.deactivate(toolId);

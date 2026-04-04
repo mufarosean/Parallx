@@ -80,6 +80,33 @@ function _formatRelativeTime(timestamp: number): string {
   });
 }
 
+// ── Smart session display title ──
+// Skip common greetings and use the first substantive user message.
+// Falls back to a date-based name when nothing meaningful is found.
+
+const GREETING_PATTERN = /^\s*(hi|hey|hello|howdy|yo|sup|what's up|hiya|good\s*(morning|afternoon|evening)|greetings)\s*[!.,?]*\s*$/i;
+
+function _deriveDisplayTitle(session: IChatSession): string {
+  // If the session has a real title (not default 'New Chat') that isn't a greeting, use it
+  if (session.title && session.title !== 'New Chat' && !GREETING_PATTERN.test(session.title)) {
+    return session.title;
+  }
+
+  // Scan messages for the first substantive user message
+  for (const msg of session.messages) {
+    const text = msg.request.text.trim();
+    if (text && !GREETING_PATTERN.test(text)) {
+      return text.length > 50 ? text.slice(0, 47) + '\u2026' : text;
+    }
+  }
+
+  // Fallback: date-based name
+  return 'Chat \u00B7 ' + new Date(session.createdAt).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ChatSessionSidebar
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -153,11 +180,6 @@ export class ChatSessionSidebar extends Disposable {
     this._register(addDisposableListener(searchBtn, 'click', () => this._toggleFilter()));
     headerActions.appendChild(searchBtn);
 
-    // New Session button
-    const newBtn = this._createButton(chatIcons.newChat, 'New Session', 'parallx-chat-sidebar-btn parallx-chat-sidebar-btn--new');
-    this._register(addDisposableListener(newBtn, 'click', () => this._onDidRequestNewSession.fire()));
-    headerActions.appendChild(newBtn);
-
     // ── Filter input (hidden by default) ──
     this._filterContainer = $('div.parallx-chat-session-sidebar-filter');
     this._filterContainer.style.display = 'none';
@@ -189,7 +211,7 @@ export class ChatSessionSidebar extends Disposable {
     this._emptyEl.style.display = 'none';
     this._root.appendChild(this._emptyEl);
 
-    // Initial state: visible by default
+    // Initial state: visible by default, togglable via history button
     this._applyVisibility();
     this._renderSessionList();
   }
@@ -404,31 +426,12 @@ export class ChatSessionSidebar extends Disposable {
     // Top row: title + time
     const topRow = $('div.parallx-chat-session-sidebar-item-top');
     const title = $('span.parallx-chat-session-sidebar-item-title',
-      session.title || 'New Chat');
+      _deriveDisplayTitle(session));
     const time = $('span.parallx-chat-session-sidebar-item-time',
       _formatRelativeTime(session.createdAt));
     topRow.appendChild(title);
     topRow.appendChild(time);
     info.appendChild(topRow);
-
-    // Meta row: message count + mode
-    const meta = $('div.parallx-chat-session-sidebar-item-meta');
-    const messageCount = session.messages.length;
-    const modeLabel = session.mode
-      ? session.mode.charAt(0).toUpperCase() + session.mode.slice(1)
-      : '';
-    meta.textContent = `${messageCount} msg${messageCount !== 1 ? 's' : ''}${modeLabel ? ` \u00B7 ${modeLabel}` : ''}`;
-    info.appendChild(meta);
-
-    // Preview (first message)
-    if (messageCount > 0) {
-      const preview = $('div.parallx-chat-session-sidebar-item-preview');
-      const firstMsg = session.messages[0].request.text;
-      preview.textContent = firstMsg.length > 80
-        ? firstMsg.slice(0, 77) + '\u2026'
-        : firstMsg;
-      info.appendChild(preview);
-    }
 
     info.addEventListener('click', () => {
       this._onDidSelectSession.fire(session.id);

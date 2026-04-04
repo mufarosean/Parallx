@@ -1,63 +1,37 @@
-/* chatTokenStatusBar.css — Token usage status bar + detail popup styles */
+/* chatTokenStatusBar.css — Token usage indicator + detail popup styles */
 
-/* ── Status bar item ── */
+/* ── Indicator root (below chat input) ── */
 
-/*
- * The root element is rendered inside .statusbar-item > a.statusbar-item-label,
- * which already has display:flex, padding:0 5px, gap:3px.
- * We just add our own gap and cursor; no extra padding to avoid double-spacing.
- */
 .parallx-token-statusbar {
   display: flex;
   align-items: center;
   gap: 4px;
   cursor: pointer;
-  height: 100%;
+  padding: 0 18px 8px 36px;
+  font-size: var(--parallx-fontSize-sm);
+  color: var(--vscode-descriptionForeground);
+  user-select: none;
+}
+
+.parallx-token-statusbar:hover {
+  color: var(--vscode-foreground);
 }
 
 .parallx-token-statusbar-label {
-  font-size: var(--parallx-fontSize-base);
   white-space: nowrap;
   color: inherit;
-  line-height: 22px;
+  line-height: 1;
 }
 
-.parallx-token-statusbar-bar {
+/* Circular progress ring */
+.parallx-token-statusbar-ring {
   display: flex;
   align-items: center;
   flex-shrink: 0;
 }
 
-.parallx-token-statusbar-bar svg {
+.parallx-token-statusbar-ring svg {
   display: block;
-}
-
-/* ── Connection health dot (M42 Phase 3) ── */
-
-.parallx-health-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  transition: background-color 0.3s ease;
-}
-
-.parallx-health-dot--connected {
-  background-color: var(--vscode-testing-iconPassed); /* teal/green */
-}
-
-.parallx-health-dot--disconnected {
-  background-color: var(--vscode-errorForeground); /* red */
-}
-
-.parallx-health-dot--connecting {
-  background-color: var(--vscode-editorWarning-foreground); /* amber */
-  animation: parallx-health-pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes parallx-health-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
 }
 
 /* ── Detail popup ── */
@@ -150,46 +124,4 @@
   font-variant-numeric: tabular-nums;
   min-width: 40px;
   text-align: right;
-}
-
-/* ── Indexing indicator (M10 Phase 6 — Task 6.1) ── */
-
-.parallx-token-statusbar-indexing {
-  font-size: var(--parallx-fontSize-sm);
-  white-space: nowrap;
-  line-height: 22px;
-  padding-left: 6px;
-  border-left: 1px solid var(--vscode-menu-separatorBackground);
-  margin-left: 2px;
-}
-
-.parallx-token-statusbar-indexing-active {
-  color: var(--vscode-editorWarning-foreground, #cca700); /* amber — indexing in progress */
-}
-
-.parallx-token-statusbar-indexing-complete {
-  color: var(--vscode-descriptionForeground);
-}
-
-.parallx-token-statusbar-indexing-icon {
-  display: inline-flex;
-  align-items: center;
-  vertical-align: middle;
-  margin-right: 3px;
-}
-
-.parallx-token-statusbar-indexing-icon svg {
-  width: 13px;
-  height: 13px;
-}
-
-/* Popup index progress bar row */
-.parallx-token-popup-index-bar {
-  margin-top: 4px;
-  margin-bottom: 2px;
-}
-
-.parallx-token-popup-index-bar svg {
-  display: block;
-  width: 100%;
 }

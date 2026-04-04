@@ -568,14 +568,17 @@ html, body {
   padding: 0 8px;
   display: flex;
   align-items: center;
-  border-bottom: 1px solid var(--vscode-sideBar-border);
 }
 
 .auxiliary-bar-header-label {
-  font-size: var(--parallx-fontSize-sm);
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--vscode-auxiliaryBar-headerForeground);
+  color: var(--vscode-foreground);
+  border-bottom: 2px solid var(--vscode-focusBorder, #007acc);
+  line-height: 35px;
+  padding: 0 10px;
 }
 
 .parallx-chat-title-actions {
@@ -600,9 +603,13 @@ html, body {
 /* ── Panel ── */
 .part-workbench-parts-panel {
   background: var(--vscode-panel-background);
-  border-top: 1px solid var(--vscode-panel-border);
   margin-left: 0;
   margin-right: 0;
+}
+
+.panel-content {
+  display: flex;
+  flex-direction: column;
 }
 
 /* Panel tab bar is provided by ViewContainer — no separate .panel-tab-bar needed */
@@ -610,6 +617,19 @@ html, body {
 .panel-views {
   flex: 1;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-views > .view-container {
+  flex: 1;
+  background: var(--vscode-panel-background);
+}
+
+.panel-views .view-container-content,
+.panel-views .view,
+.panel-views .tool-view-content {
+  background: var(--vscode-panel-background);
 }
 
 /* ── Status Bar ── */
@@ -771,16 +791,11 @@ html, body {
   flex-shrink: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  background: var(--vscode-sideBar-background);
+  background: transparent;
   gap: 0;
   position: relative;
-}
-
-/* Fill remaining tab bar space with bottom border (inactive region) */
-.view-container-tabs::after {
-  content: '';
-  flex: 1;
-  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
+  height: 35px;
+  padding-left: 8px;
 }
 
 .view-container-tabs.hidden {
@@ -800,31 +815,34 @@ html, body {
 .view-tab {
   display: flex;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 10px;
   cursor: pointer;
   white-space: nowrap;
   height: 100%;
   user-select: none;
-  font-size: var(--parallx-fontSize-md);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   color: var(--vscode-tab-inactiveForeground);
-  border-right: 1px solid var(--vscode-tab-border);
-  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
-  transition: color 0.15s, background-color 0.15s;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  transition: color 0.12s;
   box-sizing: border-box;
+  position: relative;
+  margin-bottom: -1px;
 }
 
 .view-tab:hover {
   color: var(--vscode-foreground);
-  background-color: var(--vscode-tab-hoverBackground);
 }
 
 .view-tab.tab-active {
-  color: var(--vscode-tab-activeForeground);
-  background-color: var(--vscode-tab-activeBackground);
-  border-bottom: 1px solid var(--vscode-tab-activeBackground);
+  color: var(--vscode-foreground);
+  border-bottom-color: var(--vscode-focusBorder, #007acc);
 }
 
-.view-tab:focus {
+.view-tab:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
@@ -1187,6 +1205,11 @@ html, body {
 .ui-tab-bar-actions button:hover {
   opacity: 1;
   background: var(--vscode-toolbar-hoverBackground);
+}
+
+.ui-tab-bar-actions button svg {
+  width: 16px;
+  height: 16px;
 }
 
 .editor-pane-container {

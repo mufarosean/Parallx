@@ -6,6 +6,7 @@ import { Orientation } from '../layout/layoutTypes.js';
 import { $, addDisposableListener, hide, show, startDrag, endDrag } from '../ui/dom.js';
 import { IGridView } from '../layout/gridView.js';
 import { IView } from './view.js';
+import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
 import type { ViewContainerState } from './viewTypes.js';
 export type { ViewContainerState } from './viewTypes.js';
 
@@ -48,6 +49,7 @@ export class ViewContainer extends Disposable implements IGridView {
   private readonly _tabDisposables: Map<string, DisposableStore> = new Map();
   private _tabOrder: string[] = [];
   private _activeViewId: string | undefined;
+  private _hiddenTabs = new Set<string>();
 
   private _width = 0;
   private _height = 0;
@@ -149,6 +151,12 @@ export class ViewContainer extends Disposable implements IGridView {
         const viewId = tabs[nextIdx].dataset.viewId;
         if (viewId) this.activateView(viewId);
       }
+    }));
+
+    // Right-click context menu on tab bar — toggle visibility of individual tabs
+    this._register(addDisposableListener(this._tabBar, 'contextmenu', (e) => {
+      e.preventDefault();
+      this._showTabVisibilityMenu(e.clientX, e.clientY);
     }));
 
     // Content area
@@ -295,11 +303,11 @@ export class ViewContainer extends Disposable implements IGridView {
 
     this._onDidAddView.fire(view);
 
-    // If no active view, activate this one
-    if (this._activeViewId === undefined) {
+    // If no active view (or active view is hidden), activate the first visible one
+    if (this._activeViewId === undefined || this._hiddenTabs.has(this._activeViewId)) {
       if (this._mode === 'stacked') {
         this._activeViewId = view.id;
-      } else {
+      } else if (!this._hiddenTabs.has(view.id)) {
         this.activateView(view.id);
       }
     }
@@ -455,6 +463,7 @@ export class ViewContainer extends Disposable implements IGridView {
       activeViewId: this._activeViewId,
       tabOrder: [...this._tabOrder],
       collapsedSections: this._mode === 'stacked' ? [...this._collapsedSections] : undefined,
+      hiddenTabs: this._hiddenTabs.size > 0 ? [...this._hiddenTabs] : undefined,
     };
   }
 
@@ -472,6 +481,19 @@ export class ViewContainer extends Disposable implements IGridView {
         this._rebuildTabBar();
       }
     }
+
+    // Restore hidden tabs
+    if (state.hiddenTabs) {
+      for (const viewId of state.hiddenTabs) {
+        if (this._views.has(viewId)) {
+          this._hiddenTabs.add(viewId);
+        }
+      }
+      if (this._mode !== 'stacked') {
+        this._rebuildTabBar();
+      }
+    }
+
     if (state.collapsedSections && this._mode === 'stacked') {
       for (const viewId of state.collapsedSections) {
         if (this._views.has(viewId) && !this._collapsedSections.has(viewId)) {
@@ -479,8 +501,14 @@ export class ViewContainer extends Disposable implements IGridView {
         }
       }
     }
-    if (state.activeViewId && this._views.has(state.activeViewId)) {
+    if (state.activeViewId && this._views.has(state.activeViewId) && !this._hiddenTabs.has(state.activeViewId)) {
       this.activateView(state.activeViewId);
+    } else {
+      // Saved active view is missing or hidden — activate the first visible tab
+      const firstVisible = this._tabOrder.find(id => !this._hiddenTabs.has(id));
+      if (firstVisible) {
+        this.activateView(firstVisible);
+      }
     }
   }
 
@@ -882,13 +910,80 @@ export class ViewContainer extends Disposable implements IGridView {
     while (this._tabBar.firstChild) {
       this._tabBar.removeChild(this._tabBar.firstChild);
     }
-    // Re-append in order
+    // Re-append in order, skipping hidden tabs
     for (const id of this._tabOrder) {
+      if (this._hiddenTabs.has(id)) continue;
       const tab = this._tabElements.get(id);
       if (tab) {
         this._tabBar.appendChild(tab);
       }
     }
+  }
+
+  // ── Tab visibility ──
+
+  /**
+   * Show/hide a tab in the tab bar.
+   * If the hidden tab was active, activates the next visible tab.
+   */
+  setTabHidden(viewId: string, hidden: boolean): void {
+    if (hidden) {
+      this._hiddenTabs.add(viewId);
+    } else {
+      this._hiddenTabs.delete(viewId);
+    }
+
+    this._rebuildTabBar();
+
+    // If the active view was hidden, switch to the first visible tab
+    if (hidden && this._activeViewId === viewId) {
+      const nextVisible = this._tabOrder.find(id => !this._hiddenTabs.has(id));
+      if (nextVisible) {
+        this.activateView(nextVisible);
+      }
+    }
+
+    // If a tab was unhidden and there's no active view, activate it
+    if (!hidden && !this._activeViewId) {
+      this.activateView(viewId);
+    }
+  }
+
+  /**
+   * Get the set of hidden tab IDs (for state persistence).
+   */
+  get hiddenTabs(): ReadonlySet<string> { return this._hiddenTabs; }
+
+  private _showTabVisibilityMenu(x: number, y: number): void {
+    // Build items: one row per registered view with a checkmark for visible ones
+    const items: IContextMenuItem[] = this._tabOrder.map(viewId => {
+      const view = this._views.get(viewId);
+      const isVisible = !this._hiddenTabs.has(viewId);
+      return {
+        id: viewId,
+        label: view?.name ?? viewId,
+        renderIcon: isVisible
+          ? (container: HTMLElement) => { container.textContent = '✓'; container.style.width = '16px'; }
+          : (container: HTMLElement) => { container.style.width = '16px'; },
+      };
+    });
+
+    const menu = ContextMenu.show({
+      items,
+      anchor: { x, y },
+    });
+
+    menu.onDidSelect(({ item }) => {
+      const isCurrentlyHidden = this._hiddenTabs.has(item.id);
+
+      // Don't allow hiding the last visible tab
+      if (!isCurrentlyHidden) {
+        const visibleCount = this._tabOrder.filter(id => !this._hiddenTabs.has(id)).length;
+        if (visibleCount <= 1) return; // must keep at least one visible
+      }
+
+      this.setTabHidden(item.id, !isCurrentlyHidden);
+    });
   }
 
   // ── Helpers ──
@@ -916,6 +1011,7 @@ export class ViewContainer extends Disposable implements IGridView {
     this._sectionDisposables.clear();
     this._sectionSashes = [];
     this._collapsedSections.clear();
+    this._hiddenTabs.clear();
     this._tabOrder = [];
     super.dispose();
   }

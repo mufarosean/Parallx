@@ -120,6 +120,7 @@ export class EditorsBridge {
       options.icon,
       provider,
       inputId,
+      this._toolId,
     );
 
     if (this._editorService) {
@@ -237,6 +238,8 @@ class ToolEditorInput extends EditorInput {
   private _name: string;
   private readonly _icon: string | undefined;
   readonly provider: ToolEditorProvider;
+  /** The tool ID that created this editor input (for cleanup on deactivation). */
+  readonly ownerToolId: string;
 
   constructor(
     typeId: string,
@@ -244,12 +247,14 @@ class ToolEditorInput extends EditorInput {
     icon: string | undefined,
     provider: ToolEditorProvider,
     id: string,
+    ownerToolId: string,
   ) {
     super(id);
     this.typeId = typeId;
     this._name = name;
     this._icon = icon;
     this.provider = provider;
+    this.ownerToolId = ownerToolId;
   }
 
   get name(): string { return this._name; }

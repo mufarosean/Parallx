@@ -560,6 +560,16 @@ describe('ChatService', () => {
       expect(session.title).toBe('What is TypeScript?');
     });
 
+    it('skips greeting for title and uses second message', async () => {
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'Hello!');
+      // Greeting should not change default title
+      expect(session.title).toBe('New Chat');
+
+      await chatService.sendRequest(session.id, 'What is TypeScript?');
+      expect(session.title).toBe('What is TypeScript?');
+    });
+
     it('truncates long titles to ~50 chars', async () => {
       const session = chatService.createSession();
       const longMsg = 'A'.repeat(100);
