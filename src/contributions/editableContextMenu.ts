@@ -302,6 +302,71 @@ export class EditableContextMenu extends Disposable {
     return active instanceof HTMLElement ? findEditableAncestor(active) : null;
   }
 
+  // ── Spell correction ─────────────────────────────────────────────────────
+
+  /**
+   * Replace the misspelled word directly in the editable target.
+   * Electron's `replaceMisspelling()` relies on internal webContents state
+   * from the last native context-menu event. Our custom menu steals focus
+   * and delays, so that state is often stale by the time the user clicks
+   * a suggestion. Instead, we locate the misspelled word in the target
+   * value/content and replace it ourselves.
+   */
+  private _replaceWordInTarget(
+    target: HTMLElement,
+    misspelled: string,
+    replacement: string,
+    saved: SavedSelection,
+  ): void {
+    if (!misspelled) return;
+
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+      const val = target.value;
+      const cursor = saved.start ?? 0;
+
+      // Find the occurrence of the misspelled word nearest the cursor.
+      // The cursor is typically inside or adjacent to the misspelled word.
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      let searchFrom = 0;
+      const lowerVal = val.toLowerCase();
+      const lowerWord = misspelled.toLowerCase();
+      while (true) {
+        const idx = lowerVal.indexOf(lowerWord, searchFrom);
+        if (idx === -1) break;
+        // Check word boundaries (avoid replacing substrings of longer words)
+        const before = idx > 0 ? lowerVal[idx - 1] : ' ';
+        const after = idx + misspelled.length < lowerVal.length ? lowerVal[idx + misspelled.length] : ' ';
+        const isWord = /\W/.test(before) && /\W/.test(after);
+        if (isWord) {
+          const dist = Math.abs(idx - cursor);
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestIdx = idx;
+          }
+        }
+        searchFrom = idx + 1;
+      }
+
+      if (bestIdx === -1) {
+        // Fallback: try Electron's native replacement
+        void replaceMisspelling(replacement);
+        return;
+      }
+
+      const before = val.substring(0, bestIdx);
+      const after = val.substring(bestIdx + misspelled.length);
+      target.value = before + replacement + after;
+      const newCursor = bestIdx + replacement.length;
+      target.setSelectionRange(newCursor, newCursor);
+      // Fire input event so frameworks/auto-resize hooks pick up the change
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+    } else {
+      // contenteditable — fall back to Electron's native replacement
+      void replaceMisspelling(replacement);
+    }
+  }
+
   // ── Menu ────────────────────────────────────────────────────────────────
 
   private _showMenu(
@@ -355,7 +420,11 @@ export class EditableContextMenu extends Disposable {
       restoreAndFocus(saved);
 
       if (item.id.startsWith('replace:')) {
-        void replaceMisspelling(item.id.slice('replace:'.length));
+        const suggestion = item.id.slice('replace:'.length);
+        // Electron's replaceMisspelling relies on internal webContents state
+        // that may become stale after our custom menu steals focus.
+        // Manually replace the misspelled word in the editable target instead.
+        this._replaceWordInTarget(target, menuState.misspelledWord, suggestion, saved);
         return;
       }
 

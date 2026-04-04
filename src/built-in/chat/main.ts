@@ -1117,6 +1117,17 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
+  // Add a file/folder as context attachment to the chat input
+  context.subscriptions.push(
+    api.commands.registerCommand('chat.addFileAttachment', (...args: unknown[]) => {
+      const file = args[0] as { name?: string; fullPath?: string } | undefined;
+      if (_activeWidget && file?.name && file?.fullPath) {
+        _activeWidget.addFileAttachment({ name: file.name, fullPath: file.fullPath });
+        _activeWidget.focus();
+      }
+    }),
+  );
+
   context.subscriptions.push(
     api.commands.registerCommand('chat.switchMode', () => {
       // M41 Phase 9: Cycle Agent ↔ Edit (Ask collapsed into Agent)

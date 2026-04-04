@@ -46,6 +46,10 @@ export class ChatInputPart extends Disposable {
   private readonly _toolsBtn: HTMLButtonElement;
   private readonly _mentionAutocomplete: ChatMentionAutocomplete;
 
+  // ── Command pill state ──
+  private readonly _commandPill: HTMLElement;
+  private _activeCommand: string | undefined;
+
   // ── State ──
 
   private _streaming = false;
@@ -83,6 +87,11 @@ export class ChatInputPart extends Disposable {
     // Editor area (textarea wrapper)
     const editorArea = $('div.parallx-chat-input-editor');
     this._root.appendChild(editorArea);
+
+    // Command pill (shown when a /command is active, VS Code style)
+    this._commandPill = $('span.parallx-chat-input-command-pill');
+    this._commandPill.style.display = 'none';
+    editorArea.appendChild(this._commandPill);
 
     // Textarea
     this._textarea = document.createElement('textarea');
@@ -167,6 +176,12 @@ export class ChatInputPart extends Disposable {
     this._register(addDisposableListener(this._textarea, 'keydown', (e) => {
       // Don't submit while autocomplete dropdown is open
       if (this._mentionAutocomplete.isOpen) { return; }
+      // Backspace at position 0 clears the command pill
+      if (e.key === 'Backspace' && this._activeCommand && this._textarea.selectionStart === 0 && this._textarea.selectionEnd === 0) {
+        e.preventDefault();
+        this._clearCommandPill(true);
+        return;
+      }
       if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         this._submit();
@@ -176,6 +191,7 @@ export class ChatInputPart extends Disposable {
     // Auto-resize textarea
     this._register(addDisposableListener(this._textarea, 'input', () => {
       this._autoResize();
+      this._detectCommandFromTyping();
     }));
 
     this._register(addDisposableListener(this._textarea, 'paste', (event: ClipboardEvent) => {
@@ -195,13 +211,22 @@ export class ChatInputPart extends Disposable {
     // ── @Mention / /Command autocomplete (M11 Task 3.1, 3.5) ──
     this._mentionAutocomplete = this._register(new ChatMentionAutocomplete(this._textarea, this._root));
     this._register(this._mentionAutocomplete.onDidAccept((ev) => {
-      // Replace the trigger text with the accepted suggestion
-      const before = this._textarea.value.substring(0, ev.triggerStart);
-      const after = this._textarea.value.substring(ev.triggerEnd);
-      this._textarea.value = before + ev.insertText + after;
-      // Position cursor after inserted text
-      const newPos = ev.triggerStart + ev.insertText.length;
-      this._textarea.setSelectionRange(newPos, newPos);
+      // If a /command was selected from autocomplete, show it as a pill
+      if (ev.insertText.startsWith('/')) {
+        const cmdName = ev.insertText.trim();
+        // Clear trigger text from textarea, keep only text after the trigger
+        const after = this._textarea.value.substring(ev.triggerEnd);
+        this._textarea.value = after;
+        this._textarea.setSelectionRange(0, 0);
+        this._setCommandPill(cmdName);
+      } else {
+        // Regular @mention — insert as before
+        const before = this._textarea.value.substring(0, ev.triggerStart);
+        const after = this._textarea.value.substring(ev.triggerEnd);
+        this._textarea.value = before + ev.insertText + after;
+        const newPos = ev.triggerStart + ev.insertText.length;
+        this._textarea.setSelectionRange(newPos, newPos);
+      }
       this._autoResize();
       this._textarea.focus();
     }));
@@ -211,6 +236,10 @@ export class ChatInputPart extends Disposable {
 
   /** Get the current input text. */
   getValue(): string {
+    if (this._activeCommand) {
+      const rest = this._textarea.value;
+      return rest ? `${this._activeCommand} ${rest}` : this._activeCommand;
+    }
     return this._textarea.value;
   }
 
@@ -223,6 +252,7 @@ export class ChatInputPart extends Disposable {
   /** Clear the input, reset height, and clear attachments. */
   clear(): void {
     this._textarea.value = '';
+    this._clearCommandPill(false);
     this._autoResize();
     this._contextRibbon.clear();
     this._contextPills.clearExclusions();
@@ -294,6 +324,11 @@ export class ChatInputPart extends Disposable {
     this._contextRibbon.addSelectionAttachment(attachment);
   }
 
+  /** Add a file or folder as context attachment. */
+  addFileAttachment(file: { name: string; fullPath: string }): void {
+    this._contextRibbon.addAttachment(file);
+  }
+
   setVisionSupported(visionSupported: boolean): void {
     this._contextRibbon.setVisionSupported(visionSupported);
   }
@@ -316,7 +351,7 @@ export class ChatInputPart extends Disposable {
     if (!this._enabled) {
       return;
     }
-    const text = this._textarea.value.trim();
+    const text = this.getValue().trim();
     if (!text) {
       return;
     }
@@ -329,6 +364,44 @@ export class ChatInputPart extends Disposable {
     const ta = this._textarea;
     ta.style.height = 'auto';
     ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+  }
+
+  // ── Command pill helpers ──
+
+  /** Show a command pill and store the active command. */
+  private _setCommandPill(command: string): void {
+    this._activeCommand = command;
+    this._commandPill.textContent = command;
+    this._commandPill.style.display = '';
+    this._textarea.placeholder = 'Type additional instructions\u2026';
+  }
+
+  /** Clear the command pill. If `restoreText` is true, put the command back in the textarea. */
+  private _clearCommandPill(restoreText: boolean): void {
+    if (!this._activeCommand) { return; }
+    if (restoreText) {
+      this._textarea.value = this._activeCommand + this._textarea.value;
+      const pos = this._activeCommand.length;
+      this._textarea.setSelectionRange(pos, pos);
+    }
+    this._activeCommand = undefined;
+    this._commandPill.textContent = '';
+    this._commandPill.style.display = 'none';
+    this._textarea.placeholder = 'Ask a question\u2026';
+  }
+
+  /** Detect `/command ` typed manually and convert to pill. */
+  private _detectCommandFromTyping(): void {
+    if (this._activeCommand) { return; }
+    const val = this._textarea.value;
+    const match = val.match(/^(\/[a-zA-Z_]\w*)\s/);
+    if (match) {
+      const cmd = match[1];
+      const rest = val.substring(match[0].length);
+      this._textarea.value = rest;
+      this._textarea.setSelectionRange(0, 0);
+      this._setCommandPill(cmd);
+    }
   }
 
   /** Keep the add-context control icon-only. */

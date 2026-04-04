@@ -27,10 +27,32 @@
 
 .parallx-chat-input-editor {
   position: relative;
+  display: flex;
+  align-items: flex-start;
+}
+
+/* ── Command Pill (VS Code style) ── */
+
+.parallx-chat-input-command-pill {
+  display: inline-block;
+  flex-shrink: 0;
+  margin: 14px 0 0 14px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 22%, transparent);
+  color: var(--vscode-focusBorder, #007fd4);
+  font-size: var(--vscode-font-size, 13px);
+  font-weight: 500;
+  font-family: var(--vscode-editor-font-family, monospace);
+  white-space: nowrap;
+  line-height: 1.4;
+  cursor: default;
+  user-select: none;
 }
 
 .parallx-chat-input-textarea {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   min-height: 44px;
   max-height: 200px;
   padding: 14px 16px 6px;
@@ -44,6 +66,11 @@
   overflow-y: auto;
   outline: none;
   box-sizing: border-box;
+}
+
+/* Reduce left padding when command pill is visible */
+.parallx-chat-input-command-pill:not([style*="display: none"]) + .parallx-chat-input-textarea {
+  padding-left: 6px;
 }
 
 .parallx-chat-input-textarea::placeholder {

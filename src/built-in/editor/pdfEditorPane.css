@@ -410,13 +410,14 @@
   box-sizing: content-box;
 }
 
-/* Match the platform's expected PDF selection color without altering PDF.js text metrics. */
-.pdf-editor-pane .textLayer ::selection {
-  background: transparent;
-}
-
-.pdf-editor-pane .textLayer br::selection,
-.pdf-editor-pane .textLayer .endOfContent::selection {
+/* Match the platform's expected PDF selection color without altering PDF.js text metrics.
+   We suppress native ::selection on the entire page hierarchy — the custom overlay
+   system (pdf-selection-overlay-box) draws the highlight instead. Without this,
+   the browser's default blue ::selection can flash on container elements (.page,
+   .canvasWrapper, .pdfViewer) when a drag selection crosses element boundaries,
+   especially around formulas and special characters. */
+.pdf-editor-pane .pdfViewer::selection,
+.pdf-editor-pane .pdfViewer *::selection {
   background: transparent;
 }
 

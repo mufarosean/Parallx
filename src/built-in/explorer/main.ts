@@ -1081,6 +1081,7 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
     if (node.type === FILE_TYPE_FILE) {
       items.push({ id: 'open', label: 'Open', group: '1_open' });
       items.push({ id: 'openToSide', label: 'Open to the Side', group: '1_open' });
+      items.push({ id: 'addToChat', label: 'Add to Chat', group: '1_open' });
       items.push({ id: 'newFile', label: 'New File...', group: '2_create' });
       items.push({ id: 'newFolder', label: 'New Folder...', group: '2_create' });
       items.push({ id: 'cut', label: 'Cut', keybinding: 'Ctrl+X', group: '3_clipboard' });
@@ -1098,6 +1099,7 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
       const isRootFolder = _roots.some(r => r.uri === node.uri);
       items.push({ id: 'newFile', label: 'New File...', group: '1_create' });
       items.push({ id: 'newFolder', label: 'New Folder...', group: '1_create' });
+      items.push({ id: 'addToChat', label: 'Add to Chat', group: '1_create' });
       if (!isRootFolder) {
         items.push({ id: 'cut', label: 'Cut', keybinding: 'Ctrl+X', group: '2_clipboard' });
       }
@@ -1145,6 +1147,7 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
       case 'copyRelativePath': if (node) copyToClipboard(getRelativePath(node)); break;
       case 'collapseAll': if (node) collapseAll(node); break;
       case 'revealInFileExplorer': if (node) revealInOsExplorer(node); break;
+      case 'addToChat': if (node) addToChat(node); break;
       case 'refresh': refreshTree(); break;
     }
   });
@@ -1227,6 +1230,22 @@ function revealInOsExplorer(node: TreeNode): void {
       console.error('[Explorer] Failed to reveal in file explorer:', err);
     });
   }
+}
+
+/**
+ * Add a file or folder to the AI chat as a context attachment.
+ * Opens the chat panel if hidden and adds the file chip.
+ */
+function addToChat(node: TreeNode): void {
+  const fsPath = uriToFsPath(node.uri);
+  _api.commands.executeCommand('chat.show').then(() => {
+    _api.commands.executeCommand('chat.addFileAttachment', {
+      name: node.name,
+      fullPath: fsPath,
+    });
+  }).catch((err: unknown) => {
+    console.error('[Explorer] Failed to add to chat:', err);
+  });
 }
 
 function getActiveRoot(): TreeNode | null {

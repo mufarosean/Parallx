@@ -233,6 +233,9 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // Task 4.9: Wire cancel handler from widget into list renderer
     this._listRenderer.setCancelHandler(() => this._handleStop());
 
+    // Right-click context menu (Copy / Copy All) on chat messages
+    this._listRenderer.attachContextMenu(this._messageListContainer);
+
     // Task 2.6: Wire code action event listener (Apply to File / Create File)
     this._register(addDisposableListener(this._messageListContainer, 'parallx-code-action' as keyof HTMLElementEventMap, ((e: CustomEvent<ICodeActionRequest>) => {
       this._handleCodeAction(e.detail);
@@ -416,6 +419,11 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   /** Add a text selection as context (M48). */
   addSelectionAttachment(attachment: IChatSelectionAttachment): void {
     this._inputPart.addSelectionAttachment(attachment);
+  }
+
+  /** Add a file or folder as context attachment. */
+  addFileAttachment(file: { name: string; fullPath: string }): void {
+    this._inputPart.addFileAttachment(file);
   }
 
   /** Set the input text (M48 — programmatic access). */

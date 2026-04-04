@@ -35,6 +35,10 @@ export class ChatListRenderer extends Disposable {
   private _onOpenAttachment: OpenAttachmentHandler | undefined;
   private _onRegenerateMessage: RegenerateMessageHandler | undefined;
 
+  /** Active context menu element (if any). */
+  private _contextMenu: HTMLElement | undefined;
+  private _contextMenuCleanup: (() => void) | undefined;
+
   /**
    * Track the last rendered state so we can do incremental updates.
    * Key: pair index → { userEl, assistantEl, partCount }
@@ -53,6 +57,111 @@ export class ChatListRenderer extends Disposable {
   /** Set callback for cancelling the in-progress request (Task 4.9). */
   setCancelHandler(_handler: () => void): void {
     // Cancel is now handled by the input part's stop button; kept for API compat.
+  }
+
+  /** Attach right-click context menu to the message list container. */
+  attachContextMenu(container: HTMLElement): void {
+    this._register({ dispose: () => this._dismissContextMenu() });
+
+    container.addEventListener('contextmenu', (e) => {
+      // Find the closest message body
+      const target = e.target as HTMLElement;
+      const messageBody = target.closest('.parallx-chat-message-body') as HTMLElement | null;
+      if (!messageBody) { return; }
+
+      e.preventDefault();
+      this._dismissContextMenu();
+
+      const selection = window.getSelection();
+      const selectedText = selection?.toString() ?? '';
+
+      const menu = $('div.parallx-chat-copy-menu');
+
+      // Copy — enabled only when text is selected
+      const copyItem = this._createMenuItem('Copy', chatIcons.copy, !!selectedText, () => {
+        if (selectedText) {
+          navigator.clipboard.writeText(selectedText);
+        }
+      });
+      menu.appendChild(copyItem);
+
+      // Copy All — copies the entire message block
+      const copyAllItem = this._createMenuItem('Copy All', chatIcons.copy, true, () => {
+        navigator.clipboard.writeText(messageBody.innerText);
+      });
+      menu.appendChild(copyAllItem);
+
+      // Position near the click
+      menu.style.left = `${e.clientX}px`;
+      menu.style.top = `${e.clientY}px`;
+      document.body.appendChild(menu);
+      this._contextMenu = menu;
+
+      // Adjust if overflowing viewport
+      requestAnimationFrame(() => {
+        const rect = menu.getBoundingClientRect();
+        if (rect.right > window.innerWidth) {
+          menu.style.left = `${window.innerWidth - rect.width - 4}px`;
+        }
+        if (rect.bottom > window.innerHeight) {
+          menu.style.top = `${window.innerHeight - rect.height - 4}px`;
+        }
+      });
+
+      // Dismiss on click outside or Escape
+      const dismiss = () => this._dismissContextMenu();
+      const onMouseDown = (ev: MouseEvent) => {
+        if (!menu.contains(ev.target as Node)) { dismiss(); }
+      };
+      const onKeyDown = (ev: KeyboardEvent) => {
+        if (ev.key === 'Escape') { dismiss(); }
+      };
+      // Use setTimeout so the current click doesn't immediately dismiss
+      setTimeout(() => {
+        document.addEventListener('mousedown', onMouseDown, { once: true });
+        document.addEventListener('keydown', onKeyDown, { once: true });
+        this._contextMenuCleanup = () => {
+          document.removeEventListener('mousedown', onMouseDown);
+          document.removeEventListener('keydown', onKeyDown);
+        };
+      }, 0);
+    });
+  }
+
+  /** Create a single menu item. */
+  private _createMenuItem(label: string, icon: string, enabled: boolean, action: () => void): HTMLElement {
+    const item = $('div.parallx-chat-copy-menu-item');
+    if (!enabled) {
+      item.classList.add('parallx-chat-copy-menu-item--disabled');
+    }
+
+    const iconEl = document.createElement('span');
+    iconEl.className = 'parallx-chat-copy-menu-item-icon';
+    iconEl.innerHTML = icon;
+    item.appendChild(iconEl);
+
+    const labelEl = document.createElement('span');
+    labelEl.textContent = label;
+    item.appendChild(labelEl);
+
+    if (enabled) {
+      item.addEventListener('click', () => {
+        action();
+        this._dismissContextMenu();
+      });
+    }
+
+    return item;
+  }
+
+  /** Remove the context menu from DOM. */
+  private _dismissContextMenu(): void {
+    this._contextMenuCleanup?.();
+    this._contextMenuCleanup = undefined;
+    if (this._contextMenu) {
+      this._contextMenu.remove();
+      this._contextMenu = undefined;
+    }
   }
 
   /**
@@ -264,7 +373,21 @@ export class ChatListRenderer extends Disposable {
 
     const body = $('div.parallx-chat-message-body');
     const p = $('p');
-    p.textContent = request.text;
+
+    // Detect leading /command and render as a pill badge (VS Code style)
+    const cmdMatch = request.text.match(/^(\/[a-zA-Z_]\w*)\s*([\s\S]*)$/);
+    if (cmdMatch) {
+      const pill = document.createElement('span');
+      pill.className = 'parallx-chat-command-pill';
+      pill.textContent = cmdMatch[1];
+      p.appendChild(pill);
+      const rest = cmdMatch[2];
+      if (rest) {
+        p.appendChild(document.createTextNode(' ' + rest));
+      }
+    } else {
+      p.textContent = request.text;
+    }
     body.appendChild(p);
 
     root.appendChild(body);

@@ -237,7 +237,7 @@ export class ChatContextAttachments extends Disposable {
       glyph.innerHTML = chatIcons.image;
       icon.appendChild(glyph);
     } else if (isSelection) {
-      icon.textContent = '📋';
+      icon.innerHTML = chatIcons.selection;
     } else {
       icon.innerHTML = chatIcons.file;
     }

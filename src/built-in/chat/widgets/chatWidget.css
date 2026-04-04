@@ -329,6 +329,20 @@
   margin: 0;
 }
 
+/* ── Slash Command Pill (VS Code style) ── */
+
+.parallx-chat-command-pill {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 25%, transparent);
+  color: var(--vscode-focusBorder, #007fd4);
+  font-size: var(--parallx-fontSize-sm, 12px);
+  font-weight: 500;
+  font-family: var(--vscode-editor-font-family, monospace);
+  vertical-align: baseline;
+}
+
 /* ── User Message Attachment Chips ── */
 
 .parallx-chat-message-attachments {
@@ -2275,4 +2289,52 @@
 
 .parallx-system-prompt-copy:hover {
   background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+/* ── Right-click context menu (Copy / Copy All) ── */
+
+.parallx-chat-copy-menu {
+  position: fixed;
+  z-index: 10000;
+  min-width: 160px;
+  padding: 4px 0;
+  border-radius: 6px;
+  background: var(--vscode-menu-background, #252526);
+  border: 1px solid var(--vscode-menu-border, #454545);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  font-family: var(--parallx-fontFamily-ui);
+  font-size: var(--vscode-font-size, 13px);
+}
+
+.parallx-chat-copy-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 16px 4px 8px;
+  cursor: pointer;
+  color: var(--vscode-menu-foreground, #cccccc);
+  white-space: nowrap;
+}
+
+.parallx-chat-copy-menu-item:hover {
+  background: var(--vscode-menu-selectionBackground, #04395e);
+  color: var(--vscode-menu-selectionForeground, #ffffff);
+}
+
+.parallx-chat-copy-menu-item--disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
+.parallx-chat-copy-menu-item-icon {
+  display: flex;
+  align-items: center;
+  width: 16px;
+  height: 16px;
+}
+
+.parallx-chat-copy-menu-item-icon svg {
+  width: 14px;
+  height: 14px;
 }

@@ -473,6 +473,15 @@ export class PdfEditorPane extends EditorPane {
       return [];
     }
 
+    // PDF.js makes its endOfContent element selectable (user-select: text)
+    // and sizes it to the full text layer during active selection.  When the
+    // selection range includes endOfContent, getClientRects() returns a rect
+    // covering the _entire_ page — which our overlay draws as a page-sized
+    // blue box (the "blue flash").  Normal text selection rects are at most
+    // one line tall, so we filter out any rect taller than half the text
+    // layer height.
+    const maxRectHeight = textLayerRect.height * 0.5;
+
     const rects: SelectionOverlayRect[] = [];
     for (let index = 0; index < selection.rangeCount; index += 1) {
       const range = selection.getRangeAt(index);
@@ -483,6 +492,10 @@ export class PdfEditorPane extends EditorPane {
       for (const rect of Array.from(range.getClientRects())) {
         const clippedRect = this._clipRectToBounds(rect, textLayerRect);
         if (!clippedRect) {
+          continue;
+        }
+
+        if (clippedRect.height > maxRectHeight) {
           continue;
         }
 
