@@ -160,10 +160,6 @@ export class PdfEditorPane extends EditorPane {
   private _globalStorage: IStorage | undefined;
 
   // ── View state (page + scale persistence) ────────────────────────────
-  /** True after the PDF.js 'pagesinit' event has fired for the current document. */
-  private _pagesReady = false;
-  /** Pending state set by restoreViewState() before the viewer is ready. */
-  private _pendingViewState: { page: number; scaleValue: string; scrollLeft?: number } | null = null;
 
   constructor() {
     super(PANE_ID);
@@ -181,25 +177,6 @@ export class PdfEditorPane extends EditorPane {
     const scaleValue = this._pdfViewer?.currentScaleValue ?? this._scaleValue;
     const scrollLeft = this._viewerContainer?.scrollLeft ?? 0;
     return { page, scaleValue, scrollLeft };
-  }
-
-  protected override restorePaneViewState(state: Record<string, unknown>): void {
-    if (!state || typeof state.page !== 'number') return;
-    const page = state.page as number;
-    const scaleValue = (state.scaleValue as string) ?? this._scaleValue;
-    const scrollLeft = (state.scrollLeft as number) ?? 0;
-
-    // If pages are already initialized, apply immediately.
-    // Otherwise defer — renderInput creates _pdfViewer/_pdfDoc before
-    // pagesinit fires, so we can't rely on their existence alone.
-    if (this._pagesReady && this._pdfViewer) {
-      this._pdfViewer.currentScaleValue = scaleValue;
-      this._scaleValue = scaleValue;
-      this._pdfViewer.currentPageNumber = page;
-      if (this._viewerContainer) this._viewerContainer.scrollLeft = scrollLeft;
-    } else {
-      this._pendingViewState = { page, scaleValue, scrollLeft };
-    }
   }
 
   private _installTestDebugHook(): void {
@@ -1119,12 +1096,16 @@ export class PdfEditorPane extends EditorPane {
         this._pageInput.value = String(pageNum);
         this._updatePageLabel(pageNum);
         this._highlightThumb(pageNum);
+        if (this._currentInput) this._currentInput.page = pageNum;
       });
 
       this._eventBus.on('scalechanging', (evt: any) => {
         this._zoomLabelEl.textContent = `${Math.round(evt.scale * 100)}%`;
         this._pdfViewer?.update();
         this._scheduleSelectionOverlayUpdate();
+        if (this._currentInput && this._pdfViewer) {
+          this._currentInput.scaleValue = this._pdfViewer.currentScaleValue;
+        }
       });
 
       this._eventBus.on('textlayerrendered', () => {
@@ -1181,25 +1162,16 @@ export class PdfEditorPane extends EditorPane {
         this._scaleValue = storedScale;
       }
       this._eventBus.on('pagesinit', () => {
-        this._pagesReady = true;
 
-        // Apply pending view state (from workspace restore) if available,
-        // otherwise fall back to persisted scale preference.
-        const pending = this._pendingViewState;
-        this._pendingViewState = null;
+        // Restore page/scale from the input (set during deserialization).
+        const input = this._currentInput;
+        const restoredScale = input?.scaleValue ?? this._scaleValue;
+        const restoredPage = input?.page ?? 1;
 
-        if (pending) {
-          this._scaleValue = pending.scaleValue;
-          this._pdfViewer!.currentScaleValue = pending.scaleValue;
-          // Navigate to the saved page after the viewer has initialized
-          if (pending.page > 1 && pending.page <= (this._pdfDoc?.numPages ?? 1)) {
-            this._pdfViewer!.currentPageNumber = pending.page;
-          }
-          if (pending.scrollLeft && this._viewerContainer) {
-            this._viewerContainer.scrollLeft = pending.scrollLeft;
-          }
-        } else {
-          this._pdfViewer!.currentScaleValue = this._scaleValue;
+        this._scaleValue = restoredScale;
+        this._pdfViewer!.currentScaleValue = restoredScale;
+        if (restoredPage > 1 && restoredPage <= (this._pdfDoc?.numPages ?? 1)) {
+          this._pdfViewer!.currentPageNumber = restoredPage;
         }
 
         this._zoomLabelEl.textContent = `${Math.round(this._pdfViewer!.currentScale * 100)}%`;
@@ -1662,8 +1634,6 @@ export class PdfEditorPane extends EditorPane {
     this._outline = null;
     this._pageLabels = null;
     this._currentInput = null;
-    this._pagesReady = false;
-    this._pendingViewState = null;
     this._removeTestDebugHook();
 
     // Reset UI

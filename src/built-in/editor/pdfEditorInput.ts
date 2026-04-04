@@ -12,8 +12,16 @@ export class PdfEditorInput extends EditorInput {
 
   private readonly _uri: URI;
 
-  static create(uri: URI): PdfEditorInput {
-    return new PdfEditorInput(uri);
+  /** Current page number — updated by the pane on every page change. */
+  page = 1;
+  /** Current scale value — updated by the pane on every scale change. */
+  scaleValue: string | undefined;
+
+  static create(uri: URI, page = 1, scaleValue?: string): PdfEditorInput {
+    const input = new PdfEditorInput(uri);
+    input.page = page;
+    input.scaleValue = scaleValue;
+    return input;
   }
 
   private constructor(uri: URI) {
@@ -39,7 +47,11 @@ export class PdfEditorInput extends EditorInput {
       description: this.description,
       pinned: false,
       sticky: false,
-      data: { uri: this._uri.toString() },
+      data: {
+        uri: this._uri.toString(),
+        page: this.page,
+        scaleValue: this.scaleValue,
+      },
     };
   }
 }

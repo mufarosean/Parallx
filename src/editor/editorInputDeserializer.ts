@@ -86,11 +86,13 @@ export function registerBuiltinEditorDeserializers(ctx: EditorDeserializerContex
     return FileEditorInput.create(URI.parse(uri), ctx.textFileModelManager, ctx.fileService);
   });
 
-  // PDF editor — needs URI
+  // PDF editor — needs URI, optionally restores page & scale
   registerEditorInputDeserializer(PdfEditorInput.TYPE_ID, (data) => {
     const uri = data?.uri;
     if (typeof uri !== 'string') return null;
-    return PdfEditorInput.create(URI.parse(uri));
+    const page = typeof data?.page === 'number' ? (data.page as number) : 1;
+    const scaleValue = typeof data?.scaleValue === 'string' ? (data.scaleValue as string) : undefined;
+    return PdfEditorInput.create(URI.parse(uri), page, scaleValue);
   });
 
   // Image editor — needs URI
