@@ -8,8 +8,6 @@ import {
   SerializedViewSnapshot,
   SerializedEditorSnapshot,
   SerializedContextSnapshot,
-  workspaceStorageKey,
-  ACTIVE_WORKSPACE_KEY,
   WORKSPACE_STATE_VERSION,
   createDefaultEditorSnapshot,
 } from './workspaceTypes.js';
@@ -63,14 +61,6 @@ export class WorkspaceSaver extends Disposable {
   private _sources: WorkspaceStateSources | undefined;
   private _saving = false;
 
-  /**
-   * When true, `save()` will NOT overwrite the ACTIVE_WORKSPACE_KEY.
-   * Set by `switchWorkspace()` before triggering `window.location.reload()`
-   * to prevent async cleanup/save hooks from reverting the active workspace
-   * ID back to the current (pre-switch) workspace.
-   */
-  private _activeIdLocked = false;
-
   /** Debounce interval in ms for auto-save requests. */
   private readonly _debounceMs: number;
 
@@ -92,17 +82,6 @@ export class WorkspaceSaver extends Disposable {
     this._sources = sources;
   }
 
-  /**
-   * Prevent `save()` from overwriting the ACTIVE_WORKSPACE_KEY.
-   * Call this before a workspace switch to avoid a race where async saves
-   * (triggered by tool deactivation or other cleanup) revert the active ID
-   * back to the pre-switch workspace after `setActiveWorkspaceId` has
-   * already pointed it at the target workspace.
-   */
-  lockActiveId(): void {
-    this._activeIdLocked = true;
-  }
-
   // ── Explicit save ──
 
   /**
@@ -118,16 +97,8 @@ export class WorkspaceSaver extends Disposable {
     this._saving = true;
     try {
       const state = this.collectState();
-      const key = workspaceStorageKey(state.identity.id);
       const json = JSON.stringify(state);
-      await this._storage.set(key, json);
-
-      // Persist the active workspace ID — but skip if a workspace switch
-      // has locked it (the switch already set the target ID; we must not
-      // revert it back to the current workspace during async cleanup).
-      if (!this._activeIdLocked) {
-        await this._storage.set(ACTIVE_WORKSPACE_KEY, state.identity.id);
-      }
+      await this._storage.set('workbench', json);
 
       console.log('[WorkspaceSaver] Saved state for workspace "%s" (%d bytes)', state.identity.name, json.length);
     } catch (err) {

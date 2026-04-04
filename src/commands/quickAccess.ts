@@ -150,7 +150,7 @@ interface IKeybindingContributionLike {
 /** Minimal shape of workspace service for recent workspaces. */
 interface IWorkspaceServiceLike {
   readonly workspace: { readonly id: string; readonly name: string };
-  getRecentWorkspaces(): Promise<readonly { identity: { id: string; name: string }; metadata: { lastAccessedAt: string } }[]>;
+  getRecentWorkspaces(): Promise<readonly { identity: { id: string; name: string; path?: string }; metadata: { lastAccessedAt: string } }[]>;
   switchWorkspace(workspaceId: string): Promise<void>;
 }
 
@@ -515,7 +515,7 @@ class GeneralProvider implements IQuickAccessProvider {
             group: 'recent workspaces',
             score,
             accept: () => {
-              workspaceService.switchWorkspace(entry.identity.id).catch((err) => {
+              workspaceService.switchWorkspace(entry.identity.path ?? entry.identity.id).catch((err) => {
                 console.error('[QuickAccess] Failed to switch workspace:', err);
               });
             },

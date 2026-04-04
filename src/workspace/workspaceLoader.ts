@@ -3,22 +3,21 @@ import { IStorage } from '../platform/storage.js';
 import {
   WorkspaceState,
   WORKSPACE_STATE_VERSION,
-  workspaceStorageKey,
-  ACTIVE_WORKSPACE_KEY,
 } from './workspaceTypes.js';
-import { Workspace } from './workspace.js';
 
 // ─── WorkspaceLoader ────────────────────────────────────────────────────────
 
 /**
  * Loads workspace state from persistent storage.
  *
+ * M53: Storage is already scoped to the correct workspace file,
+ * so load() reads from the 'workbench' key directly.
+ *
  * Features:
- * - Loads state by workspace ID from namespaced storage
  * - Validates schema version for compatibility
  * - Migrates old schemas to current version
- * - Returns default state when none exists
- * - Handles corrupt state gracefully (fallback to default)
+ * - Returns undefined when no state exists
+ * - Handles corrupt state gracefully
  * - Logs loading errors for debugging
  */
 export class WorkspaceLoader {
@@ -27,90 +26,30 @@ export class WorkspaceLoader {
   // ── Load workspace state ──
 
   /**
-   * Load the complete workspace state for the given workspace.
-   *
-   * @param workspace - The workspace to load state for.
-   * @param fallbackWidth - Container width for default layout if no state exists.
-   * @param fallbackHeight - Container height for default layout if no state exists.
-   * @returns The loaded (and possibly migrated) state, or a default state.
+   * Load workspace state from storage.
+   * M53: Storage is already scoped to the workspace file, so we read
+   * from the 'workbench' key directly. Returns undefined if no saved
+   * state exists (first launch or empty workspace).
    */
-  async load(
-    workspace: Workspace,
-    fallbackWidth: number,
-    fallbackHeight: number,
-  ): Promise<WorkspaceState> {
-    const key = workspaceStorageKey(workspace.id);
-
+  async load(): Promise<WorkspaceState | undefined> {
     try {
-      const json = await this._storage.get(key);
-
-      if (!json) {
-        console.log('[WorkspaceLoader] No saved state for workspace "%s" — using defaults', workspace.name);
-        return workspace.createDefaultState(fallbackWidth, fallbackHeight);
-      }
+      const json = await this._storage.get('workbench');
+      if (!json) return undefined;
 
       const parsed = JSON.parse(json);
 
       if (!this._isValidState(parsed)) {
-        console.warn('[WorkspaceLoader] Invalid state for workspace "%s" — using defaults', workspace.name);
-        return workspace.createDefaultState(fallbackWidth, fallbackHeight);
+        console.warn('[WorkspaceLoader] Invalid saved state — discarding');
+        return undefined;
       }
 
       const migrated = this._migrate(parsed);
-      console.log('[WorkspaceLoader] Loaded state for workspace "%s" (v%d)', workspace.name, migrated.version);
+      console.log('[WorkspaceLoader] Loaded state (v%d)', migrated.version);
       return migrated;
     } catch (err) {
-      console.error('[WorkspaceLoader] Failed to load state for workspace "%s":', workspace.name, err);
-      return workspace.createDefaultState(fallbackWidth, fallbackHeight);
-    }
-  }
-
-  /**
-   * Load by workspace ID string (for bootstrap when we don't yet have a Workspace object).
-   */
-  async loadById(
-    workspaceId: string,
-    _fallbackWidth: number,
-    _fallbackHeight: number,
-  ): Promise<WorkspaceState | undefined> {
-    const key = workspaceStorageKey(workspaceId);
-
-    try {
-      const json = await this._storage.get(key);
-      if (!json) return undefined;
-
-      const parsed = JSON.parse(json);
-      if (!this._isValidState(parsed)) return undefined;
-
-      return this._migrate(parsed);
-    } catch {
+      console.error('[WorkspaceLoader] Failed to load state:', err);
       return undefined;
     }
-  }
-
-  // ── Active workspace ID ──
-
-  /**
-   * Retrieve the ID of the last-active workspace.
-   */
-  async getActiveWorkspaceId(): Promise<string | undefined> {
-    return this._storage.get(ACTIVE_WORKSPACE_KEY);
-  }
-
-  /**
-   * Store the active workspace ID so it can be restored on next launch.
-   */
-  async setActiveWorkspaceId(id: string): Promise<void> {
-    await this._storage.set(ACTIVE_WORKSPACE_KEY, id);
-  }
-
-  // ── Check existence ──
-
-  /**
-   * Check whether saved state exists for a workspace.
-   */
-  async hasSavedState(workspaceId: string): Promise<boolean> {
-    return this._storage.has(workspaceStorageKey(workspaceId));
   }
 
   // ── Validation ──

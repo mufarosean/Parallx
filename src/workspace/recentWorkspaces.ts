@@ -6,10 +6,12 @@
 import type { IStorage } from '../platform/storage.js';
 import type { RecentWorkspaceEntry } from './workspaceTypes.js';
 import {
-  RECENT_WORKSPACES_KEY,
   DEFAULT_MAX_RECENT_WORKSPACES,
 } from './workspaceTypes.js';
 import type { Workspace } from './workspace.js';
+
+/** Storage key for recent workspaces (stored in global storage). */
+const RECENT_WORKSPACES_KEY = 'recentWorkspaces';
 
 /**
  * Manages a capped, ordered list of recently accessed workspaces.
@@ -55,7 +57,11 @@ export class RecentWorkspaces {
     // Prepend current workspace
     workspace.touch();
     const entry: RecentWorkspaceEntry = {
-      identity: workspace.identity,
+      identity: {
+        ...workspace.identity,
+        // M53: Ensure path is populated from primary folder for path-based switching
+        path: workspace.identity.path ?? workspace.folders[0]?.uri.fsPath,
+      },
       metadata: workspace.metadata,
     };
     filtered.unshift(entry);

@@ -38,7 +38,8 @@ import { Orientation } from '../layout/layoutTypes.js';
 import { LayoutRenderer } from '../layout/layoutRenderer.js';
 
 // Storage + Persistence
-import { LocalStorage, NamespacedStorage, IStorage } from '../platform/storage.js';
+import { IStorage, InMemoryStorage } from '../platform/storage.js';
+import { FileBackedGlobalStorage, FileBackedWorkspaceStorage } from '../platform/fileBackedStorage.js';
 
 // Workspace
 import { Workspace } from '../workspace/workspace.js';
@@ -48,7 +49,6 @@ import { WorkspaceSaver } from '../workspace/workspaceSaver.js';
 import {
   WorkspaceState,
   createDefaultEditorSnapshot,
-  workspaceStorageKey,
 } from '../workspace/workspaceTypes.js';
 import type { SerializedEditorSnapshot, SerializedEditorInputSnapshot } from '../workspace/workspaceTypes.js';
 import { createDefaultLayoutState } from '../layout/layoutModel.js';
@@ -417,14 +417,17 @@ export class Workbench extends Layout {
         this._container.clientHeight,
       );
     }
-    const key = workspaceStorageKey(ws.id);
-    await this._storage.set(key, JSON.stringify(state));
+    // M53: Write initial state to the new workspace's storage file via bridge
+    if (path) {
+      const bridge = window.parallxElectron!.storage;
+      await bridge.writeJson(`${path}/.parallx/workspace-state.json`, { version: 1, workbench: JSON.stringify(state) });
+    }
 
     // Add to recent list
     await this._recentWorkspaces.add(ws);
 
-    if (switchTo) {
-      await this.switchWorkspace(ws.id);
+    if (switchTo && path) {
+      await this.switchWorkspace(path);
     }
 
     return ws;
@@ -443,7 +446,7 @@ export class Workbench extends Layout {
    * the previous in-process switch (manual teardown/rebuild, service
    * re-fetching, event ordering races, session leaks, etc.).
    */
-  async switchWorkspace(targetId: string): Promise<void> {
+  async switchWorkspace(targetPath: string): Promise<void> {
     if (this._state !== WorkbenchState.Ready) {
       console.warn('[Workbench] Cannot switch workspace while in state:', this._state);
       return;
@@ -452,13 +455,16 @@ export class Workbench extends Layout {
       console.warn('[Workbench] Workspace switch already in progress — ignoring');
       return;
     }
-    if (this._workspace && this._workspace.id === targetId) {
-      console.log('[Workbench] Already on workspace %s — no-op', targetId);
+
+    // Check if already on target workspace path — no-op
+    const currentFolder = this._workspace.folders[0]?.uri.fsPath;
+    if (currentFolder && currentFolder === targetPath) {
+      console.log('[Workbench] Already on workspace at %s — no-op', targetPath);
       return;
     }
 
     this._switching = true;
-    console.log('[Workbench] Switching workspace → %s (via reload)', targetId);
+    console.log('[Workbench] Switching workspace → %s (via reload)', targetPath);
 
     try {
       // 0. End the current workspace session (M14).
@@ -469,28 +475,21 @@ export class Workbench extends Layout {
         sessionMgr.endSession();
       }
 
-      // 1. Save current workspace state to localStorage
+      // 1. Save current workspace state
       await this._workspaceSaver.save();
 
-      // 2. Set the target as the active workspace so the reload picks it up
-      await this._workspaceLoader.setActiveWorkspaceId(targetId);
+      // 2. Write the target workspace path to last-workspace.json so the reload picks it up
+      const bridge = window.parallxElectron!.storage;
+      const appPath = window.parallxElectron!.appPath;
+      await bridge.writeJson(`${appPath}/data/last-workspace.json`, { path: targetPath });
 
-      // 3. Lock the active workspace ID so that any async save() calls
-      //    triggered during page unload / tool deactivation don't overwrite
-      //    the target ID back to the current workspace.
-      this._workspaceSaver.lockActiveId();
-
-      // 4. Close the database cleanly (best-effort — the main process
+      // 3. Close the database cleanly (best-effort — the main process
       //    also handles re-open-before-close in openForWorkspace)
       if (this._databaseService?.isOpen) {
         await this._databaseService.close().catch(() => {});
       }
 
-      // 5. Signal that this is a workspace-switch reload (used in test mode
-      //    to preserve the active workspace ID through localStorage.clear())
-      sessionStorage.setItem('parallx:pendingSwitch', '1');
-
-      // 6. Reload the renderer — fresh startup picks up the new workspace
+      // 4. Reload the renderer — fresh startup picks up the new workspace
       window.location.reload();
 
       // Note: code below this line never runs — the page is unloading.
@@ -543,21 +542,25 @@ export class Workbench extends Layout {
       };
       this._workspace.setFolders([newFolder]);
 
-      // 2. Save workspace state (now includes the new folder).
+      // 2. Save workspace state (now includes the new folder) to the CURRENT storage.
+      //    This preserves the old workspace's final state at its original path.
       await this._workspaceSaver.save();
 
-      // 3. Lock the active workspace ID so async cleanup saves
-      //    during page unload don't revert the folder list.
-      this._workspaceSaver.lockActiveId();
+      // 3. Write workspace state to the NEW folder's storage file so the reload finds it.
+      //    Without this, the reload creates FileBackedWorkspaceStorage for the new path
+      //    but finds no data (the save above wrote to the old path).
+      const bridge = window.parallxElectron!.storage;
+      const appPath = window.parallxElectron!.appPath;
+      const state = this._workspaceSaver.collectState();
+      await bridge.writeJson(`${folderPath}/.parallx/workspace-state.json`, { version: 1, workbench: JSON.stringify(state) });
 
-      // 4. Close the database cleanly (best-effort).
+      // 4. Write the folder path to last-workspace.json so the reload opens it
+      await bridge.writeJson(`${appPath}/data/last-workspace.json`, { path: folderPath });
+
+      // 5. Close the database cleanly (best-effort).
       if (this._databaseService?.isOpen) {
         await this._databaseService.close().catch(() => {});
       }
-
-      // 5. Signal pending reload (used in test mode to preserve
-      //    the active workspace ID through localStorage.clear()).
-      sessionStorage.setItem('parallx:pendingSwitch', '1');
 
       // 6. Reload the renderer — fresh startup picks up the new folder.
       window.location.reload();
@@ -792,12 +795,23 @@ export class Workbench extends Layout {
   // ════════════════════════════════════════════════════════════════════════
 
   private async _initializeServices(): Promise<void> {
-    // Storage: namespaced localStorage wrapper
-    const rawStorage = new LocalStorage();
-    this._storage = new NamespacedStorage(rawStorage, 'parallx');
+    // ── M53: File-backed storage ──
+    const storageBridge = window.parallxElectron!.storage;
+    const appPath = window.parallxElectron!.appPath;
 
-    // Global storage: separate namespace for tool global state (persists across workspaces)
-    this._globalStorage = new NamespacedStorage(rawStorage, 'parallx-global');
+    // Global storage (settings, models, etc.) — app-level, persists across workspaces
+    this._globalStorage = new FileBackedGlobalStorage(storageBridge, `${appPath}/data/global-storage.json`);
+
+    // Read last workspace path (may not exist on first launch)
+    const lastWsResult = await storageBridge.readJson(`${appPath}/data/last-workspace.json`);
+    const wsPath = (lastWsResult.data as any)?.path as string | undefined;
+
+    if (wsPath) {
+      this._storage = new FileBackedWorkspaceStorage(storageBridge, `${wsPath}/.parallx/workspace-state.json`);
+    } else {
+      // First launch or no workspace — use in-memory storage
+      this._storage = new InMemoryStorage();
+    }
 
     // Layout persistence: save/load layout state via storage
     // (handled by WorkspaceSaver — LayoutPersistence not needed directly)
@@ -812,8 +826,8 @@ export class Workbench extends Layout {
     // Create or identify the current workspace
     this._workspace = Workspace.create('Default Workspace');
 
-    // Recent workspaces manager
-    this._recentWorkspaces = new RecentWorkspaces(this._storage);
+    // Recent workspaces manager (stored in global storage — persists across workspaces)
+    this._recentWorkspaces = new RecentWorkspaces(this._globalStorage);
 
     // Configuration system (M2 Capability 4)
     const { configService, configRegistry } = registerConfigurationServices(
@@ -1064,23 +1078,14 @@ export class Workbench extends Layout {
   // ════════════════════════════════════════════════════════════════════════
 
   private async _restoreWorkspace(): Promise<void> {
-    const w = this._container.clientWidth;
-    const h = this._container.clientHeight;
-
-    // Try to load the last-active workspace ID
-    const activeId = await this._workspaceLoader.getActiveWorkspaceId();
-    if (activeId) {
-      const savedState = await this._workspaceLoader.loadById(activeId, w, h);
-      if (savedState) {
-        // Re-create workspace identity from saved state
-        this._workspace = Workspace.fromSerialized(savedState.identity, savedState.metadata);
-        this._restoredState = savedState;
-        console.log('[Workbench] Loaded workspace "%s" (v%d)', savedState.identity.name, savedState.version);
-      } else {
-        console.log('[Workbench] No valid saved state for workspace %s — using defaults', activeId);
-      }
+    // M53: Load workspace state from file-backed storage (already scoped to workspace path)
+    const savedState = await this._workspaceLoader.load();
+    if (savedState) {
+      this._workspace = Workspace.fromSerialized(savedState.identity, savedState.metadata);
+      this._restoredState = savedState;
+      console.log('[Workbench] Loaded workspace "%s" (v%d)', savedState.identity.name, savedState.version);
     } else {
-      console.log('[Workbench] No active workspace ID — using defaults');
+      console.log('[Workbench] No saved workspace state — using defaults');
     }
 
     // Apply restored state to live parts, views, and containers
@@ -1129,13 +1134,11 @@ export class Workbench extends Layout {
     }
 
     // Persist the initial state so there is always a storage entry for the
-    // active workspace. Without this, first-launch windows (or test-mode with
-    // cleared localStorage) have an activeWorkspaceId but no matching state blob.
+    // active workspace.
     await this._workspaceSaver.save();
 
-    // Track as recent + persist active workspace ID
+    // Track as recent
     await this._recentWorkspaces.add(this._workspace);
-    await this._workspaceLoader.setActiveWorkspaceId(this._workspace.id);
 
     // Update context keys for workspace state
     if (this._workbenchContext) {
@@ -2146,13 +2149,10 @@ export class Workbench extends Layout {
     };
 
     // ── Tool Enablement Service (M6 Capability 0) ──
-    // Use workspace-scoped storage so enablement is per-workspace.
-    // Global _storage is shared across workspaces; sub-namespace by workspace ID.
-    const wsId = this._workspace.id;
-    console.log(`[Workbench] Enablement storage namespace: ws.${wsId} (workspace: "${this._workspace.name}")`);
-    const enablementStorage = new NamespacedStorage(this._storage, `ws.${wsId}`);
+    // M53: Storage is already workspace-scoped, so no sub-namespacing needed.
+    console.log(`[Workbench] Enablement storage for workspace: "${this._workspace.name}"`);
     this._toolEnablementService = this._register(
-      new ToolEnablementService(enablementStorage, registry),
+      new ToolEnablementService(this._storage, registry),
     );
     await this._toolEnablementService.load();
     this._services.registerInstance(IToolEnablementService, this._toolEnablementService);

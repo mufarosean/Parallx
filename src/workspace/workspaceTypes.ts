@@ -214,25 +214,6 @@ export interface WorkspaceState {
   readonly folders?: readonly SerializedWorkspaceFolder[];
 }
 
-// ─── Storage Keys ────────────────────────────────────────────────────────────
-
-/**
- * Build a storage key for a specific workspace's state.
- */
-export function workspaceStorageKey(workspaceId: string): string {
-  return `parallx.workspace.${workspaceId}.state`;
-}
-
-/**
- * Storage key for the list of recent workspace identities.
- */
-export const RECENT_WORKSPACES_KEY = 'parallx.recentWorkspaces';
-
-/**
- * Storage key for the active workspace ID.
- */
-export const ACTIVE_WORKSPACE_KEY = 'parallx.activeWorkspaceId';
-
 // ─── Default Factories ──────────────────────────────────────────────────────
 
 /**
