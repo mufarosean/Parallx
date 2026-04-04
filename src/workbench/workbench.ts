@@ -40,6 +40,7 @@ import { LayoutRenderer } from '../layout/layoutRenderer.js';
 // Storage + Persistence
 import { IStorage, InMemoryStorage } from '../platform/storage.js';
 import { FileBackedGlobalStorage, FileBackedWorkspaceStorage } from '../platform/fileBackedStorage.js';
+import { migrateFromLocalStorage } from '../platform/storageMigration.js';
 
 // Workspace
 import { Workspace } from '../workspace/workspace.js';
@@ -813,6 +814,9 @@ export class Workbench extends Layout {
       // First launch or no workspace — use in-memory storage
       this._storage = new InMemoryStorage();
     }
+
+    // M53 D5: One-time migration from localStorage to file-backed storage
+    await migrateFromLocalStorage(this._globalStorage, this._storage, wsPath, storageBridge, appPath);
 
     // Layout persistence: save/load layout state via storage
     // (handled by WorkspaceSaver — LayoutPersistence not needed directly)
