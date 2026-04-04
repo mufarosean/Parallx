@@ -13,41 +13,14 @@ const SELF_SPEAKER = '__self__';
 const NARRATOR_SPEAKER = '__narrator__';
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 1A: INLINE LUCIDE SVG ICONS
+// SECTION 1A: ICON HELPERS (via parallx.icons API)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const ICONS = {
-  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>',
-  home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
-  users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>',
-  user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
-  settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>',
-  'message-circle': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/></svg>',
-  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>',
-  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
-  copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
-  edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>',
-  'book-open': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>',
-  send: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></svg>',
-  x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
-  clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
-  sparkles: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></svg>',
-  'chevron-right': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
-  sliders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 8h4"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M17 16h4"/><path d="M19 12V3"/><path d="M19 21v-5"/><path d="M3 14h4"/><path d="M5 10V3"/><path d="M5 21v-7"/></svg>',
-  'refresh-cw': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>',
-  eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>',
-  'pencil-line': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/><path d="m15 5 3 3"/></svg>',
-  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
-  square: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>',
-  play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>',
-  zap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>',
-  'chevron-down': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
-  clipboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>',
-};
+let _parallx = null;
 
 function icon(name, size = 16) {
-  const svg = ICONS[name] || '';
-  return `<span class="tg-icon" style="width:${size}px;height:${size}px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${svg.replace('<svg ', `<svg width="${size}" height="${size}" `)}</span>`;
+  if (_parallx?.icons) return _parallx.icons.createIconHtml(name, size);
+  return '';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2587,16 +2560,16 @@ function renderChatEditor(container, parallx, input) {
         else if (type === 'narrator') message = `/nar ${message}`;
         else if (type === 'ai') message = `/ai ${message}`;
         else if (type === 'user') message = `/user ${message}`;
-        return { name: `🗣️ ${sc.label}`, message: message.trim(), insertionType: 'replace', autoSend: 'yes', clearAfterSend: 'yes' };
+        return { name: sc.label, message: message.trim(), insertionType: 'replace', autoSend: 'yes', clearAfterSend: 'yes' };
       });
       if (thread) thread.shortcuts = migrated;
       return migrated;
     }
     // Seed defaults matching Perchance's default set
     const defaults = [
-      { name: '🗣️ {{char}}', message: '/ai <optional writing instruction>', insertionType: 'replace', autoSend: 'no', clearAfterSend: 'no' },
-      { name: '🗣️ {{user}}', message: '/user <optional writing instruction>', insertionType: 'replace', autoSend: 'no', clearAfterSend: 'no' },
-      { name: '🗣️ Narrator', message: '/nar <optional writing instruction>', insertionType: 'replace', autoSend: 'no', clearAfterSend: 'no' },
+      { name: '{{char}}', message: '/ai <optional writing instruction>', insertionType: 'replace', autoSend: 'no', clearAfterSend: 'no' },
+      { name: '{{user}}', message: '/user <optional writing instruction>', insertionType: 'replace', autoSend: 'no', clearAfterSend: 'no' },
+      { name: 'Narrator', message: '/nar <optional writing instruction>', insertionType: 'replace', autoSend: 'no', clearAfterSend: 'no' },
     ];
     if (thread) thread.shortcuts = defaults;
     return defaults;
@@ -2733,15 +2706,15 @@ function renderChatEditor(container, parallx, input) {
     body.style.alignItems = 'center';
     body.style.gap = '10px';
 
-    const charBtn = el('button', 'tg-shortcut-btn', { text: '🗣️ add a character shortcut' });
+    const charBtn = el('button', 'tg-shortcut-btn', { html: `${icon('message-circle', 14)} add a character shortcut` });
     charBtn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
     charBtn.addEventListener('click', () => { overlay.remove(); showAddCharacterShortcutDialog(); });
 
-    const customBtn = el('button', 'tg-shortcut-btn', { text: '✨ add a custom shortcut' });
+    const customBtn = el('button', 'tg-shortcut-btn', { html: `${icon('sparkles', 14)} add a custom shortcut` });
     customBtn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
     customBtn.addEventListener('click', () => { overlay.remove(); showAddCustomShortcutDialog(); });
 
-    const bulkBtn = el('button', 'tg-shortcut-btn', { text: '📝 bulk edit/delete shortcuts' });
+    const bulkBtn = el('button', 'tg-shortcut-btn', { html: `${icon('pencil', 14)} bulk edit/delete shortcuts` });
     bulkBtn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
     bulkBtn.addEventListener('click', () => { overlay.remove(); showBulkEditShortcutsDialog(); });
 
@@ -2784,12 +2757,12 @@ function renderChatEditor(container, parallx, input) {
       body.querySelector('div').style.cssText = 'font-size:12px; color:var(--vscode-descriptionForeground); margin-bottom:4px;';
       for (const character of characters) {
         const cName = getCharacterName(character);
-        const charBtn = el('button', 'tg-shortcut-btn', { text: `🗣️ ${cName}` });
+        const charBtn = el('button', 'tg-shortcut-btn', { html: `${icon('message-circle', 14)} ${cName}` });
         charBtn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
         charBtn.addEventListener('click', async () => {
           const shortcuts = getThreadShortcuts();
           shortcuts.push({
-            name: `🗣️ ${cName}`,
+            name: cName,
             message: `/ai @${cName} <optional writing instruction>`,
             insertionType: 'replace',
             autoSend: 'no',
@@ -2854,7 +2827,7 @@ function renderChatEditor(container, parallx, input) {
     labelInput.type = 'text';
     labelInput.placeholder = 'e.g. silly reply';
     labelInput.style.cssText = inputStyle + ' min-height:auto;';
-    body.appendChild(mkField('Shortcut button label (you can use emojis):', labelInput));
+    body.appendChild(mkField('Shortcut button label:', labelInput));
 
     // Message
     const msgInput = el('textarea');
@@ -3723,15 +3696,15 @@ function renderChatEditor(container, parallx, input) {
     const onOutside = (e) => { if (!menu.contains(e.target) && e.target !== optionsBtn) dismiss(); };
     setTimeout(() => document.addEventListener('click', onOutside, true), 0);
 
-    const item = (emoji, label, handler) => {
+    const item = (iconName, label, handler) => {
       const btn = el('button', 'tg-options-item');
-      btn.innerHTML = `<span style="width:20px;text-align:center">${emoji}</span> ${label}`;
+      btn.innerHTML = `<span style="width:20px;display:inline-flex;align-items:center;justify-content:center">${icon(iconName, 16)}</span> ${label}`;
       btn.addEventListener('click', () => { dismiss(); handler(); });
       menu.appendChild(btn);
     };
 
     // ── Toggle pics ──
-    item('🚫', picsHidden ? 'show pics' : 'toggle pics', () => {
+    item('eye-off', picsHidden ? 'show pics' : 'toggle pics', () => {
       picsHidden = !picsHidden;
       messagesEl.querySelectorAll('.tg-msg-avatar').forEach(img => {
         img.style.display = picsHidden ? 'none' : '';
@@ -3739,7 +3712,7 @@ function renderChatEditor(container, parallx, input) {
     });
 
     // ── Change user name ──
-    item('📝', 'change user name', async () => {
+    item('pencil', 'change user name', async () => {
       const currentName = getUserName();
       const overlay = el('div', 'tg-modal-overlay');
       const modal = el('div', 'tg-modal');
@@ -3782,7 +3755,7 @@ function renderChatEditor(container, parallx, input) {
     });
 
     // ── Change user pic ──
-    item('👤', 'change user pic', async () => {
+    item('user', 'change user pic', async () => {
       const primaryChar = characters[0] || null;
       const currentUrl = primaryChar?.frontmatter?.userAvatarUrl || '';
       const overlay = el('div', 'tg-modal-overlay');
@@ -3830,13 +3803,13 @@ function renderChatEditor(container, parallx, input) {
 
     // ── Toggle autoreply ──
     const autoReplyEnabled = thread?.autoReply !== false;
-    item('🔄', autoReplyEnabled ? 'disable autoreply' : 'enable autoreply', async () => {
+    item('refresh-cw', autoReplyEnabled ? 'disable autoreply' : 'enable autoreply', async () => {
       thread.autoReply = !autoReplyEnabled;
       await updateThreadMeta(fs, workspaceUri, threadId, { autoReply: thread.autoReply }).catch(() => {});
     });
 
     // ── Response length ──
-    item('📏', 'response length...', () => {
+    item('ruler', 'response length...', () => {
       const overlay = el('div', 'tg-modal-overlay');
       const modal = el('div', 'tg-modal');
       modal.style.maxWidth = '340px';
@@ -3879,7 +3852,7 @@ function renderChatEditor(container, parallx, input) {
     });
 
     // ── Add character ──
-    item('➕', 'add character', async () => {
+    item('plus', 'add character', async () => {
       const allChars = await scanCharacters(fs, workspaceUri);
       const available = allChars.filter(c => !thread.characters.find(tc => tc.file === c.fileName));
       if (available.length === 0) return;
@@ -3896,7 +3869,7 @@ function renderChatEditor(container, parallx, input) {
       body.style.cssText = 'padding:16px; display:flex; flex-direction:column; gap:6px;';
       for (const char of available) {
         const cName = getCharacterName(char);
-        const btn = el('button', 'tg-shortcut-btn', { text: `🗣️ ${cName}` });
+        const btn = el('button', 'tg-shortcut-btn', { html: `${icon('message-circle', 14)} ${cName}` });
         btn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
         btn.addEventListener('click', async () => {
           thread.characters.push({ file: char.fileName, addedAt: Date.now() });
@@ -3913,7 +3886,7 @@ function renderChatEditor(container, parallx, input) {
     });
 
     // ── Edit character (opens character editor for primary character) ──
-    item('✏️', 'edit character', () => {
+    item('pencil-line', 'edit character', () => {
       const primaryChar = characters[0];
       if (!primaryChar) return;
       parallx.editors.openEditor({
@@ -3925,7 +3898,7 @@ function renderChatEditor(container, parallx, input) {
     });
 
     // ── Reply as... ──
-    item('💬', 'reply as...', () => {
+    item('message-circle', 'reply as...', () => {
       const overlay = el('div', 'tg-modal-overlay');
       const modal = el('div', 'tg-modal');
       modal.style.maxWidth = '340px';
@@ -3938,7 +3911,7 @@ function renderChatEditor(container, parallx, input) {
       const body = el('div', 'tg-modal-body');
       body.style.cssText = 'padding:16px; display:flex; flex-direction:column; gap:6px;';
       // Self option
-      const selfBtn = el('button', 'tg-shortcut-btn', { text: `🗣️ ${getUserName()} (yourself)` });
+      const selfBtn = el('button', 'tg-shortcut-btn', { html: `${icon('user', 14)} ${getUserName()} (yourself)` });
       selfBtn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
       if (selectedComposeSpeaker === SELF_SPEAKER) selfBtn.style.borderColor = 'var(--vscode-focusBorder)';
       selfBtn.addEventListener('click', async () => {
@@ -3952,7 +3925,7 @@ function renderChatEditor(container, parallx, input) {
       // Character options
       for (const char of characters) {
         const cName = getCharacterName(char);
-        const btn = el('button', 'tg-shortcut-btn', { text: `🗣️ ${cName}` });
+        const btn = el('button', 'tg-shortcut-btn', { html: `${icon('message-circle', 14)} ${cName}` });
         btn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
         if (selectedComposeSpeaker === char.fileName) btn.style.borderColor = 'var(--vscode-focusBorder)';
         btn.addEventListener('click', async () => {
@@ -3971,7 +3944,7 @@ function renderChatEditor(container, parallx, input) {
     });
 
     // ── Options (full settings page) ──
-    item('⚙️', 'options', () => {
+    item('settings', 'options', () => {
       parallx.editors.openEditor({
         typeId: 'text-generator-chat-settings',
         title: 'Chat Settings',
@@ -4585,9 +4558,9 @@ function renderCharacterEditor(container, parallx, input) {
   root.appendChild(header);
 
   // ── Helper to create a labeled field ──
-  function field(labelText, hintText, inputEl) {
+  function field(labelHtml, hintText, inputEl) {
     const wrap = el('div', 'tg-ce-field');
-    const lbl = el('label', 'tg-ce-label', { text: labelText });
+    const lbl = el('label', 'tg-ce-label', { html: labelHtml });
     wrap.appendChild(lbl);
     if (hintText) wrap.appendChild(el('div', 'tg-ce-hint', { text: hintText }));
     wrap.appendChild(inputEl);
@@ -4597,19 +4570,19 @@ function renderCharacterEditor(container, parallx, input) {
   // ── Basic fields ──
   const nameInput = el('input', 'tg-ce-input');
   nameInput.placeholder = 'Character name';
-  root.appendChild(field('🎭 Character name', null, nameInput));
+  root.appendChild(field(`${icon('user', 14)} Character name`, null, nameInput));
 
   const roleInput = el('textarea', 'tg-ce-textarea tg-ce-textarea--tall');
   roleInput.placeholder = 'Include the most important details first. Also, it\'s a good idea to include example dialogue if you can — show the AI how you want the character to speak.';
   root.appendChild(field(
-    '🐾 Character description/personality/instruction/role',
+    `${icon('file-text', 14)} Character description/personality/instruction/role`,
     'This should ideally be less than 1000 words. You can write {{user}} to refer to the user\'s name.',
     roleInput,
   ));
 
   const avatarInput = el('input', 'tg-ce-input');
   avatarInput.placeholder = '(optional) path or URL to character avatar image';
-  root.appendChild(field('🧑 Character avatar image URL', null, avatarInput));
+  root.appendChild(field(`${icon('image', 14)} Character avatar image URL`, null, avatarInput));
 
   const lengthSelect = el('select', 'tg-ce-select');
   for (const opt of [
@@ -4622,7 +4595,7 @@ function renderCharacterEditor(container, parallx, input) {
     o.value = opt.value;
     lengthSelect.appendChild(o);
   }
-  root.appendChild(field('📏 Strict message length limit', 'Try setting this to one paragraph if the character keeps undesirably talking/acting on your behalf.', lengthSelect));
+  root.appendChild(field(`${icon('ruler', 14)} Strict message length limit`, 'Try setting this to one paragraph if the character keeps undesirably talking/acting on your behalf.', lengthSelect));
 
   const userNameInput = el('input', 'tg-ce-input');
   userNameInput.placeholder = '(optional)';
@@ -4641,7 +4614,7 @@ function renderCharacterEditor(container, parallx, input) {
   const reminderInput = el('textarea', 'tg-ce-textarea tg-ce-textarea--short');
   reminderInput.placeholder = '(optional) e.g. "Responses should be short and creative. Always stay in character."';
   root.appendChild(field(
-    '🟢 Character reminder note',
+    `${icon('bell', 14)} Character reminder note`,
     'Remind the AI of important things, writing tips, and so on. Use this for important stuff that the AI often forgets. Try to keep this under 100 words — i.e. about a paragraph at most.',
     reminderInput,
   ));
@@ -4653,7 +4626,7 @@ function renderCharacterEditor(container, parallx, input) {
     presetSelect.appendChild(o);
   }
   root.appendChild(field(
-    '✏️ General writing instructions',
+    `${icon('pencil-line', 14)} General writing instructions`,
     'These instructions apply to the whole chat, regardless of which character is currently speaking. It\'s for defining general writing style and the "type of experience".',
     presetSelect,
   ));
@@ -4661,7 +4634,7 @@ function renderCharacterEditor(container, parallx, input) {
   const initialMsgInput = el('textarea', 'tg-ce-textarea tg-ce-textarea--tall');
   initialMsgInput.placeholder = '[USER]: hey\n[AI]: um hi\n[SYSTEM; hiddenFrom=ai]: The AI can\'t see this message. Useful for user instructions / welcome messages / credits / etc.';
   root.appendChild(field(
-    '⚫ Initial chat messages',
+    `${icon('message-square', 14)} Initial chat messages`,
     'You can use this to teach the AI how this character typically speaks, and/or to define an initial scenario. Follow the "[AI]: ... [USER]: ..." format.',
     initialMsgInput,
   ));
@@ -4681,7 +4654,7 @@ function renderCharacterEditor(container, parallx, input) {
   const userReminderInput = el('textarea', 'tg-ce-textarea tg-ce-textarea--short');
   userReminderInput.placeholder = '(optional) e.g. "Responses should be short and creative. Always stay in character."';
   moreSection.appendChild(field(
-    '🟡 User reminder note',
+    `${icon('bell', 14)} User reminder note`,
     'In case you get the AI to write on your behalf, this is the reminder note used in that case.',
     userReminderInput,
   ));
@@ -4689,7 +4662,7 @@ function renderCharacterEditor(container, parallx, input) {
   const msgStyleInput = el('input', 'tg-ce-input');
   msgStyleInput.placeholder = 'e.g. color:blue; font-size:90%;';
   moreSection.appendChild(field(
-    '🎨 Default message style (color, font, size, etc.)',
+    `${icon('palette', 14)} Default message style (color, font, size, etc.)`,
     'Try adding CSS like color:blue; font-size:90%. This customizes message bubble appearance.',
     msgStyleInput,
   ));
@@ -4700,7 +4673,7 @@ function renderCharacterEditor(container, parallx, input) {
   const loreTextarea = el('textarea', 'tg-ce-textarea tg-ce-textarea--short');
   loreTextarea.placeholder = 'lorebook1.md\nlorebook2.md';
   moreSection.appendChild(field(
-    '📚 Lorebook files',
+    `${icon('book-open', 14)} Lorebook files`,
     'One lorebook file name per line. These are from the lorebooks/ folder.',
     loreTextarea,
   ));
@@ -4727,7 +4700,7 @@ function renderCharacterEditor(container, parallx, input) {
     o.value = opt.value;
     memorySelect.appendChild(o);
   }
-  moreSection.appendChild(field('🔮 Extended character memory', 'AI response will be slower, but often smarter.', memorySelect));
+  moreSection.appendChild(field(`${icon('brain', 14)} Extended character memory`, 'AI response will be slower, but often smarter.', memorySelect));
 
   moreSection.appendChild(el('hr', 'tg-ce-separator'));
 
@@ -4768,9 +4741,9 @@ function renderCharacterEditor(container, parallx, input) {
 
   // Shortcut buttons
   const shortcutInput = el('textarea', 'tg-ce-textarea');
-  shortcutInput.placeholder = '@name= 🗣️ {{char}}\n@message=/ai <optional writing instruction>\n@insertionType=replace\n@autoSend=no\n\n@name= 🗣️ {{user}}\n@message=/user <optional writing instruction>\n@insertionType=replace\n@autoSend=no';
+  shortcutInput.placeholder = '@name= {{char}}\n@message=/ai <optional writing instruction>\n@insertionType=replace\n@autoSend=no\n\n@name= {{user}}\n@message=/user <optional writing instruction>\n@insertionType=replace\n@autoSend=no';
   moreSection.appendChild(field(
-    '👆 Shortcut buttons (above reply box)',
+    `${icon('mouse-pointer-click', 14)} Shortcut buttons (above reply box)`,
     'Leave this empty to use the defaults. See Perchance format.',
     shortcutInput,
   ));
@@ -4795,7 +4768,7 @@ function renderCharacterEditor(container, parallx, input) {
   const exampleInput = el('textarea', 'tg-ce-textarea tg-ce-textarea--tall');
   exampleInput.placeholder = '[USER]: How are you?\n[AI]: I\'m doing well, thank you for asking!';
   moreSection.appendChild(field(
-    '💬 Example dialogue',
+    `${icon('message-circle', 14)} Example dialogue`,
     'Example conversations that teach the AI the character\'s speaking style. Use [AI]: and [USER]: format.',
     exampleInput,
   ));
@@ -5418,6 +5391,7 @@ A reference for the world of Victorian-era science and invention.
 
 export function activate(parallx, context) {
   console.log('[TextGenerator] Extension activated');
+  _parallx = parallx;
 
   // Sidebar view
   const viewDisposable = parallx.views.registerViewProvider('textGenerator.home', {

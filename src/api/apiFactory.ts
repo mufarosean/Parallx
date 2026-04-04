@@ -36,6 +36,7 @@ import { FileSystemBridge } from './bridges/fileSystemBridge.js';
 import { EditorsBridge } from './bridges/editorsBridge.js';
 import { LanguageModelBridge } from './bridges/languageModelBridge.js';
 import { ChatBridge } from './bridges/chatBridge.js';
+import { IconsBridge } from './bridges/iconsBridge.js';
 import type { IThemeService } from '../services/serviceTypes.js';
 import { ThemeType } from '../theme/colorRegistry.js';
 import type { ViewManager } from '../views/viewManager.js';
@@ -161,6 +162,8 @@ export interface ParallxApiObject {
     onDidInstallTool: (listener: (e: { toolId: string }) => void) => IDisposable;
     /** Fires when a tool is uninstalled. */
     onDidUninstallTool: (listener: (e: { toolId: string }) => void) => IDisposable;
+    /** Fires when the set of registered tools changes (registration or unregistration). */
+    onDidChangeTools: (listener: () => void) => IDisposable;
   };
   readonly env: {
     readonly appName: string;
@@ -175,6 +178,13 @@ export interface ParallxApiObject {
     get<T>(id: { readonly id: string }): T;
     /** Check if a DI service is registered. */
     has(id: { readonly id: string }): boolean;
+  };
+  readonly icons: {
+    getIcon(id: string): string;
+    hasIcon(id: string): boolean;
+    getAllIconIds(): string[];
+    createIconHtml(id: string, size?: number): string;
+    getFileTypeIcon(ext: string): string;
   };
   readonly lm: {
     getModels(): Promise<readonly { id: string; displayName: string; family: string; parameterSize: string; quantization: string; contextLength: number; capabilities: readonly string[] }[]>;
@@ -285,6 +295,8 @@ export function createToolApi(
   const languageModelToolsService = deps.services.has(ILanguageModelToolsService)
     ? deps.services.get<import('../services/chatTypes.js').ILanguageModelToolsService>(ILanguageModelToolsService)
     : undefined;
+
+  const iconsBridge = new IconsBridge();
 
   const languageModelBridge = languageModelsService
     ? new LanguageModelBridge(toolId, languageModelsService, subscriptions)
@@ -554,6 +566,11 @@ export function createToolApi(
         subscriptions.push(sub);
         return sub;
       },
+      onDidChangeTools: (listener: () => void) => {
+        const sub = deps.toolRegistry.onDidRegisterTool(() => listener());
+        subscriptions.push(sub);
+        return sub;
+      },
     }),
 
     env: Object.freeze({
@@ -565,6 +582,14 @@ export function createToolApi(
     services: Object.freeze({
       get: <T>(id: { readonly id: string }) => deps.services.get(id as any) as T,
       has: (id: { readonly id: string }) => deps.services.has(id as any),
+    }),
+
+    icons: Object.freeze({
+      getIcon: (id: string) => iconsBridge.getIcon(id),
+      hasIcon: (id: string) => iconsBridge.hasIcon(id),
+      getAllIconIds: () => iconsBridge.getAllIconIds(),
+      createIconHtml: (id: string, size?: number) => iconsBridge.createIconHtml(id, size),
+      getFileTypeIcon: (ext: string) => iconsBridge.getFileTypeIcon(ext),
     }),
 
     // AI chat namespaces (M9 Cap 8) — undefined if services not available

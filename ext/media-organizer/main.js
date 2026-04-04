@@ -2616,6 +2616,9 @@ async function runScan(rootPath, api) {
       ? `Scan cancelled: ${stats.created + stats.updated + stats.renamed} files processed before cancellation.`
       : `Scan complete: ${stats.total} files (${stats.created} new, ${stats.updated} updated, ${stats.renamed} renamed, ${stats.skipped} unchanged, ${stats.duplicates} duplicates, ${stats.errors} errors) in ${durationSec}s`;
     api.window.showInformationMessage(msg);
+
+    // Refresh sidebar sections (folders, tags, albums)
+    _notifySidebarRefresh();
   }
 }
 
@@ -2630,7 +2633,7 @@ function cancelScan() {
 // Adapted from stash: pkg/models/paths/paths_generated.go — sharding constants
 // Adapted from stash: pkg/image/thumbnail.go — quality settings
 
-const THUMB_MAX_SIZE = 640;        // Stash DefaultGthumbWidth
+const THUMB_MAX_SIZE = 1024;       // Covers up to 800px zoom with headroom
 const THUMB_QUALITY_VIPS = 70;     // Stash vips Q=70
 const THUMB_QUALITY_FFMPEG = 5;    // Stash ffmpegImageQuality = 5
 const THUMB_DIR_DEPTH = 2;         // Stash thumbDirDepth
@@ -2951,13 +2954,6 @@ async function generateVideoCoverFrame(checksum, filePath, duration, api, overwr
   const thumbDir = getThumbDir(api);
   if (!thumbDir) return { generated: false, path: null, encoder: null };
   if (!checksum) return { generated: false, path: null, encoder: null };
-  if (!_toolPaths.ffmpeg) return { generated: false, path: null, encoder: 'skip_no_ffmpeg' };
-
-  // Skip audio-only files (no video stream detected by ffprobe)
-  // Adapted from stash: internal/manager/task_generate_screenshot.go — videoFile == nil guard
-  if (videoWidth === 0 && videoHeight === 0) {
-    return { generated: false, path: null, encoder: 'skip_no_video_stream' };
-  }
 
   const coverPath = getCoverFramePath(thumbDir, checksum);
 
@@ -2982,68 +2978,103 @@ async function generateVideoCoverFrame(checksum, filePath, duration, api, overwr
   } else if (duration && duration > 0) {
     seekSec = duration * COVER_TIMESTAMP_PERCENT;
   } else {
-    // Unknown duration — extract first frame (matches Stash: 0.2 * 0 = 0)
     seekSec = 0;
   }
 
-  // Build ffmpeg command: -ss before -i for fast seek (Stash pattern)
-  // Adapted from stash: pkg/ffmpeg/transcoder/screenshot.go — ScreenshotTime()
-  const tempPath = coverPath + '.tmp';
-  const vf = `scale='min(${THUMB_MAX_SIZE},iw)':'min(${THUMB_MAX_SIZE},ih)':force_original_aspect_ratio=decrease`;
-  const cmd = [
-    shellQuote(_toolPaths.ffmpeg),
-    '-hide_banner', '-loglevel', 'error', '-y',
-    '-ss', String(seekSec),
-    '-i', shellQuote(filePath),
-    '-frames:v', '1',
-    '-q:v', String(COVER_QUALITY_FFMPEG),
-    '-vf', shellQuote(vf),
-    '-f', 'image2',
-    shellQuote(tempPath),
-  ].join(' ');
+  // Try ffmpeg first (preferred — handles all codecs, fast seek)
+  if (_toolPaths.ffmpeg) {
+    const tempPath = coverPath + '.tmp';
+    const vf = `scale='min(${THUMB_MAX_SIZE},iw)':'min(${THUMB_MAX_SIZE},ih)':force_original_aspect_ratio=decrease`;
+    const cmd = [
+      shellQuote(_toolPaths.ffmpeg),
+      '-hide_banner', '-loglevel', 'error', '-y',
+      '-ss', String(seekSec),
+      '-i', shellQuote(filePath),
+      '-frames:v', '1',
+      '-q:v', String(COVER_QUALITY_FFMPEG),
+      '-vf', shellQuote(vf),
+      '-f', 'image2',
+      shellQuote(tempPath),
+    ].join(' ');
 
-  try {
-    // NOTE: 30s timeout should be generous for single-frame extraction. If timeout fires,
-    // terminal.exec rejects but the ffmpeg child process may not be killed — this is a
-    // known limitation of the terminal API. Single-frame extraction rarely takes >5s.
-    // Adapted from stash: exec.CommandContext auto-kills on cancel (Go-specific, no analog here).
-    const result = await window.parallxElectron.terminal.exec(cmd, { timeout: 30000 });
-    if (result.exitCode !== 0) {
-      if (result.stderr) console.debug('[MediaOrganizer] ffmpeg cover stderr:', result.stderr);
-      // Clean up temp file on failure
+    try {
+      const result = await window.parallxElectron.terminal.exec(cmd, { timeout: 30000 });
+      if (result.exitCode === 0) {
+        const valid = await validateThumbnailFile(tempPath);
+        if (valid) {
+          const readResult = await window.parallxElectron.fs.readFile(tempPath);
+          if (!readResult.error) {
+            const writeResult = await window.parallxElectron.fs.writeFile(
+              coverPath, readResult.content, readResult.encoding || 'base64'
+            );
+            await window.parallxElectron.fs.delete(tempPath).catch(() => {});
+            if (!writeResult.error) {
+              return { generated: true, path: coverPath, encoder: 'ffmpeg' };
+            }
+            await window.parallxElectron.fs.delete(coverPath).catch(() => {});
+          } else {
+            await window.parallxElectron.fs.delete(tempPath).catch(() => {});
+          }
+        }
+      } else {
+        if (result.stderr) console.debug('[MediaOrganizer] ffmpeg cover stderr:', result.stderr);
+        await window.parallxElectron.fs.delete(tempPath).catch(() => {});
+      }
+    } catch (err) {
+      console.warn('[MediaOrganizer] ffmpeg cover failed, trying canvas fallback:', err);
       await window.parallxElectron.fs.delete(tempPath).catch(() => {});
-      return { generated: false, path: null, encoder: null };
     }
-    // Validate temp file — guards against partial writes
-    // Adapted from stash: pkg/scene/generate/generator.go — stat.Size() == 0 check
-    const valid = await validateThumbnailFile(tempPath);
-    if (!valid) return { generated: false, path: null, encoder: null };
-
-    // Atomic rename: temp → final path
-    // Adapted from stash: pkg/fsutil/file.go — SafeMove()
-    // Read temp file, write to final path, delete temp
-    const readResult = await window.parallxElectron.fs.readFile(tempPath);
-    if (readResult.error) {
-      await window.parallxElectron.fs.delete(tempPath).catch(() => {});
-      return { generated: false, path: null, encoder: null };
-    }
-    const writeResult = await window.parallxElectron.fs.writeFile(
-      coverPath, readResult.content, readResult.encoding || 'base64'
-    );
-    await window.parallxElectron.fs.delete(tempPath).catch(() => {});
-    if (writeResult.error) {
-      // Clean up potentially corrupt coverPath
-      await window.parallxElectron.fs.delete(coverPath).catch(() => {});
-      return { generated: false, path: null, encoder: null };
-    }
-
-    return { generated: true, path: coverPath, encoder: 'ffmpeg' };
-  } catch (err) {
-    console.warn('[MediaOrganizer] Video cover generation failed:', err);
-    // Clean up temp file in catch path
-    await window.parallxElectron.fs.delete(tempPath).catch(() => {});
-    return { generated: false, path: null, encoder: null };
   }
+
+  // Canvas fallback — load video in <video> element, seek, draw frame to canvas
+  // Works for browser-supported codecs (mp4/h264, webm/vp8/vp9) without external tools
+  try {
+    const url = await localFileToUrl(filePath);
+    if (!url) return { generated: false, path: null, encoder: null };
+
+    const video = document.createElement('video');
+    video.muted = true;
+    video.preload = 'auto';
+
+    const frameUrl = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => { reject(new Error('video load timeout')); }, 15000);
+      video.addEventListener('error', () => { clearTimeout(timeout); reject(new Error('video load error')); });
+      video.addEventListener('loadedmetadata', () => {
+        // Seek to 20% or provided timestamp
+        video.currentTime = seekSec > 0 ? seekSec : Math.min(video.duration * COVER_TIMESTAMP_PERCENT, video.duration);
+      });
+      video.addEventListener('seeked', async () => {
+        clearTimeout(timeout);
+        try {
+          const vw = video.videoWidth;
+          const vh = video.videoHeight;
+          if (!vw || !vh) { reject(new Error('no video dimensions')); return; }
+          const scale = Math.min(THUMB_MAX_SIZE / vw, THUMB_MAX_SIZE / vh, 1);
+          const w = Math.round(vw * scale);
+          const h = Math.round(vh * scale);
+          const canvas = new OffscreenCanvas(w, h);
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, w, h);
+          const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.7 });
+          const arrayBuffer = await blob.arrayBuffer();
+          const uint8 = new Uint8Array(arrayBuffer);
+          let binary = '';
+          for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
+          resolve(btoa(binary));
+        } catch (e) { reject(e); }
+      });
+      video.src = url;
+    });
+
+    const writeResult = await window.parallxElectron.fs.writeFile(coverPath, frameUrl, 'base64');
+    if (!writeResult.error) {
+      return { generated: true, path: coverPath, encoder: 'canvas' };
+    }
+  } catch (err) {
+    console.warn('[MediaOrganizer] Canvas video cover failed:', err);
+  }
+
+  return { generated: false, path: null, encoder: null };
 }
 
 /**
@@ -3064,17 +3095,12 @@ async function generateImageThumbnail(checksum, filePath, width, height, api, ov
   if (!thumbDir) return { generated: false, path: null, encoder: null };
   if (!checksum) return { generated: false, path: null, encoder: null };
 
-  // Adapted from stash: pkg/image/thumbnail.go — animated image exclusion
-  // Stash treats all GIFs as animated and checks WebP header for animation bit.
-  if (isAnimatedGif(filePath)) {
-    return { generated: false, path: null, encoder: 'skip_animated' };
-  }
-  if (await isWebPAnimated(filePath)) {
-    return { generated: false, path: null, encoder: 'skip_animated' };
-  }
+  // Animated image detection — GIFs and animated WebPs get a first-frame
+  // thumbnail via canvas instead of being skipped entirely.
+  const animated = isAnimatedGif(filePath) || await isWebPAnimated(filePath);
 
   // Adapted from stash: task_generate_image_thumbnail.go — required()
-  if (!isThumbnailRequired(width, height)) {
+  if (!animated && !isThumbnailRequired(width, height)) {
     return { generated: false, path: null, encoder: 'skip_small' };
   }
 
@@ -3090,6 +3116,13 @@ async function generateImageThumbnail(checksum, filePath, width, height, api, ov
   const sep = _isWindows ? '\\' : '/';
   const parentDir = thumbPath.slice(0, thumbPath.lastIndexOf(sep));
   await window.parallxElectron.fs.mkdir(parentDir);
+
+  // Animated images go straight to canvas (renders first frame only)
+  if (animated) {
+    const ok = await generateThumbCanvas(filePath, thumbPath, THUMB_MAX_SIZE);
+    if (ok) return { generated: true, path: thumbPath, encoder: 'canvas' };
+    return { generated: false, path: null, encoder: null };
+  }
 
   // Adapted from stash: pkg/image/thumbnail.go — GetThumbnail encoder priority
   if (_toolPaths.vips) {
@@ -3799,9 +3832,8 @@ const MO_CSS = `
 }
 .mo-grid-area {
   flex: 1;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
   position: relative;
 }
 
@@ -3877,24 +3909,23 @@ const MO_CSS = `
 
 /* ═══ Grid ═══ */
 .mo-grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--mo-card-min-width, 280px), 1fr));
   gap: 8px;
   padding: 8px;
-  overflow-y: auto;
-  flex: 1;
-  align-content: flex-start;
+  align-content: start;
 }
 
 /* ═══ Card ═══ */
 .mo-card {
+  display: flex;
+  flex-direction: column;
   border-radius: var(--parallx-radius-md, 6px);
   overflow: hidden;
   cursor: pointer;
   background: var(--vscode-editor-background);
   border: 1px solid var(--vscode-panel-border, #333);
   transition: border-color 0.15s;
-  flex-shrink: 0;
 }
 .mo-card:hover { border-color: var(--vscode-focusBorder, #007fd4); }
 .mo-card:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: -1px; }
@@ -3903,6 +3934,7 @@ const MO_CSS = `
   position: relative;
   overflow: hidden;
   background: var(--vscode-input-background, #1a1a1a);
+  aspect-ratio: 4 / 3;
 }
 .mo-card-thumb img {
   width: 100%;
@@ -3958,6 +3990,7 @@ const MO_CSS = `
 }
 .mo-card-info {
   padding: 5px 8px 6px;
+  flex-shrink: 0;
 }
 .mo-card-title {
   font-size: var(--parallx-fontSize-sm, 11px);
@@ -3975,11 +4008,7 @@ const MO_CSS = `
   margin-top: 1px;
 }
 
-/* Zoom-dependent thumb heights */
-.mo-card.zoom-0 .mo-card-thumb { height: 180px; }
-.mo-card.zoom-1 .mo-card-thumb { height: 240px; }
-.mo-card.zoom-2 .mo-card-thumb { height: 360px; }
-.mo-card.zoom-3 .mo-card-thumb { height: 480px; }
+
 
 /* ═══ Pagination ═══ */
 .mo-pagination {
@@ -4350,6 +4379,9 @@ const MO_CSS = `
   max-height: 100%;
   object-fit: contain;
 }
+.mo-detail-preview.mo-preview-zoomed {
+  cursor: grab;
+}
 .mo-detail-panel {
   width: 320px;
   min-width: 260px;
@@ -4358,6 +4390,15 @@ const MO_CSS = `
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  transition: width 0.15s ease, min-width 0.15s ease, opacity 0.15s ease;
+}
+.mo-detail-panel.mo-collapsed {
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  border-left: none;
+  opacity: 0;
+  pointer-events: none;
 }
 .mo-detail-tab-bar {
   display: flex;
@@ -4823,10 +4864,10 @@ function moInjectStyles() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: ui/v2.5/src/components/Shared/GridCard/ — calculateCardWidth + card DOM
 
-const MO_ZOOM_WIDTHS  = [280, 340, 480, 640];
-const MO_ZOOM_HEIGHTS = [180, 240, 360, 480];
+const MO_ZOOM_MIN = 150;
+const MO_ZOOM_MAX = 800;
+const MO_ZOOM_DEFAULT = 280;
 const MO_CARD_GAP = 8;
-const MO_DEFAULT_ZOOM = 1;
 const MO_DEFAULT_PER_PAGE = 40;
 
 // Adapted from stash: GridCard.tsx — calculateCardWidth()
@@ -4852,10 +4893,55 @@ function formatShortDate(isoStr) {
   } catch { return ''; }
 }
 
+// ── Local file → blob URL converter ──────────────────────────────────────────
+// The renderer loads from http://127.0.0.1, so file:// URLs are blocked by
+// same-origin policy. Read files via IPC (base64) and create object URLs.
+const _blobUrlCache = new Map();
+const _BLOB_CACHE_MAX = 500;
+
+const _MIME_FROM_EXT = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+  '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
+  '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
+  '.tiff': 'image/tiff', '.tif': 'image/tiff',
+  '.heic': 'image/heic', '.heif': 'image/heif', '.avif': 'image/avif',
+  '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
+  '.avi': 'video/x-msvideo', '.mkv': 'video/x-matroska',
+  '.wmv': 'video/x-ms-wmv', '.flv': 'video/x-flv', '.m4v': 'video/x-m4v',
+  '.ogv': 'video/ogg', '.mpg': 'video/mpeg', '.mpeg': 'video/mpeg',
+};
+
+async function localFileToUrl(filePath) {
+  if (!filePath) return null;
+  const cached = _blobUrlCache.get(filePath);
+  if (cached) return cached;
+  try {
+    const readResult = await window.parallxElectron.fs.readFile(filePath);
+    if (readResult.error) return null;
+    const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase();
+    const mime = _MIME_FROM_EXT[ext] || 'application/octet-stream';
+    const base64 = readResult.encoding === 'base64' ? readResult.content : btoa(readResult.content);
+    const raw = atob(base64);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    const blob = new Blob([bytes], { type: mime });
+    const url = URL.createObjectURL(blob);
+    if (_blobUrlCache.size >= _BLOB_CACHE_MAX) {
+      const firstKey = _blobUrlCache.keys().next().value;
+      URL.revokeObjectURL(_blobUrlCache.get(firstKey));
+      _blobUrlCache.delete(firstKey);
+    }
+    _blobUrlCache.set(filePath, url);
+    return url;
+  } catch (err) {
+    console.warn('[MediaOrganizer] localFileToUrl failed:', filePath, err);
+    return null;
+  }
+}
+
 function renderMediaCard(item, options) {
-  const { cardWidth, zoomIndex, selecting, isSelected, onSelect, onClick } = options;
-  const card = moEl('div', `mo-card zoom-${zoomIndex}${isSelected ? ' mo-selected' : ''}`);
-  card.style.width = `${cardWidth}px`;
+  const { selecting, isSelected, onSelect, onClick } = options;
+  const card = moEl('div', `mo-card${isSelected ? ' mo-selected' : ''}`);
 
   // Thumbnail section
   const thumb = moEl('div', 'mo-card-thumb');
@@ -4863,7 +4949,7 @@ function renderMediaCard(item, options) {
   img.alt = item.title || '';
   img.loading = 'lazy';
   if (item.thumbnailPath) {
-    img.src = `file://${item.thumbnailPath.replace(/\\/g, '/')}`;
+    localFileToUrl(item.thumbnailPath).then(url => { if (url) img.src = url; });
   } else {
     // Placeholder
     const placeholder = moEl('div', 'mo-thumb-placeholder', { innerHTML: moIcon('image', 32) });
@@ -4927,7 +5013,7 @@ function renderMediaListRow(item, options) {
   img.alt = item.title || '';
   img.loading = 'lazy';
   if (item.thumbnailPath) {
-    img.src = `file://${item.thumbnailPath.replace(/\\/g, '/')}`;
+    localFileToUrl(item.thumbnailPath).then(url => { if (url) img.src = url; });
   } else {
     img.style.display = 'none';
   }
@@ -4956,18 +5042,10 @@ function renderMediaListRow(item, options) {
 }
 
 function renderCardGrid(container, items, options) {
-  const { zoomIndex, selecting, selectedIds, onSelect, onClick } = options;
+  const { zoomWidth, selecting, selectedIds, onSelect, onClick } = options;
   const grid = moEl('div', 'mo-grid');
+  grid.style.setProperty('--mo-card-min-width', `${zoomWidth || MO_ZOOM_DEFAULT}px`);
   container.appendChild(grid);
-
-  let currentWidth = 0;
-  let resizeTimer = null;
-
-  function getCardWidth() {
-    const cw = grid.clientWidth;
-    if (cw <= 0) return MO_ZOOM_WIDTHS[zoomIndex];
-    return calculateCardWidth(cw, MO_ZOOM_WIDTHS[zoomIndex]);
-  }
 
   function renderAll(itemList, opts) {
     grid.innerHTML = '';
@@ -4992,12 +5070,10 @@ function renderCardGrid(container, items, options) {
         }
       }
     } else {
-      const cardWidth = getCardWidth();
-      const zi = opts.zoomIndex ?? zoomIndex;
+      const zw = opts.zoomWidth ?? zoomWidth;
+      grid.style.setProperty('--mo-card-min-width', `${zw || MO_ZOOM_DEFAULT}px`);
       for (const item of itemList) {
         const card = renderMediaCard(item, {
-          cardWidth,
-          zoomIndex: zi,
           selecting: opts.selecting ?? selecting,
           isSelected: opts.selectedIds ? opts.selectedIds.has(`${item.type}:${item.id}`) : false,
           onSelect: opts.onSelect ?? onSelect,
@@ -5020,31 +5096,20 @@ function renderCardGrid(container, items, options) {
         item.thumbnailPath = result.path;
         const img = card._imgEl;
         if (img) {
-          img.src = `file://${result.path.replace(/\\/g, '/')}`;
-          img.style.display = '';
-          // Remove placeholder if present
-          const ph = card._thumbEl?.querySelector('.mo-thumb-placeholder');
-          if (ph) ph.remove();
+          const url = await localFileToUrl(result.path);
+          if (url) {
+            img.src = url;
+            img.style.display = '';
+            // Remove placeholder if present
+            const ph = card._thumbEl?.querySelector('.mo-thumb-placeholder');
+            if (ph) ph.remove();
+          }
         }
       }
     } catch { /* thumbnail resolution failure — leave placeholder */ }
   }
 
-  const ro = new ResizeObserver((entries) => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      const newWidth = entries[0]?.contentRect?.width ?? 0;
-      if (Math.abs(newWidth - currentWidth) > 20) {
-        currentWidth = newWidth;
-        // Re-apply card widths
-        const cardWidth = calculateCardWidth(currentWidth, MO_ZOOM_WIDTHS[options.zoomIndex ?? zoomIndex]);
-        for (const card of grid.querySelectorAll('.mo-card')) {
-          card.style.width = `${cardWidth}px`;
-        }
-      }
-    }, 50);
-  });
-  ro.observe(grid);
+
 
   renderAll(items, options);
 
@@ -5053,8 +5118,6 @@ function renderCardGrid(container, items, options) {
       renderAll(newItems, { ...options, ...newOptions });
     },
     dispose() {
-      clearTimeout(resizeTimer);
-      ro.disconnect();
       grid.innerHTML = '';
       grid.remove();
     },
@@ -5134,15 +5197,47 @@ function renderBrowserSidebar(container, api) {
 
   async function loadFolders() {
     try {
-      const result = await FolderQueries.findMany({ parentFolderId: null }, { field: 'path', direction: 'ASC' }, { page: 1, perPage: 200 });
+      // Only show folders that directly contain at least one media file.
+      // Display as relative path from the common scan root for disambiguation.
+      const rows = await db.all(`
+        SELECT fo.id, fo.path, COUNT(f.id) AS file_count
+        FROM mo_folders fo
+        JOIN mo_files f ON f.folder_id = fo.id
+        GROUP BY fo.id
+        HAVING file_count > 0
+        ORDER BY fo.path ASC
+      `);
       folderBody.innerHTML = '';
-      if (!result.items || result.items.length === 0) {
+      if (!rows || rows.length === 0) {
         folderBody.appendChild(moEl('div', 'mo-empty', { textContent: 'No folders scanned yet' }));
         return;
       }
-      for (const folder of result.items) {
-        const name = folder.path ? folder.path.split(/[/\\]/).pop() || folder.path : `Folder ${folder.id}`;
-        folderBody.appendChild(sidebarItem('folder', name, null, () => openGrid(`folder:${folder.id}`, name, 'folder')));
+
+      // Compute common prefix of all folder paths to derive scan root
+      let commonPrefix = rows[0].path;
+      for (let i = 1; i < rows.length; i++) {
+        while (commonPrefix && !rows[i].path.startsWith(commonPrefix)) {
+          // Walk up one directory
+          const sepIdx = Math.max(commonPrefix.lastIndexOf('/'), commonPrefix.lastIndexOf('\\'));
+          if (sepIdx <= 0) { commonPrefix = ''; break; }
+          commonPrefix = commonPrefix.slice(0, sepIdx);
+        }
+      }
+      // Include trailing separator so relative paths don't start with one
+      if (commonPrefix && !commonPrefix.endsWith('/') && !commonPrefix.endsWith('\\')) {
+        const sepIdx = Math.max(commonPrefix.lastIndexOf('/'), commonPrefix.lastIndexOf('\\'));
+        commonPrefix = sepIdx > 0 ? commonPrefix.slice(0, sepIdx + 1) : commonPrefix + '/';
+      } else if (commonPrefix && (commonPrefix.endsWith('/') || commonPrefix.endsWith('\\'))) {
+        // already has trailing sep
+      } else {
+        commonPrefix = '';
+      }
+
+      for (const row of rows) {
+        const relPath = commonPrefix ? row.path.slice(commonPrefix.length) : row.path;
+        const displayName = relPath.replace(/\\/g, '/') || row.path.split(/[/\\]/).pop() || `Folder ${row.id}`;
+        const badge = String(row.file_count);
+        folderBody.appendChild(sidebarItem('folder', displayName, badge, () => openGrid(`folder:${row.id}`, displayName, 'folder')));
       }
     } catch {
       folderBody.appendChild(moEl('div', 'mo-empty', { textContent: 'Could not load folders' }));
@@ -5213,7 +5308,11 @@ function renderBrowserSidebar(container, api) {
   loadTags();
   loadAlbums();
 
-  return { dispose() { container.innerHTML = ''; } };
+  // Register for refresh after scan completes
+  const refreshAll = () => { loadFolders(); loadTags(); loadAlbums(); };
+  _sidebarRefreshCallbacks.push(refreshAll);
+
+  return { dispose() { container.innerHTML = ''; const idx = _sidebarRefreshCallbacks.indexOf(refreshAll); if (idx >= 0) _sidebarRefreshCallbacks.splice(idx, 1); } };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -5238,7 +5337,7 @@ function renderGridBrowser(container, api, input) {
   const state = {
     currentPage: 1,
     perPage: MO_DEFAULT_PER_PAGE,
-    zoomIndex: MO_DEFAULT_ZOOM,
+    zoomWidth: MO_ZOOM_DEFAULT,
     sortBy: 'created_at',
     sortDir: 'DESC',
     mediaType: (filterType === 'photos' || filterType === 'videos') ? filterType : 'all',
@@ -5289,7 +5388,7 @@ function renderGridBrowser(container, api, input) {
   // Zoom slider
   const zoomGroup = moEl('div', 'mo-toolbar-group');
   zoomGroup.appendChild(moEl('span', 'mo-toolbar-label', { textContent: 'Zoom' }));
-  const zoomSlider = moEl('input', 'mo-zoom-slider', { type: 'range', min: '0', max: '3', value: String(state.zoomIndex) });
+  const zoomSlider = moEl('input', 'mo-zoom-slider', { type: 'range', min: String(MO_ZOOM_MIN), max: String(MO_ZOOM_MAX), step: '10', value: String(state.zoomWidth) });
   zoomGroup.appendChild(zoomSlider);
   toolbar.appendChild(zoomGroup);
 
@@ -5553,7 +5652,7 @@ function renderGridBrowser(container, api, input) {
 
   // ── refreshOpts helper ──
   function refreshOpts() {
-    return { zoomIndex: state.zoomIndex, displayMode: state.displayMode, selecting: state.selecting, selectedIds: state.selectedIds, onSelect: handleSelect, onClick: handleCardClick };
+    return { zoomWidth: state.zoomWidth, displayMode: state.displayMode, selecting: state.selecting, selectedIds: state.selectedIds, onSelect: handleSelect, onClick: handleCardClick };
   }
 
   // ── Grid area ──
@@ -5943,7 +6042,7 @@ function renderGridBrowser(container, api, input) {
   });
 
   zoomSlider.addEventListener('input', () => {
-    state.zoomIndex = parseInt(zoomSlider.value, 10);
+    state.zoomWidth = parseInt(zoomSlider.value, 10);
     if (cardGrid) {
       cardGrid.refresh(state.items, refreshOpts());
     }
@@ -6143,6 +6242,15 @@ function buildDetailHeader(ctx, api, headerEl, callbacks) {
     nextBtn.addEventListener('click', callbacks.onNext);
     actions.appendChild(nextBtn);
   }
+  // Toggle sidebar button
+  const toggleBtn = moEl('button', 'mo-detail-nav-btn', { title: 'Toggle details panel' });
+  toggleBtn.innerHTML = moIcon('panel-right', 12);
+  toggleBtn.addEventListener('click', () => {
+    const panel = headerEl.closest('.mo-detail-editor')?.querySelector('.mo-detail-panel');
+    if (panel) panel.classList.toggle('mo-collapsed');
+  });
+  actions.appendChild(toggleBtn);
+
   headerEl.appendChild(actions);
 }
 
@@ -6254,10 +6362,84 @@ function buildMediaPreview(ctx) {
 
 function buildPhotoPreview(container, fullPath) {
   const img = moEl('img');
-  img.src = 'file://' + fullPath.replace(/\\/g, '/');
   img.alt = 'Photo preview';
+  img.draggable = false;
   img.addEventListener('error', () => { img.style.display = 'none'; container.textContent = 'Failed to load image'; });
   container.appendChild(img);
+  localFileToUrl(fullPath).then(url => {
+    if (url) img.src = url;
+    else { img.style.display = 'none'; container.textContent = 'Failed to load image'; }
+  });
+
+  // ── Scroll-to-zoom + pan ──
+  let scale = 1;
+  const MIN_SCALE = 1;
+  const MAX_SCALE = 20;
+  const ZOOM_FACTOR = 0.15;
+  let tx = 0, ty = 0; // translate offsets
+
+  function applyTransform() {
+    img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+    img.style.transformOrigin = '0 0';
+    container.classList.toggle('mo-preview-zoomed', scale > 1);
+  }
+
+  container.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    // Cursor position relative to the image's current rendered top-left
+    const imgRect = img.getBoundingClientRect();
+    const px = e.clientX - imgRect.left;
+    const py = e.clientY - imgRect.top;
+
+    const prevScale = scale;
+    if (e.deltaY < 0) {
+      scale = Math.min(MAX_SCALE, scale * (1 + ZOOM_FACTOR));
+    } else {
+      scale = Math.max(MIN_SCALE, scale / (1 + ZOOM_FACTOR));
+    }
+
+    // Shift so the point under the cursor stays fixed after scale change
+    tx -= px * (scale / prevScale - 1);
+    ty -= py * (scale / prevScale - 1);
+
+    if (scale <= MIN_SCALE) { tx = 0; ty = 0; scale = MIN_SCALE; }
+    applyTransform();
+  }, { passive: false });
+
+  // Pan via mouse drag when zoomed
+  let dragging = false, dragStartX = 0, dragStartY = 0, startTx = 0, startTy = 0;
+
+  container.addEventListener('mousedown', (e) => {
+    if (scale <= MIN_SCALE) return;
+    dragging = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    startTx = tx;
+    startTy = ty;
+    container.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    tx = startTx + (e.clientX - dragStartX);
+    ty = startTy + (e.clientY - dragStartY);
+    applyTransform();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    container.style.cursor = '';
+  });
+
+  // Double-click to reset zoom
+  container.addEventListener('dblclick', () => {
+    scale = MIN_SCALE;
+    tx = 0;
+    ty = 0;
+    applyTransform();
+  });
 }
 
 function buildVideoPlayer(container, fullPath) {
@@ -6266,10 +6448,13 @@ function buildVideoPlayer(container, fullPath) {
   video.preload = 'metadata';
 
   const source = document.createElement('source');
-  source.src = 'file://' + fullPath.replace(/\\/g, '/');
   video.appendChild(source);
   video.addEventListener('error', () => { video.style.display = 'none'; container.textContent = 'Failed to load video'; });
   container.appendChild(video);
+  localFileToUrl(fullPath).then(url => {
+    if (url) { source.src = url; video.load(); }
+    else { video.style.display = 'none'; container.textContent = 'Failed to load video'; }
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -6444,6 +6629,7 @@ function buildTagEditor(container, tags, entityType, entityId, api, onRefresh) {
           await Queries.updateTags(entityId, { mode: 'REMOVE', ids: [tag.id] });
           currentTags = currentTags.filter(t => t.id !== tag.id);
           renderPills();
+          _notifySidebarRefresh();
           // Focus next pill remove button or the add input
           const nextBtn = pillsWrap.querySelector('.mo-detail-tag-pill button');
           if (nextBtn) nextBtn.focus();
@@ -6457,17 +6643,18 @@ function buildTagEditor(container, tags, entityType, entityId, api, onRefresh) {
 
   renderPills();
 
-  // Autocomplete for adding tags
-  buildTagAutocomplete(wrap, currentTags, async (selectedTag) => {
+  // Autocomplete for adding tags — pass getter so it always sees current list
+  buildTagAutocomplete(wrap, () => currentTags, async (selectedTag) => {
     try {
       await Queries.updateTags(entityId, { mode: 'ADD', ids: [selectedTag.id] });
       currentTags.push(selectedTag);
       renderPills();
+      _notifySidebarRefresh();
     } catch (err) { console.error('[MO-Detail] Tag add failed:', err); }
   });
 }
 
-function buildTagAutocomplete(container, existingTags, onAdd) {
+function buildTagAutocomplete(container, getExistingTags, onAdd) {
   const autocomplete = moEl('div', 'mo-detail-autocomplete');
   const input = moEl('input', null, { type: 'text', placeholder: 'Add tag...' });
   input.setAttribute('aria-label', 'Search tags to add');
@@ -6486,7 +6673,7 @@ function buildTagAutocomplete(container, existingTags, onAdd) {
     }
     try {
       const result = await TagQueries.findMany({ nameLike: `%${query}%` }, { field: 'name', direction: 'ASC' }, { page: 1, perPage: 10 });
-      const existingIds = new Set(existingTags.map(t => t.id));
+      const existingIds = new Set(getExistingTags().map(t => t.id));
       const filtered = result.items.filter(t => !existingIds.has(t.id));
       // Check if exact match exists — if not, offer "Create" option
       const exactMatch = result.items.some(t => t.name.toLowerCase() === query.toLowerCase());
@@ -6999,7 +7186,7 @@ async function loadAlbumContents(album, container, api) {
     }
 
     for (const item of items) {
-      const miniCard = moEl('div', 'mo-album-mini-card mo-card zoom-0');
+      const miniCard = moEl('div', 'mo-album-mini-card mo-card');
       const thumb = moEl('div', 'mo-card-thumb');
       const img = moEl('img');
       img.alt = item.title || '';
@@ -7056,7 +7243,8 @@ async function resolveThumbnailForMiniCard(card, item) {
     if (result && result.path) {
       const img = card._imgEl;
       if (img) {
-        img.src = `file://${result.path.replace(/\\/g, '/')}`;
+        const url = await localFileToUrl(result.path);
+        if (url) img.src = url;
       }
     }
   } catch { /* thumbnail resolution failure */ }
@@ -7382,6 +7570,8 @@ function showAddToAlbumDialog(state, api, onComplete) {
 
 let _toolPath = '';
 let _activated = false;
+const _sidebarRefreshCallbacks = [];
+function _notifySidebarRefresh() { for (const cb of _sidebarRefreshCallbacks) { try { cb(); } catch {} } }
 let _commandDisposables = [];
 let _api = null;
 

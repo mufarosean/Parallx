@@ -254,6 +254,56 @@ class DatabaseManager {
   // ── Internal ──
 
   /**
+   * Drop all tables and migration records belonging to an external tool.
+   *
+   * Finds tables by prefix (e.g. 'mo_' for media-organizer) and removes
+   * matching entries from the `_migrations` table.
+   *
+   * @param {string} migrationPrefix — prefix of migration filenames (e.g. 'media-organizer')
+   * @param {string} tablePrefix — prefix of table names (e.g. 'mo_')
+   * @returns {{ droppedTables: string[], removedMigrations: number }}
+   */
+  dropToolData(migrationPrefix, tablePrefix) {
+    this._ensureOpen();
+
+    // Validate prefixes to prevent SQL injection — only allow [a-zA-Z0-9_-]
+    if (!/^[a-zA-Z0-9_-]+$/.test(migrationPrefix)) {
+      throw new Error(`Invalid migration prefix: ${migrationPrefix}`);
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(tablePrefix)) {
+      throw new Error(`Invalid table prefix: ${tablePrefix}`);
+    }
+
+    const dropAll = this._db.transaction(() => {
+      // Find all tables matching the prefix
+      const tables = this._db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE ? AND name != '_migrations'")
+        .all(`${tablePrefix}%`)
+        .map(r => r.name);
+
+      // Drop each table
+      for (const table of tables) {
+        // Table names are from sqlite_master — safe to interpolate
+        this._db.exec(`DROP TABLE IF EXISTS "${table}"`);
+      }
+
+      // Remove migration records
+      const migResult = this._db
+        .prepare('DELETE FROM _migrations WHERE name LIKE ?')
+        .run(`${migrationPrefix}%`);
+
+      return { droppedTables: tables, removedMigrations: migResult.changes };
+    });
+
+    const result = dropAll();
+    console.log(
+      `[DatabaseManager] Dropped tool data: ${result.droppedTables.length} tables, ` +
+      `${result.removedMigrations} migration(s) for prefix "${migrationPrefix}"`,
+    );
+    return result;
+  }
+
+  /**
    * Throw if no database is open.
    */
   _ensureOpen() {

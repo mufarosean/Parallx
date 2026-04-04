@@ -52,6 +52,7 @@ interface ParallxApi {
   };
   window: {
     showInformationMessage(message: string, ...actions: { title: string; isCloseAffordance?: boolean }[]): Promise<{ title: string } | undefined>;
+    showWarningMessage(message: string, ...actions: { title: string; isCloseAffordance?: boolean }[]): Promise<{ title: string } | undefined>;
     showErrorMessage(message: string, ...actions: { title: string; isCloseAffordance?: boolean }[]): Promise<{ title: string } | undefined>;
   };
   tools: {
@@ -64,6 +65,7 @@ interface ParallxApi {
     uninstall(toolId: string): Promise<void>;
     onDidInstallTool: (listener: (e: { toolId: string }) => void) => IDisposable;
     onDidUninstallTool: (listener: (e: { toolId: string }) => void) => IDisposable;
+    onDidChangeTools: (listener: () => void) => IDisposable;
   };
 }
 
@@ -155,7 +157,7 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
       } else if ('error' in result) {
         await api.window.showErrorMessage(`Installation failed: ${result.error}`);
       } else {
-        await api.window.showInformationMessage(`Tool installed successfully.`);
+        await api.window.showInformationMessage(`Tool installed successfully. Enable it to start using it.`);
         const tool = api.tools.getById(result.toolId);
         if (tool) {
           api.editors.openEditor({
@@ -413,6 +415,9 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
   const installListener = api.tools.onDidInstallTool(() => { refresh(); });
   const uninstallListener = api.tools.onDidUninstallTool(() => { refresh(); });
 
+  // Listen for tool registration events (covers startup discovery of external tools)
+  const changeListener = api.tools.onDidChangeTools(() => { refresh(); });
+
   _sidebarRefresh = refresh;
   refresh();
 
@@ -422,6 +427,7 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
       enablementListener.dispose();
       installListener.dispose();
       uninstallListener.dispose();
+      changeListener.dispose();
       container.innerHTML = '';
     },
   };
@@ -510,11 +516,41 @@ function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: strin
     uninstallBtn.textContent = 'Uninstall';
     uninstallBtn.title = `Uninstall ${tool.name}`;
     uninstallBtn.addEventListener('click', async () => {
+      // Ask the user whether to keep or delete associated data
+      const keepData = { title: 'Keep Data' };
+      const deleteData = { title: 'Delete Data' };
+      const cancel = { title: 'Cancel', isCloseAffordance: true };
+      const choice = await api.window.showWarningMessage(
+        `Uninstall "${tool.name}"? You can keep its data for later or delete it permanently.`,
+        keepData, deleteData, cancel,
+      );
+      if (!choice || choice.title === 'Cancel') return;
+
       uninstallBtn.disabled = true;
       uninstallBtn.textContent = 'Uninstalling…';
       try {
+        // If user chose to delete data, drop tool tables from the workspace DB
+        if (choice.title === 'Delete Data') {
+          const bridge = (globalThis as any).parallxElectron;
+          if (bridge?.database?.dropToolData) {
+            // Derive migration prefix from tool ID: "publisher.tool-name" → "tool-name"
+            const migrationPrefix = tool.id.includes('.') ? tool.id.split('.').slice(1).join('.') : tool.id;
+            // Derive table prefix: first two chars of each word in tool name joined by nothing,
+            // e.g. "media-organizer" → "mo". This matches the established convention.
+            const nameParts = migrationPrefix.split('-');
+            const tablePrefix = nameParts.map(p => p.charAt(0)).join('') + '_';
+            const result = await bridge.database.dropToolData(migrationPrefix, tablePrefix);
+            if (result.error) {
+              console.warn(`[ToolGallery] Data deletion warning: ${result.error.message}`);
+            } else {
+              console.log(`[ToolGallery] Deleted tool data: ${result.droppedTables?.length ?? 0} tables`);
+            }
+          }
+        }
         await api.tools.uninstall(tool.id);
-        await api.window.showInformationMessage(`"${tool.name}" has been uninstalled.`);
+        await api.window.showInformationMessage(
+          `"${tool.name}" has been uninstalled.${choice.title === 'Delete Data' ? ' Associated data was deleted.' : ' Data was preserved.'}`,
+        );
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         await api.window.showErrorMessage(`Uninstall failed: ${msg}`);

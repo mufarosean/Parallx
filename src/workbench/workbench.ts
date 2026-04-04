@@ -1091,6 +1091,20 @@ export class Workbench extends Layout {
       this._workspace.restoreFolders(this._restoredState.folders);
     }
 
+    // ── Reconcile durable workspace identity BEFORE Phase 5 ──
+    // The durable identity file (.parallx/workspace-identity.json) in the
+    // first workspace folder is the authoritative source of truth for the
+    // workspace UUID.  We must reconcile it here — after folders are
+    // restored but before Phase 5 creates enablement storage, database,
+    // chat service, or any other consumer that binds to workspace.id.
+    // Previously this ran inside _openDatabaseForWorkspace (Phase 5),
+    // which meant adoptId() could change the UUID *after* enablement
+    // storage was already namespaced to the old ID.
+    const restoredFolders = this._workspace.folders;
+    if (restoredFolders.length > 0) {
+      await this._reconcileDurableWorkspaceId(restoredFolders[0].uri.fsPath);
+    }
+
     // Update the titlebar IMMEDIATELY after folder restore, before any
     // fallible async operations.  Phase 3 ran before folders were loaded,
     // so the label is still "Default Workspace".  Moving this here ensures
@@ -2132,8 +2146,13 @@ export class Workbench extends Layout {
     };
 
     // ── Tool Enablement Service (M6 Capability 0) ──
+    // Use workspace-scoped storage so enablement is per-workspace.
+    // Global _storage is shared across workspaces; sub-namespace by workspace ID.
+    const wsId = this._workspace.id;
+    console.log(`[Workbench] Enablement storage namespace: ws.${wsId} (workspace: "${this._workspace.name}")`);
+    const enablementStorage = new NamespacedStorage(this._storage, `ws.${wsId}`);
     this._toolEnablementService = this._register(
-      new ToolEnablementService(this._storage, registry),
+      new ToolEnablementService(enablementStorage, registry),
     );
     await this._toolEnablementService.load();
     this._services.registerInstance(IToolEnablementService, this._toolEnablementService);
@@ -2293,11 +2312,13 @@ export class Workbench extends Layout {
       // onDidRegisterTool will skip contributions (tool is not yet enabled).
       registry.register(description);
 
-      // Now enable — onDidChangeEnablement fires, which re-processes
-      // contributions, wires activation events, and activates the tool.
-      await this._toolEnablementService.setEnablement(manifest.id, true);
+      // Register activation events so the system knows when to activate later
+      activationEvents.registerToolEvents(manifest.id, manifest.activationEvents);
 
-      console.log(`[Workbench] Hot-installed tool "${manifest.name}" (${manifest.id})`);
+      // External tools are installed disabled — the user must explicitly
+      // enable per-workspace via the Tool Gallery.  Do NOT auto-enable.
+
+      console.log(`[Workbench] Installed tool "${manifest.name}" (${manifest.id}) — disabled by default`);
 
       return { toolId: manifest.id };
     };
@@ -2413,24 +2434,26 @@ export class Workbench extends Layout {
       console.error('[Workbench] Failed to open database for workspace:', err);
     }
 
-    // ── Durable workspace identity (survives localStorage loss) ──
-    // Persist the workspace ID to .parallx/workspace-identity.json so that
-    // sessions stored under the original UUID are always recoverable.
-    await this._reconcileDurableWorkspaceId(folderPath);
+    // Note: durable workspace identity reconciliation now runs in
+    // Phase 4 (_restoreWorkspace) so that workspace.id is final before
+    // any Phase 5 service binds to it.  The call was moved from here to
+    // ensure enablement storage, chat sessions, and tool mementos all
+    // use the correct namespace from the start.
   }
 
   /**
    * Ensure the workspace UUID is consistent with the durable identity file
    * stored in `<folder>/.parallx/workspace-identity.json`.
    *
-   * - If the file exists and its ID differs from the current workspace ID,
-    *   adopt the stored ID only when we are recovering an unbound folder
-    *   workspace after localStorage loss.
-    * - If the current workspace was explicitly restored from saved state, keep
-    *   that saved workspace identity even if the folder has a different durable
-    *   ID. This preserves isolation between named workspaces that point at the
-    *   same folder.
-   * - If the file does not exist, write the current workspace ID to it.
+   * Called in Phase 4 (_restoreWorkspace) BEFORE the saver is configured.
+   * Only performs adoptId() — does NOT call save() or setActiveWorkspaceId()
+   * because the saver has no sources yet.  The caller (_restoreWorkspace)
+   * handles both after _configureSaver() runs:
+   *   - await this._workspaceSaver.save()
+   *   - await this._workspaceLoader.setActiveWorkspaceId(this._workspace.id)
+   *
+   * - If the file exists and its ID differs → adopt the stored ID.
+   * - If the file does not exist → write the current workspace ID.
    */
   private async _reconcileDurableWorkspaceId(folderPath: string): Promise<void> {
     const fs = (window as any).parallxElectron?.fs;
@@ -2443,22 +2466,15 @@ export class Workbench extends Layout {
       const exists: boolean = await fs.exists(identityPath);
 
       if (exists) {
-        // Read the stored identity
         const result = await fs.readFile(identityPath, 'utf-8');
         if (result?.content) {
           const stored = JSON.parse(result.content);
           if (stored?.id && stored.id !== this._workspace.id) {
-            // Always adopt the durable identity — a folder's sessions must
-            // stay under one stable UUID regardless of how the workspace was
-            // launched. Previous logic skipped adoption when the workspace was
-            // restored from saved state, which caused workspace ID drift and
-            // fragmented session history across multiple UUIDs.
             console.log('[Workbench] Adopting durable workspace identity %s (was %s)', stored.id, this._workspace.id);
             this._workspace.adoptId(stored.id);
-
-            // Re-sync localStorage so next launch uses the correct ID
-            await this._workspaceLoader.setActiveWorkspaceId(stored.id);
-            await this._workspaceSaver.save();
+            // save() and setActiveWorkspaceId() are handled by _restoreWorkspace
+            // after _configureSaver() — calling them here would crash because
+            // the saver has no sources yet.
           }
         }
       } else {

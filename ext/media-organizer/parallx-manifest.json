@@ -17,7 +17,8 @@
       { "id": "media-organizer.generateThumbnails", "title": "Generate Thumbnails", "category": "Media Organizer" },
       { "id": "media-organizer.cleanThumbnails", "title": "Clean Orphan Thumbnails", "category": "Media Organizer" },
       { "id": "media-organizer.cacheStats", "title": "Show Thumbnail Cache Stats", "category": "Media Organizer" },
-      { "id": "media-organizer.openGrid", "title": "Open Media Grid", "category": "Media Organizer" }
+      { "id": "media-organizer.openGrid", "title": "Open Media Grid", "category": "Media Organizer" },
+      { "id": "media-organizer.createAlbum", "title": "Create Album", "category": "Media Organizer" }
     ],
     "viewContainers": [
       {

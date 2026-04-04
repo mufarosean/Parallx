@@ -1241,6 +1241,20 @@ ipcMain.handle('database:isOpen', async () => {
   return { isOpen: databaseManager.isOpen };
 });
 
+// ── database:dropToolData ──
+// Drop all tables and migration records belonging to an external tool.
+ipcMain.handle('database:dropToolData', async (_event, migrationPrefix, tablePrefix) => {
+  try {
+    if (!databaseManager.isOpen) {
+      return { error: { code: 'DB_NOT_OPEN', message: 'No database is open' } };
+    }
+    const result = databaseManager.dropToolData(migrationPrefix, tablePrefix);
+    return { error: null, ...result };
+  } catch (err) {
+    return { error: { code: 'DROP_FAILED', message: err.message } };
+  }
+});
+
 // ── database:runTransaction ──
 // Execute multiple operations inside a single IMMEDIATE transaction.
 ipcMain.handle('database:runTransaction', async (_event, operations) => {

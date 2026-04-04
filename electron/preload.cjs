@@ -171,6 +171,15 @@ contextBridge.exposeInMainWorld('parallxElectron', {
      */
     runTransaction: (operations) =>
       ipcRenderer.invoke('database:runTransaction', operations),
+
+    /**
+     * Drop all tables and migration records belonging to an external tool.
+     * @param {string} migrationPrefix — prefix of migration filenames (e.g. 'media-organizer')
+     * @param {string} tablePrefix — prefix of table names (e.g. 'mo_')
+     * @returns {Promise<{ error: null, droppedTables: string[], removedMigrations: number } | { error: { code: string, message: string } }>}
+     */
+    dropToolData: (migrationPrefix, tablePrefix) =>
+      ipcRenderer.invoke('database:dropToolData', migrationPrefix, tablePrefix),
   },
 
   // ══════════════════════════════════════════════════════════════════════════
