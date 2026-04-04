@@ -766,7 +766,10 @@ export class ChatDataService {
   }
 
   getModelContextLength(): number {
-    return (this._d.ollamaProvider as any).getActiveModelContextLength?.() ?? 0;
+    const modelId = this._d.languageModelsService.getActiveModel() ?? '';
+    return (this._d.ollamaProvider as any).getCachedContextLength?.(modelId)
+      ?? (this._d.ollamaProvider as any).getActiveModelContextLength?.()
+      ?? 0;
   }
 
   sendSummarizationRequest(

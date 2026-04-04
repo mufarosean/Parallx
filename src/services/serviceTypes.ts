@@ -1840,6 +1840,8 @@ export interface IDiagnosticCheckDeps {
   readonly getModelContextLength?: () => number;
   readonly getEffectiveConfig?: () => unknown;
   readonly checkEmbedding?: () => Promise<boolean>;
+  readonly getEmbeddingModelInfo?: () => { name: string; dimensions: number; installed: boolean };
+  readonly getEmbeddingContextLength?: () => Promise<number>;
   readonly checkVectorStore?: () => Promise<boolean>;
   readonly checkDocumentExtraction?: () => Promise<boolean>;
   readonly checkMemoryService?: () => Promise<boolean>;

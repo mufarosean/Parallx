@@ -297,6 +297,7 @@ export function registerIndexingServices(
       getWorkspaceName: () => workspaceService.workspaceName ?? '',
       getEffectiveConfig: () => unifiedConfigService?.getEffectiveConfig(),
       checkEmbedding: async () => { try { const r = await embeddingService.embedQuery('test'); return r.length > 0; } catch { return false; } },
+      getEmbeddingModelInfo: () => embeddingService.getModelInfo(),
       checkVectorStore: async () => { try { const s = await vectorStoreService.getStats(); return s.totalChunks >= 0; } catch { return false; } },
       checkMemoryService: async () => { try { await memoryService.getAllMemories(); return true; } catch { return false; } },
     },

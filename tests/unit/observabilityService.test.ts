@@ -202,7 +202,7 @@ describe('Observability diagnostic check', () => {
   it('reports pass when no turns yet', async () => {
     const { EXTENDED_DIAGNOSTIC_CHECKS } = await import('../../src/services/diagnosticChecks');
     // The observability check is the last extended check (index 4)
-    const obsCheck = EXTENDED_DIAGNOSTIC_CHECKS[4];
+    const obsCheck = EXTENDED_DIAGNOSTIC_CHECKS[5];
     const result = await obsCheck({
       getWorkspaceName: () => 'test',
       getObservabilityMetrics: () => ({
@@ -223,7 +223,7 @@ describe('Observability diagnostic check', () => {
 
   it('reports pass when avg duration is healthy', async () => {
     const { EXTENDED_DIAGNOSTIC_CHECKS } = await import('../../src/services/diagnosticChecks');
-    const obsCheck = EXTENDED_DIAGNOSTIC_CHECKS[4];
+    const obsCheck = EXTENDED_DIAGNOSTIC_CHECKS[5];
     const result = await obsCheck({
       getWorkspaceName: () => 'test',
       getObservabilityMetrics: () => ({
@@ -243,7 +243,7 @@ describe('Observability diagnostic check', () => {
 
   it('warns when avg duration exceeds 30s', async () => {
     const { EXTENDED_DIAGNOSTIC_CHECKS } = await import('../../src/services/diagnosticChecks');
-    const obsCheck = EXTENDED_DIAGNOSTIC_CHECKS[4];
+    const obsCheck = EXTENDED_DIAGNOSTIC_CHECKS[5];
     const result = await obsCheck({
       getWorkspaceName: () => 'test',
       getObservabilityMetrics: () => ({
@@ -263,7 +263,7 @@ describe('Observability diagnostic check', () => {
 
   it('warns when service not wired', async () => {
     const { EXTENDED_DIAGNOSTIC_CHECKS } = await import('../../src/services/diagnosticChecks');
-    const obsCheck = EXTENDED_DIAGNOSTIC_CHECKS[4];
+    const obsCheck = EXTENDED_DIAGNOSTIC_CHECKS[5];
     const result = await obsCheck({ getWorkspaceName: () => 'test' });
     expect(result.status).toBe('warn');
     expect(result.detail).toContain('not wired');

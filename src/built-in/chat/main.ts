@@ -38,7 +38,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -759,6 +759,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       existsRelative: fsAccessor ? (r: string) => dataService.existsRelative(r) : undefined,
       getModelContextLength: () => dataService.getModelContextLength(),
       checkDocumentExtraction: async () => { try { return !!(api.services.has(IDocumentExtractionService)); } catch { return false; } },
+      getEmbeddingContextLength: _ollamaProvider ? async () => {
+        const embSvc = api.services.has(IEmbeddingService) ? api.services.get<import('../../services/serviceTypes.js').IEmbeddingService>(IEmbeddingService) : undefined;
+        const modelName = embSvc?.getModelInfo().name ?? 'nomic-embed-text';
+        return _ollamaProvider!.getModelContextLength(modelName);
+      } : undefined,
     });
   }
   const openclawWorkspaceParticipantServices = buildOpenclawWorkspaceParticipantServices({

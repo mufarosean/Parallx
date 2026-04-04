@@ -125,11 +125,31 @@ const checkEmbeddingModel: IDiagnosticCheckProducer = async (deps) => {
   if (!deps.checkEmbedding) {
     return { name: 'Embedding Model', status: 'warn', detail: 'Check unavailable', timestamp: Date.now(), category: 'rag' };
   }
+  const info = deps.getEmbeddingModelInfo?.();
   const ok = await deps.checkEmbedding().catch(() => false);
+  const modelName = info?.name ?? 'nomic-embed-text';
   return {
     name: 'Embedding Model',
     status: ok ? 'pass' : 'fail',
-    detail: ok ? 'nomic-embed-text responding' : 'Embedding model unavailable (run: ollama pull nomic-embed-text)',
+    detail: ok
+      ? `${modelName} responding (${info?.dimensions ?? '?'}d)`
+      : `${modelName} unavailable (run: ollama pull ${modelName})`,
+    timestamp: Date.now(),
+    category: 'rag',
+  };
+};
+
+const checkEmbeddingContextWindow: IDiagnosticCheckProducer = async (deps) => {
+  if (!deps.getEmbeddingContextLength) {
+    return { name: 'Embedding Context Window', status: 'warn', detail: 'Check unavailable', timestamp: Date.now(), category: 'rag' };
+  }
+  const length = await deps.getEmbeddingContextLength().catch(() => 0);
+  const info = deps.getEmbeddingModelInfo?.();
+  const modelName = info?.name ?? 'nomic-embed-text';
+  return {
+    name: 'Embedding Context Window',
+    status: length > 0 ? 'pass' : 'warn',
+    detail: length > 0 ? `${modelName}: ${(length / 1024).toFixed(0)}K tokens` : `${modelName}: unknown`,
     timestamp: Date.now(),
     category: 'rag',
   };
@@ -213,6 +233,7 @@ export const CORE_DIAGNOSTIC_CHECKS: readonly IDiagnosticCheckProducer[] = [
 
 export const EXTENDED_DIAGNOSTIC_CHECKS: readonly IDiagnosticCheckProducer[] = [
   checkEmbeddingModel,
+  checkEmbeddingContextWindow,
   checkVectorStore,
   checkDocumentExtraction,
   checkMemoryService,

@@ -17,6 +17,8 @@ function createMockDeps(overrides: Partial<IDiagnosticCheckDeps> = {}): IDiagnos
     getModelContextLength: () => 32768,
     getEffectiveConfig: () => ({ model: 'gpt-oss:20b' }),
     checkEmbedding: async () => true,
+    getEmbeddingModelInfo: () => ({ name: 'nomic-embed-text', dimensions: 768, installed: true }),
+    getEmbeddingContextLength: async () => 8192,
     checkVectorStore: async () => true,
     checkDocumentExtraction: async () => true,
     checkMemoryService: async () => true,
@@ -247,8 +249,8 @@ describe('Core Diagnostic Checks', () => {
 });
 
 describe('Extended Diagnostic Checks', () => {
-  it('exports 5 extended checks', () => {
-    expect(EXTENDED_DIAGNOSTIC_CHECKS).toHaveLength(5);
+  it('exports 6 extended checks', () => {
+    expect(EXTENDED_DIAGNOSTIC_CHECKS).toHaveLength(6);
   });
 
   it('Embedding — pass when responding', async () => {
@@ -268,17 +270,17 @@ describe('Extended Diagnostic Checks', () => {
   });
 
   it('Vector Store — pass when operational', async () => {
-    const result = await EXTENDED_DIAGNOSTIC_CHECKS[1](createMockDeps());
-    expect(result.status).toBe('pass');
-  });
-
-  it('Document Extraction — pass when available', async () => {
     const result = await EXTENDED_DIAGNOSTIC_CHECKS[2](createMockDeps());
     expect(result.status).toBe('pass');
   });
 
-  it('Memory Service — pass when operational', async () => {
+  it('Document Extraction — pass when available', async () => {
     const result = await EXTENDED_DIAGNOSTIC_CHECKS[3](createMockDeps());
+    expect(result.status).toBe('pass');
+  });
+
+  it('Memory Service — pass when operational', async () => {
+    const result = await EXTENDED_DIAGNOSTIC_CHECKS[4](createMockDeps());
     expect(result.status).toBe('pass');
   });
 
@@ -294,8 +296,8 @@ describe('Extended Diagnostic Checks', () => {
 });
 
 describe('ALL_DIAGNOSTIC_CHECKS', () => {
-  it('combines core + extended = 14 total', () => {
-    expect(ALL_DIAGNOSTIC_CHECKS).toHaveLength(14);
+  it('combines core + extended = 15 total', () => {
+    expect(ALL_DIAGNOSTIC_CHECKS).toHaveLength(15);
     expect(ALL_DIAGNOSTIC_CHECKS).toEqual([...CORE_DIAGNOSTIC_CHECKS, ...EXTENDED_DIAGNOSTIC_CHECKS]);
   });
 });
