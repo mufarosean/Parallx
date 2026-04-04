@@ -160,6 +160,8 @@ export class PdfEditorPane extends EditorPane {
   private _globalStorage: IStorage | undefined;
 
   // ── View state (page + scale persistence) ────────────────────────────
+  /** True after the PDF.js 'pagesinit' event has fired for the current document. */
+  private _pagesReady = false;
   /** Pending state set by restoreViewState() before the viewer is ready. */
   private _pendingViewState: { page: number; scaleValue: string; scrollLeft?: number } | null = null;
 
@@ -187,14 +189,15 @@ export class PdfEditorPane extends EditorPane {
     const scaleValue = (state.scaleValue as string) ?? this._scaleValue;
     const scrollLeft = (state.scrollLeft as number) ?? 0;
 
-    // If the viewer is already loaded, apply immediately
-    if (this._pdfViewer && this._pdfDoc) {
+    // If pages are already initialized, apply immediately.
+    // Otherwise defer — renderInput creates _pdfViewer/_pdfDoc before
+    // pagesinit fires, so we can't rely on their existence alone.
+    if (this._pagesReady && this._pdfViewer) {
       this._pdfViewer.currentScaleValue = scaleValue;
       this._scaleValue = scaleValue;
       this._pdfViewer.currentPageNumber = page;
       if (this._viewerContainer) this._viewerContainer.scrollLeft = scrollLeft;
     } else {
-      // Store for deferred application after pagesinit
       this._pendingViewState = { page, scaleValue, scrollLeft };
     }
   }
@@ -1178,6 +1181,8 @@ export class PdfEditorPane extends EditorPane {
         this._scaleValue = storedScale;
       }
       this._eventBus.on('pagesinit', () => {
+        this._pagesReady = true;
+
         // Apply pending view state (from workspace restore) if available,
         // otherwise fall back to persisted scale preference.
         const pending = this._pendingViewState;
@@ -1657,6 +1662,7 @@ export class PdfEditorPane extends EditorPane {
     this._outline = null;
     this._pageLabels = null;
     this._currentInput = null;
+    this._pagesReady = false;
     this._pendingViewState = null;
     this._removeTestDebugHook();
 

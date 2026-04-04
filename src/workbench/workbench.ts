@@ -1792,8 +1792,8 @@ export class Workbench extends Layout {
       }
 
       if (dirtyModels.length === 0) {
-        // No unsaved changes — flush layout state, deactivate tools, and proceed to close
-        await this._workspaceSaver.flushPendingSave();
+        // No unsaved changes — save fresh state (captures current editor view state), then close
+        await this._workspaceSaver.save();
         // Deactivate all tools so they can flush pending data (e.g. Canvas auto-save)
         if (this._toolActivator) {
           await this._toolActivator.deactivateAll();
@@ -1832,8 +1832,8 @@ export class Workbench extends Layout {
       }
 
       // "Don't Save" (response === 1) or "Save All" succeeded
-      // Flush any pending layout save before closing
-      await this._workspaceSaver.flushPendingSave();
+      // Save fresh workspace state (captures current editor view state)
+      await this._workspaceSaver.save();
       // Deactivate all tools so they can flush pending data (e.g. Canvas auto-save)
       if (this._toolActivator) {
         await this._toolActivator.deactivateAll();
