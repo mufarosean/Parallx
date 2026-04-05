@@ -7,9 +7,39 @@
     content="default-src 'self'; connect-src 'self' http://localhost:11434 http://127.0.0.1:11434; style-src 'self' 'unsafe-inline'; script-src 'self' file: blob:; worker-src 'self' blob:; font-src 'self' data: blob:; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; object-src 'self' data:; frame-src 'self' data: blob: https:" />
   <title>Parallx</title>
   <link rel="icon" type="image/svg+xml" href="src/assets/parallx-logo.svg" />
+  <!-- Loading overlay styles — inline so they paint on the very first frame,
+       before external CSS or JS loads. Covers all assembly phases. -->
+  <style>
+    #parallx-loading-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      background: #1e1e1e;
+      color: #888;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+    }
+    #parallx-loading-overlay.fade-out {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 200ms ease-out;
+    }
+  </style>
   <link rel="stylesheet" href="dist/renderer/main.css" />
 </head>
 <body>
+  <div id="parallx-loading-overlay">
+    <svg width="48" height="48" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="6" y="8" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="#a21caf" opacity="0.45"/>
+      <rect x="10" y="6" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="#a21caf"/>
+    </svg>
+    <span>Loading workspace…</span>
+  </div>
   <div id="workbench"></div>
   <script src="dist/renderer/main.js"></script>
 </body>

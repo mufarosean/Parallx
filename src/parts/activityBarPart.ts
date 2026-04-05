@@ -88,14 +88,8 @@ export class ActivityBarPart extends Part {
 
   // ── DOM ──
 
-  /** Container for built-in icons (top section). */
-  private _builtinSection!: HTMLElement;
-
-  /** Separator between built-in and contributed icons. */
-  private _separator: HTMLElement | undefined;
-
-  /** Container for tool-contributed icons (middle section). */
-  private _contributedSection!: HTMLElement;
+  /** Unified container for all icons (builtin + contributed). */
+  private _iconSection!: HTMLElement;
 
   /** Spacer that pushes bottom-aligned items down. */
   private _spacer!: HTMLElement;
@@ -120,6 +114,12 @@ export class ActivityBarPart extends Part {
   /** Index of the keyboard-focused item (roving tabindex). */
   private _focusedIndex = 0;
 
+  /** Icon ID currently being dragged, if any. */
+  private _draggedIconId: string | undefined;
+
+  /** User-defined icon order (persisted). */
+  private _iconOrder: string[] = [];
+
   // ── Events ──
 
   private readonly _onDidClickIcon = this._register(new Emitter<ActivityBarIconClickEvent>());
@@ -134,6 +134,9 @@ export class ActivityBarPart extends Part {
    */
   private readonly _onDidContextMenuIcon = this._register(new Emitter<{ iconId: string; x: number; y: number }>());
   readonly onDidContextMenuIcon: Event<{ iconId: string; x: number; y: number }> = this._onDidContextMenuIcon.event;
+
+  private readonly _onDidChangeIconOrder = this._register(new Emitter<void>());
+  readonly onDidChangeIconOrder: Event<void> = this._onDidChangeIconOrder.event;
 
   // ── Constructor ──
 
@@ -168,11 +171,27 @@ export class ActivityBarPart extends Part {
     this._icons.set(descriptor.id, descriptor);
     const btn = this._createIconButton(descriptor);
 
-    if (descriptor.source === 'builtin') {
-      this._builtinSection.appendChild(btn);
+    // If a saved icon order exists, insert at the correct position
+    // instead of appending to the end. Icons not in the saved order
+    // go to the end (after all known icons).
+    const savedIdx = this._iconOrder.indexOf(descriptor.id);
+    if (savedIdx >= 0) {
+      // Find the first existing button whose saved index is greater
+      const buttons = Array.from(this._iconSection.querySelectorAll<HTMLElement>('.activity-bar-item'));
+      let inserted = false;
+      for (const existing of buttons) {
+        const existingIdx = this._iconOrder.indexOf(existing.dataset.iconId!);
+        if (existingIdx < 0 || existingIdx > savedIdx) {
+          this._iconSection.insertBefore(btn, existing);
+          inserted = true;
+          break;
+        }
+      }
+      if (!inserted) {
+        this._iconSection.appendChild(btn);
+      }
     } else {
-      this._ensureSeparator();
-      this._contributedSection.appendChild(btn);
+      this._iconSection.appendChild(btn);
     }
 
     // Keep roving tabindex in sync
@@ -195,14 +214,8 @@ export class ActivityBarPart extends Part {
     this._badgeElements.delete(iconId);
 
     // Remove DOM element
-    const section = descriptor.source === 'builtin' ? this._builtinSection : this._contributedSection;
-    const btn = section.querySelector(`[data-icon-id="${iconId}"]`);
+    const btn = this._iconSection.querySelector(`[data-icon-id="${iconId}"]`);
     btn?.remove();
-
-    // Remove separator if no more contributed icons
-    if (descriptor.source === 'contributed' && this._contributedSection.children.length === 0) {
-      this._removeSeparator();
-    }
 
     // If the removed icon was active, clear
     if (this._activeIconId === iconId) {
@@ -312,15 +325,15 @@ export class ActivityBarPart extends Part {
     container.setAttribute('aria-orientation', 'vertical');
     container.setAttribute('aria-label', 'Active View Switcher');
 
-    // Built-in icons section (top)
-    this._builtinSection = $('div');
-    this._builtinSection.classList.add('activity-bar-builtin');
-    container.appendChild(this._builtinSection);
+    // Unified icons section (builtin + contributed in one list)
+    this._iconSection = $('div');
+    this._iconSection.classList.add('activity-bar-icons');
+    container.appendChild(this._iconSection);
 
-    // Contributed icons section (below separator)
-    this._contributedSection = $('div');
-    this._contributedSection.classList.add('activity-bar-contributed');
-    container.appendChild(this._contributedSection);
+    // Accept drops anywhere in the icon section to suppress the 🚫 cursor
+    this._iconSection.addEventListener('dragover', (e) => {
+      if (this._draggedIconId) e.preventDefault();
+    });
 
     // Spacer (pushes bottom section down)
     this._spacer = $('div');
@@ -345,10 +358,17 @@ export class ActivityBarPart extends Part {
   protected override savePartData(): Record<string, unknown> | undefined {
     return {
       activeIconId: this._activeIconId,
+      iconOrder: this._iconOrder,
     };
   }
 
   protected override restorePartData(data: Record<string, unknown>): void {
+    // Restore icon order first, then active icon
+    if (Array.isArray(data.iconOrder)) {
+      this._iconOrder = data.iconOrder as string[];
+      this._applyIconOrder();
+    }
+
     const savedActive = data.activeIconId;
     if (typeof savedActive === 'string' && this._icons.has(savedActive)) {
       this.setActiveIcon(savedActive);
@@ -504,6 +524,75 @@ export class ActivityBarPart extends Part {
       });
     });
 
+    // ── Drag & drop reordering ──
+    btn.draggable = true;
+
+    btn.addEventListener('dragstart', (e) => {
+      this._draggedIconId = descriptor.id;
+      btn.classList.add('activity-bar-item--dragging');
+      e.dataTransfer!.effectAllowed = 'move';
+    });
+
+    btn.addEventListener('dragover', (e) => {
+      if (!this._draggedIconId || this._draggedIconId === descriptor.id) return;
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = 'move';
+
+      // Clear all indicators first.
+      this.contentElement.querySelectorAll('.activity-bar-drop-before, .activity-bar-drop-after')
+        .forEach(el => el.classList.remove('activity-bar-drop-before', 'activity-bar-drop-after'));
+
+      // Normalize: always use drop-after on the upper item so each gap
+      // has exactly one indicator line. Only use drop-before when there
+      // is no previous sibling (top edge of first icon).
+      const rect = btn.getBoundingClientRect();
+      const inTopHalf = e.clientY < rect.top + rect.height / 2;
+      if (inTopHalf) {
+        const prev = btn.previousElementSibling as HTMLElement | null;
+        if (prev?.classList.contains('activity-bar-item')) {
+          prev.classList.add('activity-bar-drop-after');
+        } else {
+          btn.classList.add('activity-bar-drop-before');
+        }
+      } else {
+        btn.classList.add('activity-bar-drop-after');
+      }
+    });
+
+    btn.addEventListener('dragleave', (e) => {
+      // Ignore dragleave when moving to a child element inside this button
+      if (btn.contains(e.relatedTarget as Node)) return;
+      btn.classList.remove('activity-bar-drop-before', 'activity-bar-drop-after');
+    });
+
+    btn.addEventListener('drop', (e) => {
+      e.preventDefault();
+      btn.classList.remove('activity-bar-drop-before', 'activity-bar-drop-after');
+      if (!this._draggedIconId || this._draggedIconId === descriptor.id) return;
+
+      const draggedBtn = this._findButton(this._draggedIconId);
+      if (!draggedBtn) return;
+
+      const rect = btn.getBoundingClientRect();
+      const before = e.clientY < rect.top + rect.height / 2;
+      if (before) {
+        this._iconSection.insertBefore(draggedBtn, btn);
+      } else {
+        this._iconSection.insertBefore(draggedBtn, btn.nextSibling);
+      }
+
+      this._persistIconOrder();
+      this._syncRovingTabindex();
+    });
+
+    btn.addEventListener('dragend', () => {
+      btn.classList.remove('activity-bar-item--dragging');
+      // Clean up any lingering indicators
+      this.contentElement.querySelectorAll('.activity-bar-drop-before, .activity-bar-drop-after')
+        .forEach(el => el.classList.remove('activity-bar-drop-before', 'activity-bar-drop-after'));
+      this._draggedIconId = undefined;
+    });
+
     return btn;
   }
 
@@ -511,19 +600,30 @@ export class ActivityBarPart extends Part {
     return this.contentElement.querySelector(`[data-icon-id="${iconId}"]`);
   }
 
-  private _ensureSeparator(): void {
-    if (this._separator) return;
-    this._separator = $('div');
-    this._separator.classList.add('activity-bar-separator');
-    // Insert separator before contributed section
-    this.contentElement.insertBefore(this._separator, this._contributedSection);
+  /** Snapshot current DOM order into _iconOrder for persistence. */
+  private _persistIconOrder(): void {
+    const buttons = this._getAllButtons();
+    this._iconOrder = buttons
+      .map(b => b.dataset.iconId!)
+      .filter(id => id && id !== 'manage-gear');
+    this._onDidChangeIconOrder.fire();
   }
 
-  private _removeSeparator(): void {
-    if (this._separator) {
-      this._separator.remove();
-      this._separator = undefined;
+  /** Reorder DOM to match _iconOrder (called on restore). */
+  private _applyIconOrder(): void {
+    if (!this._iconSection) return;
+    const buttons = Array.from(this._iconSection.querySelectorAll<HTMLButtonElement>('.activity-bar-item'));
+    const ordered = buttons.sort((a, b) => {
+      const ai = this._iconOrder.indexOf(a.dataset.iconId!);
+      const bi = this._iconOrder.indexOf(b.dataset.iconId!);
+      const aIdx = ai >= 0 ? ai : Infinity;
+      const bIdx = bi >= 0 ? bi : Infinity;
+      return aIdx - bIdx;
+    });
+    for (const btn of ordered) {
+      this._iconSection.appendChild(btn);
     }
+    this._syncRovingTabindex();
   }
 }
 

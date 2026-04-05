@@ -1500,6 +1500,7 @@ export class Workbench extends Layout {
   private _configureSaver(): void {
     const allParts = [
       this._titlebar,
+      this._activityBarPart,
       this._sidebar,
       this._editor,
       this._auxiliaryBar,
@@ -1537,6 +1538,7 @@ export class Workbench extends Layout {
     this._saverListeners.clear();
     this._saverListeners.add(this._hGrid.onDidChange(() => this._workspaceSaver.requestSave()));
     this._saverListeners.add(this._vGrid.onDidChange(() => this._workspaceSaver.requestSave()));
+    this._saverListeners.add(this._activityBarPart.onDidChangeIconOrder(() => this._workspaceSaver.requestSave()));
 
     // Wire auto-save on editor changes (open, close, activate)
     const editorService = this._services.has(IEditorService) ? this._services.get(IEditorService) : undefined;
@@ -2376,6 +2378,13 @@ export class Workbench extends Layout {
 
     // ── Unsaved changes guard (QoL) ──
     this._wireUnsavedChangesGuard();
+
+    // Dismiss the loading overlay now that all tools are activated and views laid out
+    const overlay = document.getElementById('parallx-loading-overlay');
+    if (overlay) {
+      overlay.classList.add('fade-out');
+      overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
+    }
 
     console.log('[Workbench] Tool lifecycle initialized (with contribution processors)');
   }
