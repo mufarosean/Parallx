@@ -387,8 +387,8 @@ export class ThemeEditorPanel implements IDisposable {
 
   /** Hover-preview state: which colorId is being previewed (null = none). */
   private _hoverPreviewColorId: string | null = null;
-  /** The committed hex before hover-preview started. */
-  private _hoverPreviewOriginalHex: string | null = null;
+  /** Original hex values for the previewed color AND any propagated targets. */
+  private _hoverPreviewOriginals: Map<string, string> = new Map();
 
   /** Active swatch picker popup element. */
   private _swatchPopup: HTMLElement | null = null;
@@ -751,43 +751,44 @@ export class ThemeEditorPanel implements IDisposable {
   // ─── Hover Preview ────────────────────────────────────────────────────
 
   private _startHoverPreview(colorId: string, previewHex: string): void {
-    // Save the committed value before preview
+    // Save the committed values before preview (source + propagation targets)
     if (this._hoverPreviewColorId !== colorId) {
-      this._hoverPreviewOriginalHex = this._resolveColorHex(colorId);
+      this._hoverPreviewOriginals.clear();
+      this._hoverPreviewOriginals.set(colorId, this._resolveColorHex(colorId));
+      const targets = GLOBAL_PROPAGATION[colorId];
+      if (targets) {
+        for (const t of targets) {
+          this._hoverPreviewOriginals.set(t, this._resolveColorHex(t));
+        }
+      }
       this._hoverPreviewColorId = colorId;
     }
 
-    // Temporarily apply the preview color
+    // Temporarily apply the preview color + propagation
     this._workingColors[colorId] = previewHex;
-    this._applyWorkingThemeLive();
-
-    // Update swatch visually
-    const swatch = this._colorSwatches.get(colorId);
-    if (swatch) swatch.style.background = previewHex;
-    const hexInput = this._hexInputs.get(colorId);
-    if (hexInput && document.activeElement !== hexInput) {
-      hexInput.value = previewHex.toUpperCase();
+    this._updateSwatchAndInput(colorId, previewHex);
+    const targets = GLOBAL_PROPAGATION[colorId];
+    if (targets) {
+      for (const t of targets) {
+        this._workingColors[t] = previewHex;
+        this._updateSwatchAndInput(t, previewHex);
+      }
     }
+    this._applyWorkingThemeLive();
   }
 
   private _endHoverPreview(colorId: string): void {
-    if (this._hoverPreviewColorId !== colorId || !this._hoverPreviewOriginalHex) return;
+    if (this._hoverPreviewColorId !== colorId || this._hoverPreviewOriginals.size === 0) return;
 
-    // Revert to the committed value
-    const originalHex = this._hoverPreviewOriginalHex;
-    this._workingColors[colorId] = originalHex;
+    // Revert all saved originals (source + propagation targets)
+    for (const [id, originalHex] of this._hoverPreviewOriginals) {
+      this._workingColors[id] = originalHex;
+      this._updateSwatchAndInput(id, originalHex);
+    }
     this._applyWorkingThemeLive();
 
-    // Revert swatch visuals
-    const swatch = this._colorSwatches.get(colorId);
-    if (swatch) swatch.style.background = originalHex;
-    const hexInput = this._hexInputs.get(colorId);
-    if (hexInput && document.activeElement !== hexInput) {
-      hexInput.value = originalHex.toUpperCase();
-    }
-
     this._hoverPreviewColorId = null;
-    this._hoverPreviewOriginalHex = null;
+    this._hoverPreviewOriginals.clear();
   }
 
   // ─── Color Commit ─────────────────────────────────────────────────────
@@ -799,7 +800,7 @@ export class ThemeEditorPanel implements IDisposable {
     // Clear hover preview state so it doesn't revert
     if (this._hoverPreviewColorId === colorId) {
       this._hoverPreviewColorId = null;
-      this._hoverPreviewOriginalHex = null;
+      this._hoverPreviewOriginals.clear();
     }
 
     // Update swatch + hex input for this color

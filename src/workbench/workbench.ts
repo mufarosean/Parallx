@@ -220,6 +220,7 @@ export class Workbench extends Layout {
 
   // Storage + Persistence
   private _storage!: IStorage;
+  private _workspaceFolderPath: string | undefined;
   private _layoutRenderer!: LayoutRenderer;
 
   // Workspace
@@ -528,49 +529,29 @@ export class Workbench extends Layout {
     console.log('[Workbench] Opening folder "%s" (via reload)', folderPath);
 
     try {
-      // 0. End the current workspace session (M14).
+      // 1. End the current workspace session (M14).
       const sessionMgr = this._services.get(ISessionManager);
       if (sessionMgr) {
         sessionMgr.endSession();
       }
 
-      // 1. Atomically replace workspace folders with the new folder.
-      //    This updates the in-memory model so the subsequent save()
-      //    persists the correct folder list.
-      const newFolder = {
-        uri: URI.file(folderPath),
-        name: URI.file(folderPath).basename,
-        index: 0,
-      };
-      this._workspace.setFolders([newFolder]);
-
-      // 2. Save workspace state (now includes the new folder) to the CURRENT storage.
-      //    This preserves the old workspace's final state at its original path.
+      // 2. Save current workspace state.
       await this._workspaceSaver.save();
 
-      // 3. Write workspace state to the NEW folder's storage file so the reload finds it.
-      //    Without this, the reload creates FileBackedWorkspaceStorage for the new path
-      //    but finds no data (the save above wrote to the old path).
-      //    Use an empty editor snapshot — the new workspace starts fresh, it should
-      //    not carry over editor tabs from the old workspace.
+      // 3. Write the folder path to last-workspace.json so the reload opens it.
       const bridge = window.parallxElectron!.storage;
       const appPath = window.parallxElectron!.appPath;
-      const state = this._workspaceSaver.collectState();
-      const freshState = { ...state, editors: createDefaultEditorSnapshot() };
-      await bridge.writeJson(`${folderPath}/.parallx/workspace-state.json`, { version: 1, workbench: JSON.stringify(freshState) });
-
-      // 4. Write the folder path to last-workspace.json so the reload opens it
       await bridge.writeJson(`${appPath}/data/last-workspace.json`, { path: folderPath });
 
-      // 5. Close the database cleanly (best-effort).
+      // 4. Close the database cleanly (best-effort).
       if (this._databaseService?.isOpen) {
         await this._databaseService.close().catch(() => {});
       }
 
-      // 6. Reload the renderer — fresh startup picks up the new folder.
+      // 5. Reload — the normal startup path handles everything:
+      //    existing .parallx/ → restore that workspace's state
+      //    no .parallx/       → initialize a fresh workspace
       window.location.reload();
-
-      // Note: code below this line never runs — the page is unloading.
     } catch (err) {
       console.error('[Workbench] Open folder failed:', err);
       this._switching = false;
@@ -810,6 +791,7 @@ export class Workbench extends Layout {
     // Read last workspace path (may not exist on first launch)
     const lastWsResult = await storageBridge.readJson(`${appPath}/data/last-workspace.json`);
     const wsPath = (lastWsResult.data as any)?.path as string | undefined;
+    this._workspaceFolderPath = wsPath;
 
     if (wsPath) {
       this._storage = new FileBackedWorkspaceStorage(storageBridge, `${wsPath}/.parallx/workspace-state.json`);
@@ -1101,12 +1083,36 @@ export class Workbench extends Layout {
   private async _restoreWorkspace(): Promise<void> {
     // M53: Load workspace state from file-backed storage (already scoped to workspace path)
     const savedState = await this._workspaceLoader.load();
-    if (savedState) {
+
+    // M54: Detect contaminated state — if restored folders don't include the
+    // workspace folder path, this state was written by a previous buggy seeding
+    // pass and must be discarded.
+    const stateIsValid = savedState && this._workspaceFolderPath
+      ? this._validateRestoredFolders(savedState)
+      : true; // no folder path to check against → trust the state
+
+    if (savedState && stateIsValid) {
       this._workspace = Workspace.fromSerialized(savedState.identity, savedState.metadata);
       this._restoredState = savedState;
       console.log('[Workbench] Loaded workspace "%s" (v%d)', savedState.identity.name, savedState.version);
+    } else if (this._workspaceFolderPath) {
+      // No valid state but we have a folder path — either first time opening
+      // this folder, or the stored state was contaminated and discarded.
+      if (savedState && !stateIsValid) {
+        console.warn('[Workbench] Discarded contaminated workspace state — folders did not match workspace path');
+      }
+      const folderUri = URI.file(this._workspaceFolderPath);
+      const ws = Workspace.create(folderUri.basename, this._workspaceFolderPath);
+      ws.setFolders([{ uri: folderUri, name: folderUri.basename, index: 0 }]);
+      const defaultState = ws.createDefaultState(
+        this._container.clientWidth,
+        this._container.clientHeight,
+      );
+      this._workspace = ws;
+      this._restoredState = defaultState;
+      console.log('[Workbench] Initialized new workspace for folder "%s"', folderUri.basename);
     } else {
-      console.log('[Workbench] No saved workspace state — using defaults');
+      console.log('[Workbench] No saved workspace state and no folder — using defaults');
     }
 
     // Apply restored state to live parts, views, and containers
@@ -1227,6 +1233,27 @@ export class Workbench extends Layout {
     } catch (err) {
       console.error('[Workbench] Failed to save workspace state:', err);
     }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Validate restored workspace state
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Check that at least one folder in the restored state matches the
+   * workspace folder path from last-workspace.json. If none match, the
+   * state file was contaminated by a previous buggy seeding pass and
+   * should be discarded.
+   */
+  private _validateRestoredFolders(
+    state: WorkspaceState,
+  ): boolean {
+    if (!this._workspaceFolderPath || !state.folders?.length) return true;
+    const expected = this._workspaceFolderPath.replace(/\\/g, '/').toLowerCase();
+    return state.folders.some((f) => {
+      const folderPath = f.path.replace(/\\/g, '/').toLowerCase();
+      return folderPath === expected;
+    });
   }
 
   // ════════════════════════════════════════════════════════════════════════

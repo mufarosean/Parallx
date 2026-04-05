@@ -88,7 +88,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private static readonly SIDEBAR_SNAP_THRESHOLD = 70;
   private static readonly SIDEBAR_MAX_WIDTH = 500;
   private static readonly SIDEBAR_WIDTH_KEY = 'parallx.chat.sidebarWidth';
-  private _sidebarWidth = ChatWidget._restoreSidebarWidth();
+  private _sidebarWidth = ChatWidget.SIDEBAR_DEFAULT_WIDTH;
 
   // ── Sub-components ──
 
@@ -365,6 +365,9 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     }
 
     // ── Initial state ──
+
+    // Restore sidebar width from workspace storage (async, updates when ready)
+    void this._restoreSidebarWidth();
 
     this._updateVisibility();
     this._renderAgentTasks();
@@ -958,7 +961,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       document.removeEventListener('mouseup', onMouseUp);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
-      ChatWidget._saveSidebarWidth(this._sidebarWidth);
+      this._saveSidebarWidth(this._sidebarWidth);
     };
 
     this._register(addDisposableListener(this._sash, 'mousedown', (e: MouseEvent) => {
@@ -994,23 +997,29 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     }
   }
 
-  private static _restoreSidebarWidth(): number {
+  private async _restoreSidebarWidth(): Promise<void> {
+    const storage = this._services.workspaceStorage;
+    if (!storage) return;
     try {
-      const raw = localStorage.getItem(ChatWidget.SIDEBAR_WIDTH_KEY);
+      const raw = await storage.get(ChatWidget.SIDEBAR_WIDTH_KEY);
       if (raw) {
         const parsed = parseInt(raw, 10);
         if (!isNaN(parsed) && parsed >= ChatWidget.SIDEBAR_MIN_WIDTH && parsed <= ChatWidget.SIDEBAR_MAX_WIDTH) {
-          return parsed;
+          this._sidebarWidth = parsed;
+          // Update the sidebar element if already visible
+          if (this._sessionSidebar?.isVisible) {
+            this._sessionSidebar.rootElement.style.width = `${parsed}px`;
+            this._sessionSidebar.rootElement.style.flexBasis = `${parsed}px`;
+          }
         }
       }
-    } catch { /* localStorage unavailable */ }
-    return ChatWidget.SIDEBAR_DEFAULT_WIDTH;
+    } catch { /* storage unavailable */ }
   }
 
-  private static _saveSidebarWidth(width: number): void {
-    try {
-      localStorage.setItem(ChatWidget.SIDEBAR_WIDTH_KEY, String(width));
-    } catch { /* localStorage unavailable */ }
+  private _saveSidebarWidth(width: number): void {
+    const storage = this._services.workspaceStorage;
+    if (!storage) return;
+    storage.set(ChatWidget.SIDEBAR_WIDTH_KEY, String(width)).catch(() => {});
   }
 
   // ── Title Bar Actions ──

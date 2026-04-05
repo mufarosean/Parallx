@@ -440,6 +440,8 @@ export interface IChatWidgetServices {
   readonly onDidChangePendingRequests?: Event<string>;
   // ── Token usage indicator ──
   readonly tokenBarServices?: ITokenStatusBarServices;
+  // ── Workspace-scoped storage (for persisting UI preferences per-workspace) ──
+  readonly workspaceStorage?: { get(key: string): Promise<string | undefined>; set(key: string, value: string): Promise<void> };
 }
 
 /** Services needed by the model picker dropdown. */

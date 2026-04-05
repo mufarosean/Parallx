@@ -99,6 +99,7 @@ let _treeContainer: HTMLElement | null = null;
 let _openEditorsContainer: HTMLElement | null = null;
 let _openEditorsCountKey: ReturnType<ParallxApi['context']['createContextKey']>;
 let _activeContextMenu: ContextMenu | null = null;
+let _inlineEditActive = false;
 
 // ─── Clipboard State (Copy / Cut / Paste) ────────────────────────────────────
 
@@ -321,6 +322,7 @@ function scheduleRender(): void {
 
 function renderTree(): void {
   if (!_treeContainer) return;
+  if (_inlineEditActive) return; // Don't rebuild while inline create/rename is active
 
   // Preserve scroll position and selection across re-renders to avoid visual stutter
   const scrollTop = _treeContainer.scrollTop;
@@ -655,14 +657,20 @@ async function fsCreateFile(parentUri: string, name: string): Promise<void> {
   const electronFs = (globalThis as any).parallxElectron?.fs;
   if (!electronFs) return;
   const childPath = uriToFsPath(joinUri(parentUri, name));
-  await electronFs.writeFile(childPath, '');
+  const result = await electronFs.writeFile(childPath, '');
+  if (result?.error) {
+    throw new Error(result.error.message || 'Failed to create file');
+  }
 }
 
 async function fsCreateFolder(parentUri: string, name: string): Promise<void> {
   const electronFs = (globalThis as any).parallxElectron?.fs;
   if (!electronFs) return;
   const childPath = uriToFsPath(joinUri(parentUri, name));
-  await electronFs.mkdir(childPath);
+  const result = await electronFs.mkdir(childPath);
+  if (result?.error) {
+    throw new Error(result.error.message || 'Failed to create folder');
+  }
 }
 
 async function fsDelete(uri: string): Promise<void> {
@@ -1358,13 +1366,18 @@ function startInlineRename(node: TreeNode): void {
 
   labelEl.textContent = '';
   labelEl.appendChild(input);
+  _inlineEditActive = true;
   input.focus();
   input.select();
 
+  let finished = false;
   const finish = async (confirm: boolean) => {
+    if (finished) return;
+    finished = true;
     const newName = input.value.trim();
     input.remove();
     labelEl.textContent = node.name;
+    _inlineEditActive = false;
 
     if (confirm && newName && newName !== node.name && isValidFilename(newName)) {
       const parentUri = node.parent?.uri ?? _roots[0]?.uri;
@@ -1432,11 +1445,16 @@ function insertCreateInput(parentNode: TreeNode, kind: 'file' | 'folder'): void 
     _treeContainer.appendChild(inputRow);
   }
 
+  _inlineEditActive = true;
   input.focus();
 
+  let finished = false;
   const finish = async (confirm: boolean) => {
+    if (finished) return;
+    finished = true;
     const name = input.value.trim();
     inputRow.remove();
+    _inlineEditActive = false;
 
     if (confirm && name && isValidFilename(name)) {
       try {

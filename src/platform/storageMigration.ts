@@ -188,9 +188,15 @@ async function migrateWorkspaceData(bridge: IStorageBridge): Promise<void> {
       }
 
       // Write via bridge (atomic write-tmp-then-rename handled by D0)
-      const envelope: Record<string, unknown> = { version: 1, ...wsData };
-      await bridge.writeJson(`${folderPath}/.parallx/workspace-state.json`, envelope);
-      console.log('[M53 Migration] Workspace %s → %s', uuid, folderPath);
+      // Only seed if the target workspace doesn't already have a state file
+      const existing = await bridge.readJson(`${folderPath}/.parallx/workspace-state.json`);
+      if (existing.data) {
+        console.log('[M53 Migration] Workspace %s already has state at %s — skipping', uuid, folderPath);
+      } else {
+        const envelope: Record<string, unknown> = { version: 1, ...wsData };
+        await bridge.writeJson(`${folderPath}/.parallx/workspace-state.json`, envelope);
+        console.log('[M53 Migration] Workspace %s → %s', uuid, folderPath);
+      }
     } catch (err) {
       console.error('[M53 Migration] Workspace %s migration failed:', uuid, err);
     }

@@ -38,7 +38,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -1045,6 +1045,14 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // Wire token bar services into widget services (for in-widget token indicator)
   const tokenBarServices = dataService.buildTokenBarServices();
   (widgetServices as unknown as Record<string, unknown>).tokenBarServices = tokenBarServices;
+
+  // Wire workspace storage for per-workspace UI preferences (sidebar width, etc.)
+  const wsStorage = api.services.has(IWorkspaceStorageService)
+    ? api.services.get<import('../../platform/storage.js').IStorage>(IWorkspaceStorageService)
+    : undefined;
+  if (wsStorage) {
+    (widgetServices as unknown as Record<string, unknown>).workspaceStorage = wsStorage;
+  }
 
   // ── 5. Register the chat view in the Auxiliary Bar ──
 
