@@ -133,9 +133,21 @@ function filterEnv(env) {
 }
 
 function killAllMcpProcesses() {
+  const isWin = process.platform === 'win32';
   for (const [serverId, child] of processes) {
     try {
-      child.kill('SIGTERM');
+      if (isWin && child.pid) {
+        // On Windows, SIGTERM doesn't reliably kill process trees.
+        // Use taskkill /T /F to kill the entire tree synchronously.
+        try {
+          require('child_process').execSync(
+            `taskkill /pid ${child.pid} /T /F`,
+            { windowsHide: true, timeout: 3000 },
+          );
+        } catch { /* process may already be dead */ }
+      } else {
+        child.kill('SIGTERM');
+      }
     } catch (e) {
       console.warn(`[MCP] Failed to kill ${serverId}:`, e.message);
     }

@@ -67,6 +67,13 @@ interface ParallxApi {
     onDidUninstallTool: (listener: (e: { toolId: string }) => void) => IDisposable;
     onDidChangeTools: (listener: () => void) => IDisposable;
   };
+  workspace: {
+    workspaceFolders?: readonly { uri: string; name: string; index: number }[];
+    fs?: {
+      exists(uri: string): Promise<boolean>;
+      delete(uri: string): Promise<void>;
+    };
+  };
 }
 
 // ─── SVG Icon Constants — from the central Lucide icon registry ──────────────
@@ -529,21 +536,34 @@ function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: strin
       uninstallBtn.disabled = true;
       uninstallBtn.textContent = 'Uninstalling…';
       try {
-        // If user chose to delete data, drop tool tables from the workspace DB
+        // If user chose to delete data, close the extension's isolated database
+        // and remove the entire extension data directory (.parallx/extensions/<name>/).
+        // Since extensions now own their own database, deleting the folder removes everything.
         if (choice.title === 'Delete Data') {
           const bridge = (globalThis as any).parallxElectron;
-          if (bridge?.database?.dropToolData) {
-            // Derive migration prefix from tool ID: "publisher.tool-name" → "tool-name"
-            const migrationPrefix = tool.id.includes('.') ? tool.id.split('.').slice(1).join('.') : tool.id;
-            // Derive table prefix: first two chars of each word in tool name joined by nothing,
-            // e.g. "media-organizer" → "mo". This matches the established convention.
-            const nameParts = migrationPrefix.split('-');
-            const tablePrefix = nameParts.map(p => p.charAt(0)).join('') + '_';
-            const result = await bridge.database.dropToolData(migrationPrefix, tablePrefix);
-            if (result.error) {
-              console.warn(`[ToolGallery] Data deletion warning: ${result.error.message}`);
-            } else {
-              console.log(`[ToolGallery] Deleted tool data: ${result.droppedTables?.length ?? 0} tables`);
+          // Derive extension name from tool ID: "publisher.tool-name" → "tool-name"
+          const extName = tool.id.includes('.') ? tool.id.split('.').slice(1).join('.') : tool.id;
+
+          // 1. Close the extension database so the file isn't locked
+          if (bridge?.extensionDatabase?.close) {
+            try {
+              await bridge.extensionDatabase.close(extName);
+            } catch (e) {
+              console.warn(`[ToolGallery] Extension DB close warning:`, e);
+            }
+          }
+
+          // 2. Remove workspace extension data directory (includes database + all cached files)
+          const wsFolder = api.workspace.workspaceFolders?.[0];
+          if (wsFolder && api.workspace.fs) {
+            const extDataUri = wsFolder.uri.replace(/\/$/, '') + '/.parallx/extensions/' + extName;
+            try {
+              if (await api.workspace.fs.exists(extDataUri)) {
+                await api.workspace.fs.delete(extDataUri);
+                console.log(`[ToolGallery] Deleted extension data: .parallx/extensions/${extName}/`);
+              }
+            } catch (e) {
+              console.warn(`[ToolGallery] Extension data deletion warning:`, e);
             }
           }
         }

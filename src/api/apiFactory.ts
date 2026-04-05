@@ -196,6 +196,17 @@ export interface ParallxApiObject {
     createChatParticipant(id: string, handler: (...args: unknown[]) => Promise<unknown>): IDisposable & { id: string; displayName: string; description: string; iconPath?: string; commands: { name: string; description: string }[] };
     registerTool(name: string, tool: { description: string; parameters: Record<string, unknown>; handler: (args: Record<string, unknown>, token: unknown) => Promise<{ content: string; isError?: boolean }>; requiresConfirmation: boolean }): IDisposable;
   } | undefined;
+  /** Per-extension isolated database (external extensions only). */
+  readonly database: {
+    open(): Promise<{ error: null; dbPath: string } | { error: { code: string; message: string } }>;
+    close(): Promise<{ error: null } | { error: { code: string; message: string } }>;
+    migrate(migrationsDir: string): Promise<{ error: null } | { error: { code: string; message: string } }>;
+    run(sql: string, params?: unknown[]): Promise<{ error: null; changes: number; lastInsertRowid: number } | { error: { code: string; message: string } }>;
+    get(sql: string, params?: unknown[]): Promise<{ error: null; row: Record<string, unknown> | null } | { error: { code: string; message: string } }>;
+    all(sql: string, params?: unknown[]): Promise<{ error: null; rows: Record<string, unknown>[] } | { error: { code: string; message: string } }>;
+    isOpen(): Promise<{ isOpen: boolean }>;
+    runTransaction(operations: { type: 'run' | 'get' | 'all'; sql: string; params?: unknown[] }[]): Promise<{ error: null; results: unknown[] } | { error: { code: string; message: string } }>;
+  } | undefined;
 }
 
 // ─── Global Tool Lifecycle Emitters ──────────────────────────────────────────
@@ -578,6 +589,44 @@ export function createToolApi(
       appVersion: PARALLX_VERSION,
       toolPath: toolDescription.toolPath,
     }),
+
+    // Per-extension isolated database — only available for external (non-builtin) tools.
+    // Built-in tools use the shared workspace database via the DatabaseService.
+    database: (() => {
+      if (toolDescription.isBuiltin) return undefined;
+      const bridge = (globalThis as any).parallxElectron?.extensionDatabase;
+      if (!bridge) return undefined;
+      // Derive extension name from tool ID: "publisher.tool-name" → "tool-name"
+      const extName = toolId.includes('.') ? toolId.split('.').slice(1).join('.') : toolId;
+      const getWorkspacePath = (): string | null => {
+        const ws = workspaceBridge?.workspaceFolders;
+        if (!ws || ws.length === 0) return null;
+        const uri = ws[0].uri;
+        // Convert file:///path to /path (or drive letter path on Windows)
+        if (uri.startsWith('file:///')) {
+          const decoded = decodeURIComponent(uri.slice(8));
+          // On Windows file:///D:/path → D:/path
+          if (/^[a-zA-Z]:/.test(decoded)) return decoded.replace(/\//g, '\\');
+          return '/' + decoded;
+        }
+        return uri;
+      };
+      return Object.freeze({
+        open: async () => {
+          const wsPath = getWorkspacePath();
+          if (!wsPath) return { error: { code: 'NO_WORKSPACE', message: 'No workspace folder open' } };
+          return bridge.open(extName, wsPath);
+        },
+        close: async () => bridge.close(extName),
+        migrate: async (migrationsDir: string) => bridge.migrate(extName, migrationsDir),
+        run: async (sql: string, params?: unknown[]) => bridge.run(extName, sql, params),
+        get: async (sql: string, params?: unknown[]) => bridge.get(extName, sql, params),
+        all: async (sql: string, params?: unknown[]) => bridge.all(extName, sql, params),
+        isOpen: async () => bridge.isOpen(extName),
+        runTransaction: async (operations: { type: string; sql: string; params?: unknown[] }[]) =>
+          bridge.runTransaction(extName, operations),
+      });
+    })(),
 
     services: Object.freeze({
       get: <T>(id: { readonly id: string }) => deps.services.get(id as any) as T,

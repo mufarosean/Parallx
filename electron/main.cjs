@@ -7,7 +7,7 @@ const path = require('path');
 const fs = require('fs/promises');
 const fsSync = require('fs');
 const AdmZip = require('adm-zip');
-const { databaseManager } = require('./database.cjs');
+const { databaseManager, extensionDatabaseManager } = require('./database.cjs');
 const { extractText, isRichDocument, RICH_DOCUMENT_EXTENSIONS } = require('./documentExtractor.cjs');
 const doclingBridge = require('./doclingBridge.cjs');
 const { setupMcpBridge, killAllMcpProcesses } = require('./mcpBridge.cjs');
@@ -19,6 +19,8 @@ let mainWindow = null;
 let rendererServer = null;
 /** @type {number | null} */
 let rendererServerPort = null;
+/** @type {Set<import('net').Socket>} Track open sockets so we can force-destroy them at quit */
+const _rendererSockets = new Set();
 let isAppQuitting = false;
 let lastEditableContextMenu = null;
 
@@ -167,6 +169,12 @@ async function ensureRendererServer() {
         reject(new Error('Failed to bind renderer server'));
       }
     });
+  });
+
+  // Track connections so we can force-close them at quit
+  rendererServer.on('connection', (socket) => {
+    _rendererSockets.add(socket);
+    socket.once('close', () => _rendererSockets.delete(socket));
   });
 
   return `http://127.0.0.1:${rendererServerPort}/`;
@@ -434,6 +442,11 @@ async function createWindow() {
     mainWindow?.close();
   });
 
+  // Hide window instantly on request (used before slow teardown)
+  ipcMain.on('lifecycle:hideWindow', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+  });
+
   // Notify renderer on maximize/unmaximize
   mainWindow.on('maximize', () => {
     mainWindow?.webContents.send('window:maximized-changed', true);
@@ -495,7 +508,13 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => {
   isAppQuitting = true;
   killAllMcpProcesses();
+  extensionDatabaseManager.closeAll();
   if (rendererServer) {
+    // Force-destroy all open keep-alive sockets so Node's event loop can exit
+    for (const socket of _rendererSockets) {
+      try { socket.destroy(); } catch { /* ignore */ }
+    }
+    _rendererSockets.clear();
     try { rendererServer.close(); } catch { /* ignore */ }
     rendererServer = null;
     rendererServerPort = null;
@@ -555,12 +574,19 @@ ipcMain.handle('tools:scan-directory', async (_event, dirPath) => {
 
 /**
  * Get the default tool directories.
- * Returns { builtinDir, userDir }.
+ * Returns { builtinDir, userDir, devDir }.
+ * devDir is the ext/ directory at the project root (only present during development).
  */
 ipcMain.handle('tools:get-directories', async () => {
   const builtinDir = path.join(app.getAppPath(), 'tools');
   const userDir = USER_EXTENSIONS_DIR;
-  return { builtinDir, userDir };
+  const devCandidate = path.join(APP_ROOT, 'ext');
+  let devDir = null;
+  try {
+    const stat = fsSync.statSync(devCandidate);
+    if (stat.isDirectory()) devDir = devCandidate;
+  } catch { /* not present — production build */ }
+  return { builtinDir, userDir, devDir };
 });
 
 // ── IPC handlers for tool package installation/uninstallation ──
@@ -722,12 +748,13 @@ ipcMain.handle('tools:read-module', async (_event, filePath) => {
       return { error: 'Invalid file path' };
     }
 
-    // Security: only allow reading from the user tools directory or builtin tools directory
+    // Security: only allow reading from the user tools directory, builtin tools directory, or dev ext directory
     const userToolsDir = USER_EXTENSIONS_DIR;
     const builtinToolsDir = path.join(app.getAppPath(), 'tools');
+    const devToolsDir = path.join(APP_ROOT, 'ext');
     const normalized = path.normalize(filePath);
 
-    if (!normalized.startsWith(userToolsDir) && !normalized.startsWith(builtinToolsDir)) {
+    if (!normalized.startsWith(userToolsDir) && !normalized.startsWith(builtinToolsDir) && !normalized.startsWith(devToolsDir)) {
       return { error: 'Access denied: path is outside tool directories' };
     }
 
@@ -1312,6 +1339,123 @@ ipcMain.handle('database:runTransaction', async (_event, operations) => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════════
+// Extension Database IPC — per-extension isolated SQLite databases
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// External extensions get their own database at
+//   <workspace>/.parallx/extensions/<extensionName>/data.db
+// Deleting the extension's folder removes all its data.
+
+/** Validate extensionId: alphanumeric, dash, underscore, dot only. */
+function validateExtensionId(id) {
+  if (typeof id !== 'string' || id.length === 0) return false;
+  if (/[^a-zA-Z0-9._-]/.test(id)) return false;
+  if (id.includes('..')) return false;
+  return true;
+}
+
+ipcMain.handle('ext-database:open', async (_event, extensionId, workspacePath) => {
+  try {
+    if (!validateExtensionId(extensionId)) return { error: { code: 'INVALID_ID', message: 'Invalid extension ID' } };
+    if (!workspacePath || typeof workspacePath !== 'string') return { error: { code: 'INVALID_PATH', message: 'Invalid workspace path' } };
+    const dbPath = extensionDatabaseManager.open(extensionId, workspacePath);
+    return { error: null, dbPath };
+  } catch (err) {
+    return { error: normalizeDatabaseError(err) };
+  }
+});
+
+ipcMain.handle('ext-database:close', async (_event, extensionId) => {
+  try {
+    if (!validateExtensionId(extensionId)) return { error: { code: 'INVALID_ID', message: 'Invalid extension ID' } };
+    extensionDatabaseManager.close(extensionId);
+    return { error: null };
+  } catch (err) {
+    return { error: normalizeDatabaseError(err) };
+  }
+});
+
+ipcMain.handle('ext-database:migrate', async (_event, extensionId, migrationsDir) => {
+  try {
+    if (!validateExtensionId(extensionId)) return { error: { code: 'INVALID_ID', message: 'Invalid extension ID' } };
+    extensionDatabaseManager.migrate(extensionId, migrationsDir);
+    return { error: null };
+  } catch (err) {
+    return { error: normalizeDatabaseError(err) };
+  }
+});
+
+ipcMain.handle('ext-database:run', async (_event, extensionId, sql, params) => {
+  try {
+    if (!validateExtensionId(extensionId)) return { error: { code: 'INVALID_ID', message: 'Invalid extension ID' } };
+    const result = extensionDatabaseManager.run(extensionId, sql, normalizeDbParams(params));
+    return {
+      error: null,
+      changes: result.changes,
+      lastInsertRowid: typeof result.lastInsertRowid === 'bigint'
+        ? Number(result.lastInsertRowid)
+        : result.lastInsertRowid,
+    };
+  } catch (err) {
+    return { error: normalizeDatabaseError(err) };
+  }
+});
+
+ipcMain.handle('ext-database:get', async (_event, extensionId, sql, params) => {
+  try {
+    if (!validateExtensionId(extensionId)) return { error: { code: 'INVALID_ID', message: 'Invalid extension ID' } };
+    const row = extensionDatabaseManager.get(extensionId, sql, normalizeDbParams(params));
+    return { error: null, row: row || null };
+  } catch (err) {
+    return { error: normalizeDatabaseError(err) };
+  }
+});
+
+ipcMain.handle('ext-database:all', async (_event, extensionId, sql, params) => {
+  try {
+    if (!validateExtensionId(extensionId)) return { error: { code: 'INVALID_ID', message: 'Invalid extension ID' } };
+    const rows = extensionDatabaseManager.all(extensionId, sql, normalizeDbParams(params));
+    return { error: null, rows: rows || [] };
+  } catch (err) {
+    return { error: normalizeDatabaseError(err) };
+  }
+});
+
+ipcMain.handle('ext-database:isOpen', async (_event, extensionId) => {
+  if (!validateExtensionId(extensionId)) return { isOpen: false };
+  return { isOpen: extensionDatabaseManager.isOpen(extensionId) };
+});
+
+ipcMain.handle('ext-database:runTransaction', async (_event, extensionId, operations) => {
+  try {
+    if (!validateExtensionId(extensionId)) return { error: { code: 'INVALID_ID', message: 'Invalid extension ID' } };
+    const normalizedOps = operations.map(op => ({
+      ...op,
+      params: normalizeDbParams(op.params),
+    }));
+    const rawResults = extensionDatabaseManager.runTransaction(extensionId, normalizedOps);
+    const results = rawResults.map((r, i) => {
+      const op = operations[i];
+      if (op.type === 'run') {
+        return {
+          changes: r.changes,
+          lastInsertRowid: typeof r.lastInsertRowid === 'bigint'
+            ? Number(r.lastInsertRowid)
+            : r.lastInsertRowid,
+        };
+      }
+      if (op.type === 'get') {
+        return { row: r || null };
+      }
+      return { rows: r };
+    });
+    return { error: null, results };
+  } catch (err) {
+    return { error: normalizeDatabaseError(err) };
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
 // File Watcher IPC (M4 Cap 0 — Task 0.3)
 // ════════════════════════════════════════════════════════════════════════════════
 //
@@ -1325,6 +1469,7 @@ let _nextWatchId = 1;
 const _activeWatchers = new Map();
 
 const WATCHER_IGNORE = new Set(['.git', 'node_modules', '.DS_Store', 'Thumbs.db', '__pycache__']);
+const WATCHER_IGNORE_FILES = new Set(['workspace-state.json', 'global-storage.json']);
 const WATCHER_DEBOUNCE_MS = 100;
 
 // ── fs:watch ──
@@ -1342,6 +1487,10 @@ ipcMain.handle('fs:watch', async (_event, watchPath, _options) => {
       // Ignore noise
       const parts = filename.split(path.sep);
       if (parts.some(p => WATCHER_IGNORE.has(p))) return;
+      // Ignore internal state files (and their .tmp atomic-write intermediates)
+      const basename = parts[parts.length - 1];
+      if (WATCHER_IGNORE_FILES.has(basename)) return;
+      if (basename.endsWith('.tmp') && WATCHER_IGNORE_FILES.has(basename.slice(0, -4))) return;
 
       const entry = _activeWatchers.get(watchId);
       if (!entry) return;
@@ -1550,12 +1699,22 @@ app.on('before-quit', () => {
     _cleanupWatcher(id);
   }
   // Kill all terminal sessions
+  const isWin = process.platform === 'win32';
   for (const [, entry] of _activeTerminals) {
-    try { entry.proc.kill(); } catch { /* ignore */ }
+    try {
+      if (isWin && entry.proc.pid) {
+        // tree-kill on Windows — proc.kill() only sends SIGTERM which doesn't kill child trees
+        try { require('child_process').execSync(`taskkill /pid ${entry.proc.pid} /T /F`, { windowsHide: true, timeout: 3000 }); } catch { /* best-effort */ }
+      } else {
+        entry.proc.kill();
+      }
+    } catch { /* ignore */ }
   }
   _activeTerminals.clear();
   // Close the database cleanly on app quit
   databaseManager.close();
-  // Shut down Docling bridge (M21)
-  doclingBridge.stopService().catch(() => { /* best-effort */ });
+  // Shut down Docling bridge synchronously (M21)
+  // stopService() is async but on Windows it uses execSync(taskkill) internally,
+  // so we call stopServiceSync() to ensure the Python process is dead before quit.
+  try { doclingBridge.stopServiceSync(); } catch { /* best-effort */ }
 });

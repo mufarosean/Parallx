@@ -1772,6 +1772,7 @@ export class Workbench extends Layout {
     const electron = (window as any).parallxElectron as {
       onBeforeClose?: (cb: () => void) => void;
       confirmClose?: () => void;
+      hideWindow?: () => void;
       dialog?: { showMessageBox: (opts: any) => Promise<{ response: number }> };
     } | undefined;
 
@@ -1794,6 +1795,8 @@ export class Workbench extends Layout {
       if (dirtyModels.length === 0) {
         // No unsaved changes — save fresh state (captures current editor view state), then close
         await this._workspaceSaver.save();
+        // Hide window immediately so user doesn't see UI degrade during teardown
+        electron.hideWindow?.();
         // Deactivate all tools so they can flush pending data (e.g. Canvas auto-save)
         if (this._toolActivator) {
           await this._toolActivator.deactivateAll();
@@ -1834,6 +1837,8 @@ export class Workbench extends Layout {
       // "Don't Save" (response === 1) or "Save All" succeeded
       // Save fresh workspace state (captures current editor view state)
       await this._workspaceSaver.save();
+      // Hide window immediately so user doesn't see UI degrade during teardown
+      electron.hideWindow?.();
       // Deactivate all tools so they can flush pending data (e.g. Canvas auto-save)
       if (this._toolActivator) {
         await this._toolActivator.deactivateAll();

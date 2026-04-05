@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   },
   /** Confirm that close may proceed (called after save/discard decision). */
   confirmClose: () => ipcRenderer.send('lifecycle:confirmClose'),
+  /** Hide window immediately (called before slow teardown to prevent UI flash). */
+  hideWindow: () => ipcRenderer.send('lifecycle:hideWindow'),
 
   // ── Tool scanning API ──
   scanToolDirectory: (dirPath) => ipcRenderer.invoke('tools:scan-directory', dirPath),
@@ -180,6 +182,29 @@ contextBridge.exposeInMainWorld('parallxElectron', {
      */
     dropToolData: (migrationPrefix, tablePrefix) =>
       ipcRenderer.invoke('database:dropToolData', migrationPrefix, tablePrefix),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Extension Database API — per-extension isolated SQLite databases
+  // ══════════════════════════════════════════════════════════════════════════
+
+  extensionDatabase: {
+    open: (extensionId, workspacePath) =>
+      ipcRenderer.invoke('ext-database:open', extensionId, workspacePath),
+    close: (extensionId) =>
+      ipcRenderer.invoke('ext-database:close', extensionId),
+    migrate: (extensionId, migrationsDir) =>
+      ipcRenderer.invoke('ext-database:migrate', extensionId, migrationsDir),
+    run: (extensionId, sql, params) =>
+      ipcRenderer.invoke('ext-database:run', extensionId, sql, params),
+    get: (extensionId, sql, params) =>
+      ipcRenderer.invoke('ext-database:get', extensionId, sql, params),
+    all: (extensionId, sql, params) =>
+      ipcRenderer.invoke('ext-database:all', extensionId, sql, params),
+    isOpen: (extensionId) =>
+      ipcRenderer.invoke('ext-database:isOpen', extensionId),
+    runTransaction: (extensionId, operations) =>
+      ipcRenderer.invoke('ext-database:runTransaction', extensionId, operations),
   },
 
   // ══════════════════════════════════════════════════════════════════════════

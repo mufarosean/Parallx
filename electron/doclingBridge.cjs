@@ -563,11 +563,32 @@ async function installDocling() {
   }
 }
 
+/**
+ * Synchronous shutdown for use in before-quit handlers where async isn't awaited.
+ * On Windows uses execSync(taskkill); on other platforms sends SIGKILL.
+ */
+function stopServiceSync() {
+  _shutdownRequested = true;
+  if (!_process) return;
+  const proc = _process;
+  _process = null;
+  try {
+    if (process.platform === 'win32' && proc.pid) {
+      try { execSync(`taskkill /pid ${proc.pid} /T /F`, { windowsHide: true, timeout: 3000 }); } catch { /* best-effort */ }
+    } else {
+      try { proc.kill('SIGKILL'); } catch { /* already dead */ }
+    }
+  } catch { /* ignore */ }
+  _port = null;
+  _setStatus('unavailable');
+}
+
 module.exports = {
   detectPython,
   checkDoclingInstalled,
   startService,
   stopService,
+  stopServiceSync,
   convertDocument,
   convertBatch,
   getStatus,

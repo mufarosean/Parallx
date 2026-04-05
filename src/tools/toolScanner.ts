@@ -14,7 +14,7 @@ import { type IToolManifest, type IToolDescription } from './toolManifest.js';
 /** Shape of the Electron bridge exposed via preload. */
 interface ToolScanBridge {
   scanToolDirectory(dirPath: string): Promise<ScanDirectoryResult>;
-  getToolDirectories(): Promise<{ builtinDir: string; userDir: string }>;
+  getToolDirectories(): Promise<{ builtinDir: string; userDir: string; devDir: string | null }>;
 }
 
 interface ScanDirectoryResult {
@@ -80,10 +80,14 @@ export class ToolScanner {
     }
 
     const dirs = await bridge.getToolDirectories();
-    return this.scanDirectories([
-      { path: dirs.builtinDir, isBuiltin: true },
-      { path: dirs.userDir, isBuiltin: false },
-    ]);
+    const scanDirs: { path: string; isBuiltin: boolean }[] = [];
+    // Dev extensions first — they shadow installed copies (same ID skipped downstream)
+    if (dirs.devDir) {
+      scanDirs.push({ path: dirs.devDir, isBuiltin: false });
+    }
+    scanDirs.push({ path: dirs.builtinDir, isBuiltin: true });
+    scanDirs.push({ path: dirs.userDir, isBuiltin: false });
+    return this.scanDirectories(scanDirs);
   }
 
   /**

@@ -85,7 +85,7 @@ function injectStyles() {
   gap: 8px;
   padding: 7px 12px;
   cursor: pointer;
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--parallx-fontSize-md, 13px);
   color: var(--vscode-foreground);
   transition: background 80ms ease;
   user-select: none;
@@ -145,7 +145,7 @@ function injectStyles() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--parallx-fontSize-md, 13px);
 }
 .tg-chat-row-meta {
   font-size: var(--parallx-fontSize-sm, 11px);
@@ -187,7 +187,7 @@ function injectStyles() {
   padding: 8px 12px;
   margin: 6px 10px 10px;
   cursor: pointer;
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--parallx-fontSize-md, 13px);
   font-family: var(--parallx-fontFamily-ui);
   color: var(--vscode-button-foreground, #fff);
   background: var(--vscode-button-background, #0e639c);
@@ -519,18 +519,6 @@ function injectStyles() {
 }
 .tg-msg + .tg-msg { border-top: none; }
 
-/* Avatar image in message row */
-.tg-msg-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-.tg-msg-avatar--square { border-radius: 4px; }
-.tg-msg-avatar--circle { border-radius: 50%; }
-.tg-msg-avatar--default { border-radius: 50%; }
 .tg-msg-content-wrap {
   display: flex;
   flex-direction: column;
@@ -585,6 +573,63 @@ function injectStyles() {
   font-style: italic;
 }
 
+/* Inline editing — Perchance-style double-click-to-edit */
+.tg-msg-body--editing {
+  background: var(--vscode-input-background, #3c3c3c);
+  border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.08));
+  border-radius: var(--parallx-radius-sm, 3px);
+  padding: 8px;
+  cursor: text;
+}
+.tg-inline-edit-area {
+  width: 100%;
+  min-height: 60px;
+  resize: none;
+  font-family: inherit;
+  font-size: var(--parallx-fontSize-md, 13px);
+  line-height: 1.6;
+  background: transparent;
+  color: var(--vscode-editor-foreground, #ccc);
+  border: none;
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tg-inline-auto-row {
+  display: flex;
+  justify-content: flex-end;
+  max-width: min(100%, 780px);
+  padding: 2px 0;
+}
+.tg-inline-edit-btn--auto {
+  font-size: var(--parallx-fontSize-sm, 11px);
+  font-family: inherit;
+  padding: 3px 10px;
+  border: none;
+  border-radius: var(--parallx-radius-sm, 3px);
+  cursor: pointer;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1;
+  vertical-align: middle;
+  transition: background 80ms ease, color 80ms ease;
+}
+.tg-inline-edit-btn--auto .tg-icon {
+  display: block;
+  flex-shrink: 0;
+}
+.tg-inline-edit-btn--auto:hover {
+  background: var(--vscode-list-hoverBackground);
+  color: var(--vscode-foreground);
+}
+.tg-inline-edit-btn--auto:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* ═══ Character Buttons Bar ═══ */
 .tg-char-buttons {
   display: flex;
@@ -603,6 +648,10 @@ function injectStyles() {
 }
 .tg-msg--streaming .tg-msg-name {
   opacity: 0.85;
+}
+.tg-msg--dim {
+  opacity: 0.45;
+  border-left: 2px solid var(--vscode-editorWarning-foreground, #cca700);
 }
 .tg-msg-body em { font-style: italic; }
 .tg-msg-body strong { font-weight: 700; }
@@ -658,7 +707,7 @@ function injectStyles() {
 /* Input */
 .tg-input-wrap {
   flex-shrink: 0;
-  padding: 8px 16px 12px;
+  padding: 10px 16px 12px;
   border-top: 1px solid var(--vscode-panel-border, #2a2a2a);
   background: var(--vscode-editor-background);
 }
@@ -666,26 +715,29 @@ function injectStyles() {
   display: flex;
   flex-direction: column;
   border: 1px solid color-mix(in srgb, var(--vscode-input-border, #3c3c3c) 70%, transparent);
-  border-radius: 14px;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--vscode-input-background, #3c3c3c) 92%, var(--vscode-editorWidget-background, #252526) 8%);
   overflow: hidden;
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 .tg-input-card:focus-within {
   border-color: var(--vscode-focusBorder, #007fd4);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.10);
+}
+.tg-textarea-wrap {
+  position: relative;
 }
 .tg-input-textarea {
   width: 100%;
   min-height: 40px;
   max-height: 160px;
-  padding: 12px 14px 6px;
+  padding: 10px 70px 10px 12px;
   border: none;
   background: transparent;
   color: var(--vscode-input-foreground, #ccc);
   font-family: var(--parallx-fontFamily-ui);
   font-size: var(--parallx-fontSize-md, 13px);
-  line-height: 1.4;
+  line-height: 1.45;
   resize: none;
   overflow-y: auto;
   outline: none;
@@ -693,55 +745,42 @@ function injectStyles() {
 }
 .tg-input-textarea::placeholder { color: var(--vscode-input-placeholderForeground, #6e6e6e); }
 .tg-input-toolbar {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
   display: flex;
   align-items: center;
-  padding: 4px 8px 6px;
+  gap: 2px;
 }
-.tg-input-toolbar-spacer { flex: 1; }
 .tg-input-send {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   border: none;
-  border-radius: 50%;
-  background: var(--vscode-button-background, #0e639c);
-  color: var(--vscode-button-foreground, #fff);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
   cursor: pointer;
-  transition: opacity 80ms ease, background 80ms ease;
+  transition: color 80ms ease, background 80ms ease;
   padding: 0;
 }
-.tg-input-send:hover { opacity: 0.85; }
+.tg-input-send:hover { background: var(--vscode-list-hoverBackground); color: var(--vscode-foreground); }
 .tg-input-send:disabled { opacity: 0.35; cursor: default; }
 .tg-input-send .tg-icon { color: inherit; }
-
-/* Stop button */
-.tg-input-stop {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border: none;
-  border-radius: 50%;
-  background: var(--vscode-testing-iconFailed, #f14c4c);
-  color: #fff;
-  cursor: pointer;
-  padding: 0;
-  transition: opacity 80ms ease;
-}
-.tg-input-stop:hover { opacity: 0.85; }
+.tg-input-send--stop { color: var(--vscode-testing-iconFailed, #f14c4c); }
+.tg-input-send--stop:hover { color: var(--vscode-testing-iconFailed, #f14c4c); }
 
 /* Options button */
 .tg-input-options-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   border: none;
-  border-radius: 50%;
+  border-radius: 6px;
   background: transparent;
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
@@ -770,12 +809,13 @@ function injectStyles() {
   50% { opacity: 1; }
 }
 
-/* ═══ Unified shortcut bar (Perchance-style: characters + custom shortcuts) ═══ */
+/* ═══ Unified shortcut bar (inline speaker selector inside input card) ═══ */
 .tg-shortcut-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px 2px;
+  gap: 2px;
+  padding: 4px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--vscode-panel-border, #2a2a2a) 60%, transparent);
   flex-wrap: wrap;
   flex-shrink: 0;
 }
@@ -784,30 +824,25 @@ function injectStyles() {
   align-items: center;
   gap: 3px;
   padding: 3px 10px;
-  border: 1px solid var(--vscode-panel-border, #2a2a2a);
-  border-radius: 12px;
-  background: var(--vscode-editorWidget-background, #252526);
+  border: none;
+  border-radius: 4px;
+  background: transparent;
   color: var(--vscode-descriptionForeground);
   font-family: var(--parallx-fontFamily-ui);
   font-size: var(--parallx-fontSize-sm, 11px);
   cursor: pointer;
   white-space: nowrap;
-  transition: border-color 80ms ease, background 80ms ease, color 80ms ease;
+  transition: background 80ms ease, color 80ms ease;
 }
 .tg-shortcut-btn:hover {
-  border-color: var(--vscode-focusBorder, #007fd4);
   background: var(--vscode-list-hoverBackground);
   color: var(--vscode-foreground);
 }
-.tg-shortcut-btn--char { color: #dcdcaa; border-color: color-mix(in srgb, #dcdcaa 30%, transparent); }
-.tg-shortcut-btn--user { color: #73c991; border-color: color-mix(in srgb, #73c991 30%, transparent); }
-.tg-shortcut-btn--narrator { color: #c586c0; border-color: color-mix(in srgb, #c586c0 30%, transparent); }
-.tg-shortcut-btn--system { color: #9cdcfe; border-color: color-mix(in srgb, #9cdcfe 30%, transparent); }
 .tg-shortcut-btn--add {
-  border-style: dashed;
   color: var(--vscode-descriptionForeground);
-  border-color: var(--vscode-panel-border, #2a2a2a);
-  opacity: 0.7;
+  opacity: 0.55;
+  font-size: 14px;
+  padding: 2px 6px;
 }
 .tg-shortcut-btn--add:hover { opacity: 1; }
 
@@ -1391,6 +1426,10 @@ function parseFrontmatter(text) {
     if (colonIdx === -1) continue;
     const key = line.slice(0, colonIdx).trim();
     let value = line.slice(colonIdx + 1).trim();
+    // Strip surrounding quotes (single or double) from YAML values
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
     if (value.startsWith('[') && value.endsWith(']')) {
       value = value.slice(1, -1).split(',').map((s) => s.trim()).filter(Boolean);
     } else if (value === 'true') {
@@ -1457,11 +1496,17 @@ function parseSlashCommand(input) {
   let targetCharacter = null;
   let instruction = rest;
 
-  // Parse @CharName from the rest
-  const atMatch = rest.match(/^@(\S+)\s*(.*)/s);
-  if (atMatch) {
-    targetCharacter = atMatch[1];
-    instruction = atMatch[2].trim();
+  // Parse @CharName or @"Char Name" from the rest
+  const atQuotedMatch = rest.match(/^@"([^"]+)"\s*(.*)/s);
+  if (atQuotedMatch) {
+    targetCharacter = atQuotedMatch[1];
+    instruction = atQuotedMatch[2].trim();
+  } else {
+    const atMatch = rest.match(/^@(\S+)\s*(.*)/s);
+    if (atMatch) {
+      targetCharacter = atMatch[1];
+      instruction = atMatch[2].trim();
+    }
   }
 
   return { command, args: rest, instruction, targetCharacter };
@@ -1473,10 +1518,18 @@ function parseSlashCommand(input) {
 
 function computeTokenBudget(contextWindow, settings = null) {
   const total = Math.max(0, Math.floor(contextWindow));
-  const charPct = (settings?.tokenBudgetCharacter || 15) / 100;
-  const lorePct = (settings?.tokenBudgetLore || 20) / 100;
-  const histPct = (settings?.tokenBudgetHistory || 35) / 100;
-  const userPct = (settings?.tokenBudgetUser || 30) / 100;
+  let charPct = (settings?.tokenBudgetCharacter || 15) / 100;
+  let lorePct = (settings?.tokenBudgetLore || 20) / 100;
+  let histPct = (settings?.tokenBudgetHistory || 35) / 100;
+  let userPct = (settings?.tokenBudgetUser || 30) / 100;
+  // Normalize so percentages always sum to 100%
+  const sum = charPct + lorePct + histPct + userPct;
+  if (sum > 0 && Math.abs(sum - 1) > 0.001) {
+    charPct /= sum;
+    lorePct /= sum;
+    histPct /= sum;
+    userPct /= sum;
+  }
   return {
     total,
     character: Math.floor(total * charPct),
@@ -1614,22 +1667,15 @@ function createCharacterJson(overrides = {}) {
     initialMessages: '[AI]: Hello! I\'m {{char}}. Edit me to set up my personality!',
     writingPreset: 'immersive-rp',
     temperature: 0.8,
-    maxTokensPerMessage: 2048,
+    maxTokensPerMessage: 0,
     messageLengthLimit: '',
     userName: '',
     userDescription: '',
-    userAvatarUrl: '',
-    avatarUrl: '',
-    avatarSize: 1,
-    avatarShape: 'default',
-    userAvatarSize: 1,
-    userAvatarShape: 'default',
     lorebookFiles: [],
     fitMessagesInContextMethod: 'dropOld',
     extendedMemory: false,
     shortcutButtons: '',
     systemName: '',
-    systemAvatarUrl: '',
     messageInputPlaceholder: '',
     messageWrapperStyle: '',
     createdAt: Date.now(),
@@ -1664,22 +1710,15 @@ function normalizeCharacterForRuntime(data, fileName) {
     frontmatter: {
       name: data.name || '',
       temperature: data.temperature ?? 0.8,
-      maxTokensPerMessage: data.maxTokensPerMessage ?? 2048,
+      maxTokensPerMessage: data.maxTokensPerMessage ?? 0,
       writingPreset: data.writingPreset || 'immersive-rp',
-      avatar: data.avatarUrl || '',
       messageLengthLimit: data.messageLengthLimit || '',
       userName: data.userName || '',
       userDescription: data.userDescription || '',
-      userAvatarUrl: data.userAvatarUrl || '',
-      avatarSize: data.avatarSize ?? 1,
-      avatarShape: data.avatarShape || 'default',
-      userAvatarSize: data.userAvatarSize ?? 1,
-      userAvatarShape: data.userAvatarShape || 'default',
       fitMessagesInContextMethod: data.fitMessagesInContextMethod || 'dropOld',
       extendedMemory: data.extendedMemory || false,
       shortcutButtons: data.shortcutButtons || '',
       systemName: data.systemName || '',
-      systemAvatarUrl: data.systemAvatarUrl || '',
       messageInputPlaceholder: data.messageInputPlaceholder || '',
       messageWrapperStyle: data.messageWrapperStyle || '',
     },
@@ -1702,13 +1741,13 @@ function normalizeCharacterForRuntime(data, fileName) {
 function migrateCharacterMdToJson(mdContent, fileName) {
   const parsed = parseCharacterMd(mdContent, fileName);
   return createCharacterJson({
-    name: parsed.frontmatter.name || fileName.replace('.md', ''),
+    name: parsed.frontmatter.name || fileName.replace(/\.(md|json)$/, ''),
     roleInstruction: parsed.sections.roleInstruction || '',
     exampleDialogue: parsed.sections.exampleDialogue || '',
     reminder: parsed.sections.reminder || '',
     initialMessages: parsed.sections.initialMessages || '',
     temperature: parsed.frontmatter.temperature ?? 0.8,
-    maxTokensPerMessage: parsed.frontmatter.maxTokensPerMessage ?? 2048,
+    maxTokensPerMessage: parsed.frontmatter.maxTokensPerMessage ?? 0,
     writingPreset: parsed.frontmatter.writingPreset || 'immersive-rp',
   });
 }
@@ -1733,18 +1772,66 @@ async function scanLorebooks(fs, workspaceUri) {
   }
 }
 
-function assembleLoreContent(lorebooks, budgetTokens) {
+/**
+ * Parse a lorebook's ## sections into entries with optional trigger keywords.
+ * Format: ## Section Title\ntriggers: keyword1, keyword2\nContent...
+ * Entries without a triggers: line are always active.
+ */
+function parseLoreEntries(lorebookContent) {
+  const entries = [];
+  const sections = lorebookContent.split(/^## /m);
+  for (const section of sections) {
+    const trimmed = section.trim();
+    if (!trimmed) continue;
+    const lines = trimmed.split('\n');
+    const heading = lines[0].trim();
+    let triggers = null;
+    let bodyStart = 1;
+    // Check if the first non-empty body line defines triggers
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      if (line.toLowerCase().startsWith('triggers:')) {
+        triggers = line.slice(9).split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+        bodyStart = i + 1;
+      }
+      break;
+    }
+    const body = lines.slice(bodyStart).join('\n').trim();
+    if (body || heading) {
+      entries.push({ heading, body: body ? `## ${heading}\n${body}` : `## ${heading}`, triggers });
+    }
+  }
+  return entries;
+}
+
+/**
+ * Assemble lore content from lorebooks, applying keyword-based activation.
+ * Entries with `triggers:` keywords are only included if a keyword matches
+ * the recent message context. Entries without triggers are always included.
+ */
+function assembleLoreContent(lorebooks, budgetTokens, recentContext = '') {
+  const contextLower = recentContext.toLowerCase();
   let combined = '';
   let used = 0;
   for (const lb of lorebooks) {
-    const t = estimateTokens(lb.content);
-    if (used + t > budgetTokens) {
-      const rem = budgetTokens - used;
-      if (rem > 50) combined += '\n\n' + trimTextToBudget(lb.content, rem);
-      break;
+    const entries = parseLoreEntries(lb.content);
+    for (const entry of entries) {
+      // Skip triggered entries whose keywords don't appear in recent context
+      if (entry.triggers && entry.triggers.length > 0) {
+        if (!contextLower || !entry.triggers.some(kw => contextLower.includes(kw))) continue;
+      }
+      const t = estimateTokens(entry.body);
+      if (used + t > budgetTokens) {
+        const rem = budgetTokens - used;
+        if (rem > 50) combined += '\n\n' + trimTextToBudget(entry.body, rem);
+        used = budgetTokens;
+        break;
+      }
+      combined += (combined ? '\n\n' : '') + entry.body;
+      used += t;
     }
-    combined += (combined ? '\n\n' : '') + lb.content;
-    used += t;
+    if (used >= budgetTokens) break;
   }
   return combined.trim();
 }
@@ -1785,15 +1872,22 @@ function buildSystemPrompt(params = {}) {
   }
 
   // 2. Cast definitions — each character's full roleInstruction block.
+  // Example dialogue is only included for the active speaker to save tokens in multi-char threads.
   for (const char of characters) {
-    const name = char.frontmatter.name || char.fileName.replace('.md', '');
+    const name = char.frontmatter.name || char.fileName.replace(/\.(md|json)$/, '');
     const roleInstruction = char.sections.roleInstruction;
     const charParts = [];
 
     if (roleInstruction) {
       charParts.push(substituteVars(roleInstruction, name, userName));
     }
-    if (char.sections.exampleDialogue) {
+    // Only include example dialogue for the character who is about to speak,
+    // or always if there's only one character (no need to scope).
+    const isActiveSpeaker = characters.length <= 1 ||
+      !respondAs ||
+      respondAs === char.fileName ||
+      (char.frontmatter.name || '').toLowerCase() === String(respondAs || '').toLowerCase();
+    if (char.sections.exampleDialogue && isActiveSpeaker) {
       charParts.push('#### Example Dialogue\n' + substituteVars(char.sections.exampleDialogue, name, userName));
     }
     if (char.sections.reminder) {
@@ -1817,14 +1911,16 @@ function buildSystemPrompt(params = {}) {
     '- Character-specific instructions override the writing style preset when they conflict.',
   ].join('\n'));
 
-  // 4. Lore.
+  // 4. Lore — substitute {{char}}/{{user}} template vars.
   if (loreContent) {
-    parts.push('## World & Lore\n' + loreContent);
+    const primaryName = characters[0] ? (characters[0].frontmatter.name || characters[0].fileName.replace(/\.(md|json)$/, '')) : '';
+    parts.push('## World & Lore\n' + substituteVars(loreContent, primaryName, userName));
   }
 
-  // 5. Thread memory.
+  // 5. Thread memory — substitute {{char}}/{{user}} template vars.
   if (memoryContent) {
-    parts.push('## Conversation Memories\n' + memoryContent);
+    const primaryName = characters[0] ? (characters[0].frontmatter.name || characters[0].fileName.replace(/\.(md|json)$/, '')) : '';
+    parts.push('## Conversation Memories\n' + substituteVars(memoryContent, primaryName, userName));
   }
 
   // 6. Active turn.
@@ -1850,7 +1946,7 @@ function buildSystemPrompt(params = {}) {
       c.fileName === respondAs || (c.frontmatter.name || '').toLowerCase() === String(respondAs || '').toLowerCase()
     ) || fallbackChar;
     const respondName = respondChar
-      ? (respondChar.frontmatter.name || respondChar.fileName.replace('.md', ''))
+      ? (respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, ''))
       : 'the selected character';
     parts.push([
       '## Active Turn',
@@ -1877,23 +1973,13 @@ function buildSystemPrompt(params = {}) {
   };
 }
 
-// Backward-compatible wrapper for single-character usage
-function buildCharacterSystemPrompt(character, options = {}) {
-  const { userName = 'User', loreContent = '', memoryContent = '', writingPreset = 'immersive-rp' } = options;
-  return buildSystemPrompt({
-    characters: [character],
-    loreContent,
-    memoryContent,
-    userName,
-    writingPreset,
-  }).prompt;
-}
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 6: CONTEXT ASSEMBLY (← openclawContextEngine.ts)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function trimHistoryToBudget(messages, budgetTokens) {
+function trimHistoryToBudget(messages, budgetTokens, method = 'dropOld') {
   const result = [];
   let used = 0;
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -1901,6 +1987,18 @@ function trimHistoryToBudget(messages, budgetTokens) {
     if (used + t > budgetTokens) break;
     result.unshift(messages[i]);
     used += t;
+  }
+  // summarizeOld: prepend a summary of dropped messages as context
+  const droppedCount = messages.length - result.length;
+  if (method === 'summarizeOld' && droppedCount > 0 && result.length > 0) {
+    const dropped = messages.slice(0, droppedCount);
+    const names = [...new Set(dropped.map(m => m.content?.match(/^([^:]+):/)?.[1]).filter(Boolean))];
+    const summary = `[Earlier conversation summary: ${droppedCount} messages were exchanged${names.length ? ' between ' + names.join(', ') : ''}. The conversation covered: ${dropped.slice(-3).map(m => (m.content || '').slice(0, 80)).join(' / ')}…]`;
+    const summaryTokens = estimateTokens(summary);
+    // Only add if we have budget
+    if (used + summaryTokens <= budgetTokens) {
+      result.unshift({ role: 'system', content: summary });
+    }
   }
   return result;
 }
@@ -1929,18 +2027,42 @@ function assembleContext(params) {
 
   // Support both old (single character) and new (characters array) signatures
   const chars = characters.length > 0 ? characters : (character ? [character] : []);
+  const primaryChar = chars[0] || null;
   const budget = computeTokenBudget(contextWindow, settings);
+  const extendedMemoryEnabled = primaryChar?.frontmatter?.extendedMemory === true;
 
-  // Reserve part of the lore lane for thread memory so it never disappears behind lorebook size.
-  const memoryBudget = Math.max(0, Math.floor(budget.lore * 0.4));
-  const loreBudget = Math.max(0, budget.lore - memoryBudget);
+  // Split lore lane between lorebooks and thread memory proportional to content size.
+  // If one is empty, the other gets the full allocation.
+  // When extendedMemory is enabled, guarantee memory gets at least 40% of the lore budget.
+  const rawLoreTokens = estimateTokens(loreContent);
+  const rawMemTokens = estimateTokens(memoryContent);
+  const rawTotal = rawLoreTokens + rawMemTokens;
+  let loreBudget, memoryBudget;
+  if (rawTotal === 0) {
+    loreBudget = budget.lore;
+    memoryBudget = 0;
+  } else if (extendedMemoryEnabled && rawMemTokens > 0) {
+    // Extended memory: guarantee memory at least 40% of the lore lane
+    const proportionalMem = Math.floor(budget.lore * (rawMemTokens / rawTotal));
+    const minMemBudget = Math.floor(budget.lore * 0.4);
+    memoryBudget = Math.max(proportionalMem, minMemBudget);
+    loreBudget = Math.max(0, budget.lore - memoryBudget);
+  } else {
+    memoryBudget = Math.max(0, Math.floor(budget.lore * (rawMemTokens / rawTotal)));
+    loreBudget = Math.max(0, budget.lore - memoryBudget);
+  }
   const loreTrimmed = trimTextToBudget(loreContent, loreBudget);
   const memTrimmed = trimTextToBudget(memoryContent, memoryBudget);
 
-  // Extract per-character overrides from primary character
-  const primaryChar = chars[0] || null;
-  const charUserDesc = primaryChar?.frontmatter?.userDescription || '';
-  const charUserReminder = primaryChar?.userReminder || primaryChar?.sections?.userReminder || '';
+  // Extract user-facing settings — merge across all characters for multi-char threads
+  const userDescParts = chars
+    .map(c => c?.frontmatter?.userDescription || '')
+    .filter(Boolean);
+  const charUserDesc = userDescParts.join(' ');
+  const userReminderParts = chars
+    .map(c => c?.userReminder || c?.sections?.userReminder || '')
+    .filter(Boolean);
+  const charUserReminder = userReminderParts.join('\n');
   const charMsgLenLimit = primaryChar?.frontmatter?.messageLengthLimit || '';
   // Character messageLengthLimit overrides thread responseLength when set
   const effectiveResponseLength = charMsgLenLimit || responseLength;
@@ -1970,17 +2092,23 @@ function assembleContext(params) {
 
   // History — filter out hiddenFrom:"ai" messages, map author→role
   const filteredHistory = history.filter(m => m.hiddenFrom !== 'ai');
-  const mappedHistory = filteredHistory.map(m => ({
-    role: mapAuthorToRole(m.author || m.role, m),
-    content: m.name ? `${m.name}: ${m.content}` : m.content,
-  }));
+  const mappedHistory = filteredHistory.map(m => {
+    const role = mapAuthorToRole(m.author || m.role, m);
+    // System messages get no name prefix
+    if (role === 'system') {
+      return { role, content: m.content };
+    }
+    // For the user's own messages (not playing-as-character), always inject the
+    // CURRENT userName so the AI sees a consistent identity after a rename.
+    const displayName = (m.author === 'user' && !m.characterFile) ? userName : m.name;
+    return {
+      role,
+      content: displayName ? `${displayName}: ${m.content}` : m.content,
+    };
+  });
 
-  // fitMessagesInContextMethod — character-level preference for context trimming
-  // 'dropOld' (default): drop oldest messages when budget exceeded
-  // 'summarizeOld': summarize oldest messages (future: requires async LLM call)
-  const charFitMethod = primaryChar?.frontmatter?.fitMessagesInContextMethod || 'dropOld';
-
-  messages.push(...trimHistoryToBudget(mappedHistory, historyBudget));
+  const fitMethod = primaryChar?.frontmatter?.fitMessagesInContextMethod || 'dropOld';
+  messages.push(...trimHistoryToBudget(mappedHistory, historyBudget, fitMethod));
 
   // Character reminders — injected right before AI response for maximum recency
   // (matches Perchance behavior: reminder as hidden system msg near end of context)
@@ -2007,7 +2135,7 @@ function assembleContext(params) {
       const respondChar = chars.find(c =>
         c.fileName === respondAs || (c.frontmatter.name || '').toLowerCase() === String(respondAs).toLowerCase()
       );
-      const rName = respondChar ? (respondChar.frontmatter.name || respondChar.fileName.replace('.md', '')) : String(respondAs).replace('.md', '');
+      const rName = respondChar ? (respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, '')) : String(respondAs).replace(/\.(md|json)$/, '');
       messages.push({ role: 'system', content: `[Active turn: ${rName}. Write only ${rName}'s next turn with no speaker prefix.]` });
     }
   }
@@ -2028,6 +2156,9 @@ function assembleContext(params) {
 function mapAuthorToRole(author, msg) {
   if (author === 'ai' || author === 'assistant') return 'assistant';
   if (author === 'system') return 'system';
+  // User playing-as-character: map to assistant so the LLM treats it
+  // as character dialogue rather than user input.
+  if (author === 'user' && msg?.characterFile) return 'assistant';
   return 'user';
 }
 
@@ -2043,19 +2174,42 @@ async function createThread(fs, workspaceUri, characterFile, modelId) {
     '.parallx', 'extensions', 'text-generator', 'threads', id,
   ]);
 
+  // Load character data to read per-character overrides for thread seeding
+  let charData = null;
+  try {
+    const jsonName = characterFile.replace(/\.md$/, '.json');
+    const charPath = resolveUri(workspaceUri, `${EXT_ROOT}/characters/${jsonName}`);
+    const { content } = await fs.readFile(charPath);
+    charData = JSON.parse(content);
+  } catch {
+    try {
+      const mdPath = resolveUri(workspaceUri, `${EXT_ROOT}/characters/${characterFile}`);
+      const { content } = await fs.readFile(mdPath);
+      charData = parseFrontmatter(content).frontmatter;
+    } catch { /* no character data available */ }
+  }
+
+  // Character-level overrides take precedence over global defaults
+  const charUserName = charData?.userName || '';
+  const charWritingPreset = charData?.writingPreset || '';
+  const charLorebooks = Array.isArray(charData?.lorebookFiles) && charData.lorebookFiles.length > 0
+    ? charData.lorebookFiles
+    : lorebooks.map((lb) => lb.fileName);
+
   const meta = {
     id,
     title: 'New Chat',
     characters: [{ file: characterFile, addedAt: Date.now() }],
-    writingPreset: settings.defaultWritingPreset || 'immersive-rp',
-    lorebookFiles: lorebooks.map((lb) => lb.fileName),
-    userName: settings.userName || 'Anon',
+    writingPreset: charWritingPreset || settings.defaultWritingPreset || 'immersive-rp',
+    lorebookFiles: charLorebooks,
+    userName: charUserName || settings.userName || 'Anon',
     userPlaysAs: null,
-    responseLength: null,
+    responseLength: settings.defaultResponseLength || null,
     temperatureOverride: null,
     maxTokensOverride: null,
     contextWindowOverride: null,
-    modelId,
+    modelId: modelId || settings.defaultModel || null,
+    autoReply: true,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -2092,6 +2246,7 @@ async function loadThread(fs, workspaceUri, threadId) {
   if (thread.temperatureOverride === undefined) thread.temperatureOverride = null;
   if (thread.maxTokensOverride === undefined) thread.maxTokensOverride = null;
   if (thread.contextWindowOverride === undefined) thread.contextWindowOverride = null;
+  if (thread.autoReply === undefined) thread.autoReply = true;
 
   return thread;
 }
@@ -2115,10 +2270,12 @@ async function listThreads(fs, workspaceUri) {
 
 async function appendMessage(fs, workspaceUri, threadId, message) {
   const file = resolveUri(workspaceUri, `${EXT_ROOT}/threads/${threadId}/messages.jsonl`);
-  let existing = '';
-  try { existing = (await fs.readFile(file)).content; } catch { /* first msg */ }
   const line = JSON.stringify(message);
-  await fs.writeFile(file, existing ? existing + '\n' + line : line);
+  let existing = '';
+  try { existing = (await fs.readFile(file)).content || ''; } catch { /* first msg */ }
+  // Ensure newline separator — avoid corrupting last line if file lacks trailing newline
+  const separator = existing && !existing.endsWith('\n') ? '\n' : '';
+  await fs.writeFile(file, existing + separator + line);
 }
 
 async function rewriteMessages(fs, workspaceUri, threadId, messages) {
@@ -2157,7 +2314,7 @@ async function readMessages(fs, workspaceUri, threadId) {
       if (msg.hiddenFrom === undefined) msg.hiddenFrom = null;
       if (!msg.name) {
         if (msg.author === 'user') msg.name = 'Anon';
-        else if (msg.author === 'ai' && msg.characterFile) msg.name = msg.characterFile.replace('.md', '').replace(/-/g, ' ');
+        else if (msg.author === 'ai' && msg.characterFile) msg.name = msg.characterFile.replace(/\.(md|json)$/, '').replace(/-/g, ' ');
         else if (msg.author === 'system') msg.name = 'System';
       }
       return msg;
@@ -2284,13 +2441,14 @@ function renderSidebar(container, parallx) {
   root.appendChild(newChatBtn);
 
   let allThreads = [];
+  let _charNameMap = {};
 
   function renderChatList(filter) {
     chatList.innerHTML = '';
     const filtered = filter
       ? allThreads.filter((t) => {
           const q = filter.toLowerCase();
-          const characterNames = (t.characters || []).map((c) => c.file || '').join(' ');
+          const characterNames = (t.characters || []).map((c) => _charNameMap[c.file] || c.file || '').join(' ');
           return (t.title || '').toLowerCase().includes(q) ||
                  characterNames.toLowerCase().includes(q);
         })
@@ -2307,11 +2465,14 @@ function renderSidebar(container, parallx) {
 
     for (const th of filtered) {
       const row = el('div', 'tg-chat-row');
-      row.innerHTML = icon('message-circle', 14);
       const info = el('div', 'tg-chat-row-info');
       info.appendChild(el('div', 'tg-chat-row-title', { text: th.title || 'Untitled' }));
       const charLabel = (th.characters || [])
-        .map((c) => (c.file || '').replace('.md', '').replace(/-/g, ' '))
+        .map((c) => {
+          const name = _charNameMap[c.file];
+          if (name) return capitalize(name);
+          return capitalize((c.file || '').replace(/\.(md|json)$/, '').replace(/-/g, ' '));
+        })
         .filter(Boolean)
         .join(', ');
       const ago = formatTimeAgo(th.updatedAt);
@@ -2324,6 +2485,7 @@ function renderSidebar(container, parallx) {
       delBtn.title = 'Delete chat';
       delBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
+        if (!confirm(`Delete chat "${th.title || 'Untitled'}"? This cannot be undone.`)) return;
         await deleteThread(fs, workspaceUri, th.id);
         refresh();
       });
@@ -2344,7 +2506,15 @@ function renderSidebar(container, parallx) {
   searchInput.addEventListener('input', () => renderChatList(searchInput.value.trim()));
 
   async function refresh() {
-    allThreads = await listThreads(fs, workspaceUri);
+    const [threads, chars] = await Promise.all([
+      listThreads(fs, workspaceUri),
+      scanCharacters(fs, workspaceUri),
+    ]);
+    allThreads = threads;
+    _charNameMap = {};
+    for (const ch of chars) {
+      _charNameMap[ch.fileName] = ch.frontmatter.name || ch.fileName.replace(/\.(md|json)$/, '');
+    }
     renderChatList(searchInput.value.trim());
   }
 
@@ -2362,6 +2532,11 @@ function renderSidebar(container, parallx) {
       watcher?.dispose?.();
     },
   };
+}
+
+function capitalize(str) {
+  if (!str) return str;
+  return str.replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function formatTimeAgo(ts) {
@@ -2422,20 +2597,19 @@ function renderChatEditor(container, parallx, input) {
   });
 
   const inputToolbar = el('div', 'tg-input-toolbar');
-  const stopBtn = el('button', 'tg-input-stop', { html: icon('square', 16) });
-  stopBtn.title = 'Stop generating';
-  const inputSpacer = el('span', 'tg-input-toolbar-spacer');
   const optionsBtn = el('button', 'tg-input-options-btn', { html: icon('sliders', 16) });
   optionsBtn.title = 'Chat settings';
   const sendBtn = el('button', 'tg-input-send', { html: icon('send', 16) });
   sendBtn.title = 'Send (Enter)';
-  inputToolbar.append(stopBtn, inputSpacer, optionsBtn, sendBtn);
+  inputToolbar.append(optionsBtn, sendBtn);
 
-  inputCard.append(textarea, inputToolbar);
+  const textareaWrap = el('div', 'tg-textarea-wrap');
+  textareaWrap.append(textarea, inputToolbar);
+  inputCard.append(textareaWrap);
 
-  // Shortcut buttons bar (Perchance-style quick actions)
+  // Shortcut buttons bar (inline speaker actions inside the input card)
   const shortcutBar = el('div', 'tg-shortcut-bar');
-  inputWrap.appendChild(shortcutBar);
+  inputCard.appendChild(shortcutBar);
   inputWrap.appendChild(inputCard);
   root.appendChild(inputWrap);
 
@@ -2474,7 +2648,38 @@ function renderChatEditor(container, parallx, input) {
     return thread?.userName || currentSettings?.userName || 'Anon';
   }
 
+  /**
+   * After a user rename, propagate the new name to:
+   *  1. Each character's settings (so the Character Editor "User's name" field reflects it)
+   *  2. The global default settings (so new threads inherit it)
+   */
+  async function propagateUserName(newName) {
+    // Update characters that DON'T have a deliberate per-character userName override
+    for (const char of characters) {
+      try {
+        const charPath = resolveUri(workspaceUri, `${EXT_ROOT}/characters/${char.fileName}`);
+        const { content } = await fs.readFile(charPath);
+        const charData = JSON.parse(content);
+        // Only overwrite if the character's userName was blank or matched the old default
+        if (!charData.userName || charData.userName === thread?.userName || charData.userName === currentSettings?.userName) {
+          charData.userName = newName;
+          await saveCharacter(fs, workspaceUri, char.fileName, charData);
+        }
+        // Keep runtime object in sync
+        if (char.frontmatter) char.frontmatter.userName = newName;
+      } catch { /* character file may not exist */ }
+    }
+    // Update global default so new threads inherit the name
+    if (currentSettings) {
+      currentSettings.userName = newName;
+      await saveSettings(fs, workspaceUri, currentSettings).catch(() => {});
+    }
+  }
+
   function getVisibleName(msg) {
+    // For user's own messages (not playing-as-character), always use the CURRENT
+    // userName so a mid-conversation rename is reflected everywhere instantly.
+    if (msg.author === 'user' && !msg.characterFile) return getUserName();
     if (msg.name) return msg.name;
     if (msg.author === 'user') return getUserName();
     if (msg.author === 'ai' && msg.characterFile) return getCharacterName(msg.characterFile);
@@ -2534,8 +2739,17 @@ function renderChatEditor(container, parallx, input) {
   function updateChrome() {
     summaryEl.textContent = getThreadSummary();
     tokenCountEl.textContent = lastAssembledContext ? `~${lastAssembledContext.estimatedTokens} tokens` : '';
-    stopBtn.style.display = isGenerating ? '' : 'none';
-    sendBtn.disabled = isGenerating;
+    if (isGenerating) {
+      sendBtn.innerHTML = icon('square', 16);
+      sendBtn.title = 'Stop generating';
+      sendBtn.classList.add('tg-input-send--stop');
+      sendBtn.disabled = false;
+    } else {
+      sendBtn.innerHTML = icon('send', 16);
+      sendBtn.title = 'Send (Enter)';
+      sendBtn.classList.remove('tg-input-send--stop');
+      sendBtn.disabled = false;
+    }
   }
 
   // makeTurnChip removed — unified shortcut buttons serve as turn controls
@@ -2550,7 +2764,55 @@ function renderChatEditor(container, parallx, input) {
    * - clearAfterSend: "yes" (default) | "no"
    */
   function getThreadShortcuts() {
-    if (thread?.shortcuts && thread.shortcuts.length > 0) return thread.shortcuts;
+    if (thread?.shortcuts && thread.shortcuts.length > 0) {
+      // Auto-sync: ensure every thread character has a properly targeted shortcut
+      if (characters.length > 1) {
+        let changed = false;
+        // Deduplicate: remove shortcuts with identical resolved names
+        const seen = new Set();
+        const deduped = thread.shortcuts.filter(sc => {
+          const key = resolveShortcutTemplate(sc.name).toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        if (deduped.length !== thread.shortcuts.length) {
+          thread.shortcuts = deduped;
+          changed = true;
+        }
+        // First pass: convert any {{char}} shortcut to explicit character reference
+        // ({{char}} is fine for single-char, but multi-char needs explicit @Name)
+        for (let i = 0; i < thread.shortcuts.length; i++) {
+          const sc = thread.shortcuts[i];
+          if (sc.name === '{{char}}') {
+            const primaryName = getCharacterName(characters[0]);
+            const charRef = primaryName.includes(' ') ? `@"${primaryName}"` : `@${primaryName}`;
+            thread.shortcuts[i] = { ...sc, name: primaryName, message: `/ai ${charRef} <optional writing instruction>` };
+            changed = true;
+          }
+        }
+        // Second pass: add missing characters
+        for (const char of characters) {
+          const cName = getCharacterName(char);
+          const alreadyHas = thread.shortcuts.some(sc => {
+            const resolved = resolveShortcutTemplate(sc.name);
+            return resolved.toLowerCase() === cName.toLowerCase();
+          });
+          if (!alreadyHas) {
+            const charRef = cName.includes(' ') ? `@"${cName}"` : `@${cName}`;
+            // Insert before {{user}} and Narrator entries (keep characters grouped)
+            const userIdx = thread.shortcuts.findIndex(sc => sc.name === '{{user}}' || sc.message?.startsWith('/user'));
+            const insertAt = userIdx >= 0 ? userIdx : thread.shortcuts.length;
+            thread.shortcuts.splice(insertAt, 0, { name: cName, message: `/ai ${charRef} <optional writing instruction>`, insertionType: 'replace', autoSend: 'no', clearAfterSend: 'no' });
+            changed = true;
+          }
+        }
+        if (changed) {
+          updateThreadMeta(fs, workspaceUri, threadId, { shortcuts: thread.shortcuts }).catch(() => {});
+        }
+      }
+      return thread.shortcuts;
+    }
     // Migrate old customShortcuts format to new shortcuts model
     if (thread?.customShortcuts && thread.customShortcuts.length > 0) {
       const migrated = thread.customShortcuts.map(sc => {
@@ -2565,12 +2827,33 @@ function renderChatEditor(container, parallx, input) {
       if (thread) thread.shortcuts = migrated;
       return migrated;
     }
-    // Seed defaults matching Perchance's default set
-    const defaults = [
-      { name: '{{char}}', message: '/ai <optional writing instruction>', insertionType: 'replace', autoSend: 'no', clearAfterSend: 'no' },
+    // Seed from primary character's shortcutButtons field (Perchance @name/@message format)
+    const primaryChar = characters[0] || null;
+    const charShortcuts = primaryChar?.frontmatter?.shortcutButtons || '';
+    if (charShortcuts.trim()) {
+      const parsed = parseShortcutsFromBulkText(charShortcuts);
+      if (parsed.length > 0) {
+        if (thread) thread.shortcuts = parsed;
+        return parsed;
+      }
+    }
+    // Seed defaults — one shortcut per thread character, plus user and narrator
+    const defaults = [];
+    if (characters.length === 1) {
+      // Single character: use {{char}} template so label auto-updates on rename
+      defaults.push({ name: '{{char}}', message: '/ai <optional writing instruction>', insertionType: 'replace', autoSend: 'no', clearAfterSend: 'no' });
+    } else {
+      // Multi-character: one named shortcut per character
+      for (const char of characters) {
+        const cName = getCharacterName(char);
+        const charRef = cName.includes(' ') ? `@"${cName}"` : `@${cName}`;
+        defaults.push({ name: cName, message: `/ai ${charRef} <optional writing instruction>`, insertionType: 'replace', autoSend: 'no', clearAfterSend: 'no' });
+      }
+    }
+    defaults.push(
       { name: '{{user}}', message: '/user <optional writing instruction>', insertionType: 'replace', autoSend: 'no', clearAfterSend: 'no' },
       { name: 'Narrator', message: '/nar <optional writing instruction>', insertionType: 'replace', autoSend: 'no', clearAfterSend: 'no' },
-    ];
+    );
     if (thread) thread.shortcuts = defaults;
     return defaults;
   }
@@ -2714,11 +2997,11 @@ function renderChatEditor(container, parallx, input) {
     customBtn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
     customBtn.addEventListener('click', () => { overlay.remove(); showAddCustomShortcutDialog(); });
 
-    const bulkBtn = el('button', 'tg-shortcut-btn', { html: `${icon('pencil', 14)} bulk edit/delete shortcuts` });
+    const bulkBtn = el('button', 'tg-shortcut-btn', { html: `${icon('pencil', 14)} Bulk Edit/Delete Shortcuts` });
     bulkBtn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
     bulkBtn.addEventListener('click', () => { overlay.remove(); showBulkEditShortcutsDialog(); });
 
-    const cancelBtn = el('button', 'tg-shortcut-btn', { text: 'cancel' });
+    const cancelBtn = el('button', 'tg-shortcut-btn', { text: 'Cancel' });
     cancelBtn.style.cssText = 'padding:4px 16px; font-size:11px; margin-top:4px;';
     cancelBtn.addEventListener('click', () => overlay.remove());
 
@@ -2755,15 +3038,25 @@ function renderChatEditor(container, parallx, input) {
     } else {
       body.appendChild(el('div', null, { text: 'Select a character to add a shortcut for:' }));
       body.querySelector('div').style.cssText = 'font-size:12px; color:var(--vscode-descriptionForeground); margin-bottom:4px;';
+      const existingShortcuts = getThreadShortcuts();
+      let addedAny = false;
       for (const character of characters) {
         const cName = getCharacterName(character);
-        const charBtn = el('button', 'tg-shortcut-btn', { html: `${icon('message-circle', 14)} ${cName}` });
+        // Skip characters that already have a shortcut
+        const alreadyHas = existingShortcuts.some(sc => {
+          const resolved = resolveShortcutTemplate(sc.name);
+          return resolved.toLowerCase() === cName.toLowerCase();
+        });
+        if (alreadyHas) continue;
+        addedAny = true;
+        const charBtn = el('button', 'tg-shortcut-btn', { html: `${icon('message-circle', 14)} ${escapeHtml(cName)}` });
         charBtn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
         charBtn.addEventListener('click', async () => {
           const shortcuts = getThreadShortcuts();
+          const charRef = cName.includes(' ') ? `@"${cName}"` : `@${cName}`;
           shortcuts.push({
             name: cName,
-            message: `/ai @${cName} <optional writing instruction>`,
+            message: `/ai ${charRef} <optional writing instruction>`,
             insertionType: 'replace',
             autoSend: 'no',
             clearAfterSend: 'no',
@@ -2775,11 +3068,14 @@ function renderChatEditor(container, parallx, input) {
         });
         body.appendChild(charBtn);
       }
+      if (!addedAny) {
+        body.querySelector('div').textContent = 'All characters already have shortcuts.';
+      }
     }
 
     const footer = el('div', 'tg-modal-footer');
     footer.style.cssText = 'display:flex; justify-content:flex-end; padding:8px 16px;';
-    const cancelBtn = el('button', 'tg-shortcut-btn', { text: 'cancel' });
+    const cancelBtn = el('button', 'tg-shortcut-btn', { text: 'Cancel' });
     cancelBtn.addEventListener('click', () => overlay.remove());
     footer.appendChild(cancelBtn);
 
@@ -2871,9 +3167,9 @@ function renderChatEditor(container, parallx, input) {
     // Footer
     const footer = el('div', 'tg-modal-footer');
     footer.style.cssText = 'display:flex; justify-content:space-between; padding:8px 16px;';
-    const cancelBtn = el('button', 'tg-shortcut-btn', { text: 'cancel' });
+    const cancelBtn = el('button', 'tg-shortcut-btn', { text: 'Cancel' });
     cancelBtn.addEventListener('click', () => overlay.remove());
-    const createBtn = el('button', 'tg-shortcut-btn', { text: 'create' });
+    const createBtn = el('button', 'tg-shortcut-btn', { text: 'Create' });
     createBtn.style.cssText = 'background:var(--vscode-button-background); color:var(--vscode-button-foreground); border-color:var(--vscode-button-background);';
     createBtn.addEventListener('click', async () => {
       const label = labelInput.value.trim();
@@ -2937,10 +3233,10 @@ function renderChatEditor(container, parallx, input) {
     // Footer
     const footer = el('div', 'tg-modal-footer');
     footer.style.cssText = 'display:flex; justify-content:space-between; padding:8px 16px;';
-    const cancelBtn = el('button', 'tg-shortcut-btn', { text: 'cancel' });
+    const cancelBtn = el('button', 'tg-shortcut-btn', { text: 'Cancel' });
     cancelBtn.addEventListener('click', () => overlay.remove());
-    const saveBtn = el('button', 'tg-shortcut-btn', { text: 'save' });
-    saveBtn.style.cssText = 'background:var(--vscode-button-background); color:var(--vscode-button-foreground); border-color:var(--vscode-button-background);';
+    const saveBtn = el('button', 'tg-shortcut-btn', { text: 'Save' });
+    saveBtn.style.cssText = 'background:var(--vscode-button-background); color:var(--vscode-button-foreground); border-color:var(--vscode-button-background)';
     saveBtn.addEventListener('click', async () => {
       const parsed = parseShortcutsFromBulkText(bulkInput.value);
       thread.shortcuts = parsed;
@@ -2971,7 +3267,13 @@ function renderChatEditor(container, parallx, input) {
     const customPlaceholder = primaryChar?.frontmatter?.messageInputPlaceholder || '';
     textarea.placeholder = customPlaceholder || 'Type your message… (use /ai, /nar, /sys for commands)';
     // Message wrapper style — apply as inline style on messages container
-    const wrapperStyle = primaryChar?.frontmatter?.messageWrapperStyle || '';
+    // Sanitize: strip url(), expression(), behavior, and @import to prevent CSS injection
+    const wrapperStyle = (primaryChar?.frontmatter?.messageWrapperStyle || '')
+      .replace(/url\s*\(/gi, '')
+      .replace(/expression\s*\(/gi, '')
+      .replace(/behavior\s*:/gi, '')
+      .replace(/@import/gi, '')
+      .replace(/javascript\s*:/gi, '');
     messagesEl.style.cssText = wrapperStyle;
   }
 
@@ -3017,7 +3319,8 @@ function renderChatEditor(container, parallx, input) {
   viewPromptBtn.addEventListener('click', showPromptModal);
 
   function renderMessageRow(msg, index = null, isTransient = false) {
-    const messageEl = el('div', `tg-msg tg-msg--${msg.author || 'system'}${isTransient ? ' tg-msg--streaming' : ''}`);
+    const hiddenClass = msg.hiddenFrom ? ` tg-msg--dim` : '';
+    const messageEl = el('div', `tg-msg tg-msg--${msg.author || 'system'}${isTransient ? ' tg-msg--streaming' : ''}${hiddenClass}`);
     const nameRow = el('div', 'tg-msg-name-row');
     nameRow.appendChild(el('span', `tg-msg-name ${getNameColorClass(msg)}`, { text: getVisibleName(msg) }));
 
@@ -3027,13 +3330,10 @@ function renderChatEditor(container, parallx, input) {
 
       const editBtn = el('button', 'tg-msg-action-btn', { html: icon('pencil-line', 13) });
       editBtn.title = 'Edit message';
-      editBtn.addEventListener('click', async (event) => {
+      editBtn.addEventListener('click', (event) => {
         event.stopPropagation();
-        const nextText = prompt('Edit message', messageHistory[index]?.content || '');
-        if (nextText === null || !messageHistory[index]) return;
-        messageHistory[index].content = nextText;
-        await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
-        renderMessages();
+        // Trigger inline edit on the message body (same as double-click)
+        startInlineEdit(body, index);
       });
       actions.appendChild(editBtn);
 
@@ -3044,9 +3344,14 @@ function renderChatEditor(container, parallx, input) {
           event.stopPropagation();
           if (isGenerating || !messageHistory[index]) return;
           const target = messageHistory[index];
-          const speaker = getVisibleName(target).toLowerCase() === 'narrator'
+          // Warn if regenerating will delete messages after this one
+          const messagesAfter = messageHistory.length - 1 - index;
+          if (messagesAfter > 0) {
+            if (!confirm(`Regenerating will remove ${messagesAfter} message${messagesAfter > 1 ? 's' : ''} after this one. Continue?`)) return;
+          }
+          const speaker = !target.characterFile && (target.name || '').toLowerCase() === 'narrator'
             ? NARRATOR_SPEAKER
-            : (target.characterFile || resolveReplySpeaker());
+            : (target.characterFile || characters[0]?.fileName);
           // Store current content as a variant before regenerating
           if (!target.variants) target.variants = [target.content];
           const variantsBefore = target.variants;
@@ -3065,6 +3370,7 @@ function renderChatEditor(container, parallx, input) {
           }
         });
         actions.appendChild(regenBtn);
+
       } else if (msg.author === 'user') {
         const rewriteBtn = el('button', 'tg-msg-action-btn', { html: icon('refresh-cw', 13) });
         rewriteBtn.title = 'Rewrite with more depth';
@@ -3095,10 +3401,20 @@ function renderChatEditor(container, parallx, input) {
             });
             const stream = parallx.lm.sendChatRequest(modelId, messagesForApi, getGenerationOptions(null, true));
             let fullResponse = '';
+            let isThinking = false;
 
             for await (const chunk of stream) {
               if (stopRequested) break;
+              if (chunk.thinking && !chunk.content) {
+                if (!isThinking) {
+                  isThinking = true;
+                  transientMessage.content = '*Thinking…*';
+                  queueRender();
+                }
+                continue;
+              }
               if (chunk.content) {
+                isThinking = false;
                 fullResponse += chunk.content;
                 transientMessage.content = fullResponse;
                 queueRender();
@@ -3129,6 +3445,22 @@ function renderChatEditor(container, parallx, input) {
         navigator.clipboard?.writeText(msg.content || '');
       });
       actions.appendChild(copyBtn);
+
+      // hiddenFrom visibility toggle — cycles null → 'ai' → 'user' → null
+      const visLabel = msg.hiddenFrom === 'ai' ? '👁 Hidden from AI' : msg.hiddenFrom === 'user' ? '👁 Hidden from display' : '';
+      const visBtn = el('button', 'tg-msg-action-btn', { html: icon('eye', 13) });
+      visBtn.title = msg.hiddenFrom ? `Visibility: hidden from ${msg.hiddenFrom} (click to cycle)` : 'Toggle visibility (click to hide from AI/display)';
+      if (msg.hiddenFrom) visBtn.style.opacity = '0.5';
+      visBtn.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        const cycle = [null, 'ai', 'user'];
+        const currentIdx = cycle.indexOf(msg.hiddenFrom ?? null);
+        const nextVal = cycle[(currentIdx + 1) % cycle.length];
+        messageHistory[index].hiddenFrom = nextVal;
+        await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
+        renderMessages();
+      });
+      actions.appendChild(visBtn);
 
       const deleteBtn = el('button', 'tg-msg-action-btn tg-msg-action-btn--danger', { html: icon('trash', 13) });
       deleteBtn.title = 'Delete message';
@@ -3172,56 +3504,181 @@ function renderChatEditor(container, parallx, input) {
 
     }
 
-    // Avatar image — resolve from character or user config
-    const avatarInfo = getMessageAvatar(msg);
-    if (avatarInfo) {
-      const img = document.createElement('img');
-      img.className = `tg-msg-avatar tg-msg-avatar--${avatarInfo.shape || 'default'}`;
-      img.src = avatarInfo.url;
-      img.alt = '';
-      img.style.width = `${Math.round(36 * (avatarInfo.size || 1))}px`;
-      img.style.height = `${Math.round(36 * (avatarInfo.size || 1))}px`;
-      img.onerror = () => { img.style.display = 'none'; };
-      messageEl.appendChild(img);
-    }
-
     const contentWrap = el('div', 'tg-msg-content-wrap');
     contentWrap.appendChild(nameRow);
     const body = el('div', 'tg-msg-body', { html: renderMessageMarkup(msg.content || '') });
+
+    // Inline edit logic — shared by double-click and pencil button
+    function startInlineEdit(bodyEl, msgIndex) {
+      if (isGenerating) return;
+      if (!messageHistory[msgIndex]) return;
+      if (bodyEl.classList.contains('tg-msg-body--editing')) return;
+
+      const currentContent = messageHistory[msgIndex].content || '';
+      bodyEl.classList.add('tg-msg-body--editing');
+      bodyEl.innerHTML = '';
+
+      const editArea = el('textarea', 'tg-inline-edit-area');
+      editArea.value = currentContent;
+      bodyEl.appendChild(editArea);
+
+      // Autocomplete button — outside the edit body, in the contentWrap
+      // Only shown for AI messages. Positioned below the edit area, far right.
+      let autoRow = null;
+      const isAiMsg = messageHistory[msgIndex]?.author === 'ai';
+      if (isAiMsg) {
+        autoRow = el('div', 'tg-inline-auto-row');
+        const autoBtn = el('button', 'tg-inline-edit-btn tg-inline-edit-btn--auto', { html: `${icon('sparkles', 12)} Autocomplete` });
+        autoBtn.title = 'Save edits and AI continues writing from where the text ends';
+        // mousedown preventDefault keeps textarea focused so blur doesn't race
+        autoBtn.addEventListener('mousedown', (e) => e.preventDefault());
+        autoBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (isGenerating) return;
+          // Save edits first
+          const editedText = editArea.value;
+          if (messageHistory[msgIndex]) {
+            messageHistory[msgIndex].content = editedText;
+            await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
+          }
+          // Close edit mode
+          closeEdit();
+          // Run autocomplete on the saved message
+          await runAutocomplete(msgIndex);
+        });
+        autoRow.appendChild(autoBtn);
+        // Insert after bodyEl in contentWrap
+        if (bodyEl.nextSibling) {
+          contentWrap.insertBefore(autoRow, bodyEl.nextSibling);
+        } else {
+          contentWrap.appendChild(autoRow);
+        }
+      }
+
+      requestAnimationFrame(() => {
+        editArea.style.height = 'auto';
+        editArea.style.height = Math.max(60, editArea.scrollHeight) + 'px';
+        editArea.focus();
+        editArea.selectionStart = editArea.selectionEnd = editArea.value.length;
+      });
+
+      function closeEdit() {
+        bodyEl.classList.remove('tg-msg-body--editing');
+        bodyEl.innerHTML = renderMessageMarkup(messageHistory[msgIndex]?.content || '');
+        if (autoRow) { autoRow.remove(); autoRow = null; }
+      }
+
+      async function saveAndClose() {
+        const newText = editArea.value;
+        if (messageHistory[msgIndex] && newText !== currentContent) {
+          messageHistory[msgIndex].content = newText;
+          await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
+        }
+        closeEdit();
+      }
+
+      editArea.addEventListener('keydown', (ke) => {
+        if (ke.key === 'Escape') {
+          ke.preventDefault();
+          closeEdit(); // cancel — revert to original
+        }
+      });
+      editArea.addEventListener('blur', () => {
+        // Auto-save on blur (click outside)
+        setTimeout(() => {
+          if (bodyEl.classList.contains('tg-msg-body--editing')) {
+            saveAndClose();
+          }
+        }, 100);
+      });
+      editArea.addEventListener('input', () => {
+        editArea.style.height = 'auto';
+        editArea.style.height = Math.max(60, editArea.scrollHeight) + 'px';
+      });
+    }
+
+    // Autocomplete: save the message, then have AI continue from where it ends
+    async function runAutocomplete(msgIndex) {
+      const target = messageHistory[msgIndex];
+      if (!target || isGenerating) return;
+      const textSoFar = target.content;
+      if (!textSoFar.trim()) return;
+      const continueSpeaker = target.characterFile || await resolveReplySpeaker();
+      isGenerating = true;
+      stopRequested = false;
+      transientMessage = { ...target, content: textSoFar + '…' };
+      renderMessages();
+      updateChrome();
+      try {
+        const historyUpTo = messageHistory.slice(0, msgIndex);
+        const { assembled, modelId } = await buildContextForGeneration({
+          speaker: continueSpeaker,
+          historyOverride: historyUpTo,
+        });
+        const messagesForApi = assembled.messages.filter(m =>
+          !(m.role === 'system' && m.content.startsWith('[Active turn:'))
+        );
+        messagesForApi.push({
+          role: 'system',
+          content: '[Continue the following text seamlessly from exactly where it ends. Write ONLY the new continuation — do not repeat any of the existing text. Match the tone, style, and voice perfectly.]',
+        });
+        messagesForApi.push({ role: 'user', content: textSoFar });
+        const stream = parallx.lm.sendChatRequest(modelId, messagesForApi, getGenerationOptions(continueSpeaker));
+        let fullResponse = '';
+        let isThinking = false;
+        for await (const chunk of stream) {
+          if (stopRequested) break;
+          if (chunk.thinking && !chunk.content) {
+            if (!isThinking) {
+              isThinking = true;
+              transientMessage.content = textSoFar + ' *Thinking…*';
+              queueRender();
+            }
+            continue;
+          }
+          if (chunk.content) {
+            isThinking = false;
+            fullResponse += chunk.content;
+            const speakerName = target.name || '';
+            const stripped = stripSpeakerLabel(fullResponse.trimStart(), speakerName);
+            const spacer = textSoFar && !textSoFar.endsWith(' ') && stripped && !stripped.startsWith(' ') ? ' ' : '';
+            transientMessage.content = textSoFar + spacer + stripped;
+            queueRender();
+          }
+        }
+        if (fullResponse.trim()) {
+          const speakerName = target.name || '';
+          const stripped = stripSpeakerLabel(fullResponse.trim(), speakerName);
+          const spacer = textSoFar && !textSoFar.endsWith(' ') && stripped && !stripped.startsWith(' ') ? ' ' : '';
+          messageHistory[msgIndex].content = textSoFar + spacer + stripped;
+          await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
+        }
+      } catch (err) {
+        console.warn('[TextGenerator] Autocomplete failed:', err);
+      } finally {
+        transientMessage = null;
+        isGenerating = false;
+        renderTurnControls();
+        renderMessages();
+        updateChrome();
+      }
+    }
+
+    // Double-click to edit inline (Perchance-style)
+    if (!isTransient && index !== null) {
+      body.addEventListener('dblclick', (e) => {
+        // Double-click naturally selects a word — clear it so the edit opens
+        const sel = window.getSelection();
+        if (sel) sel.removeAllRanges();
+        startInlineEdit(body, index);
+      });
+      body.style.cursor = 'default';
+    }
+
     contentWrap.appendChild(body);
     if (actions) contentWrap.appendChild(actions);
     messageEl.appendChild(contentWrap);
     messagesEl.appendChild(messageEl);
-  }
-
-  /**
-   * Resolve avatar URL, size, and shape for a message based on author type
-   * and primary character config.
-   */
-  function getMessageAvatar(msg) {
-    const primaryChar = characters[0] || null;
-    if (!primaryChar) return null;
-    const fm = primaryChar.frontmatter || {};
-
-    if (msg.author === 'ai') {
-      // Character avatar — check the specific character if multi-char
-      const charForMsg = msg.characterFile ? getCharacterByFile(msg.characterFile) : primaryChar;
-      const charFm = charForMsg?.frontmatter || fm;
-      const url = charFm.avatar || charFm.avatarUrl || '';
-      if (!url) return null;
-      return { url, size: charFm.avatarSize ?? 1, shape: charFm.avatarShape || 'default' };
-    }
-    if (msg.author === 'user') {
-      const url = fm.userAvatarUrl || '';
-      if (!url) return null;
-      return { url, size: fm.userAvatarSize ?? 1, shape: fm.userAvatarShape || 'default' };
-    }
-    if (msg.author === 'system' || msg.author === 'scenario') {
-      const url = fm.systemAvatarUrl || '';
-      if (!url) return null;
-      return { url, size: 1, shape: 'default' };
-    }
-    return null;
   }
 
   function renderMessages() {
@@ -3255,14 +3712,20 @@ function renderChatEditor(container, parallx, input) {
       ? allLorebooks.filter((book) => thread.lorebookFiles.includes(book.fileName))
       : allLorebooks;
     const budget = computeTokenBudget(contextWindow, currentSettings);
-    const loreContent = assembleLoreContent(lorebooks, budget.lore);
+    // Build recent context string for lorebook trigger matching (last ~10 messages + user text)
+    const baseHistory = historyOverride || messageHistory;
+    const recentForTriggers = baseHistory.slice(-10).map(m => m.content || '').join('\n') + (userText ? '\n' + userText : '');
+    const loreContent = assembleLoreContent(lorebooks, budget.lore, recentForTriggers);
     const memoryContent = await readMemories(fs, workspaceUri, threadId);
+    // When userText is provided, exclude the last history entry (the same message)
+    // so it routes through the dedicated user budget lane instead of competing with history.
+    const effectiveHistory = userText ? baseHistory.slice(0, -1) : baseHistory;
     const assembled = assembleContext({
       characters,
       writingPreset: thread?.writingPreset || currentSettings?.defaultWritingPreset || 'immersive-rp',
       loreContent,
       memoryContent,
-      history: historyOverride || messageHistory,
+      history: effectiveHistory,
       userMessage: userText,
       contextWindow,
       userName: getUserName(),
@@ -3279,9 +3742,11 @@ function renderChatEditor(container, parallx, input) {
 
   function getGenerationOptions(speaker, asUser = false) {
     const character = !asUser && speaker && speaker !== NARRATOR_SPEAKER ? getCharacterByFile(speaker) : null;
+    const maxTokens = thread?.maxTokensOverride ?? character?.frontmatter.maxTokensPerMessage ?? currentSettings?.defaultMaxTokens ?? undefined;
     return {
+      think: true,
       temperature: thread?.temperatureOverride ?? character?.frontmatter.temperature ?? currentSettings?.defaultTemperature ?? 0.8,
-      maxTokens: thread?.maxTokensOverride ?? character?.frontmatter.maxTokensPerMessage ?? currentSettings?.defaultMaxTokens ?? 2048,
+      ...(maxTokens ? { maxTokens } : {}),
       numCtx: thread?.contextWindowOverride || currentSettings?.defaultContextWindow || undefined,
     };
   }
@@ -3294,11 +3759,49 @@ function renderChatEditor(container, parallx, input) {
     return files[lastIndex === -1 ? 0 : (lastIndex + 1) % files.length];
   }
 
-  function resolveReplySpeaker(selection = selectedReplySpeaker) {
+  /**
+   * AI-driven turn selection for group chats.
+   * Asks the model which character should speak next based on recent context.
+   * Falls back to round-robin if the model call fails or returns an unrecognizable name.
+   */
+  async function pickNextCharacterSmart(lastCharFile) {
+    const files = characters.map((char) => char.fileName);
+    if (files.length <= 2) return pickNextCharacter(lastCharFile);
+    // Only attempt AI turn selection if thread opts in
+    if (!thread?.smartTurnOrder) return pickNextCharacter(lastCharFile);
+
+    const modelId = selectedModelId || thread?.modelId || models[0]?.id;
+    if (!modelId || !parallx.lm) return pickNextCharacter(lastCharFile);
+
+    const charNames = characters.map(c => c.frontmatter.name || c.fileName.replace(/\.(md|json)$/, ''));
+    const recentLines = messageHistory.slice(-6).map(m => `${m.name}: ${(m.content || '').slice(0, 200)}`).join('\n');
+
+    try {
+      const prompt = [
+        { role: 'system', content: `You are a turn-order selector for a group roleplay. Available characters: ${charNames.join(', ')}. The last speaker was "${lastCharFile ? (characters.find(c => c.fileName === lastCharFile)?.frontmatter.name || lastCharFile) : 'unknown'}". Based on the recent conversation, reply with ONLY the name of the character who should speak next. Do not add any explanation.` },
+        { role: 'user', content: recentLines || '(conversation just started)' },
+      ];
+      const stream = parallx.lm.sendChatRequest(modelId, prompt, { temperature: 0.3, maxTokens: 30 });
+      let response = '';
+      for await (const chunk of stream) {
+        if (chunk.content) response += chunk.content;
+      }
+      const picked = response.trim().replace(/^"|"$/g, '');
+      const resolved = resolveCharacterReference(picked);
+      if (resolved && resolved !== NARRATOR_SPEAKER && files.includes(resolved)) {
+        return resolved;
+      }
+    } catch { /* fall through to round-robin */ }
+
+    return pickNextCharacter(lastCharFile);
+  }
+
+
+  async function resolveReplySpeaker(selection = selectedReplySpeaker) {
     if (selection === NARRATOR_SPEAKER) return NARRATOR_SPEAKER;
     if (selection) return selection;
     const lastCharacterTurn = [...messageHistory].reverse().find((msg) => msg.characterFile)?.characterFile;
-    return pickNextCharacter(lastCharacterTurn || characters[0]?.fileName);
+    return pickNextCharacterSmart(lastCharacterTurn || characters[0]?.fileName);
   }
 
   function resolveCharacterReference(nameOrFile) {
@@ -3308,7 +3811,7 @@ function renderChatEditor(container, parallx, input) {
     if (lowered === 'narrator' || lowered === 'nar') return NARRATOR_SPEAKER;
     const exact = characters.find((char) =>
       char.fileName.toLowerCase() === lowered ||
-      char.fileName.replace('.md', '').toLowerCase() === lowered ||
+      char.fileName.replace(/\.(md|json)$/, '').toLowerCase() === lowered ||
       (char.frontmatter.name || '').toLowerCase() === lowered
     );
     if (exact) return exact.fileName;
@@ -3367,9 +3870,20 @@ function renderChatEditor(container, parallx, input) {
     };
   }
 
-  async function generateTurn({ speaker = null, instruction = null, asUser = false } = {}) {
+  /** Strip a leading speaker label (e.g. "Ada Lovelace: ...") from model output.
+   *  Handles variable whitespace, bold formatting, and regex-special characters. */
+  function stripSpeakerLabel(text, speakerName) {
+    if (!speakerName || !text) return text;
+    // Escape regex-special characters in the name
+    const escaped = speakerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Match: optional bold markers, name, optional bold markers, colon, optional whitespace
+    const pattern = new RegExp(`^\\**${escaped}\\**\\s*:\\s*`, 'i');
+    return text.replace(pattern, '');
+  }
+
+  async function generateTurn({ speaker = null, instruction = null, asUser = false, userText = '' } = {}) {
     if (isGenerating || characters.length === 0 || !parallx.lm) return;
-    const effectiveSpeaker = speaker || (asUser ? selectedComposeSpeaker : resolveReplySpeaker());
+    const effectiveSpeaker = speaker || (asUser ? selectedComposeSpeaker : await resolveReplySpeaker());
     if (!effectiveSpeaker) return;
 
     isGenerating = true;
@@ -3381,6 +3895,7 @@ function renderChatEditor(container, parallx, input) {
     try {
       const { assembled, modelId } = await buildContextForGeneration({
         speaker: effectiveSpeaker,
+        userText,
         instruction,
       });
       const messagesForApi = [...assembled.messages];
@@ -3390,41 +3905,35 @@ function renderChatEditor(container, parallx, input) {
           content: `[Draft the next user-authored message as ${getComposeSelectionLabel(effectiveSpeaker)}. Return only the message content.]`,
         });
       }
-      const stream = parallx.lm.sendChatRequest(modelId, messagesForApi, getGenerationOptions(effectiveSpeaker, asUser));
+      const _genOpts = getGenerationOptions(effectiveSpeaker, asUser);
+      const stream = parallx.lm.sendChatRequest(modelId, messagesForApi, _genOpts);
       let fullResponse = '';
+      let isThinking = false;
 
       for await (const chunk of stream) {
         if (stopRequested) break;
+        if (chunk.thinking && !chunk.content) {
+          if (!isThinking) {
+            isThinking = true;
+            transientMessage.content = '*Thinking…*';
+            queueRender();
+          }
+          continue;
+        }
         if (chunk.content) {
+          isThinking = false;
           fullResponse += chunk.content;
           // Strip leading speaker label during streaming
-          let display = fullResponse.trimStart();
           const speakerName = transientMessage?.name || '';
-          if (speakerName) {
-            const prefix = speakerName + ':';
-            if (display.startsWith(prefix)) {
-              display = display.slice(prefix.length).trimStart();
-            } else if (display.toLowerCase().startsWith(prefix.toLowerCase())) {
-              display = display.slice(prefix.length).trimStart();
-            }
-          }
-          transientMessage.content = display;
+          transientMessage.content = stripSpeakerLabel(fullResponse.trimStart(), speakerName);
           queueRender();
         }
       }
 
       if (fullResponse.trim()) {
         // Strip leading speaker label the model may echo (e.g. "Ada Lovelace: ...")
-        let cleaned = fullResponse.trim();
         const speakerName = transientMessage?.name || '';
-        if (speakerName) {
-          const prefix = speakerName + ':';
-          if (cleaned.startsWith(prefix)) {
-            cleaned = cleaned.slice(prefix.length).trimStart();
-          } else if (cleaned.toLowerCase().startsWith(prefix.toLowerCase())) {
-            cleaned = cleaned.slice(prefix.length).trimStart();
-          }
-        }
+        const cleaned = stripSpeakerLabel(fullResponse.trim(), speakerName);
         const finalMessage = buildGeneratedTurnMessage(cleaned, effectiveSpeaker, instruction, asUser);
         messageHistory.push(finalMessage);
         await appendMessage(fs, workspaceUri, threadId, finalMessage);
@@ -3453,8 +3962,87 @@ function renderChatEditor(container, parallx, input) {
     switch (cmd.command) {
       case 'ai': {
         const requestedSpeaker = cmd.targetCharacter ? resolveCharacterReference(cmd.targetCharacter) : selectedReplySpeaker;
-        const nextSpeaker = requestedSpeaker || resolveReplySpeaker();
+        const nextSpeaker = requestedSpeaker || await resolveReplySpeaker();
         await generateTurn({ speaker: nextSpeaker, instruction: cmd.instruction || null });
+        break;
+      }
+      case 'continue': {
+        // Find the last AI-generated message to continue from
+        const lastAiIndex = messageHistory.length - 1 - [...messageHistory].reverse().findIndex(m => m.generatedBy === 'model');
+        if (lastAiIndex < 0 || lastAiIndex >= messageHistory.length) {
+          const errMsg = { author: 'system', name: 'System', content: 'No AI message to continue.', timestamp: Date.now(), generatedBy: 'human', hiddenFrom: 'ai' };
+          messageHistory.push(errMsg);
+          await appendMessage(fs, workspaceUri, threadId, errMsg);
+          renderMessages();
+          break;
+        }
+        const lastAiMsg = messageHistory[lastAiIndex];
+        const continueSpeaker = lastAiMsg.characterFile || await resolveReplySpeaker();
+        // Generate continuation using history up to (but not including) the last AI message,
+        // plus the existing content as a partial assistant response
+        if (isGenerating || characters.length === 0 || !parallx.lm) break;
+        isGenerating = true;
+        stopRequested = false;
+        transientMessage = { ...lastAiMsg, content: lastAiMsg.content + '…' };
+        renderMessages();
+        updateChrome();
+        try {
+          const historyUpTo = messageHistory.slice(0, lastAiIndex);
+          const { assembled, modelId } = await buildContextForGeneration({
+            speaker: continueSpeaker,
+            historyOverride: historyUpTo,
+            instruction: cmd.args || null,
+          });
+          // Use assembled context but replace turn cue with continuation instruction
+          const messagesForApi = assembled.messages.filter(m =>
+            !(m.role === 'system' && m.content.startsWith('[Active turn:'))
+          );
+          messagesForApi.push({
+            role: 'system',
+            content: '[Continue the following text seamlessly from exactly where it ends. Write ONLY the new continuation — do not repeat any of the existing text. Match the tone, style, and voice perfectly.]',
+          });
+          messagesForApi.push({ role: 'user', content: lastAiMsg.content });
+          const stream = parallx.lm.sendChatRequest(modelId, messagesForApi, getGenerationOptions(continueSpeaker));
+          let fullResponse = '';
+          let isThinking = false;
+          for await (const chunk of stream) {
+            if (stopRequested) break;
+            if (chunk.thinking && !chunk.content) {
+              if (!isThinking) {
+                isThinking = true;
+                transientMessage.content = lastAiMsg.content + ' *Thinking…*';
+                queueRender();
+              }
+              continue;
+            }
+            if (chunk.content) {
+              isThinking = false;
+              fullResponse += chunk.content;
+              const speakerName = lastAiMsg.name || '';
+              const stripped = stripSpeakerLabel(fullResponse.trimStart(), speakerName);
+              const spacer = lastAiMsg.content && !lastAiMsg.content.endsWith(' ') && stripped && !stripped.startsWith(' ') ? ' ' : '';
+              transientMessage.content = lastAiMsg.content + spacer + stripped;
+              queueRender();
+            }
+          }
+          if (fullResponse.trim()) {
+            const speakerName = lastAiMsg.name || '';
+            const stripped = stripSpeakerLabel(fullResponse.trim(), speakerName);
+            const spacer = lastAiMsg.content && !lastAiMsg.content.endsWith(' ') && stripped && !stripped.startsWith(' ') ? ' ' : '';
+            messageHistory[lastAiIndex].content = lastAiMsg.content + spacer + stripped;
+            await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
+          }
+        } catch (err) {
+          const errorMessage = { author: 'system', name: 'System', content: 'Error: ' + (err.message || String(err)), timestamp: Date.now(), generatedBy: 'human', hiddenFrom: 'ai' };
+          messageHistory.push(errorMessage);
+          await appendMessage(fs, workspaceUri, threadId, errorMessage);
+        } finally {
+          transientMessage = null;
+          isGenerating = false;
+          renderTurnControls();
+          renderMessages();
+          updateChrome();
+        }
         break;
       }
       case 'user': {
@@ -3480,27 +4068,16 @@ function renderChatEditor(container, parallx, input) {
         break;
       }
       case 'nar': {
-        if (cmd.args || cmd.instruction) {
-          const narratorMessage = {
-            author: 'system',
-            name: 'Narrator',
-            content: cmd.instruction || cmd.args,
-            timestamp: Date.now(),
-            generatedBy: 'human',
-            hiddenFrom: null,
-          };
-          messageHistory.push(narratorMessage);
-          await appendMessage(fs, workspaceUri, threadId, narratorMessage);
-          renderMessages();
-        } else {
-          await generateTurn({ speaker: NARRATOR_SPEAKER, instruction: 'Advance the scene with concise third-person narration.' });
-        }
+        // /nar is shorthand for /sys @Narrator — always triggers AI generation.
+        // Optional instruction guides the narrator's response style/content.
+        await generateTurn({ speaker: NARRATOR_SPEAKER, instruction: cmd.instruction || cmd.args || null });
         break;
       }
       case 'name': {
         if (cmd.args) {
           thread.userName = cmd.args.trim();
           await updateThreadMeta(fs, workspaceUri, threadId, { userName: thread.userName });
+          await propagateUserName(thread.userName);
           if (selectedComposeSpeaker === SELF_SPEAKER) renderTurnControls();
           renderMessages();
           updateChrome();
@@ -3557,7 +4134,7 @@ function renderChatEditor(container, parallx, input) {
     }
 
     if (!messageText && inlineInstruction) {
-      await generateTurn({ speaker: resolveReplySpeaker(selectedReplySpeaker), instruction: inlineInstruction });
+      await generateTurn({ speaker: await resolveReplySpeaker(selectedReplySpeaker), instruction: inlineInstruction });
       return;
     }
 
@@ -3575,7 +4152,13 @@ function renderChatEditor(container, parallx, input) {
     renderMessages();
     updateChrome();
 
-    await generateTurn({ speaker: resolveReplySpeaker(selectedReplySpeaker), instruction: inlineInstruction || null });
+    // Honor autoReply toggle and expectsReply on the last message
+    if (thread?.autoReply !== false) {
+      const lastMsg = messageHistory[messageHistory.length - 1];
+      if (lastMsg?.expectsReply !== false) {
+        await generateTurn({ speaker: await resolveReplySpeaker(selectedReplySpeaker), instruction: inlineInstruction || null, userText: messageText });
+      }
+    }
   }
 
   async function seedInitialMessagesIfNeeded(savedMessages) {
@@ -3679,11 +4262,9 @@ function renderChatEditor(container, parallx, input) {
     if (selectedModelId) modelSelect.value = selectedModelId;
   }
 
-  let picsHidden = false;
-
   /**
    * Show the Perchance-style options menu above the input bar.
-   * Items: toggle pics, change user name, change user pic, toggle autoreply,
+   * Items: change user name, toggle autoreply,
    * response length, add character, edit character, reply as..., options (full page).
    */
   function showOptionsMenu() {
@@ -3703,16 +4284,8 @@ function renderChatEditor(container, parallx, input) {
       menu.appendChild(btn);
     };
 
-    // ── Toggle pics ──
-    item('eye-off', picsHidden ? 'show pics' : 'toggle pics', () => {
-      picsHidden = !picsHidden;
-      messagesEl.querySelectorAll('.tg-msg-avatar').forEach(img => {
-        img.style.display = picsHidden ? 'none' : '';
-      });
-    });
-
     // ── Change user name ──
-    item('pencil', 'change user name', async () => {
+    item('pencil', 'Change User Name', async () => {
       const currentName = getUserName();
       const overlay = el('div', 'tg-modal-overlay');
       const modal = el('div', 'tg-modal');
@@ -3733,18 +4306,21 @@ function renderChatEditor(container, parallx, input) {
       modal.appendChild(body);
       const footer = el('div', 'tg-modal-footer');
       footer.style.cssText = 'display:flex; justify-content:flex-end; gap:8px; padding:8px 16px;';
-      const cancelBtn2 = el('button', 'tg-shortcut-btn', { text: 'cancel' });
+      const cancelBtn2 = el('button', 'tg-shortcut-btn', { text: 'Cancel' });
       cancelBtn2.addEventListener('click', () => overlay.remove());
-      const saveBtn = el('button', 'tg-shortcut-btn', { text: 'save' });
+      const saveBtn = el('button', 'tg-shortcut-btn', { text: 'Save' });
       saveBtn.style.cssText = 'background:var(--vscode-button-background); color:var(--vscode-button-foreground);';
-      saveBtn.addEventListener('click', async () => {
+      const doSave = async () => {
         const newName = nameInput.value.trim() || 'Anon';
         thread.userName = newName;
         await updateThreadMeta(fs, workspaceUri, threadId, { userName: newName }).catch(() => {});
+        await propagateUserName(newName);
         overlay.remove();
         renderShortcutButtons();
         renderMessages();
-      });
+      };
+      saveBtn.addEventListener('click', doSave);
+      nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSave(); });
       footer.append(cancelBtn2, saveBtn);
       modal.appendChild(footer);
       overlay.appendChild(modal);
@@ -3754,62 +4330,15 @@ function renderChatEditor(container, parallx, input) {
       nameInput.select();
     });
 
-    // ── Change user pic ──
-    item('user', 'change user pic', async () => {
-      const primaryChar = characters[0] || null;
-      const currentUrl = primaryChar?.frontmatter?.userAvatarUrl || '';
-      const overlay = el('div', 'tg-modal-overlay');
-      const modal = el('div', 'tg-modal');
-      modal.style.maxWidth = '380px';
-      const header = el('div', 'tg-modal-header');
-      header.appendChild(el('span', 'tg-modal-title', { text: 'Change User Avatar' }));
-      const closeBtn = el('button', 'tg-modal-close', { html: icon('x', 16) });
-      closeBtn.addEventListener('click', () => overlay.remove());
-      header.appendChild(closeBtn);
-      modal.appendChild(header);
-      const body = el('div', 'tg-modal-body');
-      body.style.cssText = 'padding:16px; display:flex; flex-direction:column; gap:8px;';
-      body.appendChild(el('div', null, { text: 'Enter an image URL for your avatar:' }));
-      body.querySelector('div').style.cssText = 'font-size:11px; color:var(--vscode-descriptionForeground);';
-      const urlInput = el('input');
-      urlInput.type = 'text';
-      urlInput.value = currentUrl;
-      urlInput.placeholder = 'https://example.com/avatar.png';
-      urlInput.style.cssText = 'padding:6px 10px; border:1px solid var(--vscode-input-border, #3c3c3c); border-radius:4px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font-size:12px; width:100%; box-sizing:border-box;';
-      body.appendChild(urlInput);
-      modal.appendChild(body);
-      const footer = el('div', 'tg-modal-footer');
-      footer.style.cssText = 'display:flex; justify-content:flex-end; gap:8px; padding:8px 16px;';
-      const cancelBtn2 = el('button', 'tg-shortcut-btn', { text: 'cancel' });
-      cancelBtn2.addEventListener('click', () => overlay.remove());
-      const saveBtn = el('button', 'tg-shortcut-btn', { text: 'save' });
-      saveBtn.style.cssText = 'background:var(--vscode-button-background); color:var(--vscode-button-foreground);';
-      saveBtn.addEventListener('click', async () => {
-        if (primaryChar) {
-          primaryChar.frontmatter.userAvatarUrl = urlInput.value.trim();
-          const charPath = resolveUri(workspaceUri, `${EXT_ROOT}/characters/${primaryChar.fileName}`);
-          await fs.writeFile(charPath, JSON.stringify(primaryChar.rawData ? { ...primaryChar.rawData, userAvatarUrl: urlInput.value.trim() } : primaryChar.frontmatter, null, 2)).catch(() => {});
-        }
-        overlay.remove();
-        renderMessages();
-      });
-      footer.append(cancelBtn2, saveBtn);
-      modal.appendChild(footer);
-      overlay.appendChild(modal);
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-      document.body.appendChild(overlay);
-      urlInput.focus();
-    });
-
     // ── Toggle autoreply ──
     const autoReplyEnabled = thread?.autoReply !== false;
-    item('refresh-cw', autoReplyEnabled ? 'disable autoreply' : 'enable autoreply', async () => {
+    item('refresh-cw', autoReplyEnabled ? 'Disable Autoreply' : 'Enable Autoreply', async () => {
       thread.autoReply = !autoReplyEnabled;
       await updateThreadMeta(fs, workspaceUri, threadId, { autoReply: thread.autoReply }).catch(() => {});
     });
 
     // ── Response length ──
-    item('ruler', 'response length...', () => {
+    item('ruler', 'Response Length…', () => {
       const overlay = el('div', 'tg-modal-overlay');
       const modal = el('div', 'tg-modal');
       modal.style.maxWidth = '340px';
@@ -3835,9 +4364,9 @@ function renderChatEditor(container, parallx, input) {
       modal.appendChild(body);
       const footer = el('div', 'tg-modal-footer');
       footer.style.cssText = 'display:flex; justify-content:flex-end; gap:8px; padding:8px 16px;';
-      const cancelBtn2 = el('button', 'tg-shortcut-btn', { text: 'cancel' });
+      const cancelBtn2 = el('button', 'tg-shortcut-btn', { text: 'Cancel' });
       cancelBtn2.addEventListener('click', () => overlay.remove());
-      const saveBtn = el('button', 'tg-shortcut-btn', { text: 'save' });
+      const saveBtn = el('button', 'tg-shortcut-btn', { text: 'Save' });
       saveBtn.style.cssText = 'background:var(--vscode-button-background); color:var(--vscode-button-foreground);';
       saveBtn.addEventListener('click', async () => {
         thread.responseLength = lengthSelect.value || null;
@@ -3852,10 +4381,9 @@ function renderChatEditor(container, parallx, input) {
     });
 
     // ── Add character ──
-    item('plus', 'add character', async () => {
+    item('plus', 'Add Character', async () => {
       const allChars = await scanCharacters(fs, workspaceUri);
       const available = allChars.filter(c => !thread.characters.find(tc => tc.file === c.fileName));
-      if (available.length === 0) return;
       const overlay = el('div', 'tg-modal-overlay');
       const modal = el('div', 'tg-modal');
       modal.style.maxWidth = '340px';
@@ -3867,17 +4395,21 @@ function renderChatEditor(container, parallx, input) {
       modal.appendChild(header);
       const body = el('div', 'tg-modal-body');
       body.style.cssText = 'padding:16px; display:flex; flex-direction:column; gap:6px;';
-      for (const char of available) {
-        const cName = getCharacterName(char);
-        const btn = el('button', 'tg-shortcut-btn', { html: `${icon('message-circle', 14)} ${cName}` });
-        btn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
-        btn.addEventListener('click', async () => {
-          thread.characters.push({ file: char.fileName, addedAt: Date.now() });
-          await updateThreadMeta(fs, workspaceUri, threadId, { characters: thread.characters }).catch(() => {});
-          overlay.remove();
-          await reloadThreadState();
-        });
-        body.appendChild(btn);
+      if (available.length === 0) {
+        body.appendChild(el('div', 'tg-empty', { text: allChars.length === 0 ? 'No characters found. Create one first.' : 'All characters are already in this chat.' }));
+      } else {
+        for (const char of available) {
+          const cName = getCharacterName(char);
+          const btn = el('button', 'tg-shortcut-btn', { html: `${icon('message-circle', 14)} ${escapeHtml(cName)}` });
+          btn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
+          btn.addEventListener('click', async () => {
+            thread.characters.push({ file: char.fileName, addedAt: Date.now() });
+            await updateThreadMeta(fs, workspaceUri, threadId, { characters: thread.characters }).catch(() => {});
+            overlay.remove();
+            await reloadThreadState();
+          });
+          body.appendChild(btn);
+        }
       }
       modal.appendChild(body);
       overlay.appendChild(modal);
@@ -3886,7 +4418,7 @@ function renderChatEditor(container, parallx, input) {
     });
 
     // ── Edit character (opens character editor for primary character) ──
-    item('pencil-line', 'edit character', () => {
+    item('pencil-line', 'Edit Character', () => {
       const primaryChar = characters[0];
       if (!primaryChar) return;
       parallx.editors.openEditor({
@@ -3898,7 +4430,7 @@ function renderChatEditor(container, parallx, input) {
     });
 
     // ── Reply as... ──
-    item('message-circle', 'reply as...', () => {
+    item('message-circle', 'Reply As…', () => {
       const overlay = el('div', 'tg-modal-overlay');
       const modal = el('div', 'tg-modal');
       modal.style.maxWidth = '340px';
@@ -3911,7 +4443,7 @@ function renderChatEditor(container, parallx, input) {
       const body = el('div', 'tg-modal-body');
       body.style.cssText = 'padding:16px; display:flex; flex-direction:column; gap:6px;';
       // Self option
-      const selfBtn = el('button', 'tg-shortcut-btn', { html: `${icon('user', 14)} ${getUserName()} (yourself)` });
+      const selfBtn = el('button', 'tg-shortcut-btn', { html: `${icon('user', 14)} ${escapeHtml(getUserName())} (yourself)` });
       selfBtn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
       if (selectedComposeSpeaker === SELF_SPEAKER) selfBtn.style.borderColor = 'var(--vscode-focusBorder)';
       selfBtn.addEventListener('click', async () => {
@@ -3925,7 +4457,7 @@ function renderChatEditor(container, parallx, input) {
       // Character options
       for (const char of characters) {
         const cName = getCharacterName(char);
-        const btn = el('button', 'tg-shortcut-btn', { html: `${icon('message-circle', 14)} ${cName}` });
+        const btn = el('button', 'tg-shortcut-btn', { html: `${icon('message-circle', 14)} ${escapeHtml(cName)}` });
         btn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
         if (selectedComposeSpeaker === char.fileName) btn.style.borderColor = 'var(--vscode-focusBorder)';
         btn.addEventListener('click', async () => {
@@ -3944,12 +4476,12 @@ function renderChatEditor(container, parallx, input) {
     });
 
     // ── Options (full settings page) ──
-    item('settings', 'options', () => {
+    item('settings', 'Options', () => {
       parallx.editors.openEditor({
         typeId: 'text-generator-chat-settings',
         title: 'Chat Settings',
         icon: 'sliders',
-        instanceId: threadId,
+        instanceId: `chat-settings:${threadId}`,
       });
     });
 
@@ -3960,23 +4492,26 @@ function renderChatEditor(container, parallx, input) {
     showOptionsMenu();
   });
 
-  stopBtn.addEventListener('click', () => {
-    stopRequested = true;
-  });
-
   async function sendMessage() {
     if (isGenerating || !parallx.lm || characters.length === 0) return;
     const text = textarea.value.trim();
     textarea.value = '';
     textarea.style.height = 'auto';
     if (!text) {
-      await generateTurn({ speaker: resolveReplySpeaker(selectedReplySpeaker) });
+      // Empty send always triggers generation regardless of autoReply
+      await generateTurn({ speaker: await resolveReplySpeaker(selectedReplySpeaker) });
       return;
     }
     await handleUserInput(text);
   }
 
-  sendBtn.addEventListener('click', sendMessage);
+  sendBtn.addEventListener('click', () => {
+    if (isGenerating) {
+      stopRequested = true;
+    } else {
+      sendMessage();
+    }
+  });
   textarea.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
@@ -3995,6 +4530,8 @@ function renderChatEditor(container, parallx, input) {
   const focusHandler = () => {
     clearTimeout(_focusDebounce);
     _focusDebounce = setTimeout(() => {
+      // Skip reload while a message is being edited inline — it would wipe the editor
+      if (messagesEl.querySelector('.tg-msg-body--editing')) return;
       if (!isGenerating) reloadThreadState().catch(() => {});
     }, 300);
   };
@@ -4002,7 +4539,10 @@ function renderChatEditor(container, parallx, input) {
   fileWatcher = parallx.workspace.onDidFilesChange?.((events) => {
     if (isGenerating) return;
     if (events.some((event) => event.uri.includes('/text-generator/'))) {
-      reloadThreadState().catch(() => {});
+      clearTimeout(_focusDebounce);
+      _focusDebounce = setTimeout(() => {
+        if (!isGenerating) reloadThreadState().catch(() => {});
+      }, 300);
     }
   });
 
@@ -4095,7 +4635,6 @@ function renderHomePage(container, parallx) {
     } else {
       for (const th of recent) {
         const row = el('div', 'tg-recent-row');
-        row.innerHTML = icon('message-circle', 14);
         row.appendChild(el('span', 'tg-recent-row-label', { text: th.title || 'Untitled' }));
         row.appendChild(el('span', 'tg-recent-row-time', { text: formatTimeAgo(th.updatedAt) }));
         row.addEventListener('click', () => {
@@ -4180,8 +4719,17 @@ function renderCharactersPage(container, parallx) {
   const grid = el('div', 'tg-card-grid');
   content.appendChild(grid);
 
+  // Lorebook section — created once, content refreshed
+  const loreSection = el('div', 'tg-page-section');
+  loreSection.style.marginTop = '32px';
+  loreSection.appendChild(el('div', 'tg-page-section-title', { text: 'Lorebooks' }));
+  const loreGrid = el('div', 'tg-card-grid');
+  loreSection.appendChild(loreGrid);
+  content.appendChild(loreSection);
+
   async function refresh() {
     grid.innerHTML = '';
+    loreGrid.innerHTML = '';
 
     // Create new card
     const createCard = el('div', 'tg-card tg-card--create');
@@ -4207,7 +4755,7 @@ function renderCharactersPage(container, parallx) {
     // Character cards
     const characters = await scanCharacters(fs, workspaceUri);
     for (const ch of characters) {
-      const name = ch.frontmatter.name || ch.fileName.replace('.md', '');
+      const name = ch.frontmatter.name || ch.fileName.replace(/\.(md|json)$/, '');
       const desc = ch.sections.roleInstruction
         ? ch.sections.roleInstruction.slice(0, 80) + (ch.sections.roleInstruction.length > 80 ? '\u2026' : '')
         : 'No description';
@@ -4248,20 +4796,28 @@ function renderCharactersPage(container, parallx) {
         const srcPath = resolveUri(dir, ch.fileName);
         try {
           const { content: srcContent } = await fs.readFile(srcPath);
-          const dupeData = JSON.parse(srcContent);
+          let dupeData;
+          if (ch.fileName.endsWith('.json')) {
+            dupeData = JSON.parse(srcContent);
+          } else {
+            dupeData = migrateCharacterMdToJson(srcContent, ch.fileName);
+          }
           const id = generateId().slice(0, 8);
           dupeData.id = 'char-' + id;
           dupeData.name = (dupeData.name || 'Character') + ' (copy)';
+          dupeData.createdAt = Date.now();
+          dupeData.updatedAt = Date.now();
           const dupeName = ch.fileName.replace(/\.(json|md)$/, '') + `-copy-${id}.json`;
           await fs.writeFile(resolveUri(dir, dupeName), JSON.stringify(dupeData, null, 2));
           refresh();
-        } catch { /* ignore */ }
+        } catch (err) { console.warn('[TextGenerator] Duplicate failed:', err); }
       });
 
       const delBtn = el('button', 'tg-card-action tg-card-action--danger');
       delBtn.innerHTML = icon('trash', 12) + ' Delete';
       delBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
+        if (!confirm(`Delete character "${name}"? This cannot be undone.`)) return;
         const dir = resolveUri(workspaceUri, `${EXT_ROOT}/characters`);
         try {
           await fs.delete(resolveUri(dir, ch.fileName));
@@ -4295,13 +4851,6 @@ function renderCharactersPage(container, parallx) {
       grid.appendChild(card);
     }
 
-    // Lorebooks sub-section
-    const loreSection = el('div', 'tg-page-section');
-    loreSection.style.marginTop = '32px';
-    loreSection.appendChild(el('div', 'tg-page-section-title', { text: 'Lorebooks' }));
-    const loreGrid = el('div', 'tg-card-grid');
-    loreSection.appendChild(loreGrid);
-
     // Create lorebook card
     const createLore = el('div', 'tg-card tg-card--create');
     createLore.innerHTML = icon('plus', 24);
@@ -4319,15 +4868,18 @@ function renderCharactersPage(container, parallx) {
 
     const lorebooks = await scanLorebooks(fs, workspaceUri);
     for (const lb of lorebooks) {
+      const loreParsed = parseFrontmatter(lb.content);
+      const loreName = loreParsed.frontmatter.name || lb.fileName.replace('.md', '');
+      const loreBody = loreParsed.body.trim();
       const loreCard = el('div', 'tg-card');
       const loreTop = el('div', 'tg-card-top');
       const loreAvatar = el('div', 'tg-card-avatar');
       loreAvatar.innerHTML = icon('book-open', 18);
       loreTop.appendChild(loreAvatar);
-      loreTop.appendChild(el('div', 'tg-card-name', { text: lb.fileName.replace('.md', '') }));
+      loreTop.appendChild(el('div', 'tg-card-name', { text: loreName }));
       loreCard.appendChild(loreTop);
       loreCard.appendChild(el('div', 'tg-card-desc', {
-        text: lb.content.slice(0, 80) + (lb.content.length > 80 ? '\u2026' : ''),
+        text: loreBody.slice(0, 80) + (loreBody.length > 80 ? '\u2026' : ''),
       }));
 
       const loreActions = el('div', 'tg-card-actions');
@@ -4345,16 +4897,23 @@ function renderCharactersPage(container, parallx) {
         const srcPath = resolveUri(dir, lb.fileName);
         try {
           const { content: srcContent } = await fs.readFile(srcPath);
+          // Append (copy) to the frontmatter name if present
+          let dupeContent = srcContent;
+          const nameMatch = dupeContent.match(/^(---[\s\S]*?\nname:\s*)(.+)(\n[\s\S]*?---)/);
+          if (nameMatch) {
+            dupeContent = dupeContent.replace(nameMatch[0], nameMatch[1] + nameMatch[2].trim() + ' (copy)' + nameMatch[3]);
+          }
           const id = generateId().slice(0, 8);
           const dupeName = lb.fileName.replace('.md', '') + `-copy-${id}.md`;
-          await fs.writeFile(resolveUri(dir, dupeName), srcContent);
+          await fs.writeFile(resolveUri(dir, dupeName), dupeContent);
           refresh();
-        } catch { /* ignore */ }
+        } catch (err) { console.warn('[TextGenerator] Lorebook duplicate failed:', err); }
       });
       const loreDel = el('button', 'tg-card-action tg-card-action--danger');
       loreDel.innerHTML = icon('trash', 12) + ' Delete';
       loreDel.addEventListener('click', async (e) => {
         e.stopPropagation();
+        if (!confirm(`Delete lorebook "${loreName}"? This cannot be undone.`)) return;
         try {
           await fs.delete(resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks/${lb.fileName}`));
           refresh();
@@ -4370,7 +4929,6 @@ function renderCharactersPage(container, parallx) {
       loreGrid.appendChild(loreCard);
     }
 
-    content.appendChild(loreSection);
   }
 
   refresh();
@@ -4387,10 +4945,12 @@ const DEFAULT_SETTINGS = {
   tokenBudgetHistory: 35,
   tokenBudgetUser: 30,
   defaultTemperature: 0.8,
-  defaultMaxTokens: 2048,
+  defaultMaxTokens: 0,
   defaultContextWindow: 8192,
   userName: 'Anon',
   defaultWritingPreset: 'immersive-rp',
+  defaultResponseLength: '',
+  defaultModel: '',
 };
 
 async function loadSettings(fs, workspaceUri) {
@@ -4476,11 +5036,22 @@ function renderSettingsPage(container, parallx) {
   sep.style.marginTop = '24px';
   form.appendChild(sep);
   const tempInput = formGroup('Temperature', 'Controls randomness (0.0 = deterministic, 2.0 = very random)', 'number', 'defaultTemperature', { min: 0, max: 2, step: 0.1 });
-  const maxTokInput = formGroup('Max tokens per response', 'Maximum tokens the model can generate', 'number', 'defaultMaxTokens', { min: 128, max: 16384 });
+  const maxTokInput = formGroup('Max tokens per response', '0 = unlimited (recommended for thinking models)', 'number', 'defaultMaxTokens', { min: 0, max: 16384 });
   const ctxInput = formGroup('Default context window', 'Used when model info is unavailable', 'number', 'defaultContextWindow', { min: 2048, max: 131072 });
   const userNameInput = formGroup('User display name', 'Used in {{user}} template substitution', 'text', 'userName');
   const presetSelect = formGroup('Default writing preset', 'Applied to newly created chats', 'select', 'defaultWritingPreset', {
     options: Object.entries(WRITING_PRESETS).map(([key, p]) => ({ label: p.label, value: key })),
+  });
+  const responseLengthSelect = formGroup('Default response length', 'Applied to newly created chats when no character override exists', 'select', 'defaultResponseLength', {
+    options: [
+      { value: '', label: 'No limit (default)' },
+      { value: 'short', label: 'Short (1 paragraph)' },
+      { value: 'medium', label: 'Medium (2-3 paragraphs)' },
+      { value: 'long', label: 'Long (4+ paragraphs)' },
+    ],
+  });
+  const defaultModelSelect = formGroup('Default model', 'Used for newly created chats. Leave empty to auto-select first available model.', 'select', 'defaultModel', {
+    options: [{ value: '', label: '(auto — first available)' }],
   });
 
   // Save button
@@ -4506,19 +5077,34 @@ function renderSettingsPage(container, parallx) {
     ctxInput.value = s.defaultContextWindow;
     userNameInput.value = s.userName;
     presetSelect.value = s.defaultWritingPreset || 'immersive-rp';
+    responseLengthSelect.value = s.defaultResponseLength || '';
+    // Populate model dropdown from available LM models
+    if (parallx.lm) {
+      try {
+        const availableModels = await parallx.lm.listModels();
+        for (const m of availableModels) {
+          const opt = el('option', null, { text: m.name || m.id });
+          opt.value = m.id;
+          defaultModelSelect.appendChild(opt);
+        }
+      } catch { /* no models available */ }
+    }
+    defaultModelSelect.value = s.defaultModel || '';
   }
 
   saveBtn.addEventListener('click', async () => {
     const settings = {
-      tokenBudgetCharacter: Number(charBudget.value) || DEFAULT_SETTINGS.tokenBudgetCharacter,
-      tokenBudgetLore: Number(loreBudget.value) || DEFAULT_SETTINGS.tokenBudgetLore,
-      tokenBudgetHistory: Number(histBudget.value) || DEFAULT_SETTINGS.tokenBudgetHistory,
-      tokenBudgetUser: Number(userBudget.value) || DEFAULT_SETTINGS.tokenBudgetUser,
-      defaultTemperature: Number(tempInput.value) ?? DEFAULT_SETTINGS.defaultTemperature,
-      defaultMaxTokens: Number(maxTokInput.value) || DEFAULT_SETTINGS.defaultMaxTokens,
-      defaultContextWindow: Number(ctxInput.value) || DEFAULT_SETTINGS.defaultContextWindow,
+      tokenBudgetCharacter: Number.isFinite(Number(charBudget.value)) ? Number(charBudget.value) : DEFAULT_SETTINGS.tokenBudgetCharacter,
+      tokenBudgetLore: Number.isFinite(Number(loreBudget.value)) ? Number(loreBudget.value) : DEFAULT_SETTINGS.tokenBudgetLore,
+      tokenBudgetHistory: Number.isFinite(Number(histBudget.value)) ? Number(histBudget.value) : DEFAULT_SETTINGS.tokenBudgetHistory,
+      tokenBudgetUser: Number.isFinite(Number(userBudget.value)) ? Number(userBudget.value) : DEFAULT_SETTINGS.tokenBudgetUser,
+      defaultTemperature: Number.isFinite(Number(tempInput.value)) ? Number(tempInput.value) : DEFAULT_SETTINGS.defaultTemperature,
+      defaultMaxTokens: Number.isFinite(Number(maxTokInput.value)) ? Number(maxTokInput.value) : DEFAULT_SETTINGS.defaultMaxTokens,
+      defaultContextWindow: Number.isFinite(Number(ctxInput.value)) && Number(ctxInput.value) > 0 ? Number(ctxInput.value) : DEFAULT_SETTINGS.defaultContextWindow,
       userName: userNameInput.value.trim() || DEFAULT_SETTINGS.userName,
       defaultWritingPreset: presetSelect.value || DEFAULT_SETTINGS.defaultWritingPreset,
+      defaultResponseLength: responseLengthSelect.value || '',
+      defaultModel: defaultModelSelect.value || '',
     };
     await saveSettings(fs, workspaceUri, settings);
     savedLabel.classList.add('tg-form-saved--show');
@@ -4580,10 +5166,6 @@ function renderCharacterEditor(container, parallx, input) {
     roleInput,
   ));
 
-  const avatarInput = el('input', 'tg-ce-input');
-  avatarInput.placeholder = '(optional) path or URL to character avatar image';
-  root.appendChild(field(`${icon('image', 14)} Character avatar image URL`, null, avatarInput));
-
   const lengthSelect = el('select', 'tg-ce-select');
   for (const opt of [
     { value: '', label: 'No reply length limit' },
@@ -4604,10 +5186,6 @@ function renderCharacterEditor(container, parallx, input) {
   const userDescInput = el('textarea', 'tg-ce-textarea tg-ce-textarea--short');
   userDescInput.placeholder = '(optional)';
   root.appendChild(field('User\'s description/role', 'What role do you, the user, play when talking to this character? This overrides the user\'s default description.', userDescInput));
-
-  const userAvatarInput = el('input', 'tg-ce-input');
-  userAvatarInput.placeholder = '(optional) path or URL';
-  root.appendChild(field('User\'s avatar pic URL', null, userAvatarInput));
 
   root.appendChild(el('hr', 'tg-ce-separator'));
 
@@ -4640,14 +5218,14 @@ function renderCharacterEditor(container, parallx, input) {
   ));
 
   // ── "show more settings" / collapsed section ──
-  const moreBtn = el('button', 'tg-ce-more-btn', { text: 'show more settings' });
+  const moreBtn = el('button', 'tg-ce-more-btn', { text: 'Show More Settings' });
   root.appendChild(moreBtn);
   const moreSection = el('div', 'tg-ce-more-section');
   root.appendChild(moreSection);
 
   moreBtn.addEventListener('click', () => {
     const visible = moreSection.classList.toggle('tg-ce-more-section--visible');
-    moreBtn.textContent = visible ? 'hide more settings' : 'show more settings';
+    moreBtn.textContent = visible ? 'Hide More Settings' : 'Show More Settings';
   });
 
   // ── More Settings fields ──
@@ -4681,8 +5259,8 @@ function renderCharacterEditor(container, parallx, input) {
   // Context method
   const fitSelect = el('select', 'tg-ce-select');
   for (const opt of [
-    { value: 'dropOld', label: 'drop oldest messages' },
-    { value: 'summarizeOld', label: 'summarize oldest messages' },
+    { value: 'dropOld', label: 'Drop Oldest Messages' },
+    { value: 'summarizeOld', label: 'Summarize Oldest Messages' },
   ]) {
     const o = el('option', null, { text: opt.label });
     o.value = opt.value;
@@ -4704,39 +5282,6 @@ function renderCharacterEditor(container, parallx, input) {
 
   moreSection.appendChild(el('hr', 'tg-ce-separator'));
 
-  // Avatar settings row
-  const avatarRow = el('div', 'tg-ce-row');
-  const avatarSizeInput = el('input', 'tg-ce-input');
-  avatarSizeInput.type = 'number';
-  avatarSizeInput.min = '0.5';
-  avatarSizeInput.max = '3';
-  avatarSizeInput.step = '0.25';
-  avatarRow.appendChild(field('Character\'s avatar pic size', 'A multiplier (1 = default, 2 = 2x).', avatarSizeInput));
-  const avatarShapeSelect = el('select', 'tg-ce-select');
-  for (const opt of ['default', 'square', 'circle']) {
-    const o = el('option', null, { text: opt });
-    o.value = opt;
-    avatarShapeSelect.appendChild(o);
-  }
-  avatarRow.appendChild(field('Character\'s avatar shape', null, avatarShapeSelect));
-  moreSection.appendChild(avatarRow);
-
-  const userAvatarRow = el('div', 'tg-ce-row');
-  const userAvatarSizeInput = el('input', 'tg-ce-input');
-  userAvatarSizeInput.type = 'number';
-  userAvatarSizeInput.min = '0.5';
-  userAvatarSizeInput.max = '3';
-  userAvatarSizeInput.step = '0.25';
-  userAvatarRow.appendChild(field('User\'s avatar pic size', null, userAvatarSizeInput));
-  const userAvatarShapeSelect = el('select', 'tg-ce-select');
-  for (const opt of ['default', 'square', 'circle']) {
-    const o = el('option', null, { text: opt });
-    o.value = opt;
-    userAvatarShapeSelect.appendChild(o);
-  }
-  userAvatarRow.appendChild(field('User\'s avatar shape', null, userAvatarShapeSelect));
-  moreSection.appendChild(userAvatarRow);
-
   moreSection.appendChild(el('hr', 'tg-ce-separator'));
 
   // Shortcut buttons
@@ -4750,14 +5295,10 @@ function renderCharacterEditor(container, parallx, input) {
 
   moreSection.appendChild(el('hr', 'tg-ce-separator'));
 
-  // System name, system avatar, placeholder
+  // System name, placeholder
   const sysNameInput = el('input', 'tg-ce-input');
   sysNameInput.placeholder = '(optional)';
   moreSection.appendChild(field('System\'s name', null, sysNameInput));
-
-  const sysAvatarInput = el('input', 'tg-ce-input');
-  sysAvatarInput.placeholder = '(optional)';
-  moreSection.appendChild(field('System\'s avatar pic URL', null, sysAvatarInput));
 
   const placeholderInput = el('input', 'tg-ce-input');
   placeholderInput.placeholder = 'e.g. "Type your reply to {{char}} here..."';
@@ -4784,14 +5325,14 @@ function renderCharacterEditor(container, parallx, input) {
   const maxTokInput = el('input', 'tg-ce-input');
   maxTokInput.type = 'number';
   maxTokInput.min = '64';
-  genRow.appendChild(field('Max tokens per message', 'Max token budget per reply. Default: 2048', maxTokInput));
+  genRow.appendChild(field('Max tokens per message', 'Max token budget per reply. 0 = unlimited (recommended for thinking models)', maxTokInput));
   moreSection.appendChild(genRow);
 
   // ── Footer: cancel + save ──
   const footer = el('div', 'tg-ce-footer');
-  const cancelBtn = el('button', 'tg-ce-cancel-btn', { text: 'cancel' });
+  const cancelBtn = el('button', 'tg-ce-cancel-btn', { text: 'Cancel' });
   const savedLabel = el('span', 'tg-ce-saved', { text: 'Saved!' });
-  const saveBtn = el('button', 'tg-ce-save-btn', { text: 'save character' });
+  const saveBtn = el('button', 'tg-ce-save-btn', { text: 'Save Character' });
   footer.append(cancelBtn, savedLabel, saveBtn);
   root.appendChild(footer);
 
@@ -4801,11 +5342,9 @@ function renderCharacterEditor(container, parallx, input) {
   function populateForm(data) {
     nameInput.value = data.name || '';
     roleInput.value = data.roleInstruction || '';
-    avatarInput.value = data.avatarUrl || '';
     lengthSelect.value = data.messageLengthLimit || '';
     userNameInput.value = data.userName || '';
     userDescInput.value = data.userDescription || '';
-    userAvatarInput.value = data.userAvatarUrl || '';
     reminderInput.value = data.reminder || '';
     presetSelect.value = data.writingPreset || 'immersive-rp';
     initialMsgInput.value = data.initialMessages || '';
@@ -4814,17 +5353,12 @@ function renderCharacterEditor(container, parallx, input) {
     loreTextarea.value = (data.lorebookFiles || []).join('\n');
     fitSelect.value = data.fitMessagesInContextMethod || 'dropOld';
     memorySelect.value = String(data.extendedMemory || false);
-    avatarSizeInput.value = data.avatarSize ?? 1;
-    avatarShapeSelect.value = data.avatarShape || 'default';
-    userAvatarSizeInput.value = data.userAvatarSize ?? 1;
-    userAvatarShapeSelect.value = data.userAvatarShape || 'default';
     shortcutInput.value = data.shortcutButtons || '';
     sysNameInput.value = data.systemName || '';
-    sysAvatarInput.value = data.systemAvatarUrl || '';
     placeholderInput.value = data.messageInputPlaceholder || '';
     exampleInput.value = data.exampleDialogue || '';
     tempInput.value = data.temperature ?? 0.8;
-    maxTokInput.value = data.maxTokensPerMessage ?? 2048;
+    maxTokInput.value = data.maxTokensPerMessage ?? 0;
   }
 
   // ── Collect form into data object ──
@@ -4834,11 +5368,9 @@ function renderCharacterEditor(container, parallx, input) {
       ...charData,
       name: nameInput.value.trim() || 'Unnamed',
       roleInstruction: roleInput.value,
-      avatarUrl: avatarInput.value.trim(),
       messageLengthLimit: lengthSelect.value,
       userName: userNameInput.value.trim(),
       userDescription: userDescInput.value,
-      userAvatarUrl: userAvatarInput.value.trim(),
       reminder: reminderInput.value,
       writingPreset: presetSelect.value || 'immersive-rp',
       initialMessages: initialMsgInput.value,
@@ -4847,17 +5379,12 @@ function renderCharacterEditor(container, parallx, input) {
       lorebookFiles: loreLines,
       fitMessagesInContextMethod: fitSelect.value || 'dropOld',
       extendedMemory: memorySelect.value === 'true',
-      avatarSize: Number(avatarSizeInput.value) || 1,
-      avatarShape: avatarShapeSelect.value || 'default',
-      userAvatarSize: Number(userAvatarSizeInput.value) || 1,
-      userAvatarShape: userAvatarShapeSelect.value || 'default',
       shortcutButtons: shortcutInput.value,
       systemName: sysNameInput.value.trim(),
-      systemAvatarUrl: sysAvatarInput.value.trim(),
       messageInputPlaceholder: placeholderInput.value.trim(),
       exampleDialogue: exampleInput.value,
-      temperature: Number(tempInput.value) || 0.8,
-      maxTokensPerMessage: Number(maxTokInput.value) || 2048,
+      temperature: Number.isFinite(Number(tempInput.value)) ? Number(tempInput.value) : 0.8,
+      maxTokensPerMessage: Number(maxTokInput.value) || 0,
     };
   }
 
@@ -4903,7 +5430,8 @@ function renderChatSettingsPage(container, parallx, input) {
 
   const fs = parallx.workspace?.fs;
   const workspaceUri = parallx.workspace?.workspaceFolders?.[0]?.uri;
-  const threadId = input?.instanceId || input?.id;
+  const rawId = input?.instanceId || input?.id || '';
+  const threadId = rawId.startsWith('chat-settings:') ? rawId.slice('chat-settings:'.length) : rawId;
 
   const root = el('div', 'tg-chat-settings');
   container.appendChild(root);
@@ -5121,7 +5649,7 @@ function renderChatSettingsPage(container, parallx, input) {
       return;
     }
     for (const item of items) {
-      const label = item.frontmatter?.name || item.fileName.replace('.md', '');
+      const label = item.frontmatter?.name || item.fileName.replace(/\.(md|json)$/, '');
       const chip = el('button', `tg-cs-chip${activeSet.has(item.fileName) ? ' tg-cs-chip--active' : ''}`, { text: label });
       chip.dataset.fileName = item.fileName;
       chip.addEventListener('click', () => toggleChip(chip));
@@ -5137,9 +5665,9 @@ function renderChatSettingsPage(container, parallx, input) {
       writingPreset: presetSelect.value || 'immersive-rp',
       lorebookFiles: collectActiveFiles(loreChipList),
       modelId: modelSelect.value || thread.modelId,
-      temperatureOverride: tempInput.value.trim() ? Number(tempInput.value) : null,
-      maxTokensOverride: maxTokensInput.value.trim() ? Number(maxTokensInput.value) : null,
-      contextWindowOverride: contextInput.value.trim() ? Number(contextInput.value) : null,
+      temperatureOverride: tempInput.value.trim() && Number.isFinite(Number(tempInput.value)) ? Number(tempInput.value) : null,
+      maxTokensOverride: maxTokensInput.value.trim() && Number.isFinite(Number(maxTokensInput.value)) ? Number(maxTokensInput.value) : null,
+      contextWindowOverride: contextInput.value.trim() && Number.isFinite(Number(contextInput.value)) ? Number(contextInput.value) : null,
       responseLength: lengthSelect.value || null,
     };
     await updateThreadMeta(fs, workspaceUri, threadId, updates);
@@ -5204,33 +5732,6 @@ function renderChatSettingsPage(container, parallx, input) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 11: TEMPLATES
 // ═══════════════════════════════════════════════════════════════════════════════
-
-const CHARACTER_TEMPLATE = `---
-name: New Character
-temperature: 0.8
-maxTokensPerMessage: 2048
-writingPreset: immersive-rp
----
-
-Describe your character's personality, backstory, speaking style, and behavior here.
-Everything in this section becomes the character's core instructions.
-Use {{char}} to refer to the character and {{user}} to refer to the user.
-
-{{char}} acts and speaks in character at all times. {{char}} never references being an AI.
-
-## Reminder
-
-A short reminder placed near the end of context to reinforce character behavior.
-
-## Initial Messages
-
-[AI]: Hello! I'm {{char}}. Edit my .md file to give me a personality!
-
-## Example Dialogue
-
-[USER]: How are you?
-[AI]: I'm doing well, thank you for asking!
-`;
 
 const LOREBOOK_TEMPLATE = `---
 name: New Lorebook
@@ -5302,7 +5803,9 @@ Format:
 };
 
 function getPresetContent(presetKey) {
-  return WRITING_PRESETS[presetKey]?.content || WRITING_PRESETS['immersive-rp'].content;
+  const preset = WRITING_PRESETS[presetKey];
+  if (preset && 'content' in preset) return preset.content;
+  return WRITING_PRESETS['immersive-rp'].content;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -5319,9 +5822,11 @@ async function scaffoldExamples(fs, workspaceUri) {
   await ensureNestedDirs(fs, workspaceUri, ['.parallx', 'extensions', 'text-generator', 'characters']);
   await ensureNestedDirs(fs, workspaceUri, ['.parallx', 'extensions', 'text-generator', 'lorebooks']);
 
-  const exampleChar = resolveUri(workspaceUri, `${EXT_ROOT}/characters/ada-lovelace.md`);
-  if (!(await fs.exists(exampleChar))) {
-    await fs.writeFile(exampleChar, EXAMPLE_CHARACTER);
+  const exampleCharJson = resolveUri(workspaceUri, `${EXT_ROOT}/characters/ada-lovelace.json`);
+  const exampleCharMd = resolveUri(workspaceUri, `${EXT_ROOT}/characters/ada-lovelace.md`);
+  if (!(await fs.exists(exampleCharJson)) && !(await fs.exists(exampleCharMd))) {
+    const migrated = migrateCharacterMdToJson(EXAMPLE_CHARACTER, 'ada-lovelace.md');
+    await fs.writeFile(exampleCharJson, JSON.stringify(migrated, null, 2));
   }
 
   const exampleLore = resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks/victorian-science.md`);
@@ -5334,7 +5839,7 @@ const EXAMPLE_CHARACTER = `---
 name: Ada Lovelace
 avatar: user
 temperature: 0.8
-maxTokensPerMessage: 2048
+maxTokensPerMessage: 0
 writingPreset: immersive-rp
 ---
 

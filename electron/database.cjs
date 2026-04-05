@@ -313,7 +313,215 @@ class DatabaseManager {
   }
 }
 
-// Export a singleton instance (main process is single-threaded)
-const databaseManager = new DatabaseManager();
+// ─── ExtensionDatabaseManager ────────────────────────────────────────────────
+//
+// Manages per-extension SQLite databases.  Each external extension gets its
+// own database file at <workspace>/.parallx/extensions/<name>/data.db.
+// Deleting the extension's folder removes all its data.
 
-module.exports = { DatabaseManager, databaseManager };
+class ExtensionDatabaseManager {
+  /** @type {Map<string, import('better-sqlite3').Database>} extensionId → db */
+  _databases = new Map();
+
+  /** @type {Map<string, string>} extensionId → dbPath */
+  _paths = new Map();
+
+  /**
+   * Open (or create) a database for the given extension.
+   *
+   * @param {string} extensionId — unique extension identifier (e.g. 'media-organizer')
+   * @param {string} workspacePath — absolute path to the workspace root
+   * @returns {string} The database file path.
+   */
+  open(extensionId, workspacePath) {
+    // Already open for this extension — return existing path
+    if (this._databases.has(extensionId)) {
+      return this._paths.get(extensionId);
+    }
+
+    const extDir = path.join(workspacePath, '.parallx', 'extensions', extensionId);
+    if (!fs.existsSync(extDir)) {
+      fs.mkdirSync(extDir, { recursive: true });
+    }
+
+    const dbPath = path.join(extDir, 'data.db');
+    const db = new Database(dbPath);
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+    sqliteVec.load(db);
+
+    this._databases.set(extensionId, db);
+    this._paths.set(extensionId, dbPath);
+
+    console.log(`[ExtensionDB] Opened database for "${extensionId}": ${dbPath}`);
+    return dbPath;
+  }
+
+  /**
+   * Close the database for a specific extension.
+   * @param {string} extensionId
+   */
+  close(extensionId) {
+    const db = this._databases.get(extensionId);
+    if (db) {
+      try {
+        db.close();
+        console.log(`[ExtensionDB] Closed database for "${extensionId}"`);
+      } catch (err) {
+        console.error(`[ExtensionDB] Error closing database for "${extensionId}":`, err.message);
+      }
+      this._databases.delete(extensionId);
+      this._paths.delete(extensionId);
+    }
+  }
+
+  /**
+   * Close all open extension databases.
+   */
+  closeAll() {
+    for (const id of [...this._databases.keys()]) {
+      this.close(id);
+    }
+  }
+
+  /**
+   * Whether a database is open for the given extension.
+   * @param {string} extensionId
+   * @returns {boolean}
+   */
+  isOpen(extensionId) {
+    return this._databases.has(extensionId);
+  }
+
+  /**
+   * @param {string} extensionId
+   * @returns {import('better-sqlite3').Database}
+   */
+  _getDb(extensionId) {
+    const db = this._databases.get(extensionId);
+    if (!db) {
+      throw new Error(`[ExtensionDB] No database open for extension "${extensionId}". Call open() first.`);
+    }
+    return db;
+  }
+
+  /**
+   * Run migrations for an extension.
+   * @param {string} extensionId
+   * @param {string} migrationsDir
+   */
+  migrate(extensionId, migrationsDir) {
+    const db = this._getDb(extensionId);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS _migrations (
+        name TEXT PRIMARY KEY,
+        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+
+    let files;
+    try {
+      files = fs.readdirSync(migrationsDir)
+        .filter(f => f.endsWith('.sql'))
+        .sort();
+    } catch (err) {
+      console.warn(`[ExtensionDB] Cannot read migrations dir "${migrationsDir}":`, err.message);
+      return;
+    }
+
+    if (files.length === 0) return;
+
+    const applied = new Set(
+      db.prepare('SELECT name FROM _migrations').all().map(r => r.name),
+    );
+
+    let appliedCount = 0;
+    for (const file of files) {
+      if (applied.has(file)) continue;
+
+      const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
+      const runMigration = db.transaction(() => {
+        db.exec(sql);
+        db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(file);
+      });
+
+      try {
+        runMigration();
+        appliedCount++;
+        console.log(`[ExtensionDB] Applied migration for "${extensionId}": ${file}`);
+      } catch (err) {
+        console.error(`[ExtensionDB] Migration "${file}" failed for "${extensionId}":`, err.message);
+        throw err;
+      }
+    }
+
+    if (appliedCount > 0) {
+      console.log(`[ExtensionDB] ${appliedCount} migration(s) applied for "${extensionId}"`);
+    }
+  }
+
+  /** @param {string} extensionId */
+  run(extensionId, sql, params = []) {
+    return this._getDb(extensionId).prepare(sql).run(...params);
+  }
+
+  /** @param {string} extensionId */
+  get(extensionId, sql, params = []) {
+    return this._getDb(extensionId).prepare(sql).get(...params);
+  }
+
+  /** @param {string} extensionId */
+  all(extensionId, sql, params = []) {
+    return this._getDb(extensionId).prepare(sql).all(...params);
+  }
+
+  /**
+   * Execute multiple operations in a single IMMEDIATE transaction.
+   * @param {string} extensionId
+   * @param {{ type: 'run'|'get'|'all', sql: string, params?: any[] }[]} operations
+   * @returns {any[]}
+   */
+  runTransaction(extensionId, operations) {
+    const db = this._getDb(extensionId);
+
+    const txn = db.transaction(() => {
+      const results = [];
+      let lastRowId = null;
+      for (const op of operations) {
+        const params = (op.params || []).map(p =>
+          p === '$lastRowId' ? lastRowId : p,
+        );
+        let result;
+        switch (op.type) {
+          case 'run':
+            result = db.prepare(op.sql).run(...params);
+            if (result.lastInsertRowid != null) {
+              lastRowId = typeof result.lastInsertRowid === 'bigint'
+                ? Number(result.lastInsertRowid)
+                : result.lastInsertRowid;
+            }
+            results.push(result);
+            break;
+          case 'get':
+            results.push(db.prepare(op.sql).get(...params));
+            break;
+          case 'all':
+            results.push(db.prepare(op.sql).all(...params));
+            break;
+          default:
+            throw new Error(`[ExtensionDB] Unknown operation type: ${op.type}`);
+        }
+      }
+      return results;
+    });
+
+    return txn.immediate();
+  }
+}
+
+// Export singleton instances (main process is single-threaded)
+const databaseManager = new DatabaseManager();
+const extensionDatabaseManager = new ExtensionDatabaseManager();
+
+module.exports = { DatabaseManager, databaseManager, ExtensionDatabaseManager, extensionDatabaseManager };

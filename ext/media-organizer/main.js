@@ -1,6 +1,7 @@
 // Media Organizer — Parallx Extension
 // Organize photos and videos with tags, albums, and EXIF metadata.
-// All data lives in the shared workspace SQLite DB with mo_ table prefix.
+// All data lives in a per-extension isolated SQLite database at
+// <workspace>/.parallx/extensions/media-organizer/data.db.
 //
 // Single-file constraint: Parallx loads extensions via blob URL, so all JS
 // must live in this file. SQL migrations are separate (read by main process).
@@ -10,27 +11,30 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
 // ═══════════════════════════════════════════════════════════════════════════════
-// Convenience layer over window.parallxElectron.database that unwraps the
+// Convenience layer over api.database that unwraps the
 // { error, ... } envelope and throws on failure.
+// Late-bound: _dbBridge is set during activate() from api.database.
+
+let _dbBridge = null;
 
 const db = {
   async run(sql, params = []) {
-    const res = await window.parallxElectron.database.run(sql, params);
+    const res = await _dbBridge.run(sql, params);
     if (res.error) throw new Error(`[MO-DB] ${res.error.message}`);
     return res;
   },
   async get(sql, params = []) {
-    const res = await window.parallxElectron.database.get(sql, params);
+    const res = await _dbBridge.get(sql, params);
     if (res.error) throw new Error(`[MO-DB] ${res.error.message}`);
     return res.row ?? null;
   },
   async all(sql, params = []) {
-    const res = await window.parallxElectron.database.all(sql, params);
+    const res = await _dbBridge.all(sql, params);
     if (res.error) throw new Error(`[MO-DB] ${res.error.message}`);
     return res.rows ?? [];
   },
   async transaction(ops) {
-    const res = await window.parallxElectron.database.runTransaction(ops);
+    const res = await _dbBridge.runTransaction(ops);
     if (res.error) throw new Error(`[MO-DB] ${res.error.message}`);
     return res.results ?? [];
   },
@@ -2534,6 +2538,10 @@ async function runScan(rootPath, api) {
     api.window.showWarningMessage('A scan is already in progress.');
     return null;
   }
+  if (isInternalPath(rootPath)) {
+    api.window.showWarningMessage('Cannot scan internal .parallx directories.');
+    return null;
+  }
 
   const startTime = Date.now();
   _scanRunning = true;
@@ -2617,6 +2625,12 @@ async function runScan(rootPath, api) {
       : `Scan complete: ${stats.total} files (${stats.created} new, ${stats.updated} updated, ${stats.renamed} renamed, ${stats.skipped} unchanged, ${stats.duplicates} duplicates, ${stats.errors} errors) in ${durationSec}s`;
     api.window.showInformationMessage(msg);
 
+    // Record scan root so we can watch it for changes
+    if (!stats.cancelled) {
+      await recordScanRoot(rootPath);
+      startWatcherForRoot(rootPath);
+    }
+
     // Refresh sidebar sections (folders, tags, albums)
     _notifySidebarRefresh();
   }
@@ -2624,6 +2638,331 @@ async function runScan(rootPath, api) {
 
 function cancelScan() {
   if (_scanRunning) _scanCancelled = true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 17B: FILE WATCHER & AUTO-SCAN
+// ═══════════════════════════════════════════════════════════════════════════════
+// After the first manual scan, we watch scanned directories for changes and
+// auto-scan new/modified/deleted files incrementally. On relaunch we also run
+// a delta scan to catch anything that changed while the app was closed.
+
+/** Reject any path that passes through .parallx (thumbnails, extensions data, etc.) */
+function isInternalPath(filePath) {
+  return /[\/\\]\.parallx[\/\\]/i.test(filePath) || filePath.endsWith('.parallx');
+}
+
+/** @type {Map<string, { watchId: string, unsubscribe: () => void }>} */
+const _activeMediaWatchers = new Map();
+
+let _watcherProcessing = false;
+let _watcherQueue = [];
+let _watcherDebounceTimer = null;
+const WATCHER_BATCH_DELAY_MS = 500;
+
+// ── Scan root persistence ──
+
+async function recordScanRoot(rootPath) {
+  try {
+    await db.run(
+      `INSERT INTO mo_scan_roots (path, last_scan_at) VALUES (?, datetime('now'))
+       ON CONFLICT(path) DO UPDATE SET last_scan_at = datetime('now')`,
+      [rootPath]
+    );
+  } catch (err) {
+    console.warn('[MediaOrganizer] Failed to record scan root:', err);
+  }
+}
+
+async function getScanRoots() {
+  try {
+    return await db.all('SELECT * FROM mo_scan_roots ORDER BY path ASC');
+  } catch {
+    return [];
+  }
+}
+
+// ── Incremental processing ──
+
+async function processIncrementalCreate(filePath) {
+  if (isInternalPath(filePath)) return null;
+  const sep = _isWindows ? '\\' : '/';
+  const lastSep = filePath.lastIndexOf(sep);
+  const dirPath = lastSep > 0 ? filePath.slice(0, lastSep) : filePath;
+  const fileName = lastSep > 0 ? filePath.slice(lastSep + 1) : filePath;
+
+  const fileType = classifyFile(fileName);
+  if (!fileType) return null;
+
+  // Stat to get size/mtime
+  const statResult = await window.parallxElectron.fs.stat(filePath);
+  if (statResult.error) return null;
+  if (statResult.size < SCAN_DEFAULTS.minFileSize) return null;
+
+  const folder = await FolderQueries.findOrCreate(dirPath);
+  const entry = {
+    path: filePath,
+    name: fileName,
+    size: statResult.size,
+    mtime: statResult.mtime,
+    fileType,
+    folderId: folder.id,
+  };
+
+  return processFile(entry);
+}
+
+async function processIncrementalDelete(filePath) {
+  if (isInternalPath(filePath)) return null;
+  const sep = _isWindows ? '\\' : '/';
+  const lastSep = filePath.lastIndexOf(sep);
+  const dirPath = lastSep > 0 ? filePath.slice(0, lastSep) : filePath;
+  const fileName = lastSep > 0 ? filePath.slice(lastSep + 1) : filePath;
+
+  if (!classifyFile(fileName)) return null;
+
+  const folder = await FolderQueries.findByPath(dirPath);
+  if (!folder) return null;
+
+  const file = await FileQueries.findByFolderAndName(folder.id, fileName);
+  if (!file) return null;
+
+  // Remove domain entity links and the file record
+  const photoLink = await db.get('SELECT photo_id FROM mo_photos_files WHERE file_id = ?', [file.id]);
+  if (photoLink) {
+    await db.run('DELETE FROM mo_photos_files WHERE file_id = ?', [file.id]);
+    // If no other files linked to this photo, remove the photo too
+    const otherLinks = await db.get('SELECT COUNT(*) as cnt FROM mo_photos_files WHERE photo_id = ?', [photoLink.photo_id]);
+    if (!otherLinks || otherLinks.cnt === 0) {
+      await db.run('DELETE FROM mo_photos WHERE id = ?', [photoLink.photo_id]);
+    }
+  }
+  const videoLink = await db.get('SELECT video_id FROM mo_videos_files WHERE file_id = ?', [file.id]);
+  if (videoLink) {
+    await db.run('DELETE FROM mo_videos_files WHERE file_id = ?', [file.id]);
+    const otherLinks = await db.get('SELECT COUNT(*) as cnt FROM mo_videos_files WHERE video_id = ?', [videoLink.video_id]);
+    if (!otherLinks || otherLinks.cnt === 0) {
+      await db.run('DELETE FROM mo_videos WHERE id = ?', [videoLink.video_id]);
+    }
+  }
+
+  await db.run('DELETE FROM mo_fingerprints WHERE file_id = ?', [file.id]);
+  await db.run('DELETE FROM mo_files WHERE id = ?', [file.id]);
+
+  return { action: 'deleted', fileId: file.id };
+}
+
+// ── Batched watcher event processor ──
+
+async function drainWatcherQueue() {
+  if (_watcherProcessing || _watcherQueue.length === 0) return;
+  _watcherProcessing = true;
+
+  const batch = _watcherQueue.splice(0);
+  let created = 0, updated = 0, deleted = 0, errors = 0;
+
+  try {
+    // Ensure tools are detected for metadata extraction
+    await detectAllTools();
+
+    for (const evt of batch) {
+      try {
+        if (evt.type === 'deleted') {
+          const result = await processIncrementalDelete(evt.path);
+          if (result) deleted++;
+        } else {
+          // 'created' or 'changed' — upsert via processFile
+          const result = await processIncrementalCreate(evt.path);
+          if (result) {
+            if (result.action === 'created') created++;
+            else if (result.action === 'updated') updated++;
+          }
+        }
+      } catch (err) {
+        console.warn(`[MediaOrganizer] Watcher: error processing ${evt.path}:`, err);
+        errors++;
+      }
+    }
+
+    if (created + updated + deleted > 0) {
+      console.log(`[MediaOrganizer] Auto-scan: ${created} new, ${updated} updated, ${deleted} removed`);
+      _notifySidebarRefresh();
+    }
+  } finally {
+    _watcherProcessing = false;
+    // If more events arrived while processing, drain again
+    if (_watcherQueue.length > 0) {
+      drainWatcherQueue();
+    }
+  }
+}
+
+function enqueueWatcherEvent(evt) {
+  _watcherQueue.push(evt);
+  if (_watcherDebounceTimer) clearTimeout(_watcherDebounceTimer);
+  _watcherDebounceTimer = setTimeout(() => {
+    _watcherDebounceTimer = null;
+    drainWatcherQueue();
+  }, WATCHER_BATCH_DELAY_MS);
+}
+
+// ── Watcher lifecycle ──
+
+function startWatcherForRoot(rootPath) {
+  if (_activeMediaWatchers.has(rootPath)) return; // already watching
+
+  const fsApi = window.parallxElectron.fs;
+  fsApi.watch(rootPath, { recursive: true }).then(({ watchId, error }) => {
+    if (error) {
+      console.warn(`[MediaOrganizer] Could not watch ${rootPath}:`, error.message);
+      return;
+    }
+
+    const unsubscribe = fsApi.onDidChange((payload) => {
+      if (payload.watchId !== watchId) return;
+      if (payload.error) {
+        console.warn('[MediaOrganizer] Watcher error:', payload.error);
+        return;
+      }
+      for (const evt of payload.events) {
+        // Skip internal .parallx paths (thumbnails, extension data)
+        if (isInternalPath(evt.path)) continue;
+        // Only care about media files
+        const fileName = evt.path.split(/[/\\]/).pop();
+        if (!classifyFile(fileName)) continue;
+        enqueueWatcherEvent(evt);
+      }
+    });
+
+    _activeMediaWatchers.set(rootPath, { watchId, unsubscribe });
+    console.log(`[MediaOrganizer] Watching ${rootPath} (${watchId})`);
+  });
+}
+
+function stopAllWatchers() {
+  const fsApi = window.parallxElectron.fs;
+  for (const [rootPath, entry] of _activeMediaWatchers) {
+    entry.unsubscribe();
+    fsApi.unwatch(entry.watchId).catch(() => {});
+    console.log(`[MediaOrganizer] Stopped watching ${rootPath}`);
+  }
+  _activeMediaWatchers.clear();
+  _watcherQueue = [];
+  if (_watcherDebounceTimer) { clearTimeout(_watcherDebounceTimer); _watcherDebounceTimer = null; }
+}
+
+// ── Delta scan on relaunch ──
+// Compares filesystem state against DB for all scanned roots.
+// Detects new files, modified files (mtime changed), and deleted files.
+
+async function runDeltaScan(api) {
+  const roots = await getScanRoots();
+  if (roots.length === 0) return;
+
+  await detectAllTools();
+
+  let totalCreated = 0, totalUpdated = 0, totalDeleted = 0;
+
+  for (const root of roots) {
+    const rootPath = root.path;
+
+    // Check root still exists
+    const rootExists = await window.parallxElectron.fs.exists(rootPath);
+    if (!rootExists) {
+      console.warn(`[MediaOrganizer] Scan root no longer exists: ${rootPath}`);
+      continue;
+    }
+
+    try {
+      // Walk current filesystem state
+      const currentEntries = await walkDirectory(rootPath, {
+        excludePatterns: SCAN_DEFAULTS.excludePatterns,
+        minFileSize: SCAN_DEFAULTS.minFileSize,
+      }, () => {});
+
+      // Build set of current paths for fast lookup
+      const currentPathSet = new Set(currentEntries.map(e => e.path));
+
+      // Find DB files under this root that no longer exist on disk
+      const sep = _isWindows ? '\\' : '/';
+      const rootPrefix = rootPath.endsWith(sep) ? rootPath : rootPath + sep;
+      const allFolders = await db.all(
+        `SELECT id, path FROM mo_folders WHERE path = ? OR path LIKE ?`,
+        [rootPath, rootPrefix + '%']
+      );
+      const folderIds = allFolders.map(f => f.id);
+
+      if (folderIds.length > 0) {
+        const placeholders = folderIds.map(() => '?').join(',');
+        const dbFiles = await db.all(
+          `SELECT f.id, f.basename, fo.path AS folder_path
+           FROM mo_files f JOIN mo_folders fo ON f.folder_id = fo.id
+           WHERE f.folder_id IN (${placeholders})`,
+          folderIds
+        );
+
+        for (const dbFile of dbFiles) {
+          const fullPath = dbFile.folder_path + sep + dbFile.basename;
+          if (!currentPathSet.has(fullPath)) {
+            // File was deleted while app was closed
+            const result = await processIncrementalDelete(fullPath);
+            if (result) totalDeleted++;
+          }
+        }
+      }
+
+      // Process all current entries through processFile (it handles skip/update logic)
+      for (const entry of currentEntries) {
+        if (_scanCancelled) break;
+        try {
+          const result = await processFile(entry);
+          if (result.action === 'created') totalCreated++;
+          else if (result.action === 'updated') totalUpdated++;
+        } catch (err) {
+          console.warn(`[MediaOrganizer] Delta scan error on ${entry.path}:`, err);
+        }
+      }
+
+      // Update last_scan_at
+      await recordScanRoot(rootPath);
+    } catch (err) {
+      console.warn(`[MediaOrganizer] Delta scan failed for ${rootPath}:`, err);
+    } finally {
+      _folderIdCache.clear();
+      _folderAlbumCache.clear();
+      _folderAlbumInflight.clear();
+    }
+  }
+
+  if (totalCreated + totalUpdated + totalDeleted > 0) {
+    console.log(`[MediaOrganizer] Delta scan: ${totalCreated} new, ${totalUpdated} updated, ${totalDeleted} removed`);
+    if (api) {
+      api.window.showInformationMessage(
+        `Media auto-scan: ${totalCreated} new, ${totalUpdated} updated, ${totalDeleted} removed`
+      );
+    }
+    _notifySidebarRefresh();
+  } else {
+    console.log('[MediaOrganizer] Delta scan: no changes detected');
+  }
+}
+
+// ── Startup: resume watchers + delta scan ──
+
+async function resumeWatchersAndDeltaScan(api) {
+  const roots = await getScanRoots();
+  if (roots.length === 0) return; // No prior scans — nothing to watch
+
+  // Start watchers for all known roots
+  for (const root of roots) {
+    const exists = await window.parallxElectron.fs.exists(root.path);
+    if (exists) startWatcherForRoot(root.path);
+  }
+
+  // Run delta scan in background (non-blocking)
+  runDeltaScan(api).catch(err => {
+    console.warn('[MediaOrganizer] Background delta scan failed:', err);
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -4044,7 +4383,7 @@ const MO_CSS = `
   background: var(--vscode-sideBar-background, var(--vscode-editor-background));
   color: var(--vscode-sideBar-foreground, var(--vscode-editor-foreground));
   font-family: var(--parallx-fontFamily-ui, system-ui, sans-serif);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--parallx-fontSize-md, 13px);
   overflow: hidden;
 }
 .mo-sidebar-sections {
@@ -4097,7 +4436,7 @@ const MO_CSS = `
   text-align: center;
   padding: 24px 16px;
   color: var(--vscode-descriptionForeground, #888);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--parallx-fontSize-md, 13px);
 }
 .mo-thumb-placeholder {
   width: 100%;
@@ -4144,7 +4483,7 @@ const MO_CSS = `
   background: var(--vscode-input-background, #1a1a1a);
 }
 .mo-list-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.mo-list-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--parallx-fontSize-base, 12px); }
+.mo-list-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--parallx-fontSize-md, 13px); }
 .mo-list-type { font-size: var(--parallx-fontSize-xs, 10px); text-transform: uppercase; color: var(--vscode-descriptionForeground, #888); width: 50px; flex-shrink: 0; }
 .mo-list-rating { font-size: var(--parallx-fontSize-sm, 11px); color: var(--mo-rating-color, #f5c518); width: 60px; flex-shrink: 0; }
 .mo-list-date { font-size: var(--parallx-fontSize-xs, 10px); color: var(--vscode-descriptionForeground, #888); width: 80px; flex-shrink: 0; text-align: right; }
@@ -5207,16 +5546,18 @@ function renderBrowserSidebar(container, api) {
         HAVING file_count > 0
         ORDER BY fo.path ASC
       `);
+      // Filter out internal .parallx paths (thumbnail dirs, extension data)
+      const filtered = rows.filter(row => !isInternalPath(row.path));
       folderBody.innerHTML = '';
-      if (!rows || rows.length === 0) {
+      if (filtered.length === 0) {
         folderBody.appendChild(moEl('div', 'mo-empty', { textContent: 'No folders scanned yet' }));
         return;
       }
 
       // Compute common prefix of all folder paths to derive scan root
-      let commonPrefix = rows[0].path;
-      for (let i = 1; i < rows.length; i++) {
-        while (commonPrefix && !rows[i].path.startsWith(commonPrefix)) {
+      let commonPrefix = filtered[0].path;
+      for (let i = 1; i < filtered.length; i++) {
+        while (commonPrefix && !filtered[i].path.startsWith(commonPrefix)) {
           // Walk up one directory
           const sepIdx = Math.max(commonPrefix.lastIndexOf('/'), commonPrefix.lastIndexOf('\\'));
           if (sepIdx <= 0) { commonPrefix = ''; break; }
@@ -5233,7 +5574,7 @@ function renderBrowserSidebar(container, api) {
         commonPrefix = '';
       }
 
-      for (const row of rows) {
+      for (const row of filtered) {
         const relPath = commonPrefix ? row.path.slice(commonPrefix.length) : row.path;
         const displayName = relPath.replace(/\\/g, '/') || row.path.split(/[/\\]/).pop() || `Folder ${row.id}`;
         const badge = String(row.file_count);
@@ -6446,6 +6787,7 @@ function buildVideoPlayer(container, fullPath) {
   const video = document.createElement('video');
   video.controls = true;
   video.preload = 'metadata';
+  video.draggable = false;
 
   const source = document.createElement('source');
   video.appendChild(source);
@@ -6454,6 +6796,74 @@ function buildVideoPlayer(container, fullPath) {
   localFileToUrl(fullPath).then(url => {
     if (url) { source.src = url; video.load(); }
     else { video.style.display = 'none'; container.textContent = 'Failed to load video'; }
+  });
+
+  // ── Scroll-to-zoom + pan (same behaviour as photo preview) ──
+  let scale = 1;
+  const MIN_SCALE = 1;
+  const MAX_SCALE = 20;
+  const ZOOM_FACTOR = 0.15;
+  let tx = 0, ty = 0;
+
+  function applyTransform() {
+    video.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+    video.style.transformOrigin = '0 0';
+    container.classList.toggle('mo-preview-zoomed', scale > 1);
+  }
+
+  container.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = video.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+
+    const prevScale = scale;
+    if (e.deltaY < 0) {
+      scale = Math.min(MAX_SCALE, scale * (1 + ZOOM_FACTOR));
+    } else {
+      scale = Math.max(MIN_SCALE, scale / (1 + ZOOM_FACTOR));
+    }
+
+    tx -= px * (scale / prevScale - 1);
+    ty -= py * (scale / prevScale - 1);
+
+    if (scale <= MIN_SCALE) { tx = 0; ty = 0; scale = MIN_SCALE; }
+    applyTransform();
+  }, { passive: false });
+
+  // Pan via mouse drag when zoomed
+  let dragging = false, dragStartX = 0, dragStartY = 0, startTx = 0, startTy = 0;
+
+  container.addEventListener('mousedown', (e) => {
+    if (scale <= MIN_SCALE) return;
+    dragging = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    startTx = tx;
+    startTy = ty;
+    container.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    tx = startTx + (e.clientX - dragStartX);
+    ty = startTy + (e.clientY - dragStartY);
+    applyTransform();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    container.style.cursor = '';
+  });
+
+  // Double-click to reset zoom
+  container.addEventListener('dblclick', () => {
+    scale = MIN_SCALE;
+    tx = 0;
+    ty = 0;
+    applyTransform();
   });
 }
 
@@ -7575,15 +7985,17 @@ function _notifySidebarRefresh() { for (const cb of _sidebarRefreshCallbacks) { 
 let _commandDisposables = [];
 let _api = null;
 
-async function ensureDatabase(toolPath) {
-  const status = await window.parallxElectron.database.isOpen();
-  if (!status.isOpen) {
-    console.warn('[MediaOrganizer] Database not open — cannot migrate');
+async function ensureDatabase(api) {
+  // Open the per-extension database (creates it if needed)
+  const openResult = await api.database.open();
+  if (openResult.error) {
+    console.error('[MediaOrganizer] Database open failed:', openResult.error.message);
     return false;
   }
+  const toolPath = api.env.toolPath;
   const sep = toolPath.includes('\\') ? '\\' : '/';
   const migrationsDir = toolPath + sep + 'db' + sep + 'migrations';
-  const res = await window.parallxElectron.database.migrate(migrationsDir);
+  const res = await api.database.migrate(migrationsDir);
   if (res.error) {
     console.error('[MediaOrganizer] Migration failed:', res.error.message);
     return false;
@@ -7596,7 +8008,15 @@ export async function activate(api, context) {
   _activated = true;
   _api = api;
   _toolPath = api.env.toolPath;
-  const ok = await ensureDatabase(_toolPath);
+
+  // Bind the per-extension database bridge for the db wrapper
+  if (!api.database) {
+    console.error('[MediaOrganizer] Activation failed — api.database not available (extension database required)');
+    return;
+  }
+  _dbBridge = api.database;
+
+  const ok = await ensureDatabase(api);
   if (!ok) {
     console.error('[MediaOrganizer] Activation failed — database not ready');
     return;
@@ -7604,6 +8024,65 @@ export async function activate(api, context) {
 
   // Status bar item for scan progress
   _statusBarItem = api.window.createStatusBarItem(1, 100);
+
+  // Purge any .parallx internal paths from the media database.
+  // These should never have been scanned (thumbnail dirs, extension data).
+  try {
+    const internalFolders = await db.all(
+      `SELECT id FROM mo_folders WHERE path LIKE '%/.parallx/%' OR path LIKE '%\\.parallx\\%' OR path LIKE '%\\.parallx'`
+    );
+    if (internalFolders.length > 0) {
+      const ids = internalFolders.map(f => f.id);
+      const placeholders = ids.map(() => '?').join(',');
+      // Get files in these folders
+      const internalFiles = await db.all(
+        `SELECT id FROM mo_files WHERE folder_id IN (${placeholders})`, ids
+      );
+      if (internalFiles.length > 0) {
+        const fileIds = internalFiles.map(f => f.id);
+        const fph = fileIds.map(() => '?').join(',');
+        // Remove domain entity links and orphan entities
+        const photoLinks = await db.all(`SELECT DISTINCT photo_id FROM mo_photos_files WHERE file_id IN (${fph})`, fileIds);
+        const videoLinks = await db.all(`SELECT DISTINCT video_id FROM mo_videos_files WHERE file_id IN (${fph})`, fileIds);
+        await db.run(`DELETE FROM mo_photos_files WHERE file_id IN (${fph})`, fileIds);
+        await db.run(`DELETE FROM mo_videos_files WHERE file_id IN (${fph})`, fileIds);
+        // Remove orphan photos (no remaining file links)
+        for (const pl of photoLinks) {
+          const remaining = await db.get(`SELECT COUNT(*) as cnt FROM mo_photos_files WHERE photo_id = ?`, [pl.photo_id]);
+          if (!remaining || remaining.cnt === 0) await db.run(`DELETE FROM mo_photos WHERE id = ?`, [pl.photo_id]);
+        }
+        for (const vl of videoLinks) {
+          const remaining = await db.get(`SELECT COUNT(*) as cnt FROM mo_videos_files WHERE video_id = ?`, [vl.video_id]);
+          if (!remaining || remaining.cnt === 0) await db.run(`DELETE FROM mo_videos WHERE id = ?`, [vl.video_id]);
+        }
+        await db.run(`DELETE FROM mo_fingerprints WHERE file_id IN (${fph})`, fileIds);
+        await db.run(`DELETE FROM mo_files WHERE id IN (${fph})`, fileIds);
+      }
+      await db.run(`DELETE FROM mo_folders WHERE id IN (${placeholders})`, ids);
+      console.log(`[MediaOrganizer] Purged ${internalFolders.length} internal .parallx folder(s) and ${internalFiles.length} file(s) from database`);
+    }
+  } catch (err) {
+    console.warn('[MediaOrganizer] .parallx cleanup failed:', err);
+  }
+
+  // Backfill mo_scan_roots from existing root folders (pre-watcher scans)
+  try {
+    const existingRoots = await getScanRoots();
+    if (existingRoots.length === 0) {
+      const rootFolders = await db.all(
+        `SELECT path FROM mo_folders WHERE parent_folder_id IS NULL ORDER BY path ASC`
+      );
+      for (const rf of rootFolders) {
+        if (isInternalPath(rf.path)) continue;
+        await recordScanRoot(rf.path);
+      }
+      if (rootFolders.length > 0) {
+        console.log(`[MediaOrganizer] Backfilled ${rootFolders.length} scan root(s) from existing folders`);
+      }
+    }
+  } catch (err) {
+    console.warn('[MediaOrganizer] Scan root backfill failed:', err);
+  }
 
   // Register scan command
   _commandDisposables.push(
@@ -7689,10 +8168,14 @@ export async function activate(api, context) {
   );
 
   console.log('[MediaOrganizer] Activated — D1-D8 ready (data, scan, thumbnails, tags, grid, filter, detail, albums)');
+
+  // Resume file watchers for previously scanned directories + run delta scan
+  resumeWatchersAndDeltaScan(api);
 }
 
 export function deactivate() {
   cancelScan();
+  stopAllWatchers();
   for (const d of _commandDisposables) {
     if (d && typeof d.dispose === 'function') d.dispose();
   }
