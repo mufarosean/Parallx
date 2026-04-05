@@ -12,6 +12,7 @@
 // Dependency rules: src/ui/ depends only on src/platform/. No service imports.
 
 import { LUCIDE_ICONS } from './iconRegistry.generated.js';
+import { FILE_TYPE_ICONS, FILE_TYPE_MAP } from './fileTypeIcons.js';
 
 // ── Registry Map ──────────────────────────────────────────────────────────────
 
@@ -19,6 +20,11 @@ const _icons = new Map<string, string>();
 
 // Seed registry with every Lucide icon from the generated file
 for (const [id, svg] of Object.entries(LUCIDE_ICONS)) {
+  _icons.set(id, svg);
+}
+
+// Seed file-type icons (colored, non-themeable)
+for (const [id, svg] of Object.entries(FILE_TYPE_ICONS)) {
   _icons.set(id, svg);
 }
 
@@ -46,70 +52,28 @@ export function hasIcon(id: string): boolean {
   return _icons.has(id);
 }
 
-// ── File-Type Icon Aliases ────────────────────────────────────────────────────
-// Map file extensions → icon IDs already present in LUCIDE_ICONS.
-// The generated registry contains: file, file-text, file-code, file-json,
-// file-type, file-spreadsheet, file-image, file-plus, file-minus,
-// file-attachment, folder, folder-open, folder-tree, page, etc.
-
-const _fileTypeMap: Record<string, string> = {
-  file:   'file',
-  folder: 'folder',
-  md:     'file-text',
-  pdf:    'file-text',
-  txt:    'file-text',
-  json:   'file-json',
-  yaml:   'file-text',
-  js:     'file-code',
-  ts:     'file-code',
-  jsx:    'file-code',
-  tsx:    'file-code',
-  py:     'file-code',
-  rs:     'file-code',
-  go:     'file-code',
-  css:    'file-type',
-  html:   'file-code',
-  image:  'file-image',
-  page:   'page',
-};
-
-// Extension alias mapping
-const _extensionAliases: Record<string, string> = {
-  // Markdown
-  markdown: 'md',
-  // Images
-  jpg: 'image', jpeg: 'image', png: 'image', gif: 'image', webp: 'image',
-  svg: 'image', ico: 'image', bmp: 'image',
-  // Config
-  yml: 'yaml', toml: 'yaml',
-  // Code aliases
-  mjs: 'js', cjs: 'js', mts: 'ts', cts: 'ts',
-  // Styles
-  scss: 'css', sass: 'css', less: 'css',
-  // Web
-  htm: 'html', xhtml: 'html', xml: 'html',
-  // Text
-  log: 'txt', csv: 'txt', tsv: 'txt',
-};
+// ── File-Type Icons ───────────────────────────────────────────────────────────
+// Colored file-type icons are defined in fileTypeIcons.ts and pre-registered
+// in the icon map above. FILE_TYPE_MAP maps extensions → filetype icon IDs.
+// For extensions not in the map, we fall back to the generic Lucide 'file' icon.
 
 /**
  * Get the SVG markup for a file-type icon based on file extension.
  * Handles the leading dot: `.ts` or `ts` both work.
- * Returns the generic file icon for unknown extensions.
+ * Returns the colored filetype icon if available, otherwise the generic file icon.
  */
 export function getFileTypeIcon(ext: string): string {
   const clean = ext.replace(/^\./, '').toLowerCase();
-  const mapped = _extensionAliases[clean] ?? clean;
-  const iconId = _fileTypeMap[mapped];
+  const iconId = FILE_TYPE_MAP[clean];
   if (iconId) return _icons.get(iconId) ?? _icons.get('file') ?? '';
   return _icons.get('file') ?? '';
 }
 
 /**
- * Get the SVG markup for a folder icon.
+ * Get the SVG markup for a folder icon (colored variant).
  */
 export function getFolderIcon(): string {
-  return _icons.get('folder') ?? '';
+  return _icons.get('filetype-folder') ?? _icons.get('folder') ?? '';
 }
 
 /**

@@ -245,13 +245,9 @@
   width: var(--parallx-icon-size-sm, 16px);
   height: var(--parallx-icon-size-sm, 16px);
   margin-right: 4px;
-  font-size: 9px;
-  font-weight: 600;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--vscode-descriptionForeground);
-  opacity: 0.8;
 }
 
 .open-editors-label {

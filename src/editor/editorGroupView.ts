@@ -27,7 +27,7 @@ import { URI } from '../platform/uri.js';
 import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
 import { TabBar, type ITabBarItem } from '../ui/tabBar.js';
 import { $, addDisposableListener } from '../ui/dom.js';
-import { getIcon } from '../ui/iconRegistry.js';
+import { getIcon, getFileTypeIcon } from '../ui/iconRegistry.js';
 import { setupTooltip } from '../ui/tooltip.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -473,17 +473,21 @@ export class EditorGroupView extends Disposable implements IGridView {
     const activeIdx = this.model.activeIndex;
 
     // Map model editors → ITabBarItem[]
-    const items: ITabBarItem[] = editors.map((editor, i) => ({
-      id: editor.id,
-      label: editor.name,
-      tooltip: editor.description || editor.name,
-      italic: this.model.isPreview(i),
-      stickyContent: this.model.isSticky(i) ? 'pinned' : undefined,
-      decorations: {
-        dirty: editor.isDirty,
-        pinned: this.model.isSticky(i),
-      },
-    }));
+    const items: ITabBarItem[] = editors.map((editor, i) => {
+      const extMatch = editor.name.match(/\.([a-zA-Z0-9]+)$/);
+      return {
+        id: editor.id,
+        label: editor.name,
+        icon: extMatch ? getFileTypeIcon(extMatch[1]) : undefined,
+        tooltip: editor.description || editor.name,
+        italic: this.model.isPreview(i),
+        stickyContent: this.model.isSticky(i) ? 'pinned' : undefined,
+        decorations: {
+          dirty: editor.isDirty,
+          pinned: this.model.isSticky(i),
+        },
+      };
+    });
 
     this._tabs.setItems(items);
 

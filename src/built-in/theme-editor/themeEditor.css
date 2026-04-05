@@ -267,6 +267,21 @@
   letter-spacing: 0;
 }
 
+/* Section hint — short description below the title */
+.theme-editor__section-hint {
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0.45;
+  padding: 2px 10px 4px 30px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.theme-editor__section-hint--hidden {
+  display: none;
+}
+
 /* ─── Color Grid ─────────────────────────────────────────────── */
 
 .theme-editor__color-grid {

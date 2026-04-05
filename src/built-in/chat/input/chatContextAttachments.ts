@@ -16,6 +16,7 @@ import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
 import { $ } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
+import { getFileTypeIcon } from '../../../ui/iconRegistry.js';
 import { isChatImageAttachment } from '../../../services/chatTypes.js';
 import type { IChatAttachment, IChatImageAttachment, IChatSelectionAttachment } from '../../../services/chatTypes.js';
 import type { IOpenEditorFile, IAttachmentServices } from '../chatTypes.js';
@@ -239,7 +240,8 @@ export class ChatContextAttachments extends Disposable {
     } else if (isSelection) {
       icon.innerHTML = chatIcons.selection;
     } else {
-      icon.innerHTML = chatIcons.file;
+      const extMatch = attachment.name.match(/\.([a-zA-Z0-9]+)$/);
+      icon.innerHTML = getFileTypeIcon(extMatch ? extMatch[1] : '');
     }
     chip.appendChild(icon);
 
@@ -308,10 +310,11 @@ export class ChatContextAttachments extends Disposable {
   private _createImplicitChip(file: IOpenEditorFile): HTMLElement {
     const chip = $('div.parallx-chat-context-chip.parallx-chat-context-chip--implicit');
 
-    // File icon
+    // File icon — extension-aware colored icon
     const icon = document.createElement('span');
     icon.className = 'parallx-chat-context-chip-icon';
-    icon.innerHTML = chatIcons.file;
+    const implicitExtMatch = file.name.match(/\.([a-zA-Z0-9]+)$/);
+    icon.innerHTML = getFileTypeIcon(implicitExtMatch ? implicitExtMatch[1] : '');
     chip.appendChild(icon);
 
     // Label (italicized via CSS)

@@ -22,14 +22,13 @@ import { URI } from '../platform/uri.js';
 import { BreadcrumbsWidget, BreadcrumbsItem } from '../ui/breadcrumbs.js';
 import type { IEditorInput } from '../editor/editorInput.js';
 import { $ } from '../ui/dom.js';
-import { getIcon } from '../ui/iconRegistry.js';
+import { getFileTypeIcon, getFolderIcon } from '../ui/iconRegistry.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 export const BREADCRUMBS_HEIGHT = 28; // Aligned with canvas ribbon height (was 22)
 
-const FOLDER_ICON_SVG = getIcon('folder')!;
-const FILE_ICON_SVG = getIcon('file')!;
+const FOLDER_ICON_SVG = getFolderIcon();
 
 // ─── FileElement ─────────────────────────────────────────────────────────────
 
@@ -72,7 +71,8 @@ class FileBreadcrumbItem extends BreadcrumbsItem {
       const icon = $('span');
       icon.className = 'breadcrumb-icon';
       if (this.element.kind === 'file') {
-        icon.innerHTML = FILE_ICON_SVG;
+        const extMatch = this.element.label.match(/\.([a-zA-Z0-9]+)$/);
+        icon.innerHTML = getFileTypeIcon(extMatch ? extMatch[1] : '');
       } else {
         icon.innerHTML = FOLDER_ICON_SVG;
       }
@@ -191,7 +191,7 @@ export class BreadcrumbsBar extends Disposable {
     // Show and render
     this.show();
 
-    const items = elements.map(el => new FileBreadcrumbItem(el, true));
+    const items = elements.map(el => new FileBreadcrumbItem(el, el.kind === 'file'));
     this._widget.setItems(items);
     this._widget.revealLast();
 

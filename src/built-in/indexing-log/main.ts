@@ -13,7 +13,7 @@ import { IIndexingPipelineService, IVectorStoreService } from '../../services/se
 import type { IIndexingPipelineService as IndexingPipelineServiceShape } from '../../services/serviceTypes.js';
 import type { IndexingProgress, IndexingSourceResult } from '../../services/indexingPipeline.js';
 
-import { getIcon } from '../../ui/iconRegistry.js';
+import { getIcon, getFileTypeIcon } from '../../ui/iconRegistry.js';
 
 // ── SVG Icons — from the central Lucide icon registry ────────────────────────
 
@@ -21,7 +21,6 @@ const ICON_CHECK = getIcon('check')!;
 const ICON_SKIP = getIcon('ban')!;
 const ICON_ERROR = getIcon('close')!;
 const ICON_PAGE = getIcon('page')!;
-const ICON_FILE = getIcon('file')!;
 const ICON_CLEAR = getIcon('circle-x')!;
 const ICON_FILTER = getIcon('db-filter')!;
 
@@ -425,9 +424,14 @@ function createEntryRow(entry: IndexingLogEntry): HTMLElement {
   }
   row.appendChild(icon);
 
-  // Type icon (page vs file)
+  // Type icon (page vs file — files get extension-aware colored icon)
   const typeIcon = $('span.indexing-log-type-icon');
-  typeIcon.innerHTML = result.type === 'page' ? ICON_PAGE : ICON_FILE;
+  if (result.type === 'page') {
+    typeIcon.innerHTML = ICON_PAGE;
+  } else {
+    const extMatch = result.source.match(/\.([a-zA-Z0-9]+)$/);
+    typeIcon.innerHTML = getFileTypeIcon(extMatch ? extMatch[1] : '');
+  }
   typeIcon.title = result.type === 'page' ? 'Canvas page' : 'Workspace file';
   row.appendChild(typeIcon);
 

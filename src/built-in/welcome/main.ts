@@ -9,7 +9,7 @@ import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IStorage } from '../../platform/storage.js';
 import { IGlobalStorageService, IWorkspaceStorageService } from '../../services/serviceTypes.js';
 import { $ } from '../../ui/dom.js';
-import { getIcon } from '../../ui/iconRegistry.js';
+import { getIcon, getFileTypeIcon } from '../../ui/iconRegistry.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -310,9 +310,11 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
     for (const fileUri of recentFiles.slice(0, 8)) {
       const fileName = fileUri.split('/').pop() || fileUri;
       const filePath = _uriToDisplayPath(fileUri);
-      const row = _createRecentRow('ui-file-text', fileName, filePath, () => {
+      const extMatch = fileName.match(/\.([a-zA-Z0-9]+)$/);
+      const fileIconSvg = getFileTypeIcon(extMatch ? extMatch[1] : '');
+      const row = _createRecentRow(fileIconSvg, fileName, filePath, () => {
         api.commands.executeCommand('workbench.action.quickOpen', fileUri).catch(() => {});
-      });
+      }, true);
       rightCol.appendChild(row);
     }
   }
@@ -384,12 +386,12 @@ function _uriToDisplayPath(uri: string): string {
 }
 
 /** Create a clickable recent item row. */
-function _createRecentRow(icon: string, label: string, detail: string, onClick: () => void): HTMLElement {
+function _createRecentRow(icon: string, label: string, detail: string, onClick: () => void, rawSvg = false): HTMLElement {
   const row = $('div');
   row.classList.add('welcome-recent-row');
 
   const iconSpan = $('span');
-  iconSpan.innerHTML = getIcon(icon);
+  iconSpan.innerHTML = rawSvg ? icon : getIcon(icon);
   iconSpan.classList.add('welcome-recent-icon');
   _sizeIconSvg(iconSpan, 16);
 

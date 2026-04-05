@@ -26,71 +26,328 @@ import './themeEditor.css';
 
 const MAX_UNDO = 30;
 
-/** Color groups displayed in the editor, with the color IDs to show. */
-const COLOR_GROUPS: { label: string; ids: string[] }[] = [
+/** Color groups displayed in the editor, with the color IDs to show.
+ *
+ * Structure: Global → surface-specific overrides → advanced.
+ * Each entry has:
+ *   label     — section title
+ *   hint      — one-line description shown under the title
+ *   ids       — color token IDs to render
+ *   labels    — map of colorId → friendly label (optional; auto-derived if missing)
+ *   tips      — map of colorId → tooltip describing what it affects
+ *   alwaysOpen — if true, section is always expanded and cannot collapse
+ *   propagate  — map of colorId → list of other colorIds to cascade into when changed
+ */
+interface ColorGroup {
+  label: string;
+  hint?: string;
+  ids: string[];
+  labels?: Record<string, string>;
+  tips?: Record<string, string>;
+  alwaysOpen?: boolean;
+  propagate?: Record<string, string[]>;
+}
+
+const COLOR_GROUPS: ColorGroup[] = [
+  // ── Global ── always visible, sets the base for the entire UI
+  {
+    label: 'Global',
+    hint: 'Sets the default colors inherited by all surfaces. Override in sections below.',
+    alwaysOpen: true,
+    ids: [
+      'foreground',
+      'editor.background',
+      'focusBorder',
+      'icon.foreground',
+      'errorForeground',
+      'descriptionForeground',
+      'selection.background',
+    ],
+    labels: {
+      'foreground':             'Text & Icon Color',
+      'editor.background':      'Background',
+      'focusBorder':            'Accent / Focus Color',
+      'icon.foreground':        'Icon Color',
+      'errorForeground':        'Error Color',
+      'descriptionForeground':  'Secondary Text',
+      'selection.background':   'Selection Highlight',
+    },
+    tips: {
+      'foreground':             'Default text and icon color for the entire UI',
+      'editor.background':      'Main background color for editors and content areas',
+      'focusBorder':            'Accent color used for focus rings, active borders, links, and buttons',
+      'icon.foreground':        'Default color for all monochrome icons across the UI',
+      'errorForeground':        'Color for error text and error indicators',
+      'descriptionForeground':  'Color for secondary/muted text (descriptions, placeholders)',
+      'selection.background':   'Highlight color for selected text and items',
+    },
+    propagate: {
+      'focusBorder': [
+        'activityBar.activeBorder',
+        'tab.activeBorderTop',
+        'panelTitle.activeBorder',
+        'list.focusOutline',
+        'inputOption.activeBorder',
+        'sash.hoverBorder',
+      ],
+    },
+  },
+
+  // ── Accent ── single-purpose: one color that flows to all accent surfaces
+  {
+    label: 'Accent Colors',
+    hint: 'Primary accent applied to buttons, links, badges, and active indicators.',
+    ids: [
+      'button.background',
+      'textLink.foreground',
+      'activityBarBadge.background',
+      'badge.background', 'badge.foreground',
+    ],
+    labels: {
+      'button.background':        'Primary Button',
+      'textLink.foreground':      'Link Color',
+      'activityBarBadge.background': 'Badge Accent',
+      'badge.background':         'Badge Background',
+      'badge.foreground':         'Badge Text',
+    },
+    tips: {
+      'button.background':        'Background for primary action buttons',
+      'textLink.foreground':      'Color for hyperlinks and clickable text',
+      'activityBarBadge.background': 'Background for notification badges in the activity bar',
+      'badge.background':         'Background for count badges',
+      'badge.foreground':         'Text color in count badges',
+    },
+    propagate: {
+      'button.background': [
+        'button.hoverBackground',
+        'inputOption.activeBackground',
+      ],
+    },
+  },
+
+  // ── Surfaces ──
   {
     label: 'Editor',
+    hint: 'Main content area where files and pages are displayed.',
     ids: [
-      'editor.background', 'editor.foreground', 'editor.lineHighlightBackground',
-      'editor.selectionBackground', 'editorCursor.foreground',
+      'editor.foreground',
+      'editor.findMatchHighlightBackground',
+      'editorWidget.background', 'editorWidget.foreground', 'editorWidget.border',
+      'editorLineNumber.foreground', 'editorLineNumber.activeForeground',
     ],
+    labels: {
+      'editor.foreground':                   'Text Color',
+      'editor.findMatchHighlightBackground': 'Find Match Highlight',
+      'editorWidget.background':             'Widget Background',
+      'editorWidget.foreground':             'Widget Text',
+      'editorWidget.border':                 'Widget Border',
+      'editorLineNumber.foreground':         'Line Numbers',
+      'editorLineNumber.activeForeground':   'Active Line Number',
+    },
   },
+
   {
     label: 'Sidebar',
+    hint: 'Left panel containing Explorer, Search, and other views.',
     ids: [
-      'sideBar.background', 'sideBar.foreground', 'sideBarSectionHeader.background',
-      'list.activeSelectionBackground', 'list.activeSelectionForeground',
-      'list.hoverBackground',
+      'sideBar.background', 'sideBar.foreground', 'sideBar.border',
+      'sideBarTitle.foreground',
+      'sideBarSectionHeader.background', 'sideBarSectionHeader.foreground', 'sideBarSectionHeader.border',
+      'list.hoverBackground', 'list.activeSelectionBackground', 'list.activeSelectionForeground',
+      'list.focusOutline',
     ],
+    labels: {
+      'sideBar.background':                  'Background',
+      'sideBar.foreground':                   'Text & Icon Color',
+      'sideBar.border':                       'Border',
+      'sideBarTitle.foreground':              'Title Text',
+      'sideBarSectionHeader.background':      'Section Header Background',
+      'sideBarSectionHeader.foreground':      'Section Header Text',
+      'sideBarSectionHeader.border':          'Section Header Border',
+      'list.hoverBackground':                 'Item Hover Background',
+      'list.activeSelectionBackground':       'Selected Item Background',
+      'list.activeSelectionForeground':       'Selected Item Text',
+      'list.focusOutline':                    'Focus Outline',
+    },
   },
+
   {
     label: 'Title Bar',
+    hint: 'Top bar with window title and traffic light buttons.',
     ids: [
       'titleBar.activeBackground', 'titleBar.activeForeground',
-      'titleBar.inactiveBackground',
+      'titleBar.inactiveBackground', 'titleBar.inactiveForeground',
+      'titleBar.border',
     ],
+    labels: {
+      'titleBar.activeBackground':   'Background',
+      'titleBar.activeForeground':   'Text Color',
+      'titleBar.inactiveBackground': 'Inactive Background',
+      'titleBar.inactiveForeground': 'Inactive Text',
+      'titleBar.border':             'Bottom Border',
+    },
   },
+
   {
     label: 'Activity Bar',
+    hint: 'Vertical icon strip on the far left edge.',
     ids: [
       'activityBar.background', 'activityBar.foreground',
-      'activityBar.activeBorder', 'activityBarBadge.background',
+      'activityBar.inactiveForeground', 'activityBar.border',
+      'activityBar.activeBorder',
     ],
+    labels: {
+      'activityBar.background':         'Background',
+      'activityBar.foreground':          'Active Icon Color',
+      'activityBar.inactiveForeground':  'Inactive Icon Color',
+      'activityBar.border':              'Border',
+      'activityBar.activeBorder':        'Active Indicator',
+    },
   },
+
   {
     label: 'Tabs',
+    hint: 'Editor tab bar and individual tab styling.',
     ids: [
+      'editorGroupHeader.tabsBackground',
       'tab.activeBackground', 'tab.activeForeground', 'tab.activeBorderTop',
       'tab.inactiveBackground', 'tab.inactiveForeground',
-      'editorGroupHeader.tabsBackground',
+      'tab.border', 'tab.hoverBackground', 'tab.modifiedBorder',
     ],
+    labels: {
+      'editorGroupHeader.tabsBackground': 'Tab Bar Background',
+      'tab.activeBackground':             'Active Tab Background',
+      'tab.activeForeground':             'Active Tab Text',
+      'tab.activeBorderTop':              'Active Tab Accent',
+      'tab.inactiveBackground':           'Inactive Tab Background',
+      'tab.inactiveForeground':           'Inactive Tab Text',
+      'tab.border':                       'Tab Separator',
+      'tab.hoverBackground':              'Tab Hover',
+      'tab.modifiedBorder':               'Unsaved Indicator',
+    },
   },
-  {
-    label: 'Buttons & Inputs',
-    ids: [
-      'button.background', 'button.foreground', 'button.hoverBackground',
-      'input.background', 'input.foreground', 'input.border',
-      'focusBorder',
-    ],
-  },
+
   {
     label: 'Panel',
+    hint: 'Bottom panel containing Terminal, Output, and other tools.',
     ids: [
-      'panel.background', 'panel.border', 'panelTitle.activeBorder',
+      'panel.background', 'panel.border',
+      'panelTitle.activeForeground', 'panelTitle.inactiveForeground',
+      'panelTitle.activeBorder',
     ],
+    labels: {
+      'panel.background':              'Background',
+      'panel.border':                  'Top Border',
+      'panelTitle.activeForeground':   'Active Tab Text',
+      'panelTitle.inactiveForeground': 'Inactive Tab Text',
+      'panelTitle.activeBorder':       'Active Tab Indicator',
+    },
   },
+
   {
     label: 'Status Bar',
+    hint: 'Bottom bar showing status information.',
     ids: [
       'statusBar.background', 'statusBar.foreground',
+      'statusBarItem.hoverBackground',
     ],
+    labels: {
+      'statusBar.background':          'Background',
+      'statusBar.foreground':           'Text & Icon Color',
+      'statusBarItem.hoverBackground':  'Item Hover',
+    },
   },
+
   {
-    label: 'General',
+    label: 'Buttons & Inputs',
+    hint: 'Form controls: buttons, text inputs, dropdowns.',
     ids: [
-      'foreground', 'descriptionForeground', 'errorForeground',
-      'textLink.foreground', 'badge.background', 'badge.foreground',
+      'button.foreground', 'button.hoverBackground',
+      'button.secondaryBackground', 'button.secondaryForeground',
+      'input.background', 'input.foreground', 'input.border',
+      'input.placeholderForeground',
     ],
+    labels: {
+      'button.foreground':            'Primary Button Text',
+      'button.hoverBackground':       'Primary Button Hover',
+      'button.secondaryBackground':   'Secondary Button',
+      'button.secondaryForeground':   'Secondary Button Text',
+      'input.background':             'Input Background',
+      'input.foreground':             'Input Text',
+      'input.border':                 'Input Border',
+      'input.placeholderForeground':  'Placeholder Text',
+    },
+  },
+
+  {
+    label: 'Menus & Dropdowns',
+    hint: 'Context menus, menu bar dropdowns.',
+    ids: [
+      'menu.background', 'menu.foreground',
+      'menu.selectionBackground', 'menu.selectionForeground',
+      'menu.border', 'menu.separatorBackground',
+    ],
+    labels: {
+      'menu.background':           'Background',
+      'menu.foreground':            'Text Color',
+      'menu.selectionBackground':  'Hover / Selected Item',
+      'menu.selectionForeground':  'Selected Item Text',
+      'menu.border':               'Border',
+      'menu.separatorBackground':  'Separator Line',
+    },
+  },
+
+  {
+    label: 'Notifications',
+    hint: 'Toast notifications and notification center.',
+    ids: [
+      'notifications.background', 'notifications.foreground', 'notifications.border',
+      'notificationLink.foreground',
+      'notificationsInfoIcon.foreground', 'notificationsWarningIcon.foreground',
+      'notificationsErrorIcon.foreground',
+    ],
+    labels: {
+      'notifications.background':             'Background',
+      'notifications.foreground':              'Text Color',
+      'notifications.border':                  'Border',
+      'notificationLink.foreground':           'Link Color',
+      'notificationsInfoIcon.foreground':      'Info Icon',
+      'notificationsWarningIcon.foreground':   'Warning Icon',
+      'notificationsErrorIcon.foreground':     'Error Icon',
+    },
+  },
+
+  {
+    label: 'Quick Access',
+    hint: 'Command palette and quick-open overlays.',
+    ids: [
+      'quickInput.background', 'quickInput.foreground',
+      'quickInputList.focusBackground', 'quickInputList.focusForeground',
+      'quickInputTitle.background',
+    ],
+    labels: {
+      'quickInput.background':          'Background',
+      'quickInput.foreground':          'Text Color',
+      'quickInputList.focusBackground': 'Focused Item',
+      'quickInputList.focusForeground': 'Focused Item Text',
+      'quickInputTitle.background':     'Header Background',
+    },
+  },
+
+  {
+    label: 'Text & Content',
+    hint: 'Links, code blocks, and quote styling in rendered content.',
+    ids: [
+      'textLink.activeForeground',
+      'textCodeBlock.background',
+      'textBlockQuote.border', 'textBlockQuote.foreground',
+    ],
+    labels: {
+      'textLink.activeForeground': 'Active Link',
+      'textCodeBlock.background':  'Code Block Background',
+      'textBlockQuote.border':     'Quote Border',
+      'textBlockQuote.foreground': 'Quote Text',
+    },
   },
 ];
 
@@ -169,7 +426,7 @@ export class ThemeEditorPanel implements IDisposable {
   /** Accordion state: which color group is expanded (null = all collapsed). */
   private _expandedGroup: string | null = 'Editor';
   /** Accordion DOM references for toggling without re-render. */
-  private readonly _accordionSections = new Map<string, { arrow: HTMLElement; grid: HTMLElement }>();
+  private readonly _accordionSections = new Map<string, { arrow: HTMLElement; grid: HTMLElement; hint: HTMLElement | null; alwaysOpen?: boolean }>();
 
   /** Inline swatch expansion: which color is showing the ramp. */
   private _inlineSwatchColorId: string | null = null;
@@ -512,14 +769,17 @@ export class ThemeEditorPanel implements IDisposable {
 
   // ─── Accordion Color Groups ────────────────────────────────────────────
 
-  private _renderColorGroup(group: { label: string; ids: string[] }): void {
+  private _renderColorGroup(group: ColorGroup): void {
     const section = $('div.theme-editor__section');
 
-    // Clickable accordion header
+    // Clickable accordion header (unless alwaysOpen)
     const titleRow = $('button.theme-editor__section-title.theme-editor__section-title--accordion');
 
+    const isExpanded = group.alwaysOpen || group.label === this._expandedGroup;
+
     const arrow = $('span.theme-editor__accordion-arrow');
-    arrow.textContent = group.label === this._expandedGroup ? '\u25BE' : '\u25B8'; // ▾ or ▸
+    arrow.textContent = group.alwaysOpen ? '' : (isExpanded ? '\u25BE' : '\u25B8'); // ▾ or ▸
+    if (group.alwaysOpen) arrow.style.visibility = 'hidden';
     titleRow.appendChild(arrow);
 
     const titleText = $('span');
@@ -528,19 +788,31 @@ export class ThemeEditorPanel implements IDisposable {
 
     // Color count badge
     const count = $('span.theme-editor__accordion-count');
-    count.textContent = `${group.ids.length}`;
+    count.textContent = `${group.ids.filter(id => this._colorRegistry.getRegisteredColor(id)).length}`;
     titleRow.appendChild(count);
 
-    titleRow.addEventListener('click', () => {
-      this._expandedGroup = this._expandedGroup === group.label ? null : group.label;
-      this._updateAccordionStates();
-    });
+    if (!group.alwaysOpen) {
+      titleRow.addEventListener('click', () => {
+        this._expandedGroup = this._expandedGroup === group.label ? null : group.label;
+        this._updateAccordionStates();
+      });
+    } else {
+      titleRow.style.cursor = 'default';
+    }
 
     section.appendChild(titleRow);
 
-    // Color grid (collapsible)
+    // Hint text
+    if (group.hint) {
+      const hint = $('div.theme-editor__section-hint');
+      hint.textContent = group.hint;
+      if (!isExpanded && !group.alwaysOpen) hint.classList.add('theme-editor__section-hint--hidden');
+      section.appendChild(hint);
+    }
+
+    // Color grid (collapsible, unless alwaysOpen)
     const grid = $('div.theme-editor__color-grid');
-    if (group.label !== this._expandedGroup) {
+    if (!isExpanded) {
       grid.classList.add('theme-editor__color-grid--collapsed');
     }
 
@@ -581,14 +853,15 @@ export class ThemeEditorPanel implements IDisposable {
       pickerBtn.appendChild(input);
       this._colorInputs.set(colorId, input);
 
-      // Friendly label
+      // Friendly label — use group.labels map if provided, else derive from ID
       const label = $('span.theme-editor__color-label');
-      const parts = colorId.split('.');
-      label.textContent = parts[parts.length - 1]
-        .replace(/([A-Z])/g, ' $1')
-        .replace(/^./, (s) => s.toUpperCase())
-        .trim();
-      label.title = colorId;
+      const friendlyText = group.labels?.[colorId]
+        ?? colorId.split('.').pop()!
+            .replace(/([A-Z])/g, ' $1')
+            .replace(/^./, (s) => s.toUpperCase())
+            .trim();
+      label.textContent = friendlyText;
+      label.title = group.tips?.[colorId] ?? colorId;
 
       // Editable hex text input
       const hexInput = $('input.theme-editor__hex-input') as HTMLInputElement;
@@ -633,15 +906,20 @@ export class ThemeEditorPanel implements IDisposable {
     section.appendChild(grid);
     this._contentArea.appendChild(section);
 
-    // Store accordion refs
-    this._accordionSections.set(group.label, { arrow, grid });
+    // Store accordion refs (include hint if present)
+    const hintEl = section.querySelector('.theme-editor__section-hint') as HTMLElement | null;
+    this._accordionSections.set(group.label, { arrow, grid, hint: hintEl, alwaysOpen: group.alwaysOpen });
   }
 
   private _updateAccordionStates(): void {
     for (const [label, refs] of this._accordionSections) {
+      if (refs.alwaysOpen) continue; // always-open sections are never collapsed
       const expanded = label === this._expandedGroup;
       refs.arrow.textContent = expanded ? '\u25BE' : '\u25B8';
       refs.grid.classList.toggle('theme-editor__color-grid--collapsed', !expanded);
+      if (refs.hint) {
+        refs.hint.classList.toggle('theme-editor__section-hint--hidden', !expanded);
+      }
     }
     // Close inline swatch when switching groups
     this._closeInlineSwatch();
@@ -727,6 +1005,24 @@ export class ThemeEditorPanel implements IDisposable {
     if (hexInput && document.activeElement !== hexInput) {
       hexInput.value = hex.toUpperCase();
     }
+
+    // ── Propagation: cascade value to related tokens ──
+    for (const group of COLOR_GROUPS) {
+      const targets = group.propagate?.[colorId];
+      if (targets) {
+        for (const targetId of targets) {
+          this._workingColors[targetId] = hex;
+          // Update UI for cascaded targets
+          const ts = this._colorSwatches.get(targetId);
+          if (ts) ts.style.background = hex;
+          const ti = this._colorInputs.get(targetId);
+          if (ti) ti.value = hex;
+          const th = this._hexInputs.get(targetId);
+          if (th && document.activeElement !== th) th.value = hex.toUpperCase();
+        }
+      }
+    }
+
     this._applyWorkingThemeLive();
     this._updatePreviewColors();
   }

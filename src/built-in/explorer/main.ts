@@ -165,7 +165,12 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // Subscribe to file system changes for live tree refresh
   let _refreshDebounce: ReturnType<typeof setTimeout> | null = null;
   context.subscriptions.push(
-    api.workspace.onDidFilesChange(() => {
+    api.workspace.onDidFilesChange((events) => {
+      // Ignore internal .parallx/ state changes (storage, database WAL, extension DBs).
+      // These fire frequently and are not user-visible files.
+      const hasUserChange = events.some(e => !e.uri.includes('/.parallx/') && !e.uri.includes('\\.parallx\\'));
+      if (!hasUserChange) return;
+
       // Debounce: multiple changes may arrive in quick succession
       // (especially during indexing which reads thousands of files)
       if (_refreshDebounce) clearTimeout(_refreshDebounce);
@@ -1268,28 +1273,44 @@ function collapseAll(node: TreeNode): void {
   saveExpandState();
 }
 
+let _refreshRunning = false;
+
 function refreshTree(): void {
+  if (_refreshRunning) return; // Prevent concurrent refreshes corrupting the tree
+  _refreshRunning = true;
+
+  // Snapshot ALL expanded URIs upfront so deeply-nested expand state survives
+  // even when intermediate child arrays are replaced during reload.
+  const allExpanded = new Set<string>();
+  function collectExpanded(nodes: TreeNode[]): void {
+    for (const n of nodes) {
+      if (n.expanded) {
+        allExpanded.add(n.uri);
+        collectExpanded(n.children);
+      }
+    }
+  }
+  collectExpanded(_roots);
+
   // Incremental refresh: reload expanded directories in-place, preserving
   // expand/selection state and only re-rendering once at the end.
   // This avoids the stutter of a full tree wipe + rebuild.
-  refreshExpandedNodes(_roots).then(() => {
+  refreshExpandedNodes(_roots, allExpanded).then(() => {
+    _refreshRunning = false;
     scheduleRender();
+  }, () => {
+    _refreshRunning = false;
   });
 }
 
 /**
  * Recursively reload the children of all expanded nodes.
- * Preserves expand state on sub-directories that still exist after reload.
+ * Uses a pre-collected set of all expanded URIs to preserve deep expand state
+ * even when intermediate child arrays are rebuilt.
  */
-async function refreshExpandedNodes(nodes: TreeNode[]): Promise<void> {
+async function refreshExpandedNodes(nodes: TreeNode[], expandedSet: ReadonlySet<string>): Promise<void> {
   for (const node of nodes) {
     if (node.type !== FILE_TYPE_DIRECTORY || !node.expanded) continue;
-
-    // Snapshot which children were expanded before reload
-    const expandedChildren = new Set<string>();
-    for (const c of node.children) {
-      if (c.expanded) expandedChildren.add(c.name);
-    }
 
     // Reload directory contents
     try {
@@ -1298,25 +1319,28 @@ async function refreshExpandedNodes(nodes: TreeNode[]): Promise<void> {
         .filter(e => _showHidden || !e.name.startsWith('.'))
         .sort(sortEntries);
 
-      // Build new children, restoring expand state for matching names
-      node.children = filtered.map(e => ({
-        uri: joinUri(node.uri, e.name),
-        name: e.name,
-        type: e.type,
-        depth: node.depth + 1,
-        expanded: e.type === FILE_TYPE_DIRECTORY && expandedChildren.has(e.name),
-        loaded: false,
-        loading: false,
-        children: [],
-        parent: node,
-      }));
+      // Build new children, restoring expand state from the global URI set
+      node.children = filtered.map(e => {
+        const childUri = joinUri(node.uri, e.name);
+        return {
+          uri: childUri,
+          name: e.name,
+          type: e.type,
+          depth: node.depth + 1,
+          expanded: e.type === FILE_TYPE_DIRECTORY && expandedSet.has(childUri),
+          loaded: false,
+          loading: false,
+          children: [],
+          parent: node,
+        };
+      });
       node.loaded = true;
     } catch (err) {
       console.error('[Explorer] Failed to refresh directory:', node.uri, err);
     }
 
     // Recursively refresh children that are still expanded
-    await refreshExpandedNodes(node.children);
+    await refreshExpandedNodes(node.children, expandedSet);
   }
 }
 
@@ -1587,10 +1611,11 @@ function createOpenEditorRow(
     row.appendChild(dot);
   }
 
-  // File icon (derive from name extension)
+  // File icon (derive from name extension — colored SVG)
   const icon = $('span');
   icon.className = 'open-editors-icon';
-  icon.textContent = getFileIcon(editor.name);
+  const extMatch = editor.name.match(/\.([a-zA-Z0-9]+)$/);
+  icon.innerHTML = getFileTypeIcon(extMatch ? extMatch[1] : '');
   row.appendChild(icon);
 
   // Label
@@ -1626,21 +1651,6 @@ function createOpenEditorRow(
   });
 
   return row;
-}
-
-/** Simple icon picker based on file extension — returns a text glyph, not emoji */
-function getFileIcon(name: string): string {
-  const ext = name.split('.').pop()?.toLowerCase() ?? '';
-  switch (ext) {
-    case 'ts': case 'tsx': return 'TS';
-    case 'js': case 'jsx': return 'JS';
-    case 'json': return '{}';
-    case 'md': return 'M↓';
-    case 'css': return '#';
-    case 'html': return '<>';
-    case 'svg': case 'png': case 'jpg': case 'jpeg': case 'gif': return '◻';
-    default: return '◇';
-  }
 }
 
 // ─── Commands Registration ───────────────────────────────────────────────────

@@ -5,6 +5,7 @@
 
 import { getIcon, hasIcon, getFileTypeIcon } from '../../ui/iconRegistry.js';
 import { LUCIDE_ICONS } from '../../ui/iconRegistry.generated.js';
+import { FILE_TYPE_ICONS } from '../../ui/fileTypeIcons.js';
 
 /**
  * Bridge for the `parallx.icons` API namespace.
@@ -33,7 +34,7 @@ export class IconsBridge {
    */
   getAllIconIds(): string[] {
     if (!this._allIds) {
-      this._allIds = Object.keys(LUCIDE_ICONS);
+      this._allIds = [...Object.keys(LUCIDE_ICONS), ...Object.keys(FILE_TYPE_ICONS)];
     }
     return this._allIds;
   }
