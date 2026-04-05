@@ -35,6 +35,78 @@ interface ColorGroup {
   labels?: Record<string, string>;
 }
 
+/**
+ * Global propagation map.
+ * When a Global-section color changes, cascade it to every surface-level
+ * token that logically inherits from it. Per-surface sections can still
+ * override individually.
+ */
+const GLOBAL_PROPAGATION: Record<string, string[]> = {
+  // Background → every surface background
+  'editor.background': [
+    'sideBar.background',
+    'sideBarSectionHeader.background',
+    'panel.background',
+    'editorGroupHeader.tabsBackground',
+    'tab.activeBackground',
+    'tab.hoverBackground',
+    'tab.inactiveBackground',
+    'titleBar.activeBackground',
+    'titleBar.inactiveBackground',
+    'activityBar.background',
+    'auxiliaryBar.background',
+    'statusBar.background',
+    'editorWidget.background',
+    'notifications.background',
+    'menu.background',
+    'breadcrumb.background',
+    'input.background',
+    'button.secondaryBackground',
+  ],
+  // Foreground → every surface text color
+  'foreground': [
+    'editor.foreground',
+    'sideBar.foreground',
+    'sideBarTitle.foreground',
+    'sideBarSectionHeader.foreground',
+    'panelTitle.activeForeground',
+    'tab.activeForeground',
+    'titleBar.activeForeground',
+    'editorWidget.foreground',
+    'menu.foreground',
+    'notifications.foreground',
+    'input.foreground',
+    'button.secondaryForeground',
+  ],
+  // Accent → focus borders, active indicators
+  'focusBorder': [
+    'activityBar.activeBorder',
+    'tab.activeBorderTop',
+    'panelTitle.activeBorder',
+    'list.focusOutline',
+    'sash.hoverBorder',
+  ],
+  // Secondary text
+  'descriptionForeground': [
+    'tab.inactiveForeground',
+    'titleBar.inactiveForeground',
+    'panelTitle.inactiveForeground',
+    'activityBar.inactiveForeground',
+    'breadcrumb.foreground',
+    'input.placeholderForeground',
+  ],
+  // Icon color
+  'icon.foreground': [
+    'activityBar.foreground',
+  ],
+  // Error color
+  'errorForeground': [],
+  // Selection highlight
+  'selection.background': [
+    'list.activeSelectionBackground',
+  ],
+};
+
 const COLOR_GROUPS: ColorGroup[] = [
   {
     label: 'Global',
@@ -573,22 +645,9 @@ export class ThemeEditorPanel implements IDisposable {
       });
       this._hexInputs.set(colorId, hexInput);
 
-      // Reset button
-      const resetBtn = $('button.te__reset');
-      resetBtn.title = 'Reset to default';
-      resetBtn.textContent = '\u21BA';
-      resetBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this._pushUndo();
-        delete this._workingColors[colorId];
-        const defaultHex = this._resolveColorHex(colorId);
-        this._commitColor(colorId, defaultHex);
-      });
-
       row.appendChild(swatch);
       row.appendChild(label);
       row.appendChild(hexInput);
-      row.appendChild(resetBtn);
       grid.appendChild(row);
     }
 
@@ -743,15 +802,29 @@ export class ThemeEditorPanel implements IDisposable {
       this._hoverPreviewOriginalHex = null;
     }
 
-    // Update swatch + hex input
+    // Update swatch + hex input for this color
+    this._updateSwatchAndInput(colorId, hex);
+
+    // Propagate global colors to all surfaces
+    const targets = GLOBAL_PROPAGATION[colorId];
+    if (targets) {
+      for (const target of targets) {
+        this._workingColors[target] = hex;
+        this._updateSwatchAndInput(target, hex);
+      }
+    }
+
+    this._applyWorkingThemeLive();
+  }
+
+  /** Update a single color's swatch + hex input in the UI. */
+  private _updateSwatchAndInput(colorId: string, hex: string): void {
     const swatch = this._colorSwatches.get(colorId);
     if (swatch) swatch.style.background = hex;
     const hexInput = this._hexInputs.get(colorId);
     if (hexInput && document.activeElement !== hexInput) {
       hexInput.value = hex.toUpperCase();
     }
-
-    this._applyWorkingThemeLive();
   }
 
   // ─── Undo / Redo ──────────────────────────────────────────────────────

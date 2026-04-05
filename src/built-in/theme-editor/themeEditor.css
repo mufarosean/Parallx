@@ -248,27 +248,6 @@
   border-color: var(--vscode-focusBorder, rgba(168,85,247,0.8));
 }
 
-.te__reset {
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--vscode-descriptionForeground, rgba(255,255,255,0.4));
-  cursor: pointer;
-  font-size: 12px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: background 0.1s, color 0.1s;
-}
-.te__reset:hover {
-  background: rgba(128,128,128,0.15);
-  color: var(--vscode-foreground);
-}
-
 /* ─── Swatch Picker Popup ─────────────────────────────────────── */
 
 .te__popup {
