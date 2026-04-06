@@ -2143,6 +2143,10 @@ function assembleContext(params) {
   // User message
   if (userMessage) {
     messages.push({ role: 'user', content: userMessage });
+  } else if (!messages.some(m => m.role === 'user')) {
+    // Models (especially Llama-based) require at least one user turn to
+    // trigger generation.  Without it they emit a stop token immediately.
+    messages.push({ role: 'user', content: '[Continue]' });
   }
 
   return {
@@ -3704,7 +3708,8 @@ function renderChatEditor(container, parallx, input) {
   }
 
   async function buildContextForGeneration({ speaker, userText = '', instruction = null, historyOverride = null } = {}) {
-    const modelId = selectedModelId || thread?.modelId || models[0]?.id;
+    const rawId = selectedModelId || thread?.modelId || null;
+    const modelId = (rawId && models.some(m => m.id === rawId)) ? rawId : models[0]?.id;
     if (!modelId) throw new Error('No model selected');
     const modelInfo = models.find((item) => item.id === modelId);
     const contextWindow = thread?.contextWindowOverride || modelInfo?.contextLength || currentSettings?.defaultContextWindow || 8192;
@@ -4258,7 +4263,8 @@ function renderChatEditor(container, parallx, input) {
       option.value = model.id;
       modelSelect.appendChild(option);
     }
-    selectedModelId = thread?.modelId || models[0]?.id || null;
+    const threadModel = thread?.modelId && models.some(m => m.id === thread.modelId) ? thread.modelId : null;
+    selectedModelId = threadModel || models[0]?.id || null;
     if (selectedModelId) modelSelect.value = selectedModelId;
   }
 
@@ -5708,10 +5714,11 @@ function renderChatSettingsPage(container, parallx, input) {
         option.value = model.id;
         modelSelect.appendChild(option);
       }
-      modelSelect.value = thread.modelId || models[0].id;
+      const validThreadModel = thread.modelId && models.some(m => m.id === thread.modelId) ? thread.modelId : models[0].id;
+      modelSelect.value = validThreadModel;
     } else {
-      const option = el('option', null, { text: thread.modelId || 'Ollama offline' });
-      option.value = thread.modelId || '';
+      const option = el('option', null, { text: 'Ollama offline' });
+      option.value = '';
       modelSelect.appendChild(option);
     }
 
