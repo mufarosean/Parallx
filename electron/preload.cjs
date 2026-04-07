@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   /** Absolute path to the application root directory. */
   appPath: process.cwd(),
 
+  // ── Workspace switch teardown ──
+  prepareWorkspaceSwitch: () => ipcRenderer.invoke('workspace:prepareSwitch'),
+
   // ── Window controls for the custom titlebar ──
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),
@@ -205,6 +208,8 @@ contextBridge.exposeInMainWorld('parallxElectron', {
       ipcRenderer.invoke('ext-database:isOpen', extensionId),
     runTransaction: (extensionId, operations) =>
       ipcRenderer.invoke('ext-database:runTransaction', extensionId, operations),
+    closeAll: () =>
+      ipcRenderer.invoke('ext-database:closeAll'),
   },
 
   // ══════════════════════════════════════════════════════════════════════════

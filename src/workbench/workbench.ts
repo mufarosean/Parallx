@@ -486,11 +486,10 @@ export class Workbench extends Layout {
       const appPath = window.parallxElectron!.appPath;
       await bridge.writeJson(`${appPath}/data/last-workspace.json`, { path: targetPath });
 
-      // 3. Close the database cleanly (best-effort — the main process
-      //    also handles re-open-before-close in openForWorkspace)
-      if (this._databaseService?.isOpen) {
-        await this._databaseService.close().catch(() => {});
-      }
+      // 3. Tear down all workspace-scoped state in the main process:
+      //    MCP servers, file watchers, terminals, terminal output buffer,
+      //    shared database, and all extension databases.
+      await window.parallxElectron!.prepareWorkspaceSwitch?.().catch(() => {});
 
       // 4. Reload the renderer — fresh startup picks up the new workspace
       window.location.reload();
@@ -1251,7 +1250,13 @@ export class Workbench extends Layout {
     if (!this._workspaceFolderPath || !state.folders?.length) return true;
     const expected = this._workspaceFolderPath.replace(/\\/g, '/').toLowerCase();
     return state.folders.some((f) => {
-      const folderPath = f.path.replace(/\\/g, '/').toLowerCase();
+      // Serialized folder paths use URI format ("/C:/Users/…") while
+      // _workspaceFolderPath is a native Windows path ("C:/Users/…").
+      // Strip the leading "/" so the comparison matches.
+      let folderPath = f.path.replace(/\\/g, '/').toLowerCase();
+      if (folderPath.startsWith('/') && /^\/[a-z]:/i.test(folderPath)) {
+        folderPath = folderPath.slice(1);
+      }
       return folderPath === expected;
     });
   }

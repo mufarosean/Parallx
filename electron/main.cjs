@@ -13,6 +13,72 @@ const doclingBridge = require('./doclingBridge.cjs');
 const { setupMcpBridge, killAllMcpProcesses } = require('./mcpBridge.cjs');
 const { setupStorageHandlers } = require('./storageHandlers.cjs');
 
+// ════════════════════════════════════════════════════════════════════════════════
+// Workspace Teardown Registry
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// Central registry for workspace-scoped cleanup. Subsystems register their
+// teardown function ONCE when they initialize. Both workspace:prepareSwitch
+// (renderer reload) and before-quit (app exit) drain the same list — so new
+// subsystems only need to add one registration and they're automatically
+// cleaned up in both paths.
+//
+// Two scopes:
+//   'workspace' — runs on BOTH workspace switch AND app quit
+//   'appQuit'   — runs ONLY on app quit (e.g. renderer server, docling)
+
+const _teardownCallbacks = [];
+
+/**
+ * Register a teardown callback for workspace-scoped state cleanup.
+ *
+ * @param {string} name — Human-readable name for logging.
+ * @param {'workspace'|'appQuit'} scope — When to run: 'workspace' = both paths, 'appQuit' = quit only.
+ * @param {() => void | Promise<void>} fn — Cleanup function. Errors are caught and logged.
+ */
+function registerTeardown(name, scope, fn) {
+  _teardownCallbacks.push({ name, scope, fn });
+}
+
+/**
+ * Run all registered teardown callbacks for the given trigger.
+ * MUST remain synchronous — Electron's before-quit does not await async callbacks.
+ * All registered teardown functions must be synchronous (execSync, close(), etc.).
+ * @param {'workspaceSwitch'|'appQuit'} trigger
+ */
+function runTeardown(trigger) {
+  for (const { name, scope, fn } of _teardownCallbacks) {
+    // 'workspace' callbacks run in both triggers; 'appQuit' only on quit
+    if (scope === 'appQuit' && trigger !== 'appQuit') continue;
+    try {
+      fn();
+    } catch (err) {
+      console.warn(`[Teardown] "${name}" failed:`, err.message);
+    }
+  }
+  console.log(`[Teardown] ${trigger} complete (${_teardownCallbacks.length} registered)`);
+}
+
+// ── Register core subsystem teardowns ──
+
+registerTeardown('mcp-servers', 'workspace', () => {
+  killAllMcpProcesses();
+});
+
+registerTeardown('shared-database', 'workspace', () => {
+  databaseManager.close();
+});
+
+registerTeardown('extension-databases', 'workspace', () => {
+  extensionDatabaseManager.closeAll();
+});
+
+// Docling is app-global — shutting down on workspace switch is unnecessary
+// since it's a stateless document conversion service.
+registerTeardown('docling', 'appQuit', () => {
+  try { doclingBridge.stopServiceSync(); } catch { /* best-effort */ }
+});
+
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
 /** @type {import('http').Server | null} */
@@ -23,6 +89,18 @@ let rendererServerPort = null;
 const _rendererSockets = new Set();
 let isAppQuitting = false;
 let lastEditableContextMenu = null;
+
+registerTeardown('renderer-server', 'appQuit', () => {
+  if (rendererServer) {
+    for (const socket of _rendererSockets) {
+      try { socket.destroy(); } catch { /* ignore */ }
+    }
+    _rendererSockets.clear();
+    try { rendererServer.close(); } catch { /* ignore */ }
+    rendererServer = null;
+    rendererServerPort = null;
+  }
+});
 
 app.setAppUserModelId('com.parallx.app');
 app.name = 'Parallx';
@@ -507,18 +585,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   isAppQuitting = true;
-  killAllMcpProcesses();
-  extensionDatabaseManager.closeAll();
-  if (rendererServer) {
-    // Force-destroy all open keep-alive sockets so Node's event loop can exit
-    for (const socket of _rendererSockets) {
-      try { socket.destroy(); } catch { /* ignore */ }
-    }
-    _rendererSockets.clear();
-    try { rendererServer.close(); } catch { /* ignore */ }
-    rendererServer = null;
-    rendererServerPort = null;
-  }
+  runTeardown('appQuit');
 });
 
 // ── IPC handlers for tool scanning ──
@@ -1426,6 +1493,15 @@ ipcMain.handle('ext-database:isOpen', async (_event, extensionId) => {
   return { isOpen: extensionDatabaseManager.isOpen(extensionId) };
 });
 
+ipcMain.handle('ext-database:closeAll', async () => {
+  try {
+    extensionDatabaseManager.closeAll();
+    return { error: null };
+  } catch (err) {
+    return { error: normalizeDatabaseError(err) };
+  }
+});
+
 ipcMain.handle('ext-database:runTransaction', async (_event, extensionId, operations) => {
   try {
     if (!validateExtensionId(extensionId)) return { error: { code: 'INVALID_ID', message: 'Invalid extension ID' } };
@@ -1456,6 +1532,24 @@ ipcMain.handle('ext-database:runTransaction', async (_event, extensionId, operat
 });
 
 // ════════════════════════════════════════════════════════════════════════════════
+// Workspace Switch — Main-Process Teardown
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// Called by the renderer BEFORE window.location.reload() during openFolder().
+// Tears down all workspace-scoped main-process state so the next workspace
+// starts cleanly.  Unlike before-quit, the app stays alive.
+
+ipcMain.handle('workspace:prepareSwitch', async () => {
+  try {
+    runTeardown('workspaceSwitch');
+    return { error: null };
+  } catch (err) {
+    console.error('[Main] Workspace switch teardown error:', err);
+    return { error: { message: err.message } };
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
 // File Watcher IPC (M4 Cap 0 — Task 0.3)
 // ════════════════════════════════════════════════════════════════════════════════
 //
@@ -1467,6 +1561,12 @@ let _nextWatchId = 1;
 
 /** @type {Map<string, { watcher: fsSync.FSWatcher, debounceTimer: any, pendingEvents: Array<{ type: string, path: string }> }>} */
 const _activeWatchers = new Map();
+
+registerTeardown('file-watchers', 'workspace', () => {
+  for (const [id] of _activeWatchers) {
+    _cleanupWatcher(id);
+  }
+});
 
 const WATCHER_IGNORE = new Set(['.git', 'node_modules', '.DS_Store', 'Thumbs.db', '__pycache__']);
 const WATCHER_IGNORE_FILES = new Set(['workspace-state.json', 'global-storage.json']);
@@ -1582,6 +1682,24 @@ let _terminalIdCounter = 0;
 let _terminalOutputBuffer = [];
 const TERMINAL_BUFFER_MAX_LINES = 200;
 
+registerTeardown('terminals', 'workspace', () => {
+  const isWin = process.platform === 'win32';
+  for (const [, entry] of _activeTerminals) {
+    try {
+      if (isWin && entry.proc.pid) {
+        try { require('child_process').execSync(`taskkill /pid ${entry.proc.pid} /T /F`, { windowsHide: true, timeout: 3000 }); } catch { /* best-effort */ }
+      } else {
+        entry.proc.kill();
+      }
+    } catch { /* ignore */ }
+  }
+  _activeTerminals.clear();
+});
+
+registerTeardown('terminal-output-buffer', 'workspace', () => {
+  _terminalOutputBuffer = [];
+});
+
 function _appendToTerminalBuffer(text) {
   const lines = text.split('\n');
   for (const line of lines) {
@@ -1693,28 +1811,5 @@ ipcMain.handle('terminal:getOutput', async (_event, lineCount) => {
   return { output: lines.join('\n'), lineCount: lines.length };
 });
 
-// Clean up all watchers on window close
-app.on('before-quit', () => {
-  for (const [id] of _activeWatchers) {
-    _cleanupWatcher(id);
-  }
-  // Kill all terminal sessions
-  const isWin = process.platform === 'win32';
-  for (const [, entry] of _activeTerminals) {
-    try {
-      if (isWin && entry.proc.pid) {
-        // tree-kill on Windows — proc.kill() only sends SIGTERM which doesn't kill child trees
-        try { require('child_process').execSync(`taskkill /pid ${entry.proc.pid} /T /F`, { windowsHide: true, timeout: 3000 }); } catch { /* best-effort */ }
-      } else {
-        entry.proc.kill();
-      }
-    } catch { /* ignore */ }
-  }
-  _activeTerminals.clear();
-  // Close the database cleanly on app quit
-  databaseManager.close();
-  // Shut down Docling bridge synchronously (M21)
-  // stopService() is async but on Windows it uses execSync(taskkill) internally,
-  // so we call stopServiceSync() to ensure the Python process is dead before quit.
-  try { doclingBridge.stopServiceSync(); } catch { /* best-effort */ }
-});
+// Note: watcher, terminal, database, and docling cleanup are handled by the
+// teardown registry (runTeardown) called from before-quit and workspace:prepareSwitch.

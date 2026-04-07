@@ -277,6 +277,8 @@ export class ViewContainer extends Disposable implements IGridView {
       this._tabOrder.push(view.id);
     }
 
+    const isHidden = this._hiddenTabs.has(view.id);
+
     if (this._mode === 'stacked') {
       // Stacked mode: create section wrapper and show view immediately
       this._createSection(view);
@@ -289,6 +291,11 @@ export class ViewContainer extends Disposable implements IGridView {
       view.createElement(this._contentArea);
       view.setVisible(false);
       this._createTab(view);
+      // If this view was marked hidden (e.g. restored from saved state before
+      // the view was registered), rebuild the tab bar so its tab is excluded.
+      if (isHidden) {
+        this._rebuildTabBar();
+      }
     }
 
     // Listen for constraint changes from the view
@@ -482,12 +489,13 @@ export class ViewContainer extends Disposable implements IGridView {
       }
     }
 
-    // Restore hidden tabs
+    // Restore hidden tabs — store ALL IDs, even for views not yet registered.
+    // Tool-contributed views (diagnostics, indexing log) arrive in Phase 5,
+    // after Phase 4 restoreContainerState runs. addView() checks _hiddenTabs
+    // so late-arriving views will be hidden correctly.
     if (state.hiddenTabs) {
       for (const viewId of state.hiddenTabs) {
-        if (this._views.has(viewId)) {
-          this._hiddenTabs.add(viewId);
-        }
+        this._hiddenTabs.add(viewId);
       }
       if (this._mode !== 'stacked') {
         this._rebuildTabBar();

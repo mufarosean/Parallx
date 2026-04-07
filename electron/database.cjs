@@ -334,9 +334,16 @@ class ExtensionDatabaseManager {
    * @returns {string} The database file path.
    */
   open(extensionId, workspacePath) {
-    // Already open for this extension — return existing path
+    // Already open for this extension — check if workspace path matches
     if (this._databases.has(extensionId)) {
-      return this._paths.get(extensionId);
+      const cachedPath = this._paths.get(extensionId);
+      const expectedPath = path.join(workspacePath, '.parallx', 'extensions', extensionId, 'data.db');
+      if (cachedPath === expectedPath) {
+        return cachedPath;
+      }
+      // Workspace changed — close stale connection before opening new one
+      console.log(`[ExtensionDB] Workspace changed for "${extensionId}": closing stale DB at ${cachedPath}`);
+      this.close(extensionId);
     }
 
     const extDir = path.join(workspacePath, '.parallx', 'extensions', extensionId);
