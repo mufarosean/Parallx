@@ -45,7 +45,6 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
   title         TEXT NOT NULL DEFAULT 'New Chat',
   mode          TEXT NOT NULL DEFAULT 'agent',
   model_id      TEXT NOT NULL DEFAULT '',
-  context_window INTEGER NOT NULL DEFAULT 0,
   created_at    INTEGER NOT NULL,
   updated_at    INTEGER NOT NULL
 )`;
@@ -96,10 +95,6 @@ export async function ensureChatTables(db: IChatPersistenceDatabase): Promise<vo
       await db.run(`ALTER TABLE chat_sessions ADD COLUMN workspace_id TEXT NOT NULL DEFAULT ''`);
       await db.run(CREATE_SESSIONS_WORKSPACE_INDEX);
     }
-    const hasContextWindow = cols.some((c) => c.name === 'context_window');
-    if (!hasContextWindow) {
-      await db.run(`ALTER TABLE chat_sessions ADD COLUMN context_window INTEGER NOT NULL DEFAULT 0`);
-    }
   } catch (e) {
     // Migration failure is non-fatal — new tables already have the column
     console.warn('[ChatPersistence] workspace_id migration check failed:', e);
@@ -119,9 +114,9 @@ export async function saveSession(db: IChatPersistenceDatabase, session: IChatSe
   try {
     // Upsert session row
     await db.run(
-      `INSERT OR REPLACE INTO chat_sessions (id, workspace_id, title, mode, model_id, context_window, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [session.id, workspaceId, session.title, session.mode, session.modelId, session.contextWindowOverride ?? 0, session.createdAt, Date.now()],
+      `INSERT OR REPLACE INTO chat_sessions (id, workspace_id, title, mode, model_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [session.id, workspaceId, session.title, session.mode, session.modelId, session.createdAt, Date.now()],
     );
 
     // Delete existing messages for this session (full replace)
@@ -186,10 +181,9 @@ export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: st
     title: string;
     mode: string;
     model_id: string;
-    context_window: number;
     created_at: number;
     updated_at: number;
-  }>(`SELECT id, title, mode, model_id, COALESCE(context_window, 0) as context_window, created_at, updated_at FROM chat_sessions WHERE workspace_id = ? ORDER BY updated_at DESC`, [workspaceId]);
+  }>(`SELECT id, title, mode, model_id, created_at, updated_at FROM chat_sessions WHERE workspace_id = ? ORDER BY updated_at DESC`, [workspaceId]);
 
   const sessions: IChatSession[] = [];
 
@@ -257,7 +251,6 @@ export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: st
       title: row.title,
       mode: _parseMode(row.mode),
       modelId: row.model_id,
-      contextWindowOverride: row.context_window ?? 0,
       messages: normalizedMessages,
       requestInProgress: false,
       pendingRequests: [],

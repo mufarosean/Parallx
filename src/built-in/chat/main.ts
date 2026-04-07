@@ -667,7 +667,6 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     maxIterations: unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? 25,
     networkTimeout: 120_000,
     getModelContextLength: () => dataService.getModelContextLength(),
-    getSessionContextWindowOverride: (sessionId: string) => chatService.getSession(sessionId)?.contextWindowOverride ?? 0,
     sendSummarizationRequest: (m, s) => dataService.sendSummarizationRequest(m, s),
     getFileCount: fsAccessor ? () => dataService.getFileCount() : undefined,
     isRAGAvailable: () => dataService.isRAGAvailable(),

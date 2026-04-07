@@ -198,8 +198,6 @@ export interface IDefaultParticipantServices {
   maxIterations?: number;
   networkTimeout?: number;
   getModelContextLength?(): number;
-  /** Per-session context window override (0 = use model default). */
-  getSessionContextWindowOverride?(sessionId: string): number;
   sendSummarizationRequest?(messages: readonly IChatMessage[], signal?: AbortSignal): AsyncIterable<IChatResponseChunk>;
   getFileCount?(): Promise<number>;
   isRAGAvailable?(): boolean;

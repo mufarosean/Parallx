@@ -72,58 +72,11 @@ export class ChatContextAttachments extends Disposable {
 
   // ── Public API ──
 
-  /** Image extensions that should be attached as vision images, not text files. */
-  private static readonly _IMAGE_EXTENSIONS = new Set([
-    '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.avif',
-  ]);
-
-  private static readonly _IMAGE_MIME: Record<string, string> = {
-    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-    '.gif': 'image/gif', '.bmp': 'image/bmp', '.webp': 'image/webp',
-    '.avif': 'image/avif',
-  };
-
-  /** Add a file as an explicit attachment. Images are read as base64 for vision. */
-  async addAttachment(file: IOpenEditorFile): Promise<void> {
+  /** Add a file as an explicit attachment. */
+  addAttachment(file: IOpenEditorFile): void {
     if (this._explicit.has(file.fullPath)) {
       return;
     }
-
-    // If it's an image, read it via the Electron bridge and store as IChatImageAttachment
-    const dotIndex = file.name.lastIndexOf('.');
-    const ext = dotIndex >= 0 ? file.name.slice(dotIndex).toLowerCase() : '';
-    if (ChatContextAttachments._IMAGE_EXTENSIONS.has(ext)) {
-      try {
-        const api = (window as any).parallxElectron;
-        if (api?.fs) {
-          const result = await api.fs.readFile(file.fullPath);
-          if (result && !result.error && result.encoding === 'base64') {
-            const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-            if (result.size <= MAX_IMAGE_BYTES) {
-              const id = `parallx-image://${Date.now()}-${Math.random().toString(36).slice(2)}`;
-              const attachment: IChatImageAttachment = {
-                kind: 'image',
-                id,
-                name: file.name,
-                fullPath: file.fullPath,
-                isImplicit: false,
-                mimeType: ChatContextAttachments._IMAGE_MIME[ext] ?? 'image/png',
-                data: result.content,
-                origin: 'file',
-              };
-              this._explicit.set(id, attachment);
-              this._dismissed.delete(file.fullPath);
-              this._render();
-              this._onDidChange.fire();
-              return;
-            }
-          }
-        }
-      } catch (err) {
-        console.warn(`[ChatAttachments] Failed to read image file as base64, falling back to file attachment:`, err);
-      }
-    }
-
     this._explicit.set(file.fullPath, {
       kind: 'file',
       id: file.fullPath,

@@ -174,8 +174,6 @@ export interface IChatSession {
   mode: ChatMode;
   /** Active model ID for this session. */
   modelId: string;
-  /** Per-session context window override (0 = model default). */
-  contextWindowOverride: number;
   /** Ordered list of request/response pairs. */
   readonly messages: IChatRequestResponsePair[];
   /** Whether a request is currently being processed. */
@@ -1054,8 +1052,6 @@ export interface IChatService extends IDisposable {
   setRuntimeParticipantResolver?(resolver: ((participantId: string) => string) | undefined): void;
   /** Update the model ID for an existing session and persist. */
   updateSessionModel(sessionId: string, modelId: string): void;
-  /** Update per-session context window override (0 = model default). */
-  updateSessionContextWindow(sessionId: string, contextWindow: number): void;
   /** Send a user message and orchestrate the full request pipeline. */
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<IChatParticipantResult>;
   /** Cancel the in-progress request for a session. */
