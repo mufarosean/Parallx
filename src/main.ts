@@ -71,6 +71,7 @@ declare global {
         replaceMisspelling: (suggestion: string) => Promise<boolean>;
         addToDictionary: (word?: string) => Promise<boolean>;
       };
+      prepareWorkspaceSwitch?: () => Promise<void>;
     };
   }
 }
