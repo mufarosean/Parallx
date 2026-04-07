@@ -17,7 +17,7 @@ export interface IChatWidgetPickerAdapterDeps {
 
 export function buildChatWidgetPickerServices(
   deps: IChatWidgetPickerAdapterDeps,
-): Pick<IChatWidgetServices, 'modelPicker' | 'modePicker'> {
+): Pick<IChatWidgetServices, 'modelPicker' | 'modePicker' | 'contextPicker'> {
   return {
     modelPicker: {
       getModels: deps.getModels,
@@ -33,5 +33,6 @@ export function buildChatWidgetPickerServices(
       getAvailableModes: deps.getAvailableModes,
       onDidChangeMode: deps.onDidChangeMode,
     },
+    contextPicker: {},
   };
 }

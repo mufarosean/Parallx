@@ -22,6 +22,7 @@ declare global {
       scanToolDirectory: (dirPath: string) => Promise<{ entries: { toolPath: string; manifestJson?: unknown; error?: string }[]; error: string | null }>;
       getToolDirectories: () => Promise<{ builtinDir: string; userDir: string; devDir: string | null }>;
       readToolModule: (filePath: string) => Promise<{ source: string } | { error: string }>;
+      prepareWorkspaceSwitch?: () => Promise<void>;
 
       // ── Storage API (M53 — Portable file-backed storage) ──
       storage: {

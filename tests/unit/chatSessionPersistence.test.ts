@@ -68,6 +68,7 @@ function createTestSession(): IChatSession {
     title: 'Test Session',
     mode: ChatMode.Agent,
     modelId: 'llama3.1:8b',
+    contextWindowOverride: 0,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     messages: [],

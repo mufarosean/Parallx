@@ -2042,6 +2042,11 @@ export class ChatDataService {
   }
 
   async getContextLength(): Promise<number> {
+    // Per-session override takes priority
+    const session = this._d.getActiveWidget()?.getSession();
+    if (session && session.contextWindowOverride > 0) {
+      return session.contextWindowOverride;
+    }
     const modelId = this._d.languageModelsService.getActiveModel();
     if (modelId && this._d.ollamaProvider) {
       return this._d.ollamaProvider.getModelContextLength(modelId);
@@ -2145,6 +2150,7 @@ export class ChatDataService {
       getSession: (id: string) => this._d.chatService.getSession(id),
       deleteSession: (id: string) => this._d.chatService.deleteSession(id),
       updateSessionModel: (id: string, modelId: string) => this._d.chatService.updateSessionModel(id, modelId),
+      updateSessionContextWindow: (id: string, contextWindow: number) => this._d.chatService.updateSessionContextWindow(id, contextWindow),
       getSystemPrompt: async () => {
         const report = this.getLastSystemPromptReport();
         return report?.promptText ?? '(No system prompt generated yet — send a message first)';

@@ -334,8 +334,10 @@ async function buildOpenclawTurnContext(
   context: IChatParticipantContext,
   preprocessed?: { mentionContextBlocks?: readonly string[]; promptOverlay?: string; isSteeringTurn?: boolean },
 ): Promise<IOpenclawTurnContext> {
-  // Token budget from model context length
-  const contextWindow = services.getModelContextLength?.() ?? 8192;
+  // Token budget from model context length (session override takes priority)
+  const rawContextWindow = services.getModelContextLength?.() ?? 8192;
+  const sessionOverride = services.getSessionContextWindowOverride?.(context.sessionId) ?? 0;
+  const contextWindow = sessionOverride > 0 ? sessionOverride : rawContextWindow;
   const budget = computeTokenBudget(contextWindow);
 
   // Bootstrap files (AGENTS.md, SOUL.md, TOOLS.md, etc.)

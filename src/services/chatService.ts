@@ -825,6 +825,7 @@ export class ChatService extends Disposable implements IChatService {
       title: 'New Chat',
       mode: mode ?? this._modeService.getMode(),
       modelId: modelId ?? this._languageModelsService.getActiveModel() ?? '',
+      contextWindowOverride: 0,
       messages: [],
       requestInProgress: false,
       pendingRequests: [],
@@ -839,6 +840,14 @@ export class ChatService extends Disposable implements IChatService {
     const session = this._sessions.get(sessionId);
     if (!session || session.modelId === modelId) return;
     session.modelId = modelId;
+    this._schedulePersist(sessionId);
+    this._onDidChangeSession.fire(sessionId);
+  }
+
+  updateSessionContextWindow(sessionId: string, contextWindow: number): void {
+    const session = this._sessions.get(sessionId);
+    if (!session || session.contextWindowOverride === contextWindow) return;
+    session.contextWindowOverride = contextWindow;
     this._schedulePersist(sessionId);
     this._onDidChangeSession.fire(sessionId);
   }
@@ -1034,11 +1043,17 @@ export class ChatService extends Disposable implements IChatService {
           history,
         }),
         buildPromptEnvelope: buildRuntimePromptEnvelope,
-        sendPrompt: (systemPrompt: string, userContent: string, requestOptions?: IChatRequestOptions, signal?: AbortSignal) => this._languageModelsService.sendChatRequest(
-          buildRuntimePromptEnvelope(systemPrompt, userContent),
-          requestOptions,
-          signal,
-        ),
+        sendPrompt: (systemPrompt: string, userContent: string, requestOptions?: IChatRequestOptions, signal?: AbortSignal) => {
+          // Inject per-session context window override into numCtx
+          const effectiveOptions = (session.contextWindowOverride > 0 && !requestOptions?.numCtx)
+            ? { ...requestOptions, numCtx: session.contextWindowOverride }
+            : requestOptions;
+          return this._languageModelsService.sendChatRequest(
+            buildRuntimePromptEnvelope(systemPrompt, userContent),
+            effectiveOptions,
+            signal,
+          );
+        },
       },
     };
 

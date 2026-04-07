@@ -21,6 +21,7 @@ import { renderAgentTaskRail } from '../rendering/chatTaskCards.js';
 import { ChatTokenStatusBar } from './chatTokenStatusBar.js';
 import { ChatModelPicker } from '../pickers/chatModelPicker.js';
 import { ChatModePicker } from '../pickers/chatModePicker.js';
+import { ChatContextPicker } from '../pickers/chatContextPicker.js';
 import { ChatSessionSidebar } from './chatSessionSidebar.js';
 import type {
   IChatSession,
@@ -95,6 +96,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private readonly _inputPart: ChatInputPart;
   private readonly _listRenderer: ChatListRenderer;
   private readonly _sessionSidebar: ChatSessionSidebar;
+  private _contextPicker: ChatContextPicker | undefined;
 
   // ── Services ──
 
@@ -310,6 +312,18 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       }));
     }
 
+    // Context window override picker
+    if (services.contextPicker) {
+      const ctxPicker = this._register(new ChatContextPicker(pickerSlot, services.contextPicker));
+      this._contextPicker = ctxPicker;
+      this._register(ctxPicker.onDidChange((value) => {
+        if (this._session) {
+          this._session.contextWindowOverride = value;
+          this._services.updateSessionContextWindow?.(this._session.id, value);
+        }
+      }));
+    }
+
     // ── Attachment services (enable "Add Context" file picker) ──
 
     if (services.attachmentServices) {
@@ -390,6 +404,11 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       if (currentModel !== session.modelId) {
         this._services.modelPicker.setActiveModel(session.modelId);
       }
+    }
+
+    // Restore the session's context window override
+    if (this._contextPicker) {
+      this._contextPicker.setValue(session.contextWindowOverride ?? 0);
     }
 
     this._renderMessages();

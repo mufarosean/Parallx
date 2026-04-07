@@ -65,6 +65,7 @@ function createSession(): IChatSession {
     title: 'Test Session',
     mode: ChatMode.Agent,
     modelId: 'gpt-oss:20b',
+    contextWindowOverride: 0,
     messages: [
       {
         request: {

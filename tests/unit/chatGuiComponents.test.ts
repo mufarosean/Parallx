@@ -25,6 +25,7 @@ describe('ChatSessionSidebar', () => {
       title: 'Today Chat',
       mode: 'agent' as const,
       modelId: 'llama3.1:8b',
+      contextWindowOverride: 0,
       messages: [
         {
           request: { text: 'Hello world', requestId: 'req-1', participantId: undefined, variables: [], attempt: 0, timestamp: NOW - HOUR },
@@ -40,6 +41,7 @@ describe('ChatSessionSidebar', () => {
       title: 'Week Chat',
       mode: 'agent' as const,
       modelId: 'llama3.1:8b',
+      contextWindowOverride: 0,
       messages: [
         {
           request: { text: 'Help me build something', requestId: 'req-2', participantId: undefined, variables: [], attempt: 0, timestamp: NOW - 3 * DAY },
@@ -59,6 +61,7 @@ describe('ChatSessionSidebar', () => {
       title: 'Old Chat',
       mode: 'agent' as const,
       modelId: 'llama3.1:8b',
+      contextWindowOverride: 0,
       messages: [],
       requestInProgress: false,
     },

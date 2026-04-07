@@ -417,6 +417,8 @@ export interface IChatWidgetServices {
   readonly getSessions?: () => readonly IChatSession[];
   readonly deleteSession?: (sessionId: string) => void;
   readonly updateSessionModel?: (sessionId: string, modelId: string) => void;
+  readonly updateSessionContextWindow?: (sessionId: string, contextWindow: number) => void;
+  readonly contextPicker?: IContextPickerServices;
   readonly openFile?: (fullPath: string) => void;
   readonly openPage?: (pageId: string) => void;
   readonly openMemory?: (sessionId: string) => void;
@@ -460,6 +462,13 @@ export interface IModePickerServices {
   setMode(mode: ChatMode): void;
   getAvailableModes(): readonly ChatMode[];
   readonly onDidChangeMode: Event<ChatMode>;
+}
+
+/** Services needed by the context window picker dropdown. */
+export interface IContextPickerServices {
+  // Currently no external services needed — the picker is self-contained.
+  // Interface exists for symmetry with IModelPickerServices / IModePickerServices
+  // and to allow future extensions (e.g. querying model max context).
 }
 
 /** Services needed by the session history sidebar. */
