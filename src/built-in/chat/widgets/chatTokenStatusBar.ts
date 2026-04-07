@@ -26,6 +26,12 @@ import type { ITokenStatusBarServices } from '../chatTypes.js';
 // ITokenStatusBarServices — now defined in chatTypes.ts (M13 Phase 1)
 export type { ITokenStatusBarServices } from '../chatTypes.js';
 
+/** Sub-component within a top-level category. */
+interface ITokenSubItem {
+  label: string;
+  tokens: number;
+}
+
 /** Breakdown of token usage by category. */
 interface ITokenBreakdown {
   /** Total tokens used (real from Ollama when available, else estimated). */
@@ -43,6 +49,12 @@ interface ITokenBreakdown {
     messages: number;
     toolResults: number;
     files: number;
+  };
+  /** Detailed sub-breakdowns for expandable rows. */
+  subBreakdowns?: {
+    systemInstructions?: ITokenSubItem[];
+    toolDefinitions?: ITokenSubItem[];
+    files?: ITokenSubItem[];
   };
 }
 
@@ -68,6 +80,7 @@ export class ChatTokenStatusBar extends Disposable {
   private readonly _root: HTMLElement;
   private readonly _ring: HTMLElement;
   private readonly _label: HTMLElement;
+  private _popupAnchorRect: DOMRect | undefined;
 
   constructor(
     services: ITokenStatusBarServices,
@@ -250,7 +263,52 @@ export class ChatTokenStatusBar extends Disposable {
       };
     }
 
-    return { total, contextLength, percentage, isReal, categories: cats };
+    return { total, contextLength, percentage, isReal, categories: cats, subBreakdowns: this._computeSubBreakdowns() };
+  }
+
+  // ── Sub-breakdown computation ──
+
+  private _computeSubBreakdowns(): ITokenBreakdown['subBreakdowns'] {
+    const report = this._services.getLastSystemPromptReport?.();
+    if (!report) return undefined;
+
+    // System Instructions sub-items
+    const systemSubs: ITokenSubItem[] = [];
+    const skillsTokens = Math.ceil(report.skills.promptChars / 4);
+    const toolListTokens = Math.ceil(report.tools.listChars / 4);
+    // Fixed = nonProject minus skills, tool summaries
+    const fixedTokens = Math.max(0, Math.ceil(report.systemPrompt.nonProjectContextChars / 4) - skillsTokens - toolListTokens);
+    systemSubs.push({ label: 'Fixed (identity, safety, rules)', tokens: fixedTokens });
+    if (skillsTokens > 0) {
+      systemSubs.push({ label: `Skills XML (${report.skills.visibleCount} entries)`, tokens: skillsTokens });
+    }
+    if (toolListTokens > 0) {
+      systemSubs.push({ label: `Tool summaries (${report.tools.availableCount} tools)`, tokens: toolListTokens });
+    }
+
+    // Tool Definitions sub-items (JSON schemas sent via tools[] API param)
+    const toolSubs: ITokenSubItem[] = [];
+    if (report.tools.entries && report.tools.entries.length > 0) {
+      for (const entry of report.tools.entries) {
+        if (!entry.available) continue;
+        toolSubs.push({ label: entry.name, tokens: Math.ceil(entry.schemaChars / 4) });
+      }
+    }
+
+    // Files sub-items (bootstrap files in workspace section)
+    const fileSubs: ITokenSubItem[] = [];
+    if (report.injectedWorkspaceFiles && report.injectedWorkspaceFiles.length > 0) {
+      for (const file of report.injectedWorkspaceFiles) {
+        if (file.missing) continue;
+        fileSubs.push({ label: file.name, tokens: Math.ceil(file.injectedChars / 4) });
+      }
+    }
+
+    return {
+      systemInstructions: systemSubs.length > 0 ? systemSubs : undefined,
+      toolDefinitions: toolSubs.length > 0 ? toolSubs : undefined,
+      files: fileSubs.length > 0 ? fileSubs : undefined,
+    };
   }
 
   // ── SVG Ring Builder ──
@@ -301,8 +359,8 @@ export class ChatTokenStatusBar extends Disposable {
     this._popupElement = popup;
 
     // Position above the indicator
-    const anchor = this._root.getBoundingClientRect();
-    layoutPopup(popup, anchor, { position: 'above', gap: 4, margin: 8 });
+    this._popupAnchorRect = this._root.getBoundingClientRect();
+    layoutPopup(popup, this._popupAnchorRect, { position: 'above', gap: 4, margin: 8 });
 
     // Close on click outside (next tick to avoid the current click)
     requestAnimationFrame(() => {
@@ -333,6 +391,15 @@ export class ChatTokenStatusBar extends Disposable {
       this._dismissListener.dispose();
       this._dismissListener = undefined;
     }
+  }
+
+  /** Re-position and re-constrain the popup after content size changes (expand/collapse). */
+  private _relayoutPopup(): void {
+    if (!this._popupElement || !this._popupAnchorRect) return;
+    // Reset constraints so layoutPopup can measure natural size
+    this._popupElement.style.maxHeight = '';
+    this._popupElement.style.overflowY = '';
+    layoutPopup(this._popupElement, this._popupAnchorRect, { position: 'above', gap: 4, margin: 8 });
   }
 
   private _renderPopupContent(popup: HTMLElement, breakdown: ITokenBreakdown): void {
@@ -372,16 +439,17 @@ export class ChatTokenStatusBar extends Disposable {
     // ── Category sections ──
     const cats = breakdown.categories;
     const total = breakdown.total || 1;
+    const subs = breakdown.subBreakdowns;
 
     this._renderSection(popup, 'System', [
-      { label: 'System Instructions', tokens: cats.systemInstructions, total },
-      { label: 'Tool Definitions', tokens: cats.toolDefinitions, total },
+      { label: 'System Instructions', tokens: cats.systemInstructions, total, subItems: subs?.systemInstructions },
+      { label: 'Tool Definitions', tokens: cats.toolDefinitions, total, subItems: subs?.toolDefinitions },
     ]);
 
     this._renderSection(popup, 'User Context', [
       { label: 'Messages', tokens: cats.messages, total },
       { label: 'Tool Results', tokens: cats.toolResults, total },
-      { label: 'Files', tokens: cats.files, total },
+      { label: 'Files', tokens: cats.files, total, subItems: subs?.files },
     ]);
 
   }
@@ -389,7 +457,7 @@ export class ChatTokenStatusBar extends Disposable {
   private _renderSection(
     container: HTMLElement,
     title: string,
-    items: { label: string; tokens: number; total: number }[],
+    items: { label: string; tokens: number; total: number; subItems?: ITokenSubItem[] }[],
   ): void {
     const section = $('div.parallx-token-popup-section');
 
@@ -401,15 +469,55 @@ export class ChatTokenStatusBar extends Disposable {
       const row = $('div.parallx-token-popup-row');
 
       const rowLabel = $('span.parallx-token-popup-row-label');
-      rowLabel.textContent = item.label;
-      row.appendChild(rowLabel);
-
-      const rowValue = $('span.parallx-token-popup-row-value');
       const itemPct = item.total > 0 ? (item.tokens / item.total) * 100 : 0;
-      rowValue.textContent = `${this._formatTokens(item.tokens)} (${itemPct.toFixed(1)}%)`;
-      row.appendChild(rowValue);
 
-      section.appendChild(row);
+      if (item.subItems && item.subItems.length > 0) {
+        // Expandable row
+        row.classList.add('parallx-token-popup-row-expandable');
+        const chevron = $('span.parallx-token-popup-chevron');
+        chevron.textContent = '▸';
+        rowLabel.appendChild(chevron);
+        const labelText = document.createTextNode(` ${item.label}`);
+        rowLabel.appendChild(labelText);
+
+        const subContainer = $('div.parallx-token-popup-sub');
+        subContainer.style.display = 'none';
+
+        for (const sub of item.subItems) {
+          const subRow = $('div.parallx-token-popup-sub-row');
+          const subLabel = $('span.parallx-token-popup-sub-label');
+          subLabel.textContent = sub.label;
+          subRow.appendChild(subLabel);
+          if (sub.tokens > 0) {
+            const subValue = $('span.parallx-token-popup-sub-value');
+            subValue.textContent = this._formatTokens(sub.tokens);
+            subRow.appendChild(subValue);
+          }
+          subContainer.appendChild(subRow);
+        }
+
+        row.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const expanded = subContainer.style.display !== 'none';
+          subContainer.style.display = expanded ? 'none' : 'block';
+          chevron.textContent = expanded ? '▸' : '▾';
+          this._relayoutPopup();
+        });
+
+        row.appendChild(rowLabel);
+        const rowValue = $('span.parallx-token-popup-row-value');
+        rowValue.textContent = `${this._formatTokens(item.tokens)} (${itemPct.toFixed(1)}%)`;
+        row.appendChild(rowValue);
+        section.appendChild(row);
+        section.appendChild(subContainer);
+      } else {
+        rowLabel.textContent = item.label;
+        row.appendChild(rowLabel);
+        const rowValue = $('span.parallx-token-popup-row-value');
+        rowValue.textContent = `${this._formatTokens(item.tokens)} (${itemPct.toFixed(1)}%)`;
+        row.appendChild(rowValue);
+        section.appendChild(row);
+      }
     }
 
     container.appendChild(section);
