@@ -289,6 +289,10 @@ html, body {
   outline: none;
 }
 
+.view-section-header:first-child {
+  border-top: none;
+}
+
 .view-section-header:hover {
   background: var(--vscode-list-hoverBackground);
 }
