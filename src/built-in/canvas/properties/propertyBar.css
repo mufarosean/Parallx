@@ -81,11 +81,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--parallx-fontSize-base, 12px);
-  opacity: 0.6;
+  font-size: inherit;
 }
-
-.canvas-property-row__label {
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -151,8 +148,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--parallx-fontSize-base, 12px);
-  opacity: 0.6;
+  font-size: inherit;
 }
 
 .canvas-property-add:hover {
