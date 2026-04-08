@@ -150,19 +150,6 @@
   color: var(--vscode-foreground);
 }
 
-.canvas-node--database-view {
-  padding-right: 12px;
-  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
-}
-
-.canvas-node--database-view .canvas-node-icon {
-  opacity: 0.75;
-}
-
-.canvas-node--database-view.canvas-node--selected {
-  color: var(--vscode-list-activeSelectionForeground);
-}
-
 .canvas-node:hover {
   background-color: var(--vscode-list-hoverBackground);
 }
