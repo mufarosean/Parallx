@@ -318,6 +318,17 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
+  // 5d. Re-index when page properties change (tags, dates, etc.)
+  context.subscriptions.push(
+    _propertyService.onDidChangePageProperty((event) => {
+      void _dataService?.getPage(event.pageId).then((page) => {
+        schedulePageReindexForPayload(page ?? undefined);
+      }).catch((err) => {
+        console.warn('[Canvas] Failed to load page for property re-index:', event.pageId, err);
+      });
+    }),
+  );
+
   // 6. Track last-opened page for persistence (Task 6.3)
   context.subscriptions.push(
     api.editors.onDidChangeOpenEditors(() => {

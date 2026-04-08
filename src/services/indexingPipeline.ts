@@ -82,7 +82,10 @@ const RICH_DOCUMENT_EXTENSIONS = new Set([
   '.epub',  // M21 C.2: E-books via Docling
 ]);
 
-function buildPageIndexPayload(title: string, content: string): string {
+function buildPageIndexPayload(title: string, content: string, properties?: Record<string, unknown>): string {
+  if (properties && Object.keys(properties).length > 0) {
+    return JSON.stringify({ title, content, properties });
+  }
   return JSON.stringify({ title, content });
 }
 
@@ -423,7 +426,8 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       );
       if (!row) { return; }
 
-      const changed = await this._indexSinglePage(row.id, row.title, row.content);
+      const props = await this._fetchPageProperties(row.id);
+      const changed = await this._indexSinglePage(row.id, row.title, row.content, props);
       this._onDidIndexSource.fire({
         type: 'page', source: row.title, sourceId: pageId,
         status: changed ? 'indexed' : 'skipped',
@@ -489,6 +493,24 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     }
   }
 
+  // ── Internal: Fetch page properties as key→value map ──
+
+  private async _fetchPageProperties(pageId: string): Promise<Record<string, unknown>> {
+    try {
+      const rows = await this._db.all<{ key: string; value: string; value_type: string }>(
+        'SELECT key, value, value_type FROM page_properties WHERE page_id = ?',
+        [pageId],
+      );
+      const props: Record<string, unknown> = {};
+      for (const row of rows) {
+        try { props[row.key] = JSON.parse(row.value); } catch { props[row.key] = row.value; }
+      }
+      return props;
+    } catch {
+      return {};
+    }
+  }
+
   // ── Internal: Full Page Indexing ──
 
   private async _indexAllPages(): Promise<number> {
@@ -503,7 +525,8 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       this._checkAborted();
       const t0 = performance.now();
       try {
-        const changed = await this._indexSinglePage(page.id, page.title, page.content);
+        const props = await this._fetchPageProperties(page.id);
+        const changed = await this._indexSinglePage(page.id, page.title, page.content, props);
         if (changed) { indexed++; }
         this._onDidIndexSource.fire({
           type: 'page', source: page.title, sourceId: page.id,
@@ -528,17 +551,26 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
    * Index a single page. Returns true if the page was actually re-indexed
    * (content changed), false if skipped (hash match).
    */
-  private async _indexSinglePage(pageId: string, title: string, content: string): Promise<boolean> {
+  private async _indexSinglePage(pageId: string, title: string, content: string, properties?: Record<string, unknown>): Promise<boolean> {
     if (!content || content === '{}') { return false; }
 
     // Check effective indexed payload hash — skip if the retrievable page state is unchanged.
-    const contentHash = await hashText(buildPageIndexPayload(title, content));
+    const contentHash = await hashText(buildPageIndexPayload(title, content, properties));
     const storedHash = await this._vectorStore.getContentHash('page_block', pageId);
     if (storedHash === contentHash) { return false; }
 
     // Chunk
     const chunks = await this._chunkingService.chunkPage(pageId, title, content);
     if (chunks.length === 0) { return false; }
+
+    // Prepend property metadata to the first chunk so properties are embedded
+    if (properties && Object.keys(properties).length > 0 && chunks.length > 0) {
+      const propsText = Object.entries(properties)
+        .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : String(v)}`)
+        .join('\n');
+      chunks[0].text = `Properties:\n${propsText}\n\n${chunks[0].text}`;
+      chunks[0].contentHash = await hashText(chunks[0].text);
+    }
 
     // Embed
     const embeddedChunks = await this._embedChunks(chunks);
