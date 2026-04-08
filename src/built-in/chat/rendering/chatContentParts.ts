@@ -11,6 +11,8 @@
 import 'katex/dist/katex.min.css';
 
 import MarkdownIt from 'markdown-it';
+import markdownItMark from 'markdown-it-mark';
+import MarkdownItGitHubAlerts from 'markdown-it-github-alerts';
 import katex from 'katex';
 import { $ } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
@@ -642,6 +644,16 @@ function _createChatMarkdownRenderer(): MarkdownIt {
     breaks: true,
     linkify: false,
   });
+
+  markdown.use(markdownItMark);
+  markdown.use(MarkdownItGitHubAlerts, { markers: '*' });
+
+  // Run inline rules on callout titles (plugin inserts raw text)
+  markdown.renderer.rules.alert_open = (tokens, idx) => {
+    const { title, type, icon } = tokens[idx].meta;
+    const renderedTitle = markdown.renderInline(title);
+    return `<div class="markdown-alert markdown-alert-${type}"><p class="markdown-alert-title">${icon}${renderedTitle}</p>`;
+  };
 
   _installKatexRules(markdown);
 
