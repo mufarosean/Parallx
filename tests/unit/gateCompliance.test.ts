@@ -58,6 +58,8 @@ const EXEMPT_FILES = new Set([
   'database/databaseTypes.ts',     // Database type definitions (M8)
   'database/databaseDataService.ts', // Database data layer (M8)
   'database/database.css',         // Database stylesheet (M8 Phase 2)
+  'properties/propertyTypes.ts',   // Property type definitions (M55)
+  'properties/propertyDataService.ts', // Property data layer (M55)
 ]);
 
 // ── Child → allowed gate path fragments ─────────────────────────────────────

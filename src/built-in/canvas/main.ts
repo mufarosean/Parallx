@@ -22,6 +22,7 @@ import type { PageChangeEvent, PageUpdateField } from './canvasTypes.js';
 import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { setOnLinkedPageBlockDeleted } from './config/blockRegistry.js';
+import { PropertyDataService } from './properties/propertyDataService.js';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -94,6 +95,7 @@ function doesPageChangeAffectIndexMetadata(event: PageChangeEvent): boolean {
 let _api: ParallxApi;
 let _dataService: CanvasDataService | null = null;
 let _sidebar: CanvasSidebar | null = null;
+let _propertyService: PropertyDataService | null = null;
 
 // â”€â”€â”€ Activation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -189,6 +191,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 2. Create CanvasDataService
   _dataService = new CanvasDataService();
   context.subscriptions.push(_dataService);
+
+  // 2b. Create PropertyDataService and seed defaults
+  _propertyService = new PropertyDataService();
+  context.subscriptions.push(_propertyService);
+  await _propertyService.ensureDefaultProperties();
 
   // 2a. parentId is the source of truth for hierarchy — no content reconciliation needed.
 
@@ -353,6 +360,7 @@ export async function deactivate(): Promise<void> {
   // Clear module-level state
   _dataService = null;
   _sidebar = null;
+  _propertyService = null;
   _api = undefined!;
 
   if (isDevMode) console.log('[Canvas] Tool deactivated');
