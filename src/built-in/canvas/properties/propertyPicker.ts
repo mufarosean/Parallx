@@ -4,7 +4,7 @@
 // with search/filter and a "Create new property" option at the bottom.
 
 import type { IPropertyDefinition, PropertyType } from './propertyTypes.js';
-import { createTypeIconElement, getTypeIcon } from './propertyEditors.js';
+import { createTypeIconElement } from './propertyEditors.js';
 import { layoutPopup } from '../../../ui/dom.js';
 
 const ALL_TYPES: { value: PropertyType; label: string }[] = [
@@ -110,23 +110,78 @@ export function showPropertyPicker(
     nameInput.placeholder = 'Property name';
     newForm.appendChild(nameInput);
 
-    const typeSelect = document.createElement('select');
-    for (const t of ALL_TYPES) {
-      const opt = document.createElement('option');
-      opt.value = t.value;
-      opt.textContent = `${getTypeIcon(t.value)} ${t.label}`;
-      typeSelect.appendChild(opt);
-    }
-    newForm.appendChild(typeSelect);
+    // Custom type picker (replaces native <select> so icons render)
+    let selectedType: PropertyType = 'text';
+
+    const typeBtn = document.createElement('button');
+    typeBtn.type = 'button';
+    typeBtn.className = 'canvas-property-picker__type-btn';
+    const _updateTypeBtn = () => {
+      typeBtn.innerHTML = '';
+      const icon = createTypeIconElement(selectedType, 14);
+      typeBtn.appendChild(icon);
+      const lbl = document.createElement('span');
+      lbl.textContent = ALL_TYPES.find(t => t.value === selectedType)?.label ?? selectedType;
+      typeBtn.appendChild(lbl);
+      const chevron = document.createElement('span');
+      chevron.className = 'canvas-property-picker__type-chevron';
+      chevron.textContent = '▾';
+      typeBtn.appendChild(chevron);
+    };
+    _updateTypeBtn();
+
+    typeBtn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      _showTypeDropdown(typeBtn);
+    });
+    newForm.appendChild(typeBtn);
+
+    // Type dropdown
+    let typeDropdown: HTMLElement | null = null;
+    const _showTypeDropdown = (anchor: HTMLElement) => {
+      if (typeDropdown) { typeDropdown.remove(); typeDropdown = null; return; }
+      typeDropdown = document.createElement('div');
+      typeDropdown.className = 'canvas-property-picker__type-dropdown';
+
+      for (const t of ALL_TYPES) {
+        const item = document.createElement('div');
+        item.className = 'canvas-property-picker__type-item';
+        if (t.value === selectedType) item.classList.add('canvas-property-picker__type-item--active');
+
+        const ic = createTypeIconElement(t.value, 14);
+        item.appendChild(ic);
+        const span = document.createElement('span');
+        span.textContent = t.label;
+        item.appendChild(span);
+
+        item.addEventListener('mousedown', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          selectedType = t.value;
+          _updateTypeBtn();
+          typeDropdown?.remove();
+          typeDropdown = null;
+        });
+        typeDropdown.appendChild(item);
+      }
+
+      // Position below the type button
+      anchor.parentElement!.appendChild(typeDropdown);
+      const btnRect = anchor.getBoundingClientRect();
+      const formRect = anchor.parentElement!.getBoundingClientRect();
+      typeDropdown.style.top = `${btnRect.bottom - formRect.top}px`;
+      typeDropdown.style.left = '0';
+      typeDropdown.style.width = `${btnRect.width}px`;
+    };
 
     const submitBtn = document.createElement('button');
     submitBtn.textContent = 'Create';
     submitBtn.addEventListener('click', () => {
       const name = nameInput.value.trim();
       if (!name) return;
-      const type = typeSelect.value as PropertyType;
       dismiss();
-      onCreateNew(name, type);
+      onCreateNew(name, selectedType);
     });
     newForm.appendChild(submitBtn);
 

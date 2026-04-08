@@ -699,6 +699,7 @@
 /* ─── Create-New-Property Inline Form ───────────────────────────────────────── */
 
 .canvas-property-picker__new-form {
+  position: relative;
   padding: 8px;
   border-top: 1px solid var(--vscode-menu-border);
   display: flex;
@@ -722,6 +723,67 @@
 
 .canvas-property-picker__new-form select {
   cursor: pointer;
+}
+
+/* ── Custom type picker button ── */
+
+.canvas-property-picker__type-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--parallx-radius-sm, 3px);
+  color: var(--vscode-input-foreground);
+  font-family: inherit;
+  font-size: var(--parallx-fontSize-md, 13px);
+  padding: 4px 8px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.canvas-property-picker__type-btn:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+.canvas-property-picker__type-chevron {
+  margin-left: auto;
+  opacity: 0.5;
+  font-size: 10px;
+}
+
+/* ── Type dropdown menu ── */
+
+.canvas-property-picker__type-dropdown {
+  position: absolute;
+  z-index: 2576;
+  background: var(--vscode-menu-background, #1e1e2e);
+  border: 1px solid var(--vscode-menu-border, rgba(255, 255, 255, 0.08));
+  border-radius: var(--parallx-radius-md, 4px);
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+  padding: 4px 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.canvas-property-picker__type-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  color: var(--vscode-menu-foreground, #cdd6f4);
+  font-size: var(--parallx-fontSize-md, 13px);
+}
+
+.canvas-property-picker__type-item:hover {
+  background: var(--vscode-menu-selectionBackground, rgba(255, 255, 255, 0.08));
+  color: var(--vscode-menu-selectionForeground, #fff);
+}
+
+.canvas-property-picker__type-item--active {
+  background: var(--vscode-menu-selectionBackground, rgba(255, 255, 255, 0.08));
 }
 
 .canvas-property-picker__new-form button {
