@@ -274,8 +274,8 @@ export class PropertyDataService extends Disposable implements IPropertyDataServ
         params.push(JSON.stringify(value));
         break;
       case 'contains':
-        whereClause = 'pp.key = ? AND pp.value LIKE ?';
-        params.push(`%${String(value)}%`);
+        whereClause = "pp.key = ? AND pp.value LIKE ? ESCAPE '\\'";
+        params.push(`%${String(value).replace(/[\\%_]/g, '\\$&')}%`);
         break;
       case 'is_empty':
         whereClause = "pp.key = ? AND (pp.value IS NULL OR pp.value = 'null' OR pp.value = '\"\"' OR pp.value = '[]')";

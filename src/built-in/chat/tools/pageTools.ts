@@ -478,8 +478,8 @@ export function createFindPagesByPropertyTool(db: IBuiltInToolDatabase | undefin
           params.push(JSON.stringify(value));
           break;
         case 'contains':
-          whereClause = 'pp.value LIKE ?';
-          params.push(`%${String(value)}%`);
+          whereClause = "pp.value LIKE ? ESCAPE '\\'";
+          params.push(`%${String(value).replace(/[\\%_]/g, '\\$&')}%`);
           break;
         case 'is_empty':
           whereClause = "pp.value IS NULL OR pp.value = 'null' OR pp.value = '\"\"'";
