@@ -321,6 +321,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 5d. Re-index when page properties change (tags, dates, etc.)
   context.subscriptions.push(
     _propertyService.onDidChangePageProperty((event) => {
+      // Invalidate dedup keys so the pipeline picks up the property change
+      // (buildIndexedPagePayloadKey only hashes title+content, not properties)
+      queuedPagePayloads.delete(event.pageId);
+      runningPagePayloads.delete(event.pageId);
+
       void _dataService?.getPage(event.pageId).then((page) => {
         schedulePageReindexForPayload(page ?? undefined);
       }).catch((err) => {

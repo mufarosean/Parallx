@@ -56,7 +56,10 @@ function _createTextEditor(value: string | null, onChange: (v: unknown) => void)
   input.value = value ?? '';
   input.placeholder = 'Empty';
 
+  let committed = false;
   const commit = () => {
+    if (committed) return;
+    committed = true;
     const newVal = input.value.trim();
     if (newVal !== (value ?? '')) {
       onChange(newVal || null);
@@ -64,7 +67,7 @@ function _createTextEditor(value: string | null, onChange: (v: unknown) => void)
   };
   input.addEventListener('blur', commit);
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); commit(); input.blur(); }
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(); input.blur(); }
   });
 
   return input;
@@ -79,7 +82,10 @@ function _createNumberEditor(value: number | null, onChange: (v: unknown) => voi
   input.value = value != null ? String(value) : '';
   input.placeholder = 'Empty';
 
+  let committed = false;
   const commit = () => {
+    if (committed) return;
+    committed = true;
     const raw = input.value.trim();
     const newVal = raw === '' ? null : Number(raw);
     if (newVal !== value) {
@@ -88,7 +94,7 @@ function _createNumberEditor(value: number | null, onChange: (v: unknown) => voi
   };
   input.addEventListener('blur', commit);
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); commit(); input.blur(); }
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(); input.blur(); }
   });
 
   return input;
@@ -427,7 +433,10 @@ function _createUrlEditor(value: string | null, onChange: (v: unknown) => void):
   input.value = value ?? '';
   input.placeholder = 'https://…';
 
+  let committed = false;
   const commit = () => {
+    if (committed) return;
+    committed = true;
     const newVal = input.value.trim();
     if (newVal !== (value ?? '')) {
       onChange(newVal || null);
@@ -435,7 +444,7 @@ function _createUrlEditor(value: string | null, onChange: (v: unknown) => void):
   };
   input.addEventListener('blur', commit);
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); commit(); input.blur(); }
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(); input.blur(); }
   });
 
   wrap.appendChild(input);

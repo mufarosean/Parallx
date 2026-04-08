@@ -24,6 +24,8 @@ export class PropertyBar implements IDisposable {
   private _el: HTMLElement | null = null;
   private _body: HTMLElement | null = null;
   private _disposed = false;
+  private _rendering = false;
+  private _renderQueued = false;
   private readonly _eventDisposables: IDisposable[] = [];
 
   constructor(
@@ -88,6 +90,15 @@ export class PropertyBar implements IDisposable {
 
   private async _renderProperties(): Promise<void> {
     if (!this._body || this._disposed) return;
+
+    // Guard against concurrent renders — queue at most one re-render
+    if (this._rendering) {
+      this._renderQueued = true;
+      return;
+    }
+    this._rendering = true;
+    this._renderQueued = false;
+
     this._body.innerHTML = '';
 
     let properties: (IPageProperty & { definition: IPropertyDefinition })[];
@@ -133,6 +144,12 @@ export class PropertyBar implements IDisposable {
       );
     });
     this._body.appendChild(addBtn);
+
+    this._rendering = false;
+    if (this._renderQueued) {
+      this._renderQueued = false;
+      void this._renderProperties();
+    }
   }
 
   // ── Create a single property row ──────────────────────────────────────
