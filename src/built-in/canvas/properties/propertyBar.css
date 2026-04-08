@@ -2,6 +2,7 @@
  *
  * Rendered below .canvas-page-header, above the Tiptap .ProseMirror editor.
  * Uses existing --vscode-* and --parallx-* CSS custom properties.
+ * Shares the same max-width / gutter as the page header and editor.
  */
 
 /* ─── Container ─────────────────────────────────────────────────────────────── */
@@ -10,9 +11,8 @@
   max-width: var(--canvas-content-max-width, 760px);
   width: 100%;
   margin: 0 auto;
-  padding: 0 var(--canvas-content-gutter, 64px);
+  padding: 12px var(--canvas-content-gutter, 64px);
   box-sizing: border-box;
-  border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.06));
   font-size: var(--parallx-fontSize-md, 13px);
   color: var(--vscode-editor-foreground, #cdd6f4);
   user-select: none;
@@ -24,13 +24,11 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 0;
+  padding: 2px 0;
   cursor: pointer;
   color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--parallx-fontSize-md, 13px);
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   transition: color 0.1s ease;
 }
 
@@ -55,7 +53,8 @@
 /* ─── Collapsible Body ──────────────────────────────────────────────────────── */
 
 .canvas-property-bar__body {
-  padding-bottom: 6px;
+  padding-top: 4px;
+  padding-bottom: 0;
 }
 
 .canvas-property-bar.collapsed .canvas-property-bar__body {
@@ -282,26 +281,30 @@
 
 .canvas-prop-tag-autocomplete {
   position: fixed;
-  z-index: 10000;
-  background: var(--vscode-editorWidget-background, #1e1e2e);
-  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
-  border-radius: var(--parallx-radius-md, 6px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 2575;
+  background: var(--vscode-menu-background);
+  color: var(--vscode-menu-foreground);
+  border: 1px solid var(--vscode-menu-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow);
   max-height: 160px;
   overflow-y: auto;
   min-width: 120px;
+  padding: 4px 0;
 }
 
 .canvas-prop-tag-autocomplete__item {
-  padding: 4px 10px;
+  padding: 4px 8px;
   cursor: pointer;
   font-size: var(--parallx-fontSize-md, 13px);
-  color: var(--vscode-editor-foreground, #cdd6f4);
+  color: var(--vscode-menu-foreground);
+  user-select: none;
 }
 
 .canvas-prop-tag-autocomplete__item:hover,
 .canvas-prop-tag-autocomplete__item.active {
-  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
 }
 
 /* ─── Select Pill ───────────────────────────────────────────────────────────── */
@@ -333,11 +336,12 @@
 
 .canvas-prop-select-dropdown {
   position: fixed;
-  z-index: 10000;
-  background: var(--vscode-editorWidget-background, #1e1e2e);
-  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
-  border-radius: var(--parallx-radius-md, 6px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 2575;
+  background: var(--vscode-menu-background);
+  color: var(--vscode-menu-foreground);
+  border: 1px solid var(--vscode-menu-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow);
   max-height: 200px;
   overflow-y: auto;
   min-width: 140px;
@@ -348,14 +352,16 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 10px;
+  padding: 4px 8px;
   cursor: pointer;
   font-size: var(--parallx-fontSize-md, 13px);
-  color: var(--vscode-editor-foreground, #cdd6f4);
+  color: var(--vscode-menu-foreground);
+  user-select: none;
 }
 
 .canvas-prop-select-dropdown__item:hover {
-  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
 }
 
 .canvas-prop-select-dropdown__swatch {
@@ -401,11 +407,12 @@
 
 .canvas-property-picker {
   position: fixed;
-  z-index: 10000;
-  background: var(--vscode-editorWidget-background, #1e1e2e);
-  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
-  border-radius: var(--parallx-radius-md, 6px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  z-index: 2575;
+  background: var(--vscode-menu-background);
+  color: var(--vscode-menu-foreground);
+  border: 1px solid var(--vscode-menu-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow);
   min-width: 220px;
   max-width: 300px;
   max-height: 320px;
@@ -415,15 +422,15 @@
 
 .canvas-property-picker__search {
   padding: 8px;
-  border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.06));
+  border-bottom: 1px solid var(--vscode-menu-border);
 }
 
 .canvas-property-picker__search input {
   width: 100%;
-  background: var(--vscode-input-background, rgba(255, 255, 255, 0.06));
+  background: var(--vscode-input-background);
   border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
   border-radius: var(--parallx-radius-sm, 3px);
-  color: var(--vscode-editor-foreground, #cdd6f4);
+  color: var(--vscode-input-foreground);
   font-family: inherit;
   font-size: var(--parallx-fontSize-md, 13px);
   padding: 4px 8px;
@@ -445,14 +452,16 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 12px;
+  padding: 4px 8px;
   cursor: pointer;
   font-size: var(--parallx-fontSize-md, 13px);
-  color: var(--vscode-editor-foreground, #cdd6f4);
+  color: var(--vscode-menu-foreground);
+  user-select: none;
 }
 
 .canvas-property-picker__item:hover {
-  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
 }
 
 .canvas-property-picker__item-icon {
@@ -467,7 +476,7 @@
 
 .canvas-property-picker__divider {
   height: 1px;
-  background: var(--vscode-widget-border, rgba(255, 255, 255, 0.06));
+  background: var(--vscode-menu-separatorBackground, rgba(255, 255, 255, 0.06));
   margin: 4px 0;
 }
 
@@ -475,21 +484,22 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 12px;
+  padding: 4px 8px;
   cursor: pointer;
   font-size: var(--parallx-fontSize-md, 13px);
   color: var(--vscode-textLink-foreground, #89b4fa);
+  user-select: none;
 }
 
 .canvas-property-picker__create:hover {
-  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+  background: var(--vscode-menu-selectionBackground);
 }
 
 /* ─── Create-New-Property Inline Form ───────────────────────────────────────── */
 
 .canvas-property-picker__new-form {
   padding: 8px;
-  border-top: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.06));
+  border-top: 1px solid var(--vscode-menu-border);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -498,10 +508,10 @@
 .canvas-property-picker__new-form input,
 .canvas-property-picker__new-form select {
   width: 100%;
-  background: var(--vscode-input-background, rgba(255, 255, 255, 0.06));
+  background: var(--vscode-input-background);
   border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
   border-radius: var(--parallx-radius-sm, 3px);
-  color: var(--vscode-editor-foreground, #cdd6f4);
+  color: var(--vscode-input-foreground);
   font-family: inherit;
   font-size: var(--parallx-fontSize-md, 13px);
   padding: 4px 8px;
