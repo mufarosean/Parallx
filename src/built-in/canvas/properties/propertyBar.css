@@ -11,7 +11,7 @@
   max-width: var(--canvas-content-max-width, 760px);
   width: 100%;
   margin: 0 auto;
-  padding: 10px var(--canvas-content-gutter, 64px) 14px;
+  padding: 16px var(--canvas-content-gutter, 64px) 14px;
   box-sizing: border-box;
   font-size: var(--parallx-fontSize-md, 13px);
   color: var(--vscode-editor-foreground, #cdd6f4);
@@ -21,11 +21,11 @@
 /* ─── Header Row ────────────────────────────────────────────────────────────── */
 
 .canvas-property-bar__header {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
   padding: 2px 0;
-  margin-left: -18px; /* pull chevron into the gutter so label aligns with title */
   cursor: pointer;
   color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
   font-size: var(--parallx-fontSize-md, 13px);
@@ -38,6 +38,8 @@
 }
 
 .canvas-property-bar__chevron {
+  position: absolute;
+  left: -18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -198,16 +200,215 @@
   color: var(--vscode-input-placeholderForeground, rgba(255, 255, 255, 0.25));
 }
 
-/* Force Chromium native date/time pickers into dark mode */
-.canvas-prop-input[type="date"],
-.canvas-prop-input[type="datetime-local"] {
-  color-scheme: dark;
+/* ─── Custom Date Trigger ──────────────────────────────────────────────────── */
+
+.canvas-prop-date-trigger {
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--parallx-radius-sm, 3px);
+  color: var(--vscode-editor-foreground, #cdd6f4);
+  font-family: inherit;
+  font-size: var(--parallx-fontSize-md, 13px);
+  padding: 2px 6px;
+  height: 26px;
+  box-sizing: border-box;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.1s ease, background 0.1s ease;
 }
 
-.canvas-prop-input[type="date"]::-webkit-calendar-picker-indicator,
-.canvas-prop-input[type="datetime-local"]::-webkit-calendar-picker-indicator {
-  filter: invert(0.7);
+.canvas-prop-date-trigger:hover {
+  background: var(--vscode-input-background, rgba(255, 255, 255, 0.06));
+}
+
+.canvas-prop-date-trigger:focus {
+  border-color: var(--vscode-focusBorder, rgba(255, 255, 255, 0.2));
+  background: var(--vscode-input-background, rgba(255, 255, 255, 0.06));
+}
+
+.canvas-prop-date-trigger--empty {
+  color: var(--vscode-input-placeholderForeground, rgba(255, 255, 255, 0.25));
+}
+
+/* ─── Calendar Popup ────────────────────────────────────────────────────────── */
+
+.canvas-prop-calendar {
+  position: fixed;
+  z-index: 2575;
+  background: var(--vscode-menu-background);
+  color: var(--vscode-menu-foreground);
+  border: 1px solid var(--vscode-menu-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow);
+  width: 240px;
+  padding: 8px;
+  user-select: none;
+}
+
+.canvas-prop-calendar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+}
+
+.canvas-prop-calendar__nav {
+  background: none;
+  border: none;
+  color: var(--vscode-menu-foreground);
   cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--parallx-radius-sm, 3px);
+  font-size: 12px;
+  padding: 0;
+}
+
+.canvas-prop-calendar__nav:hover {
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
+}
+
+.canvas-prop-calendar__title {
+  font-size: var(--parallx-fontSize-md, 13px);
+  font-weight: 600;
+}
+
+.canvas-prop-calendar__dow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
+  padding-bottom: 4px;
+}
+
+.canvas-prop-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+}
+
+.canvas-prop-calendar__day {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--parallx-radius-sm, 3px);
+  font-size: 12px;
+  background: none;
+  border: none;
+  color: var(--vscode-menu-foreground);
+  cursor: pointer;
+  padding: 0;
+}
+
+.canvas-prop-calendar__day:not(.canvas-prop-calendar__day--empty):hover {
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
+}
+
+.canvas-prop-calendar__day--empty {
+  cursor: default;
+}
+
+.canvas-prop-calendar__day--today {
+  outline: 1px solid var(--vscode-focusBorder, rgba(255, 255, 255, 0.3));
+  outline-offset: -1px;
+}
+
+.canvas-prop-calendar__day--selected {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.canvas-prop-calendar__day--selected:hover {
+  background: var(--vscode-button-hoverBackground);
+  color: var(--vscode-button-foreground);
+}
+
+.canvas-prop-calendar__footer {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px solid var(--vscode-menu-border);
+  margin-top: 6px;
+}
+
+.canvas-prop-calendar__footer-btn {
+  background: none;
+  border: none;
+  color: var(--vscode-textLink-foreground, #89b4fa);
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-sm, 11px);
+  padding: 2px 4px;
+  font-family: inherit;
+}
+
+.canvas-prop-calendar__footer-btn:hover {
+  text-decoration: underline;
+}
+
+.canvas-prop-calendar__time {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vscode-menu-border);
+  margin-top: 6px;
+}
+
+.canvas-prop-calendar__time-input {
+  width: 40px;
+  background: var(--vscode-input-background, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  border-radius: 3px;
+  color: var(--vscode-input-foreground, #cdd6f4);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: center;
+  padding: 2px;
+  height: 26px;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.canvas-prop-calendar__time-input:focus {
+  border-color: var(--vscode-focusBorder, rgba(255, 255, 255, 0.2));
+}
+
+/* Hide number input spin buttons */
+.canvas-prop-calendar__time-input::-webkit-inner-spin-button,
+.canvas-prop-calendar__time-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.canvas-prop-calendar__time-sep {
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
+  font-size: 14px;
+}
+
+.canvas-prop-calendar__confirm {
+  margin-left: auto;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: 3px;
+  padding: 2px 12px;
+  height: 26px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.canvas-prop-calendar__confirm:hover {
+  background: var(--vscode-button-hoverBackground);
 }
 
 /* ─── Checkbox Toggle ───────────────────────────────────────────────────────── */

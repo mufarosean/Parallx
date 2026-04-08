@@ -111,36 +111,61 @@ function _createCheckboxEditor(value: boolean, onChange: (v: unknown) => void): 
 // ─── Date ────────────────────────────────────────────────────────────────────
 
 function _createDateEditor(value: string | null, onChange: (v: unknown) => void): HTMLElement {
-  const input = document.createElement('input');
-  input.type = 'date';
-  input.className = 'canvas-prop-input';
-  // Normalize ISO datetime to date-only
-  input.value = value ? value.substring(0, 10) : '';
+  const trigger = document.createElement('button');
+  trigger.className = 'canvas-prop-date-trigger';
+  const dateStr = value ? value.substring(0, 10) : '';
+  trigger.textContent = dateStr ? _formatDate(dateStr) : 'Empty';
+  if (!dateStr) trigger.classList.add('canvas-prop-date-trigger--empty');
 
-  input.addEventListener('change', () => {
-    onChange(input.value || null);
+  let popup: HTMLElement | null = null;
+  trigger.addEventListener('click', () => {
+    if (popup) { popup.remove(); popup = null; return; }
+    popup = _buildCalendar(
+      dateStr ? new Date(dateStr + 'T00:00:00') : null,
+      false,
+      (iso) => {
+        onChange(iso || null);
+        trigger.textContent = iso ? _formatDate(iso) : 'Empty';
+        trigger.classList.toggle('canvas-prop-date-trigger--empty', !iso);
+        popup?.remove(); popup = null;
+      },
+      () => { popup = null; },
+    );
+    document.body.appendChild(popup);
+    _positionBelow(popup, trigger);
   });
 
-  return input;
+  return trigger;
 }
 
 // ─── Datetime ────────────────────────────────────────────────────────────────
 
 function _createDatetimeEditor(value: string | null, onChange: (v: unknown) => void): HTMLElement {
-  const input = document.createElement('input');
-  input.type = 'datetime-local';
-  input.className = 'canvas-prop-input';
-  // Normalize ISO to format suitable for datetime-local input
-  if (value) {
-    // datetime-local expects YYYY-MM-DDTHH:MM format
-    input.value = value.replace(' ', 'T').substring(0, 16);
-  }
+  const trigger = document.createElement('button');
+  trigger.className = 'canvas-prop-date-trigger';
+  const dtStr = value ? value.replace(' ', 'T').substring(0, 16) : '';
+  trigger.textContent = dtStr ? _formatDatetime(dtStr) : 'Empty';
+  if (!dtStr) trigger.classList.add('canvas-prop-date-trigger--empty');
 
-  input.addEventListener('change', () => {
-    onChange(input.value || null);
+  let popup: HTMLElement | null = null;
+  trigger.addEventListener('click', () => {
+    if (popup) { popup.remove(); popup = null; return; }
+    popup = _buildCalendar(
+      dtStr ? new Date(dtStr) : null,
+      true,
+      (iso) => {
+        onChange(iso || null);
+        trigger.textContent = iso ? _formatDatetime(iso) : 'Empty';
+        trigger.classList.toggle('canvas-prop-date-trigger--empty', !iso);
+        popup?.remove(); popup = null;
+      },
+      () => { popup = null; },
+    );
+    document.body.appendChild(popup);
+    _positionBelow(popup, trigger);
   });
 
-  return input;
+  return trigger;
 }
 
 // ─── Tags ────────────────────────────────────────────────────────────────────
@@ -428,4 +453,230 @@ function _createUrlEditor(value: string | null, onChange: (v: unknown) => void):
 
   wrap.appendChild(link);
   return wrap;
+}
+
+// ─── Calendar Helpers ────────────────────────────────────────────────────────
+
+const _MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+function _formatDate(iso: string): string {
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function _formatDatetime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  });
+}
+
+function _positionBelow(popup: HTMLElement, anchor: HTMLElement): void {
+  const rect = anchor.getBoundingClientRect();
+  const popH = popup.offsetHeight || 300;
+  const spaceBelow = window.innerHeight - rect.bottom - 8;
+  if (spaceBelow >= popH) {
+    popup.style.left = `${rect.left}px`;
+    popup.style.top = `${rect.bottom + 2}px`;
+  } else {
+    popup.style.left = `${rect.left}px`;
+    popup.style.top = `${Math.max(4, rect.top - popH - 2)}px`;
+  }
+}
+
+function _pad2(n: number): string { return String(n).padStart(2, '0'); }
+
+function _buildCalendar(
+  selected: Date | null,
+  showTime: boolean,
+  onSelect: (iso: string) => void,
+  onDismiss: () => void,
+): HTMLElement {
+  const today = new Date();
+  let viewMonth = (selected ?? today).getMonth();
+  let viewYear = (selected ?? today).getFullYear();
+  let hours = selected ? selected.getHours() : today.getHours();
+  let minutes = selected ? selected.getMinutes() : today.getMinutes();
+  let selDay = selected ? selected.getDate() : -1;
+  let selMonth = selected ? selected.getMonth() : -1;
+  let selYear = selected ? selected.getFullYear() : -1;
+
+  const el = document.createElement('div');
+  el.className = 'canvas-prop-calendar';
+
+  const render = () => {
+    el.innerHTML = '';
+
+    // ── Header: ◂ Month Year ▸
+    const header = document.createElement('div');
+    header.className = 'canvas-prop-calendar__header';
+
+    const prevBtn = document.createElement('button');
+    prevBtn.className = 'canvas-prop-calendar__nav';
+    prevBtn.textContent = '◂';
+    prevBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      viewMonth--;
+      if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+      render();
+    });
+
+    const title = document.createElement('span');
+    title.className = 'canvas-prop-calendar__title';
+    title.textContent = `${_MONTHS[viewMonth]} ${viewYear}`;
+
+    const nextBtn = document.createElement('button');
+    nextBtn.className = 'canvas-prop-calendar__nav';
+    nextBtn.textContent = '▸';
+    nextBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      viewMonth++;
+      if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+      render();
+    });
+
+    header.append(prevBtn, title, nextBtn);
+    el.appendChild(header);
+
+    // ── Day-of-week labels
+    const dowRow = document.createElement('div');
+    dowRow.className = 'canvas-prop-calendar__dow';
+    for (const d of ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']) {
+      const cell = document.createElement('span');
+      cell.textContent = d;
+      dowRow.appendChild(cell);
+    }
+    el.appendChild(dowRow);
+
+    // ── Day grid
+    const grid = document.createElement('div');
+    grid.className = 'canvas-prop-calendar__grid';
+
+    const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+    for (let i = 0; i < firstDay; i++) {
+      const empty = document.createElement('span');
+      empty.className = 'canvas-prop-calendar__day canvas-prop-calendar__day--empty';
+      grid.appendChild(empty);
+    }
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dayEl = document.createElement('button');
+      dayEl.className = 'canvas-prop-calendar__day';
+      dayEl.textContent = String(d);
+
+      if (d === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear()) {
+        dayEl.classList.add('canvas-prop-calendar__day--today');
+      }
+      if (d === selDay && viewMonth === selMonth && viewYear === selYear) {
+        dayEl.classList.add('canvas-prop-calendar__day--selected');
+      }
+
+      dayEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selDay = d; selMonth = viewMonth; selYear = viewYear;
+        if (showTime) {
+          render(); // re-render to highlight, user confirms via Done
+        } else {
+          onSelect(`${viewYear}-${_pad2(viewMonth + 1)}-${_pad2(d)}`);
+        }
+      });
+
+      grid.appendChild(dayEl);
+    }
+    el.appendChild(grid);
+
+    // ── Footer: Today / Clear
+    const footer = document.createElement('div');
+    footer.className = 'canvas-prop-calendar__footer';
+
+    const todayBtn = document.createElement('button');
+    todayBtn.className = 'canvas-prop-calendar__footer-btn';
+    todayBtn.textContent = 'Today';
+    todayBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const now = new Date();
+      selDay = now.getDate(); selMonth = now.getMonth(); selYear = now.getFullYear();
+      viewMonth = selMonth; viewYear = selYear;
+      hours = now.getHours(); minutes = now.getMinutes();
+      if (!showTime) {
+        onSelect(`${selYear}-${_pad2(selMonth + 1)}-${_pad2(selDay)}`);
+      } else {
+        render();
+      }
+    });
+
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'canvas-prop-calendar__footer-btn';
+    clearBtn.textContent = 'Clear';
+    clearBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onSelect('');
+    });
+
+    footer.append(todayBtn, clearBtn);
+    el.appendChild(footer);
+
+    // ── Time row (datetime only)
+    if (showTime) {
+      const timeRow = document.createElement('div');
+      timeRow.className = 'canvas-prop-calendar__time';
+
+      const hourInput = document.createElement('input');
+      hourInput.type = 'number';
+      hourInput.className = 'canvas-prop-calendar__time-input';
+      hourInput.min = '0'; hourInput.max = '23';
+      hourInput.value = _pad2(hours);
+      hourInput.addEventListener('change', () => {
+        hours = Math.min(23, Math.max(0, parseInt(hourInput.value) || 0));
+        hourInput.value = _pad2(hours);
+      });
+
+      const sep = document.createElement('span');
+      sep.className = 'canvas-prop-calendar__time-sep';
+      sep.textContent = ':';
+
+      const minInput = document.createElement('input');
+      minInput.type = 'number';
+      minInput.className = 'canvas-prop-calendar__time-input';
+      minInput.min = '0'; minInput.max = '59';
+      minInput.value = _pad2(minutes);
+      minInput.addEventListener('change', () => {
+        minutes = Math.min(59, Math.max(0, parseInt(minInput.value) || 0));
+        minInput.value = _pad2(minutes);
+      });
+
+      const confirmBtn = document.createElement('button');
+      confirmBtn.className = 'canvas-prop-calendar__confirm';
+      confirmBtn.textContent = 'Done';
+      confirmBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (selDay > 0) {
+          onSelect(`${selYear}-${_pad2(selMonth + 1)}-${_pad2(selDay)}T${_pad2(hours)}:${_pad2(minutes)}`);
+        }
+      });
+
+      timeRow.append(hourInput, sep, minInput, confirmBtn);
+      el.appendChild(timeRow);
+    }
+  };
+
+  render();
+
+  // Dismiss on outside click
+  const dismiss = (e: MouseEvent) => {
+    if (!el.contains(e.target as Node)) {
+      el.remove();
+      document.removeEventListener('mousedown', dismiss, true);
+      onDismiss();
+    }
+  };
+  setTimeout(() => document.addEventListener('mousedown', dismiss, true), 0);
+
+  return el;
 }
