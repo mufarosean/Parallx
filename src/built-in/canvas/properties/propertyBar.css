@@ -450,7 +450,7 @@
   gap: 3px;
   padding: 1px 8px;
   border-radius: var(--parallx-radius-lg, 8px);
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: inherit;
   line-height: 1.6;
   white-space: nowrap;
   background: rgba(255, 255, 255, 0.1);
@@ -474,7 +474,7 @@
   border: none;
   color: var(--vscode-editor-foreground, #cdd6f4);
   font-family: inherit;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: inherit;
   outline: none;
   min-width: 60px;
   max-width: 150px;
