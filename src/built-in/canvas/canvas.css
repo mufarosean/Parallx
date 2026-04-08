@@ -2821,7 +2821,8 @@
 /* Narrow viewports (<768px): minimal gutters */
 @media (max-width: 768px) {
   .canvas-full-width .canvas-tiptap-editor,
-  .canvas-full-width .canvas-page-header {
+  .canvas-full-width .canvas-page-header,
+  .canvas-full-width .canvas-property-bar {
     padding-left: 20px;
     padding-right: 20px;
   }
@@ -2830,7 +2831,8 @@
 /* Wide viewports (>1440px): larger gutters to keep lines readable */
 @media (min-width: 1441px) {
   .canvas-full-width .canvas-tiptap-editor,
-  .canvas-full-width .canvas-page-header {
+  .canvas-full-width .canvas-page-header,
+  .canvas-full-width .canvas-property-bar {
     padding-left: clamp(32px, 4vw, 72px);
     padding-right: clamp(32px, 4vw, 72px);
   }
