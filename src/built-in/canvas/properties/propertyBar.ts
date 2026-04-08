@@ -112,7 +112,15 @@ export class PropertyBar implements IDisposable {
     // "+ Add property" button
     const addBtn = document.createElement('button');
     addBtn.className = 'canvas-property-add';
-    addBtn.textContent = '+ Add property';
+
+    const addIcon = document.createElement('span');
+    addIcon.className = 'canvas-property-add__icon';
+    addIcon.textContent = '+';
+    addBtn.appendChild(addIcon);
+
+    const addLabel = document.createElement('span');
+    addLabel.textContent = 'Add property';
+    addBtn.appendChild(addLabel);
     addBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       const existingKeys = properties.map(p => p.key);

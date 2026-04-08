@@ -83,7 +83,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--parallx-fontSize-base, 12px);
   opacity: 0.6;
 }
 
@@ -134,8 +134,8 @@
 .canvas-property-add {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px;
+  gap: 6px;
+  padding: 2px 4px;
   margin-top: 2px;
   cursor: pointer;
   color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.35));
@@ -145,6 +145,17 @@
   border-radius: var(--parallx-radius-sm, 3px);
   font-family: inherit;
   transition: color 0.1s ease, background 0.1s ease;
+}
+
+.canvas-property-add__icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--parallx-fontSize-base, 12px);
+  opacity: 0.6;
 }
 
 .canvas-property-add:hover {
