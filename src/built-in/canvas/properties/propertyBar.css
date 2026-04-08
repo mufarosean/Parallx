@@ -11,7 +11,7 @@
   max-width: var(--canvas-content-max-width, 760px);
   width: 100%;
   margin: 0 auto;
-  padding: 12px var(--canvas-content-gutter, 64px);
+  padding: 10px var(--canvas-content-gutter, 64px) 14px;
   box-sizing: border-box;
   font-size: var(--parallx-fontSize-md, 13px);
   color: var(--vscode-editor-foreground, #cdd6f4);
@@ -23,8 +23,9 @@
 .canvas-property-bar__header {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   padding: 2px 0;
+  margin-left: -18px; /* pull chevron into the gutter so label aligns with title */
   cursor: pointer;
   color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
   font-size: var(--parallx-fontSize-md, 13px);
@@ -195,6 +196,18 @@
 
 .canvas-prop-input::placeholder {
   color: var(--vscode-input-placeholderForeground, rgba(255, 255, 255, 0.25));
+}
+
+/* Force Chromium native date/time pickers into dark mode */
+.canvas-prop-input[type="date"],
+.canvas-prop-input[type="datetime-local"] {
+  color-scheme: dark;
+}
+
+.canvas-prop-input[type="date"]::-webkit-calendar-picker-indicator,
+.canvas-prop-input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
 }
 
 /* ─── Checkbox Toggle ───────────────────────────────────────────────────────── */
