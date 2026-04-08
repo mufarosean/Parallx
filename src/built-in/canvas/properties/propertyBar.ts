@@ -49,11 +49,6 @@ export class PropertyBar implements IDisposable {
     const header = document.createElement('div');
     header.className = 'canvas-property-bar__header';
 
-    const chevron = document.createElement('span');
-    chevron.className = 'canvas-property-bar__chevron';
-    chevron.textContent = '▾';
-    header.appendChild(chevron);
-
     const label = document.createElement('span');
     label.textContent = 'Properties';
     header.appendChild(label);

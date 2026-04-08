@@ -21,10 +21,8 @@
 /* ─── Header Row ────────────────────────────────────────────────────────────── */
 
 .canvas-property-bar__header {
-  position: relative;
   display: flex;
   align-items: center;
-  gap: 0;
   padding: 2px 0;
   cursor: pointer;
   color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
@@ -35,22 +33,6 @@
 
 .canvas-property-bar__header:hover {
   color: var(--vscode-foreground, rgba(255, 255, 255, 0.7));
-}
-
-.canvas-property-bar__chevron {
-  position: absolute;
-  left: -18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  font-size: 10px;
-  transition: transform 0.15s ease;
-}
-
-.canvas-property-bar.collapsed .canvas-property-bar__chevron {
-  transform: rotate(-90deg);
 }
 
 /* ─── Collapsible Body ──────────────────────────────────────────────────────── */
