@@ -96,18 +96,20 @@ describe('registerBuiltInTools', () => {
 
     const disposables = registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
-    expect(toolsService.registeredTools).toHaveLength(20);
-    expect(disposables).toHaveLength(20);
+    expect(toolsService.registeredTools).toHaveLength(23);
+    expect(disposables).toHaveLength(23);
 
     const names = toolsService.registeredTools.map(t => t.name).sort();
     expect(names).toEqual([
       'create_page',
       'delete_file',
       'edit_file',
+      'find_pages_by_property',
       'get_page_properties',
       'grep_search',
       'list_files',
       'list_pages',
+      'list_property_definitions',
       'memory_get',
       'memory_search',
       'read_current_page',
@@ -118,6 +120,7 @@ describe('registerBuiltInTools', () => {
       'search_files',
       'search_knowledge',
       'search_workspace',
+      'set_page_property',
       'transcript_get',
       'transcript_search',
       'write_file',
@@ -134,7 +137,7 @@ describe('registerBuiltInTools', () => {
 
     registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
-    const readOnly = ['search_workspace', 'read_page', 'read_page_by_title', 'read_current_page', 'list_pages', 'get_page_properties', 'list_files', 'read_file', 'search_files', 'grep_search', 'search_knowledge', 'memory_get', 'memory_search', 'transcript_get', 'transcript_search'];
+    const readOnly = ['search_workspace', 'read_page', 'read_page_by_title', 'read_current_page', 'list_pages', 'get_page_properties', 'list_files', 'read_file', 'search_files', 'grep_search', 'search_knowledge', 'memory_get', 'memory_search', 'transcript_get', 'transcript_search', 'list_property_definitions', 'find_pages_by_property'];
     for (const name of readOnly) {
       const tool = toolsService.registeredTools.find(t => t.name === name);
       expect(tool?.requiresConfirmation, `${name} should not require confirmation`).toBe(false);
@@ -146,6 +149,14 @@ describe('registerBuiltInTools', () => {
     registerBuiltInTools(toolsService, createMockDb());
 
     const tool = toolsService.registeredTools.find(t => t.name === 'create_page');
+    expect(tool?.requiresConfirmation).toBe(true);
+  });
+
+  it('set_page_property requires confirmation', () => {
+    const toolsService = createMockToolsService();
+    registerBuiltInTools(toolsService, createMockDb());
+
+    const tool = toolsService.registeredTools.find(t => t.name === 'set_page_property');
     expect(tool?.requiresConfirmation).toBe(true);
   });
 });
@@ -381,6 +392,9 @@ describe('built-in tools with no database', () => {
       'list_pages',
       'get_page_properties',
       'create_page',
+      'list_property_definitions',
+      'set_page_property',
+      'find_pages_by_property',
     ]);
 
     for (const tool of toolsService.registeredTools) {
@@ -498,5 +512,238 @@ describe('search_knowledge tool', () => {
     await tool.handler({ query: 'test query' }, createToken());
 
     expect(retrieval.retrieve).toHaveBeenCalledWith('test query', undefined, undefined);
+  });
+});
+
+// ── Property tools (M55 Domain 4) ──
+
+describe('get_page_properties tool (enhanced with custom properties)', () => {
+  let tool: IChatTool;
+  let db: IBuiltInToolDatabase;
+
+  beforeEach(() => {
+    db = createMockDb();
+    const toolsService = createMockToolsService();
+    registerBuiltInTools(toolsService, db);
+    tool = toolsService.registeredTools.find(t => t.name === 'get_page_properties')!;
+  });
+
+  it('includes custom properties in output', async () => {
+    (db.get as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        id: 'p1', title: 'Test Page', icon: null, is_archived: 0,
+        created_at: '2025-01-01', updated_at: '2025-01-02',
+      })
+      .mockResolvedValueOnce({ cnt: 3 });
+    (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { key: 'status', value_type: 'select', value: '"active"', def_type: 'select' },
+      { key: 'tags', value_type: 'tags', value: '["alpha","beta"]', def_type: 'tags' },
+      { key: 'done', value_type: 'checkbox', value: 'true', def_type: 'checkbox' },
+    ]);
+
+    const result = await tool.handler({ pageId: 'p1' }, createToken());
+    expect(result.content).toContain('Custom Properties');
+    expect(result.content).toContain('**status** (select): active');
+    expect(result.content).toContain('**tags** (tags): alpha, beta');
+    expect(result.content).toContain('**done** (checkbox): Yes');
+  });
+
+  it('omits custom properties section when page has none', async () => {
+    (db.get as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        id: 'p1', title: 'Empty Page', icon: null, is_archived: 0,
+        created_at: '2025-01-01', updated_at: '2025-01-02',
+      })
+      .mockResolvedValueOnce({ cnt: 0 });
+    (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+
+    const result = await tool.handler({ pageId: 'p1' }, createToken());
+    expect(result.content).not.toContain('Custom Properties');
+  });
+});
+
+describe('list_property_definitions tool', () => {
+  let tool: IChatTool;
+  let db: IBuiltInToolDatabase;
+
+  beforeEach(() => {
+    db = createMockDb();
+    const toolsService = createMockToolsService();
+    registerBuiltInTools(toolsService, db);
+    tool = toolsService.registeredTools.find(t => t.name === 'list_property_definitions')!;
+  });
+
+  it('lists all property definitions', async () => {
+    (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { name: 'tags', type: 'tags', config: '{}', sort_order: 0, created_at: '2025-01-01', updated_at: '2025-01-01' },
+      { name: 'status', type: 'select', config: '{"options":[{"value":"active","color":"green"}]}', sort_order: 1, created_at: '2025-01-01', updated_at: '2025-01-01' },
+    ]);
+
+    const result = await tool.handler({}, createToken());
+    expect(result.content).toContain('2 property definition(s)');
+    expect(result.content).toContain('**tags** (tags)');
+    expect(result.content).toContain('**status** (select)');
+    expect(result.content).toContain('config:');
+  });
+
+  it('returns message when no definitions exist', async () => {
+    (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+    const result = await tool.handler({}, createToken());
+    expect(result.content).toContain('No property definitions found');
+  });
+});
+
+describe('set_page_property tool', () => {
+  let tool: IChatTool;
+  let db: IBuiltInToolDatabase;
+
+  beforeEach(() => {
+    db = createMockDb();
+    const toolsService = createMockToolsService();
+    registerBuiltInTools(toolsService, db);
+    tool = toolsService.registeredTools.find(t => t.name === 'set_page_property')!;
+  });
+
+  it('sets a property on an existing page with existing definition', async () => {
+    (db.get as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ id: 'p1', title: 'My Page' }) // page lookup
+      .mockResolvedValueOnce({ name: 'status', type: 'select' }); // definition lookup
+
+    const result = await tool.handler({ pageId: 'p1', propertyName: 'status', value: 'active' }, createToken());
+    expect(result.content).toContain("Set property 'status'");
+    expect(result.content).toContain('"active"');
+    expect(result.content).toContain('My Page');
+    expect(db.run).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO page_properties'),
+      expect.arrayContaining(['p1', 'status', 'select', '"active"']),
+    );
+  });
+
+  it('auto-creates property definition when it does not exist', async () => {
+    (db.get as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ id: 'p1', title: 'My Page' }) // page lookup
+      .mockResolvedValueOnce(undefined); // definition doesn't exist
+
+    await tool.handler({ pageId: 'p1', propertyName: 'priority', value: 5 }, createToken());
+
+    // First run call = INSERT INTO property_definitions
+    const defCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(defCall[0]).toContain('INSERT INTO property_definitions');
+    expect(defCall[1]).toEqual(expect.arrayContaining(['priority', 'number']));
+
+    // Second run call = INSERT INTO page_properties
+    const propCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[1];
+    expect(propCall[0]).toContain('INSERT INTO page_properties');
+    expect(propCall[1]).toEqual(expect.arrayContaining(['p1', 'priority', 'number', '5']));
+  });
+
+  it('infers checkbox type for boolean values', async () => {
+    (db.get as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ id: 'p1', title: 'My Page' })
+      .mockResolvedValueOnce(undefined);
+
+    await tool.handler({ pageId: 'p1', propertyName: 'done', value: true }, createToken());
+
+    const defCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(defCall[1]).toEqual(expect.arrayContaining(['done', 'checkbox']));
+  });
+
+  it('infers tags type for array values', async () => {
+    (db.get as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ id: 'p1', title: 'My Page' })
+      .mockResolvedValueOnce(undefined);
+
+    await tool.handler({ pageId: 'p1', propertyName: 'labels', value: ['alpha', 'beta'] }, createToken());
+
+    const defCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(defCall[1]).toEqual(expect.arrayContaining(['labels', 'tags']));
+  });
+
+  it('returns error for missing pageId', async () => {
+    const result = await tool.handler({ propertyName: 'x', value: 1 }, createToken());
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain('pageId is required');
+  });
+
+  it('returns error when page not found', async () => {
+    (db.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    const result = await tool.handler({ pageId: 'gone', propertyName: 'x', value: 1 }, createToken());
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain('not found');
+  });
+});
+
+describe('find_pages_by_property tool', () => {
+  let tool: IChatTool;
+  let db: IBuiltInToolDatabase;
+
+  beforeEach(() => {
+    db = createMockDb();
+    const toolsService = createMockToolsService();
+    registerBuiltInTools(toolsService, db);
+    tool = toolsService.registeredTools.find(t => t.name === 'find_pages_by_property')!;
+  });
+
+  it('finds pages with equals operator', async () => {
+    (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { id: 'p1', title: 'Page One', value: '"active"' },
+    ]);
+
+    const result = await tool.handler({ propertyName: 'status', operator: 'equals', value: 'active' }, createToken());
+    expect(result.content).toContain('1 page(s)');
+    expect(result.content).toContain('Page One');
+    expect(db.all).toHaveBeenCalledWith(
+      expect.stringContaining('pp.value = ?'),
+      expect.arrayContaining(['status', '"active"']),
+    );
+  });
+
+  it('finds pages with contains operator', async () => {
+    (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { id: 'p1', title: 'Tagged Page', value: '["alpha","beta"]' },
+    ]);
+
+    const result = await tool.handler({ propertyName: 'tags', operator: 'contains', value: 'alpha' }, createToken());
+    expect(result.content).toContain('Tagged Page');
+    expect(db.all).toHaveBeenCalledWith(
+      expect.stringContaining('pp.value LIKE ?'),
+      expect.arrayContaining(['tags', '%alpha%']),
+    );
+  });
+
+  it('finds pages with is_not_empty operator', async () => {
+    (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { id: 'p1', title: 'Has Status', value: '"done"' },
+    ]);
+
+    const result = await tool.handler({ propertyName: 'status', operator: 'is_not_empty' }, createToken());
+    expect(result.content).toContain('Has Status');
+  });
+
+  it('finds pages with greater_than operator', async () => {
+    (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { id: 'p1', title: 'High Priority', value: '10' },
+    ]);
+
+    const result = await tool.handler({ propertyName: 'priority', operator: 'greater_than', value: 5 }, createToken());
+    expect(result.content).toContain('High Priority');
+  });
+
+  it('returns error for invalid operator', async () => {
+    const result = await tool.handler({ propertyName: 'x', operator: 'invalid' }, createToken());
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain('Invalid operator');
+  });
+
+  it('returns no-results message', async () => {
+    (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+    const result = await tool.handler({ propertyName: 'status', operator: 'equals', value: 'nope' }, createToken());
+    expect(result.content).toContain('No pages found');
+  });
+
+  it('returns error for missing propertyName', async () => {
+    const result = await tool.handler({ operator: 'equals' }, createToken());
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain('propertyName is required');
   });
 });
