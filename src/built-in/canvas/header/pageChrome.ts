@@ -99,6 +99,9 @@ export class PageChromeController {
   /** The title element (for focus delegation). */
   get titleEl(): HTMLElement | null { return this._titleEl; }
 
+  /** The page header element (insertion anchor for property bar). */
+  get pageHeader(): HTMLElement | null { return this._pageHeader; }
+
   /** The breadcrumb current-page text element. */
   get breadcrumbCurrentText(): HTMLElement | null { return this._breadcrumbCurrentText; }
 
