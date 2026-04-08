@@ -4,22 +4,27 @@
 // Each editor calls onChange(newValue) when the user modifies the value.
 
 import type { IPropertyDefinition, ISelectOption } from './propertyTypes.js';
+import { createIconElement } from '../../../ui/iconRegistry.js';
 
 // ─── Type Icon Map ───────────────────────────────────────────────────────────
 
 const TYPE_ICONS: Record<string, string> = {
-  text: 'T',
-  number: '#',
-  checkbox: '☐',
-  date: '📅',
-  datetime: '⏱',
-  tags: '🏷',
-  select: '≡',
-  url: '🔗',
+  text: 'text',
+  number: 'hash',
+  checkbox: 'square-check',
+  date: 'calendar',
+  datetime: 'clock',
+  tags: 'tag',
+  select: 'list',
+  url: 'link',
 };
 
 export function getTypeIcon(type: string): string {
-  return TYPE_ICONS[type] ?? 'T';
+  return TYPE_ICONS[type] ?? 'text';
+}
+
+export function createTypeIconElement(type: string, size = 16): HTMLElement {
+  return createIconElement(getTypeIcon(type), size);
 }
 
 // ─── Editor Factory ──────────────────────────────────────────────────────────

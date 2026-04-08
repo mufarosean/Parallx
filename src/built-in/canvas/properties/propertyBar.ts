@@ -13,7 +13,7 @@ import type {
   IPageProperty,
   PropertyType,
 } from './propertyTypes.js';
-import { createPropertyEditor, getTypeIcon } from './propertyEditors.js';
+import { createPropertyEditor, createTypeIconElement } from './propertyEditors.js';
 import { showPropertyPicker } from './propertyPicker.js';
 
 const COLLAPSED_KEY = 'canvas.propertyBar.collapsed';
@@ -148,9 +148,8 @@ export class PropertyBar implements IDisposable {
     const name = document.createElement('div');
     name.className = 'canvas-property-row__name';
 
-    const typeIcon = document.createElement('span');
-    typeIcon.className = 'canvas-property-row__type-icon';
-    typeIcon.textContent = getTypeIcon(definition.type);
+    const typeIcon = createTypeIconElement(definition.type, 16);
+    typeIcon.classList.add('canvas-property-row__type-icon');
     name.appendChild(typeIcon);
 
     const label = document.createElement('span');

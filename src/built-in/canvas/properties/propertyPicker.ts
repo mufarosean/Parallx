@@ -4,7 +4,7 @@
 // with search/filter and a "Create new property" option at the bottom.
 
 import type { IPropertyDefinition, PropertyType } from './propertyTypes.js';
-import { getTypeIcon } from './propertyEditors.js';
+import { createTypeIconElement, getTypeIcon } from './propertyEditors.js';
 import { layoutPopup } from '../../../ui/dom.js';
 
 const ALL_TYPES: { value: PropertyType; label: string }[] = [
@@ -65,9 +65,8 @@ export function showPropertyPicker(
       const item = document.createElement('div');
       item.className = 'canvas-property-picker__item';
 
-      const icon = document.createElement('span');
-      icon.className = 'canvas-property-picker__item-icon';
-      icon.textContent = getTypeIcon(def.type);
+      const icon = createTypeIconElement(def.type, 14);
+      icon.classList.add('canvas-property-picker__item-icon');
       item.appendChild(icon);
 
       const label = document.createElement('span');

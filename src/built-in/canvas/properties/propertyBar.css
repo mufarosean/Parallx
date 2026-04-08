@@ -81,7 +81,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: inherit;
+  color: currentColor;
 }
   overflow: hidden;
   text-overflow: ellipsis;
@@ -138,6 +138,7 @@
   border: none;
   border-radius: var(--parallx-radius-sm, 3px);
   font-family: inherit;
+  font-size: inherit;
   transition: color 0.1s ease, background 0.1s ease;
 }
 
@@ -444,10 +445,10 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 1px 8px;
+  padding: 0 8px;
   border-radius: var(--parallx-radius-lg, 8px);
   font-size: inherit;
-  line-height: 1.6;
+  line-height: 1.3;
   white-space: nowrap;
   background: rgba(255, 255, 255, 0.1);
   color: var(--vscode-editor-foreground, #cdd6f4);
