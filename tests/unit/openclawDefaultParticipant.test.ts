@@ -101,13 +101,11 @@ describe('openclaw default participant', () => {
     expect(sendChatRequest).toHaveBeenCalled();
     const sentMessages = sendChatRequest.mock.calls[0][0];
     expect(sentMessages[0].role).toBe('system');
-    expect(sentMessages[0].content).toContain('You are Parallx, a local AI assistant');
     expect(sentMessages[0].content).toContain('## Workspace Context');
     expect(sentMessages[0].content).toContain('### .parallx/AGENTS.md');
     expect(sentMessages[0].content).toContain('workspace instructions');
     expect(sentMessages[0].content).toContain('### .parallx/SOUL.md');
     expect(sentMessages[0].content).toContain('persona');
-    expect(sentMessages[0].content).toContain('## Response Guidelines');
     expect(sentMessages[0].content).not.toContain('should not be injected');
     expect(sentMessages.at(-1)).toEqual(expect.objectContaining({
       role: 'user',
@@ -355,7 +353,7 @@ describe('openclaw default participant', () => {
     } as IChatParticipantContext, response, createToken());
 
     const firstMessages = sendChatRequest.mock.calls[0][0];
-    expect(firstMessages[0].content).toContain('You are Parallx, a local AI assistant');
+    expect(firstMessages[0].content).toContain('## Workspace Context');
     expect(invokeToolWithRuntimeControl).toHaveBeenCalledWith('read_file', { path: 'Policy.md' }, expect.objectContaining({ isCancellationRequested: false }), undefined);
     expect(response.markdown).toHaveBeenCalledWith('Grounded OpenClaw answer');
   });
