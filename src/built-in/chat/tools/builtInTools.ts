@@ -44,7 +44,6 @@ export type {
 import {
   createSearchWorkspaceTool,
   createReadPageTool,
-  createReadPageByTitleTool,
   createReadCurrentPageTool,
   createListPagesTool,
   createGetPagePropertiesTool,
@@ -101,7 +100,6 @@ export function registerBuiltInTools(
     // ── Canvas/Database tools ──
     createSearchWorkspaceTool(db),
     createReadPageTool(db),
-    createReadPageByTitleTool(db),
     createReadCurrentPageTool(db, getCurrentPageId ?? (() => undefined)),
     createListPagesTool(db),
     createGetPagePropertiesTool(db),

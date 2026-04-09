@@ -96,8 +96,8 @@ describe('registerBuiltInTools', () => {
 
     const disposables = registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
-    expect(toolsService.registeredTools).toHaveLength(23);
-    expect(disposables).toHaveLength(23);
+    expect(toolsService.registeredTools).toHaveLength(22);
+    expect(disposables).toHaveLength(22);
 
     const names = toolsService.registeredTools.map(t => t.name).sort();
     expect(names).toEqual([
@@ -115,7 +115,6 @@ describe('registerBuiltInTools', () => {
       'read_current_page',
       'read_file',
       'read_page',
-      'read_page_by_title',
       'run_command',
       'search_files',
       'search_knowledge',
@@ -137,7 +136,7 @@ describe('registerBuiltInTools', () => {
 
     registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
-    const readOnly = ['search_workspace', 'read_page', 'read_page_by_title', 'read_current_page', 'list_pages', 'get_page_properties', 'list_files', 'read_file', 'search_files', 'grep_search', 'search_knowledge', 'memory_get', 'memory_search', 'transcript_get', 'transcript_search', 'list_property_definitions', 'find_pages_by_property'];
+    const readOnly = ['search_workspace', 'read_page', 'read_current_page', 'list_pages', 'get_page_properties', 'list_files', 'read_file', 'search_files', 'grep_search', 'search_knowledge', 'memory_get', 'memory_search', 'transcript_get', 'transcript_search', 'list_property_definitions', 'find_pages_by_property'];
     for (const name of readOnly) {
       const tool = toolsService.registeredTools.find(t => t.name === name);
       expect(tool?.requiresConfirmation, `${name} should not require confirmation`).toBe(false);
@@ -387,7 +386,6 @@ describe('built-in tools with no database', () => {
     const dbBackedToolNames = new Set([
       'search_workspace',
       'read_page',
-      'read_page_by_title',
       'read_current_page',
       'list_pages',
       'get_page_properties',

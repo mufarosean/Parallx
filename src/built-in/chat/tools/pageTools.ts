@@ -121,50 +121,6 @@ export function createReadPageTool(db: IBuiltInToolDatabase | undefined): IChatT
   };
 }
 
-export function createReadPageByTitleTool(db: IBuiltInToolDatabase | undefined): IChatTool {
-  return {
-    name: 'read_page_by_title',
-    description: 'Read a page by its title. Performs case-insensitive matching. If multiple pages match, returns the most recently updated one.',
-    parameters: {
-      type: 'object',
-      required: ['title'],
-      properties: {
-        title: { type: 'string', description: 'The page title to search for (case-insensitive)' },
-      },
-    },
-    requiresConfirmation: false,
-    permissionLevel: 'always-allowed' as ToolPermissionLevel,
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
-      requireDb(db);
-      const title = String(args['title'] || '').trim();
-      if (!title) {
-        return { content: 'title is required', isError: true };
-      }
-
-      // Exact case-insensitive match first
-      let page = await db!.get<{ id: string; title: string; content: string }>(
-        'SELECT id, title, content FROM pages WHERE is_archived = 0 AND LOWER(title) = LOWER(?) ORDER BY updated_at DESC',
-        [title],
-      );
-
-      // Fallback: partial match
-      if (!page) {
-        page = await db!.get<{ id: string; title: string; content: string }>(
-          'SELECT id, title, content FROM pages WHERE is_archived = 0 AND title LIKE ? ORDER BY updated_at DESC',
-          [`%${title}%`],
-        );
-      }
-
-      if (!page) {
-        return { content: `No page found matching title "${title}". Use list_pages to see available pages.`, isError: true };
-      }
-
-      const text = extractTextContent(page.content);
-      return { content: `**${page.title}** (id: ${page.id})\n\n${text || '(empty page)'}` };
-    },
-  };
-}
-
 export function createReadCurrentPageTool(db: IBuiltInToolDatabase | undefined, getCurrentPageId: CurrentPageIdGetter): IChatTool {
   return {
     name: 'read_current_page',
