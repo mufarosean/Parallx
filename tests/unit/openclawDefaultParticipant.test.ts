@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+﻿import { describe, expect, it, vi } from 'vitest';
 
 import { ChatMode } from '../../src/services/chatTypes';
 import type {
@@ -78,7 +78,7 @@ describe('openclaw default participant', () => {
       }),
       unifiedConfigService: {
         getEffectiveConfig: () => ({
-          chat: { workspaceDescription: 'Insurance workspace' },
+          chat: {},
           model: { temperature: 0.2, maxTokens: 512 },
         } as any),
       } as any,
@@ -130,7 +130,7 @@ describe('openclaw default participant', () => {
       readFileRelative: vi.fn(async (path: string) => (path === '.parallx/AGENTS.md' ? 'workspace instructions' : null)),
       unifiedConfigService: {
         getEffectiveConfig: () => ({
-          chat: { workspaceDescription: 'Insurance workspace' },
+          chat: {},
           model: { temperature: 0.2, maxTokens: 512 },
         } as any),
       } as any,
@@ -203,7 +203,7 @@ describe('openclaw default participant', () => {
       getPreferencesForPrompt: vi.fn(async () => 'Prefer concise answers.'),
       unifiedConfigService: {
         getEffectiveConfig: () => ({
-          chat: { workspaceDescription: 'Insurance workspace' },
+          chat: {},
           model: { temperature: 0.2, maxTokens: 512 },
         } as any),
       } as any,
@@ -274,7 +274,7 @@ describe('openclaw default participant', () => {
       invokeToolWithRuntimeControl: vi.fn(async (name: string) => ({ content: `invoked ${name}` })),
       unifiedConfigService: {
         getEffectiveConfig: () => ({
-          chat: { workspaceDescription: 'Insurance workspace' },
+          chat: {},
           model: { temperature: 0.2, maxTokens: 512 },
         } as any),
       } as any,
@@ -336,7 +336,7 @@ describe('openclaw default participant', () => {
       invokeToolWithRuntimeControl,
       readFileRelative: vi.fn(async () => null),
       unifiedConfigService: {
-        getEffectiveConfig: () => ({ model: { temperature: 0.2, maxTokens: 512 }, chat: { workspaceDescription: '' } } as any),
+        getEffectiveConfig: () => ({ model: { temperature: 0.2, maxTokens: 512 }, chat: {} } as any),
       } as any,
     } as IDefaultParticipantServices;
 
@@ -385,7 +385,7 @@ describe('openclaw default participant', () => {
       readFileRelative: vi.fn(async () => null),
       unifiedConfigService: {
         getEffectiveConfig: () => ({
-          chat: { workspaceDescription: 'Insurance workspace' },
+          chat: {},
           model: { temperature: 0.2, maxTokens: 512 },
         } as any),
       } as any,
@@ -434,7 +434,7 @@ describe('openclaw default participant', () => {
       readFileRelative: vi.fn(async () => null),
       unifiedConfigService: {
         getEffectiveConfig: () => ({
-          chat: { workspaceDescription: 'Insurance workspace' },
+          chat: {},
           model: { temperature: 0.2, maxTokens: 512 },
         } as any),
       } as any,
@@ -489,7 +489,7 @@ describe('openclaw default participant', () => {
       readFileRelative: vi.fn(async () => null),
       unifiedConfigService: {
         getEffectiveConfig: () => ({
-          chat: { workspaceDescription: 'Insurance workspace' },
+          chat: {},
           model: { temperature: 0.2, maxTokens: 512 },
           memory: { memoryEnabled: true },
         } as any),

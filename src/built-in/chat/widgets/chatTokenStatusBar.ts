@@ -263,21 +263,28 @@ export class ChatTokenStatusBar extends Disposable {
       };
     }
 
-    return { total, contextLength, percentage, isReal, categories: cats, subBreakdowns: this._computeSubBreakdowns() };
+    // Pass scale factor so sub-items are consistent with the (possibly scaled) parent categories.
+    const scale = hasRealCounts
+      ? ((systemInstructionsEst + toolDefinitionsEst + filesEst + messagesEst + toolResultsEst) > 0
+        ? total / (systemInstructionsEst + toolDefinitionsEst + filesEst + messagesEst + toolResultsEst)
+        : 1)
+      : 1;
+
+    return { total, contextLength, percentage, isReal, categories: cats, subBreakdowns: this._computeSubBreakdowns(scale) };
   }
 
   // ── Sub-breakdown computation ──
 
-  private _computeSubBreakdowns(): ITokenBreakdown['subBreakdowns'] {
+  private _computeSubBreakdowns(scale: number): ITokenBreakdown['subBreakdowns'] {
     const report = this._services.getLastSystemPromptReport?.();
     if (!report) return undefined;
 
     // System Instructions sub-items
     const systemSubs: ITokenSubItem[] = [];
-    const skillsTokens = Math.ceil(report.skills.promptChars / 4);
-    const toolListTokens = Math.ceil(report.tools.listChars / 4);
+    const skillsTokens = Math.round(Math.ceil(report.skills.promptChars / 4) * scale);
+    const toolListTokens = Math.round(Math.ceil(report.tools.listChars / 4) * scale);
     // Fixed = nonProject minus skills, tool summaries
-    const fixedTokens = Math.max(0, Math.ceil(report.systemPrompt.nonProjectContextChars / 4) - skillsTokens - toolListTokens);
+    const fixedTokens = Math.max(0, Math.round(Math.ceil(report.systemPrompt.nonProjectContextChars / 4) * scale) - skillsTokens - toolListTokens);
     systemSubs.push({ label: 'Fixed (identity, safety, rules)', tokens: fixedTokens });
     if (skillsTokens > 0) {
       systemSubs.push({ label: `Skills XML (${report.skills.visibleCount} entries)`, tokens: skillsTokens });
@@ -291,17 +298,25 @@ export class ChatTokenStatusBar extends Disposable {
     if (report.tools.entries && report.tools.entries.length > 0) {
       for (const entry of report.tools.entries) {
         if (!entry.available) continue;
-        toolSubs.push({ label: entry.name, tokens: Math.ceil(entry.schemaChars / 4) });
+        toolSubs.push({ label: entry.name, tokens: Math.round(Math.ceil(entry.schemaChars / 4) * scale) });
       }
     }
 
-    // Files sub-items (bootstrap files in workspace section)
+    // Files sub-items (bootstrap files + workspace digest in workspace section)
     const fileSubs: ITokenSubItem[] = [];
+    let bootstrapCharsTotal = 0;
     if (report.injectedWorkspaceFiles && report.injectedWorkspaceFiles.length > 0) {
       for (const file of report.injectedWorkspaceFiles) {
         if (file.missing) continue;
-        fileSubs.push({ label: file.name, tokens: Math.ceil(file.injectedChars / 4) });
+        const tokens = Math.round(Math.ceil(file.injectedChars / 4) * scale);
+        fileSubs.push({ label: file.name, tokens });
+        bootstrapCharsTotal += file.injectedChars;
       }
+    }
+    // Workspace digest = projectContext minus bootstrap file content
+    const digestChars = Math.max(0, report.systemPrompt.projectContextChars - bootstrapCharsTotal);
+    if (digestChars > 0) {
+      fileSubs.push({ label: 'Workspace digest', tokens: Math.round(Math.ceil(digestChars / 4) * scale) });
     }
 
     return {

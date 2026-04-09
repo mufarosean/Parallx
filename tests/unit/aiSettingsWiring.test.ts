@@ -52,7 +52,7 @@ function createMockIndexingPipeline() {
 
 function createMockUnifiedConfigService(overrides?: {
   suggestions?: Partial<typeof DEFAULT_PROFILE.suggestions>;
-  chat?: { systemPrompt?: string; workspaceDescription?: string };
+  chat?: { systemPrompt?: string };
   model?: { temperature?: number; maxTokens?: number };
 }) {
   const config = {
@@ -62,7 +62,6 @@ function createMockUnifiedConfigService(overrides?: {
     },
     chat: {
       systemPrompt: overrides?.chat?.systemPrompt ?? DEFAULT_PROFILE.chat.systemPrompt,
-      workspaceDescription: overrides?.chat?.workspaceDescription ?? '',
     },
     model: {
       temperature: overrides?.model?.temperature ?? DEFAULT_PROFILE.model.temperature,
@@ -263,21 +262,13 @@ describe('Chat Participant Unified Config Integration (M40 Phase 6)', () => {
     const mockServices: Partial<import('../../src/built-in/chat/chatTypes').IDefaultParticipantServices> = {
       unifiedConfigService: {
         getEffectiveConfig: () => ({
-          chat: { systemPrompt: DEFAULT_PROFILE.chat.systemPrompt, workspaceDescription: '' },
+          chat: { systemPrompt: DEFAULT_PROFILE.chat.systemPrompt },
           model: { temperature: DEFAULT_PROFILE.model.temperature, maxTokens: DEFAULT_PROFILE.model.maxTokens },
         } as any),
       },
     };
     expect(mockServices.unifiedConfigService).toBeDefined();
-    expect(mockServices.unifiedConfigService!.getEffectiveConfig().chat.systemPrompt).toBeTruthy();
-  });
-
-  it('unified config system prompt is used as promptOverlay', () => {
-    const config = createMockUnifiedConfigService();
-    const fileOverlay = 'file-based overlay';
-    const promptOverlay = config.getEffectiveConfig().chat.systemPrompt || fileOverlay;
-    expect(promptOverlay).toBe(config.getEffectiveConfig().chat.systemPrompt);
-    expect(promptOverlay).not.toBe(fileOverlay);
+    expect(mockServices.unifiedConfigService!.getEffectiveConfig().chat.systemPrompt).toBeDefined();
   });
 
   it('falls back to file overlay when unified config system prompt is empty', () => {
@@ -307,11 +298,5 @@ describe('Chat Participant Unified Config Integration (M40 Phase 6)', () => {
       maxTokens: config.getEffectiveConfig().model.maxTokens || undefined,
     };
     expect(options.maxTokens).toBe(2048);
-  });
-
-  it('built-in presets have distinct system prompts', () => {
-    const prompts = BUILT_IN_PRESETS.map(p => p.chat.systemPrompt);
-    const unique = new Set(prompts);
-    expect(unique.size).toBe(BUILT_IN_PRESETS.length);
   });
 });

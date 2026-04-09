@@ -119,7 +119,9 @@ export async function computeChatWorkspaceDigest(
   }
 
   if (deps.fsAccessor) {
-    const keyFiles = ['README.md', 'README.txt', 'README', '.parallx/SOUL.md', '.parallx/AGENTS.md'];
+    // SOUL.md and AGENTS.md are excluded — they are already injected in
+    // full via OpenClaw bootstrap files in the Workspace Context section.
+    const keyFiles = ['README.md', 'README.txt', 'README'];
     for (const fileName of keyFiles) {
       if (totalChars >= maxDigestChars) {
         break;

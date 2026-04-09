@@ -266,28 +266,17 @@ export class PromptFileService extends Disposable {
   }
 
   /**
-   * Assemble the full prompt text from layers + matching rules.
-   * This is the text injected into the system prompt AFTER the core Parallx identity.
+   * Assemble the prompt overlay from pattern-matched rules only.
+   *
+   * SOUL.md, AGENTS.md, and TOOLS.md are NOT included here — they are
+   * already injected in full via OpenClaw bootstrap files in the
+   * Workspace Context section. Including them here would duplicate
+   * content that the bootstrap pipeline already provides.
    */
   assemblePromptOverlay(layers: IPromptFileLayers, activeFilePath?: string): string {
     const parts: string[] = [];
 
-    // Layer 1: SOUL.md (personality)
-    if (layers.soul) {
-      parts.push(layers.soul);
-    }
-
-    // Layer 2: AGENTS.md (project context)
-    if (layers.agents) {
-      parts.push(layers.agents);
-    }
-
-    // Layer 3: TOOLS.md (tool instructions)
-    if (layers.tools) {
-      parts.push(layers.tools);
-    }
-
-    // Layer 4: Matching rules
+    // Pattern-matched rules from .parallx/rules/*.md
     const matchingRules = this.getMatchingRules(layers, activeFilePath);
     for (const rule of matchingRules) {
       parts.push(`[Rule from ${rule.source}]\n${rule.content}`);

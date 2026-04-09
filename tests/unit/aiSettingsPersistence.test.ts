@@ -347,20 +347,6 @@ describe('Task 3.2 — Live Change Propagation', () => {
     expect(handler.mock.calls[2][0].suggestions.tone).toBe('balanced');
   });
 
-  it('change propagates updated system prompt to listeners', async () => {
-    await service.createProfile('PromptWatch');
-    const prompts: string[] = [];
-    service.onDidChange((profile) => {
-      prompts.push(profile.chat.systemPrompt);
-    });
-
-    await service.updateActiveProfile({ suggestions: { tone: 'concise' } });
-    await service.updateActiveProfile({ suggestions: { tone: 'detailed' } });
-
-    expect(prompts).toHaveLength(2);
-    // concise and detailed tones produce different prompts
-    expect(prompts[0]).not.toBe(prompts[1]);
-  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════

@@ -18,7 +18,6 @@ import type { ILanguageModelsService } from '../../services/chatTypes.js';
 import type { IUnifiedAIConfigService } from '../unifiedConfigTypes.js';
 import { PresetSwitcher } from './presetSwitcher.js';
 import type { SettingsSection } from './sectionBase.js';
-import { ChatSection } from './sections/chatSection.js';
 import { ModelSection } from './sections/modelSection.js';
 import { RetrievalSection } from './sections/retrievalSection.js';
 import { AgentSection } from './sections/agentSection.js';
@@ -84,7 +83,6 @@ export class AISettingsPanel extends Disposable {
 
     // ── Build Sections ──
     this._sections = [
-      this._register(new ChatSection(this._service, this._unifiedConfigService)),
       this._register(new ModelSection(this._service, _languageModelsService)),
       this._register(new RetrievalSection(this._service, this._unifiedConfigService)),
       this._register(new AgentSection(this._service, this._unifiedConfigService)),
