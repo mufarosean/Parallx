@@ -31,16 +31,7 @@ const DEFAULT_RECONNECT_BASE_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
 const STORAGE_KEY_SERVERS = 'mcp.servers';
 
-const DEFAULT_MCP_SERVERS: IMcpServerConfig[] = [
-  {
-    id: 'everything',
-    name: 'Everything (Test)',
-    transport: 'stdio',
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-everything'],
-    enabled: true,
-  },
-];
+const DEFAULT_MCP_SERVERS: IMcpServerConfig[] = [];
 
 interface IServerEntry {
   config: IMcpServerConfig;

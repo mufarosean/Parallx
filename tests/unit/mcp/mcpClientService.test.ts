@@ -789,16 +789,14 @@ describe('McpClientService', () => {
       };
     }
 
-    it('seeds default servers on first run (no stored config)', async () => {
+    it('seeds empty defaults on first run (no stored config)', async () => {
       const storage = createMockStorage();
       await service.initStorage(storage as any);
 
       const servers = service.getConfiguredServers();
-      expect(servers.length).toBe(1);
-      expect(servers[0].id).toBe('everything');
-      expect(servers[0].enabled).toBe(true);
-      // Should have persisted the defaults
-      expect(storage.set).toHaveBeenCalledWith('mcp.servers', expect.any(String));
+      expect(servers.length).toBe(0);
+      // Should have persisted the (empty) defaults
+      expect(storage.set).toHaveBeenCalledWith('mcp.servers', '[]');
     });
 
     it('loads stored servers instead of defaults', async () => {
@@ -816,8 +814,7 @@ describe('McpClientService', () => {
       await service.initStorage(storage as any);
 
       const servers = service.getConfiguredServers();
-      expect(servers.length).toBe(1);
-      expect(servers[0].id).toBe('everything');
+      expect(servers.length).toBe(0);
     });
 
     it('addServerConfig upserts and persists', async () => {
@@ -837,11 +834,14 @@ describe('McpClientService', () => {
       const storage = createMockStorage();
       await service.initStorage(storage as any);
 
-      const updated = { id: 'everything', name: 'Updated', transport: 'stdio' as const, command: 'npx', args: [], enabled: false };
+      const original = { id: 'test-srv', name: 'Original', transport: 'stdio' as const, command: 'npx', args: [], enabled: true };
+      await service.addServerConfig(original);
+
+      const updated = { id: 'test-srv', name: 'Updated', transport: 'stdio' as const, command: 'npx', args: [], enabled: false };
       await service.addServerConfig(updated);
 
       const servers = service.getConfiguredServers();
-      const match = servers.find(s => s.id === 'everything');
+      const match = servers.find(s => s.id === 'test-srv');
       expect(match?.name).toBe('Updated');
       expect(match?.enabled).toBe(false);
       expect(servers.length).toBe(1); // no duplicate
@@ -850,9 +850,11 @@ describe('McpClientService', () => {
     it('removeServerConfig removes and persists', async () => {
       const storage = createMockStorage();
       await service.initStorage(storage as any);
+
+      await service.addServerConfig({ id: 'temp', name: 'Temp', transport: 'stdio' as const, command: 'node', args: [], enabled: true });
       expect(service.getConfiguredServers().length).toBe(1);
 
-      await service.removeServerConfig('everything');
+      await service.removeServerConfig('temp');
 
       expect(service.getConfiguredServers().length).toBe(0);
       expect(storage.set).toHaveBeenCalledWith('mcp.servers', '[]');
