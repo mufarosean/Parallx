@@ -308,6 +308,40 @@ describe('buildToolSummariesSection', () => {
     const toolLines = section.split('\n').filter(l => l.startsWith('- '));
     expect(toolLines.length).toBe(tools.length);
   });
+
+  it('groups known tools under domain headings', () => {
+    const tools: IToolSummary[] = [
+      { name: 'read_page', description: 'Read a canvas page' },
+      { name: 'list_files', description: 'List workspace files' },
+      { name: 'memory_get', description: 'Read memory' },
+      { name: 'mcp__github__create_issue', description: 'Create a GitHub issue' },
+    ];
+    const section = buildToolSummariesSection(tools);
+
+    // Domain headings present
+    expect(section).toContain('### Canvas Pages');
+    expect(section).toContain('### Workspace Files');
+    expect(section).toContain('### Memory');
+
+    // Ungrouped MCP tool under "Other"
+    expect(section).toContain('### Other');
+    expect(section).toContain('- mcp__github__create_issue:');
+
+    // Each tool listed exactly once
+    const toolLines = section.split('\n').filter(l => l.startsWith('- '));
+    expect(toolLines.length).toBe(4);
+  });
+
+  it('omits group headings when no tools match', () => {
+    const tools: IToolSummary[] = [
+      { name: 'read_page', description: 'Read a canvas page' },
+    ];
+    const section = buildToolSummariesSection(tools);
+
+    expect(section).toContain('### Canvas Pages');
+    expect(section).not.toContain('### Workspace Files');
+    expect(section).not.toContain('### Other');
+  });
 });
 
 // ---------------------------------------------------------------------------

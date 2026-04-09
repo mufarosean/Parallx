@@ -226,10 +226,80 @@ ${entries}
  * Upstream: buildToolSummaryMap in pi-embedded-runner/system-prompt.ts line 74
  * One line per tool: name + description. This supplements the API tool schema
  * with human-readable context in the prompt text.
+ *
+ * Tools are grouped by domain so the model can distinguish canvas page tools
+ * from file system tools, memory tools, etc.
  */
+
+/** Domain groups — order determines section order in the prompt. */
+const TOOL_GROUPS: readonly { readonly heading: string; readonly names: ReadonlySet<string> }[] = [
+  {
+    heading: 'Canvas Pages',
+    names: new Set([
+      'search_workspace', 'read_page', 'read_current_page', 'list_pages',
+      'get_page_properties', 'create_page', 'list_property_definitions',
+      'set_page_property', 'find_pages_by_property',
+    ]),
+  },
+  {
+    heading: 'Workspace Files',
+    names: new Set(['list_files', 'read_file', 'search_files', 'grep_search']),
+  },
+  {
+    heading: 'Knowledge Index',
+    names: new Set(['search_knowledge']),
+  },
+  {
+    heading: 'Memory',
+    names: new Set(['memory_get', 'memory_search']),
+  },
+  {
+    heading: 'Session Transcripts',
+    names: new Set(['transcript_get', 'transcript_search']),
+  },
+  {
+    heading: 'File Editing',
+    names: new Set(['write_file', 'edit_file', 'delete_file']),
+  },
+  {
+    heading: 'Terminal',
+    names: new Set(['run_command']),
+  },
+];
+
 export function buildToolSummariesSection(tools: readonly IToolSummary[]): string {
-  const lines = tools.map(t => `- ${t.name}: ${t.description}`).join('\n');
-  return `Tool availability (filtered by policy):\n${lines}`;
+  const grouped = new Map<string, IToolSummary[]>();
+  const ungrouped: IToolSummary[] = [];
+
+  for (const tool of tools) {
+    let placed = false;
+    for (const group of TOOL_GROUPS) {
+      if (group.names.has(tool.name)) {
+        let arr = grouped.get(group.heading);
+        if (!arr) { arr = []; grouped.set(group.heading, arr); }
+        arr.push(tool);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) { ungrouped.push(tool); }
+  }
+
+  const parts: string[] = [];
+  for (const group of TOOL_GROUPS) {
+    const items = grouped.get(group.heading);
+    if (items && items.length > 0) {
+      parts.push(`### ${group.heading}`);
+      for (const t of items) { parts.push(`- ${t.name}: ${t.description}`); }
+    }
+  }
+  // MCP tools, extension tools, or any future tools that don't match a group
+  if (ungrouped.length > 0) {
+    if (parts.length > 0) { parts.push('### Other'); }
+    for (const t of ungrouped) { parts.push(`- ${t.name}: ${t.description}`); }
+  }
+
+  return `Tool availability (filtered by policy):\n${parts.join('\n')}`;
 }
 
 /**
