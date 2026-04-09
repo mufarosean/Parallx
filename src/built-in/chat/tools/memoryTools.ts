@@ -79,8 +79,8 @@ export function createMemoryGetTool(fs: IBuiltInToolFileSystem | undefined): ICh
         if (!(await fs.exists(DURABLE_MEMORY_PATH))) {
           return { content: `No durable memory file exists yet at ${DURABLE_MEMORY_PATH}.` };
         }
-        const content = await fs.readFile(DURABLE_MEMORY_PATH);
-        return { content: `Durable memory from ${DURABLE_MEMORY_PATH}:\n\n${content}` };
+        const result = await fs.readFileContent(DURABLE_MEMORY_PATH);
+        return { content: `Durable memory from ${DURABLE_MEMORY_PATH}:\n\n${result.content}` };
       }
 
       const resolved = resolveDailyPath(typeof args['date'] === 'string' ? args['date'] : undefined);
@@ -90,8 +90,8 @@ export function createMemoryGetTool(fs: IBuiltInToolFileSystem | undefined): ICh
       if (!(await fs.exists(resolved.path))) {
         return { content: `No daily memory recorded for ${resolved.date} at ${resolved.path}.` };
       }
-      const content = await fs.readFile(resolved.path);
-      return { content: `Daily memory from ${resolved.path}:\n\n${content}` };
+      const result = await fs.readFileContent(resolved.path);
+      return { content: `Daily memory from ${resolved.path}:\n\n${result.content}` };
     },
   };
 }

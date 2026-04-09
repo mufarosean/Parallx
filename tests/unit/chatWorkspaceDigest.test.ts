@@ -24,7 +24,7 @@ describe('chat workspace digest', () => {
         ]
         : []),
       exists: vi.fn(async (path: string) => path === 'README.md'),
-      readFile: vi.fn(async () => 'Workspace readme'),
+      readFileContent: vi.fn(async () => ({ content: 'Workspace readme' })),
     };
 
     const digest = await computeChatWorkspaceDigest({

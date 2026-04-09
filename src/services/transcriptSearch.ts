@@ -2,7 +2,7 @@ import { renderTranscriptForDisplay, renderTranscriptForIndexing } from './trans
 
 export interface ITranscriptSearchFileSystem {
   readdir(relativePath: string): Promise<readonly { name: string; type: 'file' | 'directory'; size: number }[]>;
-  readFile(relativePath: string): Promise<string>;
+  readFileContent(relativePath: string): Promise<{ content: string }>;
 }
 
 export interface ITranscriptSearchResult {
@@ -47,7 +47,8 @@ export async function searchWorkspaceTranscripts(
     }
 
     const sourceId = `${TRANSCRIPT_ROOT}/${entry.name}`;
-    const rawContent = await fs.readFile(sourceId).catch(() => '');
+    const readResult = await fs.readFileContent(sourceId).catch(() => ({ content: '' }));
+    const rawContent = readResult.content;
     if (!rawContent.trim()) {
       continue;
     }

@@ -21,11 +21,6 @@ const GREP_CONTEXT_LINES = 2;
 const MAX_GREP_FILE_SIZE = 512_000; // 512 KB
 /** Maximum characters returned by read_file for extracted rich document text. */
 const MAX_DOC_TEXT_CHARS = 50_000;
-/** Rich document extensions that should use document extraction instead of raw read. */
-const RICH_DOC_EXTS = new Set([
-  '.pdf', '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers',
-  '.csv', '.tsv', '.docx',
-]);
 
 // ── Tool helpers ──
 
@@ -33,6 +28,58 @@ function requireFs(fs: IBuiltInToolFileSystem | undefined): asserts fs is IBuilt
   if (!fs) {
     throw new Error('File system is not available — no workspace folder is open');
   }
+}
+
+// ── Workspace tree ──
+
+const MAX_TREE_DEPTH = 2;
+const MAX_TREE_ENTRIES = 80;
+
+/**
+ * Build a compact directory tree of the workspace for navigation context.
+ * Depth-limited, skips ignored directories, caps total entries.
+ */
+async function buildWorkspaceTree(fs: IBuiltInToolFileSystem): Promise<string> {
+  const lines: string[] = [];
+  let count = 0;
+
+  async function walk(dirPath: string, indent: string, depth: number): Promise<void> {
+    if (depth > MAX_TREE_DEPTH || count >= MAX_TREE_ENTRIES) return;
+
+    let entries: readonly { name: string; type: 'file' | 'directory'; size: number }[];
+    try {
+      entries = await fs.readdir(dirPath);
+    } catch {
+      return;
+    }
+
+    // Directories first, then files, alphabetical within each group
+    const sorted = [...entries].sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    for (const entry of sorted) {
+      if (count >= MAX_TREE_ENTRIES) {
+        lines.push(`${indent}…`);
+        break;
+      }
+
+      if (entry.type === 'directory') {
+        if (isIgnoredDir(entry.name)) continue;
+        lines.push(`${indent}${entry.name}/`);
+        count++;
+        const childPath = dirPath === '.' ? entry.name : `${dirPath}/${entry.name}`;
+        await walk(childPath, indent + '  ', depth + 1);
+      } else {
+        lines.push(`${indent}${entry.name}`);
+        count++;
+      }
+    }
+  }
+
+  await walk('.', '  ', 0);
+  return lines.join('\n');
 }
 
 // ── Tool definitions ──
@@ -78,10 +125,10 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
   return {
     name: 'read_file',
     description:
-      'Read the content of a workspace file. Path is relative to the workspace root. ' +
-      'Supports text files (up to 50 KB) and rich documents (PDF, DOCX, XLSX — text is extracted automatically). ' +
-      'Use this tool whenever you need to verify or confirm the actual contents of a file. ' +
-      'Optionally specify start_line and end_line to read a specific range (1-indexed). ' +
+      'Read the content of a workspace file. Returns the file content along with a workspace directory tree for navigation. ' +
+      'Path is relative to the workspace root. ' +
+      'Supports text files and rich documents (PDF, DOCX, XLSX — text is extracted automatically). ' +
+      'Optionally specify start_line and end_line to read a specific range (1-indexed, text files only). ' +
       'For large documents like books, prefer search_knowledge which searches across all indexed chunks.',
     parameters: {
       type: 'object',
@@ -104,53 +151,52 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
         return { content: 'path is required', isError: true };
       }
 
-      // Detect rich document by extension
-      const dotIdx = relPath.lastIndexOf('.');
-      const ext = dotIdx >= 0 ? relPath.slice(dotIdx).toLowerCase() : '';
-
       try {
-        if (RICH_DOC_EXTS.has(ext)) {
-          // Route through document extraction (PDF, DOCX, XLSX, etc.)
-          const text = await fs!.readDocumentText(relPath);
-          if (!text || text.trim().length === 0) {
-            return { content: `**${relPath}** (${ext} file)\n\n[Document is empty or could not extract text]` };
+        // Build workspace tree so the model always has a navigation map
+        let treePrefix = '';
+        try {
+          const tree = await buildWorkspaceTree(fs!);
+          treePrefix = `**Workspace: ${fs!.workspaceRootName}**\n${tree}\n\n---\n\n`;
+        } catch {
+          // Tree is best-effort — don't fail file read if tree fails
+        }
+
+        const result = await fs!.readFileContent(relPath);
+
+        if (result.type === 'rich-document') {
+          const dotIdx = relPath.lastIndexOf('.');
+          const ext = dotIdx >= 0 ? relPath.slice(dotIdx).toLowerCase() : '';
+          if (!result.content || result.content.trim().length === 0) {
+            return { content: treePrefix + `**${relPath}** (${ext} file)\n\n[Document is empty or could not extract text]` };
           }
-          if (text.length > MAX_DOC_TEXT_CHARS) {
-            const truncated = text.slice(0, MAX_DOC_TEXT_CHARS);
+          if (result.totalChars > MAX_DOC_TEXT_CHARS) {
+            const truncated = result.content.slice(0, MAX_DOC_TEXT_CHARS);
             return {
-              content:
+              content: treePrefix +
                 `**${relPath}** (${ext} file — showing first ${MAX_DOC_TEXT_CHARS} characters, full document is indexed)\n\n` +
                 `\`\`\`\n${truncated}\n\`\`\`\n\n` +
                 `*Content truncated. Use search_knowledge to search across the full document.*`,
             };
           }
-          return { content: `**${relPath}** (${ext} file)\n\n\`\`\`\n${text}\n\`\`\`` };
+          return { content: treePrefix + `**${relPath}** (${ext} file)\n\n\`\`\`\n${result.content}\n\`\`\`` };
         }
 
         // Regular text file
-        const content = await fs!.readFile(relPath);
+        const allLines = result.content.split('\n');
+        const totalLines = allLines.length;
 
         // Apply line-range slicing if requested
         if (startLine !== undefined || endLine !== undefined) {
-          const allLines = content.split('\n');
-          const totalLines = allLines.length;
           const s = (startLine ?? 1) - 1; // convert to 0-indexed
           const e = endLine ?? totalLines;
           const sliced = allLines.slice(Math.max(0, s), Math.min(totalLines, e));
           const rangeLabel = `lines ${s + 1}-${Math.min(totalLines, e)} of ${totalLines}`;
-          return { content: `**${relPath}** (${rangeLabel})\n\n\`\`\`\n${sliced.join('\n')}\n\`\`\`` };
+          return { content: treePrefix + `**${relPath}** (${rangeLabel})\n\n\`\`\`\n${sliced.join('\n')}\n\`\`\`` };
         }
 
-        return { content: `**${relPath}**\n\n\`\`\`\n${content}\n\`\`\`` };
+        return { content: treePrefix + `**${relPath}** (${totalLines} lines)\n\n\`\`\`\n${result.content}\n\`\`\`` };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        // If file is too large, guide the AI to use search_knowledge
-        if (msg.includes('too large')) {
-          return {
-            content: `File "${relPath}" is too large for direct reading. Use search_knowledge to search across its indexed content instead.`,
-            isError: true,
-          };
-        }
         return { content: `Failed to read "${relPath}": ${msg}`, isError: true };
       }
     },
@@ -291,6 +337,8 @@ const BINARY_EXTS = new Set([
   '.exe', '.dll', '.so', '.dylib', '.bin', '.dat',
   '.woff', '.woff2', '.ttf', '.otf', '.eot',
   '.sqlite', '.db', '.sqlite3',
+  // Rich documents — extracting text is too slow for line-by-line grep
+  '.pdf', '.docx', '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers',
 ]);
 
 async function grepRecursive(
@@ -341,7 +389,8 @@ async function grepFile(
 ): Promise<void> {
   let content: string;
   try {
-    content = await fs.readFile(filePath);
+    const result = await fs.readFileContent(filePath);
+    content = result.content;
   } catch {
     return; // Skip unreadable files
   }

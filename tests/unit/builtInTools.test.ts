@@ -49,10 +49,8 @@ function createMockToolsService(): ILanguageModelToolsService & { registeredTool
 function createMockFs(overrides: Partial<IBuiltInToolFileSystem> = {}): IBuiltInToolFileSystem {
   return {
     readdir: vi.fn(async () => []),
-    readFile: vi.fn(async () => ''),
+    readFileContent: vi.fn(async () => ({ content: '', type: 'text' as const, totalChars: 0 })),
     exists: vi.fn(async () => false),
-    isRichDocument: vi.fn(() => false),
-    readDocumentText: vi.fn(async () => ''),
     workspaceRootName: 'Test Workspace',
     ...overrides,
   };
@@ -235,11 +233,14 @@ describe('transcript tools', () => {
     const toolsService = createMockToolsService();
     const fs = createMockFs({
       exists: vi.fn(async (path: string) => path === '.parallx/sessions/session-1.jsonl'),
-      readFile: vi.fn(async () => [
-        JSON.stringify({ type: 'session', sessionId: 'session-1' }),
-        JSON.stringify({ type: 'message', timestamp: '2026-03-13T12:00:00.000Z', message: { role: 'user', content: [{ type: 'text', text: 'Hello there' }] } }),
-        JSON.stringify({ type: 'message', timestamp: '2026-03-13T12:00:01.000Z', message: { role: 'assistant', content: [{ type: 'text', text: 'Hi back' }] } }),
-      ].join('\n')),
+      readFileContent: vi.fn(async () => {
+        const c = [
+          JSON.stringify({ type: 'session', sessionId: 'session-1' }),
+          JSON.stringify({ type: 'message', timestamp: '2026-03-13T12:00:00.000Z', message: { role: 'user', content: [{ type: 'text', text: 'Hello there' }] } }),
+          JSON.stringify({ type: 'message', timestamp: '2026-03-13T12:00:01.000Z', message: { role: 'assistant', content: [{ type: 'text', text: 'Hi back' }] } }),
+        ].join('\n');
+        return { content: c, type: 'text' as const, totalChars: c.length };
+      }),
     });
 
     registerBuiltInTools(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch(), createMockTranscriptSearch());
@@ -413,7 +414,7 @@ describe('memory_get tool', () => {
     const toolsService = createMockToolsService();
     const fs = createMockFs({
       exists: vi.fn(async (path: string) => path === '.parallx/memory/MEMORY.md'),
-      readFile: vi.fn(async () => '# Durable Memory\n\nRemember this'),
+      readFileContent: vi.fn(async () => ({ content: '# Durable Memory\n\nRemember this', type: 'text' as const, totalChars: 33 })),
     });
 
     registerBuiltInTools(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch());
@@ -428,7 +429,7 @@ describe('memory_get tool', () => {
     const toolsService = createMockToolsService();
     const fs = createMockFs({
       exists: vi.fn(async (path: string) => path === '.parallx/memory/2026-03-12.md'),
-      readFile: vi.fn(async () => '# 2026-03-12\n\nDaily note'),
+      readFileContent: vi.fn(async () => ({ content: '# 2026-03-12\n\nDaily note', type: 'text' as const, totalChars: 25 })),
     });
 
     registerBuiltInTools(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch());
@@ -743,5 +744,57 @@ describe('find_pages_by_property tool', () => {
     const result = await tool.handler({ operator: 'equals' }, createToken());
     expect(result.isError).toBe(true);
     expect(result.content).toContain('propertyName is required');
+  });
+});
+
+describe('read_file tool (workspace tree)', () => {
+  it('includes workspace tree and line count in read_file output', async () => {
+    const toolsService = createMockToolsService();
+    const fs = createMockFs({
+      readdir: vi.fn(async (path: string) => {
+        if (path === '.') {
+          return [
+            { name: 'src', type: 'directory' as const, size: 0 },
+            { name: 'README.md', type: 'file' as const, size: 512 },
+          ];
+        }
+        if (path === 'src') {
+          return [
+            { name: 'main.ts', type: 'file' as const, size: 100 },
+          ];
+        }
+        return [];
+      }),
+      readFileContent: vi.fn(async () => ({ content: 'line one\nline two\nline three', type: 'text' as const, totalChars: 28 })),
+    });
+    registerBuiltInTools(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch());
+    const tool = toolsService.registeredTools.find(t => t.name === 'read_file')!;
+
+    const result = await tool.handler({ path: 'README.md' }, createToken());
+
+    // Tree should appear before file content
+    expect(result.content).toContain('**Workspace: Test Workspace**');
+    expect(result.content).toContain('src/');
+    expect(result.content).toContain('main.ts');
+    expect(result.content).toContain('README.md');
+    // File content with line count
+    expect(result.content).toContain('(3 lines)');
+    expect(result.content).toContain('line one\nline two\nline three');
+  });
+
+  it('still works when readdir fails (tree is best-effort)', async () => {
+    const toolsService = createMockToolsService();
+    const fs = createMockFs({
+      readdir: vi.fn(async () => { throw new Error('permission denied'); }),
+      readFileContent: vi.fn(async () => ({ content: 'content here', type: 'text' as const, totalChars: 12 })),
+    });
+    registerBuiltInTools(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch());
+    const tool = toolsService.registeredTools.find(t => t.name === 'read_file')!;
+
+    const result = await tool.handler({ path: 'test.txt' }, createToken());
+
+    // Should still return file content even though tree failed
+    expect(result.content).toContain('content here');
+    expect(result.isError).toBeUndefined();
   });
 });

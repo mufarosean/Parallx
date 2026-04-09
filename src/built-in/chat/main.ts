@@ -336,7 +336,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     const promptFileAccess: IPromptFileAccess = {
       async readFile(relativePath: string): Promise<string | null> {
         try {
-          return await fsAccessor.readFile(relativePath);
+          const result = await fsAccessor.readFileContent(relativePath);
+          return result.content;
         } catch {
           return null;
         }
@@ -777,7 +778,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getReadOnlyToolDefinitions: () => mergeRuntimeToolDefinitions(dataService.getReadOnlyToolDefinitions(), true),
     invokeToolWithRuntimeControl: (n, a, t, o) => invokeRuntimeToolWithSkillSupport(n, a, t, o),
     listFiles: fsAccessor ? (r) => fsAccessor.readdir(r) : undefined,
-    readFileContent: fsAccessor ? (r) => fsAccessor.readFile(r) : undefined,
+    readFileContent: fsAccessor ? async (r) => { const res = await fsAccessor.readFileContent(r); return res.content; } : undefined,
     reportParticipantDebug: (debug) => dataService.reportParticipantDebug(debug),
     reportRetrievalDebug: (debug) => dataService.reportRetrievalDebug(debug),
     reportRuntimeTrace: (trace) => dataService.reportRuntimeTrace(trace as import('./chatTypes.js').IChatRuntimeTrace),
@@ -798,7 +799,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getPageStructure: (p) => dataService.getPageStructure(p),
     getReadOnlyToolDefinitions: () => mergeRuntimeToolDefinitions(dataService.getReadOnlyToolDefinitions(), true),
     invokeToolWithRuntimeControl: (n, a, t, o) => invokeRuntimeToolWithSkillSupport(n, a, t, o),
-    readFileContent: fsAccessor ? (r) => fsAccessor.readFile(r) : undefined,
+    readFileContent: fsAccessor ? async (r) => { const res = await fsAccessor.readFileContent(r); return res.content; } : undefined,
     reportParticipantDebug: (debug) => dataService.reportParticipantDebug(debug),
     reportRetrievalDebug: (debug) => dataService.reportRetrievalDebug(debug),
     reportRuntimeTrace: (trace) => dataService.reportRuntimeTrace(trace as import('./chatTypes.js').IChatRuntimeTrace),
@@ -973,8 +974,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         // Try to load .parallxignore from workspace (fsAccessor is dynamic)
         if (fsAccessor) {
           try {
-            const content = await fsAccessor.readFile('.parallxignore');
-            _writerIgnoreInstance.loadFromContent(content);
+            const result = await fsAccessor.readFileContent('.parallxignore');
+            _writerIgnoreInstance.loadFromContent(result.content);
           } catch { /* no .parallxignore — use defaults */ }
         }
       }
@@ -1360,7 +1361,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     import('../../services/skillLoaderService.js').then(({ SkillLoaderService }) => {
       const skillLoader = new SkillLoaderService();
       skillLoader.setFileSystem({
-        readFile: (path: string) => fsAccessor!.readFile(path),
+        readFile: async (path: string) => { const r = await fsAccessor!.readFileContent(path); return r.content; },
         listDirs: async (path: string) => {
           try {
             const entries = await fsAccessor!.readdir(path);
@@ -1430,7 +1431,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // Replaces the standalone ParallxConfigService (M11 Task 2.9).
   if (fsAccessor && unifiedConfigService) {
     unifiedConfigService.setFileSystem({
-      readFile: (path: string) => fsAccessor!.readFile(path),
+      readFile: async (path: string) => { const r = await fsAccessor!.readFileContent(path); return r.content; },
       exists: (path: string) => fsAccessor!.exists(path),
       // B.1: write support for .parallx/ai-config.json persistence
       writeFile: (fileService && workspaceService)
@@ -1466,7 +1467,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     import('../../services/permissionsFileService.js').then(({ PermissionsFileService }) => {
       const permsFileService = new PermissionsFileService();
       permsFileService.setFileSystem({
-        readFile: (path: string) => fsAccessor!.readFile(path),
+        readFile: async (path: string) => { const r = await fsAccessor!.readFileContent(path); return r.content; },
         exists: (path: string) => fsAccessor!.exists(path),
       });
       permsFileService.setFileWriter({

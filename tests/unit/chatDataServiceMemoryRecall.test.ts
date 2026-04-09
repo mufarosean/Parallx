@@ -18,10 +18,8 @@ function createDataService(overrides: Partial<any> = {}) {
 
   const fsAccessor = {
     readdir: vi.fn(async () => []),
-    readFile: vi.fn(async () => ''),
+    readFileContent: vi.fn(async () => ({ content: '', type: 'text' as const, totalChars: 0 })),
     exists: vi.fn(async () => false),
-    isRichDocument: vi.fn(() => false),
-    readDocumentText: vi.fn(async () => ''),
     workspaceRootName: 'Test Workspace',
   };
 
@@ -114,7 +112,7 @@ describe('ChatDataService.recallMemories', () => {
       { name: '2026-03-12.md', type: 'file', size: 120 },
       { name: 'MEMORY.md', type: 'file', size: 80 },
     ]);
-    harness.fsAccessor.readFile.mockResolvedValueOnce('# 2026-03-12\n\n- Today\'s codename is ember-rail.');
+    harness.fsAccessor.readFileContent.mockResolvedValueOnce({ content: '# 2026-03-12\n\n- Today\'s codename is ember-rail.', type: 'text', totalChars: 47 });
 
     const result = await harness.service.recallMemories('What do you remember about our previous conversation?');
 
@@ -132,7 +130,7 @@ describe('ChatDataService.recallMemories', () => {
     const harness = createDataService();
     harness.canonicalMemorySearchService.search.mockResolvedValueOnce([]);
     harness.fsAccessor.exists.mockResolvedValueOnce(true);
-    harness.fsAccessor.readFile.mockResolvedValueOnce('# 2026-03-11\n\n- Vendor escalation happened here.');
+    harness.fsAccessor.readFileContent.mockResolvedValueOnce({ content: '# 2026-03-11\n\n- Vendor escalation happened here.', type: 'text', totalChars: 48 });
 
     const result = await harness.service.recallMemories('What happened on 2026-03-11?');
 
@@ -204,9 +202,9 @@ describe('ChatDataService.recallMemories', () => {
       { name: '2026-03-12.md', type: 'file', size: 120 },
       { name: 'MEMORY.md', type: 'file', size: 80 },
     ]);
-    harness.fsAccessor.readFile
-      .mockResolvedValueOnce('# Durable Memory\n\nTechnical answer preference: structured brevity.')
-      .mockResolvedValueOnce('# 2026-03-12\n\nToday\'s migration spike codename is ember-rail.');
+    harness.fsAccessor.readFileContent
+      .mockResolvedValueOnce({ content: '# Durable Memory\n\nTechnical answer preference: structured brevity.', type: 'text', totalChars: 62 })
+      .mockResolvedValueOnce({ content: '# 2026-03-12\n\nToday\'s migration spike codename is ember-rail.', type: 'text', totalChars: 60 });
 
     const result = await harness.service.recallMemories('What do you remember about our previous conversation and my durable preference?');
 
@@ -224,9 +222,9 @@ describe('ChatDataService.recallMemories', () => {
       { name: '2026-03-12.md', type: 'file', size: 120 },
       { name: 'MEMORY.md', type: 'file', size: 80 },
     ]);
-    harness.fsAccessor.readFile
-      .mockResolvedValueOnce('# 2026-03-25\n\n## Session\n- Summary: unrelated claim follow-up.')
-      .mockResolvedValueOnce('# 2026-03-12\n\n- Today\'s migration spike codename is ember-rail.');
+    harness.fsAccessor.readFileContent
+      .mockResolvedValueOnce({ content: '# 2026-03-25\n\n## Session\n- Summary: unrelated claim follow-up.', type: 'text', totalChars: 60 })
+      .mockResolvedValueOnce({ content: '# 2026-03-12\n\n- Today\'s migration spike codename is ember-rail.', type: 'text', totalChars: 60 });
 
     const result = await harness.service.recallMemories('What was today\'s migration spike codename from memory?');
 
@@ -329,26 +327,23 @@ describe('ChatDataService.recallMemories', () => {
     expect(harness.memoryService.recallConcepts).toBeUndefined();
   });
 
-  it('reads rich documents via readDocumentText for workspace-relative reads', async () => {
+  it('reads rich documents via readFileContent for workspace-relative reads', async () => {
     const harness = createDataService();
-    harness.fsAccessor.isRichDocument.mockImplementation((ext: string) => ext === '.pdf');
-    harness.fsAccessor.readDocumentText.mockResolvedValueOnce('Extracted PDF text');
+    harness.fsAccessor.readFileContent.mockResolvedValueOnce({ content: 'Extracted PDF text', type: 'rich-document', totalChars: 18 });
 
     const result = await harness.service.readFileRelative('RF Guides/Clark.pdf');
 
     expect(result).toBe('Extracted PDF text');
-    expect(harness.fsAccessor.readDocumentText).toHaveBeenCalledWith('RF Guides/Clark.pdf');
-    expect(harness.fsAccessor.readFile).not.toHaveBeenCalled();
+    expect(harness.fsAccessor.readFileContent).toHaveBeenCalledWith('RF Guides/Clark.pdf');
   });
 
-  it('reads plain text files via readFile for workspace-relative reads', async () => {
+  it('reads plain text files via readFileContent for workspace-relative reads', async () => {
     const harness = createDataService();
-    harness.fsAccessor.isRichDocument.mockReturnValue(false);
-    harness.fsAccessor.readFile.mockResolvedValueOnce('Plain text');
+    harness.fsAccessor.readFileContent.mockResolvedValueOnce({ content: 'Plain text', type: 'text', totalChars: 10 });
 
     const result = await harness.service.readFileRelative('notes/example.md');
 
     expect(result).toBe('Plain text');
-    expect(harness.fsAccessor.readFile).toHaveBeenCalledWith('notes/example.md');
+    expect(harness.fsAccessor.readFileContent).toHaveBeenCalledWith('notes/example.md');
   });
 });

@@ -141,7 +141,7 @@ async function runOpenclawDefaultTurn(
   //     which makes file attachments as reliable as selection attachments.
   //     Falls back to disk I/O only if resolvedContent is absent (legacy path).
   //     NEVER silently drop an attachment — if we can't read it, tell the model.
-  const MAX_ATTACHMENT_CHARS = 100_000; // ~25K tokens — caps large documents
+  const MAX_ATTACHMENT_CHARS = 250_000; // ~62K tokens — caps large documents
   const fileAttachmentBlocks: string[] = [];
   if (request.attachments?.length) {
     const fileAttachments = request.attachments.filter(isChatFileAttachment);
