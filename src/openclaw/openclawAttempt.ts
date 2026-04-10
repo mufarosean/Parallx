@@ -338,8 +338,11 @@ export async function executeOpenclawAttempt(
       );
       toolCallCount++;
 
+      const toolStatus = toolResult.isError
+        ? (toolResult.content.includes('rejected by user') ? 'rejected' : 'error')
+        : 'completed';
       response.updateToolInvocation(toolCallId, {
-        status: toolResult.isError ? 'rejected' : 'completed',
+        status: toolStatus,
         isComplete: true,
         isError: toolResult.isError,
         result: toolResult,

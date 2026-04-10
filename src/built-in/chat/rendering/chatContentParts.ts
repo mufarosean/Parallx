@@ -1088,6 +1088,7 @@ const TOOL_STATUS_LABELS: Record<string, { label: string; modifier: string }> = 
   running:   { label: 'Running…',  modifier: 'running' },
   completed: { label: 'Completed', modifier: 'completed' },
   rejected:  { label: 'Rejected',  modifier: 'rejected' },
+  error:     { label: 'Error',     modifier: 'rejected' },
 };
 
 function _renderToolInvocation(part: IChatToolInvocationContent): HTMLElement {
