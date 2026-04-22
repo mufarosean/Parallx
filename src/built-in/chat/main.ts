@@ -1168,9 +1168,18 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // plugins (chat, filesystem, canvas) can only be built here because their
   // backing services live in chat activation scope.
   if (surfaceRouter) {
-    // Chat surface — currently a trace-only logger; W5 will extend for
-    // sub-agent quoted-card appends. See src/built-in/chat/surfaces/chatSurface.ts.
-    surfaceRouter.registerSurface(new ChatSurfacePlugin());
+    // Chat surface — M58-real: now routes autonomous deliveries
+    // (heartbeat / cron / subagent result cards) into the active chat
+    // session via ChatService.appendAutonomousMessage. Falls back to
+    // trace-only when no active widget exists. See
+    // src/built-in/chat/surfaces/chatSurface.ts.
+    const chatServiceForSurface = chatService as unknown as import('../../services/chatService.js').ChatService;
+    surfaceRouter.registerSurface(new ChatSurfacePlugin({
+      chatService: {
+        appendAutonomousMessage: (sid, opts) => chatServiceForSurface.appendAutonomousMessage(sid, opts),
+      },
+      getActiveSessionId: () => _activeWidget?.getSession()?.id,
+    }));
     context.subscriptions.push({ dispose: () => surfaceRouter.unregisterSurface('chat') });
 
     if (fileService) {
