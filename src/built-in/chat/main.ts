@@ -1085,7 +1085,22 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     // (§3c) and is patched into `cronHeartbeatRunnerRef` at that point.
     // If cron fires before heartbeat is up, the wake is a no-op.
     if (surfaceRouter) {
-      const cronExecutor = createCronTurnExecutor(surfaceRouter);
+      // M58-real (W4-real): cron executor now runs real isolated LLM turns
+      // via the W5 ephemeral-session substrate when `payload.agentTurn` is
+      // set. See openclawCronExecutor.ts for the reason §6.5 ship-thin was
+      // superseded.
+      const chatServiceForCron = chatService as unknown as import('../../services/chatService.js').ChatService;
+      const cronExecutor = createCronTurnExecutor(surfaceRouter, {
+        chatService: {
+          createEphemeralSession: (parentId, seed) =>
+            chatServiceForCron.createEphemeralSession(parentId, seed),
+          purgeEphemeralSession: (handle) =>
+            chatServiceForCron.purgeEphemeralSession(handle),
+          sendRequest: (sid, msg, opts) => chatService.sendRequest(sid, msg, opts),
+          getSession: (sid) => chatService.getSession(sid),
+        },
+        getParentSessionId: () => _activeWidget?.getSession()?.id,
+      });
       const cronContextFetcher = createCronContextLineFetcher({
         getActiveSession: () => {
           const id = _activeWidget?.getSession()?.id;
@@ -1188,9 +1203,26 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       return { enabled: hb.enabled, intervalMs: hb.intervalMs };
     };
 
-    const executor = createHeartbeatTurnExecutor(surfaceRouter, () => ({
-      reasons: unifiedConfigService.getEffectiveConfig().heartbeat.reasons,
-    }));
+    const executor = createHeartbeatTurnExecutor(
+      surfaceRouter,
+      () => ({ reasons: unifiedConfigService.getEffectiveConfig().heartbeat.reasons }),
+      // M58-real (W2-real): real-turn deps for system-event / wake / hook.
+      // `interval` stays status-only inside the executor (token-burn guard);
+      // `cron` is a no-op (delegated to cron executor).
+      {
+        chatService: {
+          createEphemeralSession: (parentId, seed) =>
+            (chatService as unknown as import('../../services/chatService.js').ChatService)
+              .createEphemeralSession(parentId, seed),
+          purgeEphemeralSession: (handle) =>
+            (chatService as unknown as import('../../services/chatService.js').ChatService)
+              .purgeEphemeralSession(handle),
+          sendRequest: (sid, msg, opts) => chatService.sendRequest(sid, msg, opts),
+          getSession: (sid) => chatService.getSession(sid),
+        },
+        getParentSessionId: () => _activeWidget?.getSession()?.id,
+      },
+    );
 
     const heartbeatRunner = new HeartbeatRunner(executor, readHeartbeatConfig);
     context.subscriptions.push(heartbeatRunner);

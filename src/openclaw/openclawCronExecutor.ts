@@ -1,29 +1,65 @@
 /**
- * CronTurnExecutor — M58 W4 wiring factory.
+ * CronTurnExecutor — M58 W4-real wiring factory.
  *
  * Wires the audit-closed {@link ./openclawCronService.ts.CronService}
- * (D4 17/17 ALIGNED) to the workbench SurfaceRouter (M58 W6) so that each
- * cron-fire emits an origin-stamped delivery on the status + notifications
- * surfaces, tagged with {@link ORIGIN_CRON}.
+ * (D4 17/17 ALIGNED) to the workbench SurfaceRouter (M58 W6) AND to the W5
+ * ephemeral-session substrate so that each cron fire:
  *
- * Substrate scope (M58 W4, "ship thin" per Parallx_Milestone_58.md §6.5):
+ *   1. Emits an origin-stamped status flash immediately (so the user
+ *      knows autonomy did something even before the turn completes).
+ *   2. If `payload.agentTurn` is set and real-turn deps are available,
+ *      runs a real isolated LLM turn via `createEphemeralSession` +
+ *      `sendRequest` and delivers the final assistant text as a
+ *      `cronResult` card on the chat surface.
+ *   3. If `payload.agentTurn` is unset (a bare reminder job), keeps the
+ *      thin notification behavior — job fired, nothing to execute.
  *
- *   Parallx has no isolated-turn primitive today — `chatService.sendRequest`
- *   mutates `session.messages[]`. Firing a real agent turn from a cron
- *   trigger would either pollute the active chat session or require
- *   inventing a parallel turn engine (violates M41 P6 — "don't invent when
- *   upstream has a proven approach").
+ * Reason for shape change (Parallx_Milestone_58.md §6.5 corrective scope,
+ * 2026-04-22): the original §6.5 ship-thin decision was reversed after W5
+ * proved the ephemeral-session substrate works. Cron jobs with
+ * `agentTurn` payloads must actually execute the turn, not just advertise
+ * that they fired. Autonomous cron turns are the "cron runs a real agent
+ * task at 8am" user story.
  *
- *   W4 therefore ships a **thin executor**: it routes a status-surface
- *   delivery ("cron fired: <name>") and, when the job carries an
- *   `agentTurn` payload, a notification-surface announcement. The
- *   `agentTurn` string itself is preserved verbatim in the notification
- *   metadata + the CronService run history so that M59, when it builds
- *   the isolated-turn substrate in W5, can retrofit this executor to
- *   actually execute `payload.agentTurn` without any API changes to
- *   `CronService`, its 8-action tool surface, or the UX.
+ * Upstream parity:
+ *   - cron-tool.ts (openclaw e635cedb) — cron jobs carry an agent prompt
+ *     and execute it through the same turn runner as a user message,
+ *     in an isolated scope that does not pollute the active chat.
+ *   - Parallx adaptation: the isolated scope is the W5 ephemeral session
+ *     substrate; the turn runner is `chatService.sendRequest` unchanged.
  *
- *   `CronTurnExecutor` is the stable swap seam for that future upgrade.
+ * Context-line seeding:
+ *   - Ephemeral seed does NOT currently support prior message pairs
+ *     (the seed surface is `systemMessage` + `firstUserMessage`).
+ *   - M58-real folds `contextLines` into the user message under a
+ *     "Previous chat context:" header. This carries the intent — the
+ *     model sees the recent conversation before executing the task —
+ *     without widening the substrate API. Future work can add prior-
+ *     messages seeding to the substrate; the executor swap is trivial
+ *     when that lands.
+ *
+ * Loop safety:
+ *   - Cron has no event sources that read from the surface router; its
+ *     only trigger is the internal scheduler timer + explicit
+ *     `cron_run`/`cron_wake` tool calls. Emitting ORIGIN_CRON deliveries
+ *     cannot re-enter the scheduler.
+ *   - Tool calls inside cron real turns still pass through the normal
+ *     approval gates (substrate uses the shared `chatService.sendRequest`
+ *     pipeline — ChatToolLoopSafety, approval flow, all intact).
+ *
+ * Failure handling:
+ *   - If the real turn throws, the executor:
+ *       1. Delivers an error `cronResult` card (so the user sees what
+ *          failed, not just a silent scheduler entry).
+ *       2. Purges the ephemeral session in `finally`.
+ *       3. Rethrows so `CronService._executeJob` records success=false
+ *          with the error message in `cron_runs` history.
+ *
+ * Fallback (thin) behavior:
+ *   - When `realTurnDeps` is not provided OR no active parent session
+ *     exists OR `payload.agentTurn` is unset, the executor falls back to
+ *     the original thin path: status flash + notification + idle reset.
+ *     Bare reminder jobs and early activation both stay safe.
  */
 
 import {
@@ -33,6 +69,7 @@ import {
 import {
   SURFACE_STATUS,
   SURFACE_NOTIFICATIONS,
+  SURFACE_CHAT,
 } from './openclawSurfacePlugin.js';
 import type {
   ICronJob,
@@ -43,6 +80,15 @@ import type {
 import type { HeartbeatRunner } from './openclawHeartbeatRunner.js';
 import type { IChatSession } from '../services/chatTypes.js';
 import { ChatContentPartKind } from '../services/chatTypes.js';
+import { extractFinalAssistantText } from './openclawSubagentExecutor.js';
+import type {
+  IEphemeralSessionHandle,
+  IEphemeralSessionSeed,
+} from '../services/chatService.js';
+import type {
+  IChatContentPart,
+  IChatSendRequestOptions,
+} from '../services/chatTypes.js';
 
 // ---------------------------------------------------------------------------
 // Status / notification text helpers
@@ -61,36 +107,81 @@ function formatNotificationText(job: ICronJob): string {
 }
 
 // ---------------------------------------------------------------------------
-// Thin executor factory
+// Real-turn deps
+// ---------------------------------------------------------------------------
+
+/** Narrow surface of ChatService the cron real-turn path touches. */
+export interface ICronChatService {
+  createEphemeralSession(parentId: string, seed?: IEphemeralSessionSeed): IEphemeralSessionHandle;
+  purgeEphemeralSession(handle: IEphemeralSessionHandle): void;
+  sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<unknown>;
+  getSession(sessionId: string): { messages: readonly { response: { parts: readonly IChatContentPart[] } }[] } | undefined;
+}
+
+/** Optional deps enabling real-turn execution. Absent → thin fallback. */
+export interface ICronRealTurnDeps {
+  readonly chatService: ICronChatService;
+  /** Returns the id of the active parent chat session, or undefined if none. */
+  readonly getParentSessionId: () => string | undefined;
+}
+
+function buildSeedSystemMessage(job: ICronJob, firedAt: number): string {
+  const iso = new Date(firedAt).toISOString();
+  return [
+    `This is a scheduled cron job "${job.name}" firing at ${iso}.`,
+    'The user defined this turn at scheduling time.',
+    'Execute it and report the result concisely.',
+  ].join(' ');
+}
+
+function buildSeedUserMessage(agentTurn: string, contextLines: readonly string[]): string {
+  const parts: string[] = [];
+  if (contextLines.length > 0) {
+    parts.push('Previous chat context:');
+    for (const line of contextLines) {
+      parts.push(line);
+    }
+    parts.push('');
+  }
+  parts.push(`Task: ${agentTurn}`);
+  return parts.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Executor factory
 // ---------------------------------------------------------------------------
 
 /**
- * Build a CronTurnExecutor that routes each fire to the status + notification
- * surfaces via the SurfaceRouter, stamped with `ORIGIN_CRON`.
- *
- * This executor does NOT invoke the LLM, does NOT call `chatService.sendRequest`,
- * and does NOT run any tool loop. See §6.5 for why.
+ * Build a CronTurnExecutor that routes each fire through status +
+ * (optionally) real turn + chat result delivery, all stamped with
+ * `ORIGIN_CRON`.
  *
  * @param router Workbench-owned SurfaceRouter.
+ * @param realTurnDeps Optional real-turn deps. When provided and the job
+ *   carries `payload.agentTurn`, the executor runs a real isolated LLM
+ *   turn. Otherwise it falls back to the original thin path.
  */
 export function createCronTurnExecutor(
   router: ISurfaceRouterService,
+  realTurnDeps?: ICronRealTurnDeps,
 ): CronTurnExecutor {
   return async (job: ICronJob, contextLines: readonly string[]): Promise<void> => {
+    const firedAt = Date.now();
+    const agentTurn = typeof job.payload.agentTurn === 'string' ? job.payload.agentTurn.trim() : '';
+    const hasAgentTurn = agentTurn.length > 0;
+
     const framing = {
       jobId: job.id,
       jobName: job.name,
       wakeMode: job.wakeMode,
-      firedAt: Date.now(),
+      firedAt,
       contextLineCount: contextLines.length,
-      // Preserved verbatim so the future (M59) real-turn executor can pick
-      // this up and actually execute it against an isolated session.
       agentTurn: job.payload.agentTurn,
       systemEvent: job.payload.systemEvent,
     };
 
-    // 1) Status surface flash — short tag so the user sees that autonomy
-    //    did something.
+    // 1) Status flash — always fires so the user sees cron activity even
+    //    before the turn completes.
     await router.sendWithOrigin(
       {
         surfaceId: SURFACE_STATUS,
@@ -104,41 +195,116 @@ export function createCronTurnExecutor(
       ORIGIN_CRON,
     );
 
-    // 2) Notification surface announcement — always-info. Durable, so the
-    //    user sees the autonomy signal even if the status bar has scrolled.
-    //    When the M59 real-turn substrate lands this becomes the response
-    //    surface; for now it advertises *state*, not *action*.
-    await router.sendWithOrigin(
-      {
-        surfaceId: SURFACE_NOTIFICATIONS,
-        contentType: 'text',
-        content: formatNotificationText(job),
-        metadata: {
-          severity: 'info',
-          source: 'cron',
-          cronEvent: framing,
+    const resetStatus = async (phase: string): Promise<void> => {
+      await router.sendWithOrigin(
+        {
+          surfaceId: SURFACE_STATUS,
+          contentType: 'text',
+          content: '',
+          metadata: { cronEvent: { ...framing, phase } },
         },
-      },
-      ORIGIN_CRON,
-    );
+        ORIGIN_CRON,
+      );
+    };
 
-    // 3) Reset status surface so the tag doesn't linger indefinitely.
-    //    The CronService timer runs at 60s granularity, so there's no risk
-    //    of clobbering a later tick.
-    await router.sendWithOrigin(
-      {
-        surfaceId: SURFACE_STATUS,
-        contentType: 'text',
-        content: '',
-        metadata: { cronEvent: { ...framing, phase: 'idle' } },
-      },
-      ORIGIN_CRON,
-    );
+    // 2) Thin path: either no agent turn defined (bare reminder job) or no
+    //    real-turn deps / active session. Keep the §6.5 notification behavior.
+    const parentId = realTurnDeps?.getParentSessionId();
+    const canRunRealTurn = hasAgentTurn && realTurnDeps !== undefined && parentId !== undefined;
+
+    if (!canRunRealTurn) {
+      if (realTurnDeps !== undefined && hasAgentTurn && parentId === undefined) {
+        console.debug('[CronExecutor] no active parent session; falling back to thin notification');
+      }
+      await router.sendWithOrigin(
+        {
+          surfaceId: SURFACE_NOTIFICATIONS,
+          contentType: 'text',
+          content: formatNotificationText(job),
+          metadata: {
+            severity: 'info',
+            source: 'cron',
+            cronEvent: framing,
+          },
+        },
+        ORIGIN_CRON,
+      );
+      await resetStatus('idle');
+      return;
+    }
+
+    // 3) Real-turn path — run the user's scheduled prompt through the
+    //    ephemeral-session substrate.
+    const systemMessage = buildSeedSystemMessage(job, firedAt);
+    const userMessage = buildSeedUserMessage(agentTurn, contextLines);
+
+    const handle = realTurnDeps!.chatService.createEphemeralSession(parentId!, {
+      systemMessage,
+      firstUserMessage: userMessage,
+    });
+
+    let thrownError: unknown;
+    try {
+      await realTurnDeps!.chatService.sendRequest(handle.sessionId, userMessage);
+      const session = realTurnDeps!.chatService.getSession(handle.sessionId);
+      let resultText = '';
+      if (session && session.messages.length > 0) {
+        const lastPair = session.messages[session.messages.length - 1];
+        resultText = extractFinalAssistantText(lastPair.response.parts);
+      }
+      if (resultText.trim().length > 0) {
+        await router.sendWithOrigin(
+          {
+            surfaceId: SURFACE_CHAT,
+            contentType: 'text',
+            content: resultText,
+            metadata: {
+              cronResult: true,
+              jobId: job.id,
+              jobName: job.name,
+              parentSessionId: parentId,
+              cronEvent: framing,
+            },
+          },
+          ORIGIN_CRON,
+        );
+      }
+    } catch (err) {
+      thrownError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      await router.sendWithOrigin(
+        {
+          surfaceId: SURFACE_CHAT,
+          contentType: 'text',
+          content: `Cron turn error: ${msg}`,
+          metadata: {
+            cronResult: true,
+            jobId: job.id,
+            jobName: job.name,
+            error: true,
+            parentSessionId: parentId,
+            cronEvent: framing,
+          },
+        },
+        ORIGIN_CRON,
+      );
+    } finally {
+      // Always purge — scratch state never leaks.
+      realTurnDeps!.chatService.purgeEphemeralSession(handle);
+      await resetStatus('idle');
+    }
+
+    // Rethrow so `CronService._executeJob` records success=false with the
+    // error message in `cron_runs` history. The chat error card has already
+    // been delivered at this point.
+    if (thrownError !== undefined) {
+      throw thrownError instanceof Error ? thrownError : new Error(String(thrownError));
+    }
   };
 }
 
 // ---------------------------------------------------------------------------
-// ContextLineFetcher — thin active-session reader
+// ContextLineFetcher — thin active-session reader (unchanged from M58 W4)
 // ---------------------------------------------------------------------------
 
 /**
@@ -154,10 +320,6 @@ export interface ICronChatSessionAccessor {
 /**
  * Build a ContextLineFetcher that reads the last `count` request/response
  * pairs from the active chat session and flattens them into plain lines.
- *
- * Thin scope (M58 W4): no semantic filtering, no token budget. The lines
- * are captured and handed to the thin executor, which then carries them
- * inside delivery metadata for the M59 real-turn substrate to consume.
  *
  * If there is no active session (workbench hasn't finished activation, or
  * user closed all chats), the fetcher returns an empty array rather than
@@ -206,7 +368,7 @@ function extractAssistantText(parts: readonly unknown[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// HeartbeatWaker adapter
+// HeartbeatWaker adapter (unchanged from M58 W4)
 // ---------------------------------------------------------------------------
 
 /**
