@@ -368,19 +368,6 @@ export interface IChatRuntimeTrace {
   readonly note?: string;
 }
 
-export interface IPreparedChatTurnPrelude {
-  readonly mentionPills: IMentionResolutionResult['pills'];
-  readonly mentionContextBlocks: IMentionResolutionResult['contextBlocks'];
-  readonly userText: string;
-  readonly contextQueryText: string;
-  readonly hasActiveSlashCommand: boolean;
-  readonly isRagReady: boolean;
-  readonly turnRoute: IChatTurnRoute;
-  readonly contextPlan: IChatContextPlan;
-  readonly retrievalPlan: IRetrievalPlan;
-  readonly queryScope: IQueryScope;
-}
-
 // ── /init command ──
 
 /** Services injected into the /init command handler. */
