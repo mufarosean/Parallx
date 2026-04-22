@@ -2972,7 +2972,7 @@ async function resumeWatchersAndDeltaScan(api) {
 // Adapted from stash: pkg/models/paths/paths_generated.go — sharding constants
 // Adapted from stash: pkg/image/thumbnail.go — quality settings
 
-const THUMB_MAX_SIZE = 1024;       // Covers up to 800px zoom with headroom
+const THUMB_MAX_SIZE = 1536;       // Sharp at 800px zoom on 2x HiDPI displays
 const THUMB_QUALITY_VIPS = 70;     // Stash vips Q=70
 const THUMB_QUALITY_FFMPEG = 5;    // Stash ffmpegImageQuality = 5
 const THUMB_DIR_DEPTH = 2;         // Stash thumbDirDepth
@@ -3800,11 +3800,17 @@ async function resolvePhotoThumbnail(photoId, api) {
 
   if (!row || !row.checksum) return { path: null, status: 'failed' };
 
+  // Compute source file path early — needed for GIF detection
+  const sep = _isWindows ? '\\' : '/';
+  const sourceFilePath = row.folder_path + sep + row.basename;
+  // For GIFs, include the original source path so the grid can show the animation
+  const gifSource = isAnimatedGif(sourceFilePath) ? sourceFilePath : undefined;
+
   // Fast path: check if thumbnail already exists on disk and is valid
   // Adapted from stash: serveThumbnail — exists check before generation
   const thumbPath = getThumbnailPath(thumbDir, row.checksum, THUMB_MAX_SIZE);
   const valid = await validateCachedThumbnail(thumbPath);
-  if (valid) return { path: thumbPath, status: 'cached' };
+  if (valid) return { path: thumbPath, status: 'cached', sourcePath: gifSource };
 
   // Lazy generation: ensure tools are available, then generate under semaphore
   await detectAllTools();
@@ -3812,19 +3818,17 @@ async function resolvePhotoThumbnail(photoId, api) {
   try {
     // Double-check after acquiring semaphore (another call may have generated it)
     const validNow = await validateCachedThumbnail(thumbPath);
-    if (validNow) return { path: thumbPath, status: 'cached' };
+    if (validNow) return { path: thumbPath, status: 'cached', sourcePath: gifSource };
 
-    const sep = _isWindows ? '\\' : '/';
-    const filePath = row.folder_path + sep + row.basename;
     const result = await generateImageThumbnail(
-      row.checksum, filePath, row.width || 0, row.height || 0, api
+      row.checksum, sourceFilePath, row.width || 0, row.height || 0, api
     );
 
-    if (result.generated) return { path: result.path, status: 'generated' };
+    if (result.generated) return { path: result.path, status: 'generated', sourcePath: gifSource };
     if (result.encoder === 'skip_small' || result.encoder === 'skip_animated') {
-      return { path: null, status: 'skip' };
+      return { path: null, status: 'skip', sourcePath: gifSource };
     }
-    if (result.encoder === 'cached') return { path: result.path, status: 'cached' };
+    if (result.encoder === 'cached') return { path: result.path, status: 'cached', sourcePath: gifSource };
     return { path: null, status: 'failed' };
   } catch (err) {
     console.warn('[MediaOrganizer] resolvePhotoThumbnail failed for photo', photoId, err);
@@ -4157,6 +4161,164 @@ function moIcon(name, size) {
   return '';
 }
 
+/**
+ * Custom dropdown component — mirrors src/ui/dropdown.ts API but works standalone.
+ * Returns { el, getValue, setValue, setItems, onChange, dispose }
+ */
+function moDropdown(options = {}) {
+  const { items = [], selected, placeholder = '', ariaLabel = '', className = '' } = options;
+  let _items = [...items];
+  let _selectedValue = selected ?? '';
+  let _isOpen = false;
+  let _focusedIndex = -1;
+  let _onChangeFn = null;
+
+  const wrapper = moEl('div', `mo-dropdown ${className}`.trim());
+  const button = moEl('button', 'mo-dropdown__button', { type: 'button' });
+  button.setAttribute('aria-haspopup', 'listbox');
+  button.setAttribute('aria-expanded', 'false');
+  if (ariaLabel) button.setAttribute('aria-label', ariaLabel);
+
+  const textSpan = moEl('span', 'mo-dropdown__text');
+  const chevron = moEl('span', 'mo-dropdown__chevron', { textContent: '\u25BE' });
+  button.append(textSpan, chevron);
+  wrapper.appendChild(button);
+
+  const list = moEl('div', 'mo-dropdown__list');
+  list.setAttribute('role', 'listbox');
+  wrapper.appendChild(list);
+
+  function updateText() {
+    const item = _items.find(i => i.value === _selectedValue);
+    textSpan.textContent = item ? item.label : placeholder;
+  }
+
+  function renderItems() {
+    list.innerHTML = '';
+    _items.forEach((item) => {
+      const el = moEl('div', 'mo-dropdown__item');
+      el.textContent = item.label;
+      el.dataset.value = item.value;
+      el.setAttribute('role', 'option');
+      if (item.value === _selectedValue) {
+        el.classList.add('mo-dropdown__item--selected');
+        el.setAttribute('aria-selected', 'true');
+      }
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectValue(item.value);
+        close();
+      });
+      list.appendChild(el);
+    });
+  }
+
+  function updateSelectedClass() {
+    for (const el of list.children) {
+      const isSelected = el.dataset.value === _selectedValue;
+      el.classList.toggle('mo-dropdown__item--selected', isSelected);
+      el.setAttribute('aria-selected', String(isSelected));
+    }
+  }
+
+  function selectValue(value) {
+    if (_selectedValue === value) return;
+    _selectedValue = value;
+    updateText();
+    updateSelectedClass();
+    if (_onChangeFn) _onChangeFn(value);
+  }
+
+  function open() {
+    _isOpen = true;
+    wrapper.classList.add('mo-dropdown--open');
+    button.setAttribute('aria-expanded', 'true');
+    _focusedIndex = _items.findIndex(i => i.value === _selectedValue);
+    updateFocusedClass();
+    // Auto-flip: open upward if not enough space below
+    requestAnimationFrame(() => {
+      const btnRect = button.getBoundingClientRect();
+      const listRect = list.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - btnRect.bottom;
+      if (spaceBelow < listRect.height && btnRect.top > listRect.height) {
+        wrapper.classList.add('mo-dropdown--up');
+      } else {
+        wrapper.classList.remove('mo-dropdown--up');
+      }
+    });
+  }
+
+  function close() {
+    _isOpen = false;
+    wrapper.classList.remove('mo-dropdown--open');
+    wrapper.classList.remove('mo-dropdown--up');
+    button.setAttribute('aria-expanded', 'false');
+    _focusedIndex = -1;
+    updateFocusedClass();
+  }
+
+  function updateFocusedClass() {
+    Array.from(list.children).forEach((el, idx) => {
+      el.classList.toggle('mo-dropdown__item--focused', idx === _focusedIndex);
+    });
+  }
+
+  button.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (_isOpen) close(); else open();
+  });
+
+  wrapper.addEventListener('keydown', (e) => {
+    if (!_isOpen) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault(); e.stopPropagation();
+        open();
+      }
+      return;
+    }
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault(); e.stopPropagation();
+        _focusedIndex = Math.min(_focusedIndex + 1, _items.length - 1);
+        updateFocusedClass();
+        break;
+      case 'ArrowUp':
+        e.preventDefault(); e.stopPropagation();
+        _focusedIndex = Math.max(_focusedIndex - 1, 0);
+        updateFocusedClass();
+        break;
+      case 'Enter': case ' ':
+        e.preventDefault(); e.stopPropagation();
+        if (_focusedIndex >= 0 && _focusedIndex < _items.length) {
+          selectValue(_items[_focusedIndex].value);
+        }
+        close();
+        break;
+      case 'Escape':
+        e.preventDefault(); e.stopPropagation();
+        close();
+        break;
+    }
+  });
+
+  const outsideHandler = (e) => {
+    if (_isOpen && !wrapper.contains(e.target)) close();
+  };
+  document.addEventListener('mousedown', outsideHandler, true);
+
+  renderItems();
+  updateText();
+
+  return {
+    el: wrapper,
+    getValue() { return _selectedValue; },
+    setValue(v) { _selectedValue = v; updateText(); updateSelectedClass(); },
+    setItems(newItems) { _items = [...newItems]; renderItems(); updateText(); },
+    set onChange(fn) { _onChangeFn = fn; },
+    dispose() { document.removeEventListener('mousedown', outsideHandler, true); },
+  };
+}
+
 const MO_CSS = `
 /* ═══ Grid Browser ═══ */
 .mo-grid-browser {
@@ -4174,6 +4336,15 @@ const MO_CSS = `
   min-height: 0;
   overflow-y: auto;
   position: relative;
+  user-select: none;
+}
+.mo-rubber-band {
+  display: none;
+  position: absolute;
+  border: 1px solid var(--vscode-focusBorder, #9333ea);
+  background: rgba(147, 51, 234, 0.15);
+  pointer-events: none;
+  z-index: 10;
 }
 
 /* ═══ Toolbar ═══ */
@@ -4198,7 +4369,7 @@ const MO_CSS = `
   font-family: inherit;
   outline: none;
 }
-.mo-toolbar-search:focus { border-color: var(--vscode-focusBorder, #007fd4); }
+.mo-toolbar-search:focus { border-color: var(--vscode-focusBorder, #9333ea); }
 .mo-toolbar-search::placeholder { color: var(--vscode-input-placeholderForeground, #888); }
 .mo-toolbar-group {
   display: flex;
@@ -4219,7 +4390,7 @@ const MO_CSS = `
   gap: 4px;
 }
 .mo-toolbar-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
-.mo-toolbar-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: -1px; }
+.mo-toolbar-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
 .mo-toolbar-select {
   background: var(--vscode-input-background, #3c3c3c);
   color: var(--vscode-input-foreground, #ccc);
@@ -4240,10 +4411,6 @@ const MO_CSS = `
   color: var(--vscode-descriptionForeground, #888);
   white-space: nowrap;
   margin-left: auto;
-}
-.mo-zoom-slider {
-  width: 72px;
-  accent-color: var(--vscode-focusBorder, #007fd4);
 }
 
 /* ═══ Grid ═══ */
@@ -4266,9 +4433,9 @@ const MO_CSS = `
   border: 1px solid var(--vscode-panel-border, #333);
   transition: border-color 0.15s;
 }
-.mo-card:hover { border-color: var(--vscode-focusBorder, #007fd4); }
-.mo-card:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: -1px; }
-.mo-card.mo-selected { border-color: var(--vscode-focusBorder, #007fd4); box-shadow: 0 0 0 1px var(--vscode-focusBorder, #007fd4); }
+.mo-card:hover { border-color: var(--vscode-focusBorder, #9333ea); }
+.mo-card:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
+.mo-card.mo-selected { border-color: var(--vscode-focusBorder, #9333ea); box-shadow: 0 0 0 1px var(--vscode-focusBorder, #9333ea); }
 .mo-card-thumb {
   position: relative;
   overflow: hidden;
@@ -4370,7 +4537,7 @@ const MO_CSS = `
   cursor: pointer;
 }
 .mo-page-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
-.mo-page-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: -1px; }
+.mo-page-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
 .mo-page-btn:disabled { opacity: 0.4; cursor: default; }
 .mo-page-info { color: var(--vscode-descriptionForeground, #888); }
 
@@ -4424,7 +4591,8 @@ const MO_CSS = `
   text-overflow: ellipsis;
 }
 .mo-sidebar-item:hover { background: var(--vscode-list-hoverBackground, #2a2d2e); }
-.mo-sidebar-item:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: -1px; }
+.mo-sidebar-item:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
+.mo-sidebar-item.mo-drop-target { background: var(--vscode-list-dropBackground, rgba(0,100,200,0.18)); outline: 1px dashed var(--vscode-focusBorder, #9333ea); }
 .mo-sidebar-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .mo-sidebar-item-count {
   font-size: var(--parallx-fontSize-xs, 10px);
@@ -4472,7 +4640,7 @@ const MO_CSS = `
   min-height: 40px;
 }
 .mo-list-row:hover { background: var(--vscode-list-hoverBackground, #2a2d2e); }
-.mo-list-row:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: -1px; }
+.mo-list-row:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
 .mo-list-row.mo-selected { background: var(--vscode-list-activeSelectionBackground, #094771); }
 .mo-list-thumb {
   width: 40px;
@@ -4544,7 +4712,7 @@ const MO_CSS = `
   line-height: 1;
 }
 .mo-tag-pill-remove:hover { opacity: 1; }
-.mo-tag-pill-remove:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); border-radius: 2px; }
+.mo-tag-pill-remove:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); border-radius: 2px; }
 .mo-filter-tag-select {
   flex: 1;
   max-width: 200px;
@@ -4556,7 +4724,7 @@ const MO_CSS = `
   border-radius: var(--parallx-radius-sm, 3px);
 }
 .mo-filter-tag-select:focus-visible, .mo-filter-date:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline: 1px solid var(--vscode-focusBorder, #9333ea);
   outline-offset: -1px;
 }
 .mo-filter-depth-label {
@@ -4581,7 +4749,7 @@ const MO_CSS = `
 }
 .mo-star.filled, .mo-star.active { color: var(--mo-rating-color, #f5c518); }
 .mo-star:hover { color: var(--mo-rating-color, #f5c518); }
-.mo-star:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: 1px; border-radius: 2px; }
+.mo-star:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: 1px; border-radius: 2px; }
 .mo-filter-date-row {
   display: flex;
   align-items: center;
@@ -4646,7 +4814,7 @@ const MO_CSS = `
   width: 24px;
   height: 24px;
   border: 2px solid var(--vscode-panel-border, #555);
-  border-top-color: var(--vscode-focusBorder, #007fd4);
+  border-top-color: var(--vscode-focusBorder, #9333ea);
   border-radius: 50%;
   animation: mo-spin 0.6s linear infinite;
 }
@@ -4758,7 +4926,7 @@ const MO_CSS = `
   opacity: 0.7;
 }
 .mo-detail-tab-btn.active {
-  border-bottom-color: var(--vscode-focusBorder, #007fd4);
+  border-bottom-color: var(--vscode-focusBorder, #9333ea);
   opacity: 1;
 }
 .mo-detail-tab-btn:hover {
@@ -4837,7 +5005,7 @@ const MO_CSS = `
 }
 .mo-detail-field input:focus,
 .mo-detail-field textarea:focus {
-  border-color: var(--vscode-focusBorder, #007fd4);
+  border-color: var(--vscode-focusBorder, #9333ea);
   outline: none;
 }
 .mo-detail-field textarea {
@@ -4895,7 +5063,7 @@ const MO_CSS = `
   font-size: var(--parallx-fontSize-xs, 11px);
 }
 .mo-detail-autocomplete input:focus {
-  border-color: var(--vscode-focusBorder, #007fd4);
+  border-color: var(--vscode-focusBorder, #9333ea);
   outline: none;
 }
 .mo-detail-autocomplete-list {
@@ -4963,16 +5131,16 @@ const MO_CSS = `
   .mo-detail-preview { min-height: 200px; }
 }
 .mo-detail-star:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline: 1px solid var(--vscode-focusBorder, #9333ea);
   outline-offset: 1px;
   border-radius: 2px;
 }
 .mo-detail-tab-btn:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline: 1px solid var(--vscode-focusBorder, #9333ea);
   outline-offset: -1px;
 }
 .mo-detail-tag-pill button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline: 1px solid var(--vscode-focusBorder, #9333ea);
   border-radius: 2px;
 }
 /* D8: Selection Toolbar */
@@ -5002,6 +5170,25 @@ const MO_CSS = `
   background: var(--vscode-button-secondaryHoverBackground, #555);
 }
 .mo-selection-bar .mo-sel-spacer { flex: 1; }
+.mo-selection-bar .mo-sel-delete {
+  border-color: var(--vscode-errorForeground, #f44747);
+  color: var(--vscode-errorForeground, #f44747);
+}
+.mo-selection-bar .mo-sel-delete:hover {
+  background: var(--vscode-errorForeground, #f44747);
+  color: #fff;
+}
+.mo-bulk-dialog-warn {
+  font-size: var(--parallx-fontSize-sm, 12px);
+  color: var(--vscode-descriptionForeground, #999);
+  margin: 4px 0 8px;
+}
+.mo-bulk-dialog .mo-sel-delete {
+  background: var(--vscode-errorForeground, #f44747);
+  color: #fff;
+  border-color: var(--vscode-errorForeground, #f44747);
+}
+.mo-bulk-dialog .mo-sel-delete:hover { opacity: 0.85; }
 /* D8: Bulk Dialog */
 .mo-bulk-dialog-overlay {
   position: fixed;
@@ -5100,7 +5287,7 @@ const MO_CSS = `
 .mo-selection-bar button:focus-visible,
 .mo-bulk-dialog-footer button:focus-visible,
 .mo-bulk-mode-btns button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline: 1px solid var(--vscode-focusBorder, #9333ea);
   outline-offset: -1px;
 }
 /* D8: Album Editor */
@@ -5150,7 +5337,7 @@ const MO_CSS = `
 .mo-album-field input:focus,
 .mo-album-field textarea:focus {
   outline: none;
-  border-color: var(--vscode-focusBorder, #007fd4);
+  border-color: var(--vscode-focusBorder, #9333ea);
 }
 .mo-album-field textarea {
   min-height: 60px;
@@ -5187,6 +5374,304 @@ const MO_CSS = `
   padding: 16px 0;
   text-align: center;
 }
+
+/* ═══ Focus Indicator (F2) ═══ */
+.mo-card.mo-focused { outline: 2px solid var(--vscode-focusBorder, #9333ea); outline-offset: -2px; }
+.mo-list-row.mo-focused { outline: 2px solid var(--vscode-focusBorder, #9333ea); outline-offset: -2px; }
+
+/* ═══ Context Menu (F1) ═══ */
+.mo-context-menu {
+  position: fixed;
+  z-index: 10000;
+  min-width: 180px;
+  background: var(--vscode-menu-background, #252526);
+  border: 1px solid var(--vscode-menu-border, #454545);
+  border-radius: var(--parallx-radius-md, 6px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  padding: 4px 0;
+  font-size: var(--parallx-fontSize-md, 13px);
+  color: var(--vscode-menu-foreground, #ccc);
+}
+.mo-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 16px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mo-context-menu-item:hover {
+  background: var(--vscode-menu-selectionBackground, #094771);
+  color: var(--vscode-menu-selectionForeground, #fff);
+}
+.mo-context-menu-item.mo-ctx-danger {
+  color: var(--vscode-errorForeground, #f44747);
+}
+.mo-context-menu-item.mo-ctx-danger:hover {
+  background: var(--vscode-errorForeground, #f44747);
+  color: #fff;
+}
+.mo-context-menu-sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--vscode-menu-separatorBackground, var(--vscode-panel-border, #454545));
+}
+.mo-context-menu-sub {
+  position: relative;
+}
+.mo-context-menu-sub .mo-context-submenu {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: -4px;
+  min-width: 120px;
+  background: var(--vscode-menu-background, #252526);
+  border: 1px solid var(--vscode-menu-border, #454545);
+  border-radius: var(--parallx-radius-md, 6px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  padding: 4px 0;
+}
+.mo-context-menu-sub:hover > .mo-context-submenu {
+  display: block;
+}
+.mo-context-menu-item .mo-ctx-arrow {
+  margin-left: auto;
+  opacity: 0.6;
+}
+
+/* ═══ Lightbox / Slideshow (F7) ═══ */
+.mo-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.92);
+  color: #fff;
+}
+.mo-lightbox-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+.mo-lightbox-content img,
+.mo-lightbox-content video {
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+}
+.mo-lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: #fff;
+  font-size: 28px;
+  padding: 12px 16px;
+  cursor: pointer;
+  border-radius: var(--parallx-radius-md, 6px);
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+.mo-lightbox-nav:hover { opacity: 1; }
+.mo-lightbox-nav.prev { left: 12px; }
+.mo-lightbox-nav.next { right: 12px; }
+.mo-lightbox-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.7);
+  font-size: var(--parallx-fontSize-md, 13px);
+}
+.mo-lightbox-bar .mo-lb-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-lightbox-bar .mo-lb-rating { color: var(--mo-rating-color, #f5c518); }
+.mo-lightbox-bar .mo-lb-counter { opacity: 0.7; }
+.mo-lightbox-bar button {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: #fff;
+  padding: 3px 10px;
+  border-radius: var(--parallx-radius-sm, 3px);
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-xs, 10px);
+}
+.mo-lightbox-bar button:hover { background: rgba(255,255,255,0.2); }
+.mo-lightbox-bar button.active { background: var(--vscode-focusBorder, #9333ea); border-color: var(--vscode-focusBorder, #9333ea); }
+.mo-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: #fff;
+  font-size: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+}
+.mo-lightbox-close:hover { opacity: 1; background: rgba(255,255,255,0.2); }
+
+/* ═══ Custom Dropdown (replaces native <select>) ═══ */
+.mo-dropdown {
+  position: relative;
+  display: inline-block;
+  min-width: 80px;
+}
+.mo-dropdown__button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 3px 8px;
+  font-size: var(--parallx-fontSize-sm, 11px);
+  font-family: inherit;
+  line-height: 20px;
+  color: var(--vscode-dropdown-foreground, var(--vscode-foreground, #ccc));
+  background: var(--vscode-dropdown-background, var(--vscode-input-background, #3c3c3c));
+  border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, #555));
+  border-radius: var(--parallx-radius-sm, 3px);
+  cursor: pointer;
+  outline: none;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  gap: 4px;
+}
+.mo-dropdown__button:hover {
+  border-color: var(--vscode-focusBorder, #9333ea);
+}
+.mo-dropdown__button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline-offset: -1px;
+}
+.mo-dropdown__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mo-dropdown__chevron {
+  font-size: 8px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+.mo-dropdown__list {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 100%;
+  z-index: 1000;
+  margin-top: 2px;
+  padding: 4px 0;
+  background: var(--vscode-dropdown-listBackground, var(--vscode-editorWidget-background, #252526));
+  border: 1px solid var(--vscode-dropdown-border, var(--vscode-widget-border, #454545));
+  border-radius: var(--parallx-radius-sm, 3px);
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+  max-height: 200px;
+  overflow-y: auto;
+}
+.mo-dropdown--open .mo-dropdown__list { display: block; }
+.mo-dropdown--up .mo-dropdown__list { top: auto; bottom: 100%; margin-top: 0; margin-bottom: 2px; }
+.mo-dropdown__item {
+  padding: 4px 8px;
+  font-size: var(--parallx-fontSize-sm, 11px);
+  line-height: 20px;
+  color: var(--vscode-foreground, #ccc);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mo-dropdown__item:hover,
+.mo-dropdown__item--focused {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+}
+.mo-dropdown__item--selected {
+  color: var(--vscode-list-activeSelectionForeground, #fff);
+  background: var(--vscode-list-activeSelectionBackground, #9333ea);
+}
+.mo-dropdown__item--selected:hover {
+  background: var(--vscode-list-activeSelectionBackground, #9333ea);
+}
+
+/* ═══ Styled Date Input ═══ */
+.mo-filter-date {
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #ccc);
+  border: 1px solid var(--vscode-input-border, #555);
+  border-radius: var(--parallx-radius-sm, 3px);
+  padding: 3px 6px;
+  font-size: var(--parallx-fontSize-sm, 11px);
+  font-family: inherit;
+  outline: none;
+  width: 100px;
+}
+.mo-filter-date:focus { border-color: var(--vscode-focusBorder, #9333ea); }
+.mo-filter-date::placeholder { color: var(--vscode-input-placeholderForeground, #888); }
+.mo-filter-date::-webkit-calendar-picker-indicator { display: none; }
+
+/* ═══ Styled Zoom Slider ═══ */
+.mo-zoom-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 72px;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right,
+    var(--vscode-button-background, #9333ea) 0%,
+    var(--vscode-button-background, #9333ea) var(--slider-fill, 50%),
+    var(--vscode-scrollbarSlider-background, rgba(121,121,121,0.4)) var(--slider-fill, 50%),
+    var(--vscode-scrollbarSlider-background, rgba(121,121,121,0.4)) 100%);
+  outline: none;
+  cursor: pointer;
+  margin: 0 4px;
+}
+.mo-zoom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--vscode-button-background, #9333ea);
+  border: 2px solid var(--vscode-editor-background, #1e1e1e);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.mo-zoom-slider::-webkit-slider-thumb:hover { transform: scale(1.15); }
+
+/* ═══ Lightbox Zoom ═══ */
+.mo-lightbox-content img,
+.mo-lightbox-content video {
+  transition: none;
+  transform-origin: center center;
+}
+.mo-lightbox-content.mo-lb-zoomed img,
+.mo-lightbox-content.mo-lb-zoomed video {
+  cursor: grab;
+  max-width: none !important;
+  max-height: none !important;
+}
+.mo-lightbox-content.mo-lb-zoomed.mo-lb-dragging img,
+.mo-lightbox-content.mo-lb-zoomed.mo-lb-dragging video {
+  cursor: grabbing;
+}
+.mo-lb-zoom-indicator {
+  font-size: var(--parallx-fontSize-xs, 10px);
+  opacity: 0.7;
+  white-space: nowrap;
+}
 `;
 
 function moInjectStyles() {
@@ -5208,6 +5693,10 @@ const MO_ZOOM_MAX = 800;
 const MO_ZOOM_DEFAULT = 280;
 const MO_CARD_GAP = 8;
 const MO_DEFAULT_PER_PAGE = 40;
+
+// Session-level state: survives grid editor re-opens within the same session
+let _sessionZoomWidth = MO_ZOOM_DEFAULT;
+const _sessionGridState = new Map(); // keyed by instanceId
 
 // Adapted from stash: GridCard.tsx — calculateCardWidth()
 function calculateCardWidth(containerWidth, preferredWidth) {
@@ -5279,16 +5768,22 @@ async function localFileToUrl(filePath) {
 }
 
 function renderMediaCard(item, options) {
-  const { selecting, isSelected, onSelect, onClick } = options;
-  const card = moEl('div', `mo-card${isSelected ? ' mo-selected' : ''}`);
+  const { selecting, isSelected, isFocused, onSelect, onClick, onDblClick } = options;
+  let cls = 'mo-card';
+  if (isSelected) cls += ' mo-selected';
+  if (isFocused) cls += ' mo-focused';
+  const card = moEl('div', cls);
+  card.dataset.key = `${item.type}:${item.id}`;
+  card.setAttribute('draggable', 'true');
 
   // Thumbnail section
   const thumb = moEl('div', 'mo-card-thumb');
   const img = moEl('img');
   img.alt = item.title || '';
   img.loading = 'lazy';
-  if (item.thumbnailPath) {
-    localFileToUrl(item.thumbnailPath).then(url => { if (url) img.src = url; });
+  if (item._gifSourcePath || item.thumbnailPath) {
+    // Prefer animated GIF source over static JPEG thumbnail
+    localFileToUrl(item._gifSourcePath || item.thumbnailPath).then(url => { if (url) img.src = url; });
   } else {
     // Placeholder
     const placeholder = moEl('div', 'mo-thumb-placeholder', { innerHTML: moIcon('image', 32) });
@@ -5332,9 +5827,37 @@ function renderMediaCard(item, options) {
   if (detail) info.appendChild(moEl('div', 'mo-card-detail', { textContent: detail }));
   card.appendChild(info);
 
-  card.addEventListener('click', () => { if (onClick) onClick(item); });
-
-  // Expose img element for async thumbnail loading
+  card.addEventListener('pointerdown', (e) => {
+    // Ctrl/Cmd+click toggles selection, Shift+click extends range
+    if ((e.ctrlKey || e.metaKey) && e.button === 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      const nowChecked = !cb.checked;
+      cb.checked = nowChecked;
+      if (onSelect) onSelect(item, nowChecked, false);
+    } else if (e.shiftKey && e.button === 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      cb.checked = true;
+      if (onSelect) onSelect(item, true, true);
+    }
+  });
+  card.addEventListener('click', (e) => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey) return; // handled by pointerdown
+    if (onClick) onClick(item);
+  });
+  card.addEventListener('dblclick', (e) => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (onDblClick) onDblClick(item);
+  });
+  card.addEventListener('dragstart', (e) => {
+    const key = `${item.type}:${item.id}`;
+    const keys = (isSelected && options.selectedIds && options.selectedIds.size > 1)
+      ? [...options.selectedIds]
+      : [key];
+    e.dataTransfer.setData('application/x-mo-items', JSON.stringify(keys));
+    e.dataTransfer.effectAllowed = 'copy';
+  });
   card._imgEl = img;
   card._thumbEl = thumb;
 
@@ -5343,8 +5866,13 @@ function renderMediaCard(item, options) {
 
 // Adapted from stash: list display mode — compact row rendering
 function renderMediaListRow(item, options) {
-  const { selecting, isSelected, onSelect, onClick } = options;
-  const row = moEl('div', `mo-list-row${isSelected ? ' mo-selected' : ''}`);
+  const { selecting, isSelected, isFocused, onSelect, onClick, onDblClick } = options;
+  let cls = 'mo-list-row';
+  if (isSelected) cls += ' mo-selected';
+  if (isFocused) cls += ' mo-focused';
+  const row = moEl('div', cls);
+  row.dataset.key = `${item.type}:${item.id}`;
+  row.setAttribute('draggable', 'true');
 
   // Thumb
   const thumb = moEl('div', 'mo-list-thumb');
@@ -5374,14 +5902,43 @@ function renderMediaListRow(item, options) {
   row.appendChild(moEl('span', 'mo-list-rating', { textContent: stars }));
   row.appendChild(moEl('span', 'mo-list-date', { textContent: formatShortDate(item.createdAt) }));
 
-  row.addEventListener('click', () => { if (onClick) onClick(item); });
+  row.addEventListener('pointerdown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.button === 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      const nowChecked = !cb.checked;
+      cb.checked = nowChecked;
+      if (onSelect) onSelect(item, nowChecked, false);
+    } else if (e.shiftKey && e.button === 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      cb.checked = true;
+      if (onSelect) onSelect(item, true, true);
+    }
+  });
+  row.addEventListener('click', (e) => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (onClick) onClick(item);
+  });
+  row.addEventListener('dblclick', (e) => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (onDblClick) onDblClick(item);
+  });
+  row.addEventListener('dragstart', (e) => {
+    const key = `${item.type}:${item.id}`;
+    const keys = (isSelected && options.selectedIds && options.selectedIds.size > 1)
+      ? [...options.selectedIds]
+      : [key];
+    e.dataTransfer.setData('application/x-mo-items', JSON.stringify(keys));
+    e.dataTransfer.effectAllowed = 'copy';
+  });
   row._imgEl = img;
   row._thumbEl = thumb;
   return row;
 }
 
 function renderCardGrid(container, items, options) {
-  const { zoomWidth, selecting, selectedIds, onSelect, onClick } = options;
+  const { zoomWidth, selecting, selectedIds, onSelect, onClick, onDblClick } = options;
   const grid = moEl('div', 'mo-grid');
   grid.style.setProperty('--mo-card-min-width', `${zoomWidth || MO_ZOOM_DEFAULT}px`);
   container.appendChild(grid);
@@ -5395,15 +5952,21 @@ function renderCardGrid(container, items, options) {
       return;
     }
 
+    const focIdx = opts.focusedIndex ?? null;
     if (listMode) {
-      for (const item of itemList) {
+      for (let idx = 0; idx < itemList.length; idx++) {
+        const item = itemList[idx];
         const row = renderMediaListRow(item, {
           selecting: opts.selecting ?? selecting,
           isSelected: opts.selectedIds ? opts.selectedIds.has(`${item.type}:${item.id}`) : false,
+          isFocused: focIdx === idx,
+          selectedIds: opts.selectedIds ?? selectedIds,
           onSelect: opts.onSelect ?? onSelect,
           onClick: opts.onClick ?? onClick,
+          onDblClick: opts.onDblClick ?? onDblClick,
         });
         grid.appendChild(row);
+        if (focIdx === idx) row.scrollIntoView({ block: 'nearest' });
         if (!item.thumbnailPath && item.type && item.id) {
           resolveThumbnailForCard(row, item);
         }
@@ -5411,14 +5974,19 @@ function renderCardGrid(container, items, options) {
     } else {
       const zw = opts.zoomWidth ?? zoomWidth;
       grid.style.setProperty('--mo-card-min-width', `${zw || MO_ZOOM_DEFAULT}px`);
-      for (const item of itemList) {
+      for (let idx = 0; idx < itemList.length; idx++) {
+        const item = itemList[idx];
         const card = renderMediaCard(item, {
           selecting: opts.selecting ?? selecting,
           isSelected: opts.selectedIds ? opts.selectedIds.has(`${item.type}:${item.id}`) : false,
+          isFocused: focIdx === idx,
+          selectedIds: opts.selectedIds ?? selectedIds,
           onSelect: opts.onSelect ?? onSelect,
           onClick: opts.onClick ?? onClick,
+          onDblClick: opts.onDblClick ?? onDblClick,
         });
         grid.appendChild(card);
+        if (focIdx === idx) card.scrollIntoView({ block: 'nearest' });
 
         // Async thumbnail resolution
         if (!item.thumbnailPath && item.type && item.id) {
@@ -5431,11 +5999,15 @@ function renderCardGrid(container, items, options) {
   async function resolveThumbnailForCard(card, item) {
     try {
       const result = await resolveThumbnail(item.type === 'photo' ? 'photo' : 'video', item.id, _api);
-      if (result && result.path) {
+      if (result && (result.path || result.sourcePath)) {
         item.thumbnailPath = result.path;
+        // Persist GIF source on item so it survives grid refreshes (zoom changes)
+        if (result.sourcePath) item._gifSourcePath = result.sourcePath;
         const img = card._imgEl;
         if (img) {
-          const url = await localFileToUrl(result.path);
+          // For GIFs, show the original animated file instead of the static thumbnail
+          const displayPath = result.sourcePath || result.path;
+          const url = await localFileToUrl(displayPath);
           if (url) {
             img.src = url;
             img.style.display = '';
@@ -5524,6 +6096,7 @@ function renderBrowserSidebar(container, api) {
   qfBody.appendChild(sidebarItem('film', 'Videos', null, () => openGrid('videos', 'Videos')));
   qfBody.appendChild(sidebarItem('star', 'Favorites', null, () => openGrid('favorites', 'Favorites')));
   qfBody.appendChild(sidebarItem('clock', 'Recent', null, () => openGrid('recent', 'Recent')));
+  qfBody.appendChild(sidebarItem('copy', 'Duplicates', null, () => openGrid('duplicates', 'Duplicates')));
   sections.appendChild(qfSection);
 
   // Folders section
@@ -5631,14 +6204,44 @@ function renderBrowserSidebar(container, api) {
         );
         const itemCount = countRow ? countRow.total : 0;
         const badge = itemCount > 0 ? String(itemCount) : null;
-        albumBody.appendChild(sidebarItem(icon, album.title || `Album #${album.id}`, badge, () => {
+        const albumItem = sidebarItem(icon, album.title || `Album #${album.id}`, badge, () => {
           api.editors.openEditor({
             typeId: 'media-organizer-grid',
             title: album.title || 'Album',
             icon: 'folder-library',
             instanceId: `album:${album.id}`,
           });
-        }));
+        });
+        // F5: Drag-to-Album drop target
+        albumItem.addEventListener('dragover', (e) => {
+          if (e.dataTransfer.types.includes('application/x-mo-items')) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            albumItem.classList.add('mo-drop-target');
+          }
+        });
+        albumItem.addEventListener('dragleave', () => { albumItem.classList.remove('mo-drop-target'); });
+        albumItem.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          albumItem.classList.remove('mo-drop-target');
+          try {
+            const keys = JSON.parse(e.dataTransfer.getData('application/x-mo-items'));
+            const photoIds = [];
+            const videoIds = [];
+            for (const k of keys) {
+              const [type, id] = k.split(':');
+              if (type === 'photo') photoIds.push(parseInt(id, 10));
+              else if (type === 'video') videoIds.push(parseInt(id, 10));
+            }
+            if (photoIds.length > 0) await AlbumQueries.updatePhotos(album.id, { mode: 'ADD', ids: photoIds });
+            if (videoIds.length > 0) await AlbumQueries.updateVideos(album.id, { mode: 'ADD', ids: videoIds });
+            api.statusBar.setMessage(`Added ${keys.length} item(s) to "${album.title || 'Album'}"`, 3000);
+            loadAlbums(); // refresh counts
+          } catch (err) {
+            console.error('[MO] drag-to-album error:', err);
+          }
+        });
+        albumBody.appendChild(albumItem);
       }
     } catch {
       albumBody.appendChild(moEl('div', 'mo-empty', { textContent: 'Could not load albums' }));
@@ -5667,6 +6270,7 @@ const MO_SAFE_SORT_COLUMNS = { created_at: 'created_at', title: 'title', rating:
 function renderGridBrowser(container, api, input) {
   moInjectStyles();
   const root = moEl('div', 'mo-grid-browser');
+  root.setAttribute('tabindex', '-1');
   container.appendChild(root);
 
   // Parse filter context from input.id
@@ -5675,20 +6279,23 @@ function renderGridBrowser(container, api, input) {
   const filterType = parts[0] || 'all';
   const filterId = parts[1] ? parseInt(parts[1], 10) : null;
 
+  // Restore session state if available for this grid instance
+  const cached = _sessionGridState.get(instanceId);
   const state = {
-    currentPage: 1,
-    perPage: MO_DEFAULT_PER_PAGE,
-    zoomWidth: MO_ZOOM_DEFAULT,
-    sortBy: 'created_at',
-    sortDir: 'DESC',
-    mediaType: (filterType === 'photos' || filterType === 'videos') ? filterType : 'all',
-    displayMode: 'grid',
+    currentPage: cached?.currentPage ?? 1,
+    perPage: cached?.perPage ?? MO_DEFAULT_PER_PAGE,
+    zoomWidth: _sessionZoomWidth,
+    sortBy: cached?.sortBy ?? 'created_at',
+    sortDir: cached?.sortDir ?? 'DESC',
+    mediaType: cached?.mediaType ?? ((filterType === 'photos' || filterType === 'videos') ? filterType : 'all'),
+    displayMode: cached?.displayMode ?? 'grid',
     totalCount: 0,
     items: [],
     selectedIds: new Set(),
     selecting: false,
     lastClickedKey: null,
-    filters: {
+    focusedIndex: null,
+    filters: cached?.filters ? { ...cached.filters, tagIds: [...(cached.filters.tagIds || [])], excludeTagIds: [...(cached.filters.excludeTagIds || [])] } : {
       tagIds: [],
       excludeTagIds: [],
       tagDepth: 0,
@@ -5698,8 +6305,33 @@ function renderGridBrowser(container, api, input) {
     },
   };
 
+  // Save state snapshot on every loadPage
+  let _scrollResetOnLoad = false; // true = scroll to top after loadPage
+  let _lastScrollTop = cached?.scrollTop ?? 0; // live-tracked scroll position
+  function saveSessionState() {
+    _sessionGridState.set(instanceId, {
+      currentPage: state.currentPage,
+      perPage: state.perPage,
+      sortBy: state.sortBy,
+      sortDir: state.sortDir,
+      mediaType: state.mediaType,
+      displayMode: state.displayMode,
+      scrollTop: _lastScrollTop,
+      filters: {
+        tagIds: [...state.filters.tagIds],
+        excludeTagIds: [...state.filters.excludeTagIds],
+        tagDepth: state.filters.tagDepth,
+        ratingMin: state.filters.ratingMin,
+        dateFrom: state.filters.dateFrom,
+        dateTo: state.filters.dateTo,
+      },
+    });
+  }
+
+  // Live scroll tracking is attached after gridArea is created (see below)
+
   // If Recent, override sort
-  if (filterType === 'recent') {
+  if (filterType === 'recent' && !cached) {
     state.sortBy = 'created_at';
     state.sortDir = 'DESC';
   }
@@ -5713,13 +6345,18 @@ function renderGridBrowser(container, api, input) {
 
   // Sort controls
   const sortGroup = moEl('div', 'mo-toolbar-group');
-  const sortSelect = moEl('select', 'mo-toolbar-select');
-  for (const [val, label] of [['created_at', 'Date Added'], ['title', 'Title'], ['rating', 'Rating'], ['taken_at', 'Date Taken'], ['file_mod_time', 'File Modified']]) {
-    const opt = moEl('option', null, { value: val, textContent: label });
-    if (val === state.sortBy) opt.selected = true;
-    sortSelect.appendChild(opt);
-  }
-  sortGroup.appendChild(sortSelect);
+  const sortDropdown = moDropdown({
+    items: [
+      { value: 'created_at', label: 'Date Added' },
+      { value: 'title', label: 'Title' },
+      { value: 'rating', label: 'Rating' },
+      { value: 'taken_at', label: 'Date Taken' },
+      { value: 'file_mod_time', label: 'File Modified' },
+    ],
+    selected: state.sortBy,
+    ariaLabel: 'Sort by',
+  });
+  sortGroup.appendChild(sortDropdown.el);
 
   const sortDirBtn = moEl('button', 'mo-toolbar-btn', { innerHTML: moIcon('arrow-down', 12), title: 'Sort direction' });
   sortDirBtn.setAttribute('aria-label', 'Sort direction');
@@ -5730,6 +6367,11 @@ function renderGridBrowser(container, api, input) {
   const zoomGroup = moEl('div', 'mo-toolbar-group');
   zoomGroup.appendChild(moEl('span', 'mo-toolbar-label', { textContent: 'Zoom' }));
   const zoomSlider = moEl('input', 'mo-zoom-slider', { type: 'range', min: String(MO_ZOOM_MIN), max: String(MO_ZOOM_MAX), step: '10', value: String(state.zoomWidth) });
+  function updateSliderFill() {
+    const pct = ((state.zoomWidth - MO_ZOOM_MIN) / (MO_ZOOM_MAX - MO_ZOOM_MIN)) * 100;
+    zoomSlider.style.setProperty('--slider-fill', pct + '%');
+  }
+  updateSliderFill();
   zoomGroup.appendChild(zoomSlider);
   toolbar.appendChild(zoomGroup);
 
@@ -5799,10 +6441,12 @@ function renderGridBrowser(container, api, input) {
   tagSection.appendChild(tagExcludeRow);
 
   const tagAddRow = moEl('div', 'mo-filter-tag-row');
-  const tagAddSelect = moEl('select', 'mo-toolbar-select', {});
-  tagAddSelect.setAttribute('aria-label', 'Add tag filter');
-  tagAddSelect.appendChild(moEl('option', null, { value: '', textContent: '+ Add tag...' }));
-  tagAddRow.appendChild(tagAddSelect);
+  const tagAddDropdown = moDropdown({
+    items: [],
+    placeholder: '+ Add tag...',
+    ariaLabel: 'Add tag filter',
+  });
+  tagAddRow.appendChild(tagAddDropdown.el);
   const tagAddExcludeBtn = moEl('button', 'mo-toolbar-btn', { textContent: 'Exclude', title: 'Add as excluded tag' });
   tagAddExcludeBtn.setAttribute('aria-label', 'Exclude selected tag');
   tagAddRow.appendChild(tagAddExcludeBtn);
@@ -5837,9 +6481,9 @@ function renderGridBrowser(container, api, input) {
   const dateSection = moEl('div', 'mo-filter-section');
   dateSection.appendChild(moEl('div', 'mo-filter-section-label', { textContent: 'Date Range' }));
   const dateRow = moEl('div', 'mo-filter-date-row');
-  const dateFrom = moEl('input', 'mo-filter-date', { type: 'date', title: 'From date' });
+  const dateFrom = moEl('input', 'mo-filter-date', { type: 'text', placeholder: 'YYYY-MM-DD', title: 'From date' });
   dateFrom.setAttribute('aria-label', 'From date');
-  const dateTo = moEl('input', 'mo-filter-date', { type: 'date', title: 'To date' });
+  const dateTo = moEl('input', 'mo-filter-date', { type: 'text', placeholder: 'YYYY-MM-DD', title: 'To date' });
   dateTo.setAttribute('aria-label', 'To date');
   dateRow.appendChild(moEl('span', 'mo-filter-row-label', { textContent: 'From:' }));
   dateRow.appendChild(dateFrom);
@@ -5866,14 +6510,16 @@ function renderGridBrowser(container, api, input) {
 
   function refreshTagDropdown() {
     const usedIds = new Set([...state.filters.tagIds, ...state.filters.excludeTagIds]);
-    while (tagAddSelect.options.length > 1) tagAddSelect.remove(1);
+    const items = [];
     if (_filterTagCache) {
       for (const tag of _filterTagCache) {
         if (!usedIds.has(tag.id)) {
-          tagAddSelect.appendChild(moEl('option', null, { value: String(tag.id), textContent: tag.name }));
+          items.push({ value: String(tag.id), label: tag.name });
         }
       }
     }
+    tagAddDropdown.setItems(items);
+    tagAddDropdown.setValue('');
   }
 
   function renderTagPills() {
@@ -5940,20 +6586,20 @@ function renderGridBrowser(container, api, input) {
     }
   });
 
-  tagAddSelect.addEventListener('change', () => {
-    const tagId = parseInt(tagAddSelect.value, 10);
+  tagAddDropdown.onChange = (value) => {
+    const tagId = parseInt(value, 10);
     if (!tagId || state.filters.tagIds.includes(tagId)) return;
     state.filters.tagIds.push(tagId);
-    tagAddSelect.value = '';
+    tagAddDropdown.setValue('');
     renderTagPills(); refreshTagDropdown();
     state.currentPage = 1; loadPage();
-  });
+  };
 
   tagAddExcludeBtn.addEventListener('click', () => {
-    const tagId = parseInt(tagAddSelect.value, 10);
+    const tagId = parseInt(tagAddDropdown.getValue(), 10);
     if (!tagId || state.filters.excludeTagIds.includes(tagId)) return;
     state.filters.excludeTagIds.push(tagId);
-    tagAddSelect.value = '';
+    tagAddDropdown.setValue('');
     renderTagPills(); refreshTagDropdown();
     state.currentPage = 1; loadPage();
   });
@@ -5973,11 +6619,15 @@ function renderGridBrowser(container, api, input) {
   });
 
   dateFrom.addEventListener('change', () => {
+    const v = dateFrom.value.trim();
+    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) { dateFrom.value = ''; }
     state.filters.dateFrom = dateFrom.value || null;
     state.currentPage = 1; loadPage();
   });
 
   dateTo.addEventListener('change', () => {
+    const v = dateTo.value.trim();
+    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) { dateTo.value = ''; }
     state.filters.dateTo = dateTo.value || null;
     state.currentPage = 1; loadPage();
   });
@@ -5993,12 +6643,20 @@ function renderGridBrowser(container, api, input) {
 
   // ── refreshOpts helper ──
   function refreshOpts() {
-    return { zoomWidth: state.zoomWidth, displayMode: state.displayMode, selecting: state.selecting, selectedIds: state.selectedIds, onSelect: handleSelect, onClick: handleCardClick };
+    return { zoomWidth: state.zoomWidth, displayMode: state.displayMode, selecting: state.selecting, selectedIds: state.selectedIds, focusedIndex: state.focusedIndex, onSelect: handleSelect, onClick: handleCardClick, onDblClick: handleCardOpen };
   }
 
   // ── Grid area ──
   const gridArea = moEl('div', 'mo-grid-area');
   root.appendChild(gridArea);
+
+  // Live-track scroll position for session restore
+  gridArea.addEventListener('scroll', (e) => {
+    if (e.target && e.target.classList && e.target.classList.contains('mo-grid')) {
+      _lastScrollTop = e.target.scrollTop;
+      saveSessionState();
+    }
+  }, true);
 
   // Loading overlay
   const loadingOverlay = moEl('div', 'mo-loading-overlay');
@@ -6015,13 +6673,12 @@ function renderGridBrowser(container, api, input) {
   const pageInfo = moEl('span', 'mo-page-info');
   const pageNext = moEl('button', 'mo-page-btn', { textContent: '\u203A', title: 'Next page' });
   const pageLast = moEl('button', 'mo-page-btn', { textContent: '\u00BB', title: 'Last page' });
-  const perPageSelect = moEl('select', 'mo-toolbar-select');
-  for (const pp of [20, 40, 80, 120]) {
-    const opt = moEl('option', null, { value: String(pp), textContent: `${pp}/page` });
-    if (pp === state.perPage) opt.selected = true;
-    perPageSelect.appendChild(opt);
-  }
-  paginationBar.append(pageFirst, pagePrev, pageInfo, pageNext, pageLast, perPageSelect);
+  const perPageDropdown = moDropdown({
+    items: [20, 40, 80, 120].map(pp => ({ value: String(pp), label: `${pp}/page` })),
+    selected: String(state.perPage),
+    ariaLabel: 'Items per page',
+  });
+  paginationBar.append(pageFirst, pagePrev, pageInfo, pageNext, pageLast, perPageDropdown.el);
   root.appendChild(paginationBar);
 
   function updatePagination() {
@@ -6092,6 +6749,11 @@ function renderGridBrowser(container, api, input) {
       videoWhere.push('vt.tag_id = ?'); videoParams.push(filterId);
     } else if (filterType === 'favorites') {
       photoWhere.push('p.rating >= 5'); videoWhere.push('v.rating >= 5');
+    } else if (filterType === 'duplicates') {
+      photoJoinParts.push(` JOIN mo_photos_files dpf ON dpf.photo_id = p.id JOIN mo_fingerprints dfp ON dfp.file_id = dpf.file_id AND dfp.type = 'md5'`);
+      photoWhere.push(`dfp.value IN (SELECT value FROM mo_fingerprints WHERE type = 'md5' GROUP BY value HAVING COUNT(DISTINCT file_id) > 1)`);
+      videoJoinParts.push(` JOIN mo_videos_files dvf ON dvf.video_id = v.id JOIN mo_fingerprints dfv ON dfv.file_id = dvf.file_id AND dfv.type = 'md5'`);
+      videoWhere.push(`dfv.value IN (SELECT value FROM mo_fingerprints WHERE type = 'md5' GROUP BY value HAVING COUNT(DISTINCT file_id) > 1)`);
     }
 
     if (searchText) {
@@ -6168,6 +6830,11 @@ function renderGridBrowser(container, api, input) {
       where.push('jt.tag_id = ?'); params.push(filterId);
     } else if (filterType === 'favorites') {
       where.push(`${alias}.rating >= 5`);
+    } else if (filterType === 'duplicates') {
+      const fileJoin = type === 'photo' ? 'mo_photos_files' : 'mo_videos_files';
+      const fileCol = type === 'photo' ? 'photo_id' : 'video_id';
+      joinParts.push(` JOIN ${fileJoin} djf ON djf.${fileCol} = ${alias}.id JOIN mo_fingerprints dfp ON dfp.file_id = djf.file_id AND dfp.type = 'md5'`);
+      where.push(`dfp.value IN (SELECT value FROM mo_fingerprints WHERE type = 'md5' GROUP BY value HAVING COUNT(DISTINCT file_id) > 1)`);
     }
 
     if (searchText) {
@@ -6319,9 +6986,22 @@ function renderGridBrowser(container, api, input) {
       cardGrid.refresh(items, refreshOpts());
     }
 
-    // Scroll grid to top on page change
+    // Scroll: reset on page change, restore on re-open
     const scrollEl = gridArea.querySelector('.mo-grid');
-    if (scrollEl) scrollEl.scrollTop = 0;
+    if (scrollEl) {
+      if (_scrollResetOnLoad) {
+        scrollEl.scrollTop = 0;
+        _lastScrollTop = 0;
+      } else if (_lastScrollTop > 0) {
+        // Defer restore to next frame so the grid has its full height
+        const restoreTo = _lastScrollTop;
+        requestAnimationFrame(() => { scrollEl.scrollTop = restoreTo; });
+      }
+    }
+    _scrollResetOnLoad = true; // all subsequent loads reset to top
+
+    // Persist state for session
+    saveSessionState();
   }
 
   function handleSelect(item, checked, shiftKey) {
@@ -6351,12 +7031,28 @@ function renderGridBrowser(container, api, input) {
   }
 
   function handleCardClick(item) {
+    // Single click: focus the card (keyboard shortcuts act on it)
+    const idx = state.items.indexOf(item);
+    if (idx >= 0) {
+      state.focusedIndex = idx;
+      if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+    }
+  }
+
+  // Double-click / Enter: open detail editor
+  function handleCardOpen(item) {
     api.editors.openEditor({
       typeId: 'media-organizer-grid',
       title: item.title || `${item.type} #${item.id}`,
       icon: item.type === 'video' ? 'file-media' : 'image',
       instanceId: `detail:${item.type}:${item.id}`,
     });
+  }
+
+  // F7: Lightbox (context menu "View Full Size")
+  function handleCardViewFullSize(item) {
+    const idx = state.items.indexOf(item);
+    openLightbox(state.items, idx >= 0 ? idx : 0, resolveItemFilePath);
   }
 
   // Initialize grid
@@ -6369,11 +7065,11 @@ function renderGridBrowser(container, api, input) {
     searchTimer = setTimeout(() => { state.currentPage = 1; loadPage(); }, 500);
   });
 
-  sortSelect.addEventListener('change', () => {
-    state.sortBy = sortSelect.value;
+  sortDropdown.onChange = (value) => {
+    state.sortBy = value;
     state.currentPage = 1;
     loadPage();
-  });
+  };
 
   sortDirBtn.addEventListener('click', () => {
     state.sortDir = state.sortDir === 'DESC' ? 'ASC' : 'DESC';
@@ -6384,6 +7080,8 @@ function renderGridBrowser(container, api, input) {
 
   zoomSlider.addEventListener('input', () => {
     state.zoomWidth = parseInt(zoomSlider.value, 10);
+    _sessionZoomWidth = state.zoomWidth;
+    updateSliderFill();
     if (cardGrid) {
       cardGrid.refresh(state.items, refreshOpts());
     }
@@ -6415,44 +7113,443 @@ function renderGridBrowser(container, api, input) {
     state.currentPage = Math.max(1, Math.ceil(state.totalCount / state.perPage));
     loadPage();
   });
-  perPageSelect.addEventListener('change', () => {
-    state.perPage = parseInt(perPageSelect.value, 10);
+  perPageDropdown.onChange = (value) => {
+    state.perPage = parseInt(value, 10);
     state.currentPage = 1;
     loadPage();
-  });
+  };
+
+  // Sync UI controls to restored state
+  if (cached) {
+    sortDirBtn.innerHTML = moIcon(state.sortDir === 'DESC' ? 'arrow-down' : 'arrow-up', 12);
+    if (state.displayMode === 'list') {
+      listModeBtn.classList.add('active');
+      gridModeBtn.classList.remove('active');
+    }
+  }
 
   // Initial load
   loadPage();
 
+  // Helper: detect column count from CSS Grid auto-fill
+  function getGridColumnCount() {
+    const grid = gridArea.querySelector('.mo-grid');
+    if (!grid || state.displayMode === 'list') return 1;
+    const cols = getComputedStyle(grid).gridTemplateColumns;
+    return cols ? cols.split(' ').length : 1;
+  }
+
+  // Helper: refresh grid + selection bar after state change
+  function refreshAfterStateChange() {
+    state.selecting = state.selectedIds.size > 0;
+    if (selectionBar) selectionBar.update();
+    if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+  }
+
+  // F3: Bulk rate items by key (0-5)
+  async function rateItemsByKey(rating) {
+    const targetKeys = state.selectedIds.size > 0
+      ? [...state.selectedIds]
+      : (state.focusedIndex !== null && state.items[state.focusedIndex]
+          ? [`${state.items[state.focusedIndex].type}:${state.items[state.focusedIndex].id}`]
+          : []);
+    if (targetKeys.length === 0) return;
+
+    const photoIds = [];
+    const videoIds = [];
+    for (const k of targetKeys) {
+      const [type, id] = k.split(':');
+      if (type === 'photo') photoIds.push(parseInt(id, 10));
+      else if (type === 'video') videoIds.push(parseInt(id, 10));
+    }
+
+    const txnOps = [];
+    for (const id of photoIds) {
+      txnOps.push({ type: 'run', sql: 'UPDATE mo_photos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', params: [rating, id] });
+    }
+    for (const id of videoIds) {
+      txnOps.push({ type: 'run', sql: 'UPDATE mo_videos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', params: [rating, id] });
+    }
+    if (txnOps.length > 0) {
+      await db.transaction(txnOps);
+    }
+
+    // Update local item data
+    for (const item of state.items) {
+      const k = `${item.type}:${item.id}`;
+      if (targetKeys.includes(k)) item.rating = rating;
+    }
+
+    const stars = rating > 0 ? '\u2605'.repeat(rating) : '\u2606';
+    if (_statusBarItem) {
+      _statusBarItem.text = `Rated ${targetKeys.length} item${targetKeys.length > 1 ? 's' : ''} ${stars}`;
+      _statusBarItem.show();
+    }
+    refreshAfterStateChange();
+  }
+
   // Keyboard shortcuts for grid — adapted from stash: useListSelect + KeyboardShortcuts.md
   function handleGridKeydown(e) {
-    // Escape — deselect all
-    if (e.key === 'Escape' && state.selectedIds.size > 0) {
-      state.selectedIds.clear();
-      state.selecting = false;
-      if (selectionBar) selectionBar.update();
-      if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
-      e.preventDefault();
+    // Skip when focus is in input/textarea/select
+    const tag = e.target.tagName;
+    const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
+    // Escape — deselect all (or clear focus)
+    if (e.key === 'Escape') {
+      if (state.selectedIds.size > 0) {
+        state.selectedIds.clear();
+        refreshAfterStateChange();
+        e.preventDefault();
+        return;
+      }
+      if (state.focusedIndex !== null) {
+        state.focusedIndex = null;
+        if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+        e.preventDefault();
+        return;
+      }
       return;
     }
-    // Ctrl+A — select all on current page (adapted from stash: KeyboardShortcuts.md)
+
+    // Ctrl+A — select all on current page
     if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
       e.preventDefault();
       for (const item of state.items) {
         state.selectedIds.add(`${item.type}:${item.id}`);
       }
-      state.selecting = true;
-      if (selectionBar) selectionBar.update();
+      refreshAfterStateChange();
+      return;
+    }
+
+    // Delete / Backspace — delete selected items (with confirmation)
+    if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedIds.size > 0) {
+      if (inInput) return;
+      e.preventDefault();
+      showBulkDeleteDialog(state, api, () => {
+        if (selectionBar) selectionBar.update();
+        loadPage();
+      });
+      return;
+    }
+
+    // Ctrl+I — invert selection
+    if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+      e.preventDefault();
+      const newSel = new Set();
+      for (const item of state.items) {
+        const key = `${item.type}:${item.id}`;
+        if (!state.selectedIds.has(key)) newSel.add(key);
+      }
+      state.selectedIds = newSel;
+      refreshAfterStateChange();
+      return;
+    }
+
+    // F2: Arrow key navigation
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key) && !inInput) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (state.items.length === 0) return;
+      const cols = getGridColumnCount();
+      const maxIdx = state.items.length - 1;
+      let idx = state.focusedIndex ?? -1;
+
+      if (e.key === 'ArrowRight') idx = Math.min(idx + 1, maxIdx);
+      else if (e.key === 'ArrowLeft') idx = Math.max(idx - 1, 0);
+      else if (e.key === 'ArrowDown') idx = Math.min(idx + cols, maxIdx);
+      else if (e.key === 'ArrowUp') idx = Math.max(idx - cols, 0);
+      else if (e.key === 'Home') idx = 0;
+      else if (e.key === 'End') idx = maxIdx;
+
+      if (idx < 0) idx = 0;
+
+      // Shift+Arrow extends selection range
+      if (e.shiftKey && state.items[idx]) {
+        const key = `${state.items[idx].type}:${state.items[idx].id}`;
+        state.selectedIds.add(key);
+        state.selecting = true;
+        if (selectionBar) selectionBar.update();
+      }
+
+      state.focusedIndex = idx;
       if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
       return;
     }
+
+    // F2: Space — toggle selection on focused item
+    if (e.key === ' ' && !inInput && state.focusedIndex !== null) {
+      e.preventDefault();
+      const item = state.items[state.focusedIndex];
+      if (!item) return;
+      const key = `${item.type}:${item.id}`;
+      if (state.selectedIds.has(key)) state.selectedIds.delete(key);
+      else state.selectedIds.add(key);
+      refreshAfterStateChange();
+      return;
+    }
+
+    // Enter — open detail editor for focused item
+    if (e.key === 'Enter' && !inInput && state.focusedIndex !== null) {
+      e.preventDefault();
+      const item = state.items[state.focusedIndex];
+      if (item) handleCardOpen(item);
+      return;
+    }
+
+    // F3: Number keys 0-5 — set star rating
+    if (!inInput && !e.ctrlKey && !e.metaKey && !e.altKey && e.key >= '0' && e.key <= '5') {
+      e.preventDefault();
+      rateItemsByKey(parseInt(e.key, 10));
+      return;
+    }
+
+    // F8: Ctrl+Shift+E — open file location for focused item
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'E' && !inInput && state.focusedIndex !== null) {
+      e.preventDefault();
+      const item = state.items[state.focusedIndex];
+      if (item) {
+        resolveItemFilePath(item).then(fp => {
+          if (fp && window.parallxElectron?.shell?.showItemInFolder) {
+            window.parallxElectron.shell.showItemInFolder(fp);
+          }
+        });
+      }
+      return;
+    }
   }
-  root.addEventListener('keydown', handleGridKeydown);
+  // ── Keyboard: capture-phase listener on document ──
+  // Focus may land on an ancestor (.editor-group) rather than root,
+  // so a bubble-phase listener on root would never fire.
+  // We listen in capture phase and check that our pane is active.
+  function isGridActive() {
+    if (!root.isConnected) return false;
+    // Hidden panes (inactive tabs) have offsetParent null
+    if (root.offsetParent === null) return false;
+    // Focus must be on root, inside root, on an ancestor that contains root, or on body
+    const ae = document.activeElement;
+    if (!ae || ae === document.body) return true;
+    if (root.contains(ae)) return true;
+    if (container.contains(ae)) return true;
+    // Focus on an ancestor (e.g. .editor-group) that contains our container
+    if (ae.contains && ae.contains(container)) return true;
+    return false;
+  }
+  function docKeyHandler(e) {
+    if (isGridActive()) {
+      console.log('[MO-KEY]', e.key, 'ctrl:', e.ctrlKey, 'target:', e.target?.tagName, 'active:', document.activeElement?.tagName, document.activeElement?.className?.slice(0,40));
+      handleGridKeydown(e);
+    }
+  }
+  document.addEventListener('keydown', docKeyHandler, true);
+
+  // Auto-focus root on click so interactive elements like stars keep working
+  gridArea.addEventListener('mousedown', () => {
+    requestAnimationFrame(() => {
+      if (!root.contains(document.activeElement) || document.activeElement === document.body) {
+        root.focus({ preventScroll: true });
+      }
+    });
+  });
+  // Focus root on initial load
+  requestAnimationFrame(() => root.focus({ preventScroll: true }));
+  async function resolveItemFilePath(item) {
+    try {
+      const type = item.type;
+      const primary = type === 'photo'
+        ? await db.get(`SELECT f.basename, fo.path AS folder_path FROM mo_photos_files pf JOIN mo_files f ON f.id = pf.file_id JOIN mo_folders fo ON fo.id = f.folder_id WHERE pf.photo_id = ? AND pf.is_primary = 1`, [item.id])
+        : await db.get(`SELECT f.basename, fo.path AS folder_path FROM mo_videos_files vf JOIN mo_files f ON f.id = vf.file_id JOIN mo_folders fo ON fo.id = f.folder_id WHERE vf.video_id = ? AND vf.is_primary = 1`, [item.id]);
+      if (primary) {
+        const sep = primary.folder_path.includes('\\') ? '\\' : '/';
+        return primary.folder_path.replace(/[\\/]+$/, '') + sep + primary.basename;
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  function buildContextMenuActions(item, isMulti) {
+    const actions = [];
+    if (!isMulti) {
+      // Single-item actions
+      actions.push({ label: 'View Full Size', handler: () => handleCardViewFullSize(item) });
+      actions.push({ label: 'Edit Details', handler: () => handleCardOpen(item) });
+      actions.push({ separator: true });
+      actions.push({ label: 'Tag\u2026', handler: () => {
+        const tmpState = { selectedIds: new Set([`${item.type}:${item.id}`]) };
+        showBulkTagDialog(tmpState, api, () => loadPage());
+      }});
+      actions.push({ label: 'Rate', submenu: [
+        { label: '\u2606 Clear', handler: () => rateItemsByKey(0) },
+        { label: '\u2605', handler: () => rateItemsByKey(1) },
+        { label: '\u2605\u2605', handler: () => rateItemsByKey(2) },
+        { label: '\u2605\u2605\u2605', handler: () => rateItemsByKey(3) },
+        { label: '\u2605\u2605\u2605\u2605', handler: () => rateItemsByKey(4) },
+        { label: '\u2605\u2605\u2605\u2605\u2605', handler: () => rateItemsByKey(5) },
+      ]});
+      actions.push({ label: 'Add to Album\u2026', handler: () => {
+        const tmpState = { selectedIds: new Set([`${item.type}:${item.id}`]) };
+        showAddToAlbumDialog(tmpState, api, () => loadPage());
+      }});
+      actions.push({ separator: true });
+      actions.push({ label: 'Open File Location', handler: async () => {
+        const fp = await resolveItemFilePath(item);
+        if (fp && window.parallxElectron?.shell?.showItemInFolder) {
+          window.parallxElectron.shell.showItemInFolder(fp);
+        }
+      }});
+      actions.push({ label: 'Copy File Path', handler: async () => {
+        const fp = await resolveItemFilePath(item);
+        if (fp) {
+          try { await navigator.clipboard.writeText(fp); } catch { /* fallback */ }
+        }
+      }});
+      actions.push({ separator: true });
+      actions.push({ label: 'Delete\u2026', danger: true, handler: () => {
+        const tmpState = { selectedIds: new Set([`${item.type}:${item.id}`]) };
+        showBulkDeleteDialog(tmpState, api, () => loadPage());
+      }});
+    } else {
+      // Multi-selection actions
+      actions.push({ label: `${state.selectedIds.size} selected`, handler: () => {} });
+      actions.push({ separator: true });
+      actions.push({ label: 'Tag\u2026', handler: () => {
+        showBulkTagDialog(state, api, () => { if (selectionBar) selectionBar.update(); loadPage(); });
+      }});
+      actions.push({ label: 'Rate', submenu: [
+        { label: '\u2606 Clear', handler: () => rateItemsByKey(0) },
+        { label: '\u2605', handler: () => rateItemsByKey(1) },
+        { label: '\u2605\u2605', handler: () => rateItemsByKey(2) },
+        { label: '\u2605\u2605\u2605', handler: () => rateItemsByKey(3) },
+        { label: '\u2605\u2605\u2605\u2605', handler: () => rateItemsByKey(4) },
+        { label: '\u2605\u2605\u2605\u2605\u2605', handler: () => rateItemsByKey(5) },
+      ]});
+      actions.push({ label: 'Add to Album\u2026', handler: () => {
+        showAddToAlbumDialog(state, api, () => { if (selectionBar) selectionBar.update(); loadPage(); });
+      }});
+      actions.push({ separator: true });
+      actions.push({ label: 'Delete\u2026', danger: true, handler: () => {
+        showBulkDeleteDialog(state, api, () => { if (selectionBar) selectionBar.update(); loadPage(); });
+      }});
+    }
+    return actions;
+  }
+
+  gridArea.addEventListener('contextmenu', (e) => {
+    const el = e.target.closest('.mo-card, .mo-list-row');
+    if (!el) return;
+    e.preventDefault();
+
+    // Find the item from data-key
+    const key = el.dataset.key;
+    if (!key) return;
+    const item = state.items.find(i => `${i.type}:${i.id}` === key);
+    if (!item) return;
+
+    // If item is in current selection → multi-mode, otherwise single-item
+    const isMulti = state.selectedIds.has(key) && state.selectedIds.size > 1;
+
+    // If item is NOT in selection, focus on it and treat as single
+    if (!state.selectedIds.has(key)) {
+      state.focusedIndex = state.items.indexOf(item);
+    }
+
+    showContextMenu(e.clientX, e.clientY, buildContextMenuActions(item, isMulti));
+  });
+
+  // ── Drag-to-select (rubber band) ──
+  const rubberBand = moEl('div', 'mo-rubber-band');
+  gridArea.appendChild(rubberBand);
+  let _drag = null;
+
+  function rectsOverlap(a, b) {
+    return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
+  }
+
+  gridArea.addEventListener('pointerdown', (e) => {
+    // Only left button, only on grid background (not on a card/row/checkbox)
+    if (e.button !== 0) return;
+    const target = e.target;
+    if (target.closest('.mo-card, .mo-list-row, .mo-card-select, .mo-list-select, button, input, select, a')) return;
+
+    e.preventDefault();
+    const rect = gridArea.getBoundingClientRect();
+    const startX = e.clientX - rect.left + gridArea.scrollLeft;
+    const startY = e.clientY - rect.top + gridArea.scrollTop;
+    _drag = { startX, startY, rect, active: false };
+
+    // Save pre-drag selection for additive mode (Ctrl held)
+    _drag.additive = e.ctrlKey || e.metaKey;
+    _drag.priorSelection = _drag.additive ? new Set(state.selectedIds) : new Set();
+
+    gridArea.setPointerCapture(e.pointerId);
+  });
+
+  gridArea.addEventListener('pointermove', (e) => {
+    if (!_drag) return;
+    const rect = _drag.rect;
+    const curX = e.clientX - rect.left + gridArea.scrollLeft;
+    const curY = e.clientY - rect.top + gridArea.scrollTop;
+
+    // Start showing rubber band after 4px of movement
+    if (!_drag.active) {
+      const dx = curX - _drag.startX;
+      const dy = curY - _drag.startY;
+      if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+      _drag.active = true;
+      rubberBand.style.display = 'block';
+    }
+
+    const left = Math.min(_drag.startX, curX);
+    const top = Math.min(_drag.startY, curY);
+    const width = Math.abs(curX - _drag.startX);
+    const height = Math.abs(curY - _drag.startY);
+    rubberBand.style.left = left + 'px';
+    rubberBand.style.top = top + 'px';
+    rubberBand.style.width = width + 'px';
+    rubberBand.style.height = height + 'px';
+
+    // Hit-test cards against rubber band rect
+    const bandRect = { left, top, right: left + width, bottom: top + height };
+    const newSelection = new Set(_drag.priorSelection);
+    const grid = gridArea.querySelector('.mo-grid');
+    if (grid) {
+      const cards = grid.querySelectorAll('.mo-card, .mo-list-row');
+      for (let i = 0; i < cards.length && i < state.items.length; i++) {
+        const cardEl = cards[i];
+        const cr = cardEl.getBoundingClientRect();
+        // Convert card rect to gridArea-relative coords
+        const cardRelRect = {
+          left: cr.left - rect.left + gridArea.scrollLeft,
+          top: cr.top - rect.top + gridArea.scrollTop,
+          right: cr.right - rect.left + gridArea.scrollLeft,
+          bottom: cr.bottom - rect.top + gridArea.scrollTop,
+        };
+        const item = state.items[i];
+        const key = `${item.type}:${item.id}`;
+        if (rectsOverlap(bandRect, cardRelRect)) {
+          newSelection.add(key);
+        } else if (!_drag.priorSelection.has(key)) {
+          newSelection.delete(key);
+        }
+      }
+    }
+    state.selectedIds = newSelection;
+    state.selecting = newSelection.size > 0;
+    if (selectionBar) selectionBar.update();
+    if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+  });
+
+  function endDrag() {
+    if (!_drag) return;
+    rubberBand.style.display = 'none';
+    _drag = null;
+  }
+  gridArea.addEventListener('pointerup', endDrag);
+  gridArea.addEventListener('pointercancel', endDrag);
 
   return {
     dispose() {
       clearTimeout(searchTimer);
-      root.removeEventListener('keydown', handleGridKeydown);
+      document.removeEventListener('keydown', docKeyHandler, true);
       if (cardGrid) cardGrid.dispose();
       container.innerHTML = '';
     }
@@ -7661,9 +8758,447 @@ async function resolveThumbnailForMiniCard(card, item) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 31A: LIGHTBOX / SLIDESHOW (F7)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let _activeLightbox = null;
+
+function dismissLightbox() {
+  if (_activeLightbox) {
+    _activeLightbox.cleanup();
+    _activeLightbox.el.remove();
+    _activeLightbox = null;
+  }
+}
+
+/**
+ * Open a fullscreen lightbox starting at `startIndex` within `items`.
+ * items: array of media items (from state.items).
+ * resolveFilePath: async (item) => string|null — resolves the original file path.
+ */
+function openLightbox(items, startIndex, resolveFilePath) {
+  dismissLightbox();
+  if (!items || items.length === 0) return;
+
+  let currentIdx = Math.max(0, Math.min(startIndex, items.length - 1));
+  let slideshowTimer = null;
+  let slideshowInterval = 0; // 0 = off
+
+  // Zoom/pan state — adapted from src/built-in/editor/imageEditorPane.ts
+  const LB_ZOOM_MIN = 0.1;
+  const LB_ZOOM_MAX = 10;
+  const LB_ZOOM_STEP = 0.1;
+  let lbZoom = 1;
+  let lbPanX = 0;
+  let lbPanY = 0;
+  let lbDragging = false;
+  let lbDragStartX = 0;
+  let lbDragStartY = 0;
+  let lbPanStartX = 0;
+  let lbPanStartY = 0;
+
+  const overlay = moEl('div', 'mo-lightbox');
+  const content = moEl('div', 'mo-lightbox-content');
+  overlay.appendChild(content);
+
+  // Close button
+  const closeBtn = moEl('button', 'mo-lightbox-close', { textContent: '\u00D7' });
+  closeBtn.addEventListener('click', dismissLightbox);
+  content.appendChild(closeBtn);
+
+  // Nav buttons
+  const prevBtn = moEl('button', 'mo-lightbox-nav prev', { textContent: '\u2039' });
+  const nextBtn = moEl('button', 'mo-lightbox-nav next', { textContent: '\u203A' });
+  prevBtn.addEventListener('click', () => navigate(-1));
+  nextBtn.addEventListener('click', () => navigate(1));
+  content.appendChild(prevBtn);
+  content.appendChild(nextBtn);
+
+  // Info bar
+  const bar = moEl('div', 'mo-lightbox-bar');
+  const titleEl = moEl('span', 'mo-lb-title');
+  const ratingEl = moEl('span', 'mo-lb-rating');
+  const counterEl = moEl('span', 'mo-lb-counter');
+  const zoomIndicator = moEl('span', 'mo-lb-zoom-indicator');
+  bar.append(titleEl, ratingEl, counterEl, zoomIndicator);
+
+  // Slideshow controls
+  const playBtn = moEl('button', null, { textContent: '\u25B6 Slideshow' });
+  const speedDropdown = moDropdown({
+    items: [
+      { value: '3000', label: '3s' },
+      { value: '5000', label: '5s' },
+      { value: '10000', label: '10s' },
+    ],
+    selected: '5000',
+    ariaLabel: 'Slideshow speed',
+  });
+  playBtn.addEventListener('click', () => {
+    if (slideshowInterval > 0) {
+      stopSlideshow();
+    } else {
+      slideshowInterval = parseInt(speedDropdown.getValue(), 10);
+      startSlideshow();
+    }
+  });
+  bar.append(playBtn, speedDropdown.el);
+  overlay.appendChild(bar);
+
+  // Zoom helpers
+  function applyZoom() {
+    if (!mediaEl) return;
+    mediaEl.style.transform = `scale(${lbZoom}) translate(${lbPanX / lbZoom}px, ${lbPanY / lbZoom}px)`;
+    const isZoomed = Math.abs(lbZoom - 1) > 0.01;
+    content.classList.toggle('mo-lb-zoomed', isZoomed);
+    zoomIndicator.textContent = isZoomed ? `${Math.round(lbZoom * 100)}%` : '';
+  }
+
+  function resetZoom() {
+    lbZoom = 1;
+    lbPanX = 0;
+    lbPanY = 0;
+    applyZoom();
+  }
+
+  function zoomBy(delta) {
+    lbZoom = Math.round(Math.max(LB_ZOOM_MIN, Math.min(LB_ZOOM_MAX, lbZoom + delta)) * 100) / 100;
+    if (lbZoom <= 1) { lbPanX = 0; lbPanY = 0; }
+    applyZoom();
+  }
+
+  // Wheel zoom — scroll zooms toward cursor position (like image editors)
+  content.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!mediaEl) return;
+
+    const oldZoom = lbZoom;
+    const delta = e.deltaY < 0 ? LB_ZOOM_STEP : -LB_ZOOM_STEP;
+    lbZoom = Math.round(Math.max(LB_ZOOM_MIN, Math.min(LB_ZOOM_MAX, lbZoom + delta)) * 100) / 100;
+
+    if (lbZoom <= 1) {
+      // Snap back to center when at 1x or below
+      lbPanX = 0;
+      lbPanY = 0;
+    } else {
+      // Zoom toward cursor: adjust pan so the point under the cursor stays fixed
+      const rect = content.getBoundingClientRect();
+      const cx = e.clientX - rect.left - rect.width / 2;
+      const cy = e.clientY - rect.top - rect.height / 2;
+      const factor = lbZoom / oldZoom;
+      lbPanX = cx - factor * (cx - lbPanX);
+      lbPanY = cy - factor * (cy - lbPanY);
+    }
+
+    applyZoom();
+  }, { passive: false });
+
+  // Double-click to reset zoom
+  content.addEventListener('dblclick', (e) => {
+    if (e.target === closeBtn || e.target === prevBtn || e.target === nextBtn) return;
+    e.preventDefault();
+    if (Math.abs(lbZoom - 1) > 0.01) {
+      resetZoom();
+    } else {
+      zoomBy(1); // zoom to 2x on double-click when at 1x
+    }
+  });
+
+  // Drag to pan when zoomed
+  content.addEventListener('mousedown', (e) => {
+    if (lbZoom <= 1.01 || e.button !== 0) return;
+    if (e.target === closeBtn || e.target === prevBtn || e.target === nextBtn) return;
+    lbDragging = true;
+    lbDragStartX = e.clientX;
+    lbDragStartY = e.clientY;
+    lbPanStartX = lbPanX;
+    lbPanStartY = lbPanY;
+    content.classList.add('mo-lb-dragging');
+    e.preventDefault();
+  });
+
+  function onDragMove(e) {
+    if (!lbDragging) return;
+    lbPanX = lbPanStartX + (e.clientX - lbDragStartX);
+    lbPanY = lbPanStartY + (e.clientY - lbDragStartY);
+    applyZoom();
+  }
+
+  function onDragEnd() {
+    if (!lbDragging) return;
+    lbDragging = false;
+    content.classList.remove('mo-lb-dragging');
+  }
+
+  document.addEventListener('mousemove', onDragMove);
+  document.addEventListener('mouseup', onDragEnd);
+
+  // Media display element
+  let mediaEl = null;
+  // Preload cache
+  const preloadCache = new Map();
+
+  async function preloadItem(idx) {
+    if (idx < 0 || idx >= items.length) return;
+    const item = items[idx];
+    const cacheKey = `${item.type}:${item.id}`;
+    if (preloadCache.has(cacheKey)) return;
+    const fp = await resolveFilePath(item);
+    if (fp) {
+      const url = await localFileToUrl(fp);
+      if (url) preloadCache.set(cacheKey, { url, type: item.type });
+    }
+  }
+
+  async function showItem(idx) {
+    const item = items[idx];
+    const cacheKey = `${item.type}:${item.id}`;
+
+    // Remove old media
+    if (mediaEl) { mediaEl.remove(); mediaEl = null; }
+
+    // Reset zoom when changing items
+    resetZoom();
+
+    // Resolve URL
+    let cached = preloadCache.get(cacheKey);
+    if (!cached) {
+      const fp = await resolveFilePath(item);
+      if (fp) {
+        const url = await localFileToUrl(fp);
+        if (url) {
+          cached = { url, type: item.type };
+          preloadCache.set(cacheKey, cached);
+        }
+      }
+    }
+
+    if (cached) {
+      if (cached.type === 'video') {
+        mediaEl = moEl('video');
+        mediaEl.src = cached.url;
+        mediaEl.controls = true;
+        mediaEl.autoplay = true;
+      } else {
+        mediaEl = moEl('img');
+        mediaEl.src = cached.url;
+        mediaEl.alt = item.title || '';
+        mediaEl.draggable = false;
+      }
+      // Insert before close button
+      content.insertBefore(mediaEl, closeBtn);
+    }
+
+    // Update info bar
+    const title = item.title || (item.filePath ? item.filePath.split(/[/\\]/).pop() : `${item.type} #${item.id}`);
+    titleEl.textContent = title;
+    ratingEl.textContent = item.rating > 0 ? '\u2605'.repeat(item.rating) : '';
+    counterEl.textContent = `${idx + 1} of ${items.length}`;
+
+    // Nav button visibility
+    prevBtn.style.display = idx > 0 ? '' : 'none';
+    nextBtn.style.display = idx < items.length - 1 ? '' : 'none';
+
+    // Preload adjacent
+    preloadItem(idx - 1);
+    preloadItem(idx + 1);
+  }
+
+  function navigate(delta) {
+    const newIdx = currentIdx + delta;
+    if (newIdx < 0 || newIdx >= items.length) return;
+    currentIdx = newIdx;
+    showItem(currentIdx);
+  }
+
+  function startSlideshow() {
+    playBtn.textContent = '\u23F8 Pause';
+    playBtn.classList.add('active');
+    slideshowTimer = setInterval(() => {
+      if (currentIdx < items.length - 1) navigate(1);
+      else stopSlideshow();
+    }, slideshowInterval);
+  }
+
+  function stopSlideshow() {
+    slideshowInterval = 0;
+    clearInterval(slideshowTimer);
+    slideshowTimer = null;
+    playBtn.textContent = '\u25B6 Slideshow';
+    playBtn.classList.remove('active');
+  }
+
+  function onKey(e) {
+    e.stopPropagation(); // Prevent Parallx keybinding service from intercepting
+    if (e.key === 'Escape') { dismissLightbox(); e.preventDefault(); return; }
+    if (e.key === 'ArrowLeft') { navigate(-1); e.preventDefault(); return; }
+    if (e.key === 'ArrowRight') { navigate(1); e.preventDefault(); return; }
+    // Zoom keys: +/- and 0 to reset
+    if (e.key === '+' || e.key === '=') { zoomBy(LB_ZOOM_STEP); e.preventDefault(); return; }
+    if (e.key === '-' || e.key === '_') { zoomBy(-LB_ZOOM_STEP); e.preventDefault(); return; }
+    if (e.key === '0' && !e.ctrlKey) { resetZoom(); e.preventDefault(); return; }
+  }
+
+  document.addEventListener('keydown', onKey, true);
+  document.body.appendChild(overlay);
+
+  _activeLightbox = {
+    el: overlay,
+    cleanup() {
+      document.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('mousemove', onDragMove);
+      document.removeEventListener('mouseup', onDragEnd);
+      if (slideshowTimer) clearInterval(slideshowTimer);
+    }
+  };
+
+  showItem(currentIdx);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 31B: CONTEXT MENU (F1)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let _activeContextMenu = null;
+
+function dismissContextMenu() {
+  if (_activeContextMenu) {
+    _activeContextMenu.remove();
+    _activeContextMenu = null;
+  }
+}
+
+/**
+ * Show a context menu at (x, y) with the given action definitions.
+ * Each action: { label, icon?, handler?, danger?, separator?, submenu?: [{ label, handler }] }
+ */
+function showContextMenu(x, y, actions) {
+  dismissContextMenu();
+  const menu = moEl('div', 'mo-context-menu');
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+
+  for (const action of actions) {
+    if (action.separator) {
+      menu.appendChild(moEl('div', 'mo-context-menu-sep'));
+      continue;
+    }
+    if (action.submenu) {
+      const sub = moEl('div', 'mo-context-menu-sub');
+      const trigger = moEl('div', `mo-context-menu-item${action.danger ? ' mo-ctx-danger' : ''}`);
+      trigger.textContent = action.label;
+      trigger.appendChild(moEl('span', 'mo-ctx-arrow', { textContent: '\u25B8' }));
+      sub.appendChild(trigger);
+      const subMenu = moEl('div', 'mo-context-submenu');
+      for (const si of action.submenu) {
+        const subItem = moEl('div', 'mo-context-menu-item');
+        subItem.textContent = si.label;
+        subItem.addEventListener('click', (e) => {
+          e.stopPropagation();
+          dismissContextMenu();
+          si.handler();
+        });
+        subMenu.appendChild(subItem);
+      }
+      sub.appendChild(subMenu);
+      menu.appendChild(sub);
+    } else {
+      const item = moEl('div', `mo-context-menu-item${action.danger ? ' mo-ctx-danger' : ''}`);
+      item.textContent = action.label;
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dismissContextMenu();
+        action.handler();
+      });
+      menu.appendChild(item);
+    }
+  }
+
+  document.body.appendChild(menu);
+  _activeContextMenu = menu;
+
+  // Clamp to viewport
+  const rect = menu.getBoundingClientRect();
+  if (rect.right > window.innerWidth) menu.style.left = `${window.innerWidth - rect.width - 4}px`;
+  if (rect.bottom > window.innerHeight) menu.style.top = `${window.innerHeight - rect.height - 4}px`;
+
+  // Dismiss on outside click / Escape / scroll
+  setTimeout(() => {
+    function onDismiss(ev) {
+      if (ev && ev.target && menu.contains(ev.target)) return; // click inside menu — don't dismiss
+      dismissContextMenu(); cleanup();
+    }
+    function onKey(ev) { if (ev.key === 'Escape') { dismissContextMenu(); cleanup(); ev.preventDefault(); } }
+    function cleanup() {
+      document.removeEventListener('pointerdown', onDismiss);
+      document.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('scroll', onDismiss, true);
+    }
+    document.addEventListener('pointerdown', onDismiss);
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('scroll', onDismiss, true);
+  }, 0);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 32: BULK OPERATIONS (F33, F34)
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: ui/v2.5/src/components/List/useListSelect, EditGalleriesDialog, MultiSet
+
+// F9: Batch Export — copy selected files to a chosen folder
+async function exportSelectedItems(state, api) {
+  if (!state.selectedIds || state.selectedIds.size === 0) return;
+  const pe = window.parallxElectron;
+  if (!pe || !pe.dialog || !pe.fs) return;
+
+  // Pick destination folder
+  const destFolder = await pe.dialog.openFolder({ title: 'Export — Choose Destination Folder' });
+  if (!destFolder) return;
+
+  const { photos, videos } = parseSelectedIds(state.selectedIds);
+  const db = _db;
+  let copied = 0;
+  let failed = 0;
+
+  api.statusBar.setMessage(`Exporting ${state.selectedIds.size} file(s)…`, 0);
+
+  for (const id of photos) {
+    try {
+      const row = await db.get(`SELECT f.basename, fo.path AS folder_path FROM mo_photos_files pf JOIN mo_files f ON f.id = pf.file_id JOIN mo_folders fo ON fo.id = f.folder_id WHERE pf.photo_id = ? AND pf.is_primary = 1`, [id]);
+      if (row) {
+        const sep = row.folder_path.includes('\\') ? '\\' : '/';
+        const srcPath = row.folder_path.replace(/[\\/]+$/, '') + sep + row.basename;
+        const destPath = destFolder + sep + row.basename;
+        const read = await pe.fs.readFile(srcPath);
+        if (!read.error) {
+          await pe.fs.writeFile(destPath, read.content, read.encoding || 'base64');
+          copied++;
+        } else failed++;
+      }
+    } catch { failed++; }
+  }
+
+  for (const id of videos) {
+    try {
+      const row = await db.get(`SELECT f.basename, fo.path AS folder_path FROM mo_videos_files vf JOIN mo_files f ON f.id = vf.file_id JOIN mo_folders fo ON fo.id = f.folder_id WHERE vf.video_id = ? AND vf.is_primary = 1`, [id]);
+      if (row) {
+        const sep = row.folder_path.includes('\\') ? '\\' : '/';
+        const srcPath = row.folder_path.replace(/[\\/]+$/, '') + sep + row.basename;
+        const destPath = destFolder + sep + row.basename;
+        const read = await pe.fs.readFile(srcPath);
+        if (!read.error) {
+          await pe.fs.writeFile(destPath, read.content, read.encoding || 'base64');
+          copied++;
+        } else failed++;
+      }
+    } catch { failed++; }
+  }
+
+  const msg = failed > 0
+    ? `Exported ${copied} file(s), ${failed} failed`
+    : `Exported ${copied} file(s) to ${destFolder}`;
+  api.statusBar.setMessage(msg, 5000);
+}
 
 function buildSelectionToolbar(container, state, api, refreshFn) {
   // Adapted from stash: FilteredListToolbar — selection mode toolbar
@@ -7730,6 +9265,20 @@ function buildSelectionToolbar(container, state, api, refreshFn) {
   });
   bar.appendChild(addToAlbumBtn);
 
+  // F9: Export button
+  const exportBtn = moEl('button', null, { textContent: 'Export...' });
+  exportBtn.addEventListener('click', () => {
+    exportSelectedItems(state, api);
+  });
+  bar.appendChild(exportBtn);
+
+  // Delete button
+  const deleteBtn = moEl('button', 'mo-sel-delete', { textContent: 'Delete...' });
+  deleteBtn.addEventListener('click', () => {
+    showBulkDeleteDialog(state, api, () => { updateBar(); refreshFn(); });
+  });
+  bar.appendChild(deleteBtn);
+
   function updateBar() {
     const count = state.selectedIds.size;
     countEl.textContent = `${count} selected`;
@@ -7783,17 +9332,18 @@ function showBulkTagDialog(state, api, onComplete) {
   // Tag selector
   const tagSection = moEl('div', 'mo-bulk-dialog-section');
   tagSection.appendChild(moEl('label', null, { textContent: 'Tag' }));
-  const tagSelect = moEl('select');
-  tagSelect.appendChild(moEl('option', null, { value: '', textContent: 'Select a tag...' }));
-  tagSection.appendChild(tagSelect);
+  const bulkTagDropdown = moDropdown({
+    items: [],
+    placeholder: 'Select a tag...',
+    ariaLabel: 'Select tag',
+  });
+  tagSection.appendChild(bulkTagDropdown.el);
   dialog.appendChild(tagSection);
 
   // Load tags
   TagQueries.findMany({}, { field: 'name', direction: 'ASC' }, { page: 1, perPage: 500 })
     .then(result => {
-      for (const tag of result.items) {
-        tagSelect.appendChild(moEl('option', null, { value: String(tag.id), textContent: tag.name }));
-      }
+      bulkTagDropdown.setItems(result.items.map(tag => ({ value: String(tag.id), label: tag.name })));
     })
     .catch(() => {});
 
@@ -7803,7 +9353,7 @@ function showBulkTagDialog(state, api, onComplete) {
   cancelBtn.addEventListener('click', () => overlay.remove());
   const applyBtn = moEl('button', 'primary', { textContent: 'Apply' });
   applyBtn.addEventListener('click', async () => {
-    const tagId = parseInt(tagSelect.value, 10);
+    const tagId = parseInt(bulkTagDropdown.getValue(), 10);
     if (!tagId) { api.window.showWarningMessage('Please select a tag.'); return; }
     applyBtn.disabled = true;
     cancelBtn.disabled = true;
@@ -7926,17 +9476,18 @@ function showAddToAlbumDialog(state, api, onComplete) {
 
   const albumSection = moEl('div', 'mo-bulk-dialog-section');
   albumSection.appendChild(moEl('label', null, { textContent: 'Album' }));
-  const albumSelect = moEl('select');
-  albumSelect.appendChild(moEl('option', null, { value: '', textContent: 'Select an album...' }));
-  albumSection.appendChild(albumSelect);
+  const bulkAlbumDropdown = moDropdown({
+    items: [],
+    placeholder: 'Select an album...',
+    ariaLabel: 'Select album',
+  });
+  albumSection.appendChild(bulkAlbumDropdown.el);
   dialog.appendChild(albumSection);
 
   // Load albums (manual collections only — folderId IS NULL)
   AlbumQueries.findMany({ folderId: null }, { field: 'title', direction: 'ASC' }, { page: 1, perPage: 500 })
     .then(result => {
-      for (const album of result.items) {
-        albumSelect.appendChild(moEl('option', null, { value: String(album.id), textContent: album.title || `Album #${album.id}` }));
-      }
+      bulkAlbumDropdown.setItems(result.items.map(album => ({ value: String(album.id), label: album.title || `Album #${album.id}` })));
     })
     .catch(() => {});
 
@@ -7945,7 +9496,7 @@ function showAddToAlbumDialog(state, api, onComplete) {
   cancelBtn.addEventListener('click', () => overlay.remove());
   const applyBtn = moEl('button', 'primary', { textContent: 'Add' });
   applyBtn.addEventListener('click', async () => {
-    const albumId = parseInt(albumSelect.value, 10);
+    const albumId = parseInt(bulkAlbumDropdown.getValue(), 10);
     if (!albumId) { api.window.showWarningMessage('Please select an album.'); return; }
     applyBtn.disabled = true;
     cancelBtn.disabled = true;
@@ -7965,6 +9516,55 @@ function showAddToAlbumDialog(state, api, onComplete) {
     }
   });
   footer.append(cancelBtn, applyBtn);
+  dialog.appendChild(footer);
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') overlay.remove(); });
+  document.body.appendChild(overlay);
+  overlay.setAttribute('tabindex', '-1');
+  overlay.focus();
+}
+
+// Bulk delete confirmation dialog
+function showBulkDeleteDialog(state, api, onComplete) {
+  const overlay = moEl('div', 'mo-bulk-dialog-overlay');
+  const dialog = moEl('div', 'mo-bulk-dialog');
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-label', 'Delete Items');
+  overlay.appendChild(dialog);
+
+  const count = state.selectedIds.size;
+  dialog.appendChild(moEl('h3', null, { textContent: `Delete ${count} item${count !== 1 ? 's' : ''}?` }));
+  dialog.appendChild(moEl('p', 'mo-bulk-dialog-warn', {
+    textContent: 'This will remove the selected items from the Media Organizer database. Original files on disk will NOT be deleted.',
+  }));
+
+  const footer = moEl('div', 'mo-bulk-dialog-footer');
+  const cancelBtn = moEl('button', null, { textContent: 'Cancel' });
+  cancelBtn.addEventListener('click', () => overlay.remove());
+  const confirmBtn = moEl('button', 'mo-sel-delete', { textContent: 'Delete' });
+  confirmBtn.addEventListener('click', async () => {
+    confirmBtn.disabled = true;
+    cancelBtn.disabled = true;
+    confirmBtn.textContent = 'Deleting…';
+    const { photos, videos } = parseSelectedIds(state.selectedIds);
+    try {
+      for (const id of photos) await PhotoQueries.destroy(id);
+      for (const id of videos) await VideoQueries.destroy(id);
+      state.selectedIds.clear();
+      state.selecting = false;
+      api.window.showInformationMessage(`${photos.length + videos.length} item(s) deleted.`);
+      overlay.remove();
+      onComplete();
+    } catch (err) {
+      confirmBtn.disabled = false;
+      cancelBtn.disabled = false;
+      confirmBtn.textContent = 'Delete';
+      api.window.showErrorMessage('Delete failed: ' + err.message);
+    }
+  });
+  footer.append(cancelBtn, confirmBtn);
   dialog.appendChild(footer);
 
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
@@ -8105,6 +9705,18 @@ export async function activate(api, context) {
   // Adapted from stash: internal/manager/task_generate.go — Generate task
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.generateThumbnails', () => generateAllThumbnails(api))
+  );
+
+  // F4: Regenerate all thumbnails with overwrite
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.regenerateThumbnails', async () => {
+      const confirmed = await api.window.showInformationMessage(
+        'This will re-generate ALL thumbnails at the current quality setting. Continue?',
+        { modal: true },
+        'Regenerate'
+      );
+      if (confirmed === 'Regenerate') generateAllThumbnails(api, true);
+    })
   );
 
   // Register thumbnail cleanup command

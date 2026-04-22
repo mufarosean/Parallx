@@ -5,7 +5,6 @@
 // present and cannot be deleted.
 
 import type { AISettingsProfile } from './aiSettingsTypes.js';
-import { generateChatSystemPrompt, buildGenInputFromProfile } from './systemPromptGenerator.js';
 
 // ─── Default Profile ───────────────────────────────────────────────────────
 
@@ -20,7 +19,7 @@ function makeDefaultProfile(): AISettingsProfile {
       avatarEmoji: 'avatar-brain',
     },
     chat: {
-      systemPrompt: '', // filled below
+      systemPrompt: '',
       systemPromptIsCustom: false,
       responseLength: 'adaptive',
     },
@@ -41,11 +40,6 @@ function makeDefaultProfile(): AISettingsProfile {
     createdAt: 0,
     updatedAt: 0,
   };
-
-  // Generate the default system prompt from the default settings
-  profile.chat.systemPrompt = generateChatSystemPrompt(
-    buildGenInputFromProfile(profile)
-  );
 
   return profile;
 }
@@ -72,9 +66,6 @@ function makeFinanceFocusProfile(): AISettingsProfile {
       suggestionConfidenceThreshold: 0.6,
     },
   };
-  profile.chat.systemPrompt = generateChatSystemPrompt(
-    buildGenInputFromProfile(profile)
-  );
   return profile;
 }
 
@@ -99,9 +90,6 @@ function makeCreativeModeProfile(): AISettingsProfile {
       focusDomain: 'writing',
     },
   };
-  profile.chat.systemPrompt = generateChatSystemPrompt(
-    buildGenInputFromProfile(profile)
-  );
   return profile;
 }
 

@@ -48,6 +48,7 @@ import {
   IChatAgentService,
   ILanguageModelToolsService,
 } from '../services/chatTypes.js';
+import { ICanvasPageQueryService } from '../services/serviceTypes.js';
 
 // ─── API Dependencies ────────────────────────────────────────────────────────
 
@@ -129,6 +130,9 @@ export interface ParallxApiObject {
     readonly onDidRename: (listener: (name: string) => void) => IDisposable;
     readonly onDidFilesChange: (listener: (events: { type: number; uri: string }[]) => void) => IDisposable;
     readonly name: string | undefined;
+    getCanvasPages(): Promise<{ id: string; parentId: string | null; title: string; icon: string | null; isFavorited: boolean; isArchived: boolean; createdAt: string; updatedAt: string }[]>;
+    getCanvasPageTree(): Promise<{ id: string; parentId: string | null; title: string; icon: string | null; isFavorited: boolean; isArchived: boolean; createdAt: string; updatedAt: string; children: any[] }[]>;
+    readonly onDidChangeCanvasPages: (listener: (e: { kind: string; pageId: string; page?: { id: string; parentId: string | null; title: string; icon: string | null; isFavorited: boolean; isArchived: boolean; createdAt: string; updatedAt: string } }) => void) => IDisposable;
     readonly fs: {
       readFile(uri: string): Promise<{ content: string; encoding: string }>;
       writeFile(uri: string, content: string): Promise<void>;
@@ -178,6 +182,8 @@ export interface ParallxApiObject {
     get<T>(id: { readonly id: string }): T;
     /** Check if a DI service is registered. */
     has(id: { readonly id: string }): boolean;
+    /** Register a pre-built service instance (M56). */
+    registerInstance<T>(id: { readonly id: string }, instance: T): void;
   };
   readonly icons: {
     getIcon(id: string): string;
@@ -280,7 +286,16 @@ export function createToolApi(
     ? new ContextBridge(toolId, contextKeyService, subscriptions)
     : undefined;
 
-  const workspaceBridge = new WorkspaceBridge(toolId, subscriptions, deps.configurationService, workspaceService as any, fileService as any);
+  const workspaceBridge = new WorkspaceBridge(
+    toolId,
+    subscriptions,
+    deps.configurationService,
+    workspaceService as any,
+    fileService as any,
+    () => deps.services.has(ICanvasPageQueryService)
+      ? deps.services.get<ICanvasPageQueryService>(ICanvasPageQueryService)
+      : undefined,
+  );
 
   // FileSystemBridge — scoped filesystem access for workspace.fs
   const fileSystemBridge = (fileService && workspaceService)
@@ -456,6 +471,9 @@ export function createToolApi(
       onDidRename: workspaceBridge.onDidRename,
       onDidFilesChange: workspaceBridge.onDidFilesChange,
       get name() { return workspaceBridge.name; },
+      getCanvasPages: () => workspaceBridge.getCanvasPages(),
+      getCanvasPageTree: () => workspaceBridge.getCanvasPageTree(),
+      onDidChangeCanvasPages: workspaceBridge.onDidChangeCanvasPages,
       get fs() {
         if (!fileSystemBridge) return undefined;
         return {
@@ -631,6 +649,7 @@ export function createToolApi(
     services: Object.freeze({
       get: <T>(id: { readonly id: string }) => deps.services.get(id as any) as T,
       has: (id: { readonly id: string }) => deps.services.has(id as any),
+      registerInstance: <T>(id: { readonly id: string }, instance: T) => deps.services.registerInstance(id as any, instance),
     }),
 
     icons: Object.freeze({

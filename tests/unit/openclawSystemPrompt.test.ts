@@ -6,7 +6,6 @@ import {
   buildToolSummariesSection,
   buildWorkspaceSection,
   buildRuntimeSection,
-  buildBehavioralRulesSection,
   estimateSystemPromptTokens,
   type IBootstrapFile,
   type IOpenclawRuntimeInfo,
@@ -71,26 +70,9 @@ function createBaseParams(overrides?: Partial<IOpenclawSystemPromptParams>): IOp
 // ---------------------------------------------------------------------------
 
 describe('buildOpenclawSystemPrompt', () => {
-  it('produces identity section first', () => {
+  it('starts with skills section (identity now in SOUL.md bootstrap)', () => {
     const prompt = buildOpenclawSystemPrompt(createBaseParams());
-    expect(prompt.startsWith('You are Parallx')).toBe(true);
-  });
-
-  it('includes safety section after identity', () => {
-    const prompt = buildOpenclawSystemPrompt(createBaseParams());
-    const identityEnd = prompt.indexOf('\n\n');
-    const safetyStart = prompt.indexOf('## Safety');
-    expect(safetyStart).toBeGreaterThan(identityEnd);
-    // Safety should come before Skills
-    const skillsStart = prompt.indexOf('## Skills');
-    expect(safetyStart).toBeLessThan(skillsStart);
-  });
-
-  it('includes all mandatory safety lines', () => {
-    const prompt = buildOpenclawSystemPrompt(createBaseParams());
-    expect(prompt).toContain('do not pursue self-preservation');
-    expect(prompt).toContain('Prioritize safety and human oversight');
-    expect(prompt).toContain('Do not manipulate or persuade');
+    expect(prompt.startsWith('## Skills (mandatory)')).toBe(true);
   });
 
   it('includes skills section with scan instruction', () => {
@@ -214,12 +196,6 @@ describe('buildOpenclawSystemPrompt', () => {
     expect(prompt).toContain('ollama');
   });
 
-  it('includes behavioral rules section', () => {
-    const prompt = buildOpenclawSystemPrompt(createBaseParams());
-    expect(prompt).toContain('## Response Guidelines');
-    expect(prompt).toContain('Answer from the workspace context');
-  });
-
   it('includes small model guidance when modelTier is small', () => {
     const prompt = buildOpenclawSystemPrompt(createBaseParams({ modelTier: 'small' }));
     expect(prompt).toContain('## Small Model Guidance');
@@ -243,16 +219,13 @@ describe('buildOpenclawSystemPrompt', () => {
     expect(prompt2).not.toContain('## Tool Calling Not Available');
   });
 
-  it('section order: Identity → Safety → Skills → Tools → Workspace → Runtime → Behavioral', () => {
+  it('section order: Skills → Tools → Workspace → Runtime', () => {
     const prompt = buildOpenclawSystemPrompt(createBaseParams());
     const order = [
-      prompt.indexOf('You are Parallx'),
-      prompt.indexOf('## Safety'),
       prompt.indexOf('## Skills (mandatory)'),
       prompt.indexOf('Tool availability'),
       prompt.indexOf('## Workspace Context'),
       prompt.indexOf('## Runtime'),
-      prompt.indexOf('## Response Guidelines'),
     ];
     for (let i = 1; i < order.length; i++) {
       expect(order[i]).toBeGreaterThan(order[i - 1]);
@@ -335,6 +308,40 @@ describe('buildToolSummariesSection', () => {
     const toolLines = section.split('\n').filter(l => l.startsWith('- '));
     expect(toolLines.length).toBe(tools.length);
   });
+
+  it('groups known tools under domain headings', () => {
+    const tools: IToolSummary[] = [
+      { name: 'read_page', description: 'Read a canvas page' },
+      { name: 'list_files', description: 'List workspace files' },
+      { name: 'memory_get', description: 'Read memory' },
+      { name: 'mcp__github__create_issue', description: 'Create a GitHub issue' },
+    ];
+    const section = buildToolSummariesSection(tools);
+
+    // Domain headings present
+    expect(section).toContain('### Canvas Pages');
+    expect(section).toContain('### Workspace Files');
+    expect(section).toContain('### Memory');
+
+    // Ungrouped MCP tool under "Other"
+    expect(section).toContain('### Other');
+    expect(section).toContain('- mcp__github__create_issue:');
+
+    // Each tool listed exactly once
+    const toolLines = section.split('\n').filter(l => l.startsWith('- '));
+    expect(toolLines.length).toBe(4);
+  });
+
+  it('omits group headings when no tools match', () => {
+    const tools: IToolSummary[] = [
+      { name: 'read_page', description: 'Read a canvas page' },
+    ];
+    const section = buildToolSummariesSection(tools);
+
+    expect(section).toContain('### Canvas Pages');
+    expect(section).not.toContain('### Workspace Files');
+    expect(section).not.toContain('### Other');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -409,23 +416,6 @@ describe('buildRuntimeSection', () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildBehavioralRulesSection
-// ---------------------------------------------------------------------------
-
-describe('buildBehavioralRulesSection', () => {
-  it('includes Response Guidelines heading', () => {
-    const section = buildBehavioralRulesSection();
-    expect(section).toContain('## Response Guidelines');
-  });
-
-  it('includes citation and accuracy guidance', () => {
-    const section = buildBehavioralRulesSection();
-    expect(section).toContain('Cite specific files');
-    expect(section).toContain('exact values from the source');
-  });
-});
-
-// ---------------------------------------------------------------------------
 // estimateSystemPromptTokens
 // ---------------------------------------------------------------------------
 
@@ -465,11 +455,11 @@ describe('budget-aware truncation', () => {
     expect(prompt.length).toBeLessThan(full.length);
   });
 
-  it('preserves safety section even when truncating', () => {
+  it('preserves skills section even when truncating', () => {
     const params = createBaseParams({ systemBudgetTokens: 100 });
     const prompt = buildOpenclawSystemPrompt(params);
-    // Safety section should survive truncation (only workspace and tools are truncated)
-    expect(prompt).toContain('## Safety');
+    // Skills section should survive truncation (only workspace and tools are truncated)
+    expect(prompt).toContain('## Skills (mandatory)');
   });
 });
 

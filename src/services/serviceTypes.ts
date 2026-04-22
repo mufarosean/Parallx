@@ -1516,6 +1516,32 @@ export interface IIndexingPipelineService extends IDisposable {
   readonly onDidCompleteInitialIndex: Event<{ pages: number; files: number; durationMs: number }>;
 }
 
+// ─── Canvas Page Query Service (M56) ────────────────────────────────────────
+
+/**
+ * Read-only canvas page query service exposed to the tool API.
+ *
+ * This is a minimal subset of ICanvasDataService — only the methods
+ * needed to enumerate pages and listen for changes. No mutations,
+ * no content, no auto-save. The canvas built-in registers the concrete
+ * implementation onto the ServiceCollection during activation.
+ */
+export interface ICanvasPageQueryService {
+  /** Get all non-archived pages (lightweight metadata only). */
+  getRootPages(): Promise<{ id: string; parentId: string | null; title: string; icon: string | null; isFavorited: boolean; isArchived: boolean; createdAt: string; updatedAt: string }[]>;
+
+  /** Get child pages of a parent. */
+  getChildren(parentId: string): Promise<{ id: string; parentId: string | null; title: string; icon: string | null; isFavorited: boolean; isArchived: boolean; createdAt: string; updatedAt: string }[]>;
+
+  /** Get the full page tree (hierarchical). */
+  getPageTree(): Promise<{ id: string; parentId: string | null; title: string; icon: string | null; isFavorited: boolean; isArchived: boolean; createdAt: string; updatedAt: string; children: any[] }[]>;
+
+  /** Fires when a page is created, updated, deleted, moved, or reordered. */
+  readonly onDidChangePage: Event<{ kind: string; pageId: string; page?: { id: string; parentId: string | null; title: string; icon: string | null; isFavorited: boolean; isArchived: boolean; createdAt: string; updatedAt: string } }>;
+}
+
+export const ICanvasPageQueryService = createServiceIdentifier<ICanvasPageQueryService>('ICanvasPageQueryService');
+
 export const IIndexingPipelineService = createServiceIdentifier<IIndexingPipelineService>('IIndexingPipelineService');
 
 // ─── IRetrievalService (M10 Task 3.1) ─────────────────────────────────────

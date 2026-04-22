@@ -29,7 +29,6 @@
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import type { ICanvasDataService } from './canvasTypes.js';
-import type { IDatabaseDataService } from './database/databaseTypes.js';
 import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
@@ -37,6 +36,8 @@ import { createEditorExtensions, PageChromeController } from './config/blockRegi
 import { BlockHandlesController, BlockSelectionController, BlockMarqueeController, createBlockSelectionPlugin } from './handles/handleRegistry.js';
 import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuRegistry.js';
 import type { SendChatRequestFn, RetrieveContextFn } from './menus/canvasMenuRegistry.js';
+import type { IPropertyDataService } from './properties/propertyTypes.js';
+import { PropertyBar } from './properties/propertyBar.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
@@ -63,9 +64,11 @@ export class CanvasEditorProvider {
   private _inlineAISendChat: SendChatRequestFn | undefined;
   private _inlineAIRetrieveContext: RetrieveContextFn | undefined;
 
+  /** Property data service (set from main.ts after activation). */
+  private _propertyService: IPropertyDataService | undefined;
+
   constructor(
     private readonly _dataService: ICanvasDataService,
-    private readonly _databaseDataService?: IDatabaseDataService,
   ) {}
 
   /**
@@ -83,6 +86,17 @@ export class CanvasEditorProvider {
     this._inlineAISendChat = sendChat;
     this._inlineAIRetrieveContext = retrieveContext;
   }
+
+  /**
+   * Set the property data service so panes can show the property bar.
+   * Called from canvas main.ts after PropertyDataService creation.
+   */
+  setPropertyService(service: IPropertyDataService): void {
+    this._propertyService = service;
+  }
+
+  /** Get the property service (consumed by panes for PropertyBar). */
+  get propertyService(): IPropertyDataService | undefined { return this._propertyService; }
 
   /** Whether the inline AI provider has been configured. */
   get hasInlineAI(): boolean { return !!this._inlineAISendChat; }
@@ -144,10 +158,6 @@ export class CanvasEditorProvider {
     return this._pageMenuHandlers.get(pageId);
   }
 
-  /** Database data service (threaded to inline database nodes). */
-  get databaseDataService(): IDatabaseDataService | undefined {
-    return this._databaseDataService;
-  }
 }
 
 // ─── Canvas Editor Pane ─────────────────────────────────────────────────────
@@ -176,6 +186,9 @@ class CanvasEditorPane implements IDisposable {
   // ── Block marquee (box-drag lasso selection) ──
   private _blockMarquee!: BlockMarqueeController;
 
+  // ── Property bar ──
+  private _propertyBar: PropertyBar | null = null;
+
   constructor(
     private readonly _container: HTMLElement,
     private readonly _pageId: string,
@@ -190,7 +203,6 @@ class CanvasEditorPane implements IDisposable {
   get container(): HTMLElement { return this._container; }
   get editorContainer(): HTMLElement | null { return this._editorContainer; }
   get dataService(): ICanvasDataService { return this._dataService; }
-  get databaseDataService(): IDatabaseDataService | undefined { return this._provider.databaseDataService; }
   get pageId(): string { return this._pageId; }
   get suppressUpdate(): boolean { return this._suppressUpdate; }
   set suppressUpdate(v: boolean) { this._suppressUpdate = v; }
@@ -248,12 +260,21 @@ class CanvasEditorPane implements IDisposable {
     const externalRibbon = this._provider.getRibbonContainer(this._pageId);
     this._pageChrome.createChrome(externalRibbon);
 
+    // ── Create property bar (below header, above editor) ──
+    const propService = this._provider.propertyService;
+    const pageHeader = this._pageChrome.pageHeader;
+    if (propService && pageHeader) {
+      this._propertyBar = new PropertyBar(this._editorContainer!, pageHeader, this._pageId, propService);
+      this._propertyBar.init().catch(err => {
+        console.warn('[CanvasEditorPane] PropertyBar init failed:', err);
+      });
+    }
+
     // Create Tiptap editor with Notion-parity extensions
     this._editor = new Editor({
       element: this._editorContainer,
       extensions: createEditorExtensions(lowlight, {
         dataService: this._dataService,
-        databaseDataService: this._provider.databaseDataService,
         pageId: this._pageId,
         openEditor: this._openEditor,
         showIconPicker: (opts) => this._menuRegistry?.showIconMenu(opts),
@@ -475,6 +496,7 @@ class CanvasEditorPane implements IDisposable {
     this._blockHandles?.dispose();
     this._blockSelection?.dispose();
     this._blockMarquee?.dispose();
+    this._propertyBar?.dispose();
 
     // Dispose save-state subscriptions
     this._saveDisposables.dispose();

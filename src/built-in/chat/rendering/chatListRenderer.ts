@@ -15,6 +15,7 @@ import { Disposable } from '../../../platform/lifecycle.js';
 import { $ } from '../../../ui/dom.js';
 import { renderContentPart } from './chatContentParts.js';
 import { chatIcons } from '../chatIcons.js';
+import { getFileTypeIcon } from '../../../ui/iconRegistry.js';
 import { isChatImageAttachment, isChatSelectionAttachment } from '../../../services/chatTypes.js';
 import type { IChatRequestResponsePair, IChatAssistantResponse, IChatUserMessage } from '../../../services/chatTypes.js';
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
@@ -450,10 +451,11 @@ export class ChatListRenderer extends Disposable {
           label.textContent = attachment.name;
           chip.appendChild(label);
         } else {
-          // File attachment
+          // File attachment — use extension-aware colored icon (matches input area)
           const icon = document.createElement('span');
           icon.className = 'parallx-chat-message-attachment-icon';
-          icon.innerHTML = chatIcons.file;
+          const extMatch = attachment.name.match(/\.([a-zA-Z0-9]+)$/);
+          icon.innerHTML = getFileTypeIcon(extMatch ? extMatch[1] : '');
           chip.appendChild(icon);
 
           const label = document.createElement('span');

@@ -11,6 +11,8 @@
 import 'katex/dist/katex.min.css';
 
 import MarkdownIt from 'markdown-it';
+import markdownItMark from 'markdown-it-mark';
+import MarkdownItGitHubAlerts from 'markdown-it-github-alerts';
 import katex from 'katex';
 import { $ } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
@@ -643,6 +645,16 @@ function _createChatMarkdownRenderer(): MarkdownIt {
     linkify: false,
   });
 
+  markdown.use(markdownItMark);
+  markdown.use(MarkdownItGitHubAlerts, { markers: '*' });
+
+  // Run inline rules on callout titles (plugin inserts raw text)
+  markdown.renderer.rules.alert_open = (tokens, idx) => {
+    const { title, type, icon } = tokens[idx].meta;
+    const renderedTitle = markdown.renderInline(title);
+    return `<div class="markdown-alert markdown-alert-${type}"><p class="markdown-alert-title">${icon}${renderedTitle}</p>`;
+  };
+
   _installKatexRules(markdown);
 
   const defaultLinkOpen = markdown.renderer.rules.link_open
@@ -1076,6 +1088,7 @@ const TOOL_STATUS_LABELS: Record<string, { label: string; modifier: string }> = 
   running:   { label: 'Running…',  modifier: 'running' },
   completed: { label: 'Completed', modifier: 'completed' },
   rejected:  { label: 'Rejected',  modifier: 'rejected' },
+  error:     { label: 'Error',     modifier: 'rejected' },
 };
 
 function _renderToolInvocation(part: IChatToolInvocationContent): HTMLElement {

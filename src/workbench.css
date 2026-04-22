@@ -7,6 +7,14 @@
   padding: 0;
 }
 
+/* Default focus outline — use Parallx purple instead of browser white */
+:focus {
+  outline-color: var(--vscode-focusBorder, #9333ea);
+}
+:focus-visible {
+  outline-color: var(--vscode-focusBorder, #9333ea);
+}
+
 html, body {
   width: 100%;
   height: 100%;
@@ -287,6 +295,10 @@ html, body {
   letter-spacing: 0.04em;
   color: var(--vscode-sideBarSectionHeader-foreground);
   outline: none;
+}
+
+.view-section-header:first-child {
+  border-top: none;
 }
 
 .view-section-header:hover {

@@ -145,7 +145,7 @@ describe('buildFileSystemAccessor — dynamic workspace root', () => {
     expect(calledUri.fsPath).toBe('D:/workspaces/workspace-B');
   });
 
-  it('readFile resolves against NEW root after workspace folders change', async () => {
+  it('readFileContent resolves against NEW root after workspace folders change', async () => {
     const accessor = buildFileSystemAccessor(fileService, workspaceService as any)!;
 
     // Switch workspace
@@ -155,8 +155,8 @@ describe('buildFileSystemAccessor — dynamic workspace root', () => {
       index: 0,
     }]);
 
-    await accessor.readFile('README.md');
-    const calledUri = (fileService.stat as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    await accessor.readFileContent('README.md');
+    const calledUri = (fileService.readFile as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(calledUri.fsPath).toBe('D:/workspaces/workspace-B/README.md');
   });
 
@@ -211,8 +211,8 @@ describe('buildFileSystemAccessor — dynamic workspace root', () => {
       index: 0,
     }]);
 
-    await accessor.readFile('D:/workspaces/workspace-B/docs/README.md');
-    const calledUri = (fileService.stat as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    await accessor.readFileContent('D:/workspaces/workspace-B/docs/README.md');
+    const calledUri = (fileService.readFile as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(calledUri.fsPath).toBe('D:/workspaces/workspace-B/docs/README.md');
   });
 
@@ -225,7 +225,7 @@ describe('buildFileSystemAccessor — dynamic workspace root', () => {
     // No new object is created — the same reference stays valid.
     expect(accessor1).toBeDefined();
     expect(typeof accessor1.readdir).toBe('function');
-    expect(typeof accessor1.readFile).toBe('function');
+    expect(typeof accessor1.readFileContent).toBe('function');
     expect(typeof accessor1.exists).toBe('function');
   });
 });

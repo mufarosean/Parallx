@@ -141,7 +141,7 @@ async function runOpenclawDefaultTurn(
   //     which makes file attachments as reliable as selection attachments.
   //     Falls back to disk I/O only if resolvedContent is absent (legacy path).
   //     NEVER silently drop an attachment — if we can't read it, tell the model.
-  const MAX_ATTACHMENT_CHARS = 100_000; // ~25K tokens — caps large documents
+  const MAX_ATTACHMENT_CHARS = 250_000; // ~62K tokens — caps large documents
   const fileAttachmentBlocks: string[] = [];
   if (request.attachments?.length) {
     const fileAttachments = request.attachments.filter(isChatFileAttachment);
@@ -158,13 +158,16 @@ async function runOpenclawDefaultTurn(
       if (content) {
         const truncated = content.length > MAX_ATTACHMENT_CHARS;
         const displayContent = truncated ? content.slice(0, MAX_ATTACHMENT_CHARS) : content;
-        const truncNote = truncated ? `\n\n(Content truncated — showing first ${MAX_ATTACHMENT_CHARS} of ${content.length} characters)` : '';
+        const truncNote = truncated
+          ? `\n\n(Content truncated — showing first ${MAX_ATTACHMENT_CHARS} of ${content.length} characters. `
+            + `Use the search_knowledge tool to search across the full document for specific information.)`
+          : '';
         console.log(`[OpenClaw:C3] Resolved: ${att.name} (${content.length} chars${truncated ? ', truncated' : ''})`);
-        fileAttachmentBlocks.push(`## Attached File: ${att.name}\n\`\`\`\n${displayContent}\n\`\`\`${truncNote}`);
+        fileAttachmentBlocks.push(`## Attached File: ${att.name}\nPath: ${att.fullPath}\n\`\`\`\n${displayContent}\n\`\`\`${truncNote}`);
       } else {
         // Content unavailable — still inform the model that user explicitly attached this file
         console.warn(`[OpenClaw:C3] Could not read: ${att.name} — adding placeholder`);
-        fileAttachmentBlocks.push(`## Attached File: ${att.name}\n(Unable to read file content. The user attached this file: "${att.name}" at path: ${att.fullPath})`);
+        fileAttachmentBlocks.push(`## Attached File: ${att.name}\nPath: ${att.fullPath}\n(Unable to read file content.)`);
       }
     }
   }

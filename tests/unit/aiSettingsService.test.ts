@@ -120,39 +120,6 @@ describe('AISettingsService', () => {
       expect(updated.model.temperature).toBe(originalTemp);
     });
 
-    it('regenerates system prompt when not custom', async () => {
-      await service.createProfile('Test');
-      const before = service.getActiveProfile().chat.systemPrompt;
-
-      await service.updateActiveProfile({
-        suggestions: { tone: 'detailed' },
-      });
-
-      const after = service.getActiveProfile().chat.systemPrompt;
-      expect(after).not.toEqual(before);
-      expect(after).toContain('thorough and explanatory');
-    });
-
-    it('does NOT regenerate system prompt when systemPromptIsCustom is true', async () => {
-      await service.createProfile('Custom Prompt');
-      await service.updateActiveProfile({
-        chat: {
-          systemPrompt: 'My custom prompt',
-          systemPromptIsCustom: true,
-        },
-      });
-
-      const customPrompt = service.getActiveProfile().chat.systemPrompt;
-      expect(customPrompt).toBe('My custom prompt');
-
-      // Now change tone — prompt should NOT change
-      await service.updateActiveProfile({
-        suggestions: { tone: 'concise' },
-      });
-
-      expect(service.getActiveProfile().chat.systemPrompt).toBe('My custom prompt');
-    });
-
     it('fires onDidChange after update', async () => {
       await service.createProfile('Evented');
       const changeHandler = vi.fn();

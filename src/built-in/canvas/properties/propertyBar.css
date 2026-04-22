@@ -1,0 +1,804 @@
+/* propertyBar.css — Obsidian-style property bar for canvas pages
+ *
+ * Rendered below .canvas-page-header, above the Tiptap .ProseMirror editor.
+ * Uses existing --vscode-* and --parallx-* CSS custom properties.
+ * Shares the same max-width / gutter as the page header and editor.
+ */
+
+/* ─── Container ─────────────────────────────────────────────────────────────── */
+
+.canvas-property-bar {
+  max-width: var(--canvas-content-max-width, 760px);
+  width: 100%;
+  margin: 0 auto;
+  padding: 16px var(--canvas-content-gutter, 64px) 32px;
+  box-sizing: border-box;
+  font-size: var(--parallx-fontSize-xl, 16px);
+  color: var(--vscode-editor-foreground, #cdd6f4);
+  user-select: none;
+}
+
+/* ─── Header Row ────────────────────────────────────────────────────────────── */
+
+.canvas-property-bar__header {
+  display: flex;
+  align-items: center;
+  padding: 2px 0;
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
+  font-weight: 500;
+  transition: color 0.1s ease;
+}
+
+.canvas-property-bar__header:hover {
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.7));
+}
+
+/* ─── Collapsible Body ──────────────────────────────────────────────────────── */
+
+.canvas-property-bar__body {
+  padding-top: 4px;
+  padding-bottom: 0;
+}
+
+.canvas-property-bar.collapsed .canvas-property-bar__body {
+  display: none;
+}
+
+/* ─── Property Row ──────────────────────────────────────────────────────────── */
+
+.canvas-property-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 24px;
+  align-items: center;
+  min-height: 30px;
+  padding: 2px 0;
+  border-radius: var(--parallx-radius-sm, 3px);
+  position: relative;
+}
+
+.canvas-property-row:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+/* ── Name column ── */
+
+.canvas-property-row__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 4px;
+}
+
+.canvas-property-row__type-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+}
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Value column ── */
+
+.canvas-property-row__value {
+  padding: 0 4px;
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+}
+
+/* ── Delete button (visible on hover) ── */
+
+.canvas-property-row__delete {
+  opacity: 0;
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.3));
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--parallx-radius-sm, 3px);
+  font-size: 14px;
+  padding: 0;
+  transition: opacity 0.1s ease, color 0.1s ease;
+}
+
+.canvas-property-row:hover .canvas-property-row__delete {
+  opacity: 1;
+}
+
+.canvas-property-row__delete:hover {
+  color: var(--vscode-errorForeground, #f38ba8);
+  background: rgba(243, 139, 168, 0.1);
+}
+
+/* ─── Add Property Button ───────────────────────────────────────────────────── */
+
+.canvas-property-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  margin-top: 2px;
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.35));
+  background: none;
+  border: none;
+  border-radius: var(--parallx-radius-sm, 3px);
+  font-family: inherit;
+  font-size: inherit;
+  transition: color 0.1s ease, background 0.1s ease;
+}
+
+.canvas-property-add__icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: inherit;
+}
+
+.canvas-property-add:hover {
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.7));
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+/* ─── Property Editors — Shared Input Base ──────────────────────────────────── */
+
+.canvas-prop-input {
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--parallx-radius-sm, 3px);
+  color: var(--vscode-editor-foreground, #cdd6f4);
+  font-family: inherit;
+  font-size: inherit;
+  padding: 2px 6px;
+  outline: none;
+  transition: border-color 0.1s ease, background 0.1s ease;
+  height: 28px;
+  box-sizing: border-box;
+}
+
+.canvas-prop-input:hover {
+  background: var(--vscode-input-background, rgba(255, 255, 255, 0.06));
+}
+
+.canvas-prop-input:focus {
+  border-color: var(--vscode-focusBorder, rgba(255, 255, 255, 0.2));
+  background: var(--vscode-input-background, rgba(255, 255, 255, 0.06));
+}
+
+.canvas-prop-input::placeholder {
+  color: var(--vscode-input-placeholderForeground, rgba(255, 255, 255, 0.25));
+}
+
+/* ─── Custom Date Trigger ──────────────────────────────────────────────────── */
+
+.canvas-prop-date-trigger {
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--parallx-radius-sm, 3px);
+  color: var(--vscode-editor-foreground, #cdd6f4);
+  font-family: inherit;
+  font-size: inherit;
+  padding: 2px 6px;
+  height: 28px;
+  box-sizing: border-box;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.1s ease, background 0.1s ease;
+}
+
+.canvas-prop-date-trigger:hover {
+  background: var(--vscode-input-background, rgba(255, 255, 255, 0.06));
+}
+
+.canvas-prop-date-trigger:focus {
+  border-color: var(--vscode-focusBorder, rgba(255, 255, 255, 0.2));
+  background: var(--vscode-input-background, rgba(255, 255, 255, 0.06));
+}
+
+.canvas-prop-date-trigger--empty {
+  color: var(--vscode-input-placeholderForeground, rgba(255, 255, 255, 0.25));
+}
+
+/* ─── Calendar Popup ────────────────────────────────────────────────────────── */
+
+.canvas-prop-calendar {
+  position: fixed;
+  z-index: 2575;
+  background: var(--vscode-menu-background);
+  color: var(--vscode-menu-foreground);
+  border: 1px solid var(--vscode-menu-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow);
+  width: 240px;
+  padding: 8px;
+  user-select: none;
+}
+
+.canvas-prop-calendar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+}
+
+.canvas-prop-calendar__nav {
+  background: none;
+  border: none;
+  color: var(--vscode-menu-foreground);
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--parallx-radius-sm, 3px);
+  font-size: 12px;
+  padding: 0;
+}
+
+.canvas-prop-calendar__nav:hover {
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
+}
+
+.canvas-prop-calendar__title {
+  font-size: var(--parallx-fontSize-md, 13px);
+  font-weight: 600;
+}
+
+.canvas-prop-calendar__dow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
+  padding-bottom: 4px;
+}
+
+.canvas-prop-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+}
+
+.canvas-prop-calendar__day {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--parallx-radius-sm, 3px);
+  font-size: 12px;
+  background: none;
+  border: none;
+  color: var(--vscode-menu-foreground);
+  cursor: pointer;
+  padding: 0;
+}
+
+.canvas-prop-calendar__day:not(.canvas-prop-calendar__day--empty):hover {
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
+}
+
+.canvas-prop-calendar__day--empty {
+  cursor: default;
+}
+
+.canvas-prop-calendar__day--today {
+  outline: 1px solid var(--vscode-focusBorder, rgba(255, 255, 255, 0.3));
+  outline-offset: -1px;
+}
+
+.canvas-prop-calendar__day--selected {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.canvas-prop-calendar__day--selected:hover {
+  background: var(--vscode-button-hoverBackground);
+  color: var(--vscode-button-foreground);
+}
+
+.canvas-prop-calendar__footer {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px solid var(--vscode-menu-border);
+  margin-top: 6px;
+}
+
+.canvas-prop-calendar__footer-btn {
+  background: none;
+  border: none;
+  color: var(--vscode-textLink-foreground, #89b4fa);
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-sm, 11px);
+  padding: 2px 4px;
+  font-family: inherit;
+}
+
+.canvas-prop-calendar__footer-btn:hover {
+  text-decoration: underline;
+}
+
+.canvas-prop-calendar__time {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vscode-menu-border);
+  margin-top: 6px;
+}
+
+.canvas-prop-calendar__time-input {
+  width: 40px;
+  background: var(--vscode-input-background, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  border-radius: 3px;
+  color: var(--vscode-input-foreground, #cdd6f4);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: center;
+  padding: 2px;
+  height: 26px;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.canvas-prop-calendar__time-input:focus {
+  border-color: var(--vscode-focusBorder, rgba(255, 255, 255, 0.2));
+}
+
+/* Hide number input spin buttons */
+.canvas-prop-calendar__time-input::-webkit-inner-spin-button,
+.canvas-prop-calendar__time-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.canvas-prop-calendar__time-sep {
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
+  font-size: 14px;
+}
+
+.canvas-prop-calendar__confirm {
+  margin-left: auto;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: 3px;
+  padding: 2px 12px;
+  height: 26px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.canvas-prop-calendar__confirm:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+/* ─── Checkbox Toggle ───────────────────────────────────────────────────────── */
+
+.canvas-prop-checkbox {
+  width: 34px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--vscode-widget-border, rgba(255, 255, 255, 0.15));
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.canvas-prop-checkbox.checked {
+  background: var(--vscode-button-background, #2383e2);
+}
+
+.canvas-prop-checkbox__knob {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.15s ease;
+}
+
+.canvas-prop-checkbox.checked .canvas-prop-checkbox__knob {
+  transform: translateX(16px);
+}
+
+/* ─── Tag Chips ─────────────────────────────────────────────────────────────── */
+
+.canvas-prop-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-height: 26px;
+  width: 100%;
+}
+
+.canvas-prop-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 8px;
+  border-radius: var(--parallx-radius-lg, 8px);
+  font-size: inherit;
+  line-height: 1.3;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--vscode-editor-foreground, #cdd6f4);
+}
+
+.canvas-prop-tag__remove {
+  cursor: pointer;
+  opacity: 0.5;
+  font-size: 10px;
+  line-height: 1;
+  transition: opacity 0.1s ease;
+}
+
+.canvas-prop-tag__remove:hover {
+  opacity: 1;
+}
+
+.canvas-prop-tag-input {
+  background: transparent;
+  border: none;
+  color: var(--vscode-editor-foreground, #cdd6f4);
+  font-family: inherit;
+  font-size: inherit;
+  outline: none;
+  min-width: 60px;
+  max-width: 150px;
+  padding: 2px 0;
+}
+
+/* ─── Tag Autocomplete ──────────────────────────────────────────────────────── */
+
+.canvas-prop-tag-autocomplete {
+  position: fixed;
+  z-index: 2575;
+  background: var(--vscode-menu-background);
+  color: var(--vscode-menu-foreground);
+  border: 1px solid var(--vscode-menu-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow);
+  max-height: 160px;
+  overflow-y: auto;
+  min-width: 120px;
+  padding: 4px 0;
+}
+
+.canvas-prop-tag-autocomplete__item {
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-md, 13px);
+  color: var(--vscode-menu-foreground);
+  user-select: none;
+}
+
+.canvas-prop-tag-autocomplete__item:hover,
+.canvas-prop-tag-autocomplete__item.active {
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
+}
+
+/* ─── Select Pill ───────────────────────────────────────────────────────────── */
+
+.canvas-prop-select {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--parallx-radius-sm, 3px);
+  font-size: inherit;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--vscode-editor-foreground, #cdd6f4);
+  border: none;
+  font-family: inherit;
+  transition: background 0.1s ease;
+  white-space: nowrap;
+}
+
+.canvas-prop-select:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.canvas-prop-select--empty {
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.35));
+}
+
+/* ─── Select Dropdown ───────────────────────────────────────────────────────── */
+
+.canvas-prop-select-dropdown {
+  position: fixed;
+  z-index: 2575;
+  background: var(--vscode-menu-background);
+  color: var(--vscode-menu-foreground);
+  border: 1px solid var(--vscode-menu-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow);
+  max-height: 200px;
+  overflow-y: auto;
+  min-width: 140px;
+  padding: 4px 0;
+}
+
+.canvas-prop-select-dropdown__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-md, 13px);
+  color: var(--vscode-menu-foreground);
+  user-select: none;
+}
+
+.canvas-prop-select-dropdown__item:hover {
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
+}
+
+.canvas-prop-select-dropdown__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* ─── URL Editor ────────────────────────────────────────────────────────────── */
+
+.canvas-prop-url-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.canvas-prop-url-wrap .canvas-prop-input {
+  flex: 1;
+}
+
+.canvas-prop-url-link {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--vscode-textLink-foreground, #89b4fa);
+  border-radius: var(--parallx-radius-sm, 3px);
+  transition: background 0.1s ease;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.canvas-prop-url-link:hover {
+  background: rgba(137, 180, 250, 0.1);
+}
+
+/* ─── Property Picker Dropdown ──────────────────────────────────────────────── */
+
+.canvas-property-picker {
+  position: fixed;
+  z-index: 2575;
+  background: var(--vscode-menu-background);
+  color: var(--vscode-menu-foreground);
+  border: 1px solid var(--vscode-menu-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow);
+  min-width: 220px;
+  max-width: 300px;
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas-property-picker__search {
+  padding: 8px;
+  border-bottom: 1px solid var(--vscode-menu-border);
+}
+
+.canvas-property-picker__search input {
+  width: 100%;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--parallx-radius-sm, 3px);
+  color: var(--vscode-input-foreground);
+  font-family: inherit;
+  font-size: var(--parallx-fontSize-md, 13px);
+  padding: 4px 8px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.canvas-property-picker__search input:focus {
+  border-color: var(--vscode-focusBorder, rgba(255, 255, 255, 0.2));
+}
+
+.canvas-property-picker__list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+
+.canvas-property-picker__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-md, 13px);
+  color: var(--vscode-menu-foreground);
+  user-select: none;
+}
+
+.canvas-property-picker__item:hover {
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
+}
+
+.canvas-property-picker__item-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.canvas-property-picker__divider {
+  height: 1px;
+  background: var(--vscode-menu-separatorBackground, rgba(255, 255, 255, 0.06));
+  margin: 4px 0;
+}
+
+.canvas-property-picker__create {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-md, 13px);
+  color: var(--vscode-textLink-foreground, #89b4fa);
+  user-select: none;
+}
+
+.canvas-property-picker__create:hover {
+  background: var(--vscode-menu-selectionBackground);
+}
+
+/* ─── Create-New-Property Inline Form ───────────────────────────────────────── */
+
+.canvas-property-picker__new-form {
+  position: relative;
+  padding: 8px;
+  border-top: 1px solid var(--vscode-menu-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.canvas-property-picker__new-form input,
+.canvas-property-picker__new-form select {
+  width: 100%;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--parallx-radius-sm, 3px);
+  color: var(--vscode-input-foreground);
+  font-family: inherit;
+  font-size: var(--parallx-fontSize-md, 13px);
+  padding: 4px 8px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.canvas-property-picker__new-form select {
+  cursor: pointer;
+}
+
+/* ── Custom type picker button ── */
+
+.canvas-property-picker__type-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--parallx-radius-sm, 3px);
+  color: var(--vscode-input-foreground);
+  font-family: inherit;
+  font-size: var(--parallx-fontSize-md, 13px);
+  padding: 4px 8px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.canvas-property-picker__type-btn:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+.canvas-property-picker__type-chevron {
+  margin-left: auto;
+  opacity: 0.5;
+  font-size: 10px;
+}
+
+/* ── Type dropdown menu ── */
+
+.canvas-property-picker__type-dropdown {
+  position: absolute;
+  z-index: 2576;
+  background: var(--vscode-menu-background, #1e1e2e);
+  border: 1px solid var(--vscode-menu-border, rgba(255, 255, 255, 0.08));
+  border-radius: var(--parallx-radius-md, 4px);
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+  padding: 4px 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.canvas-property-picker__type-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  color: var(--vscode-menu-foreground, #cdd6f4);
+  font-size: var(--parallx-fontSize-md, 13px);
+}
+
+.canvas-property-picker__type-item:hover {
+  background: var(--vscode-menu-selectionBackground, rgba(255, 255, 255, 0.08));
+  color: var(--vscode-menu-selectionForeground, #fff);
+}
+
+.canvas-property-picker__type-item--active {
+  background: var(--vscode-menu-selectionBackground, rgba(255, 255, 255, 0.08));
+}
+
+.canvas-property-picker__new-form button {
+  align-self: flex-end;
+  padding: 4px 12px;
+  background: var(--vscode-button-background, #2383e2);
+  color: var(--vscode-button-foreground, #fff);
+  border: none;
+  border-radius: var(--parallx-radius-sm, 3px);
+  font-family: inherit;
+  font-size: var(--parallx-fontSize-md, 13px);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.canvas-property-picker__new-form button:hover {
+  background: var(--vscode-button-hoverBackground, #1a6fcc);
+}

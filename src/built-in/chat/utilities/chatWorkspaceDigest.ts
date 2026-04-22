@@ -6,7 +6,7 @@ interface IChatDigestDatabaseService {
 interface IChatDigestFsAccessor {
   readdir(relativePath: string): Promise<readonly { name: string; type: 'file' | 'directory' }[]>;
   exists(relativePath: string): Promise<boolean>;
-  readFile(relativePath: string): Promise<string>;
+  readFileContent(relativePath: string): Promise<{ content: string }>;
 }
 
 export interface IChatWorkspaceDigestDeps {
@@ -119,7 +119,9 @@ export async function computeChatWorkspaceDigest(
   }
 
   if (deps.fsAccessor) {
-    const keyFiles = ['README.md', 'README.txt', 'README', '.parallx/SOUL.md', '.parallx/AGENTS.md'];
+    // SOUL.md and AGENTS.md are excluded — they are already injected in
+    // full via OpenClaw bootstrap files in the Workspace Context section.
+    const keyFiles = ['README.md', 'README.txt', 'README'];
     for (const fileName of keyFiles) {
       if (totalChars >= maxDigestChars) {
         break;
@@ -129,7 +131,8 @@ export async function computeChatWorkspaceDigest(
         if (!exists) {
           continue;
         }
-        const content = await deps.fsAccessor.readFile(fileName);
+        const result = await deps.fsAccessor.readFileContent(fileName);
+        const content = result.content;
         const preview = content.length > 500 ? `${content.slice(0, 500)}\n...(truncated)` : content;
         const block = `KEY FILE — ${fileName}:\n\`\`\`\n${preview}\n\`\`\``;
         if (totalChars + block.length < maxDigestChars) {

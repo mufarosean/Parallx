@@ -56,8 +56,8 @@ export function createTranscriptGetTool(fs: IBuiltInToolFileSystem | undefined):
         return { content: `No transcript exists for session ${sessionId} at ${transcriptPath}.` };
       }
 
-      const content = await fs.readFile(transcriptPath);
-      const transcriptText = renderTranscriptForDisplay(content);
+      const result = await fs.readFileContent(transcriptPath);
+      const transcriptText = renderTranscriptForDisplay(result.content);
       return {
         content: transcriptText
           ? `Transcript from ${transcriptPath}:\n\n${transcriptText}`

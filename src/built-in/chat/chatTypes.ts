@@ -368,19 +368,6 @@ export interface IChatRuntimeTrace {
   readonly note?: string;
 }
 
-export interface IPreparedChatTurnPrelude {
-  readonly mentionPills: IMentionResolutionResult['pills'];
-  readonly mentionContextBlocks: IMentionResolutionResult['contextBlocks'];
-  readonly userText: string;
-  readonly contextQueryText: string;
-  readonly hasActiveSlashCommand: boolean;
-  readonly isRagReady: boolean;
-  readonly turnRoute: IChatTurnRoute;
-  readonly contextPlan: IChatContextPlan;
-  readonly retrievalPlan: IRetrievalPlan;
-  readonly queryScope: IQueryScope;
-}
-
 // ── /init command ──
 
 /** Services injected into the /init command handler. */
@@ -584,15 +571,22 @@ export interface IBuiltInToolDatabase {
   readonly isOpen: boolean;
 }
 
+/** Result from reading any file (text or rich document). */
+export interface IFileReadResult {
+  /** Extracted text content. */
+  readonly content: string;
+  /** Whether this was a text file or a rich document (PDF, DOCX, XLSX, etc.). */
+  readonly type: 'text' | 'rich-document';
+  /** Total character count of the content. */
+  readonly totalChars: number;
+}
+
 /** File system accessor for built-in tools. */
 export interface IBuiltInToolFileSystem {
   readdir(relativePath: string): Promise<readonly { name: string; type: 'file' | 'directory'; size: number }[]>;
-  readFile(relativePath: string): Promise<string>;
+  /** Read any file — auto-detects rich documents (PDF, DOCX, XLSX) and extracts text. */
+  readFileContent(relativePath: string): Promise<IFileReadResult>;
   exists(relativePath: string): Promise<boolean>;
-  /** Check whether a file extension belongs to a rich document format (PDF, DOCX, XLSX, etc.). */
-  isRichDocument(ext: string): boolean;
-  /** Extract text from a rich document (PDF, DOCX, XLSX). Returns extracted plain text. */
-  readDocumentText(relativePath: string): Promise<string>;
   readonly workspaceRootName: string;
 }
 
@@ -655,12 +649,6 @@ export interface ISystemPromptContext {
   readonly isIndexing?: boolean;
   readonly promptOverlay?: string;
   readonly workspaceDigest?: string;
-  /**
-   * User-editable description of the workspace's purpose and contents.
-   * Injected into the system prompt before the digest to prime the AI's
-   * understanding of what "workspace" means in this context.
-   */
-  readonly workspaceDescription?: string;
   /** M39: Lightweight catalog of available workflow skills. */
   readonly skillCatalog?: readonly ISkillCatalogEntry[];
 }

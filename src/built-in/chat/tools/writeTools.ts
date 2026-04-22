@@ -151,8 +151,8 @@ export function createEditFileTool(
       try {
         const cleanPath = sanitizeRelativePath(rawPath, writer);
 
-        // Read current file content
-        const currentContent = await fs!.readFile(cleanPath);
+        const currentResult = await fs!.readFileContent(cleanPath);
+        const currentContent = currentResult.content;
 
         // Find the old content
         const idx = currentContent.indexOf(oldContent);

@@ -25,7 +25,6 @@ export interface SlashMenuHost {
   readonly container: HTMLElement;
   readonly editorContainer: HTMLElement | null;
   readonly dataService?: InsertActionBaseContext['dataService'];
-  readonly databaseDataService?: InsertActionBaseContext['databaseDataService'];
   readonly pageId?: string;
   readonly openEditor?: InsertActionBaseContext['openEditor'];
   requestSave(reason: string): void;
@@ -252,7 +251,6 @@ export class SlashMenuController implements ICanvasMenu {
       }, {
         pageId: this._host.pageId,
         dataService: this._host.dataService,
-        databaseDataService: this._host.databaseDataService,
         openEditor: this._host.openEditor,
       });
     } finally {

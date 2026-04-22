@@ -303,7 +303,6 @@ test.describe('Chat Context Integration', () => {
     const toolNames = lastReq.tools.map((t: any) => t.function?.name);
     expect(toolNames).toContain('read_page');
     expect(toolNames).toContain('read_current_page');
-    expect(toolNames).toContain('read_page_by_title');
     expect(toolNames).toContain('search_workspace');
     expect(toolNames).toContain('list_pages');
   });

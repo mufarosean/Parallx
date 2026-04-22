@@ -4,10 +4,9 @@
 //   1. extractCanvasPageId — editor ID → bare page UUID
 //   2. read_current_page — tool uses getCurrentPageId getter, queries DB with UUID
 //   3. read_page — UUID lookup, title lookup, fuzzy title lookup
-//   4. read_page_by_title — case-insensitive + fuzzy matching
-//   5. Implicit context injection — getCurrentPageContent → user message prepend
-//   6. Canvas page attachments — parallx-page:// URI → SQLite content resolution
-//   7. getOpenEditorFiles — canvas editors emit parallx-page:// URIs
+//   4. Implicit context injection — getCurrentPageContent → user message prepend
+//   5. Canvas page attachments — parallx-page:// URI → SQLite content resolution
+//   6. getOpenEditorFiles — canvas editors emit parallx-page:// URIs
 
 import { describe, it, expect, vi } from 'vitest';
 import {
@@ -353,53 +352,7 @@ describe('read_page tool (3-level fallback with fake data)', () => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 4. read_page_by_title — dedicated title lookup
-// ──────────────────────────────────────────────────────────────────────────────
-
-describe('read_page_by_title tool (fake data)', () => {
-  function setup() {
-    const db = createRealisticDb();
-    const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, db);
-    return getTool('read_page_by_title', toolsService);
-  }
-
-  it('finds page by exact title (case-insensitive)', async () => {
-    const tool = setup();
-    const result = await tool.handler({ title: 'MEETING NOTES' }, createToken());
-
-    expect(result.isError).toBeFalsy();
-    expect(result.content).toContain('Meeting Notes');
-    expect(result.content).toContain('Discussed roadmap');
-  });
-
-  it('finds page by partial title (fuzzy fallback)', async () => {
-    const tool = setup();
-    const result = await tool.handler({ title: 'Random' }, createToken());
-
-    expect(result.isError).toBeFalsy();
-    expect(result.content).toContain('Random Paragraph');
-  });
-
-  it('returns error for unmatched title', async () => {
-    const tool = setup();
-    const result = await tool.handler({ title: 'Does Not Exist' }, createToken());
-
-    expect(result.isError).toBe(true);
-    expect(result.content).toContain('No page found');
-  });
-
-  it('returns error for empty title', async () => {
-    const tool = setup();
-    const result = await tool.handler({ title: '' }, createToken());
-
-    expect(result.isError).toBe(true);
-    expect(result.content).toContain('title is required');
-  });
-});
-
-// ──────────────────────────────────────────────────────────────────────────────
-// 5. Implicit context injection (defaultParticipant message building)
+// 4. Implicit context injection (defaultParticipant message building)
 // ──────────────────────────────────────────────────────────────────────────────
 
 describe('implicit context injection (message building)', () => {

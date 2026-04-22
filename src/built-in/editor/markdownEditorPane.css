@@ -168,3 +168,161 @@
   height: auto;
   border-radius: 4px;
 }
+
+/* ── Highlight (==text==) ── */
+
+.markdown-content mark {
+  background: rgba(255, 213, 79, 0.25);
+  color: inherit;
+  padding: 0.1em 0.2em;
+  border-radius: 2px;
+}
+
+/* ── Callouts / Alerts ([!NOTE], [!IMPORTANT], etc.) ── */
+
+.markdown-content .markdown-alert {
+  padding: 8px 16px;
+  margin-bottom: 16px;
+  border-left: 4px solid;
+  border-radius: var(--parallx-radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.markdown-content .markdown-alert-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.markdown-content .markdown-alert-title svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.markdown-content .markdown-alert-note {
+  border-left-color: #539bf5;
+}
+.markdown-content .markdown-alert-note .markdown-alert-title {
+  color: #539bf5;
+}
+
+.markdown-content .markdown-alert-tip {
+  border-left-color: #57ab5a;
+}
+.markdown-content .markdown-alert-tip .markdown-alert-title {
+  color: #57ab5a;
+}
+
+.markdown-content .markdown-alert-important {
+  border-left-color: #986ee2;
+}
+.markdown-content .markdown-alert-important .markdown-alert-title {
+  color: #986ee2;
+}
+
+.markdown-content .markdown-alert-warning {
+  border-left-color: #c69026;
+}
+.markdown-content .markdown-alert-warning .markdown-alert-title {
+  color: #c69026;
+}
+
+.markdown-content .markdown-alert-caution {
+  border-left-color: #e5534b;
+}
+.markdown-content .markdown-alert-caution .markdown-alert-title {
+  color: #e5534b;
+}
+
+/* ── Task lists (GFM checkboxes) ── */
+
+.markdown-content input[type="checkbox"] {
+  margin-right: 6px;
+  vertical-align: middle;
+  pointer-events: none;
+}
+
+/* ── Math (KaTeX) ── */
+
+.markdown-content .markdown-math-block {
+  margin: 16px 0;
+  text-align: center;
+  overflow-x: auto;
+}
+
+.markdown-content .markdown-math-fallback {
+  color: var(--vscode-descriptionForeground, #8b949e);
+  font-style: italic;
+}
+
+/* ── Syntax highlighting (highlight.js tokens) ── */
+
+.markdown-content .hljs-comment,
+.markdown-content .hljs-quote {
+  color: var(--vscode-debugTokenExpression-string, #6a9955);
+  font-style: italic;
+}
+
+.markdown-content .hljs-keyword,
+.markdown-content .hljs-selector-tag,
+.markdown-content .hljs-addition {
+  color: var(--vscode-debugTokenExpression-name, #569cd6);
+}
+
+.markdown-content .hljs-number,
+.markdown-content .hljs-literal,
+.markdown-content .hljs-selector-id {
+  color: var(--vscode-debugTokenExpression-number, #b5cea8);
+}
+
+.markdown-content .hljs-string,
+.markdown-content .hljs-doctag,
+.markdown-content .hljs-selector-class {
+  color: var(--vscode-debugTokenExpression-string, #ce9178);
+}
+
+.markdown-content .hljs-type,
+.markdown-content .hljs-built_in,
+.markdown-content .hljs-title {
+  color: var(--vscode-debugTokenExpression-type, #4ec9b0);
+}
+
+.markdown-content .hljs-attr,
+.markdown-content .hljs-variable,
+.markdown-content .hljs-template-variable {
+  color: var(--vscode-debugTokenExpression-name, #9cdcfe);
+}
+
+.markdown-content .hljs-function {
+  color: var(--vscode-symbolIcon-functionForeground, #dcdcaa);
+}
+
+.markdown-content .hljs-regexp,
+.markdown-content .hljs-link {
+  color: var(--vscode-debugTokenExpression-error, #d16969);
+}
+
+.markdown-content .hljs-symbol,
+.markdown-content .hljs-bullet {
+  color: #d7ba7d;
+}
+
+.markdown-content .hljs-meta {
+  color: #c586c0;
+}
+
+.markdown-content .hljs-deletion {
+  color: var(--vscode-debugTokenExpression-string, #ce9178);
+  background: rgba(206, 145, 120, 0.1);
+}
+
+.markdown-content .hljs-emphasis {
+  font-style: italic;
+}
+
+.markdown-content .hljs-strong {
+  font-weight: bold;
+}

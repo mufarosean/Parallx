@@ -14,16 +14,15 @@ import './canvas.css';
 import 'katex/dist/katex.min.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { IIndexingPipelineService, IVectorStoreService } from '../../services/serviceTypes.js';
+import { ICanvasPageQueryService, IIndexingPipelineService, IVectorStoreService } from '../../services/serviceTypes.js';
 import { CanvasDataService } from './canvasDataService.js';
 import type { ICanvasDataService } from './canvasTypes.js';
 import { PageChangeKind } from './canvasTypes.js';
 import type { PageChangeEvent, PageUpdateField } from './canvasTypes.js';
 import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
-import { DatabaseDataService } from './database/databaseDataService.js';
-import { DatabaseEditorProvider } from './database/databaseEditorProvider.js';
 import { setOnLinkedPageBlockDeleted } from './config/blockRegistry.js';
+import { PropertyDataService } from './properties/propertyDataService.js';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -62,6 +61,7 @@ interface ParallxApi {
   services: {
     get<T>(id: { readonly id: string }): T;
     has(id: { readonly id: string }): boolean;
+    registerInstance<T>(id: { readonly id: string }, instance: T): void;
   };
 }
 
@@ -95,8 +95,8 @@ function doesPageChangeAffectIndexMetadata(event: PageChangeEvent): boolean {
 
 let _api: ParallxApi;
 let _dataService: CanvasDataService | null = null;
-let _databaseDataService: DatabaseDataService | null = null;
 let _sidebar: CanvasSidebar | null = null;
+let _propertyService: PropertyDataService | null = null;
 
 // â”€â”€â”€ Activation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -193,14 +193,18 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   _dataService = new CanvasDataService();
   context.subscriptions.push(_dataService);
 
+  // 2a. Publish read-only page query service to DI for cross-tool access (M56)
+  api.services.registerInstance(ICanvasPageQueryService, _dataService);
+
+  // 2b. Create PropertyDataService and seed defaults
+  _propertyService = new PropertyDataService();
+  context.subscriptions.push(_propertyService);
+  await _propertyService.ensureDefaultProperties();
+
   // 2a. parentId is the source of truth for hierarchy — no content reconciliation needed.
 
-  // 2b. Create DatabaseDataService (M8 Phase 1)
-  _databaseDataService = new DatabaseDataService();
-  context.subscriptions.push(_databaseDataService);
-
   // 3. Register sidebar view provider for page tree (Cap 4)
-  _sidebar = new CanvasSidebar(_dataService, api, _databaseDataService);
+  _sidebar = new CanvasSidebar(_dataService, api);
   context.subscriptions.push(
     api.views.registerViewProvider('view.canvas', {
       createView(container: HTMLElement): IDisposable {
@@ -221,8 +225,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   };
 
   // 4. Register editor provider for Canvas panes (Cap 5)
-  const editorProvider = new CanvasEditorProvider(_dataService, _databaseDataService);
+  const editorProvider = new CanvasEditorProvider(_dataService);
   editorProvider.setOpenEditor((opts) => api.editors.openEditor(opts));
+  if (_propertyService) {
+    editorProvider.setPropertyService(_propertyService);
+  }
   context.subscriptions.push(
     api.editors.registerEditorProvider('canvas', {
       createEditorPane(container: HTMLElement, input?: any): IDisposable {
@@ -243,17 +250,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       editorProvider.setInlineAIProvider(provider.sendChatRequest, provider.retrieveContext);
     }
   }).catch(() => { /* chat tool not activated yet — that's fine */ });
-
-  // 4a. Register editor provider for Database panes (M8 Phase 2)
-  const dbEditorProvider = new DatabaseEditorProvider(_databaseDataService!, _dataService);
-  dbEditorProvider.setOpenEditor((opts) => api.editors.openEditor(opts));
-  context.subscriptions.push(
-    api.editors.registerEditorProvider('database', {
-      createEditorPane(container: HTMLElement, input?: any): IDisposable {
-        return dbEditorProvider.createEditorPane(container, input);
-      },
-    }),
-  );
 
   // 5. Register command handlers
   _registerCommands(api, context);
@@ -326,6 +322,22 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
+  // 5d. Re-index when page properties change (tags, dates, etc.)
+  context.subscriptions.push(
+    _propertyService.onDidChangePageProperty((event) => {
+      // Invalidate dedup keys so the pipeline picks up the property change
+      // (buildIndexedPagePayloadKey only hashes title+content, not properties)
+      queuedPagePayloads.delete(event.pageId);
+      runningPagePayloads.delete(event.pageId);
+
+      void _dataService?.getPage(event.pageId).then((page) => {
+        schedulePageReindexForPayload(page ?? undefined);
+      }).catch((err) => {
+        console.warn('[Canvas] Failed to load page for property re-index:', event.pageId, err);
+      });
+    }),
+  );
+
   // 6. Track last-opened page for persistence (Task 6.3)
   context.subscriptions.push(
     api.editors.onDidChangeOpenEditors(() => {
@@ -370,8 +382,8 @@ export async function deactivate(): Promise<void> {
 
   // Clear module-level state
   _dataService = null;
-  _databaseDataService = null;
   _sidebar = null;
+  _propertyService = null;
   _api = undefined!;
 
   if (isDevMode) console.log('[Canvas] Tool deactivated');
@@ -523,18 +535,9 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
         if (original.content) {
           await _dataService.updatePage(copy.id, { content: original.content, icon: original.icon });
         }
-        // Detect database pages — duplicate the database data too
-        let isDatabase = false;
-        if (_databaseDataService) {
-          const db = await _databaseDataService.getDatabaseByPageId(pageId);
-          if (db) {
-            isDatabase = true;
-            await _databaseDataService.duplicateDatabase(pageId, copy.id);
-          }
-        }
         // Open the duplicate in the editor
         await api.editors.openEditor({
-          typeId: isDatabase ? 'database' : 'canvas',
+          typeId: 'canvas',
           title: copy.title,
           icon: copy.icon ?? undefined,
           instanceId: copy.id,

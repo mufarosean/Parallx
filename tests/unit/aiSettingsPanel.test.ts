@@ -11,7 +11,6 @@ import { Emitter } from '../../src/platform/events';
 import { createSettingRow, SettingsSection } from '../../src/aiSettings/ui/sectionBase';
 import { PresetSwitcher } from '../../src/aiSettings/ui/presetSwitcher';
 import { AISettingsPanel } from '../../src/aiSettings/ui/aiSettingsPanel';
-import { ChatSection } from '../../src/aiSettings/ui/sections/chatSection';
 import { ModelSection } from '../../src/aiSettings/ui/sections/modelSection';
 import { AdvancedSection } from '../../src/aiSettings/ui/sections/advancedSection';
 import { PreviewSection } from '../../src/aiSettings/ui/sections/previewSection';
@@ -287,12 +286,12 @@ describe('AISettingsPanel', () => {
     panel.dispose();
   });
 
-  it('renders all eight sections in content area', () => {
+  it('renders all seven sections in content area', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const sections = parent.querySelectorAll('.ai-settings-section');
-    expect(sections.length).toBe(8);
+    expect(sections.length).toBe(7);
     const ids = Array.from(sections).map(s => (s as HTMLElement).dataset.sectionId);
-    expect(ids).toEqual(['chat', 'model', 'retrieval', 'agent', 'tools', 'advanced', 'preview', 'mcp']);
+    expect(ids).toEqual(['model', 'retrieval', 'agent', 'tools', 'advanced', 'preview', 'mcp']);
     panel.dispose();
   });
 
@@ -314,47 +313,6 @@ describe('AISettingsPanel', () => {
     // Here we just verify the panel didn't throw on the change
     expect(parent.querySelector('.ai-settings-panel')).toBeTruthy();
     panel.dispose();
-  });
-});
-
-// ─── ChatSection ─────────────────────────────────────────────────────────────
-
-describe('ChatSection', () => {
-  let service: ReturnType<typeof createMockService>;
-
-  beforeEach(() => {
-    document.body.innerHTML = '';
-    service = createMockService();
-  });
-
-  it('builds with workspace description row', () => {
-    const section = new ChatSection(service as any);
-    section.build();
-
-    const rows = section.element.querySelectorAll('.ai-settings-row');
-    expect(rows.length).toBe(1);
-
-    const keys = Array.from(rows).map(r => (r as HTMLElement).dataset.settingKey);
-    expect(keys).toContain('chat.workspaceDescription');
-    section.dispose();
-  });
-
-  it('has chat section header', () => {
-    const section = new ChatSection(service as any);
-    section.build();
-    expect(section.headerElement.textContent).toBe('Chat');
-    expect(section.sectionId).toBe('chat');
-    section.dispose();
-  });
-
-  it('has reset section link', () => {
-    const section = new ChatSection(service as any);
-    section.build();
-    const link = section.element.querySelector('.ai-settings-section__reset-link');
-    expect(link).toBeTruthy();
-    (link as HTMLElement).click();
-    expect(service.resetSection).toHaveBeenCalledWith('chat');
-    section.dispose();
   });
 });
 

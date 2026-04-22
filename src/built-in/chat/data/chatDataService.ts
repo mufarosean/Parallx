@@ -218,7 +218,8 @@ export interface IChatTestDebugSnapshot {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX_FILE_READ_BYTES = 50 * 1024; // 50 KB per spec
+// MAX_FILE_READ_BYTES removed — readFileContent has no artificial size limit.
+// Callers (tool handlers, attachment pipeline) control their own truncation.
 const MAX_EXPLICIT_SOURCE_CONTEXT_CHARS = 30_000;
 const MAX_EXPLICIT_SOURCE_SCAN_FILES = 2_000;
 const MAX_EXPLICIT_SOURCE_SCAN_DEPTH = 6;
@@ -680,24 +681,18 @@ export function buildFileSystemAccessor(
       }));
     },
 
-    async readFile(relativePath: string) {
+    async readFileContent(relativePath: string) {
       const uri = resolveUri(relativePath);
-      const stat = await fileService.stat(uri);
-      if (stat.size > MAX_FILE_READ_BYTES) {
-        throw new Error(`File is too large (${(stat.size / 1024).toFixed(1)} KB). Maximum is ${MAX_FILE_READ_BYTES / 1024} KB.`);
+      const ext = relativePath.includes('.')
+        ? relativePath.slice(relativePath.lastIndexOf('.')).toLowerCase()
+        : '';
+      const isRich = fileService.isRichDocument(ext);
+      if (isRich) {
+        const result = await fileService.readDocumentText(uri);
+        return { content: result.text, type: 'rich-document' as const, totalChars: result.text.length };
       }
       const result = await fileService.readFile(uri);
-      return result.content;
-    },
-
-    isRichDocument(ext: string) {
-      return fileService.isRichDocument(ext);
-    },
-
-    async readDocumentText(relativePath: string) {
-      const uri = resolveUri(relativePath);
-      const result = await fileService.readDocumentText(uri);
-      return result.text;
+      return { content: result.content, type: 'text' as const, totalChars: result.content.length };
     },
 
     async exists(relativePath: string) {
@@ -1082,12 +1077,10 @@ export class ChatDataService {
       return { debug: { attempted: true, readSucceeded: false, reason: 'no-matching-path' } };
     }
 
-    const ext = relativePath.includes('.') ? relativePath.slice(relativePath.lastIndexOf('.')).toLowerCase() : '';
     let content = '';
     try {
-      content = this._d.fsAccessor.isRichDocument(ext)
-        ? await this._d.fsAccessor.readDocumentText(relativePath)
-        : await this._d.fsAccessor.readFile(relativePath);
+      const result = await this._d.fsAccessor.readFileContent(relativePath);
+      content = result.content;
     } catch {
       return { debug: { attempted: true, matchedPath: relativePath, readSucceeded: false, reason: 'read-failed' } };
     }
@@ -1286,7 +1279,8 @@ export class ChatDataService {
             ? await this._d.fsAccessor.exists(durablePath).catch(() => false)
             : false;
           if (durableExists) {
-            const durableContent = await this._d.fsAccessor.readFile(durablePath);
+            const durableResult = await this._d.fsAccessor.readFileContent(durablePath);
+            const durableContent = durableResult.content;
             if (durableContent.trim() && !aggregatedItems.some((item) => item.label === 'Durable memory:')) {
               directItems.push({
                 label: 'Durable memory:',
@@ -1301,7 +1295,8 @@ export class ChatDataService {
             if (requestedDailyPath) {
               const requestedDailyExists = await this._d.fsAccessor.exists(requestedDailyPath).catch(() => false);
               if (requestedDailyExists) {
-                const dailyContent = await this._d.fsAccessor.readFile(requestedDailyPath);
+                const dailyResult = await this._d.fsAccessor.readFileContent(requestedDailyPath);
+                const dailyContent = dailyResult.content;
                 const dailyLabel = `Daily memory (${recallScope.date}):`;
                 if (dailyContent.trim() && !aggregatedItems.some((item) => item.label === dailyLabel)) {
                   directItems.push({
@@ -1317,7 +1312,8 @@ export class ChatDataService {
                 .sort((a, b) => b.name.localeCompare(a.name))
                 .slice(0, 3);
               for (const dailyEntry of recentDailyFiles) {
-                const dailyContent = await this._d.fsAccessor.readFile(`.parallx/memory/${dailyEntry.name}`);
+                const dailyResult = await this._d.fsAccessor.readFileContent(`.parallx/memory/${dailyEntry.name}`);
+                const dailyContent = dailyResult.content;
                 const dailyLabel = `Daily memory (${dailyEntry.name.replace(/\.md$/i, '')}):`;
                 if (dailyContent.trim() && !aggregatedItems.some((item) => item.label === dailyLabel)) {
                   directItems.push({
@@ -1563,10 +1559,8 @@ export class ChatDataService {
   async readFileRelative(relativePath: string): Promise<string | null> {
     if (!this._d.fsAccessor) { return null; }
     try {
-      const ext = relativePath.includes('.') ? relativePath.slice(relativePath.lastIndexOf('.')).toLowerCase() : '';
-      return this._d.fsAccessor.isRichDocument(ext)
-        ? await this._d.fsAccessor.readDocumentText(relativePath)
-        : await this._d.fsAccessor.readFile(relativePath);
+      const result = await this._d.fsAccessor.readFileContent(relativePath);
+      return result.content;
     } catch { return null; }
   }
 
@@ -1789,10 +1783,8 @@ export class ChatDataService {
         if (entry.type === 'file') {
           const relPath = folderPath ? `${folderPath}/${entry.name}` : entry.name;
           try {
-            const ext = relPath.includes('.') ? relPath.slice(relPath.lastIndexOf('.')).toLowerCase() : '';
-            const content = this._d.fsAccessor.isRichDocument(ext)
-              ? await this._d.fsAccessor.readDocumentText(relPath)
-              : await this._d.fsAccessor.readFile(relPath);
+            const result = await this._d.fsAccessor.readFileContent(relPath);
+            const content = result.content;
             results.push({
               relativePath: relPath,
               content: content.length > MAX_FILE_SIZE ? content.slice(0, MAX_FILE_SIZE) + '\n… (truncated)' : content,
@@ -1857,7 +1849,8 @@ export class ChatDataService {
         } catch { return []; }
       },
       async readCommandFile(relativePath: string) {
-        return await fsAccessor.readFile(relativePath);
+        const result = await fsAccessor.readFileContent(relativePath);
+        return result.content;
       },
     };
   }

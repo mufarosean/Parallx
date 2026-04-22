@@ -1,8 +1,9 @@
 // builtInTools.ts — Built-in chat tool orchestrator (M9 Task 6.3 + M10 Task 3.3, split M13 Phase 5)
 //
-// Registers 20 tools with ILanguageModelToolsService by delegating to domain files:
+// Registers 23 tools with ILanguageModelToolsService by delegating to domain files:
 //   pageTools.ts — search_workspace, read_page, read_page_by_title, read_current_page,
-//                  list_pages, get_page_properties, create_page
+//                  list_pages, get_page_properties, create_page,
+//                  list_property_definitions, set_page_property, find_pages_by_property
 //   fileTools.ts — list_files, read_file, search_files, grep_search, search_knowledge
 //   memoryTools.ts — memory_get, memory_search
 //   transcriptTools.ts — transcript_get, transcript_search
@@ -43,11 +44,13 @@ export type {
 import {
   createSearchWorkspaceTool,
   createReadPageTool,
-  createReadPageByTitleTool,
   createReadCurrentPageTool,
   createListPagesTool,
   createGetPagePropertiesTool,
   createCreatePageTool,
+  createListPropertyDefinitionsTool,
+  createSetPagePropertyTool,
+  createFindPagesByPropertyTool,
 } from './pageTools.js';
 import {
   createListFilesTool,
@@ -97,11 +100,13 @@ export function registerBuiltInTools(
     // ── Canvas/Database tools ──
     createSearchWorkspaceTool(db),
     createReadPageTool(db),
-    createReadPageByTitleTool(db),
     createReadCurrentPageTool(db, getCurrentPageId ?? (() => undefined)),
     createListPagesTool(db),
     createGetPagePropertiesTool(db),
     createCreatePageTool(db),
+    createListPropertyDefinitionsTool(db),
+    createSetPagePropertyTool(db),
+    createFindPagesByPropertyTool(db),
     // ── File system tools ──
     createListFilesTool(fs),
     createReadFileTool(fs),

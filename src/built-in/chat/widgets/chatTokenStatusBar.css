@@ -125,3 +125,53 @@
   min-width: 40px;
   text-align: right;
 }
+
+/* Expandable rows */
+.parallx-token-popup-row-expandable {
+  cursor: pointer;
+}
+
+.parallx-token-popup-row-expandable:hover {
+  background: var(--vscode-list-hoverBackground);
+  border-radius: 3px;
+}
+
+.parallx-token-popup-chevron {
+  font-size: 10px;
+  display: inline-block;
+  width: 10px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* Sub-breakdown container */
+.parallx-token-popup-sub {
+  padding-left: 20px;
+  margin-bottom: 2px;
+}
+
+.parallx-token-popup-sub-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1px 0;
+}
+
+.parallx-token-popup-sub-label {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+
+.parallx-token-popup-sub-value {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  font-variant-numeric: tabular-nums;
+  min-width: 30px;
+  text-align: right;
+  flex-shrink: 0;
+}

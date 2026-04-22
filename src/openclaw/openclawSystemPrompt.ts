@@ -89,25 +89,20 @@ export interface IOpenclawSystemPromptParams {
  * Build the structured system prompt.
  *
  * Sections follow upstream buildAgentSystemPrompt structure:
- *   1. Identity
- *   2. Skills (XML-tagged, mandatory scan instruction)
- *   3. Tool summaries (name + one-line description)
- *   4. Workspace context (bootstrap files + digest)
- *   5. Context engine addition (from AssembleResult)
- *   6. Preferences & overlays
- *   7. Runtime metadata
- *   8. Behavioral rules (M11 small-model guidance)
+ *   1. Skills (XML-tagged, mandatory scan instruction)
+ *   2. Tool summaries (name + one-line description)
+ *   3. Workspace context (bootstrap files + digest)
+ *   4. Context engine addition (from AssembleResult)
+ *   5. Preferences & overlays
+ *   6. Runtime metadata
+ *   7. Conditional guidance (small model, no-tools, vision, attachments)
+ *
+ * Identity, safety, and response guidelines are now in SOUL.md (bootstrap).
  */
 export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): string {
   const sections: string[] = [];
 
-  // 1. Identity (upstream: first line of buildAgentSystemPrompt)
-  sections.push(buildIdentitySection(params.runtimeInfo));
-
-  // 1b. Safety (upstream: system-prompt.ts lines 378-385)
-  sections.push(buildSafetySection());
-
-  // 2. Skills (upstream: agents/system-prompt.ts lines 20-37)
+  // 1. Skills (upstream: agents/system-prompt.ts lines 20-37)
   if (params.skills.length > 0) {
     sections.push(buildSkillsSection(params.skills));
   }
@@ -162,25 +157,22 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
   // 7. Runtime metadata (upstream: runtimeInfo section)
   sections.push(buildRuntimeSection(params.runtimeInfo));
 
-  // 8. Behavioral rules (M11 small-model guidance — framework-level, not query-specific)
-  sections.push(buildBehavioralRulesSection());
-
-  // 9. M42: Model-tier-specific guidance
+  // 8. M42: Model-tier-specific guidance
   if (params.modelTier === 'small') {
     sections.push(buildSmallModelGuidance());
   }
 
-  // 10. M42: No-tools fallback note
+  // 9. M42: No-tools fallback note
   if (params.supportsTools === false) {
     sections.push(buildNoToolsFallbackNote());
   }
 
-  // 11. D5: Vision model guidance
+  // 10. D5: Vision model guidance
   if (params.supportsVision) {
     sections.push(buildVisionGuidanceSection());
   }
 
-  // 12. File attachment guidance (when user explicitly attaches files/selections)
+  // 11. File attachment guidance (when user explicitly attaches files/selections)
   if (params.hasExplicitAttachments) {
     sections.push(buildAttachmentGuidanceSection());
   }
@@ -202,10 +194,6 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
 // ---------------------------------------------------------------------------
 // Section builders
 // ---------------------------------------------------------------------------
-
-function buildIdentitySection(runtimeInfo: IOpenclawRuntimeInfo): string {
-  return `You are Parallx, a local AI assistant for workspace knowledge management. You run on ${runtimeInfo.model} via ${runtimeInfo.provider}.`;
-}
 
 /**
  * Skills section following upstream XML pattern.
@@ -238,10 +226,80 @@ ${entries}
  * Upstream: buildToolSummaryMap in pi-embedded-runner/system-prompt.ts line 74
  * One line per tool: name + description. This supplements the API tool schema
  * with human-readable context in the prompt text.
+ *
+ * Tools are grouped by domain so the model can distinguish canvas page tools
+ * from file system tools, memory tools, etc.
  */
+
+/** Domain groups — order determines section order in the prompt. */
+const TOOL_GROUPS: readonly { readonly heading: string; readonly names: ReadonlySet<string> }[] = [
+  {
+    heading: 'Canvas Pages',
+    names: new Set([
+      'search_workspace', 'read_page', 'read_current_page', 'list_pages',
+      'get_page_properties', 'create_page', 'list_property_definitions',
+      'set_page_property', 'find_pages_by_property',
+    ]),
+  },
+  {
+    heading: 'Workspace Files',
+    names: new Set(['list_files', 'read_file', 'search_files', 'grep_search']),
+  },
+  {
+    heading: 'Knowledge Index',
+    names: new Set(['search_knowledge']),
+  },
+  {
+    heading: 'Memory',
+    names: new Set(['memory_get', 'memory_search']),
+  },
+  {
+    heading: 'Session Transcripts',
+    names: new Set(['transcript_get', 'transcript_search']),
+  },
+  {
+    heading: 'File Editing',
+    names: new Set(['write_file', 'edit_file', 'delete_file']),
+  },
+  {
+    heading: 'Terminal',
+    names: new Set(['run_command']),
+  },
+];
+
 export function buildToolSummariesSection(tools: readonly IToolSummary[]): string {
-  const lines = tools.map(t => `- ${t.name}: ${t.description}`).join('\n');
-  return `Tool availability (filtered by policy):\n${lines}`;
+  const grouped = new Map<string, IToolSummary[]>();
+  const ungrouped: IToolSummary[] = [];
+
+  for (const tool of tools) {
+    let placed = false;
+    for (const group of TOOL_GROUPS) {
+      if (group.names.has(tool.name)) {
+        let arr = grouped.get(group.heading);
+        if (!arr) { arr = []; grouped.set(group.heading, arr); }
+        arr.push(tool);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) { ungrouped.push(tool); }
+  }
+
+  const parts: string[] = [];
+  for (const group of TOOL_GROUPS) {
+    const items = grouped.get(group.heading);
+    if (items && items.length > 0) {
+      parts.push(`### ${group.heading}`);
+      for (const t of items) { parts.push(`- ${t.name}: ${t.description}`); }
+    }
+  }
+  // MCP tools, extension tools, or any future tools that don't match a group
+  if (ungrouped.length > 0) {
+    if (parts.length > 0) { parts.push('### Other'); }
+    for (const t of ungrouped) { parts.push(`- ${t.name}: ${t.description}`); }
+  }
+
+  return `Tool availability (filtered by policy):\n${parts.join('\n')}`;
 }
 
 /**
@@ -291,26 +349,6 @@ export function buildRuntimeSection(runtimeInfo: IOpenclawRuntimeInfo): string {
   if (runtimeInfo.arch) { lines.push(`- Architecture: ${runtimeInfo.arch}`); }
   if (runtimeInfo.shell) { lines.push(`- Shell: ${runtimeInfo.shell}`); }
   return lines.join('\n');
-}
-
-/**
- * Behavioral rules for local models.
- *
- * This is NOT output repair relocated (see Anti-Pattern: Patch-thinking).
- * This is the standard "how to behave" section that every well-configured
- * AI system has. Rules are framework-level and general.
- *
- * Do NOT add query-specific rules (e.g., "when asked about deductibles,
- * quote exact values"). That would be eval-driven patchwork.
- */
-export function buildBehavioralRulesSection(): string {
-  return `## Response Guidelines
-- Answer from the workspace context provided above. Cite specific files and sections.
-- When quoting facts (numbers, dates, names, procedures), use the exact values from the source documents.
-- If the workspace context does not contain enough information to answer, say so explicitly rather than guessing.
-- Be thorough. Cover all relevant aspects the user asked about.
-- Use clear, structured formatting (headings, lists, bold) to organize your response.
-- When multiple sources are relevant, synthesize them rather than repeating each one separately.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -384,22 +422,9 @@ function buildAttachmentGuidanceSection(): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Safety section following upstream pattern.
- * Upstream: system-prompt.ts lines 378-385
- */
-function buildSafetySection(): string {
-  return [
-    '## Safety',
-    'You have no independent goals: do not pursue self-preservation, replication, resource acquisition, or power-seeking; avoid long-term plans beyond the user\'s request.',
-    'Prioritize safety and human oversight over completion; if instructions conflict, pause and ask; comply with stop/pause/audit requests and never bypass safeguards.',
-    'Do not manipulate or persuade anyone to expand access or disable safeguards. Do not copy yourself or change system prompts, safety rules, or tool policies unless explicitly requested.',
-  ].join('\n');
-}
-
-/**
  * Budget-aware truncation of system prompt sections.
  * Truncation priority: workspace context first (largest variable section),
- * then tool summaries. Safety, identity, and skills are never truncated.
+ * then tool summaries. Skills are never truncated.
  */
 function truncateSystemPromptToBudget(
   sections: readonly string[],

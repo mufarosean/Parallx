@@ -24,7 +24,6 @@ import {
   fromLegacyProfile,
   tolegacyProfile,
 } from './unifiedConfigTypes.js';
-import { generateChatSystemPrompt } from './systemPromptGenerator.js';
 import type { ILanguageModelsService, IChatResponseChunk } from '../services/chatTypes.js';
 import type { IConfigFileSystem } from '../services/parallxConfigService.js';
 
@@ -273,22 +272,6 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
       patch as DeepPartial<Record<string, unknown>>,
     ) as unknown as IUnifiedAIConfig;
 
-    // Regenerate system prompt if not custom
-    if (!updatedConfig.chat.systemPromptIsCustom) {
-      const genInput = {
-        systemPrompt: updatedConfig.chat.systemPrompt,
-        systemPromptIsCustom: updatedConfig.chat.systemPromptIsCustom,
-        responseLength: updatedConfig.chat.responseLength,
-        tone: updatedConfig.suggestions.tone,
-        focusDomain: updatedConfig.suggestions.focusDomain,
-        customFocusDescription: updatedConfig.suggestions.customFocusDescription,
-      };
-      (updatedConfig as any).chat = {
-        ...updatedConfig.chat,
-        systemPrompt: generateChatSystemPrompt(genInput),
-      };
-    }
-
     const updatedPreset: IUnifiedPreset = {
       ...preset,
       updatedAt: Date.now(),
@@ -380,22 +363,6 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
       ...preset.config,
       [section]: structuredClone(defaultSection),
     };
-
-    // Regenerate system prompt if needed
-    if ((section === 'chat' || section === 'suggestions') && !updatedConfig.chat.systemPromptIsCustom) {
-      const genInput = {
-        systemPrompt: updatedConfig.chat.systemPrompt,
-        systemPromptIsCustom: updatedConfig.chat.systemPromptIsCustom,
-        responseLength: updatedConfig.chat.responseLength,
-        tone: updatedConfig.suggestions.tone,
-        focusDomain: updatedConfig.suggestions.focusDomain,
-        customFocusDescription: updatedConfig.suggestions.customFocusDescription,
-      };
-      updatedConfig.chat = {
-        ...updatedConfig.chat,
-        systemPrompt: generateChatSystemPrompt(genInput),
-      };
-    }
 
     const updatedPreset: IUnifiedPreset = {
       ...preset,

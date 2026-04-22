@@ -14,7 +14,6 @@ import type {
   DeepPartial,
 } from './aiSettingsTypes.js';
 import { DEFAULT_PROFILE, BUILT_IN_PRESETS } from './aiSettingsDefaults.js';
-import { generateChatSystemPrompt, buildGenInputFromProfile } from './systemPromptGenerator.js';
 import type { ILanguageModelsService, IChatResponseChunk } from '../services/chatTypes.js';
 
 // ─── Storage Keys ──────────────────────────────────────────────────────────
@@ -127,13 +126,6 @@ export class AISettingsService extends Disposable implements IAISettingsService 
     const updated = deepMerge(profile as unknown as Record<string, unknown>, patch as DeepPartial<Record<string, unknown>>) as unknown as AISettingsProfile;
     updated.updatedAt = Date.now();
 
-    // Regenerate system prompt if not custom
-    if (!updated.chat.systemPromptIsCustom) {
-      updated.chat.systemPrompt = generateChatSystemPrompt(
-        buildGenInputFromProfile(updated)
-      );
-    }
-
     // Replace in profiles array
     const idx = this._profiles.findIndex(p => p.id === updated.id);
     if (idx >= 0) {
@@ -219,13 +211,6 @@ export class AISettingsService extends Disposable implements IAISettingsService 
     const defaultSection = DEFAULT_PROFILE[section];
     (profile as any)[section] = structuredClone(defaultSection);
     profile.updatedAt = Date.now();
-
-    // Regenerate system prompt if resetting chat or suggestions and not custom
-    if ((section === 'chat' || section === 'suggestions') && !profile.chat.systemPromptIsCustom) {
-      profile.chat.systemPrompt = generateChatSystemPrompt(
-        buildGenInputFromProfile(profile)
-      );
-    }
 
     const idx = this._profiles.findIndex(p => p.id === profile.id);
     if (idx >= 0) {

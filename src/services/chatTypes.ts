@@ -425,7 +425,7 @@ export interface IChatCodeBlockContent {
 }
 
 /** Status of a tool invocation lifecycle. */
-export type ToolInvocationStatus = 'pending' | 'running' | 'completed' | 'rejected';
+export type ToolInvocationStatus = 'pending' | 'running' | 'completed' | 'rejected' | 'error';
 
 export interface IChatToolInvocationContent {
   readonly kind: ChatContentPartKind.ToolInvocation;

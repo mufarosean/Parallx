@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+﻿import { describe, expect, it, vi } from 'vitest';
 
 import { ChatMode } from '../../src/services/chatTypes';
 import type {
@@ -78,7 +78,7 @@ describe('openclaw default participant', () => {
       }),
       unifiedConfigService: {
         getEffectiveConfig: () => ({
-          chat: { workspaceDescription: 'Insurance workspace' },
+          chat: {},
           model: { temperature: 0.2, maxTokens: 512 },
         } as any),
       } as any,
@@ -101,13 +101,11 @@ describe('openclaw default participant', () => {
     expect(sendChatRequest).toHaveBeenCalled();
     const sentMessages = sendChatRequest.mock.calls[0][0];
     expect(sentMessages[0].role).toBe('system');
-    expect(sentMessages[0].content).toContain('You are Parallx, a local AI assistant');
     expect(sentMessages[0].content).toContain('## Workspace Context');
     expect(sentMessages[0].content).toContain('### .parallx/AGENTS.md');
     expect(sentMessages[0].content).toContain('workspace instructions');
     expect(sentMessages[0].content).toContain('### .parallx/SOUL.md');
     expect(sentMessages[0].content).toContain('persona');
-    expect(sentMessages[0].content).toContain('## Response Guidelines');
     expect(sentMessages[0].content).not.toContain('should not be injected');
     expect(sentMessages.at(-1)).toEqual(expect.objectContaining({
       role: 'user',
@@ -130,7 +128,7 @@ describe('openclaw default participant', () => {
       readFileRelative: vi.fn(async (path: string) => (path === '.parallx/AGENTS.md' ? 'workspace instructions' : null)),
       unifiedConfigService: {
         getEffectiveConfig: () => ({
-          chat: { workspaceDescription: 'Insurance workspace' },
+          chat: {},
           model: { temperature: 0.2, maxTokens: 512 },
         } as any),
       } as any,
@@ -203,7 +201,7 @@ describe('openclaw default participant', () => {
       getPreferencesForPrompt: vi.fn(async () => 'Prefer concise answers.'),
       unifiedConfigService: {
         getEffectiveConfig: () => ({
-          chat: { workspaceDescription: 'Insurance workspace' },
+          chat: {},
           model: { temperature: 0.2, maxTokens: 512 },
         } as any),
       } as any,
@@ -274,7 +272,7 @@ describe('openclaw default participant', () => {
       invokeToolWithRuntimeControl: vi.fn(async (name: string) => ({ content: `invoked ${name}` })),
       unifiedConfigService: {
         getEffectiveConfig: () => ({
-          chat: { workspaceDescription: 'Insurance workspace' },
+          chat: {},
           model: { temperature: 0.2, maxTokens: 512 },
         } as any),
       } as any,
@@ -336,7 +334,7 @@ describe('openclaw default participant', () => {
       invokeToolWithRuntimeControl,
       readFileRelative: vi.fn(async () => null),
       unifiedConfigService: {
-        getEffectiveConfig: () => ({ model: { temperature: 0.2, maxTokens: 512 }, chat: { workspaceDescription: '' } } as any),
+        getEffectiveConfig: () => ({ model: { temperature: 0.2, maxTokens: 512 }, chat: {} } as any),
       } as any,
     } as IDefaultParticipantServices;
 
@@ -355,7 +353,7 @@ describe('openclaw default participant', () => {
     } as IChatParticipantContext, response, createToken());
 
     const firstMessages = sendChatRequest.mock.calls[0][0];
-    expect(firstMessages[0].content).toContain('You are Parallx, a local AI assistant');
+    expect(firstMessages[0].content).toContain('## Workspace Context');
     expect(invokeToolWithRuntimeControl).toHaveBeenCalledWith('read_file', { path: 'Policy.md' }, expect.objectContaining({ isCancellationRequested: false }), undefined);
     expect(response.markdown).toHaveBeenCalledWith('Grounded OpenClaw answer');
   });
@@ -385,7 +383,7 @@ describe('openclaw default participant', () => {
       readFileRelative: vi.fn(async () => null),
       unifiedConfigService: {
         getEffectiveConfig: () => ({
-          chat: { workspaceDescription: 'Insurance workspace' },
+          chat: {},
           model: { temperature: 0.2, maxTokens: 512 },
         } as any),
       } as any,
@@ -434,7 +432,7 @@ describe('openclaw default participant', () => {
       readFileRelative: vi.fn(async () => null),
       unifiedConfigService: {
         getEffectiveConfig: () => ({
-          chat: { workspaceDescription: 'Insurance workspace' },
+          chat: {},
           model: { temperature: 0.2, maxTokens: 512 },
         } as any),
       } as any,
@@ -489,7 +487,7 @@ describe('openclaw default participant', () => {
       readFileRelative: vi.fn(async () => null),
       unifiedConfigService: {
         getEffectiveConfig: () => ({
-          chat: { workspaceDescription: 'Insurance workspace' },
+          chat: {},
           model: { temperature: 0.2, maxTokens: 512 },
           memory: { memoryEnabled: true },
         } as any),

@@ -9,6 +9,13 @@
 //   (VS Code uses a webview; we render directly into the DOM for simplicity.)
 
 import './markdownEditorPane.css';
+
+import MarkdownIt from 'markdown-it';
+import markdownItMark from 'markdown-it-mark';
+import MarkdownItGitHubAlerts from 'markdown-it-github-alerts';
+import hljs from 'highlight.js/lib/common';
+import katex from 'katex';
+
 import { EditorPane } from '../../editor/editorPane.js';
 import { type IEditorInput } from '../../editor/editorInput.js';
 import { DisposableStore } from '../../platform/lifecycle.js';
@@ -31,10 +38,12 @@ export class MarkdownEditorPane extends EditorPane {
   private _contentEl!: HTMLElement;
   private _inputListeners = new DisposableStore();
   private _activeContextMenu: ReturnType<typeof ContextMenu.show> | null = null;
+  private readonly _md: MarkdownIt;
 
   constructor() {
     super(PANE_ID);
     this._register(this._inputListeners);
+    this._md = _createPreviewRenderer();
   }
 
   // ── Lifecycle hooks ──────────────────────────────────────────────────────
@@ -112,195 +121,8 @@ export class MarkdownEditorPane extends EditorPane {
 
   // ── Markdown Rendering ─────────────────────────────────────────────────
 
-  /**
-   * Lightweight markdown → HTML renderer.
-   *
-   * Supports: headings, bold, italic, strikethrough, inline code, code blocks,
-   * links, images, blockquotes, ordered/unordered lists, horizontal rules,
-   * tables, and paragraphs.
-   *
-   * This is intentionally simple — no dependency on external markdown libraries.
-   * For full GFM compliance, a library like marked/markdown-it could be used.
-   */
   private _renderMarkdown(source: string): void {
-    const html = this._markdownToHtml(source);
-    this._contentEl.innerHTML = html;
-  }
-
-  private _markdownToHtml(md: string): string {
-    const lines = md.split('\n');
-    const out: string[] = [];
-    let i = 0;
-
-    while (i < lines.length) {
-      const line = lines[i];
-
-      // Fenced code block (``` or ~~~)
-      const fenceMatch = line.match(/^(`{3,}|~{3,})(\w*)/);
-      if (fenceMatch) {
-        const fence = fenceMatch[1];
-        const lang = fenceMatch[2];
-        const codeLines: string[] = [];
-        i++;
-        while (i < lines.length && !lines[i].startsWith(fence)) {
-          codeLines.push(lines[i]);
-          i++;
-        }
-        i++; // skip closing fence
-        const langAttr = lang ? ` class="language-${this._esc(lang)}"` : '';
-        out.push(`<pre><code${langAttr}>${this._esc(codeLines.join('\n'))}</code></pre>`);
-        continue;
-      }
-
-      // Blank line
-      if (line.trim() === '') {
-        i++;
-        continue;
-      }
-
-      // Heading (# to ######)
-      const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
-      if (headingMatch) {
-        const level = headingMatch[1].length;
-        out.push(`<h${level}>${this._inline(headingMatch[2])}</h${level}>`);
-        i++;
-        continue;
-      }
-
-      // Horizontal rule
-      if (/^(\*{3,}|-{3,}|_{3,})\s*$/.test(line)) {
-        out.push('<hr />');
-        i++;
-        continue;
-      }
-
-      // Blockquote (any line starting with '>')
-      if (/^>/.test(line)) {
-        const quoteLines: string[] = [];
-        while (i < lines.length && /^>/.test(lines[i])) {
-          quoteLines.push(lines[i].replace(/^>\s?/, ''));
-          i++;
-        }
-        out.push(`<blockquote>${this._markdownToHtml(quoteLines.join('\n'))}</blockquote>`);
-        continue;
-      }
-
-      // Table (simple: header | separator | rows)
-      if (line.includes('|') && i + 1 < lines.length && /^\|?\s*[-:]+[-|:\s]+$/.test(lines[i + 1])) {
-        const headerCells = this._parseTableRow(line);
-        const alignRow = this._parseTableRow(lines[i + 1]);
-        const aligns = alignRow.map(c => {
-          if (c.startsWith(':') && c.endsWith(':')) return 'center';
-          if (c.endsWith(':')) return 'right';
-          return 'left';
-        });
-        i += 2;
-        let tableHtml = '<table><thead><tr>';
-        headerCells.forEach((cell, ci) => {
-          tableHtml += `<th style="text-align:${aligns[ci] ?? 'left'}">${this._inline(cell.trim())}</th>`;
-        });
-        tableHtml += '</tr></thead><tbody>';
-        while (i < lines.length && lines[i].includes('|')) {
-          const cells = this._parseTableRow(lines[i]);
-          tableHtml += '<tr>';
-          cells.forEach((cell, ci) => {
-            tableHtml += `<td style="text-align:${aligns[ci] ?? 'left'}">${this._inline(cell.trim())}</td>`;
-          });
-          tableHtml += '</tr>';
-          i++;
-        }
-        tableHtml += '</tbody></table>';
-        out.push(tableHtml);
-        continue;
-      }
-
-      // Unordered list
-      if (/^(\s*)([-*+])\s+/.test(line)) {
-        const listItems: string[] = [];
-        while (i < lines.length && /^(\s*)([-*+])\s+/.test(lines[i])) {
-          listItems.push(lines[i].replace(/^\s*[-*+]\s+/, ''));
-          i++;
-        }
-        out.push('<ul>' + listItems.map(li => `<li>${this._inline(li)}</li>`).join('') + '</ul>');
-        continue;
-      }
-
-      // Ordered list
-      if (/^(\s*)\d+\.\s+/.test(line)) {
-        const listItems: string[] = [];
-        while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
-          listItems.push(lines[i].replace(/^\s*\d+\.\s+/, ''));
-          i++;
-        }
-        out.push('<ol>' + listItems.map(li => `<li>${this._inline(li)}</li>`).join('') + '</ol>');
-        continue;
-      }
-
-      // Paragraph (default)
-      const paraLines: string[] = [];
-      while (i < lines.length && lines[i].trim() !== '' && !this._isBlockStart(lines[i])) {
-        paraLines.push(lines[i]);
-        i++;
-      }
-      if (paraLines.length > 0) {
-        out.push(`<p>${this._inline(paraLines.join('\n'))}</p>`);
-      } else {
-        // Safety: if no handler consumed the line, skip it to prevent infinite loop
-        i++;
-      }
-    }
-
-    return out.join('\n');
-  }
-
-  /** Check if a line starts a block-level element (heading, list, hr, quote, fence, table). */
-  private _isBlockStart(line: string): boolean {
-    if (/^#{1,6}\s/.test(line)) return true;
-    if (/^(\*{3,}|-{3,}|_{3,})\s*$/.test(line)) return true;
-    if (/^>\s?/.test(line)) return true;
-    if (/^(`{3,}|~{3,})/.test(line)) return true;
-    if (/^\s*[-*+]\s+/.test(line)) return true;
-    if (/^\s*\d+\.\s+/.test(line)) return true;
-    return false;
-  }
-
-  /** Parse a markdown table row into cells. */
-  private _parseTableRow(row: string): string[] {
-    return row.replace(/^\|/, '').replace(/\|$/, '').split('|');
-  }
-
-  /** Render inline markdown (bold, italic, code, links, images, strikethrough). */
-  private _inline(text: string): string {
-    let s = this._esc(text);
-
-    // Images: ![alt](url)
-    s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" />');
-
-    // Links: [text](url)
-    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-
-    // Inline code: `code`
-    s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-    // Bold + italic: ***text*** or ___text___
-    s = s.replace(/\*{3}(.+?)\*{3}/g, '<strong><em>$1</em></strong>');
-    s = s.replace(/_{3}(.+?)_{3}/g, '<strong><em>$1</em></strong>');
-
-    // Bold: **text** or __text__
-    s = s.replace(/\*{2}(.+?)\*{2}/g, '<strong>$1</strong>');
-    s = s.replace(/_{2}(.+?)_{2}/g, '<strong>$1</strong>');
-
-    // Italic: *text* or _text_
-    s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    s = s.replace(/_(.+?)_/g, '<em>$1</em>');
-
-    // Strikethrough: ~~text~~
-    s = s.replace(/~~(.+?)~~/g, '<del>$1</del>');
-
-    // Line breaks
-    s = s.replace(/\n/g, '<br />');
-
-    return s;
+    this._contentEl.innerHTML = this._md.render(source);
   }
 
   // ── M48: Selection API & Context Menu ──────────────────────────────
@@ -389,13 +211,125 @@ export class MarkdownEditorPane extends EditorPane {
     this._scrollContainer?.removeEventListener('contextmenu', this._onContextMenu);
     super.dispose();
   }
+}
 
-  /** HTML-escape a string. */
-  private _esc(s: string): string {
-    return s
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+// ── Shared markdown-it renderer for the editor preview pane ──────────────────
+
+function _createPreviewRenderer(): MarkdownIt {
+  const md = new MarkdownIt({
+    html: false,
+    breaks: true,
+    linkify: true,
+    highlight(str, lang) {
+      if (lang && hljs.getLanguage(lang)) {
+        try {
+          return hljs.highlight(str, { language: lang }).value;
+        } catch { /* fall through */ }
+      }
+      return ''; // markdown-it will escape the content
+    },
+  });
+
+  md.use(markdownItMark);
+  md.use(MarkdownItGitHubAlerts, { markers: '*' });
+
+  // The github-alerts plugin inserts callout titles as raw text.
+  // Override the renderer to run inline rules on the title.
+  md.renderer.rules.alert_open = (tokens, idx) => {
+    const { title, type, icon } = tokens[idx].meta;
+    const renderedTitle = md.renderInline(title);
+    return `<div class="markdown-alert markdown-alert-${type}"><p class="markdown-alert-title">${icon}${renderedTitle}</p>`;
+  };
+
+  _installKatexRules(md);
+  return md;
+}
+
+// ── KaTeX math rules (block + inline) ────────────────────────────────────────
+
+function _installKatexRules(md: MarkdownIt): void {
+  // Block math: $$ ... $$ or \[ ... \]
+  md.block.ruler.before('fence', 'parallx_math_block', (state, startLine, endLine, silent) => {
+    const start = state.bMarks[startLine] + state.tShift[startLine];
+    const max = state.eMarks[startLine];
+    const firstLine = state.src.slice(start, max).trim();
+
+    let open = '';
+    let close = '';
+    if (firstLine === '$$') { open = '$$'; close = '$$'; }
+    else if (firstLine === '\\[') { open = '\\['; close = '\\]'; }
+    else { return false; }
+
+    let nextLine = startLine + 1;
+    const contentLines: string[] = [];
+    while (nextLine < endLine) {
+      const s = state.bMarks[nextLine] + state.tShift[nextLine];
+      const m = state.eMarks[nextLine];
+      const text = state.src.slice(s, m);
+      if (text.trim() === close) break;
+      contentLines.push(text);
+      nextLine += 1;
+    }
+    if (nextLine >= endLine) return false;
+
+    if (!silent) {
+      const token = state.push('parallx_math_block', 'div', 0);
+      token.block = true;
+      token.content = contentLines.join('\n').trim();
+      token.map = [startLine, nextLine + 1];
+      token.markup = open;
+    }
+    state.line = nextLine + 1;
+    return true;
+  });
+
+  // Inline math: \( ... \) or $ ... $
+  md.inline.ruler.before('escape', 'parallx_math_inline', (state, silent) => {
+    const src = state.src;
+    const pos = state.pos;
+
+    let open = '';
+    let close = '';
+    if (src.startsWith('\\(', pos)) { open = '\\('; close = '\\)'; }
+    else if (src.charAt(pos) === '$' && src.charAt(pos + 1) !== '$') { open = '$'; close = '$'; }
+    else { return false; }
+
+    let matchPos = pos + open.length;
+    while (matchPos < src.length) {
+      matchPos = src.indexOf(close, matchPos);
+      if (matchPos < 0) return false;
+      if (src.charAt(matchPos - 1) !== '\\') break;
+      matchPos += close.length;
+    }
+
+    const content = src.slice(pos + open.length, matchPos);
+    if (!content.trim() || /\n/.test(content)) return false;
+
+    if (!silent) {
+      const token = state.push('parallx_math_inline', 'span', 0);
+      token.content = content;
+      token.markup = open;
+    }
+    state.pos = matchPos + close.length;
+    return true;
+  });
+
+  md.renderer.rules.parallx_math_inline = (tokens, idx) => _renderKatex(tokens[idx].content, false);
+  md.renderer.rules.parallx_math_block = (tokens, idx) =>
+    `<div class="markdown-math-block">${_renderKatex(tokens[idx].content, true)}</div>\n`;
+}
+
+function _renderKatex(expression: string, displayMode: boolean): string {
+  try {
+    return katex.renderToString(expression, {
+      throwOnError: false,
+      displayMode,
+      output: 'html',
+    });
+  } catch {
+    const escaped = expression.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return displayMode
+      ? `<pre class="markdown-math-fallback">${escaped}</pre>`
+      : `<code class="markdown-math-fallback">${escaped}</code>`;
   }
 }
