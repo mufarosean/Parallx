@@ -1000,69 +1000,6 @@ export class ChatService extends Disposable implements IChatService {
     // No onDidDeleteSession event — listeners never saw this session created.
   }
 
-  /**
-   * Append an autonomous assistant message to a real session without running
-   * a turn. Used by the ChatSurfacePlugin to surface results produced by
-   * heartbeat / cron / subagent real-turn executors (M58-real).
-   *
-   * The injected pair has:
-   *   - a synthetic user request carrying the origin marker as text (so the
-   *     transcript is self-describing even without special rendering)
-   *   - a completed assistant response with a single markdown part
-   *   - metadata forwarded on both request and response so renderers can
-   *     style autonomous cards distinctly
-   *
-   * Ephemeral session ids are rejected — autonomous messages must land in a
-   * persisted parent session, otherwise they would be purged along with the
-   * ephemeral turn that produced them.
-   *
-   * @returns true if the message was appended, false if the session is
-   *   missing or ephemeral.
-   */
-  appendAutonomousMessage(
-    sessionId: string,
-    opts: {
-      readonly content: string;
-      readonly origin: string;
-      readonly requestText?: string;
-      readonly metadata?: Readonly<Record<string, unknown>>;
-    },
-  ): boolean {
-    if (isEphemeralSessionId(sessionId)) return false;
-    const session = this._sessions.get(sessionId);
-    if (!session) return false;
-
-    const now = Date.now();
-    // The synthetic request carries an origin-prefixed marker so the
-    // transcript is self-describing even without special rendering. The
-    // renderer may use the `[origin]` prefix to style the bubble distinctly.
-    const requestText = opts.requestText ?? `[${opts.origin}]`;
-
-    const request: IChatUserMessage = {
-      text: requestText,
-      requestId: generateUUID(),
-      attempt: 0,
-      timestamp: now,
-    };
-
-    const response: IChatAssistantResponse = {
-      parts: [
-        {
-          kind: ChatContentPartKind.Markdown,
-          content: opts.content,
-        },
-      ],
-      isComplete: true,
-      modelId: session.modelId,
-      timestamp: now,
-    };
-
-    session.messages.push({ request, response });
-    this._schedulePersist(sessionId);
-    this._onDidChangeSession.fire(sessionId);
-    return true;
-  }
-
   // ── Request Orchestration ──
 
   async sendRequest(

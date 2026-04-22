@@ -75,7 +75,9 @@ import {
 import { createRunCommandTool } from './terminalTools.js';
 import { createSurfaceSendTool, createSurfaceListTool } from './surfaceTools.js';
 import type { ISurfaceRouterService } from '../../../services/surfaceRouterService.js';
+import type { IAutonomyLogReader } from '../../../services/autonomyLogService.js';
 import { createCronTools, type ICronToolHost } from './cronTools.js';
+import { createAutonomyLogTool } from './autonomyLogTool.js';
 import { createSessionsSpawnTool } from './subagentTools.js';
 import type { SubagentSpawner } from '../../../openclaw/openclawSubagentSpawn.js';
 
@@ -101,6 +103,7 @@ export function registerBuiltInTools(
   surfaceRouter?: ISurfaceRouterService,
   cronHost?: ICronToolHost,
   subagentSpawner?: SubagentSpawner,
+  autonomyLog?: IAutonomyLogReader,
 ): IDisposable[] {
   const disposables: IDisposable[] = [];
 
@@ -140,6 +143,8 @@ export function registerBuiltInTools(
     ...createCronTools(cronHost),
     // ── Subagent spawn tool (M58 W5) ──
     createSessionsSpawnTool(subagentSpawner),
+    // ── Autonomy log read tool (M58-real post-ship UX reshape) ──
+    createAutonomyLogTool(autonomyLog),
   ];
 
   for (const tool of tools) {

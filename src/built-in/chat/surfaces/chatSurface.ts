@@ -1,29 +1,14 @@
-// chatSurface.ts — ChatSurfacePlugin (M58 W6 + M58-real post-fix)
+// chatSurface.ts — ChatSurfacePlugin (M58 W6 → post-ship UX reshape)
 //
-// Routes agent deliveries back into the chat transcript as autonomous
-// assistant messages.
+// Receives agent deliveries and routes them to the AutonomyLogService.
+// Earlier revisions appended directly into the user's active chat, but
+// that polluted the transcript and made conversation hard to follow —
+// autonomy now has its own dedicated log surface (AI Settings →
+// Autonomy Log) and the agent can read it back via the `autonomy_log`
+// tool.
 //
-// Upstream parity:
-//   - ChannelPlugin.outbound for the chat (default) channel
-//   - (github.com/openclaw/openclaw src/channels/)
-//
-// Parallx adaptation (M58-real, after the post-ship autonomy gap
-// diagnosis):
-//   - Original M58 scope shipped this as a trace-only logger because the
-//     ChatService lacked an "append assistant message without running a
-//     turn" API. After the M58-real retrofit wired heartbeat/cron to run
-//     real isolated turns, that limitation became the final visibility
-//     blocker: ephemeral turns ran, deliveries routed here, and dropped
-//     into console-only.
-//   - `ChatService.appendAutonomousMessage(sessionId, { content, origin })`
-//     is now the supported append API. This plugin uses it to inject
-//     heartbeat / cron / subagent result cards into the active chat
-//     session.
-//
-// The target session is resolved via an injected `getActiveSessionId`
-// callback. If no active session exists at delivery time, the delivery
-// degrades to a trace log (same behavior as the original stub) — this
-// keeps autonomous turns safe when the user has no chat open.
+// Back-compat: the bare-logger constructor still works for tests that
+// just want a stub surface.
 
 import {
   SURFACE_CHAT,
@@ -31,6 +16,7 @@ import {
   type ISurfaceDelivery,
   type ISurfacePlugin,
 } from '../../../openclaw/openclawSurfacePlugin.js';
+import type { IAutonomyLogAppender } from '../../../services/autonomyLogService.js';
 
 const CAPABILITIES: ISurfaceCapabilities = {
   supportsText: true,
@@ -39,40 +25,14 @@ const CAPABILITIES: ISurfaceCapabilities = {
   supportsActions: false,
 };
 
-/**
- * Narrow view of ChatService needed for autonomous message append.
- * Kept minimal so tests can pass a plain object without recreating the
- * whole ChatService.
- */
-export interface IChatSurfaceHost {
-  appendAutonomousMessage(
-    sessionId: string,
-    opts: {
-      readonly content: string;
-      readonly origin: string;
-      readonly requestText?: string;
-      readonly metadata?: Readonly<Record<string, unknown>>;
-    },
-  ): boolean;
-}
-
 export type ChatSurfaceLogger = (delivery: ISurfaceDelivery) => void;
 
 export interface IChatSurfacePluginOptions {
-  /**
-   * Resolver for the chat session that should receive autonomous cards.
-   * Typically `() => activeWidget?.getSession()?.id`.
-   */
+  /** Where autonomous cards are written. When absent, plugin is trace-only. */
+  readonly autonomyLog?: IAutonomyLogAppender;
+  /** Optional resolver — stamped onto the entry for attribution. */
   readonly getActiveSessionId?: () => string | undefined;
-  /**
-   * ChatService (narrow view) used to append autonomous messages.
-   * When omitted, the plugin falls back to trace-only behavior.
-   */
-  readonly chatService?: IChatSurfaceHost;
-  /**
-   * Optional delivery logger — runs alongside real append (or replaces
-   * it when the plugin has no chat service wired). Never throws.
-   */
+  /** Trace logger. Runs alongside log append. Never throws. */
   readonly logger?: ChatSurfaceLogger;
 }
 
@@ -84,12 +44,6 @@ function deliveryToMarkdown(delivery: ISurfaceDelivery): string {
   catch { return String(c); }
 }
 
-/**
- * Derive the origin label used on the synthetic request for autonomous
- * messages. Executors stamp the router-level origin via
- * `sendWithOrigin`, but that origin rides as metadata on the delivery
- * envelope (key `_origin`) so the plugin reads it back for labeling.
- */
 function resolveOrigin(delivery: ISurfaceDelivery): string {
   const md = (delivery.metadata ?? {}) as Record<string, unknown>;
   const originRaw = md._origin;
@@ -113,9 +67,7 @@ function buildRequestText(origin: string, delivery: ISurfaceDelivery): string {
     const jobName = typeof md.jobName === 'string' ? md.jobName : undefined;
     return `[cron${jobName ? ` · ${jobName}` : ''}]`;
   }
-  if (origin === 'subagent') {
-    return '[subagent]';
-  }
+  if (origin === 'subagent') return '[subagent]';
   return `[${origin}]`;
 }
 
@@ -128,35 +80,29 @@ export class ChatSurfacePlugin implements ISurfacePlugin {
   readonly id = SURFACE_CHAT;
   readonly capabilities = CAPABILITIES;
 
+  private readonly _autonomyLog?: IAutonomyLogAppender;
   private readonly _getActiveSessionId?: () => string | undefined;
-  private readonly _chatService?: IChatSurfaceHost;
   private readonly _logger?: ChatSurfaceLogger;
 
   constructor(options?: IChatSurfacePluginOptions | ChatSurfaceLogger) {
-    // Back-compat: the original signature accepted a bare logger callback.
     if (typeof options === 'function') {
       this._logger = options;
       return;
     }
+    this._autonomyLog = options?.autonomyLog;
     this._getActiveSessionId = options?.getActiveSessionId;
-    this._chatService = options?.chatService;
     this._logger = options?.logger;
   }
 
-  isAvailable(): boolean {
-    return true;
-  }
+  isAvailable(): boolean { return true; }
 
   async deliver(delivery: ISurfaceDelivery): Promise<boolean> {
-    // Always run the trace logger (tests/diagnostics) before attempting
-    // the real append — so a broken append doesn't swallow observability.
+    // Trace first so observability never depends on append succeeding.
     if (this._logger) {
-      try { this._logger(delivery); } catch { /* logger must never fail delivery */ }
+      try { this._logger(delivery); } catch { /* swallow */ }
     }
 
-    // Fast path when no append capability wired: preserve original
-    // trace-only behavior so legacy tests keep passing.
-    if (!this._chatService || !this._getActiveSessionId) {
+    if (!this._autonomyLog) {
       if (!this._logger) {
         console.log(
           '[ChatSurface] delivery %s (type=%s, bytes≈%d) [trace-only]',
@@ -168,36 +114,23 @@ export class ChatSurfacePlugin implements ISurfacePlugin {
       return true;
     }
 
-    const sessionId = this._getActiveSessionId();
-    if (!sessionId) {
-      // No active chat — degrade to trace-only for this delivery. An
-      // autonomous message with no destination is dropped rather than
-      // creating a fresh session (that would surprise the user).
-      console.debug('[ChatSurface] no active session; dropping autonomous delivery', delivery.id);
+    const content = deliveryToMarkdown(delivery);
+    if (!content) {
+      console.debug('[ChatSurface] empty delivery content; skipping log append', delivery.id);
       return true;
     }
 
     const origin = resolveOrigin(delivery);
     const requestText = buildRequestText(origin, delivery);
-    const content = deliveryToMarkdown(delivery);
-    if (!content) {
-      console.debug('[ChatSurface] empty delivery content; skipping append', delivery.id);
-      return true;
-    }
+    const sessionId = this._getActiveSessionId?.();
 
-    const appended = this._chatService.appendAutonomousMessage(sessionId, {
-      content,
+    this._autonomyLog.append({
       origin,
       requestText,
+      content,
       metadata: delivery.metadata as Record<string, unknown> | undefined,
+      sessionId,
     });
-
-    if (!appended) {
-      console.debug(
-        '[ChatSurface] appendAutonomousMessage returned false (ephemeral or missing session)',
-        sessionId,
-      );
-    }
     return true;
   }
 

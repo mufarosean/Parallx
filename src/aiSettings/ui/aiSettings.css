@@ -1436,3 +1436,117 @@ input[type="number"].ai-settings-agent-card__field-input {
   background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
   border-color: var(--vscode-textLink-foreground, #3794ff);
 }
+
+
+/* -- Autonomy Log Section (M58-real post-ship UX reshape) ---------------- */
+
+.ai-settings-autonomy-summary {
+  margin-left: 8px;
+  font-size: var(--parallx-fontSize-sm);
+  font-weight: normal;
+  color: var(--vscode-descriptionForeground, #888);
+}
+.ai-settings-autonomy-summary--unread {
+  color: var(--vscode-textLink-foreground, #3794ff);
+  font-weight: 600;
+}
+.ai-settings-autonomy-filters {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+}
+.ai-settings-autonomy-chip {
+  background: transparent;
+  border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.1));
+  color: var(--vscode-foreground);
+  padding: 3px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-sm);
+}
+.ai-settings-autonomy-chip:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05));
+}
+.ai-settings-autonomy-chip--active {
+  background: var(--vscode-textLink-foreground, #3794ff);
+  border-color: var(--vscode-textLink-foreground, #3794ff);
+  color: var(--vscode-editor-background, #1e1e1e);
+}
+.ai-settings-autonomy-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 520px;
+  overflow-y: auto;
+  border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.1));
+  border-radius: 4px;
+  padding: 4px;
+  background: var(--vscode-editor-background, #1e1e1e);
+}
+.ai-settings-autonomy-entry {
+  padding: 8px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.06));
+  background: var(--vscode-editor-background, #1e1e1e);
+  cursor: default;
+}
+.ai-settings-autonomy-entry--unread {
+  border-left: 3px solid var(--vscode-textLink-foreground, #3794ff);
+}
+.ai-settings-autonomy-entry__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.ai-settings-autonomy-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--vscode-editor-background, #1e1e1e);
+  font-weight: 600;
+}
+.ai-settings-autonomy-badge--heartbeat { background: #e4a853; }
+.ai-settings-autonomy-badge--cron      { background: #7ec8e3; }
+.ai-settings-autonomy-badge--subagent  { background: #c586c0; }
+.ai-settings-autonomy-badge--agent     { background: #888; }
+.ai-settings-autonomy-entry__label {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--parallx-fontSize-sm);
+  color: var(--vscode-descriptionForeground, #bbb);
+}
+.ai-settings-autonomy-entry__time {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #888);
+}
+.ai-settings-autonomy-entry__body {
+  margin: 0;
+  padding: 6px 8px;
+  background: var(--vscode-textCodeBlock-background, rgba(0,0,0,0.3));
+  border-radius: 3px;
+  font-size: var(--parallx-fontSize-sm);
+  font-family: var(--vscode-editor-font-family, monospace);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.ai-settings-autonomy-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.ai-settings-autonomy-action {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.1));
+  color: var(--vscode-foreground);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.ai-settings-autonomy-action:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05));
+}

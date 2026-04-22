@@ -2000,3 +2000,14 @@ export interface IMcpClientService extends IDisposable {
 }
 
 export const IMcpClientService = createServiceIdentifier<IMcpClientService>('IMcpClientService');
+
+// ── Autonomy Log Service (M58-real post-ship UX reshape) ────────────────────
+//
+// Dedicated dedicated log for heartbeat / cron / subagent results so the
+// chat transcript stays clean. Identifier only here — the concrete class
+// lives in src/services/autonomyLogService.ts to avoid importing UI
+// boilerplate into this type-surface file.
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type IAutonomyLogService = import('./autonomyLogService.js').AutonomyLogService;
+export const IAutonomyLogService = createServiceIdentifier<IAutonomyLogService>('IAutonomyLogService');

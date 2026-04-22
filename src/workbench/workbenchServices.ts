@@ -3,7 +3,7 @@
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager } from '../services/serviceTypes.js';
 import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
-import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService, IUnifiedAIConfigService, IDocumentExtractionService, IDiagnosticsService, IObservabilityService, IRuntimeHookRegistry, IMcpClientService } from '../services/serviceTypes.js';
+import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService, IUnifiedAIConfigService, IDocumentExtractionService, IDiagnosticsService, IObservabilityService, IRuntimeHookRegistry, IMcpClientService, IAutonomyLogService } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
@@ -44,6 +44,7 @@ import { DiagnosticsService } from '../services/diagnosticsService.js';
 import { ObservabilityService } from '../services/observabilityService.js';
 import { RuntimeHookRegistry } from '../services/runtimeHookRegistry.js';
 import { McpClientService } from '../openclaw/mcp/mcpClientService.js';
+import { AutonomyLogService } from '../services/autonomyLogService.js';
 import { McpToolBridge } from '../openclaw/mcp/mcpToolBridge.js';
 import { ALL_DIAGNOSTIC_CHECKS } from '../services/diagnosticChecks.js';
 import type { IStorage } from '../platform/storage.js';
@@ -316,6 +317,10 @@ export function registerIndexingServices(
   // ── D1: MCP Client Service ──
   const mcpClientService = new McpClientService();
   services.registerInstance(IMcpClientService, mcpClientService);
+
+  // ── M58-real post-ship UX reshape: Autonomy Log Service ──
+  const autonomyLogService = new AutonomyLogService();
+  services.registerInstance(IAutonomyLogService, autonomyLogService);
 
   // ── D1: MCP Tool Bridge — auto-registers MCP tools into tool system ──
   const languageModelToolsService = services.get(ILanguageModelToolsService);

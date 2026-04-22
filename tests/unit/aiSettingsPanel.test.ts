@@ -265,10 +265,10 @@ describe('AISettingsPanel', () => {
     panel.dispose();
   });
 
-  it('renders navigation with 8 section buttons', () => {
+  it('renders navigation with 9 section buttons', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const navItems = parent.querySelectorAll('.ai-settings-nav__item');
-    expect(navItems.length).toBe(8);
+    expect(navItems.length).toBe(9);
     expect(navItems[0].textContent).toBe('Chat');
     expect(navItems[1].textContent).toBe('Model');
     expect(navItems[2].textContent).toBe('Retrieval');
@@ -277,6 +277,7 @@ describe('AISettingsPanel', () => {
     expect(navItems[5].textContent).toBe('Advanced');
     expect(navItems[6].textContent).toBe('Preview');
     expect(navItems[7].textContent).toBe('MCP Servers');
+    expect(navItems[8].textContent).toBe('Autonomy Log');
     panel.dispose();
   });
 
@@ -286,12 +287,12 @@ describe('AISettingsPanel', () => {
     panel.dispose();
   });
 
-  it('renders all nine sections in content area', () => {
+  it('renders all ten sections in content area', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const sections = parent.querySelectorAll('.ai-settings-section');
-    expect(sections.length).toBe(9);
+    expect(sections.length).toBe(10);
     const ids = Array.from(sections).map(s => (s as HTMLElement).dataset.sectionId);
-    expect(ids).toEqual(['model', 'retrieval', 'agent', 'heartbeat', 'cron', 'tools', 'advanced', 'preview', 'mcp']);
+    expect(ids).toEqual(['model', 'retrieval', 'agent', 'heartbeat', 'cron', 'tools', 'advanced', 'preview', 'mcp', 'autonomy-log']);
     panel.dispose();
   });
 

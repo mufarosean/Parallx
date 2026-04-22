@@ -39,7 +39,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, ISurfaceRouterService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, ISurfaceRouterService, IAutonomyLogService } from '../../services/serviceTypes.js';
 import { ChatSurfacePlugin } from './surfaces/chatSurface.js';
 import { FilesystemSurfacePlugin } from '../../services/surfaces/filesystemSurface.js';
 import { CanvasSurfacePlugin } from '../canvas/surfaces/canvasSurface.js';
@@ -51,6 +51,7 @@ import {
   createCronContextLineFetcher,
 } from '../../openclaw/openclawCronExecutor.js';
 import { SubagentSpawner } from '../../openclaw/openclawSubagentSpawn.js';
+import { AutonomyLogService } from '../../services/autonomyLogService.js';
 import {
   createSubagentTurnExecutor,
   createSubagentAnnouncer,
@@ -260,6 +261,17 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const cronHeartbeatWaker: HeartbeatWaker = (reason) => {
     cronHeartbeatRunnerRef?.wake(reason);
   };
+
+  // ── Autonomy log (M58-real post-ship UX reshape) ──
+  //
+  // Dedicated, in-memory store for heartbeat / cron / subagent results
+  // so the chat transcript stays clean. The AutonomyLogSection in AI
+  // Settings renders it; the `autonomy_log` built-in tool lets the
+  // agent read it back between turns. Registered globally in
+  // workbenchServices.ts so AI Settings activation can see it too.
+  const autonomyLog = api.services.has(IAutonomyLogService)
+    ? api.services.get<AutonomyLogService>(IAutonomyLogService)
+    : new AutonomyLogService();
 
   // ── 1. Retrieve DI services ──
 
@@ -1157,7 +1169,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       context.subscriptions.push(subagentSpawner);
     }
 
-    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, canonicalMemorySearchAccessor, transcriptSearchAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath, surfaceRouter, cronService, subagentSpawner);
+    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, canonicalMemorySearchAccessor, transcriptSearchAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath, surfaceRouter, cronService, subagentSpawner, autonomyLog);
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }
@@ -1168,16 +1180,15 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // plugins (chat, filesystem, canvas) can only be built here because their
   // backing services live in chat activation scope.
   if (surfaceRouter) {
-    // Chat surface — M58-real: now routes autonomous deliveries
-    // (heartbeat / cron / subagent result cards) into the active chat
-    // session via ChatService.appendAutonomousMessage. Falls back to
-    // trace-only when no active widget exists. See
-    // src/built-in/chat/surfaces/chatSurface.ts.
-    const chatServiceForSurface = chatService as unknown as import('../../services/chatService.js').ChatService;
+    // Chat surface — M58-real post-ship UX reshape: autonomous deliveries
+    // (heartbeat / cron / subagent result cards) are routed into the
+    // dedicated AutonomyLogService instead of the chat transcript, so
+    // conversation stays uncluttered. The agent reads the log via the
+    // `autonomy_log` built-in tool. See
+    // src/built-in/chat/surfaces/chatSurface.ts and
+    // src/services/autonomyLogService.ts.
     surfaceRouter.registerSurface(new ChatSurfacePlugin({
-      chatService: {
-        appendAutonomousMessage: (sid, opts) => chatServiceForSurface.appendAutonomousMessage(sid, opts),
-      },
+      autonomyLog,
       getActiveSessionId: () => _activeWidget?.getSession()?.id,
     }));
     context.subscriptions.push({ dispose: () => surfaceRouter.unregisterSurface('chat') });

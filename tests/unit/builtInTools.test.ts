@@ -97,11 +97,13 @@ describe('registerBuiltInTools', () => {
     // M58 W6: surface_send + surface_list bring the total to 24.
     // M58 W4: 8 cron tools bring the total to 32.
     // M58 W5: sessions_spawn brings the total to 33.
-    expect(toolsService.registeredTools).toHaveLength(33);
-    expect(disposables).toHaveLength(33);
+    // M58-real post-ship UX reshape: autonomy_log brings the total to 34.
+    expect(toolsService.registeredTools).toHaveLength(34);
+    expect(disposables).toHaveLength(34);
 
     const names = toolsService.registeredTools.map(t => t.name).sort();
     expect(names).toEqual([
+      'autonomy_log',
       'create_page',
       'cron_add',
       'cron_list',
