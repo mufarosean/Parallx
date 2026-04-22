@@ -419,9 +419,80 @@ No other core file is touched by M58.
 
 ---
 
-## 6.5. Deferred: The Isolated-Turn Substrate ("Ship Thin" Decision)
+## 6.5. SUPERSEDED — Ship-Thin Decision Reversed
 
-**Status:** In force for W2, W4, W5 executors in M58. Remediated in **M59**.
+> **Status: SUPERSEDED on 2026-04-22 after W5 closure.** The original
+> ship-thin doctrine recorded in this section is no longer in force.
+> Heartbeat (W2) and Cron (W4) executors MUST be retrofitted onto the W5
+> ephemeral-session substrate **inside M58**, before M58 closes and
+> merges to master. Kept below for historical traceability only.
+
+### Why superseded
+
+The ship-thin decision was made during W2, before the W5 substrate
+existed. Its core premise — "building an isolated-turn substrate now would
+violate M41 P6 (don't invent parallel engines)" — dissolved the moment W5
+actually built that substrate and proved it works (15/15 ALIGNED, real
+isolated LLM turns, 5-layer isolation guarantees, zero persistence/UI
+leakage).
+
+Once the substrate exists, retrofitting heartbeat/cron executors onto it
+is no longer "inventing" — it is **using** the engine we just built. That
+is the opposite of M41 P6 concern; it is M41 P1 ("reuse framework, not
+patches") in its purest form.
+
+The user's original M58 vision was explicit: **"an autonomous AI that is
+awake and can act on events and feels more alive, on par with openclaw."**
+Shipping heartbeat and cron as status-only signal emitters fails that
+vision. Closing M58 with thin executors would mean delivering plumbing
+theater instead of autonomy. That is unacceptable.
+
+### Corrective scope (M58-real, added 2026-04-22)
+
+Three tasks added to M58 before closure:
+
+1. **W2-real**: Swap `HeartbeatTurnExecutor` body to use
+   `createEphemeralSession` + `sendRequest`. Introduce a
+   **reason→behavior matrix**:
+   - `interval` → status-only pulse (no real turn; would otherwise fire
+     every N minutes for no reason and generate token/noise waste)
+   - `system-event` (file save, index complete, workspace change)
+     → **real turn** with event context; debounced 30s per path
+   - `wake` (manual command palette trigger) → **real turn**
+   - `cron` → delegated to cron executor; heartbeat does nothing
+   - `hook` → **real turn** (explicit invocation)
+2. **W4-real**: Swap `CronTurnExecutor` body to use
+   `createEphemeralSession` + `sendRequest`. `payload.agentTurn` becomes
+   the user-message seed in the ephemeral session.
+   `payload.contextLines` finally seeds prior messages.
+3. **Integration tests**: file save → real turn → result card in chat;
+   cron with `agentTurn` → real turn → result card in chat; session
+   list stays clean in both.
+
+### Safety retained from original §6.5
+
+- `heartbeat.enabled` stays `false` by default. User opts in explicitly.
+- `system-event` reason is debounced (30s per event path) to prevent
+  file-watch storms.
+- Origin tagging (`ORIGIN_HEARTBEAT`, `ORIGIN_CRON`) + event sources not
+  reading router history keeps feedback loops structurally impossible.
+- Subagent depth cap + shared depth counter across parent + subagent loops.
+- Result cards are clearly labeled autonomous-origin so users can tell
+  real turns from user-initiated ones.
+
+### Rule change for remaining M58 work
+
+Any agent executing M58-real tasks MUST treat §6.5 as **inactive
+historical record**. Ship thin is NOT a constraint. Real LLM turns via
+substrate ARE the required behavior for `system-event`, `wake`, `hook`,
+and cron `agentTurn` execution paths.
+
+---
+
+<details>
+<summary>Original ship-thin decision (historical, NOT in force)</summary>
+
+**Original status:** In force for W2, W4, W5 executors in M58. Remediated in **M59**.
 
 ### The decision
 
@@ -461,9 +532,7 @@ The **"ship thin"** decision, recorded here so it is not forgotten:
    UX, event routing, tool definitions, and tests survive the swap. Only
    the executor body changes.
 
-### Remediation path
-
-Tracked as the **M59 primary deliverable**:
+### Remediation path (was M59, now M58-real)
 
 1. Build the isolated-turn substrate in
    `src/services/chatSessionPersistence.ts` + `chatDataService.ts` per
@@ -503,6 +572,8 @@ is still in M58 scope per the original plan. Only the cron/heartbeat
 *executor bodies* that would use that substrate are deferred. The
 subagent executor that W5 ships **does** use the substrate — subagent
 delivery is the minimum viable proof that the substrate works.
+
+</details>
 
 ---
 
