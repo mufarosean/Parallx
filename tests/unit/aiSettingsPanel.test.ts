@@ -286,12 +286,12 @@ describe('AISettingsPanel', () => {
     panel.dispose();
   });
 
-  it('renders all seven sections in content area', () => {
+  it('renders all eight sections in content area', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const sections = parent.querySelectorAll('.ai-settings-section');
-    expect(sections.length).toBe(7);
+    expect(sections.length).toBe(8);
     const ids = Array.from(sections).map(s => (s as HTMLElement).dataset.sectionId);
-    expect(ids).toEqual(['model', 'retrieval', 'agent', 'tools', 'advanced', 'preview', 'mcp']);
+    expect(ids).toEqual(['model', 'retrieval', 'agent', 'heartbeat', 'tools', 'advanced', 'preview', 'mcp']);
     panel.dispose();
   });
 

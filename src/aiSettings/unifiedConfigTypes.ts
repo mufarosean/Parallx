@@ -216,6 +216,36 @@ export interface IUnifiedToolsConfig {
   readonly enabledOverrides: Readonly<Record<string, boolean>>;
 }
 
+// ─── Heartbeat (M58 W2) ──────────────────────────────────────────────────────
+
+/**
+ * All allowed heartbeat trigger reasons. Mirrors
+ * {@link `src/openclaw/openclawHeartbeatRunner.ts`.HeartbeatReason} but kept
+ * as a separate config-facing union so the settings layer doesn't reach into
+ * openclaw/.
+ */
+export const HEARTBEAT_REASON_OPTIONS = ['interval', 'system-event', 'cron', 'wake', 'hook'] as const;
+export type HeartbeatReasonKey = typeof HEARTBEAT_REASON_OPTIONS[number];
+
+/**
+ * Configuration for the proactive heartbeat loop (M58 W2).
+ *
+ * Safety defaults (non-negotiable per M58 plan §5 "Critical safety defaults"):
+ *   - `enabled: false` — heartbeat ships OFF; user must opt in explicitly
+ *   - `intervalMs: 5 min` — clamped at runtime to `MIN/MAX_HEARTBEAT_INTERVAL_MS`
+ *   - `reasons`: allow all 5 by default; user can narrow the allowlist
+ *
+ * Upstream analog: heartbeat agent state + user-facing `heartbeat.md` controls.
+ */
+export interface IUnifiedHeartbeatConfig {
+  /** Master switch. Default `false`. */
+  readonly enabled: boolean;
+  /** Tick interval in ms. Runtime-clamped to [30s, 1h]. */
+  readonly intervalMs: number;
+  /** Reason allowlist. Reasons not in this set are silently ignored. */
+  readonly reasons: readonly HeartbeatReasonKey[];
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // The Full Unified Config
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -235,6 +265,8 @@ export interface IUnifiedAIConfig {
   readonly memory: IUnifiedMemoryConfig;
   readonly indexing: IUnifiedIndexingConfig;
   readonly tools: IUnifiedToolsConfig;
+  /** Heartbeat / proactive tick config (M58 W2). */
+  readonly heartbeat: IUnifiedHeartbeatConfig;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -458,6 +490,11 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
   tools: {
     enabledOverrides: {},
   },
+  heartbeat: {
+    enabled: false, // M58 W2: non-negotiable default — user opts in explicitly
+    intervalMs: 5 * 60 * 1000, // 5 minutes (runtime-clamped in HeartbeatRunner)
+    reasons: [...HEARTBEAT_REASON_OPTIONS], // allow all 5 by default
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -507,6 +544,7 @@ export function fromLegacyProfile(profile: AISettingsProfile): IUnifiedPreset {
       memory: { ...DEFAULT_UNIFIED_CONFIG.memory },
       indexing: { ...DEFAULT_UNIFIED_CONFIG.indexing },
       tools: { ...DEFAULT_UNIFIED_CONFIG.tools },
+      heartbeat: { ...DEFAULT_UNIFIED_CONFIG.heartbeat, reasons: [...DEFAULT_UNIFIED_CONFIG.heartbeat.reasons] },
     },
   };
 }

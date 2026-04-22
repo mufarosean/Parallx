@@ -43,6 +43,8 @@ import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManage
 import { ChatSurfacePlugin } from './surfaces/chatSurface.js';
 import { FilesystemSurfacePlugin } from '../../services/surfaces/filesystemSurface.js';
 import { CanvasSurfacePlugin } from '../canvas/surfaces/canvasSurface.js';
+import { HeartbeatRunner, type IHeartbeatConfig } from '../../openclaw/openclawHeartbeatRunner.js';
+import { createHeartbeatTurnExecutor } from '../../openclaw/openclawHeartbeatExecutor.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -1065,6 +1067,98 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     // Canvas — read-only stub in M58; real write path deferred to M59.
     surfaceRouter.registerSurface(new CanvasSurfacePlugin());
     context.subscriptions.push({ dispose: () => surfaceRouter.unregisterSurface('canvas') });
+  }
+
+  // ── 3c. Heartbeat runner (M58 W2) ──
+  //
+  // Wires the audit-closed HeartbeatRunner (D2 13/13 ALIGNED) to the workbench
+  // so that interval ticks + real workspace events (file changes, index
+  // completion, workspace-folder changes) drive narrow status-surface updates
+  // through the SurfaceRouter. See src/openclaw/openclawHeartbeatExecutor.ts
+  // for the scope-of-isolation decision.
+  //
+  // Safety defaults: the runner is constructed with `enabled: false` unless
+  // the user has explicitly opted in via AI settings. Interval is clamped to
+  // [30s, 1h]. Reasons outside the config allowlist are silently ignored.
+  //
+  // The runner is guarded on surfaceRouter + unifiedConfigService availability.
+  // Missing either → heartbeat is inert (no timer, no event queue growth).
+  if (surfaceRouter && unifiedConfigService) {
+    const readHeartbeatConfig = (): IHeartbeatConfig => {
+      const hb = unifiedConfigService.getEffectiveConfig().heartbeat;
+      return { enabled: hb.enabled, intervalMs: hb.intervalMs };
+    };
+
+    const executor = createHeartbeatTurnExecutor(surfaceRouter, () => ({
+      reasons: unifiedConfigService.getEffectiveConfig().heartbeat.reasons,
+    }));
+
+    const heartbeatRunner = new HeartbeatRunner(executor, readHeartbeatConfig);
+    context.subscriptions.push(heartbeatRunner);
+
+    // Honor initial config — start() no-ops when enabled=false.
+    heartbeatRunner.start();
+
+    // React to config changes: enabled flip → start/stop; interval change →
+    // restart so the next setTimeout is armed with the new value. Reasons
+    // changes are picked up live through the executor's config closure.
+    context.subscriptions.push(
+      unifiedConfigService.onDidChangeConfig(() => {
+        heartbeatRunner.stop();
+        heartbeatRunner.start();
+      }),
+    );
+
+    // ── W2.4a File-change events ──
+    if (fileService) {
+      context.subscriptions.push(
+        fileService.onDidFileChange((events) => {
+          // Coalesce burst events into a single pushEvent per resource; the
+          // runner's built-in input-level dedup (60s window) further absorbs
+          // repeats.
+          for (const ev of events) {
+            heartbeatRunner.pushEvent({
+              type: 'file-change',
+              payload: { path: ev.uri.toString(), changeType: ev.type },
+              timestamp: Date.now(),
+            });
+          }
+        }),
+      );
+    }
+
+    // ── W2.4b Indexer completion events ──
+    if (indexingPipelineService) {
+      context.subscriptions.push(
+        indexingPipelineService.onDidCompleteInitialIndex((stats) => {
+          heartbeatRunner.pushEvent({
+            type: 'index-complete',
+            payload: { ...stats },
+            timestamp: Date.now(),
+          });
+        }),
+      );
+    }
+
+    // ── W2.4c Workspace-change events ──
+    if (workspaceService) {
+      context.subscriptions.push(
+        workspaceService.onDidChangeFolders((e) => {
+          heartbeatRunner.pushEvent({
+            type: 'workspace-change',
+            payload: { added: e.added.length, removed: e.removed.length },
+            timestamp: Date.now(),
+          });
+        }),
+      );
+    }
+
+    // ── W2.5 Wake command ──
+    context.subscriptions.push(
+      api.commands.registerCommand('parallx.wakeAgent', () => {
+        heartbeatRunner.wake('wake');
+      }),
+    );
   }
 
   // ── 4. Build widget services bridge (delegates to ChatDataService) ──

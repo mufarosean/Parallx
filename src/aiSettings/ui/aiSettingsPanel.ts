@@ -21,6 +21,7 @@ import type { SettingsSection } from './sectionBase.js';
 import { ModelSection } from './sections/modelSection.js';
 import { RetrievalSection } from './sections/retrievalSection.js';
 import { AgentSection } from './sections/agentSection.js';
+import { HeartbeatSection } from './sections/heartbeatSection.js';
 import { ToolsSection } from './sections/toolsSection.js';
 import { AdvancedSection } from './sections/advancedSection.js';
 import { PreviewSection } from './sections/previewSection.js';
@@ -86,6 +87,7 @@ export class AISettingsPanel extends Disposable {
       this._register(new ModelSection(this._service, _languageModelsService)),
       this._register(new RetrievalSection(this._service, this._unifiedConfigService)),
       this._register(new AgentSection(this._service, this._unifiedConfigService)),
+      this._register(new HeartbeatSection(this._service, this._unifiedConfigService)),
       this._register(new ToolsSection(this._service, this._toolPickerServices, this._unifiedConfigService)),
       this._register(new AdvancedSection(this._service)),
       this._register(new PreviewSection(this._service)),
