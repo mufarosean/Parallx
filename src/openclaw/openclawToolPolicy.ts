@@ -164,6 +164,50 @@ export function surfaceSendRequiresApproval(surfaceId: string): boolean {
   return APPROVAL_REQUIRED_SURFACES.has(surfaceId);
 }
 
+// ---------------------------------------------------------------------------
+// Cron tool approval policy (M58 W4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cron tool actions that mutate scheduler state and therefore require user
+ * approval before the agent can invoke them.
+ *
+ * Upstream parity: cron-tool.ts gates create/update/delete actions behind
+ * user confirmation in the OpenClaw reply orchestration (write actions are
+ * never auto-approved). Read-only (status/list/runs) and user-initiated
+ * (run/wake) actions are free.
+ *
+ * Parallx posture (M58 W4):
+ *   - cron_add / cron_update / cron_remove → schedule mutation → approval
+ *   - cron_status / cron_list / cron_runs / cron_run / cron_wake → free
+ *     - status/list/runs are pure reads
+ *     - run/wake are user-initiated triggers that can only act on jobs the
+ *       user already approved into existence via cron_add
+ */
+const APPROVAL_REQUIRED_CRON_ACTIONS: ReadonlySet<string> = new Set([
+  'cron_add',
+  'cron_update',
+  'cron_remove',
+]);
+
+/**
+ * Whether the given cron tool name requires user approval under the default
+ * M58 policy. Unknown tool names return `false` (caller controls the
+ * registry; unregistered cron names aren't reachable).
+ */
+export function cronToolRequiresApproval(toolName: string): boolean {
+  return APPROVAL_REQUIRED_CRON_ACTIONS.has(toolName);
+}
+
+/**
+ * Resolve the default permission level for a cron tool.
+ * Centralised so both `cronTools.ts` (registration) and introspection
+ * surfaces use the same source of truth.
+ */
+export function cronToolPermissionLevel(toolName: string): ToolPermissionLevel {
+  return cronToolRequiresApproval(toolName) ? 'requires-approval' : 'always-allowed';
+}
+
 /**
  * Resolve the tool profile from a chat mode.
  *

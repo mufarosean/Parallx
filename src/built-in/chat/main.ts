@@ -45,6 +45,11 @@ import { FilesystemSurfacePlugin } from '../../services/surfaces/filesystemSurfa
 import { CanvasSurfacePlugin } from '../canvas/surfaces/canvasSurface.js';
 import { HeartbeatRunner, type IHeartbeatConfig } from '../../openclaw/openclawHeartbeatRunner.js';
 import { createHeartbeatTurnExecutor } from '../../openclaw/openclawHeartbeatExecutor.js';
+import { CronService, type HeartbeatWaker } from '../../openclaw/openclawCronService.js';
+import {
+  createCronTurnExecutor,
+  createCronContextLineFetcher,
+} from '../../openclaw/openclawCronExecutor.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -238,6 +243,18 @@ let _loadWriterIgnore: (() => Promise<unknown>) | undefined;
 
 export function activate(api: ParallxApi, context: ToolContext): void {
   _api = api;
+
+  // ── M58 W4 cron ↔ W2 heartbeat forward-link ──
+  //
+  // Cron's "next-heartbeat" wake mode needs a reference to the heartbeat
+  // runner, which is built AFTER cron in this activation. The ref is lazily
+  // resolved through this closure: cron holds the waker from §3d; the
+  // heartbeat block patches `cronHeartbeatRunnerRef` in §3c.
+  let cronService: CronService | undefined;
+  let cronHeartbeatRunnerRef: HeartbeatRunner | undefined;
+  const cronHeartbeatWaker: HeartbeatWaker = (reason) => {
+    cronHeartbeatRunnerRef?.wake(reason);
+  };
 
   // ── 1. Retrieve DI services ──
 
@@ -1043,7 +1060,39 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       };
     })();
 
-    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, canonicalMemorySearchAccessor, transcriptSearchAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath, surfaceRouter);
+    // ── CronService (M58 W4) ──
+    //
+    // The scheduler is instantiated here (before tool registration) so the 8
+    // cron tool actions (cron_status, cron_list, cron_add, cron_update,
+    // cron_remove, cron_run, cron_runs, cron_wake) have a live host.
+    //
+    // Ship-thin scope per Parallx_Milestone_58.md §6.5: the executor only
+    // routes origin-stamped status + notification surface deliveries. The
+    // `payload.agentTurn` string is preserved in delivery metadata for M59's
+    // isolated-turn substrate to pick up.
+    //
+    // Safety: jobs are created only by user-approved `cron_add` tool calls
+    // (see `openclawToolPolicy.ts#cronToolRequiresApproval`). No jobs exist
+    // by default, so the timer ticks over an empty map.
+    //
+    // Heartbeat wake-mode (`next-heartbeat`) is implemented via a lazy
+    // reference — the HeartbeatRunner is instantiated a few blocks below
+    // (§3c) and is patched into `cronHeartbeatRunnerRef` at that point.
+    // If cron fires before heartbeat is up, the wake is a no-op.
+    if (surfaceRouter) {
+      const cronExecutor = createCronTurnExecutor(surfaceRouter);
+      const cronContextFetcher = createCronContextLineFetcher({
+        getActiveSession: () => {
+          const id = _activeWidget?.getSession()?.id;
+          return id ? chatService.getSession(id) : undefined;
+        },
+      });
+      cronService = new CronService(cronExecutor, cronContextFetcher, cronHeartbeatWaker);
+      cronService.start();
+      context.subscriptions.push(cronService);
+    }
+
+    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, canonicalMemorySearchAccessor, transcriptSearchAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath, surfaceRouter, cronService);
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }
@@ -1095,6 +1144,14 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
     const heartbeatRunner = new HeartbeatRunner(executor, readHeartbeatConfig);
     context.subscriptions.push(heartbeatRunner);
+
+    // W4 → W2 link: complete the `next-heartbeat` cron wake-mode by handing
+    // the just-built runner to the waker closure that `cronService` already
+    // holds.
+    cronHeartbeatRunnerRef = heartbeatRunner;
+    context.subscriptions.push({
+      dispose: () => { cronHeartbeatRunnerRef = undefined; },
+    });
 
     // Honor initial config — start() no-ops when enabled=false.
     heartbeatRunner.start();

@@ -75,6 +75,7 @@ import {
 import { createRunCommandTool } from './terminalTools.js';
 import { createSurfaceSendTool, createSurfaceListTool } from './surfaceTools.js';
 import type { ISurfaceRouterService } from '../../../services/surfaceRouterService.js';
+import { createCronTools, type ICronToolHost } from './cronTools.js';
 
 // ── Registration ──
 
@@ -96,6 +97,7 @@ export function registerBuiltInTools(
   terminal?: IBuiltInToolTerminal,
   workspaceRoot?: string,
   surfaceRouter?: ISurfaceRouterService,
+  cronHost?: ICronToolHost,
 ): IDisposable[] {
   const disposables: IDisposable[] = [];
 
@@ -131,6 +133,8 @@ export function registerBuiltInTools(
     // ── Surface routing tools (M58 W6) ──
     createSurfaceSendTool(surfaceRouter),
     createSurfaceListTool(surfaceRouter),
+    // ── Cron scheduling tools (M58 W4) ──
+    ...createCronTools(cronHost),
   ];
 
   for (const tool of tools) {

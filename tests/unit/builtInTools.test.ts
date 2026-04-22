@@ -95,12 +95,21 @@ describe('registerBuiltInTools', () => {
     const disposables = registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
     // M58 W6: surface_send + surface_list bring the total to 24.
-    expect(toolsService.registeredTools).toHaveLength(24);
-    expect(disposables).toHaveLength(24);
+    // M58 W4: 8 cron tools bring the total to 32.
+    expect(toolsService.registeredTools).toHaveLength(32);
+    expect(disposables).toHaveLength(32);
 
     const names = toolsService.registeredTools.map(t => t.name).sort();
     expect(names).toEqual([
       'create_page',
+      'cron_add',
+      'cron_list',
+      'cron_remove',
+      'cron_run',
+      'cron_runs',
+      'cron_status',
+      'cron_update',
+      'cron_wake',
       'delete_file',
       'edit_file',
       'find_pages_by_property',
