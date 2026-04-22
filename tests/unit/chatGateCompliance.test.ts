@@ -85,6 +85,8 @@ const FOLDER_RULES: Record<string, string[]> = {
   'tools/terminalTools.ts': [],
   'tools/transcriptTools.ts': [],
   'tools/writeTools.ts':    [],
+  'tools/surfaceTools.ts':  [],                // M58 W6 — surface_send / surface_list
+  'surfaces/chatSurface.ts': [],                // M58 W6 — ChatSurfacePlugin (trace logger)
 
   // ── widgets/ — chat widget components ───────────────────────────────────
   'widgets/chatSessionSidebar.ts': ['chatIcons'],

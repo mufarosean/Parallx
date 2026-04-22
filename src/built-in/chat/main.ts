@@ -39,7 +39,10 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, ISurfaceRouterService } from '../../services/serviceTypes.js';
+import { ChatSurfacePlugin } from './surfaces/chatSurface.js';
+import { FilesystemSurfacePlugin } from '../../services/surfaces/filesystemSurface.js';
+import { CanvasSurfacePlugin } from '../canvas/surfaces/canvasSurface.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -260,6 +263,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     : undefined;
   const fileService = api.services.has(IFileService)
     ? api.services.get<import('../../services/serviceTypes.js').IFileService>(IFileService)
+    : undefined;
+  const surfaceRouter = api.services.has(ISurfaceRouterService)
+    ? api.services.get<import('../../services/surfaceRouterService.js').ISurfaceRouterService>(ISurfaceRouterService)
     : undefined;
   let retrievalService = api.services.has(IRetrievalService)
     ? api.services.get<import('../../services/serviceTypes.js').IRetrievalService>(IRetrievalService)
@@ -1035,10 +1041,30 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       };
     })();
 
-    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, canonicalMemorySearchAccessor, transcriptSearchAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath);
+    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, canonicalMemorySearchAccessor, transcriptSearchAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath, surfaceRouter);
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }
+  }
+
+  // ── 3b. Register chat-owned surface plugins (M58 W6) ──
+  // The surface router is created in the workbench Phase 5; the chat-owned
+  // plugins (chat, filesystem, canvas) can only be built here because their
+  // backing services live in chat activation scope.
+  if (surfaceRouter) {
+    // Chat surface — currently a trace-only logger; W5 will extend for
+    // sub-agent quoted-card appends. See src/built-in/chat/surfaces/chatSurface.ts.
+    surfaceRouter.registerSurface(new ChatSurfacePlugin());
+    context.subscriptions.push({ dispose: () => surfaceRouter.unregisterSurface('chat') });
+
+    if (fileService) {
+      surfaceRouter.registerSurface(new FilesystemSurfacePlugin(fileService, workspaceService));
+      context.subscriptions.push({ dispose: () => surfaceRouter.unregisterSurface('filesystem') });
+    }
+
+    // Canvas — read-only stub in M58; real write path deferred to M59.
+    surfaceRouter.registerSurface(new CanvasSurfacePlugin());
+    context.subscriptions.push({ dispose: () => surfaceRouter.unregisterSurface('canvas') });
   }
 
   // ── 4. Build widget services bridge (delegates to ChatDataService) ──

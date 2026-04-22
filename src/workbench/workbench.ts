@@ -14,7 +14,10 @@ import { addDisposableListener } from '../ui/dom.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IWorkspaceTranscriptService, IGlobalStorageService, IWorkspaceStorageService } from '../services/serviceTypes.js';
+import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IWorkspaceTranscriptService, IGlobalStorageService, IWorkspaceStorageService, ISurfaceRouterService } from '../services/serviceTypes.js';
+import { SurfaceRouterService } from '../services/surfaceRouterService.js';
+import { NotificationsSurfacePlugin } from './surfaces/notificationSurface.js';
+import { StatusSurfacePlugin } from './surfaces/statusSurface.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices, registerUnifiedAIConfigService } from './workbenchServices.js';
 import { IChatService, ILanguageModelsService, ILanguageModelToolsService } from '../services/chatTypes.js';
@@ -2142,6 +2145,23 @@ export class Workbench extends Layout {
     const notificationService = this._services.has(INotificationService)
       ? this._services.get(INotificationService)
       : undefined;
+
+    // ── Surface Router (M58 W6) ──
+    // Instantiate the workbench-owned SurfaceRouter + register the plugins
+    // whose dependencies (status bar, notification service) are already
+    // available here. Chat / filesystem / canvas plugins are registered by
+    // the chat extension during its activation (it owns chatService /
+    // fsAccessor / db). See src/built-in/chat/main.ts.
+    const surfaceRouter = this._register(new SurfaceRouterService());
+    this._services.registerInstance(ISurfaceRouterService, surfaceRouter);
+    if (notificationService) {
+      surfaceRouter.registerSurface(
+        new NotificationsSurfacePlugin(notificationService),
+      );
+    }
+    surfaceRouter.registerSurface(
+      new StatusSurfacePlugin(this._statusBar as unknown as StatusBarPart),
+    );
 
     // Register contribution processors (M2 Capability 5)
     const { commandContribution, keybindingContribution, menuContribution, keybindingService } =

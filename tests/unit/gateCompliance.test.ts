@@ -64,6 +64,7 @@ const EXEMPT_FILES = new Set([
   'properties/propertyBar.css',    // Property bar styles (M55 D3)
   'properties/propertyEditors.ts', // Type-specific editors (M55 D3)
   'properties/propertyPicker.ts',  // Add-property picker (M55 D3)
+  'surfaces/canvasSurface.ts',     // M58 W6 — CanvasSurfacePlugin (read-only stub; no canvas-internal imports)
 ]);
 
 // ── Child → allowed gate path fragments ─────────────────────────────────────

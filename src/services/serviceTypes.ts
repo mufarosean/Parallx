@@ -848,6 +848,21 @@ export interface INotificationService extends IDisposable {
 
 export const INotificationService = createServiceIdentifier<INotificationService>('INotificationService');
 
+// ─── ISurfaceRouterService (M58 W6) ──────────────────────────────────────────
+
+import type { ISurfaceRouterService as ISurfaceRouterServiceType } from './surfaceRouterService.js';
+/**
+ * Multi-surface output router — wires agent output to non-chat surfaces
+ * (notifications, status bar, filesystem, canvas) via registered plugins.
+ *
+ * Upstream parity: ChannelPlugin registry (github.com/openclaw/openclaw
+ * src/channels/). Full interface lives in `surfaceRouterService.ts`; this
+ * file only exposes the DI identifier so the workbench can bind it without
+ * importing the openclaw module directly.
+ */
+export const ISurfaceRouterService =
+  createServiceIdentifier<ISurfaceRouterServiceType>('ISurfaceRouterService');
+
 // ─── IActivationEventService ─────────────────────────────────────────────────
 
 import type { ActivationRequest, ParsedActivationEvent } from '../tools/activationEventService.js';

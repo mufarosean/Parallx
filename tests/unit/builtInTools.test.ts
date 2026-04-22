@@ -94,8 +94,9 @@ describe('registerBuiltInTools', () => {
 
     const disposables = registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
-    expect(toolsService.registeredTools).toHaveLength(22);
-    expect(disposables).toHaveLength(22);
+    // M58 W6: surface_send + surface_list bring the total to 24.
+    expect(toolsService.registeredTools).toHaveLength(24);
+    expect(disposables).toHaveLength(24);
 
     const names = toolsService.registeredTools.map(t => t.name).sort();
     expect(names).toEqual([
@@ -118,6 +119,8 @@ describe('registerBuiltInTools', () => {
       'search_knowledge',
       'search_workspace',
       'set_page_property',
+      'surface_list',
+      'surface_send',
       'transcript_get',
       'transcript_search',
       'write_file',

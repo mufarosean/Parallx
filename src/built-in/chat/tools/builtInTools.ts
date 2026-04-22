@@ -73,6 +73,8 @@ import {
   createDeleteFileTool,
 } from './writeTools.js';
 import { createRunCommandTool } from './terminalTools.js';
+import { createSurfaceSendTool, createSurfaceListTool } from './surfaceTools.js';
+import type { ISurfaceRouterService } from '../../../services/surfaceRouterService.js';
 
 // ── Registration ──
 
@@ -93,6 +95,7 @@ export function registerBuiltInTools(
   writer?: IBuiltInToolFileWriter,
   terminal?: IBuiltInToolTerminal,
   workspaceRoot?: string,
+  surfaceRouter?: ISurfaceRouterService,
 ): IDisposable[] {
   const disposables: IDisposable[] = [];
 
@@ -125,6 +128,9 @@ export function registerBuiltInTools(
     createRunCommandTool(terminal, workspaceRoot),
     // ── RAG tools (M10 Phase 3) ──
     createSearchKnowledgeTool(retrieval),
+    // ── Surface routing tools (M58 W6) ──
+    createSurfaceSendTool(surfaceRouter),
+    createSurfaceListTool(surfaceRouter),
   ];
 
   for (const tool of tools) {

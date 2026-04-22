@@ -131,6 +131,39 @@ export function applyOpenclawToolPolicy(params: {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Surface routing approval policy (M58 W6)
+// ---------------------------------------------------------------------------
+
+/**
+ * Surfaces that require user approval before an agent can write to them.
+ *
+ * Upstream parity: channel outbound-policy inspection (github.com/openclaw/openclaw
+ * src/channels/) — persistent / user-destructive channels are gated.
+ *
+ * Parallx posture (M58):
+ *   - filesystem, canvas → persistence risk → approval required
+ *   - chat, notifications, status → ephemeral / user-visible only → free
+ *
+ * NOTE for M58: the `surface_send` tool is shipped with uniform
+ * `requires-approval` at the tool level, so every send is approved today.
+ * This helper is consumed by the tool handler to surface per-surface
+ * metadata (`approvalRequiredForSurface`) and by `surface_list` for
+ * introspection, and is the hook W2+ AI settings will loosen.
+ */
+const APPROVAL_REQUIRED_SURFACES: ReadonlySet<string> = new Set([
+  'filesystem',
+  'canvas',
+]);
+
+/**
+ * Whether a `surface_send` targeting the given surface id requires approval
+ * under the default M58 policy.
+ */
+export function surfaceSendRequiresApproval(surfaceId: string): boolean {
+  return APPROVAL_REQUIRED_SURFACES.has(surfaceId);
+}
+
 /**
  * Resolve the tool profile from a chat mode.
  *
