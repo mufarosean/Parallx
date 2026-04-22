@@ -96,8 +96,9 @@ describe('registerBuiltInTools', () => {
 
     // M58 W6: surface_send + surface_list bring the total to 24.
     // M58 W4: 8 cron tools bring the total to 32.
-    expect(toolsService.registeredTools).toHaveLength(32);
-    expect(disposables).toHaveLength(32);
+    // M58 W5: sessions_spawn brings the total to 33.
+    expect(toolsService.registeredTools).toHaveLength(33);
+    expect(disposables).toHaveLength(33);
 
     const names = toolsService.registeredTools.map(t => t.name).sort();
     expect(names).toEqual([
@@ -127,6 +128,7 @@ describe('registerBuiltInTools', () => {
       'search_files',
       'search_knowledge',
       'search_workspace',
+      'sessions_spawn',
       'set_page_property',
       'surface_list',
       'surface_send',

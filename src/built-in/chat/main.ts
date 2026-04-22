@@ -50,6 +50,11 @@ import {
   createCronTurnExecutor,
   createCronContextLineFetcher,
 } from '../../openclaw/openclawCronExecutor.js';
+import { SubagentSpawner } from '../../openclaw/openclawSubagentSpawn.js';
+import {
+  createSubagentTurnExecutor,
+  createSubagentAnnouncer,
+} from '../../openclaw/openclawSubagentExecutor.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -1092,7 +1097,52 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       context.subscriptions.push(cronService);
     }
 
-    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, canonicalMemorySearchAccessor, transcriptSearchAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath, surfaceRouter, cronService);
+    // ── SubagentSpawner (M58 W5) ──
+    //
+    // The keystone domain: W5 builds the ephemeral-session substrate AND
+    // the first real isolated-turn consumer of it. Unlike W2/W4 (which
+    // ship thin per §6.5), W5 runs a live LLM turn on an ephemeral
+    // session so the parent's `messages[]`, the `chat_sessions` table,
+    // and the session-list UI stay untouched.
+    //
+    // Safety: `sessions_spawn` is always approval-gated
+    // (`subagentToolPermissionLevel` returns `requires-approval`
+    // uniformly) — no exemptions. Depth is hard-capped at 1 for M58 via
+    // the `currentSubagentDepth()` guard inside the tool handler AND the
+    // SubagentSpawner's own `callerDepth >= maxDepth` gate.
+    let subagentSpawner: SubagentSpawner | undefined;
+    if (surfaceRouter) {
+      const getParentSessionId = () => _activeWidget?.getSession()?.id;
+      // Narrow adapter over the concrete ChatService class — the
+      // ephemeral-session substrate (createEphemeralSession /
+      // purgeEphemeralSession) lives on the class, not the public
+      // IChatService interface, so the subagent executor can remain
+      // decoupled from the full service surface.
+      const chatServiceForSubagent = chatService as unknown as import('../../services/chatService.js').ChatService;
+      const subagentExecutor = createSubagentTurnExecutor({
+        chatService: {
+          createEphemeralSession: (parentId, seed) =>
+            chatServiceForSubagent.createEphemeralSession(parentId, seed),
+          purgeEphemeralSession: (handle) =>
+            chatServiceForSubagent.purgeEphemeralSession(handle),
+          sendRequest: (sid, msg, opts) => chatService.sendRequest(sid, msg, opts),
+          getSession: (sid) => chatService.getSession(sid),
+        },
+        getParentSessionId,
+      });
+      const subagentAnnouncer = createSubagentAnnouncer({
+        surfaceRouter,
+        getParentSessionId,
+      });
+      subagentSpawner = new SubagentSpawner(
+        subagentExecutor,
+        subagentAnnouncer,
+        /* maxDepth */ 1,
+      );
+      context.subscriptions.push(subagentSpawner);
+    }
+
+    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, canonicalMemorySearchAccessor, transcriptSearchAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath, surfaceRouter, cronService, subagentSpawner);
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }

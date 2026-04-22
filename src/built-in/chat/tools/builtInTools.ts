@@ -76,6 +76,8 @@ import { createRunCommandTool } from './terminalTools.js';
 import { createSurfaceSendTool, createSurfaceListTool } from './surfaceTools.js';
 import type { ISurfaceRouterService } from '../../../services/surfaceRouterService.js';
 import { createCronTools, type ICronToolHost } from './cronTools.js';
+import { createSessionsSpawnTool } from './subagentTools.js';
+import type { SubagentSpawner } from '../../../openclaw/openclawSubagentSpawn.js';
 
 // ── Registration ──
 
@@ -98,6 +100,7 @@ export function registerBuiltInTools(
   workspaceRoot?: string,
   surfaceRouter?: ISurfaceRouterService,
   cronHost?: ICronToolHost,
+  subagentSpawner?: SubagentSpawner,
 ): IDisposable[] {
   const disposables: IDisposable[] = [];
 
@@ -135,6 +138,8 @@ export function registerBuiltInTools(
     createSurfaceListTool(surfaceRouter),
     // ── Cron scheduling tools (M58 W4) ──
     ...createCronTools(cronHost),
+    // ── Subagent spawn tool (M58 W5) ──
+    createSessionsSpawnTool(subagentSpawner),
   ];
 
   for (const tool of tools) {

@@ -208,6 +208,39 @@ export function cronToolPermissionLevel(toolName: string): ToolPermissionLevel {
   return cronToolRequiresApproval(toolName) ? 'requires-approval' : 'always-allowed';
 }
 
+// ---------------------------------------------------------------------------
+// Subagent tool approval policy (M58 W5)
+// ---------------------------------------------------------------------------
+
+/**
+ * The `sessions_spawn` tool (M58 W5) delegates work to an isolated
+ * subagent turn that runs a real LLM call against an ephemeral session.
+ *
+ * **Subagent spawn is ALWAYS approval-gated** — no read-only exemption, no
+ * dev-mode bypass, no per-surface loosening (unlike the `surface_send`
+ * helper in this file which has a per-surface carve-out map). Spawning a
+ * subagent is a privileged action: it consumes model tokens, runs with
+ * full tool access inside an isolated session, and returns a result the
+ * parent agent will treat as trusted context. The user must approve every
+ * spawn.
+ *
+ * Upstream parity: subagent-spawn.ts + sessions-spawn-tool.ts in
+ * github.com/openclaw/openclaw require explicit caller opt-in for each
+ * spawn. Parallx enforces this via the M11 3-tier permission system.
+ */
+export function subagentToolRequiresApproval(_toolName: string): boolean {
+  return true;
+}
+
+/**
+ * Permission level for subagent tools. Always `requires-approval` by
+ * design (see `subagentToolRequiresApproval`). Kept as a function to match
+ * the shape of `cronToolPermissionLevel` / `surfaceSendRequiresApproval`.
+ */
+export function subagentToolPermissionLevel(_toolName: string): ToolPermissionLevel {
+  return 'requires-approval';
+}
+
 /**
  * Resolve the tool profile from a chat mode.
  *

@@ -71,6 +71,35 @@ const CREATE_MESSAGES_INDEX = `
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session
 ON chat_messages(session_id, sort_order)`;
 
+// ── Ephemeral session substrate (M58 W5-A) ──
+//
+// Ephemeral sessions are in-memory scratch sessions used by the
+// SubagentSpawner so an isolated LLM turn can run end-to-end without
+// polluting the parent chat transcript, the `chat_sessions` table, or the
+// session-list UI.
+//
+// The substrate contract is enforced through a single session-id prefix
+// (`EPHEMERAL_SESSION_ID_PREFIX`). Every persistence entry point here —
+// `saveSession`, `deletePersistedSession` — early-returns on ephemeral ids
+// so a `chatService.sendRequest` against an ephemeral session cannot
+// accidentally leak a row into SQLite. `chatService.getSessions()` filters
+// on the same prefix so the chat list UI never surfaces them.
+//
+// This is the isolation facility M59 will retrofit onto the W2/W4
+// heartbeat and cron executors (see Parallx_Milestone_58.md §6.5).
+
+/** Prefix marking a session as ephemeral (non-persisted, non-listed). */
+export const EPHEMERAL_SESSION_ID_PREFIX = 'ephemeral-';
+
+/**
+ * Whether the given session id identifies an ephemeral (scratch) session.
+ * Ephemeral sessions MUST NOT be persisted, listed, or counted in any UI
+ * surface that reports "current chats."
+ */
+export function isEphemeralSessionId(sessionId: string): boolean {
+  return sessionId.startsWith(EPHEMERAL_SESSION_ID_PREFIX);
+}
+
 // ── Public API ──
 
 /**
@@ -109,6 +138,8 @@ export async function ensureChatTables(db: IChatPersistenceDatabase): Promise<vo
  */
 export async function saveSession(db: IChatPersistenceDatabase, session: IChatSession, workspaceId: string = ''): Promise<void> {
   if (!db.isOpen) { return; }
+  // W5-A: ephemeral sessions never touch SQLite. Isolation invariant.
+  if (isEphemeralSessionId(session.id)) { return; }
 
   await db.run('BEGIN IMMEDIATE');
   try {
@@ -307,6 +338,9 @@ export async function adoptOrphanedSessions(
  */
 export async function deletePersistedSession(db: IChatPersistenceDatabase, sessionId: string): Promise<void> {
   if (!db.isOpen) { return; }
+  // W5-A: ephemeral sessions never had a row to delete. Keep the call a no-op
+  // so upstream purge paths stay simple (no branch on id at the call site).
+  if (isEphemeralSessionId(sessionId)) { return; }
   await db.run(`DELETE FROM chat_sessions WHERE id = ?`, [sessionId]);
 }
 

@@ -87,6 +87,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'tools/writeTools.ts':    [],
   'tools/surfaceTools.ts':  [],                // M58 W6 — surface_send / surface_list
   'tools/cronTools.ts':     [],                // M58 W4 — 8 cron_* scheduler actions
+  'tools/subagentTools.ts': [],                // M58 W5 — sessions_spawn
   'surfaces/chatSurface.ts': [],                // M58 W6 — ChatSurfacePlugin (trace logger)
 
   // ── widgets/ — chat widget components ───────────────────────────────────

@@ -31,6 +31,8 @@ import {
   saveSession,
   loadSessions,
   deletePersistedSession,
+  isEphemeralSessionId,
+  EPHEMERAL_SESSION_ID_PREFIX,
 } from './chatSessionPersistence.js';
 import type { IChatPersistenceDatabase } from './chatSessionPersistence.js';
 import type { ISessionManager, IWorkspaceTranscriptService } from './serviceTypes.js';
@@ -72,6 +74,39 @@ import { ChatRequestQueueKind } from './chatTypes.js';
 // ── Session URI scheme ──
 
 const CHAT_SESSION_SCHEME = 'parallx-chat-session';
+
+// ── Ephemeral session handle types (M58 W5-A) ──
+
+/**
+ * Seed passed to `ChatService.createEphemeralSession`.
+ *
+ * Every field is optional by design — M58 captures all four fields on the
+ * handle so M59 can adopt them without widening the substrate API. The
+ * current subagent executor consumes `firstUserMessage` (via the caller
+ * deciding when to invoke sendRequest) and inherits loop-safety through
+ * the per-turn ChatToolLoopSafety instance.
+ */
+export interface IEphemeralSessionSeed {
+  /** Optional system-prompt override captured for M59 retrofits. */
+  readonly systemMessage?: string;
+  /** Informational: the first user message the caller plans to send. */
+  readonly firstUserMessage?: string;
+  /** Optional tool allowlist (M59). */
+  readonly toolsEnabled?: readonly string[];
+  /** Parent loop-safety context snapshot (M59 shared-counter hook). */
+  readonly loopSafetyContext?: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Opaque handle returned by `ChatService.createEphemeralSession`. The caller
+ * drives the turn with `chatService.sendRequest(handle.sessionId, ...)` and
+ * releases scratch state with `chatService.purgeEphemeralSession(handle)`.
+ */
+export interface IEphemeralSessionHandle {
+  readonly sessionId: string;
+  readonly parentId: string;
+  readonly seed: IEphemeralSessionSeed;
+}
 
 // ── UUID generator ──
 
@@ -772,6 +807,11 @@ export class ChatService extends Disposable implements IChatService {
    * Coalesces multiple writes within 500ms.
    */
   private _schedulePersist(sessionId: string): void {
+    // W5-A: ephemeral sessions never persist. Guard here (at the single
+    // schedule site) so the downstream saveSession + transcriptService paths
+    // are not reached at all — belt-and-braces with the saveSession() guard
+    // inside chatSessionPersistence.ts.
+    if (isEphemeralSessionId(sessionId)) { return; }
     if (!this._database && !this._transcriptService) { return; }
     this._pendingPersistIds.add(sessionId);
     if (this._persistTimer !== undefined) {
@@ -869,7 +909,95 @@ export class ChatService extends Disposable implements IChatService {
   }
 
   getSessions(): readonly IChatSession[] {
-    return [...this._sessions.values()];
+    // W5-A: ephemeral (scratch) sessions MUST NOT appear in any UI session
+    // list. Filtering here centralises the invariant — every list consumer
+    // (sidebar, session switcher, workspace transcript writer) routes through
+    // getSessions() so they all inherit the filter.
+    return [...this._sessions.values()].filter((s) => !isEphemeralSessionId(s.id));
+  }
+
+  // ── Ephemeral session substrate (M58 W5-A) ──
+  //
+  // Creates an in-memory session that:
+  //   • participates in the normal sendRequest pipeline (tool loop, approval
+  //     flow, loop-safety ChatToolLoopSafety per-turn instance),
+  //   • is NEVER persisted (saveSession early-returns on ephemeral ids),
+  //   • is NEVER surfaced by getSessions() or createSession events,
+  //   • is purged by purgeEphemeralSession() after the caller captures the
+  //     final assistant response.
+  //
+  // This is the minimum facility the SubagentSpawner needs to run a real
+  // isolated turn without polluting the parent session's messages[] or the
+  // chat_sessions table. M59 retrofits heartbeat + cron executors onto the
+  // same substrate (see Parallx_Milestone_58.md §6.5).
+
+  /**
+   * Create a scratch session for an isolated turn. The returned handle's
+   * `sessionId` is usable by `sendRequest` immediately; the session is NOT
+   * visible to `getSessions()` and NOT persisted.
+   *
+   * @param parentId Id of the parent chat session (informational — preserved
+   *   on the handle for loop-safety context; the ephemeral session never
+   *   mutates the parent's messages[]).
+   * @param seed Optional turn seeding:
+   *   - `systemMessage`: future system-prompt override (captured on handle
+   *     for M59; M58 executor doesn't consume it yet)
+   *   - `firstUserMessage`: informational — the caller decides when/how to
+   *     drive `sendRequest`
+   *   - `toolsEnabled`: future tool allowlist (captured for M59)
+   *   - `loopSafetyContext`: parent's loop safety snapshot (captured for
+   *     future shared-counter wiring; per-turn ChatToolLoopSafety already
+   *     provides bounded iteration today)
+   */
+  createEphemeralSession(parentId: string, seed: IEphemeralSessionSeed = {}): IEphemeralSessionHandle {
+    const id = EPHEMERAL_SESSION_ID_PREFIX + generateUUID();
+    const sessionResource = URI.from({ scheme: CHAT_SESSION_SCHEME, path: `/${id}` });
+
+    const parent = this._sessions.get(parentId);
+    const session: IChatSession = {
+      id,
+      sessionResource,
+      createdAt: Date.now(),
+      title: 'Ephemeral (subagent)',
+      mode: parent?.mode ?? this._modeService.getMode(),
+      modelId: parent?.modelId ?? this._languageModelsService.getActiveModel() ?? '',
+      messages: [],
+      requestInProgress: false,
+      pendingRequests: [],
+    };
+
+    this._sessions.set(id, session);
+    // Deliberately DO NOT fire onDidCreateSession: ephemeral sessions must
+    // not trigger chat-list re-renders or sidebar updates.
+    return {
+      sessionId: id,
+      parentId,
+      seed,
+    };
+  }
+
+  /**
+   * Purge an ephemeral session from in-memory state. Cancels any pending
+   * request, clears cancellation source, and drops the session from
+   * `_sessions`. Persistence was never touched.
+   */
+  purgeEphemeralSession(handle: IEphemeralSessionHandle): void {
+    const { sessionId } = handle;
+    if (!isEphemeralSessionId(sessionId)) {
+      // Defensive: caller can only mint handles via createEphemeralSession,
+      // but ignore non-ephemeral ids to avoid accidental deletion of real
+      // chat sessions if a stale handle is replayed.
+      return;
+    }
+    const cts = this._activeCancellations.get(sessionId);
+    if (cts) {
+      cts.cancel();
+      cts.dispose();
+      this._activeCancellations.delete(sessionId);
+    }
+    this._sessions.delete(sessionId);
+    this._pendingPersistIds.delete(sessionId);
+    // No onDidDeleteSession event — listeners never saw this session created.
   }
 
   // ── Request Orchestration ──
