@@ -18,7 +18,7 @@ Parallx autonomy is four coordinated pieces:
 |---|---|---|
 | **MCP server** | Gives the agent tools to talk to external systems (Gmail, Slack, databases, etc.) | `AI Settings → MCP Servers` |
 | **Cron scheduler** | Fires autonomous agent turns at a wall-clock schedule | `AI Settings → Scheduled jobs` (the agent manages jobs via `cron_add` / `cron_list` / `cron_remove`) |
-| **Autonomy Log** | Dedicated in-memory log where every autonomous result lands, tagged by origin (`heartbeat`, `cron`, `subagent`). Your chat transcript stays clean. | `AI Settings → Autonomy Log` |
+| **Autonomy Log** | Dedicated panel tab where every autonomous result lands, tagged by origin (`heartbeat`, `cron`, `subagent`). Sits next to Indexing Log and AI Diagnostics so your chat transcript stays clean. | Panel tab → **Autonomy Log** |
 | **`autonomy_log` tool** | Lets the agent read the log back between turns, so it can tell you what ran while you were away | Built-in, always-allowed |
 
 The flow for our Gmail scenario:
@@ -40,7 +40,7 @@ The flow for our Gmail scenario:
                                                       └──────────────┘
 ```
 
-The key shift from earlier revisions: **autonomous results do not auto-post into your chat.** They land in the Autonomy Log. The agent can read them with the `autonomy_log` tool when you ask "what happened?" — or you open the log directly in AI Settings.
+The key shift from earlier revisions: **autonomous results do not auto-post into your chat.** They land in the Autonomy Log panel tab (same row as Indexing Log and AI Diagnostics). The agent can read them with the `autonomy_log` tool when you ask "what happened?" — or you click the panel tab to browse them directly.
 
 ---
 
@@ -138,7 +138,7 @@ At 08:00 on a weekday:
 4. When the turn finishes, the ephemeral session is purged. Its last assistant message is routed through the **surface router** (origin-tagged `cron`, feedback-loop guard applied) to `SURFACE_CHAT`.
 5. The **chat surface plugin** appends the result to the **Autonomy Log** — not to your chat transcript. The entry carries the origin (`cron`), the job label (`[cron · morning-mail]`), the full markdown report, and a timestamp.
 
-When you next look, you'll see it in **AI Settings → Autonomy Log**:
+When you next look, you'll see it in the **Autonomy Log** panel tab:
 
 > **[cron · morning-mail]**   *Mon 08:00:04*   🟣 unread
 >
@@ -205,13 +205,13 @@ All through chat:
 | *"Change morning-mail to 7am"* | `cron_update { schedule: { cron: "0 7 * * 1-5" } }` | **Yes** |
 | *"Delete morning-mail"* | `cron_remove` | **Yes** |
 
-Or use **AI Settings → Scheduled jobs** (for cron) and **AI Settings → Autonomy Log** (for results) for the same actions in a UI.
+Or use **AI Settings → Scheduled jobs** (for cron) and the **Autonomy Log** panel tab (for results) for the same actions in a UI.
 
 ---
 
 ## 9. What *doesn't* work today (and the workaround)
 
-- **Push notifications** — the Autonomy Log is a pull surface. You have to either open AI Settings → Autonomy Log or ask the agent what ran. If you want a ping, the cron prompt can end with `gmail_send(...)` to mail the report to yourself, or hit another MCP you have wired up (Slack, Discord, push notification service).
+- **Push notifications** — the Autonomy Log is a pull surface. You have to either click the Autonomy Log panel tab or ask the agent what ran. If you want a ping, the cron prompt can end with `gmail_send(...)` to mail the report to yourself, or hit another MCP you have wired up (Slack, Discord, push notification service).
 - **Persistence across restarts** — the Autonomy Log is in-memory with a 200-entry ring buffer. Quit Parallx and the log is gone. File-backed persistence is on the M53 roadmap. For durable archives today, end the cron prompt with a `fs_write` to a file in your workspace.
 - **Webhook / email / Slack delivery** — cron can't push the report *out* of Parallx by itself. The agent's turn prompt ending with `gmail_send(...)` is the real workaround and it works today.
 - **Conditional skipping** — cron doesn't have native "skip if no unread." The agent can do this itself in the prompt: *"If there are no unread messages from the last 24 hours, reply with exactly 'no mail.'"* — then a one-line log entry is your signal that it ran and had nothing to report.
@@ -250,7 +250,7 @@ Chat: "morning mail"                ← foreground turn, goes to chat
    or: "run morning-mail now"       ← cron_run; result goes to Autonomy Log
 
 # Catch up after the fact
-AI Settings → Autonomy Log          ← read it directly
+Panel tab → Autonomy Log         ← browse entries, filter, mark read
    or: "what did cron do overnight?"  ← agent reads via autonomy_log tool
 
 # Manage cron
