@@ -178,6 +178,27 @@ export const DIAGNOSTICS_MANIFEST: IToolManifest = {
   },
 };
 
+// ── Autonomy Log (M58-real post-ship UX reshape) ─────────────────────────
+
+export const AUTONOMY_LOG_MANIFEST: IToolManifest = {
+  manifestVersion: 1,
+  id: 'parallx.autonomy-log',
+  name: 'Autonomy Log',
+  version: '1.0.0',
+  publisher: 'parallx',
+  description: 'Dedicated view for heartbeat, cron, and subagent run results — keeps autonomous activity out of the chat transcript.',
+  main: './main.js',
+  engines: { parallx: '^0.1.0' },
+  activationEvents: ['onStartupFinished'],
+  contributes: {
+    commands: [
+      { id: 'autonomyLog.markAllRead', title: 'Autonomy Log: Mark All Read' },
+      { id: 'autonomyLog.clear',       title: 'Autonomy Log: Clear' },
+    ],
+    views: [{ id: 'view.autonomyLog', name: 'Autonomy Log', defaultContainerId: 'panel' }],
+  },
+};
+
 // ── Tool Gallery ─────────────────────────────────────────────────────────
 
 export const TOOL_GALLERY_MANIFEST: IToolManifest = {

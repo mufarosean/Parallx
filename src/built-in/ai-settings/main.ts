@@ -5,7 +5,7 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { IAISettingsService, IUnifiedAIConfigService, INotificationService, IWorkspaceMemoryService, IMcpClientService, IAutonomyLogService } from '../../services/serviceTypes.js';
+import { IAISettingsService, IUnifiedAIConfigService, INotificationService, IWorkspaceMemoryService, IMcpClientService } from '../../services/serviceTypes.js';
 import { ILanguageModelsService, ILanguageModelToolsService } from '../../services/chatTypes.js';
 import type { IToolPickerServices } from '../../services/chatTypes.js';
 import { AISettingsPanel } from '../../aiSettings/ui/aiSettingsPanel.js';
@@ -100,16 +100,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     ? api.services.get<import('../../openclaw/mcp/mcpClientService.js').McpClientService>(IMcpClientService)
     : undefined;
 
-  // Autonomy log (M58-real post-ship UX reshape)
-  const autonomyLogService = api.services.has(IAutonomyLogService)
-    ? api.services.get<import('../../services/autonomyLogService.js').AutonomyLogService>(IAutonomyLogService)
-    : undefined;
-
   // Register view provider
   context.subscriptions.push(
     api.views.registerViewProvider('view.aiSettings', {
       createView(container: HTMLElement): IDisposable {
-        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService, toolPickerServices, mcpClientService, autonomyLogService);
+        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService, toolPickerServices, mcpClientService);
         return _panel;
       },
     }),

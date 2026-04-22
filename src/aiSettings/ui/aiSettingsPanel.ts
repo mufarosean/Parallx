@@ -27,10 +27,8 @@ import { ToolsSection } from './sections/toolsSection.js';
 import { AdvancedSection } from './sections/advancedSection.js';
 import { PreviewSection } from './sections/previewSection.js';
 import { McpSection } from './sections/mcpSection.js';
-import { AutonomyLogSection } from './sections/autonomyLogSection.js';
 import type { IToolPickerServices } from '../../services/chatTypes.js';
 import type { IMcpClientService } from '../../services/serviceTypes.js';
-import type { AutonomyLogService } from '../../services/autonomyLogService.js';
 import './aiSettings.css';
 
 // ─── AISettingsPanel ─────────────────────────────────────────────────────────
@@ -50,7 +48,6 @@ export class AISettingsPanel extends Disposable {
     private readonly _unifiedConfigService?: IUnifiedAIConfigService,
     private readonly _toolPickerServices?: IToolPickerServices,
     private readonly _mcpClientService?: IMcpClientService,
-    private readonly _autonomyLog?: AutonomyLogService,
   ) {
     super();
 
@@ -97,7 +94,6 @@ export class AISettingsPanel extends Disposable {
       this._register(new AdvancedSection(this._service)),
       this._register(new PreviewSection(this._service)),
       this._register(new McpSection(this._service, this._mcpClientService)),
-      this._register(new AutonomyLogSection(this._service, this._autonomyLog)),
     ];
 
     for (const section of this._sections) {
@@ -137,7 +133,6 @@ export class AISettingsPanel extends Disposable {
       { id: 'advanced', label: 'Advanced' },
       { id: 'preview', label: 'Preview' },
       { id: 'mcp', label: 'MCP Servers' },
-      { id: 'autonomy-log', label: 'Autonomy Log' },
     ];
 
     for (const s of navSections) {

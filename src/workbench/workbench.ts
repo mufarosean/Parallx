@@ -141,6 +141,7 @@ import * as CanvasTool from '../built-in/canvas/main.js';
 import * as ChatTool from '../built-in/chat/main.js';
 import * as AISettingsTool from '../built-in/ai-settings/main.js';
 import * as DiagnosticsTool from '../built-in/diagnostics/main.js';
+import * as AutonomyLogTool from '../built-in/autonomy-log/main.js';
 import * as ThemeEditorTool from '../built-in/theme-editor/main.js';
 import type { IToolManifest, IToolDescription } from '../tools/toolManifest.js';
 import {
@@ -155,6 +156,7 @@ import {
   CHAT_MANIFEST,
   AI_SETTINGS_MANIFEST,
   DIAGNOSTICS_MANIFEST,
+  AUTONOMY_LOG_MANIFEST,
   THEME_EDITOR_MANIFEST,
 } from '../tools/builtinManifests.js';
 
@@ -2669,6 +2671,7 @@ export class Workbench extends Layout {
       { manifest: OUTPUT_MANIFEST, module: OutputTool },
       { manifest: INDEXING_LOG_MANIFEST, module: IndexingLogTool },
       { manifest: DIAGNOSTICS_MANIFEST, module: DiagnosticsTool },
+      { manifest: AUTONOMY_LOG_MANIFEST, module: AutonomyLogTool },
       { manifest: TOOL_GALLERY_MANIFEST, module: ToolGalleryTool },
       { manifest: CANVAS_MANIFEST, module: CanvasTool },
       { manifest: CHAT_MANIFEST, module: ChatTool },

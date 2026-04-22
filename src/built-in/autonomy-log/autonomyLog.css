@@ -1,0 +1,171 @@
+/* autonomyLog.css — Autonomy Log panel view styles
+ *
+ * Pattern: mirrors indexing-log/diagnostics panel tabs — compact header
+ * with filter chips + actions, scrollable entry list below.
+ */
+
+.autonomy-log-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--vscode-panel-background);
+  overflow: hidden;
+  font-size: var(--parallx-fontSize-sm);
+}
+
+/* ── Header ── */
+.autonomy-log-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--vscode-panel-background);
+  border-bottom: 1px solid var(--vscode-panel-border, #333);
+  flex-shrink: 0;
+}
+
+.autonomy-log-summary {
+  color: var(--vscode-descriptionForeground, #999);
+  font-size: var(--parallx-fontSize-sm);
+}
+
+.autonomy-log-summary--unread {
+  color: var(--vscode-foreground, #ccc);
+  font-weight: 600;
+}
+
+.autonomy-log-spacer {
+  flex: 1;
+}
+
+.autonomy-log-filters {
+  display: flex;
+  gap: 4px;
+}
+
+.autonomy-log-chip {
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #999);
+  border: 1px solid var(--vscode-panel-border, #333);
+  border-radius: 10px;
+  padding: 2px 10px;
+  font-size: var(--parallx-fontSize-xs);
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.autonomy-log-chip:hover {
+  color: var(--vscode-foreground, #ccc);
+  border-color: var(--vscode-focusBorder, #007acc);
+}
+
+.autonomy-log-chip--active {
+  color: var(--vscode-button-foreground, #fff);
+  background: var(--vscode-button-background, #0e639c);
+  border-color: var(--vscode-button-background, #0e639c);
+}
+
+.autonomy-log-action {
+  background: none;
+  border: none;
+  color: var(--vscode-icon-foreground, #c5c5c5);
+  cursor: pointer;
+  padding: 2px 8px;
+  font-size: var(--parallx-fontSize-xs);
+  border-radius: 3px;
+}
+
+.autonomy-log-action:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.05));
+  color: var(--vscode-foreground, #ccc);
+}
+
+/* ── List ── */
+.autonomy-log-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.autonomy-log-empty {
+  padding: 12px;
+  color: var(--vscode-descriptionForeground, #999);
+  font-style: italic;
+  text-align: center;
+}
+
+/* ── Entry ── */
+.autonomy-log-entry {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  cursor: pointer;
+}
+
+.autonomy-log-entry:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+.autonomy-log-entry--unread {
+  border-left: 2px solid var(--vscode-focusBorder, #007acc);
+  padding-left: 6px;
+}
+
+.autonomy-log-entry__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--parallx-fontSize-xs);
+}
+
+.autonomy-log-entry__label {
+  flex: 1;
+  color: var(--vscode-foreground, #ccc);
+  font-family: var(--vscode-editor-font-family, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.autonomy-log-entry__time {
+  color: var(--vscode-descriptionForeground, #999);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.autonomy-log-entry__body {
+  margin: 6px 0 2px;
+  padding: 6px 8px;
+  background: var(--vscode-textBlockQuote-background, rgba(255, 255, 255, 0.03));
+  border-left: 2px solid var(--vscode-textBlockQuote-border, #444);
+  color: var(--vscode-foreground, #ccc);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--parallx-fontSize-xs);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.autonomy-log-entry--collapsed .autonomy-log-entry__body {
+  display: none;
+}
+
+/* ── Origin badges ── */
+.autonomy-log-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: #1a1a1a;
+  flex-shrink: 0;
+}
+
+.autonomy-log-badge--heartbeat { background: #e4a853; }
+.autonomy-log-badge--cron      { background: #7ec8e3; }
+.autonomy-log-badge--subagent  { background: #c586c0; color: #fff; }
+.autonomy-log-badge--agent     { background: #888; color: #fff; }
