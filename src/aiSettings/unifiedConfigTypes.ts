@@ -244,6 +244,33 @@ export interface IUnifiedHeartbeatConfig {
   readonly intervalMs: number;
   /** Reason allowlist. Reasons not in this set are silently ignored. */
   readonly reasons: readonly HeartbeatReasonKey[];
+  /**
+   * File-change events only wake the heartbeat when the changed path ends
+   * with one of these extensions (leading dot required, lowercase). Empty
+   * array = no extension filter. Applied to `file-change` events only;
+   * `index-complete` and `workspace-change` events bypass this list.
+   */
+  readonly watchIncludeExtensions: readonly string[];
+  /**
+   * File-change events are dropped if the changed path matches any of
+   * these minimal globs. Supports `**` (any path segments), `*` (any chars
+   * except `/`), `?` (single char). Applied to `file-change` events only.
+   */
+  readonly watchExcludeGlobs: readonly string[];
+  /**
+   * Burst-coalescing window in ms for `file-change` events. Multiple
+   * events arriving within this window collapse to one heartbeat turn
+   * with all events in the seed. `0` = disabled (each event fires
+   * immediately, legacy behavior).
+   */
+  readonly coalesceWindowMs: number;
+  /**
+   * Output-dedup window in ms. If the heartbeat produces a final text
+   * whose normalized form was already delivered in this window, the
+   * delivery is dropped silently. Mirrors upstream OpenClaw
+   * `isDuplicateMain` (24h window). `0` = disabled.
+   */
+  readonly outputDedupWindowMs: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -494,6 +521,28 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
     enabled: false, // M58 W2: non-negotiable default — user opts in explicitly
     intervalMs: 5 * 60 * 1000, // 5 minutes (runtime-clamped in HeartbeatRunner)
     reasons: [...HEARTBEAT_REASON_OPTIONS], // allow all 5 by default
+    watchIncludeExtensions: [
+      // Source
+      '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
+      '.py', '.rs', '.go', '.java', '.c', '.cpp', '.h', '.hpp', '.cs',
+      '.rb', '.php', '.swift', '.kt',
+      // Text
+      '.md', '.mdx', '.txt',
+      // Config
+      '.json', '.yaml', '.yml', '.toml', '.xml', '.html', '.css', '.scss',
+    ],
+    watchExcludeGlobs: [
+      '**/node_modules/**',
+      '**/.git/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/out/**',
+      '**/.next/**',
+      '**/target/**',
+      '**/*.log',
+    ],
+    coalesceWindowMs: 2000,           // 2s burst window
+    outputDedupWindowMs: 24 * 60 * 60 * 1000, // 24h (OpenClaw parity)
   },
 };
 
@@ -544,7 +593,12 @@ export function fromLegacyProfile(profile: AISettingsProfile): IUnifiedPreset {
       memory: { ...DEFAULT_UNIFIED_CONFIG.memory },
       indexing: { ...DEFAULT_UNIFIED_CONFIG.indexing },
       tools: { ...DEFAULT_UNIFIED_CONFIG.tools },
-      heartbeat: { ...DEFAULT_UNIFIED_CONFIG.heartbeat, reasons: [...DEFAULT_UNIFIED_CONFIG.heartbeat.reasons] },
+      heartbeat: {
+        ...DEFAULT_UNIFIED_CONFIG.heartbeat,
+        reasons: [...DEFAULT_UNIFIED_CONFIG.heartbeat.reasons],
+        watchIncludeExtensions: [...DEFAULT_UNIFIED_CONFIG.heartbeat.watchIncludeExtensions],
+        watchExcludeGlobs: [...DEFAULT_UNIFIED_CONFIG.heartbeat.watchExcludeGlobs],
+      },
     },
   };
 }

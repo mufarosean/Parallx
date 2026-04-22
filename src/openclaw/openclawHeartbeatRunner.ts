@@ -119,6 +119,14 @@ export type HeartbeatTurnExecutor = (
 export interface IHeartbeatConfig {
   readonly enabled: boolean;
   readonly intervalMs: number;
+  /**
+   * Burst-coalescing window for `system-event` pushEvent calls. When > 0,
+   * the runner waits this many milliseconds of silence after a pushEvent
+   * before firing the tick — collapsing file-save bursts into one turn.
+   * When 0 or undefined, legacy behavior: each pushEvent fires immediately
+   * (preserves pre-existing test invariants).
+   */
+  readonly coalesceWindowMs?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,6 +151,7 @@ export interface IHeartbeatConfig {
 export class HeartbeatRunner implements IDisposable {
   private _state: IHeartbeatState;
   private _timer: ReturnType<typeof setTimeout> | null = null;
+  private _coalesceTimer: ReturnType<typeof setTimeout> | null = null;
   private _pendingEvents: IHeartbeatSystemEvent[] = [];
   private _recentPayloads = new Map<string, number>(); // payload hash → timestamp
   private _disposed = false;
@@ -238,9 +247,23 @@ export class HeartbeatRunner implements IDisposable {
 
     this._pendingEvents.push(event);
 
-    // Immediate wake for system events — upstream: pending events trigger
-    // heartbeat even if interval hasn't elapsed
-    if (this._state.enabled && this._pendingEvents.length === 1) {
+    // Burst coalescing — when `coalesceWindowMs > 0`, wait for a quiet
+    // window before firing the tick so multi-file saves collapse into one
+    // heartbeat turn. When 0/undefined, preserve legacy immediate behavior.
+    if (!this._state.enabled) return;
+
+    const coalesceMs = this._getConfig().coalesceWindowMs ?? 0;
+    if (coalesceMs > 0) {
+      if (this._coalesceTimer) clearTimeout(this._coalesceTimer);
+      this._coalesceTimer = setTimeout(() => {
+        this._coalesceTimer = null;
+        if (this._pendingEvents.length > 0) this._tick('system-event');
+      }, coalesceMs);
+      return;
+    }
+
+    // Legacy: fire immediately on first queued event.
+    if (this._pendingEvents.length === 1) {
       this._tick('system-event');
     }
   }
@@ -311,6 +334,10 @@ export class HeartbeatRunner implements IDisposable {
   dispose(): void {
     this._disposed = true;
     this.stop();
+    if (this._coalesceTimer) {
+      clearTimeout(this._coalesceTimer);
+      this._coalesceTimer = null;
+    }
     this._pendingEvents = [];
     this._recentPayloads.clear();
   }

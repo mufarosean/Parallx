@@ -115,6 +115,13 @@ export interface IHeartbeatRealTurnDeps {
   readonly getParentSessionId: () => string | undefined;
   /** Debounce window for `system-event` per event key (ms). Default: 30_000. */
   readonly debounceMs?: number;
+  /**
+   * Output-dedup window (ms). When > 0, the executor hashes the final
+   * assistant text (normalized) and suppresses delivery if the same text
+   * was delivered within the window. Mirrors upstream OpenClaw
+   * `isDuplicateMain` (24h). Default: 86_400_000 (24h). `0` disables.
+   */
+  readonly outputDedupWindowMs?: number;
   /** Override clock for tests. Default: Date.now. */
   readonly now?: () => number;
 }
@@ -126,6 +133,17 @@ export interface IHeartbeatRealTurnDeps {
 const IDLE_TEXT = '';
 const THINKING_PREFIX = '⏺ heartbeat';
 const DEFAULT_DEBOUNCE_MS = 30_000;
+const DEFAULT_OUTPUT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h (OpenClaw parity)
+const OUTPUT_DEDUP_MAX_ENTRIES = 200;
+const NOOP_MARKER = /^\s*noop\s*$/i;
+
+/**
+ * Normalize an assistant text for output-level dedup. Lowercase, collapse
+ * whitespace, trim, truncate to 2000 chars. Cheap and stable.
+ */
+function normalizeForDedup(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 2000);
+}
 
 function formatTickText(reason: HeartbeatReason, eventCount: number): string {
   const suffix = eventCount > 0 ? ` · ${eventCount} event${eventCount === 1 ? '' : 's'}` : '';
@@ -152,6 +170,7 @@ function computeDebounceKey(event: IHeartbeatSystemEvent): string {
 function buildSeedSystemMessage(reason: HeartbeatReason, events: readonly IHeartbeatSystemEvent[]): string {
   const lines: string[] = [];
   lines.push(`You were woken by a heartbeat event (reason: ${reason}).`);
+  lines.push('This is NOT a user message. It is an internal reactive trigger.');
   if (reason === 'system-event') {
     lines.push('A workspace event occurred that may warrant attention.');
     const firstType = events[0]?.type;
@@ -163,7 +182,7 @@ function buildSeedSystemMessage(reason: HeartbeatReason, events: readonly IHeart
   } else if (reason === 'hook') {
     lines.push('A lifecycle hook triggered this turn.');
   }
-  lines.push('Use your tools to investigate if appropriate. Be concise. If no action is warranted, say so briefly.');
+  lines.push('Use your tools to investigate if and only if the event clearly warrants action. Be concise. If no action is warranted, respond with exactly `NOOP` on its own line and nothing else — do not narrate, do not acknowledge, do not announce readiness.');
   return lines.join(' ');
 }
 
@@ -215,8 +234,25 @@ export function createHeartbeatTurnExecutor(
   realTurnDeps?: IHeartbeatRealTurnDeps,
 ): HeartbeatTurnExecutor {
   const debounceMs = realTurnDeps?.debounceMs ?? DEFAULT_DEBOUNCE_MS;
+  const outputDedupMs = realTurnDeps?.outputDedupWindowMs ?? DEFAULT_OUTPUT_DEDUP_WINDOW_MS;
   const now = realTurnDeps?.now ?? (() => Date.now());
   const lastFiredByKey = new Map<string, number>();
+  // Output-dedup ring: normalized text → last delivery timestamp. Upstream
+  // parity: openclaw `isDuplicateMain` (heartbeat-runner.ts L798-833).
+  const deliveredOutputs = new Map<string, number>();
+  function recordDelivery(normalized: string, ts: number): void {
+    deliveredOutputs.set(normalized, ts);
+    if (deliveredOutputs.size > OUTPUT_DEDUP_MAX_ENTRIES) {
+      // Evict oldest entry (Map iteration order = insertion order).
+      const firstKey = deliveredOutputs.keys().next().value;
+      if (firstKey !== undefined) deliveredOutputs.delete(firstKey);
+    }
+  }
+  function isDuplicateOutput(normalized: string, ts: number): boolean {
+    if (outputDedupMs <= 0) return false;
+    const prev = deliveredOutputs.get(normalized);
+    return prev !== undefined && ts - prev < outputDedupMs;
+  }
 
   return async (events: readonly IHeartbeatSystemEvent[], reason: HeartbeatReason): Promise<void> => {
     const { reasons } = getConfig();
@@ -307,23 +343,36 @@ export function createHeartbeatTurnExecutor(
         const lastPair = session.messages[session.messages.length - 1];
         resultText = extractFinalAssistantText(lastPair.response.parts);
       }
-      if (resultText.trim().length > 0) {
-        await router.sendWithOrigin(
-          {
-            surfaceId: SURFACE_CHAT,
-            contentType: 'text',
-            content: resultText,
-            metadata: {
-              heartbeatResult: true,
-              reason,
-              eventKind: events[0]?.type,
-              eventCount: events.length,
-              parentSessionId: parentId,
-              systemEvent: systemEventFraming,
+      const trimmed = resultText.trim();
+      if (trimmed.length === 0) {
+        // Empty — nothing to deliver.
+      } else if (NOOP_MARKER.test(trimmed)) {
+        // Agent explicitly said "no action warranted" — drop delivery.
+        console.debug('[HeartbeatExecutor] NOOP — skipping delivery');
+      } else {
+        const normalized = normalizeForDedup(trimmed);
+        const ts = now();
+        if (isDuplicateOutput(normalized, ts)) {
+          console.debug('[HeartbeatExecutor] duplicate output within dedup window — skipping delivery');
+        } else {
+          recordDelivery(normalized, ts);
+          await router.sendWithOrigin(
+            {
+              surfaceId: SURFACE_CHAT,
+              contentType: 'text',
+              content: resultText,
+              metadata: {
+                heartbeatResult: true,
+                reason,
+                eventKind: events[0]?.type,
+                eventCount: events.length,
+                parentSessionId: parentId,
+                systemEvent: systemEventFraming,
+              },
             },
-          },
-          ORIGIN_HEARTBEAT,
-        );
+            ORIGIN_HEARTBEAT,
+          );
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

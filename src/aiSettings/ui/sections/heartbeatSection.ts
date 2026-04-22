@@ -3,6 +3,9 @@
 // Fields:
 //   - Enabled (Toggle) — default OFF
 //   - Interval (Slider, 30s to 1h)
+//   - Coalesce window (Slider, 0–10s) — burst-collapse file events
+//   - Watch include extensions (Textarea, one per line)
+//   - Watch exclude globs (Textarea, one per line)
 //
 // Safety: ships disabled. User must opt in. Reasons allowlist defaults to
 // all 5 reasons (interval, system-event, cron, wake, hook); per-reason UI
@@ -12,6 +15,7 @@
 import { $ } from '../../../ui/dom.js';
 import { Toggle } from '../../../ui/toggle.js';
 import { Slider } from '../../../ui/slider.js';
+import { Textarea } from '../../../ui/textarea.js';
 import type { IUnifiedAIConfigService, IUnifiedAIConfig } from '../../unifiedConfigTypes.js';
 import { DEFAULT_UNIFIED_CONFIG } from '../../unifiedConfigTypes.js';
 import { SettingsSection, createSettingRow } from '../sectionBase.js';
@@ -21,10 +25,20 @@ const MIN_MS = 30 * 1000;      // mirror MIN_HEARTBEAT_INTERVAL_MS
 const MAX_MS = 60 * 60 * 1000; // mirror MAX_HEARTBEAT_INTERVAL_MS
 const STEP_MS = 30 * 1000;
 
+const COALESCE_MIN_MS = 0;
+const COALESCE_MAX_MS = 10 * 1000;
+const COALESCE_STEP_MS = 250;
+
 function formatInterval(ms: number): string {
   if (ms < 60 * 1000) return `${Math.round(ms / 1000)} s`;
   if (ms < 60 * 60 * 1000) return `${Math.round(ms / (60 * 1000))} min`;
   return `${(ms / (60 * 60 * 1000)).toFixed(1)} h`;
+}
+
+function formatCoalesce(ms: number): string {
+  if (ms === 0) return 'off';
+  if (ms < 1000) return `${ms} ms`;
+  return `${(ms / 1000).toFixed(ms % 1000 === 0 ? 0 : 1)} s`;
 }
 
 export class HeartbeatSection extends SettingsSection {
@@ -32,6 +46,10 @@ export class HeartbeatSection extends SettingsSection {
   private _enabledToggle!: Toggle;
   private _intervalSlider!: Slider;
   private _intervalValue!: HTMLElement;
+  private _coalesceSlider!: Slider;
+  private _coalesceValue!: HTMLElement;
+  private _includeTextarea!: Textarea;
+  private _excludeTextarea!: Textarea;
 
   private readonly _unifiedService: IUnifiedAIConfigService | undefined;
 
@@ -97,6 +115,79 @@ export class HeartbeatSection extends SettingsSection {
       this._notifySaved('heartbeat.intervalMs');
     }));
     this._addRow(intervalRow.row);
+
+    // ── Coalesce window (Fix 4) ──
+    const coalesceRow = createSettingRow({
+      label: 'Coalesce Burst',
+      description: 'Wait this long after a file change before running the turn. Collapses multi-file saves into one turn. Set to 0 to fire on every event.',
+      key: 'heartbeat.coalesceWindowMs',
+      onReset: () => this._updateHeartbeat({ coalesceWindowMs: defaults.coalesceWindowMs }),
+      scopePath: 'heartbeat.coalesceWindowMs',
+      unifiedService: this._unifiedService,
+    });
+    this._coalesceSlider = this._register(new Slider(coalesceRow.controlSlot, {
+      min: COALESCE_MIN_MS,
+      max: COALESCE_MAX_MS,
+      step: COALESCE_STEP_MS,
+      value: defaults.coalesceWindowMs,
+      ariaLabel: 'Heartbeat burst coalesce window',
+      labeledStops: [
+        { value: 0, label: 'off' },
+        { value: 2000, label: '2s' },
+        { value: 5000, label: '5s' },
+        { value: 10_000, label: '10s' },
+      ],
+    }));
+    this._coalesceValue = $('span.ai-settings-row__value', formatCoalesce(defaults.coalesceWindowMs));
+    coalesceRow.controlSlot.appendChild(this._coalesceValue);
+    this._register(this._coalesceSlider.onDidChange((value) => {
+      this._coalesceValue.textContent = formatCoalesce(value);
+      this._updateHeartbeat({ coalesceWindowMs: value });
+      this._notifySaved('heartbeat.coalesceWindowMs');
+    }));
+    this._addRow(coalesceRow.row);
+
+    // ── Watch include extensions (Fix 3) ──
+    const includeRow = createSettingRow({
+      label: 'Watch Extensions',
+      description: 'File-change events only wake the heartbeat when the path ends with one of these extensions (one per line, leading dot required). Empty = all extensions.',
+      key: 'heartbeat.watchIncludeExtensions',
+      onReset: () => this._updateHeartbeat({ watchIncludeExtensions: [...defaults.watchIncludeExtensions] }),
+      scopePath: 'heartbeat.watchIncludeExtensions',
+      unifiedService: this._unifiedService,
+    });
+    this._includeTextarea = this._register(new Textarea(includeRow.controlSlot, {
+      rows: 4,
+      placeholder: '.ts\n.md\n.json',
+      ariaLabel: 'Watch extensions',
+    }));
+    this._register(this._includeTextarea.onDidChange((value) => {
+      const exts = value.split('\n').map(l => l.trim()).filter(Boolean);
+      this._updateHeartbeat({ watchIncludeExtensions: exts });
+      this._notifySaved('heartbeat.watchIncludeExtensions');
+    }));
+    this._addRow(includeRow.row);
+
+    // ── Watch exclude globs (Fix 3) ──
+    const excludeRow = createSettingRow({
+      label: 'Exclude Paths',
+      description: 'File-change events are dropped if the path matches any of these globs (one per line). Exclude wins over include.',
+      key: 'heartbeat.watchExcludeGlobs',
+      onReset: () => this._updateHeartbeat({ watchExcludeGlobs: [...defaults.watchExcludeGlobs] }),
+      scopePath: 'heartbeat.watchExcludeGlobs',
+      unifiedService: this._unifiedService,
+    });
+    this._excludeTextarea = this._register(new Textarea(excludeRow.controlSlot, {
+      rows: 4,
+      placeholder: '**/node_modules/**\n**/.git/**\n**/dist/**',
+      ariaLabel: 'Watch exclude globs',
+    }));
+    this._register(this._excludeTextarea.onDidChange((value) => {
+      const globs = value.split('\n').map(l => l.trim()).filter(Boolean);
+      this._updateHeartbeat({ watchExcludeGlobs: globs });
+      this._notifySaved('heartbeat.watchExcludeGlobs');
+    }));
+    this._addRow(excludeRow.row);
   }
 
   private _updateHeartbeat(patch: Partial<IUnifiedAIConfig['heartbeat']>): void {
@@ -116,6 +207,18 @@ export class HeartbeatSection extends SettingsSection {
     if (this._intervalSlider.value !== config.intervalMs) {
       this._intervalSlider.value = config.intervalMs;
       this._intervalValue.textContent = formatInterval(config.intervalMs);
+    }
+    if (this._coalesceSlider.value !== config.coalesceWindowMs) {
+      this._coalesceSlider.value = config.coalesceWindowMs;
+      this._coalesceValue.textContent = formatCoalesce(config.coalesceWindowMs);
+    }
+    const includeText = config.watchIncludeExtensions.join('\n');
+    if (this._includeTextarea.value !== includeText) {
+      this._includeTextarea.value = includeText;
+    }
+    const excludeText = config.watchExcludeGlobs.join('\n');
+    if (this._excludeTextarea.value !== excludeText) {
+      this._excludeTextarea.value = excludeText;
     }
   }
 }

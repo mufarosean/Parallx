@@ -45,6 +45,7 @@ import { FilesystemSurfacePlugin } from '../../services/surfaces/filesystemSurfa
 import { CanvasSurfacePlugin } from '../canvas/surfaces/canvasSurface.js';
 import { HeartbeatRunner, type IHeartbeatConfig } from '../../openclaw/openclawHeartbeatRunner.js';
 import { createHeartbeatTurnExecutor } from '../../openclaw/openclawHeartbeatExecutor.js';
+import { shouldHeartbeatAcceptPath } from '../../openclaw/openclawHeartbeatFileFilter.js';
 import { CronService, type HeartbeatWaker } from '../../openclaw/openclawCronService.js';
 import {
   createCronTurnExecutor,
@@ -1220,7 +1221,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   if (surfaceRouter && unifiedConfigService) {
     const readHeartbeatConfig = (): IHeartbeatConfig => {
       const hb = unifiedConfigService.getEffectiveConfig().heartbeat;
-      return { enabled: hb.enabled, intervalMs: hb.intervalMs };
+      return {
+        enabled: hb.enabled,
+        intervalMs: hb.intervalMs,
+        coalesceWindowMs: hb.coalesceWindowMs,
+      };
     };
 
     const executor = createHeartbeatTurnExecutor(
@@ -1241,6 +1246,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
           getSession: (sid) => chatService.getSession(sid),
         },
         getParentSessionId: () => _activeWidget?.getSession()?.id,
+        outputDedupWindowMs: unifiedConfigService.getEffectiveConfig().heartbeat.outputDedupWindowMs,
       },
     );
 
@@ -1272,13 +1278,19 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     if (fileService) {
       context.subscriptions.push(
         fileService.onDidFileChange((events) => {
-          // Coalesce burst events into a single pushEvent per resource; the
-          // runner's built-in input-level dedup (60s window) further absorbs
-          // repeats.
+          const hb = unifiedConfigService.getEffectiveConfig().heartbeat;
           for (const ev of events) {
+            const uri = ev.uri.toString();
+            // Fix 3 — honor user-configured include/exclude. Path filtering
+            // is scoped to file-change events only (index/workspace events
+            // bypass). The runner's coalesce window collapses surviving
+            // bursts into a single turn.
+            if (!shouldHeartbeatAcceptPath(uri, hb.watchIncludeExtensions, hb.watchExcludeGlobs)) {
+              continue;
+            }
             heartbeatRunner.pushEvent({
               type: 'file-change',
-              payload: { path: ev.uri.toString(), changeType: ev.type },
+              payload: { path: uri, changeType: ev.type },
               timestamp: Date.now(),
             });
           }
