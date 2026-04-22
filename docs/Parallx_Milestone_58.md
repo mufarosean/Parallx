@@ -280,7 +280,7 @@ chat history.
 | # | Task | File | Core change? |
 |---|------|------|--------------|
 | W2.1 | Add unified AI config keys: `heartbeat.enabled` (default false), `heartbeat.intervalMs` (default 5 min), `heartbeat.reasons[]` (allowlist) | `src/aiSettings/unifiedConfigTypes.ts`, `unifiedAIConfigService.ts` | **YES** |
-| W2.2 | Create `HeartbeatTurnExecutor` — runs an isolated turn: fresh message list prefixed with system event, uses same tool loop as default participant, result does not write to session history | `src/openclaw/openclawHeartbeatExecutor.ts` (new) | No |
+| W2.2 | Create `HeartbeatTurnExecutor` — **SHIP THIN** per §6.5. Emits origin-stamped status-surface delivery only. No LLM call, no tool loop. Remediated in M59. | `src/openclaw/openclawHeartbeatExecutor.ts` (new) | No |
 | W2.3 | Instantiate `HeartbeatRunner` in workbench startup after chat service ready | `src/workbench/workbench.ts` Phase 5 | **YES** |
 | W2.4 | Connect event sources to `pushEvent()` | | |
 | W2.4a | File watcher (existing) → `pushEvent({kind:'file-change',path})` | `src/built-in/chat/main.ts` + file watcher bridge | **YES** |
@@ -301,9 +301,11 @@ chat history.
 2. **Default off** — heartbeat ships disabled. User opts in via AI settings.
    This is a **non-negotiable** safety default.
 
-**Done when:** with heartbeat enabled, a file change causes an isolated turn
-that does not appear in the active chat transcript; status bar shows the tick;
-toggle in AI settings persists across reloads.
+**Done when:** with heartbeat enabled, a file change causes an isolated
+status-surface delivery (origin-stamped `heartbeat`) that does not appear in
+the active chat transcript; status bar shows the tick; toggle in AI settings
+persists across reloads. **Note:** no real LLM turn fires yet — see §6.5.
+M59 retrofits the executor to run isolated turns through the W5 substrate.
 
 ---
 
@@ -326,7 +328,7 @@ Jobs fire with or without heartbeat. 8 tool actions match upstream
 
 | # | Task | File | Core change? |
 |---|------|------|--------------|
-| W4.1 | Create `CronTurnExecutor` — invokes an agent turn with injected payload + context messages | `src/openclaw/openclawCronExecutor.ts` (new) | No |
+| W4.1 | Create `CronTurnExecutor` — **SHIP THIN** per §6.5. Emits origin-stamped status/notification surface delivery only. No LLM call, no tool loop. `payload.agentTurn` is captured but not executed until M59 substrate lands. | `src/openclaw/openclawCronExecutor.ts` (new) | No |
 | W4.2 | Create `ContextLineFetcher` — pulls last N messages from session via `chatSessionPersistence` | `openclawCronExecutor.ts` | No |
 | W4.3 | Create `HeartbeatWaker` adapter that calls `heartbeatRunner.wake('cron')` | `openclawCronExecutor.ts` | No |
 | W4.4 | Instantiate `CronService` in workbench Phase 5, call `.start()`, add to disposables, schedule `runMissedJobs()` | `workbench.ts` | **YES** |
@@ -338,8 +340,12 @@ Jobs fire with or without heartbeat. 8 tool actions match upstream
 | W4.10 | UX: user sees scheduled jobs via `/cron` chat command or AI settings panel; can kill/edit from UI | New small AI-settings subsection | No |
 
 **Done when:** `cron add --every 5m --agentTurn "scan inbox"` creates a job
-that fires every 5 minutes and runs an isolated turn; `cron list` shows it;
-`cron_add` is gated by approval.
+that fires every 5 minutes, the fire is observable via status/notification
+surface and shows up in `cron_runs`; `cron list` shows it; `cron_add` is
+gated by approval. **Note:** `agentTurn` payload is captured and persisted
+in the job record but not yet executed as a real turn — that wires in M59
+per §6.5. Thin executor proves scheduler, storage, events, tool surface,
+and approval gating are sound.
 
 ---
 
@@ -410,6 +416,93 @@ decision so the parity cycles don't stall mid-work:
 | `src/services/chatSessionPersistence.ts` + `chatDataService.ts` | Ephemeral session fork | W5 |
 
 No other core file is touched by M58.
+
+---
+
+## 6.5. Deferred: The Isolated-Turn Substrate ("Ship Thin" Decision)
+
+**Status:** In force for W2, W4, W5 executors in M58. Remediated in **M59**.
+
+### The decision
+
+During W2 (HeartbeatRunner wiring), the Parity Orchestrator discovered that
+**no isolated-turn primitive exists** in Parallx today:
+
+- `chatService.sendRequest` mutates the active session's `messages[]`.
+- Every turn-running path pollutes whichever session it runs in.
+- There is no "run a turn against a scratch message list, collect the final
+  assistant response, discard the session state" facility.
+
+Inventing a parallel turn engine to fix this would violate **M41 P6 —
+"don't invent when upstream has a proven approach"** and would duplicate
+logic that belongs in a shared substrate.
+
+The **"ship thin"** decision, recorded here so it is not forgotten:
+
+| Domain | Thin executor does | Full executor will do |
+|--------|--------------------|-----------------------|
+| W2 Heartbeat | Emits origin-stamped status-surface deliveries only — no LLM call, no tool loop | Runs a real isolated LLM turn with tools against a scratch context |
+| W4 Cron | Same — status-surface delivery + (optionally) a notification surface ping | Runs a real isolated LLM turn with the cron job's `agentTurn` payload |
+| W5 Subagent | Builds the isolated-turn substrate **and** the subagent executor on top of it | — |
+
+### Why ship thin now
+
+1. **Proves the substrate above the turn.** Config, events, triggers, UX,
+   default-off safety, surface routing, origin tagging, and dispose all get
+   end-to-end exercise. These are the hard-to-test surfaces if you skip them.
+2. **Zero safety risk.** A heartbeat that only blinks a status bar cannot
+   run tools, cannot write files, cannot spam chat. The failure mode is
+   "status bar pulses at the wrong moment," which is recoverable.
+3. **Avoids inventing a second turn engine.** W5 has to build isolated
+   sessions anyway to make subagent spawn work. That work becomes the
+   shared substrate for W2/W4/W5 executors instead of three independent
+   half-solutions.
+4. **`*TurnExecutor` signatures are stable seams.** The runner, config,
+   UX, event routing, tool definitions, and tests survive the swap. Only
+   the executor body changes.
+
+### Remediation path
+
+Tracked as the **M59 primary deliverable**:
+
+1. Build the isolated-turn substrate in
+   `src/services/chatSessionPersistence.ts` + `chatDataService.ts` per
+   M58 W5-A (`createEphemeralSession`, list-filter, token/context isolation).
+2. Retrofit `createHeartbeatTurnExecutor` to route turns through it,
+   with `reasons`-keyed routing policy (e.g. `interval` → status only,
+   `system-event` → isolated turn).
+3. Retrofit `createCronTurnExecutor` the same way — `payload.agentTurn`
+   now actually runs.
+4. Build `createSubagentTurnExecutor` directly on the substrate (no
+   retrofit — it's the reason the substrate exists).
+
+All three executors end M59 running real isolated LLM turns with tools,
+never polluting user chat history. At that point the original M58 Section 1
+success signal — *"an isolated agent turn that didn't require a user message
+run to completion"* — is fully met.
+
+### What M58 closure does NOT claim
+
+M58 closure claims **triggers, schedulers, delegators, surface routers,
+configs, events, and UX are all wired and safe**. It explicitly does **not**
+claim the autonomy loop is semantically complete — heartbeat/cron turns in
+M58 report state, not action. The autonomy loop closes in M59.
+
+This split is intentional. Shipping thin first is the conservative,
+principle-aligned path. Skipping W5's substrate work into M58 would have
+been scope creep that M41 principles exist to prevent.
+
+### Rule for remaining M58 domains
+
+**W4 (Cron) and W5-thin-executor paths MUST ship thin** — consistent with
+W2. Do not one-off a real turn path for cron while heartbeat stays thin.
+One swap event in M59 retrofits all three uniformly.
+
+W5's **substrate** (ephemeral session, list filter, isolation invariants)
+is still in M58 scope per the original plan. Only the cron/heartbeat
+*executor bodies* that would use that substrate are deferred. The
+subagent executor that W5 ships **does** use the substrate — subagent
+delivery is the minimum viable proof that the substrate works.
 
 ---
 
