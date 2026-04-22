@@ -1,0 +1,32 @@
+{
+  "manifestVersion": 1,
+  "id": "parallx.workspace-graph",
+  "name": "Workspace Graph",
+  "version": "0.1.0",
+  "publisher": "parallx",
+  "description": "Interactive force-directed graph visualization of workspace data — files, canvas pages, and AI sessions.",
+  "main": "main.js",
+  "activationEvents": ["onStartupFinished"],
+  "engines": {
+    "parallx": "^0.1.0"
+  },
+  "contributes": {
+    "commands": [
+      { "id": "workspaceGraph.open", "title": "Workspace Graph: Open Full Graph" },
+      { "id": "workspaceGraph.refresh", "title": "Workspace Graph: Refresh" }
+    ],
+    "views": [
+      {
+        "id": "view.workspaceGraph",
+        "name": "Workspace Graph",
+        "defaultContainerId": "view.explorer"
+      }
+    ],
+    "editors": [
+      {
+        "typeId": "workspace-graph",
+        "displayName": "Workspace Graph"
+      }
+    ]
+  }
+}

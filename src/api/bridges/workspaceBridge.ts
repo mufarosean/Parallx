@@ -4,6 +4,7 @@
 // access for tools. In M2, configuration is backed by the ConfigurationService
 // (Cap 4) which persists values per-workspace in IStorage.
 // In M4 Cap 2, workspace folders are exposed from the WorkspaceService.
+// In M56, canvas page query access is exposed from ICanvasPageQueryService.
 
 import { IDisposable } from '../../platform/lifecycle.js';
 import { Emitter, Event } from '../../platform/events.js';
@@ -12,6 +13,7 @@ import type { ConfigurationService } from '../../configuration/configurationServ
 import type { IWorkspaceConfiguration, IConfigurationChangeEvent } from '../../configuration/configurationTypes.js';
 import type { WorkspaceFolder, WorkspaceFoldersChangeEvent } from '../../workspace/workspaceTypes.js';
 import type { FileChangeEvent } from '../../platform/fileTypes.js';
+import type { ICanvasPageQueryService } from '../../services/serviceTypes.js';
 
 /** Minimal workspace identity exposed to tools on workspace switch. */
 export interface WorkspaceChangeInfo {
@@ -45,6 +47,30 @@ interface ToolWorkspaceFolder {
 interface ToolWorkspaceFoldersChangeEvent {
   readonly added: readonly ToolWorkspaceFolder[];
   readonly removed: readonly ToolWorkspaceFolder[];
+}
+
+/** Serialized canvas page info for tool API (M56). */
+export interface ToolCanvasPageInfo {
+  readonly id: string;
+  readonly parentId: string | null;
+  readonly title: string;
+  readonly icon: string | null;
+  readonly isFavorited: boolean;
+  readonly isArchived: boolean;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/** Serialized canvas page tree node for tool API (M56). */
+export interface ToolCanvasPageTreeNode extends ToolCanvasPageInfo {
+  readonly children: ToolCanvasPageTreeNode[];
+}
+
+/** Serialized canvas page change event for tool API (M56). */
+export interface ToolCanvasPageChangeEvent {
+  readonly kind: string;
+  readonly pageId: string;
+  readonly page?: ToolCanvasPageInfo;
 }
 
 /**
@@ -85,12 +111,16 @@ export class WorkspaceBridge {
   /** Fires when the workspace is renamed via `workspace.rename` command. */
   readonly onDidRename: Event<string>;
 
+  /** Fires when a canvas page is created, updated, deleted, moved, or reordered (M56). */
+  readonly onDidChangeCanvasPages: Event<ToolCanvasPageChangeEvent>;
+
   constructor(
     private readonly _toolId: string,
     _subscriptions: IDisposable[],
     private readonly _configService?: ConfigurationService,
     private readonly _workspaceService?: WorkspaceServiceLike,
     private readonly _fileService?: FileServiceLike,
+    private readonly _canvasPageQueryResolver?: () => ICanvasPageQueryService | undefined,
   ) {
     if (this._configService) {
       this.onDidChangeConfiguration = this._configService.onDidChangeConfiguration;
@@ -166,6 +196,18 @@ export class WorkspaceBridge {
       this._disposables.push(fallbackEmitter);
       this.onDidFilesChange = fallbackEmitter.event;
     }
+
+    // Canvas page change events (M56)
+    // Late-bound: the canvas tool registers the service after activation,
+    // so we subscribe lazily on first access. The emitter is always available.
+    const canvasEmitter = new Emitter<ToolCanvasPageChangeEvent>();
+    this._disposables.push(canvasEmitter);
+    this.onDidChangeCanvasPages = canvasEmitter.event;
+
+    // Try to subscribe immediately; if the service isn't available yet,
+    // getCanvasPages() will re-attempt subscription on first call.
+    this._canvasPageEmitter = canvasEmitter;
+    this._trySubscribeCanvasEvents();
   }
 
   /**
@@ -213,6 +255,70 @@ export class WorkspaceBridge {
   get name(): string | undefined {
     this._throwIfDisposed();
     return this._workspaceService?.workspaceName;
+  }
+
+  // ── Canvas Page Query (M56) ──
+
+  private _canvasPageEmitter!: Emitter<ToolCanvasPageChangeEvent>;
+  private _canvasEventSubscribed = false;
+
+  private _trySubscribeCanvasEvents(): void {
+    if (this._canvasEventSubscribed) return;
+    const svc = this._canvasPageQueryResolver?.();
+    if (!svc) return;
+    this._canvasEventSubscribed = true;
+    const sub = svc.onDidChangePage((e) => {
+      this._canvasPageEmitter.fire({
+        kind: e.kind,
+        pageId: e.pageId,
+        page: e.page ? WorkspaceBridge._serializePage(e.page) : undefined,
+      });
+    });
+    this._disposables.push(sub);
+  }
+
+  /**
+   * Get all non-archived root-level canvas pages (M56).
+   */
+  async getCanvasPages(): Promise<ToolCanvasPageInfo[]> {
+    this._throwIfDisposed();
+    this._trySubscribeCanvasEvents();
+    const svc = this._canvasPageQueryResolver?.();
+    if (!svc) return [];
+    const pages = await svc.getRootPages();
+    return pages.filter(p => !p.isArchived).map(WorkspaceBridge._serializePage);
+  }
+
+  /**
+   * Get the full canvas page tree (M56).
+   */
+  async getCanvasPageTree(): Promise<ToolCanvasPageTreeNode[]> {
+    this._throwIfDisposed();
+    this._trySubscribeCanvasEvents();
+    const svc = this._canvasPageQueryResolver?.();
+    if (!svc) return [];
+    const tree = await svc.getPageTree();
+    return tree.map(WorkspaceBridge._serializePageTree);
+  }
+
+  private static _serializePage(p: { id: string; parentId: string | null; title: string; icon: string | null; isFavorited: boolean; isArchived: boolean; createdAt: string; updatedAt: string }): ToolCanvasPageInfo {
+    return {
+      id: p.id,
+      parentId: p.parentId,
+      title: p.title,
+      icon: p.icon,
+      isFavorited: p.isFavorited,
+      isArchived: p.isArchived,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+    };
+  }
+
+  private static _serializePageTree(p: { id: string; parentId: string | null; title: string; icon: string | null; isFavorited: boolean; isArchived: boolean; createdAt: string; updatedAt: string; children: any[] }): ToolCanvasPageTreeNode {
+    return {
+      ...WorkspaceBridge._serializePage(p),
+      children: (p.children || []).map(WorkspaceBridge._serializePageTree),
+    };
   }
 
   dispose(): void {

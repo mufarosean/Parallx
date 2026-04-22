@@ -311,6 +311,14 @@ export class WorkbenchContributionHandler extends Disposable {
       }
     }
 
+    // Direct match on built-in sidebar container (e.g. "view.explorer", "view.search")
+    const directBuiltin = this._builtinSidebarContainers.get(containerId);
+    if (directBuiltin) {
+      console.log(`[Workbench] Adding view "${info.id}" to built-in container "${containerId}"`);
+      this._addViewToContainer(info, directBuiltin);
+      return;
+    }
+
     const sidebarVc = this._contributedSidebarContainers.get(containerId);
     if (sidebarVc) { this._addViewToContainer(info, sidebarVc); return; }
 

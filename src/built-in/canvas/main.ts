@@ -14,7 +14,7 @@ import './canvas.css';
 import 'katex/dist/katex.min.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { IIndexingPipelineService, IVectorStoreService } from '../../services/serviceTypes.js';
+import { ICanvasPageQueryService, IIndexingPipelineService, IVectorStoreService } from '../../services/serviceTypes.js';
 import { CanvasDataService } from './canvasDataService.js';
 import type { ICanvasDataService } from './canvasTypes.js';
 import { PageChangeKind } from './canvasTypes.js';
@@ -61,6 +61,7 @@ interface ParallxApi {
   services: {
     get<T>(id: { readonly id: string }): T;
     has(id: { readonly id: string }): boolean;
+    registerInstance<T>(id: { readonly id: string }, instance: T): void;
   };
 }
 
@@ -191,6 +192,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 2. Create CanvasDataService
   _dataService = new CanvasDataService();
   context.subscriptions.push(_dataService);
+
+  // 2a. Publish read-only page query service to DI for cross-tool access (M56)
+  api.services.registerInstance(ICanvasPageQueryService, _dataService);
 
   // 2b. Create PropertyDataService and seed defaults
   _propertyService = new PropertyDataService();
