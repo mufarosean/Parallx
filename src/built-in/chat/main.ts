@@ -32,6 +32,7 @@ import {
   IChatAgentService,
   IChatModeService,
   ILanguageModelToolsService,
+  ChatRequestQueueKind,
 } from '../../services/chatTypes.js';
 import type {
   ICancellationToken,
@@ -720,6 +721,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getSessionFlag: (key: string) => _sessionFlags.get(key) ?? false,
     setSessionFlag: (key: string, value: boolean) => { _sessionFlags.set(key, value); },
     executeCommand: (commandId: string, ...args: unknown[]) => { api.commands.executeCommand(commandId, ...args); },
+    // W1 (M58): Bridge followup runner to chat service queue.
+    // Upstream: scheduleFollowupDrain + enqueueFollowupRun.
+    queueFollowupRequest: (sessionId: string, message: string) => {
+      chatService.queueRequest(sessionId, message, ChatRequestQueueKind.Queued);
+    },
     getAvailableModelIds: _ollamaProvider ? async () => {
       const models = await _ollamaProvider!.listModels().catch(() => []);
       return models.map(m => m.id);

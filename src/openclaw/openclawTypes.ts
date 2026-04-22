@@ -250,6 +250,17 @@ export interface IDefaultParticipantServices {
   getLastSystemPromptReport?(): IOpenclawSystemPromptReport | undefined;
   sessionManager?: ISessionManager;
   unifiedConfigService?: IUnifiedAIConfigService;
+  /**
+   * W1 (M58) — Self-continuation: queue a followup turn for this session
+   * via the chat service's pending-request queue. Maps to
+   * chatService.queueRequest(sessionId, message, ChatRequestQueueKind.Queued).
+   * When undefined (e.g. isolated unit tests), followup evaluation runs but
+   * no followup turn is dispatched.
+   *
+   * Upstream: scheduleFollowupDrain (queue/drain.ts:67) +
+   * enqueueFollowupRun (queue/enqueue.ts:44).
+   */
+  queueFollowupRequest?(sessionId: string, message: string): void;
   createAutonomyMirror?(input: { sessionId: string; requestText: string; mode: ChatMode; runtime: 'claw' | 'openclaw' }): Promise<IChatRuntimeAutonomyMirror | undefined>;
   getSkillCatalog?(): ISkillCatalogEntry[];
   getToolPermissions?(): Record<string, ToolPermissionLevel>;

@@ -56,6 +56,7 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly getLastSystemPromptReport?: IDefaultParticipantServices['getLastSystemPromptReport'];
   readonly sessionManager?: IDefaultParticipantServices['sessionManager'];
   readonly unifiedConfigService?: IDefaultParticipantServices['unifiedConfigService'];
+  readonly queueFollowupRequest?: IDefaultParticipantServices['queueFollowupRequest'];
   readonly createAutonomyMirror?: IDefaultParticipantServices['createAutonomyMirror'];
   readonly getSkillCatalog?: IDefaultParticipantServices['getSkillCatalog'];
   readonly getToolPermissions?: IDefaultParticipantServices['getToolPermissions'];
@@ -172,6 +173,7 @@ export function buildOpenclawDefaultParticipantServices(
     getLastSystemPromptReport: deps.getLastSystemPromptReport,
     sessionManager: deps.sessionManager,
     unifiedConfigService: deps.unifiedConfigService,
+    queueFollowupRequest: deps.queueFollowupRequest,
     createAutonomyMirror: deps.createAutonomyMirror,
     getSkillCatalog: deps.getSkillCatalog,
     getToolPermissions: deps.getToolPermissions,

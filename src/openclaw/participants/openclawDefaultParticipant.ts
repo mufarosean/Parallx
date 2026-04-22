@@ -44,15 +44,53 @@ import { tryHandleOpenclawThinkCommand, THINK_SESSION_FLAG } from '../commands/o
 import { tryHandleOpenclawUsageCommand } from '../commands/openclawUsageCommand.js';
 import { tryHandleOpenclawToolsCommand } from '../commands/openclawToolsCommand.js';
 import { tryHandleOpenclawVerboseCommand, VERBOSE_SESSION_FLAG } from '../commands/openclawVerboseCommand.js';
+// W1 (M58): Self-continuation wiring
+import {
+  createFollowupRunner,
+  type FollowupTurnSender,
+  type IOpenclawFollowupRun,
+} from '../openclawFollowupRunner.js';
+
+/**
+ * W1 (M58) \u2014 per-session followup state. Created lazily on first turn
+ * per session because `createOpenclawDefaultParticipant` is instantiated
+ * once but dispatches turns for many sessions.
+ *
+ * Depth is incremented each time a followup is queued and reset to 0 when
+ * a turn completes without triggering continuation. A user turn arriving
+ * after a chain has ended therefore starts at depth 0. A user turn
+ * arriving mid-chain is a steering turn (gate 2 suppresses followup)
+ * which will also end the chain at that turn.
+ */
+interface IOpenclawFollowupSessionState {
+  readonly runner: ReturnType<typeof createFollowupRunner>;
+  depth: number;
+}
 
 export function createOpenclawDefaultParticipant(services: IDefaultParticipantServices): IChatParticipant & IDisposable {
   const commandRegistry = createOpenclawCommandRegistry();
+
+  // W1: per-session followup state. Runner is created lazily with a
+  // session-scoped sender closure that bridges to the chat service queue.
+  const followupStates = new Map<string, IOpenclawFollowupSessionState>();
+  function getFollowupState(sessionId: string): IOpenclawFollowupSessionState | undefined {
+    if (!services.queueFollowupRequest) return undefined;
+    let state = followupStates.get(sessionId);
+    if (!state) {
+      const sender: FollowupTurnSender = async (run: IOpenclawFollowupRun) => {
+        services.queueFollowupRequest!(sessionId, run.message);
+      };
+      state = { runner: createFollowupRunner(sender), depth: 0 };
+      followupStates.set(sessionId, state);
+    }
+    return state;
+  }
   const handler = async (
     request: IChatParticipantRequest,
     context: IChatParticipantContext,
     response: IChatResponseStream,
     token: ICancellationToken,
-  ): Promise<IChatParticipantResult> => runOpenclawDefaultTurn(services, commandRegistry, request, context, response, token);
+  ): Promise<IChatParticipantResult> => runOpenclawDefaultTurn(services, commandRegistry, request, context, response, token, getFollowupState);
 
   return {
     id: OPENCLAW_DEFAULT_PARTICIPANT_ID,
@@ -78,7 +116,9 @@ export function createOpenclawDefaultParticipant(services: IDefaultParticipantSe
     provideFollowups: async (): Promise<readonly IChatFollowup[]> => {
       return [];
     },
-    dispose: () => {},
+    dispose: () => {
+      followupStates.clear();
+    },
   };
 }
 
@@ -89,6 +129,7 @@ async function runOpenclawDefaultTurn(
   context: IChatParticipantContext,
   response: IChatResponseStream,
   token: ICancellationToken,
+  getFollowupState?: (sessionId: string) => IOpenclawFollowupSessionState | undefined,
 ): Promise<IChatParticipantResult> {
   const initResult = await tryHandleOpenclawInitCommand(services, request.command, response);
   if (initResult) {
@@ -300,6 +341,31 @@ async function runOpenclawDefaultTurn(
       },
     );
     lifecycle.recordCompleted();
+
+    // W1 (M58): Self-continuation \u2014 evaluate whether to queue a followup turn.
+    // If the tool loop hit the iteration cap with pending tool calls,
+    // continuationRequested=true triggers a queued followup (up to
+    // MAX_FOLLOWUP_DEPTH). Depth resets whenever a chain ends (evaluation
+    // returns shouldFollowup=false for any reason: steer-suppress, depth
+    // cap, disabled, empty response, or normal turn-complete).
+    //
+    // Upstream: finalizeWithFollowup (agent-runner-helpers.ts:55-58) \u2014
+    // a post-turn hook that schedules queue drain. Parallx maps the drain
+    // to chatService.queueRequest + _processNextPending.
+    const followupState = getFollowupState?.(context.sessionId);
+    if (followupState) {
+      try {
+        const evaluation = await followupState.runner(result, followupState.depth);
+        if (evaluation.shouldFollowup) {
+          followupState.depth += 1;
+        } else {
+          followupState.depth = 0;
+        }
+      } catch (err) {
+        console.warn('[OpenClaw:W1] Followup evaluation failed:', err);
+        followupState.depth = 0;
+      }
+    }
 
     return {
       metadata: {
