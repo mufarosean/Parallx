@@ -72,8 +72,11 @@ export function parseChatRequest(input: string): IChatParsedRequest {
     text = text.replace(v.original, '').trim();
   }
 
-  // Collapse multiple spaces
-  text = text.replace(/\s{2,}/g, ' ').trim();
+  // Collapse runs of horizontal whitespace only — preserve newlines so the
+  // user's paragraph breaks (Shift+Enter) survive into the rendered message
+  // and the LLM prompt. Trim trailing horizontal whitespace per line, then
+  // trim leading/trailing whitespace overall.
+  text = text.replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+$/gm, '').trim();
 
   return {
     participantId,
