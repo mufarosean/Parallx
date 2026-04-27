@@ -148,6 +148,18 @@ export interface ICreateSubagentTurnExecutorOpts {
    * parent's mode/model, and the default participant routes correctly).
    */
   readonly buildSendOptions?: (task: string, model: string | null) => IChatSendRequestOptions | undefined;
+  /**
+   * Optional permission-service hooks. When provided, the ephemeral subagent
+   * session is marked so that requires-approval tool calls route to the
+   * autonomy log under `origin: 'subagent'` instead of stalling on a UI
+   * dialog the user can't see.
+   */
+  readonly permissionService?: {
+    markSubagentSession(sessionId: string, autonomyLevel?: import('../agent/agentTypes.js').AgentAutonomyLevel): void;
+    unmarkSubagentSession(sessionId: string): void;
+  };
+  /** Resolves the autonomy level applied to subagent tool calls. */
+  readonly getAutonomyLevel?: () => import('../agent/agentTypes.js').AgentAutonomyLevel | undefined;
 }
 
 /**
@@ -189,6 +201,12 @@ export function createSubagentTurnExecutor(
 
     const handle = opts.chatService.createEphemeralSession(parentId, seed);
     _subagentDepth += 1;
+    // Tag this ephemeral session as subagent-originated so the permission
+    // gate routes requires-approval tool calls to the autonomy log under
+    // `origin: 'subagent'` instead of awaiting a UI dialog. Cleared in
+    // `finally`.
+    const subagentAutonomy = opts.getAutonomyLevel?.();
+    opts.permissionService?.markSubagentSession(handle.sessionId, subagentAutonomy);
     try {
       const sendOptions = opts.buildSendOptions?.(task, model);
       await opts.chatService.sendRequest(handle.sessionId, task, sendOptions);
@@ -201,6 +219,7 @@ export function createSubagentTurnExecutor(
       return extractFinalAssistantText(lastPair.response.parts);
     } finally {
       _subagentDepth = Math.max(0, _subagentDepth - 1);
+      opts.permissionService?.unmarkSubagentSession(handle.sessionId);
       // Always purge — even on error — so scratch state doesn't leak.
       opts.chatService.purgeEphemeralSession(handle);
     }

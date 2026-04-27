@@ -13,6 +13,7 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly getCurrentPageTitle: IDefaultParticipantServices['getCurrentPageTitle'];
   readonly getToolDefinitions: IDefaultParticipantServices['getToolDefinitions'];
   readonly getReadOnlyToolDefinitions: IDefaultParticipantServices['getReadOnlyToolDefinitions'];
+  readonly filterToolsForSession?: IDefaultParticipantServices['filterToolsForSession'];
   readonly invokeToolWithRuntimeControl?: IDefaultParticipantServices['invokeToolWithRuntimeControl'];
   readonly maxIterations?: IDefaultParticipantServices['maxIterations'];
   readonly networkTimeout?: IDefaultParticipantServices['networkTimeout'];
@@ -88,6 +89,7 @@ export interface IOpenclawWorkspaceParticipantAdapterDeps {
   readonly getPageContent: IWorkspaceParticipantServices['getPageContent'];
   readonly getPageTitle: IWorkspaceParticipantServices['getPageTitle'];
   readonly getReadOnlyToolDefinitions?: IWorkspaceParticipantServices['getReadOnlyToolDefinitions'];
+  readonly filterToolsForSession?: IWorkspaceParticipantServices['filterToolsForSession'];
   readonly invokeToolWithRuntimeControl?: IWorkspaceParticipantServices['invokeToolWithRuntimeControl'];
   readonly listFiles?: IWorkspaceParticipantServices['listFiles'];
   readonly readFileContent?: IWorkspaceParticipantServices['readFileContent'];
@@ -108,6 +110,7 @@ export interface IOpenclawCanvasParticipantAdapterDeps {
   readonly getCurrentPageTitle: ICanvasParticipantServices['getCurrentPageTitle'];
   readonly getPageStructure: ICanvasParticipantServices['getPageStructure'];
   readonly getReadOnlyToolDefinitions?: ICanvasParticipantServices['getReadOnlyToolDefinitions'];
+  readonly filterToolsForSession?: ICanvasParticipantServices['filterToolsForSession'];
   readonly invokeToolWithRuntimeControl?: ICanvasParticipantServices['invokeToolWithRuntimeControl'];
   readonly readFileContent?: ICanvasParticipantServices['readFileContent'];
   readonly reportParticipantDebug?: ICanvasParticipantServices['reportParticipantDebug'];
@@ -130,6 +133,7 @@ export function buildOpenclawDefaultParticipantServices(
     getCurrentPageTitle: deps.getCurrentPageTitle,
     getToolDefinitions: deps.getToolDefinitions,
     getReadOnlyToolDefinitions: deps.getReadOnlyToolDefinitions,
+    filterToolsForSession: deps.filterToolsForSession,
     invokeToolWithRuntimeControl: deps.invokeToolWithRuntimeControl,
     maxIterations: deps.maxIterations,
     networkTimeout: deps.networkTimeout,
@@ -209,6 +213,7 @@ export function buildOpenclawWorkspaceParticipantServices(
     getPageContent: deps.getPageContent,
     getPageTitle: deps.getPageTitle,
     getReadOnlyToolDefinitions: deps.getReadOnlyToolDefinitions,
+    filterToolsForSession: deps.filterToolsForSession,
     invokeToolWithRuntimeControl: deps.invokeToolWithRuntimeControl,
     listFiles: deps.listFiles,
     readFileContent: deps.readFileContent,
@@ -232,6 +237,7 @@ export function buildOpenclawCanvasParticipantServices(
     getCurrentPageTitle: deps.getCurrentPageTitle,
     getPageStructure: deps.getPageStructure,
     getReadOnlyToolDefinitions: deps.getReadOnlyToolDefinitions,
+    filterToolsForSession: deps.filterToolsForSession,
     invokeToolWithRuntimeControl: deps.invokeToolWithRuntimeControl,
     readFileContent: deps.readFileContent,
     reportParticipantDebug: deps.reportParticipantDebug,

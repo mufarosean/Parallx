@@ -189,6 +189,14 @@ export interface IDefaultParticipantServices {
   getCurrentPageTitle(): string | undefined;
   getToolDefinitions(): readonly IToolDefinition[];
   getReadOnlyToolDefinitions(): readonly IToolDefinition[];
+  /**
+   * Narrow a tool catalog according to caller autonomy. Used by participants to
+   * suppress tools the caller (e.g. heartbeat under restrictive autonomy) cannot
+   * actually run, so the model never sees them and never wastes a round-trip.
+   * Returns the input list unchanged when the session is not subject to a
+   * restrictive caller policy.
+   */
+  filterToolsForSession?<T extends IToolDefinition>(tools: readonly T[], sessionId: string | undefined): readonly T[];
   invokeToolWithRuntimeControl?(
     name: string,
     args: Record<string, unknown>,
@@ -304,6 +312,8 @@ export interface IWorkspaceParticipantServices {
   getPageTitle(pageId: string): Promise<string | null>;
   getWorkspaceName(): string;
   getReadOnlyToolDefinitions?(): readonly IToolDefinition[];
+  /** Narrow a tool catalog according to caller autonomy (see IDefaultParticipantServices). */
+  filterToolsForSession?<T extends IToolDefinition>(tools: readonly T[], sessionId: string | undefined): readonly T[];
   invokeToolWithRuntimeControl?(
     name: string,
     args: Record<string, unknown>,
@@ -347,6 +357,8 @@ export interface ICanvasParticipantServices {
   getPageStructure(pageId: string): Promise<IPageStructure | null>;
   getWorkspaceName(): string;
   getReadOnlyToolDefinitions?(): readonly IToolDefinition[];
+  /** Narrow a tool catalog according to caller autonomy (see IDefaultParticipantServices). */
+  filterToolsForSession?<T extends IToolDefinition>(tools: readonly T[], sessionId: string | undefined): readonly T[];
   invokeToolWithRuntimeControl?(
     name: string,
     args: Record<string, unknown>,

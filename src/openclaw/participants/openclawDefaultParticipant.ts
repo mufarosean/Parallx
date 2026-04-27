@@ -419,9 +419,14 @@ async function buildOpenclawTurnContext(
 
   const skillCatalog = services.getSkillCatalog?.() ?? [];
   const skillState = buildOpenclawRuntimeSkillState(skillCatalog);
-  const platformTools = request.mode === ChatMode.Edit
+  const rawPlatformTools = request.mode === ChatMode.Edit
     ? services.getReadOnlyToolDefinitions()
     : services.getToolDefinitions();
+  // Filter the catalog by caller autonomy so heartbeat under restrictive
+  // autonomy never sees write tools it cannot run.
+  const platformTools = services.filterToolsForSession
+    ? services.filterToolsForSession(rawPlatformTools, context.sessionId)
+    : rawPlatformTools;
 
   // Context engine
   const engine = new OpenclawContextEngine(services);
@@ -500,7 +505,7 @@ async function buildOpenclawTurnContext(
     fallbackModels: fallbackModels?.length ? fallbackModels : undefined,
     rebuildSendChatRequest: services.sendChatRequestForModel ?? undefined,
     invokeToolWithRuntimeControl: services.invokeToolWithRuntimeControl
-      ? (name, args, token, observer) => services.invokeToolWithRuntimeControl!(name, args, token, observer)
+      ? (name, args, token, observer, sessionId) => services.invokeToolWithRuntimeControl!(name, args, token, observer, sessionId ?? context.sessionId)
       : undefined,
     toolObserver: services.runtimeHookRegistry?.getCompositeToolObserver(),
     messageObserver: services.runtimeHookRegistry?.getCompositeMessageObserver(),

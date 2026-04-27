@@ -709,6 +709,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getCurrentPageTitle: () => dataService.getCurrentPageTitle(),
     getToolDefinitions: () => dataService.getToolDefinitions(),
     getReadOnlyToolDefinitions: () => dataService.getReadOnlyToolDefinitions(),
+    filterToolsForSession: _permissionService
+      ? (tools, sid) => _permissionService!.filterToolsForSession(tools, sid)
+      : undefined,
     invokeToolWithRuntimeControl: (n, a, t, o, s) => invokeRuntimeToolWithSkillSupport(n, a, t, o, s),
     maxIterations: unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? 25,
     networkTimeout: 120_000,
@@ -826,6 +829,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getPageContent: (p) => dataService.getPageContent(p),
     getPageTitle: (p) => dataService.getPageTitle(p),
     getReadOnlyToolDefinitions: () => mergeRuntimeToolDefinitions(dataService.getReadOnlyToolDefinitions(), true),
+    filterToolsForSession: _permissionService
+      ? (tools, sid) => _permissionService!.filterToolsForSession(tools, sid)
+      : undefined,
     invokeToolWithRuntimeControl: (n, a, t, o, s) => invokeRuntimeToolWithSkillSupport(n, a, t, o, s),
     listFiles: fsAccessor ? (r) => fsAccessor.readdir(r) : undefined,
     readFileContent: fsAccessor ? async (r) => { const res = await fsAccessor.readFileContent(r); return res.content; } : undefined,
@@ -848,6 +854,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getCurrentPageTitle: () => dataService.getCurrentPageTitle(),
     getPageStructure: (p) => dataService.getPageStructure(p),
     getReadOnlyToolDefinitions: () => mergeRuntimeToolDefinitions(dataService.getReadOnlyToolDefinitions(), true),
+    filterToolsForSession: _permissionService
+      ? (tools, sid) => _permissionService!.filterToolsForSession(tools, sid)
+      : undefined,
     invokeToolWithRuntimeControl: (n, a, t, o, s) => invokeRuntimeToolWithSkillSupport(n, a, t, o, s),
     readFileContent: fsAccessor ? async (r) => { const res = await fsAccessor.readFileContent(r); return res.content; } : undefined,
     reportParticipantDebug: (debug) => dataService.reportParticipantDebug(debug),
@@ -1165,6 +1174,15 @@ export function activate(api: ParallxApi, context: ToolContext): void {
           getSession: (sid) => chatService.getSession(sid),
         },
         getParentSessionId,
+        permissionService: _permissionService
+          ? {
+              markSubagentSession: (sid, level) => _permissionService!.markSubagentSession(sid, level),
+              unmarkSubagentSession: (sid) => _permissionService!.unmarkSubagentSession(sid),
+            }
+          : undefined,
+        // Subagents inherit the heartbeat autonomy dial — same
+        // "non-interactive ephemeral run" semantics, same default policy.
+        getAutonomyLevel: () => unifiedConfigService?.getEffectiveConfig().heartbeat.autonomy,
       });
       const subagentAnnouncer = createSubagentAnnouncer({
         surfaceRouter,
@@ -1273,6 +1291,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
               unmarkHeartbeatSession: (sid) => _permissionService!.unmarkHeartbeatSession(sid),
             }
           : undefined,
+        getAutonomyLevel: () => unifiedConfigService.getEffectiveConfig().heartbeat.autonomy,
       },
     );
 

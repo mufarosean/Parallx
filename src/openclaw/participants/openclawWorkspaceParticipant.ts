@@ -328,12 +328,16 @@ async function runWorkspacePromptTurn(
       sendChatRequest: services.sendChatRequest,
       messages,
       requestOptions,
-      tools: services.getReadOnlyToolDefinitions?.() ?? [],
+      tools: (() => {
+        const raw = services.getReadOnlyToolDefinitions?.() ?? [];
+        return services.filterToolsForSession ? services.filterToolsForSession(raw, context.sessionId) : raw;
+      })(),
       response,
       token,
       maxIterations: OPENCLAW_MAX_READONLY_ITERATIONS,
+      sessionId: context.sessionId,
       invokeToolWithRuntimeControl: services.invokeToolWithRuntimeControl
-        ? (name, args, tok) => services.invokeToolWithRuntimeControl!(name, args, tok)
+        ? (name, args, tok, observer, sid) => services.invokeToolWithRuntimeControl!(name, args, tok, observer, sid ?? context.sessionId)
         : undefined,
       toolObserver: services.runtimeHookRegistry?.getCompositeToolObserver(),
       messageObserver: services.runtimeHookRegistry?.getCompositeMessageObserver(),

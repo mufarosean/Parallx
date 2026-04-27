@@ -165,7 +165,7 @@ describe('openclawReadOnlyTurnRunner', () => {
 
     expect(result.completed).toBe(true);
     expect(result.toolCallCount).toBe(1);
-    expect(invokeToolWithRuntimeControl).toHaveBeenCalledWith('readFile', { path: 'test.md' }, expect.anything());
+    expect(invokeToolWithRuntimeControl).toHaveBeenCalledWith('readFile', { path: 'test.md' }, expect.anything(), undefined, undefined);
   });
 
   it('warns and returns completed=false when tool calls arrive but no invoker', async () => {

@@ -81,6 +81,8 @@ export interface IReadOnlyTurnOptions {
     name: string,
     args: Record<string, unknown>,
     token: ICancellationToken,
+    observer?: import('../services/chatRuntimeTypes.js').IChatRuntimeToolInvocationObserver,
+    sessionId?: string,
   ) => Promise<IToolResult>;
   /** D4: Optional tool invocation observer for runtime hooks. */
   readonly toolObserver?: import('../services/chatRuntimeTypes.js').IChatRuntimeToolInvocationObserver;
@@ -88,6 +90,8 @@ export interface IReadOnlyTurnOptions {
   readonly messageObserver?: import('../services/serviceTypes.js').IChatRuntimeMessageObserver;
   /** Model name for message hook metadata. */
   readonly modelName?: string;
+  /** Caller session id — forwarded to the permission gate for heartbeat-aware routing. */
+  readonly sessionId?: string;
 }
 
 export interface IReadOnlyTurnResult {
@@ -260,7 +264,7 @@ export async function runOpenclawReadOnlyTurn(
       if (options.toolObserver?.onValidated) {
         try { options.toolObserver.onValidated(hookMetadata); } catch (e) { console.warn('[D4] Readonly tool hook error:', e); }
       }
-      const toolResult = await options.invokeToolWithRuntimeControl(toolName, toolCall.function.arguments, token);
+      const toolResult = await options.invokeToolWithRuntimeControl(toolName, toolCall.function.arguments, token, undefined, options.sessionId);
       // D4: Fire after-tool hook (approval hooks skipped — readonly tools have no approval flow)
       if (options.toolObserver?.onExecuted) {
         try { options.toolObserver.onExecuted(hookMetadata, toolResult); } catch (e) { console.warn('[D4] Readonly tool hook error:', e); }

@@ -354,7 +354,7 @@ describe('openclaw default participant', () => {
 
     const firstMessages = sendChatRequest.mock.calls[0][0];
     expect(firstMessages[0].content).toContain('## Workspace Context');
-    expect(invokeToolWithRuntimeControl).toHaveBeenCalledWith('read_file', { path: 'Policy.md' }, expect.objectContaining({ isCancellationRequested: false }), undefined);
+    expect(invokeToolWithRuntimeControl).toHaveBeenCalledWith('read_file', { path: 'Policy.md' }, expect.objectContaining({ isCancellationRequested: false }), undefined, 'session-2');
     expect(response.markdown).toHaveBeenCalledWith('Grounded OpenClaw answer');
   });
 

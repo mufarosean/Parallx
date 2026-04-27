@@ -116,8 +116,23 @@ export class PermissionService extends Disposable {
    */
   private readonly _heartbeatAutonomy = new Map<string, AgentAutonomyLevel>();
 
+  /**
+   * Sessions whose tool calls originate from a subagent ephemeral run.
+   * Same approval semantics as heartbeat (never opens a UI dialog — the
+   * subagent runs in the background, the user is not necessarily watching),
+   * but autonomy-log entries are tagged `origin: 'subagent'` so they can be
+   * filtered separately in the Autonomy Log view.
+   *
+   * Set/cleared by `markSubagentSession` / `unmarkSubagentSession`,
+   * called by the subagent executor around its `chatService.sendRequest`.
+   */
+  private readonly _subagentSessions = new Set<string>();
+
+  /** Per-subagent-session autonomy level, captured at mark-time. */
+  private readonly _subagentAutonomy = new Map<string, AgentAutonomyLevel>();
+
   /** Optional autonomy log appender for queued-approval entries. */
-  private _autonomyLogAppender: { append(input: { origin: 'heartbeat'; requestText: string; content: string; metadata?: Readonly<Record<string, unknown>>; sessionId?: string }): unknown } | undefined;
+  private _autonomyLogAppender: { append(input: { origin: 'heartbeat' | 'subagent'; requestText: string; content: string; metadata?: Readonly<Record<string, unknown>>; sessionId?: string }): unknown } | undefined;
 
   // ── Events ──
 
@@ -158,30 +173,70 @@ export class PermissionService extends Disposable {
     this._heartbeatAutonomy.delete(sessionId);
   }
 
+  /** Mark an ephemeral chat session as originating from a subagent run. */
+  markSubagentSession(sessionId: string, autonomyLevel?: AgentAutonomyLevel): void {
+    this._subagentSessions.add(sessionId);
+    if (autonomyLevel !== undefined) {
+      this._subagentAutonomy.set(sessionId, autonomyLevel);
+    }
+  }
+
+  /** Clear the subagent marker for a session (call in finally). */
+  unmarkSubagentSession(sessionId: string): void {
+    this._subagentSessions.delete(sessionId);
+    this._subagentAutonomy.delete(sessionId);
+  }
+
+  /**
+   * Resolve the caller origin + autonomy for a session id. Returns
+   * `undefined` if the session is a normal user-driven session (no
+   * special routing applies).
+   */
+  private _getCallerContext(sessionId: string | undefined): { origin: 'heartbeat' | 'subagent'; autonomy: AgentAutonomyLevel | undefined } | undefined {
+    if (sessionId === undefined) return undefined;
+    if (this._heartbeatSessions.has(sessionId)) {
+      return { origin: 'heartbeat', autonomy: this._heartbeatAutonomy.get(sessionId) };
+    }
+    if (this._subagentSessions.has(sessionId)) {
+      return { origin: 'subagent', autonomy: this._subagentAutonomy.get(sessionId) };
+    }
+    return undefined;
+  }
+
   /** Wire the autonomy log appender for queued-approval entries. */
   setAutonomyLogAppender(appender: PermissionService['_autonomyLogAppender']): void {
     this._autonomyLogAppender = appender;
   }
 
   /**
-   * Returns true if the session is heartbeat-marked AND its autonomy level
-   * is `manual` — meaning the gate must reject *every* tool, including
-   * always-allowed reads, before the fast-path approves them. The tools
-   * service consults this before its `autoApproved` shortcut.
+   * Returns true if the session is heartbeat- or subagent-marked AND its
+   * autonomy level is `manual` — meaning the gate must reject *every*
+   * tool, including always-allowed reads, before the fast-path approves
+   * them. The tools service consults this before its `autoApproved`
+   * shortcut.
+   */
+  isManagedSessionBlocked(sessionId: string | undefined): boolean {
+    const ctx = this._getCallerContext(sessionId);
+    return ctx?.autonomy === 'manual';
+  }
+
+  /**
+   * @deprecated Use {@link isManagedSessionBlocked}. Kept for callers that
+   * still reference the heartbeat-only spelling; behaves identically.
    */
   isHeartbeatSessionBlocked(sessionId: string | undefined): boolean {
-    if (sessionId === undefined) return false;
-    if (!this._heartbeatSessions.has(sessionId)) return false;
-    return this._heartbeatAutonomy.get(sessionId) === 'manual';
+    return this.isManagedSessionBlocked(sessionId);
   }
 
   /** Record an autonomy-blocked entry. Called by the tools service. */
-  recordHeartbeatAutonomyBlock(sessionId: string, toolName: string): void {
+  recordManagedAutonomyBlock(sessionId: string, toolName: string): void {
+    const ctx = this._getCallerContext(sessionId);
+    const origin = ctx?.origin ?? 'heartbeat';
     try {
       this._autonomyLogAppender?.append({
-        origin: 'heartbeat',
-        requestText: `[heartbeat] tool ${toolName} blocked by autonomy=manual`,
-        content: `Heartbeat attempted to call **${toolName}** but agent autonomy is set to *manual*. No heartbeat tool calls run at this level.`,
+        origin,
+        requestText: `[${origin}] tool ${toolName} blocked by autonomy=manual`,
+        content: `${origin === 'heartbeat' ? 'Heartbeat' : 'Subagent'} attempted to call **${toolName}** but agent autonomy is set to *manual*. No ${origin} tool calls run at this level.`,
         metadata: { kind: 'autonomy-blocked', tool: toolName, autonomy: 'manual' },
         sessionId,
       });
@@ -189,6 +244,51 @@ export class PermissionService extends Disposable {
       /* never break the gate */
     }
     this._audit({ tool: toolName, decision: 'blocked', source: 'default', timestamp: Date.now() });
+  }
+
+  /**
+   * @deprecated Use {@link recordManagedAutonomyBlock}. Kept for callers
+   * that still reference the heartbeat-only spelling.
+   */
+  recordHeartbeatAutonomyBlock(sessionId: string, toolName: string): void {
+    this.recordManagedAutonomyBlock(sessionId, toolName);
+  }
+
+  /**
+   * Filter a tool catalog according to the caller session's autonomy.
+   * Used by participants to narrow what the model is even told it can call,
+   * so heartbeat under restrictive autonomy doesn't waste round-trips
+   * attempting tools that would be blocked at invoke time.
+   *
+   *   - non-heartbeat session     -> tools returned unchanged
+   *   - autonomy=manual           -> empty list
+   *   - autonomy=allow-readonly   -> only `always-allowed` tools
+   *   - other autonomy            -> tools returned unchanged
+   *
+   * Each tool's effective level is resolved against persistent + session
+   * overrides via `checkPermission`, so user-elevated tools survive the
+   * readonly filter.
+   */
+  filterToolsForSession<T extends { name: string; permissionLevel?: ToolPermissionLevel; requiresConfirmation?: boolean }>(
+    tools: readonly T[],
+    sessionId: string | undefined,
+  ): readonly T[] {
+    const ctx = this._getCallerContext(sessionId);
+    if (!ctx) {
+      return tools;
+    }
+    if (ctx.autonomy === 'manual') {
+      return [];
+    }
+    if (ctx.autonomy === 'allow-readonly') {
+      return tools.filter((tool) => {
+        const defaultLevel: ToolPermissionLevel = tool.permissionLevel
+          ?? (tool.requiresConfirmation ? 'requires-approval' : 'always-allowed');
+        const check = this.checkPermission(tool.name, defaultLevel);
+        return check.level === 'always-allowed' || check.autoApproved;
+      });
+    }
+    return tools;
   }
 
   /** Set global auto-approve mode (bypasses all confirmation). */
@@ -375,18 +475,20 @@ export class PermissionService extends Disposable {
   ): Promise<boolean> {
     const check = this.checkPermission(toolName, defaultLevel);
 
-    // Heartbeat autonomy gate — runs BEFORE auto-approve so `manual` can
-    // veto even read-only tools. Upstream parallel: agent-level autonomy
-    // is a coarser dial than per-tool permission; the two compose with
-    // autonomy applied first when the call originates from heartbeat.
-    if (sessionId !== undefined && this._heartbeatSessions.has(sessionId)) {
-      const autonomy = this._heartbeatAutonomy.get(sessionId);
+    // Heartbeat / subagent autonomy gate — runs BEFORE auto-approve so
+    // `manual` can veto even read-only tools. Upstream parallel: agent-level
+    // autonomy is a coarser dial than per-tool permission; the two compose
+    // with autonomy applied first when the call originates from a managed
+    // ephemeral session (heartbeat or subagent).
+    const callerCtx = this._getCallerContext(sessionId);
+    if (callerCtx) {
+      const { origin, autonomy } = callerCtx;
       if (autonomy === 'manual') {
         try {
           this._autonomyLogAppender?.append({
-            origin: 'heartbeat',
-            requestText: `[heartbeat] tool ${toolName} blocked by autonomy=manual`,
-            content: `Heartbeat attempted to call **${toolName}** but agent autonomy is set to *manual*. No heartbeat tool calls run at this level.`,
+            origin,
+            requestText: `[${origin}] tool ${toolName} blocked by autonomy=manual`,
+            content: `${origin === 'heartbeat' ? 'Heartbeat' : 'Subagent'} attempted to call **${toolName}** but agent autonomy is set to *manual*. No ${origin} tool calls run at this level.`,
             metadata: { kind: 'autonomy-blocked', tool: toolName, autonomy },
             sessionId,
           });
@@ -397,7 +499,7 @@ export class PermissionService extends Disposable {
         return false;
       }
       if (autonomy === 'allow-policy-actions' && check.level === 'requires-approval' && !check.autoApproved) {
-        // User has dialed up to fully-autonomous; auto-approve heartbeat tool.
+        // User has dialed up to fully-autonomous; auto-approve managed tool.
         this._audit({ tool: toolName, decision: 'approved', source: 'global-auto', timestamp: Date.now() });
         return true;
       }
@@ -415,18 +517,19 @@ export class PermissionService extends Disposable {
       return false;
     }
 
-    // Heartbeat-originated approval-required call: don't stall on a UI
-    // dialog the user can't see. Log a queued entry to the autonomy log
-    // and reject. Upstream parallel: VS Code's `LanguageModelToolsService`
+    // Heartbeat- or subagent-originated approval-required call: don't stall
+    // on a UI dialog the user can't see. Log a queued entry to the autonomy
+    // log and reject. Upstream parallel: VS Code's `LanguageModelToolsService`
     // bails out when no confirmation handler is registered — same shape,
     // just routed through the autonomy log surface instead of a console
     // warning so the user has a record of the deferred action.
-    if (sessionId !== undefined && this._heartbeatSessions.has(sessionId)) {
+    if (callerCtx) {
+      const { origin } = callerCtx;
       try {
         this._autonomyLogAppender?.append({
-          origin: 'heartbeat',
-          requestText: `[heartbeat] tool ${toolName} requires approval`,
-          content: `The heartbeat turn requested **${toolName}** but the tool requires approval. Heartbeat output is non-interactive, so the call was deferred. Re-run from chat if you want to authorize it.`,
+          origin,
+          requestText: `[${origin}] tool ${toolName} requires approval`,
+          content: `The ${origin} turn requested **${toolName}** but the tool requires approval. ${origin === 'heartbeat' ? 'Heartbeat' : 'Subagent'} output is non-interactive, so the call was deferred. Re-run from chat if you want to authorize it.`,
           metadata: { kind: 'queued-approval', tool: toolName, args },
           sessionId,
         });

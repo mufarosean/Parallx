@@ -502,3 +502,179 @@ describe('HeartbeatTurnExecutor permissionService wiring', () => {
     expect(marks.map(m => m.op)).toEqual(['mark', 'unmark']);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// PermissionService — caller-context plumbing (filter + subagent origin)
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('PermissionService caller-context plumbing', () => {
+  it('filterToolsForSession returns full list for non-managed sessions', async () => {
+    const { PermissionService } = await import('../../src/services/permissionService');
+    const svc = new PermissionService();
+    const tools = [
+      { name: 'read', permissionLevel: 'always-allowed' as const },
+      { name: 'write', permissionLevel: 'requires-approval' as const },
+    ];
+    expect(svc.filterToolsForSession(tools, undefined)).toEqual(tools);
+    expect(svc.filterToolsForSession(tools, 'user-session')).toEqual(tools);
+  });
+
+  it('filterToolsForSession returns [] for autonomy=manual heartbeat sessions', async () => {
+    const { PermissionService } = await import('../../src/services/permissionService');
+    const svc = new PermissionService();
+    svc.markHeartbeatSession('hb-1', 'manual');
+    const tools = [
+      { name: 'read', permissionLevel: 'always-allowed' as const },
+      { name: 'write', permissionLevel: 'requires-approval' as const },
+    ];
+    expect(svc.filterToolsForSession(tools, 'hb-1')).toEqual([]);
+  });
+
+  it('filterToolsForSession keeps only always-allowed tools for autonomy=allow-readonly', async () => {
+    const { PermissionService } = await import('../../src/services/permissionService');
+    const svc = new PermissionService();
+    svc.markHeartbeatSession('hb-2', 'allow-readonly');
+    const tools = [
+      { name: 'read', permissionLevel: 'always-allowed' as const },
+      { name: 'write', permissionLevel: 'requires-approval' as const },
+    ];
+    const result = svc.filterToolsForSession(tools, 'hb-2');
+    expect(result.map(t => t.name)).toEqual(['read']);
+  });
+
+  it('filterToolsForSession passes through for allow-safe-actions / allow-policy-actions', async () => {
+    const { PermissionService } = await import('../../src/services/permissionService');
+    const svc = new PermissionService();
+    svc.markHeartbeatSession('hb-3', 'allow-safe-actions');
+    svc.markHeartbeatSession('hb-4', 'allow-policy-actions');
+    const tools = [
+      { name: 'read', permissionLevel: 'always-allowed' as const },
+      { name: 'write', permissionLevel: 'requires-approval' as const },
+    ];
+    expect(svc.filterToolsForSession(tools, 'hb-3').map(t => t.name)).toEqual(['read', 'write']);
+    expect(svc.filterToolsForSession(tools, 'hb-4').map(t => t.name)).toEqual(['read', 'write']);
+  });
+
+  it('subagent sessions get the same filter treatment as heartbeat', async () => {
+    const { PermissionService } = await import('../../src/services/permissionService');
+    const svc = new PermissionService();
+    svc.markSubagentSession('sa-1', 'allow-readonly');
+    const tools = [
+      { name: 'read', permissionLevel: 'always-allowed' as const },
+      { name: 'write', permissionLevel: 'requires-approval' as const },
+    ];
+    expect(svc.filterToolsForSession(tools, 'sa-1').map(t => t.name)).toEqual(['read']);
+    svc.unmarkSubagentSession('sa-1');
+    expect(svc.filterToolsForSession(tools, 'sa-1')).toEqual(tools);
+  });
+
+  it('confirmToolInvocation routes subagent autonomy=manual blocks to autonomy log under origin=subagent', async () => {
+    const { PermissionService } = await import('../../src/services/permissionService');
+    const svc = new PermissionService();
+    const appended: Array<{ origin: string; metadata?: Record<string, unknown> }> = [];
+    svc.setAutonomyLogAppender({
+      append: (input) => {
+        appended.push({ origin: input.origin, metadata: input.metadata as Record<string, unknown> | undefined });
+        return {} as unknown;
+      },
+    });
+    svc.markSubagentSession('sa-2', 'manual');
+    const allowed = await svc.confirmToolInvocation('any_tool', 'desc', {}, 'always-allowed', 'sa-2');
+    expect(allowed).toBe(false);
+    expect(appended).toHaveLength(1);
+    expect(appended[0].origin).toBe('subagent');
+    expect((appended[0].metadata ?? {}).kind).toBe('autonomy-blocked');
+  });
+
+  it('confirmToolInvocation queues subagent requires-approval calls under origin=subagent', async () => {
+    const { PermissionService } = await import('../../src/services/permissionService');
+    const svc = new PermissionService();
+    const appended: Array<{ origin: string; metadata?: Record<string, unknown> }> = [];
+    svc.setAutonomyLogAppender({
+      append: (input) => {
+        appended.push({ origin: input.origin, metadata: input.metadata as Record<string, unknown> | undefined });
+        return {} as unknown;
+      },
+    });
+    // Confirmation handler must NOT be called for managed sessions
+    svc.setConfirmationHandler(vi.fn(async () => 'allow-once' as const));
+    svc.markSubagentSession('sa-3', 'allow-safe-actions');
+    const allowed = await svc.confirmToolInvocation('write_tool', 'desc', { x: 1 }, 'requires-approval', 'sa-3');
+    expect(allowed).toBe(false);
+    expect(appended).toHaveLength(1);
+    expect(appended[0].origin).toBe('subagent');
+    expect((appended[0].metadata ?? {}).kind).toBe('queued-approval');
+  });
+
+  it('isManagedSessionBlocked returns true for both heartbeat and subagent under autonomy=manual', async () => {
+    const { PermissionService } = await import('../../src/services/permissionService');
+    const svc = new PermissionService();
+    svc.markHeartbeatSession('hb', 'manual');
+    svc.markSubagentSession('sa', 'manual');
+    expect(svc.isManagedSessionBlocked('hb')).toBe(true);
+    expect(svc.isManagedSessionBlocked('sa')).toBe(true);
+    expect(svc.isManagedSessionBlocked('user')).toBe(false);
+    expect(svc.isManagedSessionBlocked(undefined)).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// SubagentTurnExecutor — permissionService wiring
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('SubagentTurnExecutor permissionService wiring', () => {
+  it('marks the ephemeral session before sendRequest and unmarks in finally', async () => {
+    const { createSubagentTurnExecutor } = await import('../../src/openclaw/openclawSubagentExecutor');
+    const ops: Array<{ op: string; sid?: string; level?: string }> = [];
+
+    let lastSid: string | undefined;
+    const executor = createSubagentTurnExecutor({
+      chatService: {
+        createEphemeralSession: (parentId) => {
+          lastSid = `eph-${parentId}`;
+          return { sessionId: lastSid, parentSessionId: parentId } as any;
+        },
+        purgeEphemeralSession: () => { ops.push({ op: 'purge' }); },
+        sendRequest: async (sid) => { ops.push({ op: 'send', sid }); },
+        getSession: () => ({ id: lastSid!, messages: [] }) as any,
+      },
+      getParentSessionId: () => 'parent-1',
+      permissionService: {
+        markSubagentSession: (sid, level) => ops.push({ op: 'mark', sid, level }),
+        unmarkSubagentSession: (sid) => ops.push({ op: 'unmark', sid }),
+      },
+      getAutonomyLevel: () => 'allow-safe-actions',
+    });
+
+    await executor('do something', null);
+
+    // Mark must precede send; unmark must follow.
+    expect(ops.map(o => o.op)).toEqual(['mark', 'send', 'unmark', 'purge']);
+    expect(ops[0].level).toBe('allow-safe-actions');
+    expect(ops[0].sid).toBe('eph-parent-1');
+    expect(ops[2].sid).toBe('eph-parent-1');
+  });
+
+  it('still unmarks when sendRequest throws', async () => {
+    const { createSubagentTurnExecutor } = await import('../../src/openclaw/openclawSubagentExecutor');
+    const ops: string[] = [];
+
+    const executor = createSubagentTurnExecutor({
+      chatService: {
+        createEphemeralSession: (parentId) => ({ sessionId: 'eph-x', parentSessionId: parentId }) as any,
+        purgeEphemeralSession: () => { ops.push('purge'); },
+        sendRequest: async () => { throw new Error('boom'); },
+        getSession: () => ({ id: 'eph-x', messages: [] }) as any,
+      },
+      getParentSessionId: () => 'parent-1',
+      permissionService: {
+        markSubagentSession: () => { ops.push('mark'); },
+        unmarkSubagentSession: () => { ops.push('unmark'); },
+      },
+    });
+
+    await expect(executor('task', null)).rejects.toThrow('boom');
+    expect(ops).toEqual(['mark', 'unmark', 'purge']);
+  });
+});
+

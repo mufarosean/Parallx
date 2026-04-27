@@ -271,6 +271,18 @@ export interface IUnifiedHeartbeatConfig {
    * `isDuplicateMain` (24h window). `0` = disabled.
    */
   readonly outputDedupWindowMs: number;
+  /**
+   * Autonomy level applied to heartbeat-originated tool calls. Mirrors the
+   * `AgentAutonomyLevel` enum from `src/agent/agentTypes.ts`.
+   *
+   *   - `manual`               -> heartbeat tool calls blocked outright
+   *   - `allow-readonly`       -> only always-allowed tools run; others queue in autonomy log
+   *   - `allow-safe-actions`   -> requires-approval tools queue in autonomy log (default)
+   *   - `allow-policy-actions` -> requires-approval tools auto-approve
+   *
+   * Heartbeat never opens a UI approval modal regardless of level.
+   */
+  readonly autonomy: import('../agent/agentTypes.js').AgentAutonomyLevel;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -543,6 +555,7 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
     ],
     coalesceWindowMs: 2000,           // 2s burst window
     outputDedupWindowMs: 24 * 60 * 60 * 1000, // 24h (OpenClaw parity)
+    autonomy: 'allow-safe-actions',
   },
 };
 
