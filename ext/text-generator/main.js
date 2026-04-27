@@ -2162,16 +2162,16 @@ function buildSystemPrompt(params = {}) {
     parts.push(['## Point of View', povContent].join('\n'));
   }
 
-  // 1b. Universal formatting & anti-repetition rules — applied to every prose
-  // preset. Skipped for screenplay-format preset/POV which has its own rules.
+  // 1b. Universal formatting rules — applied to every prose preset. Concrete
+  // anti-repetition is handled late, right before generation, with the
+  // model's own recent outputs as input. Abstract "don't repeat" rules at
+  // position 0 of the system prompt have negligible effect over long context.
   const isScreenplayFormat = writingPreset === 'screenplay' || pov === 'screenplay';
   if (writingPreset !== 'none' && !isScreenplayFormat) {
     parts.push([
-      '## Formatting & Variety',
+      '## Formatting',
       '- **Dialogue always in double quotes**: Every spoken line must be wrapped in "straight double quotes". Never leave dialogue unquoted, italicised, or in single quotes. Inner thoughts go in *italics*; non-verbal actions stay in plain prose (or *italics* for casual-RP style).',
-      '- **No repeated gestures or phrases**: Read the last 3–4 messages in this conversation before writing. Do not repeat the same physical action, beat, or descriptive phrase you (or {{char}}) used in a recent turn. If {{char}} already "tilted their head", "smirked", "ran a hand through their hair", or used a signature line in a recent message, choose a different beat this turn.',
-      '- **Vary sentence structure**: If your last reply opened with a movement ("She stepped closer..."), open this one with dialogue, sensory detail, or internal reaction instead. Avoid recycling the same cadence twice in a row.',
-      '- **Fresh language**: Reach for synonyms and new sensory angles rather than reusing distinctive nouns, verbs, or adjectives from recent replies. Repetition is acceptable only when it is clearly intentional (a motif, a verbal tic, a callback).',
+      '- **One character per turn**: Write only the active character\'s words, actions, and inner experience. Never write dialogue, thoughts, or narrated decisions for other characters or for the user.',
     ].join('\n'));
   }
 
@@ -2495,19 +2495,71 @@ function assembleContext(params) {
   // directive before the model writes — closer placement = better adherence.
   // Wording is intentionally forceful; "Turn direction:" alone gets ignored.
 
-  // Turn-taking cue — explicit signal right before the user message
+  // Build a late-stage "you are X" re-anchor + anti-repetition guard.
+  // The character roster lives at position 0 of the system prompt; by the
+  // time we're deep into history its influence has decayed and the model
+  // drifts (writes for other characters, repeats its own openings).
+  // Putting the persona + recent-output reminder right before generation
+  // is the cheapest reliable fix.
+  let speakerLateAnchor = null;
+  let speakerAvoidRepeat = null;
+  if (respondAs && respondAs !== SELF_SPEAKER && respondAs !== NARRATOR_SPEAKER) {
+    const respondChar = chars.find(c =>
+      c.fileName === respondAs || (c.frontmatter.name || '').toLowerCase() === String(respondAs).toLowerCase()
+    );
+    if (respondChar) {
+      const rName = respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, '');
+      // One-line persona recap for the late re-anchor. Pull the first non-
+      // empty line of the description so we don't bloat the prompt.
+      const desc = (respondChar.sections?.description || respondChar.frontmatter?.description || '')
+        .split('\n').map(s => s.trim()).find(Boolean) || '';
+      const personaLine = desc ? ` Persona recap: ${desc.slice(0, 220)}` : '';
+      speakerLateAnchor = `[You are ${rName}. Stay strictly in ${rName}'s voice. Do not write, quote, or describe internal thoughts for any other character. Do not write the user's words or actions.${personaLine}]`;
+
+      // Anti-repetition guard — the model's own last 2 outputs as this speaker.
+      const recentSelfOutputs = filteredHistory
+        .filter(m => m.author === 'ai' && m.characterFile === respondChar.fileName)
+        .slice(-2)
+        .map(m => (m.content || '').trim())
+        .filter(Boolean);
+      if (recentSelfOutputs.length > 0) {
+        const openings = recentSelfOutputs.map((text) => {
+          // First sentence (up to first . ! ? or 100 chars) for compactness.
+          const m = text.match(/^[^.!?\n]{1,100}[.!?]?/);
+          const opener = (m ? m[0] : text.slice(0, 100)).trim();
+          return `— "${opener}"`;
+        }).join('\n');
+        speakerAvoidRepeat =
+          `[Vary your prose this turn. Do NOT echo the openings, phrasings, sentence shapes, or beats from your recent replies as ${rName}:\n${openings}\nUse fresh openings, different sentence rhythms, and unique imagery.]`;
+      }
+    }
+  }
+
+  // Turn-taking cue — explicit signal right before the user message.
+  // Strengthened wording: most failures come from the model speaking for
+  // the wrong character or continuing into the user's turn.
   if (respondAs) {
     if (respondAs === SELF_SPEAKER) {
       messages.push({ role: 'system', content: '[Active turn: user. Draft only the next user-authored message with no speaker prefix.]' });
     } else if (respondAs === NARRATOR_SPEAKER) {
-      messages.push({ role: 'system', content: '[Active turn: Narrator. Write only the next narrative beat in prose. Do not use "CharacterName:" prefixes.]' });
+      messages.push({ role: 'system', content: '[Active turn: Narrator. Write only the next narrative beat in prose. Do not write any character\'s spoken dialogue. Do not use "CharacterName:" prefixes.]' });
     } else {
       const respondChar = chars.find(c =>
         c.fileName === respondAs || (c.frontmatter.name || '').toLowerCase() === String(respondAs).toLowerCase()
       );
       const rName = respondChar ? (respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, '')) : String(respondAs).replace(/\.(md|json)$/, '');
-      messages.push({ role: 'system', content: `[Active turn: ${rName}. Write only ${rName}'s next turn with no speaker prefix.]` });
+      messages.push({ role: 'system', content: `[Active turn: ${rName}. Write ONLY ${rName}'s next turn. Do not write for, narrate, or quote any other character. Do not include the "${rName}:" prefix — just the message body.]` });
     }
+  }
+
+  // Late-stage re-anchor + anti-repetition (after active-turn cue, just before
+  // ephemeral directive and user message). Placement is intentional:
+  // anti-repetition lands closer to generation than the active-turn cue.
+  if (speakerLateAnchor) {
+    messages.push({ role: 'system', content: speakerLateAnchor });
+  }
+  if (speakerAvoidRepeat) {
+    messages.push({ role: 'system', content: speakerAvoidRepeat });
   }
 
   if (ephemeralInstruction) {
@@ -2517,13 +2569,30 @@ function assembleContext(params) {
     });
   }
 
-  // User message
+  // User message. Falls back to a strong synthetic stage-direction when the
+  // user hasn't typed anything (e.g. shortcut button, /ai with no text,
+  // regenerate). The old fallback was a useless "[Continue]" — we'd hand the
+  // model the strongest role (user) with the weakest signal possible. Now
+  // we put the active-turn intent directly on the user turn where it lands
+  // hardest.
   if (userMessage) {
     messages.push({ role: 'user', content: userMessage });
   } else if (!messages.some(m => m.role === 'user')) {
-    // Models (especially Llama-based) require at least one user turn to
-    // trigger generation.  Without it they emit a stop token immediately.
-    messages.push({ role: 'user', content: '[Continue]' });
+    let directive = '[Stage direction — not part of the story. Now write the next message according to the active-turn instructions above.';
+    if (respondAs && respondAs !== SELF_SPEAKER && respondAs !== NARRATOR_SPEAKER) {
+      const respondChar = chars.find(c =>
+        c.fileName === respondAs || (c.frontmatter.name || '').toLowerCase() === String(respondAs).toLowerCase()
+      );
+      const rName = respondChar ? (respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, '')) : String(respondAs);
+      directive = `[Stage direction — not part of the story. Write ${rName}'s next reply now. Stay strictly in ${rName}'s voice. Do not write for any other character. Do not include the "${rName}:" prefix. Match the writing style and POV defined above.`;
+    } else if (respondAs === NARRATOR_SPEAKER) {
+      directive = '[Stage direction — not part of the story. Write the next narrative beat in prose. Do not write any character\'s dialogue. Match the writing style above.';
+    }
+    if (ephemeralInstruction) {
+      directive += ` User directive for this turn: ${ephemeralInstruction}`;
+    }
+    directive += ']';
+    messages.push({ role: 'user', content: directive });
   }
 
   return {
