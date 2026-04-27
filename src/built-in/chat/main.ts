@@ -1225,6 +1225,18 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         enabled: hb.enabled,
         intervalMs: hb.intervalMs,
         coalesceWindowMs: hb.coalesceWindowMs,
+        // Chat-turn back-pressure: if the user has an in-flight chat turn,
+        // defer the heartbeat tick. Heartbeat ephemeral sessions and the
+        // user's chat session don't share a per-session lock (different
+        // session IDs), but they would race at the model HTTP layer (Ollama
+        // serializes per loaded model) and at tools / approval handler.
+        // Skipping the tick avoids those races. System-event payloads stay
+        // queued and fire on the next viable tick.
+        shouldDeferTick: () => {
+          const sid = _activeWidget?.getSession()?.id;
+          if (!sid) return false;
+          return chatService.getSession(sid)?.requestInProgress === true;
+        },
       };
     };
 

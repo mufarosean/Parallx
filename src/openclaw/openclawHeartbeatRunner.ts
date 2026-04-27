@@ -99,7 +99,7 @@ export interface IHeartbeatSystemEvent {
  */
 export interface IHeartbeatRunResult {
   readonly executed: boolean;
-  readonly reason: HeartbeatReason | 'skipped-disabled' | 'skipped-duplicate' | 'skipped-no-events';
+  readonly reason: HeartbeatReason | 'skipped-disabled' | 'skipped-duplicate' | 'skipped-no-events' | 'skipped-busy';
   readonly eventsProcessed: number;
   readonly timestamp: number;
 }
@@ -127,6 +127,14 @@ export interface IHeartbeatConfig {
    * (preserves pre-existing test invariants).
    */
   readonly coalesceWindowMs?: number;
+  /**
+   * Optional back-pressure predicate. When provided and returns `true`, the
+   * runner will skip a tick (re-queueing system-event payloads so they fire
+   * on the next viable tick). Used to defer heartbeat work while the user's
+   * chat session is mid-stream so the two turns don't race at the model or
+   * tool layer. `interval` ticks are simply dropped (no events to retain).
+   */
+  readonly shouldDeferTick?: () => boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -293,6 +301,14 @@ export class HeartbeatRunner implements IDisposable {
     // Upstream: heartbeat checks HEARTBEAT.md and queue size as preflight
     if (reason === 'interval' && this._pendingEvents.length === 0) {
       return { executed: false, reason: 'skipped-no-events', eventsProcessed: 0, timestamp: Date.now() };
+    }
+
+    // Gate: chat-turn back-pressure. If the host says the user has an
+    // in-flight chat turn, defer. For event-driven reasons we keep the
+    // queued events so the next viable tick handles them; for `interval`
+    // there is nothing to retain.
+    if (config.shouldDeferTick?.() === true) {
+      return { executed: false, reason: 'skipped-busy', eventsProcessed: 0, timestamp: Date.now() };
     }
 
     // Drain events for this tick

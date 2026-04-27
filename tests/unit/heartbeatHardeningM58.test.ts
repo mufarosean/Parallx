@@ -316,3 +316,107 @@ describe('HeartbeatTurnExecutor output hardening (Fix 2)', () => {
     expect(chat.deliveries).toHaveLength(0);
   });
 });
+
+// ───────────────────────── Chat-turn back-pressure ─────────────────────────
+
+describe('HeartbeatRunner shouldDeferTick (chat-turn back-pressure)', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('skips system-event tick when shouldDeferTick returns true and re-queues events', async () => {
+    let busy = true;
+    const executor = vi.fn<Parameters<HeartbeatTurnExecutor>, ReturnType<HeartbeatTurnExecutor>>().mockResolvedValue(undefined);
+    const cfg: IHeartbeatConfig = {
+      enabled: true,
+      intervalMs: 60 * 60 * 1000,
+      shouldDeferTick: () => busy,
+    };
+    const runner = new HeartbeatRunner(executor as unknown as HeartbeatTurnExecutor, () => cfg);
+    runner.pushEvent({ type: 'file-change', payload: { path: '/a.ts' }, timestamp: 1 });
+    await Promise.resolve();
+    expect(executor).not.toHaveBeenCalled();
+    // Event was kept in the queue (not silently dropped) — visible via wake.
+    busy = false;
+    runner.wake('wake');
+    await Promise.resolve();
+    expect(executor).toHaveBeenCalledTimes(1);
+    const [events] = executor.mock.calls[0] as [readonly { payload: { path: string } }[], string];
+    expect(events.map(e => e.payload.path)).toEqual(['/a.ts']);
+  });
+
+  it('runs normally when shouldDeferTick returns false', async () => {
+    const executor = vi.fn<Parameters<HeartbeatTurnExecutor>, ReturnType<HeartbeatTurnExecutor>>().mockResolvedValue(undefined);
+    const cfg: IHeartbeatConfig = {
+      enabled: true,
+      intervalMs: 60 * 60 * 1000,
+      shouldDeferTick: () => false,
+    };
+    const runner = new HeartbeatRunner(executor as unknown as HeartbeatTurnExecutor, () => cfg);
+    runner.pushEvent({ type: 'file-change', payload: { path: '/a.ts' }, timestamp: 1 });
+    await Promise.resolve();
+    expect(executor).toHaveBeenCalledTimes(1);
+  });
+
+  it('absent shouldDeferTick = no back-pressure (legacy behavior)', async () => {
+    const executor = vi.fn<Parameters<HeartbeatTurnExecutor>, ReturnType<HeartbeatTurnExecutor>>().mockResolvedValue(undefined);
+    const cfg: IHeartbeatConfig = {
+      enabled: true,
+      intervalMs: 60 * 60 * 1000,
+    };
+    const runner = new HeartbeatRunner(executor as unknown as HeartbeatTurnExecutor, () => cfg);
+    runner.pushEvent({ type: 'file-change', payload: { path: '/a.ts' }, timestamp: 1 });
+    await Promise.resolve();
+    expect(executor).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ───────────────────────── NOTE handling ─────────────────────────
+
+describe('HeartbeatTurnExecutor NOTE response routing', () => {
+  it('routes NOTE: lines to status surface as heartbeatNote (not chat)', async () => {
+    const router = new SurfaceRouterService();
+    const chat = new FakeSurfacePlugin(SURFACE_CHAT);
+    const status = new FakeSurfacePlugin(SURFACE_STATUS);
+    router.registerSurface(chat);
+    router.registerSurface(status);
+
+    const stub = buildChatStub('NOTE: a config file changed');
+    const executor = createHeartbeatTurnExecutor(
+      router,
+      () => ({ reasons: ['system-event'] }),
+      { chatService: stub.chatService, getParentSessionId: () => 'p1', debounceMs: 0 },
+    );
+
+    await executor(
+      [{ type: 'file-change', payload: { path: '/a.ts' }, timestamp: 1 }],
+      'system-event',
+    );
+
+    expect(chat.deliveries).toHaveLength(0);
+    const noteDeliveries = status.deliveries.filter(d => d.metadata?.heartbeatNote === true);
+    expect(noteDeliveries).toHaveLength(1);
+    expect(noteDeliveries[0].content).toContain('a config file changed');
+  });
+
+  it('treats non-NOTE prose as a normal ACT delivery', async () => {
+    const router = new SurfaceRouterService();
+    const chat = new FakeSurfacePlugin(SURFACE_CHAT);
+    const status = new FakeSurfacePlugin(SURFACE_STATUS);
+    router.registerSurface(chat);
+    router.registerSurface(status);
+
+    const stub = buildChatStub('I checked the file and it looks fine.');
+    const executor = createHeartbeatTurnExecutor(
+      router,
+      () => ({ reasons: ['system-event'] }),
+      { chatService: stub.chatService, getParentSessionId: () => 'p1', debounceMs: 0 },
+    );
+
+    await executor(
+      [{ type: 'file-change', payload: { path: '/a.ts' }, timestamp: 1 }],
+      'system-event',
+    );
+
+    expect(chat.deliveries).toHaveLength(1);
+  });
+});

@@ -136,6 +136,7 @@ const DEFAULT_DEBOUNCE_MS = 30_000;
 const DEFAULT_OUTPUT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h (OpenClaw parity)
 const OUTPUT_DEDUP_MAX_ENTRIES = 200;
 const NOOP_MARKER = /^\s*noop\s*$/i;
+const NOTE_MARKER = /^\s*note\s*:\s*(.+)$/i;
 
 /**
  * Normalize an assistant text for output-level dedup. Lowercase, collapse
@@ -170,9 +171,9 @@ function computeDebounceKey(event: IHeartbeatSystemEvent): string {
 function buildSeedSystemMessage(reason: HeartbeatReason, events: readonly IHeartbeatSystemEvent[]): string {
   const lines: string[] = [];
   lines.push(`You were woken by a heartbeat event (reason: ${reason}).`);
-  lines.push('This is NOT a user message. It is an internal reactive trigger.');
+  lines.push('This is NOT a user message. It is an internal reactive trigger. The user did not address you and is not waiting for a reply.');
   if (reason === 'system-event') {
-    lines.push('A workspace event occurred that may warrant attention.');
+    lines.push('A workspace event occurred that may or may not warrant attention.');
     const firstType = events[0]?.type;
     if (firstType) {
       lines.push(`Event kind: ${firstType}.`);
@@ -182,7 +183,12 @@ function buildSeedSystemMessage(reason: HeartbeatReason, events: readonly IHeart
   } else if (reason === 'hook') {
     lines.push('A lifecycle hook triggered this turn.');
   }
-  lines.push('Use your tools to investigate if and only if the event clearly warrants action. Be concise. If no action is warranted, respond with exactly `NOOP` on its own line and nothing else — do not narrate, do not acknowledge, do not announce readiness.');
+  // Decision trichotomy — default IGNORE. Most events deserve no action.
+  lines.push('You have exactly three response modes. Default is IGNORE. Choose only one:');
+  lines.push('  1. IGNORE — the event is routine and warrants no action. Respond with exactly `NOOP` on its own line and nothing else. Do not narrate, do not acknowledge, do not announce readiness. This is the correct response for the vast majority of file saves and routine workspace activity.');
+  lines.push('  2. NOTE — the event is mildly noteworthy but does not warrant action. Respond with one line beginning with `NOTE: ` followed by a single short sentence. Do not call tools. Do not elaborate. The user will see this in the autonomy log only.');
+  lines.push('  3. ACT — the event clearly warrants investigation or action. Use your tools, then summarize what you did concisely. Reserve this for events with unambiguous signals (errors, broken files, requested follow-ups).');
+  lines.push('When in doubt, choose IGNORE. Background chatter erodes user trust faster than missed minor events.');
   return lines.join(' ');
 }
 
@@ -344,11 +350,39 @@ export function createHeartbeatTurnExecutor(
         resultText = extractFinalAssistantText(lastPair.response.parts);
       }
       const trimmed = resultText.trim();
+      const noteMatch = trimmed.match(NOTE_MARKER);
       if (trimmed.length === 0) {
         // Empty — nothing to deliver.
       } else if (NOOP_MARKER.test(trimmed)) {
         // Agent explicitly said "no action warranted" — drop delivery.
         console.debug('[HeartbeatExecutor] NOOP — skipping delivery');
+      } else if (noteMatch) {
+        // NOTE: agent observed something but did not act. Route to the
+        // autonomy log as a quiet annotation; do not deliver to chat.
+        const noteText = noteMatch[1].trim();
+        const normalized = normalizeForDedup(`note:${noteText}`);
+        const ts = now();
+        if (isDuplicateOutput(normalized, ts)) {
+          console.debug('[HeartbeatExecutor] duplicate NOTE within dedup window — skipping');
+        } else {
+          recordDelivery(normalized, ts);
+          await router.sendWithOrigin(
+            {
+              surfaceId: SURFACE_STATUS,
+              contentType: 'text',
+              content: `note · ${noteText}`,
+              metadata: {
+                heartbeatNote: true,
+                reason,
+                eventKind: events[0]?.type,
+                eventCount: events.length,
+                parentSessionId: parentId,
+                systemEvent: systemEventFraming,
+              },
+            },
+            ORIGIN_HEARTBEAT,
+          );
+        }
       } else {
         const normalized = normalizeForDedup(trimmed);
         const ts = now();
