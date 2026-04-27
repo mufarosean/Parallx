@@ -4258,11 +4258,11 @@ function renderChatEditor(container, parallx, input) {
     const contextWindow = thread?.contextWindowOverride || modelInfo?.contextLength || currentSettings?.defaultContextWindow || 8192;
     // Lorebooks come from the primary (first) character only. If multi-character
     // chats are introduced, the original character’s lore wins. If the character
-    // hasn't picked any books, fall back to all available books.
+    // hasn't picked any books, NO lore is injected — empty selection means none.
     const primaryCharLore = characters[0]?.rawData?.lorebookFiles;
     const lorebooks = Array.isArray(primaryCharLore) && primaryCharLore.length
       ? allLorebooks.filter((book) => primaryCharLore.includes(book.fileName))
-      : allLorebooks;
+      : [];
     const budget = computeTokenBudget(contextWindow, currentSettings);
     // Build recent context string for lorebook trigger matching (last ~10 messages + user text).
     // Filter out AI-hidden messages so triggers can't fire on text the AI is forbidden from seeing.
@@ -4762,7 +4762,7 @@ function renderChatEditor(container, parallx, input) {
         const primaryCharLore = characters[0]?.rawData?.lorebookFiles;
         const activeLorebooks = Array.isArray(primaryCharLore) && primaryCharLore.length
           ? allLorebooks.filter((book) => primaryCharLore.includes(book.fileName))
-          : allLorebooks;
+          : [];
         const lorebook = activeLorebooks[0] || allLorebooks[0];
         if (!lorebook) break;
         const lorePath = resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks/${lorebook.fileName}`);
