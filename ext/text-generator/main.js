@@ -3810,19 +3810,34 @@ function renderChatEditor(container, parallx, input) {
           const speaker = !target.characterFile && (target.name || '').toLowerCase() === 'narrator'
             ? NARRATOR_SPEAKER
             : (target.characterFile || characters[0]?.fileName);
-          // Store current content as a variant before regenerating
-          if (!target.variants) target.variants = [target.content];
-          const variantsBefore = target.variants;
+          // Snapshot variants. Always make sure target.content is preserved as a variant
+          // — covers the case where the user edited the message after creating variants.
+          const existingVariants = Array.isArray(target.variants) ? target.variants : [];
+          const previousVariants = existingVariants.includes(target.content)
+            ? [...existingVariants]
+            : (existingVariants.length ? [...existingVariants, target.content] : [target.content]);
+          const targetSnapshot = { ...target, variants: previousVariants, variantIndex: previousVariants.indexOf(target.content) };
           // Remove this message and everything after it, then regenerate
           messageHistory = messageHistory.slice(0, index);
           await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
           renderMessages();
           await generateTurn({ speaker, instruction: target.instruction || null });
-          // After generation, attach previous variants to the new message
-          if (messageHistory[index]) {
-            const newMsg = messageHistory[index];
-            newMsg.variants = [...variantsBefore, newMsg.content];
+          // Locate the freshly generated AI message (skip past any error system msgs).
+          const newIdx = messageHistory.findIndex((m, i) => i >= index && m.author === 'ai' && m.generatedBy === 'model');
+          if (newIdx >= 0) {
+            const newMsg = messageHistory[newIdx];
+            newMsg.variants = [...previousVariants, newMsg.content];
             newMsg.variantIndex = newMsg.variants.length - 1;
+            await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
+            renderMessages();
+          } else {
+            // Failure path: cancelled, empty response, or only error system messages.
+            // Reinsert the original AI message at its original index so nothing is lost.
+            messageHistory = [
+              ...messageHistory.slice(0, index),
+              targetSnapshot,
+              ...messageHistory.slice(index),
+            ];
             await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
             renderMessages();
           }
@@ -4185,9 +4200,14 @@ function renderChatEditor(container, parallx, input) {
       ? allLorebooks.filter((book) => primaryCharLore.includes(book.fileName))
       : allLorebooks;
     const budget = computeTokenBudget(contextWindow, currentSettings);
-    // Build recent context string for lorebook trigger matching (last ~10 messages + user text)
+    // Build recent context string for lorebook trigger matching (last ~10 messages + user text).
+    // Filter out AI-hidden messages so triggers can't fire on text the AI is forbidden from seeing.
     const baseHistory = historyOverride || messageHistory;
-    const recentForTriggers = baseHistory.slice(-10).map(m => m.content || '').join('\n') + (userText ? '\n' + userText : '');
+    const recentForTriggers = baseHistory
+      .slice(-10)
+      .filter((m) => m.hiddenFrom !== 'ai')
+      .map((m) => m.content || '')
+      .join('\n') + (userText ? '\n' + userText : '');
     const loreContent = assembleLoreContent(lorebooks, budget.lore, recentForTriggers);
     const loreDebug = debugLorebookTriggers(lorebooks, recentForTriggers);
     const memoryContent = await readMemories(fs, workspaceUri, threadId);
