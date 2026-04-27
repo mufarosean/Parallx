@@ -2,11 +2,18 @@
   "manifestVersion": 1,
   "id": "parallx-community.text-generator",
   "name": "Text Generator",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "parallx-community",
   "description": "Character chat and interactive fiction generator using local Ollama models.",
   "main": "main.js",
-  "activationEvents": ["*"],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:textGenerator.newChat",
+    "onCommand:textGenerator.openHome",
+    "onCommand:textGenerator.openCharacters",
+    "onCommand:textGenerator.openSettings",
+    "onView:textGenerator.home"
+  ],
   "engines": {
     "parallx": "^0.1.0"
   },

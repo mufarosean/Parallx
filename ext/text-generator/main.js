@@ -909,6 +909,10 @@ function injectStyles() {
   white-space: nowrap;
   margin-right: 4px;
 }
+.tg-token-count.tg-token-warn {
+  color: var(--vscode-editorWarning-foreground, #cca700);
+  cursor: help;
+}
 
 /* ═══ Message actions (inline with name) ═══ */
 .tg-msg { position: relative; }
@@ -1409,6 +1413,13 @@ function injectStyles() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function generateId() {
+  // Prefer crypto.randomUUID() for proper RFC4122 v4 IDs; fall back to a
+  // Math.random-seeded shape for environments where it's unavailable.
+  try {
+    if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
+      return globalThis.crypto.randomUUID();
+    }
+  } catch { /* fall through */ }
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     const v = c === 'x' ? r : (r & 0x3) | 0x8;
@@ -1416,44 +1427,136 @@ function generateId() {
   });
 }
 
+// Strict numeric matchers — only convert a value to Number when it looks
+// EXACTLY like an integer or a simple decimal. This rejects version-like
+// strings ("1.0.0") and IPs that the previous loose `!isNaN(value)` would
+// have lossily coerced.
+const _FM_INT_RE = /^-?\d+$/;
+const _FM_FLOAT_RE = /^-?\d+\.\d+$/;
+
+function _splitArrayItems(inner) {
+  const out = [];
+  let buf = '';
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (ch === '"' && !inSingle) inDouble = !inDouble;
+    else if (ch === "'" && !inDouble) inSingle = !inSingle;
+    if (ch === ',' && !inSingle && !inDouble) {
+      const item = buf.trim();
+      if (item) out.push(_unquote(item));
+      buf = '';
+      continue;
+    }
+    buf += ch;
+  }
+  const last = buf.trim();
+  if (last) out.push(_unquote(last));
+  return out;
+}
+
+function _unquote(s) {
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    return s.slice(1, -1);
+  }
+  return s;
+}
+
 function parseFrontmatter(text) {
   const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!match) return { frontmatter: {}, body: text };
 
   const frontmatter = {};
-  for (const line of match[1].split('\n')) {
+  for (const rawLine of match[1].split('\n')) {
+    // Strip trailing `# comment` (only when not inside quotes).
+    let line = rawLine;
+    let inSingle = false;
+    let inDouble = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"' && !inSingle) inDouble = !inDouble;
+      else if (ch === "'" && !inDouble) inSingle = !inSingle;
+      else if (ch === '#' && !inSingle && !inDouble) {
+        line = line.slice(0, i);
+        break;
+      }
+    }
+
     const colonIdx = line.indexOf(':');
     if (colonIdx === -1) continue;
     const key = line.slice(0, colonIdx).trim();
+    if (!key) continue;
     let value = line.slice(colonIdx + 1).trim();
-    // Strip surrounding quotes (single or double) from YAML values
+    if (value === '') {
+      frontmatter[key] = '';
+      continue;
+    }
+
+    // Quoted strings: preserve as-is (no numeric coercion).
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
+      frontmatter[key] = value.slice(1, -1);
+      continue;
     }
+
     if (value.startsWith('[') && value.endsWith(']')) {
-      value = value.slice(1, -1).split(',').map((s) => s.trim()).filter(Boolean);
-    } else if (value === 'true') {
-      value = true;
-    } else if (value === 'false') {
-      value = false;
-    } else if (!isNaN(value) && value !== '') {
-      value = Number(value);
+      frontmatter[key] = _splitArrayItems(value.slice(1, -1));
+      continue;
     }
+    if (value === 'true') { frontmatter[key] = true; continue; }
+    if (value === 'false') { frontmatter[key] = false; continue; }
+    if (value === 'null' || value === '~') { frontmatter[key] = null; continue; }
+    if (_FM_INT_RE.test(value)) { frontmatter[key] = parseInt(value, 10); continue; }
+    if (_FM_FLOAT_RE.test(value)) { frontmatter[key] = parseFloat(value); continue; }
+    // Unquoted, non-numeric → keep raw string (preserves "1.0.0", paths, etc).
     frontmatter[key] = value;
   }
 
   return { frontmatter, body: text.slice(match[0].length).trim() };
 }
 
+// CJK ranges where one char ≈ one token — treat at ~1.2 chars/token instead
+// of the ASCII default of ~4 chars/token. Without this, contexts containing
+// Japanese / Chinese / Korean text were under-counted by 3-4×, causing the
+// model to receive far more tokens than the budget allowed.
+const _ESTIMATE_WIDE_RANGES = [
+  [0x3040, 0x30ff],   // Hiragana + Katakana
+  [0x3400, 0x4dbf],   // CJK Ext A
+  [0x4e00, 0x9fff],   // CJK Unified
+  [0xac00, 0xd7af],   // Hangul Syllables
+  [0xf900, 0xfaff],   // CJK Compatibility
+  [0xff66, 0xff9f],   // Halfwidth Katakana
+  [0x20000, 0x2ebef], // CJK Ext B–F
+];
+
+function _isWideChar(cp) {
+  for (const [lo, hi] of _ESTIMATE_WIDE_RANGES) {
+    if (cp >= lo && cp <= hi) return true;
+  }
+  return false;
+}
+
 function estimateTokens(text) {
   if (!text) return 0;
-  return Math.ceil(text.length / 4);
+  let wide = 0;
+  let narrow = 0;
+  for (const ch of text) {
+    const cp = ch.codePointAt(0);
+    if (cp != null && _isWideChar(cp)) wide += 1;
+    else narrow += 1;
+  }
+  return Math.ceil(narrow / 4 + wide / 1.2);
 }
 
 function trimTextToBudget(text, budgetTokens) {
   if (!text) return '';
-  if (estimateTokens(text) <= budgetTokens) return text;
-  return text.slice(0, budgetTokens * 4);
+  if (budgetTokens <= 0) return '';
+  const total = estimateTokens(text);
+  if (total <= budgetTokens) return text;
+  // Proportional cut. Slightly under-estimates wide chars but that's fine —
+  // the safety margin keeps us under budget.
+  const ratio = budgetTokens / total;
+  return text.slice(0, Math.max(1, Math.floor(text.length * ratio)));
 }
 
 function substituteVars(text, charName, userName) {
@@ -1516,12 +1619,18 @@ function parseSlashCommand(input) {
 // SECTION 3: TOKEN BUDGET (← openclawTokenBudget.ts)
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Minimum fraction of total context guaranteed to history when the
+// system-prompt overflows. Without this floor, a long character card
+// could starve the model of conversation entirely and produce drift.
+const MIN_HISTORY_FRACTION = 0.15;
+
 function computeTokenBudget(contextWindow, settings = null) {
   const total = Math.max(0, Math.floor(contextWindow));
-  let charPct = (settings?.tokenBudgetCharacter || 15) / 100;
-  let lorePct = (settings?.tokenBudgetLore || 20) / 100;
-  let histPct = (settings?.tokenBudgetHistory || 35) / 100;
-  let userPct = (settings?.tokenBudgetUser || 30) / 100;
+  // Clamp negatives — a malformed settings file used to flip the lane.
+  let charPct = Math.max(0, (settings?.tokenBudgetCharacter ?? 15)) / 100;
+  let lorePct = Math.max(0, (settings?.tokenBudgetLore ?? 20)) / 100;
+  let histPct = Math.max(0, (settings?.tokenBudgetHistory ?? 35)) / 100;
+  let userPct = Math.max(0, (settings?.tokenBudgetUser ?? 30)) / 100;
   // Normalize so percentages always sum to 100%
   const sum = charPct + lorePct + histPct + userPct;
   if (sum > 0 && Math.abs(sum - 1) > 0.001) {
@@ -1529,6 +1638,9 @@ function computeTokenBudget(contextWindow, settings = null) {
     lorePct /= sum;
     histPct /= sum;
     userPct /= sum;
+  } else if (sum === 0) {
+    // All-zero settings: fall back to defaults rather than producing zeros.
+    charPct = 0.15; lorePct = 0.20; histPct = 0.35; userPct = 0.30;
   }
   return {
     total,
@@ -1537,6 +1649,28 @@ function computeTokenBudget(contextWindow, settings = null) {
     history: Math.floor(total * histPct),
     user: Math.floor(total * userPct),
   };
+}
+
+/**
+ * Apply a minimum-history floor when the rendered system prompt exceeds
+ * its budgeted character lane. Returns the effective history budget plus
+ * diagnostic info the UI can surface as a warning.
+ *
+ * @param {{ total:number, character:number, history:number, lore:number, user:number }} budget
+ * @param {number} systemPromptTokens
+ * @returns {{ effectiveHistory:number, borrowed:number, hitFloor:boolean }}
+ */
+function applyHistoryFloor(budget, systemPromptTokens) {
+  if (systemPromptTokens <= budget.character) {
+    return { effectiveHistory: budget.history, borrowed: 0, hitFloor: false };
+  }
+  const overflow = systemPromptTokens - budget.character;
+  const minFloor = Math.floor(budget.total * MIN_HISTORY_FRACTION);
+  const candidate = Math.max(0, budget.history - overflow);
+  if (candidate < minFloor) {
+    return { effectiveHistory: minFloor, borrowed: budget.history - minFloor, hitFloor: true };
+  }
+  return { effectiveHistory: candidate, borrowed: overflow, hitFloor: false };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1633,15 +1767,33 @@ async function scanCharacters(fs, workspaceUri) {
           const { content } = await fs.readFile(resolveUri(charsDir, entry.name));
           results.push(loadCharacterJson(content, entry.name));
         } else if (entry.name.endsWith('.md')) {
-          // Auto-migrate .md to .json
-          const { content } = await fs.readFile(resolveUri(charsDir, entry.name));
+          // Non-destructive migration: keep the original .md file alongside
+          // the new .json so users can recover hand-written formatting if the
+          // automatic conversion lost anything. The .md is renamed to
+          // <name>.md.bak so future scans skip it (we only match .md / .json
+          // suffixes). User can delete .bak files manually when satisfied.
+          const content = (await fs.readFile(resolveUri(charsDir, entry.name))).content;
+          const jsonName = entry.name.replace(/\.md$/, '.json');
+          // Skip migration if a .json with the same stem already exists —
+          // otherwise we'd silently overwrite the user's authoritative copy.
+          // The directory iteration may have already loaded that .json above,
+          // or it may come later; either way, prefer the JSON.
+          if (await fs.exists(resolveUri(charsDir, jsonName))) {
+            console.warn('[TextGenerator] Skipping .md migration; .json already exists for', entry.name);
+            continue;
+          }
           const char = migrateCharacterMdToJson(content, entry.name);
-          const jsonName = entry.name.replace('.md', '.json');
+          const backupName = entry.name + '.bak';
           await fs.writeFile(resolveUri(charsDir, jsonName), JSON.stringify(char, null, 2));
-          try { await fs.delete(resolveUri(charsDir, entry.name)); } catch { /* ok */ }
+          try {
+            await fs.writeFile(resolveUri(charsDir, backupName), content);
+            await fs.delete(resolveUri(charsDir, entry.name));
+          } catch (err) {
+            console.warn('[TextGenerator] Could not back up legacy character file', entry.name, err);
+          }
           results.push(normalizeCharacterForRuntime(char, jsonName));
         }
-      } catch { /* skip broken */ }
+      } catch (err) { console.warn('[TextGenerator] Skipped unreadable character', entry.name, err); }
     }
     return results;
   } catch {
@@ -1763,7 +1915,7 @@ async function scanLorebooks(fs, workspaceUri) {
         try {
           const { content } = await fs.readFile(resolveUri(loreDir, entry.name));
           results.push({ fileName: entry.name, content });
-        } catch { /* skip */ }
+        } catch (err) { console.warn('[TextGenerator] Skipped unreadable lorebook', entry.name, err); }
       }
     }
     return results;
@@ -1979,7 +2131,7 @@ function buildSystemPrompt(params = {}) {
 // SECTION 6: CONTEXT ASSEMBLY (← openclawContextEngine.ts)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function trimHistoryToBudget(messages, budgetTokens, method = 'dropOld') {
+function trimHistoryToBudget(messages, budgetTokens, method = 'dropOld', opts = {}) {
   const result = [];
   let used = 0;
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -1988,19 +2140,39 @@ function trimHistoryToBudget(messages, budgetTokens, method = 'dropOld') {
     result.unshift(messages[i]);
     used += t;
   }
-  // summarizeOld: prepend a summary of dropped messages as context
   const droppedCount = messages.length - result.length;
-  if (method === 'summarizeOld' && droppedCount > 0 && result.length > 0) {
-    const dropped = messages.slice(0, droppedCount);
-    const names = [...new Set(dropped.map(m => m.content?.match(/^([^:]+):/)?.[1]).filter(Boolean))];
-    const summary = `[Earlier conversation summary: ${droppedCount} messages were exchanged${names.length ? ' between ' + names.join(', ') : ''}. The conversation covered: ${dropped.slice(-3).map(m => (m.content || '').slice(0, 80)).join(' / ')}…]`;
-    const summaryTokens = estimateTokens(summary);
-    // Only add if we have budget
+  // summarizeOld: prepend a real LLM-produced summary supplied by the caller.
+  // No fake placeholder summary — if the caller didn't pass `opts.summary`,
+  // dropped messages are simply dropped (which matches dropOld behaviour).
+  if (method === 'summarizeOld' && droppedCount > 0 && opts.summary) {
+    const summaryMsg = `[Earlier conversation summary: ${opts.summary}]`;
+    const summaryTokens = estimateTokens(summaryMsg);
     if (used + summaryTokens <= budgetTokens) {
-      result.unshift({ role: 'system', content: summary });
+      result.unshift({ role: 'system', content: summaryMsg });
+    } else {
+      // Trim the summary itself if even it doesn't fit.
+      const trimmed = trimTextToBudget(summaryMsg, Math.max(0, budgetTokens - used));
+      if (trimmed) result.unshift({ role: 'system', content: trimmed });
     }
   }
   return result;
+}
+
+/**
+ * Compute which messages would be dropped if `trimHistoryToBudget` were
+ * called with the same arguments. Used by the host to decide whether a
+ * fresh LLM-generated summary is needed before the real assembly call.
+ */
+function computeDroppedMessages(messages, budgetTokens) {
+  let used = 0;
+  let kept = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const t = estimateTokens(messages[i].content);
+    if (used + t > budgetTokens) break;
+    used += t;
+    kept += 1;
+  }
+  return messages.slice(0, messages.length - kept);
 }
 
 /**
@@ -2023,6 +2195,7 @@ function assembleContext(params) {
     responseLength = null,
     settings = null,
     ephemeralInstruction = null,
+    historySummary = '',
   } = params;
 
   // Support both old (single character) and new (characters array) signatures
@@ -2080,12 +2253,19 @@ function assembleContext(params) {
   const systemPrompt = buildResult.prompt;
   const characterReminders = buildResult.reminders || [];
 
-  // Check if system prompt overflows character budget — borrow from history
+  // System-prompt overflow → borrow from history with a min floor so the
+  // model is never starved of recent conversation. Surface a UI warning when
+  // the floor is hit so the user knows their character is too long for the
+  // chosen model + budget split.
   const charTokens = estimateTokens(systemPrompt);
-  let historyBudget = budget.history;
-  if (charTokens > budget.character) {
-    const overflow = charTokens - budget.character;
-    historyBudget = Math.max(0, historyBudget - overflow);
+  const floorResult = applyHistoryFloor(budget, charTokens);
+  const historyBudget = floorResult.effectiveHistory;
+  const warnings = [];
+  if (floorResult.hitFloor) {
+    warnings.push(
+      `System prompt (${charTokens} tokens) exceeds character budget (${budget.character}). ` +
+      `History reduced to ${historyBudget} tokens (floor).`,
+    );
   }
 
   const messages = [{ role: 'system', content: systemPrompt }];
@@ -2108,7 +2288,7 @@ function assembleContext(params) {
   });
 
   const fitMethod = primaryChar?.frontmatter?.fitMessagesInContextMethod || 'dropOld';
-  messages.push(...trimHistoryToBudget(mappedHistory, historyBudget, fitMethod));
+  messages.push(...trimHistoryToBudget(mappedHistory, historyBudget, fitMethod, { summary: historySummary }));
 
   // Character reminders — injected right before AI response for maximum recency
   // (matches Perchance behavior: reminder as hidden system msg near end of context)
@@ -2153,6 +2333,10 @@ function assembleContext(params) {
     messages,
     estimatedTokens: estimateTokens(messages.map((m) => m.content).join('\n')),
     budget,
+    warnings,
+    fitMethod,
+    historyBudget,
+    mappedHistory,
   };
 }
 
@@ -2263,7 +2447,7 @@ async function listThreads(fs, workspaceUri) {
     for (const e of entries) {
       if (e.type === 2) {
         try { threads.push(await loadThread(fs, workspaceUri, e.name)); }
-        catch { /* skip corrupted */ }
+        catch (err) { console.warn('[TextGenerator] Skipped corrupted thread', e.name, err); }
       }
     }
     return threads.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -2742,7 +2926,16 @@ function renderChatEditor(container, parallx, input) {
 
   function updateChrome() {
     summaryEl.textContent = getThreadSummary();
-    tokenCountEl.textContent = lastAssembledContext ? `~${lastAssembledContext.estimatedTokens} tokens` : '';
+    if (lastAssembledContext) {
+      const warns = lastAssembledContext.warnings || [];
+      tokenCountEl.textContent = `~${lastAssembledContext.estimatedTokens} tokens`;
+      tokenCountEl.title = warns.length > 0 ? warns.join('\n') : '';
+      tokenCountEl.classList.toggle('tg-token-warn', warns.length > 0);
+    } else {
+      tokenCountEl.textContent = '';
+      tokenCountEl.title = '';
+      tokenCountEl.classList.remove('tg-token-warn');
+    }
     if (isGenerating) {
       sendBtn.innerHTML = icon('square', 16);
       sendBtn.title = 'Stop generating';
@@ -3725,6 +3918,70 @@ function renderChatEditor(container, parallx, input) {
     // When userText is provided, exclude the last history entry (the same message)
     // so it routes through the dedicated user budget lane instead of competing with history.
     const effectiveHistory = userText ? baseHistory.slice(0, -1) : baseHistory;
+
+    // Real summarisation for fitMessagesInContextMethod = 'summarizeOld'.
+    // We only call the LLM when (a) the character requests it, (b) messages
+    // would actually be dropped, and (c) the cached summary is stale (the
+    // dropped-message count grew). This keeps the cost to one extra call per
+    // turn — and zero on most turns where the cache is hit.
+    let historySummary = '';
+    const primaryChar = characters[0] || null;
+    const fitMethod = primaryChar?.frontmatter?.fitMessagesInContextMethod || 'dropOld';
+    if (fitMethod === 'summarizeOld' && effectiveHistory.length > 0) {
+      try {
+        const previewMessages = effectiveHistory.map(m => ({
+          role: mapAuthorToRole(m.author || m.role, m),
+          content: (m.author === 'user' && !m.characterFile) ? `${getUserName()}: ${m.content || ''}` : (m.name ? `${m.name}: ${m.content || ''}` : (m.content || '')),
+        })).filter(m => m.content);
+        // Mirror the floor logic to estimate the real history budget.
+        const estCharTokens = 1000; // safe over-estimate; refined below if available
+        const floorPreview = applyHistoryFloor(budget, estCharTokens);
+        const dropped = computeDroppedMessages(previewMessages, floorPreview.effectiveHistory);
+        if (dropped.length > 0) {
+          const cached = thread?.cachedSummary;
+          if (cached && cached.droppedCount === dropped.length) {
+            historySummary = cached.text || '';
+          } else if (parallx?.lm?.sendChatRequest) {
+            const summariserMessages = [
+              {
+                role: 'system',
+                content:
+                  'You compress a roleplay conversation into a brief recap. ' +
+                  'Output 2-4 short sentences capturing key plot beats, setting, ' +
+                  'character relationships and unresolved threads. No preamble, ' +
+                  'no quotation marks, no list markers.',
+              },
+              {
+                role: 'user',
+                content: 'Summarise the following conversation excerpt:\n\n' +
+                  dropped.map(m => `${m.role}: ${(m.content || '').slice(0, 800)}`).join('\n\n'),
+              },
+            ];
+            try {
+              const stream = parallx.lm.sendChatRequest(modelId, summariserMessages, {
+                temperature: 0.3,
+                maxTokens: 250,
+                think: false,
+              });
+              let summaryText = '';
+              for await (const chunk of stream) {
+                if (chunk?.content) summaryText += chunk.content;
+              }
+              historySummary = summaryText.trim();
+              if (historySummary && thread) {
+                thread.cachedSummary = { droppedCount: dropped.length, text: historySummary };
+                await updateThreadMeta(fs, workspaceUri, thread.id, { cachedSummary: thread.cachedSummary });
+              }
+            } catch (err) {
+              console.warn('[TextGenerator] Summarisation request failed:', err);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[TextGenerator] Summarisation pre-pass failed:', err);
+      }
+    }
+
     const assembled = assembleContext({
       characters,
       writingPreset: thread?.writingPreset || currentSettings?.defaultWritingPreset || 'immersive-rp',
@@ -3738,6 +3995,7 @@ function renderChatEditor(container, parallx, input) {
       responseLength: thread?.responseLength,
       settings: currentSettings,
       ephemeralInstruction: instruction,
+      historySummary,
     });
     lastAssembledContext = assembled;
     selectedModelId = modelId;
@@ -4092,7 +4350,7 @@ function renderChatEditor(container, parallx, input) {
       case 'mem': {
         try {
           await parallx.editors.openFileEditor(resolveUri(workspaceUri, `${EXT_ROOT}/threads/${threadId}/memories.md`));
-        } catch { /* ignore */ }
+        } catch (err) { console.warn('[TextGenerator] Could not open memories editor:', err); }
         break;
       }
       case 'lore': {
@@ -4107,7 +4365,7 @@ function renderChatEditor(container, parallx, input) {
           await fs.writeFile(lorePath, existing.content + `\n\n## ${cmd.args}`);
           allLorebooks = await scanLorebooks(fs, workspaceUri);
         } else {
-          try { await parallx.editors.openFileEditor(lorePath); } catch { /* ignore */ }
+          try { await parallx.editors.openFileEditor(lorePath); } catch (err) { console.warn('[TextGenerator] Could not open lorebook editor:', err); }
         }
         break;
       }
@@ -4214,7 +4472,7 @@ function renderChatEditor(container, parallx, input) {
           charData = parseCharacterMd(content, charRef.file);
         }
         loadedCharacters.push(charData);
-      } catch { /* ignore broken character entries */ }
+      } catch (err) { console.warn('[TextGenerator] Skipped broken character entry', charRef?.file, err); }
     }
     characters = loadedCharacters;
     // Persist updated thread references if any .md → .json renames happened
