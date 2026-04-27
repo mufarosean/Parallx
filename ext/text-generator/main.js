@@ -914,6 +914,95 @@ function injectStyles() {
   cursor: help;
 }
 
+/* ═══ Budget total badge ═══ */
+.tg-form-budget-total {
+  font-size: 12px;
+  margin: -4px 0 8px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.tg-form-budget-total--ok {
+  color: var(--vscode-charts-green, #89d185);
+  background: rgba(137, 209, 133, 0.08);
+}
+.tg-form-budget-total--warn {
+  color: var(--vscode-editorWarning-foreground, #cca700);
+  background: rgba(204, 167, 0, 0.08);
+}
+.tg-form-hint--warn {
+  color: var(--vscode-editorWarning-foreground, #cca700) !important;
+  margin-top: 4px;
+}
+.tg-form-inherit {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  margin-top: 4px;
+}
+
+/* ═══ Toast / undo ═══ */
+.tg-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--vscode-notifications-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-notifications-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-notifications-border, var(--vscode-widget-border, transparent));
+  border-radius: 4px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  font-size: 13px;
+  animation: tg-toast-in 200ms ease-out;
+}
+@keyframes tg-toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translateX(-50%); }
+}
+.tg-toast-action {
+  background: transparent;
+  border: 1px solid var(--vscode-button-border, transparent);
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 3px;
+  font: inherit;
+}
+.tg-toast-action:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+/* ═══ Lorebook checkbox list ═══ */
+.tg-ce-lore-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 3px;
+  padding: 6px 8px;
+  max-height: 180px;
+  overflow-y: auto;
+  background: var(--vscode-input-background);
+}
+.tg-ce-lore-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.tg-ce-lore-row input { margin: 0; }
+.tg-ce-lore-empty {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
+
 /* ═══ Message actions (inline with name) ═══ */
 .tg-msg { position: relative; }
 .tg-msg-action-btn {
@@ -1057,6 +1146,19 @@ function injectStyles() {
   background: color-mix(in srgb, var(--vscode-input-background, #3c3c3c) 50%, transparent);
   border-radius: var(--parallx-radius-sm, 3px);
   border-left: 3px solid var(--vscode-focusBorder, #007fd4);
+}
+.tg-modal-body .tg-prompt-diag {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: color-mix(in srgb, var(--vscode-editorWidget-background, #252526) 80%, transparent);
+  border-radius: var(--parallx-radius-sm, 3px);
+  border-left: 3px solid var(--vscode-charts-yellow, #d7ba7d);
+  font-size: 11.5px;
+}
+.tg-modal-body .tg-prompt-diag pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: var(--vscode-editor-font-family, monospace);
 }
 .tg-modal-footer {
   display: flex;
@@ -1988,6 +2090,32 @@ function assembleLoreContent(lorebooks, budgetTokens, recentContext = '') {
   return combined.trim();
 }
 
+/**
+ * Diagnostic: which lorebook entries matched the recent context, which were
+ * skipped because their triggers didn't fire, and which always fire (no
+ * triggers). Returned shape is consumed by the Inspect Last Context modal.
+ */
+function debugLorebookTriggers(lorebooks, recentContext = '') {
+  const contextLower = recentContext.toLowerCase();
+  const matched = [];
+  const skipped = [];
+  const always = [];
+  for (const lb of lorebooks) {
+    const entries = parseLoreEntries(lb.content);
+    for (const entry of entries) {
+      const head = (entry.body || '').split('\n', 1)[0].slice(0, 80) || '(no header)';
+      if (!entry.triggers || entry.triggers.length === 0) {
+        always.push({ book: lb.fileName, head });
+        continue;
+      }
+      const hits = entry.triggers.filter(kw => contextLower.includes(kw));
+      if (hits.length > 0) matched.push({ book: lb.fileName, head, triggers: entry.triggers, hits });
+      else skipped.push({ book: lb.fileName, head, triggers: entry.triggers });
+    }
+  }
+  return { matched, skipped, always };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 5: SYSTEM PROMPT BUILDER (← openclawSystemPrompt.ts)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2263,8 +2391,21 @@ function assembleContext(params) {
   const warnings = [];
   if (floorResult.hitFloor) {
     warnings.push(
-      `System prompt (${charTokens} tokens) exceeds character budget (${budget.character}). ` +
-      `History reduced to ${historyBudget} tokens (floor).`,
+      `System prompt is ${charTokens}t but character lane is only ${budget.character}t. ` +
+      `History was floored at ${historyBudget}t to fit. ` +
+      `Trim the character description, raise context window, or increase Character %.`,
+    );
+  }
+  if (rawLoreTokens > loreBudget && rawLoreTokens > 0) {
+    warnings.push(
+      `Lore content is ${rawLoreTokens}t but lore lane is ${loreBudget}t — ${rawLoreTokens - loreBudget}t was truncated. ` +
+      `Reduce lorebooks or increase Lore %.`,
+    );
+  }
+  if (rawMemTokens > memoryBudget && memoryBudget > 0 && rawMemTokens > 0) {
+    warnings.push(
+      `Long-term memory is ${rawMemTokens}t but memory share is ${memoryBudget}t — older entries will be cut. ` +
+      `Enable Extended Memory or trim /mem.`,
     );
   }
 
@@ -2287,7 +2428,9 @@ function assembleContext(params) {
     };
   });
 
-  const fitMethod = primaryChar?.frontmatter?.fitMessagesInContextMethod || 'dropOld';
+  const fitMethod = primaryChar?.frontmatter?.fitMessagesInContextMethod
+    || settings?.defaultFitMethod
+    || 'dropOld';
   messages.push(...trimHistoryToBudget(mappedHistory, historyBudget, fitMethod, { summary: historySummary }));
 
   // Character reminders — injected right before AI response for maximum recency
@@ -2914,6 +3057,26 @@ function renderChatEditor(container, parallx, input) {
     });
   }
 
+  // Lightweight toast for non-modal feedback (delete-undo, save errors, etc.).
+  let _activeToast = null;
+  function showToast(message, actionLabel = null, actionFn = null, ms = 5000) {
+    if (_activeToast) { _activeToast.remove(); _activeToast = null; }
+    const toast = el('div', 'tg-toast');
+    toast.appendChild(el('span', null, { text: message }));
+    if (actionLabel && actionFn) {
+      const btn = el('button', 'tg-toast-action', { text: actionLabel });
+      btn.addEventListener('click', () => {
+        try { actionFn(); } finally { toast.remove(); _activeToast = null; }
+      });
+      toast.appendChild(btn);
+    }
+    document.body.appendChild(toast);
+    _activeToast = toast;
+    setTimeout(() => {
+      if (_activeToast === toast) { toast.remove(); _activeToast = null; }
+    }, ms);
+  }
+
   function getComposeSelectionLabel(selection = selectedComposeSpeaker) {
     if (!selection || selection === SELF_SPEAKER) return getUserName();
     return getCharacterName(selection);
@@ -2929,7 +3092,18 @@ function renderChatEditor(container, parallx, input) {
     if (lastAssembledContext) {
       const warns = lastAssembledContext.warnings || [];
       tokenCountEl.textContent = `~${lastAssembledContext.estimatedTokens} tokens`;
-      tokenCountEl.title = warns.length > 0 ? warns.join('\n') : '';
+      const tipLines = [];
+      if (lastAssembledContext.responseLengthSource) {
+        tipLines.push(`Response length: ${lastAssembledContext.responseLengthSource}`);
+      }
+      if (lastAssembledContext.fitMethodSource) {
+        tipLines.push(`Context-fit: ${lastAssembledContext.activeFitMethod} (${lastAssembledContext.fitMethodSource})`);
+      }
+      if (warns.length > 0) {
+        if (tipLines.length) tipLines.push('');
+        tipLines.push(...warns);
+      }
+      tokenCountEl.title = tipLines.join('\n');
       tokenCountEl.classList.toggle('tg-token-warn', warns.length > 0);
     } else {
       tokenCountEl.textContent = '';
@@ -3494,6 +3668,46 @@ function renderChatEditor(container, parallx, input) {
     modal.appendChild(header);
 
     const body = el('div', 'tg-modal-body');
+
+    // Diagnostic header: settings inheritance + warnings.
+    const diag = el('div', 'tg-prompt-diag');
+    const ctx = lastAssembledContext;
+    const diagLines = [];
+    if (ctx.responseLengthSource) diagLines.push(`Response length: ${ctx.responseLengthSource}`);
+    if (ctx.fitMethodSource) diagLines.push(`Context-fit: ${ctx.activeFitMethod} (from ${ctx.fitMethodSource})`);
+    if (ctx.warnings && ctx.warnings.length > 0) {
+      for (const w of ctx.warnings) diagLines.push('⚠ ' + w);
+    }
+    if (diagLines.length > 0) {
+      diag.appendChild(el('pre', null, { text: diagLines.join('\n') }));
+      body.appendChild(el('div', 'tg-prompt-role', { text: 'diagnostics' }));
+      body.appendChild(diag);
+    }
+
+    // Lorebook trigger debug.
+    if (ctx.loreDebug && (ctx.loreDebug.matched.length || ctx.loreDebug.skipped.length || ctx.loreDebug.always.length)) {
+      body.appendChild(el('div', 'tg-prompt-role', { text: 'lorebook triggers' }));
+      const loreLines = [];
+      if (ctx.loreDebug.matched.length) {
+        loreLines.push('MATCHED:');
+        for (const m of ctx.loreDebug.matched) {
+          loreLines.push(`  • [${m.book}] ${m.head}  ← hit on: ${m.hits.join(', ')}`);
+        }
+      }
+      if (ctx.loreDebug.always.length) {
+        loreLines.push('ALWAYS:');
+        for (const a of ctx.loreDebug.always) loreLines.push(`  • [${a.book}] ${a.head}`);
+      }
+      if (ctx.loreDebug.skipped.length) {
+        loreLines.push('SKIPPED (triggers did not fire):');
+        for (const s of ctx.loreDebug.skipped) loreLines.push(`  • [${s.book}] ${s.head}  (needs: ${s.triggers.join(', ')})`);
+      }
+      const loreEl = el('div', 'tg-prompt-content');
+      loreEl.appendChild(el('pre', null, { text: loreLines.join('\n') }));
+      body.appendChild(loreEl);
+    }
+
+    body.appendChild(el('div', 'tg-prompt-role', { text: '— prompt sent to model —' }));
     for (const msg of lastAssembledContext.messages) {
       body.appendChild(el('div', 'tg-prompt-role', { text: msg.role }));
       const contentEl = el('div', 'tg-prompt-content');
@@ -3663,10 +3877,20 @@ function renderChatEditor(container, parallx, input) {
       deleteBtn.title = 'Delete message';
       deleteBtn.addEventListener('click', async (event) => {
         event.stopPropagation();
+        const removed = messageHistory[index];
+        const removedIndex = index;
         messageHistory.splice(index, 1);
         await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
         renderMessages();
         updateChrome();
+        showToast('Message deleted.', 'Undo', async () => {
+          // Restore at original index (clamped if list shrank further).
+          const ix = Math.min(removedIndex, messageHistory.length);
+          messageHistory.splice(ix, 0, removed);
+          await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
+          renderMessages();
+          updateChrome();
+        });
       });
       actions.appendChild(deleteBtn);
 
@@ -3914,6 +4138,7 @@ function renderChatEditor(container, parallx, input) {
     const baseHistory = historyOverride || messageHistory;
     const recentForTriggers = baseHistory.slice(-10).map(m => m.content || '').join('\n') + (userText ? '\n' + userText : '');
     const loreContent = assembleLoreContent(lorebooks, budget.lore, recentForTriggers);
+    const loreDebug = debugLorebookTriggers(lorebooks, recentForTriggers);
     const memoryContent = await readMemories(fs, workspaceUri, threadId);
     // When userText is provided, exclude the last history entry (the same message)
     // so it routes through the dedicated user budget lane instead of competing with history.
@@ -3926,7 +4151,9 @@ function renderChatEditor(container, parallx, input) {
     // turn — and zero on most turns where the cache is hit.
     let historySummary = '';
     const primaryChar = characters[0] || null;
-    const fitMethod = primaryChar?.frontmatter?.fitMessagesInContextMethod || 'dropOld';
+    const fitMethod = primaryChar?.frontmatter?.fitMessagesInContextMethod
+      || currentSettings?.defaultFitMethod
+      || 'dropOld';
     if (fitMethod === 'summarizeOld' && effectiveHistory.length > 0) {
       try {
         const previewMessages = effectiveHistory.map(m => ({
@@ -3942,6 +4169,15 @@ function renderChatEditor(container, parallx, input) {
           if (cached && cached.droppedCount === dropped.length) {
             historySummary = cached.text || '';
           } else if (parallx?.lm?.sendChatRequest) {
+            // Surface that we're spending an extra LLM call so the user knows
+            // why the first token is slower than usual.
+            transientMessage = {
+              author: 'system',
+              role: 'system',
+              content: `*Summarising ${dropped.length} earlier turn${dropped.length === 1 ? '' : 's'}…*`,
+              hiddenFrom: null,
+            };
+            queueRender();
             const summariserMessages = [
               {
                 role: 'system',
@@ -3974,6 +4210,13 @@ function renderChatEditor(container, parallx, input) {
               }
             } catch (err) {
               console.warn('[TextGenerator] Summarisation request failed:', err);
+            } finally {
+              // Clear the summarisation transient message so the actual
+              // generation transient can take over without leaking.
+              if (transientMessage?.content?.startsWith('*Summarising')) {
+                transientMessage = null;
+                queueRender();
+              }
             }
           }
         }
@@ -3997,6 +4240,22 @@ function renderChatEditor(container, parallx, input) {
       ephemeralInstruction: instruction,
       historySummary,
     });
+    // Annotate with diagnostic info the inspect modal + token chip surface.
+    assembled.loreDebug = loreDebug;
+    const charLenLimit = primaryChar?.frontmatter?.messageLengthLimit;
+    if (charLenLimit) {
+      assembled.responseLengthSource = `character (${primaryChar.frontmatter.name || 'character'}: ${charLenLimit})`;
+    } else if (thread?.responseLength) {
+      assembled.responseLengthSource = `thread (${thread.responseLength})`;
+    } else if (currentSettings?.defaultResponseLength) {
+      assembled.responseLengthSource = `global default (${currentSettings.defaultResponseLength})`;
+    } else {
+      assembled.responseLengthSource = 'unset';
+    }
+    assembled.fitMethodSource = primaryChar?.frontmatter?.fitMessagesInContextMethod
+      ? `character (${primaryChar.frontmatter.name || 'character'})`
+      : (currentSettings?.defaultFitMethod ? 'global default' : 'fallback');
+    assembled.activeFitMethod = fitMethod;
     lastAssembledContext = assembled;
     selectedModelId = modelId;
     updateChrome();
@@ -5215,6 +5474,7 @@ const DEFAULT_SETTINGS = {
   defaultWritingPreset: 'immersive-rp',
   defaultResponseLength: '',
   defaultModel: '',
+  defaultFitMethod: 'dropOld',
 };
 
 async function loadSettings(fs, workspaceUri) {
@@ -5290,10 +5550,29 @@ function renderSettingsPage(container, parallx) {
 
   // Token budget section
   form.appendChild(el('div', 'tg-page-section-title', { text: 'Token Budget (% of context window)' }));
-  const charBudget = formGroup('Character prompt', 'Percentage for character definition + system prompt', 'number', 'tokenBudgetCharacter', { min: 5, max: 50 });
-  const loreBudget = formGroup('Lore / World info', 'Percentage for lorebook content', 'number', 'tokenBudgetLore', { min: 5, max: 50 });
-  const histBudget = formGroup('Chat history', 'Percentage for conversation history', 'number', 'tokenBudgetHistory', { min: 10, max: 60 });
-  const userBudget = formGroup('User message', 'Percentage for the current user message', 'number', 'tokenBudgetUser', { min: 10, max: 50 });
+  const budgetTotalEl = el('div', 'tg-form-budget-total');
+  form.appendChild(budgetTotalEl);
+  const charBudget = formGroup('Character prompt 🧠', 'Higher = richer persona, but eats history. Default 15%.', 'number', 'tokenBudgetCharacter', { min: 0, max: 90 });
+  const loreBudget = formGroup('Lore / World info 📚', 'Lorebook + long-term memory share. Default 20%.', 'number', 'tokenBudgetLore', { min: 0, max: 90 });
+  const histBudget = formGroup('Chat history 💬', 'Older turns kept in context. Default 35%.', 'number', 'tokenBudgetHistory', { min: 0, max: 90 });
+  const userBudget = formGroup('User message ✍️', 'Headroom for your latest message. Default 30%.', 'number', 'tokenBudgetUser', { min: 0, max: 90 });
+  function recomputeBudgetTotal() {
+    const sum = [charBudget, loreBudget, histBudget, userBudget]
+      .map(i => Number(i.value) || 0).reduce((a, b) => a + b, 0);
+    if (sum === 100) {
+      budgetTotalEl.textContent = `Total: ${sum}% ✓`;
+      budgetTotalEl.className = 'tg-form-budget-total tg-form-budget-total--ok';
+    } else if (sum === 0) {
+      budgetTotalEl.textContent = 'Total: 0% — falls back to defaults';
+      budgetTotalEl.className = 'tg-form-budget-total tg-form-budget-total--warn';
+    } else {
+      budgetTotalEl.textContent = `Total: ${sum}% — values will be scaled to 100%`;
+      budgetTotalEl.className = 'tg-form-budget-total tg-form-budget-total--warn';
+    }
+  }
+  for (const inp of [charBudget, loreBudget, histBudget, userBudget]) {
+    inp.addEventListener('input', recomputeBudgetTotal);
+  }
 
   // Defaults section
   const sep = el('div', 'tg-page-section-title', { text: 'Generation Defaults' });
@@ -5317,6 +5596,12 @@ function renderSettingsPage(container, parallx) {
   const defaultModelSelect = formGroup('Default model', 'Used for newly created chats. Leave empty to auto-select first available model.', 'select', 'defaultModel', {
     options: [{ value: '', label: '(auto — first available)' }],
   });
+  const fitMethodSelect = formGroup('Default context-fit method', 'How to handle conversations longer than the context window.', 'select', 'defaultFitMethod', {
+    options: [
+      { value: 'dropOld', label: 'Drop oldest messages (fast)' },
+      { value: 'summarizeOld', label: 'Summarize oldest messages (1 extra LLM call/turn, smarter)' },
+    ],
+  });
 
   // Save button
   const saveRow = el('div', 'tg-form-group');
@@ -5328,7 +5613,10 @@ function renderSettingsPage(container, parallx) {
   saveRow.append(saveBtn, savedLabel);
   form.appendChild(saveRow);
 
-  const inputs = { charBudget, loreBudget, histBudget, userBudget, tempInput, maxTokInput, ctxInput, userNameInput };
+  // Note: presetSelect / responseLengthSelect / defaultModelSelect / fitMethodSelect are
+  // referenced directly by load() and the save handler, so the `inputs` object only
+  // tracks the basic-typed fields used by the integer-clamp logic above.
+  void [presetSelect, responseLengthSelect, defaultModelSelect, fitMethodSelect];
 
   async function load() {
     const s = await loadSettings(fs, workspaceUri);
@@ -5342,18 +5630,27 @@ function renderSettingsPage(container, parallx) {
     userNameInput.value = s.userName;
     presetSelect.value = s.defaultWritingPreset || 'immersive-rp';
     responseLengthSelect.value = s.defaultResponseLength || '';
+    fitMethodSelect.value = s.defaultFitMethod || 'dropOld';
     // Populate model dropdown from available LM models
     if (parallx.lm) {
       try {
-        const availableModels = await parallx.lm.listModels();
+        const availableModels = await (parallx.lm.getModels?.() || parallx.lm.listModels?.() || Promise.resolve([]));
         for (const m of availableModels) {
-          const opt = el('option', null, { text: m.name || m.id });
+          const opt = el('option', null, { text: m.displayName || m.name || m.id });
           opt.value = m.id;
           defaultModelSelect.appendChild(opt);
         }
+        // If saved default is no longer available, surface a warning.
+        if (s.defaultModel && !availableModels.some(m => m.id === s.defaultModel)) {
+          const warn = el('div', 'tg-form-hint tg-form-hint--warn', {
+            text: `⚠ Saved default model "${s.defaultModel}" is not currently available. Using auto-select.`,
+          });
+          defaultModelSelect.parentElement?.appendChild(warn);
+        }
       } catch { /* no models available */ }
     }
-    defaultModelSelect.value = s.defaultModel || '';
+    defaultModelSelect.value = (s.defaultModel && Array.from(defaultModelSelect.options).some(o => o.value === s.defaultModel)) ? s.defaultModel : '';
+    recomputeBudgetTotal();
   }
 
   saveBtn.addEventListener('click', async () => {
@@ -5369,6 +5666,7 @@ function renderSettingsPage(container, parallx) {
       defaultWritingPreset: presetSelect.value || DEFAULT_SETTINGS.defaultWritingPreset,
       defaultResponseLength: responseLengthSelect.value || '',
       defaultModel: defaultModelSelect.value || '',
+      defaultFitMethod: fitMethodSelect.value || DEFAULT_SETTINGS.defaultFitMethod,
     };
     await saveSettings(fs, workspaceUri, settings);
     savedLabel.classList.add('tg-form-saved--show');
@@ -5445,11 +5743,11 @@ function renderCharacterEditor(container, parallx, input) {
 
   const userNameInput = el('input', 'tg-ce-input');
   userNameInput.placeholder = '(optional)';
-  root.appendChild(field('User\'s name', 'This overrides the user\'s default username when creating a new chat thread with this character.', userNameInput));
+  // userName and userDescription moved into More section — they're persona-level
+  // overrides most users never set.
 
   const userDescInput = el('textarea', 'tg-ce-textarea tg-ce-textarea--short');
   userDescInput.placeholder = '(optional)';
-  root.appendChild(field('User\'s description/role', 'What role do you, the user, play when talking to this character? This overrides the user\'s default description.', userDescInput));
 
   root.appendChild(el('hr', 'tg-ce-separator'));
 
@@ -5467,11 +5765,16 @@ function renderCharacterEditor(container, parallx, input) {
     o.value = key;
     presetSelect.appendChild(o);
   }
-  root.appendChild(field(
+  const presetField = field(
     `${icon('pencil-line', 14)} General writing instructions`,
     'These instructions apply to the whole chat, regardless of which character is currently speaking. It\'s for defining general writing style and the "type of experience".',
     presetSelect,
-  ));
+  );
+  // Inheritance hint: per-thread > per-character > global default.
+  presetField.appendChild(el('div', 'tg-form-inherit', {
+    text: 'Per-thread setting overrides this. If unset, the global default in Settings is used.',
+  }));
+  root.appendChild(presetField);
 
   const initialMsgInput = el('textarea', 'tg-ce-textarea tg-ce-textarea--tall');
   initialMsgInput.placeholder = '[USER]: hey\n[AI]: um hi\n[SYSTEM; hiddenFrom=ai]: The AI can\'t see this message. Useful for user instructions / welcome messages / credits / etc.';
@@ -5480,6 +5783,75 @@ function renderCharacterEditor(container, parallx, input) {
     'You can use this to teach the AI how this character typically speaks, and/or to define an initial scenario. Follow the "[AI]: ... [USER]: ..." format.',
     initialMsgInput,
   ));
+
+  // ── Example dialogue (lifted out of "More") ──
+  const exampleInput = el('textarea', 'tg-ce-textarea tg-ce-textarea--tall');
+  exampleInput.placeholder = '[USER]: How are you?\n[AI]: I\'m doing well, thank you for asking!';
+  root.appendChild(field(
+    `${icon('message-circle', 14)} Example dialogue`,
+    'Example conversations that teach the AI the character\'s speaking style. Use [AI]: and [USER]: format.',
+    exampleInput,
+  ));
+
+  // ── Lorebooks (lifted out of "More") ──
+  const loreListContainer = el('div', 'tg-ce-lore-list');
+  let _allLoreFiles = [];
+  const _loreSelected = new Set();
+  function rebuildLoreList() {
+    loreListContainer.innerHTML = '';
+    const known = new Set(_allLoreFiles);
+    if (_allLoreFiles.length === 0 && _loreSelected.size === 0) {
+      loreListContainer.appendChild(el('div', 'tg-ce-lore-empty', {
+        text: 'No lorebooks in the lorebooks/ folder yet. Create one from the Home page.',
+      }));
+      return;
+    }
+    for (const fname of _allLoreFiles) {
+      const row = el('label', 'tg-ce-lore-row');
+      const cb = el('input');
+      cb.type = 'checkbox';
+      cb.checked = _loreSelected.has(fname);
+      cb.addEventListener('change', () => {
+        if (cb.checked) _loreSelected.add(fname);
+        else _loreSelected.delete(fname);
+      });
+      row.appendChild(cb);
+      row.appendChild(el('span', null, { text: fname }));
+      loreListContainer.appendChild(row);
+    }
+    for (const sel of _loreSelected) {
+      if (known.has(sel)) continue;
+      const row = el('label', 'tg-ce-lore-row');
+      const cb = el('input');
+      cb.type = 'checkbox';
+      cb.checked = true;
+      cb.addEventListener('change', () => { if (!cb.checked) _loreSelected.delete(sel); });
+      row.appendChild(cb);
+      const lbl = el('span', null, { text: `${sel}  (file not found)` });
+      lbl.style.color = 'var(--vscode-editorWarning-foreground, #cca700)';
+      row.appendChild(lbl);
+      loreListContainer.appendChild(row);
+    }
+  }
+  root.appendChild(field(
+    `${icon('book-open', 14)} Lorebooks`,
+    'Tick lorebooks this character should pull world info from. Triggers fire when keywords appear in recent context.',
+    loreListContainer,
+  ));
+
+  // ── Temperature + max tokens (lifted out of "More") ──
+  const genRow = el('div', 'tg-ce-row');
+  const tempInput = el('input', 'tg-ce-input');
+  tempInput.type = 'number';
+  tempInput.min = '0';
+  tempInput.max = '2';
+  tempInput.step = '0.1';
+  genRow.appendChild(field('Temperature 🌡️', 'Creativity 0–2. Lower = consistent, higher = wild. Default 0.8.', tempInput));
+  const maxTokInput = el('input', 'tg-ce-input');
+  maxTokInput.type = 'number';
+  maxTokInput.min = '0';
+  genRow.appendChild(field('Max tokens ⚡', '0 = unlimited (best for thinking models). Caps reply length — lower = faster.', maxTokInput));
+  root.appendChild(genRow);
 
   // ── "show more settings" / collapsed section ──
   const moreBtn = el('button', 'tg-ce-more-btn', { text: 'Show More Settings' });
@@ -5493,6 +5865,10 @@ function renderCharacterEditor(container, parallx, input) {
   });
 
   // ── More Settings fields ──
+  // User persona overrides (moved from top — most users never touch these)
+  moreSection.appendChild(field('User\'s name', 'Overrides your default username when chatting with this character.', userNameInput));
+  moreSection.appendChild(field('User\'s description/role', 'What role do you play when talking to this character?', userDescInput));
+
   const userReminderInput = el('textarea', 'tg-ce-textarea tg-ce-textarea--short');
   userReminderInput.placeholder = '(optional) e.g. "Responses should be short and creative. Always stay in character."';
   moreSection.appendChild(field(
@@ -5511,38 +5887,36 @@ function renderCharacterEditor(container, parallx, input) {
 
   moreSection.appendChild(el('hr', 'tg-ce-separator'));
 
-  // Lorebooks
-  const loreTextarea = el('textarea', 'tg-ce-textarea tg-ce-textarea--short');
-  loreTextarea.placeholder = 'lorebook1.md\nlorebook2.md';
-  moreSection.appendChild(field(
-    `${icon('book-open', 14)} Lorebook files`,
-    'One lorebook file name per line. These are from the lorebooks/ folder.',
-    loreTextarea,
-  ));
+  // Lorebooks textarea removed — replaced by the checkbox list lifted to top.
 
   // Context method
   const fitSelect = el('select', 'tg-ce-select');
   for (const opt of [
-    { value: 'dropOld', label: 'Drop Oldest Messages' },
-    { value: 'summarizeOld', label: 'Summarize Oldest Messages' },
+    { value: '', label: '(use global default)' },
+    { value: 'dropOld', label: 'Drop oldest messages (fast)' },
+    { value: 'summarizeOld', label: 'Summarize oldest messages (smarter, +1 LLM call/turn)' },
   ]) {
     const o = el('option', null, { text: opt.label });
     o.value = opt.value;
     fitSelect.appendChild(o);
   }
-  moreSection.appendChild(field('Method for fitting messages within model\'s context limit', null, fitSelect));
+  moreSection.appendChild(field('Context-fit method', 'How to handle conversations longer than the context window. Overrides the global default.', fitSelect));
 
   // Extended memory
   const memorySelect = el('select', 'tg-ce-select');
   for (const opt of [
-    { value: 'false', label: 'Long-term memory disabled' },
-    { value: 'true', label: 'Long-term memory enabled' },
+    { value: 'false', label: 'Off' },
+    { value: 'true', label: 'On — reserve ≥40% of lore lane for /mem entries' },
   ]) {
     const o = el('option', null, { text: opt.label });
     o.value = opt.value;
     memorySelect.appendChild(o);
   }
-  moreSection.appendChild(field(`${icon('brain', 14)} Extended character memory`, 'AI response will be slower, but often smarter.', memorySelect));
+  moreSection.appendChild(field(
+    `${icon('brain', 14)} Extended character memory`,
+    'When On, /mem entries are guaranteed at least 40% of the Lore lane (vs. proportional to size). Use it when long-term recall matters more than world-info detail.',
+    memorySelect,
+  ));
 
   moreSection.appendChild(el('hr', 'tg-ce-separator'));
 
@@ -5568,36 +5942,17 @@ function renderCharacterEditor(container, parallx, input) {
   placeholderInput.placeholder = 'e.g. "Type your reply to {{char}} here..."';
   moreSection.appendChild(field('Message input placeholder', null, placeholderInput));
 
-  // Example dialogue (at the bottom of more section)
-  moreSection.appendChild(el('hr', 'tg-ce-separator'));
-  const exampleInput = el('textarea', 'tg-ce-textarea tg-ce-textarea--tall');
-  exampleInput.placeholder = '[USER]: How are you?\n[AI]: I\'m doing well, thank you for asking!';
-  moreSection.appendChild(field(
-    `${icon('message-circle', 14)} Example dialogue`,
-    'Example conversations that teach the AI the character\'s speaking style. Use [AI]: and [USER]: format.',
-    exampleInput,
-  ));
+  // (Example dialogue + temperature/maxTokens lifted to the top section.)
 
-  // Temperature & max tokens
-  const genRow = el('div', 'tg-ce-row');
-  const tempInput = el('input', 'tg-ce-input');
-  tempInput.type = 'number';
-  tempInput.min = '0';
-  tempInput.max = '2';
-  tempInput.step = '0.1';
-  genRow.appendChild(field('Temperature', 'LLM creativity (0-2). Default: 0.8', tempInput));
-  const maxTokInput = el('input', 'tg-ce-input');
-  maxTokInput.type = 'number';
-  maxTokInput.min = '64';
-  genRow.appendChild(field('Max tokens per message', 'Max token budget per reply. 0 = unlimited (recommended for thinking models)', maxTokInput));
-  moreSection.appendChild(genRow);
-
-  // ── Footer: cancel + save ──
+  // ── Footer: cancel + sandbox + save ──
   const footer = el('div', 'tg-ce-footer');
-  const cancelBtn = el('button', 'tg-ce-cancel-btn', { text: 'Cancel' });
+  const cancelBtn = el('button', 'tg-ce-cancel-btn', { text: 'Revert' });
+  cancelBtn.title = 'Discard unsaved changes (re-load from disk)';
+  const sandboxBtn = el('button', 'tg-ce-cancel-btn', { html: `${icon('play', 13)} Test in chat` });
+  sandboxBtn.title = 'Save then open a fresh chat with this character';
   const savedLabel = el('span', 'tg-ce-saved', { text: 'Saved!' });
   const saveBtn = el('button', 'tg-ce-save-btn', { text: 'Save Character' });
-  footer.append(cancelBtn, savedLabel, saveBtn);
+  footer.append(cancelBtn, sandboxBtn, savedLabel, saveBtn);
   root.appendChild(footer);
 
   let charData = null;
@@ -5614,8 +5969,10 @@ function renderCharacterEditor(container, parallx, input) {
     initialMsgInput.value = data.initialMessages || '';
     userReminderInput.value = data.userReminder || '';
     msgStyleInput.value = data.messageWrapperStyle || '';
-    loreTextarea.value = (data.lorebookFiles || []).join('\n');
-    fitSelect.value = data.fitMessagesInContextMethod || 'dropOld';
+    _loreSelected.clear();
+    for (const f of (data.lorebookFiles || [])) _loreSelected.add(f);
+    rebuildLoreList();
+    fitSelect.value = data.fitMessagesInContextMethod || '';
     memorySelect.value = String(data.extendedMemory || false);
     shortcutInput.value = data.shortcutButtons || '';
     sysNameInput.value = data.systemName || '';
@@ -5627,7 +5984,6 @@ function renderCharacterEditor(container, parallx, input) {
 
   // ── Collect form into data object ──
   function collectForm() {
-    const loreLines = loreTextarea.value.trim().split('\n').map(l => l.trim()).filter(Boolean);
     return {
       ...charData,
       name: nameInput.value.trim() || 'Unnamed',
@@ -5640,8 +5996,8 @@ function renderCharacterEditor(container, parallx, input) {
       initialMessages: initialMsgInput.value,
       userReminder: userReminderInput.value,
       messageWrapperStyle: msgStyleInput.value.trim(),
-      lorebookFiles: loreLines,
-      fitMessagesInContextMethod: fitSelect.value || 'dropOld',
+      lorebookFiles: Array.from(_loreSelected),
+      fitMessagesInContextMethod: fitSelect.value || '',
       extendedMemory: memorySelect.value === 'true',
       shortcutButtons: shortcutInput.value,
       systemName: sysNameInput.value.trim(),
@@ -5656,14 +6012,40 @@ function renderCharacterEditor(container, parallx, input) {
     const data = collectForm();
     await saveCharacter(fs, workspaceUri, charFileName, data);
     charData = data;
+    _baselineSnapshot = snapshotForm();
     savedLabel.classList.add('tg-ce-saved--show');
     setTimeout(() => savedLabel.classList.remove('tg-ce-saved--show'), 2000);
     _refreshSidebar?.();
   });
 
+  sandboxBtn.addEventListener('click', async () => {
+    if (isDirty()) {
+      const data = collectForm();
+      await saveCharacter(fs, workspaceUri, charFileName, data);
+      charData = data;
+      _baselineSnapshot = snapshotForm();
+    }
+    try {
+      const settings = await loadSettings(fs, workspaceUri);
+      const newThread = await createThread(fs, workspaceUri, charFileName, settings.defaultModel || null);
+      parallx.editors?.openEditor?.({
+        typeId: 'text-generator-chat',
+        title: `Test: ${nameInput.value || charFileName}`,
+        icon: 'play',
+        instanceId: newThread.id,
+      });
+      _refreshSidebar?.();
+    } catch (err) {
+      parallx.window?.showErrorMessage?.('Could not open test chat: ' + (err?.message || err));
+    }
+  });
+
   cancelBtn.addEventListener('click', () => {
-    // Re-populate from last saved data to discard changes
-    if (charData) populateForm(charData);
+    if (isDirty() && !confirm('Discard unsaved changes?')) return;
+    if (charData) {
+      populateForm(charData);
+      _baselineSnapshot = snapshotForm();
+    }
   });
 
   // ── Init: load character data ──
@@ -5677,12 +6059,23 @@ function renderCharacterEditor(container, parallx, input) {
       root.appendChild(el('div', 'tg-empty tg-error', { text: 'Failed to load character: ' + (err.message || err) }));
       return;
     }
+    // Scan available lorebooks so the checkbox list can render real options.
+    try {
+      const lbs = await scanLorebooks(fs, workspaceUri);
+      _allLoreFiles = lbs.map(lb => lb.fileName).filter(Boolean);
+    } catch { _allLoreFiles = []; }
     populateForm(charData);
+    _baselineSnapshot = snapshotForm();
     subtitleEl.textContent = charData.name || charFileName;
   }
 
   init();
-  return { dispose() { container.innerHTML = ''; } };
+  return {
+    dispose() {
+      window.removeEventListener('beforeunload', _beforeUnload);
+      container.innerHTML = '';
+    },
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -5822,6 +6215,7 @@ function renderChatSettingsPage(container, parallx, input) {
   }
   lengthRow.appendChild(lengthSelect);
   generationSection.appendChild(lengthRow);
+  generationSection.appendChild(el('div', 'tg-cs-hint', { text: 'Default cascade: character override → this chat → global default. Leaving fields blank inherits.' }));
 
   root.appendChild(generationSection);
 
