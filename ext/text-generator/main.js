@@ -1920,6 +1920,7 @@ function createCharacterJson(overrides = {}) {
     userReminder: '',
     initialMessages: '[AI]: Hello! I\'m {{char}}. Edit me to set up my personality!',
     writingPreset: 'immersive-rp',
+    pov: '',
     temperature: 0.8,
     maxTokensPerMessage: 0,
     messageLengthLimit: '',
@@ -1966,6 +1967,7 @@ function normalizeCharacterForRuntime(data, fileName) {
       temperature: data.temperature ?? 0.8,
       maxTokensPerMessage: data.maxTokensPerMessage ?? 0,
       writingPreset: data.writingPreset || 'immersive-rp',
+      pov: data.pov || '',
       messageLengthLimit: data.messageLengthLimit || '',
       userName: data.userName || '',
       userDescription: data.userDescription || '',
@@ -2128,6 +2130,7 @@ function buildSystemPrompt(params = {}) {
   const {
     characters = [],
     writingPreset = 'immersive-rp',
+    pov = '',
     loreContent = '',
     memoryContent = '',
     respondAs = null,
@@ -2144,6 +2147,12 @@ function buildSystemPrompt(params = {}) {
   const presetContent = getPresetContent(writingPreset);
   if (presetContent) {
     parts.push(['## Writing Style', presetContent].join('\n'));
+  }
+
+  // 1a. Point of view override — overrides any POV implied by the preset.
+  const povContent = getPovContent(pov);
+  if (povContent) {
+    parts.push(['## Point of View', povContent].join('\n'));
   }
 
   // 1b. User identity — description/role if provided by character config.
@@ -2313,6 +2322,7 @@ function assembleContext(params) {
     characters = [],     // array of parsed character objects
     character = null,    // single character (backward compat)
     writingPreset = 'immersive-rp',
+    pov = '',
     loreContent = '',
     memoryContent = '',
     history = [],
@@ -2371,6 +2381,7 @@ function assembleContext(params) {
   const buildResult = buildSystemPrompt({
     characters: chars,
     writingPreset,
+    pov,
     loreContent: loreTrimmed,
     memoryContent: memTrimmed,
     respondAs,
@@ -2532,6 +2543,7 @@ async function createThread(fs, workspaceUri, characterFile, modelId) {
     title: 'New Chat',
     characters: [{ file: characterFile, addedAt: Date.now() }],
     writingPreset: charWritingPreset || settings.defaultWritingPreset || 'immersive-rp',
+    pov: charData?.pov || '',
     lorebookFiles: charLorebooks,
     userName: charUserName || settings.userName || 'Anon',
     userPlaysAs: null,
@@ -3674,6 +3686,7 @@ function renderChatEditor(container, parallx, input) {
     const ctx = lastAssembledContext;
     const diagLines = [];
     if (ctx.responseLengthSource) diagLines.push(`Response length: ${ctx.responseLengthSource}`);
+    if (ctx.povSource) diagLines.push(`Point of view: ${ctx.povSource}`);
     if (ctx.fitMethodSource) diagLines.push(`Context-fit: ${ctx.activeFitMethod} (from ${ctx.fitMethodSource})`);
     if (ctx.warnings && ctx.warnings.length > 0) {
       for (const w of ctx.warnings) diagLines.push('⚠ ' + w);
@@ -4228,6 +4241,7 @@ function renderChatEditor(container, parallx, input) {
     const assembled = assembleContext({
       characters,
       writingPreset: thread?.writingPreset || currentSettings?.defaultWritingPreset || 'immersive-rp',
+      pov: thread?.pov || primaryChar?.frontmatter?.pov || currentSettings?.defaultPov || '',
       loreContent,
       memoryContent,
       history: effectiveHistory,
@@ -4256,6 +4270,16 @@ function renderChatEditor(container, parallx, input) {
       ? `character (${primaryChar.frontmatter.name || 'character'})`
       : (currentSettings?.defaultFitMethod ? 'global default' : 'fallback');
     assembled.activeFitMethod = fitMethod;
+    // POV cascade: thread → character → global default → inherit-from-preset.
+    if (thread?.pov) {
+      assembled.povSource = `thread (${POV_OPTIONS[thread.pov]?.label || thread.pov})`;
+    } else if (primaryChar?.frontmatter?.pov) {
+      assembled.povSource = `character (${POV_OPTIONS[primaryChar.frontmatter.pov]?.label || primaryChar.frontmatter.pov})`;
+    } else if (currentSettings?.defaultPov) {
+      assembled.povSource = `global default (${POV_OPTIONS[currentSettings.defaultPov]?.label || currentSettings.defaultPov})`;
+    } else {
+      assembled.povSource = 'inherit (preset decides)';
+    }
     lastAssembledContext = assembled;
     selectedModelId = modelId;
     updateChrome();
@@ -5473,6 +5497,7 @@ const DEFAULT_SETTINGS = {
   userName: 'Anon',
   defaultWritingPreset: 'immersive-rp',
   defaultResponseLength: '',
+  defaultPov: '',
   defaultModel: '',
   defaultFitMethod: 'dropOld',
 };
@@ -5593,6 +5618,9 @@ function renderSettingsPage(container, parallx) {
       { value: 'long', label: 'Long (4+ paragraphs)' },
     ],
   });
+  const defaultPovSelect = formGroup('Default point of view', 'POV override applied when no character/thread setting exists. Inherit lets the writing preset decide.', 'select', 'defaultPov', {
+    options: Object.entries(POV_OPTIONS).map(([key, p]) => ({ label: p.label, value: key })),
+  });
   const defaultModelSelect = formGroup('Default model', 'Used for newly created chats. Leave empty to auto-select first available model.', 'select', 'defaultModel', {
     options: [{ value: '', label: '(auto — first available)' }],
   });
@@ -5630,6 +5658,7 @@ function renderSettingsPage(container, parallx) {
     userNameInput.value = s.userName;
     presetSelect.value = s.defaultWritingPreset || 'immersive-rp';
     responseLengthSelect.value = s.defaultResponseLength || '';
+    defaultPovSelect.value = s.defaultPov || '';
     fitMethodSelect.value = s.defaultFitMethod || 'dropOld';
     // Populate model dropdown from available LM models
     if (parallx.lm) {
@@ -5665,6 +5694,7 @@ function renderSettingsPage(container, parallx) {
       userName: userNameInput.value.trim() || DEFAULT_SETTINGS.userName,
       defaultWritingPreset: presetSelect.value || DEFAULT_SETTINGS.defaultWritingPreset,
       defaultResponseLength: responseLengthSelect.value || '',
+      defaultPov: defaultPovSelect.value || '',
       defaultModel: defaultModelSelect.value || '',
       defaultFitMethod: fitMethodSelect.value || DEFAULT_SETTINGS.defaultFitMethod,
     };
@@ -5775,6 +5805,23 @@ function renderCharacterEditor(container, parallx, input) {
     text: 'Per-thread setting overrides this. If unset, the global default in Settings is used.',
   }));
   root.appendChild(presetField);
+
+  // Point of view override — stacks under the writing preset.
+  const povSelect = el('select', 'tg-ce-select');
+  for (const [key, p] of Object.entries(POV_OPTIONS)) {
+    const o = el('option', null, { text: p.label });
+    o.value = key;
+    povSelect.appendChild(o);
+  }
+  const povField = field(
+    `${icon('eye', 14)} Point of view`,
+    'Locks narration POV regardless of writing preset. "Inherit" lets the preset decide.',
+    povSelect,
+  );
+  povField.appendChild(el('div', 'tg-form-inherit', {
+    text: 'Per-thread setting overrides this. If unset, the global default in Settings is used.',
+  }));
+  root.appendChild(povField);
 
   const initialMsgInput = el('textarea', 'tg-ce-textarea tg-ce-textarea--tall');
   initialMsgInput.placeholder = '[USER]: hey\n[AI]: um hi\n[SYSTEM; hiddenFrom=ai]: The AI can\'t see this message. Useful for user instructions / welcome messages / credits / etc.';
@@ -5990,6 +6037,7 @@ function renderCharacterEditor(container, parallx, input) {
     userDescInput.value = data.userDescription || '';
     reminderInput.value = data.reminder || '';
     presetSelect.value = data.writingPreset || 'immersive-rp';
+    povSelect.value = data.pov || '';
     initialMsgInput.value = data.initialMessages || '';
     userReminderInput.value = data.userReminder || '';
     msgStyleInput.value = data.messageWrapperStyle || '';
@@ -6029,6 +6077,7 @@ function renderCharacterEditor(container, parallx, input) {
       exampleDialogue: exampleInput.value,
       temperature: Number.isFinite(Number(tempInput.value)) ? Number(tempInput.value) : 0.8,
       maxTokensPerMessage: Number(maxTokInput.value) || 0,
+      pov: povSelect.value || '',
     };
   }
 
@@ -6180,6 +6229,18 @@ function renderChatSettingsPage(container, parallx, input) {
   presetRow.appendChild(presetSelect);
   contextSection.appendChild(presetRow);
   contextSection.appendChild(el('div', 'tg-cs-hint', { text: 'Shared writing conventions for the whole chat. Character-specific instructions override this.' }));
+
+  const povRow = el('div', 'tg-cs-row');
+  povRow.appendChild(el('div', 'tg-cs-label', { text: 'Point of View' }));
+  const povSelect = el('select', 'tg-cs-select');
+  for (const [key, p] of Object.entries(POV_OPTIONS)) {
+    const option = el('option', null, { text: p.label });
+    option.value = key;
+    povSelect.appendChild(option);
+  }
+  povRow.appendChild(povSelect);
+  contextSection.appendChild(povRow);
+  contextSection.appendChild(el('div', 'tg-cs-hint', { text: 'Overrides POV regardless of preset. Inherit cascades: character → global default → preset.' }));
 
   const loreTitle = el('div', 'tg-cs-section-title', { text: 'Lorebooks' });
   loreTitle.style.marginTop = '16px';
@@ -6345,6 +6406,7 @@ function renderChatSettingsPage(container, parallx, input) {
       userName: nameInput.value.trim() || 'Anon',
       userPlaysAs: personaSelect.value === SELF_SPEAKER ? null : personaSelect.value,
       writingPreset: presetSelect.value || 'immersive-rp',
+      pov: povSelect.value || '',
       lorebookFiles: collectActiveFiles(loreChipList),
       modelId: modelSelect.value || thread.modelId,
       temperatureOverride: tempInput.value.trim() && Number.isFinite(Number(tempInput.value)) ? Number(tempInput.value) : null,
@@ -6382,6 +6444,7 @@ function renderChatSettingsPage(container, parallx, input) {
     nameInput.value = thread.userName || 'Anon';
 
     presetSelect.value = thread.writingPreset || 'immersive-rp';
+    povSelect.value = thread.pov || '';
 
     modelSelect.innerHTML = '';
     if (models.length > 0) {
@@ -6489,6 +6552,39 @@ function getPresetContent(presetKey) {
   const preset = WRITING_PRESETS[presetKey];
   if (preset && 'content' in preset) return preset.content;
   return WRITING_PRESETS['immersive-rp'].content;
+}
+
+/**
+ * Point-of-view overrides. Stacked under the writing preset so they win
+ * over whatever POV the preset implies. Empty/'inherit' = no extra line.
+ */
+const POV_OPTIONS = {
+  '': { label: 'Inherit (preset decides)', content: '' },
+  'first-person': {
+    label: 'First person',
+    content: 'Write {{char}}\'s narration in **first person, present tense** ("I walk", "I feel"). Inner thoughts in *italics*, dialogue in "quotes".',
+  },
+  'close-third': {
+    label: 'Close third person',
+    content: 'Write {{char}}\'s narration in **third person, past tense, anchored tightly to {{char}}\'s viewpoint** ("She walked", "He felt"). The reader sees only what {{char}} sees, hears, and thinks. Inner thoughts in *italics*, dialogue in "quotes".',
+  },
+  'omniscient-third': {
+    label: 'Omniscient third person',
+    content: 'Write in **third person, past tense, with an omniscient narrator** ("They walked", "He felt"). The narration may step into any character\'s thoughts and observe events {{char}} cannot see. Inner thoughts in *italics*, dialogue in "quotes".',
+  },
+  'second-person': {
+    label: 'Second person (you/your)',
+    content: 'Address the user directly in **second person, present tense** ("You walk", "You feel {{char}}\'s hand on your shoulder"). {{char}}\'s actions and dialogue are described from the user\'s point of view.',
+  },
+  'screenplay': {
+    label: 'Screenplay / script',
+    content: 'Write in **screenplay format**: scene headings (INT./EXT. LOCATION - TIME), present-tense action lines, and CHARACTER NAME dialogue blocks. No inner monologue.',
+  },
+};
+
+function getPovContent(povKey) {
+  const opt = POV_OPTIONS[povKey];
+  return opt ? opt.content : '';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "parallx-community.text-generator",
   "name": "Text Generator",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "parallx-community",
   "description": "Character chat and interactive fiction generator using local Ollama models.",
   "main": "main.js",
