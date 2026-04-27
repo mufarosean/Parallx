@@ -3048,7 +3048,7 @@ function renderChatEditor(container, parallx, input) {
 
   const inputToolbar = el('div', 'tg-input-toolbar');
   const optionsBtn = el('button', 'tg-input-options-btn', { html: icon('sliders', 16) });
-  optionsBtn.title = 'Chat settings';
+  optionsBtn.title = 'Chat info';
   const sendBtn = el('button', 'tg-input-send', { html: icon('send', 16) });
   sendBtn.title = 'Send (Enter)';
   inputToolbar.append(optionsBtn, sendBtn);
@@ -4384,8 +4384,8 @@ function renderChatEditor(container, parallx, input) {
 
     const assembled = assembleContext({
       characters,
-      writingPreset: thread?.writingPreset || currentSettings?.defaultWritingPreset || 'immersive-rp',
-      pov: thread?.pov || primaryChar?.frontmatter?.pov || currentSettings?.defaultPov || '',
+      writingPreset: primaryChar?.frontmatter?.writingPreset || currentSettings?.defaultWritingPreset || 'immersive-rp',
+      pov: primaryChar?.frontmatter?.pov || currentSettings?.defaultPov || '',
       loreContent,
       memoryContent,
       history: effectiveHistory,
@@ -4393,7 +4393,7 @@ function renderChatEditor(container, parallx, input) {
       contextWindow,
       userName: getUserName(),
       respondAs: speaker,
-      responseLength: thread?.responseLength,
+      responseLength: null,
       settings: currentSettings,
       ephemeralInstruction: instruction,
       historySummary,
@@ -4403,8 +4403,6 @@ function renderChatEditor(container, parallx, input) {
     const charLenLimit = primaryChar?.frontmatter?.messageLengthLimit;
     if (charLenLimit) {
       assembled.responseLengthSource = `character (${primaryChar.frontmatter.name || 'character'}: ${charLenLimit})`;
-    } else if (thread?.responseLength) {
-      assembled.responseLengthSource = `thread (${thread.responseLength})`;
     } else if (currentSettings?.defaultResponseLength) {
       assembled.responseLengthSource = `global default (${currentSettings.defaultResponseLength})`;
     } else {
@@ -4414,10 +4412,8 @@ function renderChatEditor(container, parallx, input) {
       ? `character (${primaryChar.frontmatter.name || 'character'})`
       : (currentSettings?.defaultFitMethod ? 'global default' : 'fallback');
     assembled.activeFitMethod = fitMethod;
-    // POV cascade: thread → character → global default → inherit-from-preset.
-    if (thread?.pov) {
-      assembled.povSource = `thread (${POV_OPTIONS[thread.pov]?.label || thread.pov})`;
-    } else if (primaryChar?.frontmatter?.pov) {
+    // POV cascade: character → global default → inherit-from-preset.
+    if (primaryChar?.frontmatter?.pov) {
       assembled.povSource = `character (${POV_OPTIONS[primaryChar.frontmatter.pov]?.label || primaryChar.frontmatter.pov})`;
     } else if (currentSettings?.defaultPov) {
       assembled.povSource = `global default (${POV_OPTIONS[currentSettings.defaultPov]?.label || currentSettings.defaultPov})`;
@@ -4432,12 +4428,12 @@ function renderChatEditor(container, parallx, input) {
 
   function getGenerationOptions(speaker, asUser = false) {
     const character = !asUser && speaker && speaker !== NARRATOR_SPEAKER ? getCharacterByFile(speaker) : null;
-    const maxTokens = thread?.maxTokensOverride ?? character?.frontmatter.maxTokensPerMessage ?? currentSettings?.defaultMaxTokens ?? undefined;
+    const maxTokens = character?.frontmatter.maxTokensPerMessage ?? currentSettings?.defaultMaxTokens ?? undefined;
     return {
       think: true,
-      temperature: thread?.temperatureOverride ?? character?.frontmatter.temperature ?? currentSettings?.defaultTemperature ?? 0.8,
+      temperature: character?.frontmatter.temperature ?? currentSettings?.defaultTemperature ?? 0.8,
       ...(maxTokens ? { maxTokens } : {}),
-      numCtx: thread?.contextWindowOverride || currentSettings?.defaultContextWindow || undefined,
+      numCtx: currentSettings?.defaultContextWindow || undefined,
     };
   }
 
@@ -5029,49 +5025,6 @@ function renderChatEditor(container, parallx, input) {
       await updateThreadMeta(fs, workspaceUri, threadId, { autoReply: thread.autoReply }).catch(() => {});
     });
 
-    // ── Response length ──
-    item('ruler', 'Response Length…', () => {
-      const overlay = el('div', 'tg-modal-overlay');
-      const modal = el('div', 'tg-modal');
-      modal.style.maxWidth = '340px';
-      const header = el('div', 'tg-modal-header');
-      header.appendChild(el('span', 'tg-modal-title', { text: 'Response Length' }));
-      const closeBtn = el('button', 'tg-modal-close', { html: icon('x', 16) });
-      closeBtn.addEventListener('click', () => overlay.remove());
-      header.appendChild(closeBtn);
-      modal.appendChild(header);
-      const body = el('div', 'tg-modal-body');
-      body.style.cssText = 'padding:16px; display:flex; flex-direction:column; gap:6px;';
-      body.appendChild(el('div', null, { text: 'Try setting this to one paragraph if the character keeps undesirably talking or acting on your behalf.' }));
-      body.querySelector('div').style.cssText = 'font-size:11px; color:var(--vscode-descriptionForeground); margin-bottom:4px;';
-      const lengthSelect = el('select');
-      lengthSelect.style.cssText = 'padding:6px 10px; border:1px solid var(--vscode-input-border, #3c3c3c); border-radius:4px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font-size:12px; width:100%; box-sizing:border-box;';
-      for (const [val, txt] of [['', 'No reply length limit'], ['short', 'Short (1 paragraph)'], ['medium', 'Medium (2-3 paragraphs)'], ['long', 'Long (4+ paragraphs)']]) {
-        const opt = el('option', null, { text: txt });
-        opt.value = val;
-        lengthSelect.appendChild(opt);
-      }
-      lengthSelect.value = thread?.responseLength || '';
-      body.appendChild(lengthSelect);
-      modal.appendChild(body);
-      const footer = el('div', 'tg-modal-footer');
-      footer.style.cssText = 'display:flex; justify-content:flex-end; gap:8px; padding:8px 16px;';
-      const cancelBtn2 = el('button', 'tg-shortcut-btn', { text: 'Cancel' });
-      cancelBtn2.addEventListener('click', () => overlay.remove());
-      const saveBtn = el('button', 'tg-shortcut-btn', { text: 'Save' });
-      saveBtn.style.cssText = 'background:var(--vscode-button-background); color:var(--vscode-button-foreground);';
-      saveBtn.addEventListener('click', async () => {
-        thread.responseLength = lengthSelect.value || null;
-        await updateThreadMeta(fs, workspaceUri, threadId, { responseLength: thread.responseLength }).catch(() => {});
-        overlay.remove();
-      });
-      footer.append(cancelBtn2, saveBtn);
-      modal.appendChild(footer);
-      overlay.appendChild(modal);
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-      document.body.appendChild(overlay);
-    });
-
     // ── Add character ──
     item('plus', 'Add Character', async () => {
       const allChars = await scanCharacters(fs, workspaceUri);
@@ -5167,11 +5120,11 @@ function renderChatEditor(container, parallx, input) {
       document.body.appendChild(overlay);
     });
 
-    // ── Options (full settings page) ──
-    item('settings', 'Options', () => {
+    // ── Options (chat info page) ──
+    item('settings', 'Chat Info', () => {
       parallx.editors.openEditor({
         typeId: 'text-generator-chat-settings',
-        title: 'Chat Settings',
+        title: 'Chat Info',
         icon: 'sliders',
         instanceId: `chat-settings:${threadId}`,
       });
@@ -6343,8 +6296,8 @@ function renderChatSettingsPage(container, parallx, input) {
   const header = el('div', 'tg-chat-settings-header');
   const iconWrap = el('div', null, { html: icon('sliders', 24) });
   const headerInfo = el('div', null);
-  const titleEl = el('div', 'tg-chat-settings-title', { text: 'Chat Settings' });
-  const subtitleEl = el('div', 'tg-chat-settings-subtitle', { text: 'Configure this conversation' });
+  const titleEl = el('div', 'tg-chat-settings-title', { text: 'Chat Info' });
+  const subtitleEl = el('div', 'tg-chat-settings-subtitle', { text: 'Title, participants, and model. Writing style, POV, length, and generation knobs live on the character.' });
   headerInfo.append(titleEl, subtitleEl);
   header.append(iconWrap, headerInfo);
   root.appendChild(header);
@@ -6384,94 +6337,21 @@ function renderChatSettingsPage(container, parallx, input) {
   participantsSection.appendChild(charChipList);
   root.appendChild(participantsSection);
 
-  // ── Context ──
-  const contextSection = el('div', 'tg-cs-section');
-  contextSection.appendChild(el('div', 'tg-cs-section-title', { text: 'Context' }));
-  const presetRow = el('div', 'tg-cs-row');
-  presetRow.appendChild(el('div', 'tg-cs-label', { text: 'Writing Preset' }));
-  const presetSelect = el('select', 'tg-cs-select');
-  for (const [key, p] of Object.entries(WRITING_PRESETS)) {
-    const option = el('option', null, { text: p.label });
-    option.value = key;
-    presetSelect.appendChild(option);
-  }
-  presetRow.appendChild(presetSelect);
-  contextSection.appendChild(presetRow);
-  contextSection.appendChild(el('div', 'tg-cs-hint', { text: 'Shared writing conventions for the whole chat. Character-specific instructions override this.' }));
-
-  const povRow = el('div', 'tg-cs-row');
-  povRow.appendChild(el('div', 'tg-cs-label', { text: 'Point of View' }));
-  const povSelect = el('select', 'tg-cs-select');
-  for (const [key, p] of Object.entries(POV_OPTIONS)) {
-    const option = el('option', null, { text: p.label });
-    option.value = key;
-    povSelect.appendChild(option);
-  }
-  povRow.appendChild(povSelect);
-  contextSection.appendChild(povRow);
-  contextSection.appendChild(el('div', 'tg-cs-hint', { text: 'Overrides POV regardless of preset. Inherit cascades: character → global default → preset.' }));
-
-  contextSection.appendChild(el('div', 'tg-cs-hint', {
-    text: 'Lorebooks are configured on the character. In multi-character chats, the original character\'s lore is used.',
-  }));
-  root.appendChild(contextSection);
-
-  // ── Generation ──
+  // ── Model ──
   const generationSection = el('div', 'tg-cs-section');
-  generationSection.appendChild(el('div', 'tg-cs-section-title', { text: 'Generation' }));
+  generationSection.appendChild(el('div', 'tg-cs-section-title', { text: 'Model' }));
   const modelRow = el('div', 'tg-cs-row');
   modelRow.appendChild(el('div', 'tg-cs-label', { text: 'Model' }));
   const modelSelect = el('select', 'tg-cs-select');
   modelRow.appendChild(modelSelect);
   generationSection.appendChild(modelRow);
-
-  const tempRow = el('div', 'tg-cs-row');
-  tempRow.appendChild(el('div', 'tg-cs-label', { text: 'Temperature Override' }));
-  const tempInput = el('input', 'tg-cs-input');
-  tempInput.type = 'number';
-  tempInput.min = '0';
-  tempInput.max = '2';
-  tempInput.step = '0.1';
-  tempRow.appendChild(tempInput);
-  generationSection.appendChild(tempRow);
-
-  const maxTokensRow = el('div', 'tg-cs-row');
-  maxTokensRow.appendChild(el('div', 'tg-cs-label', { text: 'Max Tokens Override' }));
-  const maxTokensInput = el('input', 'tg-cs-input');
-  maxTokensInput.type = 'number';
-  maxTokensInput.min = '128';
-  maxTokensRow.appendChild(maxTokensInput);
-  generationSection.appendChild(maxTokensRow);
-
-  const contextRow = el('div', 'tg-cs-row');
-  contextRow.appendChild(el('div', 'tg-cs-label', { text: 'Context Window Override' }));
-  const contextInput = el('input', 'tg-cs-input');
-  contextInput.type = 'number';
-  contextInput.min = '2048';
-  contextRow.appendChild(contextInput);
-  generationSection.appendChild(contextRow);
-
-  const lengthRow = el('div', 'tg-cs-row');
-  lengthRow.appendChild(el('div', 'tg-cs-label', { text: 'Response Length' }));
-  const lengthSelect = el('select', 'tg-cs-select');
-  for (const opt of [
-    { value: '', label: 'Default (no constraint)' },
-    { value: 'short', label: 'Short (1 paragraph)' },
-    { value: 'medium', label: 'Medium (2-3 paragraphs)' },
-    { value: 'long', label: 'Long (4+ paragraphs)' },
-  ]) {
-    const option = el('option', null, { text: opt.label });
-    option.value = opt.value;
-    lengthSelect.appendChild(option);
-  }
-  lengthRow.appendChild(lengthSelect);
-  generationSection.appendChild(lengthRow);
-  generationSection.appendChild(el('div', 'tg-cs-hint', { text: 'Default cascade: character override → this chat → global default. Leaving fields blank inherits.' }));
-
+  generationSection.appendChild(el('div', 'tg-cs-hint', {
+    text: 'Writing preset, POV, response length, temperature, max tokens, lorebooks, reminders — edit those on the character.',
+  }));
   root.appendChild(generationSection);
 
   const saveRow = el('div', 'tg-cs-save-row');
-  const saveBtn = el('button', 'tg-cs-save-btn', { text: 'Save Chat Settings' });
+  const saveBtn = el('button', 'tg-cs-save-btn', { text: 'Save Chat Info' });
   const savedLabel = el('span', 'tg-cs-saved', { text: 'Saved!' });
   saveRow.append(saveBtn, savedLabel);
   root.appendChild(saveRow);
@@ -6571,13 +6451,7 @@ function renderChatSettingsPage(container, parallx, input) {
       title: titleInput.value.trim() || 'New Chat',
       userName: nameInput.value.trim() || 'Anon',
       userPlaysAs: personaSelect.value === SELF_SPEAKER ? null : personaSelect.value,
-      writingPreset: presetSelect.value || 'immersive-rp',
-      pov: povSelect.value || '',
       modelId: modelSelect.value || thread.modelId,
-      temperatureOverride: tempInput.value.trim() && Number.isFinite(Number(tempInput.value)) ? Number(tempInput.value) : null,
-      maxTokensOverride: maxTokensInput.value.trim() && Number.isFinite(Number(maxTokensInput.value)) ? Number(maxTokensInput.value) : null,
-      contextWindowOverride: contextInput.value.trim() && Number.isFinite(Number(contextInput.value)) ? Number(contextInput.value) : null,
-      responseLength: lengthSelect.value || null,
     };
     await updateThreadMeta(fs, workspaceUri, threadId, updates);
     thread = { ...thread, ...updates };
@@ -6608,9 +6482,6 @@ function renderChatSettingsPage(container, parallx, input) {
     titleInput.value = thread.title || 'New Chat';
     nameInput.value = thread.userName || 'Anon';
 
-    presetSelect.value = thread.writingPreset || 'immersive-rp';
-    povSelect.value = thread.pov || '';
-
     modelSelect.innerHTML = '';
     if (models.length > 0) {
       for (const model of models) {
@@ -6625,11 +6496,6 @@ function renderChatSettingsPage(container, parallx, input) {
       option.value = '';
       modelSelect.appendChild(option);
     }
-
-    tempInput.value = thread.temperatureOverride ?? '';
-    maxTokensInput.value = thread.maxTokensOverride ?? '';
-    contextInput.value = thread.contextWindowOverride ?? '';
-    lengthSelect.value = thread.responseLength || '';
 
     renderCharacterChips();
     populatePersonaOptions();
