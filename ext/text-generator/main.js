@@ -3927,70 +3927,52 @@ function renderChatEditor(container, parallx, input) {
         actions.appendChild(regenBtn);
 
       } else if (msg.author === 'user') {
-        const rewriteBtn = el('button', 'tg-msg-action-btn', { html: icon('refresh-cw', 13) });
-        rewriteBtn.title = 'Rewrite with more depth';
-        rewriteBtn.addEventListener('click', async (event) => {
+        const regenBtn = el('button', 'tg-msg-action-btn', { html: icon('refresh-cw', 13) });
+        regenBtn.title = 'Regenerate this message';
+        regenBtn.addEventListener('click', async (event) => {
           event.stopPropagation();
           if (isGenerating || !messageHistory[index]) return;
           const target = messageHistory[index];
-          const originalText = target.content;
-          const historyBefore = messageHistory.slice(0, index);
-
-          try {
-            isGenerating = true;
-            stopRequested = false;
-            transientMessage = { ...target, content: '' };
+          const messagesAfter = messageHistory.length - 1 - index;
+          if (messagesAfter > 0) {
+            if (!confirm(`Regenerating will remove ${messagesAfter} message${messagesAfter > 1 ? 's' : ''} after this one. Continue?`)) return;
+          }
+          // For user messages, the speaker is whichever persona authored it:
+          // either the character the user plays as, or "self" (no character).
+          const speaker = target.characterFile || SELF_SPEAKER;
+          // Snapshot variants. Always make sure target.content is preserved as a variant
+          // — covers the case where the user edited the message after creating variants.
+          const existingVariants = Array.isArray(target.variants) ? target.variants : [];
+          const previousVariants = existingVariants.includes(target.content)
+            ? [...existingVariants]
+            : (existingVariants.length ? [...existingVariants, target.content] : [target.content]);
+          const targetSnapshot = { ...target, variants: previousVariants, variantIndex: previousVariants.indexOf(target.content) };
+          // Remove this message and everything after it, then regenerate as user.
+          messageHistory = messageHistory.slice(0, index);
+          await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
+          renderMessages();
+          await generateTurn({ speaker, instruction: target.instruction || null, asUser: true });
+          // Locate the freshly generated user message (skip past any error system msgs).
+          const newIdx = messageHistory.findIndex((m, i) => i >= index && m.author === 'user' && m.generatedBy === 'model');
+          if (newIdx >= 0) {
+            const newMsg = messageHistory[newIdx];
+            newMsg.variants = [...previousVariants, newMsg.content];
+            newMsg.variantIndex = newMsg.variants.length - 1;
+            await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
             renderMessages();
-            updateChrome();
-
-            const rewriteInstruction = `Rewrite the following user message with richer detail, more vivid description, and greater depth while preserving the original intent, voice, and meaning. Return only the rewritten message with no preamble or explanation.\n\nOriginal message:\n${originalText}`;
-            const { assembled, modelId } = await buildContextForGeneration({
-              speaker: selectedComposeSpeaker || SELF_SPEAKER,
-              instruction: rewriteInstruction,
-              historyOverride: historyBefore,
-            });
-            const messagesForApi = [...assembled.messages];
-            messagesForApi.push({
-              role: 'system',
-              content: `[Rewrite the user's message below with more depth, vivid detail, and richer prose. Preserve intent and voice. Return only the rewritten text.]\n\n${originalText}`,
-            });
-            const stream = parallx.lm.sendChatRequest(modelId, messagesForApi, getGenerationOptions(null, true));
-            let fullResponse = '';
-            let isThinking = false;
-
-            for await (const chunk of stream) {
-              if (stopRequested) break;
-              if (chunk.thinking && !chunk.content) {
-                if (!isThinking) {
-                  isThinking = true;
-                  transientMessage.content = '*Thinking…*';
-                  queueRender();
-                }
-                continue;
-              }
-              if (chunk.content) {
-                isThinking = false;
-                fullResponse += chunk.content;
-                transientMessage.content = fullResponse;
-                queueRender();
-              }
-            }
-
-            if (fullResponse.trim()) {
-              messageHistory[index].content = fullResponse.trim();
-              messageHistory[index].generatedBy = 'model';
-              await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
-            }
-          } catch (err) {
-            console.warn('[TextGenerator] Rewrite failed:', err);
-          } finally {
-            transientMessage = null;
-            isGenerating = false;
+          } else {
+            // Failure path: cancelled, empty response, or only error system messages.
+            // Reinsert the original user message at its original index so nothing is lost.
+            messageHistory = [
+              ...messageHistory.slice(0, index),
+              targetSnapshot,
+              ...messageHistory.slice(index),
+            ];
+            await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
             renderMessages();
-            updateChrome();
           }
         });
-        actions.appendChild(rewriteBtn);
+        actions.appendChild(regenBtn);
       }
 
       const copyBtn = el('button', 'tg-msg-action-btn', { html: icon('clipboard', 13) });
