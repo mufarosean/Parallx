@@ -2524,7 +2524,6 @@ function mapAuthorToRole(author, msg) {
 async function createThread(fs, workspaceUri, characterFile, modelId) {
   const id = generateId();
   const settings = await loadSettings(fs, workspaceUri);
-  const lorebooks = await scanLorebooks(fs, workspaceUri);
   const threadDir = await ensureNestedDirs(fs, workspaceUri, [
     '.parallx', 'extensions', 'text-generator', 'threads', id,
   ]);
@@ -2547,9 +2546,6 @@ async function createThread(fs, workspaceUri, characterFile, modelId) {
   // Character-level overrides take precedence over global defaults
   const charUserName = charData?.userName || '';
   const charWritingPreset = charData?.writingPreset || '';
-  const charLorebooks = Array.isArray(charData?.lorebookFiles) && charData.lorebookFiles.length > 0
-    ? charData.lorebookFiles
-    : lorebooks.map((lb) => lb.fileName);
 
   const meta = {
     id,
@@ -2557,7 +2553,6 @@ async function createThread(fs, workspaceUri, characterFile, modelId) {
     characters: [{ file: characterFile, addedAt: Date.now() }],
     writingPreset: charWritingPreset || settings.defaultWritingPreset || 'immersive-rp',
     pov: charData?.pov || '',
-    lorebookFiles: charLorebooks,
     userName: charUserName || settings.userName || 'Anon',
     userPlaysAs: null,
     responseLength: settings.defaultResponseLength || null,
@@ -4156,8 +4151,12 @@ function renderChatEditor(container, parallx, input) {
     if (!modelId) throw new Error('No model selected');
     const modelInfo = models.find((item) => item.id === modelId);
     const contextWindow = thread?.contextWindowOverride || modelInfo?.contextLength || currentSettings?.defaultContextWindow || 8192;
-    const lorebooks = thread?.lorebookFiles?.length
-      ? allLorebooks.filter((book) => thread.lorebookFiles.includes(book.fileName))
+    // Lorebooks come from the primary (first) character only. If multi-character
+    // chats are introduced, the original character’s lore wins. If the character
+    // hasn't picked any books, fall back to all available books.
+    const primaryCharLore = characters[0]?.rawData?.lorebookFiles;
+    const lorebooks = Array.isArray(primaryCharLore) && primaryCharLore.length
+      ? allLorebooks.filter((book) => primaryCharLore.includes(book.fileName))
       : allLorebooks;
     const budget = computeTokenBudget(contextWindow, currentSettings);
     // Build recent context string for lorebook trigger matching (last ~10 messages + user text)
@@ -4650,8 +4649,9 @@ function renderChatEditor(container, parallx, input) {
         break;
       }
       case 'lore': {
-        const activeLorebooks = thread?.lorebookFiles?.length
-          ? allLorebooks.filter((book) => thread.lorebookFiles.includes(book.fileName))
+        const primaryCharLore = characters[0]?.rawData?.lorebookFiles;
+        const activeLorebooks = Array.isArray(primaryCharLore) && primaryCharLore.length
+          ? allLorebooks.filter((book) => primaryCharLore.includes(book.fileName))
           : allLorebooks;
         const lorebook = activeLorebooks[0] || allLorebooks[0];
         if (!lorebook) break;
@@ -6255,12 +6255,9 @@ function renderChatSettingsPage(container, parallx, input) {
   contextSection.appendChild(povRow);
   contextSection.appendChild(el('div', 'tg-cs-hint', { text: 'Overrides POV regardless of preset. Inherit cascades: character → global default → preset.' }));
 
-  const loreTitle = el('div', 'tg-cs-section-title', { text: 'Lorebooks' });
-  loreTitle.style.marginTop = '16px';
-  contextSection.appendChild(loreTitle);
-  contextSection.appendChild(el('div', 'tg-cs-hint', { text: 'Only selected lorebooks are injected into this chat.' }));
-  const loreChipList = el('div', 'tg-cs-chip-list');
-  contextSection.appendChild(loreChipList);
+  contextSection.appendChild(el('div', 'tg-cs-hint', {
+    text: 'Lorebooks are configured on the character. In multi-character chats, the original character\'s lore is used.',
+  }));
   root.appendChild(contextSection);
 
   // ── Generation ──
@@ -6420,7 +6417,6 @@ function renderChatSettingsPage(container, parallx, input) {
       userPlaysAs: personaSelect.value === SELF_SPEAKER ? null : personaSelect.value,
       writingPreset: presetSelect.value || 'immersive-rp',
       pov: povSelect.value || '',
-      lorebookFiles: collectActiveFiles(loreChipList),
       modelId: modelSelect.value || thread.modelId,
       temperatureOverride: tempInput.value.trim() && Number.isFinite(Number(tempInput.value)) ? Number(tempInput.value) : null,
       maxTokensOverride: maxTokensInput.value.trim() && Number.isFinite(Number(maxTokensInput.value)) ? Number(maxTokensInput.value) : null,
@@ -6481,7 +6477,6 @@ function renderChatSettingsPage(container, parallx, input) {
 
     renderCharacterChips();
     populatePersonaOptions();
-    renderToggleChips(loreChipList, allLorebooks, new Set(thread.lorebookFiles || []));
   }
 
   init();
