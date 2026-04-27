@@ -2155,6 +2155,19 @@ function buildSystemPrompt(params = {}) {
     parts.push(['## Point of View', povContent].join('\n'));
   }
 
+  // 1b. Universal formatting & anti-repetition rules — applied to every prose
+  // preset. Skipped for screenplay-format preset/POV which has its own rules.
+  const isScreenplayFormat = writingPreset === 'screenplay' || pov === 'screenplay';
+  if (writingPreset !== 'none' && !isScreenplayFormat) {
+    parts.push([
+      '## Formatting & Variety',
+      '- **Dialogue always in double quotes**: Every spoken line must be wrapped in "straight double quotes". Never leave dialogue unquoted, italicised, or in single quotes. Inner thoughts go in *italics*; non-verbal actions stay in plain prose (or *italics* for casual-RP style).',
+      '- **No repeated gestures or phrases**: Read the last 3–4 messages in this conversation before writing. Do not repeat the same physical action, beat, or descriptive phrase you (or {{char}}) used in a recent turn. If {{char}} already "tilted their head", "smirked", "ran a hand through their hair", or used a signature line in a recent message, choose a different beat this turn.',
+      '- **Vary sentence structure**: If your last reply opened with a movement ("She stepped closer..."), open this one with dialogue, sensory detail, or internal reaction instead. Avoid recycling the same cadence twice in a row.',
+      '- **Fresh language**: Reach for synonyms and new sensory angles rather than reusing distinctive nouns, verbs, or adjectives from recent replies. Repetition is acceptable only when it is clearly intentional (a motif, a verbal tic, a callback).',
+    ].join('\n'));
+  }
+
   // 1b. User identity — description/role if provided by character config.
   if (userDescription) {
     parts.push(['## User Identity', `The user (${userName}) is described as: ${userDescription}`].join('\n'));
@@ -6524,7 +6537,7 @@ const WRITING_PRESETS = {
     content: `Write in first person, present tense. Keep responses conversational and natural — like a text chat between friends who happen to be roleplaying.
 
 - Short paragraphs, 1-3 sentences each
-- Dialogue in "quotes", actions in *asterisks*
+- Dialogue **always in "double quotes"**, actions/beats in *asterisks*, never the other way around
 - Keep descriptions brief — focus on what the character notices, not exhaustive scene-setting
 - Match the energy of the conversation — playful when it's light, serious when it matters
 - Don't over-describe emotions — show them through dialogue and small actions
