@@ -2975,6 +2975,15 @@ function renderChatEditor(container, parallx, input) {
   textareaWrap.append(textarea, inputToolbar);
   inputCard.append(textareaWrap);
 
+  // Click anywhere inside the input card — except on a real button — should
+  // focus the textarea. Guards against rare cases where the textarea looks
+  // unresponsive because focus landed on a sibling element.
+  inputCard.addEventListener('click', (event) => {
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest('button, select, input, textarea')) return;
+    textarea.focus();
+  });
+
   // Shortcut buttons bar (inline speaker actions inside the input card)
   const shortcutBar = el('div', 'tg-shortcut-bar');
   inputCard.appendChild(shortcutBar);
@@ -5108,7 +5117,12 @@ function renderChatEditor(container, parallx, input) {
   });
 
   let _focusDebounce = null;
-  const focusHandler = () => {
+  const focusHandler = (event) => {
+    // Skip when focus moved within the input bar (e.g., the user just clicked
+    // the textarea). A full thread reload there causes visible flicker and
+    // can swallow keystrokes that arrive mid-render.
+    const target = event?.target;
+    if (target instanceof HTMLElement && target.closest('.tg-input-wrap')) return;
     clearTimeout(_focusDebounce);
     _focusDebounce = setTimeout(() => {
       // Skip reload while a message is being edited inline — it would wipe the editor
