@@ -194,6 +194,7 @@ export interface IDefaultParticipantServices {
     args: Record<string, unknown>,
     token: ICancellationToken,
     observer?: IChatRuntimeToolInvocationObserver,
+    sessionId?: string,
   ): Promise<IToolResult>;
   maxIterations?: number;
   networkTimeout?: number;
@@ -308,6 +309,7 @@ export interface IWorkspaceParticipantServices {
     args: Record<string, unknown>,
     token: ICancellationToken,
     observer?: IChatRuntimeToolInvocationObserver,
+    sessionId?: string,
   ): Promise<IToolResult>;
   listFiles?(relativePath: string): Promise<readonly { name: string; type: 'file' | 'directory'; size: number }[]>;
   readFileContent?(relativePath: string): Promise<string>;
@@ -350,6 +352,7 @@ export interface ICanvasParticipantServices {
     args: Record<string, unknown>,
     token: ICancellationToken,
     observer?: IChatRuntimeToolInvocationObserver,
+    sessionId?: string,
   ): Promise<IToolResult>;
   readFileContent?(relativePath: string): Promise<string>;
   reportParticipantDebug?(debug: {

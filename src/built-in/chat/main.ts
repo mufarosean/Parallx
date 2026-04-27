@@ -644,15 +644,16 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     args: Record<string, unknown>,
     token: ICancellationToken,
     observer?: import('./chatTypes.js').IChatRuntimeToolInvocationObserver,
+    sessionId?: string,
   ) => {
     const platformTools = dataService.getToolDefinitions();
     if (platformTools.some((tool) => tool.name === name)) {
-      return dataService.invokeToolWithRuntimeControl(name, args, token, observer);
+      return dataService.invokeToolWithRuntimeControl(name, args, token, observer, sessionId);
     }
 
     const skill = getRuntimeSkillCatalog().find((entry) => entry.kind === 'tool' && entry.name === name);
     if (!skill) {
-      return dataService.invokeToolWithRuntimeControl(name, args, token, observer);
+      return dataService.invokeToolWithRuntimeControl(name, args, token, observer, sessionId);
     }
 
     const permission = resolveRuntimeSkillPermission(name, skill.permissionLevel);
@@ -676,7 +677,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
     if (metadata.requiresApproval) {
       const approved = _permissionService
-        ? await _permissionService.confirmToolInvocation(name, skill.description, args, skill.permissionLevel)
+        ? await _permissionService.confirmToolInvocation(name, skill.description, args, skill.permissionLevel, sessionId)
         : false;
       observer?.onApprovalResolved?.(metadata, approved);
       if (!approved) {
@@ -708,7 +709,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getCurrentPageTitle: () => dataService.getCurrentPageTitle(),
     getToolDefinitions: () => dataService.getToolDefinitions(),
     getReadOnlyToolDefinitions: () => dataService.getReadOnlyToolDefinitions(),
-    invokeToolWithRuntimeControl: (n, a, t, o) => invokeRuntimeToolWithSkillSupport(n, a, t, o),
+    invokeToolWithRuntimeControl: (n, a, t, o, s) => invokeRuntimeToolWithSkillSupport(n, a, t, o, s),
     maxIterations: unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? 25,
     networkTimeout: 120_000,
     getModelContextLength: () => dataService.getModelContextLength(),
@@ -825,7 +826,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getPageContent: (p) => dataService.getPageContent(p),
     getPageTitle: (p) => dataService.getPageTitle(p),
     getReadOnlyToolDefinitions: () => mergeRuntimeToolDefinitions(dataService.getReadOnlyToolDefinitions(), true),
-    invokeToolWithRuntimeControl: (n, a, t, o) => invokeRuntimeToolWithSkillSupport(n, a, t, o),
+    invokeToolWithRuntimeControl: (n, a, t, o, s) => invokeRuntimeToolWithSkillSupport(n, a, t, o, s),
     listFiles: fsAccessor ? (r) => fsAccessor.readdir(r) : undefined,
     readFileContent: fsAccessor ? async (r) => { const res = await fsAccessor.readFileContent(r); return res.content; } : undefined,
     reportParticipantDebug: (debug) => dataService.reportParticipantDebug(debug),
@@ -847,7 +848,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getCurrentPageTitle: () => dataService.getCurrentPageTitle(),
     getPageStructure: (p) => dataService.getPageStructure(p),
     getReadOnlyToolDefinitions: () => mergeRuntimeToolDefinitions(dataService.getReadOnlyToolDefinitions(), true),
-    invokeToolWithRuntimeControl: (n, a, t, o) => invokeRuntimeToolWithSkillSupport(n, a, t, o),
+    invokeToolWithRuntimeControl: (n, a, t, o, s) => invokeRuntimeToolWithSkillSupport(n, a, t, o, s),
     readFileContent: fsAccessor ? async (r) => { const res = await fsAccessor.readFileContent(r); return res.content; } : undefined,
     reportParticipantDebug: (debug) => dataService.reportParticipantDebug(debug),
     reportRetrievalDebug: (debug) => dataService.reportRetrievalDebug(debug),
@@ -878,6 +879,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     // ── Wire permission service (M11 Task 2.1) ──
     _permissionService = new PermissionService();
     context.subscriptions.push(_permissionService);
+
+    // Wire heartbeat-aware approval queue: heartbeat-originated tool calls
+    // that would otherwise stall on a UI dialog get logged to the autonomy
+    // log instead. See PermissionService.confirmToolInvocation.
+    _permissionService.setAutonomyLogAppender({
+      append: (input) => autonomyLog.append(input),
+    });
 
     // Inline DOM-based confirmation handler — creates a floating card in the
     // chat panel and returns a Promise that resolves when the user clicks.
@@ -1259,6 +1267,12 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         },
         getParentSessionId: () => _activeWidget?.getSession()?.id,
         outputDedupWindowMs: unifiedConfigService.getEffectiveConfig().heartbeat.outputDedupWindowMs,
+        permissionService: _permissionService
+          ? {
+              markHeartbeatSession: (sid, level) => _permissionService!.markHeartbeatSession(sid, level),
+              unmarkHeartbeatSession: (sid) => _permissionService!.unmarkHeartbeatSession(sid),
+            }
+          : undefined,
       },
     );
 

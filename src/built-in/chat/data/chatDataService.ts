@@ -821,13 +821,14 @@ export class ChatDataService {
     args: Record<string, unknown>,
     token: ICancellationToken,
     observer?: import('../chatTypes.js').IChatRuntimeToolInvocationObserver,
+    sessionId?: string,
   ): Promise<IToolResult> {
     const toolsService = this._d.languageModelToolsService as (ILanguageModelToolsService & Partial<ILanguageModelToolsRuntimeControl>) | undefined;
     if (!toolsService?.invokeToolWithRuntimeControl) {
       return { content: 'Tool service not available', isError: true };
     }
 
-    return toolsService.invokeToolWithRuntimeControl(name, args, token, observer);
+    return toolsService.invokeToolWithRuntimeControl(name, args, token, observer, sessionId);
   }
 
   async getFileCount(): Promise<number> {

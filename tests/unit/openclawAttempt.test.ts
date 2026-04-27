@@ -182,6 +182,7 @@ describe('executeOpenclawAttempt', () => {
       { path: 'test.md' },
       expect.anything(),
       undefined,
+      expect.anything(),
     );
   });
 

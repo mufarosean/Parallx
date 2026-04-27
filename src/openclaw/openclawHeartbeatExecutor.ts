@@ -124,6 +124,19 @@ export interface IHeartbeatRealTurnDeps {
   readonly outputDedupWindowMs?: number;
   /** Override clock for tests. Default: Date.now. */
   readonly now?: () => number;
+  /**
+   * Optional permission service. When provided, the executor marks the
+   * ephemeral session as heartbeat-originated for the duration of
+   * `sendRequest`, so requires-approval tools route to the autonomy log
+   * instead of stalling on a UI dialog the user can't see. Optional
+   * `getAutonomyLevel()` lets the gate also honor agent autonomy:
+   * `manual` blocks every tool, `allow-policy-actions` auto-approves.
+   */
+  readonly permissionService?: {
+    markHeartbeatSession(sessionId: string, autonomyLevel?: import('../agent/agentTypes.js').AgentAutonomyLevel): void;
+    unmarkHeartbeatSession(sessionId: string): void;
+  };
+  readonly getAutonomyLevel?: () => import('../agent/agentTypes.js').AgentAutonomyLevel | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -341,6 +354,12 @@ export function createHeartbeatTurnExecutor(
       firstUserMessage: userMessage,
     });
 
+    // Mark this ephemeral session as heartbeat-originated so the permission
+    // gate routes requires-approval tools to the autonomy log instead of
+    // awaiting a UI dialog. Cleared in `finally`.
+    const autonomy = realTurnDeps.getAutonomyLevel?.();
+    realTurnDeps.permissionService?.markHeartbeatSession(handle.sessionId, autonomy);
+
     try {
       await realTurnDeps.chatService.sendRequest(handle.sessionId, userMessage);
       const session = realTurnDeps.chatService.getSession(handle.sessionId);
@@ -427,6 +446,7 @@ export function createHeartbeatTurnExecutor(
       );
     } finally {
       // Always purge — even on error — so scratch state doesn't leak.
+      realTurnDeps.permissionService?.unmarkHeartbeatSession(handle.sessionId);
       realTurnDeps.chatService.purgeEphemeralSession(handle);
       await resetStatus('idle');
     }

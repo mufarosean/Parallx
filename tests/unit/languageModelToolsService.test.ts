@@ -259,6 +259,122 @@ describe('LanguageModelToolsService', () => {
     });
   });
 
+  // ── Heartbeat-aware approval queue ──
+
+  describe('heartbeat session approval routing', () => {
+    it('routes requires-approval calls from heartbeat sessions to autonomy log without prompting', async () => {
+      const handler = vi.fn(async () => ({ content: 'should not reach' }));
+      service.registerTool(createTool({ requiresConfirmation: true, handler }));
+
+      const permissionService = new PermissionService();
+      const confirm = vi.fn(async () => 'allow-once' as const);
+      permissionService.setConfirmationHandler(confirm);
+
+      const appended: Array<{ origin: string; metadata?: Record<string, unknown> }> = [];
+      permissionService.setAutonomyLogAppender({
+        append: (input) => {
+          appended.push({ origin: input.origin, metadata: input.metadata as Record<string, unknown> | undefined });
+          return {} as unknown;
+        },
+      });
+
+      service.setPermissionService(permissionService);
+      permissionService.markHeartbeatSession('eph-1');
+
+      const result = await service.invokeToolWithRuntimeControl(
+        'test_tool',
+        { x: 1 },
+        createToken(),
+        undefined,
+        'eph-1',
+      );
+
+      expect(confirm).not.toHaveBeenCalled();
+      expect(handler).not.toHaveBeenCalled();
+      expect(result.isError).toBe(true);
+      expect(appended).toHaveLength(1);
+      expect(appended[0].origin).toBe('heartbeat');
+      expect((appended[0].metadata ?? {}).kind).toBe('queued-approval');
+
+      permissionService.unmarkHeartbeatSession('eph-1');
+    });
+
+    it('autonomy=manual blocks even always-allowed tools for heartbeat sessions', async () => {
+      const handler = vi.fn(async () => ({ content: 'ok' }));
+      service.registerTool(createTool({ requiresConfirmation: false, handler })); // always-allowed
+
+      const permissionService = new PermissionService();
+      const appended: Array<{ metadata?: Record<string, unknown> }> = [];
+      permissionService.setAutonomyLogAppender({
+        append: (input) => {
+          appended.push({ metadata: input.metadata as Record<string, unknown> | undefined });
+          return {} as unknown;
+        },
+      });
+      service.setPermissionService(permissionService);
+      permissionService.markHeartbeatSession('eph-2', 'manual');
+
+      const result = await service.invokeToolWithRuntimeControl(
+        'test_tool',
+        {},
+        createToken(),
+        undefined,
+        'eph-2',
+      );
+
+      expect(handler).not.toHaveBeenCalled();
+      expect(result.isError).toBe(true);
+      expect(appended).toHaveLength(1);
+      expect((appended[0].metadata ?? {}).kind).toBe('autonomy-blocked');
+    });
+
+    it('autonomy=allow-policy-actions auto-approves requires-approval heartbeat tools', async () => {
+      const handler = vi.fn(async () => ({ content: 'created' }));
+      service.registerTool(createTool({ requiresConfirmation: true, handler }));
+
+      const permissionService = new PermissionService();
+      const confirm = vi.fn(async () => 'reject' as const);
+      permissionService.setConfirmationHandler(confirm);
+      service.setPermissionService(permissionService);
+      permissionService.markHeartbeatSession('eph-3', 'allow-policy-actions');
+
+      const result = await service.invokeToolWithRuntimeControl(
+        'test_tool',
+        {},
+        createToken(),
+        undefined,
+        'eph-3',
+      );
+
+      expect(confirm).not.toHaveBeenCalled();
+      expect(handler).toHaveBeenCalled();
+      expect(result.content).toBe('created');
+    });
+
+    it('non-heartbeat sessions still go through normal confirmation handler', async () => {
+      const handler = vi.fn(async () => ({ content: 'created' }));
+      service.registerTool(createTool({ requiresConfirmation: true, handler }));
+
+      const permissionService = new PermissionService();
+      const confirm = vi.fn(async () => 'allow-once' as const);
+      permissionService.setConfirmationHandler(confirm);
+      service.setPermissionService(permissionService);
+      // No markHeartbeatSession.
+
+      const result = await service.invokeToolWithRuntimeControl(
+        'test_tool',
+        {},
+        createToken(),
+        undefined,
+        'user-session',
+      );
+
+      expect(confirm).toHaveBeenCalled();
+      expect(handler).toHaveBeenCalled();
+      expect(result.content).toBe('created');
+    });
+  });
+
   // ── Dispose ──
 
   describe('dispose', () => {

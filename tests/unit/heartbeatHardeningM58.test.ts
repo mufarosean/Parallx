@@ -420,3 +420,85 @@ describe('HeartbeatTurnExecutor NOTE response routing', () => {
     expect(chat.deliveries).toHaveLength(1);
   });
 });
+
+// ─────────────────── Heartbeat-aware approval queue ───────────────────
+
+describe('HeartbeatTurnExecutor permissionService wiring', () => {
+  it('marks the ephemeral session before sendRequest and unmarks in finally', async () => {
+    const router = new SurfaceRouterService();
+    router.registerSurface(new FakeSurfacePlugin(SURFACE_CHAT));
+    router.registerSurface(new FakeSurfacePlugin(SURFACE_STATUS));
+
+    const stub = buildChatStub('done');
+    const marks: Array<{ op: 'mark' | 'unmark'; sid: string; level?: string }> = [];
+    let observedDuringSend = false;
+    const baseSend = stub.chatService.sendRequest;
+    const wrappedChat: IHeartbeatChatService = {
+      ...stub.chatService,
+      sendRequest: async (sid, msg, opts) => {
+        // At this point we expect mark already happened.
+        observedDuringSend = marks.some(m => m.op === 'mark' && m.sid === sid);
+        return baseSend(sid, msg, opts);
+      },
+    };
+
+    const executor = createHeartbeatTurnExecutor(
+      router,
+      () => ({ reasons: ['system-event'] }),
+      {
+        chatService: wrappedChat,
+        getParentSessionId: () => 'p1',
+        debounceMs: 0,
+        permissionService: {
+          markHeartbeatSession: (sid, level) => marks.push({ op: 'mark', sid, level }),
+          unmarkHeartbeatSession: (sid) => marks.push({ op: 'unmark', sid }),
+        },
+        getAutonomyLevel: () => 'allow-readonly',
+      },
+    );
+
+    await executor(
+      [{ type: 'file-change', payload: { path: '/a.ts' }, timestamp: 1 }],
+      'system-event',
+    );
+
+    expect(observedDuringSend).toBe(true);
+    expect(marks.map(m => m.op)).toEqual(['mark', 'unmark']);
+    expect(marks[0].level).toBe('allow-readonly');
+    expect(marks[0].sid).toBe(marks[1].sid);
+  });
+
+  it('still unmarks the session when sendRequest throws', async () => {
+    const router = new SurfaceRouterService();
+    router.registerSurface(new FakeSurfacePlugin(SURFACE_CHAT));
+    router.registerSurface(new FakeSurfacePlugin(SURFACE_STATUS));
+
+    const stub = buildChatStub('done');
+    const marks: Array<{ op: 'mark' | 'unmark'; sid: string }> = [];
+    const failingChat: IHeartbeatChatService = {
+      ...stub.chatService,
+      sendRequest: async () => { throw new Error('boom'); },
+    };
+
+    const executor = createHeartbeatTurnExecutor(
+      router,
+      () => ({ reasons: ['system-event'] }),
+      {
+        chatService: failingChat,
+        getParentSessionId: () => 'p1',
+        debounceMs: 0,
+        permissionService: {
+          markHeartbeatSession: (sid) => marks.push({ op: 'mark', sid }),
+          unmarkHeartbeatSession: (sid) => marks.push({ op: 'unmark', sid }),
+        },
+      },
+    );
+
+    await executor(
+      [{ type: 'file-change', payload: { path: '/a.ts' }, timestamp: 1 }],
+      'system-event',
+    );
+
+    expect(marks.map(m => m.op)).toEqual(['mark', 'unmark']);
+  });
+});

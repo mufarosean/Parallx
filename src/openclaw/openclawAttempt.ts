@@ -124,6 +124,7 @@ export interface IOpenclawTurnContext {
     args: Record<string, unknown>,
     token: ICancellationToken,
     observer?: IChatRuntimeToolInvocationObserver,
+    sessionId?: string,
   ) => Promise<IToolResult>;
   /** D4: Optional tool invocation observer for runtime hooks. */
   readonly toolObserver?: IChatRuntimeToolInvocationObserver;
@@ -335,6 +336,7 @@ export async function executeOpenclawAttempt(
         toolCall.function.arguments,
         token,
         context.toolObserver,
+        context.sessionId,
       );
       toolCallCount++;
 

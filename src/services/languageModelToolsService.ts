@@ -51,6 +51,7 @@ export interface ILanguageModelToolsRuntimeControl {
     args: Record<string, unknown>,
     token: ICancellationToken,
     observer?: ILanguageModelToolsRuntimeObserver,
+    sessionId?: string,
   ): Promise<IToolResult>;
 }
 
@@ -216,6 +217,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     args: Record<string, unknown>,
     token: ICancellationToken,
     observer?: ILanguageModelToolsRuntimeObserver,
+    sessionId?: string,
   ): Promise<IToolResult> {
     const tool = this._tools.get(name);
     if (!tool) {
@@ -248,6 +250,19 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
       return { content: `Tool "${name}" is disabled`, isError: true };
     }
 
+    // Heartbeat autonomy=manual: block every tool, including always-allowed
+    // reads, before the fast-path. See PermissionService.isHeartbeatSessionBlocked.
+    if (
+      sessionId !== undefined &&
+      this._permissionService &&
+      typeof (this._permissionService as PermissionService).isHeartbeatSessionBlocked === 'function' &&
+      (this._permissionService as PermissionService).isHeartbeatSessionBlocked(sessionId)
+    ) {
+      (this._permissionService as PermissionService).recordHeartbeatAutonomyBlock(sessionId, name);
+      observer?.onApprovalResolved?.(metadata, false);
+      return { content: `Tool "${name}" blocked: agent autonomy is manual`, isError: true };
+    }
+
     if (permissionCheck.level === 'never-allowed') {
       observer?.onApprovalResolved?.(metadata, false);
       return { content: `Tool "${name}" is not allowed`, isError: true };
@@ -268,6 +283,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
         tool.description,
         args,
         defaultLevel,
+        sessionId,
       );
       observer?.onApprovalResolved?.(metadata, approved);
       if (!approved) {

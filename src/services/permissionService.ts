@@ -17,6 +17,7 @@ import { Emitter } from '../platform/events.js';
 import type { Event } from '../platform/events.js';
 import type { ToolPermissionLevel, ToolGrantDecision } from './chatTypes.js';
 import type { AgentApprovalStrictness } from '../aiSettings/unifiedConfigTypes.js';
+import type { AgentAutonomyLevel } from '../agent/agentTypes.js';
 
 // ── Types ──
 
@@ -91,6 +92,33 @@ export class PermissionService extends Disposable {
   /** Confirmation handler set by UI layer. */
   private _confirmationHandler: ToolConfirmationHandler | undefined;
 
+  /**
+   * Sessions whose tool calls originate from the heartbeat ephemeral runner.
+   * For these sessions, `requires-approval` tools are NOT presented to the
+   * user via `_confirmationHandler` (the heartbeat output surfaces in the
+   * autonomy log, not chat — there is no UI dialog the user can see).
+   * Instead, the gate logs a "queued" entry to the autonomy log and rejects
+   * the call so the heartbeat turn fails fast without stalling.
+   *
+   * Set/cleared by `markHeartbeatSession` / `unmarkHeartbeatSession`,
+   * called by the heartbeat executor around its `chatService.sendRequest`.
+   */
+  private readonly _heartbeatSessions = new Set<string>();
+
+  /**
+   * Per-heartbeat-session autonomy level, captured at mark-time.
+   *   - `manual`               → reject every tool (with autonomy-log entry)
+   *   - `allow-readonly`       → same as default heartbeat policy
+   *                              (always-allowed reads pass; requires-approval queued)
+   *   - `allow-safe-actions`   → same
+   *   - `allow-policy-actions` → auto-approve requires-approval tools too
+   *                              (user intent: agent runs fully autonomously)
+   */
+  private readonly _heartbeatAutonomy = new Map<string, AgentAutonomyLevel>();
+
+  /** Optional autonomy log appender for queued-approval entries. */
+  private _autonomyLogAppender: { append(input: { origin: 'heartbeat'; requestText: string; content: string; metadata?: Readonly<Record<string, unknown>>; sessionId?: string }): unknown } | undefined;
+
   // ── Events ──
 
   private readonly _onDidChange = this._register(new Emitter<void>());
@@ -114,6 +142,53 @@ export class PermissionService extends Disposable {
   /** Set the confirmation handler (called by UI layer to show approval dialog). */
   setConfirmationHandler(handler: ToolConfirmationHandler | undefined): void {
     this._confirmationHandler = handler;
+  }
+
+  /** Mark an ephemeral chat session as originating from heartbeat. */
+  markHeartbeatSession(sessionId: string, autonomyLevel?: AgentAutonomyLevel): void {
+    this._heartbeatSessions.add(sessionId);
+    if (autonomyLevel !== undefined) {
+      this._heartbeatAutonomy.set(sessionId, autonomyLevel);
+    }
+  }
+
+  /** Clear the heartbeat marker for a session (call in finally). */
+  unmarkHeartbeatSession(sessionId: string): void {
+    this._heartbeatSessions.delete(sessionId);
+    this._heartbeatAutonomy.delete(sessionId);
+  }
+
+  /** Wire the autonomy log appender for queued-approval entries. */
+  setAutonomyLogAppender(appender: PermissionService['_autonomyLogAppender']): void {
+    this._autonomyLogAppender = appender;
+  }
+
+  /**
+   * Returns true if the session is heartbeat-marked AND its autonomy level
+   * is `manual` — meaning the gate must reject *every* tool, including
+   * always-allowed reads, before the fast-path approves them. The tools
+   * service consults this before its `autoApproved` shortcut.
+   */
+  isHeartbeatSessionBlocked(sessionId: string | undefined): boolean {
+    if (sessionId === undefined) return false;
+    if (!this._heartbeatSessions.has(sessionId)) return false;
+    return this._heartbeatAutonomy.get(sessionId) === 'manual';
+  }
+
+  /** Record an autonomy-blocked entry. Called by the tools service. */
+  recordHeartbeatAutonomyBlock(sessionId: string, toolName: string): void {
+    try {
+      this._autonomyLogAppender?.append({
+        origin: 'heartbeat',
+        requestText: `[heartbeat] tool ${toolName} blocked by autonomy=manual`,
+        content: `Heartbeat attempted to call **${toolName}** but agent autonomy is set to *manual*. No heartbeat tool calls run at this level.`,
+        metadata: { kind: 'autonomy-blocked', tool: toolName, autonomy: 'manual' },
+        sessionId,
+      });
+    } catch {
+      /* never break the gate */
+    }
+    this._audit({ tool: toolName, decision: 'blocked', source: 'default', timestamp: Date.now() });
   }
 
   /** Set global auto-approve mode (bypasses all confirmation). */
@@ -296,8 +371,37 @@ export class PermissionService extends Disposable {
     toolDescription: string,
     args: Record<string, unknown>,
     defaultLevel: ToolPermissionLevel,
+    sessionId?: string,
   ): Promise<boolean> {
     const check = this.checkPermission(toolName, defaultLevel);
+
+    // Heartbeat autonomy gate — runs BEFORE auto-approve so `manual` can
+    // veto even read-only tools. Upstream parallel: agent-level autonomy
+    // is a coarser dial than per-tool permission; the two compose with
+    // autonomy applied first when the call originates from heartbeat.
+    if (sessionId !== undefined && this._heartbeatSessions.has(sessionId)) {
+      const autonomy = this._heartbeatAutonomy.get(sessionId);
+      if (autonomy === 'manual') {
+        try {
+          this._autonomyLogAppender?.append({
+            origin: 'heartbeat',
+            requestText: `[heartbeat] tool ${toolName} blocked by autonomy=manual`,
+            content: `Heartbeat attempted to call **${toolName}** but agent autonomy is set to *manual*. No heartbeat tool calls run at this level.`,
+            metadata: { kind: 'autonomy-blocked', tool: toolName, autonomy },
+            sessionId,
+          });
+        } catch {
+          /* never break the gate */
+        }
+        this._audit({ tool: toolName, decision: 'blocked', source: check.source, timestamp: Date.now() });
+        return false;
+      }
+      if (autonomy === 'allow-policy-actions' && check.level === 'requires-approval' && !check.autoApproved) {
+        // User has dialed up to fully-autonomous; auto-approve heartbeat tool.
+        this._audit({ tool: toolName, decision: 'approved', source: 'global-auto', timestamp: Date.now() });
+        return true;
+      }
+    }
 
     // Auto-approved — proceed immediately
     if (check.autoApproved) {
@@ -308,6 +412,28 @@ export class PermissionService extends Disposable {
     // Never-allowed — block immediately
     if (check.level === 'never-allowed') {
       this._audit({ tool: toolName, decision: 'blocked', source: check.source, timestamp: Date.now() });
+      return false;
+    }
+
+    // Heartbeat-originated approval-required call: don't stall on a UI
+    // dialog the user can't see. Log a queued entry to the autonomy log
+    // and reject. Upstream parallel: VS Code's `LanguageModelToolsService`
+    // bails out when no confirmation handler is registered — same shape,
+    // just routed through the autonomy log surface instead of a console
+    // warning so the user has a record of the deferred action.
+    if (sessionId !== undefined && this._heartbeatSessions.has(sessionId)) {
+      try {
+        this._autonomyLogAppender?.append({
+          origin: 'heartbeat',
+          requestText: `[heartbeat] tool ${toolName} requires approval`,
+          content: `The heartbeat turn requested **${toolName}** but the tool requires approval. Heartbeat output is non-interactive, so the call was deferred. Re-run from chat if you want to authorize it.`,
+          metadata: { kind: 'queued-approval', tool: toolName, args },
+          sessionId,
+        });
+      } catch {
+        // Appender failures must never break the gate.
+      }
+      this._audit({ tool: toolName, decision: 'rejected', source: check.source, timestamp: Date.now() });
       return false;
     }
 
