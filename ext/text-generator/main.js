@@ -5957,6 +5957,30 @@ function renderCharacterEditor(container, parallx, input) {
 
   let charData = null;
 
+  // ── Unsaved-changes guard ──
+  // `snapshotForm` snapshots the current form state as a stable JSON string so
+  // we can detect dirtiness without per-field event wiring. The baseline is
+  // re-taken after every successful save / load so subsequent edits are
+  // measured against the latest persisted state.
+  let _baselineSnapshot = null;
+  function snapshotForm() {
+    try { return JSON.stringify(collectForm()); }
+    catch { return null; }
+  }
+  function isDirty() {
+    if (_baselineSnapshot == null) return false;
+    return snapshotForm() !== _baselineSnapshot;
+  }
+  const _beforeUnload = (event) => {
+    if (!isDirty()) return undefined;
+    event.preventDefault();
+    // Modern browsers ignore the custom string, but returning a value still
+    // triggers the native confirm dialog.
+    event.returnValue = '';
+    return '';
+  };
+  window.addEventListener('beforeunload', _beforeUnload);
+
   // ── Populate form from loaded data ──
   function populateForm(data) {
     nameInput.value = data.name || '';
