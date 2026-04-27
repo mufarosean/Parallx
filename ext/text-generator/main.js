@@ -1714,6 +1714,12 @@ function parseSlashCommand(input) {
     }
   }
 
+  // Drop unfilled <placeholder> tokens so a button-shortcut the user didn't
+  // edit (e.g. "/ai @Char <optional writing instruction>") doesn't ship the
+  // literal placeholder text as the instruction — which the model treats as
+  // garbage and effectively ignores.
+  instruction = instruction.replace(/<[^>\n]+>/g, '').trim();
+
   return { command, args: rest, instruction, targetCharacter };
 }
 
@@ -2484,10 +2490,10 @@ function assembleContext(params) {
     messages.push({ role: 'system', content: '[Reminders]\n' + characterReminders.join('\n') });
   }
 
-  // Ephemeral instruction (from slash commands like /ai <instruction>)
-  if (ephemeralInstruction) {
-    messages.push({ role: 'system', content: `[Turn direction: ${ephemeralInstruction}]` });
-  }
+  // Ephemeral instruction (from slash commands like /ai <instruction>).
+  // Deliberately placed AFTER the active-turn cue so it's the LAST system
+  // directive before the model writes — closer placement = better adherence.
+  // Wording is intentionally forceful; "Turn direction:" alone gets ignored.
 
   // Turn-taking cue — explicit signal right before the user message
   if (respondAs) {
@@ -2502,6 +2508,13 @@ function assembleContext(params) {
       const rName = respondChar ? (respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, '')) : String(respondAs).replace(/\.(md|json)$/, '');
       messages.push({ role: 'system', content: `[Active turn: ${rName}. Write only ${rName}'s next turn with no speaker prefix.]` });
     }
+  }
+
+  if (ephemeralInstruction) {
+    messages.push({
+      role: 'system',
+      content: `[IMPORTANT — user-supplied directive for THIS response only. Apply it directly to the next message you write: ${ephemeralInstruction}]`,
+    });
   }
 
   // User message
