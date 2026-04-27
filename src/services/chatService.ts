@@ -338,12 +338,15 @@ class ChatResponseStream implements IChatResponseStream {
       }
     }
 
-    // Clear the ephemeral progress message now that we're done
+    // Clear the ephemeral progress message now that we're done, and
+    // auto-collapse the thinking block — it stays expanded while streaming
+    // (so the user sees reasoning happen live) and tucks away on completion.
     const thinkingPart = parts.find(
       (p) => p.kind === ChatContentPartKind.Thinking,
     ) as IChatThinkingContent | undefined;
     if (thinkingPart) {
       thinkingPart.progressMessage = undefined;
+      thinkingPart.isCollapsed = true;
     }
 
     // Ensure thinking is first in the parts list (before markdown)
