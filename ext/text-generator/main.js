@@ -2137,6 +2137,7 @@ function buildSystemPrompt(params = {}) {
     userName = 'Anon',
     userDescription = '',
     responseLength = null,
+    customStyleContent = '',
   } = params;
 
   const parts = [];
@@ -2144,7 +2145,7 @@ function buildSystemPrompt(params = {}) {
   const characterReminders = [];
 
   // 1. Writing preset at the TOP — sets the shared writing framework.
-  const presetContent = getPresetContent(writingPreset);
+  const presetContent = getPresetContent(writingPreset, customStyleContent);
   if (presetContent) {
     parts.push(['## Writing Style', presetContent].join('\n'));
   }
@@ -2416,6 +2417,7 @@ function assembleContext(params) {
     userName,
     userDescription: charUserDesc,
     responseLength: effectiveResponseLength,
+    customStyleContent: settings?.customWritingStyle || '',
   });
   const systemPrompt = buildResult.prompt;
   const characterReminders = buildResult.reminders || [];
@@ -5532,6 +5534,7 @@ const DEFAULT_SETTINGS = {
   defaultPov: '',
   defaultModel: '',
   defaultFitMethod: 'dropOld',
+  customWritingStyle: '',
 };
 
 async function loadSettings(fs, workspaceUri) {
@@ -5642,6 +5645,22 @@ function renderSettingsPage(container, parallx) {
   const presetSelect = formGroup('Default writing preset', 'Applied to newly created chats', 'select', 'defaultWritingPreset', {
     options: Object.entries(WRITING_PRESETS).map(([key, p]) => ({ label: p.label, value: key })),
   });
+
+  // Custom writing-style editor — the prompt text used when any chat selects
+  // the "Custom" preset. Always visible so users can draft a custom style
+  // before switching the dropdown over.
+  const customStyleGroup = el('div', 'tg-form-group');
+  customStyleGroup.appendChild(el('label', 'tg-form-label', { text: 'Custom writing style' }));
+  customStyleGroup.appendChild(el('div', 'tg-form-hint', {
+    text: 'Used when a chat or character selects the "Custom" preset. Markdown is fine — this text is injected verbatim under "## Writing Style".',
+  }));
+  const customStyleInput = el('textarea', 'tg-form-input');
+  customStyleInput.rows = 10;
+  customStyleInput.style.fontFamily = 'var(--vscode-editor-font-family, monospace)';
+  customStyleInput.style.minHeight = '180px';
+  customStyleInput.placeholder = '- Write in second-person, present tense.\n- Keep paragraphs short.\n- Lean into sensory detail and quiet beats.';
+  customStyleGroup.appendChild(customStyleInput);
+  form.appendChild(customStyleGroup);
   const responseLengthSelect = formGroup('Default response length', 'Applied to newly created chats when no character override exists', 'select', 'defaultResponseLength', {
     options: [
       { value: '', label: 'No limit (default)' },
@@ -5689,6 +5708,7 @@ function renderSettingsPage(container, parallx) {
     ctxInput.value = s.defaultContextWindow;
     userNameInput.value = s.userName;
     presetSelect.value = s.defaultWritingPreset || 'immersive-rp';
+    customStyleInput.value = s.customWritingStyle || '';
     responseLengthSelect.value = s.defaultResponseLength || '';
     defaultPovSelect.value = s.defaultPov || '';
     fitMethodSelect.value = s.defaultFitMethod || 'dropOld';
@@ -5729,6 +5749,7 @@ function renderSettingsPage(container, parallx) {
       defaultPov: defaultPovSelect.value || '',
       defaultModel: defaultModelSelect.value || '',
       defaultFitMethod: fitMethodSelect.value || DEFAULT_SETTINGS.defaultFitMethod,
+      customWritingStyle: customStyleInput.value || '',
     };
     await saveSettings(fs, workspaceUri, settings);
     savedLabel.classList.add('tg-form-saved--show');
@@ -6573,9 +6594,14 @@ Format:
     label: 'No Preset',
     content: '',
   },
+  'custom': {
+    label: 'Custom (edit in Settings)',
+    content: '',
+  },
 };
 
-function getPresetContent(presetKey) {
+function getPresetContent(presetKey, customText = '') {
+  if (presetKey === 'custom') return (customText || '').trim();
   const preset = WRITING_PRESETS[presetKey];
   if (preset && 'content' in preset) return preset.content;
   return WRITING_PRESETS['immersive-rp'].content;
