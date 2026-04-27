@@ -2480,27 +2480,8 @@ function assembleContext(params) {
     || 'dropOld';
   messages.push(...trimHistoryToBudget(mappedHistory, historyBudget, fitMethod, { summary: historySummary }));
 
-  // Character reminders — injected right before AI response for maximum recency
-  // (matches Perchance behavior: reminder as hidden system msg near end of context)
-  // Also inject userReminder (Perchance: separate user-perspective reminder)
-  if (charUserReminder) {
-    characterReminders.push(`- User reminder: ${charUserReminder}`);
-  }
-  if (characterReminders.length > 0) {
-    messages.push({ role: 'system', content: '[Reminders]\n' + characterReminders.join('\n') });
-  }
-
-  // Ephemeral instruction (from slash commands like /ai <instruction>).
-  // Deliberately placed AFTER the active-turn cue so it's the LAST system
-  // directive before the model writes — closer placement = better adherence.
-  // Wording is intentionally forceful; "Turn direction:" alone gets ignored.
-
-  // Build a late-stage "you are X" re-anchor + anti-repetition guard.
-  // The character roster lives at position 0 of the system prompt; by the
-  // time we're deep into history its influence has decayed and the model
-  // drifts (writes for other characters, repeats its own openings).
-  // Putting the persona + recent-output reminder right before generation
-  // is the cheapest reliable fix.
+  // Build persona re-anchor + anti-repetition guard. Used inside the single
+  // consolidated late-stage system message below — NOT pushed separately.
   let speakerLateAnchor = null;
   let speakerAvoidRepeat = null;
   if (respondAs && respondAs !== SELF_SPEAKER && respondAs !== NARRATOR_SPEAKER) {
@@ -2509,14 +2490,11 @@ function assembleContext(params) {
     );
     if (respondChar) {
       const rName = respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, '');
-      // One-line persona recap for the late re-anchor. Pull the first non-
-      // empty line of the description so we don't bloat the prompt.
       const desc = (respondChar.sections?.description || respondChar.frontmatter?.description || '')
         .split('\n').map(s => s.trim()).find(Boolean) || '';
       const personaLine = desc ? ` Persona recap: ${desc.slice(0, 220)}` : '';
       speakerLateAnchor = `[You are ${rName}. Stay strictly in ${rName}'s voice. Do not write, quote, or describe internal thoughts for any other character. Do not write the user's words or actions.${personaLine}]`;
 
-      // Anti-repetition guard — the model's own last 2 outputs as this speaker.
       const recentSelfOutputs = filteredHistory
         .filter(m => m.author === 'ai' && m.characterFile === respondChar.fileName)
         .slice(-2)
@@ -2524,9 +2502,8 @@ function assembleContext(params) {
         .filter(Boolean);
       if (recentSelfOutputs.length > 0) {
         const openings = recentSelfOutputs.map((text) => {
-          // First sentence (up to first . ! ? or 100 chars) for compactness.
-          const m = text.match(/^[^.!?\n]{1,100}[.!?]?/);
-          const opener = (m ? m[0] : text.slice(0, 100)).trim();
+          const mm = text.match(/^[^.!?\n]{1,100}[.!?]?/);
+          const opener = (mm ? mm[0] : text.slice(0, 100)).trim();
           return `— "${opener}"`;
         }).join('\n');
         speakerAvoidRepeat =
@@ -2535,37 +2512,66 @@ function assembleContext(params) {
     }
   }
 
-  // Turn-taking cue — explicit signal right before the user message.
-  // Strengthened wording: most failures come from the model speaking for
-  // the wrong character or continuing into the user's turn.
-  if (respondAs) {
-    if (respondAs === SELF_SPEAKER) {
-      messages.push({ role: 'system', content: '[Active turn: user. Draft only the next user-authored message with no speaker prefix.]' });
-    } else if (respondAs === NARRATOR_SPEAKER) {
-      messages.push({ role: 'system', content: '[Active turn: Narrator. Write only the next narrative beat in prose. Do not write any character\'s spoken dialogue. Do not use "CharacterName:" prefixes.]' });
-    } else {
-      const respondChar = chars.find(c =>
-        c.fileName === respondAs || (c.frontmatter.name || '').toLowerCase() === String(respondAs).toLowerCase()
-      );
-      const rName = respondChar ? (respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, '')) : String(respondAs).replace(/\.(md|json)$/, '');
-      messages.push({ role: 'system', content: `[Active turn: ${rName}. Write ONLY ${rName}'s next turn. Do not write for, narrate, or quote any other character. Do not include the "${rName}:" prefix — just the message body.]` });
-    }
+  // ── Single consolidated late-stage system message ──
+  // Stacking 4–5 separate system messages right before the user turn caused
+  // the model to treat them as boilerplate and ignore them. We now build
+  // exactly ONE focused system message, in priority order:
+  //   1) Active turn (who is speaking, what NOT to do)
+  //   2) Persona re-anchor (you are X, voice constraint, persona recap)
+  //   3) Reminders (character + user reminders)
+  //   4) Vary-your-prose guard (with concrete recent openings)
+  //   5) Ephemeral directive (slash-command instruction for THIS turn)
+  // Empty sections are omitted. The result is one tight block that lands
+  // right before generation — single high-attention spot, no competing noise.
+
+  // 1) Active turn
+  let activeTurnLine = null;
+  if (respondAs === SELF_SPEAKER) {
+    activeTurnLine = 'Active turn: user. Draft only the next user-authored message with no speaker prefix.';
+  } else if (respondAs === NARRATOR_SPEAKER) {
+    activeTurnLine = 'Active turn: Narrator. Write only the next narrative beat in prose. Do not write any character\'s spoken dialogue. Do not use "CharacterName:" prefixes.';
+  } else if (respondAs) {
+    const respondChar = chars.find(c =>
+      c.fileName === respondAs || (c.frontmatter.name || '').toLowerCase() === String(respondAs).toLowerCase()
+    );
+    const rName = respondChar ? (respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, '')) : String(respondAs).replace(/\.(md|json)$/, '');
+    activeTurnLine = `Active turn: ${rName}. Write ONLY ${rName}'s next turn. Do not write for, narrate, or quote any other character. Do not include the "${rName}:" prefix — just the message body.`;
   }
 
-  // Late-stage re-anchor + anti-repetition (after active-turn cue, just before
-  // ephemeral directive and user message). Placement is intentional:
-  // anti-repetition lands closer to generation than the active-turn cue.
+  // 2) Persona re-anchor (only when speaker is a real character)
+  let personaLine = null;
   if (speakerLateAnchor) {
-    messages.push({ role: 'system', content: speakerLateAnchor });
-  }
-  if (speakerAvoidRepeat) {
-    messages.push({ role: 'system', content: speakerAvoidRepeat });
+    // strip the surrounding [ ] from the previously-built block; we'll wrap
+    // the consolidated message in [ ] once at the end.
+    personaLine = speakerLateAnchor.replace(/^\[/, '').replace(/\]$/, '');
   }
 
+  // 3) Reminders (already collected above as `characterReminders`).
+  if (charUserReminder) {
+    characterReminders.push(`User reminder: ${charUserReminder}`);
+  }
+  let reminderBlock = null;
+  if (characterReminders.length > 0) {
+    reminderBlock = 'Reminders:\n' + characterReminders.map(r => r.replace(/^- /, '')).map(r => `- ${r}`).join('\n');
+  }
+
+  // 4) Vary-your-prose
+  let varyBlock = null;
+  if (speakerAvoidRepeat) {
+    varyBlock = speakerAvoidRepeat.replace(/^\[/, '').replace(/\]$/, '');
+  }
+
+  // 5) Ephemeral directive
+  let directiveBlock = null;
   if (ephemeralInstruction) {
+    directiveBlock = `User directive for THIS response only — apply it directly to the next message you write: ${ephemeralInstruction}`;
+  }
+
+  const consolidatedSections = [activeTurnLine, personaLine, reminderBlock, varyBlock, directiveBlock].filter(Boolean);
+  if (consolidatedSections.length > 0) {
     messages.push({
       role: 'system',
-      content: `[IMPORTANT — user-supplied directive for THIS response only. Apply it directly to the next message you write: ${ephemeralInstruction}]`,
+      content: '[' + consolidatedSections.join('\n\n') + ']',
     });
   }
 
