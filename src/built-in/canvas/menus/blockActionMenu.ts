@@ -20,6 +20,11 @@ import {
   deleteBlockAt,
   duplicateBlockAt,
   turnBlockWithSharedStrategy,
+  canTakeTextColor,
+  canTakeBackgroundColor,
+  canTurnInto,
+  TEXT_COLORS,
+  BG_COLORS,
 } from './canvasMenuRegistry.js';
 import type { ICanvasMenu } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
@@ -27,8 +32,30 @@ import type { IDisposable } from '../../../platform/lifecycle.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
 
+/**
+ * Minimal structural view of the multi-block selection controller used by
+ * the action menu. Declared inline (not imported from handles/) to keep
+ * blockActionMenu.ts gate-compliant — menus must not import from handles/
+ * directly. The full controller in handles/blockSelection.ts satisfies
+ * this shape.
+ */
+export interface IMenuBlockSelection {
+  readonly hasSelection: boolean;
+  readonly positions: number[];
+  clear(): void;
+  deleteSelected(): void;
+  duplicateSelected(): void;
+}
+
 export interface BlockActionMenuHost {
   readonly editor: Editor | null;
+  /**
+   * Optional multi-block selection controller. When the action-menu's
+   * anchor block is part of an active selection, actions (delete,
+   * duplicate, turn-into, color) apply to every selected block instead
+   * of just the anchor — matching the visual highlight users see.
+   */
+  readonly blockSelection?: IMenuBlockSelection;
 }
 
 // ── Controller ──────────────────────────────────────────────────────────────
@@ -154,43 +181,70 @@ export class BlockActionMenuController implements ICanvasMenu {
     if (!this._blockActionMenu || !this._actionBlockNode) return;
     this._blockActionMenu.innerHTML = '';
 
-    // Header — block type label
+    // Header — block type label (or batch count when multi-selection is
+    // active and the anchor is part of it).  Gives users immediate visual
+    // confirmation that subsequent actions will apply to all selected
+    // blocks, not just the one whose handle they clicked.
+    const sel = this._host.blockSelection;
+    const isBatch = !!sel?.hasSelection
+      && sel.positions.length > 1
+      && sel.positions.includes(this._actionBlockPos);
     const header = $('div.block-action-header');
-    header.textContent = this._registry.labelForBlockType(this._actionBlockNode.type.name);
+    header.textContent = isBatch
+      ? `${sel!.positions.length} blocks selected`
+      : this._registry.labelForBlockType(this._actionBlockNode.type.name);
     this._blockActionMenu.appendChild(header);
 
+    // ── Notion parity: capability filtering ──
+    // Build the per-row "should I show this row?" answers up-front from
+    // the active target set (single-block or multi-block).  An action row
+    // is shown iff at least one targeted block supports it.  Inside each
+    // action's batch loop we additionally skip blocks that can't take
+    // that specific operation (e.g. divider in a colour bulk-apply).
+    const targetTypes = this._collectTargetTypeNames();
+    const showTurnInto = targetTypes.some(t => canTurnInto(t));
+    const showAnyColor =
+      targetTypes.some(t => canTakeTextColor(t)) ||
+      targetTypes.some(t => canTakeBackgroundColor(t));
+
     // Turn into
-    const turnIntoSvg = getIcon('refresh')!;
-    const turnIntoItem = this._createActionItem('Turn into', turnIntoSvg, true);
-    turnIntoItem.addEventListener('mouseenter', () => {
-      if (this._turnIntoHideTimer) { clearTimeout(this._turnIntoHideTimer); this._turnIntoHideTimer = null; }
-      this._showTurnIntoSubmenu(turnIntoItem);
-    });
-    turnIntoItem.addEventListener('mouseleave', (e) => {
-      const related = e.relatedTarget as HTMLElement;
-      if (!this._turnIntoSubmenu?.contains(related)) {
-        this._turnIntoHideTimer = setTimeout(() => this._hideTurnIntoSubmenu(), 200);
-      }
-    });
-    this._blockActionMenu.appendChild(turnIntoItem);
+    if (showTurnInto) {
+      const turnIntoSvg = getIcon('refresh')!;
+      const turnIntoItem = this._createActionItem('Turn into', turnIntoSvg, true);
+      turnIntoItem.addEventListener('mouseenter', () => {
+        if (this._turnIntoHideTimer) { clearTimeout(this._turnIntoHideTimer); this._turnIntoHideTimer = null; }
+        this._showTurnIntoSubmenu(turnIntoItem);
+      });
+      turnIntoItem.addEventListener('mouseleave', (e) => {
+        const related = e.relatedTarget as HTMLElement;
+        if (!this._turnIntoSubmenu?.contains(related)) {
+          this._turnIntoHideTimer = setTimeout(() => this._hideTurnIntoSubmenu(), 200);
+        }
+      });
+      this._blockActionMenu.appendChild(turnIntoItem);
+    }
 
     // Color
-    const colorSvg = getIcon('color')!;
-    const colorItem = this._createActionItem('Color', colorSvg, true);
-    colorItem.addEventListener('mouseenter', () => {
-      if (this._colorHideTimer) { clearTimeout(this._colorHideTimer); this._colorHideTimer = null; }
-      this._showColorSubmenu(colorItem);
-    });
-    colorItem.addEventListener('mouseleave', (e) => {
-      const related = e.relatedTarget as HTMLElement;
-      if (!this._colorSubmenu?.contains(related)) {
-        this._colorHideTimer = setTimeout(() => this._hideColorSubmenu(), 200);
-      }
-    });
-    this._blockActionMenu.appendChild(colorItem);
+    if (showAnyColor) {
+      const colorSvg = getIcon('color')!;
+      const colorItem = this._createActionItem('Color', colorSvg, true);
+      colorItem.addEventListener('mouseenter', () => {
+        if (this._colorHideTimer) { clearTimeout(this._colorHideTimer); this._colorHideTimer = null; }
+        this._showColorSubmenu(colorItem);
+      });
+      colorItem.addEventListener('mouseleave', (e) => {
+        const related = e.relatedTarget as HTMLElement;
+        if (!this._colorSubmenu?.contains(related)) {
+          this._colorHideTimer = setTimeout(() => this._hideColorSubmenu(), 200);
+        }
+      });
+      this._blockActionMenu.appendChild(colorItem);
+    }
 
-    // Separator
-    this._blockActionMenu.appendChild($('div.block-action-separator'));
+    // Separator — only when at least one capability-row is present
+    if (showTurnInto || showAnyColor) {
+      this._blockActionMenu.appendChild($('div.block-action-separator'));
+    }
 
     // Duplicate
     const dupItem = this._createActionItem('Duplicate', svgIcon('duplicate'), false, 'Ctrl+D');
@@ -320,72 +374,62 @@ export class BlockActionMenuController implements ICanvasMenu {
     }
     this._colorSubmenu.innerHTML = '';
 
+    // Notion parity: hide entire color sections when none of the targeted
+    // blocks support that section.  E.g. selection of dividers + a heading
+    // → no text color section (divider can't take it, heading can but
+    // single-block heading-only fall-through covers it via the can-text
+    // check); selection of headings + image → only Text color shown
+    // because images can't take backgroundColor.
+    const targetTypes = this._collectTargetTypeNames();
+    const showText = targetTypes.some(t => canTakeTextColor(t));
+    const showBg = targetTypes.some(t => canTakeBackgroundColor(t));
+
     // Text color section
-    const textHeader = $('div.block-color-section-header');
-    textHeader.textContent = 'Text color';
-    this._colorSubmenu.appendChild(textHeader);
+    if (showText) {
+      const textHeader = $('div.block-color-section-header');
+      textHeader.textContent = 'Text color';
+      this._colorSubmenu.appendChild(textHeader);
 
-    const textColors = [
-      { label: 'Default text', value: null, display: 'rgba(255,255,255,0.81)' },
-      { label: 'Gray text', value: 'rgb(155,155,155)', display: 'rgb(155,155,155)' },
-      { label: 'Brown text', value: 'rgb(186,133,83)', display: 'rgb(186,133,83)' },
-      { label: 'Orange text', value: 'rgb(230,150,60)', display: 'rgb(230,150,60)' },
-      { label: 'Yellow text', value: 'rgb(223,196,75)', display: 'rgb(223,196,75)' },
-      { label: 'Green text', value: 'rgb(80,185,120)', display: 'rgb(80,185,120)' },
-      { label: 'Blue text', value: 'rgb(70,160,230)', display: 'rgb(70,160,230)' },
-      { label: 'Purple text', value: 'rgb(170,120,210)', display: 'rgb(170,120,210)' },
-      { label: 'Pink text', value: 'rgb(220,120,170)', display: 'rgb(220,120,170)' },
-      { label: 'Red text', value: 'rgb(220,80,80)', display: 'rgb(220,80,80)' },
-    ];
-
-    for (const color of textColors) {
-      const row = $('div.block-color-item');
-      const swatch = $('span.block-color-swatch');
-      swatch.textContent = 'A';
-      swatch.style.color = color.display;
-      row.appendChild(swatch);
-      const label = $('span.block-action-label');
-      label.textContent = color.label;
-      row.appendChild(label);
-      row.addEventListener('mousedown', (e) => { e.preventDefault(); this._applyBlockTextColor(color.value); });
-      this._colorSubmenu!.appendChild(row);
+      for (const color of TEXT_COLORS) {
+        const row = $('div.block-color-item');
+        const swatch = $('span.block-color-swatch');
+        swatch.textContent = 'A';
+        swatch.style.color = color.display;
+        row.appendChild(swatch);
+        const label = $('span.block-action-label');
+        label.textContent = color.label;
+        row.appendChild(label);
+        row.addEventListener('mousedown', (e) => { e.preventDefault(); this._applyBlockTextColor(color.value); });
+        this._colorSubmenu!.appendChild(row);
+      }
     }
 
-    // Separator
-    this._colorSubmenu.appendChild($('div.block-action-separator'));
+    // Separator — only when both sections are showing
+    if (showText && showBg) {
+      this._colorSubmenu.appendChild($('div.block-action-separator'));
+    }
 
     // Background color section
-    const bgHeader = $('div.block-color-section-header');
-    bgHeader.textContent = 'Background color';
-    this._colorSubmenu.appendChild(bgHeader);
+    if (showBg) {
+      const bgHeader = $('div.block-color-section-header');
+      bgHeader.textContent = 'Background color';
+      this._colorSubmenu.appendChild(bgHeader);
 
-    const bgColors = [
-      { label: 'Default background', value: null, display: 'transparent' },
-      { label: 'Gray background', value: 'rgba(155,155,155,0.2)', display: 'rgba(155,155,155,0.35)' },
-      { label: 'Brown background', value: 'rgba(186,133,83,0.2)', display: 'rgba(186,133,83,0.35)' },
-      { label: 'Orange background', value: 'rgba(230,150,60,0.2)', display: 'rgba(230,150,60,0.35)' },
-      { label: 'Yellow background', value: 'rgba(223,196,75,0.2)', display: 'rgba(223,196,75,0.35)' },
-      { label: 'Green background', value: 'rgba(80,185,120,0.2)', display: 'rgba(80,185,120,0.35)' },
-      { label: 'Blue background', value: 'rgba(70,160,230,0.2)', display: 'rgba(70,160,230,0.35)' },
-      { label: 'Purple background', value: 'rgba(170,120,210,0.2)', display: 'rgba(170,120,210,0.35)' },
-      { label: 'Pink background', value: 'rgba(220,120,170,0.2)', display: 'rgba(220,120,170,0.35)' },
-      { label: 'Red background', value: 'rgba(220,80,80,0.2)', display: 'rgba(220,80,80,0.35)' },
-    ];
-
-    for (const color of bgColors) {
-      const row = $('div.block-color-item');
-      const swatch = $('span.block-color-swatch');
-      if (color.value) {
-        swatch.style.backgroundColor = color.display;
-      } else {
-        swatch.style.border = '1px solid rgba(255,255,255,0.2)';
+      for (const color of BG_COLORS) {
+        const row = $('div.block-color-item');
+        const swatch = $('span.block-color-swatch');
+        if (color.value) {
+          swatch.style.backgroundColor = color.display;
+        } else {
+          swatch.style.border = '1px solid rgba(255,255,255,0.2)';
+        }
+        row.appendChild(swatch);
+        const label = $('span.block-action-label');
+        label.textContent = color.label;
+        row.appendChild(label);
+        row.addEventListener('mousedown', (e) => { e.preventDefault(); this._applyBlockBgColor(color.value); });
+        this._colorSubmenu!.appendChild(row);
       }
-      row.appendChild(swatch);
-      const label = $('span.block-action-label');
-      label.textContent = color.label;
-      row.appendChild(label);
-      row.addEventListener('mousedown', (e) => { e.preventDefault(); this._applyBlockBgColor(color.value); });
-      this._colorSubmenu!.appendChild(row);
     }
 
     // Position to the right of anchor
@@ -401,15 +445,78 @@ export class BlockActionMenuController implements ICanvasMenu {
 
   // ── Block Transform Execution ──────────────────────────────────────────
 
+  /**
+   * If the anchor block is part of an active multi-block selection,
+   * return positions sorted DESCENDING (so callers can mutate end-first
+   * and keep earlier positions valid). Otherwise return a single-element
+   * array with just the anchor position.
+   *
+   * Resolves the inconsistency where users would highlight N blocks via
+   * marquee/shift-click, click the drag handle of one to open the menu,
+   * and then see the action only affect the anchor block.
+   */
+  private _resolveTargetPositionsDesc(): number[] {
+    const sel = this._host.blockSelection;
+    if (sel?.hasSelection && sel.positions.includes(this._actionBlockPos)) {
+      return [...sel.positions].sort((a, b) => b - a);
+    }
+    return [this._actionBlockPos];
+  }
+
+  /**
+   * Collect node-type names of every block targeted by the current menu.
+   * Mirrors `_resolveTargetPositionsDesc` but returns *types*, used by
+   * the menu render path to decide which capability rows / submenu
+   * sections to show.  Resolves names from the LIVE doc so that if a
+   * batch operation has already changed some types, we re-derive them
+   * fresh on the next render.
+   */
+  private _collectTargetTypeNames(): string[] {
+    if (!this._actionBlockNode) return [];
+    const editor = this._host.editor;
+    const sel = this._host.blockSelection;
+    if (!editor || !sel?.hasSelection || !sel.positions.includes(this._actionBlockPos)) {
+      return [this._actionBlockNode.type.name];
+    }
+    const out: string[] = [];
+    for (const p of sel.positions) {
+      const n = editor.state.doc.nodeAt(p);
+      if (n) out.push(n.type.name);
+    }
+    return out;
+  }
+
   private _turnBlockInto(targetType: string, attrs?: any): void {
     if (!this._revalidateActionBlock()) return;
     const editor = this._host.editor!;
-    const pos = this._actionBlockPos;
-    const node = this._actionBlockNode;
+    const positions = this._resolveTargetPositionsDesc();
+    const anchorNode = this._actionBlockNode;
     this._hideBlockActionMenu();
-    if (this._isCurrentBlockType(targetType, attrs)) return;
 
-    turnBlockWithSharedStrategy(editor, pos, node, targetType, attrs);
+    // Single-block fast path preserves existing no-op-on-same-type behavior.
+    if (positions.length === 1) {
+      if (this._isCurrentBlockType(targetType, attrs)) return;
+      turnBlockWithSharedStrategy(editor, positions[0], anchorNode, targetType, attrs);
+      this._host.blockSelection?.clear();
+      return;
+    }
+
+    // Batch: iterate descending, re-resolving each node from CURRENT state.
+    // Each turnBlockWithSharedStrategy dispatches its own transaction and
+    // may change nodeSize, but lower positions remain valid because we
+    // process from end to start. Notion parity: silently skip blocks
+    // whose type can't be a turn-into source (image, divider, etc.).
+    for (const pos of positions) {
+      const node = editor.state.doc.nodeAt(pos);
+      if (!node) continue;
+      if (!canTurnInto(node.type.name)) continue;
+      if (node.type.name === targetType) {
+        if (targetType !== 'heading') continue;
+        if (attrs?.level && node.attrs?.level === attrs.level) continue;
+      }
+      turnBlockWithSharedStrategy(editor, pos, node, targetType, attrs);
+    }
+    this._host.blockSelection?.clear();
   }
 
   private _isCurrentBlockType(targetType: string, attrs?: any): boolean {
@@ -425,19 +532,30 @@ export class BlockActionMenuController implements ICanvasMenu {
   private _applyBlockTextColor(value: string | null): void {
     if (!this._revalidateActionBlock()) return;
     const editor = this._host.editor!;
-    const pos = this._actionBlockPos;
-    const node = this._actionBlockNode;
+    const positions = this._resolveTargetPositionsDesc();
     this._hideBlockActionMenu();
-    applyTextColorToBlock(editor, pos, node, value);
+    // Text/bg color ops don't change nodeSize, so descending order is safe
+    // and re-resolving the node from current state is a defensive no-op.
+    // Notion parity: skip blocks whose type can't take a text-color mark.
+    for (const pos of positions) {
+      const node = editor.state.doc.nodeAt(pos);
+      if (!node) continue;
+      if (!canTakeTextColor(node.type.name)) continue;
+      applyTextColorToBlock(editor, pos, node, value);
+    }
   }
 
   private _applyBlockBgColor(value: string | null): void {
     if (!this._revalidateActionBlock()) return;
     const editor = this._host.editor!;
-    const pos = this._actionBlockPos;
-    const node = this._actionBlockNode;
+    const positions = this._resolveTargetPositionsDesc();
     this._hideBlockActionMenu();
-    applyBackgroundColorToBlock(editor, pos, node, value);
+    for (const pos of positions) {
+      const node = editor.state.doc.nodeAt(pos);
+      if (!node) continue;
+      if (!canTakeBackgroundColor(node.type.name)) continue;
+      applyBackgroundColorToBlock(editor, pos, node, value);
+    }
   }
 
   // ── Duplicate / Delete ─────────────────────────────────────────────────
@@ -445,20 +563,33 @@ export class BlockActionMenuController implements ICanvasMenu {
   private _duplicateBlock(): void {
     if (!this._revalidateActionBlock()) return;
     const editor = this._host.editor!;
+    const sel = this._host.blockSelection;
+    const useBatch = sel?.hasSelection && sel.positions.includes(this._actionBlockPos);
     const pos = this._actionBlockPos;
     const node = this._actionBlockNode;
     this._hideBlockActionMenu();
-    duplicateBlockAt(editor, pos, node);
+    if (useBatch && sel) {
+      // Reuse the controller's batched, position-aware implementation.
+      sel.duplicateSelected();
+    } else {
+      duplicateBlockAt(editor, pos, node);
+    }
     editor.commands.focus();
   }
 
   private _deleteBlock(): void {
     if (!this._revalidateActionBlock()) return;
     const editor = this._host.editor!;
+    const sel = this._host.blockSelection;
+    const useBatch = sel?.hasSelection && sel.positions.includes(this._actionBlockPos);
     const pos = this._actionBlockPos;
     const node = this._actionBlockNode;
     this._hideBlockActionMenu();
-    deleteBlockAt(editor, pos, node);
+    if (useBatch && sel) {
+      sel.deleteSelected();
+    } else {
+      deleteBlockAt(editor, pos, node);
+    }
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────

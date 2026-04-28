@@ -11,6 +11,13 @@ import { Extension } from '@tiptap/core';
 export const BlockKeyboardShortcuts = Extension.create({
   name: 'blockKeyboardShortcuts',
 
+  // Higher than the default 100 used by columnNodes / list extensions, so
+  // multi-block shortcuts (Mod-d, Backspace, Delete, Mod-Shift-Arrow) get
+  // the first chance to handle the keystroke when a block selection is
+  // active. With same priority, registration order would decide and a
+  // single-block column-scoped Mod-d could shadow the multi-block path.
+  priority: 200,
+
   addStorage() {
     return {
       /** Set by the orchestrator after editor creation.

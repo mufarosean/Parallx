@@ -13,6 +13,56 @@ import type { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { resolveBlockAncestry } from './blockStateRegistry.js';
 
+// ── Capability predicates ────────────────────────────────────────────────────
+// Used by the block action menu (and any future bulk-action consumer) to
+// determine whether a given block type can participate in text-color,
+// background-color, or turn-into operations.  Notion parity: in a multi-
+// block selection, blocks that don't support an action are skipped silently
+// rather than causing the action to fail or producing inconsistent state.
+//
+// The set below is intentionally duplicated from extensions/blockBackground.ts
+// (BLOCK_BG_TYPES) — blockLifecycle.ts is gate-isolated to its own folder
+// per CANVAS_STRUCTURAL_MODEL §gate-rules. A drift-detection unit test
+// pins the two lists together.
+
+const BG_CAPABLE_TYPES: readonly string[] = [
+  'paragraph', 'heading', 'blockquote', 'codeBlock',
+  'callout', 'details', 'bulletList', 'orderedList', 'taskList',
+];
+
+/**
+ * Authoritative set of node-type names whose blocks contain (or wrap) text
+ * content that can take a text-color mark.  Mirrors BG_CAPABLE_TYPES plus
+ * toggleHeading, which contains a heading title and inner blocks.
+ *
+ * Excluded: image, divider, bookmark, video, audio, fileAttachment,
+ * pageBlock, mathBlock (renders LaTeX, no inline marks), tables, columnList.
+ */
+const TEXTUAL_BLOCK_TYPES: ReadonlySet<string> = new Set([
+  ...BG_CAPABLE_TYPES,
+  'toggleHeading',
+]);
+
+/** Whether `nodeTypeName` blocks accept a text-color mark on their content. */
+export function canTakeTextColor(nodeTypeName: string): boolean {
+  return TEXTUAL_BLOCK_TYPES.has(nodeTypeName);
+}
+
+/** Whether `nodeTypeName` blocks accept a `backgroundColor` attribute. */
+export function canTakeBackgroundColor(nodeTypeName: string): boolean {
+  return BG_CAPABLE_TYPES.includes(nodeTypeName);
+}
+
+/**
+ * Whether `nodeTypeName` blocks can be the SOURCE of a turn-into operation.
+ * Equivalent to "is a textual block": image/divider/etc. cannot be turned
+ * into anything because turnBlockWithSharedStrategy needs text/inline
+ * content to seed the new block.
+ */
+export function canTurnInto(nodeTypeName: string): boolean {
+  return TEXTUAL_BLOCK_TYPES.has(nodeTypeName);
+}
+
 // ── Linked-page block deletion hook ──────────────────────────────────────────
 // When a block that owns a child page (pageBlock, databaseInline) is deleted,
 // we fire a callback so the canvas system can run the normal page deletion

@@ -901,8 +901,10 @@
   position: fixed;
   z-index: 1001;
   display: none;
-  flex-direction: row;
-  flex-wrap: wrap;
+  /* Notion parity: wrap to rows of 5 buttons via CSS grid.  When the
+     bubble is shown, JS sets style.display = 'grid'.  The link-input
+     row spans the full width via `grid-column: 1 / -1`. */
+  grid-template-columns: repeat(5, minmax(30px, auto));
   align-items: center;
   gap: 2px;
   padding: 4px 6px;
@@ -947,12 +949,10 @@
 }
 
 .canvas-bubble-highlight-icon {
-  background: rgba(254, 240, 138, 0.9);
-  color: #000;
-  font-weight: 700;
-  font-size: var(--parallx-fontSize-sm);
-  padding: 1px 5px;
-  border-radius: var(--parallx-radius-sm);
+  /* Legacy class — bubble menu now uses Color submenu instead of a
+     standalone Highlight button.  Retained as a no-op so any cached
+     stylesheet references don't 404, and intentionally empty so it
+     contributes nothing to layout. */
 }
 
 /* ── Link input row inside bubble menu ── */
@@ -963,6 +963,8 @@
   gap: 4px;
   padding: 4px 6px;
   width: 100%;
+  /* Span all 5 grid columns so the input row claims its own line. */
+  grid-column: 1 / -1;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   margin-top: 2px;
 }

@@ -322,11 +322,24 @@ export class BlockHandlesController {
     const block = this._resolveBlockFromHandle();
     if (!block) return;
 
-    // Select the block (Shift+Click → extend selection)
+    // Select the block (Shift+Click → extend selection).
+    //
+    // If the user has an active multi-block selection and clicks the handle
+    // of a block that is already part of it, preserve the selection — this
+    // is what opens the action menu in "batch mode" (Notion-parity: bulk
+    // Turn-Into / colors / delete / duplicate across all highlighted blocks).
+    // Replacing the selection here would silently downgrade the operation
+    // to single-block before the menu's action handlers even run.
+    //
+    // Plain click on a handle OUTSIDE the current selection → replace with
+    // single-block (existing behavior, matches Notion).
+    const sel = this._host.blockSelection;
     if (e.shiftKey) {
-      this._host.blockSelection.extendTo(block.pos);
+      sel.extendTo(block.pos);
+    } else if (sel.hasSelection && sel.count > 1 && sel.positions.includes(block.pos)) {
+      // Preserve existing multi-selection — no-op on the selection model.
     } else {
-      this._host.blockSelection.select(block.pos);
+      sel.select(block.pos);
     }
 
     const handleRect = this._dragHandleEl!.getBoundingClientRect();

@@ -1,12 +1,15 @@
 // bubbleMenu.ts — Floating formatting toolbar shown on text selection
 //
 // Extracted from canvasEditorProvider.ts (Phase 0).
-// Provides bold, italic, underline, strike, code, link, highlight,
-// and inline-equation buttons that appear above the current selection.
+// Provides bold, italic, underline, strike, code, link, color (text +
+// background/highlight), AI-chat, and inline-equation buttons.
+// Buttons wrap to rows of 5 (Notion parity). The Color button opens a
+// submenu visually identical to the block-action menu's Color submenu —
+// it just targets the current text selection instead of a whole block.
 
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup } from '../../../ui/dom.js';
-import { svgIcon } from './canvasMenuRegistry.js';
+import { svgIcon, TEXT_COLORS, BG_COLORS } from './canvasMenuRegistry.js';
 import type { ICanvasMenu } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
@@ -25,6 +28,15 @@ export class BubbleMenuController implements ICanvasMenu {
   readonly id = 'bubble-menu';
   private _menu: HTMLElement | null = null;
   private _linkInput: HTMLElement | null = null;
+  private _colorSubmenu: HTMLElement | null = null;
+  private _colorButton: HTMLElement | null = null;
+  /**
+   * Selection range captured when the Color submenu opens, so colour
+   * application restores it before mutating — moving focus into the
+   * submenu (or any timing race) would otherwise collapse the
+   * selection and apply the colour to nothing.
+   */
+  private _savedRange: { from: number; to: number } | null = null;
   private _registration: IDisposable | null = null;
 
   constructor(
@@ -42,7 +54,8 @@ export class BubbleMenuController implements ICanvasMenu {
 
   /** DOM containment check for centralized outside-click handling. */
   containsTarget(target: Node): boolean {
-    return this._menu?.contains(target) ?? false;
+    return (this._menu?.contains(target) ?? false)
+        || (this._colorSubmenu?.contains(target) ?? false);
   }
 
   /** Build the hidden bubble menu DOM and attach it to the container. */
@@ -83,9 +96,12 @@ export class BubbleMenuController implements ICanvasMenu {
         active: (e) => e.isActive('link'),
       },
       {
-        label: '<span class="canvas-bubble-highlight-icon">H</span>', title: 'Highlight',
-        command: (e) => e.chain().focus().toggleHighlight({ color: '#fef08a' }).run(),
-        active: (e) => e.isActive('highlight'),
+        label: svgIcon('color'), title: 'Color',
+        command: () => this._toggleColorSubmenu(),
+        // Active when the selection has either a Color mark (textStyle
+        // with a color attribute) or a Highlight mark — Color's submenu
+        // owns both.
+        active: (e) => !!e.getAttributes('textStyle').color || e.isActive('highlight'),
       },
       {
         label: 'AI', title: 'AI',
@@ -145,6 +161,7 @@ export class BubbleMenuController implements ICanvasMenu {
       });
       el.dataset.action = btn.title;
       this._menu.appendChild(el);
+      if (btn.title === 'Color') this._colorButton = el;
     }
 
     // ── Link input row (hidden by default) ──
@@ -218,6 +235,113 @@ export class BubbleMenuController implements ICanvasMenu {
     }
   }
 
+  // ── Color Submenu ──────────────────────────────────────────────────────
+  // Notion-style: same swatch palette as the block-action menu, but
+  // operates on the inline text selection rather than a whole block.
+  // Text colour → `Color` mark via setColor/unsetColor.
+  // Background colour → `Highlight` mark via setHighlight/unsetHighlight.
+
+  private _toggleColorSubmenu(): void {
+    const editor = this._host.editor;
+    if (!editor || !this._colorButton) return;
+    if (this._colorSubmenu && this._colorSubmenu.style.display === 'block') {
+      this._hideColorSubmenu();
+      return;
+    }
+    // Capture the inline range BEFORE the submenu opens — clicks inside
+    // the submenu may otherwise blur the editor and collapse selection.
+    const { from, to } = editor.state.selection;
+    if (from === to) return;
+    this._savedRange = { from, to };
+    this._showColorSubmenu(this._colorButton);
+  }
+
+  private _showColorSubmenu(anchor: HTMLElement): void {
+    if (!this._colorSubmenu) {
+      // Reuse the block-action menu's submenu styling for visual parity.
+      this._colorSubmenu = $('div.block-action-submenu.block-color-submenu');
+      document.body.appendChild(this._colorSubmenu);
+    }
+    this._colorSubmenu.innerHTML = '';
+
+    // Text color section
+    const textHeader = $('div.block-color-section-header');
+    textHeader.textContent = 'Text color';
+    this._colorSubmenu.appendChild(textHeader);
+
+    for (const color of TEXT_COLORS) {
+      const row = $('div.block-color-item');
+      const swatch = $('span.block-color-swatch');
+      swatch.textContent = 'A';
+      swatch.style.color = color.display;
+      row.appendChild(swatch);
+      const label = $('span.block-action-label');
+      label.textContent = color.label;
+      row.appendChild(label);
+      row.addEventListener('mousedown', (e) => { e.preventDefault(); this._applyTextColor(color.value); });
+      this._colorSubmenu!.appendChild(row);
+    }
+
+    this._colorSubmenu.appendChild($('div.block-action-separator'));
+
+    // Background color section (TipTap Highlight mark)
+    const bgHeader = $('div.block-color-section-header');
+    bgHeader.textContent = 'Background color';
+    this._colorSubmenu.appendChild(bgHeader);
+
+    for (const color of BG_COLORS) {
+      const row = $('div.block-color-item');
+      const swatch = $('span.block-color-swatch');
+      if (color.value) {
+        swatch.style.backgroundColor = color.display;
+      } else {
+        swatch.style.border = '1px solid rgba(255,255,255,0.2)';
+      }
+      row.appendChild(swatch);
+      const label = $('span.block-action-label');
+      label.textContent = color.label;
+      row.appendChild(label);
+      row.addEventListener('mousedown', (e) => { e.preventDefault(); this._applyHighlight(color.value); });
+      this._colorSubmenu!.appendChild(row);
+    }
+
+    // Position below the Color button (bubble itself sits above the
+    // selection, so opening down keeps the submenu inside the viewport).
+    const rect = anchor.getBoundingClientRect();
+    this._colorSubmenu.style.display = 'block';
+    layoutPopup(this._colorSubmenu, rect, { position: 'below', gap: 4 });
+  }
+
+  private _hideColorSubmenu(): void {
+    if (this._colorSubmenu) this._colorSubmenu.style.display = 'none';
+  }
+
+  private _applyTextColor(value: string | null): void {
+    const editor = this._host.editor;
+    const range = this._savedRange;
+    if (!editor || !range) return;
+    if (value === null) {
+      editor.chain().setTextSelection(range).unsetColor().focus().run();
+    } else {
+      editor.chain().setTextSelection(range).setColor(value).focus().run();
+    }
+    this._hideColorSubmenu();
+    setTimeout(() => this._refreshActiveStates(), 10);
+  }
+
+  private _applyHighlight(value: string | null): void {
+    const editor = this._host.editor;
+    const range = this._savedRange;
+    if (!editor || !range) return;
+    if (value === null) {
+      editor.chain().setTextSelection(range).unsetHighlight().focus().run();
+    } else {
+      editor.chain().setTextSelection(range).setHighlight({ color: value }).focus().run();
+    }
+    this._hideColorSubmenu();
+    setTimeout(() => this._refreshActiveStates(), 10);
+  }
+
   /** ICanvasMenu lifecycle — called on every editor selection change. */
   onSelectionUpdate(editor: Editor): void {
     if (!this._menu) return;
@@ -251,7 +375,7 @@ export class BubbleMenuController implements ICanvasMenu {
     const midX = (start.left + end.left) / 2;
     const topY = Math.min(start.top, end.top);
 
-    this._menu.style.display = 'flex';
+    this._menu.style.display = 'grid';
     this._registry.notifyShow(this.id);
 
     // Wait for layout to get accurate width, then position above selection
@@ -281,7 +405,9 @@ export class BubbleMenuController implements ICanvasMenu {
       (e: Editor) => e.isActive('strike'),
       (e: Editor) => e.isActive('code'),
       (e: Editor) => e.isActive('link'),
-      (e: Editor) => e.isActive('highlight'),
+      // Color = either a Color mark (textStyle with a color attr) or a
+      // Highlight mark on the selection.
+      (e: Editor) => !!e.getAttributes('textStyle').color || e.isActive('highlight'),
       () => this._registry.isAIChatVisible(),  // AI chat toggle
       (_e: Editor) => false,  // inline equation — node, never "active" as toggle
     ];
@@ -297,6 +423,8 @@ export class BubbleMenuController implements ICanvasMenu {
     if (!this._menu) return;
     this._menu.style.display = 'none';
     if (this._linkInput) this._linkInput.style.display = 'none';
+    this._hideColorSubmenu();
+    this._savedRange = null;
   }
 
   /** Clean up DOM. */
@@ -307,6 +435,12 @@ export class BubbleMenuController implements ICanvasMenu {
       this._menu.remove();
       this._menu = null;
     }
+    if (this._colorSubmenu) {
+      this._colorSubmenu.remove();
+      this._colorSubmenu = null;
+    }
     this._linkInput = null;
+    this._colorButton = null;
+    this._savedRange = null;
   }
 }

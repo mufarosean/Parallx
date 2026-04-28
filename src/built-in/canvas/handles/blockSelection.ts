@@ -98,6 +98,19 @@ export class BlockSelectionController {
   /** Set of selected block positions (absolute doc positions). */
   private _selected = new Set<number>();
 
+  /**
+   * Anchor position — the block where the user started the selection
+   * (single click or selectAtCursor).  Range-extending operations
+   * (shift-click, Shift+Arrow) always extend FROM this anchor, so the
+   * "active end" can flip directions without losing blocks on the
+   * far side of the anchor.
+   *
+   * Null when no selection is active or when the selection was set
+   * programmatically without a clear anchor (e.g. after _moveSelected).
+   * In that case extendTo() falls back to Math.min(_selected).
+   */
+  private _anchor: number | null = null;
+
   private _editorChangeHandler: ((props: { transaction: any }) => void) | null = null;
   private _docClickHandler: ((e: MouseEvent) => void) | null = null;
 
@@ -112,6 +125,7 @@ export class BlockSelectionController {
     this._editorChangeHandler = ({ transaction }: any) => {
       if (transaction?.docChanged && this._selected.size > 0) {
         this._selected.clear();
+        this._anchor = null;
       }
     };
     this._host.editor?.on('update', this._editorChangeHandler!);
@@ -162,30 +176,36 @@ export class BlockSelectionController {
   select(pos: number): void {
     this._selected.clear();
     this._selected.add(pos);
+    this._anchor = pos;
     this._syncDecorations();
   }
 
   /**
-   * Select multiple blocks at once (for marquee / lasso selection).
-   * Replaces any existing selection.  Single render pass — no flicker.
+   * Select multiple blocks at once (for marquee / lasso selection,
+   * or post-move re-selection).  Replaces any existing selection.
+   * Single render pass — no flicker.  Anchor is reset because the
+   * caller can't know which block the user considers the anchor.
    */
   selectMultiple(positions: number[]): void {
     this._selected.clear();
     for (const pos of positions) {
       this._selected.add(pos);
     }
+    this._anchor = null;
     this._syncDecorations();
   }
 
   /**
-   * Toggle a block's selection (for Shift+Click).
+   * Toggle a block's selection.
    * If already selected, deselect it. Otherwise add it.
    */
   toggle(pos: number): void {
     if (this._selected.has(pos)) {
       this._selected.delete(pos);
+      if (this._anchor === pos) this._anchor = null;
     } else {
       this._selected.add(pos);
+      if (this._selected.size === 1) this._anchor = pos;
     }
     this._syncDecorations();
   }
@@ -202,8 +222,14 @@ export class BlockSelectionController {
       return;
     }
 
-    // Find the anchor (smallest currently selected position)
-    const anchor = Math.min(...this._selected);
+    // Use the stored anchor when available so extending the selection
+    // back across the anchor (Shift+Arrow flipping direction, shift-click
+    // crossing the original click) preserves blocks on the far side.
+    // Falls back to the smallest selected position for legacy callers
+    // that populate _selected without a clear anchor (e.g. selectMultiple).
+    const anchor = this._anchor !== null && this._selected.has(this._anchor)
+      ? this._anchor
+      : Math.min(...this._selected);
     const $anchor = editor.state.doc.resolve(anchor);
     const $target = editor.state.doc.resolve(pos);
 
@@ -236,6 +262,9 @@ export class BlockSelectionController {
       offset += container.child(i).nodeSize;
     }
 
+    // Preserve the anchor across the extend (it must remain in the new
+    // selection because anchorIndex is between fromIndex and toIndex).
+    this._anchor = anchor;
     this._syncDecorations();
   }
 
@@ -273,10 +302,12 @@ export class BlockSelectionController {
       if (!this.selectAtCursor()) return false;
     }
 
-    // Find the topmost selected position and the block above it
-    const sorted = this.positions; // already sorted asc
-    const topPos = sorted[0];
-    const adjacentPos = this._findAdjacentBlockPos(topPos, 'up');
+    // The "active end" is the side opposite the anchor.  Moving the
+    // active end up either extends (when anchor is below) or retracts
+    // (when anchor is above).  Both cases reduce to: find the block
+    // adjacent above the active end and re-extend.
+    const activeEnd = this._activeEnd('up');
+    const adjacentPos = this._findAdjacentBlockPos(activeEnd, 'up');
     if (adjacentPos == null) return true; // at boundary — consume event but no-op
 
     this.extendTo(adjacentPos);
@@ -297,20 +328,51 @@ export class BlockSelectionController {
       if (!this.selectAtCursor()) return false;
     }
 
-    // Find the bottommost selected position and the block below it
-    const sorted = this.positions; // sorted asc
-    const bottomPos = sorted[sorted.length - 1];
-    const adjacentPos = this._findAdjacentBlockPos(bottomPos, 'down');
+    const activeEnd = this._activeEnd('down');
+    const adjacentPos = this._findAdjacentBlockPos(activeEnd, 'down');
     if (adjacentPos == null) return true; // at boundary — consume event but no-op
 
     this.extendTo(adjacentPos);
     return true;
   }
 
+  /**
+   * Identify the "active" end of the current selection — the position that
+   * Shift+Arrow should move.  This is the end farther from the anchor.
+   *
+   * If anchor is at (or near) the top of the selection, active end = bottom.
+   * If anchor is at (or near) the bottom, active end = top.
+   *
+   * Without a known anchor we fall back to the natural end for the
+   * direction (top for 'up', bottom for 'down') — same as the legacy
+   * behavior, which always extended the natural end.
+   */
+  private _activeEnd(_direction: 'up' | 'down'): number {
+    const sorted = this.positions; // sorted asc
+    const top = sorted[0];
+    const bottom = sorted[sorted.length - 1];
+    if (this._anchor === null || !this._selected.has(this._anchor)) {
+      // Without a real anchor, default to the legacy behavior (extend the
+      // natural end for each direction).  Note: the bootstrap path above
+      // ensures _anchor is set when the selection was created via this
+      // controller's keyboard entry points, so this fallback only kicks
+      // in for selections built by selectMultiple (e.g. post-move).
+      return _direction === 'up' ? top : bottom;
+    }
+    // Anchor at top → active end is bottom; anchor at bottom → active end
+    // is top.  Anchor in the middle is impossible for contiguous selections,
+    // but if it happens (toggle-built selections) we treat the larger gap
+    // side as active.
+    if (this._anchor <= top) return bottom;
+    if (this._anchor >= bottom) return top;
+    return (this._anchor - top) >= (bottom - this._anchor) ? top : bottom;
+  }
+
   /** Clear all selection. */
   clear(): void {
-    if (this._selected.size === 0) return;
+    if (this._selected.size === 0 && this._anchor === null) return;
     this._selected.clear();
+    this._anchor = null;
     this._syncDecorations();
   }
 
@@ -596,6 +658,9 @@ export class BlockSelectionController {
     for (const pos of stale) {
       this._selected.delete(pos);
     }
+    if (this._anchor !== null && stale.includes(this._anchor)) {
+      this._anchor = null;
+    }
 
     if (isDevMode) {
       console.warn('[Canvas Invariants] Dropped stale block selection references', { stale });
@@ -608,6 +673,7 @@ export class BlockSelectionController {
     // Clear decorations before teardown
     if (this._selected.size > 0) {
       this._selected.clear();
+      this._anchor = null;
       const editor = this._host.editor;
       if (editor) {
         try {

@@ -65,6 +65,9 @@ export {
   deleteBlockAt,
   duplicateBlockAt,
   turnBlockWithSharedStrategy,
+  canTakeTextColor,
+  canTakeBackgroundColor,
+  canTurnInto,
 } from '../config/blockStateRegistry/blockStateRegistry.js';
 
 /** @see {@link import('../config/iconRegistry.js').PAGE_SELECTABLE_ICONS} — original source (IconRegistry → here) */
@@ -85,6 +88,54 @@ export type { SlashMenuItem, SlashBlockDef } from './slashMenuItems.js';
 export { showImageInsertPopup as showImageInsertPopup } from './imageInsertPopup.js';
 export { showMediaInsertPopup as showMediaInsertPopup } from './mediaInsertPopup.js';
 export { showBookmarkInsertPopup as showBookmarkInsertPopup } from './bookmarkInsertPopup.js';
+
+// ── Color Palette (shared between block-action and bubble color submenus) ───
+// Notion-style: same swatches in both surfaces; only the *target* differs
+// (whole block vs current text selection).  Centralised here so both menus
+// stay visually identical and so adding a colour requires editing one file.
+
+/** A single swatch entry in the colour submenu. */
+export interface ColorSwatch {
+  /** Visible label. */
+  readonly label: string;
+  /** The CSS colour string applied to the editor; `null` removes the colour. */
+  readonly value: string | null;
+  /** The CSS colour shown in the swatch preview (often more saturated than `value`). */
+  readonly display: string;
+}
+
+/** Text-colour swatches — applied to the `Color` mark or block text colour. */
+export const TEXT_COLORS: readonly ColorSwatch[] = [
+  { label: 'Default text', value: null,                   display: 'rgba(255,255,255,0.81)' },
+  { label: 'Gray text',    value: 'rgb(155,155,155)',     display: 'rgb(155,155,155)' },
+  { label: 'Brown text',   value: 'rgb(186,133,83)',      display: 'rgb(186,133,83)' },
+  { label: 'Orange text',  value: 'rgb(230,150,60)',      display: 'rgb(230,150,60)' },
+  { label: 'Yellow text',  value: 'rgb(223,196,75)',      display: 'rgb(223,196,75)' },
+  { label: 'Green text',   value: 'rgb(80,185,120)',      display: 'rgb(80,185,120)' },
+  { label: 'Blue text',    value: 'rgb(70,160,230)',      display: 'rgb(70,160,230)' },
+  { label: 'Purple text',  value: 'rgb(170,120,210)',     display: 'rgb(170,120,210)' },
+  { label: 'Pink text',    value: 'rgb(220,120,170)',     display: 'rgb(220,120,170)' },
+  { label: 'Red text',     value: 'rgb(220,80,80)',       display: 'rgb(220,80,80)' },
+];
+
+/**
+ * Background-colour swatches — applied either as a block `backgroundColor`
+ * GlobalAttribute (block-action menu) or as a `Highlight` mark (bubble menu).
+ * The `value` is the lower-saturation shade actually painted; `display` is
+ * a slightly stronger preview shown in the picker swatch.
+ */
+export const BG_COLORS: readonly ColorSwatch[] = [
+  { label: 'Default background', value: null,                          display: 'transparent' },
+  { label: 'Gray background',    value: 'rgba(155,155,155,0.2)',       display: 'rgba(155,155,155,0.35)' },
+  { label: 'Brown background',   value: 'rgba(186,133,83,0.2)',        display: 'rgba(186,133,83,0.35)' },
+  { label: 'Orange background',  value: 'rgba(230,150,60,0.2)',        display: 'rgba(230,150,60,0.35)' },
+  { label: 'Yellow background',  value: 'rgba(223,196,75,0.2)',        display: 'rgba(223,196,75,0.35)' },
+  { label: 'Green background',   value: 'rgba(80,185,120,0.2)',        display: 'rgba(80,185,120,0.35)' },
+  { label: 'Blue background',    value: 'rgba(70,160,230,0.2)',        display: 'rgba(70,160,230,0.35)' },
+  { label: 'Purple background',  value: 'rgba(170,120,210,0.2)',       display: 'rgba(170,120,210,0.35)' },
+  { label: 'Pink background',    value: 'rgba(220,120,170,0.2)',       display: 'rgba(220,120,170,0.35)' },
+  { label: 'Red background',     value: 'rgba(220,80,80,0.2)',         display: 'rgba(220,80,80,0.35)' },
+];
 
 // ── Menu contract ───────────────────────────────────────────────────────────
 
