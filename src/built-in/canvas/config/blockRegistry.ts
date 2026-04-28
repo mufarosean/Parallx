@@ -732,7 +732,6 @@ const definitions: BlockDefinition[] = [
           pageId: childPage.id,
           title: childPage.title,
           icon: childPage.icon,
-          parentPageId: context.pageId,
         };
 
         let inserted = editor

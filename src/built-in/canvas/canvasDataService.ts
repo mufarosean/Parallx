@@ -15,6 +15,7 @@ import {
   type ICanvasDataService,
   type PageChangeEvent,
   type PageUpdateField,
+  type PageMutationField,
   type PageUpdateData,
   type CrossPageMoveParams,
   PageChangeKind,
@@ -360,6 +361,20 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
 
     this._rememberPageState(page);
     this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId, page, changedFields });
+
+    // ── Reconcile denormalized pageBlock attrs ─────────────────────────────
+    // Title/icon are cached in every parent's stored content as pageBlock
+    // attrs.  Propagate the change so on-disk content does not drift, even
+    // when the parent editor is closed.
+    if (changedFields.includes('title') || changedFields.includes('icon')) {
+      void this._updateLinkedBlocksForPageId(pageId, {
+        title: page.title,
+        icon: page.icon,
+      }).catch(err => {
+        console.warn(`[CanvasDataService] Failed to reconcile pageBlock attrs for "${pageId}":`, err);
+      });
+    }
+
     return page;
   }
 
@@ -427,6 +442,39 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       contentSchemaVersion: CURRENT_CANVAS_CONTENT_SCHEMA_VERSION,
       expectedRevision: this._knownRevisions.get(targetPageId),
     });
+  }
+
+  /**
+   * Idempotently ensure `parentPageId`'s stored content contains a pageBlock
+   * card for `childPageId`.  Called by sidebar code paths that move pages
+   * between parents \u2014 the parent's editor may be closed, so we mutate
+   * persisted content directly.
+   */
+  async ensurePageBlockOnParent(parentPageId: string, childPageId: string): Promise<void> {
+    const [parent, child] = await Promise.all([
+      this.getPage(parentPageId),
+      this.getPage(childPageId),
+    ]);
+    if (!parent) throw new Error(`[CanvasDataService] Parent page "${parentPageId}" not found`);
+    if (!child) throw new Error(`[CanvasDataService] Child page "${childPageId}" not found`);
+    await this._ensureLinkedBlockOnParent(parent, child);
+  }
+
+  /**
+   * Recursively remove every pageBlock referencing `childPageId` from
+   * `parentPageId`'s stored content.  Walks the full doc tree (columns,
+   * callouts, details, etc.) so embedded cards never get stranded.
+   */
+  async removePageBlockFromParent(parentPageId: string, childPageId: string): Promise<void> {
+    const parent = await this.getPage(parentPageId);
+    if (!parent) return;
+
+    const decoded = decodeCanvasContent(parent.content);
+    const pruned = this._pruneLinkedBlocks(decoded.doc, childPageId);
+    if (!pruned.changed) return;
+
+    await this.flushContentSave(parentPageId, pruned.node);
+    this._onRequestContentReload.fire(parentPageId);
   }
 
   /**
@@ -558,19 +606,28 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   async deletePage(pageId: string): Promise<void> {
     const deletedIds = await this._getPageSubtreeIds(pageId);
 
+    // Cancel any pending/retry saves for the entire subtree BEFORE delete,
+    // so debounced timers can't fire against rows that are about to vanish.
+    for (const id of deletedIds.length > 0 ? deletedIds : [pageId]) {
+      this._cancelPendingSave(id);
+      this._cancelRetry(id);
+    }
+
     const result = await this._db.run('DELETE FROM pages WHERE id = ?', [pageId]);
     if (result.error) throw new Error(result.error.message);
 
     for (const deletedId of deletedIds) {
       await this._removeLinkedBlocksForPageId(deletedId);
+      this._knownRevisions.delete(deletedId);
+      this._knownStoredContent.delete(deletedId);
+      if (deletedId !== pageId) {
+        this._onDidChangePage.fire({ kind: PageChangeKind.Deleted, pageId: deletedId });
+      }
     }
-
-    // Cancel any pending auto-save for this page
-    this._cancelPendingSave(pageId);
-    this._cancelRetry(pageId);
 
     this._onDidChangePage.fire({ kind: PageChangeKind.Deleted, pageId });
     this._knownRevisions.delete(pageId);
+    this._knownStoredContent.delete(pageId);
   }
 
   /**
@@ -585,6 +642,21 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     newParentId: string | null,
     afterSiblingId?: string,
   ): Promise<void> {
+    // ── Cycle prevention ────────────────────────────────────────────────────
+    // Reject moves where the target parent is the page itself or any of its
+    // descendants.  Without this guard, a cycle would (a) hide both pages
+    // from the assembled tree (neither reaches a null-parent root) and (b)
+    // make subtree traversal vulnerable to non-termination.
+    if (newParentId !== null) {
+      if (newParentId === pageId) {
+        throw new Error(`[CanvasDataService] Cannot move page "${pageId}" into itself`);
+      }
+      const subtreeIds = new Set(await this._getPageSubtreeIds(pageId));
+      if (subtreeIds.has(newParentId)) {
+        throw new Error(`[CanvasDataService] Cannot move page "${pageId}" into its own descendant "${newParentId}"`);
+      }
+    }
+
     // Get the target sibling list to calculate sort_order
     const siblings = newParentId === null
       ? await this.getRootPages()
@@ -843,18 +915,58 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   }
 
   /**
-   * Restore an archived page.
+   * Restore an archived page and its entire subtree.
+   *
+   * Symmetric to `archivePage` — flips `is_archived = 0` for every descendant
+   * and re-attaches a `pageBlock` card to each restored child's parent doc
+   * (idempotently — skipped if the parent is itself archived or already
+   * contains a card for the child).
    */
   async restorePage(pageId: string): Promise<IPage> {
-    const result = await this._db.run(
-      `UPDATE pages SET is_archived = 0, updated_at = datetime('now') WHERE id = ?`,
+    const subtreeIds = await this._getPageSubtreeIds(pageId);
+    if (subtreeIds.length === 0) {
+      throw new Error(`[CanvasDataService] Page "${pageId}" not found for restore`);
+    }
+
+    const restoreResult = await this._db.run(
+      `WITH RECURSIVE subtree(id) AS (
+         SELECT id FROM pages WHERE id = ?
+         UNION ALL
+         SELECT p.id FROM pages p JOIN subtree s ON p.parent_id = s.id
+       )
+       UPDATE pages
+       SET is_archived = 0,
+           updated_at = datetime('now')
+       WHERE id IN (SELECT id FROM subtree)`,
       [pageId],
     );
-    if (result.error) throw new Error(result.error.message);
-    const page = await this.getPage(pageId);
-    if (!page) throw new Error(`[CanvasDataService] Page "${pageId}" not found after restore`);
-    this._onDidChangePage.fire({ kind: PageChangeKind.Created, pageId, page });
-    return page;
+    if (restoreResult.error) throw new Error(restoreResult.error.message);
+
+    // Fire Updated events for the whole subtree so the sidebar refreshes.
+    for (const id of subtreeIds) {
+      const page = await this.getPage(id);
+      if (page) {
+        this._onDidChangePage.fire({
+          kind: PageChangeKind.Updated,
+          pageId: id,
+          page,
+          changedFields: ['isArchived'] as PageMutationField[],
+        });
+      }
+    }
+
+    // Re-append pageBlock cards to non-archived parents (idempotent).
+    for (const id of subtreeIds) {
+      const child = await this.getPage(id);
+      if (!child || !child.parentId) continue;
+      const parent = await this.getPage(child.parentId);
+      if (!parent || parent.isArchived) continue;
+      await this._ensureLinkedBlockOnParent(parent, child);
+    }
+
+    const root = await this.getPage(pageId);
+    if (!root) throw new Error(`[CanvasDataService] Page "${pageId}" not found after restore`);
+    return root;
   }
 
   /**
@@ -863,15 +975,25 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   async permanentlyDeletePage(pageId: string): Promise<void> {
     const deletedIds = await this._getPageSubtreeIds(pageId);
 
+    for (const id of deletedIds.length > 0 ? deletedIds : [pageId]) {
+      this._cancelPendingSave(id);
+      this._cancelRetry(id);
+    }
+
     const result = await this._db.run('DELETE FROM pages WHERE id = ?', [pageId]);
     if (result.error) throw new Error(result.error.message);
 
     for (const deletedId of deletedIds) {
       await this._removeLinkedBlocksForPageId(deletedId);
+      this._knownRevisions.delete(deletedId);
+      this._knownStoredContent.delete(deletedId);
+      if (deletedId !== pageId) {
+        this._onDidChangePage.fire({ kind: PageChangeKind.Deleted, pageId: deletedId });
+      }
     }
 
-    this._cancelPendingSave(pageId);
-    this._cancelRetry(pageId);
+    this._knownRevisions.delete(pageId);
+    this._knownStoredContent.delete(pageId);
     this._onDidChangePage.fire({ kind: PageChangeKind.Deleted, pageId });
   }
 
@@ -940,16 +1062,28 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       ? Math.max(...siblings.map(s => s.sortOrder))
       : 0;
 
-    const rootCopy = await this._duplicateRecursive(source, source.parentId, maxSort + 1, true);
+    const rootCopy = await this._duplicateRecursive(source, source.parentId, maxSort + 1, true, new Set(), 0);
     return rootCopy;
   }
+
+  /** Hard cap to keep recursion bounded even if data is corrupt. */
+  private static readonly MAX_TREE_DEPTH = 64;
 
   private async _duplicateRecursive(
     source: IPage,
     newParentId: string | null,
     sortOrder: number,
     isRoot: boolean,
+    visited: Set<string>,
+    depth: number,
   ): Promise<IPage> {
+    if (depth > CanvasDataService.MAX_TREE_DEPTH) {
+      throw new Error(`[CanvasDataService] Duplicate aborted — max depth ${CanvasDataService.MAX_TREE_DEPTH} exceeded`);
+    }
+    if (visited.has(source.id)) {
+      throw new Error(`[CanvasDataService] Duplicate aborted — cycle detected at "${source.id}"`);
+    }
+    visited.add(source.id);
     const newId = crypto.randomUUID();
     const title = isRoot ? `Copy of ${source.title}` : source.title;
 
@@ -982,7 +1116,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     // Recursively duplicate children
     const children = await this.getChildren(source.id);
     for (let i = 0; i < children.length; i++) {
-      await this._duplicateRecursive(children[i], newId, i + 1, false);
+      await this._duplicateRecursive(children[i], newId, i + 1, false, visited, depth + 1);
     }
 
     return newPage;
@@ -1088,13 +1222,150 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
         if (parent) {
           (parent.children as IPageTreeNode[]).push(node);
         } else {
-          // Orphan — treat as root
+          // Orphan — treat as root, but log so corruption is visible.
+          console.warn(`[CanvasDataService] Orphan page "${page.id}" — parent "${page.parentId}" missing; promoting to root`);
           roots.push(node);
         }
       }
     }
 
     return roots;
+  }
+
+  /**
+   * True if the doc tree contains a `pageBlock` referencing `targetPageId`
+   * anywhere (top-level, in columns, callouts, details, etc.).
+   */
+  private _docContainsPageBlock(node: any, targetPageId: string): boolean {
+    if (!node || typeof node !== 'object') return false;
+    if (node.type === 'pageBlock' && node.attrs?.pageId === targetPageId) return true;
+    const content = Array.isArray(node.content) ? node.content : [];
+    for (const child of content) {
+      if (this._docContainsPageBlock(child, targetPageId)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Walk a doc tree and update every `pageBlock` whose `pageId` matches
+   * `targetPageId` to carry the supplied title/icon attrs.
+   * Returns a new tree if anything changed, otherwise the original.
+   */
+  private _retitleLinkedBlocks(
+    node: any,
+    targetPageId: string,
+    next: { title: string; icon: string | null },
+  ): { node: any; changed: boolean } {
+    if (!node || typeof node !== 'object') return { node, changed: false };
+
+    if (node.type === 'pageBlock' && node.attrs?.pageId === targetPageId) {
+      const currentTitle = node.attrs.title ?? null;
+      const currentIcon = node.attrs.icon ?? null;
+      if (currentTitle === next.title && currentIcon === next.icon) {
+        return { node, changed: false };
+      }
+      return {
+        node: {
+          ...node,
+          attrs: {
+            ...node.attrs,
+            title: next.title,
+            icon: next.icon,
+          },
+        },
+        changed: true,
+      };
+    }
+
+    const content = Array.isArray(node.content) ? node.content : null;
+    if (!content) return { node, changed: false };
+
+    let changed = false;
+    const nextContent: any[] = [];
+    for (const child of content) {
+      const r = this._retitleLinkedBlocks(child, targetPageId, next);
+      if (r.changed) changed = true;
+      nextContent.push(r.node);
+    }
+    if (!changed) return { node, changed: false };
+    return { node: { ...node, content: nextContent }, changed: true };
+  }
+
+  /**
+   * Reconcile every stored page's content so that pageBlocks linking to
+   * `targetPageId` carry the latest title/icon.  Walks all rows (incl.
+   * archived) so closed parents don't drift.
+   */
+  private async _updateLinkedBlocksForPageId(
+    targetPageId: string,
+    next: { title: string; icon: string | null },
+  ): Promise<void> {
+    const result = await this._db.all('SELECT id, content FROM pages');
+    if (result.error) throw new Error(result.error.message);
+
+    for (const row of result.rows ?? []) {
+      const pageId = row.id;
+      const storedContent = row.content;
+      if (typeof pageId !== 'string' || typeof storedContent !== 'string') continue;
+      if (pageId === targetPageId) continue; // skip self
+
+      const decoded = decodeCanvasContent(storedContent);
+      const retitled = this._retitleLinkedBlocks(decoded.doc, targetPageId, next);
+      if (!retitled.changed) continue;
+
+      const encoded = encodeCanvasContentFromDoc(retitled.node);
+      const updateResult = await this._db.run(
+        `UPDATE pages
+         SET content = ?,
+             content_schema_version = ?,
+             revision = revision + 1,
+             updated_at = datetime('now')
+         WHERE id = ?`,
+        [encoded.storedContent, encoded.schemaVersion, pageId],
+      );
+      if (updateResult.error) throw new Error(updateResult.error.message);
+
+      const updated = await this.getPage(pageId);
+      if (updated) {
+        this._knownRevisions.set(pageId, updated.revision);
+        // Notify open editors of the parent so they reload the card text.
+        this._onDidChangePage.fire({
+          kind: PageChangeKind.Updated,
+          pageId,
+          page: updated,
+          changedFields: ['content', 'contentSchemaVersion'],
+        });
+        this._onRequestContentReload.fire(pageId);
+      }
+    }
+  }
+
+  /**
+   * Idempotently append a `pageBlock` card for `child` to `parent`'s stored
+   * content if one is not already present anywhere in the tree.
+   */
+  private async _ensureLinkedBlockOnParent(parent: IPage, child: IPage): Promise<void> {
+    const decoded = decodeCanvasContent(parent.content);
+    if (this._docContainsPageBlock(decoded.doc, child.id)) return;
+
+    const content = Array.isArray(decoded.doc?.content) ? decoded.doc.content : [];
+    const nextDoc = {
+      type: 'doc',
+      content: [
+        ...content,
+        {
+          type: 'pageBlock',
+          attrs: {
+            pageId: child.id,
+            title: child.title,
+            icon: child.icon,
+          },
+        },
+      ],
+    };
+
+    await this.flushContentSave(parent.id, nextDoc);
+    this._onRequestContentReload.fire(parent.id);
   }
 
   private _pruneLinkedBlocks(node: any, targetPageId: string): { node: any; changed: boolean } {
@@ -1141,7 +1412,9 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   }
 
   private async _removeLinkedBlocksForPageId(targetPageId: string): Promise<void> {
-    const result = await this._db.all('SELECT id, content FROM pages WHERE is_archived = 0');
+    // Walk EVERY page (including archived) — leaving stale references in
+    // archived parents would surface as broken cards on restore.
+    const result = await this._db.all('SELECT id, content FROM pages');
     if (result.error) throw new Error(result.error.message);
 
     for (const row of result.rows ?? []) {

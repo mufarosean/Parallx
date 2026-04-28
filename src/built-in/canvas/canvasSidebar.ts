@@ -984,8 +984,7 @@ export class CanvasSidebar {
       page = await this._dataService.createPage(parentId);
 
       if (parentId) {
-        await this._appendPageBlockToParent(parentId, page);
-        this._dataService.fireContentReload(parentId);
+        await this._dataService.ensurePageBlockOnParent(parentId, page.id);
       }
 
       const createdPage = page;
@@ -1019,53 +1018,6 @@ export class CanvasSidebar {
       }
       console.error('[CanvasSidebar] Failed to create page:', err);
     }
-  }
-
-  /**
-   * Remove a pageBlock referencing `childPageId` from the parent's stored content.
-   */
-  private async _removePageBlockFromParent(parentPageId: string, childPageId: string): Promise<void> {
-    const parent = await this._dataService.getPage(parentPageId);
-    if (!parent) return;
-
-    const decoded = await this._dataService.decodePageContentForEditor(parent);
-    const content = Array.isArray(decoded.doc?.content) ? decoded.doc.content : [];
-
-    const filtered = content.filter((node: any) => {
-      if (node?.type === 'pageBlock' && node?.attrs?.pageId === childPageId) return false;
-      return true;
-    });
-
-    // Only flush if something was actually removed
-    if (filtered.length === content.length) return;
-
-    const nextDoc = { type: 'doc', content: filtered };
-    await this._dataService.flushContentSave(parentPageId, nextDoc);
-  }
-
-  private async _appendPageBlockToParent(parentPageId: string, childPage: IPage): Promise<void> {
-    const parent = await this._dataService.getPage(parentPageId);
-    if (!parent) throw new Error(`Parent page "${parentPageId}" not found`);
-
-    const decoded = await this._dataService.decodePageContentForEditor(parent);
-    const content = Array.isArray(decoded.doc?.content) ? decoded.doc.content : [];
-    const nextDoc = {
-      type: 'doc',
-      content: [
-        ...content,
-        {
-          type: 'pageBlock',
-          attrs: {
-            pageId: childPage.id,
-            title: childPage.title,
-            icon: childPage.icon,
-            parentPageId,
-          },
-        },
-      ],
-    };
-
-    await this._dataService.flushContentSave(parentPageId, nextDoc);
   }
 
   private async _deletePage(pageId: string): Promise<void> {
@@ -1211,18 +1163,16 @@ export class CanvasSidebar {
     if (oldParentId !== newParentId) {
       // Remove pageBlock from the old parent's content (if it had one)
       if (oldParentId) {
-        await this._removePageBlockFromParent(oldParentId, pageId).catch((err) => {
+        await this._dataService.removePageBlockFromParent(oldParentId, pageId).catch((err) => {
           console.error('[CanvasSidebar] Failed to remove pageBlock from old parent:', err);
         });
-        this._dataService.fireContentReload(oldParentId);
       }
 
       // Append pageBlock to the new parent's content
       if (newParentId) {
-        await this._appendPageBlockToParent(newParentId, page).catch((err) => {
+        await this._dataService.ensurePageBlockOnParent(newParentId, page.id).catch((err) => {
           console.error('[CanvasSidebar] Failed to append pageBlock to new parent:', err);
         });
-        this._dataService.fireContentReload(newParentId);
       }
     }
   }

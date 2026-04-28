@@ -25,6 +25,13 @@ import {
  */
 export interface ICrossPageMoveDataAccess {
   appendBlocksToPage(targetPageId: string, appendedNodes: any[]): Promise<any>;
+  moveBlocksBetweenPagesAtomic(params: {
+    sourcePageId: string;
+    targetPageId: string;
+    sourceDoc: any;
+    appendedNodes: any[];
+  }): Promise<{ sourcePage: any; targetPage: any }>;
+  fireContentReload(pageId: string): void;
 }
 
 export interface CrossPageMoveParams {
@@ -104,6 +111,63 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
   // use classic position-range deletion via deleteDraggedSource.
 
   const shouldDeleteSource = !event.altKey;
+  const blockIds = draggedJson
+    .map((n: any) => n.attrs?.id)
+    .filter((id: any): id is string => typeof id === 'string' && id.length > 0);
+  const canUseAtomic = shouldDeleteSource && blockIds.length === draggedJson.length && blockIds.length > 0;
+
+  // ── Move path: persist atomically (single transaction) ───────────────────
+  if (canUseAtomic) {
+    const sourceDocPostDelete = removeNodesByIds(editor.getJSON(), new Set(blockIds));
+    try {
+      await dataService.moveBlocksBetweenPagesAtomic({
+        sourcePageId: currentPageId,
+        targetPageId,
+        sourceDoc: sourceDocPostDelete,
+        appendedNodes: draggedJson,
+      });
+    } catch (atomicErr) {
+      console.warn('[Canvas] Atomic cross-page move failed; aborting:', atomicErr);
+      clearActiveCanvasDragSession();
+      return false;
+    }
+
+    // Mirror the deletion in the local editor so the user sees it disappear.
+    try {
+      const idSet = new Set(blockIds);
+      const deleteTr = editor.state.tr;
+      deleteTr.setMeta('addToHistory', true);
+      const toDelete: { pos: number; size: number }[] = [];
+      editor.state.doc.descendants((node: any, pos: number) => {
+        if (node.attrs?.id && idSet.has(node.attrs.id)) {
+          toDelete.push({ pos, size: node.nodeSize });
+          return false;
+        }
+        return true;
+      });
+      toDelete.sort((a, b) => b.pos - a.pos);
+      for (const { pos } of toDelete) {
+        const mapped = deleteTr.mapping.map(pos);
+        const node = deleteTr.doc.nodeAt(mapped);
+        if (node) {
+          deleteTr.delete(mapped, mapped + node.nodeSize);
+        }
+      }
+      if (deleteTr.docChanged) {
+        editor.view.dispatch(deleteTr);
+      }
+    } catch (err) {
+      console.warn('[Canvas] Failed to mirror cross-page move in editor (DB already updated):', err);
+    }
+
+    dataService.fireContentReload(targetPageId);
+    clearActiveCanvasDragSession();
+    return true;
+  }
+
+  // ── Fallback path: append target, then dispatch editor delete ────────────
+  // Used for: (a) copy-on-drop (alt key held), (b) blocks lacking UniqueID
+  // attrs that can't be safely computed in JSON.
 
   // ── Paste: append blocks to target page (immediate DB write) ──
   try {
@@ -114,6 +178,7 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
     // Log but continue — the delete must still run.
     console.warn('[Canvas] appendBlocksToPage error (continuing with delete):', appendErr);
   }
+  dataService.fireContentReload(targetPageId);
 
   // ── Cut: delete blocks from source editor ──
   try {
@@ -171,4 +236,24 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
     clearActiveCanvasDragSession();
     return true;
   }
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Walk a Tiptap JSON doc and return a copy with nodes whose `attrs.id` is in
+ * `idSet` removed.  Preserves all other structure (columns, callouts, etc.).
+ * Used to compute the post-delete source doc for atomic cross-page moves
+ * without applying the deletion to the live editor first.
+ */
+function removeNodesByIds(node: any, idSet: Set<string>): any {
+  if (!node || typeof node !== 'object') return node;
+  if (!Array.isArray(node.content)) return node;
+
+  const next: any[] = [];
+  for (const child of node.content) {
+    if (child?.attrs?.id && idSet.has(child.attrs.id)) continue;
+    next.push(removeNodesByIds(child, idSet));
+  }
+  return { ...node, content: next };
 }

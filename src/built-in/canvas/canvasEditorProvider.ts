@@ -169,6 +169,14 @@ class CanvasEditorPane implements IDisposable {
   private _disposed = false;
   private _initComplete = false;
   private _suppressUpdate = false;
+
+  /**
+   * Snapshot of pageBlock pageIds present in the editor doc, kept in sync
+   * by `onTransaction`.  When the user deletes or pastes a pageBlock card,
+   * the diff against this snapshot tells us to archive/restore the linked
+   * page (single source of truth: pages.parent_id mirrors what the user sees).
+   */
+  private _pageBlockIds = new Set<string>();
   private readonly _saveDisposables = new DisposableStore();
 
   // ── Page chrome controller ──
@@ -321,6 +329,7 @@ class CanvasEditorPane implements IDisposable {
         // _resolveBlockFromHandle() to target the wrong block.
         if (transaction.docChanged) {
           this._blockHandles?.notifyDocChanged();
+          this._reconcilePageBlockHierarchy(editor);
         }
       },
       onSelectionUpdate: ({ editor }) => {
@@ -456,6 +465,62 @@ class CanvasEditorPane implements IDisposable {
   // ══════════════════════════════════════════════════════════════════════════  // Content Loading
   // ══════════════════════════════════════════════════════════════════════════════
 
+  // ══════════════════════════════════════════════════════════════════════════  // PageBlock <-> hierarchy reconciliation
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Walk the current editor doc and return the set of pageIds referenced by
+   * pageBlock nodes anywhere in the tree (including nested in columns,
+   * callouts, details, etc.).
+   */
+  private _collectPageBlockIds(editor: Editor): Set<string> {
+    const ids = new Set<string>();
+    editor.state.doc.descendants((node: any) => {
+      if (node.type?.name === 'pageBlock') {
+        const pid = node.attrs?.pageId;
+        if (typeof pid === 'string' && pid.length > 0) ids.add(pid);
+      }
+      return true;
+    });
+    return ids;
+  }
+
+  /**
+   * Diff the current pageBlock set against the previous snapshot.  When the
+   * user deletes a pageBlock, archive the linked page so it disappears from
+   * the sidebar.  When the user undoes that or pastes the card back, restore
+   * the page.  Keeps the visual layer (pageBlock cards) and the authoritative
+   * layer (pages.parent_id + is_archived) coherent.
+   */
+  private _reconcilePageBlockHierarchy(editor: Editor): void {
+    const current = this._collectPageBlockIds(editor);
+    const previous = this._pageBlockIds;
+
+    const removed: string[] = [];
+    for (const id of previous) if (!current.has(id)) removed.push(id);
+    const added: string[] = [];
+    for (const id of current) if (!previous.has(id)) added.push(id);
+
+    this._pageBlockIds = current;
+
+    for (const id of removed) {
+      void this._dataService.archivePage(id).catch((err) => {
+        console.warn(`[CanvasEditorPane] Failed to archive removed pageBlock target "${id}":`, err);
+      });
+    }
+
+    for (const id of added) {
+      void this._dataService.getPage(id).then((page) => {
+        if (page?.isArchived) {
+          return this._dataService.restorePage(id);
+        }
+        return undefined;
+      }).catch((err) => {
+        console.warn(`[CanvasEditorPane] Failed to restore re-added pageBlock target "${id}":`, err);
+      });
+    }
+  }
+
   private async _loadContent(): Promise<void> {
     if (!this._editor || !this._pageId) return;
 
@@ -469,6 +534,9 @@ class CanvasEditorPane implements IDisposable {
           if (decoded.recovered) {
             console.warn(`[CanvasEditorPane] Recovered and normalized content for page "${this._pageId}"`);
           }
+          // Seed the pageBlock snapshot so onTransaction diffs against the
+          // freshly loaded doc, not whatever was there before.
+          this._pageBlockIds = this._collectPageBlockIds(this._editor);
         } finally {
           this._suppressUpdate = false;
         }

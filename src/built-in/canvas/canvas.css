@@ -1410,6 +1410,18 @@
   border-radius: 4px;
 }
 
+/* Linked page no longer exists — render the card as a clearly broken state. */
+.canvas-page-block--broken .canvas-page-block-title {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+.canvas-page-block--broken .canvas-page-block-icon {
+  opacity: 0.5;
+}
+.canvas-page-block--broken .canvas-page-block-card {
+  cursor: not-allowed;
+}
+
 .canvas-page-block-icon {
   appearance: none;
   border: 0;

@@ -45,6 +45,7 @@ export interface IPageBlockDataAccess {
     appendedNodes: any[];
   }): Promise<{ sourcePage: IPageBlockPage; targetPage: IPageBlockPage }>;
   appendBlocksToPage(targetPageId: string, appendedNodes: any[]): Promise<IPageBlockPage>;
+  fireContentReload(pageId: string): void;
   readonly onDidChangePage: (listener: (e: IPageBlockChangeEvent) => void) => { dispose(): void };
 }
 
@@ -105,7 +106,6 @@ export const PageBlock = Node.create<PageBlockOptions>({
       pageId: { default: '' },
       title: { default: 'Untitled' },
       icon: { default: null },
-      parentPageId: { default: null },
     };
   },
 
@@ -172,7 +172,19 @@ export const PageBlock = Node.create<PageBlockOptions>({
         if (!dataService || !pageId) return;
         try {
           const linked = await dataService.getPage(pageId);
-          if (!linked) return;
+          if (!linked) {
+            // Linked page no longer exists \u2014 surface it visibly so users
+            // can clean up dead cards instead of staring at "Untitled" forever.
+            dom.classList.add('canvas-page-block--broken');
+            dom.setAttribute('title', 'Linked page no longer exists');
+            resolvedTitle = '(deleted page)';
+            resolvedIcon = null;
+            render();
+            return;
+          }
+
+          dom.classList.remove('canvas-page-block--broken');
+          dom.removeAttribute('title');
 
           const nextTitle = linked.title || 'Untitled';
           const nextIcon = linked.icon ?? null;

@@ -18,7 +18,7 @@ import { ICanvasPageQueryService, IIndexingPipelineService, IVectorStoreService 
 import { CanvasDataService } from './canvasDataService.js';
 import type { ICanvasDataService } from './canvasTypes.js';
 import { PageChangeKind } from './canvasTypes.js';
-import type { PageChangeEvent, PageUpdateField } from './canvasTypes.js';
+import type { PageChangeEvent, PageMutationField } from './canvasTypes.js';
 import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { setOnLinkedPageBlockDeleted } from './config/blockRegistry.js';
@@ -71,7 +71,7 @@ function buildIndexedPagePayloadKey(page: { title: string; content: string }): s
   return JSON.stringify({ title: page.title, content: page.content });
 }
 
-const INDEX_METADATA_PAGE_FIELDS: ReadonlySet<PageUpdateField> = new Set([
+const INDEX_METADATA_PAGE_FIELDS: ReadonlySet<PageMutationField> = new Set<PageMutationField>([
   'title',
 ]);
 

@@ -84,7 +84,7 @@ export interface PageChangeEvent {
   /** The page data after the change (undefined for Deleted). */
   readonly page?: IPage;
   /** The mutable fields that changed for Updated events when known. */
-  readonly changedFields?: readonly PageUpdateField[];
+  readonly changedFields?: readonly PageMutationField[];
 }
 
 // ─── Page Update Data ────────────────────────────────────────────────────────
@@ -102,10 +102,18 @@ export type PageUpdateData = Partial<Pick<IPage,
 
 export type PageUpdateField = Exclude<keyof PageUpdateData, 'expectedRevision'>;
 
-const SIDEBAR_RELEVANT_PAGE_FIELDS: ReadonlySet<PageUpdateField> = new Set([
+/**
+ * Fields that can change on a page during its lifetime.  Wider than
+ * `PageUpdateField` because lifecycle transitions like archive/restore
+ * mutate columns that aren't accepted by `updatePage()`.
+ */
+export type PageMutationField = PageUpdateField | 'isArchived';
+
+const SIDEBAR_RELEVANT_PAGE_FIELDS: ReadonlySet<PageMutationField> = new Set<PageMutationField>([
   'title',
   'icon',
   'isFavorited',
+  'isArchived',
 ]);
 
 export function doesPageChangeAffectSidebar(event: PageChangeEvent): boolean {
@@ -183,6 +191,21 @@ export interface ICanvasDataService {
    * never import contentSchema directly.
    */
   flushContentSave(pageId: string, docJson: any): Promise<void>;
+
+  // ── Embedded pageBlock graph (visual layer keyed off parentId) ──
+
+  /**
+   * Idempotently append a pageBlock card for `childPageId` to `parentPageId`'s
+   * stored content. No-op if a card for that child already exists anywhere
+   * in the parent's document tree.
+   */
+  ensurePageBlockOnParent(parentPageId: string, childPageId: string): Promise<void>;
+
+  /**
+   * Recursively remove every pageBlock referencing `childPageId` from
+   * `parentPageId`'s stored content. Walks columns, callouts, details, etc.
+   */
+  removePageBlockFromParent(parentPageId: string, childPageId: string): Promise<void>;
 
   // ── Tree / hierarchy ──
 
