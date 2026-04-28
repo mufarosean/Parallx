@@ -30,6 +30,25 @@ export function createTypeIconElement(type: string, size = 16): HTMLElement {
 
 // ─── Editor Factory ──────────────────────────────────────────────────────────
 
+/**
+ * Wire the standard input-editor commit contract:
+ *   • blur → commit
+ *   • Enter → preventDefault + commit + blur
+ * The commit fires at most once per editor lifetime so blur-after-Enter is a no-op.
+ */
+function wireInputCommit(input: HTMLInputElement, commit: () => void): void {
+  let committed = false;
+  const fire = () => {
+    if (committed) return;
+    committed = true;
+    commit();
+  };
+  input.addEventListener('blur', fire);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); fire(); input.blur(); }
+  });
+}
+
 export function createPropertyEditor(
   definition: IPropertyDefinition,
   value: unknown,
@@ -57,18 +76,11 @@ function _createTextEditor(value: string | null, onChange: (v: unknown) => void)
   input.value = value ?? '';
   input.placeholder = 'Empty';
 
-  let committed = false;
-  const commit = () => {
-    if (committed) return;
-    committed = true;
+  wireInputCommit(input, () => {
     const newVal = input.value.trim();
     if (newVal !== (value ?? '')) {
       onChange(newVal || null);
     }
-  };
-  input.addEventListener('blur', commit);
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(); input.blur(); }
   });
 
   return input;
@@ -83,19 +95,12 @@ function _createNumberEditor(value: number | null, onChange: (v: unknown) => voi
   input.value = value != null ? String(value) : '';
   input.placeholder = 'Empty';
 
-  let committed = false;
-  const commit = () => {
-    if (committed) return;
-    committed = true;
+  wireInputCommit(input, () => {
     const raw = input.value.trim();
     const newVal = raw === '' ? null : Number(raw);
     if (newVal !== value) {
       onChange(newVal);
     }
-  };
-  input.addEventListener('blur', commit);
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(); input.blur(); }
   });
 
   return input;
@@ -431,18 +436,11 @@ function _createUrlEditor(value: string | null, onChange: (v: unknown) => void):
   input.value = value ?? '';
   input.placeholder = 'https://…';
 
-  let committed = false;
-  const commit = () => {
-    if (committed) return;
-    committed = true;
+  wireInputCommit(input, () => {
     const newVal = input.value.trim();
     if (newVal !== (value ?? '')) {
       onChange(newVal || null);
     }
-  };
-  input.addEventListener('blur', commit);
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(); input.blur(); }
   });
 
   wrap.appendChild(input);
