@@ -59,6 +59,61 @@ export interface BlockActionMenuHost {
   readonly blockSelection?: IMenuBlockSelection;
 }
 
+// ── Submenu hover-handoff helper ────────────────────────────────────────────
+
+/**
+ * Standard "hover from action item → submenu → back to parent menu"
+ * handoff with a small grace timer so the submenu doesn't snap shut
+ * while the cursor crosses the gap between menu and submenu.
+ *
+ * Wired in two halves so the trigger item and lazily-created submenu
+ * each get their own listeners but share one timer.
+ */
+class SubmenuHoverHandoff {
+  private _timer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(
+    private readonly _parentMenu: () => HTMLElement | null,
+    private readonly _submenu: () => HTMLElement | null,
+    private readonly _onHide: () => void,
+    private readonly _delayMs: number = 200,
+  ) {}
+
+  cancel(): void {
+    if (this._timer) { clearTimeout(this._timer); this._timer = null; }
+  }
+
+  private _scheduleHide(): void {
+    this.cancel();
+    this._timer = setTimeout(() => this._onHide(), this._delayMs);
+  }
+
+  /** Cancel timer on enter, show via callback. Schedule hide on leave unless leaving toward the submenu. */
+  wireTrigger(item: HTMLElement, onShow: () => void): void {
+    item.addEventListener('mouseenter', () => {
+      this.cancel();
+      onShow();
+    });
+    item.addEventListener('mouseleave', (event) => {
+      const related = event.relatedTarget as HTMLElement | null;
+      if (!this._submenu()?.contains(related)) this._scheduleHide();
+    });
+  }
+
+  /** Cancel timer on submenu enter. Schedule hide on leave unless leaving toward the parent menu. */
+  wireSubmenu(submenu: HTMLElement): void {
+    submenu.addEventListener('mouseenter', () => this.cancel());
+    submenu.addEventListener('mouseleave', (event) => {
+      const related = (event as MouseEvent).relatedTarget as HTMLElement | null;
+      if (!this._parentMenu()?.contains(related)) this._scheduleHide();
+    });
+  }
+
+  dispose(): void {
+    this.cancel();
+  }
+}
+
 // ── Controller ──────────────────────────────────────────────────────────────
 
 export class BlockActionMenuController implements ICanvasMenu {
@@ -68,9 +123,17 @@ export class BlockActionMenuController implements ICanvasMenu {
   private _turnIntoSubmenu: HTMLElement | null = null;
   private _colorSubmenu: HTMLElement | null = null;
 
-  // Timers
-  private _turnIntoHideTimer: ReturnType<typeof setTimeout> | null = null;
-  private _colorHideTimer: ReturnType<typeof setTimeout> | null = null;
+  // Submenu hover handoff (cancel timer on enter, delayed hide on leave)
+  private readonly _turnIntoHover = new SubmenuHoverHandoff(
+    () => this._blockActionMenu,
+    () => this._turnIntoSubmenu,
+    () => this._hideTurnIntoSubmenu(),
+  );
+  private readonly _colorHover = new SubmenuHoverHandoff(
+    () => this._blockActionMenu,
+    () => this._colorSubmenu,
+    () => this._hideColorSubmenu(),
+  );
 
   // Action target
   private _actionBlockPos: number = -1;
@@ -212,16 +275,7 @@ export class BlockActionMenuController implements ICanvasMenu {
     if (showTurnInto) {
       const turnIntoSvg = getIcon('refresh')!;
       const turnIntoItem = this._createActionItem('Turn into', turnIntoSvg, true);
-      turnIntoItem.addEventListener('mouseenter', () => {
-        if (this._turnIntoHideTimer) { clearTimeout(this._turnIntoHideTimer); this._turnIntoHideTimer = null; }
-        this._showTurnIntoSubmenu(turnIntoItem);
-      });
-      turnIntoItem.addEventListener('mouseleave', (e) => {
-        const related = e.relatedTarget as HTMLElement;
-        if (!this._turnIntoSubmenu?.contains(related)) {
-          this._turnIntoHideTimer = setTimeout(() => this._hideTurnIntoSubmenu(), 200);
-        }
-      });
+      this._turnIntoHover.wireTrigger(turnIntoItem, () => this._showTurnIntoSubmenu(turnIntoItem));
       this._blockActionMenu.appendChild(turnIntoItem);
     }
 
@@ -229,16 +283,7 @@ export class BlockActionMenuController implements ICanvasMenu {
     if (showAnyColor) {
       const colorSvg = getIcon('color')!;
       const colorItem = this._createActionItem('Color', colorSvg, true);
-      colorItem.addEventListener('mouseenter', () => {
-        if (this._colorHideTimer) { clearTimeout(this._colorHideTimer); this._colorHideTimer = null; }
-        this._showColorSubmenu(colorItem);
-      });
-      colorItem.addEventListener('mouseleave', (e) => {
-        const related = e.relatedTarget as HTMLElement;
-        if (!this._colorSubmenu?.contains(related)) {
-          this._colorHideTimer = setTimeout(() => this._hideColorSubmenu(), 200);
-        }
-      });
+      this._colorHover.wireTrigger(colorItem, () => this._showColorSubmenu(colorItem));
       this._blockActionMenu.appendChild(colorItem);
     }
 
@@ -301,15 +346,7 @@ export class BlockActionMenuController implements ICanvasMenu {
     this._hideColorSubmenu();
     if (!this._turnIntoSubmenu) {
       this._turnIntoSubmenu = $('div.block-action-submenu');
-      this._turnIntoSubmenu.addEventListener('mouseenter', () => {
-        if (this._turnIntoHideTimer) { clearTimeout(this._turnIntoHideTimer); this._turnIntoHideTimer = null; }
-      });
-      this._turnIntoSubmenu.addEventListener('mouseleave', (e) => {
-        const related = (e as MouseEvent).relatedTarget as HTMLElement;
-        if (!this._blockActionMenu?.contains(related)) {
-          this._turnIntoHideTimer = setTimeout(() => this._hideTurnIntoSubmenu(), 200);
-        }
-      });
+      this._turnIntoHover.wireSubmenu(this._turnIntoSubmenu);
       document.body.appendChild(this._turnIntoSubmenu);
     }
     this._turnIntoSubmenu.innerHTML = '';
@@ -352,7 +389,7 @@ export class BlockActionMenuController implements ICanvasMenu {
   }
 
   private _hideTurnIntoSubmenu(): void {
-    if (this._turnIntoHideTimer) { clearTimeout(this._turnIntoHideTimer); this._turnIntoHideTimer = null; }
+    this._turnIntoHover.cancel();
     if (this._turnIntoSubmenu) this._turnIntoSubmenu.style.display = 'none';
   }
 
@@ -362,15 +399,7 @@ export class BlockActionMenuController implements ICanvasMenu {
     this._hideTurnIntoSubmenu();
     if (!this._colorSubmenu) {
       this._colorSubmenu = $('div.block-action-submenu.block-color-submenu');
-      this._colorSubmenu.addEventListener('mouseenter', () => {
-        if (this._colorHideTimer) { clearTimeout(this._colorHideTimer); this._colorHideTimer = null; }
-      });
-      this._colorSubmenu.addEventListener('mouseleave', (e) => {
-        const related = (e as MouseEvent).relatedTarget as HTMLElement;
-        if (!this._blockActionMenu?.contains(related)) {
-          this._colorHideTimer = setTimeout(() => this._hideColorSubmenu(), 200);
-        }
-      });
+      this._colorHover.wireSubmenu(this._colorSubmenu);
       document.body.appendChild(this._colorSubmenu);
     }
     this._colorSubmenu.innerHTML = '';
@@ -440,7 +469,7 @@ export class BlockActionMenuController implements ICanvasMenu {
   }
 
   private _hideColorSubmenu(): void {
-    if (this._colorHideTimer) { clearTimeout(this._colorHideTimer); this._colorHideTimer = null; }
+    this._colorHover.cancel();
     if (this._colorSubmenu) this._colorSubmenu.style.display = 'none';
   }
 
@@ -601,14 +630,8 @@ export class BlockActionMenuController implements ICanvasMenu {
   dispose(): void {
     this._registration?.dispose();
     this._registration = null;
-    if (this._turnIntoHideTimer) {
-      clearTimeout(this._turnIntoHideTimer);
-      this._turnIntoHideTimer = null;
-    }
-    if (this._colorHideTimer) {
-      clearTimeout(this._colorHideTimer);
-      this._colorHideTimer = null;
-    }
+    this._turnIntoHover.dispose();
+    this._colorHover.dispose();
     if (this._blockActionMenu) { this._blockActionMenu.remove(); this._blockActionMenu = null; }
     if (this._turnIntoSubmenu) { this._turnIntoSubmenu.remove(); this._turnIntoSubmenu = null; }
     if (this._colorSubmenu) { this._colorSubmenu.remove(); this._colorSubmenu = null; }
