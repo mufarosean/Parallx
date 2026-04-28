@@ -137,6 +137,64 @@ export const BG_COLORS: readonly ColorSwatch[] = [
   { label: 'Red background',     value: 'rgba(220,80,80,0.2)',         display: 'rgba(220,80,80,0.35)' },
 ];
 
+// ── Recent colors (Notion parity) ───────────────────────────────────────────
+// Each surface (block-level color, inline text color, inline highlight) tracks
+// the user's last few picks and surfaces them as a "Recent" mini-section above
+// the canonical palette.  Stored per-device in localStorage (parity with
+// slash-menu recents).  `null` (= "Default …") is never recorded.
+
+const RECENT_COLOR_KEY_TEXT = 'parallx-canvas-recent-text-colors';
+const RECENT_COLOR_KEY_BG = 'parallx-canvas-recent-bg-colors';
+const RECENT_COLOR_MAX = 3;
+
+export type ColorKind = 'text' | 'bg';
+
+function _recentColorKey(kind: ColorKind): string {
+  return kind === 'text' ? RECENT_COLOR_KEY_TEXT : RECENT_COLOR_KEY_BG;
+}
+
+function _readRecentColorValues(kind: ColorKind): string[] {
+  try {
+    const raw = localStorage.getItem(_recentColorKey(kind));
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === 'string').slice(0, RECENT_COLOR_MAX);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Record that the user just applied a colour.  `null` (Default) is ignored —
+ * "I want to clear the colour" is not interesting to surface as a recent.
+ */
+export function recordRecentColor(kind: ColorKind, value: string | null): void {
+  if (value === null) return;
+  try {
+    const current = _readRecentColorValues(kind).filter(v => v !== value);
+    current.unshift(value);
+    localStorage.setItem(_recentColorKey(kind), JSON.stringify(current.slice(0, RECENT_COLOR_MAX)));
+  } catch {
+    /* localStorage may be unavailable / quota-exceeded — silently degrade */
+  }
+}
+
+/**
+ * Resolved recent swatches (newest-first), filtered against the canonical
+ * palette so stale or unknown values are dropped.
+ */
+export function getRecentColors(kind: ColorKind): ColorSwatch[] {
+  const palette = kind === 'text' ? TEXT_COLORS : BG_COLORS;
+  const values = _readRecentColorValues(kind);
+  const out: ColorSwatch[] = [];
+  for (const v of values) {
+    const swatch = palette.find(c => c.value === v);
+    if (swatch) out.push(swatch);
+  }
+  return out;
+}
+
 // ── Menu contract ───────────────────────────────────────────────────────────
 
 /**

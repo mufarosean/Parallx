@@ -26,7 +26,10 @@ import {
   canTurnInto,
   TEXT_COLORS,
   BG_COLORS,
+  recordRecentColor,
+  getRecentColors,
 } from './canvasMenuRegistry.js';
+import type { ColorSwatch } from './canvasMenuRegistry.js';
 import type { ICanvasMenu } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
@@ -414,52 +417,62 @@ export class BlockActionMenuController implements ICanvasMenu {
     const showText = targetTypes.some(t => canTakeTextColor(t));
     const showBg = targetTypes.some(t => canTakeBackgroundColor(t));
 
+    const submenu = this._colorSubmenu;
+    const buildRow = (color: ColorSwatch, kind: 'text' | 'bg'): void => {
+      const row = $('div.block-color-item');
+      const swatch = $('span.block-color-swatch');
+      if (kind === 'text') {
+        swatch.textContent = 'A';
+        swatch.style.color = color.display;
+      } else if (color.value) {
+        swatch.style.backgroundColor = color.display;
+      } else {
+        swatch.style.border = '1px solid rgba(255,255,255,0.2)';
+      }
+      row.appendChild(swatch);
+      const label = $('span.block-action-label');
+      label.textContent = color.label;
+      row.appendChild(label);
+      row.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        if (kind === 'text') this._applyBlockTextColor(color.value);
+        else this._applyBlockBgColor(color.value);
+      });
+      submenu.appendChild(row);
+    };
+
+    // Recent — combined section across both kinds, only what applies to
+    // the targeted block(s).
+    const recents: { kind: 'text' | 'bg'; swatch: ColorSwatch }[] = [];
+    if (showText) for (const s of getRecentColors('text')) recents.push({ kind: 'text', swatch: s });
+    if (showBg) for (const s of getRecentColors('bg')) recents.push({ kind: 'bg', swatch: s });
+    if (recents.length > 0) {
+      const recentHeader = $('div.block-color-section-header');
+      recentHeader.textContent = 'Recent';
+      submenu.appendChild(recentHeader);
+      for (const r of recents) buildRow(r.swatch, r.kind);
+      submenu.appendChild($('div.block-action-separator'));
+    }
+
     // Text color section
     if (showText) {
       const textHeader = $('div.block-color-section-header');
       textHeader.textContent = 'Text color';
-      this._colorSubmenu.appendChild(textHeader);
-
-      for (const color of TEXT_COLORS) {
-        const row = $('div.block-color-item');
-        const swatch = $('span.block-color-swatch');
-        swatch.textContent = 'A';
-        swatch.style.color = color.display;
-        row.appendChild(swatch);
-        const label = $('span.block-action-label');
-        label.textContent = color.label;
-        row.appendChild(label);
-        row.addEventListener('mousedown', (e) => { e.preventDefault(); this._applyBlockTextColor(color.value); });
-        this._colorSubmenu!.appendChild(row);
-      }
+      submenu.appendChild(textHeader);
+      for (const color of TEXT_COLORS) buildRow(color, 'text');
     }
 
     // Separator — only when both sections are showing
     if (showText && showBg) {
-      this._colorSubmenu.appendChild($('div.block-action-separator'));
+      submenu.appendChild($('div.block-action-separator'));
     }
 
     // Background color section
     if (showBg) {
       const bgHeader = $('div.block-color-section-header');
       bgHeader.textContent = 'Background color';
-      this._colorSubmenu.appendChild(bgHeader);
-
-      for (const color of BG_COLORS) {
-        const row = $('div.block-color-item');
-        const swatch = $('span.block-color-swatch');
-        if (color.value) {
-          swatch.style.backgroundColor = color.display;
-        } else {
-          swatch.style.border = '1px solid rgba(255,255,255,0.2)';
-        }
-        row.appendChild(swatch);
-        const label = $('span.block-action-label');
-        label.textContent = color.label;
-        row.appendChild(label);
-        row.addEventListener('mousedown', (e) => { e.preventDefault(); this._applyBlockBgColor(color.value); });
-        this._colorSubmenu!.appendChild(row);
-      }
+      submenu.appendChild(bgHeader);
+      for (const color of BG_COLORS) buildRow(color, 'bg');
     }
 
     // Position to the right of anchor
@@ -573,6 +586,7 @@ export class BlockActionMenuController implements ICanvasMenu {
       if (!canTakeTextColor(node.type.name)) continue;
       applyTextColorToBlock(editor, pos, node, value);
     }
+    recordRecentColor('text', value);
   }
 
   private _applyBlockBgColor(value: string | null): void {
@@ -586,6 +600,7 @@ export class BlockActionMenuController implements ICanvasMenu {
       if (!canTakeBackgroundColor(node.type.name)) continue;
       applyBackgroundColorToBlock(editor, pos, node, value);
     }
+    recordRecentColor('bg', value);
   }
 
   // ── Duplicate / Delete ─────────────────────────────────────────────────
