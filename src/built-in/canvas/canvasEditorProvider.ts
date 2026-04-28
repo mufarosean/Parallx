@@ -177,6 +177,18 @@ class CanvasEditorPane implements IDisposable {
    * page (single source of truth: pages.parent_id mirrors what the user sees).
    */
   private _pageBlockIds = new Set<string>();
+
+  /**
+   * Set true after the first `_loadContent()` finishes seeding `_pageBlockIds`
+   * from the freshly loaded doc.  Until then any `docChanged` transaction
+   * (e.g. UniqueID's `appendTransaction` adding ids to legacy nodes, or any
+   * plugin firing during editor construction) would be diffed against an
+   * EMPTY snapshot and incorrectly conclude every existing pageBlock had
+   * been “removed” — triggering archivePage cascades that walk every page
+   * and prune referenced pageBlock cards.  Gating the reconciler on this
+   * flag prevents that whole class of false-positive archive cascades.
+   */
+  private _initialContentLoaded = false;
   private readonly _saveDisposables = new DisposableStore();
 
   // ── Page chrome controller ──
@@ -329,7 +341,13 @@ class CanvasEditorPane implements IDisposable {
         // _resolveBlockFromHandle() to target the wrong block.
         if (transaction.docChanged) {
           this._blockHandles?.notifyDocChanged();
-          this._reconcilePageBlockHierarchy(editor);
+          // Only reconcile after the initial content load has seeded the
+          // pageBlock snapshot.  Otherwise an early docChanged transaction
+          // (UniqueID id assignment, etc.) would diff against an empty set
+          // and erroneously archive every existing pageBlock target.
+          if (this._initialContentLoaded) {
+            this._reconcilePageBlockHierarchy(editor);
+          }
         }
       },
       onSelectionUpdate: ({ editor }) => {
@@ -540,7 +558,15 @@ class CanvasEditorPane implements IDisposable {
         } finally {
           this._suppressUpdate = false;
         }
+      } else {
+        // New / empty page: the editor doc is whatever TipTap created by
+        // default (an empty paragraph).  Seed the snapshot from that doc so
+        // any subsequent docChanged diff is well-defined.
+        this._pageBlockIds = this._collectPageBlockIds(this._editor);
       }
+      // Mark that the snapshot is now valid (regardless of whether content
+      // existed) — safe to enable reconciler.
+      this._initialContentLoaded = true;
     } catch (err) {
       this._suppressUpdate = false;
       console.error(`[CanvasEditorPane] Failed to load page "${this._pageId}":`, err);
