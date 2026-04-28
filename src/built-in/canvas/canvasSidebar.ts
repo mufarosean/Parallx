@@ -16,8 +16,7 @@ import { DisposableStore, toDisposable } from '../../platform/lifecycle.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { doesPageChangeAffectSidebar } from './canvasTypes.js';
 import type { IPage, IPageTreeNode, ICanvasDataService } from './canvasTypes.js';
-import { $ } from '../../ui/dom.js';
-import { layoutPopup } from '../../ui/dom.js';
+import { $, layoutPopup, attachPopupDismiss } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
 import { IconPicker } from '../../ui/iconPicker.js';
 import { ContextMenu } from '../../ui/contextMenu.js';
@@ -60,6 +59,7 @@ export class CanvasSidebar {
   // ── Trash panel ──
   private _trashPanel: HTMLElement | null = null;
   private _trashSearchQuery = '';
+  private _detachTrashDismiss: (() => void) | null = null;
 
   // ── Context menu ──
   private _contextMenu: ContextMenu | null = null;
@@ -900,33 +900,22 @@ export class CanvasSidebar {
     document.body.appendChild(this._trashPanel);
     setTimeout(() => searchBox.focus(), 50);
 
-    // Dismiss on click outside
-    setTimeout(() => {
-      document.addEventListener('mousedown', this._handleTrashOutsideClick);
-      document.addEventListener('keydown', this._handleTrashEscape);
-    }, 0);
+    // Dismiss on click outside (panel + trash button both treated as "inside")
+    const trashBtnEl = this._treeList?.parentElement?.querySelector(
+      '.canvas-sidebar-trash-btn',
+    ) as HTMLElement | null;
+    const roots: HTMLElement[] = [this._trashPanel];
+    if (trashBtnEl) roots.push(trashBtnEl);
+    this._detachTrashDismiss = attachPopupDismiss(roots, () => this._dismissTrashPanel());
   }
-
-  private readonly _handleTrashOutsideClick = (e: MouseEvent): void => {
-    const target = e.target as HTMLElement;
-    if (this._trashPanel?.contains(target)) return;
-    // Don't dismiss if clicking the trash button itself (toggle handles it)
-    const trashBtn = this._treeList?.parentElement?.querySelector('.canvas-sidebar-trash-btn');
-    if (trashBtn?.contains(target)) return;
-    this._dismissTrashPanel();
-  };
-
-  private readonly _handleTrashEscape = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') this._dismissTrashPanel();
-  };
 
   private _dismissTrashPanel(): void {
     if (this._trashPanel) {
       this._trashPanel.remove();
       this._trashPanel = null;
     }
-    document.removeEventListener('mousedown', this._handleTrashOutsideClick);
-    document.removeEventListener('keydown', this._handleTrashEscape);
+    this._detachTrashDismiss?.();
+    this._detachTrashDismiss = null;
   }
 
   // ══════════════════════════════════════════════════════════════════════════
