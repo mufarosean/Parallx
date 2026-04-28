@@ -11,6 +11,7 @@
 // Lives in menus/ alongside BubbleMenuController and SlashMenuController.
 
 import type { Editor } from '@tiptap/core';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import { $, layoutPopup } from '../../../ui/dom.js';
 import { getIcon } from '../../../ui/iconRegistry.js';
 import {
@@ -73,7 +74,7 @@ export class BlockActionMenuController implements ICanvasMenu {
 
   // Action target
   private _actionBlockPos: number = -1;
-  private _actionBlockNode: any = null;
+  private _actionBlockNode: PMNode | null = null;
 
   /**
    * External element that should NOT trigger outside-click dismissal
@@ -123,7 +124,7 @@ export class BlockActionMenuController implements ICanvasMenu {
    * @param anchor — Bounding rect to position the menu below (typically the drag handle)
    * @param anchorEl — The anchor DOM element (excluded from outside-click dismissal)
    */
-  show(pos: number, node: any, anchor: DOMRect, anchorEl?: HTMLElement): void {
+  show(pos: number, node: PMNode, anchor: DOMRect, anchorEl?: HTMLElement): void {
     this._actionBlockPos = pos;
     this._actionBlockNode = node;
     this._anchorEl = anchorEl ?? null;
@@ -566,7 +567,7 @@ export class BlockActionMenuController implements ICanvasMenu {
     const sel = this._host.blockSelection;
     const useBatch = sel?.hasSelection && sel.positions.includes(this._actionBlockPos);
     const pos = this._actionBlockPos;
-    const node = this._actionBlockNode;
+    const node = this._actionBlockNode!;
     this._hideBlockActionMenu();
     if (useBatch && sel) {
       // Reuse the controller's batched, position-aware implementation.
@@ -583,7 +584,7 @@ export class BlockActionMenuController implements ICanvasMenu {
     const sel = this._host.blockSelection;
     const useBatch = sel?.hasSelection && sel.positions.includes(this._actionBlockPos);
     const pos = this._actionBlockPos;
-    const node = this._actionBlockNode;
+    const node = this._actionBlockNode!;
     this._hideBlockActionMenu();
     if (useBatch && sel) {
       sel.deleteSelected();

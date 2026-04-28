@@ -106,6 +106,22 @@ export const BlockKeyboardShortcuts = Extension.create({
         if (fn && this.storage.hasSelection?.()) return fn();
         return false;
       },
+
+      // ── Mod-\ — Clear inline formatting on the current selection ──
+      // Notion-parity convention. Removes all inline marks (bold, italic,
+      // underline, strike, code, link) plus text color and highlight.
+      // No-op when the selection is collapsed so it doesn't surprise users.
+      'Mod-\\': () => {
+        const { from, to, empty } = this.editor.state.selection;
+        if (empty || from === to) return false;
+        this.editor
+          .chain()
+          .unsetAllMarks()
+          .unsetColor()
+          .unsetHighlight()
+          .run();
+        return true;
+      },
     };
   },
 });

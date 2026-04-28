@@ -6,10 +6,12 @@
 import { Extension } from '@tiptap/core';
 
 // NOTE: blockLifecycle.ts (in the BSR) keeps a sibling copy of this list
-// (BG_CAPABLE_TYPES) for its capTakeBackgroundColor() predicate, because
-// gate rules forbid blockLifecycle from importing `extensions/`. A unit
-// test pins the two lists together so they cannot drift.
-const BLOCK_BG_TYPES = [
+// (BG_CAPABLE_TYPES) for its canTakeBackgroundColor() predicate, because
+// gate rules forbid blockLifecycle from importing `extensions/`.
+// `tests/unit/canvasCapabilityDrift.test.ts` pins the two lists together
+// so they cannot drift.  Exported only for that test — canvas-internal
+// code MUST go through canTakeBackgroundColor() instead.
+export const BLOCK_BG_TYPES: readonly string[] = [
   'paragraph', 'heading', 'blockquote', 'codeBlock',
   'callout', 'details', 'bulletList', 'orderedList', 'taskList',
 ];
@@ -20,7 +22,7 @@ export const BlockBackgroundColor = Extension.create({
   addGlobalAttributes() {
     return [
       {
-        types: BLOCK_BG_TYPES,
+        types: [...BLOCK_BG_TYPES],
         attributes: {
           backgroundColor: {
             default: null,

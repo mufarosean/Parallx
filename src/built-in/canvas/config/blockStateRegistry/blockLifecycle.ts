@@ -10,6 +10,7 @@
 // are Tiptap extension commands — raw tr would couple to mark schema internals.
 
 import type { Editor } from '@tiptap/core';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import { TextSelection } from '@tiptap/pm/state';
 import { resolveBlockAncestry } from './blockStateRegistry.js';
 
@@ -22,10 +23,12 @@ import { resolveBlockAncestry } from './blockStateRegistry.js';
 //
 // The set below is intentionally duplicated from extensions/blockBackground.ts
 // (BLOCK_BG_TYPES) — blockLifecycle.ts is gate-isolated to its own folder
-// per CANVAS_STRUCTURAL_MODEL §gate-rules. A drift-detection unit test
-// pins the two lists together.
+// per CANVAS_STRUCTURAL_MODEL §gate-rules. The drift-detection test in
+// `tests/unit/canvasCapabilityDrift.test.ts` pins the two lists together.
+// Exported only for that test — canvas-internal code MUST go through
+// canTakeBackgroundColor() / canTakeTextColor() / canTurnInto() instead.
 
-const BG_CAPABLE_TYPES: readonly string[] = [
+export const BG_CAPABLE_TYPES: readonly string[] = [
   'paragraph', 'heading', 'blockquote', 'codeBlock',
   'callout', 'details', 'bulletList', 'orderedList', 'taskList',
 ];
@@ -83,8 +86,8 @@ export function setOnLinkedPageBlockDeleted(fn: LinkedPageDeletedFn): void {
 /**
  * Extract the child page ID from a page-linked node, if any.
  */
-function _getLinkedPageId(node: any): string | undefined {
-  const typeName: string = node?.type?.name;
+function _getLinkedPageId(node: PMNode): string | undefined {
+  const typeName: string = node.type.name;
   if (typeName === 'pageBlock') return node.attrs?.pageId as string | undefined;
   if (typeName === 'databaseInline') return node.attrs?.databaseId as string | undefined;
   if (typeName === 'databaseFullPage') return node.attrs?.databaseId as string | undefined;
@@ -96,7 +99,7 @@ function _getLinkedPageId(node: any): string | undefined {
  * Safe to call with any node — non-page-linked nodes are ignored.
  * Used by deleteBlockAt (single) and blockSelection.deleteSelected (batch).
  */
-export function notifyLinkedPageBlocksDeleted(nodes: any[]): void {
+export function notifyLinkedPageBlocksDeleted(nodes: readonly PMNode[]): void {
   if (!_onLinkedPageBlockDeleted) return;
   for (const node of nodes) {
     const pageId = _getLinkedPageId(node);
@@ -109,7 +112,7 @@ export function notifyLinkedPageBlocksDeleted(nodes: any[]): void {
 export function duplicateBlockAt(
   editor: Editor,
   pos: number,
-  node: any,
+  node: PMNode,
   options?: { setSelectionInsideDuplicate?: boolean },
 ): number {
   const insertPos = pos + node.nodeSize;
@@ -126,7 +129,7 @@ export function duplicateBlockAt(
   return insertPos;
 }
 
-export function deleteBlockAt(editor: Editor, pos: number, node: any): void {
+export function deleteBlockAt(editor: Editor, pos: number, node: PMNode): void {
   // If the block owns a child page, trigger the normal page deletion process.
   notifyLinkedPageBlocksDeleted([node]);
 
@@ -163,7 +166,7 @@ export function deleteBlockAt(editor: Editor, pos: number, node: any): void {
 export function applyTextColorToBlock(
   editor: Editor,
   pos: number,
-  node: any,
+  node: PMNode,
   color: string | null,
 ): boolean {
   const from = pos + 1;
@@ -188,7 +191,7 @@ export function applyTextColorToBlock(
 export function applyBackgroundColorToBlock(
   editor: Editor,
   pos: number,
-  node: any,
+  node: PMNode,
   color: string | null,
 ): void {
   const { tr } = editor.state;
