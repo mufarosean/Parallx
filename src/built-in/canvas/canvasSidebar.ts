@@ -733,30 +733,21 @@ export class CanvasSidebar {
       this._pageOptionsIconPicker = null;
       popup.remove();
     }));
-    popupStore.add(toDisposable(() => {
-      document.removeEventListener('mousedown', handlePointerDown, true);
-      document.removeEventListener('keydown', handleKeydown, true);
-    }));
 
-    const handlePointerDown = (event: MouseEvent): void => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (popup.contains(target)) return;
-      if (this._pageOptionsIconPicker?.element.contains(target)) return;
-      void this._dismissPageOptionsPopup({ commitTitle: true });
-    };
-
-    const handleKeydown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      event.stopPropagation();
-      this._dismissPageOptionsPopup({ commitTitle: false });
-    };
-
-    setTimeout(() => {
-      document.addEventListener('mousedown', handlePointerDown, true);
-    }, 0);
-    document.addEventListener('keydown', handleKeydown, true);
+    const detachDismiss = attachPopupDismiss(
+      popup,
+      () => this._dismissPageOptionsPopup({ commitTitle: true }),
+      {
+        isDismissable: (event) => {
+          // While the icon-picker subpopup is open, treat clicks inside it as "inside".
+          const target = event.target as Node | null;
+          const picker = this._pageOptionsIconPicker?.element;
+          return !(picker && target && picker.contains(target));
+        },
+        onEscape: () => this._dismissPageOptionsPopup({ commitTitle: false }),
+      },
+    );
+    popupStore.add(toDisposable(detachDismiss));
 
     if (options?.focusTitle) {
       setTimeout(() => {

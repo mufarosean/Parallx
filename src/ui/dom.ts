@@ -304,13 +304,22 @@ export interface IPopupDismissOptions {
   /**
    * Predicate evaluated on every outside-click. Return `false` to keep the
    * popup open even though the click was outside it (e.g. while a nested
-   * sub-menu has its own outside-click handler attached). Defaults to a
+   * sub-menu has its own outside-click handler attached, or the click landed
+   * in a sibling popup that should be treated as "inside"). Defaults to a
    * predicate that always allows dismissal.
    */
-  isDismissable?: () => boolean;
+  isDismissable?: (event: MouseEvent) => boolean;
 
   /** Whether the Escape key should also dismiss the popup. Default `true`. */
   escapeKey?: boolean;
+
+  /**
+   * Optional separate handler for the Escape key. When provided, Escape
+   * calls this instead of `onDismiss` — useful for popups that distinguish
+   * commit-on-outside-click from cancel-on-Escape semantics. Ignored when
+   * `escapeKey` is `false`.
+   */
+  onEscape?: () => void;
 }
 
 /**
@@ -338,11 +347,11 @@ export function attachPopupDismiss(
   onDismiss: () => void,
   options: IPopupDismissOptions = {},
 ): () => void {
-  const { isDismissable, escapeKey = true } = options;
+  const { isDismissable, escapeKey = true, onEscape } = options;
   const roots = Array.isArray(popup) ? popup : [popup as HTMLElement];
 
   const outsideClick = (event: MouseEvent) => {
-    if (isDismissable && !isDismissable()) return;
+    if (isDismissable && !isDismissable(event)) return;
     const target = event.target as Node;
     for (const root of roots) {
       if (root.contains(target)) return;
@@ -354,7 +363,7 @@ export function attachPopupDismiss(
     if (event.key !== 'Escape') return;
     event.preventDefault();
     event.stopPropagation();
-    onDismiss();
+    (onEscape ?? onDismiss)();
   };
 
   let attached = false;
