@@ -137,32 +137,55 @@ export const BG_COLORS: readonly ColorSwatch[] = [
   { label: 'Red background',     value: 'rgba(220,80,80,0.2)',         display: 'rgba(220,80,80,0.35)' },
 ];
 
+// ── Recent-list helper (Notion parity) ─────────────────────────────────────
+// Tiny localStorage-backed MRU list used by slash-menu recents and the colour
+// palette Recent section.  Per-device UI state (parity with property-bar
+// collapse), not per-workspace.  All errors degrade silently — quota exhaustion
+// or disabled storage should never break the canvas.
+
+export interface RecentList {
+  /** Return the recents list, newest-first, capped at the max. */
+  readonly read: () => string[];
+  /** Move `value` to the front of the list (or insert it). */
+  readonly record: (value: string) => void;
+}
+
+export function createRecentList(key: string, max: number): RecentList {
+  const read = (): string[] => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return [];
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((x): x is string => typeof x === 'string').slice(0, max);
+    } catch {
+      return [];
+    }
+  };
+  const record = (value: string): void => {
+    try {
+      const next = [value, ...read().filter(v => v !== value)].slice(0, max);
+      localStorage.setItem(key, JSON.stringify(next));
+    } catch {
+      /* localStorage may be unavailable / quota-exceeded — silently degrade */
+    }
+  };
+  return { read, record };
+}
+
 // ── Recent colors (Notion parity) ───────────────────────────────────────────
 // Each surface (block-level color, inline text color, inline highlight) tracks
 // the user's last few picks and surfaces them as a "Recent" mini-section above
-// the canonical palette.  Stored per-device in localStorage (parity with
-// slash-menu recents).  `null` (= "Default …") is never recorded.
+// the canonical palette.  `null` (= "Default …") is never recorded.
 
-const RECENT_COLOR_KEY_TEXT = 'parallx-canvas-recent-text-colors';
-const RECENT_COLOR_KEY_BG = 'parallx-canvas-recent-bg-colors';
 const RECENT_COLOR_MAX = 3;
+const _recentTextColors = createRecentList('parallx-canvas-recent-text-colors', RECENT_COLOR_MAX);
+const _recentBgColors = createRecentList('parallx-canvas-recent-bg-colors', RECENT_COLOR_MAX);
 
 export type ColorKind = 'text' | 'bg';
 
-function _recentColorKey(kind: ColorKind): string {
-  return kind === 'text' ? RECENT_COLOR_KEY_TEXT : RECENT_COLOR_KEY_BG;
-}
-
-function _readRecentColorValues(kind: ColorKind): string[] {
-  try {
-    const raw = localStorage.getItem(_recentColorKey(kind));
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((x): x is string => typeof x === 'string').slice(0, RECENT_COLOR_MAX);
-  } catch {
-    return [];
-  }
+function _recentColorList(kind: ColorKind): RecentList {
+  return kind === 'text' ? _recentTextColors : _recentBgColors;
 }
 
 /**
@@ -171,13 +194,7 @@ function _readRecentColorValues(kind: ColorKind): string[] {
  */
 export function recordRecentColor(kind: ColorKind, value: string | null): void {
   if (value === null) return;
-  try {
-    const current = _readRecentColorValues(kind).filter(v => v !== value);
-    current.unshift(value);
-    localStorage.setItem(_recentColorKey(kind), JSON.stringify(current.slice(0, RECENT_COLOR_MAX)));
-  } catch {
-    /* localStorage may be unavailable / quota-exceeded — silently degrade */
-  }
+  _recentColorList(kind).record(value);
 }
 
 /**
@@ -186,9 +203,8 @@ export function recordRecentColor(kind: ColorKind, value: string | null): void {
  */
 export function getRecentColors(kind: ColorKind): ColorSwatch[] {
   const palette = kind === 'text' ? TEXT_COLORS : BG_COLORS;
-  const values = _readRecentColorValues(kind);
   const out: ColorSwatch[] = [];
-  for (const v of values) {
+  for (const v of _recentColorList(kind).read()) {
     const swatch = palette.find(c => c.value === v);
     if (swatch) out.push(swatch);
   }

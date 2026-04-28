@@ -15,39 +15,17 @@ import type {
   ICanvasMenu,
   InsertActionBaseContext,
 } from './canvasMenuRegistry.js';
+import { createRecentList } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
 
 // ── Recently-used items ─────────────────────────────────────────────────────
 // Notion-parity ergonomics: when the slash menu opens with no filter typed,
 // hoist the user's most-recently inserted block types to the top so common
-// gestures stay one keystroke away.  Stored in localStorage — this is pure UI
-// state (per device, not per workspace) on par with property-bar collapse.
+// gestures stay one keystroke away.  Per-device UI state on par with
+// property-bar collapse and the colour palette Recent section.
 
-const SLASH_RECENTS_KEY = 'parallx-canvas-slash-recents';
-const SLASH_RECENTS_MAX = 5;
-
-function readSlashRecents(): string[] {
-  try {
-    const raw = localStorage.getItem(SLASH_RECENTS_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((x): x is string => typeof x === 'string').slice(0, SLASH_RECENTS_MAX);
-  } catch {
-    return [];
-  }
-}
-
-function recordSlashRecent(blockId: string): void {
-  try {
-    const current = readSlashRecents().filter(id => id !== blockId);
-    current.unshift(blockId);
-    localStorage.setItem(SLASH_RECENTS_KEY, JSON.stringify(current.slice(0, SLASH_RECENTS_MAX)));
-  } catch {
-    /* localStorage may be unavailable / quota-exceeded — silently degrade */
-  }
-}
+const _slashRecents = createRecentList('parallx-canvas-slash-recents', 5);
 
 // ── Dependency interface ────────────────────────────────────────────────────
 
@@ -175,7 +153,7 @@ export class SlashMenuController implements ICanvasMenu {
     if (!this._filterText) {
       // No filter — hoist recents to the top while preserving full list ordering
       // for everything else.  Items not in recents keep their registry order.
-      const recents = readSlashRecents();
+      const recents = _slashRecents.read();
       if (recents.length === 0) return items;
       const byId = new Map(items.map(i => [i.blockId, i] as const));
       const hoisted: SlashMenuItem[] = [];
@@ -286,7 +264,7 @@ export class SlashMenuController implements ICanvasMenu {
 
     // Track for recents-hoisting on next open. Done before insertion so a
     // failure in the insert path still records the user's intent.
-    recordSlashRecent(item.blockId);
+    _slashRecents.record(item.blockId);
 
     try {
       const { $from } = editor.state.selection;
