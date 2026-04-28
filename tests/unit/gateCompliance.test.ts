@@ -103,9 +103,10 @@ const GATE_RULES: Record<string, string[]> = {
   'menus/inlineAIChat.ts':                 ['menus/canvasMenuRegistry'],   // M48 Phase 5
   'math/inlineMathEditor.ts':              ['menus/canvasMenuRegistry'],
   'menus/slashMenuItems.ts':               [],  // pure data — zero imports
+  'menus/inputPasteContextMenu.ts':        [],  // pure UI — no canvas imports
   'menus/imageInsertPopup.ts':             [],  // pure UI — no canvas imports
-  'menus/mediaInsertPopup.ts':             [],  // pure UI — no canvas imports
-  'menus/bookmarkInsertPopup.ts':          [],  // pure UI — no canvas imports
+  'menus/mediaInsertPopup.ts':             ['menus/inputPasteContextMenu'],  // pure UI — no canvas imports
+  'menus/bookmarkInsertPopup.ts':          ['menus/inputPasteContextMenu'],  // pure UI — no canvas imports
 
   // ── BlockStateRegistry children ─────────────────────────────────────────
   'config/blockStateRegistry/blockLifecycle.ts':      ['config/blockStateRegistry/blockStateRegistry'],

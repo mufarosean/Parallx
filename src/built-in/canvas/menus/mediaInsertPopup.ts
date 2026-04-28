@@ -1,5 +1,9 @@
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
+import {
+  attachInputPasteContextMenu,
+  type InputPasteMenuController,
+} from './inputPasteContextMenu.js';
 
 type MediaKind = 'video' | 'audio' | 'fileAttachment';
 
@@ -48,23 +52,18 @@ export function showMediaInsertPopup(
   const content = $('div.canvas-media-insert-content');
   popup.appendChild(content);
 
-  let inputPasteMenu: HTMLElement | null = null;
-  let inputPasteMenuOutsideHandler: ((event: MouseEvent) => void) | null = null;
+  let pasteMenu: InputPasteMenuController | null = null;
   let detachDismiss: (() => void) | null = null;
 
-  const dismissInputPasteMenu = () => {
-    if (inputPasteMenu) {
-      inputPasteMenu.remove();
-      inputPasteMenu = null;
-    }
-    if (inputPasteMenuOutsideHandler) {
-      document.removeEventListener('mousedown', inputPasteMenuOutsideHandler, true);
-      inputPasteMenuOutsideHandler = null;
+  const dismissPasteMenu = () => {
+    if (pasteMenu) {
+      pasteMenu.dismiss();
+      pasteMenu = null;
     }
   };
 
   const dismiss = () => {
-    dismissInputPasteMenu();
+    dismissPasteMenu();
     popup.remove();
     detachDismiss?.();
     detachDismiss = null;
@@ -210,22 +209,6 @@ export function showMediaInsertPopup(
       insertFromLink(url);
     };
 
-    const insertClipboardAtCaret = async () => {
-      const fromBridge = (() => {
-        const api = (window as any).parallxElectron?.clipboard;
-        if (!api?.readText) return '';
-        try { return String(api.readText() || ''); } catch { return ''; }
-      })();
-
-      const text = fromBridge || await navigator.clipboard.readText().catch(() => '');
-      if (!text) return;
-
-      const start = input.selectionStart ?? input.value.length;
-      const end = input.selectionEnd ?? input.value.length;
-      input.setRangeText(text, start, end, 'end');
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    };
-
     applyBtn.addEventListener('click', submit);
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
@@ -244,46 +227,9 @@ export function showMediaInsertPopup(
     input.addEventListener('paste', (event) => event.stopPropagation());
     input.addEventListener('copy', (event) => event.stopPropagation());
     input.addEventListener('cut', (event) => event.stopPropagation());
-    input.addEventListener('contextmenu', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
 
-      dismissInputPasteMenu();
-
-      const menu = $('div.canvas-input-paste-menu');
-      const popupRect = popup.getBoundingClientRect();
-      menu.style.left = `${event.clientX - popupRect.left}px`;
-      menu.style.top = `${event.clientY - popupRect.top}px`;
-      menu.style.position = 'absolute';
-
-      const pasteItem = $('button.canvas-input-paste-menu-item');
-      pasteItem.textContent = 'Paste';
-      pasteItem.addEventListener('mousedown', (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-      });
-      pasteItem.addEventListener('click', async (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        await insertClipboardAtCaret();
-        dismissInputPasteMenu();
-      });
-
-      menu.appendChild(pasteItem);
-      popup.appendChild(menu);
-      inputPasteMenu = menu;
-
-      inputPasteMenuOutsideHandler = (ev: MouseEvent) => {
-        if (!menu.contains(ev.target as Node)) {
-          dismissInputPasteMenu();
-        }
-      };
-      requestAnimationFrame(() => {
-        if (inputPasteMenuOutsideHandler) {
-          document.addEventListener('mousedown', inputPasteMenuOutsideHandler, true);
-        }
-      });
-    });
+    dismissPasteMenu();
+    pasteMenu = attachInputPasteContextMenu(input, popup);
 
     row.appendChild(input);
     row.appendChild(applyBtn);
@@ -293,6 +239,7 @@ export function showMediaInsertPopup(
   };
 
   const activate = (tab: 'upload' | 'link') => {
+    dismissPasteMenu();
     tabUpload.classList.toggle('canvas-media-insert-tab--active', tab === 'upload');
     tabLink.classList.toggle('canvas-media-insert-tab--active', tab === 'link');
     if (tab === 'upload') renderUpload();
@@ -303,7 +250,7 @@ export function showMediaInsertPopup(
   tabLink.addEventListener('click', () => activate('link'));
 
   detachDismiss = attachPopupDismiss(popup, cancel, {
-    isDismissable: () => !inputPasteMenu,
+    isDismissable: () => !pasteMenu?.isOpen(),
   });
 
   activate('upload');

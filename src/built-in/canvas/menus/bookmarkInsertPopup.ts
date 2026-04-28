@@ -1,5 +1,6 @@
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
+import { attachInputPasteContextMenu } from './inputPasteContextMenu.js';
 
 export function showBookmarkInsertPopup(
   editor: Editor,
@@ -28,23 +29,11 @@ export function showBookmarkInsertPopup(
   const errorEl = $('div.canvas-bookmark-insert-error');
   popup.appendChild(errorEl);
 
-  let inputPasteMenu: HTMLElement | null = null;
-  let inputPasteMenuOutsideHandler: ((event: MouseEvent) => void) | null = null;
   let detachDismiss: (() => void) | null = null;
-
-  const dismissInputPasteMenu = () => {
-    if (inputPasteMenu) {
-      inputPasteMenu.remove();
-      inputPasteMenu = null;
-    }
-    if (inputPasteMenuOutsideHandler) {
-      document.removeEventListener('mousedown', inputPasteMenuOutsideHandler, true);
-      inputPasteMenuOutsideHandler = null;
-    }
-  };
+  const pasteMenu = attachInputPasteContextMenu(input, popup);
 
   const dismiss = () => {
-    dismissInputPasteMenu();
+    pasteMenu.dismiss();
     popup.remove();
     detachDismiss?.();
     detachDismiss = null;
@@ -94,22 +83,6 @@ export function showBookmarkInsertPopup(
     dismiss();
   };
 
-  const insertClipboardAtCaret = async () => {
-    const fromBridge = (() => {
-      const api = (window as any).parallxElectron?.clipboard;
-      if (!api?.readText) return '';
-      try { return String(api.readText() || ''); } catch { return ''; }
-    })();
-
-    const text = fromBridge || await navigator.clipboard.readText().catch(() => '');
-    if (!text) return;
-
-    const start = input.selectionStart ?? input.value.length;
-    const end = input.selectionEnd ?? input.value.length;
-    input.setRangeText(text, start, end, 'end');
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  };
-
   createBtn.addEventListener('click', submit);
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
@@ -131,49 +104,9 @@ export function showBookmarkInsertPopup(
   input.addEventListener('paste', (event) => event.stopPropagation());
   input.addEventListener('copy', (event) => event.stopPropagation());
   input.addEventListener('cut', (event) => event.stopPropagation());
-  input.addEventListener('contextmenu', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    dismissInputPasteMenu();
-
-    const menu = $('div.canvas-input-paste-menu');
-    const popupRect = popup.getBoundingClientRect();
-    menu.style.left = `${event.clientX - popupRect.left}px`;
-    menu.style.top = `${event.clientY - popupRect.top}px`;
-    menu.style.position = 'absolute';
-
-    const pasteItem = $('button.canvas-input-paste-menu-item');
-    pasteItem.textContent = 'Paste';
-    pasteItem.addEventListener('mousedown', (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-    });
-    pasteItem.addEventListener('click', async (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      await insertClipboardAtCaret();
-      dismissInputPasteMenu();
-    });
-
-    menu.appendChild(pasteItem);
-    popup.appendChild(menu);
-    inputPasteMenu = menu;
-
-    inputPasteMenuOutsideHandler = (ev: MouseEvent) => {
-      if (!menu.contains(ev.target as Node)) {
-        dismissInputPasteMenu();
-      }
-    };
-    requestAnimationFrame(() => {
-      if (inputPasteMenuOutsideHandler) {
-        document.addEventListener('mousedown', inputPasteMenuOutsideHandler, true);
-      }
-    });
-  });
 
   detachDismiss = attachPopupDismiss(popup, cancel, {
-    isDismissable: () => !inputPasteMenu,
+    isDismissable: () => !pasteMenu.isOpen(),
   });
 
   requestAnimationFrame(() => {
