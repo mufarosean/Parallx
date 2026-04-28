@@ -8,7 +8,7 @@ import type { Editor } from '@tiptap/core';
 import type { IEditorInput } from '../../../editor/editorInput.js';
 import type { IPage, ICanvasDataService } from '../canvasTypes.js';
 import type { OpenEditorFn } from '../canvasEditorProvider.js';
-import { $, layoutPopup } from '../../../ui/dom.js';
+import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 import { tiptapJsonToMarkdown } from '../markdownExport.js';
 import { createIconElement, resolvePageIcon, svgIcon } from '../config/blockRegistry.js';
 
@@ -79,7 +79,7 @@ export class PageChromeController {
   private _hoverAffordances: HTMLElement | null = null;
   private _pageMenuBtn: HTMLElement | null = null;
   private _pageMenuDropdown: HTMLElement | null = null;
-  private _emojiPicker: HTMLElement | null = null;
+  private _detachPageMenuDismiss: (() => void) | null = null;
 
   // ── Page state ──
   private _currentPage: IPage | null = null;
@@ -221,16 +221,12 @@ export class PageChromeController {
   }
 
   dismissPopups(): void {
-    if (this._emojiPicker) {
-      this._emojiPicker.remove();
-      this._emojiPicker = null;
-    }
     if (this._pageMenuDropdown) {
       this._pageMenuDropdown.remove();
       this._pageMenuDropdown = null;
     }
-    document.removeEventListener('mousedown', this._handlePopupOutsideClick);
-    document.removeEventListener('keydown', this._handlePopupEscape);
+    this._detachPageMenuDismiss?.();
+    this._detachPageMenuDismiss = null;
   }
 
   dispose(): void {
@@ -802,9 +798,13 @@ export class PageChromeController {
     }
 
     setTimeout(() => {
-      document.addEventListener('mousedown', this._handlePopupOutsideClick);
+      const roots: HTMLElement[] = [this._pageMenuDropdown!];
+      if (this._pageMenuBtn) roots.push(this._pageMenuBtn);
+      if (this._iconEl) roots.push(this._iconEl);
+      if (this._hoverAffordances) roots.push(this._hoverAffordances);
+      if (this._coverControls) roots.push(this._coverControls);
+      this._detachPageMenuDismiss = attachPopupDismiss(roots, () => this.dismissPopups());
     }, 0);
-    document.addEventListener('keydown', this._handlePopupEscape);
   }
 
   private _buildStandardPageMenu(page: IPage | null): void {
@@ -1028,25 +1028,4 @@ export class PageChromeController {
       this._pageMenuDropdown.appendChild(btn);
     }
   }
-
-  // ── Popup Dismiss Helpers ───────────────────────────────────────────────
-
-  private readonly _handlePopupOutsideClick = (e: MouseEvent): void => {
-    const target = e.target as HTMLElement;
-    if (
-      this._emojiPicker?.contains(target) ||
-      this._pageMenuDropdown?.contains(target) ||
-      this._pageMenuBtn?.contains(target) ||
-      this._iconEl?.contains(target) ||
-      this._hoverAffordances?.contains(target) ||
-      this._coverControls?.contains(target)
-    ) return;
-    this.dismissPopups();
-  };
-
-  private readonly _handlePopupEscape = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') {
-      this.dismissPopups();
-    }
-  };
 }
