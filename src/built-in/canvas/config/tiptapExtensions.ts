@@ -25,7 +25,7 @@ import type { EditorExtensionContext } from './blockRegistry.js';
 
 import type { Extensions } from '@tiptap/core';
 import { Extension } from '@tiptap/core';
-import { Plugin, TextSelection } from '@tiptap/pm/state';
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 
 /**
  * Every block-level node type that receives a persistent unique ID via
@@ -93,6 +93,7 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
     addProseMirrorPlugins() {
       return [
         new Plugin({
+          key: new PluginKey('canvasClipboardImagePaste'),
           props: {
             handlePaste(view, event) {
               const items = Array.from(event.clipboardData?.items ?? []);
