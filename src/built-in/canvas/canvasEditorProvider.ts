@@ -330,6 +330,15 @@ class CanvasEditorPane implements IDisposable {
       },
       onUpdate: ({ editor }) => {
         if (this._suppressUpdate) return;
+        // Critical: do NOT auto-save until the initial content load has
+        // populated the editor.  Plugins (notably UniqueID's
+        // appendTransaction) fire `docChanged` transactions during Editor
+        // construction \u2014 BEFORE _loadContent runs setContent under
+        // _suppressUpdate.  Without this guard, scheduleContentSave would
+        // queue the empty default doc; the debounced timer would then
+        // overwrite the page's stored content with the empty doc, causing
+        // permanent data loss.
+        if (!this._initialContentLoaded) return;
         const json = JSON.stringify(editor.getJSON());
         this._dataService.scheduleContentSave(this._pageId, json);
       },
