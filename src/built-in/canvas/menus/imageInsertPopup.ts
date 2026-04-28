@@ -9,6 +9,7 @@
 
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
+import { isolateInputFromEditor } from './inputIsolation.js';
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -147,14 +148,7 @@ export function showImageInsertPopup(
     };
 
     embedBtn.addEventListener('click', submit);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); submit(); }
-      if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-      e.stopPropagation(); // don't let ProseMirror steal keys
-    });
-    // Prevent ProseMirror from capturing typed characters
-    input.addEventListener('keypress', (e) => e.stopPropagation());
-    input.addEventListener('input', (e) => e.stopPropagation());
+    isolateInputFromEditor(input, { onSubmit: submit, onCancel: cancel });
 
     row.appendChild(input);
     row.appendChild(embedBtn);

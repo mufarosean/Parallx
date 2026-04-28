@@ -1,6 +1,7 @@
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 import { attachInputPasteContextMenu } from './inputPasteContextMenu.js';
+import { isolateInputFromEditor } from './inputIsolation.js';
 
 export function showBookmarkInsertPopup(
   editor: Editor,
@@ -84,26 +85,11 @@ export function showBookmarkInsertPopup(
   };
 
   createBtn.addEventListener('click', submit);
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      submit();
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      cancel();
-    }
-    event.stopPropagation();
+  isolateInputFromEditor(input, {
+    onSubmit: submit,
+    onCancel: cancel,
+    onInput: () => { errorEl.textContent = ''; },
   });
-  input.addEventListener('keyup', (event) => event.stopPropagation());
-  input.addEventListener('keypress', (event) => event.stopPropagation());
-  input.addEventListener('input', (event) => {
-    event.stopPropagation();
-    errorEl.textContent = '';
-  });
-  input.addEventListener('paste', (event) => event.stopPropagation());
-  input.addEventListener('copy', (event) => event.stopPropagation());
-  input.addEventListener('cut', (event) => event.stopPropagation());
 
   detachDismiss = attachPopupDismiss(popup, cancel, {
     isDismissable: () => !pasteMenu.isOpen(),

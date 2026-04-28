@@ -104,9 +104,10 @@ const GATE_RULES: Record<string, string[]> = {
   'math/inlineMathEditor.ts':              ['menus/canvasMenuRegistry'],
   'menus/slashMenuItems.ts':               [],  // pure data — zero imports
   'menus/inputPasteContextMenu.ts':        [],  // pure UI — no canvas imports
-  'menus/imageInsertPopup.ts':             [],  // pure UI — no canvas imports
-  'menus/mediaInsertPopup.ts':             ['menus/inputPasteContextMenu'],  // pure UI — no canvas imports
-  'menus/bookmarkInsertPopup.ts':          ['menus/inputPasteContextMenu'],  // pure UI — no canvas imports
+  'menus/inputIsolation.ts':               [],  // pure UI helper — no canvas imports
+  'menus/imageInsertPopup.ts':             ['menus/inputIsolation'],  // pure UI
+  'menus/mediaInsertPopup.ts':             ['menus/inputPasteContextMenu', 'menus/inputIsolation'],  // pure UI
+  'menus/bookmarkInsertPopup.ts':          ['menus/inputPasteContextMenu', 'menus/inputIsolation'],  // pure UI
 
   // ── BlockStateRegistry children ─────────────────────────────────────────
   'config/blockStateRegistry/blockLifecycle.ts':      ['config/blockStateRegistry/blockStateRegistry'],

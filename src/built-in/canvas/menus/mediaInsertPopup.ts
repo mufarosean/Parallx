@@ -4,6 +4,7 @@ import {
   attachInputPasteContextMenu,
   type InputPasteMenuController,
 } from './inputPasteContextMenu.js';
+import { isolateInputFromEditor } from './inputIsolation.js';
 
 type MediaKind = 'video' | 'audio' | 'fileAttachment';
 
@@ -210,23 +211,7 @@ export function showMediaInsertPopup(
     };
 
     applyBtn.addEventListener('click', submit);
-    input.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        submit();
-      }
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        cancel();
-      }
-      event.stopPropagation();
-    });
-    input.addEventListener('keyup', (event) => event.stopPropagation());
-    input.addEventListener('keypress', (event) => event.stopPropagation());
-    input.addEventListener('input', (event) => event.stopPropagation());
-    input.addEventListener('paste', (event) => event.stopPropagation());
-    input.addEventListener('copy', (event) => event.stopPropagation());
-    input.addEventListener('cut', (event) => event.stopPropagation());
+    isolateInputFromEditor(input, { onSubmit: submit, onCancel: cancel });
 
     dismissPasteMenu();
     pasteMenu = attachInputPasteContextMenu(input, popup);
