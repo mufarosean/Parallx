@@ -24,12 +24,9 @@ import {
   canTakeTextColor,
   canTakeBackgroundColor,
   canTurnInto,
-  TEXT_COLORS,
-  BG_COLORS,
   recordRecentColor,
-  getRecentColors,
+  renderColorPalette,
 } from './canvasMenuRegistry.js';
-import type { ColorSwatch } from './canvasMenuRegistry.js';
 import type { ICanvasMenu } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
@@ -409,71 +406,20 @@ export class BlockActionMenuController implements ICanvasMenu {
 
     // Notion parity: hide entire color sections when none of the targeted
     // blocks support that section.  E.g. selection of dividers + a heading
-    // → no text color section (divider can't take it, heading can but
-    // single-block heading-only fall-through covers it via the can-text
-    // check); selection of headings + image → only Text color shown
-    // because images can't take backgroundColor.
+    // → no text color section; selection of headings + image → only Text
+    // color shown because images can't take backgroundColor.
     const targetTypes = this._collectTargetTypeNames();
     const showText = targetTypes.some(t => canTakeTextColor(t));
     const showBg = targetTypes.some(t => canTakeBackgroundColor(t));
 
-    const submenu = this._colorSubmenu;
-    const buildRow = (color: ColorSwatch, kind: 'text' | 'bg'): void => {
-      const row = $('div.block-color-item');
-      const swatch = $('span.block-color-swatch');
-      if (kind === 'text') {
-        swatch.textContent = 'A';
-        swatch.style.color = color.display;
-      } else if (color.value) {
-        swatch.style.backgroundColor = color.display;
-      } else {
-        swatch.style.border = '1px solid rgba(255,255,255,0.2)';
-      }
-      row.appendChild(swatch);
-      const label = $('span.block-action-label');
-      label.textContent = color.label;
-      row.appendChild(label);
-      row.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        if (kind === 'text') this._applyBlockTextColor(color.value);
-        else this._applyBlockBgColor(color.value);
-      });
-      submenu.appendChild(row);
-    };
-
-    // Recent — combined section across both kinds, only what applies to
-    // the targeted block(s).
-    const recents: { kind: 'text' | 'bg'; swatch: ColorSwatch }[] = [];
-    if (showText) for (const s of getRecentColors('text')) recents.push({ kind: 'text', swatch: s });
-    if (showBg) for (const s of getRecentColors('bg')) recents.push({ kind: 'bg', swatch: s });
-    if (recents.length > 0) {
-      const recentHeader = $('div.block-color-section-header');
-      recentHeader.textContent = 'Recent';
-      submenu.appendChild(recentHeader);
-      for (const r of recents) buildRow(r.swatch, r.kind);
-      submenu.appendChild($('div.block-action-separator'));
-    }
-
-    // Text color section
-    if (showText) {
-      const textHeader = $('div.block-color-section-header');
-      textHeader.textContent = 'Text color';
-      submenu.appendChild(textHeader);
-      for (const color of TEXT_COLORS) buildRow(color, 'text');
-    }
-
-    // Separator — only when both sections are showing
-    if (showText && showBg) {
-      submenu.appendChild($('div.block-action-separator'));
-    }
-
-    // Background color section
-    if (showBg) {
-      const bgHeader = $('div.block-color-section-header');
-      bgHeader.textContent = 'Background color';
-      submenu.appendChild(bgHeader);
-      for (const color of BG_COLORS) buildRow(color, 'bg');
-    }
+    renderColorPalette(this._colorSubmenu, {
+      showText,
+      showBg,
+      onPick: (kind, value) => {
+        if (kind === 'text') this._applyBlockTextColor(value);
+        else this._applyBlockBgColor(value);
+      },
+    });
 
     // Position to the right of anchor
     const rect = anchor.getBoundingClientRect();

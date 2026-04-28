@@ -15,6 +15,7 @@
 
 import type { Editor } from '@tiptap/core';
 import type { IDisposable } from '../../../platform/lifecycle.js';
+import { $ } from '../../../ui/dom.js';
 import { SlashMenuController, type SlashMenuHost } from './slashMenu.js';
 import { BubbleMenuController, type BubbleMenuHost } from './bubbleMenu.js';
 import { BlockActionMenuController, type BlockActionMenuHost } from './blockActionMenu.js';
@@ -209,6 +210,86 @@ export function getRecentColors(kind: ColorKind): ColorSwatch[] {
     if (swatch) out.push(swatch);
   }
   return out;
+}
+
+// ── Color palette renderer (Notion parity) ─────────────────────────
+// Both the block-action color submenu and the bubble color submenu render the
+// same Recent / Text color / Background color sections.  Lift the rendering
+// into a single helper.  The caller decides which sections are visible (the
+// block submenu hides sections that don't apply to the targeted block; the
+// bubble menu always shows both) and supplies the picker callback.
+
+export interface IColorPaletteOptions {
+  /** Show the Text color section. Default `true`. */
+  showText?: boolean;
+  /** Show the Background color section. Default `true`. */
+  showBg?: boolean;
+  /** Called when the user picks a swatch. */
+  onPick: (kind: ColorKind, value: string | null) => void;
+}
+
+/**
+ * Render the canonical Recent / Text / Background color sections into
+ * `submenu`. The caller is responsible for clearing prior content (typically
+ * `submenu.innerHTML = ''`) and for positioning the submenu.
+ */
+export function renderColorPalette(
+  submenu: HTMLElement,
+  options: IColorPaletteOptions,
+): void {
+  const { showText = true, showBg = true, onPick } = options;
+
+  const buildRow = (color: ColorSwatch, kind: ColorKind): void => {
+    const row = $('div.block-color-item');
+    const swatch = $('span.block-color-swatch');
+    if (kind === 'text') {
+      swatch.textContent = 'A';
+      swatch.style.color = color.display;
+    } else if (color.value) {
+      swatch.style.backgroundColor = color.display;
+    } else {
+      swatch.style.border = '1px solid rgba(255,255,255,0.2)';
+    }
+    row.appendChild(swatch);
+    const label = $('span.block-action-label');
+    label.textContent = color.label;
+    row.appendChild(label);
+    row.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      onPick(kind, color.value);
+    });
+    submenu.appendChild(row);
+  };
+
+  // Recent — combined section across both kinds, only what the caller allows.
+  const recents: { kind: ColorKind; swatch: ColorSwatch }[] = [];
+  if (showText) for (const s of getRecentColors('text')) recents.push({ kind: 'text', swatch: s });
+  if (showBg) for (const s of getRecentColors('bg')) recents.push({ kind: 'bg', swatch: s });
+  if (recents.length > 0) {
+    const recentHeader = $('div.block-color-section-header');
+    recentHeader.textContent = 'Recent';
+    submenu.appendChild(recentHeader);
+    for (const r of recents) buildRow(r.swatch, r.kind);
+    submenu.appendChild($('div.block-action-separator'));
+  }
+
+  if (showText) {
+    const textHeader = $('div.block-color-section-header');
+    textHeader.textContent = 'Text color';
+    submenu.appendChild(textHeader);
+    for (const color of TEXT_COLORS) buildRow(color, 'text');
+  }
+
+  if (showText && showBg) {
+    submenu.appendChild($('div.block-action-separator'));
+  }
+
+  if (showBg) {
+    const bgHeader = $('div.block-color-section-header');
+    bgHeader.textContent = 'Background color';
+    submenu.appendChild(bgHeader);
+    for (const color of BG_COLORS) buildRow(color, 'bg');
+  }
 }
 
 // ── Menu contract ───────────────────────────────────────────────────────────

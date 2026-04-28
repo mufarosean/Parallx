@@ -9,8 +9,7 @@
 
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup } from '../../../ui/dom.js';
-import { svgIcon, TEXT_COLORS, BG_COLORS, recordRecentColor, getRecentColors } from './canvasMenuRegistry.js';
-import type { ColorSwatch } from './canvasMenuRegistry.js';
+import { svgIcon, recordRecentColor, renderColorPalette } from './canvasMenuRegistry.js';
 import type { ICanvasMenu } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
@@ -264,62 +263,19 @@ export class BubbleMenuController implements ICanvasMenu {
       document.body.appendChild(this._colorSubmenu);
     }
     this._colorSubmenu.innerHTML = '';
-    const submenu = this._colorSubmenu;
 
-    const buildRow = (color: ColorSwatch, kind: 'text' | 'bg'): void => {
-      const row = $('div.block-color-item');
-      const swatch = $('span.block-color-swatch');
-      if (kind === 'text') {
-        swatch.textContent = 'A';
-        swatch.style.color = color.display;
-      } else if (color.value) {
-        swatch.style.backgroundColor = color.display;
-      } else {
-        swatch.style.border = '1px solid rgba(255,255,255,0.2)';
-      }
-      row.appendChild(swatch);
-      const label = $('span.block-action-label');
-      label.textContent = color.label;
-      row.appendChild(label);
-      row.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        if (kind === 'text') this._applyTextColor(color.value);
-        else this._applyHighlight(color.value);
-      });
-      submenu.appendChild(row);
-    };
-
-    // Recent — combined section across both kinds.
-    const recents: { kind: 'text' | 'bg'; swatch: ColorSwatch }[] = [];
-    for (const s of getRecentColors('text')) recents.push({ kind: 'text', swatch: s });
-    for (const s of getRecentColors('bg')) recents.push({ kind: 'bg', swatch: s });
-    if (recents.length > 0) {
-      const recentHeader = $('div.block-color-section-header');
-      recentHeader.textContent = 'Recent';
-      submenu.appendChild(recentHeader);
-      for (const r of recents) buildRow(r.swatch, r.kind);
-      submenu.appendChild($('div.block-action-separator'));
-    }
-
-    // Text color section
-    const textHeader = $('div.block-color-section-header');
-    textHeader.textContent = 'Text color';
-    submenu.appendChild(textHeader);
-    for (const color of TEXT_COLORS) buildRow(color, 'text');
-
-    submenu.appendChild($('div.block-action-separator'));
-
-    // Background color section (TipTap Highlight mark)
-    const bgHeader = $('div.block-color-section-header');
-    bgHeader.textContent = 'Background color';
-    submenu.appendChild(bgHeader);
-    for (const color of BG_COLORS) buildRow(color, 'bg');
+    renderColorPalette(this._colorSubmenu, {
+      onPick: (kind, value) => {
+        if (kind === 'text') this._applyTextColor(value);
+        else this._applyHighlight(value);
+      },
+    });
 
     // Position below the Color button (bubble itself sits above the
     // selection, so opening down keeps the submenu inside the viewport).
     const rect = anchor.getBoundingClientRect();
-    submenu.style.display = 'block';
-    layoutPopup(submenu, rect, { position: 'below', gap: 4 });
+    this._colorSubmenu.style.display = 'block';
+    layoutPopup(this._colorSubmenu, rect, { position: 'below', gap: 4 });
   }
 
   private _hideColorSubmenu(): void {
