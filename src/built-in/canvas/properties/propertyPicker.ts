@@ -5,7 +5,7 @@
 
 import type { IPropertyDefinition, PropertyType } from './propertyTypes.js';
 import { createTypeIconElement } from './propertyEditors.js';
-import { layoutPopup } from '../../../ui/dom.js';
+import { layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 
 const ALL_TYPES: { value: PropertyType; label: string }[] = [
   { value: 'text', label: 'Text' },
@@ -204,24 +204,13 @@ export function showPropertyPicker(
   // Focus search
   requestAnimationFrame(() => searchInput.focus());
 
-  // Outside click dismissal
-  const outsideClick = (e: MouseEvent) => {
-    if (!picker.contains(e.target as Node) && !anchor.contains(e.target as Node)) {
-      dismiss();
-    }
-  };
-  const escapeHandler = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') dismiss();
-  };
-
-  setTimeout(() => {
-    document.addEventListener('mousedown', outsideClick);
-    document.addEventListener('keydown', escapeHandler);
-  }, 0);
+  let detach: (() => void) | null = null;
 
   function dismiss() {
     picker.remove();
-    document.removeEventListener('mousedown', outsideClick);
-    document.removeEventListener('keydown', escapeHandler);
+    detach?.();
+    detach = null;
   }
+
+  detach = attachPopupDismiss([picker, anchor], dismiss);
 }

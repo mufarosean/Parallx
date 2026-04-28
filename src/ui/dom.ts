@@ -327,17 +327,26 @@ export interface IPopupDismissOptions {
  * lightweight popup that wants Notion/VS Code-style dismissal.  The
  * popup is responsible for its own DOM removal — this helper only
  * triggers the `onDismiss` callback.
+ *
+ * Pass an array of elements as `popup` to treat any of them as "inside"
+ * for outside-click purposes (e.g. the popup itself plus the anchor
+ * that opened it, so clicking the anchor doesn't immediately re-trigger
+ * dismissal).
  */
 export function attachPopupDismiss(
-  popup: HTMLElement,
+  popup: HTMLElement | readonly HTMLElement[],
   onDismiss: () => void,
   options: IPopupDismissOptions = {},
 ): () => void {
   const { isDismissable, escapeKey = true } = options;
+  const roots = Array.isArray(popup) ? popup : [popup as HTMLElement];
 
   const outsideClick = (event: MouseEvent) => {
     if (isDismissable && !isDismissable()) return;
-    if (popup.contains(event.target as Node)) return;
+    const target = event.target as Node;
+    for (const root of roots) {
+      if (root.contains(target)) return;
+    }
     onDismiss();
   };
 

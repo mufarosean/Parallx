@@ -5,6 +5,7 @@
 
 import type { IPropertyDefinition, ISelectOption } from './propertyTypes.js';
 import { createIconElement } from '../../../ui/iconRegistry.js';
+import { attachPopupDismiss } from '../../../ui/dom.js';
 
 // ─── Type Icon Map ───────────────────────────────────────────────────────────
 
@@ -356,15 +357,12 @@ function _createSelectEditor(
   };
   updatePill(value);
 
+  let detachDropdownDismiss: (() => void) | null = null;
+
   const dismissDropdown = () => {
     if (dropdownEl) { dropdownEl.remove(); dropdownEl = null; }
-    document.removeEventListener('mousedown', outsideClick);
-  };
-
-  const outsideClick = (e: MouseEvent) => {
-    if (dropdownEl && !dropdownEl.contains(e.target as Node) && !pill.contains(e.target as Node)) {
-      dismissDropdown();
-    }
+    detachDropdownDismiss?.();
+    detachDropdownDismiss = null;
   };
 
   pill.addEventListener('click', (e) => {
@@ -415,7 +413,7 @@ function _createSelectEditor(
     dropdownEl.style.left = `${rect.left}px`;
     dropdownEl.style.top = `${rect.bottom + 2}px`;
 
-    setTimeout(() => document.addEventListener('mousedown', outsideClick), 0);
+    detachDropdownDismiss = attachPopupDismiss([dropdownEl, pill], dismissDropdown);
   });
 
   return pill;
@@ -682,15 +680,13 @@ function _buildCalendar(
 
   render();
 
-  // Dismiss on outside click
-  const dismiss = (e: MouseEvent) => {
-    if (!el.contains(e.target as Node)) {
-      el.remove();
-      document.removeEventListener('mousedown', dismiss, true);
-      onDismiss();
-    }
-  };
-  setTimeout(() => document.addEventListener('mousedown', dismiss, true), 0);
+  let detachDismiss: (() => void) | null = null;
+  detachDismiss = attachPopupDismiss(el, () => {
+    el.remove();
+    detachDismiss?.();
+    detachDismiss = null;
+    onDismiss();
+  });
 
   return el;
 }
