@@ -297,3 +297,71 @@ export function layoutPopup(
   el.style.left = `${left}px`;
   el.style.top  = `${top}px`;
 }
+
+// ─── Popup dismissal ─────────────────────────────────────────────────────────
+
+export interface IPopupDismissOptions {
+  /**
+   * Predicate evaluated on every outside-click. Return `false` to keep the
+   * popup open even though the click was outside it (e.g. while a nested
+   * sub-menu has its own outside-click handler attached). Defaults to a
+   * predicate that always allows dismissal.
+   */
+  isDismissable?: () => boolean;
+
+  /** Whether the Escape key should also dismiss the popup. Default `true`. */
+  escapeKey?: boolean;
+}
+
+/**
+ * Attach the standard popup-dismissal contract to an element:
+ *   • document `mousedown` outside the popup → calls `onDismiss`
+ *   • document `Escape` keydown → calls `onDismiss`
+ *
+ * Listener attachment is deferred via `requestAnimationFrame` so the
+ * click that opened the popup doesn't immediately dismiss it.  The
+ * returned function detaches both listeners (and cancels the deferred
+ * RAF if it hasn't fired yet) and is safe to call any number of times.
+ *
+ * Used by canvas insert popups (image, media, bookmark) and any other
+ * lightweight popup that wants Notion/VS Code-style dismissal.  The
+ * popup is responsible for its own DOM removal — this helper only
+ * triggers the `onDismiss` callback.
+ */
+export function attachPopupDismiss(
+  popup: HTMLElement,
+  onDismiss: () => void,
+  options: IPopupDismissOptions = {},
+): () => void {
+  const { isDismissable, escapeKey = true } = options;
+
+  const outsideClick = (event: MouseEvent) => {
+    if (isDismissable && !isDismissable()) return;
+    if (popup.contains(event.target as Node)) return;
+    onDismiss();
+  };
+
+  const escape = (event: KeyboardEvent) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    onDismiss();
+  };
+
+  let attached = false;
+  let detached = false;
+  const raf = requestAnimationFrame(() => {
+    if (detached) return;
+    attached = true;
+    document.addEventListener('mousedown', outsideClick, true);
+    if (escapeKey) document.addEventListener('keydown', escape, true);
+  });
+
+  return () => {
+    if (detached) return;
+    detached = true;
+    if (!attached) cancelAnimationFrame(raf);
+    document.removeEventListener('mousedown', outsideClick, true);
+    if (escapeKey) document.removeEventListener('keydown', escape, true);
+  };
+}

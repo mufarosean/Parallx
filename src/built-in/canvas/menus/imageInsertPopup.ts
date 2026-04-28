@@ -8,7 +8,7 @@
 // slash menu and cover picker.
 
 import type { Editor } from '@tiptap/core';
-import { $, layoutPopup } from '../../../ui/dom.js';
+import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -56,10 +56,12 @@ export function showImageInsertPopup(
 
   // ── Helpers ─────────────────────────────────────────────────────────────
 
+  let detachDismiss: (() => void) | null = null;
+
   const dismiss = () => {
     popup.remove();
-    document.removeEventListener('mousedown', outsideClick, true);
-    document.removeEventListener('keydown', escapeKey, true);
+    detachDismiss?.();
+    detachDismiss = null;
   };
 
   const insertImage = (src: string) => {
@@ -175,23 +177,7 @@ export function showImageInsertPopup(
 
   // ── Dismiss on click outside / Escape ─────────────────────────────────
 
-  const outsideClick = (e: MouseEvent) => {
-    if (!popup.contains(e.target as Node)) cancel();
-  };
-
-  const escapeKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      cancel();
-    }
-  };
-
-  // Delay listener attachment so the current click doesn't dismiss
-  requestAnimationFrame(() => {
-    document.addEventListener('mousedown', outsideClick, true);
-    document.addEventListener('keydown', escapeKey, true);
-  });
+  detachDismiss = attachPopupDismiss(popup, cancel);
 
   // ── Mount ─────────────────────────────────────────────────────────────
 

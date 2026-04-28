@@ -1,5 +1,5 @@
 import type { Editor } from '@tiptap/core';
-import { $, layoutPopup } from '../../../ui/dom.js';
+import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 
 type MediaKind = 'video' | 'audio' | 'fileAttachment';
 
@@ -50,6 +50,7 @@ export function showMediaInsertPopup(
 
   let inputPasteMenu: HTMLElement | null = null;
   let inputPasteMenuOutsideHandler: ((event: MouseEvent) => void) | null = null;
+  let detachDismiss: (() => void) | null = null;
 
   const dismissInputPasteMenu = () => {
     if (inputPasteMenu) {
@@ -65,8 +66,8 @@ export function showMediaInsertPopup(
   const dismiss = () => {
     dismissInputPasteMenu();
     popup.remove();
-    document.removeEventListener('mousedown', outsideClick, true);
-    document.removeEventListener('keydown', escapeKey, true);
+    detachDismiss?.();
+    detachDismiss = null;
   };
 
   const cancel = () => {
@@ -301,24 +302,8 @@ export function showMediaInsertPopup(
   tabUpload.addEventListener('click', () => activate('upload'));
   tabLink.addEventListener('click', () => activate('link'));
 
-  const outsideClick = (event: MouseEvent) => {
-    if (inputPasteMenu) return;
-    const target = event.target as Node;
-    if (popup.contains(target)) return;
-    cancel();
-  };
-
-  const escapeKey = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      cancel();
-    }
-  };
-
-  requestAnimationFrame(() => {
-    document.addEventListener('mousedown', outsideClick, true);
-    document.addEventListener('keydown', escapeKey, true);
+  detachDismiss = attachPopupDismiss(popup, cancel, {
+    isDismissable: () => !inputPasteMenu,
   });
 
   activate('upload');

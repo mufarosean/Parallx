@@ -1,5 +1,5 @@
 import type { Editor } from '@tiptap/core';
-import { $, layoutPopup } from '../../../ui/dom.js';
+import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 
 export function showBookmarkInsertPopup(
   editor: Editor,
@@ -30,6 +30,7 @@ export function showBookmarkInsertPopup(
 
   let inputPasteMenu: HTMLElement | null = null;
   let inputPasteMenuOutsideHandler: ((event: MouseEvent) => void) | null = null;
+  let detachDismiss: (() => void) | null = null;
 
   const dismissInputPasteMenu = () => {
     if (inputPasteMenu) {
@@ -45,8 +46,8 @@ export function showBookmarkInsertPopup(
   const dismiss = () => {
     dismissInputPasteMenu();
     popup.remove();
-    document.removeEventListener('mousedown', outsideClick, true);
-    document.removeEventListener('keydown', escapeKey, true);
+    detachDismiss?.();
+    detachDismiss = null;
   };
 
   const cancel = () => {
@@ -171,24 +172,11 @@ export function showBookmarkInsertPopup(
     });
   });
 
-  const outsideClick = (event: MouseEvent) => {
-    if (inputPasteMenu) return;
-    const target = event.target as Node;
-    if (popup.contains(target)) return;
-    cancel();
-  };
-
-  const escapeKey = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      cancel();
-    }
-  };
+  detachDismiss = attachPopupDismiss(popup, cancel, {
+    isDismissable: () => !inputPasteMenu,
+  });
 
   requestAnimationFrame(() => {
-    document.addEventListener('mousedown', outsideClick, true);
-    document.addEventListener('keydown', escapeKey, true);
     input.focus();
   });
 
