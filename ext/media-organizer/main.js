@@ -2649,6 +2649,13 @@ async function runScan(rootPath, api) {
         console.warn('[MediaOrganizer] auto webp post-scan failed:', err);
       });
     }
+
+    // M59 P3: rebuild FTS search index (best-effort)
+    if (!stats.cancelled) {
+      moRebuildSearchIndex().catch(err => {
+        console.warn('[MediaOrganizer] FTS rebuild post-scan failed:', err);
+      });
+    }
   }
 }
 
@@ -5963,6 +5970,27 @@ const MO_CSS = `
 .mo-webp-meta { grid-area: meta; font-size: 11px; opacity: 0.65; }
 .mo-webp-row select { grid-area: select; }
 .mo-webp-empty { padding: 24px; text-align: center; opacity: 0.6; }
+
+/* M59 P3: duplicate finder */
+.mo-dup-dialog { width: 800px; max-width: 96vw; }
+.mo-dup-body { padding: 12px 16px; max-height: 70vh; overflow-y: auto; }
+.mo-dup-summary { font-size: 12px; opacity: 0.8; margin-bottom: 12px; }
+.mo-dup-group {
+  border: 1px solid var(--parallx-color-border, #444);
+  border-radius: 4px; padding: 8px; margin-bottom: 10px;
+}
+.mo-dup-group-head { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
+.mo-dup-group-label { font-weight: 600; }
+.mo-dup-group-count { opacity: 0.7; }
+.mo-dup-list { display: flex; flex-direction: column; gap: 4px; }
+.mo-dup-row {
+  display: grid; grid-template-columns: auto 1fr; gap: 8px;
+  align-items: center; padding: 4px 6px;
+}
+.mo-dup-name { font-size: 12px; }
+.mo-dup-meta { font-size: 11px; opacity: 0.6; }
+.mo-dup-actions { margin-top: 8px; display: flex; justify-content: flex-end; }
+.mo-dup-empty { padding: 24px; text-align: center; opacity: 0.65; }
 `;
 
 function moInjectStyles() {
@@ -6631,7 +6659,11 @@ function renderGridBrowser(container, api, input) {
   const toolbar = moEl('div', 'mo-toolbar');
   root.appendChild(toolbar);
 
-  const searchInput = moEl('input', 'mo-toolbar-search', { type: 'text', placeholder: 'Filter by title...' });
+  const searchInput = moEl('input', 'mo-toolbar-search', {
+    type: 'text',
+    placeholder: 'Search… (try: cat tag:beach rating:>=4 taken:2024)',
+    title: 'Free text searches title/details/tags/folder.\nOperators: tag:NAME, -tag:NAME, rating:>=4 (or 3..5), folder:TERM, taken:2024 (or 2024-06), type:photo/video',
+  });
   toolbar.appendChild(searchInput);
 
   // Sort controls
@@ -7006,6 +7038,11 @@ function renderGridBrowser(container, api, input) {
       where.push(`${alias}.rating >= ?`);
       params.push(filters.ratingMin);
     }
+    // M59 P3: rating max (used by "rating:<=4" / "rating:3..5")
+    if (filters.ratingMax != null) {
+      where.push(`${alias}.rating <= ?`);
+      params.push(filters.ratingMax);
+    }
 
     // Date range
     if (filters.dateFrom) {
@@ -7015,6 +7052,18 @@ function renderGridBrowser(container, api, input) {
     if (filters.dateTo) {
       where.push(`${alias}.created_at <= ?`);
       params.push(filters.dateTo + 'T23:59:59');
+    }
+
+    // M59 P3: id whitelist from FTS / folder lookup
+    const wl = alias === 'p' ? filters.idWhitelistPhotos : filters.idWhitelistVideos;
+    if (wl != null) {
+      if (wl.length === 0) {
+        where.push('1 = 0'); // no matches
+      } else {
+        const placeholders = wl.map(() => '?').join(',');
+        where.push(`${alias}.id IN (${placeholders})`);
+        params.push(...wl);
+      }
     }
   }
 
@@ -7197,57 +7246,109 @@ function renderGridBrowser(container, api, input) {
     loadingOverlay.offsetHeight; // reflow to restart animation
     loadingOverlay.style.animation = '';
 
-    const searchText = searchInput.value.trim();
+    const rawSearch = searchInput.value.trim();
     const safeColumn = MO_SAFE_SORT_COLUMNS[state.sortBy] || 'created_at';
     const safeDir = state.sortDir === 'ASC' ? 'ASC' : 'DESC';
     const limit = state.perPage;
     const offset = (state.currentPage - 1) * state.perPage;
 
+    // M59 P3: parse search syntax (tag:, rating:, folder:, taken:, type:, free text → FTS)
+    const parsed = moParseSearchQuery(rawSearch);
+
+    // type:photo / type:video temporarily overrides mediaType for this query
+    const effectiveMediaType = parsed.type || state.mediaType;
+
+    // Search text fed into the legacy LIKE path is only the leftover free text
+    // when FTS is NOT used (we'll prefer FTS for free text). Pass empty when FTS is used.
+    const fallbackSearchText = '';
+
     let items = [];
     let totalCount = 0;
 
     // Resolve filter tag descendants (stash: hierarchical tag filtering via CTE)
-    const resolvedFilters = { ratingMin: state.filters.ratingMin, dateFrom: state.filters.dateFrom, dateTo: state.filters.dateTo };
-    if (state.filters.tagIds.length > 0) {
+    const resolvedFilters = {
+      ratingMin: parsed.ratingMin != null ? parsed.ratingMin : state.filters.ratingMin,
+      ratingMax: parsed.ratingMax,
+      dateFrom: parsed.dateFrom || state.filters.dateFrom,
+      dateTo: parsed.dateTo || state.filters.dateTo,
+    };
+
+    // Merge UI tag filters with parsed tag: operators
+    const includeTagIds = [...state.filters.tagIds];
+    const excludeTagIds = [...state.filters.excludeTagIds];
+    if (parsed.tags.length) {
+      const ids = await moResolveTagNames(parsed.tags);
+      for (const id of ids) if (!includeTagIds.includes(id)) includeTagIds.push(id);
+    }
+    if (parsed.excludeTags.length) {
+      const ids = await moResolveTagNames(parsed.excludeTags);
+      for (const id of ids) if (!excludeTagIds.includes(id)) excludeTagIds.push(id);
+    }
+
+    if (includeTagIds.length > 0) {
       if (state.filters.tagDepth === -1) {
         // Include descendants — flatten all descendant IDs
-        const allIds = new Set(state.filters.tagIds);
-        for (const tid of state.filters.tagIds) {
+        const allIds = new Set(includeTagIds);
+        for (const tid of includeTagIds) {
           const desc = await TagQueries.getDescendants(tid);
           for (const d of desc) allIds.add(d.id);
         }
         resolvedFilters.resolvedTagIds = [...allIds];
       } else {
-        resolvedFilters.resolvedTagIds = [...state.filters.tagIds];
+        resolvedFilters.resolvedTagIds = [...includeTagIds];
       }
     }
-    if (state.filters.excludeTagIds.length > 0) {
+    if (excludeTagIds.length > 0) {
       if (state.filters.tagDepth === -1) {
-        const allIds = new Set(state.filters.excludeTagIds);
-        for (const tid of state.filters.excludeTagIds) {
+        const allIds = new Set(excludeTagIds);
+        for (const tid of excludeTagIds) {
           const desc = await TagQueries.getDescendants(tid);
           for (const d of desc) allIds.add(d.id);
         }
         resolvedFilters.resolvedExcludeTagIds = [...allIds];
       } else {
-        resolvedFilters.resolvedExcludeTagIds = [...state.filters.excludeTagIds];
+        resolvedFilters.resolvedExcludeTagIds = [...excludeTagIds];
+      }
+    }
+
+    // M59 P3: FTS lookup → restrict to matching ids
+    const ftsExpr = moBuildFtsMatch(parsed.freeText);
+    if (ftsExpr) {
+      const fts = await moFtsLookup(ftsExpr, 50000);
+      resolvedFilters.idWhitelistPhotos = fts.photoIds;
+      resolvedFilters.idWhitelistVideos = fts.videoIds;
+    }
+
+    // M59 P3: folder: operator → restrict ids
+    if (parsed.folderTerm) {
+      const fids = await moResolveFolderMatchIds(parsed.folderTerm);
+      // Intersect with existing whitelist if any
+      if (resolvedFilters.idWhitelistPhotos) {
+        resolvedFilters.idWhitelistPhotos = resolvedFilters.idWhitelistPhotos.filter(id => fids.photoIds.includes(id));
+      } else {
+        resolvedFilters.idWhitelistPhotos = fids.photoIds;
+      }
+      if (resolvedFilters.idWhitelistVideos) {
+        resolvedFilters.idWhitelistVideos = resolvedFilters.idWhitelistVideos.filter(id => fids.videoIds.includes(id));
+      } else {
+        resolvedFilters.idWhitelistVideos = fids.videoIds;
       }
     }
 
     try {
-      if (state.mediaType === 'all') {
+      if (effectiveMediaType === 'all') {
         // Unified UNION ALL query for correct pagination
-        const q = buildUnifiedQuery(filterType, filterId, searchText, safeColumn, safeDir, limit, offset, resolvedFilters);
+        const q = buildUnifiedQuery(filterType, filterId, fallbackSearchText, safeColumn, safeDir, limit, offset, resolvedFilters);
         const rows = await db.all(q.dataQuery, q.dataParams);
         const countRow = await db.get(q.countQuery, q.countParams);
         items = (rows || []).map((r) => rowToMediaItem(r, null));
         totalCount = countRow ? countRow.count : 0;
       } else {
         // Single-type query (photos or videos)
-        const q = buildSingleTypeQuery(state.mediaType === 'photos' ? 'photo' : 'video', filterType, filterId, searchText, safeColumn, safeDir, limit, offset, resolvedFilters);
+        const q = buildSingleTypeQuery(effectiveMediaType === 'photos' ? 'photo' : 'video', filterType, filterId, fallbackSearchText, safeColumn, safeDir, limit, offset, resolvedFilters);
         const rows = await db.all(q.dataQuery, q.dataParams);
         const countRow = await db.get(q.countQuery, q.countParams);
-        const type = state.mediaType === 'photos' ? 'photo' : 'video';
+        const type = effectiveMediaType === 'photos' ? 'photo' : 'video';
         items = (rows || []).map((r) => rowToMediaItem(r, type));
         totalCount = countRow ? countRow.count : 0;
       }
@@ -7348,6 +7449,32 @@ function renderGridBrowser(container, api, input) {
 
   // Initialize grid
   cardGrid = renderCardGrid(gridArea, [], refreshOpts());
+
+  // M59 P3: respond to smart album save/open commands
+  const _smartAlbumReplyHandler = () => {
+    const ev = new CustomEvent('mo:reply-search-state', {
+      detail: { query: searchInput.value || '', filters: state.filters },
+    });
+    document.dispatchEvent(ev);
+  };
+  document.addEventListener('mo:request-search-state', _smartAlbumReplyHandler);
+  const _smartAlbumApplyHandler = (e) => {
+    const parsed = e.detail || {};
+    if (parsed.query != null) searchInput.value = parsed.query;
+    if (parsed.filters) {
+      state.filters = {
+        tagIds: parsed.filters.tagIds || [],
+        excludeTagIds: parsed.filters.excludeTagIds || [],
+        tagDepth: parsed.filters.tagDepth || 0,
+        ratingMin: parsed.filters.ratingMin != null ? parsed.filters.ratingMin : null,
+        dateFrom: parsed.filters.dateFrom || null,
+        dateTo: parsed.filters.dateTo || null,
+      };
+    }
+    state.currentPage = 1;
+    loadPage();
+  };
+  document.addEventListener('mo:apply-search-state', _smartAlbumApplyHandler);
 
   // Event handlers
   let searchTimer = null;
@@ -11016,6 +11143,552 @@ async function moConvertWebP(api, fileId, target) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 10B: SEARCH (FTS5) + QUERY PARSER + SMART ALBUMS — M59 P3
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── FTS5 rebuild ──
+// Wipes and repopulates mo_photos_fts and mo_videos_fts. Called after scan,
+// after tag mutations, and after photo/video updates. Cheap enough for the
+// expected library sizes (sub-100k items) — full rebuild keeps logic simple.
+let _ftsRebuilding = false;
+async function moRebuildSearchIndex() {
+  if (_ftsRebuilding) return;
+  _ftsRebuilding = true;
+  try {
+    // Photos
+    const photos = await db.all(
+      `SELECT p.id AS pid, p.title AS title, p.details AS details,
+              GROUP_CONCAT(DISTINCT t.name) AS tags_text,
+              GROUP_CONCAT(DISTINCT fl.path) AS folder_text
+         FROM mo_photos p
+    LEFT JOIN mo_photos_tags pt ON pt.photo_id = p.id
+    LEFT JOIN mo_tags t ON t.id = pt.tag_id
+    LEFT JOIN mo_photos_files pf ON pf.photo_id = p.id
+    LEFT JOIN mo_files f ON f.id = pf.file_id
+    LEFT JOIN mo_folders fl ON fl.id = f.folder_id
+        GROUP BY p.id`
+    );
+    await db.run('DELETE FROM mo_photos_fts');
+    for (const r of photos || []) {
+      await db.run(
+        `INSERT INTO mo_photos_fts (rowid, title, details, tags_text, folder_text) VALUES (?, ?, ?, ?, ?)`,
+        [r.pid, r.title || '', r.details || '', r.tags_text || '', r.folder_text || '']
+      );
+    }
+    // Videos
+    const videos = await db.all(
+      `SELECT v.id AS vid, v.title AS title, v.details AS details,
+              GROUP_CONCAT(DISTINCT t.name) AS tags_text,
+              GROUP_CONCAT(DISTINCT fl.path) AS folder_text
+         FROM mo_videos v
+    LEFT JOIN mo_videos_tags vt ON vt.video_id = v.id
+    LEFT JOIN mo_tags t ON t.id = vt.tag_id
+    LEFT JOIN mo_videos_files vf ON vf.video_id = v.id
+    LEFT JOIN mo_files f ON f.id = vf.file_id
+    LEFT JOIN mo_folders fl ON fl.id = f.folder_id
+        GROUP BY v.id`
+    );
+    await db.run('DELETE FROM mo_videos_fts');
+    for (const r of videos || []) {
+      await db.run(
+        `INSERT INTO mo_videos_fts (rowid, title, details, tags_text, folder_text) VALUES (?, ?, ?, ?, ?)`,
+        [r.vid, r.title || '', r.details || '', r.tags_text || '', r.folder_text || '']
+      );
+    }
+  } catch (err) {
+    console.warn('[MediaOrganizer] FTS rebuild failed:', err);
+  } finally {
+    _ftsRebuilding = false;
+  }
+}
+
+// ── Query parser ──
+// Supports: tag:foo  -tag:foo  rating:>=4  rating:5  rating:3..5
+//           folder:beach  taken:2024  taken:2024-06  type:photo|video
+//           and bare words → free-text FTS MATCH
+function moParseSearchQuery(input) {
+  const result = {
+    freeText: '',
+    tags: [], excludeTags: [],
+    ratingMin: null, ratingMax: null,
+    folderTerm: null,
+    dateFrom: null, dateTo: null,
+    type: null,
+  };
+  if (!input) return result;
+  const words = [];
+  const re = /(-?)(\w+):(\S+)|(\S+)/g;
+  let m;
+  while ((m = re.exec(input)) !== null) {
+    if (m[4]) { words.push(m[4]); continue; }
+    const neg = m[1] === '-';
+    const key = m[2].toLowerCase();
+    const val = m[3];
+    switch (key) {
+      case 'tag':
+        (neg ? result.excludeTags : result.tags).push(val);
+        break;
+      case 'rating': {
+        const r = val.match(/^(>=|<=|>|<|=)?(\d)(?:\.\.(\d))?$/);
+        if (r) {
+          const op = r[1] || '=';
+          const a = parseInt(r[2], 10);
+          const b = r[3] != null ? parseInt(r[3], 10) : null;
+          if (b != null) { result.ratingMin = a; result.ratingMax = b; }
+          else if (op === '>=' || op === '=') result.ratingMin = a;
+          else if (op === '>') result.ratingMin = a + 1;
+          else if (op === '<=') result.ratingMax = a;
+          else if (op === '<') result.ratingMax = a - 1;
+        }
+        break;
+      }
+      case 'folder':
+        result.folderTerm = val;
+        break;
+      case 'taken':
+      case 'date': {
+        const d = val.match(/^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$/);
+        if (d) {
+          const y = d[1]; const mo = d[2]; const da = d[3];
+          if (da) { result.dateFrom = `${y}-${mo}-${da}`; result.dateTo = `${y}-${mo}-${da}`; }
+          else if (mo) {
+            result.dateFrom = `${y}-${mo}-01`;
+            const last = new Date(parseInt(y, 10), parseInt(mo, 10), 0).getDate();
+            result.dateTo = `${y}-${mo}-${String(last).padStart(2, '0')}`;
+          } else { result.dateFrom = `${y}-01-01`; result.dateTo = `${y}-12-31`; }
+        }
+        break;
+      }
+      case 'type':
+        if (val === 'photo' || val === 'photos') result.type = 'photos';
+        else if (val === 'video' || val === 'videos') result.type = 'videos';
+        break;
+      default:
+        words.push(m[0]);
+    }
+  }
+  result.freeText = words.join(' ').trim();
+  return result;
+}
+
+// Convert freeText into an FTS5 MATCH expression (prefix on each token).
+// FTS5 treats most punctuation as token separators; we strip operator chars.
+function moBuildFtsMatch(freeText) {
+  if (!freeText) return null;
+  const tokens = freeText.replace(/["()*]/g, ' ').split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return null;
+  return tokens.map(t => `"${t.replace(/"/g, '')}"*`).join(' AND ');
+}
+
+// Look up tag IDs by name (case-insensitive). Returns array of ids;
+// names that don't match are silently dropped.
+async function moResolveTagNames(names) {
+  if (!names || names.length === 0) return [];
+  const out = [];
+  for (const n of names) {
+    const row = await db.get('SELECT id FROM mo_tags WHERE LOWER(name) = LOWER(?)', [n]);
+    if (row) out.push(row.id);
+  }
+  return out;
+}
+
+// Look up photo+video IDs whose folder path contains the term.
+async function moResolveFolderMatchIds(term) {
+  const like = '%' + term + '%';
+  const photoRows = await db.all(
+    `SELECT DISTINCT pf.photo_id AS id
+       FROM mo_photos_files pf
+       JOIN mo_files f ON f.id = pf.file_id
+       JOIN mo_folders fl ON fl.id = f.folder_id
+      WHERE fl.path LIKE ?`, [like]
+  );
+  const videoRows = await db.all(
+    `SELECT DISTINCT vf.video_id AS id
+       FROM mo_videos_files vf
+       JOIN mo_files f ON f.id = vf.file_id
+       JOIN mo_folders fl ON fl.id = f.folder_id
+      WHERE fl.path LIKE ?`, [like]
+  );
+  return {
+    photoIds: photoRows.map(r => r.id),
+    videoIds: videoRows.map(r => r.id),
+  };
+}
+
+// FTS MATCH lookup → returns { photoIds, videoIds } limited to N.
+async function moFtsLookup(matchExpr, limit) {
+  if (!matchExpr) return { photoIds: null, videoIds: null };
+  const lim = Math.min(50000, limit || 5000);
+  try {
+    const photoRows = await db.all(
+      `SELECT rowid AS id FROM mo_photos_fts WHERE mo_photos_fts MATCH ? LIMIT ?`,
+      [matchExpr, lim]
+    );
+    const videoRows = await db.all(
+      `SELECT rowid AS id FROM mo_videos_fts WHERE mo_videos_fts MATCH ? LIMIT ?`,
+      [matchExpr, lim]
+    );
+    return {
+      photoIds: photoRows.map(r => r.id),
+      videoIds: videoRows.map(r => r.id),
+    };
+  } catch (err) {
+    console.warn('[MediaOrganizer] FTS lookup failed:', err);
+    return { photoIds: null, videoIds: null };
+  }
+}
+
+// ── Smart albums ──
+async function moSaveSmartAlbum(api, queryStr, currentFilters) {
+  if (!queryStr && (!currentFilters || (
+    (!currentFilters.tagIds || currentFilters.tagIds.length === 0) &&
+    (!currentFilters.excludeTagIds || currentFilters.excludeTagIds.length === 0) &&
+    currentFilters.ratingMin == null && !currentFilters.dateFrom && !currentFilters.dateTo
+  ))) {
+    api.window.showWarningMessage('Nothing to save — type a search query or apply filters first.');
+    return;
+  }
+  const name = await api.window.showInputBox({
+    prompt: 'Smart album name',
+    placeholder: 'e.g. Beach 2024 — top picks',
+  });
+  if (!name) return;
+  const payload = JSON.stringify({ query: queryStr || '', filters: currentFilters || {} });
+  try {
+    await db.run(
+      `INSERT INTO mo_smart_albums (name, query_json) VALUES (?, ?)
+       ON CONFLICT(name) DO UPDATE SET query_json = excluded.query_json, updated_at = datetime('now')`,
+      [name, payload]
+    );
+    api.window.showInformationMessage(`Smart album "${name}" saved.`);
+  } catch (err) {
+    api.window.showErrorMessage('Save failed: ' + (err && err.message || err));
+  }
+}
+
+async function moOpenSmartAlbum(api, applyFn) {
+  const rows = await db.all('SELECT id, name, query_json FROM mo_smart_albums ORDER BY name COLLATE NOCASE ASC');
+  if (!rows || rows.length === 0) {
+    api.window.showInformationMessage('No smart albums saved yet. Run a search and use "Save Smart Album".');
+    return;
+  }
+  const items = rows.map(r => ({ label: r.name, description: 'Smart album' }));
+  items.push({ label: '$(trash) Manage…', description: 'Delete a smart album' });
+  const pick = await api.window.showQuickPick(items, { placeholder: 'Open smart album' });
+  if (!pick) return;
+  if (pick.label.includes('Manage…')) {
+    return moManageSmartAlbums(api);
+  }
+  const row = rows.find(r => r.name === pick.label);
+  if (!row) return;
+  let parsed;
+  try { parsed = JSON.parse(row.query_json); } catch { parsed = { query: '', filters: {} }; }
+  if (typeof applyFn === 'function') applyFn(parsed);
+}
+
+async function moManageSmartAlbums(api) {
+  const rows = await db.all('SELECT id, name FROM mo_smart_albums ORDER BY name COLLATE NOCASE ASC');
+  if (!rows || rows.length === 0) return;
+  const items = rows.map(r => ({ label: r.name, description: 'Click to delete' }));
+  const pick = await api.window.showQuickPick(items, { placeholder: 'Delete which smart album?' });
+  if (!pick) return;
+  const row = rows.find(r => r.name === pick.label);
+  if (!row) return;
+  await db.run('DELETE FROM mo_smart_albums WHERE id = ?', [row.id]);
+  api.window.showInformationMessage(`Deleted "${row.name}".`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 10C: PERCEPTUAL HASH (dHash 64-bit) — M59 P3
+// ═══════════════════════════════════════════════════════════════════════════════
+// Computes a 64-bit difference hash by resizing each image to 9×8 grayscale,
+// then comparing adjacent horizontal pixels. Hamming distance ≤ 8 across two
+// hashes ⇒ near-duplicate.
+
+// 64-bit popcount (BigInt). Accepts BigInt; returns Number.
+function moPopcount64(b) {
+  let count = 0;
+  while (b) { if (b & 1n) count++; b >>= 1n; }
+  return count;
+}
+
+function moHammingDistance(aBig, bBig) {
+  return moPopcount64(aBig ^ bBig);
+}
+
+// Compute dHash for a single image. Uses ffmpeg (always available — required
+// for video features) so we don't depend on sharp/vips. Pipeline: resize to
+// 9×8, gray, raw pixels via -f rawvideo. Returns 64-bit BigInt or null.
+async function moComputePHash(filePath) {
+  if (!_toolPaths.ffmpeg) return null;
+  const tmpDir = await getThumbDir();
+  if (!tmpDir) return null;
+  const sep = _isWindows ? '\\' : '/';
+  const tmp = tmpDir + sep + '.phash_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.gray';
+  const ff = shellQuote(_toolPaths.ffmpeg);
+  const cmd = [
+    ff, '-hide_banner', '-loglevel', 'error', '-y',
+    '-i', shellQuote(filePath),
+    '-vf', 'scale=9:8:flags=area,format=gray',
+    '-f', 'rawvideo', '-pix_fmt', 'gray',
+    '-frames:v', '1',
+    shellQuote(tmp),
+  ].join(' ');
+  try {
+    const r = await window.parallxElectron.terminal.exec(cmd, { timeout: 30000 });
+    if (r.exitCode !== 0) return null;
+    const fr = await window.parallxElectron.fs.readFile(tmp);
+    if (fr.error) return null;
+    // readFile returns base64 by default — decode
+    let bytes;
+    if (fr.encoding === 'base64' || !fr.encoding) {
+      const bin = atob(fr.content);
+      bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    } else {
+      bytes = new TextEncoder().encode(fr.content);
+    }
+    if (bytes.length < 72) return null; // 9×8 = 72 bytes
+    let hash = 0n;
+    let bit = 0;
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 8; col++) {
+        const left = bytes[row * 9 + col];
+        const right = bytes[row * 9 + col + 1];
+        if (left > right) hash |= (1n << BigInt(63 - bit));
+        bit++;
+      }
+    }
+    return hash;
+  } catch (err) {
+    console.warn('[MediaOrganizer] phash failed:', err);
+    return null;
+  } finally {
+    await window.parallxElectron.fs.delete(tmp).catch(() => {});
+  }
+}
+
+// SQLite stores INTEGER as signed 64-bit. Convert BigInt ↔ signed.
+function moBigIntToSqlite(b) {
+  // Wrap to signed 64-bit
+  const SIGN = 1n << 63n;
+  if (b & SIGN) return Number(b - (1n << 64n));
+  return Number(b);
+}
+function moSqliteToBigInt(n) {
+  let b = BigInt(n);
+  if (b < 0n) b += 1n << 64n;
+  return b;
+}
+
+let _phashRunning = false;
+async function moRunPHashIndexer(api) {
+  if (_phashRunning) { api.window.showInformationMessage('Perceptual hash indexer already running.'); return; }
+  if (!_toolPaths.ffmpeg) { api.window.showWarningMessage('ffmpeg required for perceptual hash.'); return; }
+  _phashRunning = true;
+
+  const rows = await db.all(
+    `SELECT i.file_id AS file_id, fl.path AS folder_path, f.basename AS basename
+       FROM mo_image_files i
+       JOIN mo_files f ON f.id = i.file_id
+  LEFT JOIN mo_folders fl ON fl.id = f.folder_id
+      WHERE i.phash IS NULL AND fl.path IS NOT NULL`
+  );
+  if (rows.length === 0) {
+    _phashRunning = false;
+    api.window.showInformationMessage('Perceptual hash already up-to-date.');
+    return;
+  }
+
+  if (_statusBarItem) {
+    _statusBarItem.text = `$(sync~spin) pHash 0 / ${rows.length}`;
+    _statusBarItem.show();
+  }
+
+  let done = 0, fail = 0;
+  const sep = _isWindows ? '\\' : '/';
+  for (const row of rows) {
+    const fpath = row.folder_path + sep + row.basename;
+    const exists = await window.parallxElectron.fs.exists(fpath);
+    if (!exists) { fail++; done++; continue; }
+    const hash = await moComputePHash(fpath);
+    if (hash != null) {
+      await db.run('UPDATE mo_image_files SET phash = ? WHERE file_id = ?', [moBigIntToSqlite(hash), row.file_id]);
+    } else {
+      fail++;
+    }
+    done++;
+    if (_statusBarItem && done % 5 === 0) {
+      _statusBarItem.text = `$(sync~spin) pHash ${done} / ${rows.length}`;
+    }
+  }
+
+  if (_statusBarItem) {
+    _statusBarItem.text = `$(check) pHash done — ${done - fail}/${rows.length} indexed`;
+    setTimeout(() => { if (_statusBarItem) _statusBarItem.hide(); }, 5000);
+  }
+  _phashRunning = false;
+  api.window.showInformationMessage(`Perceptual hash: ${done - fail} indexed, ${fail} skipped.`);
+}
+
+// ── Duplicate Finder ──
+async function moOpenDuplicateFinder(api) {
+  const exactRows = await db.all(
+    `SELECT fp.value AS hash, GROUP_CONCAT(fp.file_id) AS file_ids
+       FROM mo_fingerprints fp
+      WHERE fp.type = 'md5'
+      GROUP BY fp.value
+     HAVING COUNT(DISTINCT fp.file_id) > 1`
+  );
+  const phashRows = await db.all(
+    `SELECT i.file_id AS file_id, i.phash AS phash, f.basename AS basename, fl.path AS folder_path
+       FROM mo_image_files i
+       JOIN mo_files f ON f.id = i.file_id
+  LEFT JOIN mo_folders fl ON fl.id = f.folder_id
+      WHERE i.phash IS NOT NULL`
+  );
+
+  // Cluster pHash rows by Hamming distance ≤ 8 (greedy single-link)
+  const clusters = [];
+  const visited = new Set();
+  for (let i = 0; i < phashRows.length; i++) {
+    if (visited.has(i)) continue;
+    const seedBig = moSqliteToBigInt(phashRows[i].phash);
+    const group = [phashRows[i]];
+    visited.add(i);
+    for (let j = i + 1; j < phashRows.length; j++) {
+      if (visited.has(j)) continue;
+      const otherBig = moSqliteToBigInt(phashRows[j].phash);
+      if (moHammingDistance(seedBig, otherBig) <= 8) {
+        group.push(phashRows[j]); visited.add(j);
+      }
+    }
+    if (group.length > 1) clusters.push(group);
+  }
+
+  // Build modal
+  const overlay = moEl('div', 'mo-modal-overlay');
+  const dialog = moEl('div', 'mo-modal mo-dup-dialog');
+  overlay.appendChild(dialog);
+  const header = moEl('div', 'mo-modal-header');
+  header.appendChild(moEl('div', 'mo-modal-title', { textContent: 'Duplicate Finder' }));
+  const closeBtn = moEl('button', 'mo-modal-close', { textContent: '×' });
+  closeBtn.addEventListener('click', () => overlay.remove());
+  header.appendChild(closeBtn);
+  dialog.appendChild(header);
+
+  const body = moEl('div', 'mo-dup-body');
+  dialog.appendChild(body);
+
+  const summary = moEl('div', 'mo-dup-summary');
+  summary.textContent = `${exactRows.length} exact-match group${exactRows.length === 1 ? '' : 's'} (md5), ${clusters.length} near-duplicate cluster${clusters.length === 1 ? '' : 's'} (pHash ≤ 8).`;
+  body.appendChild(summary);
+
+  // Render exact match groups
+  for (const r of exactRows) {
+    const fileIds = r.file_ids.split(',').map(s => parseInt(s, 10));
+    const files = await db.all(
+      `SELECT f.id, f.basename, f.size, fl.path AS folder_path
+         FROM mo_files f LEFT JOIN mo_folders fl ON fl.id = f.folder_id
+        WHERE f.id IN (${fileIds.map(() => '?').join(',')})`, fileIds
+    );
+    body.appendChild(buildDupGroup(api, files, 'Exact match (md5)'));
+  }
+  for (const cluster of clusters) {
+    const ids = cluster.map(c => c.file_id);
+    const files = await db.all(
+      `SELECT f.id, f.basename, f.size, fl.path AS folder_path
+         FROM mo_files f LEFT JOIN mo_folders fl ON fl.id = f.folder_id
+        WHERE f.id IN (${ids.map(() => '?').join(',')})`, ids
+    );
+    body.appendChild(buildDupGroup(api, files, 'Near-duplicate (pHash)'));
+  }
+
+  if (exactRows.length === 0 && clusters.length === 0) {
+    const empty = moEl('div', 'mo-dup-empty');
+    empty.textContent = 'No duplicates found. (Run "Build Perceptual Hashes" first if you haven\'t.)';
+    body.appendChild(empty);
+  }
+
+  const footer = moEl('div', 'mo-modal-footer');
+  const close2 = moEl('button', 'mo-btn-secondary', { textContent: 'Close' });
+  close2.addEventListener('click', () => overlay.remove());
+  footer.appendChild(close2);
+  dialog.appendChild(footer);
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+function buildDupGroup(api, files, label) {
+  const group = moEl('div', 'mo-dup-group');
+  const head = moEl('div', 'mo-dup-group-head');
+  head.appendChild(moEl('span', 'mo-dup-group-label', { textContent: label }));
+  head.appendChild(moEl('span', 'mo-dup-group-count', { textContent: `${files.length} file${files.length === 1 ? '' : 's'}` }));
+  group.appendChild(head);
+
+  const list = moEl('div', 'mo-dup-list');
+  group.appendChild(list);
+  // Auto-pick the largest as keeper
+  let keeperId = files.reduce((acc, f) => (f.size > (acc ? acc.size : -1) ? f : acc), null)?.id;
+
+  function renderList() {
+    list.innerHTML = '';
+    for (const f of files) {
+      const row = moEl('div', 'mo-dup-row');
+      const radio = document.createElement('input');
+      radio.type = 'radio'; radio.name = 'mo-dup-keep-' + label;
+      radio.checked = f.id === keeperId;
+      radio.addEventListener('change', () => { if (radio.checked) keeperId = f.id; });
+      row.appendChild(radio);
+      const name = moEl('div', 'mo-dup-name');
+      name.textContent = f.basename;
+      const meta = moEl('div', 'mo-dup-meta');
+      const sizeKb = (f.size / 1024).toFixed(1);
+      meta.textContent = `${sizeKb} KB · ${f.folder_path || '(no folder)'}`;
+      const text = moEl('div', 'mo-dup-text');
+      text.appendChild(name); text.appendChild(meta);
+      row.appendChild(text);
+      list.appendChild(row);
+    }
+  }
+  renderList();
+
+  const actions = moEl('div', 'mo-dup-actions');
+  const trashBtn = moEl('button', 'mo-btn-secondary', { textContent: 'Send others to OS trash' });
+  trashBtn.addEventListener('click', async () => {
+    if (!keeperId) return;
+    const sep = _isWindows ? '\\' : '/';
+    const targets = files.filter(f => f.id !== keeperId);
+    if (targets.length === 0) return;
+    const ok = await api.window.showWarningMessage(
+      `Move ${targets.length} file(s) to OS trash? Database rows will be deleted.`,
+      'Move to Trash', 'Cancel'
+    );
+    if (ok !== 'Move to Trash') return;
+    let moved = 0, failed = 0;
+    for (const f of targets) {
+      const fpath = (f.folder_path || '') + sep + f.basename;
+      // Use Electron shell.trashItem via fs.delete (extension fs API uses recycle bin on Windows)
+      const r = await window.parallxElectron.fs.delete(fpath).catch(() => ({ error: 'fail' }));
+      if (r && !r.error) {
+        await db.run('DELETE FROM mo_files WHERE id = ?', [f.id]);
+        moved++;
+      } else {
+        failed++;
+      }
+    }
+    api.window.showInformationMessage(`Trashed ${moved} file${moved === 1 ? '' : 's'}` + (failed ? `, ${failed} failed` : '') + '.');
+    group.style.opacity = '0.4'; group.style.pointerEvents = 'none';
+    _notifySidebarRefresh();
+    moRebuildSearchIndex().catch(() => {});
+  });
+  actions.appendChild(trashBtn);
+  group.appendChild(actions);
+  return group;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 11: ACTIVATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -11228,6 +11901,47 @@ export async function activate(api, context) {
   // M59 P2: Configure auto-WebP mode
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.setAutoWebPMode', () => moPickAutoWebPMode(api))
+  );
+
+  // M59 P3: Search index, perceptual hash, duplicate finder, smart albums
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.rebuildSearchIndex', async () => {
+      api.window.showInformationMessage('Rebuilding search index…');
+      await moRebuildSearchIndex();
+      api.window.showInformationMessage('Search index rebuilt.');
+    })
+  );
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.buildPHashes', () => moRunPHashIndexer(api))
+  );
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.findDuplicates', () => moOpenDuplicateFinder(api))
+  );
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.saveSmartAlbum', async () => {
+      // Read current grid query state via the active grid editor's exposed state.
+      // We reach into the latest cached state by dispatching a custom event the grid listens for.
+      const ev = new CustomEvent('mo:request-search-state');
+      const handler = (e) => {
+        document.removeEventListener('mo:reply-search-state', handler);
+        const s = e.detail || {};
+        moSaveSmartAlbum(api, s.query || '', s.filters || {});
+      };
+      document.addEventListener('mo:reply-search-state', handler, { once: true });
+      document.dispatchEvent(ev);
+      // Fallback if no grid is open
+      setTimeout(() => {
+        document.removeEventListener('mo:reply-search-state', handler);
+      }, 500);
+    })
+  );
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.openSmartAlbum', async () => {
+      await moOpenSmartAlbum(api, (parsed) => {
+        const ev = new CustomEvent('mo:apply-search-state', { detail: parsed });
+        document.dispatchEvent(ev);
+      });
+    })
   );
 
   // M59 P1: Purge expired quarantine (>30d)
