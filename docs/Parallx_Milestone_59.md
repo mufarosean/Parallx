@@ -263,3 +263,4 @@ These are decisions I'd like answered before they're locked:
 ## Status log
 
 - **2026-04-29** — Doc created. Phase 1 starting.
+- **2026-04-29** — Phase 1 landed. Custom video player, clip/GIF dialog, animated WebP review/convert with quarantine all shipped. Deferred to P2: audio track switching (F1.10 — HTML5 video limitation), subtitles (F1.11 — pending Q1), crop rectangle (F2.3), EXIF overlay + rotation (F4.3-4.5), ffmpeg progress bar (terminal.exec is one-shot — needs streaming API).
