@@ -130,7 +130,7 @@ async function buildPartialUpdate(tableName, id, partial, colMap) {
  */
 function resolvePagination(pagination = {}) {
   const page = Math.max(1, pagination.page || 1);
-  const perPage = Math.max(1, Math.min(100, pagination.perPage || 25));
+  const perPage = Math.max(1, Math.min(5000, pagination.perPage || 25));
   return { limit: perPage, offset: (page - 1) * perPage, page, perPage };
 }
 
@@ -4455,6 +4455,9 @@ const MO_CSS = `
   background: var(--vscode-editor-background);
   border: 1px solid var(--vscode-panel-border, #333);
   transition: border-color 0.15s;
+  /* M59 P4: browser-native virtualization — skip rendering work for off-screen cards */
+  content-visibility: auto;
+  contain-intrinsic-size: 280px 240px;
 }
 .mo-card:hover { border-color: var(--vscode-focusBorder, #9333ea); }
 .mo-card:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
@@ -6262,8 +6265,33 @@ function renderCardGrid(container, items, options) {
   grid.style.setProperty('--mo-card-min-width', `${zoomWidth || MO_ZOOM_DEFAULT}px`);
   container.appendChild(grid);
 
+  // M59 P4: lazy thumbnail resolution — only kick off DB queries for cards
+  // visible (or near-visible) in the viewport. Saves 100s of queries when
+  // perPage is high or "Auto" mode is on.
+  const _thumbObserver = ('IntersectionObserver' in window) ? new IntersectionObserver((entries, obs) => {
+    for (const entry of entries) {
+      if (entry.isIntersecting) {
+        const card = entry.target;
+        const item = card._moItem;
+        obs.unobserve(card);
+        if (item && !item.thumbnailPath && item.type && item.id) {
+          resolveThumbnailForCard(card, item);
+        }
+      }
+    }
+  }, { rootMargin: '400px 0px', threshold: 0.01 }) : null;
+
+  function _attachLazyThumb(card, item) {
+    card._moItem = item;
+    if (_thumbObserver) _thumbObserver.observe(card);
+    else if (!item.thumbnailPath && item.type && item.id) {
+      resolveThumbnailForCard(card, item);
+    }
+  }
+
   function renderAll(itemList, opts) {
     grid.innerHTML = '';
+    if (_thumbObserver) _thumbObserver.disconnect();
     const listMode = opts.displayMode === 'list';
     grid.classList.toggle('mo-list-mode', listMode);
     if (!itemList || itemList.length === 0) {
@@ -6286,9 +6314,8 @@ function renderCardGrid(container, items, options) {
         });
         grid.appendChild(row);
         if (focIdx === idx) row.scrollIntoView({ block: 'nearest' });
-        if (!item.thumbnailPath && item.type && item.id) {
-          resolveThumbnailForCard(row, item);
-        }
+        // List rows: lazy-load via observer too (treat row as card)
+        _attachLazyThumb(row, item);
       }
     } else {
       const zw = opts.zoomWidth ?? zoomWidth;
@@ -6307,10 +6334,8 @@ function renderCardGrid(container, items, options) {
         grid.appendChild(card);
         if (focIdx === idx) card.scrollIntoView({ block: 'nearest' });
 
-        // Async thumbnail resolution
-        if (!item.thumbnailPath && item.type && item.id) {
-          resolveThumbnailForCard(card, item);
-        }
+        // M59 P4: defer thumbnail resolution until card scrolls near viewport
+        _attachLazyThumb(card, item);
       }
     }
   }
@@ -6348,6 +6373,7 @@ function renderCardGrid(container, items, options) {
       renderAll(newItems, { ...options, ...newOptions });
     },
     dispose() {
+      if (_thumbObserver) _thumbObserver.disconnect();
       grid.innerHTML = '';
       grid.remove();
     },
@@ -6997,7 +7023,14 @@ function renderGridBrowser(container, api, input) {
   const pageNext = moEl('button', 'mo-page-btn', { textContent: '\u203A', title: 'Next page' });
   const pageLast = moEl('button', 'mo-page-btn', { textContent: '\u00BB', title: 'Last page' });
   const perPageDropdown = moDropdown({
-    items: [20, 40, 80, 120].map(pp => ({ value: String(pp), label: `${pp}/page` })),
+    items: [
+      { value: '20', label: '20/page' },
+      { value: '40', label: '40/page' },
+      { value: '80', label: '80/page' },
+      { value: '120', label: '120/page' },
+      { value: '500', label: '500/page' },
+      { value: '2000', label: 'Auto (large)' },
+    ],
     selected: String(state.perPage),
     ariaLabel: 'Items per page',
   });
