@@ -2461,6 +2461,9 @@ async function processFile(entry) {
   const txnResult = await db.transaction(txnOps);
   const fileId = txnResult[0].lastInsertRowid;
 
+  // M59 P2: queue for auto-convert after scan if it's an animated WebP
+  if (animatedWebp) _newAnimatedWebPIds.push(fileId);
+
   // 5. Store fingerprints (outside txn — these are idempotent via upsert)
   for (const fp of fps) {
     await FingerprintQueries.upsert({ fileId, type: fp.type, value: fp.value });
@@ -2551,6 +2554,7 @@ async function runScan(rootPath, api) {
   const startTime = Date.now();
   _scanRunning = true;
   _scanCancelled = false;
+  _newAnimatedWebPIds = [];
 
   const stats = { total: 0, created: 0, updated: 0, renamed: 0, skipped: 0, duplicates: 0, errors: 0, cancelled: false };
 
@@ -2638,6 +2642,13 @@ async function runScan(rootPath, api) {
 
     // Refresh sidebar sections (folders, tags, albums)
     _notifySidebarRefresh();
+
+    // M59 P2: process animated WebP queue (auto/suggest/off)
+    if (!stats.cancelled) {
+      moAutoConvertWebPAfterScan(api).catch(err => {
+        console.warn('[MediaOrganizer] auto webp post-scan failed:', err);
+      });
+    }
   }
 }
 
@@ -5837,12 +5848,75 @@ const MO_CSS = `
 }
 .mo-modal-footer .mo-clip-status { flex: 1; font-size: 12px; opacity: 0.7; }
 
-.mo-clip-dialog { width: 600px; }
+.mo-clip-dialog { width: 800px; max-width: 96vw; }
 .mo-clip-preview {
   display: block; width: 100%; max-height: 240px; background: #000;
   object-fit: contain;
 }
 .mo-clip-body { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+
+/* M59 P2: frame strip + waveform */
+.mo-clip-stripwrap {
+  position: relative;
+  background: var(--parallx-color-input-background, #1e1e1e);
+  border: 1px solid var(--parallx-color-border, #444);
+  border-radius: 4px;
+  padding: 4px;
+}
+.mo-clip-wave {
+  display: block;
+  width: 100%;
+  height: 36px;
+  margin-bottom: 4px;
+  opacity: 0.55;
+  pointer-events: none;
+  border-radius: 2px;
+}
+.mo-clip-framestrip {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  padding: 2px 0;
+  min-height: 56px;
+}
+.mo-clip-frame {
+  position: relative;
+  flex: 0 0 80px;
+  width: 80px;
+  height: 45px;
+  border-radius: 2px;
+  cursor: pointer;
+  background: #000;
+  user-select: none;
+}
+.mo-clip-frame img {
+  width: 100%; height: 100%; display: block; object-fit: cover;
+  border-radius: 2px;
+}
+.mo-clip-frame-idx {
+  position: absolute; bottom: 2px; left: 3px;
+  font-size: 9px; line-height: 1; padding: 1px 3px;
+  background: rgba(0, 0, 0, 0.65); color: #fff;
+  border-radius: 2px; font-variant-numeric: tabular-nums;
+}
+.mo-clip-frame-delay {
+  position: absolute; top: 2px; right: 2px;
+  font-size: 9px; line-height: 1; padding: 1px 3px;
+  background: var(--parallx-color-accent, #4d8eff); color: #fff;
+  border-radius: 2px; font-variant-numeric: tabular-nums;
+}
+.mo-clip-frame-deleted img { opacity: 0.25; filter: grayscale(1); }
+.mo-clip-frame-deleted::after {
+  content: '×';
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  color: #ff6b6b; font-size: 28px; line-height: 1; font-weight: 700;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.7); pointer-events: none;
+}
+.mo-clip-strip-status {
+  font-size: 11px; opacity: 0.65; padding: 2px 4px;
+  font-variant-numeric: tabular-nums;
+}
+
 .mo-clip-row {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
 }
@@ -10160,6 +10234,24 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
   const body = moEl('div', 'mo-clip-body');
   dialog.appendChild(body);
 
+  // ── M59 P2: Frame strip + waveform timeline ──
+  // State for per-frame edits (only honored when format=gif on export)
+  /** @type {Array<{ index: number, src: string, deleted: boolean, delayMs: number|null }>} */
+  let frames = [];
+  let revFrames = false;
+  const stripWrap = moEl('div', 'mo-clip-stripwrap');
+  const stripWave = document.createElement('img');
+  stripWave.className = 'mo-clip-wave';
+  stripWave.alt = '';
+  stripWave.style.display = 'none';
+  stripWrap.appendChild(stripWave);
+  const stripEl = moEl('div', 'mo-clip-framestrip');
+  stripEl.title = 'Click frame to set per-frame delay (GIF). Right-click to delete (GIF).';
+  stripWrap.appendChild(stripEl);
+  const stripStatus = moEl('div', 'mo-clip-strip-status', { textContent: 'Loading frames…' });
+  stripWrap.appendChild(stripStatus);
+  body.appendChild(stripWrap);
+
   // ── In/Out controls ──
   const ioRow = moEl('div', 'mo-clip-row');
   ioRow.appendChild(moEl('label', 'mo-clip-label', { textContent: 'In' }));
@@ -10234,6 +10326,16 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
   const revLabel = moEl('label', 'mo-clip-label', { textContent: 'Reverse' });
   revLabel.htmlFor = 'mo-clip-rev';
   revRow.appendChild(revLabel);
+  // M59 P2: reverse-individual-frames (only honored for GIF when frame strip edits are applied)
+  const revFrChk = document.createElement('input');
+  revFrChk.type = 'checkbox'; revFrChk.id = 'mo-clip-rev-frames'; revFrChk.className = 'mo-clip-check';
+  revFrChk.style.marginLeft = '16px';
+  revFrChk.addEventListener('change', () => { revFrames = revFrChk.checked; });
+  revRow.appendChild(revFrChk);
+  const revFrLabel = moEl('label', 'mo-clip-label', { textContent: 'Reverse frame order (GIF)' });
+  revFrLabel.htmlFor = 'mo-clip-rev-frames';
+  revFrLabel.title = 'Reverses the order of edited frames in GIF export (frame strip)';
+  revRow.appendChild(revFrLabel);
   body.appendChild(revRow);
 
   // ── GIF-only quality controls (hidden unless format=gif) ──
@@ -10299,10 +10401,146 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
   inInput.addEventListener('change', loopPreview);
   outInput.addEventListener('change', loopPreview);
 
+  // ── M59 P2: Frame strip + waveform generator ──
+  const FRAME_COUNT = 30;
+  const sepCh = _isWindows ? '\\' : '/';
+  let stripDir = null;
+  let stripGen = 0;
+
+  async function ensureStripDir() {
+    if (stripDir) return stripDir;
+    const base = await getThumbDir();
+    if (!base) return null;
+    stripDir = base + sepCh + '.clipstrip-' + Date.now();
+    await window.parallxElectron.fs.mkdir(stripDir);
+    return stripDir;
+  }
+
+  function clearStrip() {
+    while (stripEl.firstChild) stripEl.removeChild(stripEl.firstChild);
+    frames = [];
+  }
+
+  async function regenerateStrip() {
+    if (!_toolPaths.ffmpeg) { stripStatus.textContent = 'ffmpeg unavailable'; return; }
+    const a = Math.max(0, parseFloat(inInput.value) || 0);
+    const b = Math.min(duration, parseFloat(outInput.value) || duration);
+    const len = Math.max(0.1, b - a);
+    const myGen = ++stripGen;
+    stripStatus.textContent = 'Loading frames…';
+    clearStrip();
+    stripWave.style.display = 'none';
+
+    const dir = await ensureStripDir();
+    if (!dir) { stripStatus.textContent = 'Workspace unavailable'; return; }
+    // Wipe previous frames in the dir
+    const prev = await window.parallxElectron.fs.readdir(dir).catch(() => null);
+    if (prev && prev.entries) {
+      for (const e of prev.entries) {
+        await window.parallxElectron.fs.delete(dir + sepCh + e.name).catch(() => {});
+      }
+    }
+
+    const ff = shellQuote(_toolPaths.ffmpeg);
+    const fpsExpr = (FRAME_COUNT / len).toFixed(4);
+    const vf = `fps=${fpsExpr},scale=80:45:force_original_aspect_ratio=decrease,pad=80:45:(ow-iw)/2:(oh-ih)/2:color=black`;
+    const outPattern = dir + sepCh + 'frame_%03d.jpg';
+    const cmd = [
+      ff, '-hide_banner', '-loglevel', 'error', '-y',
+      '-ss', String(a), '-t', String(len),
+      '-i', shellQuote(videoPath),
+      '-vf', shellQuote(vf),
+      '-frames:v', String(FRAME_COUNT + 4),
+      shellQuote(outPattern),
+    ].join(' ');
+    const r = await window.parallxElectron.terminal.exec(cmd, { timeout: 60000 });
+    if (myGen !== stripGen) return; // superseded
+    if (r.exitCode !== 0) { stripStatus.textContent = 'Frame extract failed'; return; }
+
+    const list = await window.parallxElectron.fs.readdir(dir);
+    if (myGen !== stripGen) return;
+    const jpgs = (list.entries || []).filter(e => /^frame_\d+\.jpg$/.test(e.name)).sort((x, y) => x.name.localeCompare(y.name)).slice(0, FRAME_COUNT);
+    for (let i = 0; i < jpgs.length; i++) {
+      const fpath = dir + sepCh + jpgs[i].name;
+      const url = await localFileToUrl(fpath);
+      if (myGen !== stripGen) return;
+      const cell = moEl('div', 'mo-clip-frame');
+      cell.dataset.idx = String(i);
+      const img = document.createElement('img');
+      if (url) img.src = url;
+      cell.appendChild(img);
+      const idxLabel = moEl('div', 'mo-clip-frame-idx', { textContent: String(i + 1) });
+      cell.appendChild(idxLabel);
+      const delayBadge = moEl('div', 'mo-clip-frame-delay');
+      delayBadge.style.display = 'none';
+      cell.appendChild(delayBadge);
+      cell.addEventListener('click', async () => {
+        const f = frames[i];
+        if (!f || f.deleted) return;
+        const cur = f.delayMs == null ? '' : String(f.delayMs);
+        const inp = await api.window.showInputBox({
+          prompt: `Delay for frame ${i + 1} (ms). Empty = use FPS default.`,
+          value: cur,
+        });
+        if (inp === undefined) return;
+        if (inp === '') { f.delayMs = null; delayBadge.style.display = 'none'; return; }
+        const v = parseInt(inp, 10);
+        if (!Number.isFinite(v) || v < 0) return;
+        f.delayMs = v;
+        delayBadge.textContent = v + 'ms';
+        delayBadge.style.display = '';
+      });
+      cell.addEventListener('contextmenu', (ev) => {
+        ev.preventDefault();
+        const f = frames[i];
+        if (!f) return;
+        f.deleted = !f.deleted;
+        cell.classList.toggle('mo-clip-frame-deleted', f.deleted);
+      });
+      stripEl.appendChild(cell);
+      frames.push({ index: i, src: fpath, deleted: false, delayMs: null });
+    }
+    stripStatus.textContent = jpgs.length === 0 ? 'No frames extracted' : `${jpgs.length} frames — click to set delay, right-click to delete (GIF only)`;
+
+    // Waveform (best-effort; ignore failure)
+    try {
+      const wavePath = dir + sepCh + 'wave.png';
+      await window.parallxElectron.fs.delete(wavePath).catch(() => {});
+      const cmdW = [
+        ff, '-hide_banner', '-loglevel', 'error', '-y',
+        '-ss', String(a), '-t', String(len),
+        '-i', shellQuote(videoPath),
+        '-filter_complex', shellQuote('showwavespic=s=' + (FRAME_COUNT * 80) + 'x36:colors=0x6e94ffaa:split_channels=0'),
+        '-frames:v', '1',
+        shellQuote(wavePath),
+      ].join(' ');
+      const rw = await window.parallxElectron.terminal.exec(cmdW, { timeout: 30000 });
+      if (myGen === stripGen && rw.exitCode === 0) {
+        const url = await localFileToUrl(wavePath);
+        if (url) { stripWave.src = url; stripWave.style.display = ''; }
+      }
+    } catch { /* no audio or failed */ }
+  }
+
+  let regenTimer = null;
+  function scheduleRegen() {
+    if (regenTimer) clearTimeout(regenTimer);
+    regenTimer = setTimeout(() => regenerateStrip().catch(() => {}), 500);
+  }
+  inInput.addEventListener('input', scheduleRegen);
+  outInput.addEventListener('input', scheduleRegen);
+  preview.addEventListener('loadedmetadata', () => regenerateStrip().catch(() => {}));
+
+  async function cleanupStripDir() {
+    if (!stripDir) return;
+    await window.parallxElectron.fs.delete(stripDir).catch(() => {});
+    stripDir = null;
+  }
+
   // ── Footer ──
   const footer = moEl('div', 'mo-modal-footer');
   const cancelBtn = moEl('button', 'mo-btn-secondary', { textContent: 'Cancel' });
-  cancelBtn.addEventListener('click', () => { if (previewTimer) clearInterval(previewTimer); overlay.remove(); });
+  cancelBtn.addEventListener('click', () => { if (previewTimer) clearInterval(previewTimer); cleanupStripDir(); overlay.remove(); });
   const exportBtn = moEl('button', 'mo-btn-primary', { textContent: 'Export' });
   const status = moEl('div', 'mo-clip-status');
   footer.append(status, cancelBtn, exportBtn);
@@ -10316,6 +10554,10 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
     exportBtn.disabled = true; cancelBtn.disabled = true;
     status.textContent = 'Exporting…';
 
+    // Detect frame edits — only honored when format=gif
+    const hasFrameEdits = frames.some(f => f.deleted || f.delayMs != null) || revFrames;
+    const useFrameEdits = (fmtSel.value === 'gif') && hasFrameEdits && frames.length > 0;
+
     try {
       const result = await moExportClip(api, {
         videoPath, inPoint: a, outPoint: b,
@@ -10327,8 +10569,14 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
         crf: parseInt(crfInput.value, 10) || 23,
         dither: ditherSel.value,
         loops: parseInt(loopInput.value, 10) || 0,
+        // M59 P2: per-frame edits (GIF only)
+        frameEdits: useFrameEdits ? {
+          frames: frames.map(f => ({ src: f.src, deleted: f.deleted, delayMs: f.delayMs })),
+          reverseFrameOrder: revFrames,
+        } : null,
       });
       if (previewTimer) clearInterval(previewTimer);
+      cleanupStripDir();
       overlay.remove();
       api.window.showInformationMessage('Exported: ' + result.outPath);
     } catch (err) {
@@ -10339,7 +10587,7 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
   });
 
   overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) { if (previewTimer) clearInterval(previewTimer); overlay.remove(); }
+    if (e.target === overlay) { if (previewTimer) clearInterval(previewTimer); cleanupStripDir(); overlay.remove(); }
   });
   document.body.appendChild(overlay);
 }
@@ -10381,6 +10629,10 @@ async function moExportClip(api, opts) {
   if (opts.reverse) filters.push('reverse');
 
   if (opts.format === 'gif') {
+    // M59 P2: per-frame edits (delete/delay/reverse-frame-order) → concat path
+    if (opts.frameEdits && opts.frameEdits.frames && opts.frameEdits.frames.length > 0) {
+      return await moExportGifWithFrameEdits(api, opts, outPath);
+    }
     // Two-pass palette
     const tmpPalette = `${dir}${sep}.mo_palette_${Date.now()}.png`;
     const vfA = filters.concat(['palettegen=stats_mode=diff']).join(',');
@@ -10425,6 +10677,173 @@ async function moExportClip(api, opts) {
   }
 
   return { outPath };
+}
+
+// ─── GIF export with per-frame edits (M59 P2) ─────────────────────────────────
+// When the user has marked frames as deleted, set per-frame delays, or toggled
+// "reverse frame order", we re-extract frames at the strip cadence (one frame
+// per strip cell) at the configured scale, drop the deleted ones, optionally
+// reverse, then build a concat demuxer file with explicit per-frame durations.
+// Two-pass palette gives consistent colors.
+async function moExportGifWithFrameEdits(api, opts, outPath) {
+  const ff = shellQuote(_toolPaths.ffmpeg);
+  const sep = _isWindows ? '\\' : '/';
+  const len = Math.max(0.01, opts.outPoint - opts.inPoint);
+  const totalFrames = opts.frameEdits.frames.length;
+  const stripFps = totalFrames / len;
+  const defaultDelaySec = 1 / Math.max(1, stripFps);
+
+  // Temp dir under thumbDir
+  const baseDir = await getThumbDir();
+  if (!baseDir) throw new Error('No workspace open');
+  const workDir = baseDir + sep + '.clipexport-' + Date.now();
+  await window.parallxElectron.fs.mkdir(workDir);
+
+  try {
+    // 1. Re-extract all frames at full size with the user's scale applied
+    const scaleS = (opts.scalePct / 100).toFixed(3);
+    const vfExtract = `fps=${stripFps.toFixed(4)},scale=trunc(iw*${scaleS}/2)*2:trunc(ih*${scaleS}/2)*2`;
+    const pattern = workDir + sep + 'f_%04d.png';
+    const cmdEx = [
+      ff, '-hide_banner', '-loglevel', 'error', '-y',
+      '-ss', String(opts.inPoint), '-t', String(len),
+      '-i', shellQuote(opts.videoPath),
+      '-vf', shellQuote(vfExtract),
+      '-frames:v', String(totalFrames + 4),
+      shellQuote(pattern),
+    ].join(' ');
+    const rEx = await window.parallxElectron.terminal.exec(cmdEx, { timeout: 300000 });
+    if (rEx.exitCode !== 0) throw new Error('frame extract: ' + (rEx.stderr || 'failed'));
+
+    const list = await window.parallxElectron.fs.readdir(workDir);
+    const pngs = (list.entries || [])
+      .filter(e => /^f_\d+\.png$/.test(e.name))
+      .sort((x, y) => x.name.localeCompare(y.name))
+      .slice(0, totalFrames)
+      .map(e => workDir + sep + e.name);
+    if (pngs.length === 0) throw new Error('no frames extracted');
+
+    // 2. Build sequence honoring deleted/delay/reverse
+    let seq = pngs.map((p, i) => ({
+      path: p,
+      delaySec: opts.frameEdits.frames[i] && opts.frameEdits.frames[i].delayMs != null
+        ? Math.max(0.01, opts.frameEdits.frames[i].delayMs / 1000)
+        : defaultDelaySec,
+      deleted: opts.frameEdits.frames[i] ? !!opts.frameEdits.frames[i].deleted : false,
+    })).filter(f => !f.deleted);
+    if (opts.frameEdits.reverseFrameOrder) seq.reverse();
+    if (seq.length === 0) throw new Error('all frames deleted');
+
+    // 3. Build concat demuxer file
+    // Format:  file 'path'\nduration <seconds>\n  (last frame must repeat to honor duration)
+    let concat = '';
+    for (const f of seq) {
+      // ffmpeg concat demuxer requires forward slashes and escape single quotes
+      const cleanPath = f.path.replace(/\\/g, '/').replace(/'/g, "'\\''");
+      concat += `file '${cleanPath}'\nduration ${f.delaySec.toFixed(4)}\n`;
+    }
+    // Required final file repeat
+    const lastClean = seq[seq.length - 1].path.replace(/\\/g, '/').replace(/'/g, "'\\''");
+    concat += `file '${lastClean}'\n`;
+    const concatPath = workDir + sep + 'concat.txt';
+    await window.parallxElectron.fs.writeFile(concatPath, concat, 'utf8');
+
+    // 4. Two-pass palette over the concat sequence
+    const dither = opts.dither || 'bayer';
+    const palettePath = workDir + sep + 'palette.png';
+    const cmd1 = [
+      ff, '-hide_banner', '-loglevel', 'error', '-y',
+      '-f', 'concat', '-safe', '0', '-i', shellQuote(concatPath),
+      '-vf', shellQuote('palettegen=stats_mode=diff'),
+      shellQuote(palettePath),
+    ].join(' ');
+    const r1 = await window.parallxElectron.terminal.exec(cmd1, { timeout: 300000 });
+    if (r1.exitCode !== 0) throw new Error('palettegen: ' + (r1.stderr || 'failed'));
+
+    const cmd2 = [
+      ff, '-hide_banner', '-loglevel', 'error', '-y',
+      '-f', 'concat', '-safe', '0', '-i', shellQuote(concatPath),
+      '-i', shellQuote(palettePath),
+      '-lavfi', shellQuote(`paletteuse=dither=${dither}`),
+      '-loop', String(opts.loops || 0),
+      shellQuote(outPath),
+    ].join(' ');
+    const r2 = await window.parallxElectron.terminal.exec(cmd2, { timeout: 300000 });
+    if (r2.exitCode !== 0) throw new Error('paletteuse: ' + (r2.stderr || 'failed'));
+
+    return { outPath };
+  } finally {
+    // Cleanup temp work dir
+    await window.parallxElectron.fs.delete(workDir).catch(() => {});
+  }
+}
+
+
+// M59 P2: simple key/value settings. Currently used for autoWebpMode.
+async function moGetSetting(key, fallback) {
+  try {
+    const row = await db.get('SELECT value FROM mo_settings WHERE key = ?', [key]);
+    return row ? row.value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function moSetSetting(key, value) {
+  await db.run(
+    `INSERT INTO mo_settings (key, value, updated_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    [key, value]
+  );
+}
+
+// ─── Auto-WebP conversion (background, after scan) ────────────────────────────
+// New animated WebP files discovered during scan are queued here so we can
+// optionally auto-convert them after scan completes.
+let _newAnimatedWebPIds = [];
+
+async function moAutoConvertWebPAfterScan(api) {
+  const ids = _newAnimatedWebPIds.slice();
+  _newAnimatedWebPIds = [];
+  if (ids.length === 0) return;
+  const mode = await moGetSetting('autoWebpMode', 'suggest');
+  if (mode === 'off') return;
+  if (mode === 'suggest') {
+    api.window.showInformationMessage(
+      `${ids.length} animated WebP file${ids.length === 1 ? '' : 's'} found. Run "Review Animated WebP Files" to convert.`
+    );
+    return;
+  }
+  // mode === 'auto' — convert each in sequence (default target: mp4)
+  let ok = 0, fail = 0;
+  for (const id of ids) {
+    try { await moConvertWebP(api, id, 'mp4'); ok++; }
+    catch (err) { console.warn('[MediaOrganizer] auto webp convert failed:', err); fail++; }
+  }
+  if (ok > 0 || fail > 0) {
+    api.window.showInformationMessage(
+      `Auto-converted ${ok} animated WebP${ok === 1 ? '' : 's'}` + (fail > 0 ? ` (${fail} failed)` : '') + '.'
+    );
+    _notifySidebarRefresh();
+  }
+}
+
+async function moPickAutoWebPMode(api) {
+  const current = await moGetSetting('autoWebpMode', 'suggest');
+  const items = [
+    { label: 'Off', description: 'Ignore animated WebP files' },
+    { label: 'Suggest', description: 'Notify after scan; convert via Review command (default)' },
+    { label: 'Auto', description: 'Convert to MP4 immediately after scan, with quarantine' },
+  ];
+  for (const it of items) {
+    if (it.label.toLowerCase() === current) it.description = '✓ Currently selected — ' + it.description;
+  }
+  const pick = await api.window.showQuickPick(items, { placeholder: 'Auto-convert animated WebP files?' });
+  if (!pick) return;
+  const value = pick.label.toLowerCase();
+  await moSetSetting('autoWebpMode', value);
+  api.window.showInformationMessage(`Auto-WebP mode: ${pick.label}`);
 }
 
 // ─── WebP conversion review + bulk convert ────────────────────────────────────
@@ -10804,6 +11223,11 @@ export async function activate(api, context) {
   // M59 P1: Review animated WebP files
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.reviewWebP', () => moOpenWebPReviewDialog(api))
+  );
+
+  // M59 P2: Configure auto-WebP mode
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.setAutoWebPMode', () => moPickAutoWebPMode(api))
   );
 
   // M59 P1: Purge expired quarantine (>30d)
