@@ -318,12 +318,17 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // heavy reasoning models keep their KV cache in VRAM.
     this._contextPicker = this._register(new ChatContextWindowPicker(pickerSlot, {
       onPick: (contextWindow: number) => {
-        const value = contextWindow > 0 ? contextWindow : undefined;
+        // Push to provider first so getCachedContextLength reflects the
+        // new value when ChatService fires onDidChangeSession (the token
+        // bar listens to that event and re-reads the provider).
+        this._services.setContextLengthOverride?.(contextWindow);
         if (this._session) {
-          this._session.contextWindowOverride = value;
+          // Service owns the session object: it compares old vs new and
+          // skips the write if unchanged, so we must NOT pre-mutate
+          // `this._session.contextWindowOverride` here.
+          const value = contextWindow > 0 ? contextWindow : undefined;
           this._services.updateSessionContextWindow?.(this._session.id, value);
         }
-        this._services.setContextLengthOverride?.(contextWindow);
       },
     }));
     this._contextPicker.setActiveContextWindow(this._session?.contextWindowOverride);
