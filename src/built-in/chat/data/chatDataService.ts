@@ -2139,6 +2139,7 @@ export class ChatDataService {
       getSession: (id: string) => this._d.chatService.getSession(id),
       deleteSession: (id: string) => this._d.chatService.deleteSession(id),
       updateSessionModel: (id: string, modelId: string) => this._d.chatService.updateSessionModel(id, modelId),
+      updateSessionContextWindow: (id: string, contextWindow: number | undefined) => this._d.chatService.updateSessionContextWindow(id, contextWindow),
       getSystemPrompt: async () => {
         const report = this.getLastSystemPromptReport();
         return report?.promptText ?? '(No system prompt generated yet — send a message first)';
@@ -2181,6 +2182,10 @@ export class ChatDataService {
       ...attachmentServices,
       ...sessionServices,
       ...agentTaskServices,
+      setContextLengthOverride: (contextWindow: number) => {
+        const provider = this._d.ollamaProvider as { setContextLengthOverride?: (n: number) => void };
+        provider.setContextLengthOverride?.(Math.max(0, Math.floor(contextWindow)));
+      },
     };
   }
 

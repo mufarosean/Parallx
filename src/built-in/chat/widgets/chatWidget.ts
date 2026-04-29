@@ -21,6 +21,7 @@ import { renderAgentTaskRail } from '../rendering/chatTaskCards.js';
 import { ChatTokenStatusBar } from './chatTokenStatusBar.js';
 import { ChatModelPicker } from '../pickers/chatModelPicker.js';
 import { ChatModePicker } from '../pickers/chatModePicker.js';
+import { ChatContextWindowPicker } from '../pickers/chatContextWindowPicker.js';
 import { ChatSessionSidebar } from './chatSessionSidebar.js';
 import type {
   IChatSession,
@@ -61,6 +62,9 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   // ── Session binding ──
 
   private _session: IChatSession | undefined;
+
+  /** Per-session context window picker (sibling of model picker). */
+  private _contextPicker: ChatContextWindowPicker | undefined;
 
   get sessionId(): string {
     return this._session?.id ?? '';
@@ -310,6 +314,20 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       }));
     }
 
+    // Context-window picker — lets the user clamp `num_ctx` per session so
+    // heavy reasoning models keep their KV cache in VRAM.
+    this._contextPicker = this._register(new ChatContextWindowPicker(pickerSlot, {
+      onPick: (contextWindow: number) => {
+        const value = contextWindow > 0 ? contextWindow : undefined;
+        if (this._session) {
+          this._session.contextWindowOverride = value;
+          this._services.updateSessionContextWindow?.(this._session.id, value);
+        }
+        this._services.setContextLengthOverride?.(contextWindow);
+      },
+    }));
+    this._contextPicker.setActiveContextWindow(this._session?.contextWindowOverride);
+
     // ── Attachment services (enable "Add Context" file picker) ──
 
     if (services.attachmentServices) {
@@ -391,6 +409,12 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
         this._services.modelPicker.setActiveModel(session.modelId);
       }
     }
+
+    // Push the session's context window override into the provider so the
+    // token bar, OpenClaw budget, and outgoing num_ctx all see this value.
+    // 0 = clear override (use model's reported context length).
+    this._services.setContextLengthOverride?.(session.contextWindowOverride ?? 0);
+    this._contextPicker?.setActiveContextWindow(session.contextWindowOverride);
 
     this._renderMessages();
     this._updateVisibility();

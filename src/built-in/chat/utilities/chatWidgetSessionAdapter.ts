@@ -6,6 +6,7 @@ export interface IChatWidgetSessionAdapterDeps {
   readonly getSession: (id: string) => IChatSession | undefined;
   readonly deleteSession: (id: string) => void;
   readonly updateSessionModel?: (id: string, modelId: string) => void;
+  readonly updateSessionContextWindow?: (id: string, contextWindow: number | undefined) => void;
   readonly getSystemPrompt: () => Promise<string>;
   readonly readFileRelative?: (relativePath: string) => Promise<string | null>;
   readonly writeFileRelative?: (relativePath: string, content: string) => Promise<void>;
@@ -16,13 +17,14 @@ export function buildChatWidgetSessionServices(
   deps: IChatWidgetSessionAdapterDeps,
 ): Pick<
   IChatWidgetServices,
-  'getSessions' | 'getSession' | 'deleteSession' | 'updateSessionModel' | 'getSystemPrompt' | 'readFileRelative' | 'writeFileRelative' | 'searchSessions'
+  'getSessions' | 'getSession' | 'deleteSession' | 'updateSessionModel' | 'updateSessionContextWindow' | 'getSystemPrompt' | 'readFileRelative' | 'writeFileRelative' | 'searchSessions'
 > {
   return {
     getSessions: deps.getSessions,
     getSession: deps.getSession,
     deleteSession: deps.deleteSession,
     updateSessionModel: deps.updateSessionModel,
+    updateSessionContextWindow: deps.updateSessionContextWindow,
     getSystemPrompt: deps.getSystemPrompt,
     readFileRelative: deps.readFileRelative,
     writeFileRelative: deps.writeFileRelative,

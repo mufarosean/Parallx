@@ -220,6 +220,10 @@
   padding: 4px 8px;
 }
 
+.parallx-chat-picker-btn--context {
+  padding: 4px 8px;
+}
+
 .parallx-chat-picker-btn--mode {
   justify-content: center;
   min-width: 66px;

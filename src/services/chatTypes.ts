@@ -174,6 +174,17 @@ export interface IChatSession {
   mode: ChatMode;
   /** Active model ID for this session. */
   modelId: string;
+  /**
+   * Per-session context window override in tokens.
+   *
+   * When > 0, this value is sent to Ollama as `num_ctx` and used as the
+   * orchestration token budget. When 0 / undefined, the model's reported
+   * context length is used instead.
+   *
+   * Lets the user pair a heavy model with a smaller window so the KV cache
+   * fits in VRAM (avoiding CPU offload).
+   */
+  contextWindowOverride?: number;
   /** Ordered list of request/response pairs. */
   readonly messages: IChatRequestResponsePair[];
   /** Whether a request is currently being processed. */
@@ -1052,6 +1063,12 @@ export interface IChatService extends IDisposable {
   setRuntimeParticipantResolver?(resolver: ((participantId: string) => string) | undefined): void;
   /** Update the model ID for an existing session and persist. */
   updateSessionModel(sessionId: string, modelId: string): void;
+
+  /**
+   * Update the per-session context window override.
+   * Pass 0 (or undefined) to clear the override and revert to model default.
+   */
+  updateSessionContextWindow(sessionId: string, contextWindow: number | undefined): void;
   /** Send a user message and orchestrate the full request pipeline. */
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<IChatParticipantResult>;
   /** Cancel the in-progress request for a session. */

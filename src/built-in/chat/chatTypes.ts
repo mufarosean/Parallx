@@ -407,6 +407,13 @@ export interface IChatWidgetServices {
   readonly getSessions?: () => readonly IChatSession[];
   readonly deleteSession?: (sessionId: string) => void;
   readonly updateSessionModel?: (sessionId: string, modelId: string) => void;
+  readonly updateSessionContextWindow?: (sessionId: string, contextWindow: number | undefined) => void;
+  /**
+   * Push a context length override into the active provider so token-budget
+   * computation, the token bar, and `num_ctx` on outgoing requests all see
+   * the per-session value. Pass 0 to clear the override.
+   */
+  readonly setContextLengthOverride?: (contextWindow: number) => void;
   readonly openFile?: (fullPath: string) => void;
   readonly openPage?: (pageId: string) => void;
   readonly openMemory?: (sessionId: string) => void;

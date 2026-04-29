@@ -70,6 +70,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   // ── pickers/ — model/mode/tool pickers ──────────────────────────────────
   'pickers/chatModelPicker.ts': ['chatIcons'],
   'pickers/chatModePicker.ts':  ['chatIcons'],
+  'pickers/chatContextWindowPicker.ts': ['chatIcons'],
   // ── rendering/ — message rendering ──────────────────────────────────────
   'rendering/chatCodeActions.ts':   [],
   'rendering/chatContentParts.ts':  ['chatIcons', 'rendering/'],
