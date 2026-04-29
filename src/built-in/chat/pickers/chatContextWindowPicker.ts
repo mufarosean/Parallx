@@ -13,14 +13,14 @@ import { $, addDisposableListener } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
 
 /** Preset values offered in the dropdown. 0 = "Model default" (clear override). */
-const CONTEXT_WINDOW_PRESETS: readonly { label: string; value: number }[] = [
-  { label: 'Model default', value: 0 },
-  { label: '4K',  value: 4_096 },
-  { label: '8K',  value: 8_192 },
-  { label: '16K', value: 16_384 },
-  { label: '32K', value: 32_768 },
-  { label: '64K', value: 65_536 },
-  { label: '128K', value: 131_072 },
+const CONTEXT_WINDOW_PRESETS: readonly { label: string; description: string; value: number }[] = [
+  { label: 'Model default', description: 'Model\u2019s reported context',        value: 0 },
+  { label: '4K',   description: 'Tiny \u2014 lowest VRAM',                       value: 4_096 },
+  { label: '8K',   description: 'Light chat',                                    value: 8_192 },
+  { label: '16K',  description: 'Medium context',                                value: 16_384 },
+  { label: '32K',  description: 'Long chat',                                     value: 32_768 },
+  { label: '64K',  description: 'Stays in VRAM on most GPUs',                    value: 65_536 },
+  { label: '128K', description: 'May spill to CPU',                              value: 131_072 },
 ];
 
 export interface IContextWindowPickerCallbacks {
@@ -94,11 +94,25 @@ export class ChatContextWindowPicker extends Disposable {
 
     for (const preset of CONTEXT_WINDOW_PRESETS) {
       const item = $('div.parallx-chat-picker-item');
-      if (preset.value === this._activeValue) {
+      const isActive = preset.value === this._activeValue;
+      if (isActive) {
         item.classList.add('parallx-chat-picker-item--active');
       }
+
+      // Leading check icon slot — shown for the active preset, kept as an
+      // empty cell otherwise so all rows share the same leading column.
+      const icon = document.createElement('span');
+      icon.className = 'parallx-chat-picker-item-icon';
+      icon.innerHTML = isActive ? chatIcons.check : '';
+      item.appendChild(icon);
+
+      const textCol = $('div.parallx-chat-picker-item-text');
       const name = $('span.parallx-chat-picker-item-name', preset.label);
-      item.appendChild(name);
+      textCol.appendChild(name);
+      const description = $('span.parallx-chat-picker-item-description', preset.description);
+      textCol.appendChild(description);
+      item.appendChild(textCol);
+
       item.addEventListener('click', () => {
         this._activeValue = preset.value;
         this._renderLabel();
