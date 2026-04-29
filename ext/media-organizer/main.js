@@ -2446,11 +2446,16 @@ async function processFile(entry) {
   // Adapted from stash: pkg/file/scan.go — onNewFile wraps Create+Handlers in WithTxn
   const meta = await extractMetadata(entry.path, entry.fileType);
 
+  // M59: detect animated webp for later conversion review
+  const animatedWebp = entry.fileType === 'image' && /\.webp$/i.test(entry.path)
+    ? (await isWebPAnimated(entry.path)) ? 1 : 0
+    : 0;
+
   const txnOps = [
     { type: 'run',
-      sql: `INSERT INTO mo_files (basename, size, mod_time, folder_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      params: [entry.name, entry.size, entry.mtime, entry.folderId] },
+      sql: `INSERT INTO mo_files (basename, size, mod_time, folder_id, needs_conversion, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      params: [entry.name, entry.size, entry.mtime, entry.folderId, animatedWebp] },
   ];
 
   const txnResult = await db.transaction(txnOps);
@@ -5672,6 +5677,218 @@ const MO_CSS = `
   opacity: 0.7;
   white-space: nowrap;
 }
+
+/* ═══ M59 Phase 1: custom video player + clip dialog + WebP review ═══ */
+.mo-player {
+  position: relative; width: 100%; height: 100%; background: #000;
+  overflow: hidden; outline: none;
+}
+.mo-player-video {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: contain; background: #000;
+}
+.mo-player-preview-vid {
+  position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0;
+  pointer-events: none;
+}
+.mo-player-topbar {
+  position: absolute; top: 0; left: 0; right: 0; padding: 8px 12px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+  color: #fff; display: flex; gap: 12px; align-items: baseline;
+  pointer-events: none; transition: opacity 200ms;
+  z-index: 2;
+}
+.mo-player-title { font-weight: 500; font-size: 13px; flex: 1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mo-player-meta { font-size: 11px; opacity: 0.8; }
+.mo-player-bottombar {
+  position: absolute; bottom: 0; left: 0; right: 0; padding: 4px 12px 8px;
+  background: linear-gradient(to top, rgba(0,0,0,0.85), transparent);
+  display: flex; flex-direction: column; gap: 4px;
+  transition: opacity 200ms; z-index: 2;
+}
+.mo-player-rail {
+  position: absolute; top: 50%; right: 8px; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 6px;
+  transition: opacity 200ms; z-index: 2;
+}
+.mo-player-chrome-hidden .mo-player-topbar,
+.mo-player-chrome-hidden .mo-player-bottombar,
+.mo-player-chrome-hidden .mo-player-rail {
+  opacity: 0; pointer-events: none;
+}
+.mo-player-progrow {
+  position: relative; padding: 8px 0 4px;
+}
+.mo-player-progress {
+  position: relative; height: 5px; background: rgba(255,255,255,0.2);
+  border-radius: 3px; cursor: pointer;
+}
+.mo-player-progress:hover { height: 7px; transition: height 100ms; }
+.mo-player-progress-buf,
+.mo-player-progress-played,
+.mo-player-loop-range {
+  position: absolute; top: 0; left: 0; height: 100%; border-radius: 3px;
+  pointer-events: none;
+}
+.mo-player-progress-buf { background: rgba(255,255,255,0.35); width: 0; }
+.mo-player-progress-played {
+  background: var(--parallx-color-accent, #4d8eff);
+  width: 0; z-index: 1;
+}
+.mo-player-loop-range {
+  background: rgba(255, 200, 0, 0.35);
+  z-index: 0; display: none;
+}
+.mo-player-mark {
+  position: absolute; top: -2px; bottom: -2px; width: 2px;
+  background: rgba(255, 200, 0, 0.9); pointer-events: none;
+  z-index: 2; display: none;
+}
+.mo-player-progress-thumb {
+  position: absolute; top: 50%; transform: translate(-50%, -50%);
+  width: 11px; height: 11px; border-radius: 50%;
+  background: var(--parallx-color-accent, #4d8eff);
+  border: 2px solid #fff; display: none; z-index: 3;
+  pointer-events: none;
+}
+.mo-player-hover {
+  position: absolute; bottom: 100%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.85); padding: 4px; border-radius: 4px;
+  display: none; pointer-events: none; margin-bottom: 6px;
+}
+.mo-player-hover-canvas {
+  display: block; width: 160px; height: 90px; border-radius: 2px;
+  background: #222;
+}
+.mo-player-hover-time {
+  text-align: center; font-size: 10px; color: #fff; margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.mo-player-ctrlrow {
+  display: flex; gap: 6px; align-items: center;
+}
+.mo-player-btn {
+  background: transparent; border: 0; color: #fff; cursor: pointer;
+  padding: 4px 6px; border-radius: 4px; display: inline-flex;
+  align-items: center; justify-content: center; min-width: 28px; height: 28px;
+}
+.mo-player-btn:hover { background: rgba(255,255,255,0.15); }
+.mo-player-btn-active { color: var(--parallx-color-accent, #4d8eff); }
+.mo-player-time {
+  color: #fff; font-size: 12px; font-variant-numeric: tabular-nums;
+  margin: 0 8px; opacity: 0.9;
+}
+.mo-player-speed { position: relative; }
+.mo-player-speed-btn { font-size: 12px; min-width: 36px; }
+.mo-player-speed-menu {
+  position: absolute; bottom: 32px; left: 0; background: rgba(0,0,0,0.92);
+  border: 1px solid rgba(255,255,255,0.1); border-radius: 4px;
+  padding: 4px; display: flex; flex-direction: column; gap: 2px;
+  z-index: 10; min-width: 60px;
+}
+.mo-player-speed-item {
+  background: transparent; border: 0; color: #fff; cursor: pointer;
+  padding: 4px 8px; text-align: left; font-size: 12px; border-radius: 3px;
+}
+.mo-player-speed-item:hover { background: rgba(255,255,255,0.15); }
+.mo-hidden { display: none !important; }
+.mo-player-vol { display: flex; align-items: center; gap: 4px; }
+.mo-player-vol-slider {
+  width: 60px; height: 4px; cursor: pointer; accent-color: var(--parallx-color-accent, #4d8eff);
+}
+.mo-player-rail-btn {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.15);
+  color: #fff; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.mo-player-rail-btn:hover { background: rgba(0,0,0,0.85); border-color: rgba(255,255,255,0.3); }
+.mo-player-rail-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* ─── Clip / WebP modal ─── */
+.mo-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9999;
+}
+.mo-modal {
+  background: var(--parallx-color-background, #1f1f1f);
+  color: var(--parallx-color-foreground, #ddd);
+  border: 1px solid var(--parallx-color-border, #444);
+  border-radius: 8px; min-width: 480px; max-width: 720px; max-height: 86vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.mo-modal-header {
+  display: flex; align-items: center; padding: 12px 16px;
+  border-bottom: 1px solid var(--parallx-color-border, #444);
+}
+.mo-modal-title { flex: 1; font-weight: 600; font-size: 14px; }
+.mo-modal-close {
+  background: transparent; border: 0; color: inherit; font-size: 22px;
+  cursor: pointer; line-height: 1; padding: 0 6px;
+}
+.mo-modal-footer {
+  display: flex; gap: 8px; padding: 12px 16px;
+  border-top: 1px solid var(--parallx-color-border, #444);
+  align-items: center;
+}
+.mo-modal-footer .mo-clip-status { flex: 1; font-size: 12px; opacity: 0.7; }
+
+.mo-clip-dialog { width: 600px; }
+.mo-clip-preview {
+  display: block; width: 100%; max-height: 240px; background: #000;
+  object-fit: contain;
+}
+.mo-clip-body { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+.mo-clip-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.mo-clip-label {
+  min-width: 80px; font-size: 12px; opacity: 0.85;
+}
+.mo-clip-input {
+  flex: 0 1 120px; padding: 4px 8px; font-size: 12px;
+  background: var(--parallx-color-input-background, #2a2a2a);
+  color: inherit;
+  border: 1px solid var(--parallx-color-border, #444);
+  border-radius: 4px;
+}
+.mo-clip-check { margin: 0 6px 0 0; }
+.mo-clip-length {
+  font-size: 11px; opacity: 0.7; font-variant-numeric: tabular-nums;
+}
+.mo-btn-primary, .mo-btn-secondary {
+  padding: 6px 14px; font-size: 12px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--parallx-color-border, #444);
+}
+.mo-btn-primary {
+  background: var(--parallx-color-accent, #4d8eff); color: #fff; border-color: transparent;
+}
+.mo-btn-primary:disabled { opacity: 0.5; cursor: default; }
+.mo-btn-secondary {
+  background: transparent; color: inherit;
+}
+
+.mo-webp-dialog { width: 600px; }
+.mo-webp-list {
+  flex: 1; overflow-y: auto; padding: 8px 16px;
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 60vh;
+}
+.mo-webp-row {
+  display: grid; grid-template-columns: 1fr auto;
+  grid-template-areas: "name select" "meta select";
+  align-items: center; gap: 4px 12px;
+  padding: 8px; border-radius: 4px;
+  border: 1px solid var(--parallx-color-border, #444);
+}
+.mo-webp-name { grid-area: name; font-size: 13px; font-weight: 500; }
+.mo-webp-meta { grid-area: meta; font-size: 11px; opacity: 0.65; }
+.mo-webp-row select { grid-area: select; }
+.mo-webp-empty { padding: 24px; text-align: center; opacity: 0.6; }
 `;
 
 function moInjectStyles() {
@@ -7791,7 +8008,7 @@ function buildMediaPreview(ctx) {
     return wrap;
   }
   if (ctx.type === 'video') {
-    buildVideoPlayer(wrap, ctx.fullPath);
+    buildVideoPlayer(wrap, ctx.fullPath, ctx);
   } else {
     buildPhotoPreview(wrap, ctx.fullPath);
   }
@@ -7880,89 +8097,379 @@ function buildPhotoPreview(container, fullPath) {
   });
 }
 
-function buildVideoPlayer(container, fullPath) {
+// ─────────────────────────────────────────────────────────────────────────────
+// M59 Phase 1: Custom video player
+// Replaces native <video controls> with a ScreenToGif/YouTube-style player.
+// Features: hover-preview thumbs, A-B loop, in/out trim markers, frame-by-frame
+// stepping, J/K/L hotkeys, speed picker, capture frame, set as cover, trim→export.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function moTimeStr(secs, withMs = false) {
+  if (!Number.isFinite(secs) || secs < 0) secs = 0;
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = Math.floor(secs % 60);
+  const base = h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    : `${m}:${String(s).padStart(2, '0')}`;
+  if (!withMs) return base;
+  const ms = Math.floor((secs - Math.floor(secs)) * 1000);
+  return `${base}.${String(ms).padStart(3, '0')}`;
+}
+
+function buildVideoPlayer(container, fullPath, ctx) {
+  container.classList.add('mo-player');
+  container.tabIndex = 0; // make focusable for keyboard
+
   const video = document.createElement('video');
-  video.controls = true;
   video.preload = 'metadata';
   video.draggable = false;
-
-  const source = document.createElement('source');
-  video.appendChild(source);
-  video.addEventListener('error', () => { video.style.display = 'none'; container.textContent = 'Failed to load video'; });
+  video.controls = false;
+  video.className = 'mo-player-video';
   container.appendChild(video);
-  localFileToUrl(fullPath).then(url => {
-    if (url) { source.src = url; video.load(); }
-    else { video.style.display = 'none'; container.textContent = 'Failed to load video'; }
+
+  // Hidden seek-preview video (separate element so seeking it doesn't disturb playback)
+  const previewVid = document.createElement('video');
+  previewVid.preload = 'metadata';
+  previewVid.muted = true;
+  previewVid.className = 'mo-player-preview-vid';
+  container.appendChild(previewVid);
+
+  // ── Top bar (auto-hide) ──
+  const topBar = moEl('div', 'mo-player-topbar');
+  const titleEl = moEl('div', 'mo-player-title');
+  const filename = (ctx && ctx.primaryFile && ctx.primaryFile.basename) || (fullPath.split(/[\\/]/).pop() || '');
+  titleEl.textContent = filename;
+  const metaEl = moEl('div', 'mo-player-meta');
+  topBar.append(titleEl, metaEl);
+  container.appendChild(topBar);
+
+  // ── Bottom bar (auto-hide) ──
+  const bottomBar = moEl('div', 'mo-player-bottombar');
+  // Progress row
+  const progRow = moEl('div', 'mo-player-progrow');
+  const progress = moEl('div', 'mo-player-progress');
+  const progBuf = moEl('div', 'mo-player-progress-buf');
+  const progPlayed = moEl('div', 'mo-player-progress-played');
+  const inMark = moEl('div', 'mo-player-mark mo-player-mark-in');
+  const outMark = moEl('div', 'mo-player-mark mo-player-mark-out');
+  const loopRange = moEl('div', 'mo-player-loop-range');
+  const progThumb = moEl('div', 'mo-player-progress-thumb');
+  progress.append(progBuf, progPlayed, loopRange, inMark, outMark, progThumb);
+  // Hover preview
+  const hoverWrap = moEl('div', 'mo-player-hover');
+  const hoverCanvas = document.createElement('canvas');
+  hoverCanvas.width = 160; hoverCanvas.height = 90;
+  hoverCanvas.className = 'mo-player-hover-canvas';
+  const hoverTime = moEl('div', 'mo-player-hover-time');
+  hoverWrap.append(hoverCanvas, hoverTime);
+  progRow.append(progress, hoverWrap);
+  bottomBar.appendChild(progRow);
+
+  // Controls row
+  const ctrlRow = moEl('div', 'mo-player-ctrlrow');
+  const mkBtn = (icon, title, onClick) => {
+    const b = moEl('button', 'mo-player-btn', { title });
+    b.innerHTML = moIcon(icon, 14);
+    b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+    return b;
+  };
+
+  const playBtn = mkBtn('play', 'Play / Pause (Space)', () => togglePlay());
+  const skipBackBtn = mkBtn('chevron-left', 'Skip back 5s (J / ←)', () => seekBy(-5));
+  const skipFwdBtn = mkBtn('chevron-right', 'Skip forward 5s (L / →)', () => seekBy(5));
+  const frameBackBtn = mkBtn('debug-step-back', 'Previous frame (,)', () => stepFrame(-1));
+  const frameFwdBtn = mkBtn('debug-step-over', 'Next frame (.)', () => stepFrame(1));
+
+  const timeDisp = moEl('div', 'mo-player-time');
+  timeDisp.textContent = '0:00 / 0:00';
+
+  // Speed picker
+  const speedWrap = moEl('div', 'mo-player-speed');
+  const speedBtn = moEl('button', 'mo-player-btn mo-player-speed-btn', { title: 'Playback speed', textContent: '1×' });
+  const speedMenu = moEl('div', 'mo-player-speed-menu mo-hidden');
+  const speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4];
+  speeds.forEach(s => {
+    const item = moEl('button', 'mo-player-speed-item', { textContent: s + '×' });
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      video.playbackRate = s;
+      speedBtn.textContent = s + '×';
+      speedMenu.classList.add('mo-hidden');
+    });
+    speedMenu.appendChild(item);
   });
+  speedBtn.addEventListener('click', (e) => { e.stopPropagation(); speedMenu.classList.toggle('mo-hidden'); });
+  speedWrap.append(speedBtn, speedMenu);
 
-  // ── Scroll-to-zoom + pan (same behaviour as photo preview) ──
-  let scale = 1;
-  const MIN_SCALE = 1;
-  const MAX_SCALE = 20;
-  const ZOOM_FACTOR = 0.15;
-  let tx = 0, ty = 0;
-
-  function applyTransform() {
-    video.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
-    video.style.transformOrigin = '0 0';
-    container.classList.toggle('mo-preview-zoomed', scale > 1);
+  // Volume
+  const volWrap = moEl('div', 'mo-player-vol');
+  const muteBtn = mkBtn('unmute', 'Mute (M)', () => { video.muted = !video.muted; updateVolIcon(); });
+  const volSlider = document.createElement('input');
+  volSlider.type = 'range'; volSlider.min = '0'; volSlider.max = '1'; volSlider.step = '0.01'; volSlider.value = '1';
+  volSlider.className = 'mo-player-vol-slider';
+  volSlider.addEventListener('input', () => { video.volume = parseFloat(volSlider.value); video.muted = video.volume === 0; updateVolIcon(); });
+  volWrap.append(muteBtn, volSlider);
+  function updateVolIcon() {
+    muteBtn.innerHTML = moIcon(video.muted || video.volume === 0 ? 'mute' : 'unmute', 14);
   }
 
-  container.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const rect = video.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const py = e.clientY - rect.top;
+  // In/out + A-B loop
+  const inBtn = mkBtn('bookmark', 'Set in point ([)', () => setInPoint());
+  const outBtn = mkBtn('bookmark', 'Set out point (])', () => setOutPoint());
+  outBtn.style.transform = 'scaleX(-1)';
+  const loopBtn = mkBtn('refresh', 'Toggle A-B loop', () => toggleLoop());
 
-    const prevScale = scale;
-    if (e.deltaY < 0) {
-      scale = Math.min(MAX_SCALE, scale * (1 + ZOOM_FACTOR));
-    } else {
-      scale = Math.max(MIN_SCALE, scale / (1 + ZOOM_FACTOR));
+  const fsBtn = mkBtn('screen-full', 'Fullscreen (F)', () => toggleFullscreen());
+
+  ctrlRow.append(playBtn, skipBackBtn, frameBackBtn, frameFwdBtn, skipFwdBtn, timeDisp, speedWrap, volWrap, inBtn, outBtn, loopBtn, fsBtn);
+  bottomBar.appendChild(ctrlRow);
+  container.appendChild(bottomBar);
+
+  // ── Right action rail ──
+  const rail = moEl('div', 'mo-player-rail');
+  const captureBtn = moEl('button', 'mo-player-rail-btn', { title: 'Capture frame as photo' });
+  captureBtn.innerHTML = moIcon('device-camera', 14);
+  captureBtn.addEventListener('click', (e) => { e.stopPropagation(); moCaptureFrame(_api, fullPath, video.currentTime, ctx); });
+
+  const coverBtn = moEl('button', 'mo-player-rail-btn', { title: 'Set as cover frame' });
+  coverBtn.innerHTML = moIcon('image', 14);
+  coverBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (!ctx || !ctx.entity || !ctx.entity.checksum) {
+      _api && _api.window.showWarningMessage('Cannot set cover — video has no fingerprint yet.');
+      return;
     }
-
-    tx -= px * (scale / prevScale - 1);
-    ty -= py * (scale / prevScale - 1);
-
-    if (scale <= MIN_SCALE) { tx = 0; ty = 0; scale = MIN_SCALE; }
-    applyTransform();
-  }, { passive: false });
-
-  // Pan via mouse drag when zoomed
-  let dragging = false, dragStartX = 0, dragStartY = 0, startTx = 0, startTy = 0;
-
-  container.addEventListener('mousedown', (e) => {
-    if (scale <= MIN_SCALE) return;
-    dragging = true;
-    dragStartX = e.clientX;
-    dragStartY = e.clientY;
-    startTx = tx;
-    startTy = ty;
-    container.style.cursor = 'grabbing';
-    e.preventDefault();
+    coverBtn.disabled = true;
+    try {
+      const r = await generateVideoCoverFrame(
+        ctx.entity.checksum, fullPath, video.duration || 0, _api, true, video.currentTime,
+        video.videoWidth || 0, video.videoHeight || 0
+      );
+      if (r && r.generated) _api.window.showInformationMessage('Cover frame updated.');
+      else _api.window.showErrorMessage('Failed to update cover frame.');
+    } catch (err) {
+      _api.window.showErrorMessage('Cover update error: ' + (err && err.message || err));
+    } finally { coverBtn.disabled = false; }
   });
 
+  const trimBtn = moEl('button', 'mo-player-rail-btn', { title: 'Trim → export clip / GIF' });
+  trimBtn.innerHTML = moIcon('split-horizontal', 14);
+  trimBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const inT = inPoint != null ? inPoint : 0;
+    const outT = outPoint != null ? outPoint : (video.duration || 0);
+    moOpenClipDialog(_api, fullPath, video.duration || 0, inT, outT);
+  });
+
+  rail.append(captureBtn, coverBtn, trimBtn);
+  container.appendChild(rail);
+
+  // ── State ──
+  let inPoint = null;
+  let outPoint = null;
+  let loopActive = false;
+  let nominalFps = 30; // updated from ffprobe later if available
+
+  // Load video src
+  localFileToUrl(fullPath).then(url => {
+    if (!url) { container.textContent = 'Failed to load video'; return; }
+    video.src = url;
+    previewVid.src = url;
+    video.load();
+  });
+
+  video.addEventListener('error', () => { container.textContent = 'Failed to load video'; });
+
+  video.addEventListener('loadedmetadata', () => {
+    metaEl.textContent = `${video.videoWidth || '?'}×${video.videoHeight || '?'}  ·  ${moTimeStr(video.duration)}`;
+    timeDisp.textContent = `0:00 / ${moTimeStr(video.duration)}`;
+    if (ctx && ctx.entity && ctx.entity.frame_rate) nominalFps = ctx.entity.frame_rate;
+  });
+
+  function setPlayingClass() {
+    container.classList.toggle('mo-player-playing', !video.paused);
+    playBtn.innerHTML = moIcon(video.paused ? 'play' : 'debug-pause', 14);
+  }
+  video.addEventListener('play', setPlayingClass);
+  video.addEventListener('pause', setPlayingClass);
+
+  function refreshTime() {
+    const cur = video.currentTime || 0;
+    const dur = video.duration || 0;
+    timeDisp.textContent = `${moTimeStr(cur)} / ${moTimeStr(dur)}`;
+    if (dur > 0) progPlayed.style.width = ((cur / dur) * 100) + '%';
+    // Update buffered range
+    try {
+      if (video.buffered.length > 0 && dur > 0) {
+        const end = video.buffered.end(video.buffered.length - 1);
+        progBuf.style.width = ((end / dur) * 100) + '%';
+      }
+    } catch {}
+    // A-B loop logic
+    if (loopActive && inPoint != null && outPoint != null && cur >= outPoint) {
+      video.currentTime = inPoint;
+    }
+  }
+  video.addEventListener('timeupdate', refreshTime);
+  video.addEventListener('progress', refreshTime);
+
+  function togglePlay() {
+    if (video.paused) video.play().catch(() => {});
+    else video.pause();
+  }
+
+  function seekBy(delta) {
+    const dur = video.duration || 0;
+    video.currentTime = Math.max(0, Math.min(dur, (video.currentTime || 0) + delta));
+  }
+
+  function stepFrame(dir) {
+    video.pause();
+    const step = 1 / Math.max(1, nominalFps);
+    seekBy(dir * step);
+  }
+
+  function setInPoint() {
+    inPoint = video.currentTime;
+    if (outPoint != null && inPoint > outPoint) outPoint = null;
+    refreshMarks();
+  }
+  function setOutPoint() {
+    outPoint = video.currentTime;
+    if (inPoint != null && outPoint < inPoint) inPoint = null;
+    refreshMarks();
+  }
+  function toggleLoop() {
+    if (inPoint == null || outPoint == null) {
+      _api && _api.window.showWarningMessage('Set in ([) and out (]) points first.');
+      return;
+    }
+    loopActive = !loopActive;
+    loopBtn.classList.toggle('mo-player-btn-active', loopActive);
+  }
+  function refreshMarks() {
+    const dur = video.duration || 0;
+    if (inPoint != null && dur > 0) { inMark.style.left = ((inPoint / dur) * 100) + '%'; inMark.style.display = 'block'; }
+    else inMark.style.display = 'none';
+    if (outPoint != null && dur > 0) { outMark.style.left = ((outPoint / dur) * 100) + '%'; outMark.style.display = 'block'; }
+    else outMark.style.display = 'none';
+    if (inPoint != null && outPoint != null && dur > 0) {
+      const a = (inPoint / dur) * 100;
+      const b = (outPoint / dur) * 100;
+      loopRange.style.left = a + '%';
+      loopRange.style.width = (b - a) + '%';
+      loopRange.style.display = 'block';
+    } else loopRange.style.display = 'none';
+  }
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement === container) document.exitFullscreen();
+    else container.requestFullscreen().catch(() => {});
+  }
+
+  // ── Progress bar interaction ──
+  function pctFromEvent(e) {
+    const r = progress.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+  }
+  progress.addEventListener('click', (e) => {
+    const dur = video.duration || 0;
+    if (dur > 0) video.currentTime = pctFromEvent(e) * dur;
+  });
+
+  let scrubbing = false;
+  progress.addEventListener('mousedown', (e) => { scrubbing = true; e.preventDefault(); });
   window.addEventListener('mousemove', (e) => {
-    if (!dragging) return;
-    tx = startTx + (e.clientX - dragStartX);
-    ty = startTy + (e.clientY - dragStartY);
-    applyTransform();
+    if (!scrubbing) return;
+    const dur = video.duration || 0;
+    if (dur > 0) video.currentTime = pctFromEvent(e) * dur;
+  });
+  window.addEventListener('mouseup', () => { scrubbing = false; });
+
+  // Hover preview thumbnail
+  let previewSeekToken = 0;
+  progress.addEventListener('mousemove', (e) => {
+    const dur = video.duration || 0;
+    if (dur <= 0) return;
+    const pct = pctFromEvent(e);
+    const t = pct * dur;
+    hoverWrap.style.display = 'block';
+    const r = progress.getBoundingClientRect();
+    hoverWrap.style.left = (e.clientX - r.left) + 'px';
+    hoverTime.textContent = moTimeStr(t);
+    progThumb.style.left = (pct * 100) + '%';
+    progThumb.style.display = 'block';
+
+    const myToken = ++previewSeekToken;
+    try { previewVid.currentTime = t; } catch {}
+    const onSeeked = () => {
+      previewVid.removeEventListener('seeked', onSeeked);
+      if (myToken !== previewSeekToken) return;
+      try {
+        const cctx = hoverCanvas.getContext('2d');
+        cctx.drawImage(previewVid, 0, 0, hoverCanvas.width, hoverCanvas.height);
+      } catch {}
+    };
+    previewVid.addEventListener('seeked', onSeeked);
+  });
+  progress.addEventListener('mouseleave', () => {
+    hoverWrap.style.display = 'none';
+    progThumb.style.display = 'none';
   });
 
-  window.addEventListener('mouseup', () => {
-    if (!dragging) return;
-    dragging = false;
-    container.style.cursor = '';
-  });
+  // ── Click-to-pause / dblclick fullscreen on video itself ──
+  video.addEventListener('click', () => togglePlay());
+  video.addEventListener('dblclick', () => toggleFullscreen());
 
-  // Double-click to reset zoom
-  container.addEventListener('dblclick', () => {
-    scale = MIN_SCALE;
-    tx = 0;
-    ty = 0;
-    applyTransform();
-  });
+  // ── Auto-hide top/bottom bars after 2.5s idle ──
+  let hideTimer = null;
+  function showChrome() {
+    container.classList.remove('mo-player-chrome-hidden');
+    if (hideTimer) clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+      if (!video.paused) container.classList.add('mo-player-chrome-hidden');
+    }, 2500);
+  }
+  container.addEventListener('mousemove', showChrome);
+  container.addEventListener('mouseleave', () => { if (!video.paused) container.classList.add('mo-player-chrome-hidden'); });
+  showChrome();
+
+  // ── Keyboard shortcuts (only when player has focus or is fullscreen) ──
+  function isFocused() {
+    return document.activeElement === container || document.fullscreenElement === container;
+  }
+  const keyHandler = (e) => {
+    if (!isFocused()) return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    let handled = true;
+    switch (e.key) {
+      case ' ': case 'k': case 'K': togglePlay(); break;
+      case 'j': case 'J': seekBy(-10); break;
+      case 'l': case 'L': seekBy(10); break;
+      case 'ArrowLeft': seekBy(e.shiftKey ? -1 : -5); break;
+      case 'ArrowRight': seekBy(e.shiftKey ? 1 : 5); break;
+      case ',': stepFrame(-1); break;
+      case '.': stepFrame(1); break;
+      case '[': setInPoint(); break;
+      case ']': setOutPoint(); break;
+      case 'm': case 'M': video.muted = !video.muted; updateVolIcon(); break;
+      case 'f': case 'F': toggleFullscreen(); break;
+      case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
+        if (video.duration) video.currentTime = video.duration * (parseInt(e.key, 10) / 10);
+        break;
+      default: handled = false;
+    }
+    if (handled) { e.preventDefault(); e.stopPropagation(); }
+  };
+  container.addEventListener('keydown', keyHandler);
+
+  // ── Click container to focus for keyboard ──
+  container.addEventListener('mousedown', () => container.focus());
+
+  updateVolIcon();
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 28: DETAIL EDITOR — DETAILS TAB
@@ -9575,6 +10082,521 @@ function showBulkDeleteDialog(state, api, onComplete) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 10.5: M59 PHASE 1 — CLIP/GIF EXPORT, FRAME CAPTURE, WEBP CONVERSION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Frame capture: extract still from video, save next to source, link to video ──
+async function moCaptureFrame(api, videoPath, timestampSec, ctx) {
+  if (!_toolPaths.ffmpeg) {
+    api.window.showErrorMessage('ffmpeg not available — cannot capture frames.');
+    return;
+  }
+  if (!ctx || !ctx.entity || !ctx.entity.id) {
+    api.window.showErrorMessage('Cannot capture frame — video context missing.');
+    return;
+  }
+  const sep = _isWindows ? '\\' : '/';
+  const lastSep = videoPath.lastIndexOf(sep);
+  const dir = videoPath.slice(0, lastSep);
+  const base = videoPath.slice(lastSep + 1).replace(/\.[^.]+$/, '');
+  const ts = moTimeStr(timestampSec, true).replace(/[:.]/g, '-');
+  const outPath = `${dir}${sep}${base}_frame_${ts}.jpg`;
+
+  const cmd = [
+    shellQuote(_toolPaths.ffmpeg),
+    '-hide_banner', '-loglevel', 'error', '-y',
+    '-ss', String(timestampSec),
+    '-i', shellQuote(videoPath),
+    '-frames:v', '1',
+    '-q:v', '2',
+    shellQuote(outPath),
+  ].join(' ');
+  try {
+    const r = await window.parallxElectron.terminal.exec(cmd, { timeout: 30000 });
+    if (r.exitCode !== 0) {
+      api.window.showErrorMessage('Frame capture failed: ' + (r.stderr || 'ffmpeg error'));
+      return;
+    }
+    api.window.showInformationMessage('Frame captured: ' + outPath.split(sep).pop());
+    // Trigger a delta-scan of the folder so the new frame becomes a Photo entry.
+    // The mo_video_frames link will be populated by the watcher in a follow-up
+    // (Phase 1 keeps it simple — the user's filesystem now has the frame).
+  } catch (err) {
+    api.window.showErrorMessage('Frame capture error: ' + (err && err.message || err));
+  }
+}
+
+// ─── Clip / GIF export dialog ──────────────────────────────────────────────────
+function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
+  if (!_toolPaths.ffmpeg) {
+    api.window.showErrorMessage('ffmpeg not available — cannot export clips.');
+    return;
+  }
+  if (!duration || duration <= 0) {
+    api.window.showErrorMessage('Video duration unknown — cannot export.');
+    return;
+  }
+
+  const overlay = moEl('div', 'mo-modal-overlay');
+  const dialog = moEl('div', 'mo-modal mo-clip-dialog');
+  overlay.appendChild(dialog);
+
+  const header = moEl('div', 'mo-modal-header');
+  header.appendChild(moEl('div', 'mo-modal-title', { textContent: 'Export Clip / GIF' }));
+  const closeBtn = moEl('button', 'mo-modal-close', { textContent: '×' });
+  closeBtn.addEventListener('click', () => overlay.remove());
+  header.appendChild(closeBtn);
+  dialog.appendChild(header);
+
+  // Preview video (loops over selected range)
+  const preview = document.createElement('video');
+  preview.className = 'mo-clip-preview';
+  preview.muted = true;
+  preview.loop = false;
+  preview.controls = false;
+  localFileToUrl(videoPath).then(u => { if (u) preview.src = u; });
+  dialog.appendChild(preview);
+
+  const body = moEl('div', 'mo-clip-body');
+  dialog.appendChild(body);
+
+  // ── In/Out controls ──
+  const ioRow = moEl('div', 'mo-clip-row');
+  ioRow.appendChild(moEl('label', 'mo-clip-label', { textContent: 'In' }));
+  const inInput = document.createElement('input');
+  inInput.type = 'number'; inInput.step = '0.01'; inInput.min = '0'; inInput.max = String(duration);
+  inInput.value = String(Math.max(0, initialIn || 0));
+  inInput.className = 'mo-clip-input';
+  ioRow.appendChild(inInput);
+  ioRow.appendChild(moEl('label', 'mo-clip-label', { textContent: 'Out' }));
+  const outInput = document.createElement('input');
+  outInput.type = 'number'; outInput.step = '0.01'; outInput.min = '0'; outInput.max = String(duration);
+  outInput.value = String(initialOut > 0 ? initialOut : duration);
+  outInput.className = 'mo-clip-input';
+  ioRow.appendChild(outInput);
+  const lengthLabel = moEl('span', 'mo-clip-length');
+  ioRow.appendChild(lengthLabel);
+  body.appendChild(ioRow);
+
+  // ── Format picker ──
+  const fmtRow = moEl('div', 'mo-clip-row');
+  fmtRow.appendChild(moEl('label', 'mo-clip-label', { textContent: 'Format' }));
+  const fmtSel = document.createElement('select');
+  fmtSel.className = 'mo-clip-input';
+  for (const f of ['mp4', 'webm', 'gif']) {
+    const o = document.createElement('option'); o.value = f; o.textContent = f.toUpperCase();
+    if (f === 'mp4') o.selected = true;
+    fmtSel.appendChild(o);
+  }
+  fmtRow.appendChild(fmtSel);
+  body.appendChild(fmtRow);
+
+  // ── FPS ──
+  const fpsRow = moEl('div', 'mo-clip-row');
+  fpsRow.appendChild(moEl('label', 'mo-clip-label', { textContent: 'FPS' }));
+  const fpsSel = document.createElement('select');
+  fpsSel.className = 'mo-clip-input';
+  for (const f of [10, 15, 24, 30, 60]) {
+    const o = document.createElement('option'); o.value = String(f); o.textContent = String(f);
+    if (f === 30) o.selected = true;
+    fpsSel.appendChild(o);
+  }
+  fpsRow.appendChild(fpsSel);
+  body.appendChild(fpsRow);
+
+  // ── Size scale ──
+  const sizeRow = moEl('div', 'mo-clip-row');
+  sizeRow.appendChild(moEl('label', 'mo-clip-label', { textContent: 'Scale (%)' }));
+  const sizeInput = document.createElement('input');
+  sizeInput.type = 'number'; sizeInput.min = '10'; sizeInput.max = '200'; sizeInput.value = '100'; sizeInput.step = '5';
+  sizeInput.className = 'mo-clip-input';
+  sizeRow.appendChild(sizeInput);
+  body.appendChild(sizeRow);
+
+  // ── Speed ──
+  const speedRow = moEl('div', 'mo-clip-row');
+  speedRow.appendChild(moEl('label', 'mo-clip-label', { textContent: 'Speed' }));
+  const speedSel = document.createElement('select');
+  speedSel.className = 'mo-clip-input';
+  for (const s of [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4]) {
+    const o = document.createElement('option'); o.value = String(s); o.textContent = s + '×';
+    if (s === 1) o.selected = true;
+    speedSel.appendChild(o);
+  }
+  speedRow.appendChild(speedSel);
+  body.appendChild(speedRow);
+
+  // ── Reverse ──
+  const revRow = moEl('div', 'mo-clip-row');
+  const revChk = document.createElement('input');
+  revChk.type = 'checkbox'; revChk.id = 'mo-clip-rev'; revChk.className = 'mo-clip-check';
+  revRow.appendChild(revChk);
+  const revLabel = moEl('label', 'mo-clip-label', { textContent: 'Reverse' });
+  revLabel.htmlFor = 'mo-clip-rev';
+  revRow.appendChild(revLabel);
+  body.appendChild(revRow);
+
+  // ── GIF-only quality controls (hidden unless format=gif) ──
+  const gifBox = moEl('div', 'mo-clip-row mo-clip-gif-only');
+  gifBox.appendChild(moEl('label', 'mo-clip-label', { textContent: 'Dither' }));
+  const ditherSel = document.createElement('select');
+  ditherSel.className = 'mo-clip-input';
+  for (const d of [['none', 'None'], ['bayer', 'Bayer'], ['floyd_steinberg', 'Floyd-Steinberg']]) {
+    const o = document.createElement('option'); o.value = d[0]; o.textContent = d[1];
+    if (d[0] === 'bayer') o.selected = true;
+    ditherSel.appendChild(o);
+  }
+  gifBox.appendChild(ditherSel);
+  gifBox.appendChild(moEl('label', 'mo-clip-label', { textContent: 'Loop' }));
+  const loopInput = document.createElement('input');
+  loopInput.type = 'number'; loopInput.min = '0'; loopInput.max = '100'; loopInput.value = '0';
+  loopInput.className = 'mo-clip-input'; loopInput.title = '0 = infinite';
+  gifBox.appendChild(loopInput);
+  body.appendChild(gifBox);
+
+  // ── MP4/WebM CRF ──
+  const crfBox = moEl('div', 'mo-clip-row mo-clip-vid-only');
+  crfBox.appendChild(moEl('label', 'mo-clip-label', { textContent: 'Quality (CRF)' }));
+  const crfInput = document.createElement('input');
+  crfInput.type = 'number'; crfInput.min = '15'; crfInput.max = '35'; crfInput.value = '23';
+  crfInput.className = 'mo-clip-input'; crfInput.title = 'Lower = better quality, larger file';
+  crfBox.appendChild(crfInput);
+  body.appendChild(crfBox);
+
+  function syncFormatVisibility() {
+    const isGif = fmtSel.value === 'gif';
+    gifBox.style.display = isGif ? '' : 'none';
+    crfBox.style.display = isGif ? 'none' : '';
+  }
+  fmtSel.addEventListener('change', syncFormatVisibility);
+  syncFormatVisibility();
+
+  // ── Length display + preview loop ──
+  function updateLength() {
+    const a = Math.max(0, parseFloat(inInput.value) || 0);
+    const b = Math.min(duration, parseFloat(outInput.value) || duration);
+    const len = Math.max(0, b - a);
+    lengthLabel.textContent = `(${len.toFixed(2)}s)`;
+  }
+  inInput.addEventListener('input', updateLength);
+  outInput.addEventListener('input', updateLength);
+  updateLength();
+
+  let previewTimer = null;
+  function loopPreview() {
+    if (previewTimer) clearInterval(previewTimer);
+    const a = Math.max(0, parseFloat(inInput.value) || 0);
+    const b = Math.min(duration, parseFloat(outInput.value) || duration);
+    if (b <= a) return;
+    try { preview.currentTime = a; preview.play().catch(() => {}); } catch {}
+    previewTimer = setInterval(() => {
+      if (preview.currentTime >= b) {
+        try { preview.currentTime = a; preview.play().catch(() => {}); } catch {}
+      }
+    }, 200);
+  }
+  preview.addEventListener('loadedmetadata', loopPreview);
+  inInput.addEventListener('change', loopPreview);
+  outInput.addEventListener('change', loopPreview);
+
+  // ── Footer ──
+  const footer = moEl('div', 'mo-modal-footer');
+  const cancelBtn = moEl('button', 'mo-btn-secondary', { textContent: 'Cancel' });
+  cancelBtn.addEventListener('click', () => { if (previewTimer) clearInterval(previewTimer); overlay.remove(); });
+  const exportBtn = moEl('button', 'mo-btn-primary', { textContent: 'Export' });
+  const status = moEl('div', 'mo-clip-status');
+  footer.append(status, cancelBtn, exportBtn);
+  dialog.appendChild(footer);
+
+  exportBtn.addEventListener('click', async () => {
+    const a = Math.max(0, parseFloat(inInput.value) || 0);
+    const b = Math.min(duration, parseFloat(outInput.value) || duration);
+    if (b <= a) { api.window.showWarningMessage('Out point must be after in point.'); return; }
+
+    exportBtn.disabled = true; cancelBtn.disabled = true;
+    status.textContent = 'Exporting…';
+
+    try {
+      const result = await moExportClip(api, {
+        videoPath, inPoint: a, outPoint: b,
+        format: fmtSel.value,
+        fps: parseInt(fpsSel.value, 10),
+        scalePct: Math.max(10, parseInt(sizeInput.value, 10) || 100),
+        speed: parseFloat(speedSel.value),
+        reverse: revChk.checked,
+        crf: parseInt(crfInput.value, 10) || 23,
+        dither: ditherSel.value,
+        loops: parseInt(loopInput.value, 10) || 0,
+      });
+      if (previewTimer) clearInterval(previewTimer);
+      overlay.remove();
+      api.window.showInformationMessage('Exported: ' + result.outPath);
+    } catch (err) {
+      status.textContent = '';
+      api.window.showErrorMessage('Export failed: ' + (err && err.message || err));
+      exportBtn.disabled = false; cancelBtn.disabled = false;
+    }
+  });
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) { if (previewTimer) clearInterval(previewTimer); overlay.remove(); }
+  });
+  document.body.appendChild(overlay);
+}
+
+async function moExportClip(api, opts) {
+  const sep = _isWindows ? '\\' : '/';
+  const lastSep = opts.videoPath.lastIndexOf(sep);
+  const dir = opts.videoPath.slice(0, lastSep);
+  const base = opts.videoPath.slice(lastSep + 1).replace(/\.[^.]+$/, '');
+  const tag = `clip_${Math.floor(opts.inPoint)}-${Math.floor(opts.outPoint)}`;
+  const outExt = opts.format === 'mp4' ? 'mp4' : (opts.format === 'webm' ? 'webm' : 'gif');
+  let outPath = `${dir}${sep}${base}_${tag}.${outExt}`;
+
+  // Avoid clobbering existing files by adding a counter
+  let counter = 1;
+  while (await window.parallxElectron.fs.exists(outPath)) {
+    outPath = `${dir}${sep}${base}_${tag}_${counter}.${outExt}`;
+    counter++;
+  }
+
+  const ff = shellQuote(_toolPaths.ffmpeg);
+  const startSs = String(opts.inPoint);
+  const len = String(Math.max(0.01, opts.outPoint - opts.inPoint));
+
+  // Build filter chain
+  const filters = [];
+  filters.push(`fps=${opts.fps}`);
+  if (opts.scalePct !== 100) {
+    const s = (opts.scalePct / 100).toFixed(3);
+    filters.push(`scale=trunc(iw*${s}/2)*2:trunc(ih*${s}/2)*2`);
+  } else {
+    // ensure even dims for video formats
+    if (opts.format !== 'gif') filters.push('scale=trunc(iw/2)*2:trunc(ih/2)*2');
+  }
+  if (opts.speed && opts.speed !== 1) {
+    // setpts inverse: 0.5x speed ⇒ setpts=PTS/0.5
+    filters.push(`setpts=PTS/${opts.speed}`);
+  }
+  if (opts.reverse) filters.push('reverse');
+
+  if (opts.format === 'gif') {
+    // Two-pass palette
+    const tmpPalette = `${dir}${sep}.mo_palette_${Date.now()}.png`;
+    const vfA = filters.concat(['palettegen=stats_mode=diff']).join(',');
+    const cmd1 = [
+      ff, '-hide_banner', '-loglevel', 'error', '-y',
+      '-ss', startSs, '-t', len, '-i', shellQuote(opts.videoPath),
+      '-vf', shellQuote(vfA),
+      shellQuote(tmpPalette),
+    ].join(' ');
+    const r1 = await window.parallxElectron.terminal.exec(cmd1, { timeout: 600000 });
+    if (r1.exitCode !== 0) throw new Error('palettegen: ' + (r1.stderr || 'unknown'));
+
+    const dither = opts.dither || 'bayer';
+    const vfB = filters.join(',') + `[x];[x][1:v]paletteuse=dither=${dither}`;
+    const cmd2 = [
+      ff, '-hide_banner', '-loglevel', 'error', '-y',
+      '-ss', startSs, '-t', len, '-i', shellQuote(opts.videoPath),
+      '-i', shellQuote(tmpPalette),
+      '-lavfi', shellQuote(vfB),
+      '-loop', String(opts.loops || 0),
+      shellQuote(outPath),
+    ].join(' ');
+    const r2 = await window.parallxElectron.terminal.exec(cmd2, { timeout: 600000 });
+    await window.parallxElectron.fs.delete(tmpPalette).catch(() => {});
+    if (r2.exitCode !== 0) throw new Error('paletteuse: ' + (r2.stderr || 'unknown'));
+  } else {
+    const vid = opts.format === 'mp4'
+      ? ['-c:v', 'libx264', '-preset', 'medium', '-crf', String(opts.crf), '-pix_fmt', 'yuv420p', '-movflags', '+faststart']
+      : ['-c:v', 'libvpx-vp9', '-crf', String(opts.crf), '-b:v', '0', '-row-mt', '1'];
+    const cmd = [
+      ff, '-hide_banner', '-loglevel', 'error', '-y',
+      '-ss', startSs, '-t', len, '-i', shellQuote(opts.videoPath),
+      '-vf', shellQuote(filters.join(',')),
+      ...vid,
+      // strip audio if reversed (audio reverse is rarely desired) or speed != 1 (atempo handles 0.5-2 only)
+      (opts.reverse || opts.speed !== 1) ? '-an' : '-c:a',
+      (opts.reverse || opts.speed !== 1) ? '' : 'aac',
+      shellQuote(outPath),
+    ].filter(Boolean).join(' ');
+    const r = await window.parallxElectron.terminal.exec(cmd, { timeout: 1800000 });
+    if (r.exitCode !== 0) throw new Error(r.stderr || 'ffmpeg failed');
+  }
+
+  return { outPath };
+}
+
+// ─── WebP conversion review + bulk convert ────────────────────────────────────
+function moQuarantineDir(api) {
+  const folders = api.workspace.workspaceFolders;
+  if (!folders || folders.length === 0) return null;
+  const wsPath = uriToFsPath(folders[0].uri);
+  const sep = _isWindows ? '\\' : '/';
+  return wsPath + sep + '.parallx/extensions/media-organizer/converted-originals'.replace(/\//g, sep);
+}
+
+async function moPurgeQuarantine(api) {
+  const dir = moQuarantineDir(api);
+  if (!dir) return;
+  const exists = await window.parallxElectron.fs.exists(dir);
+  if (!exists) return;
+  try {
+    const list = await window.parallxElectron.fs.readdir(dir);
+    if (!list || list.error) return;
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    for (const e of (list.entries || [])) {
+      if (!e || !/^\d{4}-\d{2}-\d{2}$/.test(e.name)) continue;
+      if (e.mtime && e.mtime < cutoff) {
+        const subPath = dir + (_isWindows ? '\\' : '/') + e.name;
+        await window.parallxElectron.fs.delete(subPath).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.warn('[MediaOrganizer] quarantine purge failed:', err);
+  }
+}
+
+async function moOpenWebPReviewDialog(api) {
+  const rows = await db.all(
+    `SELECT f.id, f.basename, f.size, fl.path AS folder_path
+     FROM mo_files f
+     LEFT JOIN mo_folders fl ON fl.id = f.folder_id
+     WHERE f.needs_conversion = 1 AND f.converted_at IS NULL
+     ORDER BY f.basename ASC`
+  );
+
+  const overlay = moEl('div', 'mo-modal-overlay');
+  const dialog = moEl('div', 'mo-modal mo-webp-dialog');
+  overlay.appendChild(dialog);
+
+  const header = moEl('div', 'mo-modal-header');
+  header.appendChild(moEl('div', 'mo-modal-title', { textContent: `Animated WebP review (${rows.length})` }));
+  const closeBtn = moEl('button', 'mo-modal-close', { textContent: '×' });
+  closeBtn.addEventListener('click', () => overlay.remove());
+  header.appendChild(closeBtn);
+  dialog.appendChild(header);
+
+  const list = moEl('div', 'mo-webp-list');
+  if (rows.length === 0) {
+    list.appendChild(moEl('div', 'mo-webp-empty', { textContent: 'No animated WebP files pending review.' }));
+  }
+  const choices = new Map(); // fileId → 'mp4' | 'gif' | 'skip'
+  for (const r of rows) {
+    const row = moEl('div', 'mo-webp-row');
+    const label = moEl('div', 'mo-webp-name', { textContent: r.basename });
+    const meta = moEl('div', 'mo-webp-meta', { textContent: `${(r.size / 1024).toFixed(0)} KB · ${r.folder_path || ''}` });
+    const sel = document.createElement('select');
+    sel.className = 'mo-clip-input';
+    for (const opt of [['mp4', 'Convert to MP4'], ['gif', 'Convert to GIF'], ['skip', 'Skip']]) {
+      const o = document.createElement('option'); o.value = opt[0]; o.textContent = opt[1];
+      if (opt[0] === 'mp4') o.selected = true;
+      sel.appendChild(o);
+    }
+    choices.set(r.id, 'mp4');
+    sel.addEventListener('change', () => choices.set(r.id, sel.value));
+    row.append(label, meta, sel);
+    list.appendChild(row);
+  }
+  dialog.appendChild(list);
+
+  const footer = moEl('div', 'mo-modal-footer');
+  const cancelBtn = moEl('button', 'mo-btn-secondary', { textContent: 'Cancel' });
+  cancelBtn.addEventListener('click', () => overlay.remove());
+  const goBtn = moEl('button', 'mo-btn-primary', { textContent: 'Convert all' });
+  const status = moEl('div', 'mo-clip-status');
+  footer.append(status, cancelBtn, goBtn);
+  dialog.appendChild(footer);
+
+  goBtn.addEventListener('click', async () => {
+    goBtn.disabled = true; cancelBtn.disabled = true;
+    let done = 0; let failed = 0;
+    for (const [fileId, target] of choices) {
+      if (target === 'skip') {
+        await db.run('UPDATE mo_files SET conversion_target = ?, needs_conversion = 0 WHERE id = ?', ['skip', fileId]);
+        continue;
+      }
+      status.textContent = `Converting ${++done}/${rows.length}…`;
+      try {
+        await moConvertWebP(api, fileId, target);
+      } catch (err) {
+        failed++;
+        console.error('[MediaOrganizer] webp convert failed:', err);
+      }
+    }
+    overlay.remove();
+    api.window.showInformationMessage(
+      failed === 0 ? `Converted ${rows.length - failed} file(s).` : `Converted ${rows.length - failed}, ${failed} failed.`
+    );
+  });
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+async function moConvertWebP(api, fileId, target) {
+  if (!_toolPaths.ffmpeg) throw new Error('ffmpeg not available');
+  const fileRow = await db.get(
+    `SELECT f.id, f.basename, f.folder_id, fl.path AS folder_path
+     FROM mo_files f LEFT JOIN mo_folders fl ON fl.id = f.folder_id
+     WHERE f.id = ?`, [fileId]
+  );
+  if (!fileRow || !fileRow.folder_path) throw new Error('file not found');
+  const sep = _isWindows ? '\\' : '/';
+  const srcPath = fileRow.folder_path + sep + fileRow.basename;
+  const baseName = fileRow.basename.replace(/\.webp$/i, '');
+  const outPath = fileRow.folder_path + sep + baseName + '.' + target;
+
+  const ff = shellQuote(_toolPaths.ffmpeg);
+  let cmd;
+  if (target === 'mp4') {
+    cmd = [
+      ff, '-hide_banner', '-loglevel', 'error', '-y',
+      '-i', shellQuote(srcPath),
+      '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
+      '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+      '-vf', shellQuote('scale=trunc(iw/2)*2:trunc(ih/2)*2'),
+      shellQuote(outPath),
+    ].join(' ');
+  } else {
+    // GIF — use a single-pass conversion (palette generation baked in via split filter)
+    const vf = "split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer";
+    cmd = [
+      ff, '-hide_banner', '-loglevel', 'error', '-y',
+      '-i', shellQuote(srcPath),
+      '-lavfi', shellQuote(vf),
+      '-loop', '0',
+      shellQuote(outPath),
+    ].join(' ');
+  }
+  const r = await window.parallxElectron.terminal.exec(cmd, { timeout: 600000 });
+  if (r.exitCode !== 0) throw new Error('ffmpeg: ' + (r.stderr || 'failed'));
+
+  // Move original to quarantine
+  const today = new Date().toISOString().slice(0, 10);
+  const quarantineRoot = moQuarantineDir(api);
+  if (!quarantineRoot) throw new Error('No workspace open');
+  const quarantineDir = quarantineRoot + sep + today;
+  await window.parallxElectron.fs.mkdir(quarantineDir);
+  const quarantinePath = quarantineDir + sep + fileRow.basename;
+  // Copy original then delete
+  const readResult = await window.parallxElectron.fs.readFile(srcPath);
+  if (!readResult.error) {
+    await window.parallxElectron.fs.writeFile(quarantinePath, readResult.content, readResult.encoding || 'base64');
+  }
+  await window.parallxElectron.fs.delete(srcPath).catch(() => {});
+
+  // Update DB row to point at new file
+  await db.run(
+    `UPDATE mo_files
+     SET basename = ?, conversion_target = ?, needs_conversion = 0,
+         converted_from = ?, converted_at = datetime('now')
+     WHERE id = ?`,
+    [baseName + '.' + target, target, srcPath, fileId]
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 11: ACTIVATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -9778,6 +10800,14 @@ export async function activate(api, context) {
       });
     })
   );
+
+  // M59 P1: Review animated WebP files
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.reviewWebP', () => moOpenWebPReviewDialog(api))
+  );
+
+  // M59 P1: Purge expired quarantine (>30d)
+  moPurgeQuarantine(api).catch(() => {});
 
   console.log('[MediaOrganizer] Activated — D1-D8 ready (data, scan, thumbnails, tags, grid, filter, detail, albums)');
 
