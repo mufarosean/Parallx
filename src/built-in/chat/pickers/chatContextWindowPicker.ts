@@ -44,7 +44,7 @@ export class ChatContextWindowPicker extends Disposable {
   constructor(container: HTMLElement, private readonly _callbacks: IContextWindowPickerCallbacks) {
     super();
 
-    this._root = $('div.parallx-chat-context-picker');
+    this._root = $('div.parallx-chat-ctx-picker');
     container.appendChild(this._root);
     this._register(toDisposable(() => this._root.remove()));
 
