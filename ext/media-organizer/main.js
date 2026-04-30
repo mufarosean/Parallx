@@ -2814,6 +2814,12 @@ async function drainWatcherQueue() {
       console.log(`[MediaOrganizer] Auto-scan: ${created} new, ${updated} updated, ${deleted} removed`);
       _notifySidebarRefresh();
     }
+    // M59: process any WebP files queued during this watcher batch
+    if (_newWebPConversions.length > 0 && _api) {
+      moAutoConvertWebPAfterScan(_api).catch((err) =>
+        console.warn('[MediaOrganizer] watcher webp auto-convert failed:', err)
+      );
+    }
   } finally {
     _watcherProcessing = false;
     // If more events arrived while processing, drain again
