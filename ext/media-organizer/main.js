@@ -4622,9 +4622,9 @@ const MO_CSS = `
 }
 .mo-timeline-section-header {
   position: sticky; top: 0;
-  background: var(--parallx-color-background, #1f1f1f);
+  background: var(--vscode-editor-background, #1f1f1f);
   font-weight: 600; font-size: 13px; padding: 10px 4px; margin-top: 8px;
-  border-bottom: 1px solid var(--parallx-color-border, #444);
+  border-bottom: 1px solid var(--vscode-panel-border, #444);
   z-index: 1;
 }
 .mo-timeline-grid {
@@ -4634,7 +4634,7 @@ const MO_CSS = `
 }
 .mo-timeline-tile {
   position: relative; aspect-ratio: 1 / 1;
-  background: var(--parallx-color-input-background, #2a2a2a);
+  background: var(--vscode-input-background, #2a2a2a);
   border-radius: 4px; cursor: pointer; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
   border: 1px solid transparent;
@@ -5999,16 +5999,16 @@ const MO_CSS = `
   z-index: 9999;
 }
 .mo-modal {
-  background: var(--parallx-color-background, #1f1f1f);
-  color: var(--parallx-color-foreground, #ddd);
-  border: 1px solid var(--parallx-color-border, #444);
-  border-radius: 8px; min-width: 480px; max-width: 720px; max-height: 86vh;
+  background: var(--vscode-editor-background, #1f1f1f);
+  color: var(--vscode-foreground, #ddd);
+  border: 1px solid var(--vscode-panel-border, #444);
+  border-radius: 8px; min-width: 480px; max-width: 720px; max-height: 92vh;
   display: flex; flex-direction: column;
   box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 }
 .mo-modal-header {
   display: flex; align-items: center; padding: 12px 16px;
-  border-bottom: 1px solid var(--parallx-color-border, #444);
+  border-bottom: 1px solid var(--vscode-panel-border, #444);
 }
 .mo-modal-title { flex: 1; font-weight: 600; font-size: 14px; }
 .mo-modal-close {
@@ -6017,23 +6017,167 @@ const MO_CSS = `
 }
 .mo-modal-footer {
   display: flex; gap: 8px; padding: 12px 16px;
-  border-top: 1px solid var(--parallx-color-border, #444);
+  border-top: 1px solid var(--vscode-panel-border, #444);
   align-items: center;
 }
 .mo-modal-footer .mo-clip-status { flex: 1; font-size: 12px; opacity: 0.7; }
 
-.mo-clip-dialog { width: 800px; max-width: 96vw; }
+/* ── M59 P4: large two-column clip dialog ── */
+.mo-clip-dialog { width: 1180px; max-width: 96vw; }
+.mo-clip-body {
+  padding: 12px 16px; display: flex; flex-direction: column; gap: 10px;
+  overflow: hidden;
+}
+.mo-clip-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 14px;
+  align-items: start;
+}
+.mo-clip-stage {
+  position: relative;
+  background: #000;
+  border-radius: 4px;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  max-height: 60vh;
+  user-select: none;
+}
 .mo-clip-preview {
-  display: block; width: 100%; max-height: 240px; background: #000;
+  display: block; width: 100%; height: 100%; background: #000;
   object-fit: contain;
 }
-.mo-clip-body { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+.mo-clip-stage-hint {
+  position: absolute; left: 8px; bottom: 8px;
+  font-size: 11px; padding: 3px 8px; border-radius: 3px;
+  background: rgba(0,0,0,0.55); color: #eee;
+  pointer-events: none; opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+.mo-clip-stage-time {
+  position: absolute; right: 8px; bottom: 8px;
+  font-size: 11px; padding: 3px 8px; border-radius: 3px;
+  background: rgba(0,0,0,0.55); color: #eee;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Crop overlay */
+.mo-crop-overlay {
+  position: absolute; inset: 0; pointer-events: none;
+}
+.mo-crop-overlay.mo-crop-active { pointer-events: auto; }
+.mo-crop-shade {
+  position: absolute; inset: 0;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.55) inset;
+  pointer-events: none;
+}
+.mo-crop-rect {
+  position: absolute;
+  border: 1.5px dashed var(--vscode-focusBorder, #9333ea);
+  background: transparent;
+  cursor: move;
+  box-sizing: border-box;
+}
+.mo-crop-rect::before {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(transparent 33.33%, rgba(255,255,255,0.18) 33.33%, rgba(255,255,255,0.18) 33.5%, transparent 33.5%, transparent 66.5%, rgba(255,255,255,0.18) 66.5%, rgba(255,255,255,0.18) 66.66%, transparent 66.66%),
+              linear-gradient(90deg, transparent 33.33%, rgba(255,255,255,0.18) 33.33%, rgba(255,255,255,0.18) 33.5%, transparent 33.5%, transparent 66.5%, rgba(255,255,255,0.18) 66.5%, rgba(255,255,255,0.18) 66.66%, transparent 66.66%);
+  pointer-events: none;
+}
+.mo-crop-handle {
+  position: absolute; width: 10px; height: 10px;
+  background: var(--vscode-focusBorder, #9333ea);
+  border: 1px solid #fff;
+  box-sizing: border-box;
+  border-radius: 2px;
+}
+.mo-crop-h-nw { top: -6px; left: -6px; cursor: nwse-resize; }
+.mo-crop-h-ne { top: -6px; right: -6px; cursor: nesw-resize; }
+.mo-crop-h-sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+.mo-crop-h-se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+.mo-crop-h-n  { top: -6px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.mo-crop-h-s  { bottom: -6px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.mo-crop-h-w  { top: 50%; left: -6px; transform: translateY(-50%); cursor: ew-resize; }
+.mo-crop-h-e  { top: 50%; right: -6px; transform: translateY(-50%); cursor: ew-resize; }
+
+/* Scrubber timeline (full-duration in/out markers) */
+.mo-clip-scrubber {
+  position: relative;
+  height: 26px;
+  background: var(--vscode-input-background, #2a2a2a);
+  border: 1px solid var(--vscode-panel-border, #444);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.mo-scrub-range {
+  position: absolute; top: 0; bottom: 0;
+  background: color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 25%, transparent);
+  border-left: 2px solid var(--vscode-focusBorder, #9333ea);
+  border-right: 2px solid var(--vscode-focusBorder, #9333ea);
+  pointer-events: none;
+}
+.mo-scrub-handle {
+  position: absolute; top: -3px; bottom: -3px;
+  width: 10px; margin-left: -5px;
+  background: var(--vscode-focusBorder, #9333ea);
+  border-radius: 2px;
+  cursor: ew-resize;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.4);
+}
+.mo-scrub-handle::after {
+  content: ''; position: absolute;
+  left: 50%; top: 50%; transform: translate(-50%,-50%);
+  width: 2px; height: 12px; background: rgba(255,255,255,0.7);
+  border-radius: 1px;
+}
+.mo-scrub-playhead {
+  position: absolute; top: -2px; bottom: -2px; width: 2px;
+  margin-left: -1px;
+  background: #fff; pointer-events: none; opacity: 0.85;
+}
+.mo-scrub-tick {
+  position: absolute; top: 4px; bottom: 4px; width: 1px;
+  background: rgba(255,255,255,0.18); pointer-events: none;
+}
+
+/* Controls column */
+.mo-clip-controls {
+  display: flex; flex-direction: column; gap: 10px;
+  min-width: 0;
+}
+.mo-clip-controls .mo-clip-row { gap: 6px; }
+.mo-clip-controls .mo-clip-label { min-width: 70px; }
+.mo-clip-mark-row { display: flex; gap: 6px; align-items: center; }
+.mo-clip-mark-row .mo-clip-input { flex: 1 1 auto; min-width: 0; }
+.mo-mark-btn {
+  flex: 0 0 auto;
+  padding: 4px 8px; font-size: 11px; line-height: 1; border-radius: 3px;
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #ddd);
+  border: 1px solid var(--vscode-panel-border, #444);
+  cursor: pointer;
+}
+.mo-mark-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+.mo-clip-mode-toggle {
+  display: inline-flex; border: 1px solid var(--vscode-panel-border, #444);
+  border-radius: 3px; overflow: hidden;
+}
+.mo-clip-mode-toggle button {
+  background: transparent; color: inherit;
+  border: 0; padding: 4px 10px; font-size: 11px; cursor: pointer;
+}
+.mo-clip-mode-toggle button.mo-active {
+  background: var(--vscode-focusBorder, #9333ea); color: #fff;
+}
 
 /* M59 P2: frame strip + waveform */
 .mo-clip-stripwrap {
   position: relative;
-  background: var(--parallx-color-input-background, #1e1e1e);
-  border: 1px solid var(--parallx-color-border, #444);
+  background: var(--vscode-input-background, #1e1e1e);
+  border: 1px solid var(--vscode-panel-border, #444);
   border-radius: 4px;
   padding: 4px;
 }
@@ -6099,18 +6243,25 @@ const MO_CSS = `
 }
 .mo-clip-input {
   flex: 0 1 120px; padding: 4px 8px; font-size: 12px;
-  background: var(--parallx-color-input-background, #2a2a2a);
-  color: inherit;
-  border: 1px solid var(--parallx-color-border, #444);
+  background: var(--vscode-input-background, #2a2a2a);
+  color: var(--vscode-input-foreground, inherit);
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, #444));
   border-radius: 4px;
+  font-family: inherit;
 }
+.mo-clip-input:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder, #9333ea);
+}
+select.mo-clip-input { appearance: none; padding-right: 22px; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 12px) 50%, calc(100% - 7px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
 .mo-clip-check { margin: 0 6px 0 0; }
 .mo-clip-length {
   font-size: 11px; opacity: 0.7; font-variant-numeric: tabular-nums;
 }
 .mo-btn-primary, .mo-btn-secondary {
   padding: 6px 14px; font-size: 12px; border-radius: 4px; cursor: pointer;
-  border: 1px solid var(--parallx-color-border, #444);
+  border: 1px solid var(--vscode-panel-border, #444);
+  font-family: inherit;
 }
 .mo-btn-primary {
   background: var(--vscode-focusBorder, #9333ea); color: #fff; border-color: transparent;
@@ -6125,7 +6276,7 @@ const MO_CSS = `
 .mo-dup-body { padding: 12px 16px; max-height: 70vh; overflow-y: auto; }
 .mo-dup-summary { font-size: 12px; opacity: 0.8; margin-bottom: 12px; }
 .mo-dup-group {
-  border: 1px solid var(--parallx-color-border, #444);
+  border: 1px solid var(--vscode-panel-border, #444);
   border-radius: 4px; padding: 8px; margin-bottom: 10px;
 }
 .mo-dup-group-head { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
@@ -10656,23 +10807,241 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
   header.appendChild(closeBtn);
   dialog.appendChild(header);
 
-  // Preview video (loops over selected range)
+  // ── State (declared early so all closures see it) ──
+  /** @type {Array<{ index: number, src: string, deleted: boolean, delayMs: number|null }>} */
+  let frames = [];
+  let revFrames = false;
+  let outMode = 'out'; // 'out' | 'duration'
+  let cropEnabled = false;
+  // Crop in normalized [0..1] coords relative to the actual video frame
+  let cropNorm = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
+
+  // Preview video (lives inside the stage)
   const preview = document.createElement('video');
   preview.className = 'mo-clip-preview';
   preview.muted = true;
   preview.loop = false;
   preview.controls = false;
   localFileToUrl(videoPath).then(u => { if (u) preview.src = u; });
-  dialog.appendChild(preview);
 
   const body = moEl('div', 'mo-clip-body');
   dialog.appendChild(body);
 
-  // ── M59 P2: Frame strip + waveform timeline ──
-  // State for per-frame edits (only honored when format=gif on export)
-  /** @type {Array<{ index: number, src: string, deleted: boolean, delayMs: number|null }>} */
-  let frames = [];
-  let revFrames = false;
+  // ── M59 P4: two-column layout ──
+  const grid = moEl('div', 'mo-clip-grid');
+  body.appendChild(grid);
+
+  // LEFT: stage (preview + crop overlay) + scrubber timeline ─────────────────
+  const stageWrap = moEl('div');
+  stageWrap.style.display = 'flex';
+  stageWrap.style.flexDirection = 'column';
+  stageWrap.style.gap = '8px';
+  stageWrap.style.minWidth = '0';
+
+  const stage = moEl('div', 'mo-clip-stage');
+  stage.appendChild(preview);
+
+  // Crop overlay
+  const cropOverlay = moEl('div', 'mo-crop-overlay');
+  const cropShade = moEl('div', 'mo-crop-shade');
+  const cropRect = moEl('div', 'mo-crop-rect');
+  const HANDLE_DIRS = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+  const cropHandles = {};
+  for (const d of HANDLE_DIRS) {
+    const h = moEl('div', 'mo-crop-handle mo-crop-h-' + d);
+    cropRect.appendChild(h);
+    cropHandles[d] = h;
+  }
+  cropOverlay.appendChild(cropShade);
+  cropOverlay.appendChild(cropRect);
+  cropOverlay.style.display = 'none';
+  stage.appendChild(cropOverlay);
+
+  stage.appendChild(moEl('div', 'mo-clip-stage-hint', {
+    textContent: 'Scroll to scrub · Shift = ×10 · Alt = fine · I/O to mark · Space = play',
+  }));
+  const stageTime = moEl('div', 'mo-clip-stage-time', { textContent: '0:00 / ' + moTimeStr(duration) });
+  stage.appendChild(stageTime);
+  stageWrap.appendChild(stage);
+
+  // Scrubber timeline (full-duration with in/out markers + playhead)
+  const scrub = moEl('div', 'mo-clip-scrubber');
+  for (let i = 1; i < 10; i++) {
+    const t = moEl('div', 'mo-scrub-tick');
+    t.style.left = (i * 10) + '%';
+    scrub.appendChild(t);
+  }
+  const scrubRange = moEl('div', 'mo-scrub-range');
+  const scrubInH = moEl('div', 'mo-scrub-handle');
+  scrubInH.dataset.role = 'in';
+  const scrubOutH = moEl('div', 'mo-scrub-handle');
+  scrubOutH.dataset.role = 'out';
+  const scrubPlayhead = moEl('div', 'mo-scrub-playhead');
+  scrub.append(scrubRange, scrubInH, scrubOutH, scrubPlayhead);
+  stageWrap.appendChild(scrub);
+
+  grid.appendChild(stageWrap);
+
+  // RIGHT: controls column ──────────────────────────────────────────────────
+  const controls = moEl('div', 'mo-clip-controls');
+  grid.appendChild(controls);
+  const lbl = (t) => moEl('label', 'mo-clip-label', { textContent: t });
+
+  // Mode toggle (Out point vs Duration)
+  const modeRow = moEl('div', 'mo-clip-row');
+  modeRow.appendChild(lbl('Mode'));
+  const modeWrap = moEl('div', 'mo-clip-mode-toggle');
+  const modeOutBtn = moEl('button', 'mo-active', { textContent: 'Out point' });
+  const modeDurBtn = moEl('button', null, { textContent: 'Duration' });
+  modeWrap.append(modeOutBtn, modeDurBtn);
+  modeRow.appendChild(modeWrap);
+  controls.appendChild(modeRow);
+
+  // In row
+  const inRow = moEl('div', 'mo-clip-row mo-clip-mark-row');
+  inRow.appendChild(lbl('In'));
+  const inInput = document.createElement('input');
+  inInput.type = 'number'; inInput.step = '0.01'; inInput.min = '0'; inInput.max = String(duration);
+  inInput.value = (Math.max(0, initialIn || 0)).toFixed(2);
+  inInput.className = 'mo-clip-input';
+  inRow.appendChild(inInput);
+  const setInBtn = moEl('button', 'mo-mark-btn', { textContent: 'Set here', title: 'Set In to current playhead (I)' });
+  inRow.appendChild(setInBtn);
+  controls.appendChild(inRow);
+
+  // Out / Duration row
+  const outRow = moEl('div', 'mo-clip-row mo-clip-mark-row');
+  const outLabel = lbl('Out');
+  outRow.appendChild(outLabel);
+  const outInput = document.createElement('input');
+  outInput.type = 'number'; outInput.step = '0.01'; outInput.min = '0'; outInput.max = String(duration);
+  outInput.value = (initialOut > 0 ? initialOut : duration).toFixed(2);
+  outInput.className = 'mo-clip-input';
+  outRow.appendChild(outInput);
+  const setOutBtn = moEl('button', 'mo-mark-btn', { textContent: 'Set here', title: 'Set Out to current playhead (O)' });
+  outRow.appendChild(setOutBtn);
+  controls.appendChild(outRow);
+
+  // Length display
+  const lenRow = moEl('div', 'mo-clip-row');
+  lenRow.appendChild(lbl('Length'));
+  const lengthLabel = moEl('span', 'mo-clip-length', { textContent: '0.00s' });
+  lenRow.appendChild(lengthLabel);
+  controls.appendChild(lenRow);
+
+  // Format
+  const fmtRow = moEl('div', 'mo-clip-row');
+  fmtRow.appendChild(lbl('Format'));
+  const fmtSel = document.createElement('select');
+  fmtSel.className = 'mo-clip-input';
+  for (const f of ['mp4', 'webm', 'gif']) {
+    const o = document.createElement('option'); o.value = f; o.textContent = f.toUpperCase();
+    if (f === 'mp4') o.selected = true;
+    fmtSel.appendChild(o);
+  }
+  fmtRow.appendChild(fmtSel);
+  controls.appendChild(fmtRow);
+
+  // FPS
+  const fpsRow = moEl('div', 'mo-clip-row');
+  fpsRow.appendChild(lbl('FPS'));
+  const fpsSel = document.createElement('select');
+  fpsSel.className = 'mo-clip-input';
+  for (const f of [10, 15, 24, 30, 60]) {
+    const o = document.createElement('option'); o.value = String(f); o.textContent = String(f);
+    if (f === 30) o.selected = true;
+    fpsSel.appendChild(o);
+  }
+  fpsRow.appendChild(fpsSel);
+  controls.appendChild(fpsRow);
+
+  // Scale
+  const sizeRow = moEl('div', 'mo-clip-row');
+  sizeRow.appendChild(lbl('Scale (%)'));
+  const sizeInput = document.createElement('input');
+  sizeInput.type = 'number'; sizeInput.min = '10'; sizeInput.max = '200'; sizeInput.value = '100'; sizeInput.step = '5';
+  sizeInput.className = 'mo-clip-input';
+  sizeRow.appendChild(sizeInput);
+  controls.appendChild(sizeRow);
+
+  // Speed
+  const speedRow = moEl('div', 'mo-clip-row');
+  speedRow.appendChild(lbl('Speed'));
+  const speedSel = document.createElement('select');
+  speedSel.className = 'mo-clip-input';
+  for (const s of [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4]) {
+    const o = document.createElement('option'); o.value = String(s); o.textContent = s + '×';
+    if (s === 1) o.selected = true;
+    speedSel.appendChild(o);
+  }
+  speedRow.appendChild(speedSel);
+  controls.appendChild(speedRow);
+
+  // Crop toggle
+  const cropRow = moEl('div', 'mo-clip-row');
+  const cropChk = document.createElement('input');
+  cropChk.type = 'checkbox'; cropChk.id = 'mo-clip-crop'; cropChk.className = 'mo-clip-check';
+  cropRow.appendChild(cropChk);
+  const cropLabel = lbl('Crop region'); cropLabel.htmlFor = 'mo-clip-crop';
+  cropRow.appendChild(cropLabel);
+  const cropResetBtn = moEl('button', 'mo-mark-btn', { textContent: 'Reset', title: 'Reset crop to full frame' });
+  cropResetBtn.style.marginLeft = 'auto';
+  cropResetBtn.style.display = 'none';
+  cropRow.appendChild(cropResetBtn);
+  controls.appendChild(cropRow);
+
+  // Reverse playback
+  const revRow = moEl('div', 'mo-clip-row');
+  const revChk = document.createElement('input');
+  revChk.type = 'checkbox'; revChk.id = 'mo-clip-rev'; revChk.className = 'mo-clip-check';
+  revRow.appendChild(revChk);
+  const revLabel = lbl('Reverse playback'); revLabel.htmlFor = 'mo-clip-rev';
+  revRow.appendChild(revLabel);
+  controls.appendChild(revRow);
+
+  // GIF-only: dither
+  const gifBox = moEl('div', 'mo-clip-row mo-clip-gif-only');
+  gifBox.appendChild(lbl('Dither'));
+  const ditherSel = document.createElement('select');
+  ditherSel.className = 'mo-clip-input';
+  for (const d of [['none', 'None'], ['bayer', 'Bayer'], ['floyd_steinberg', 'Floyd-Steinberg']]) {
+    const o = document.createElement('option'); o.value = d[0]; o.textContent = d[1];
+    if (d[0] === 'bayer') o.selected = true;
+    ditherSel.appendChild(o);
+  }
+  gifBox.appendChild(ditherSel);
+  controls.appendChild(gifBox);
+
+  // GIF-only: loop count
+  const loopRow = moEl('div', 'mo-clip-row mo-clip-gif-only');
+  loopRow.appendChild(lbl('Loop'));
+  const loopInput = document.createElement('input');
+  loopInput.type = 'number'; loopInput.min = '0'; loopInput.max = '100'; loopInput.value = '0';
+  loopInput.className = 'mo-clip-input'; loopInput.title = '0 = infinite';
+  loopRow.appendChild(loopInput);
+  controls.appendChild(loopRow);
+
+  // GIF-only: reverse frame order (per-frame edits)
+  const revFrRow = moEl('div', 'mo-clip-row mo-clip-gif-only');
+  const revFrChk = document.createElement('input');
+  revFrChk.type = 'checkbox'; revFrChk.id = 'mo-clip-rev-frames'; revFrChk.className = 'mo-clip-check';
+  revFrChk.addEventListener('change', () => { revFrames = revFrChk.checked; });
+  revFrRow.appendChild(revFrChk);
+  const revFrLabel = lbl('Reverse frame order'); revFrLabel.htmlFor = 'mo-clip-rev-frames';
+  revFrLabel.title = 'Reverses the order of edited strip frames in GIF export';
+  revFrRow.appendChild(revFrLabel);
+  controls.appendChild(revFrRow);
+
+  // MP4/WebM CRF
+  const crfBox = moEl('div', 'mo-clip-row mo-clip-vid-only');
+  crfBox.appendChild(lbl('Quality (CRF)'));
+  const crfInput = document.createElement('input');
+  crfInput.type = 'number'; crfInput.min = '15'; crfInput.max = '35'; crfInput.value = '23';
+  crfInput.className = 'mo-clip-input'; crfInput.title = 'Lower = better quality, larger file';
+  crfBox.appendChild(crfInput);
+  controls.appendChild(crfBox);
+
+  // ── Frame strip lives below the grid (full width) ──
   const stripWrap = moEl('div', 'mo-clip-stripwrap');
   const stripWave = document.createElement('img');
   stripWave.className = 'mo-clip-wave';
@@ -10686,147 +11055,77 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
   stripWrap.appendChild(stripStatus);
   body.appendChild(stripWrap);
 
-  // ── In/Out controls ──
-  const ioRow = moEl('div', 'mo-clip-row');
-  ioRow.appendChild(moEl('label', 'mo-clip-label', { textContent: 'In' }));
-  const inInput = document.createElement('input');
-  inInput.type = 'number'; inInput.step = '0.01'; inInput.min = '0'; inInput.max = String(duration);
-  inInput.value = String(Math.max(0, initialIn || 0));
-  inInput.className = 'mo-clip-input';
-  ioRow.appendChild(inInput);
-  ioRow.appendChild(moEl('label', 'mo-clip-label', { textContent: 'Out' }));
-  const outInput = document.createElement('input');
-  outInput.type = 'number'; outInput.step = '0.01'; outInput.min = '0'; outInput.max = String(duration);
-  outInput.value = String(initialOut > 0 ? initialOut : duration);
-  outInput.className = 'mo-clip-input';
-  ioRow.appendChild(outInput);
-  const lengthLabel = moEl('span', 'mo-clip-length');
-  ioRow.appendChild(lengthLabel);
-  body.appendChild(ioRow);
-
-  // ── Format picker ──
-  const fmtRow = moEl('div', 'mo-clip-row');
-  fmtRow.appendChild(moEl('label', 'mo-clip-label', { textContent: 'Format' }));
-  const fmtSel = document.createElement('select');
-  fmtSel.className = 'mo-clip-input';
-  for (const f of ['mp4', 'webm', 'gif']) {
-    const o = document.createElement('option'); o.value = f; o.textContent = f.toUpperCase();
-    if (f === 'mp4') o.selected = true;
-    fmtSel.appendChild(o);
-  }
-  fmtRow.appendChild(fmtSel);
-  body.appendChild(fmtRow);
-
-  // ── FPS ──
-  const fpsRow = moEl('div', 'mo-clip-row');
-  fpsRow.appendChild(moEl('label', 'mo-clip-label', { textContent: 'FPS' }));
-  const fpsSel = document.createElement('select');
-  fpsSel.className = 'mo-clip-input';
-  for (const f of [10, 15, 24, 30, 60]) {
-    const o = document.createElement('option'); o.value = String(f); o.textContent = String(f);
-    if (f === 30) o.selected = true;
-    fpsSel.appendChild(o);
-  }
-  fpsRow.appendChild(fpsSel);
-  body.appendChild(fpsRow);
-
-  // ── Size scale ──
-  const sizeRow = moEl('div', 'mo-clip-row');
-  sizeRow.appendChild(moEl('label', 'mo-clip-label', { textContent: 'Scale (%)' }));
-  const sizeInput = document.createElement('input');
-  sizeInput.type = 'number'; sizeInput.min = '10'; sizeInput.max = '200'; sizeInput.value = '100'; sizeInput.step = '5';
-  sizeInput.className = 'mo-clip-input';
-  sizeRow.appendChild(sizeInput);
-  body.appendChild(sizeRow);
-
-  // ── Speed ──
-  const speedRow = moEl('div', 'mo-clip-row');
-  speedRow.appendChild(moEl('label', 'mo-clip-label', { textContent: 'Speed' }));
-  const speedSel = document.createElement('select');
-  speedSel.className = 'mo-clip-input';
-  for (const s of [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4]) {
-    const o = document.createElement('option'); o.value = String(s); o.textContent = s + '×';
-    if (s === 1) o.selected = true;
-    speedSel.appendChild(o);
-  }
-  speedRow.appendChild(speedSel);
-  body.appendChild(speedRow);
-
-  // ── Reverse ──
-  const revRow = moEl('div', 'mo-clip-row');
-  const revChk = document.createElement('input');
-  revChk.type = 'checkbox'; revChk.id = 'mo-clip-rev'; revChk.className = 'mo-clip-check';
-  revRow.appendChild(revChk);
-  const revLabel = moEl('label', 'mo-clip-label', { textContent: 'Reverse' });
-  revLabel.htmlFor = 'mo-clip-rev';
-  revRow.appendChild(revLabel);
-  // M59 P2: reverse-individual-frames (only honored for GIF when frame strip edits are applied)
-  const revFrChk = document.createElement('input');
-  revFrChk.type = 'checkbox'; revFrChk.id = 'mo-clip-rev-frames'; revFrChk.className = 'mo-clip-check';
-  revFrChk.style.marginLeft = '16px';
-  revFrChk.addEventListener('change', () => { revFrames = revFrChk.checked; });
-  revRow.appendChild(revFrChk);
-  const revFrLabel = moEl('label', 'mo-clip-label', { textContent: 'Reverse frame order (GIF)' });
-  revFrLabel.htmlFor = 'mo-clip-rev-frames';
-  revFrLabel.title = 'Reverses the order of edited frames in GIF export (frame strip)';
-  revRow.appendChild(revFrLabel);
-  body.appendChild(revRow);
-
-  // ── GIF-only quality controls (hidden unless format=gif) ──
-  const gifBox = moEl('div', 'mo-clip-row mo-clip-gif-only');
-  gifBox.appendChild(moEl('label', 'mo-clip-label', { textContent: 'Dither' }));
-  const ditherSel = document.createElement('select');
-  ditherSel.className = 'mo-clip-input';
-  for (const d of [['none', 'None'], ['bayer', 'Bayer'], ['floyd_steinberg', 'Floyd-Steinberg']]) {
-    const o = document.createElement('option'); o.value = d[0]; o.textContent = d[1];
-    if (d[0] === 'bayer') o.selected = true;
-    ditherSel.appendChild(o);
-  }
-  gifBox.appendChild(ditherSel);
-  gifBox.appendChild(moEl('label', 'mo-clip-label', { textContent: 'Loop' }));
-  const loopInput = document.createElement('input');
-  loopInput.type = 'number'; loopInput.min = '0'; loopInput.max = '100'; loopInput.value = '0';
-  loopInput.className = 'mo-clip-input'; loopInput.title = '0 = infinite';
-  gifBox.appendChild(loopInput);
-  body.appendChild(gifBox);
-
-  // ── MP4/WebM CRF ──
-  const crfBox = moEl('div', 'mo-clip-row mo-clip-vid-only');
-  crfBox.appendChild(moEl('label', 'mo-clip-label', { textContent: 'Quality (CRF)' }));
-  const crfInput = document.createElement('input');
-  crfInput.type = 'number'; crfInput.min = '15'; crfInput.max = '35'; crfInput.value = '23';
-  crfInput.className = 'mo-clip-input'; crfInput.title = 'Lower = better quality, larger file';
-  crfBox.appendChild(crfInput);
-  body.appendChild(crfBox);
-
+  // ── Format visibility ──
   function syncFormatVisibility() {
     const isGif = fmtSel.value === 'gif';
     gifBox.style.display = isGif ? '' : 'none';
+    loopRow.style.display = isGif ? '' : 'none';
+    revFrRow.style.display = isGif ? '' : 'none';
     crfBox.style.display = isGif ? 'none' : '';
   }
   fmtSel.addEventListener('change', syncFormatVisibility);
   syncFormatVisibility();
 
-  // ── Length display + preview loop ──
-  function updateLength() {
-    const a = Math.max(0, parseFloat(inInput.value) || 0);
-    const b = Math.min(duration, parseFloat(outInput.value) || duration);
-    const len = Math.max(0, b - a);
-    lengthLabel.textContent = `(${len.toFixed(2)}s)`;
+  // ── Mode toggle (Out vs Duration) ──
+  function setMode(mode) {
+    if (mode === outMode) return;
+    // Preserve actual out point when switching
+    const [a, b] = getInOut();
+    outMode = mode;
+    if (mode === 'duration') {
+      modeOutBtn.classList.remove('mo-active');
+      modeDurBtn.classList.add('mo-active');
+      outLabel.textContent = 'Duration';
+      outInput.value = Math.max(0, b - a).toFixed(2);
+    } else {
+      modeOutBtn.classList.add('mo-active');
+      modeDurBtn.classList.remove('mo-active');
+      outLabel.textContent = 'Out';
+      outInput.value = b.toFixed(2);
+    }
+    updateAll();
   }
-  inInput.addEventListener('input', updateLength);
-  outInput.addEventListener('input', updateLength);
-  updateLength();
+  modeOutBtn.addEventListener('click', () => setMode('out'));
+  modeDurBtn.addEventListener('click', () => setMode('duration'));
 
+  // ── In/Out resolution ──
+  function getInOut() {
+    const a = Math.max(0, Math.min(duration, parseFloat(inInput.value) || 0));
+    let b;
+    if (outMode === 'duration') {
+      const dur = Math.max(0, parseFloat(outInput.value) || 0);
+      b = Math.min(duration, a + dur);
+    } else {
+      b = Math.max(0, Math.min(duration, parseFloat(outInput.value) || duration));
+    }
+    if (b < a) b = a;
+    return [a, b];
+  }
+
+  function updateAll() {
+    const [a, b] = getInOut();
+    const len = Math.max(0, b - a);
+    lengthLabel.textContent = `${len.toFixed(2)}s · ${moTimeStr(a)} → ${moTimeStr(b)}`;
+    const aPct = duration > 0 ? (a / duration) * 100 : 0;
+    const bPct = duration > 0 ? (b / duration) * 100 : 100;
+    scrubRange.style.left = aPct + '%';
+    scrubRange.style.right = (100 - bPct) + '%';
+    scrubInH.style.left = aPct + '%';
+    scrubOutH.style.left = bPct + '%';
+  }
+  inInput.addEventListener('input', updateAll);
+  outInput.addEventListener('input', updateAll);
+  updateAll();
+
+  // ── Loop preview over [in, out] ──
   let previewTimer = null;
   function loopPreview() {
     if (previewTimer) clearInterval(previewTimer);
-    const a = Math.max(0, parseFloat(inInput.value) || 0);
-    const b = Math.min(duration, parseFloat(outInput.value) || duration);
+    const [a, b] = getInOut();
     if (b <= a) return;
     try { preview.currentTime = a; preview.play().catch(() => {}); } catch {}
     previewTimer = setInterval(() => {
-      if (preview.currentTime >= b) {
+      if (preview.currentTime >= b - 0.02) {
         try { preview.currentTime = a; preview.play().catch(() => {}); } catch {}
       }
     }, 200);
@@ -10834,6 +11133,182 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
   preview.addEventListener('loadedmetadata', loopPreview);
   inInput.addEventListener('change', loopPreview);
   outInput.addEventListener('change', loopPreview);
+
+  // ── Playhead + time HUD ──
+  preview.addEventListener('timeupdate', () => {
+    const t = preview.currentTime;
+    const pct = duration > 0 ? (t / duration) * 100 : 0;
+    scrubPlayhead.style.left = pct + '%';
+    stageTime.textContent = `${moTimeStr(t)} / ${moTimeStr(duration)}`;
+  });
+
+  // ── Set In/Out from current playhead ──
+  setInBtn.addEventListener('click', () => {
+    const t = Math.max(0, Math.min(duration, preview.currentTime));
+    inInput.value = t.toFixed(2);
+    updateAll();
+    loopPreview();
+  });
+  setOutBtn.addEventListener('click', () => {
+    const t = Math.max(0, Math.min(duration, preview.currentTime));
+    if (outMode === 'duration') {
+      const a = Math.max(0, parseFloat(inInput.value) || 0);
+      outInput.value = Math.max(0, t - a).toFixed(2);
+    } else {
+      outInput.value = t.toFixed(2);
+    }
+    updateAll();
+    loopPreview();
+  });
+
+  // ── Hotkeys ──
+  overlay.addEventListener('keydown', (e) => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+    if (e.key === 'i' || e.key === 'I') { e.preventDefault(); setInBtn.click(); }
+    else if (e.key === 'o' || e.key === 'O') { e.preventDefault(); setOutBtn.click(); }
+    else if (e.key === ' ') {
+      e.preventDefault();
+      if (preview.paused) preview.play().catch(() => {}); else preview.pause();
+    }
+  });
+
+  // ── Scroll-wheel scrub on stage ──
+  stage.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const mult = e.shiftKey ? 10 : (e.altKey ? 0.1 : 1);
+    const dir = e.deltaY > 0 ? 1 : -1;
+    const next = Math.max(0, Math.min(duration, preview.currentTime + dir * mult));
+    preview.currentTime = next;
+  }, { passive: false });
+
+  // ── Scrubber click-to-seek + draggable in/out markers ──
+  function pctFromEvent(e) {
+    const r = scrub.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+  }
+  scrub.addEventListener('mousedown', (e) => {
+    if (e.target === scrubInH || e.target === scrubOutH) return;
+    preview.currentTime = pctFromEvent(e) * duration;
+  });
+  function bindMarker(handle, role) {
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const move = (ev) => {
+        const t = pctFromEvent(ev) * duration;
+        if (role === 'in') {
+          const [, b] = getInOut();
+          inInput.value = Math.max(0, Math.min(b - 0.05, t)).toFixed(2);
+        } else {
+          const a = Math.max(0, parseFloat(inInput.value) || 0);
+          const clamped = Math.max(a + 0.05, Math.min(duration, t));
+          if (outMode === 'duration') outInput.value = (clamped - a).toFixed(2);
+          else outInput.value = clamped.toFixed(2);
+        }
+        updateAll();
+      };
+      const up = () => {
+        window.removeEventListener('mousemove', move);
+        window.removeEventListener('mouseup', up);
+        loopPreview();
+      };
+      window.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', up);
+    });
+  }
+  bindMarker(scrubInH, 'in');
+  bindMarker(scrubOutH, 'out');
+
+  // ── Crop overlay ──
+  function getVideoDisplayRect() {
+    const stageR = stage.getBoundingClientRect();
+    const vw = preview.videoWidth || 16;
+    const vh = preview.videoHeight || 9;
+    const sw = stageR.width, sh = stageR.height;
+    const videoAR = vw / vh, stageAR = sw / sh;
+    let dw, dh;
+    if (videoAR > stageAR) { dw = sw; dh = sw / videoAR; }
+    else { dh = sh; dw = sh * videoAR; }
+    return { dx: (sw - dw) / 2, dy: (sh - dh) / 2, dw, dh };
+  }
+  function applyCropRect() {
+    if (!cropEnabled) { cropOverlay.style.display = 'none'; return; }
+    cropOverlay.style.display = '';
+    const r = getVideoDisplayRect();
+    cropRect.style.left = (r.dx + cropNorm.x * r.dw) + 'px';
+    cropRect.style.top = (r.dy + cropNorm.y * r.dh) + 'px';
+    cropRect.style.width = (cropNorm.w * r.dw) + 'px';
+    cropRect.style.height = (cropNorm.h * r.dh) + 'px';
+  }
+  cropChk.addEventListener('change', () => {
+    cropEnabled = cropChk.checked;
+    cropOverlay.classList.toggle('mo-crop-active', cropEnabled);
+    cropResetBtn.style.display = cropEnabled ? '' : 'none';
+    applyCropRect();
+  });
+  cropResetBtn.addEventListener('click', () => {
+    cropNorm = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
+    applyCropRect();
+  });
+  preview.addEventListener('loadedmetadata', applyCropRect);
+  const cropResizeObs = new ResizeObserver(applyCropRect);
+  cropResizeObs.observe(stage);
+
+  cropRect.addEventListener('mousedown', (e) => {
+    if (e.target !== cropRect) return;
+    e.preventDefault(); e.stopPropagation();
+    const r0 = getVideoDisplayRect();
+    const sx = e.clientX, sy = e.clientY;
+    const start = { ...cropNorm };
+    const move = (ev) => {
+      const dxN = (ev.clientX - sx) / r0.dw;
+      const dyN = (ev.clientY - sy) / r0.dh;
+      cropNorm.x = Math.max(0, Math.min(1 - start.w, start.x + dxN));
+      cropNorm.y = Math.max(0, Math.min(1 - start.h, start.y + dyN));
+      applyCropRect();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  });
+  function bindCropHandle(dir) {
+    const handleEl = cropHandles[dir];
+    handleEl.addEventListener('mousedown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const r0 = getVideoDisplayRect();
+      const sx = e.clientX, sy = e.clientY;
+      const start = { ...cropNorm };
+      const minN = 0.02;
+      const move = (ev) => {
+        const dxN = (ev.clientX - sx) / r0.dw;
+        const dyN = (ev.clientY - sy) / r0.dh;
+        let { x, y, w, h: hh } = start;
+        if (dir.includes('e')) w = Math.max(minN, Math.min(1 - x, start.w + dxN));
+        if (dir.includes('s')) hh = Math.max(minN, Math.min(1 - y, start.h + dyN));
+        if (dir.includes('w')) {
+          const nx = Math.max(0, Math.min(start.x + start.w - minN, start.x + dxN));
+          w = start.w + (start.x - nx);
+          x = nx;
+        }
+        if (dir.includes('n')) {
+          const ny = Math.max(0, Math.min(start.y + start.h - minN, start.y + dyN));
+          hh = start.h + (start.y - ny);
+          y = ny;
+        }
+        cropNorm = { x, y, w, h: hh };
+        applyCropRect();
+      };
+      const up = () => {
+        window.removeEventListener('mousemove', move);
+        window.removeEventListener('mouseup', up);
+      };
+      window.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', up);
+    });
+  }
+  HANDLE_DIRS.forEach(bindCropHandle);
 
   // ── M59 P2: Frame strip + waveform generator ──
   const FRAME_COUNT = 30;
@@ -10857,8 +11332,7 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
 
   async function regenerateStrip() {
     if (!_toolPaths.ffmpeg) { stripStatus.textContent = 'ffmpeg unavailable'; return; }
-    const a = Math.max(0, parseFloat(inInput.value) || 0);
-    const b = Math.min(duration, parseFloat(outInput.value) || duration);
+    const [a, b] = getInOut();
     const len = Math.max(0.1, b - a);
     const myGen = ++stripGen;
     stripStatus.textContent = 'Loading frames…';
@@ -10981,8 +11455,7 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
   dialog.appendChild(footer);
 
   exportBtn.addEventListener('click', async () => {
-    const a = Math.max(0, parseFloat(inInput.value) || 0);
-    const b = Math.min(duration, parseFloat(outInput.value) || duration);
+    const [a, b] = getInOut();
     if (b <= a) { api.window.showWarningMessage('Out point must be after in point.'); return; }
 
     exportBtn.disabled = true; cancelBtn.disabled = true;
@@ -11003,6 +11476,8 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
         crf: parseInt(crfInput.value, 10) || 23,
         dither: ditherSel.value,
         loops: parseInt(loopInput.value, 10) || 0,
+        // M59 P4: crop region (normalized [0..1] relative to source frame)
+        crop: cropEnabled ? { ...cropNorm } : null,
         // M59 P2: per-frame edits (GIF only)
         frameEdits: useFrameEdits ? {
           frames: frames.map(f => ({ src: f.src, deleted: f.deleted, delayMs: f.delayMs })),
@@ -11049,6 +11524,15 @@ async function moExportClip(api, opts) {
   // Build filter chain
   const filters = [];
   filters.push(`fps=${opts.fps}`);
+  // M59 P4: crop must precede scale so the user's normalized rect maps to source pixels
+  if (opts.crop && opts.crop.w > 0 && opts.crop.h > 0) {
+    const cx = Math.max(0, Math.min(1, opts.crop.x)).toFixed(4);
+    const cy = Math.max(0, Math.min(1, opts.crop.y)).toFixed(4);
+    const cw = Math.max(0.01, Math.min(1, opts.crop.w)).toFixed(4);
+    const ch = Math.max(0.01, Math.min(1, opts.crop.h)).toFixed(4);
+    // Use trunc(/2)*2 so dimensions stay even for video codecs
+    filters.push(`crop=trunc(iw*${cw}/2)*2:trunc(ih*${ch}/2)*2:trunc(iw*${cx}):trunc(ih*${cy})`);
+  }
   if (opts.scalePct !== 100) {
     const s = (opts.scalePct / 100).toFixed(3);
     filters.push(`scale=trunc(iw*${s}/2)*2:trunc(ih*${s}/2)*2`);
@@ -11136,7 +11620,16 @@ async function moExportGifWithFrameEdits(api, opts, outPath) {
   try {
     // 1. Re-extract all frames at full size with the user's scale applied
     const scaleS = (opts.scalePct / 100).toFixed(3);
-    const vfExtract = `fps=${stripFps.toFixed(4)},scale=trunc(iw*${scaleS}/2)*2:trunc(ih*${scaleS}/2)*2`;
+    const extractParts = [`fps=${stripFps.toFixed(4)}`];
+    if (opts.crop && opts.crop.w > 0 && opts.crop.h > 0) {
+      const cx = Math.max(0, Math.min(1, opts.crop.x)).toFixed(4);
+      const cy = Math.max(0, Math.min(1, opts.crop.y)).toFixed(4);
+      const cw = Math.max(0.01, Math.min(1, opts.crop.w)).toFixed(4);
+      const ch = Math.max(0.01, Math.min(1, opts.crop.h)).toFixed(4);
+      extractParts.push(`crop=trunc(iw*${cw}/2)*2:trunc(ih*${ch}/2)*2:trunc(iw*${cx}):trunc(ih*${cy})`);
+    }
+    extractParts.push(`scale=trunc(iw*${scaleS}/2)*2:trunc(ih*${scaleS}/2)*2`);
+    const vfExtract = extractParts.join(',');
     const pattern = workDir + sep + 'f_%04d.png';
     const cmdEx = [
       ff, '-hide_banner', '-loglevel', 'error', '-y',
