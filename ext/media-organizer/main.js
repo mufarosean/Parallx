@@ -2029,6 +2029,22 @@ function shellQuote(str) {
   return "'" + str.replace(/'/g, "'\\''") + "'";
 }
 
+/**
+ * Quote an executable path AND prefix it with the PowerShell call operator
+ * so the shell actually invokes it instead of evaluating the quoted string
+ * as a literal expression. Use this for the leading exe in a command, and
+ * `shellQuote` for argument paths.
+ *
+ * Without `& `, PowerShell parses `'C:\path\ffmpeg.exe' -arg` as a string
+ * literal followed by `-arg` (parse error / no execution).
+ */
+function shellInvoke(exePath) {
+  if (_isWindows) {
+    return "& '" + exePath.replace(/'/g, "''") + "'";
+  }
+  return "'" + exePath.replace(/'/g, "'\\''") + "'";
+}
+
 async function detectTool(name) {
   try {
     const cmd = _isWindows ? `where.exe ${name}` : `which ${name}`;
@@ -2087,7 +2103,7 @@ async function computeOshash(filePath) {
   ].join('');
   try {
     // Script is a fixed string (no user data); filePath is shell-quoted as a separate argument
-    const cmd = `${shellQuote(_toolPaths.node)} -e ${shellQuote(script)} ${shellQuote(filePath)}`;
+    const cmd = `${shellInvoke(_toolPaths.node)} -e ${shellQuote(script)} ${shellQuote(filePath)}`;
     const result = await window.parallxElectron.terminal.exec(cmd, { timeout: SCAN_DEFAULTS.hashTimeout });
     if (result.exitCode === 0 && result.stdout.trim()) return result.stdout.trim();
     return null;
@@ -2134,7 +2150,7 @@ async function fingerprintFile(filePath, fileType) {
 async function extractVideoMeta(filePath) {
   if (!_toolPaths.ffprobe) return null;
   try {
-    const cmd = `${shellQuote(_toolPaths.ffprobe)} -v quiet -print_format json -show_format -show_streams ${shellQuote(filePath)}`;
+    const cmd = `${shellInvoke(_toolPaths.ffprobe)} -v quiet -print_format json -show_format -show_streams ${shellQuote(filePath)}`;
     const result = await window.parallxElectron.terminal.exec(cmd, { timeout: SCAN_DEFAULTS.ffprobeTimeout });
     if (result.exitCode !== 0 || !result.stdout.trim()) return null;
     const data = JSON.parse(result.stdout);
@@ -2167,7 +2183,7 @@ function parseFrameRate(rateStr) {
 async function extractImageDimensions(filePath) {
   if (!_toolPaths.ffprobe) return null;
   try {
-    const cmd = `${shellQuote(_toolPaths.ffprobe)} -v quiet -print_format json -show_streams ${shellQuote(filePath)}`;
+    const cmd = `${shellInvoke(_toolPaths.ffprobe)} -v quiet -print_format json -show_streams ${shellQuote(filePath)}`;
     const result = await window.parallxElectron.terminal.exec(cmd, { timeout: SCAN_DEFAULTS.ffprobeTimeout });
     if (result.exitCode !== 0 || !result.stdout.trim()) return null;
     const data = JSON.parse(result.stdout);
@@ -2184,7 +2200,7 @@ async function extractImageDimensions(filePath) {
 async function extractEXIF(filePath) {
   if (!_toolPaths.exiftool) return null;
   try {
-    const cmd = `${shellQuote(_toolPaths.exiftool)} -json -n ${shellQuote(filePath)}`;
+    const cmd = `${shellInvoke(_toolPaths.exiftool)} -json -n ${shellQuote(filePath)}`;
     const result = await window.parallxElectron.terminal.exec(cmd, { timeout: SCAN_DEFAULTS.exiftoolTimeout });
     if (result.exitCode !== 0 || !result.stdout.trim()) return null;
     const arr = JSON.parse(result.stdout);
@@ -3165,7 +3181,7 @@ async function generateThumbVips(inputPath, outputPath, maxSize) {
   try {
     const outArg = outputPath + '[Q=' + THUMB_QUALITY_VIPS + ',strip]';
     const cmd = [
-      shellQuote(_toolPaths.vips), 'thumbnail',
+      shellInvoke(_toolPaths.vips), 'thumbnail',
       shellQuote(inputPath), shellQuote(outArg),
       String(maxSize), '--size', 'down',
     ].join(' ');
@@ -3192,7 +3208,7 @@ async function generateThumbFfmpeg(inputPath, outputPath, maxSize) {
   try {
     const vf = `scale='min(${maxSize},iw)':'min(${maxSize},ih)':force_original_aspect_ratio=decrease`;
     const cmd = [
-      shellQuote(_toolPaths.ffmpeg),
+      shellInvoke(_toolPaths.ffmpeg),
       '-hide_banner', '-loglevel', 'error', '-y',
       '-i', shellQuote(inputPath),
       '-vf', shellQuote(vf),
@@ -3358,7 +3374,7 @@ async function generateVideoCoverFrame(checksum, filePath, duration, api, overwr
     const tempPath = coverPath + '.tmp';
     const vf = `scale='min(${THUMB_MAX_SIZE},iw)':'min(${THUMB_MAX_SIZE},ih)':force_original_aspect_ratio=decrease`;
     const cmd = [
-      shellQuote(_toolPaths.ffmpeg),
+      shellInvoke(_toolPaths.ffmpeg),
       '-hide_banner', '-loglevel', 'error', '-y',
       '-ss', String(seekSec),
       '-i', shellQuote(filePath),
@@ -10463,7 +10479,7 @@ async function moCaptureFrame(api, videoPath, timestampSec, ctx) {
   const outPath = `${dir}${sep}${base}_frame_${ts}.jpg`;
 
   const cmd = [
-    shellQuote(_toolPaths.ffmpeg),
+    shellInvoke(_toolPaths.ffmpeg),
     '-hide_banner', '-loglevel', 'error', '-y',
     '-ss', String(timestampSec),
     '-i', shellQuote(videoPath),
@@ -10727,7 +10743,7 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
       }
     }
 
-    const ff = shellQuote(_toolPaths.ffmpeg);
+    const ff = shellInvoke(_toolPaths.ffmpeg);
     const fpsExpr = (FRAME_COUNT / len).toFixed(4);
     const vf = `fps=${fpsExpr},scale=80:45:force_original_aspect_ratio=decrease,pad=80:45:(ow-iw)/2:(oh-ih)/2:color=black`;
     const outPattern = dir + sepCh + 'frame_%03d.jpg';
@@ -10894,7 +10910,7 @@ async function moExportClip(api, opts) {
     counter++;
   }
 
-  const ff = shellQuote(_toolPaths.ffmpeg);
+  const ff = shellInvoke(_toolPaths.ffmpeg);
   const startSs = String(opts.inPoint);
   const len = String(Math.max(0.01, opts.outPoint - opts.inPoint));
 
@@ -10972,7 +10988,7 @@ async function moExportClip(api, opts) {
 // reverse, then build a concat demuxer file with explicit per-frame durations.
 // Two-pass palette gives consistent colors.
 async function moExportGifWithFrameEdits(api, opts, outPath) {
-  const ff = shellQuote(_toolPaths.ffmpeg);
+  const ff = shellInvoke(_toolPaths.ffmpeg);
   const sep = _isWindows ? '\\' : '/';
   const len = Math.max(0.01, opts.outPoint - opts.inPoint);
   const totalFrames = opts.frameEdits.frames.length;
@@ -11268,7 +11284,7 @@ async function moConvertWebP(api, fileId, target) {
   const outPath = fileRow.folder_path + sep + baseName + '.' + target;
   console.log(`[MediaOrganizer] Converting ${srcPath} -> ${outPath}`);
 
-  const ff = shellQuote(_toolPaths.ffmpeg);
+  const ff = shellInvoke(_toolPaths.ffmpeg);
   let cmd;
   if (target === 'mp4') {
     cmd = [
@@ -11616,7 +11632,7 @@ async function moComputePHash(filePath) {
   if (!tmpDir) return null;
   const sep = _isWindows ? '\\' : '/';
   const tmp = tmpDir + sep + '.phash_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.gray';
-  const ff = shellQuote(_toolPaths.ffmpeg);
+  const ff = shellInvoke(_toolPaths.ffmpeg);
   const cmd = [
     ff, '-hide_banner', '-loglevel', 'error', '-y',
     '-i', shellQuote(filePath),
