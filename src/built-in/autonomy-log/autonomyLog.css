@@ -169,3 +169,51 @@
 .autonomy-log-badge--cron      { background: #7ec8e3; }
 .autonomy-log-badge--subagent  { background: #c586c0; color: #fff; }
 .autonomy-log-badge--agent     { background: #888; color: #fff; }
+
+/* M60 §8 Phase ? — task rail polish: tabs, pause toggle, pattern list. */
+.autonomy-log-tabs {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.autonomy-log-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--vscode-descriptionForeground, #999);
+  font-size: var(--parallx-fontSize-xs);
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.autonomy-log-tab:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.06));
+  color: var(--vscode-foreground, #ccc);
+}
+
+.autonomy-log-tab--active {
+  background: var(--vscode-list-activeSelectionBackground, rgba(255, 255, 255, 0.1));
+  color: var(--vscode-list-activeSelectionForeground, #fff);
+  border-color: var(--vscode-focusBorder, transparent);
+}
+
+.autonomy-log-pause {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--vscode-descriptionForeground, #999);
+  font-size: var(--parallx-fontSize-xs);
+  user-select: none;
+  cursor: pointer;
+}
+
+.autonomy-log-pause input[type="checkbox"] {
+  margin: 0;
+}
+
+.autonomy-log-entry__actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}

@@ -159,12 +159,22 @@ export interface ISubagentSpawnAutonomyInfo {
   readonly note?: string;
 }
 
-/** Optional autonomy controls (M60 §3.8/§3.10). */
+/** Optional autonomy controls (M60 §3.8/§3.10/§8). */
 export interface ISubagentObservers {
-  /** Returns `true` when the `autonomy.subagent.enabled` flag is on. */
+  /** Returns `true` when the `autonomy.subagent.enabled` flag is on AND `autonomy.paused.global` is off. */
   readonly isFlagEnabled?: () => boolean;
   /** Called once per spawn lifecycle event. */
   readonly onAutonomyEvent?: (info: ISubagentSpawnAutonomyInfo) => void;
+  /**
+   * M60 §8 E3 — pattern memory pre-flight. Returns `true` when the spawn
+   * shape matches a remembered pattern. The spawner records a matched
+   * pattern via `notePatternMatch` after completion. Pattern memory only
+   * shapes the *presentation* (skip user prompt) — the flag gate is still
+   * authoritative.
+   */
+  readonly isPatternApproved?: (params: { task: string; label?: string; model?: string }) => boolean;
+  /** Called when a remembered pattern matched. Used to bump match count. */
+  readonly notePatternMatch?: (params: { task: string; label?: string; model?: string }) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -383,6 +393,25 @@ export class SubagentSpawner implements IDisposable {
       };
     }
 
+    // M60 §8 E3 — note remembered-pattern match (for visibility in the
+    // task rail). This does NOT replace the flag gate above; it only
+    // bumps the match counter and surfaces a `pattern-approved` note in
+    // the autonomy event so the user can see why a spawn skipped manual
+    // approval.
+    let patternMatched = false;
+    if (this._observers.isPatternApproved && this._observers.isPatternApproved({
+      task: params.task,
+      label: params.label,
+      model: params.model,
+    })) {
+      patternMatched = true;
+      this._observers.notePatternMatch?.({
+        task: params.task,
+        label: params.label,
+        model: params.model,
+      });
+    }
+
     // Step 1: Register — upstream: registerSubagentRun
     const run = this._registry.register(params);
     const startMs = Date.now();
@@ -500,6 +529,7 @@ export class SubagentSpawner implements IDisposable {
           runId: run.id,
           depth,
           durationMs: Date.now() - startMs,
+          note: patternMatched ? 'pattern-approved' : undefined,
         });
       }
     }

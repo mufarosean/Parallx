@@ -39,7 +39,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, IGlobalStorageService, ISurfaceRouterService, IAutonomyLogService, ISettingsRegistryService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, IGlobalStorageService, ISurfaceRouterService, IAutonomyLogService, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService } from '../../services/serviceTypes.js';
 import { SettingsRegistryService } from '../../services/settingsRegistryService.js';
 import { setGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import {
@@ -64,11 +64,19 @@ import {
   FLAG_HEARTBEAT_ENABLED,
   FLAG_CRON_ENABLED,
   FLAG_SUBAGENT_ENABLED,
+  FLAG_PATTERN_MEMORY_ENABLED,
+  isAutonomyTriggerAllowed,
 } from '../../services/autonomyFeatureFlags.js';
 import {
   AutonomyEventLog,
   type IAutonomyEventLogFs,
 } from '../../services/autonomyEventLog.js';
+import {
+  AutonomyPatternMemoryService,
+  computeArgsShape,
+  type IAutonomyPatternMemoryFs,
+} from '../../services/autonomyPatternMemoryService.js';
+import { AutonomyTaskRailService } from '../../services/autonomyTaskRailService.js';
 import {
   createSubagentTurnExecutor,
   createSubagentAnnouncer,
@@ -370,6 +378,34 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       dataDir: `${_appPath}/data`,
     });
     context.subscriptions.push(autonomyEventLog);
+  }
+
+  // ── M60 §8 Phase ζ — task rail viewmodel + pattern memory ───────────────
+  //
+  // Rail is a read-only viewmodel merging in-memory live entries
+  // (AutonomyLogService) with persisted ndjson history (AutonomyEventLog).
+  // Pattern memory persists "remember this approval" decisions for sub-agent
+  // spawns to <APP_ROOT>/data/autonomy-patterns.json.
+  const autonomyTaskRail = new AutonomyTaskRailService(autonomyLog, autonomyEventLog);
+  context.subscriptions.push(autonomyTaskRail);
+  if (!api.services.has(IAutonomyTaskRailService)) {
+    api.services.registerInstance(IAutonomyTaskRailService, autonomyTaskRail);
+  }
+
+  let autonomyPatternMemory: AutonomyPatternMemoryService | undefined;
+  if (_appPath) {
+    autonomyPatternMemory = new AutonomyPatternMemoryService({
+      dataDir: `${_appPath}/data`,
+      fs: _fsBridge as IAutonomyPatternMemoryFs | undefined,
+    });
+    void autonomyPatternMemory.initialize().catch(() => { /* defaults apply */ });
+    context.subscriptions.push(autonomyPatternMemory);
+    if (!api.services.has(IAutonomyPatternMemoryService)) {
+      api.services.registerInstance(IAutonomyPatternMemoryService, autonomyPatternMemory);
+    }
+  }
+  if (!api.services.has(IAutonomyFeatureFlagsService)) {
+    api.services.registerInstance(IAutonomyFeatureFlagsService, autonomyFlags);
   }
 
   // ── 1. Retrieve DI services ──
@@ -879,11 +915,17 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       chatService.queueRequest(sessionId, message, ChatRequestQueueKind.Queued);
     },
     // M60 §3.8: gate followup evaluation on autonomy.followup.enabled.
+    // M60 §8 Phase ζ: also honor the global pause kill-switch — when
+    // `autonomy.paused.global` is on, every trigger reports disabled
+    // regardless of its per-trigger flag.
     isAutonomyFlagEnabled: (flagId: string) => {
       // Only known flags are honored; unknown ids default to true so a
       // misconfiguration does not silently disable autonomy.
       try {
-        return autonomyFlags.isEnabled(flagId as Parameters<typeof autonomyFlags.isEnabled>[0]);
+        return isAutonomyTriggerAllowed(
+          autonomyFlags,
+          flagId as Parameters<typeof autonomyFlags.isEnabled>[0],
+        );
       } catch {
         return true;
       }
@@ -1260,7 +1302,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
       // ── M60 Phase γ §3.8/§3.10 — cron controls layer ──
       cronService.setObservers({
-        isFlagEnabled: () => autonomyFlags.isEnabled(FLAG_CRON_ENABLED),
+        isFlagEnabled: () => isAutonomyTriggerAllowed(autonomyFlags, FLAG_CRON_ENABLED),
         onAutonomyEvent: autonomyEventLog
           ? (info) => {
               autonomyEventLog!.emit({
@@ -1375,7 +1417,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       // spawns in M60). Flag gate refuses spawn when off; emit captures
       // gated/budget/error/completed outcomes with parent-session ref.
       subagentSpawner.setObservers({
-        isFlagEnabled: () => autonomyFlags.isEnabled(FLAG_SUBAGENT_ENABLED),
+        isFlagEnabled: () => isAutonomyTriggerAllowed(autonomyFlags, FLAG_SUBAGENT_ENABLED),
         onAutonomyEvent: autonomyEventLog
           ? (info) => {
               autonomyEventLog!.emit({
@@ -1386,6 +1428,39 @@ export function activate(api: ParallxApi, context: ToolContext): void {
                 note: info.runId
                   ? `${info.note ?? `runId=${info.runId}`}`
                   : info.note,
+              });
+            }
+          : undefined,
+        // M60 §8 Phase ζ T5.E3 — pattern memory hooks. Only consulted when
+        // the pattern memory feature flag is on. Pattern key is reduced to
+        // (toolName='subagent.spawn', sessionPattern=parentSessionId,
+        // argsShape=sorted-keys-of-{task,label,model}). Raw values are
+        // never stored — see autonomyPatternMemoryService.
+        isPatternApproved: autonomyPatternMemory
+          ? (params) => {
+              if (!autonomyFlags.isEnabled(FLAG_PATTERN_MEMORY_ENABLED)) return false;
+              return autonomyPatternMemory!.isApproved({
+                toolName: 'subagent.spawn',
+                parentSessionPattern: getParentSessionId() ?? '',
+                argsShape: computeArgsShape({
+                  task: params.task,
+                  label: params.label,
+                  model: params.model,
+                }),
+              });
+            }
+          : undefined,
+        notePatternMatch: autonomyPatternMemory
+          ? (params) => {
+              if (!autonomyFlags.isEnabled(FLAG_PATTERN_MEMORY_ENABLED)) return;
+              autonomyPatternMemory!.noteMatch({
+                toolName: 'subagent.spawn',
+                parentSessionPattern: getParentSessionId() ?? '',
+                argsShape: computeArgsShape({
+                  task: params.task,
+                  label: params.label,
+                  model: params.model,
+                }),
               });
             }
           : undefined,
@@ -1462,7 +1537,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         },
         // M60 Phase γ §3.8 — autonomy.heartbeat.enabled flag gate.
         // Closure picks up live flag changes; no restart required.
-        isFlagEnabled: () => autonomyFlags.isEnabled(FLAG_HEARTBEAT_ENABLED),
+        isFlagEnabled: () => isAutonomyTriggerAllowed(autonomyFlags, FLAG_HEARTBEAT_ENABLED),
         // M60 Phase γ §3.10 — emit a structured autonomy event per tick.
         onAutonomyEvent: autonomyEventLog
           ? (info) => {

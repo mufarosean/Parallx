@@ -43,6 +43,12 @@ const FLAG_DESCRIPTIONS: Readonly<Record<AutonomyFlagId, string>> = Object.freez
     'Stamp every canvas block with a stable unique ID for cross-block references. Default on; toggle off only for emergency rollback.',
   'canvas.dataview.enabled':
     'Render dataview blocks (live property-filtered page lists) inside canvas pages. Default on; toggle off only for emergency rollback.',
+  'autonomy.paused.global':
+    'Global autonomy pause. When on, every autonomous trigger (followup, heartbeat, cron, sub-agent) is gated regardless of its individual flag. Survives reload (M60 §8 E2).',
+  'autonomy.rail.enabled':
+    'Show the Autonomy Rail panel. Default on; toggle off to hide the rail UI without disabling autonomy itself.',
+  'autonomy.patternMemory.enabled':
+    'Allow remembering "approve this pattern" decisions for sub-agent spawns. When off, every spawn requires a fresh approval (M60 §8 E3).',
 });
 
 const FLAG_CATEGORY: Readonly<Record<AutonomyFlagId, string>> = Object.freeze({
@@ -57,6 +63,9 @@ const FLAG_CATEGORY: Readonly<Record<AutonomyFlagId, string>> = Object.freeze({
   'autonomy.subagent.enabled': 'Autonomy',
   'canvas.blockIds.enabled': 'Canvas',
   'canvas.dataview.enabled': 'Canvas',
+  'autonomy.paused.global': 'Autonomy',
+  'autonomy.rail.enabled': 'Autonomy',
+  'autonomy.patternMemory.enabled': 'Autonomy',
 });
 
 // ─── Substrate (non-flag) autonomy settings ────────────────────────────────

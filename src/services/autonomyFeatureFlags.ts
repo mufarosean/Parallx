@@ -46,6 +46,14 @@ export const FLAG_SUBAGENT_ENABLED = 'autonomy.subagent.enabled';
 // rendered by the canvas editor; flag gates registration.
 export const FLAG_CANVAS_BLOCKIDS_ENABLED = 'canvas.blockIds.enabled';
 export const FLAG_CANVAS_DATAVIEW_ENABLED = 'canvas.dataview.enabled';
+// M60 Phase ζ §8 — autonomy task rail polish.
+// `paused.global` is the kill switch (default false; trips → no autonomous
+// trigger fires). `rail.enabled` lets the user hide the whole rail UI
+// (default true). `patternMemory.enabled` gates the auto-approve-on-pattern
+// memory recorded by AutonomyPatternMemoryService (default true).
+export const FLAG_PAUSED_GLOBAL = 'autonomy.paused.global';
+export const FLAG_RAIL_ENABLED = 'autonomy.rail.enabled';
+export const FLAG_PATTERN_MEMORY_ENABLED = 'autonomy.patternMemory.enabled';
 
 export type AutonomyFlagId =
   | typeof FLAG_FOLLOWUP_ENABLED
@@ -58,7 +66,10 @@ export type AutonomyFlagId =
   | typeof FLAG_CRON_ENABLED
   | typeof FLAG_SUBAGENT_ENABLED
   | typeof FLAG_CANVAS_BLOCKIDS_ENABLED
-  | typeof FLAG_CANVAS_DATAVIEW_ENABLED;
+  | typeof FLAG_CANVAS_DATAVIEW_ENABLED
+  | typeof FLAG_PAUSED_GLOBAL
+  | typeof FLAG_RAIL_ENABLED
+  | typeof FLAG_PATTERN_MEMORY_ENABLED;
 
 /**
  * Defaults per M60 §3.8. Canvas + filesystem are gated until C3 lands.
@@ -78,6 +89,9 @@ export const AUTONOMY_FLAG_DEFAULTS: Readonly<Record<AutonomyFlagId, boolean>> =
   [FLAG_SUBAGENT_ENABLED]: false,
   [FLAG_CANVAS_BLOCKIDS_ENABLED]: true,
   [FLAG_CANVAS_DATAVIEW_ENABLED]: true,
+  [FLAG_PAUSED_GLOBAL]: false,
+  [FLAG_RAIL_ENABLED]: true,
+  [FLAG_PATTERN_MEMORY_ENABLED]: true,
 });
 
 /** Surface plugin id → flag id. Used by SurfaceRouterService gating. */
@@ -174,4 +188,22 @@ export class AutonomyFeatureFlagsService extends Disposable implements IAutonomy
       // Persistence failures don't affect in-memory truth.
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Kill-switch helper (M60 §8 Phase ζ)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns `true` only when the kill switch is OFF (`paused.global`=false)
+ * AND the per-trigger flag is ON. Used by all runner observer wirings so
+ * that flipping `autonomy.paused.global` halts every autonomy trigger
+ * without touching individual flags.
+ */
+export function isAutonomyTriggerAllowed(
+  flags: IAutonomyFeatureFlagsService,
+  triggerFlag: AutonomyFlagId,
+): boolean {
+  if (flags.isEnabled(FLAG_PAUSED_GLOBAL)) return false;
+  return flags.isEnabled(triggerFlag);
 }

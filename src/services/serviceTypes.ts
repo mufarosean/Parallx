@@ -2046,3 +2046,24 @@ import type { ISettingsRegistryService as ISettingsRegistryServiceType } from '.
 export type ISettingsRegistryService = ISettingsRegistryServiceType;
 export const ISettingsRegistryService =
   createServiceIdentifier<ISettingsRegistryServiceType>('ISettingsRegistryService');
+
+// ─── IAutonomyTaskRailService (M60 §8 Phase ζ T5.E1) ────────────────────────
+//
+// Read-only viewmodel that merges live in-memory autonomy log entries with
+// persisted ndjson history into a single rail feed (filterable + paginated).
+
+import type { IAutonomyTaskRailService as IAutonomyTaskRailServiceType } from './autonomyTaskRailService.js';
+export type IAutonomyTaskRailService = IAutonomyTaskRailServiceType;
+export const IAutonomyTaskRailService =
+  createServiceIdentifier<IAutonomyTaskRailServiceType>('IAutonomyTaskRailService');
+
+// ─── IAutonomyPatternMemoryService (M60 §8 Phase ζ T5.E3) ───────────────────
+//
+// "Approve this pattern" memory for sub-agent spawn approvals. Patterns are
+// reduced to (toolName, parentSessionPattern, argsShape) before storage —
+// raw arg values never persisted.
+
+import type { IAutonomyPatternMemoryService as IAutonomyPatternMemoryServiceType } from './autonomyPatternMemoryService.js';
+export type IAutonomyPatternMemoryService = IAutonomyPatternMemoryServiceType;
+export const IAutonomyPatternMemoryService =
+  createServiceIdentifier<IAutonomyPatternMemoryServiceType>('IAutonomyPatternMemoryService');
