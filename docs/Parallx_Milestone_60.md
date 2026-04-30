@@ -46,6 +46,26 @@ Tier 3 partially closes (canvas property queries + block-level tools),
 Tier 4 partially closes (settings UI + canvas API formalization deferred to
 M61), Tier 5 closes (task-rail polish + autonomy E2E + Gmail MCP demo).
 
+### 1.1 Anti-vision — what M60 is explicitly NOT
+
+These are the failure modes we will refuse, even under deadline pressure:
+
+- **Not** an autonomy free-for-all. Every autonomous turn is **gated, logged,
+  killable, and bounded by token + time + tool budgets**.
+- **Not** a chatbot that pretends to be agentic by polling. Triggers are
+  real (cron, file watcher, indexer event, tool followup). No fake
+  heartbeats that just re-prompt the LLM.
+- **Not** a kitchen-sink settings editor. Settings are **schema-registered
+  by their owning service**; the editor only renders what's registered.
+- **Not** a Gmail client. T6 ships **one read-only tool**. No drafts, no
+  send, no labels, no archive — even if the LLM asks for it.
+- **Not** a multi-device / cloud-sync milestone. Local-first, single-user,
+  single-instance. Sync is M61+.
+- **Not** an excuse to refactor unrelated code. Out-of-scope diffs are
+  rejected at PR review (§14 risk: scope creep).
+- **Not** "audit-closed = done". Wiring + tests + UX + docs + observability
+  is done. Audit is one of seven lenses.
+
 ---
 
 ## 2. Tier Map (work organized by user-visible outcome)
@@ -110,6 +130,149 @@ user approval before the file is opened for edit.** Tracked per-domain.
 The M58 audits were performed against upstream commit `e635cedb` months
 ago. Before wiring any T1 module, the **Parity Auditor must re-audit**
 against current upstream HEAD and treat drift as a first-class finding.
+
+### 3.6 Autonomy cost & resource budgets (hard caps)
+
+Every autonomous turn consumes tokens, CPU, network, and possibly
+third-party API quota. Without caps, a runaway loop can drain a model
+budget in minutes or hit Gmail rate limits in seconds. **Every domain
+that triggers an autonomous turn must enforce these caps; the runner
+refuses to start a turn that would exceed them.**
+
+| Budget | Default cap | Scope | Where enforced | Override |
+|--------|------------|-------|---------------|----------|
+| Tokens per autonomous turn | 8k input + 4k output | Per turn | `openclawTokenBudget.ts` (existing) | Settings UI (T4) |
+| Tokens per autonomy day (rolling 24h) | 250k total | Global | New `autonomyBudgetService.ts` | Settings UI |
+| Followup depth | 5 (existing `MAX_FOLLOWUP_DEPTH`) | Per chain | `followupRunner` | Settings UI |
+| Sub-agent spawn depth | 1 (no nested spawns in M60) | Per chain | `subagentSpawn` | Hard-coded for M60 |
+| Heartbeat tick interval | 60s | Global | `heartbeatRunner` | Settings UI (min 15s) |
+| Cron job count | 50 active | Per workspace | `cronService` | Settings UI |
+| External API calls / hour | 60 (Gmail) | Per MCP | MCP client policy | Per-MCP settings |
+| Renderer-thread block | 16ms | Per task | Worker offload (T2) | n/a |
+| Disk writes per autonomous turn | 100 ops | Per turn | Vector store + canvas writers | n/a |
+
+When a cap trips, the autonomy runner emits a `budget.exceeded` event,
+refuses the turn, posts a notification, and surfaces the trip in the task
+rail. **No silent throttling.**
+
+### 3.7 Concurrency, idempotency & lock discipline
+
+Multiple triggers can fire on overlapping windows (cron + file change +
+followup). The autonomy substrate must:
+
+- **Single-flight per trigger** — at most one cron job, one heartbeat
+  tick, one followup chain in flight at a time, per session.
+  Subsequent triggers queue; queue depth ≤ 3, then drop with logged warn.
+- **Idempotency keys** — every cron firing carries a deterministic
+  `(cronId, scheduledAt)` key. Re-firing the same key is a no-op.
+  Tool calls that mutate state (canvas writes, file writes) carry a
+  client-side idempotency key surfaced in the audit log.
+- **Cancellation cooperation** — every long-running tool must observe the
+  `CancellationToken` it receives. The kill-switch (T5.E2) sets the
+  token; tools that ignore it for >2s are flagged in the autonomy eval.
+- **No autonomy during shutdown** — heartbeat and cron are paused as
+  soon as `BeforeShutdownEvent` fires; in-flight turns are given 2s to
+  complete and then cancelled.
+
+### 3.8 Feature flags & rollback policy
+
+Every domain that touches autonomy or core code paths ships behind a
+feature flag registered in T4's settings registry. Defaults:
+
+| Flag | Default | Rationale |
+|------|---------|-----------|
+| `autonomy.followup.enabled` | **on** after A2 lands | Lowest-risk autonomy |
+| `autonomy.heartbeat.enabled` | **off** until 1 week of clean dogfood | Background CPU |
+| `autonomy.cron.enabled` | **off** until heartbeat is proven | Depends on heartbeat |
+| `autonomy.subagent.enabled` | **off** until autonomy eval ≥10/12 for 5 runs | Highest blast radius |
+| `indexing.worker.enabled` | **off** in α; **on** in β | T2.B3 needs bake time |
+| `indexing.lazy.enabled` | **off** | Behavioral change |
+| `canvas.blockIds.enabled` | **on** after C2 migration verified | Required for C3 |
+| `mcp.gmail.enabled` | **off** by default | User opts in |
+
+**Rollback contract:** every flag toggles cleanly at runtime without a
+restart. If a flag toggle requires restart, that's a domain bug.
+
+### 3.9 Privacy & data posture (generalized from §9 Gmail)
+
+Applies to every external integration in M60 and beyond:
+
+- **Local-first.** No telemetry. No phone-home. No third-party analytics.
+- **Encrypted-at-rest secrets.** OAuth tokens, API keys, MCP credentials
+  use Electron `safeStorage`. Plaintext storage is a security defect.
+- **Scope minimization.** Read-only by default. Every additional scope
+  requires its own approval gate.
+- **No body persistence.** Email bodies, file contents, and other
+  third-party payloads are processed in-memory and discarded after the
+  turn. Only structured summaries (subject, sender, label) may persist
+  in canvas pages the user explicitly creates.
+- **Audit log retention.** Autonomy task-rail entries persist 90 days
+  by default, then auto-purge. User can purge on demand.
+- **Network egress allowlist** per MCP integration. The Gmail MCP only
+  reaches `accounts.google.com` and `gmail.googleapis.com`; any other
+  egress is a defect.
+
+### 3.10 Observability & replay
+
+Every autonomous turn produces a structured **autonomy event record**:
+
+```
+{
+  id: ulid,
+  triggeredAt: iso,
+  trigger: { kind: "cron"|"heartbeat"|"followup"|"file-change"|"chat", ref },
+  budgetSnapshot: { tokensUsedToday, depth, ... },
+  systemPromptHash: sha256,
+  toolCalls: [{ name, argsDigest, durationMs, idempotencyKey, error? }],
+  surfaceRoutes: [{ surface, target, ok }],
+  outcome: "completed"|"cancelled"|"budget"|"error",
+  durationMs, tokensIn, tokensOut
+}
+```
+
+Records are written to `data/autonomy-events.ndjson` (rotated daily,
+90-day retention) **and** to the in-memory rail (T5.E1). Replay command
+(dev-only): `parallx autonomy:replay <event-id>` reconstructs the
+system prompt + tool sequence and re-runs against current state for
+debugging. Replay is **read-only by default**; mutating tools are
+dry-run unless `--apply` is passed.
+
+### 3.11 Definition of Done — per-domain checklist
+
+A domain is done only when **every** box is checked:
+
+- [ ] Code compiles, type-clean (no `any` in new code), `npm run build`
+      passes.
+- [ ] Unit tests in same commit, all green.
+- [ ] Integration / E2E tests per §11.3 coverage gates, all green.
+- [ ] Autonomy eval scenario (where required), ≥ rubric threshold.
+- [ ] Re-audit report attached for parity domains (T1, anything
+      adapting upstream).
+- [ ] Doc deltas in same commit (no "docs follow-up" PRs).
+- [ ] UX Guardian sign-off note in commit body.
+- [ ] Feature flag registered (§3.8) with default per policy.
+- [ ] Autonomy event record schema unchanged or migration documented.
+- [ ] No new `localStorage` writes; storage routes through M53
+      portable storage.
+- [ ] No new inline styles; UI uses `src/ui/` components and
+      `--vscode-*` tokens.
+- [ ] Performance trace attached when L5 applies.
+- [ ] PR description lists which lenses were applied and where the
+      artifact lives.
+
+### 3.12 Domain ownership (subagent assignment)
+
+Which agent drives which domain. This locks expertise to the right
+surface and prevents the wrong agent doing the wrong job.
+
+| Domain block | Lead agent | Verifier |
+|--------------|-----------|----------|
+| T1 (autonomy) | Parity Orchestrator → Source Analyst → Parity Code Executor | Parity Verification Agent + Parity UX Guardian |
+| T2 (perf) | Architecture Mapper → Code Executor | Verification Agent + Regression Sentinel |
+| T3 (canvas) | Property Orchestrator (M55 lineage) → Property Builder | Property Verifier + UX Guardian |
+| T4 (settings) | Architecture Mapper → Code Executor | UX Guardian + Verification Agent |
+| T5 (rail) | Architecture Mapper → Code Executor | UX Guardian |
+| T6 (Gmail E2E) | Extension Orchestrator → Source Analyst (MCP spec) → Code Executor | Verification Agent + Parity UX Guardian; mandatory security review (§9.5) |
 
 ---
 
@@ -487,7 +650,34 @@ A phase gate is met when:
 
 ---
 
-## 13. Risks & Mitigations
+## 13. Failure Modes & Recovery
+
+For each tier, what breaks and how we recover. Recovery paths must work
+**without manual SQLite surgery**.
+
+| Failure | Tier | Detection | Recovery |
+|---------|------|-----------|----------|
+| Heartbeat fires but agent loops on same trigger | T1 | Loop safety counter, autonomy event record shows N consecutive identical triggers | Auto-pause heartbeat, surface notification, user resumes via T5 kill-switch |
+| Cron job storms after sleep/wake | T1 | `scheduledAt` < `now - jitterTolerance`; coalesce missed firings | Single catch-up firing per cron, drop the rest; log to rail |
+| Sub-agent leaks tokens into parent session | T1 | Integration test asserts session isolation | Disable A6 flag; rollback isolated by feature flag |
+| Worker thread crashes during indexing | T2 | `worker.onerror`; renderer detects no progress for 10s | Fall back to renderer-thread indexing with degraded-mode banner |
+| Block ID migration creates duplicates | T3 | Migration test round-trips 100 docs and asserts ID uniqueness | Migration is reversible; rollback flag + restore from auto-snapshot |
+| Settings registry collision (two services register same key) | T4 | Registration throws on duplicate | Hard fail at boot; surfaced as a startup error |
+| Task rail history overflows | T5 | Row count > 10k | Auto-trim oldest beyond 90 days |
+| Gmail OAuth refresh fails | T6 | Token endpoint 4xx | Surface re-auth prompt; cron skips gracefully; no retries that lock the user out |
+| MCP child process crashes | T6 | `process.on('exit')` non-zero | Auto-restart with backoff (1s, 5s, 30s); surface failure after 3 attempts |
+| Autonomy budget exhausted mid-day | §3.6 | Budget tracker | Refuse new turns, surface notification, suggest quota raise |
+| Autonomy event NDJSON corrupt | §3.10 | Parse error on rotation | Quarantine corrupt file, start fresh, surface warning |
+
+**Disaster recovery:** Before any T3 (canvas) or T6 (external write) work
+lands, the corresponding domain commit must include a verified
+`data/` snapshot/restore path. Canvas DB has migration backups from M53;
+T6 must not write to canvas without going through C3 tools (which
+log through the audit rail).
+
+---
+
+## 14. Risks & Mitigations
 
 | Risk | Mitigation |
 |------|-----------|
@@ -501,7 +691,7 @@ A phase gate is met when:
 
 ---
 
-## 14. Out of Scope (deferred to M61+)
+## 15. Out of Scope (deferred to M61+)
 
 - Cloud sync / multi-device storage
 - Settings sync across machines
@@ -513,7 +703,7 @@ A phase gate is met when:
 
 ---
 
-## 15. Open Questions
+## 16. Open Questions
 
 - **OQ1:** Heartbeat default cadence — 60s feels right for autonomy
   responsiveness vs idle CPU. Confirm with one week of telemetry-free
@@ -527,8 +717,35 @@ A phase gate is met when:
 
 ---
 
-## 16. Status Log
+## 17. Glossary
+
+- **Autonomous turn** — any LLM turn whose trigger is **not** a direct user
+  chat input. Includes cron, heartbeat, followup, file-change, sub-agent.
+- **Autonomy event** — the structured record (§3.10) emitted for every
+  autonomous turn.
+- **Cap** — a hard numeric ceiling that, when reached, prevents starting
+  the next operation. Caps never silently throttle.
+- **Domain** — a unit of work within a tier (e.g. T1.A2 FollowupRunner
+  wiring). Closes via the seven lenses + DoD checklist.
+- **Lens** — one of seven evaluation perspectives (§3.3). All seven must
+  pass for a domain to close.
+- **MCP** — Model Context Protocol. Standardized way to expose tools to
+  LLMs. Parallx already has an MCP client (`src/openclaw/mcp/`); M60 adds
+  the first first-party MCP server (Gmail).
+- **Re-audit** — an audit performed against the **current** upstream
+  HEAD, not a stale baseline (§3.5).
+- **Rubric** — scoring matrix used by the autonomy eval runner to grade
+  an LLM-driven scenario without deterministic post-processing.
+- **Surface** — an output destination (chat / canvas / filesystem /
+  notification / statusbar). Routed by SurfacePlugin (T1.A3).
+- **Trigger** — the cause of a turn (chat / cron / heartbeat / followup /
+  file-change / sub-agent).
+
+---
+
+## 18. Status Log
 
 | Date | Phase | Note |
 |------|-------|------|
 | 2026-04-30 | Planning | Doc created; `milestone-60` branched from `milestone-58` |
+| 2026-04-30 | Planning | Controls pass: anti-vision, cost budgets, concurrency, feature flags, privacy posture, observability/replay, DoD checklist, ownership, failure modes, glossary |
