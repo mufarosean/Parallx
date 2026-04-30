@@ -6235,6 +6235,15 @@ function renderMediaCard(item, options) {
       ? [...options.selectedIds]
       : [key];
     e.dataTransfer.setData('application/x-mo-items', JSON.stringify(keys));
+    // M59 P7: also publish standard MIME types so OS / canvas / chat surfaces
+    // can accept the drop natively. Path is best-effort — populated lazily by
+    // resolveThumbnailForCard. If unresolved, we still set the MO key payload.
+    const filePath = card._filePath || item._sourcePath;
+    if (filePath) {
+      const fileUrl = `file:///${String(filePath).replace(/\\/g, '/').replace(/^\/+/, '')}`;
+      try { e.dataTransfer.setData('text/uri-list', fileUrl); } catch { /* ignore */ }
+      try { e.dataTransfer.setData('text/plain', filePath); } catch { /* ignore */ }
+    }
     e.dataTransfer.effectAllowed = 'copy';
   });
   card._imgEl = img;
@@ -6414,6 +6423,11 @@ function renderCardGrid(container, items, options) {
         item.thumbnailPath = result.path;
         // Persist GIF source on item so it survives grid refreshes (zoom changes)
         if (result.sourcePath) item._gifSourcePath = result.sourcePath;
+        // M59 P7: stash original source path for drag-out interop (text/uri-list)
+        if (result.sourcePath) {
+          card._filePath = result.sourcePath;
+          item._sourcePath = result.sourcePath;
+        }
         const img = card._imgEl;
         if (img) {
           // For GIFs, show the original animated file instead of the static thumbnail
@@ -12632,6 +12646,31 @@ export async function activate(api, context) {
   );
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.openMap', () => moOpenMap(api))
+  );
+
+  // M59 P7: reveal-in-MO from any file path
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.revealInMO', async (arg) => {
+      const path = (typeof arg === 'string') ? arg : (arg && arg.path) || '';
+      if (!path) {
+        api.window.showWarningMessage('Reveal in Media Organizer: no path provided.');
+        return;
+      }
+      // Open the All Media grid first
+      await api.editors.openEditor({
+        typeId: 'media-organizer-grid',
+        title: 'Media Library',
+        icon: 'image',
+        instanceId: 'grid:all',
+      });
+      // Then dispatch search to filter to that file's basename
+      const basename = String(path).split(/[\\/]/).pop() || '';
+      setTimeout(() => {
+        document.dispatchEvent(new CustomEvent('mo:apply-search-state', {
+          detail: { query: basename, filters: {} },
+        }));
+      }, 80);
+    })
   );
 
   // M59 P1: Purge expired quarantine (>30d)

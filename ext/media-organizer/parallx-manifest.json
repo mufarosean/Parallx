@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "parallx-community.media-organizer",
   "name": "Media Organizer",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "publisher": "parallx-community",
   "description": "Organize photos and videos with tags, albums, and EXIF metadata.",
   "main": "main.js",
@@ -31,7 +31,8 @@
       { "id": "media-organizer.moveToTrash", "title": "Move Selected to Trash", "category": "Media Organizer" },
       { "id": "media-organizer.emptyTrash", "title": "Empty Trash", "category": "Media Organizer" },
       { "id": "media-organizer.openTimeline", "title": "Open Timeline View", "category": "Media Organizer" },
-      { "id": "media-organizer.openMap", "title": "Open Map View", "category": "Media Organizer" }
+      { "id": "media-organizer.openMap", "title": "Open Map View", "category": "Media Organizer" },
+      { "id": "media-organizer.revealInMO", "title": "Reveal in Media Organizer", "category": "Media Organizer" }
     ],
     "viewContainers": [
       {
