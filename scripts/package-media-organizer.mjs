@@ -21,6 +21,10 @@ const zip = new AdmZip();
 zip.addLocalFile(path.join(toolDir, 'parallx-manifest.json'));
 zip.addLocalFile(path.join(toolDir, 'main.js'));
 
+// Add bundled tools (preserving bin/ directory structure)
+// magick.exe — used by the WebP gate (animated -> gif, static -> jpg).
+zip.addLocalFile(path.join(toolDir, 'bin', 'magick.exe'), 'bin');
+
 // Add migration files (preserving db/migrations/ directory structure)
 const migrationsDir = path.join(toolDir, 'db', 'migrations');
 zip.addLocalFile(path.join(migrationsDir, 'media-organizer_001_initial.sql'), 'db/migrations');
@@ -31,5 +35,5 @@ zip.addLocalFile(path.join(migrationsDir, 'media-organizer_004_scan_roots.sql'),
 zip.writeZip(outputPath);
 
 console.log(`Packaged media-organizer extension to: ${outputPath}`);
-console.log(`  Files: parallx-manifest.json, main.js, db/migrations/ (4 SQL files)`);
+console.log(`  Files: parallx-manifest.json, main.js, bin/magick.exe, db/migrations/ (4 SQL files)`);
 console.log(`  Size: ${(zip.toBuffer().length / 1024).toFixed(1)} KB`);

@@ -2008,7 +2008,7 @@ const SCAN_DEFAULTS = {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: pkg/manager/manager.go — external binary detection
 
-let _toolPaths = { ffprobe: null, exiftool: null, node: null, ffmpeg: null, vips: null };
+let _toolPaths = { ffprobe: null, exiftool: null, node: null, ffmpeg: null, vips: null, magick: null };
 let _toolsDetected = false;
 
 const _isWindows = window.parallxElectron.platform === 'win32';
@@ -2065,12 +2065,25 @@ async function detectAllTools() {
     detectTool('ffmpeg'),
     detectTool('vips'),
   ]);
-  _toolPaths = { ffprobe, exiftool, node, ffmpeg, vips };
+
+  // Bundled magick.exe — shipped inside the extension at <toolPath>/bin/magick.exe.
+  // No PATH lookup. Used exclusively for the WebP gate (animated -> gif, static -> jpg).
+  let magick = null;
+  if (_toolPath) {
+    const sep = _isWindows ? '\\' : '/';
+    const exe = _isWindows ? '.exe' : '';
+    const candidate = _toolPath + sep + 'bin' + sep + 'magick' + exe;
+    const s = await window.parallxElectron.fs.stat(candidate);
+    if (s && !s.error && s.size > 0) magick = candidate;
+  }
+
+  _toolPaths = { ffprobe, exiftool, node, ffmpeg, vips, magick };
   _toolsDetected = true;
   if (!ffprobe) console.warn('[MediaOrganizer] ffprobe not found — video metadata will be unavailable');
   if (!exiftool) console.warn('[MediaOrganizer] exiftool not found — EXIF data will be unavailable');
   if (!node) console.warn('[MediaOrganizer] node not found — oshash unavailable, using MD5 only');
   if (!ffmpeg && !vips) console.warn('[MediaOrganizer] Neither ffmpeg nor vips found — thumbnails will use canvas fallback');
+  if (!magick) console.warn('[MediaOrganizer] bundled magick.exe missing — WebP files will be left as-is');
   return _toolPaths;
 }
 
@@ -2312,12 +2325,32 @@ async function walkDirectory(rootPath, options, onProgress) {
       if (item.size < minFileSize) continue;
       if (shouldExclude(relPath, compiledExcludes)) continue;
 
+      // WebP gate — convert in place (animated -> gif, static -> jpg) before
+      // any DB row is created. The converted file is what gets indexed; the
+      // original .webp is hard-deleted. On any failure we fall through and
+      // index the .webp as-is. See convertWebpAtPath().
+      let entryPath = fullPath;
+      let entryName = item.name;
+      let entrySize = item.size;
+      let entryMtime = item.mtime;
+      let entryFileType = fileType;
+      if (/\.webp$/i.test(entryName)) {
+        const converted = await convertWebpAtPath(fullPath);
+        if (converted) {
+          entryPath = converted;
+          entryName = converted.slice(converted.lastIndexOf(sep) + 1);
+          const cs = await window.parallxElectron.fs.stat(converted);
+          if (cs && !cs.error) { entrySize = cs.size; entryMtime = cs.mtime; }
+          entryFileType = classifyFile(entryName) || fileType;
+        }
+      }
+
       entries.push({
-        path: fullPath,
-        name: item.name,
-        size: item.size,
-        mtime: item.mtime,
-        fileType,
+        path: entryPath,
+        name: entryName,
+        size: entrySize,
+        mtime: entryMtime,
+        fileType: entryFileType,
         folderId,
       });
     }
@@ -2462,27 +2495,15 @@ async function processFile(entry) {
   // Adapted from stash: pkg/file/scan.go — onNewFile wraps Create+Handlers in WithTxn
   const meta = await extractMetadata(entry.path, entry.fileType);
 
-  // M59: detect webp for later conversion. Animated -> gif, static -> jpg.
-  const isWebp = entry.fileType === 'image' && /\.webp$/i.test(entry.path);
-  let webpTarget = null; // 'gif' | 'jpg' | null
-  if (isWebp) {
-    webpTarget = (await isWebPAnimated(entry.path)) ? 'gif' : 'jpg';
-    console.log(`[MediaOrganizer] WebP detected: ${entry.name} -> ${webpTarget}`);
-  }
-  const needsConversion = webpTarget ? 1 : 0;
-
   const txnOps = [
     { type: 'run',
       sql: `INSERT INTO mo_files (basename, size, mod_time, folder_id, needs_conversion, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      params: [entry.name, entry.size, entry.mtime, entry.folderId, needsConversion] },
+            VALUES (?, ?, ?, ?, 0, datetime('now'), datetime('now'))`,
+      params: [entry.name, entry.size, entry.mtime, entry.folderId] },
   ];
 
   const txnResult = await db.transaction(txnOps);
   const fileId = txnResult[0].lastInsertRowid;
-
-  // M59 P2: queue for auto-convert after scan if it's a WebP
-  if (webpTarget) _newWebPConversions.push({ id: fileId, target: webpTarget });
 
   // 5. Store fingerprints (outside txn — these are idempotent via upsert)
   for (const fp of fps) {
@@ -2574,7 +2595,6 @@ async function runScan(rootPath, api) {
   const startTime = Date.now();
   _scanRunning = true;
   _scanCancelled = false;
-  _newWebPConversions = [];
 
   const stats = { total: 0, created: 0, updated: 0, renamed: 0, skipped: 0, duplicates: 0, errors: 0, cancelled: false };
 
@@ -2663,13 +2683,6 @@ async function runScan(rootPath, api) {
     // Refresh sidebar sections (folders, tags, albums)
     _notifySidebarRefresh();
 
-    // M59 P2: process animated WebP queue (auto/suggest/off)
-    if (!stats.cancelled) {
-      moAutoConvertWebPAfterScan(api).catch(err => {
-        console.warn('[MediaOrganizer] auto webp post-scan failed:', err);
-      });
-    }
-
     // M59 P3: rebuild FTS search index (best-effort)
     if (!stats.cancelled) {
       moRebuildSearchIndex().catch(err => {
@@ -2730,21 +2743,36 @@ async function getScanRoots() {
 async function processIncrementalCreate(filePath) {
   if (isInternalPath(filePath)) return null;
   const sep = _isWindows ? '\\' : '/';
-  const lastSep = filePath.lastIndexOf(sep);
-  const dirPath = lastSep > 0 ? filePath.slice(0, lastSep) : filePath;
-  const fileName = lastSep > 0 ? filePath.slice(lastSep + 1) : filePath;
+  let lastSep = filePath.lastIndexOf(sep);
+  let dirPath = lastSep > 0 ? filePath.slice(0, lastSep) : filePath;
+  let fileName = lastSep > 0 ? filePath.slice(lastSep + 1) : filePath;
 
-  const fileType = classifyFile(fileName);
+  let fileType = classifyFile(fileName);
   if (!fileType) return null;
 
   // Stat to get size/mtime
-  const statResult = await window.parallxElectron.fs.stat(filePath);
+  let statResult = await window.parallxElectron.fs.stat(filePath);
   if (statResult.error) return null;
   if (statResult.size < SCAN_DEFAULTS.minFileSize) return null;
 
+  // WebP gate — convert in place before indexing. Mirrors walkDirectory().
+  let effectivePath = filePath;
+  if (/\.webp$/i.test(fileName)) {
+    const converted = await convertWebpAtPath(filePath);
+    if (converted) {
+      effectivePath = converted;
+      lastSep = converted.lastIndexOf(sep);
+      dirPath = lastSep > 0 ? converted.slice(0, lastSep) : converted;
+      fileName = lastSep > 0 ? converted.slice(lastSep + 1) : converted;
+      fileType = classifyFile(fileName) || fileType;
+      statResult = await window.parallxElectron.fs.stat(converted);
+      if (!statResult || statResult.error) return null;
+    }
+  }
+
   const folder = await FolderQueries.findOrCreate(dirPath);
   const entry = {
-    path: filePath,
+    path: effectivePath,
     name: fileName,
     size: statResult.size,
     mtime: statResult.mtime,
@@ -2830,12 +2858,6 @@ async function drainWatcherQueue() {
     if (created + updated + deleted > 0) {
       console.log(`[MediaOrganizer] Auto-scan: ${created} new, ${updated} updated, ${deleted} removed`);
       _notifySidebarRefresh();
-    }
-    // M59: process any WebP files queued during this watcher batch
-    if (_newWebPConversions.length > 0 && _api) {
-      moAutoConvertWebPAfterScan(_api).catch((err) =>
-        console.warn('[MediaOrganizer] watcher webp auto-convert failed:', err)
-      );
     }
   } finally {
     _watcherProcessing = false;
@@ -3159,6 +3181,65 @@ async function isWebPAnimated(filePath) {
     const tail = String.fromCharCode(...bytes.slice(21, Math.min(bytes.length, 48)));
     return tail.includes('ANIM');
   } catch { return false; }
+}
+
+/**
+ * Convert a .webp file in place to .gif (animated) or .jpg (static) using
+ * the bundled magick.exe, then hard-delete the original.
+ *
+ * Returns the new absolute path on success, or null on any failure (in which
+ * case the original .webp is left untouched and the caller should treat it
+ * as unconvertible — index it as-is or skip).
+ *
+ * This is the single chokepoint the scanner and watcher both call BEFORE
+ * any DB row is created. No queue, no flag, no post-processing.
+ */
+async function convertWebpAtPath(filePath) {
+  if (!filePath || !/\.webp$/i.test(filePath)) return null;
+  if (!_toolPaths.magick) return null;
+
+  let animated = false;
+  try { animated = await isWebPAnimated(filePath); } catch { animated = false; }
+  const target = animated ? 'gif' : 'jpg';
+  const outPath = filePath.replace(/\.webp$/i, '.' + target);
+
+  // If the destination already exists we abort rather than clobber. The user
+  // can resolve manually; safer than silently overwriting unrelated files.
+  const outExisting = await window.parallxElectron.fs.stat(outPath);
+  if (outExisting && !outExisting.error && outExisting.size > 0) {
+    console.warn(`[MediaOrganizer] WebP convert skipped — target exists: ${outPath}`);
+    return null;
+  }
+
+  const m = shellInvoke(_toolPaths.magick);
+  // magick reads webp directly (built-in delegate), produces gif or jpg in one
+  // process. For static -> jpg we set quality 92. For animated -> gif we let
+  // magick pick its default palette + frame timing (preserves animation).
+  const cmd = animated
+    ? `${m} ${shellQuote(filePath)} ${shellQuote(outPath)}`
+    : `${m} ${shellQuote(filePath)} -quality 92 ${shellQuote(outPath)}`;
+
+  const r = await window.parallxElectron.terminal.exec(cmd, { timeout: 600000 });
+  if (r.exitCode !== 0) {
+    console.warn(`[MediaOrganizer] magick failed (exit=${r.exitCode}) for ${filePath}: ${r.stderr || r.stdout || '(no output)'}`);
+    return null;
+  }
+
+  const outStat = await window.parallxElectron.fs.stat(outPath);
+  if (!outStat || outStat.error || !outStat.size || outStat.size < 64) {
+    console.warn(`[MediaOrganizer] magick produced empty/missing output for ${filePath}`);
+    return null;
+  }
+
+  const delResult = await window.parallxElectron.fs.delete(filePath, { useTrash: false });
+  if (delResult && delResult.error) {
+    console.warn(`[MediaOrganizer] Failed to delete original webp ${filePath}: ${delResult.error}`);
+    // Output exists, original couldn't be removed — return new path anyway so
+    // the converted file is what gets indexed. Original may be cleaned later.
+  }
+
+  console.log(`[MediaOrganizer] WebP converted: ${filePath} -> ${outPath} (${target})`);
+  return outPath;
 }
 
 /**
@@ -6028,24 +6109,6 @@ const MO_CSS = `
 .mo-btn-secondary {
   background: transparent; color: inherit;
 }
-
-.mo-webp-dialog { width: 600px; }
-.mo-webp-list {
-  flex: 1; overflow-y: auto; padding: 8px 16px;
-  display: flex; flex-direction: column; gap: 6px;
-  max-height: 60vh;
-}
-.mo-webp-row {
-  display: grid; grid-template-columns: 1fr auto;
-  grid-template-areas: "name select" "meta select";
-  align-items: center; gap: 4px 12px;
-  padding: 8px; border-radius: 4px;
-  border: 1px solid var(--parallx-color-border, #444);
-}
-.mo-webp-name { grid-area: name; font-size: 13px; font-weight: 500; }
-.mo-webp-meta { grid-area: meta; font-size: 11px; opacity: 0.65; }
-.mo-webp-row select { grid-area: select; }
-.mo-webp-empty { padding: 24px; text-align: center; opacity: 0.6; }
 
 /* M59 P3: duplicate finder */
 .mo-dup-dialog { width: 800px; max-width: 96vw; }
@@ -11100,255 +11163,6 @@ async function moSetSetting(key, value) {
   );
 }
 
-// ─── Auto-WebP conversion (background, after scan) ────────────────────────────
-// New WebP files discovered during scan are queued here for automatic
-// conversion after scan completes. Animated -> GIF, static -> JPG.
-// Originals are hard-deleted after a successful conversion (no quarantine).
-let _newWebPConversions = []; // [{ id, target: 'gif' | 'jpg' }]
-
-async function moAutoConvertWebPAfterScan(api) {
-  const queue = _newWebPConversions.slice();
-  _newWebPConversions = [];
-  if (queue.length === 0) return;
-  const mode = await moGetSetting('autoWebpMode', 'auto');
-  console.log(`[MediaOrganizer] WebP auto-convert: mode=${mode}, queue=${queue.length}`);
-  if (mode === 'off') return;
-  if (mode === 'suggest') {
-    api.window.showInformationMessage(
-      `${queue.length} WebP file${queue.length === 1 ? '' : 's'} found. Run "Review WebP Files" to convert.`
-    );
-    return;
-  }
-  // mode === 'auto' — animated -> gif, static -> jpg, hard-delete original.
-  let ok = 0, fail = 0;
-  for (const item of queue) {
-    try { await moConvertWebP(api, item.id, item.target); ok++; }
-    catch (err) {
-      console.error(`[MediaOrganizer] auto webp convert failed (id=${item.id}, target=${item.target}):`, err);
-      fail++;
-    }
-  }
-  console.log(`[MediaOrganizer] WebP auto-convert done: ok=${ok}, fail=${fail}`);
-  if (ok > 0 || fail > 0) {
-    api.window.showInformationMessage(
-      `Auto-converted ${ok} WebP file${ok === 1 ? '' : 's'}` + (fail > 0 ? ` (${fail} failed — see console)` : '') + '.'
-    );
-    _notifySidebarRefresh();
-  }
-}
-
-async function moPickAutoWebPMode(api) {
-  const current = await moGetSetting('autoWebpMode', 'auto');
-  const items = [
-    { label: 'Off', description: 'Ignore WebP files' },
-    { label: 'Suggest', description: 'Notify after scan; convert via Review command' },
-    { label: 'Auto', description: 'Convert animated->GIF, static->JPG, delete original (default)' },
-  ];
-  for (const it of items) {
-    if (it.label.toLowerCase() === current) it.description = '✓ Currently selected — ' + it.description;
-  }
-  const pick = await api.window.showQuickPick(items, { placeholder: 'Auto-convert animated WebP files?' });
-  if (!pick) return;
-  const value = pick.label.toLowerCase();
-  await moSetSetting('autoWebpMode', value);
-  api.window.showInformationMessage(`Auto-WebP mode: ${pick.label}`);
-}
-
-// ─── WebP conversion review + bulk convert ────────────────────────────────────
-function moQuarantineDir(api) {
-  const folders = api.workspace.workspaceFolders;
-  if (!folders || folders.length === 0) return null;
-  const wsPath = uriToFsPath(folders[0].uri);
-  const sep = _isWindows ? '\\' : '/';
-  return wsPath + sep + '.parallx/extensions/media-organizer/converted-originals'.replace(/\//g, sep);
-}
-
-async function moPurgeQuarantine(api) {
-  const dir = moQuarantineDir(api);
-  if (!dir) return;
-  const exists = await window.parallxElectron.fs.exists(dir);
-  if (!exists) return;
-  try {
-    const list = await window.parallxElectron.fs.readdir(dir);
-    if (!list || list.error) return;
-    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    for (const e of (list.entries || [])) {
-      if (!e || !/^\d{4}-\d{2}-\d{2}$/.test(e.name)) continue;
-      if (e.mtime && e.mtime < cutoff) {
-        const subPath = dir + (_isWindows ? '\\' : '/') + e.name;
-        await window.parallxElectron.fs.delete(subPath).catch(() => {});
-      }
-    }
-  } catch (err) {
-    console.warn('[MediaOrganizer] quarantine purge failed:', err);
-  }
-}
-
-async function moOpenWebPReviewDialog(api) {
-  const rows = await db.all(
-    `SELECT f.id, f.basename, f.size, fl.path AS folder_path
-     FROM mo_files f
-     LEFT JOIN mo_folders fl ON fl.id = f.folder_id
-     WHERE f.needs_conversion = 1 AND f.converted_at IS NULL
-     ORDER BY f.basename ASC`
-  );
-
-  const overlay = moEl('div', 'mo-modal-overlay');
-  const dialog = moEl('div', 'mo-modal mo-webp-dialog');
-  overlay.appendChild(dialog);
-
-  const header = moEl('div', 'mo-modal-header');
-  header.appendChild(moEl('div', 'mo-modal-title', { textContent: `WebP review (${rows.length})` }));
-  const closeBtn = moEl('button', 'mo-modal-close', { textContent: '×' });
-  closeBtn.addEventListener('click', () => overlay.remove());
-  header.appendChild(closeBtn);
-  dialog.appendChild(header);
-
-  const list = moEl('div', 'mo-webp-list');
-  if (rows.length === 0) {
-    list.appendChild(moEl('div', 'mo-webp-empty', { textContent: 'No WebP files pending review.' }));
-  }
-  const choices = new Map(); // fileId → 'mp4' | 'gif' | 'jpg' | 'skip'
-  for (const r of rows) {
-    // Detect animated vs static so we can default the right target.
-    const sep = _isWindows ? '\\' : '/';
-    const fullPath = (r.folder_path || '') + sep + r.basename;
-    let isAnim = false;
-    try { isAnim = await isWebPAnimated(fullPath); } catch (_) { isAnim = false; }
-    const row = moEl('div', 'mo-webp-row');
-    const label = moEl('div', 'mo-webp-name', { textContent: r.basename + (isAnim ? ' (animated)' : ' (static)') });
-    const meta = moEl('div', 'mo-webp-meta', { textContent: `${(r.size / 1024).toFixed(0)} KB · ${r.folder_path || ''}` });
-    const sel = document.createElement('select');
-    sel.className = 'mo-clip-input';
-    const opts = isAnim
-      ? [['gif', 'Convert to GIF'], ['mp4', 'Convert to MP4'], ['skip', 'Skip']]
-      : [['jpg', 'Convert to JPG'], ['skip', 'Skip']];
-    for (const opt of opts) {
-      const o = document.createElement('option'); o.value = opt[0]; o.textContent = opt[1];
-      sel.appendChild(o);
-    }
-    const defaultTarget = isAnim ? 'gif' : 'jpg';
-    sel.value = defaultTarget;
-    choices.set(r.id, defaultTarget);
-    sel.addEventListener('change', () => choices.set(r.id, sel.value));
-    row.append(label, meta, sel);
-    list.appendChild(row);
-  }
-  dialog.appendChild(list);
-
-  const footer = moEl('div', 'mo-modal-footer');
-  const cancelBtn = moEl('button', 'mo-btn-secondary', { textContent: 'Cancel' });
-  cancelBtn.addEventListener('click', () => overlay.remove());
-  const goBtn = moEl('button', 'mo-btn-primary', { textContent: 'Convert all' });
-  const status = moEl('div', 'mo-clip-status');
-  footer.append(status, cancelBtn, goBtn);
-  dialog.appendChild(footer);
-
-  goBtn.addEventListener('click', async () => {
-    goBtn.disabled = true; cancelBtn.disabled = true;
-    let done = 0; let failed = 0;
-    for (const [fileId, target] of choices) {
-      if (target === 'skip') {
-        await db.run('UPDATE mo_files SET conversion_target = ?, needs_conversion = 0 WHERE id = ?', ['skip', fileId]);
-        continue;
-      }
-      status.textContent = `Converting ${++done}/${rows.length}…`;
-      try {
-        await moConvertWebP(api, fileId, target);
-      } catch (err) {
-        failed++;
-        console.error('[MediaOrganizer] webp convert failed:', err);
-      }
-    }
-    overlay.remove();
-    api.window.showInformationMessage(
-      failed === 0 ? `Converted ${rows.length - failed} file(s).` : `Converted ${rows.length - failed}, ${failed} failed.`
-    );
-  });
-
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-  document.body.appendChild(overlay);
-}
-
-async function moConvertWebP(api, fileId, target) {
-  if (!_toolPaths.ffmpeg) throw new Error('ffmpeg not available (tool not detected)');
-  const fileRow = await db.get(
-    `SELECT f.id, f.basename, f.folder_id, fl.path AS folder_path
-     FROM mo_files f LEFT JOIN mo_folders fl ON fl.id = f.folder_id
-     WHERE f.id = ?`, [fileId]
-  );
-  if (!fileRow || !fileRow.folder_path) throw new Error('file not found');
-  const sep = _isWindows ? '\\' : '/';
-  const srcPath = fileRow.folder_path + sep + fileRow.basename;
-  const baseName = fileRow.basename.replace(/\.webp$/i, '');
-  const outPath = fileRow.folder_path + sep + baseName + '.' + target;
-  console.log(`[MediaOrganizer] Converting ${srcPath} -> ${outPath}`);
-
-  const ff = shellInvoke(_toolPaths.ffmpeg);
-  let cmd;
-  if (target === 'mp4') {
-    cmd = [
-      ff, '-hide_banner', '-loglevel', 'error', '-y',
-      '-i', shellQuote(srcPath),
-      '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
-      '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
-      '-vf', shellQuote('scale=trunc(iw/2)*2:trunc(ih/2)*2'),
-      shellQuote(outPath),
-    ].join(' ');
-  } else if (target === 'jpg') {
-    // Static WebP -> JPG. -q:v 2 is high quality (1 best, 31 worst).
-    cmd = [
-      ff, '-hide_banner', '-loglevel', 'error', '-y',
-      '-i', shellQuote(srcPath),
-      '-q:v', '2',
-      shellQuote(outPath),
-    ].join(' ');
-  } else {
-    // GIF — use a single-pass conversion (palette generation baked in via split filter)
-    const vf = "split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer";
-    cmd = [
-      ff, '-hide_banner', '-loglevel', 'error', '-y',
-      '-i', shellQuote(srcPath),
-      '-lavfi', shellQuote(vf),
-      '-loop', '0',
-      shellQuote(outPath),
-    ].join(' ');
-  }
-  const r = await window.parallxElectron.terminal.exec(cmd, { timeout: 600000 });
-  if (r.exitCode !== 0) {
-    console.error(`[MediaOrganizer] ffmpeg failed (exit=${r.exitCode}): ${r.stderr || r.stdout || '(no output)'}`);
-    throw new Error('ffmpeg: ' + (r.stderr || 'failed'));
-  }
-  // Verify output exists before deleting source.
-  const outExists = await window.parallxElectron.fs.exists(outPath);
-  if (!outExists) {
-    throw new Error(`ffmpeg reported success but output missing: ${outPath}`);
-  }
-
-  // Hard-delete original WebP — user opted out of quarantine to avoid duplicates.
-  const delResult = await window.parallxElectron.fs.delete(srcPath);
-  if (delResult && delResult.error) {
-    console.warn(`[MediaOrganizer] Failed to delete original webp ${srcPath}:`, delResult.error);
-  } else {
-    console.log(`[MediaOrganizer] Deleted original ${srcPath}`);
-  }
-
-  // Stat the new file so we can update mod_time/size on the row. This makes
-  // the watcher's subsequent 'created' event a no-op (matches existing row).
-  const outStat = await window.parallxElectron.fs.stat(outPath);
-  const newSize = (outStat && !outStat.error) ? outStat.size : fileRow.size;
-  const newMtime = (outStat && !outStat.error) ? outStat.mtime : Date.now();
-
-  // Update DB row to point at new file
-  await db.run(
-    `UPDATE mo_files
-     SET basename = ?, size = ?, mod_time = ?, conversion_target = ?, needs_conversion = 0,
-         converted_from = ?, converted_at = datetime('now'), updated_at = CURRENT_TIMESTAMP
-     WHERE id = ?`,
-    [baseName + '.' + target, newSize, newMtime, target, srcPath, fileId]
-  );
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 10B: SEARCH (FTS5) + QUERY PARSER + SMART ALBUMS — M59 P3
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -12817,16 +12631,6 @@ export async function activate(api, context) {
     })
   );
 
-  // M59 P1: Review animated WebP files
-  _commandDisposables.push(
-    api.commands.registerCommand('media-organizer.reviewWebP', () => moOpenWebPReviewDialog(api))
-  );
-
-  // M59 P2: Configure auto-WebP mode
-  _commandDisposables.push(
-    api.commands.registerCommand('media-organizer.setAutoWebPMode', () => moPickAutoWebPMode(api))
-  );
-
   // M59 P3: Search index, perceptual hash, duplicate finder, smart albums
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.rebuildSearchIndex', async () => {
@@ -12939,8 +12743,6 @@ export async function activate(api, context) {
     })
   );
 
-  // M59 P1: Purge expired quarantine (>30d)
-  moPurgeQuarantine(api).catch(() => {});
   // M59 P5: auto-empty trash older than N days (default 30)
   moAutoEmptyTrashIfStale().catch(() => {});
   // M59 P8: register AI chat tools

@@ -19,8 +19,6 @@
       { "id": "media-organizer.cacheStats", "title": "Show Thumbnail Cache Stats", "category": "Media Organizer" },
       { "id": "media-organizer.openGrid", "title": "Open Media Grid", "category": "Media Organizer" },
       { "id": "media-organizer.createAlbum", "title": "Create Album", "category": "Media Organizer" },
-      { "id": "media-organizer.reviewWebP", "title": "Review WebP Files", "category": "Media Organizer" },
-      { "id": "media-organizer.setAutoWebPMode", "title": "Set Auto-WebP Mode (Off / Suggest / Auto)", "category": "Media Organizer" },
       { "id": "media-organizer.rebuildSearchIndex", "title": "Rebuild Search Index", "category": "Media Organizer" },
       { "id": "media-organizer.buildPHashes", "title": "Build Perceptual Hashes (find near-duplicates)", "category": "Media Organizer" },
       { "id": "media-organizer.findDuplicates", "title": "Find Duplicates", "category": "Media Organizer" },
