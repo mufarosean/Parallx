@@ -5950,6 +5950,7 @@ const MO_CSS = `
 .mo-player-ctrlrow {
   display: flex; gap: 6px; align-items: center;
 }
+.mo-player-spacer { flex: 1 1 auto; }
 .mo-player-btn {
   background: transparent; border: 0; color: #fff; cursor: pointer;
   padding: 4px 6px; border-radius: 4px; display: inline-flex;
@@ -8670,7 +8671,15 @@ function buildVideoPlayer(container, fullPath, ctx) {
 
   const fsBtn = mkBtn('screen-full', 'Fullscreen (F)', () => toggleFullscreen());
 
-  ctrlRow.append(playBtn, skipBackBtn, frameBackBtn, frameFwdBtn, skipFwdBtn, timeDisp, speedWrap, volWrap, inBtn, outBtn, loopBtn, fsBtn);
+  // Flexible spacer pushes the right-side cluster to the far edge of the bar.
+  const spacer = moEl('div', 'mo-player-spacer');
+
+  // Left cluster: transport + time. Right cluster: in/out, loop, volume, speed, fullscreen.
+  ctrlRow.append(
+    playBtn, skipBackBtn, frameBackBtn, frameFwdBtn, skipFwdBtn, timeDisp,
+    spacer,
+    inBtn, outBtn, loopBtn, volWrap, speedWrap, fsBtn,
+  );
   bottomBar.appendChild(ctrlRow);
   container.appendChild(bottomBar);
 
