@@ -8693,14 +8693,36 @@ function buildVideoPlayer(container, fullPath, ctx) {
   coverBtn.innerHTML = moIcon('image', 14);
   coverBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
-    if (!ctx || !ctx.entity || !ctx.entity.checksum) {
-      _api && _api.window.showWarningMessage('Cannot set cover — video has no fingerprint yet.');
+    const fileId = ctx && ctx.primaryFile && ctx.primaryFile.id;
+    if (!fileId) {
+      _api && _api.window.showWarningMessage('Cannot set cover — video file not yet indexed.');
       return;
     }
     coverBtn.disabled = true;
     try {
+      // Checksum lives in mo_fingerprints (type='md5'), keyed by file_id —
+      // mo_videos has no checksum column. Fetch lazily; if the md5 fingerprint
+      // hasn't been computed yet, fall back to computing it now so the user
+      // never sees the old "no fingerprint yet" dead-end.
+      let row = await db.get(
+        `SELECT value FROM mo_fingerprints WHERE file_id = ? AND type = 'md5'`,
+        [fileId]
+      );
+      let checksum = row && row.value;
+      if (!checksum) {
+        try {
+          checksum = await computeMD5(fullPath);
+          if (checksum) {
+            await FingerprintQueries.upsert({ fileId, type: 'md5', value: checksum });
+          }
+        } catch { /* fall through to error message below */ }
+      }
+      if (!checksum) {
+        _api && _api.window.showWarningMessage('Cannot set cover — could not compute video fingerprint.');
+        return;
+      }
       const r = await generateVideoCoverFrame(
-        ctx.entity.checksum, fullPath, video.duration || 0, _api, true, video.currentTime,
+        checksum, fullPath, video.duration || 0, _api, true, video.currentTime,
         video.videoWidth || 0, video.videoHeight || 0
       );
       if (r && r.generated) _api.window.showInformationMessage('Cover frame updated.');
