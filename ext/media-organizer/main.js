@@ -12347,6 +12347,214 @@ async function moOpenMap(api) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 10F: AI CHAT TOOLS — M59 P8
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Tools registered via `api.chat.registerTool(name, def)` so the AI agent
+// (and users via /tool invocation) can query the library deterministically.
+//
+// Vision-based tools (tagUntagged, describePhoto, autoRate, searchByDescription)
+// are NOT registered — the current `parallx.lm` API only accepts text content
+// (no image attachments), so a vision pipeline cannot be implemented from an
+// extension today. They will be added when the LM API gains multimodal support.
+
+async function moToolFindSimilar(args) {
+  const photoId = parseInt(args.photoId, 10);
+  const limit = Math.min(100, parseInt(args.limit, 10) || 20);
+  if (!photoId || isNaN(photoId)) {
+    return { content: 'Error: photoId is required (integer).', isError: true };
+  }
+  const seedRow = await db.get(
+    `SELECT i.phash AS phash
+       FROM mo_photos_files pf
+       JOIN mo_image_files i ON i.file_id = pf.file_id
+      WHERE pf.photo_id = ? AND i.phash IS NOT NULL
+      LIMIT 1`,
+    [photoId]
+  );
+  if (!seedRow || seedRow.phash == null) {
+    return { content: `Photo ${photoId} has no perceptual hash. Run "Index Perceptual Hashes" first.`, isError: true };
+  }
+  const seedBig = moSqliteToBigInt(seedRow.phash);
+  const all = await db.all(
+    `SELECT pf.photo_id AS photo_id, i.phash AS phash, p.title AS title
+       FROM mo_image_files i
+       JOIN mo_photos_files pf ON pf.file_id = i.file_id
+       JOIN mo_photos p ON p.id = pf.photo_id
+      WHERE i.phash IS NOT NULL AND p.deleted_at IS NULL AND p.id <> ?`,
+    [photoId]
+  );
+  const scored = [];
+  for (const r of all) {
+    const d = moHammingDistance(seedBig, moSqliteToBigInt(r.phash));
+    scored.push({ photoId: r.photo_id, title: r.title || '', distance: d });
+  }
+  scored.sort((a, b) => a.distance - b.distance);
+  const top = scored.slice(0, limit);
+  return {
+    content: JSON.stringify({ seed: photoId, results: top }, null, 2),
+  };
+}
+
+async function moToolSuggestStacks(args) {
+  const limit = Math.min(50, parseInt(args.limit, 10) || 20);
+  // Re-use the basename heuristic without applying — return proposed groups.
+  const rows = await db.all(
+    `SELECT 'photo' AS type, p.id AS id, f.basename AS basename, fl.path AS folder_path
+       FROM mo_photos p
+       JOIN mo_photos_files pf ON pf.photo_id = p.id
+       JOIN mo_files f ON f.id = pf.file_id
+       JOIN mo_folders fl ON fl.id = f.folder_id
+      WHERE p.deleted_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM mo_stack_members sm WHERE sm.member_type='photo' AND sm.member_id=p.id)`
+  );
+  const groups = new Map();
+  const stripExt = (s) => s.replace(/\.[^.]+$/, '');
+  const stripSuffix = (s) => s.replace(/[-_\s]?(edited|edit|v\d+|copy|final|hdr)$/i, '');
+  for (const r of rows) {
+    const key = `${r.folder_path}::${stripSuffix(stripExt(r.basename || '')).toLowerCase()}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ type: r.type, id: r.id, basename: r.basename });
+  }
+  const candidates = [];
+  for (const [k, items] of groups) {
+    if (items.length >= 2) candidates.push({ key: k, items });
+  }
+  return {
+    content: JSON.stringify({
+      proposed: candidates.slice(0, limit),
+      total: candidates.length,
+      note: 'Proposed only. Run "Auto-Stack by Filename" command to apply.',
+    }, null, 2),
+  };
+}
+
+async function moToolGetStats() {
+  const photoCount = await db.get(`SELECT COUNT(*) AS n FROM mo_photos WHERE deleted_at IS NULL`);
+  const videoCount = await db.get(`SELECT COUNT(*) AS n FROM mo_videos WHERE deleted_at IS NULL`);
+  const trashedPhotos = await db.get(`SELECT COUNT(*) AS n FROM mo_photos WHERE deleted_at IS NOT NULL`);
+  const trashedVideos = await db.get(`SELECT COUNT(*) AS n FROM mo_videos WHERE deleted_at IS NOT NULL`);
+  const untaggedPhotos = await db.get(
+    `SELECT COUNT(*) AS n FROM mo_photos p
+      WHERE p.deleted_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM mo_photo_tags pt WHERE pt.photo_id = p.id)`
+  );
+  const geotagged = await db.get(
+    `SELECT COUNT(*) AS n FROM mo_photos
+      WHERE deleted_at IS NULL AND gps_latitude IS NOT NULL AND gps_longitude IS NOT NULL`
+  );
+  const phashed = await db.get(`SELECT COUNT(*) AS n FROM mo_image_files WHERE phash IS NOT NULL`);
+  const stacks = await db.get(`SELECT COUNT(*) AS n FROM mo_stacks`);
+  const topTags = await db.all(
+    `SELECT t.name AS name, COUNT(*) AS n FROM mo_photo_tags pt
+       JOIN mo_tags t ON t.id = pt.tag_id
+      GROUP BY t.id ORDER BY n DESC LIMIT 10`
+  );
+  return {
+    content: JSON.stringify({
+      photos: photoCount.n,
+      videos: videoCount.n,
+      trashed: { photos: trashedPhotos.n, videos: trashedVideos.n },
+      untaggedPhotos: untaggedPhotos.n,
+      geotagged: geotagged.n,
+      perceptualHashIndexed: phashed.n,
+      stacks: stacks.n,
+      topTags: topTags.map(t => ({ name: t.name, count: t.n })),
+    }, null, 2),
+  };
+}
+
+async function moToolSearch(args) {
+  const query = String(args.query || '').trim();
+  const limit = Math.min(200, parseInt(args.limit, 10) || 50);
+  if (!query) return { content: 'Error: query is required.', isError: true };
+  // Use FTS5 if available for free-text; otherwise LIKE fallback
+  const like = `%${query.replace(/[%_]/g, '\\$&')}%`;
+  const photos = await db.all(
+    `SELECT p.id, p.title, p.taken_at FROM mo_photos p
+       JOIN mo_photos_files pf ON pf.photo_id = p.id
+       JOIN mo_files f ON f.id = pf.file_id
+      WHERE p.deleted_at IS NULL
+        AND (p.title LIKE ? ESCAPE '\\' OR p.details LIKE ? ESCAPE '\\' OR f.basename LIKE ? ESCAPE '\\')
+      ORDER BY COALESCE(p.taken_at, p.created_at) DESC
+      LIMIT ?`,
+    [like, like, like, limit]
+  );
+  const videos = await db.all(
+    `SELECT v.id, v.title, v.created_at FROM mo_videos v
+       JOIN mo_videos_files vf ON vf.video_id = v.id
+       JOIN mo_files f ON f.id = vf.file_id
+      WHERE v.deleted_at IS NULL
+        AND (v.title LIKE ? ESCAPE '\\' OR v.details LIKE ? ESCAPE '\\' OR f.basename LIKE ? ESCAPE '\\')
+      ORDER BY v.created_at DESC
+      LIMIT ?`,
+    [like, like, like, limit]
+  );
+  return {
+    content: JSON.stringify({
+      query,
+      photos: photos.map(p => ({ id: p.id, title: p.title, taken_at: p.taken_at })),
+      videos: videos.map(v => ({ id: v.id, title: v.title, created_at: v.created_at })),
+    }, null, 2),
+  };
+}
+
+function moRegisterAITools(api) {
+  if (!api.chat || typeof api.chat.registerTool !== 'function') {
+    console.warn('[MediaOrganizer] api.chat.registerTool not available — AI tools skipped');
+    return;
+  }
+  try {
+    _commandDisposables.push(api.chat.registerTool('mediaOrganizer.findSimilar', {
+      description: 'Find photos visually similar to a given photo using perceptual hash (Hamming distance). Requires pHash indexing to have run first.',
+      parameters: {
+        type: 'object',
+        properties: {
+          photoId: { type: 'integer', description: 'The mo_photos.id to find similar images for.' },
+          limit: { type: 'integer', description: 'Max results (default 20, max 100).' },
+        },
+        required: ['photoId'],
+      },
+      handler: async (args) => moToolFindSimilar(args),
+      requiresConfirmation: false,
+    }));
+    _commandDisposables.push(api.chat.registerTool('mediaOrganizer.suggestStacks', {
+      description: 'Suggest photo stacks (versions/variants) by grouping unstacked photos with similar basenames in the same folder. Returns proposed groups; does not apply them.',
+      parameters: {
+        type: 'object',
+        properties: {
+          limit: { type: 'integer', description: 'Max proposed groups to return (default 20, max 50).' },
+        },
+      },
+      handler: async (args) => moToolSuggestStacks(args),
+      requiresConfirmation: false,
+    }));
+    _commandDisposables.push(api.chat.registerTool('mediaOrganizer.getStats', {
+      description: 'Return summary statistics for the media library: photo/video counts, trashed counts, untagged photos, geotagged photos, perceptual-hash coverage, stack count, top 10 tags.',
+      parameters: { type: 'object', properties: {} },
+      handler: async () => moToolGetStats(),
+      requiresConfirmation: false,
+    }));
+    _commandDisposables.push(api.chat.registerTool('mediaOrganizer.search', {
+      description: 'Search the media library by free-text against title, description, and filename. Returns matching photos and videos with IDs.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'The search query.' },
+          limit: { type: 'integer', description: 'Max results per type (default 50, max 200).' },
+        },
+        required: ['query'],
+      },
+      handler: async (args) => moToolSearch(args),
+      requiresConfirmation: false,
+    }));
+    console.log('[MediaOrganizer] Registered 4 AI chat tools (findSimilar, suggestStacks, getStats, search)');
+  } catch (err) {
+    console.warn('[MediaOrganizer] AI tool registration failed:', err);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 11: ACTIVATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -12677,6 +12885,8 @@ export async function activate(api, context) {
   moPurgeQuarantine(api).catch(() => {});
   // M59 P5: auto-empty trash older than N days (default 30)
   moAutoEmptyTrashIfStale().catch(() => {});
+  // M59 P8: register AI chat tools
+  moRegisterAITools(api);
 
   console.log('[MediaOrganizer] Activated — D1-D8 ready (data, scan, thumbnails, tags, grid, filter, detail, albums)');
 
