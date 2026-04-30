@@ -4298,6 +4298,82 @@ function moIcon(name, size) {
 }
 
 /**
+ * Replace the native OS dropdown popup of a <select> element with a custom
+ * Parallx-styled listbox. The <select> itself is preserved so callers can
+ * keep using `.value`, `.addEventListener('change', …)`, options collection
+ * etc. unchanged. The native popup is suppressed by preventDefault on
+ * mousedown / keydown that would open it.
+ */
+function moBindCustomSelect(selectEl) {
+  if (!selectEl || selectEl.dataset.moSelectBound === '1') return;
+  selectEl.dataset.moSelectBound = '1';
+  selectEl.classList.add('mo-select-bound');
+
+  let popup = null;
+  function close() {
+    if (!popup) return;
+    popup.remove();
+    popup = null;
+    document.removeEventListener('mousedown', onDocDown, true);
+    window.removeEventListener('resize', close, true);
+    window.removeEventListener('scroll', close, true);
+  }
+  function onDocDown(e) {
+    if (popup && !popup.contains(e.target) && e.target !== selectEl) close();
+  }
+  function open() {
+    if (popup) { close(); return; }
+    const opts = Array.from(selectEl.options);
+    if (opts.length === 0) return;
+    popup = document.createElement('div');
+    popup.className = 'mo-select-popup';
+    const r = selectEl.getBoundingClientRect();
+    popup.style.left = r.left + 'px';
+    popup.style.top = (r.bottom + 2) + 'px';
+    popup.style.minWidth = r.width + 'px';
+    for (const opt of opts) {
+      const it = document.createElement('div');
+      it.className = 'mo-select-popup-item';
+      if (opt.value === selectEl.value) it.classList.add('mo-active');
+      it.textContent = opt.textContent || opt.value;
+      it.addEventListener('mousedown', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (selectEl.value !== opt.value) {
+          selectEl.value = opt.value;
+          selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        close();
+      });
+      popup.appendChild(it);
+    }
+    document.body.appendChild(popup);
+    // Clamp into viewport vertically (open upward if no room below)
+    const pr = popup.getBoundingClientRect();
+    if (pr.bottom > window.innerHeight - 8) {
+      popup.style.top = Math.max(8, r.top - pr.height - 2) + 'px';
+    }
+    document.addEventListener('mousedown', onDocDown, true);
+    window.addEventListener('resize', close, true);
+    window.addEventListener('scroll', close, true);
+  }
+
+  selectEl.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    selectEl.focus();
+    open();
+  });
+  selectEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      open();
+    } else if (e.key === 'Escape') {
+      close();
+    }
+  });
+}
+
+/**
  * Custom dropdown component — mirrors src/ui/dropdown.ts API but works standalone.
  * Returns { el, getValue, setValue, setItems, onChange, dispose }
  */
@@ -6271,6 +6347,38 @@ const MO_CSS = `
   border-color: var(--vscode-focusBorder, #9333ea);
 }
 select.mo-clip-input { appearance: none; padding-right: 22px; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 12px) 50%, calc(100% - 7px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+select.mo-clip-input.mo-select-bound { cursor: pointer; }
+.mo-select-popup {
+  position: fixed; z-index: 10001;
+  min-width: 120px;
+  background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background, #1e1e1e));
+  color: var(--vscode-foreground, #ddd);
+  border: 1px solid var(--vscode-focusBorder, #9333ea);
+  border-radius: 4px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+  font-size: 12px;
+  font-family: inherit;
+  max-height: 280px; overflow-y: auto;
+}
+.mo-select-popup-item {
+  padding: 5px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.mo-select-popup-item:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+}
+.mo-select-popup-item.mo-active {
+  background: color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 28%, transparent);
+  color: var(--vscode-foreground, #fff);
+}
+.mo-select-popup-item.mo-active:hover {
+  background: color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 40%, transparent);
+}
 .mo-clip-check { margin: 0 6px 0 0; }
 .mo-clip-length {
   font-size: 11px; opacity: 0.7; font-variant-numeric: tabular-nums;
@@ -11082,6 +11190,12 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
   }
   fmtSel.addEventListener('change', syncFormatVisibility);
   syncFormatVisibility();
+
+  // Replace native OS dropdowns with Parallx-styled custom popup
+  moBindCustomSelect(fmtSel);
+  moBindCustomSelect(fpsSel);
+  moBindCustomSelect(speedSel);
+  moBindCustomSelect(ditherSel);
 
   // ── Mode toggle (Out vs Duration) ──
   function setMode(mode) {
