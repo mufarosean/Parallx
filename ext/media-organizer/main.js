@@ -4488,6 +4488,19 @@ const MO_CSS = `
   text-transform: uppercase;
   pointer-events: none;
 }
+.mo-card-stack-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: var(--parallx-fontSize-xs, 10px);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--parallx-color-accent, #9333ea);
+  color: #fff;
+  font-weight: 700;
+  pointer-events: none;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
 .mo-card-rating {
   position: absolute;
   bottom: 4px;
@@ -6121,6 +6134,16 @@ function renderMediaCard(item, options) {
     : item.type.toUpperCase();
   thumb.appendChild(moEl('span', 'mo-card-badge', { textContent: badgeText }));
 
+  // M59 P5: stack badge (populated lazily by loadPage when item._stackCount is set)
+  const stackBadge = moEl('span', 'mo-card-stack-badge');
+  stackBadge.style.display = 'none';
+  if (item._stackCount && item._stackCount > 0) {
+    stackBadge.textContent = `+${item._stackCount}`;
+    stackBadge.style.display = '';
+  }
+  thumb.appendChild(stackBadge);
+  card._stackBadge = stackBadge;
+
   // Rating
   if (item.rating && item.rating > 0) {
     const stars = '\u2605'.repeat(item.rating);
@@ -6287,6 +6310,16 @@ function renderCardGrid(container, items, options) {
     else if (!item.thumbnailPath && item.type && item.id) {
       resolveThumbnailForCard(card, item);
     }
+    // M59 P5: lazily fetch stack member count and update badge
+    if (item.type && item.id && card._stackBadge && item._stackCount == null) {
+      moGetStackMemberCount(item.type, item.id).then(n => {
+        if (n > 0) {
+          item._stackCount = n;
+          card._stackBadge.textContent = `+${n}`;
+          card._stackBadge.style.display = '';
+        }
+      }).catch(() => {});
+    }
   }
 
   function renderAll(itemList, opts) {
@@ -6442,6 +6475,7 @@ function renderBrowserSidebar(container, api) {
   qfBody.appendChild(sidebarItem('star', 'Favorites', null, () => openGrid('favorites', 'Favorites')));
   qfBody.appendChild(sidebarItem('clock', 'Recent', null, () => openGrid('recent', 'Recent')));
   qfBody.appendChild(sidebarItem('copy', 'Duplicates', null, () => openGrid('duplicates', 'Duplicates')));
+  qfBody.appendChild(sidebarItem('trash', 'Trash', null, () => openGrid('trash', 'Trash')));
   sections.appendChild(qfSection);
 
   // Folders section
@@ -7129,6 +7163,18 @@ function renderGridBrowser(container, api, input) {
       videoWhere.push(`dfv.value IN (SELECT value FROM mo_fingerprints WHERE type = 'md5' GROUP BY value HAVING COUNT(DISTINCT file_id) > 1)`);
     }
 
+    // M59 P5: trash filter — exclude trashed by default, include only when filterType is 'trash'
+    if (filterType === 'trash') {
+      photoWhere.push('p.deleted_at IS NOT NULL');
+      videoWhere.push('v.deleted_at IS NOT NULL');
+    } else {
+      photoWhere.push('p.deleted_at IS NULL');
+      videoWhere.push('v.deleted_at IS NULL');
+      // M59 P5: hide stack non-primary members from default views
+      photoWhere.push(`NOT EXISTS (SELECT 1 FROM mo_stack_members sm WHERE sm.member_type = 'photo' AND sm.member_id = p.id AND sm.role <> 'primary')`);
+      videoWhere.push(`NOT EXISTS (SELECT 1 FROM mo_stack_members sm WHERE sm.member_type = 'video' AND sm.member_id = v.id AND sm.role <> 'primary')`);
+    }
+
     if (searchText) {
       photoWhere.push('p.title LIKE ?'); photoParams.push(`%${searchText}%`);
       videoWhere.push('v.title LIKE ?'); videoParams.push(`%${searchText}%`);
@@ -7208,6 +7254,16 @@ function renderGridBrowser(container, api, input) {
       const fileCol = type === 'photo' ? 'photo_id' : 'video_id';
       joinParts.push(` JOIN ${fileJoin} djf ON djf.${fileCol} = ${alias}.id JOIN mo_fingerprints dfp ON dfp.file_id = djf.file_id AND dfp.type = 'md5'`);
       where.push(`dfp.value IN (SELECT value FROM mo_fingerprints WHERE type = 'md5' GROUP BY value HAVING COUNT(DISTINCT file_id) > 1)`);
+    }
+
+    // M59 P5: trash filter
+    if (filterType === 'trash') {
+      where.push(`${alias}.deleted_at IS NOT NULL`);
+    } else {
+      where.push(`${alias}.deleted_at IS NULL`);
+      // M59 P5: hide stack non-primary members from default views
+      const memType = type === 'photo' ? 'photo' : 'video';
+      where.push(`NOT EXISTS (SELECT 1 FROM mo_stack_members sm WHERE sm.member_type = '${memType}' AND sm.member_id = ${alias}.id AND sm.role <> 'primary')`);
     }
 
     if (searchText) {
@@ -7508,6 +7564,16 @@ function renderGridBrowser(container, api, input) {
     loadPage();
   };
   document.addEventListener('mo:apply-search-state', _smartAlbumApplyHandler);
+
+  // M59 P5: respond to selection requests + grid refresh broadcasts
+  const _selectionReplyHandler = () => {
+    document.dispatchEvent(new CustomEvent('mo:reply-selection', {
+      detail: { selectedIds: new Set(state.selectedIds) },
+    }));
+  };
+  document.addEventListener('mo:request-selection', _selectionReplyHandler);
+  const _gridRefreshHandler = () => { state.selectedIds.clear(); state.selecting = false; loadPage(); };
+  document.addEventListener('mo:refresh-grid', _gridRefreshHandler);
 
   // Event handlers
   let searchTimer = null;
@@ -11722,6 +11788,241 @@ function buildDupGroup(api, files, label) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 10D: STACKS + TRASH — M59 P5
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Stacks ──
+// Group selected items under a primary. Promotes the highest-rated (or first)
+// as primary; the rest become 'member'. Stack-aware queries hide members.
+async function moStackSelected(api, selectedIds) {
+  // selectedIds is a Set of "type:id" strings (matches grid selection format)
+  if (!selectedIds || selectedIds.size < 2) {
+    api.window.showWarningMessage('Select at least 2 items to stack.');
+    return;
+  }
+  const items = [...selectedIds].map(s => {
+    const [type, id] = s.split(':');
+    return { type, id: parseInt(id, 10) };
+  });
+  // Pick the first as primary by default; could enhance with "highest rated"
+  const primary = items[0];
+  const members = items.slice(1);
+  try {
+    const r = await db.run(
+      `INSERT INTO mo_stacks (primary_type, primary_id) VALUES (?, ?)
+       ON CONFLICT(primary_type, primary_id) DO UPDATE SET updated_at = datetime('now')`,
+      [primary.type, primary.id]
+    );
+    let stackId;
+    const existing = await db.get('SELECT id FROM mo_stacks WHERE primary_type = ? AND primary_id = ?', [primary.type, primary.id]);
+    stackId = existing ? existing.id : (r && r.lastID);
+    if (!stackId) throw new Error('Failed to obtain stack id');
+    // Insert primary as a stack_member with role='primary'
+    await db.run(
+      `INSERT OR IGNORE INTO mo_stack_members (stack_id, member_type, member_id, role, position) VALUES (?, ?, ?, 'primary', 0)`,
+      [stackId, primary.type, primary.id]
+    );
+    let pos = 1;
+    for (const m of members) {
+      await db.run(
+        `INSERT OR IGNORE INTO mo_stack_members (stack_id, member_type, member_id, role, position) VALUES (?, ?, ?, 'member', ?)`,
+        [stackId, m.type, m.id, pos++]
+      );
+    }
+    api.window.showInformationMessage(`Stacked ${items.length} items.`);
+    _notifySidebarRefresh();
+  } catch (err) {
+    api.window.showErrorMessage('Stack failed: ' + (err && err.message || err));
+  }
+}
+
+async function moUnstackItem(api, type, id) {
+  // If item is a stack primary, dissolve the stack entirely.
+  const stack = await db.get('SELECT id FROM mo_stacks WHERE primary_type = ? AND primary_id = ?', [type, id]);
+  if (!stack) {
+    // Maybe a member — remove just that member
+    await db.run(
+      `DELETE FROM mo_stack_members WHERE member_type = ? AND member_id = ?`, [type, id]
+    );
+    api.window.showInformationMessage('Removed from stack.');
+    return;
+  }
+  await db.run('DELETE FROM mo_stacks WHERE id = ?', [stack.id]);
+  api.window.showInformationMessage('Stack dissolved.');
+  _notifySidebarRefresh();
+}
+
+async function moGetStackMemberCount(type, id) {
+  const row = await db.get(
+    `SELECT COUNT(*) AS n FROM mo_stack_members
+       WHERE stack_id = (SELECT id FROM mo_stacks WHERE primary_type = ? AND primary_id = ?)`,
+    [type, id]
+  );
+  return row ? row.n : 0;
+}
+
+async function moAutoStackByBasename(api) {
+  // Group photos by stripped basename (no extension, no _edited/_v2 suffix).
+  // Items sharing a normalized basename within the same folder become a stack.
+  const rows = await db.all(
+    `SELECT 'photo' AS type, p.id AS id, f.basename AS basename, f.folder_id AS folder_id
+       FROM mo_photos p
+       JOIN mo_photos_files pf ON pf.photo_id = p.id AND pf.is_primary = 1
+       JOIN mo_files f ON f.id = pf.file_id
+      WHERE p.deleted_at IS NULL`
+  );
+  const groups = new Map();
+  function norm(name) {
+    // Strip extension and common edit suffixes
+    return name
+      .replace(/\.[^.]+$/, '')
+      .replace(/[-_](edited|v\d+|copy|edit)$/i, '')
+      .toLowerCase();
+  }
+  for (const r of rows) {
+    const key = `${r.folder_id}::${norm(r.basename)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  let created = 0;
+  for (const [, list] of groups) {
+    if (list.length < 2) continue;
+    // Skip if any item already in a stack
+    let already = false;
+    for (const it of list) {
+      const ex = await db.get('SELECT 1 FROM mo_stack_members WHERE member_type = ? AND member_id = ?', [it.type, it.id]);
+      if (ex) { already = true; break; }
+    }
+    if (already) continue;
+    const primary = list[0];
+    const result = await db.run(
+      `INSERT OR IGNORE INTO mo_stacks (primary_type, primary_id) VALUES (?, ?)`,
+      [primary.type, primary.id]
+    );
+    const sRow = await db.get('SELECT id FROM mo_stacks WHERE primary_type = ? AND primary_id = ?', [primary.type, primary.id]);
+    if (!sRow) continue;
+    await db.run(
+      `INSERT OR IGNORE INTO mo_stack_members (stack_id, member_type, member_id, role, position) VALUES (?, ?, ?, 'primary', 0)`,
+      [sRow.id, primary.type, primary.id]
+    );
+    let pos = 1;
+    for (const m of list.slice(1)) {
+      await db.run(
+        `INSERT OR IGNORE INTO mo_stack_members (stack_id, member_type, member_id, role, position) VALUES (?, ?, ?, 'member', ?)`,
+        [sRow.id, m.type, m.id, pos++]
+      );
+    }
+    created++;
+  }
+  api.window.showInformationMessage(`Auto-stacked: ${created} new stack${created === 1 ? '' : 's'} created.`);
+  _notifySidebarRefresh();
+}
+
+// ── Trash ──
+async function moMoveToTrash(api, items) {
+  // items: array of { type, id }
+  if (!items || items.length === 0) return 0;
+  let n = 0;
+  for (const it of items) {
+    const table = it.type === 'photo' ? 'mo_photos' : 'mo_videos';
+    await db.run(`UPDATE ${table} SET deleted_at = datetime('now') WHERE id = ?`, [it.id]);
+    n++;
+  }
+  _notifySidebarRefresh();
+  return n;
+}
+
+async function moRestoreFromTrash(api, items) {
+  if (!items || items.length === 0) return 0;
+  let n = 0;
+  for (const it of items) {
+    const table = it.type === 'photo' ? 'mo_photos' : 'mo_videos';
+    await db.run(`UPDATE ${table} SET deleted_at = NULL WHERE id = ?`, [it.id]);
+    n++;
+  }
+  _notifySidebarRefresh();
+  return n;
+}
+
+async function moEmptyTrash(api) {
+  const photos = await db.all(
+    `SELECT 'photo' AS type, p.id AS id, fl.path AS folder_path, f.basename
+       FROM mo_photos p
+       JOIN mo_photos_files pf ON pf.photo_id = p.id
+       JOIN mo_files f ON f.id = pf.file_id
+       JOIN mo_folders fl ON fl.id = f.folder_id
+      WHERE p.deleted_at IS NOT NULL`
+  );
+  const videos = await db.all(
+    `SELECT 'video' AS type, v.id AS id, fl.path AS folder_path, f.basename
+       FROM mo_videos v
+       JOIN mo_videos_files vf ON vf.video_id = v.id
+       JOIN mo_files f ON f.id = vf.file_id
+       JOIN mo_folders fl ON fl.id = f.folder_id
+      WHERE v.deleted_at IS NOT NULL`
+  );
+  const total = photos.length + videos.length;
+  if (total === 0) {
+    api.window.showInformationMessage('Trash is empty.');
+    return;
+  }
+  const ok = await api.window.showWarningMessage(
+    `Permanently delete ${total} trashed item${total === 1 ? '' : 's'}? Files will be moved to OS recycle bin.`,
+    'Empty Trash', 'Cancel'
+  );
+  if (ok !== 'Empty Trash') return;
+  const sep = _isWindows ? '\\' : '/';
+  let trashed = 0, failed = 0;
+  // Delete OS files first
+  const allItems = [...photos, ...videos];
+  const seenFiles = new Set();
+  for (const it of allItems) {
+    const fpath = (it.folder_path || '') + sep + it.basename;
+    if (seenFiles.has(fpath)) continue;
+    seenFiles.add(fpath);
+    const r = await window.parallxElectron.fs.delete(fpath).catch(() => ({ error: 'fail' }));
+    if (r && !r.error) trashed++; else failed++;
+  }
+  // Hard-delete DB rows (cascades take care of joins via FK if defined)
+  await db.run(`DELETE FROM mo_photos WHERE deleted_at IS NOT NULL`);
+  await db.run(`DELETE FROM mo_videos WHERE deleted_at IS NOT NULL`);
+  // Orphan files (no remaining photo/video links) get deleted too
+  await db.run(`
+    DELETE FROM mo_files
+     WHERE id NOT IN (SELECT file_id FROM mo_photos_files)
+       AND id NOT IN (SELECT file_id FROM mo_videos_files)
+  `);
+  api.window.showInformationMessage(`Trash emptied: ${trashed} file${trashed === 1 ? '' : 's'} moved to recycle bin` + (failed ? `, ${failed} failed` : '') + '.');
+  _notifySidebarRefresh();
+  moRebuildSearchIndex().catch(() => {});
+}
+
+// Auto-empty trash older than N days (default 30). Setting key: trash_auto_purge_days.
+async function moAutoEmptyTrashIfStale() {
+  try {
+    const row = await db.get(`SELECT value FROM mo_settings WHERE key = 'trash_auto_purge_days'`);
+    const days = row && row.value ? parseInt(row.value, 10) : 30;
+    if (!days || days <= 0) return;
+    // Hard-delete rows whose deleted_at is older than N days
+    await db.run(
+      `DELETE FROM mo_photos WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', ?)`,
+      [`-${days} days`]
+    );
+    await db.run(
+      `DELETE FROM mo_videos WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', ?)`,
+      [`-${days} days`]
+    );
+    await db.run(`
+      DELETE FROM mo_files
+       WHERE id NOT IN (SELECT file_id FROM mo_photos_files)
+         AND id NOT IN (SELECT file_id FROM mo_videos_files)
+    `);
+  } catch (err) {
+    console.warn('[MediaOrganizer] auto-purge trash failed:', err);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 11: ACTIVATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -11977,8 +12278,48 @@ export async function activate(api, context) {
     })
   );
 
+  // M59 P5: stacks + trash
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.stackSelected', () => {
+      const ev = new CustomEvent('mo:request-selection');
+      const handler = (e) => {
+        document.removeEventListener('mo:reply-selection', handler);
+        const sel = (e.detail && e.detail.selectedIds) || new Set();
+        moStackSelected(api, sel);
+      };
+      document.addEventListener('mo:reply-selection', handler, { once: true });
+      document.dispatchEvent(ev);
+      setTimeout(() => document.removeEventListener('mo:reply-selection', handler), 500);
+    })
+  );
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.autoStack', () => moAutoStackByBasename(api))
+  );
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.moveToTrash', () => {
+      const ev = new CustomEvent('mo:request-selection');
+      const handler = async (e) => {
+        document.removeEventListener('mo:reply-selection', handler);
+        const sel = (e.detail && e.detail.selectedIds) || new Set();
+        const items = [...sel].map(s => { const [type, id] = s.split(':'); return { type, id: parseInt(id, 10) }; });
+        const n = await moMoveToTrash(api, items);
+        api.window.showInformationMessage(`Moved ${n} item${n === 1 ? '' : 's'} to trash.`);
+        const refresh = new CustomEvent('mo:refresh-grid');
+        document.dispatchEvent(refresh);
+      };
+      document.addEventListener('mo:reply-selection', handler, { once: true });
+      document.dispatchEvent(ev);
+      setTimeout(() => document.removeEventListener('mo:reply-selection', handler), 500);
+    })
+  );
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.emptyTrash', () => moEmptyTrash(api))
+  );
+
   // M59 P1: Purge expired quarantine (>30d)
   moPurgeQuarantine(api).catch(() => {});
+  // M59 P5: auto-empty trash older than N days (default 30)
+  moAutoEmptyTrashIfStale().catch(() => {});
 
   console.log('[MediaOrganizer] Activated — D1-D8 ready (data, scan, thumbnails, tags, grid, filter, detail, albums)');
 
