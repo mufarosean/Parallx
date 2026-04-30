@@ -11372,8 +11372,15 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
     const outPattern = dir + sepCh + 'frame_%03d.jpg';
     const cmd = [
       ff, '-hide_banner', '-loglevel', 'error', '-y',
-      '-ss', String(a), '-t', String(len),
+      // Use a coarse input-side seek to a slightly earlier point, then an
+      // accurate output-side seek of the small remainder. This avoids the
+      // "Nothing was written into output file" error that input-side -ss
+      // produces when the requested timestamp lands past the last keyframe
+      // (common for short clips ending near EOF).
+      '-ss', String(Math.max(0, a - 2)),
       '-i', shellQuote(videoPath),
+      '-ss', String(Math.min(2, a)),
+      '-t', String(len),
       '-vf', shellQuote(vf),
       '-frames:v', String(FRAME_COUNT + 4),
       shellQuote(outPattern),
@@ -11438,8 +11445,10 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
       await window.parallxElectron.fs.delete(wavePath).catch(() => {});
       const cmdW = [
         ff, '-hide_banner', '-loglevel', 'error', '-y',
-        '-ss', String(a), '-t', String(len),
+        '-ss', String(Math.max(0, a - 2)),
         '-i', shellQuote(videoPath),
+        '-ss', String(Math.min(2, a)),
+        '-t', String(len),
         '-filter_complex', shellQuote('showwavespic=s=' + (FRAME_COUNT * 80) + 'x36:colors=0x6e94ffaa:split_channels=0'),
         '-frames:v', '1',
         shellQuote(wavePath),
