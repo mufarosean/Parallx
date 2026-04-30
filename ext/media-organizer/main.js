@@ -6021,6 +6021,17 @@ const MO_CSS = `
   align-items: center;
 }
 .mo-modal-footer .mo-clip-status { flex: 1; font-size: 12px; opacity: 0.7; }
+.mo-modal-footer .mo-clip-estimate {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+  padding: 4px 10px;
+  margin-right: 6px;
+  border: 1px solid var(--vscode-panel-border, #444);
+  border-radius: 4px;
+  background: var(--vscode-input-background, transparent);
+  white-space: nowrap;
+}
 
 /* ── M59 P4: large two-column clip dialog ── */
 .mo-clip-dialog { width: 1180px; max-width: 96vw; }
@@ -6112,24 +6123,30 @@ const MO_CSS = `
 }
 .mo-scrub-range {
   position: absolute; top: 0; bottom: 0;
-  background: color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 25%, transparent);
-  border-left: 2px solid var(--vscode-focusBorder, #9333ea);
-  border-right: 2px solid var(--vscode-focusBorder, #9333ea);
+  background: color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 22%, transparent);
+  border-left: 1px solid var(--vscode-focusBorder, #9333ea);
+  border-right: 1px solid var(--vscode-focusBorder, #9333ea);
   pointer-events: none;
 }
 .mo-scrub-handle {
-  position: absolute; top: -3px; bottom: -3px;
-  width: 10px; margin-left: -5px;
+  position: absolute; top: -2px; bottom: -2px;
+  width: 3px; margin-left: -1px;
   background: var(--vscode-focusBorder, #9333ea);
-  border-radius: 2px;
+  border-radius: 1px;
   cursor: ew-resize;
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.4);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
+  z-index: 2;
 }
 .mo-scrub-handle::after {
+  /* invisible widened hit-target so 3px markers stay easy to grab */
   content: ''; position: absolute;
-  left: 50%; top: 50%; transform: translate(-50%,-50%);
-  width: 2px; height: 12px; background: rgba(255,255,255,0.7);
-  border-radius: 1px;
+  left: 50%; top: -4px; bottom: -4px;
+  width: 14px; margin-left: -7px;
+  background: transparent;
+}
+.mo-scrub-handle:hover, .mo-scrub-handle.mo-dragging {
+  background: color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 100%, white 25%);
+  width: 4px; margin-left: -2px;
 }
 .mo-scrub-playhead {
   position: absolute; top: -2px; bottom: -2px; width: 2px;
@@ -11450,18 +11467,86 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
     stripDir = null;
   }
 
-  // ── Footer ──
+  // ── Footer (with size estimate) ──
   const footer = moEl('div', 'mo-modal-footer');
-  const cancelBtn = moEl('button', 'mo-btn-secondary', { textContent: 'Cancel' });
+  const estimateEl = moEl('div', 'mo-clip-estimate', { textContent: '' });
+  const cancelBtn = moEl('button', 'mo-btn-secondary', { textContent: 'Close' });
   cancelBtn.addEventListener('click', () => { if (previewTimer) clearInterval(previewTimer); cleanupStripDir(); overlay.remove(); });
-  const exportBtn = moEl('button', 'mo-btn-primary', { textContent: 'Export' });
+  const exportBtn = moEl('button', 'mo-btn-primary', { textContent: 'Export…' });
   const status = moEl('div', 'mo-clip-status');
-  footer.append(status, cancelBtn, exportBtn);
+  footer.append(status, estimateEl, cancelBtn, exportBtn);
   dialog.appendChild(footer);
+
+  // ── Size estimate (heuristic — actual size depends on content entropy) ──
+  // GIF:    bytes ≈ frames × pixels × 0.18  (palette + LZW typical content)
+  // H.264 / VP9: bitsPerPixel scales as 2^((23-CRF)/6) from a baseline at CRF 23
+  function estimateBytes() {
+    const [aa, bb] = getInOut();
+    const speed = Math.max(0.1, parseFloat(speedSel.value) || 1);
+    const dur = Math.max(0.05, (bb - aa) / speed);
+    const fps = Math.max(1, parseInt(fpsSel.value, 10) || 12);
+    const scale = Math.max(0.1, (parseInt(sizeInput.value, 10) || 100) / 100);
+    const vw = preview.videoWidth || 1280;
+    const vh = preview.videoHeight || 720;
+    let w = vw, h = vh;
+    if (cropEnabled) { w *= cropNorm.w; h *= cropNorm.h; }
+    w = Math.max(2, w * scale);
+    h = Math.max(2, h * scale);
+    const pixels = w * h;
+    const frameCount = dur * fps;
+    if (fmtSel.value === 'gif') return frameCount * pixels * 0.18;
+    const crf = parseInt(crfInput.value, 10) || 23;
+    const bpp23 = fmtSel.value === 'webm' ? 0.06 : 0.10;
+    const bpp = bpp23 * Math.pow(2, (23 - crf) / 6);
+    return (bpp * pixels * fps * dur) / 8;
+  }
+  function fmtBytes(n) {
+    if (!isFinite(n) || n <= 0) return '—';
+    if (n < 1024) return n.toFixed(0) + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
+    return (n / 1073741824).toFixed(2) + ' GB';
+  }
+  function updateEstimate() {
+    const [aa, bb] = getInOut();
+    const dur = Math.max(0, bb - aa);
+    estimateEl.textContent = `~${fmtBytes(estimateBytes())} · ${dur.toFixed(2)}s @ ${fpsSel.value}fps (est.)`;
+  }
+  inInput.addEventListener('input', updateEstimate);
+  outInput.addEventListener('input', updateEstimate);
+  fpsSel.addEventListener('change', updateEstimate);
+  sizeInput.addEventListener('input', updateEstimate);
+  speedSel.addEventListener('change', updateEstimate);
+  fmtSel.addEventListener('change', updateEstimate);
+  crfInput.addEventListener('input', updateEstimate);
+  cropChk.addEventListener('change', updateEstimate);
+  preview.addEventListener('loadedmetadata', updateEstimate);
+  // Refresh estimate whenever crop rect is resized (drag/handle interactions
+  // mutate width/height directly via applyCropRect)
+  try { new ResizeObserver(updateEstimate).observe(cropRect); } catch { /* ignore */ }
+  updateEstimate();
 
   exportBtn.addEventListener('click', async () => {
     const [a, b] = getInOut();
     if (b <= a) { api.window.showWarningMessage('Out point must be after in point.'); return; }
+
+    // Prompt user to choose save location (default: alongside source video)
+    const sep = _isWindows ? '\\' : '/';
+    const lastSep = videoPath.lastIndexOf(sep);
+    const srcDir = videoPath.slice(0, lastSep);
+    const srcBase = videoPath.slice(lastSep + 1).replace(/\.[^.]+$/, '');
+    const tag = `clip_${Math.floor(a)}-${Math.floor(b)}`;
+    const ext = fmtSel.value === 'mp4' ? 'mp4' : (fmtSel.value === 'webm' ? 'webm' : 'gif');
+    const filterMap = {
+      gif:  [{ name: 'GIF',  extensions: ['gif'] }],
+      mp4:  [{ name: 'MP4',  extensions: ['mp4'] }],
+      webm: [{ name: 'WebM', extensions: ['webm'] }],
+    };
+    const chosen = await window.parallxElectron.dialog.saveFile({
+      defaultPath: srcDir + sep + `${srcBase}_${tag}.${ext}`,
+      filters: filterMap[fmtSel.value] || [],
+    });
+    if (!chosen) return; // cancelled — keep the dialog open
 
     exportBtn.disabled = true; cancelBtn.disabled = true;
     status.textContent = 'Exporting…';
@@ -11473,6 +11558,7 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
     try {
       const result = await moExportClip(api, {
         videoPath, inPoint: a, outPoint: b,
+        outPath: chosen,
         format: fmtSel.value,
         fps: parseInt(fpsSel.value, 10),
         scalePct: Math.max(10, parseInt(sizeInput.value, 10) || 100),
@@ -11489,13 +11575,19 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
           reverseFrameOrder: revFrames,
         } : null,
       });
-      if (previewTimer) clearInterval(previewTimer);
-      cleanupStripDir();
-      overlay.remove();
+      // Show actual on-disk size so the user can compare to the estimate;
+      // keep the dialog open so multiple exports can iterate on settings.
+      let actual = '';
+      try {
+        const st = await window.parallxElectron.fs.stat(result.outPath);
+        if (st && st.size) actual = ' · actual ' + fmtBytes(st.size);
+      } catch { /* ignore */ }
+      status.textContent = 'Exported ✓ ' + result.outPath + actual;
       api.window.showInformationMessage('Exported: ' + result.outPath);
     } catch (err) {
       status.textContent = '';
       api.window.showErrorMessage('Export failed: ' + (err && err.message || err));
+    } finally {
       exportBtn.disabled = false; cancelBtn.disabled = false;
     }
   });
@@ -11513,13 +11605,19 @@ async function moExportClip(api, opts) {
   const base = opts.videoPath.slice(lastSep + 1).replace(/\.[^.]+$/, '');
   const tag = `clip_${Math.floor(opts.inPoint)}-${Math.floor(opts.outPoint)}`;
   const outExt = opts.format === 'mp4' ? 'mp4' : (opts.format === 'webm' ? 'webm' : 'gif');
-  let outPath = `${dir}${sep}${base}_${tag}.${outExt}`;
-
-  // Avoid clobbering existing files by adding a counter
-  let counter = 1;
-  while (await window.parallxElectron.fs.exists(outPath)) {
-    outPath = `${dir}${sep}${base}_${tag}_${counter}.${outExt}`;
-    counter++;
+  let outPath;
+  if (opts.outPath) {
+    // User picked a save location explicitly — honor it (overwrite allowed; the
+    // native save dialog already prompted for replacement confirmation).
+    outPath = opts.outPath;
+  } else {
+    outPath = `${dir}${sep}${base}_${tag}.${outExt}`;
+    // Avoid clobbering existing files by adding a counter
+    let counter = 1;
+    while (await window.parallxElectron.fs.exists(outPath)) {
+      outPath = `${dir}${sep}${base}_${tag}_${counter}.${outExt}`;
+      counter++;
+    }
   }
 
   const ff = shellInvoke(_toolPaths.ffmpeg);
