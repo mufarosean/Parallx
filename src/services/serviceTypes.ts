@@ -2033,3 +2033,16 @@ import type { IAutonomyEventLog as IAutonomyEventLogType } from './autonomyEvent
 export type IAutonomyEventLog = IAutonomyEventLogType;
 export const IAutonomyEventLog =
   createServiceIdentifier<IAutonomyEventLogType>('IAutonomyEventLog');
+
+// ─── ISettingsRegistryService (M60 §7 Phase ε T4.D1) ────────────────────────
+//
+// Schema-driven settings registry. Every service / extension registers
+// its settings up-front; the registry owns validation, persistence, change
+// events, and scope routing. Backed by IGlobalStorageService (user) and
+// IWorkspaceStorageService (workspace). Adapter-binds to existing flat
+// stores like AutonomyFeatureFlagsService.
+
+import type { ISettingsRegistryService as ISettingsRegistryServiceType } from './settingsRegistryService.js';
+export type ISettingsRegistryService = ISettingsRegistryServiceType;
+export const ISettingsRegistryService =
+  createServiceIdentifier<ISettingsRegistryServiceType>('ISettingsRegistryService');

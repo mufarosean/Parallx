@@ -39,7 +39,13 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, ISurfaceRouterService, IAutonomyLogService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, IGlobalStorageService, ISurfaceRouterService, IAutonomyLogService, ISettingsRegistryService } from '../../services/serviceTypes.js';
+import { SettingsRegistryService } from '../../services/settingsRegistryService.js';
+import { setGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
+import {
+  registerAutonomyFlagSettings,
+  registerAutonomySubstrateSettings,
+} from '../../services/autonomySettingsSchemas.js';
 import { ChatSurfacePlugin } from './surfaces/chatSurface.js';
 import { FilesystemSurfacePlugin } from '../../services/surfaces/filesystemSurface.js';
 import { CanvasSurfacePlugin } from '../canvas/surfaces/canvasSurface.js';
@@ -122,6 +128,7 @@ interface ParallxApi {
   services: {
     get<T>(id: { readonly id: string }): T;
     has(id: { readonly id: string }): boolean;
+    registerInstance<T>(id: { readonly id: string }, instance: T): void;
   };
   editors: {
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
@@ -301,6 +308,53 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const autonomyFlags = new AutonomyFeatureFlagsService(_autonomyFlagsStorage);
   void autonomyFlags.initialize().catch(() => { /* defaults apply */ });
   context.subscriptions.push(autonomyFlags);
+
+  // ── M60 §7 Phase ε T4.D1: Settings registry ──────────────────────────────
+  //
+  // Schema-driven settings registry. Constructed here so it can be wired
+  // up alongside autonomyFlags (we adapter-bind all 11 flags into it).
+  // Registered globally via api.services.registerInstance (M56) so the
+  // settings extension and any third-party extension can consume it.
+  if (!api.services.has(ISettingsRegistryService)) {
+    const _userStorage = api.services.has(IGlobalStorageService)
+      ? api.services.get<import('../../platform/storage.js').IStorage>(IGlobalStorageService)
+      : undefined;
+    const _wsStorageForRegistry = api.services.has(IWorkspaceStorageService)
+      ? api.services.get<import('../../platform/storage.js').IStorage>(IWorkspaceStorageService)
+      : undefined;
+    const settingsRegistry = new SettingsRegistryService(_userStorage, _wsStorageForRegistry);
+    void settingsRegistry.initialize().catch(() => { /* defaults apply */ });
+    context.subscriptions.push(settingsRegistry);
+
+    // §3.8 the editor itself ships behind a flag, default on.
+    settingsRegistry.register({
+      key: 'settings.editor.enabled',
+      type: 'boolean',
+      default: true,
+      scope: 'user',
+      description: 'Enable the unified settings editor (M60 §3.8 rollback flag).',
+      category: 'General',
+    });
+
+    // Bind 11 autonomy flags + register substrate (heartbeat / followup /
+    // subagent / cron / indexing) and Canvas property-bar collapsed state.
+    registerAutonomyFlagSettings(settingsRegistry, autonomyFlags);
+    registerAutonomySubstrateSettings(settingsRegistry);
+
+    // Canvas property-bar collapsed state (D3 migration target).
+    settingsRegistry.register({
+      key: 'canvas.propertyBar.collapsed',
+      type: 'boolean',
+      default: false,
+      scope: 'user',
+      description: 'Whether the canvas property bar starts collapsed.',
+      category: 'Canvas',
+    });
+
+    api.services.registerInstance(ISettingsRegistryService, settingsRegistry);
+    setGlobalSettingsRegistry(settingsRegistry);
+    context.subscriptions.push({ dispose: () => setGlobalSettingsRegistry(undefined) });
+  }
 
   // §3.10 event log — writes ndjson to <APP_ROOT>/data/autonomy-events.<day>.ndjson.
   // Falls back to a no-op writer when the fs bridge is unavailable (tests).

@@ -15,8 +15,49 @@ import type {
 } from './propertyTypes.js';
 import { createPropertyEditor, createTypeIconElement } from './propertyEditors.js';
 import { showPropertyPicker } from './propertyPicker.js';
+import { getGlobalSettingsRegistry } from '../../../services/settingsRegistryService.js';
 
 const COLLAPSED_KEY = 'canvas.propertyBar.collapsed';
+
+/**
+ * Read the collapsed-state preference. Prefers the M60 §7 settings
+ * registry (canonical store); falls back to the legacy localStorage key
+ * for first paint before the registry is wired (or in headless tests).
+ */
+function _readCollapsed(): boolean {
+  const reg = getGlobalSettingsRegistry();
+  if (reg && reg.getSchema(COLLAPSED_KEY)) {
+    try {
+      return reg.getValue<boolean>(COLLAPSED_KEY);
+    } catch {
+      /* fall through */
+    }
+  }
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Persist the collapsed-state preference. Writes to the registry when
+ * available; mirrors to localStorage as a synchronous cache for the
+ * next renderer paint.
+ */
+function _writeCollapsed(value: boolean): void {
+  const reg = getGlobalSettingsRegistry();
+  if (reg && reg.getSchema(COLLAPSED_KEY)) {
+    reg.setValue(COLLAPSED_KEY, value).catch((err) => {
+      console.warn('[PropertyBar] settings write failed:', err);
+    });
+  }
+  try {
+    localStorage.setItem(COLLAPSED_KEY, String(value));
+  } catch {
+    /* localStorage may be unavailable */
+  }
+}
 
 // ─── PropertyBar ─────────────────────────────────────────────────────────────
 
@@ -43,8 +84,8 @@ export class PropertyBar implements IDisposable {
     this._el = document.createElement('div');
     this._el.className = 'canvas-property-bar';
 
-    // Restore collapsed state
-    const collapsed = localStorage.getItem(COLLAPSED_KEY) === 'true';
+    // Restore collapsed state (M60 §7 — registry-backed; falls back to localStorage)
+    const collapsed = _readCollapsed();
     if (collapsed) this._el.classList.add('collapsed');
 
     // Header
@@ -57,7 +98,7 @@ export class PropertyBar implements IDisposable {
 
     header.addEventListener('click', () => {
       this._el!.classList.toggle('collapsed');
-      localStorage.setItem(COLLAPSED_KEY, String(this._el!.classList.contains('collapsed')));
+      _writeCollapsed(this._el!.classList.contains('collapsed'));
     });
 
     this._el.appendChild(header);

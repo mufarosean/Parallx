@@ -1,0 +1,231 @@
+/* settings.css — M60 Phase ε §7 T4.D2 settings editor styles
+ *
+ * No inline styles. All colors from --vscode-* tokens. (§3.3 L4)
+ */
+
+.settings-editor-overlay {
+  width: min(820px, 92vw);
+  max-height: 86vh;
+  background: var(--vscode-editor-background, #1e1e1e);
+  color: var(--vscode-foreground);
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.18)));
+  border-radius: var(--parallx-radius-md, 6px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ── Header ──────────────────────────────────────────── */
+
+.settings-editor__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.18));
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+}
+
+.settings-editor__title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--vscode-foreground);
+}
+
+.settings-editor__close {
+  background: transparent;
+  border: none;
+  color: var(--vscode-foreground);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--parallx-radius-sm, 4px);
+}
+
+.settings-editor__close:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.18));
+}
+
+.settings-editor__close:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, rgba(128, 128, 128, 0.4));
+  outline-offset: 1px;
+}
+
+/* ── Filter bar ─────────────────────────────────────── */
+
+.settings-editor__filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.18));
+}
+
+.settings-editor__search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-editor__search .ui-input-box {
+  width: 100%;
+}
+
+.settings-editor__scope {
+  flex: 0 0 auto;
+}
+
+/* ── List ────────────────────────────────────────────── */
+
+.settings-editor__list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 8px 18px 18px;
+}
+
+.settings-editor__empty {
+  padding: 24px 8px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
+}
+
+.settings-editor__category {
+  margin-top: 18px;
+}
+
+.settings-editor__category:first-child {
+  margin-top: 6px;
+}
+
+.settings-editor__category-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.6));
+  margin: 8px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.12));
+}
+
+/* ── Row ─────────────────────────────────────────────── */
+
+.settings-editor__row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.08));
+}
+
+.settings-editor__row:last-child {
+  border-bottom: none;
+}
+
+.settings-editor__row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-editor__row-key {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.85rem;
+  color: var(--vscode-foreground);
+  font-weight: 500;
+}
+
+.settings-editor__row-scope {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: var(--parallx-radius-sm, 4px);
+  background: var(--vscode-badge-background, rgba(128, 128, 128, 0.2));
+  color: var(--vscode-badge-foreground, var(--vscode-foreground));
+}
+
+.settings-editor__row-deprecated {
+  font-size: 0.7rem;
+  color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.settings-editor__row-desc {
+  font-size: 0.85rem;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.65));
+  line-height: 1.4;
+}
+
+.settings-editor__row-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-editor__row-control .ui-input-box {
+  min-width: 220px;
+  max-width: 320px;
+}
+
+.settings-editor__hint {
+  font-size: 0.75rem;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
+}
+
+.settings-editor__reset {
+  background: transparent;
+  border: 1px solid var(--vscode-button-secondaryBorder, var(--vscode-panel-border, rgba(128, 128, 128, 0.25)));
+  color: var(--vscode-foreground);
+  padding: 2px 10px;
+  font-size: 0.8rem;
+  border-radius: var(--parallx-radius-sm, 4px);
+  cursor: pointer;
+}
+
+.settings-editor__reset:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.18));
+}
+
+.settings-editor__reset:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, rgba(128, 128, 128, 0.4));
+  outline-offset: 1px;
+}
+
+/* ── JSON textarea (object type) ─────────────────────── */
+
+.settings-editor__json {
+  width: 100%;
+  min-width: 280px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.85rem;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.25));
+  border-radius: var(--parallx-radius-sm, 4px);
+  padding: 6px 8px;
+  resize: vertical;
+}
+
+.settings-editor__json:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, rgba(128, 128, 128, 0.4));
+  outline-offset: 0;
+}
+
+.settings-editor__json-status {
+  font-size: 0.75rem;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
+}
+
+.settings-editor__json-status--error {
+  color: var(--vscode-editorError-foreground, #f48771);
+}

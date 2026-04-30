@@ -143,6 +143,7 @@ import * as AISettingsTool from '../built-in/ai-settings/main.js';
 import * as DiagnosticsTool from '../built-in/diagnostics/main.js';
 import * as AutonomyLogTool from '../built-in/autonomy-log/main.js';
 import * as ThemeEditorTool from '../built-in/theme-editor/main.js';
+import * as SettingsTool from '../built-in/settings/main.js';
 import type { IToolManifest, IToolDescription } from '../tools/toolManifest.js';
 import {
   EXPLORER_MANIFEST,
@@ -158,6 +159,7 @@ import {
   DIAGNOSTICS_MANIFEST,
   AUTONOMY_LOG_MANIFEST,
   THEME_EDITOR_MANIFEST,
+  SETTINGS_MANIFEST,
 } from '../tools/builtinManifests.js';
 
 // File Editor Resolver (M4 Capability 4)
@@ -2677,6 +2679,9 @@ export class Workbench extends Layout {
       { manifest: CHAT_MANIFEST, module: ChatTool },
       { manifest: AI_SETTINGS_MANIFEST, module: AISettingsTool },
       { manifest: THEME_EDITOR_MANIFEST, module: ThemeEditorTool },
+      // Settings (M60 Phase ε §7 T4.D2) — must come after ChatTool so the
+      // registry registered by chat activation is available via DI.
+      { manifest: SETTINGS_MANIFEST, module: SettingsTool },
     ];
 
     const activationPromises: Promise<void>[] = [];

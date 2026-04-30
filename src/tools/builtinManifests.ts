@@ -335,3 +335,25 @@ export const THEME_EDITOR_MANIFEST: IToolManifest = {
     ],
   },
 };
+
+// ── Settings (M60 Phase ε §7 T4.D2) ──────────────────────────────────────
+
+export const SETTINGS_MANIFEST: IToolManifest = {
+  manifestVersion: 1,
+  id: 'parallx.settings',
+  name: 'Settings',
+  version: '1.0.0',
+  publisher: 'parallx',
+  description: 'Unified, schema-driven settings editor (M60 §7).',
+  main: './main.js',
+  engines: { parallx: '^0.1.0' },
+  activationEvents: ['onStartupFinished'],
+  contributes: {
+    commands: [
+      { id: 'settings.open', title: 'Parallx: Open Settings' },
+    ],
+    keybindings: [
+      { command: 'settings.open', key: 'Ctrl+,' },
+    ],
+  },
+};

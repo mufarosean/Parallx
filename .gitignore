@@ -16,4 +16,4 @@ test-results/
 test-output.json
 test-output.txt
 playwright-report/
-screenshots/
+screenshots/.git-commit-msg.txt
