@@ -4608,7 +4608,7 @@ const MO_CSS = `
   font-size: var(--parallx-fontSize-xs, 10px);
   padding: 1px 6px;
   border-radius: 999px;
-  background: var(--parallx-color-accent, #9333ea);
+  background: var(--vscode-focusBorder, #9333ea);
   color: #fff;
   font-weight: 700;
   pointer-events: none;
@@ -4639,7 +4639,7 @@ const MO_CSS = `
   display: flex; align-items: center; justify-content: center;
   border: 1px solid transparent;
 }
-.mo-timeline-tile:hover { border-color: var(--parallx-color-accent, #9333ea); }
+.mo-timeline-tile:hover { border-color: var(--vscode-focusBorder, #9333ea); }
 .mo-timeline-tile img { width: 100%; height: 100%; object-fit: cover; }
 .mo-timeline-tile-ph { opacity: 0.5; }
 .mo-map-dialog { width: 940px; max-width: 96vw; }
@@ -6075,7 +6075,7 @@ const MO_CSS = `
 .mo-clip-frame-delay {
   position: absolute; top: 2px; right: 2px;
   font-size: 9px; line-height: 1; padding: 1px 3px;
-  background: var(--parallx-color-accent, #4d8eff); color: #fff;
+  background: var(--vscode-focusBorder, #9333ea); color: #fff;
   border-radius: 2px; font-variant-numeric: tabular-nums;
 }
 .mo-clip-frame-deleted img { opacity: 0.25; filter: grayscale(1); }
@@ -6112,7 +6112,7 @@ const MO_CSS = `
   border: 1px solid var(--parallx-color-border, #444);
 }
 .mo-btn-primary {
-  background: var(--parallx-color-accent, #4d8eff); color: #fff; border-color: transparent;
+  background: var(--vscode-focusBorder, #9333ea); color: #fff; border-color: transparent;
 }
 .mo-btn-primary:disabled { opacity: 0.5; cursor: default; }
 .mo-btn-secondary {
