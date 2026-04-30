@@ -1,0 +1,39 @@
+{
+  "$schema": "../autonomy-eval.schema.json",
+  "id": "canvas-read-block",
+  "title": "Agent fetches a single block by id without reading the whole page (M60 §6.3 C3)",
+  "trigger": {
+    "kind": "user-prompt",
+    "fixture": {
+      "prompt": "What does block b-summary on page p1 say?",
+      "workspace": {
+        "pages": [
+          {
+            "id": "p1",
+            "title": "Project Plan",
+            "doc": {
+              "type": "doc",
+              "content": [
+                { "type": "paragraph", "attrs": { "id": "b-intro"   }, "content": [{ "type": "text", "text": "Intro." }] },
+                { "type": "paragraph", "attrs": { "id": "b-summary" }, "content": [{ "type": "text", "text": "Ship Tier 3 by end of week." }] }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "preconditions": {
+    "flags": { "canvas.blockIds.enabled": true }
+  },
+  "rubric": {
+    "dimensions": [
+      { "id": "tool.selected",   "max": 2, "description": "Did the agent call read_block (vs. read_page or scan_workspace)?" },
+      { "id": "tool.scoped",     "max": 2, "description": "Did the agent pass the exact (pageId, blockId) without enumerating other blocks?" },
+      { "id": "answer.faithful", "max": 2, "description": "Final answer quotes the block text verbatim?" },
+      { "id": "no.write",        "max": 2, "description": "No write tool was invoked (read-only intent honored)?" }
+    ],
+    "passThreshold": 6
+  },
+  "_runner_status": "TODO — runner ships with T6. JSON shape is the contract."
+}

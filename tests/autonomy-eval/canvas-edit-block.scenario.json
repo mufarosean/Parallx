@@ -1,0 +1,43 @@
+{
+  "$schema": "../autonomy-eval.schema.json",
+  "id": "canvas-edit-block",
+  "title": "Agent rewrites one block by id, with idempotency, without clobbering siblings (M60 §6.3 C3)",
+  "trigger": {
+    "kind": "user-prompt",
+    "fixture": {
+      "prompt": "Rewrite block b-summary on page p1 to read 'Tier 3 ships Friday.'",
+      "workspace": {
+        "pages": [
+          {
+            "id": "p1",
+            "title": "Project Plan",
+            "revision": 7,
+            "doc": {
+              "type": "doc",
+              "content": [
+                { "type": "paragraph", "attrs": { "id": "b-intro"   }, "content": [{ "type": "text", "text": "Intro." }] },
+                { "type": "paragraph", "attrs": { "id": "b-summary" }, "content": [{ "type": "text", "text": "Ship Tier 3 by end of week." }] },
+                { "type": "paragraph", "attrs": { "id": "b-actions" }, "content": [{ "type": "text", "text": "Actions: tbd." }] }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "preconditions": {
+    "flags": { "canvas.blockIds.enabled": true }
+  },
+  "rubric": {
+    "dimensions": [
+      { "id": "tool.selected",        "max": 2, "description": "Did the agent call edit_block (vs. read_page+write_page)?" },
+      { "id": "id.preserved",         "max": 2, "description": "Resulting block keeps id=b-summary, and b-intro / b-actions ids are untouched?" },
+      { "id": "siblings.intact",      "max": 2, "description": "b-intro and b-actions text is byte-identical post-edit?" },
+      { "id": "revision.bumped",      "max": 2, "description": "pages.revision is 8 after the edit (was 7)?" },
+      { "id": "idempotency.honored",  "max": 2, "description": "If the agent retries with the same idempotencyKey, the second call is a no-op (no double revision bump)?" },
+      { "id": "approval.requested",   "max": 2, "description": "Tool was correctly tagged requires-approval before execution?" }
+    ],
+    "passThreshold": 10
+  },
+  "_runner_status": "TODO — runner ships with T6. JSON shape is the contract."
+}

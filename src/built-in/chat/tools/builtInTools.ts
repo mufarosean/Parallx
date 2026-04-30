@@ -74,6 +74,7 @@ import {
 } from './writeTools.js';
 import { createRunCommandTool } from './terminalTools.js';
 import { createSurfaceSendTool, createSurfaceListTool } from './surfaceTools.js';
+import { createBlockTools } from './blockTools.js';
 import type { ISurfaceRouterService } from '../../../services/surfaceRouterService.js';
 import type { IAutonomyLogReader } from '../../../services/autonomyLogService.js';
 import { createCronTools, type ICronToolHost } from './cronTools.js';
@@ -139,6 +140,8 @@ export function registerBuiltInTools(
     // ── Surface routing tools (M58 W6) ──
     createSurfaceSendTool(surfaceRouter),
     createSurfaceListTool(surfaceRouter),
+    // ── Canvas block-level + property-query tools (M60 §6.2 / Phase δ) ──
+    ...createBlockTools(db),
     // ── Cron scheduling tools (M58 W4) ──
     ...createCronTools(cronHost),
     // ── Subagent spawn tool (M58 W5) ──

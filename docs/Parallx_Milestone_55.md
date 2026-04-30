@@ -4,6 +4,13 @@
 **Status:** Planning  
 **Branch:** `canvas-properties` (create from `ui-updates`)
 
+> **Update — M60 Phase δ (2026-04-30):** Property query layer extended.
+> A new multi-filter `query_pages_by_property` chat tool (filter array
+> AND-ed via SQL `INTERSECT`, sort, group, limit) ships in
+> `src/built-in/chat/tools/blockTools.ts`. The single-property
+> `find_pages_by_property` tool from M55 is retained for backward
+> compatibility. See `docs/ai/CANVAS_BLOCK_API.md` §2.
+
 ## Vision
 
 Every canvas page can have **typed properties** displayed in a collapsible bar

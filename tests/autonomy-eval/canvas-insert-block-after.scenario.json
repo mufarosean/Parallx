@@ -1,0 +1,41 @@
+{
+  "$schema": "../autonomy-eval.schema.json",
+  "id": "canvas-insert-block-after",
+  "title": "Agent inserts a new block immediately after an anchor (M60 §6.3 C3)",
+  "trigger": {
+    "kind": "user-prompt",
+    "fixture": {
+      "prompt": "After block b-intro on page p1, add a paragraph that says 'Owner: Mei.'",
+      "workspace": {
+        "pages": [
+          {
+            "id": "p1",
+            "title": "Project Plan",
+            "revision": 3,
+            "doc": {
+              "type": "doc",
+              "content": [
+                { "type": "paragraph", "attrs": { "id": "b-intro"   }, "content": [{ "type": "text", "text": "Intro." }] },
+                { "type": "paragraph", "attrs": { "id": "b-summary" }, "content": [{ "type": "text", "text": "Ship soon." }] }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "preconditions": {
+    "flags": { "canvas.blockIds.enabled": true }
+  },
+  "rubric": {
+    "dimensions": [
+      { "id": "tool.selected",   "max": 2, "description": "Did the agent call insert_block_after (vs. edit_block + manual concat)?" },
+      { "id": "position.correct","max": 2, "description": "New block is at index 1 (immediately after b-intro), b-summary slides to index 2?" },
+      { "id": "id.minted",       "max": 2, "description": "New block carries a unique blockId distinct from b-intro and b-summary?" },
+      { "id": "siblings.intact", "max": 2, "description": "b-intro and b-summary content unchanged?" },
+      { "id": "revision.bumped", "max": 2, "description": "pages.revision is 4 after insert (was 3)?" }
+    ],
+    "passThreshold": 8
+  },
+  "_runner_status": "TODO — runner ships with T6. JSON shape is the contract."
+}

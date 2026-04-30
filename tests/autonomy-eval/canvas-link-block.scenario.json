@@ -1,0 +1,51 @@
+{
+  "$schema": "../autonomy-eval.schema.json",
+  "id": "canvas-link-block",
+  "title": "Agent cross-links two blocks across pages (M60 §6.3 C3)",
+  "trigger": {
+    "kind": "user-prompt",
+    "fixture": {
+      "prompt": "Link block b-summary on page p1 to block b-detail on page p2 with label 'see details'.",
+      "workspace": {
+        "pages": [
+          {
+            "id": "p1",
+            "title": "Project Plan",
+            "revision": 1,
+            "doc": {
+              "type": "doc",
+              "content": [
+                { "type": "paragraph", "attrs": { "id": "b-summary" }, "content": [{ "type": "text", "text": "Ship soon." }] }
+              ]
+            }
+          },
+          {
+            "id": "p2",
+            "title": "Detail",
+            "revision": 1,
+            "doc": {
+              "type": "doc",
+              "content": [
+                { "type": "paragraph", "attrs": { "id": "b-detail" }, "content": [{ "type": "text", "text": "Detail body." }] }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "preconditions": {
+    "flags": { "canvas.blockIds.enabled": true }
+  },
+  "rubric": {
+    "dimensions": [
+      { "id": "tool.selected",      "max": 2, "description": "Did the agent call link_block (vs. edit_block on each side)?" },
+      { "id": "link.shape",         "max": 2, "description": "New paragraph contains text matching '→ [see details](page://p2#b-detail)'?" },
+      { "id": "source.untouched",   "max": 2, "description": "Original b-summary block content is byte-identical post-link?" },
+      { "id": "target.untouched",   "max": 2, "description": "p2 page content is unchanged (only p1 was written)?" },
+      { "id": "validation",         "max": 2, "description": "Agent did not invent ids — both blockIds existed before the call?" }
+    ],
+    "passThreshold": 8
+  },
+  "_runner_status": "TODO — runner ships with T6. JSON shape is the contract."
+}

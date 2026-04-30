@@ -3270,6 +3270,37 @@
   background: none;
 }
 
+/* ─── M60 Phase δ — Dataview block (canvas C4) ─────────────────────────── */
+.canvas-tiptap-editor .canvas-dataview {
+  display: block;
+  margin: 0.75rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: var(--parallx-radius-sm);
+  background: var(--vscode-editorWidget-background);
+  color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+  font-size: var(--vscode-editor-font-size, 13px);
+}
+.canvas-tiptap-editor .canvas-dataview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.canvas-tiptap-editor .canvas-dataview-row {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--vscode-widget-border, transparent);
+  cursor: default;
+}
+.canvas-tiptap-editor .canvas-dataview-row:last-child {
+  border-bottom: none;
+}
+.canvas-tiptap-editor .canvas-dataview-empty {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  padding: 0.25rem 0;
+}
+
+
 .canvas-tiptap-editor .tiptap-math.latex:hover {
   background: rgba(255, 255, 255, 0.06);
 }

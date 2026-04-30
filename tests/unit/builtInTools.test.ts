@@ -98,8 +98,9 @@ describe('registerBuiltInTools', () => {
     // M58 W4: 8 cron tools bring the total to 32.
     // M58 W5: sessions_spawn brings the total to 33.
     // M58-real post-ship UX reshape: autonomy_log brings the total to 34.
-    expect(toolsService.registeredTools).toHaveLength(34);
-    expect(disposables).toHaveLength(34);
+    // M60 Phase δ: 5 block-level + property-query tools bring the total to 39.
+    expect(toolsService.registeredTools).toHaveLength(39);
+    expect(disposables).toHaveLength(39);
 
     const names = toolsService.registeredTools.map(t => t.name).sort();
     expect(names).toEqual([
@@ -114,15 +115,20 @@ describe('registerBuiltInTools', () => {
       'cron_update',
       'cron_wake',
       'delete_file',
+      'edit_block',
       'edit_file',
       'find_pages_by_property',
       'get_page_properties',
       'grep_search',
+      'insert_block_after',
+      'link_block',
       'list_files',
       'list_pages',
       'list_property_definitions',
       'memory_get',
       'memory_search',
+      'query_pages_by_property',
+      'read_block',
       'read_current_page',
       'read_file',
       'read_page',
@@ -150,7 +156,7 @@ describe('registerBuiltInTools', () => {
 
     registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
-    const readOnly = ['search_workspace', 'read_page', 'read_current_page', 'list_pages', 'get_page_properties', 'list_files', 'read_file', 'search_files', 'grep_search', 'search_knowledge', 'memory_get', 'memory_search', 'transcript_get', 'transcript_search', 'list_property_definitions', 'find_pages_by_property'];
+    const readOnly = ['search_workspace', 'read_page', 'read_current_page', 'list_pages', 'get_page_properties', 'list_files', 'read_file', 'search_files', 'grep_search', 'search_knowledge', 'memory_get', 'memory_search', 'transcript_get', 'transcript_search', 'list_property_definitions', 'find_pages_by_property', 'query_pages_by_property', 'read_block'];
     for (const name of readOnly) {
       const tool = toolsService.registeredTools.find(t => t.name === name);
       expect(tool?.requiresConfirmation, `${name} should not require confirmation`).toBe(false);
@@ -410,6 +416,12 @@ describe('built-in tools with no database', () => {
       'list_property_definitions',
       'set_page_property',
       'find_pages_by_property',
+      // M60 Phase δ — block-level + property-query tools.
+      'query_pages_by_property',
+      'read_block',
+      'edit_block',
+      'insert_block_after',
+      'link_block',
     ]);
 
     for (const tool of toolsService.registeredTools) {

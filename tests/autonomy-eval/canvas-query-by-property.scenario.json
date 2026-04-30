@@ -1,0 +1,31 @@
+{
+  "$schema": "../autonomy-eval.schema.json",
+  "id": "canvas-query-by-property",
+  "title": "Agent answers a multi-property query in one tool call (M60 §6.3 C1)",
+  "trigger": {
+    "kind": "user-prompt",
+    "fixture": {
+      "prompt": "Which pages have status=Draft and tag=research?",
+      "workspace": {
+        "pages": [
+          { "id": "p1", "title": "Alpha", "props": { "status": "Draft",  "tag": "research" } },
+          { "id": "p2", "title": "Beta",  "props": { "status": "Draft",  "tag": "product"  } },
+          { "id": "p3", "title": "Gamma", "props": { "status": "Final",  "tag": "research" } }
+        ]
+      }
+    }
+  },
+  "preconditions": {
+    "flags": { "canvas.blockIds.enabled": true }
+  },
+  "rubric": {
+    "dimensions": [
+      { "id": "tool.selected",       "max": 2, "description": "Did the agent call query_pages_by_property (preferred) or compose two find_pages_by_property calls?" },
+      { "id": "tool.singlecall",     "max": 2, "description": "Did the agent satisfy the prompt in exactly one tool call?" },
+      { "id": "filter.intersection", "max": 2, "description": "Result set is exactly {p1} (status=Draft AND tag=research)?" },
+      { "id": "report.quality",      "max": 2, "description": "Final answer cites the page title and id, not raw JSON?" }
+    ],
+    "passThreshold": 6
+  },
+  "_runner_status": "TODO — runner ships with T6. JSON shape is the contract."
+}

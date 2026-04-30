@@ -90,6 +90,8 @@ const FOLDER_RULES: Record<string, string[]> = {
   'tools/cronTools.ts':     [],                // M58 W4 — 8 cron_* scheduler actions
   'tools/subagentTools.ts': [],                // M58 W5 — sessions_spawn
   'tools/autonomyLogTool.ts': [],              // M58-real post-ship UX reshape — autonomy_log
+  'tools/blockApi.ts':      [],                // M60 Phase δ — pure helpers for property query + block walking
+  'tools/blockTools.ts':    ['tools/'],        // M60 Phase δ — query_pages_by_property + read/edit/insert/link block
   'surfaces/chatSurface.ts': [],                // M58 W6 — ChatSurfacePlugin (trace logger)
 
   // ── widgets/ — chat widget components ───────────────────────────────────

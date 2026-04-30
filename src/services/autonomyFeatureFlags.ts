@@ -38,6 +38,14 @@ export const FLAG_SURFACE_FILESYSTEM_ENABLED = 'autonomy.surface.filesystem.enab
 export const FLAG_HEARTBEAT_ENABLED = 'autonomy.heartbeat.enabled';
 export const FLAG_CRON_ENABLED = 'autonomy.cron.enabled';
 export const FLAG_SUBAGENT_ENABLED = 'autonomy.subagent.enabled';
+// M60 Phase δ §3.8 — canvas depth.
+// blockIds default ON: TipTap's `extension-unique-id` is already wired
+// in src/built-in/canvas/config/tiptapExtensions.ts (UNIQUE_ID_BLOCK_TYPES);
+// the flag exists for emergency rollback, not for opt-in.
+// dataview default ON for the same reason — the node is shipped read-only,
+// rendered by the canvas editor; flag gates registration.
+export const FLAG_CANVAS_BLOCKIDS_ENABLED = 'canvas.blockIds.enabled';
+export const FLAG_CANVAS_DATAVIEW_ENABLED = 'canvas.dataview.enabled';
 
 export type AutonomyFlagId =
   | typeof FLAG_FOLLOWUP_ENABLED
@@ -48,7 +56,9 @@ export type AutonomyFlagId =
   | typeof FLAG_SURFACE_FILESYSTEM_ENABLED
   | typeof FLAG_HEARTBEAT_ENABLED
   | typeof FLAG_CRON_ENABLED
-  | typeof FLAG_SUBAGENT_ENABLED;
+  | typeof FLAG_SUBAGENT_ENABLED
+  | typeof FLAG_CANVAS_BLOCKIDS_ENABLED
+  | typeof FLAG_CANVAS_DATAVIEW_ENABLED;
 
 /**
  * Defaults per M60 §3.8. Canvas + filesystem are gated until C3 lands.
@@ -66,6 +76,8 @@ export const AUTONOMY_FLAG_DEFAULTS: Readonly<Record<AutonomyFlagId, boolean>> =
   [FLAG_HEARTBEAT_ENABLED]: false,
   [FLAG_CRON_ENABLED]: false,
   [FLAG_SUBAGENT_ENABLED]: false,
+  [FLAG_CANVAS_BLOCKIDS_ENABLED]: true,
+  [FLAG_CANVAS_DATAVIEW_ENABLED]: true,
 });
 
 /** Surface plugin id → flag id. Used by SurfaceRouterService gating. */

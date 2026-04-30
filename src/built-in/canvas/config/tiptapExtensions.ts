@@ -16,6 +16,7 @@ import UniqueID from '@tiptap/extension-unique-id';
 import { BlockBackgroundColor } from '../extensions/blockBackground.js';
 import { DetailsEnterHandler } from '../extensions/detailsEnterHandler.js';
 import { BlockKeyboardShortcuts } from '../extensions/blockKeyboardShortcuts.js';
+import { Dataview } from '../extensions/dataviewNode.js';
 import { structuralInvariantPlugin } from '../plugins/structuralInvariantPlugin.js';
 import {
   getNodePlaceholder,
@@ -34,8 +35,13 @@ import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
  * Criteria: all ProseMirror node types that represent user-visible blocks or
  * their structural children (containers, list items, table cells, etc.).
  * Inline-only types (text, inlineMath, hardBreak) are excluded.
+ *
+ * Exported for the M60 Phase δ T3 C2 contract: stable `blockId` is the
+ * substrate behind read_block / edit_block / insert_block_after / link_block.
+ * Drift in this list breaks block-level addressing — see
+ * `tests/unit/canvasUniqueIdContract.test.ts`.
  */
-const UNIQUE_ID_BLOCK_TYPES: string[] = [
+export const UNIQUE_ID_BLOCK_TYPES: string[] = [
   // ── StarterKit blocks ──
   'paragraph',
   'heading',
@@ -73,6 +79,9 @@ const UNIQUE_ID_BLOCK_TYPES: string[] = [
   // ── Column nodes ──
   'columnList',
   'column',
+
+  // ── M60 Phase δ — dataview block ──
+  'dataview',
 ];
 
 /**
@@ -197,5 +206,6 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
       },
     }),
     BlockBackgroundColor,
+    Dataview,
   ];
 }
