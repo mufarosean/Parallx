@@ -136,6 +136,23 @@ const icons = {
   'smile':             L('smile'),
   'video':             L('video'),
   'audio':             L('headphones'),
+
+  // ── Media Player ──
+  // Codicon-style aliases used by the media-organizer custom video player.
+  'play':              L('play'),
+  'pause':             L('pause'),
+  'debug-step-back':   L('step-back'),
+  'debug-step-over':   L('step-forward'),
+  'step-back':         L('step-back'),
+  'step-forward':      L('step-forward'),
+  'unmute':            L('volume-2'),
+  'mute':              L('volume-x'),
+  'volume-low':        L('volume-1'),
+  'volume-high':       L('volume-2'),
+  'screen-full':       L('maximize'),
+  'screen-normal':     L('minimize'),
+  'device-camera':     L('camera'),
+  'split-horizontal':  L('scissors'),
   'math':              L('sigma'),
   'math-block':        L('sigma'),
   'bolt':              L('zap'),
