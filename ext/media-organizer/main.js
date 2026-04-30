@@ -2451,6 +2451,7 @@ async function processFile(entry) {
   let webpTarget = null; // 'gif' | 'jpg' | null
   if (isWebp) {
     webpTarget = (await isWebPAnimated(entry.path)) ? 'gif' : 'jpg';
+    console.log(`[MediaOrganizer] WebP detected: ${entry.name} -> ${webpTarget}`);
   }
   const needsConversion = webpTarget ? 1 : 0;
 
@@ -11094,6 +11095,7 @@ async function moAutoConvertWebPAfterScan(api) {
   _newWebPConversions = [];
   if (queue.length === 0) return;
   const mode = await moGetSetting('autoWebpMode', 'auto');
+  console.log(`[MediaOrganizer] WebP auto-convert: mode=${mode}, queue=${queue.length}`);
   if (mode === 'off') return;
   if (mode === 'suggest') {
     api.window.showInformationMessage(
@@ -11105,11 +11107,15 @@ async function moAutoConvertWebPAfterScan(api) {
   let ok = 0, fail = 0;
   for (const item of queue) {
     try { await moConvertWebP(api, item.id, item.target); ok++; }
-    catch (err) { console.warn('[MediaOrganizer] auto webp convert failed:', err); fail++; }
+    catch (err) {
+      console.error(`[MediaOrganizer] auto webp convert failed (id=${item.id}, target=${item.target}):`, err);
+      fail++;
+    }
   }
+  console.log(`[MediaOrganizer] WebP auto-convert done: ok=${ok}, fail=${fail}`);
   if (ok > 0 || fail > 0) {
     api.window.showInformationMessage(
-      `Auto-converted ${ok} WebP file${ok === 1 ? '' : 's'}` + (fail > 0 ? ` (${fail} failed)` : '') + '.'
+      `Auto-converted ${ok} WebP file${ok === 1 ? '' : 's'}` + (fail > 0 ? ` (${fail} failed — see console)` : '') + '.'
     );
     _notifySidebarRefresh();
   }
@@ -11249,7 +11255,7 @@ async function moOpenWebPReviewDialog(api) {
 }
 
 async function moConvertWebP(api, fileId, target) {
-  if (!_toolPaths.ffmpeg) throw new Error('ffmpeg not available');
+  if (!_toolPaths.ffmpeg) throw new Error('ffmpeg not available (tool not detected)');
   const fileRow = await db.get(
     `SELECT f.id, f.basename, f.folder_id, fl.path AS folder_path
      FROM mo_files f LEFT JOIN mo_folders fl ON fl.id = f.folder_id
@@ -11260,6 +11266,7 @@ async function moConvertWebP(api, fileId, target) {
   const srcPath = fileRow.folder_path + sep + fileRow.basename;
   const baseName = fileRow.basename.replace(/\.webp$/i, '');
   const outPath = fileRow.folder_path + sep + baseName + '.' + target;
+  console.log(`[MediaOrganizer] Converting ${srcPath} -> ${outPath}`);
 
   const ff = shellQuote(_toolPaths.ffmpeg);
   let cmd;
@@ -11292,18 +11299,37 @@ async function moConvertWebP(api, fileId, target) {
     ].join(' ');
   }
   const r = await window.parallxElectron.terminal.exec(cmd, { timeout: 600000 });
-  if (r.exitCode !== 0) throw new Error('ffmpeg: ' + (r.stderr || 'failed'));
+  if (r.exitCode !== 0) {
+    console.error(`[MediaOrganizer] ffmpeg failed (exit=${r.exitCode}): ${r.stderr || r.stdout || '(no output)'}`);
+    throw new Error('ffmpeg: ' + (r.stderr || 'failed'));
+  }
+  // Verify output exists before deleting source.
+  const outExists = await window.parallxElectron.fs.exists(outPath);
+  if (!outExists) {
+    throw new Error(`ffmpeg reported success but output missing: ${outPath}`);
+  }
 
   // Hard-delete original WebP — user opted out of quarantine to avoid duplicates.
-  await window.parallxElectron.fs.delete(srcPath).catch(() => {});
+  const delResult = await window.parallxElectron.fs.delete(srcPath);
+  if (delResult && delResult.error) {
+    console.warn(`[MediaOrganizer] Failed to delete original webp ${srcPath}:`, delResult.error);
+  } else {
+    console.log(`[MediaOrganizer] Deleted original ${srcPath}`);
+  }
+
+  // Stat the new file so we can update mod_time/size on the row. This makes
+  // the watcher's subsequent 'created' event a no-op (matches existing row).
+  const outStat = await window.parallxElectron.fs.stat(outPath);
+  const newSize = (outStat && !outStat.error) ? outStat.size : fileRow.size;
+  const newMtime = (outStat && !outStat.error) ? outStat.mtime : Date.now();
 
   // Update DB row to point at new file
   await db.run(
     `UPDATE mo_files
-     SET basename = ?, conversion_target = ?, needs_conversion = 0,
-         converted_from = ?, converted_at = datetime('now')
+     SET basename = ?, size = ?, mod_time = ?, conversion_target = ?, needs_conversion = 0,
+         converted_from = ?, converted_at = datetime('now'), updated_at = CURRENT_TIMESTAMP
      WHERE id = ?`,
-    [baseName + '.' + target, target, srcPath, fileId]
+    [baseName + '.' + target, newSize, newMtime, target, srcPath, fileId]
   );
 }
 
