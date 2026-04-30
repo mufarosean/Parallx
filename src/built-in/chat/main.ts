@@ -55,6 +55,9 @@ import { SubagentSpawner } from '../../openclaw/openclawSubagentSpawn.js';
 import { AutonomyLogService } from '../../services/autonomyLogService.js';
 import {
   AutonomyFeatureFlagsService,
+  FLAG_HEARTBEAT_ENABLED,
+  FLAG_CRON_ENABLED,
+  FLAG_SUBAGENT_ENABLED,
 } from '../../services/autonomyFeatureFlags.js';
 import {
   AutonomyEventLog,
@@ -1200,7 +1203,65 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         },
       });
       cronService = new CronService(cronExecutor, cronContextFetcher, cronHeartbeatWaker);
-      cronService.start();
+
+      // ── M60 Phase γ §3.8/§3.10 — cron controls layer ──
+      cronService.setObservers({
+        isFlagEnabled: () => autonomyFlags.isEnabled(FLAG_CRON_ENABLED),
+        onAutonomyEvent: autonomyEventLog
+          ? (info) => {
+              autonomyEventLog!.emit({
+                trigger: { kind: 'cron', ref: info.jobId },
+                outcome: info.outcome,
+                durationMs: info.durationMs,
+                toolCalls: [{
+                  name: 'cron.fire',
+                  argsDigest: info.idempotencyKey,
+                  durationMs: info.durationMs,
+                  idempotencyKey: info.idempotencyKey,
+                  ...(info.note ? { error: info.note } : {}),
+                }],
+                note: info.note,
+              });
+            }
+          : undefined,
+      });
+
+      // ── M60 Phase γ — cron persistence (`<APP_ROOT>/data/cron.json`) ──
+      // Routed through the same fs bridge as the autonomy event log; falls
+      // back to in-memory when the bridge is unavailable (test envs).
+      if (_appPath && _fsBridge) {
+        const cronJsonPath = `${_appPath}/data/cron.json`;
+        cronService.setPersistence({
+          load: async () => {
+            try {
+              const exists = await _fsBridge.exists(cronJsonPath);
+              if (!exists.ok || !exists.exists) return null;
+              const result = await _fsBridge.readFile(cronJsonPath, 'utf-8');
+              if (!result.ok || typeof result.data !== 'string') return null;
+              return JSON.parse(result.data);
+            } catch {
+              return null;
+            }
+          },
+          save: async (snapshot) => {
+            try {
+              await _fsBridge.mkdir(`${_appPath}/data`);
+              await _fsBridge.writeFile(cronJsonPath, JSON.stringify(snapshot, null, 2), 'utf-8');
+            } catch {
+              /* persistence failures don't affect in-memory truth */
+            }
+          },
+        });
+        // Hydrate before start() so missed-job catchup (M60 §3.7) sees
+        // the restored job set; coalesces multiple missed firings into one.
+        // activate() is sync — chain load → start as a microtask. Cron's
+        // 60s tick means the brief deferral is invisible.
+        const _cron = cronService;
+        void _cron.loadFromPersistence().then(() => _cron.start());
+      } else {
+        cronService.start();
+      }
+
       context.subscriptions.push(cronService);
     }
 
@@ -1255,6 +1316,26 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         subagentAnnouncer,
         /* maxDepth */ 1,
       );
+      // ── M60 Phase γ §3.8/§3.10 — subagent controls layer ──
+      // Hard cap depth=1 already enforced by maxDepth above (no nested
+      // spawns in M60). Flag gate refuses spawn when off; emit captures
+      // gated/budget/error/completed outcomes with parent-session ref.
+      subagentSpawner.setObservers({
+        isFlagEnabled: () => autonomyFlags.isEnabled(FLAG_SUBAGENT_ENABLED),
+        onAutonomyEvent: autonomyEventLog
+          ? (info) => {
+              autonomyEventLog!.emit({
+                trigger: { kind: 'subagent', ref: getParentSessionId() },
+                outcome: info.outcome,
+                durationMs: info.durationMs,
+                budgetSnapshot: { depth: info.depth },
+                note: info.runId
+                  ? `${info.note ?? `runId=${info.runId}`}`
+                  : info.note,
+              });
+            }
+          : undefined,
+      });
       context.subscriptions.push(subagentSpawner);
     }
 
@@ -1325,6 +1406,20 @@ export function activate(api: ParallxApi, context: ToolContext): void {
           if (!sid) return false;
           return chatService.getSession(sid)?.requestInProgress === true;
         },
+        // M60 Phase γ §3.8 — autonomy.heartbeat.enabled flag gate.
+        // Closure picks up live flag changes; no restart required.
+        isFlagEnabled: () => autonomyFlags.isEnabled(FLAG_HEARTBEAT_ENABLED),
+        // M60 Phase γ §3.10 — emit a structured autonomy event per tick.
+        onAutonomyEvent: autonomyEventLog
+          ? (info) => {
+              autonomyEventLog!.emit({
+                trigger: { kind: 'heartbeat', ref: _activeWidget?.getSession()?.id },
+                outcome: info.outcome,
+                durationMs: info.durationMs,
+                note: info.note ?? `reason=${info.reason} events=${info.eventsProcessed}`,
+              });
+            }
+          : undefined,
       };
     };
 
@@ -1359,6 +1454,21 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
     const heartbeatRunner = new HeartbeatRunner(executor, readHeartbeatConfig);
     context.subscriptions.push(heartbeatRunner);
+
+    // ── M60 Phase γ §3.7 — shutdown suspension ──
+    // When the chat extension is torn down (workbench shutdown), suspend
+    // autonomy BEFORE running dispose chains so in-flight ticks can finish
+    // gracefully without scheduling new work. Cron service is suspended via
+    // the same disposable below.
+    const _autonomyShutdownDisposable = {
+      dispose: () => {
+        heartbeatRunner.suspendForShutdown();
+        cronService?.suspendForShutdown();
+      },
+    };
+    // Push BEFORE the runners so it disposes first (subscriptions dispose in
+    // push-order; we want suspend before stop).
+    context.subscriptions.push(_autonomyShutdownDisposable);
 
     // W4 → W2 link: complete the `next-heartbeat` cron wake-mode by handing
     // the just-built runner to the waker closure that `cronService` already

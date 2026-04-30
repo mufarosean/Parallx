@@ -143,6 +143,31 @@ export type SubagentAnnouncer = (
 ) => Promise<void>;
 
 // ---------------------------------------------------------------------------
+// M60 Phase γ — controls layer types
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-spawn autonomy event hand-off. The spawner produces this on every
+ * `spawn()` invocation; the wiring in `src/built-in/chat/main.ts` translates
+ * it into an `IAutonomyEventLog.emit({ trigger: { kind: 'subagent' }, ... })` call.
+ */
+export interface ISubagentSpawnAutonomyInfo {
+  readonly outcome: 'completed' | 'gated' | 'budget' | 'error' | 'cancelled';
+  readonly runId: string;
+  readonly depth: number;
+  readonly durationMs: number;
+  readonly note?: string;
+}
+
+/** Optional autonomy controls (M60 §3.8/§3.10). */
+export interface ISubagentObservers {
+  /** Returns `true` when the `autonomy.subagent.enabled` flag is on. */
+  readonly isFlagEnabled?: () => boolean;
+  /** Called once per spawn lifecycle event. */
+  readonly onAutonomyEvent?: (info: ISubagentSpawnAutonomyInfo) => void;
+}
+
+// ---------------------------------------------------------------------------
 // Sub-Agent Registry
 // ---------------------------------------------------------------------------
 
@@ -266,6 +291,8 @@ export class SubagentRegistry implements IDisposable {
 export class SubagentSpawner implements IDisposable {
   private readonly _registry: SubagentRegistry;
   private _disposed = false;
+  /** M60 Phase γ — controls layer observers (flag + event emit). */
+  private _observers: ISubagentObservers = {};
 
   constructor(
     private readonly _executor: SubagentTurnExecutor,
@@ -277,6 +304,11 @@ export class SubagentSpawner implements IDisposable {
     private readonly _parentSessionId?: string,
   ) {
     this._registry = registry ?? new SubagentRegistry();
+  }
+
+  /** M60 Phase γ §3.8/§3.10 — install autonomy controls. Idempotent. */
+  setObservers(observers: ISubagentObservers): void {
+    this._observers = { ...observers };
   }
 
   /** The run registry. */
@@ -292,9 +324,38 @@ export class SubagentSpawner implements IDisposable {
     if (this._disposed) throw new Error('SubagentSpawner is disposed');
 
     const depth = params.callerDepth ?? 0;
+    const startMsGate = Date.now();
 
-    // Gate: depth limit — upstream enforces maxSpawnDepth
+    // M60 §3.8: autonomy.subagent.enabled feature flag gate. Refuse spawn
+    // when off and emit a `gated` autonomy event.
+    if (this._observers.isFlagEnabled && !this._observers.isFlagEnabled()) {
+      this._emitSpawnEvent({
+        outcome: 'gated',
+        runId: '',
+        depth,
+        durationMs: 0,
+        note: 'autonomy.subagent.enabled=false',
+      });
+      return {
+        runId: '',
+        status: 'failed',
+        result: null,
+        error: 'gated:autonomy.subagent.enabled=false',
+        durationMs: 0,
+      };
+    }
+
+    // Gate: depth limit — upstream enforces maxSpawnDepth.
+    // M60 §3.6: M60 hard-caps at depth=1 (no nested spawns) via the
+    // chat extension wiring; this is an additional defense.
     if (depth >= this._maxDepth) {
+      this._emitSpawnEvent({
+        outcome: 'budget',
+        runId: '',
+        depth,
+        durationMs: Date.now() - startMsGate,
+        note: `depth-limit:max=${this._maxDepth}`,
+      });
       return {
         runId: '',
         status: 'failed',
@@ -306,6 +367,13 @@ export class SubagentSpawner implements IDisposable {
 
     // Gate: concurrency limit
     if (this._registry.activeCount >= MAX_CONCURRENT_RUNS) {
+      this._emitSpawnEvent({
+        outcome: 'budget',
+        runId: '',
+        depth,
+        durationMs: Date.now() - startMsGate,
+        note: `concurrency-limit:max=${MAX_CONCURRENT_RUNS}`,
+      });
       return {
         runId: '',
         status: 'failed',
@@ -383,7 +451,6 @@ export class SubagentSpawner implements IDisposable {
         error: null,
         durationMs: now - startMs,
       };
-
     } catch (err) {
       const now = Date.now();
       const isTimeout = err instanceof Error && err.message.includes('timeout');
@@ -410,6 +477,13 @@ export class SubagentSpawner implements IDisposable {
         }
       }
 
+      this._emitSpawnEvent({
+        outcome: 'error',
+        runId: run.id,
+        depth,
+        durationMs: now - startMs,
+        note: errorMessage,
+      });
       return {
         runId: run.id,
         status,
@@ -417,6 +491,27 @@ export class SubagentSpawner implements IDisposable {
         error: errorMessage,
         durationMs: now - startMs,
       };
+    } finally {
+      // Emit on the success branch (only if status was set to completed).
+      const finalRun = this._registry.get(run.id);
+      if (finalRun?.status === 'completed') {
+        this._emitSpawnEvent({
+          outcome: 'completed',
+          runId: run.id,
+          depth,
+          durationMs: Date.now() - startMs,
+        });
+      }
+    }
+  }
+
+  /** M60 Phase γ — emit a spawn-lifecycle autonomy event; never throws. */
+  private _emitSpawnEvent(info: ISubagentSpawnAutonomyInfo): void {
+    if (!this._observers.onAutonomyEvent) return;
+    try {
+      this._observers.onAutonomyEvent(info);
+    } catch {
+      /* observer errors are non-fatal */
     }
   }
 

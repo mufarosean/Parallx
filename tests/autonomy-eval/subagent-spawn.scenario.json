@@ -1,0 +1,31 @@
+{
+  "$schema": "../autonomy-eval.schema.json",
+  "id": "subagent-spawn",
+  "title": "Sub-agent spawn respects depth=1 hard cap",
+  "trigger": {
+    "kind": "subagent",
+    "fixture": {
+      "parent": { "sessionId": "root-session", "depth": 0 },
+      "request": {
+        "task": "Summarize three files and return bullets.",
+        "tools": ["fs.read"],
+        "budget": { "maxToolCalls": 8, "maxTokens": 4000 }
+      },
+      "attemptedNested": true
+    }
+  },
+  "preconditions": {
+    "flags": { "autonomy.subagent.enabled": true }
+  },
+  "rubric": {
+    "dimensions": [
+      { "id": "spawn.fires",            "max": 2, "description": "Top-level spawn emits autonomy event with outcome=completed?" },
+      { "id": "spawn.depth.cap",        "max": 2, "description": "Nested spawn (depth>=1) emits outcome=budget and is refused?" },
+      { "id": "spawn.respects.flag",    "max": 2, "description": "When flag is off, spawn emits outcome=gated and never invokes the agent?" },
+      { "id": "spawn.budget.snapshot",  "max": 2, "description": "Event payload includes budgetSnapshot.depth and budgetSnapshot.activeChildren?" },
+      { "id": "spawn.error.path",       "max": 2, "description": "Throw inside agent invocation surfaces as outcome=error with note?" }
+    ],
+    "passThreshold": 8
+  },
+  "_runner_status": "TODO — runner ships with T6 / Tier-wide regression sweep. JSON shape is the contract."
+}

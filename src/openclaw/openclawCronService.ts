@@ -161,6 +161,43 @@ export type ContextLineFetcher = (count: number) => Promise<readonly string[]>;
 export type HeartbeatWaker = (reason: 'cron') => void;
 
 // ---------------------------------------------------------------------------
+// M60 Phase γ — controls layer types
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-firing autonomy event hand-off. The runner produces this on every
+ * `_executeJob` invocation; the wiring in `src/built-in/chat/main.ts`
+ * translates it into an `IAutonomyEventLog.emit({ trigger: { kind: 'cron' }, ... })` call.
+ */
+export interface ICronFireAutonomyInfo {
+  readonly outcome: 'completed' | 'gated' | 'error' | 'cancelled';
+  readonly jobId: string;
+  readonly idempotencyKey: string;
+  readonly scheduledAt: number;
+  readonly durationMs: number;
+  readonly note?: string;
+}
+
+/** Optional autonomy controls (M60 §3.8/§3.10). */
+export interface ICronObservers {
+  /** Returns `true` when the `autonomy.cron.enabled` flag is on. */
+  readonly isFlagEnabled?: () => boolean;
+  /** Called once per firing, including gated/cancelled/error outcomes. */
+  readonly onAutonomyEvent?: (info: ICronFireAutonomyInfo) => void;
+}
+
+/** Snapshot persisted across reloads (M60 §3.6 / W4 plan). */
+export interface ICronPersistedSnapshot {
+  readonly jobs: readonly ICronJob[];
+}
+
+/** Persistence interface — implementations route to portable storage (`<APP_ROOT>/data/cron.json`). */
+export interface ICronPersistence {
+  load(): Promise<ICronPersistedSnapshot | null>;
+  save(snapshot: ICronPersistedSnapshot): Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
 // Cron Service
 // ---------------------------------------------------------------------------
 
@@ -182,12 +219,79 @@ export class CronService implements IDisposable {
   private _timer: ReturnType<typeof setInterval> | null = null;
   private _disposed = false;
   private _nextJobId = 1;
+  /** M60 §3.7 — idempotency keys for `(cronId, scheduledAt)` firings. */
+  private readonly _idempotencyKeys = new Set<string>();
+  /** M60 §3.7 — set by `suspendForShutdown()`; blocks all subsequent firings. */
+  private _shuttingDown = false;
+  /** M60 Phase γ — optional controls layer observers. */
+  private _observers: ICronObservers = {};
+  /** M60 Phase γ — optional persistence (load on `loadFromPersistence()`, save after every mutation). */
+  private _persistence: ICronPersistence | undefined;
 
   constructor(
     private readonly _executor: CronTurnExecutor,
     private readonly _contextFetcher: ContextLineFetcher,
     private readonly _heartbeatWaker: HeartbeatWaker | null,
   ) {}
+
+  /**
+   * M60 Phase γ §3.8/§3.10 — install autonomy controls. Idempotent. Setter
+   * pattern (not constructor arg) so existing tests / call sites don't change.
+   */
+  setObservers(observers: ICronObservers): void {
+    this._observers = { ...observers };
+  }
+
+  /**
+   * M60 Phase γ — install persistence. After install, callers should
+   * `await loadFromPersistence()` before `start()` to restore jobs across
+   * reload. Mutations (add/update/remove + run completion) auto-save.
+   */
+  setPersistence(persistence: ICronPersistence): void {
+    this._persistence = persistence;
+  }
+
+  /**
+   * M60 Phase γ — hydrate jobs from persistence. Idempotent. Errors are
+   * swallowed (corrupt persistence → start with empty job set).
+   */
+  async loadFromPersistence(): Promise<void> {
+    if (!this._persistence) return;
+    try {
+      const snapshot = await this._persistence.load();
+      if (!snapshot || !Array.isArray(snapshot.jobs)) return;
+      this._jobs.clear();
+      let maxId = 0;
+      const now = Date.now();
+      for (const job of snapshot.jobs) {
+        if (!job || typeof job.id !== 'string') continue;
+        // Recompute nextRunAt at load time to coalesce sleep/wake firings:
+        // multiple missed firings of the same job collapse into a single
+        // catch-up at start() time (M60 §3.7).
+        const restored: ICronJob = {
+          ...job,
+          nextRunAt: job.enabled
+            ? (job.nextRunAt !== null && job.nextRunAt <= now
+                ? now // single coalesced catch-up; ≤ now triggers on next tick
+                : job.nextRunAt)
+            : null,
+        };
+        this._jobs.set(restored.id, restored);
+        const m = /^cron-(\d+)$/.exec(restored.id);
+        if (m) maxId = Math.max(maxId, parseInt(m[1], 10));
+      }
+      this._nextJobId = maxId + 1;
+    } catch {
+      /* corrupt persistence — fall back to empty job set */
+    }
+  }
+
+  /** M60 §3.7 — suspend cron for shutdown. Idempotent. Stops timer; rejects new firings. */
+  suspendForShutdown(): void {
+    if (this._shuttingDown) return;
+    this._shuttingDown = true;
+    this.stop();
+  }
 
   // -----------------------------------------------------------------------
   // Accessors
@@ -275,6 +379,7 @@ export class CronService implements IDisposable {
     };
 
     this._jobs.set(id, job);
+    void this._save();
     return { ...job };
   }
 
@@ -308,6 +413,7 @@ export class CronService implements IDisposable {
     };
 
     this._jobs.set(id, updated);
+    void this._save();
     return { ...updated };
   }
 
@@ -316,7 +422,9 @@ export class CronService implements IDisposable {
    * Upstream: cron-tool.ts "remove" action.
    */
   removeJob(id: string): boolean {
-    return this._jobs.delete(id);
+    const removed = this._jobs.delete(id);
+    if (removed) void this._save();
+    return removed;
   }
 
   /**
@@ -359,12 +467,16 @@ export class CronService implements IDisposable {
   /**
    * Manually run a specific job.
    * Upstream: cron-tool.ts "run" action.
+   *
+   * M60 §3.7 note: manual runs bypass the `(jobId, scheduledAt)` idempotency
+   * key dedup — the dedup applies to **automatic** firings from the timer
+   * tick / missed-job catchup, not to explicit user-driven runs.
    */
   async runJob(id: string): Promise<ICronRunResult> {
     if (this._disposed) throw new Error('CronService is disposed');
     const job = this._jobs.get(id);
     if (!job) throw new Error(`Cron job not found: ${id}`);
-    return this._executeJob(job);
+    return this._executeJob(job, { trackIdempotency: false });
   }
 
   /**
@@ -396,7 +508,7 @@ export class CronService implements IDisposable {
     }
 
     for (const job of dueJobs) {
-      await this._executeJob(job);
+      await this._executeJob(job, { trackIdempotency: true });
     }
   }
 
@@ -404,14 +516,23 @@ export class CronService implements IDisposable {
    * Run missed jobs on startup.
    * Upstream: CronService.runMissedJobs — catches up on jobs
    * whose nextRunAt has passed while the service was stopped.
+   *
+   * M60 §3.7: collapse repeated missed firings into a SINGLE coalesced
+   * catch-up per job. The idempotency-key set prevents re-running the
+   * same `(jobId, scheduledAt)` if it was already executed pre-shutdown,
+   * and the in-loop tracking ensures no second firing within the same
+   * runMissedJobs pass.
    */
   private _runMissedJobs(): void {
     const now = Date.now();
+    const fired = new Set<string>();
     for (const job of this._jobs.values()) {
       if (!job.enabled) continue;
+      if (fired.has(job.id)) continue; // single-flight per job in catchup
       if (job.nextRunAt !== null && job.nextRunAt <= now) {
+        fired.add(job.id);
         // Fire and forget — missed job catchup
-        this._executeJob(job).catch(err => {
+        this._executeJob(job, { trackIdempotency: true }).catch(err => {
           console.error(`[CronService] Missed job catchup failed for ${job.name}:`, err);
         });
       }
@@ -422,8 +543,94 @@ export class CronService implements IDisposable {
    * Execute a single cron job.
    * Upstream: CronService executes via agent turn or system event.
    */
-  private async _executeJob(job: ICronJob): Promise<ICronRunResult> {
+  private async _executeJob(
+    job: ICronJob,
+    opts: { trackIdempotency: boolean } = { trackIdempotency: false },
+  ): Promise<ICronRunResult> {
     const now = Date.now();
+    // M60 §3.7: idempotency key — `(cronId, scheduledAt)`. Re-firing the
+    // same key is a no-op. `nextRunAt` is the canonical scheduled-at
+    // timestamp; manual `runJob` falls back to `now`.
+    const scheduledAt = job.nextRunAt ?? now;
+    const idempotencyKey = `${job.id}@${scheduledAt}`;
+
+    if (opts.trackIdempotency && this._idempotencyKeys.has(idempotencyKey)) {
+      const result: ICronRunResult = {
+        jobId: job.id,
+        jobName: job.name,
+        firedAt: now,
+        wakeMode: job.wakeMode,
+        success: true,
+      };
+      this._emitFireEvent({
+        outcome: 'cancelled',
+        jobId: job.id,
+        idempotencyKey,
+        scheduledAt,
+        durationMs: 0,
+        note: 'duplicate-idempotency-key',
+      });
+      return result;
+    }
+    if (opts.trackIdempotency) {
+      this._idempotencyKeys.add(idempotencyKey);
+      if (this._idempotencyKeys.size > 1000) {
+        // Bound the cache — trim oldest by re-creating from a slice.
+        const arr = Array.from(this._idempotencyKeys);
+        this._idempotencyKeys.clear();
+        for (const k of arr.slice(-500)) this._idempotencyKeys.add(k);
+      }
+    }
+
+    // M60 §3.7: shutting-down gate.
+    if (this._shuttingDown) {
+      this._emitFireEvent({
+        outcome: 'cancelled',
+        jobId: job.id,
+        idempotencyKey,
+        scheduledAt,
+        durationMs: 0,
+        note: 'shutdown',
+      });
+      return {
+        jobId: job.id,
+        jobName: job.name,
+        firedAt: now,
+        wakeMode: job.wakeMode,
+        success: false,
+        error: 'shutdown',
+      };
+    }
+
+    // M60 §3.8: autonomy.cron.enabled feature flag gate.
+    if (this._observers.isFlagEnabled && !this._observers.isFlagEnabled()) {
+      const result: ICronRunResult = {
+        jobId: job.id,
+        jobName: job.name,
+        firedAt: now,
+        wakeMode: job.wakeMode,
+        success: false,
+        error: 'gated:autonomy.cron.enabled=false',
+      };
+      // Bump nextRunAt so we don't loop on the same firing every check.
+      const updated: ICronJob = {
+        ...job,
+        nextRunAt: computeNextRun(job.schedule, now),
+      };
+      this._jobs.set(job.id, updated);
+      void this._save();
+      this._runHistory.push(result);
+      this._trimRunHistory();
+      this._emitFireEvent({
+        outcome: 'gated',
+        jobId: job.id,
+        idempotencyKey,
+        scheduledAt,
+        durationMs: 0,
+        note: 'autonomy.cron.enabled=false',
+      });
+      return result;
+    }
 
     try {
       // Handle wake mode
@@ -463,6 +670,14 @@ export class CronService implements IDisposable {
       if (job.deleteAfterRun) {
         this._jobs.delete(job.id);
       }
+      void this._save();
+      this._emitFireEvent({
+        outcome: 'completed',
+        jobId: job.id,
+        idempotencyKey,
+        scheduledAt,
+        durationMs: Date.now() - now,
+      });
 
       return result;
 
@@ -477,7 +692,35 @@ export class CronService implements IDisposable {
       };
       this._runHistory.push(result);
       this._trimRunHistory();
+      this._emitFireEvent({
+        outcome: 'error',
+        jobId: job.id,
+        idempotencyKey,
+        scheduledAt,
+        durationMs: Date.now() - now,
+        note: result.error,
+      });
       return result;
+    }
+  }
+
+  /** M60 Phase γ — emit a per-firing autonomy event; never throws. */
+  private _emitFireEvent(info: ICronFireAutonomyInfo): void {
+    if (!this._observers.onAutonomyEvent) return;
+    try {
+      this._observers.onAutonomyEvent(info);
+    } catch {
+      /* observer errors are non-fatal */
+    }
+  }
+
+  /** M60 Phase γ — persist the current job set; swallows errors. */
+  private async _save(): Promise<void> {
+    if (!this._persistence) return;
+    try {
+      await this._persistence.save({ jobs: Array.from(this._jobs.values()) });
+    } catch {
+      /* persistence failures don't affect in-memory truth */
     }
   }
 

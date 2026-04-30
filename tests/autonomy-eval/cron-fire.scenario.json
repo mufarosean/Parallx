@@ -1,0 +1,36 @@
+{
+  "$schema": "../autonomy-eval.schema.json",
+  "id": "cron-fire",
+  "title": "Cron job fires once per scheduledAt under sleep/wake",
+  "trigger": {
+    "kind": "cron",
+    "fixture": {
+      "jobs": [
+        {
+          "id": "cron-1",
+          "name": "every-minute",
+          "schedule": { "every": "1m" },
+          "payload": { "agentTurn": "Heartbeat-style ping; no user-visible action." },
+          "wakeMode": "now",
+          "enabled": true
+        }
+      ],
+      "simulate": "system-sleep-1h-then-wake"
+    }
+  },
+  "preconditions": {
+    "flags": { "autonomy.cron.enabled": true }
+  },
+  "rubric": {
+    "dimensions": [
+      { "id": "fire.coalesced",       "max": 2, "description": "After 1h of missed firings, did the runner emit exactly one catch-up?" },
+      { "id": "fire.idempotency",     "max": 2, "description": "Two timer-driven _checkDueJobs passes within the same scheduledAt window dedup to one execution?" },
+      { "id": "fire.persistence",     "max": 2, "description": "Job survives reload via <APP_ROOT>/data/cron.json round-trip?" },
+      { "id": "fire.respects.flag",   "max": 2, "description": "When flag is off, _executeJob short-circuits with outcome=gated and bumps nextRunAt?" },
+      { "id": "fire.shutdown.safe",   "max": 2, "description": "After suspendForShutdown, runJob refuses with note=shutdown?" },
+      { "id": "fire.cap",             "max": 2, "description": "addJob refuses past 50 jobs (M60 §3.6 cap)?" }
+    ],
+    "passThreshold": 10
+  },
+  "_runner_status": "TODO — runner ships with T6 / Tier-wide regression sweep. JSON shape is the contract."
+}

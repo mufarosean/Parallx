@@ -303,8 +303,8 @@ describe('heartbeat constants', () => {
     expect(DEFAULT_HEARTBEAT_INTERVAL_MS).toBe(5 * 60 * 1000);
   });
 
-  it('MIN_HEARTBEAT_INTERVAL_MS is at least 30 seconds', () => {
-    expect(MIN_HEARTBEAT_INTERVAL_MS).toBeGreaterThanOrEqual(30_000);
+  it('MIN_HEARTBEAT_INTERVAL_MS is at least 15 seconds (M60 §3.6 floor)', () => {
+    expect(MIN_HEARTBEAT_INTERVAL_MS).toBeGreaterThanOrEqual(15_000);
   });
 
   it('MAX_HEARTBEAT_INTERVAL_MS is at most 1 hour', () => {

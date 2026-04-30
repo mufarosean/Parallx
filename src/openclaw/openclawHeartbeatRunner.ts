@@ -39,8 +39,11 @@ export const DEFAULT_HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
  * @deviation D2.11 — Upstream has no min/max bounds (relies on config
  * validation via Zod schema). Parallx adds runtime clamping as a desktop
  * guardrail since users can edit settings directly.
+ *
+ * M60 §3.6 floor: 15s (lowered from 30s) to align with the documented
+ * cost-budget cap. Values below 15s clamp up.
  */
-export const MIN_HEARTBEAT_INTERVAL_MS = 30 * 1000;
+export const MIN_HEARTBEAT_INTERVAL_MS = 15 * 1000;
 
 /** Maximum heartbeat interval — 1 hour. @deviation D2.11 — see MIN above. */
 export const MAX_HEARTBEAT_INTERVAL_MS = 60 * 60 * 1000;
@@ -99,7 +102,7 @@ export interface IHeartbeatSystemEvent {
  */
 export interface IHeartbeatRunResult {
   readonly executed: boolean;
-  readonly reason: HeartbeatReason | 'skipped-disabled' | 'skipped-duplicate' | 'skipped-no-events' | 'skipped-busy';
+  readonly reason: HeartbeatReason | 'skipped-disabled' | 'skipped-duplicate' | 'skipped-no-events' | 'skipped-busy' | 'skipped-flag-disabled' | 'skipped-shutting-down';
   readonly eventsProcessed: number;
   readonly timestamp: number;
 }
@@ -135,6 +138,33 @@ export interface IHeartbeatConfig {
    * tool layer. `interval` ticks are simply dropped (no events to retain).
    */
   readonly shouldDeferTick?: () => boolean;
+  /**
+   * M60 Phase γ §3.8 — autonomy feature-flag gate. When provided and returns
+   * `false`, every tick short-circuits with reason `'skipped-flag-disabled'`
+   * and emits a `gated` autonomy event (when `onAutonomyEvent` is wired).
+   * System-event payloads are dropped (not re-queued) to prevent unbounded
+   * growth while the flag is off.
+   */
+  readonly isFlagEnabled?: () => boolean;
+  /**
+   * M60 Phase γ §3.10 — autonomy event emit hook. Called once per `_tick`
+   * with `{ outcome, reason, eventsProcessed }`. Implementations must not
+   * throw — errors are swallowed.
+   */
+  readonly onAutonomyEvent?: (info: IHeartbeatTickAutonomyInfo) => void;
+}
+
+/**
+ * Per-tick autonomy event hand-off. The runner produces this; the wiring
+ * in `src/built-in/chat/main.ts` translates it into an
+ * `IAutonomyEventLog.emit({ trigger: { kind: 'heartbeat' }, ... })` call.
+ */
+export interface IHeartbeatTickAutonomyInfo {
+  readonly outcome: 'completed' | 'gated' | 'error' | 'cancelled';
+  readonly reason: HeartbeatReason | 'shutting-down';
+  readonly eventsProcessed: number;
+  readonly durationMs: number;
+  readonly note?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -163,6 +193,8 @@ export class HeartbeatRunner implements IDisposable {
   private _pendingEvents: IHeartbeatSystemEvent[] = [];
   private _recentPayloads = new Map<string, number>(); // payload hash → timestamp
   private _disposed = false;
+  /** M60 §3.7 — set by `suspendForShutdown()`; blocks all subsequent ticks. */
+  private _shuttingDown = false;
 
   constructor(
     private readonly _executor: HeartbeatTurnExecutor,
@@ -241,7 +273,7 @@ export class HeartbeatRunner implements IDisposable {
    * an immediate heartbeat (like upstream's isHeartbeat bypass on exec-events).
    */
   pushEvent(event: IHeartbeatSystemEvent): void {
-    if (this._disposed) return;
+    if (this._disposed || this._shuttingDown) return;
 
     // Input-level duplicate suppression — @deviation D2.6
     // Upstream deduplicates at the output level (isDuplicateMain, 24h window).
@@ -281,7 +313,7 @@ export class HeartbeatRunner implements IDisposable {
    * Upstream: setHeartbeatWakeHandler allows external triggering.
    */
   wake(reason: HeartbeatReason = 'wake'): void {
-    if (this._disposed) return;
+    if (this._disposed || this._shuttingDown) return;
     this._tick(reason);
   }
 
@@ -291,16 +323,44 @@ export class HeartbeatRunner implements IDisposable {
    */
   private async _tick(reason: HeartbeatReason): Promise<IHeartbeatRunResult> {
     const config = this._getConfig();
+    const tickStartMs = Date.now();
+
+    // Gate (M60 §3.7): shutting-down — emit a single shutdown notice and stop.
+    if (this._shuttingDown) {
+      this._emitTickEvent(config, {
+        outcome: 'cancelled',
+        reason: 'shutting-down',
+        eventsProcessed: 0,
+        durationMs: 0,
+        note: 'shutdown',
+      });
+      return { executed: false, reason: 'skipped-shutting-down', eventsProcessed: 0, timestamp: tickStartMs };
+    }
+
+    // Gate (M60 §3.8): autonomy.heartbeat.enabled feature flag.
+    if (config.isFlagEnabled && !config.isFlagEnabled()) {
+      // Drop pending events while gated to prevent unbounded growth.
+      const dropped = this._pendingEvents.length;
+      this._pendingEvents = [];
+      this._emitTickEvent(config, {
+        outcome: 'gated',
+        reason,
+        eventsProcessed: dropped,
+        durationMs: 0,
+        note: 'autonomy.heartbeat.enabled=false',
+      });
+      return { executed: false, reason: 'skipped-flag-disabled', eventsProcessed: 0, timestamp: tickStartMs };
+    }
 
     // Gate: disabled
     if (!config.enabled) {
-      return { executed: false, reason: 'skipped-disabled', eventsProcessed: 0, timestamp: Date.now() };
+      return { executed: false, reason: 'skipped-disabled', eventsProcessed: 0, timestamp: tickStartMs };
     }
 
     // Gate: no events for interval-based ticks (avoid noise)
     // Upstream: heartbeat checks HEARTBEAT.md and queue size as preflight
     if (reason === 'interval' && this._pendingEvents.length === 0) {
-      return { executed: false, reason: 'skipped-no-events', eventsProcessed: 0, timestamp: Date.now() };
+      return { executed: false, reason: 'skipped-no-events', eventsProcessed: 0, timestamp: tickStartMs };
     }
 
     // Gate: chat-turn back-pressure. If the host says the user has an
@@ -308,7 +368,7 @@ export class HeartbeatRunner implements IDisposable {
     // queued events so the next viable tick handles them; for `interval`
     // there is nothing to retain.
     if (config.shouldDeferTick?.() === true) {
-      return { executed: false, reason: 'skipped-busy', eventsProcessed: 0, timestamp: Date.now() };
+      return { executed: false, reason: 'skipped-busy', eventsProcessed: 0, timestamp: tickStartMs };
     }
 
     // Drain events for this tick
@@ -325,12 +385,52 @@ export class HeartbeatRunner implements IDisposable {
         nextDueMs: now + this._state.intervalMs,
         consecutiveRuns: this._state.consecutiveRuns + 1,
       };
+      this._emitTickEvent(config, {
+        outcome: 'completed',
+        reason,
+        eventsProcessed: events.length,
+        durationMs: Date.now() - now,
+      });
       return { executed: true, reason, eventsProcessed: events.length, timestamp: now };
     } catch (err) {
       console.error('[HeartbeatRunner] Heartbeat execution failed:', err);
       // Re-queue events that weren't processed
       this._pendingEvents.unshift(...events);
+      this._emitTickEvent(config, {
+        outcome: 'error',
+        reason,
+        eventsProcessed: 0,
+        durationMs: Date.now() - now,
+        note: err instanceof Error ? err.message : String(err),
+      });
       return { executed: false, reason, eventsProcessed: 0, timestamp: now };
+    }
+  }
+
+  /** Emit a per-tick autonomy event; never throws. */
+  private _emitTickEvent(config: IHeartbeatConfig, info: IHeartbeatTickAutonomyInfo): void {
+    if (!config.onAutonomyEvent) return;
+    try {
+      config.onAutonomyEvent(info);
+    } catch {
+      /* observer errors are non-fatal */
+    }
+  }
+
+  /**
+   * Suspend the runner for shutdown (M60 §3.7). Stops the timer, drops
+   * pending events, and refuses subsequent `pushEvent` / `wake` / tick
+   * dispatches. In-flight ticks complete normally; this only blocks new
+   * work. Idempotent.
+   */
+  suspendForShutdown(): void {
+    if (this._shuttingDown) return;
+    this._shuttingDown = true;
+    this._pendingEvents = [];
+    this.stop();
+    if (this._coalesceTimer) {
+      clearTimeout(this._coalesceTimer);
+      this._coalesceTimer = null;
     }
   }
 

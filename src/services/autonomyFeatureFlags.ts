@@ -33,6 +33,11 @@ export const FLAG_SURFACE_NOTIFICATION_ENABLED = 'autonomy.surface.notification.
 export const FLAG_SURFACE_STATUSBAR_ENABLED = 'autonomy.surface.statusbar.enabled';
 export const FLAG_SURFACE_CANVAS_ENABLED = 'autonomy.surface.canvas.enabled';
 export const FLAG_SURFACE_FILESYSTEM_ENABLED = 'autonomy.surface.filesystem.enabled';
+// M60 Phase γ §3.8 — autonomy substrate (heartbeat/cron/subagent).
+// All three default OFF until proven via dogfood + autonomy eval, per M60 §3.8.
+export const FLAG_HEARTBEAT_ENABLED = 'autonomy.heartbeat.enabled';
+export const FLAG_CRON_ENABLED = 'autonomy.cron.enabled';
+export const FLAG_SUBAGENT_ENABLED = 'autonomy.subagent.enabled';
 
 export type AutonomyFlagId =
   | typeof FLAG_FOLLOWUP_ENABLED
@@ -40,12 +45,16 @@ export type AutonomyFlagId =
   | typeof FLAG_SURFACE_NOTIFICATION_ENABLED
   | typeof FLAG_SURFACE_STATUSBAR_ENABLED
   | typeof FLAG_SURFACE_CANVAS_ENABLED
-  | typeof FLAG_SURFACE_FILESYSTEM_ENABLED;
+  | typeof FLAG_SURFACE_FILESYSTEM_ENABLED
+  | typeof FLAG_HEARTBEAT_ENABLED
+  | typeof FLAG_CRON_ENABLED
+  | typeof FLAG_SUBAGENT_ENABLED;
 
 /**
  * Defaults per M60 §3.8. Canvas + filesystem are gated until C3 lands.
  * Followup + chat/notification/statusbar default ON because those wires
  * are already shipped (M58) and proven.
+ * Heartbeat / cron / subagent default OFF (Phase γ — controls layer).
  */
 export const AUTONOMY_FLAG_DEFAULTS: Readonly<Record<AutonomyFlagId, boolean>> = Object.freeze({
   [FLAG_FOLLOWUP_ENABLED]: true,
@@ -54,6 +63,9 @@ export const AUTONOMY_FLAG_DEFAULTS: Readonly<Record<AutonomyFlagId, boolean>> =
   [FLAG_SURFACE_STATUSBAR_ENABLED]: true,
   [FLAG_SURFACE_CANVAS_ENABLED]: false,
   [FLAG_SURFACE_FILESYSTEM_ENABLED]: false,
+  [FLAG_HEARTBEAT_ENABLED]: false,
+  [FLAG_CRON_ENABLED]: false,
+  [FLAG_SUBAGENT_ENABLED]: false,
 });
 
 /** Surface plugin id → flag id. Used by SurfaceRouterService gating. */

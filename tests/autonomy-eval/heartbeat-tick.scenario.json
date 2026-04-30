@@ -1,0 +1,28 @@
+{
+  "$schema": "../autonomy-eval.schema.json",
+  "id": "heartbeat-tick",
+  "title": "Heartbeat tick on file-change burst",
+  "trigger": {
+    "kind": "heartbeat",
+    "fixture": {
+      "events": [
+        { "type": "file-change", "payload": { "path": "/workspace/notes.md", "changeType": "update" } },
+        { "type": "file-change", "payload": { "path": "/workspace/draft.md", "changeType": "update" } }
+      ],
+      "coalesceWindowMs": 250
+    }
+  },
+  "preconditions": {
+    "flags": { "autonomy.heartbeat.enabled": true }
+  },
+  "rubric": {
+    "dimensions": [
+      { "id": "tick.fired",          "max": 2, "description": "Did the runner emit exactly one autonomy event with outcome=completed?" },
+      { "id": "tick.coalesced",      "max": 2, "description": "Were the two file-change events processed in a single tick (eventsProcessed=2)?" },
+      { "id": "tick.respects.flag",  "max": 2, "description": "If flag flipped off mid-burst, does the runner emit a gated event and drop pending events?" },
+      { "id": "tick.shutdown.safe",  "max": 2, "description": "On suspendForShutdown, does the runner refuse new ticks within 100ms?" }
+    ],
+    "passThreshold": 7
+  },
+  "_runner_status": "TODO — runner ships with T6 / Tier-wide regression sweep. JSON shape is the contract."
+}
