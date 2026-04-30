@@ -5729,59 +5729,111 @@ const MO_CSS = `
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  background: rgba(255,255,255,0.1);
-  border: none;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
   color: #fff;
   font-size: 28px;
   padding: 12px 16px;
   cursor: pointer;
   border-radius: var(--parallx-radius-md, 6px);
   opacity: 0.6;
-  transition: opacity 0.2s;
+  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
 }
-.mo-lightbox-nav:hover { opacity: 1; }
+.mo-lightbox-nav:hover {
+  opacity: 1;
+  border-color: var(--vscode-focusBorder, #9333ea);
+  background: rgba(255,255,255,0.14);
+}
 .mo-lightbox-nav.prev { left: 12px; }
 .mo-lightbox-nav.next { right: 12px; }
 .mo-lightbox-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 8px 16px;
   background: rgba(0, 0, 0, 0.7);
+  border-top: 1px solid rgba(255,255,255,0.08);
   font-size: var(--parallx-fontSize-md, 13px);
 }
 .mo-lightbox-bar .mo-lb-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mo-lightbox-bar .mo-lb-rating { color: var(--mo-rating-color, #f5c518); }
-.mo-lightbox-bar .mo-lb-counter { opacity: 0.7; }
+.mo-lightbox-bar .mo-lb-counter { opacity: 0.7; font-variant-numeric: tabular-nums; }
+.mo-lightbox-bar .mo-lb-zoom-indicator {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+  padding: 2px 6px;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--parallx-radius-sm, 3px);
+  min-width: 36px;
+  text-align: center;
+}
+.mo-lightbox-bar .mo-lb-zoom-indicator:empty { display: none; }
 .mo-lightbox-bar button {
-  background: rgba(255,255,255,0.1);
-  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
   color: #fff;
-  padding: 3px 10px;
+  padding: 4px 10px;
   border-radius: var(--parallx-radius-sm, 3px);
   cursor: pointer;
-  font-size: var(--parallx-fontSize-xs, 10px);
+  font-size: var(--parallx-fontSize-xs, 11px);
+  line-height: 18px;
+  transition: background 0.15s, border-color 0.15s;
 }
-.mo-lightbox-bar button:hover { background: rgba(255,255,255,0.2); }
-.mo-lightbox-bar button.active { background: var(--vscode-focusBorder, #9333ea); border-color: var(--vscode-focusBorder, #9333ea); }
+.mo-lightbox-bar button:hover { background: rgba(255,255,255,0.16); border-color: var(--vscode-focusBorder, #9333ea); }
+.mo-lightbox-bar button.active {
+  background: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, #9333ea);
+  color: var(--vscode-button-foreground, #fff);
+}
+/* Harmonize the speed dropdown with the rest of the bar so the lightbox
+   chrome reads as one consistent control surface (otherwise the default
+   --vscode-dropdown-background grey button stands out against the
+   translucent bar). */
+.mo-lightbox-bar .mo-dropdown__button {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: #fff;
+  padding: 4px 8px;
+  font-size: var(--parallx-fontSize-xs, 11px);
+  line-height: 18px;
+}
+.mo-lightbox-bar .mo-dropdown__button:hover {
+  background: rgba(255,255,255,0.16);
+  border-color: var(--vscode-focusBorder, #9333ea);
+}
+.mo-lightbox-bar .mo-dropdown--open .mo-dropdown__button {
+  border-color: var(--vscode-focusBorder, #9333ea);
+}
+.mo-lightbox-bar .mo-dropdown__list {
+  /* The dropdown list pops above the bar — give it a solid (non-translucent)
+     background so option text stays readable over arbitrary media. */
+  background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background, #1e1e1e));
+  border-color: var(--vscode-focusBorder, #9333ea);
+}
 .mo-lightbox-close {
   position: absolute;
   top: 12px;
   right: 12px;
-  background: rgba(255,255,255,0.1);
-  border: none;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
   color: #fff;
-  font-size: 20px;
-  width: 36px;
-  height: 36px;
+  font-size: 18px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.7;
+  opacity: 0.75;
+  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
 }
-.mo-lightbox-close:hover { opacity: 1; background: rgba(255,255,255,0.2); }
+.mo-lightbox-close:hover {
+  opacity: 1;
+  background: rgba(255,255,255,0.18);
+  border-color: var(--vscode-focusBorder, #9333ea);
+}
 
 /* ═══ Custom Dropdown (replaces native <select>) ═══ */
 .mo-dropdown {
