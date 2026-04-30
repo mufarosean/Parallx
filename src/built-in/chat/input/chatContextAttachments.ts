@@ -83,6 +83,47 @@ export class ChatContextAttachments extends Disposable {
     '.avif': 'image/avif',
   };
 
+  /**
+   * MIME types that LLM runtimes (Ollama / llama.cpp) accept directly.
+   * Anything else (GIF, BMP, WebP, AVIF) gets transcoded to PNG via canvas.
+   * For animated formats this captures the first frame, matching the
+   * behavior of server-side Pillow/torchvision decoders.
+   */
+  private static readonly _LLM_NATIVE_MIME = new Set(['image/png', 'image/jpeg']);
+
+  /** Decode arbitrary image bytes (base64 + mime) and re-encode as PNG base64. */
+  private static async _transcodeToPng(base64: string, mimeType: string): Promise<{ data: string; mimeType: string } | null> {
+    try {
+      const dataUrl = `data:${mimeType};base64,${base64}`;
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('image decode failed'));
+        img.src = dataUrl;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      if (!canvas.width || !canvas.height) {
+        return null;
+      }
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        return null;
+      }
+      ctx.drawImage(img, 0, 0);
+      const out = canvas.toDataURL('image/png');
+      const comma = out.indexOf(',');
+      if (comma < 0) {
+        return null;
+      }
+      return { data: out.slice(comma + 1), mimeType: 'image/png' };
+    } catch (err) {
+      console.warn('[ChatAttachments] Failed to transcode image to PNG:', err);
+      return null;
+    }
+  }
+
   /** Add a file as an explicit attachment. Images are read as base64 for vision. */
   async addAttachment(file: IOpenEditorFile): Promise<void> {
     if (this._explicit.has(file.fullPath)) {
@@ -101,14 +142,23 @@ export class ChatContextAttachments extends Disposable {
             const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
             if (result.size <= MAX_IMAGE_BYTES) {
               const id = `parallx-image://${Date.now()}-${Math.random().toString(36).slice(2)}`;
+              let mimeType = ChatContextAttachments._IMAGE_MIME[ext] ?? 'image/png';
+              let data = result.content;
+              if (!ChatContextAttachments._LLM_NATIVE_MIME.has(mimeType)) {
+                const transcoded = await ChatContextAttachments._transcodeToPng(data, mimeType);
+                if (transcoded) {
+                  data = transcoded.data;
+                  mimeType = transcoded.mimeType;
+                }
+              }
               const attachment: IChatImageAttachment = {
                 kind: 'image',
                 id,
                 name: file.name,
                 fullPath: file.fullPath,
                 isImplicit: false,
-                mimeType: ChatContextAttachments._IMAGE_MIME[ext] ?? 'image/png',
-                data: result.content,
+                mimeType,
+                data,
                 origin: 'file',
               };
               this._explicit.set(id, attachment);
@@ -149,7 +199,15 @@ export class ChatContextAttachments extends Disposable {
       return;
     }
 
-    const mimeType = dataUrl.slice(5, dataUrl.indexOf(';', 5)) || file.type || 'image/png';
+    let mimeType = dataUrl.slice(5, dataUrl.indexOf(';', 5)) || file.type || 'image/png';
+    let data = dataUrl.slice(commaIndex + 1);
+    if (!ChatContextAttachments._LLM_NATIVE_MIME.has(mimeType)) {
+      const transcoded = await ChatContextAttachments._transcodeToPng(data, mimeType);
+      if (transcoded) {
+        data = transcoded.data;
+        mimeType = transcoded.mimeType;
+      }
+    }
     const id = `parallx-image://${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const attachment: IChatImageAttachment = {
       kind: 'image',
@@ -158,7 +216,7 @@ export class ChatContextAttachments extends Disposable {
       fullPath: id,
       isImplicit: false,
       mimeType,
-      data: dataUrl.slice(commaIndex + 1),
+      data,
       origin: 'clipboard',
     };
     this._explicit.set(id, attachment);

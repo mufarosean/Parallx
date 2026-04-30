@@ -234,6 +234,110 @@ Tools registered only when extension is active. All gated behind a check that th
 
 ---
 
+## Phase 9 — Organization Polish
+
+Adds three triage-grade organization features that fill explicit user requests beyond the
+P1–P8 scope. Together they elevate the Media Organizer from "browse + tag" to
+"work a shoot": rapid color-label flagging, nested album hierarchies for real
+project structure, and manual ordering inside an album for storytelling/sequencing.
+
+### F12: Color Labels (Lightroom-style)
+
+Five color flags (red / yellow / green / blue / purple) per item, stored
+alongside the existing 0–5 star `rating`. Drives quick triage workflows
+("red = reject, green = keep, yellow = needs work").
+
+| ID | Task |
+|----|------|
+| F12.1 | Migration `017_color_labels.sql`: `mo_photos.color_label TEXT NULL`, `mo_videos.color_label TEXT NULL`, indexed |
+| F12.2 | `PHOTO_COL_MAP` / `VIDEO_COL_MAP` gain `colorLabel: 'color_label'`; `fromRow` reads it; `update()` paths flow through `buildPartialUpdate` automatically |
+| F12.3 | `rowToMediaItem` propagates `colorLabel` into grid items so cards + lightbox can render it without a second query |
+| F12.4 | Grid card: 4px-wide vertical color stripe on the left edge of `.mo-card-thumb` when `item.colorLabel` is set; CSS tokens `--mo-label-red/yellow/green/blue/purple` defined alongside `--mo-rating-color` |
+| F12.5 | Lightbox keyboard: `1`–`5` set rating, `6`=red, `7`=yellow, `8`=green, `9`=blue label; pressing the same color key again clears it (toggle); `0` stays bound to reset-zoom |
+| F12.6 | Lightbox info bar: small color dot next to `.mo-lb-rating` (purple intentionally accessible only via context menu, mirroring Lightroom) |
+| F12.7 | Context menu (`SECTION 31B`): "Color Label →" submenu with the 5 colors + "Clear"; works for both single-item and multi-selection paths |
+| F12.8 | Bulk dialog gains an optional "Set color label" select for multi-edit |
+
+### F13: Hierarchical Albums
+
+Albums-inside-albums tree in the sidebar. Lets users group "Project X" under
+"Client A" without flattening everything into one list.
+
+| ID | Task |
+|----|------|
+| F13.1 | Migration `018_album_hierarchy.sql`: `mo_albums.parent_album_id INTEGER REFERENCES mo_albums(id) ON DELETE SET NULL`, indexed; trigger or app-level cycle guard so an album can't be its own ancestor |
+| F13.2 | `AlbumQueries.fromRow` / col map gain `parentAlbumId`; queries unchanged (root-set query is `WHERE parent_album_id IS NULL`) |
+| F13.3 | Sidebar `loadAlbums()` recursive renderer: root albums at depth 0, children indented 12px per level; chevron toggles expand/collapse with state persisted in `mo_settings` |
+| F13.4 | Drag-to-reparent: dragging an album row over another album sets it as the new parent; cycle check before commit |
+| F13.5 | Album row context menu: "New child album…", "Move to…" (album picker), "Move to root", "Delete" (with confirmation if children exist — cascade-set-null preserves orphans at root) |
+| F13.6 | "Create Album" dialog gains an optional Parent Album select |
+
+### F14: Manual Sort Within Album
+
+When an album is opened, items can be reordered by drag — overrides the global
+sort for that album view. Useful for storyboarding and curated sequences.
+
+| ID | Task |
+|----|------|
+| F14.1 | Migration `019_album_position.sql`: add `position INTEGER DEFAULT 0` to `mo_albums_photos` and `mo_albums_videos`; backfill `position = rowid` so existing albums retain creation order |
+| F14.2 | New sort key `MO_SAFE_SORT_COLUMNS.album_position`; `buildSingleTypeQuery` joins to the album member table when sort is `album_position` and `filterType === 'album'` |
+| F14.3 | Album-view header: sort dropdown gains "Manual (album order)" option, becomes the default when entering an album for the first time |
+| F14.4 | Drag-handle on the card thumb (visible only in manual sort mode) lets the user reorder; dropping commits a `UPDATE mo_albums_photos/videos SET position = ?` for the moved item and a renumber for the affected range |
+| F14.5 | Bulk action: "Resequence by current sort" — locks current order into `position` so you can switch to manual without losing the arrangement |
+
+### Phase 9 verification gates
+
+- `tsc --noEmit` clean, `node --check ext/media-organizer/main.js` clean
+- Color label round-trips through DB: set in lightbox, reload library, label persists
+- Hierarchical album render: 3 levels deep, expand/collapse persists across reload
+- Manual sort: reorder 5 items, reload library, order preserved
+- No regression on existing tag, star-rating, and album CRUD flows
+
+---
+
+## Phase 10 — Viewing Polish
+
+Builds on the existing lightbox and custom video player to add the two
+"power-user" viewing modes called out in the user's feature list.
+
+### F15: Compare View
+
+Lay 2–4 selected items side-by-side at synchronized zoom/scroll. Pairs naturally
+with the existing duplicate finder and pHash similarity tooling.
+
+| ID | Task |
+|----|------|
+| F15.1 | New `moOpenCompare(items)` modal: 2/3/4 split-pane layout, each pane is a mini-lightbox (image or muted video) |
+| F15.2 | Synchronized zoom + pan: dragging or wheel-zooming any pane mirrors to the others; Shift+drag scrolls only the focused pane |
+| F15.3 | Per-pane info strip (filename, dimensions, rating, color label) |
+| F15.4 | "Keep this, trash others" action per pane (deferred-to-trash, mirrors duplicate-finder UX) |
+| F15.5 | Toolbar: "Show difference" overlay (XOR composite via canvas, image only) for spotting tiny variations |
+| F15.6 | Multi-select toolbar gains "Compare" button (enabled when 2–4 items selected) |
+| F15.7 | Lightbox toolbar gains "Compare with next" (adds the next item to the comparison) |
+
+### F16: Video Player Filmstrip
+
+Below the existing player progress bar, render a thumbnail strip so the user
+can scrub by clicking exact frames — reusing the `preview-strips` cache the
+custom player already builds (F1.4).
+
+| ID | Task |
+|----|------|
+| F16.1 | New `mo-player-filmstrip` row inside `bottomBar`, between `progRow` and `ctrlRow`, hidden by default |
+| F16.2 | Toggle button on the right action rail (`F1.14`): "Show filmstrip" |
+| F16.3 | Strip lazy-loads the same `preview-strips/<checksum>/<idx>.jpg` thumbs already cached by the player; missing thumbs render as placeholders that auto-populate when the player generator runs |
+| F16.4 | Click thumb → seek to that timecode; current-frame thumb gets `.is-active` outline |
+| F16.5 | Strip auto-scrolls to keep the active thumb in view during playback |
+| F16.6 | Filmstrip preference (`mo_settings.video_filmstrip_default = on/off`) persists across sessions |
+
+### Phase 10 verification gates
+
+- Compare view: open 4 photos, zoom one — all four mirror the zoom level
+- Filmstrip: opens an existing video with cached preview strips, click any thumb, video seeks to that time
+- No regression on existing lightbox zoom/pan or video player keyboard shortcuts
+
+---
+
 ## Files touched
 
 - `ext/media-organizer/main.js` — primary
@@ -271,3 +375,5 @@ These are decisions I'd like answered before they're locked:
 - **2026-04-29** — Phase 6 landed. Two new full-screen modal views in `SECTION 10E`: `moOpenTimeline` (vertical scroll grouped by year-month-day with sticky section headers, lazy thumbnail tiles via IntersectionObserver, click → opens `detail:type:id` editor instance) and `moOpenMap` (offline canvas equirectangular projection of `mo_photos.gps_*` rows, drag-pan + wheel-zoom, automatic clustering at current zoom with cluster sizing by sqrt(count); single-point click opens detail, cluster click zooms in). Sidebar Quick Filters gained "Timeline" and "Map" entries; manifest 0.7.0 adds 2 commands. Map tiles deferred — Q4 resolved in favor of zero-network offline plot.
 - **2026-04-29** — Phase 7 partial. Card `dragstart` now also publishes `text/uri-list` and `text/plain` payloads (file:/// URL + native path) when the source path has been resolved by the lazy thumbnail step (`card._filePath`), enabling drops into any surface that accepts file URIs (native OS, future canvas/chat drop targets). New `media-organizer.revealInMO` command opens the All Media grid and applies the file's basename as a search query via the existing `mo:apply-search-state` event. **F10.1/F10.2 chat & canvas drop receivers and F10.3/F10.4 file tree context-menu hooks remain blocked on core-side drop/menu APIs that are not exposed to extensions today** (only `commandPalette`, `view/title`, `view/context` menu locations are supported by `MenuContributionProcessor`; canvas page nodes and chat input do not register generic file-drop handlers). Manifest 0.8.0.
 - **2026-04-29** — Phase 8 partial. New `SECTION 10F` registers 4 deterministic AI chat tools via `api.chat.registerTool`: `mediaOrganizer.findSimilar` (pHash Hamming-distance ranking against `mo_image_files.phash`), `mediaOrganizer.suggestStacks` (basename-similarity grouping for unstacked photos in same folder, returns proposed groups without applying), `mediaOrganizer.getStats` (library counts, untagged, geotagged, pHash coverage, top 10 tags), and `mediaOrganizer.search` (free-text LIKE search across title/details/basename for photos+videos). All return JSON. **Vision-based tools (F11.2 tagUntagged, F11.3 describePhoto, F11.6 autoRate, F11.7 searchByDescription) are NOT registered** because the current `parallx.lm` API exposes `ChatMessage.content: string` only — no multimodal/image attachments — so an extension cannot send images to a vision model today. F11.8 CLIP pipeline deferred (Q3). Manifest 0.9.0.
+- **2026-04-30** — Phase 9 landed (F12-F14). F12 Color labels: migration 017 adds `color_label` to `mo_photos`/`mo_videos` (red/yellow/green/blue/purple), surfaced as a 4px left stripe on grid cards, 8px dot in list rows, and a 10px dot in the lightbox info bar; grid keys 6-9 + lightbox keys 6-9 toggle homogeneous-selection labels; single + multi-item context menus expose a "Color Label" submenu. F13 Hierarchical albums: migration 018 adds `parent_album_id` to `mo_albums` (ON DELETE SET NULL); `loadAlbums` rebuilt around a parent→children Map with persisted expand state in `mo_settings.album_tree_expanded`, recursive 12px-per-level indented render with chevrons, drag-reparent (cycle-guarded via `AlbumQueries.isDescendantOf`), context menu with "New Child Album / Move to Root / Delete". F14 Manual sort: migration 019 adds covering `(album_id, position)` indexes; existing `position` column wired up via drag-to-reorder on `.mo-album-mini-card` with `.mo-drop-before/.mo-drop-after` indicators using `--vscode-focusBorder`, same-type drops only (photos and videos own separate position columns), persisted via batched `db.transaction` UPDATEs.
+- **2026-04-30** — Phase 10 landed (F15-F16). F15 Compare view: new `openCompareView(items, resolveFilePath)` modal in `SECTION 31C`, 2-4 panes selected from the bulk toolbar Compare button (auto-disabled outside that range). Shared zoom/pan transform model adapted from the lightbox; cursor-anchored wheel zoom; drag-to-pan (skipped on `<video>` so native controls keep working); Sync toggle (default ON) mirrors transforms across panes; Fit / 100% / +/- / Esc / 0 keyboard. Single window-level drag tracker (no per-pane listener leaks). Cleanup pauses videos and clears src. F16 Filmstrip: new rail button (`gallery-thumbnails` icon) toggles a `.mo-player-filmstrip` row that auto-hides with the rest of the player chrome. 6-24 thumbs (≈1 per 12s) generated on a dedicated offscreen `<video>` (separate from the hover-preview path) so it doesn't fight the seek-preview element; abort-on-teardown via generation counter; click-to-seek; active-thumb highlight via `timeupdate`; persisted toggle in `mo_settings.video_filmstrip_default`.

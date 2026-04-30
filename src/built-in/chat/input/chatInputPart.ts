@@ -198,6 +198,26 @@ export class ChatInputPart extends Disposable {
       void this._handlePaste(event);
     }));
 
+    // Drag-and-drop attachments — accept file URIs (from media-organizer cards,
+    // explorer rows, etc.) and native OS file drags. Reuses the existing
+    // attachment pipelines (addAttachment / addPastedImage).
+    this._register(addDisposableListener(this._root, 'dragover', (event: DragEvent) => {
+      if (!event.dataTransfer) { return; }
+      const types = event.dataTransfer.types;
+      if (
+        types.includes('Files') ||
+        types.includes('text/uri-list') ||
+        types.includes('application/x-mo-items')
+      ) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+      }
+    }));
+    this._register(addDisposableListener(this._root, 'drop', (event: DragEvent) => {
+      if (!event.dataTransfer) { return; }
+      void this._handleDrop(event);
+    }));
+
     // Submit button click
     this._register(addDisposableListener(this._submitBtn, 'click', () => {
       this._submit();
@@ -423,6 +443,69 @@ export class ChatInputPart extends Disposable {
         continue;
       }
       await this._contextRibbon.addPastedImage(file);
+    }
+    this._updateAttachBtnLabel();
+  }
+
+  /**
+   * Handle a drop on the chat input. Accepts:
+   *   - text/uri-list with file:// URLs (from media-organizer cards, etc.)
+   *   - text/plain absolute paths (Windows or POSIX)
+   *   - DataTransfer.files (native OS file drags)
+   * Routes file paths through addAttachment (same pipeline as the Add Context
+   * button + file explorer). Routes raw image blobs through addPastedImage.
+   */
+  private async _handleDrop(event: DragEvent): Promise<void> {
+    const dt = event.dataTransfer;
+    if (!dt) { return; }
+
+    const paths: string[] = [];
+    const uriList = dt.getData('text/uri-list');
+    if (uriList) {
+      for (const line of uriList.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) { continue; }
+        let p = trimmed;
+        if (p.startsWith('file:///')) {
+          try { p = decodeURIComponent(p.slice(8)); } catch { p = p.slice(8); }
+          if (!/^[a-zA-Z]:/.test(p) && !p.startsWith('/')) { p = '/' + p; }
+        } else if (p.startsWith('file://')) {
+          try { p = decodeURIComponent(p.slice(7)); } catch { p = p.slice(7); }
+        } else {
+          continue;
+        }
+        paths.push(p);
+      }
+    }
+    if (paths.length === 0) {
+      const plain = dt.getData('text/plain').trim();
+      if (plain && (/^[a-zA-Z]:[\\/]/.test(plain) || plain.startsWith('/'))) {
+        paths.push(plain);
+      }
+    }
+
+    if (paths.length > 0) {
+      event.preventDefault();
+      for (const fullPath of paths) {
+        const name = fullPath.split(/[\\/]/).pop() || fullPath;
+        await this._contextRibbon.addAttachment({ name, fullPath });
+      }
+      this._updateAttachBtnLabel();
+      return;
+    }
+
+    // Native OS file drag — DataTransfer.files. In Electron these expose a
+    // `.path` property too; prefer the path-based pipeline when available.
+    const files = Array.from(dt.files || []);
+    if (files.length === 0) { return; }
+    event.preventDefault();
+    for (const file of files) {
+      const fullPath = (file as File & { path?: string }).path;
+      if (fullPath) {
+        await this._contextRibbon.addAttachment({ name: file.name, fullPath });
+      } else if (file.type.startsWith('image/')) {
+        await this._contextRibbon.addPastedImage(file);
+      }
     }
     this._updateAttachBtnLabel();
   }

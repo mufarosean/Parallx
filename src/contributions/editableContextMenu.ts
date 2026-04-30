@@ -99,6 +99,14 @@ function readClipboardText(): string {
   return '';
 }
 
+function readClipboardHTML(): string {
+  try {
+    const api = (window as any).parallxElectron?.clipboard;
+    if (api?.readHTML) return String(api.readHTML() || '');
+  } catch { /* fall through */ }
+  return '';
+}
+
 function clipboardHasText(): boolean {
   return readClipboardText().length > 0;
 }
@@ -156,8 +164,48 @@ function execCopy(): void {
   document.execCommand('copy');
 }
 
-function execPaste(): void {
-  document.execCommand('paste');
+/**
+ * Paste clipboard content.
+ *
+ * Chromium blocks `document.execCommand('paste')` from script context for
+ * security — it silently no-ops. So we read the clipboard ourselves via the
+ * Electron clipboard API and synthesise a paste:
+ *   - <input>/<textarea>: insert the plain text via setRangeText.
+ *   - contenteditable (TipTap/ProseMirror): dispatch a real `paste`
+ *     ClipboardEvent so ProseMirror's HTML paste handler runs and formatting
+ *     is preserved. Falls back to `insertText` if the event was not handled.
+ */
+function execPaste(saved: SavedSelection): void {
+  const text = readClipboardText();
+  const html = readClipboardHTML();
+  if (!text && !html) return;
+
+  if (saved.type === 'input') {
+    const el = saved.target as HTMLInputElement | HTMLTextAreaElement;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    el.setRangeText(text, start, end, 'end');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    return;
+  }
+
+  // contenteditable: build a ClipboardEvent so ProseMirror's paste plugin
+  // sees the same data as a native Ctrl+V.
+  try {
+    const dt = new DataTransfer();
+    if (text) dt.setData('text/plain', text);
+    if (html) dt.setData('text/html', html);
+    const evt = new ClipboardEvent('paste', {
+      clipboardData: dt,
+      bubbles: true,
+      cancelable: true,
+    });
+    const handled = !saved.target.dispatchEvent(evt);
+    if (handled) return;
+  } catch { /* fall through */ }
+
+  // Fallback: plain text via insertText (still works under script).
+  if (text) document.execCommand('insertText', false, text);
 }
 
 /**
@@ -434,7 +482,7 @@ export class EditableContextMenu extends Disposable {
         case 'redo': execRedo(); break;
         case 'cut': execCut(); break;
         case 'copy': execCopy(); break;
-        case 'paste': execPaste(); break;
+        case 'paste': execPaste(saved); break;
         case 'paste-plain': execPastePlain(saved); break;
         case 'select-all': execSelectAll(target); break;
       }

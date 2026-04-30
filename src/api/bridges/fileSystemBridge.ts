@@ -61,7 +61,8 @@ export class FileSystemBridge {
   async delete(uri: URI): Promise<void> {
     this._throwIfDisposed();
     this._validateScope(uri);
-    await this._fileService.delete(uri, { useTrash: true });
+    // Cross-volume safe by default — see FileDeleteOptions.useTrash docs.
+    await this._fileService.delete(uri, { useTrash: 'auto' });
   }
 
   async rename(source: URI, target: URI): Promise<void> {

@@ -276,10 +276,14 @@ export class FileService extends Disposable implements IFileService {
   async delete(uri: URI, options?: FileDeleteOptions): Promise<void> {
     this._assertBoundary(uri, 'delete');
     const fs = getElectronFs();
+    // Pass useTrash through verbatim — 'auto' must reach the IPC handler so
+    // the cross-volume guard runs. Default to 'auto' when unspecified so any
+    // caller that forgets the option still gets encrypted-volume protection.
+    const useTrash: boolean | 'auto' = options?.useTrash === undefined ? 'auto' : options.useTrash;
     const result = await fs.delete(uri.fsPath, {
-      useTrash: options?.useTrash !== false,
+      useTrash,
       recursive: options?.recursive,
-    });
+    } as { useTrash?: boolean; recursive?: boolean });
     throwIfError(result, uri);
     this._contentCache.delete(uri.toKey());
   }

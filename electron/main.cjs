@@ -6,6 +6,7 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs/promises');
 const fsSync = require('fs');
+const os = require('os');
 const AdmZip = require('adm-zip');
 const { databaseManager, extensionDatabaseManager } = require('./database.cjs');
 const { extractText, isRichDocument, RICH_DOCUMENT_EXTENSIONS } = require('./documentExtractor.cjs');
@@ -113,7 +114,24 @@ const APP_ROOT = app.isPackaged
 fsSync.mkdirSync(path.join(APP_ROOT, 'data', 'chromium-cache'), { recursive: true });
 fsSync.mkdirSync(path.join(APP_ROOT, 'data', 'extensions'), { recursive: true });
 
+// Redirect every Electron-managed write location into APP_ROOT/data so the
+// install folder is fully self-contained. `userData` is the big one (Chromium
+// cache, localStorage, dictionary, preferences). The others rarely contain
+// data in practice, but pointing them all at APP_ROOT prevents any future
+// Electron upgrade from spontaneously starting to write %APPDATA% or %TEMP%.
+//
+// Must run before `app.whenReady()` AND before any code calls `app.getPath`
+// for these keys \u2014 hence the position at module top level.
 app.setPath('userData', path.join(APP_ROOT, 'data', 'chromium-cache'));
+// `sessionData` was split out from `userData` in Electron 26+. Defaults to
+// userData so this is mostly belt-and-suspenders, but pin it explicitly.
+try { app.setPath('sessionData', path.join(APP_ROOT, 'data', 'chromium-cache')); } catch { /* older electron */ }
+// Crash dumps would otherwise land in %LOCALAPPDATA%\Temp\<AppName> Crashes.
+// We don't enable the crash reporter, but if anything ever does, redirect it.
+try { app.setPath('crashDumps', path.join(APP_ROOT, 'data', 'crash-dumps')); } catch { /* ignore */ }
+// `logs` is used by Electron's built-in logging facilities (none active here)
+// and by some native modules. Pin it to be safe.
+try { app.setPath('logs', path.join(APP_ROOT, 'data', 'logs')); } catch { /* ignore */ }
 
 setupStorageHandlers(ipcMain, APP_ROOT);
 
@@ -1027,9 +1045,38 @@ ipcMain.handle('fs:rename', async (_event, oldPath, newPath) => {
 });
 
 // ── fs:delete ──
+// options.useTrash:
+//   'auto' (default) — cross-volume safety: only use the OS recycle bin when
+//                      the file lives on the same volume as the user's home
+//                      dir. Otherwise permanently delete in place. This
+//                      prevents the OS from copying/moving external-drive
+//                      files into the internal recycle bin (macOS ~/.Trash,
+//                      Linux XDG trash, Windows C:\$Recycle.Bin) — critical
+//                      for encrypted volumes (VeraCrypt, BitLocker To Go,
+//                      LUKS) where landing in the system recycle bin would
+//                      leak plaintext to an unencrypted location.
+//   true             — always send to OS recycle bin (legacy; not recommended
+//                      for callers that may operate on external/encrypted
+//                      drives).
+//   false            — permanent delete (no recycle bin).
 ipcMain.handle('fs:delete', async (_event, filePath, options) => {
   try {
-    const useTrash = options?.useTrash !== false; // default: true
+    const opt = options?.useTrash === undefined ? 'auto' : options.useTrash;
+    let useTrash = opt !== false; // default: true (then refined below)
+    let crossVolume = false;
+    if (opt === 'auto') {
+      try {
+        const sf = await fs.stat(filePath);
+        const sh = await fs.stat(os.homedir());
+        crossVolume = sf.dev !== sh.dev;
+        useTrash = !crossVolume;
+      } catch {
+        // If we can't stat, fall back to permanent delete in place — never
+        // risk the OS routing the file to a different volume's trash.
+        useTrash = false;
+        crossVolume = true;
+      }
+    }
     if (useTrash) {
       // shell.trashItem uses Windows Shell COM APIs (IFileOperation) which
       // require native backslash paths. path.resolve normalises slashes.
@@ -1042,7 +1089,7 @@ ipcMain.handle('fs:delete', async (_event, filePath, options) => {
         await fs.unlink(filePath);
       }
     }
-    return { error: null };
+    return { error: null, deletedPermanently: !useTrash, crossVolume };
   } catch (err) {
     return { error: normalizeError(err, filePath) };
   }
@@ -1740,6 +1787,89 @@ ipcMain.handle('terminal:exec', async (_event, command, options) => {
     }
     return { stdout, stderr, exitCode: err.code ?? 1, error: null };
   }
+});
+
+// ── terminal:execStream — Run a command and stream stdout/stderr ──
+// Unlike terminal:exec which buffers everything until the process exits, this
+// spawns the command and forwards each chunk to the renderer in real time via
+// a webContents event. Used by media-organizer to read ffmpeg's `-progress`
+// pipe for real percent/ETA updates during long encodes.
+//
+// Renderer contract:
+//   const { streamId } = await invoke('terminal:execStream:start', { command, args, timeout })
+//   webContents.on('terminal:execStream:data',  ({ streamId, channel: 'stdout'|'stderr', chunk }) => …)
+//   webContents.on('terminal:execStream:exit',  ({ streamId, exitCode, error }) => …)
+//   await invoke('terminal:execStream:cancel', streamId)   // optional early cancel
+//
+// `command` is a single executable path; `args` is an array (no shell parsing,
+// so paths with spaces are safe without quoting). This is intentionally
+// stricter than terminal:exec to avoid shell-injection footguns when streaming
+// untrusted progress output.
+const _execStreams = new Map();
+let _execStreamSeq = 0;
+ipcMain.handle('terminal:execStream:start', async (_event, payload) => {
+  try {
+    const { command, args = [], cwd, timeout = 1800000, streamId: providedId } = payload || {};
+    if (!command || typeof command !== 'string') {
+      return { streamId: null, error: { code: 'BAD_ARGS', message: 'command required' } };
+    }
+    // Renderer pre-generates the streamId so it can attach listeners before
+    // we spawn (avoids losing fast-failing exit events). Fall back to a
+    // server-generated id for any legacy callers that don't pass one.
+    const streamId = providedId && typeof providedId === 'string'
+      ? providedId
+      : `xstream-${++_execStreamSeq}`;
+    const proc = spawn(command, Array.isArray(args) ? args : [], {
+      cwd: cwd || (mainWindow ? app.getPath('home') : undefined),
+      windowsHide: true,
+    });
+    let timer = null;
+    if (timeout > 0) {
+      timer = setTimeout(() => {
+        try { proc.kill('SIGKILL'); } catch { /* ignore */ }
+      }, timeout);
+    }
+    _execStreams.set(streamId, { proc, timer });
+    const send = (channel, payload) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(channel, payload);
+      }
+    };
+    proc.stdout.on('data', (data) => {
+      send('terminal:execStream:data', { streamId, channel: 'stdout', chunk: data.toString() });
+    });
+    proc.stderr.on('data', (data) => {
+      send('terminal:execStream:data', { streamId, channel: 'stderr', chunk: data.toString() });
+    });
+    proc.on('error', (err) => {
+      if (timer) clearTimeout(timer);
+      _execStreams.delete(streamId);
+      send('terminal:execStream:exit', { streamId, exitCode: -1, error: { code: 'SPAWN_ERROR', message: err.message } });
+    });
+    proc.on('exit', (code, signal) => {
+      if (timer) clearTimeout(timer);
+      _execStreams.delete(streamId);
+      send('terminal:execStream:exit', { streamId, exitCode: code ?? (signal ? -1 : 0), error: null });
+    });
+    return { streamId, error: null };
+  } catch (err) {
+    return { streamId: null, error: { code: 'EXEC_STREAM_FAILED', message: err.message } };
+  }
+});
+
+ipcMain.handle('terminal:execStream:cancel', async (_event, streamId) => {
+  const entry = _execStreams.get(streamId);
+  if (!entry) return { error: null };
+  try {
+    if (process.platform === 'win32' && entry.proc.pid) {
+      try { require('child_process').execSync(`taskkill /pid ${entry.proc.pid} /T /F`, { windowsHide: true, timeout: 3000 }); } catch { /* ignore */ }
+    } else {
+      entry.proc.kill('SIGKILL');
+    }
+  } catch { /* ignore */ }
+  if (entry.timer) clearTimeout(entry.timer);
+  _execStreams.delete(streamId);
+  return { error: null };
 });
 
 // ── terminal:spawn — Spawn an interactive shell session ──

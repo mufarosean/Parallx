@@ -236,6 +236,7 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   // ── Clipboard API ──
   clipboard: {
     readText: () => clipboard.readText(),
+    readHTML: () => clipboard.readHTML(),
     writeText: (text) => clipboard.writeText(text ?? ''),
   },
 
@@ -295,6 +296,70 @@ contextBridge.exposeInMainWorld('parallxElectron', {
       const handler = (_event, payload) => callback(payload);
       ipcRenderer.on('terminal:exit', handler);
       return () => ipcRenderer.removeListener('terminal:exit', handler);
+    },
+
+    /**
+     * Run an executable with argv (no shell parsing) and stream stdout/stderr
+     * back chunk-by-chunk via the provided callbacks. Returns a Promise that
+     * resolves with { exitCode, error }. Used for long-running commands where
+     * progress needs to be observed in real time (e.g. ffmpeg `-progress`).
+     *
+     * @param {{command:string, args?:string[], cwd?:string, timeout?:number}} payload
+     * @param {{onStdout?:(chunk:string)=>void, onStderr?:(chunk:string)=>void}} handlers
+     * @returns {Promise<{exitCode:number, error:any, cancel:()=>Promise<void>}>}
+     *
+     * The returned object exposes a `cancel()` to terminate early; the same
+     * promise then resolves with exitCode -1.
+     */
+    execStream: (payload, handlers = {}) => {
+      // Generate the streamId on the renderer side so we can register the
+      // data/exit listeners *before* the spawn happens in main — otherwise
+      // a fast-failing process (e.g. ENOENT on the command path) emits its
+      // exit event before our listener is attached, and the promise hangs
+      // forever.
+      const streamId = `xstream-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
+      let onDataHandler = null;
+      let onExitHandler = null;
+      let started = false;
+      const promise = new Promise((resolve) => {
+        onDataHandler = (_event, p) => {
+          if (!p || p.streamId !== streamId) return;
+          if (p.channel === 'stdout' && handlers.onStdout) handlers.onStdout(p.chunk);
+          else if (p.channel === 'stderr' && handlers.onStderr) handlers.onStderr(p.chunk);
+        };
+        onExitHandler = (_event, p) => {
+          if (!p || p.streamId !== streamId) return;
+          ipcRenderer.removeListener('terminal:execStream:data', onDataHandler);
+          ipcRenderer.removeListener('terminal:execStream:exit', onExitHandler);
+          resolve({ exitCode: p.exitCode, error: p.error });
+        };
+        ipcRenderer.on('terminal:execStream:data', onDataHandler);
+        ipcRenderer.on('terminal:execStream:exit', onExitHandler);
+        // Now safe to ask main to spawn — any events it emits will find us.
+        ipcRenderer.invoke('terminal:execStream:start', { ...(payload || {}), streamId })
+          .then((res) => {
+            started = true;
+            if (res?.error) {
+              ipcRenderer.removeListener('terminal:execStream:data', onDataHandler);
+              ipcRenderer.removeListener('terminal:execStream:exit', onExitHandler);
+              resolve({ exitCode: -1, error: res.error });
+            }
+          })
+          .catch((err) => {
+            ipcRenderer.removeListener('terminal:execStream:data', onDataHandler);
+            ipcRenderer.removeListener('terminal:execStream:exit', onExitHandler);
+            resolve({ exitCode: -1, error: { code: 'EXEC_STREAM_FAILED', message: err?.message || String(err) } });
+          });
+      });
+      // Attach cancel to the promise so callers can abort an in-flight stream.
+      promise.cancel = async () => {
+        if (!started) {
+          // Race: cancel called before start resolved. We can still ask main
+          // to cancel by streamId since main now uses our pre-generated one.
+        }
+        await ipcRenderer.invoke('terminal:execStream:cancel', streamId);
+      };
+      return promise;
     },
   },
 

@@ -140,9 +140,16 @@ export class FileOperationError extends Error {
 
 // ─── File Delete Options ─────────────────────────────────────────────────────
 
+// useTrash:
+//   'auto'  — (recommended) recycle bin only when the file is on the same
+//             volume as the user's home dir; otherwise permanent in-place
+//             delete. Prevents plaintext leakage from encrypted/external
+//             volumes into the system recycle bin.
+//   true    — always recycle bin (legacy).
+//   false   — always permanent delete.
 export interface FileDeleteOptions {
   readonly recursive?: boolean;
-  readonly useTrash?: boolean;
+  readonly useTrash?: boolean | 'auto';
 }
 
 // ─── File Watcher ────────────────────────────────────────────────────────────

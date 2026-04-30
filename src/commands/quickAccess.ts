@@ -60,13 +60,42 @@ interface FuzzyMatchResult {
 }
 
 /**
- * Simple fuzzy match: every character in the query must appear in order
- * within the target (case-insensitive). Returns a score (lower is better)
- * and the matched character indices, or null if no match.
+ * Fuzzy match: every character in the query must appear in order within
+ * the target (case-insensitive). Returns a score (lower is better) and the
+ * matched character indices, or null if no match.
+ *
+ * Two-tier scoring:
+ *   1. If the query appears as a contiguous substring, return a strong
+ *      score (with extra bonus when the substring sits on a word boundary
+ *      or at the very start). This guarantees that typing "scan" surfaces
+ *      "**Scan** Directory" before scattered "**S**ear**c**h: Exp**a****n**d".
+ *   2. Otherwise fall back to subsequence matching with bonuses for prefix,
+ *      word-boundary, CamelCase, and consecutive matches, plus a gap penalty.
+ *
+ * Without the substring tier the score landscape was too flat — scattered
+ * matches with a leading prefix bonus could outrank a clean word match,
+ * so each keystroke seemed to reshuffle the list.
  */
 function fuzzyMatch(query: string, target: string): FuzzyMatchResult | null {
   const q = query.toLowerCase();
   const t = target.toLowerCase();
+
+  // ── Tier 1: contiguous substring ──────────────────────────────────────
+  const subIdx = t.indexOf(q);
+  if (subIdx >= 0) {
+    let score = -1000;
+    if (subIdx === 0) {
+      score -= 500;          // exact prefix
+    } else if (isWordBoundary(t, subIdx, target)) {
+      score -= 250;          // word boundary
+    }
+    score += subIdx;          // earlier match wins ties
+    const matches: number[] = [];
+    for (let i = 0; i < q.length; i++) matches.push(subIdx + i);
+    return { score, matches };
+  }
+
+  // ── Tier 2: subsequence with bonuses ──────────────────────────────────
   let qi = 0;
   let score = 0;
   let lastMatchIndex = -1;
@@ -75,7 +104,22 @@ function fuzzyMatch(query: string, target: string): FuzzyMatchResult | null {
   for (let ti = 0; ti < t.length && qi < q.length; ti++) {
     if (t[ti] === q[qi]) {
       const gap = lastMatchIndex >= 0 ? ti - lastMatchIndex - 1 : ti;
-      score += gap;
+      let charScore = gap * 2; // gaps hurt more than a single boundary helps
+
+      if (ti === 0) {
+        charScore -= 100;
+      } else if (isWordBoundary(t, ti, target)) {
+        charScore -= 50;
+      } else {
+        const prevOrig = target.charCodeAt(ti - 1);
+        const curOrig = target.charCodeAt(ti);
+        const prevIsLower = prevOrig >= 97 && prevOrig <= 122;
+        const curIsUpper = curOrig >= 65 && curOrig <= 90;
+        if (prevIsLower && curIsUpper) charScore -= 30;
+      }
+      if (lastMatchIndex === ti - 1) charScore -= 15;
+
+      score += charScore;
       lastMatchIndex = ti;
       matches.push(ti);
       qi++;
@@ -83,6 +127,24 @@ function fuzzyMatch(query: string, target: string): FuzzyMatchResult | null {
   }
 
   return qi === q.length ? { score, matches } : null;
+}
+
+/** True if `t[index]` sits on a word boundary (preceded by a separator). */
+function isWordBoundary(t: string, index: number, original: string): boolean {
+  if (index === 0) return true;
+  const prev = t.charCodeAt(index - 1);
+  if (
+    prev === 32 /* space */ ||
+    prev === 45 /* - */ ||
+    prev === 95 /* _ */ ||
+    prev === 47 /* / */ ||
+    prev === 46 /* . */ ||
+    prev === 58 /* : */
+  ) return true;
+  // CamelCase: prev lowercase, current uppercase in the ORIGINAL casing.
+  const prevOrig = original.charCodeAt(index - 1);
+  const curOrig = original.charCodeAt(index);
+  return prevOrig >= 97 && prevOrig <= 122 && curOrig >= 65 && curOrig <= 90;
 }
 
 /**
@@ -724,6 +786,8 @@ export class QuickAccessWidget extends Disposable {
   private _selectedIndex = 0;
   private _activeProvider: IQuickAccessProvider | undefined;
   private _recentCommandIds: string[] = [];
+  /** Monotonic token used to discard stale async results from `_updateItems`. */
+  private _updateToken = 0;
 
   // ── Providers ──────────────────────────────────────────────────────────
   private readonly _commandsProvider: CommandsProvider;
@@ -952,7 +1016,12 @@ export class QuickAccessWidget extends Disposable {
 
   private async _updateItems(query: string): Promise<void> {
     if (!this._activeProvider) return;
+    // Guard against async races: if the user types more characters before
+    // this provider's getItems() resolves, drop the stale result instead
+    // of letting it overwrite a fresher list.
+    const token = ++this._updateToken;
     const items = await this._activeProvider.getItems(query);
+    if (token !== this._updateToken) return;
     this._items = items;
     this._selectedIndex = items.length > 0 ? 0 : -1;
     this._renderItems();

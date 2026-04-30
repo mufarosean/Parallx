@@ -676,7 +676,10 @@ async function fsCreateFolder(parentUri: string, name: string): Promise<void> {
 async function fsDelete(uri: string): Promise<void> {
   const electronFs = (globalThis as any).parallxElectron?.fs;
   if (!electronFs) return;
-  const result = await electronFs.delete(uriToFsPath(uri), { recursive: true, useTrash: true });
+  // 'auto' — same-volume → recycle bin, cross-volume (e.g. external HDD,
+  // VeraCrypt-mounted drive) → permanent in-place delete. Prevents plaintext
+  // from leaking out of an encrypted volume into C:\$Recycle.Bin.
+  const result = await electronFs.delete(uriToFsPath(uri), { recursive: true, useTrash: 'auto' });
   if (result?.error) {
     throw new Error(result.error.message || 'Delete failed');
   }

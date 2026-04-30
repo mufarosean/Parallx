@@ -1088,6 +1088,7 @@ const TagQueries = {
 const PHOTO_COL_MAP = {
   title: 'title',
   rating: 'rating',
+  colorLabel: 'color_label',
   curated: 'curated',
   details: 'details',
   cameraMake: 'camera_make',
@@ -1110,6 +1111,7 @@ const PhotoQueries = {
       id: row.id,
       title: row.title ?? '',
       rating: row.rating ?? 0,
+      colorLabel: row.color_label ?? null,
       curated: row.curated ?? 0,
       details: row.details ?? '',
       cameraMake: row.camera_make ?? null,
@@ -1375,6 +1377,7 @@ const PhotoQueries = {
 const VIDEO_COL_MAP = {
   title: 'title',
   rating: 'rating',
+  colorLabel: 'color_label',
   curated: 'curated',
   details: 'details',
   duration: 'duration',
@@ -1387,6 +1390,7 @@ const VideoQueries = {
       id: row.id,
       title: row.title ?? '',
       rating: row.rating ?? 0,
+      colorLabel: row.color_label ?? null,
       curated: row.curated ?? 0,
       details: row.details ?? '',
       duration: row.duration ?? null,
@@ -1614,6 +1618,7 @@ const ALBUM_COL_MAP = {
   description: 'description',
   rating: 'rating',
   folderId: 'folder_id',
+  parentAlbumId: 'parent_album_id',
   date: 'date',
 };
 
@@ -1626,6 +1631,7 @@ const AlbumQueries = {
       description: row.description ?? '',
       rating: row.rating ?? 0,
       folderId: row.folder_id ?? null,
+      parentAlbumId: row.parent_album_id ?? null,
       date: row.date ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -1634,13 +1640,14 @@ const AlbumQueries = {
 
   async create(input) {
     const res = await db.run(
-      `INSERT INTO mo_albums (title, description, rating, folder_id, date, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      `INSERT INTO mo_albums (title, description, rating, folder_id, parent_album_id, date, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
       [
         input.title,
         input.description ?? '',
         input.rating ?? 0,
         input.folderId ?? null,
+        input.parentAlbumId ?? null,
         input.date ?? null,
       ]
     );
@@ -1666,6 +1673,14 @@ const AlbumQueries = {
       } else {
         where.push(`folder_id = ?`);
         params.push(filter.folderId);
+      }
+    }
+    if (filter.parentAlbumId !== undefined) {
+      if (filter.parentAlbumId === null) {
+        where.push(`parent_album_id IS NULL`);
+      } else {
+        where.push(`parent_album_id = ?`);
+        params.push(filter.parentAlbumId);
       }
     }
     if (filter.tagId !== undefined) {
@@ -1699,6 +1714,23 @@ const AlbumQueries = {
 
   async destroy(id) {
     await db.run(`DELETE FROM mo_albums WHERE id = ?`, [id]);
+  },
+
+  // M59 P9 / F13 — Walks the parent chain of `albumId` looking for `ancestorId`.
+  // Used to prevent cycles when reparenting (an album cannot become its own descendant).
+  async isDescendantOf(albumId, ancestorId) {
+    if (albumId === ancestorId) return true;
+    let cur = albumId;
+    const seen = new Set();
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      const row = await db.get(`SELECT parent_album_id FROM mo_albums WHERE id = ?`, [cur]);
+      if (!row) return false;
+      const next = row.parent_album_id;
+      if (next === ancestorId) return true;
+      cur = next;
+    }
+    return false;
   },
 
   // --- Relationships ---
@@ -2085,6 +2117,31 @@ async function detectAllTools() {
   if (!ffmpeg && !vips) console.warn('[MediaOrganizer] Neither ffmpeg nor vips found — thumbnails will use canvas fallback');
   if (!magick) console.warn('[MediaOrganizer] bundled magick.exe missing — WebP files will be left as-is');
   return _toolPaths;
+}
+
+// ── Hardware encoder detection ────────────────────────────────────────────
+// Runs `ffmpeg -hide_banner -encoders` once per session, scans the output for
+// vendor-specific H.264 encoders. Used by the clip dialog to populate the GPU
+// dropdown. We only check H.264 \u2014 H.265 / VP9 hardware encoders exist but
+// have spotty support and aren't exposed in the UI.
+let _hwEncodersDetected = false;
+let _hwEncoders = { nvenc: false, qsv: false, amf: false, videotoolbox: false };
+async function detectHwEncoders() {
+  if (_hwEncodersDetected) return _hwEncoders;
+  if (!_toolPaths.ffmpeg) return _hwEncoders;
+  try {
+    const cmd = `${shellInvoke(_toolPaths.ffmpeg)} -hide_banner -encoders`;
+    const r = await window.parallxElectron.terminal.exec(cmd, { timeout: 10000 });
+    const text = (r.stdout || '') + '\n' + (r.stderr || '');
+    _hwEncoders = {
+      nvenc: /\bh264_nvenc\b/.test(text),
+      qsv: /\bh264_qsv\b/.test(text),
+      amf: /\bh264_amf\b/.test(text),
+      videotoolbox: /\bh264_videotoolbox\b/.test(text),
+    };
+  } catch { /* leave defaults (all false) */ }
+  _hwEncodersDetected = true;
+  return _hwEncoders;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -3204,17 +3261,51 @@ async function convertWebpAtPath(filePath) {
   if (!filePath || !/\.webp$/i.test(filePath)) return null;
   if (!_toolPaths.magick) return null;
 
+  // Per-path in-flight lock. Scanner and watcher can both reach the same
+  // .webp concurrently (e.g. user adds a webp while a scan is mid-walk and
+  // the watcher debounce fires before the scan reaches that folder). Two
+  // parallel magick processes writing to the same outPath produces garbage
+  // and our cleanup paths could delete the legit output. A simple Set keyed
+  // on the source path serialises conversion per file.
+  if (_inflightWebpConversions.has(filePath)) {
+    // Wait for the in-flight conversion to finish, then return its result
+    // so the caller sees the converted path (or null) deterministically.
+    try { return await _inflightWebpConversions.get(filePath); } catch { return null; }
+  }
+  const promise = _doConvertWebpAtPath(filePath);
+  _inflightWebpConversions.set(filePath, promise);
+  try { return await promise; }
+  finally { _inflightWebpConversions.delete(filePath); }
+}
+
+const _inflightWebpConversions = new Map();
+
+async function _doConvertWebpAtPath(filePath) {
   let animated = false;
   try { animated = await isWebPAnimated(filePath); } catch { animated = false; }
   const target = animated ? 'gif' : 'jpg';
   const outPath = filePath.replace(/\.webp$/i, '.' + target);
 
-  // If the destination already exists we abort rather than clobber. The user
-  // can resolve manually; safer than silently overwriting unrelated files.
+  // If the destination already exists, decide carefully:
+  //   - tiny/empty (< 64 bytes) → almost certainly a stale failure artifact
+  //     from a previously crashed conversion. Unlink it and proceed.
+  //   - otherwise → real file produced by something else. Abort to avoid
+  //     clobbering, and warn loudly. The caller will index the .webp as-is.
+  // Without this both files (legit + ghost) ended up indexed on the next
+  // scan because the early-abort fell through to indexing the .webp.
   const outExisting = await window.parallxElectron.fs.stat(outPath);
-  if (outExisting && !outExisting.error && outExisting.size > 0) {
-    console.warn(`[MediaOrganizer] WebP convert skipped — target exists: ${outPath}`);
-    return null;
+  if (outExisting && !outExisting.error) {
+    if ((outExisting.size || 0) < 64) {
+      const unl = await window.parallxElectron.fs.delete(outPath, { useTrash: false });
+      if (unl && unl.error) {
+        console.warn(`[MediaOrganizer] WebP convert: stale ${outPath} could not be removed: ${unl.error}`);
+        return null;
+      }
+      console.log(`[MediaOrganizer] WebP convert: removed stale empty target ${outPath}`);
+    } else {
+      console.warn(`[MediaOrganizer] WebP convert skipped — target exists: ${outPath}`);
+      return null;
+    }
   }
 
   const m = shellInvoke(_toolPaths.magick);
@@ -3228,20 +3319,36 @@ async function convertWebpAtPath(filePath) {
   const r = await window.parallxElectron.terminal.exec(cmd, { timeout: 600000 });
   if (r.exitCode !== 0) {
     console.warn(`[MediaOrganizer] magick failed (exit=${r.exitCode}) for ${filePath}: ${r.stderr || r.stdout || '(no output)'}`);
+    // magick may have written a partial output before failing — clean it up
+    // so the next run doesn't trip the "target exists" gate.
+    await window.parallxElectron.fs.delete(outPath, { useTrash: false }).catch(() => {});
     return null;
   }
 
   const outStat = await window.parallxElectron.fs.stat(outPath);
   if (!outStat || outStat.error || !outStat.size || outStat.size < 64) {
     console.warn(`[MediaOrganizer] magick produced empty/missing output for ${filePath}`);
+    // Same cleanup: don't leave a bogus output to confuse the next scan.
+    await window.parallxElectron.fs.delete(outPath, { useTrash: false }).catch(() => {});
     return null;
   }
 
-  const delResult = await window.parallxElectron.fs.delete(filePath, { useTrash: false });
+  // Delete the original .webp. Retry briefly on transient locks (Windows AV,
+  // file scanners). If it ultimately can't be removed, ROLL BACK the gif so
+  // we don't end up with both files on disk + both indexed.
+  let delResult = await window.parallxElectron.fs.delete(filePath, { useTrash: false });
   if (delResult && delResult.error) {
-    console.warn(`[MediaOrganizer] Failed to delete original webp ${filePath}: ${delResult.error}`);
-    // Output exists, original couldn't be removed — return new path anyway so
-    // the converted file is what gets indexed. Original may be cleaned later.
+    for (let attempt = 1; attempt <= 3 && delResult && delResult.error; attempt++) {
+      await new Promise(r => setTimeout(r, 100 * attempt));
+      delResult = await window.parallxElectron.fs.delete(filePath, { useTrash: false });
+    }
+  }
+  if (delResult && delResult.error) {
+    console.warn(`[MediaOrganizer] Failed to delete original webp ${filePath}: ${delResult.error}. Rolling back ${outPath}.`);
+    // Roll back the converted output so we never index two siblings for the
+    // same source. Caller falls through and indexes the .webp as-is.
+    await window.parallxElectron.fs.delete(outPath, { useTrash: false }).catch(() => {});
+    return null;
   }
 
   console.log(`[MediaOrganizer] WebP converted: ${filePath} -> ${outPath} (${target})`);
@@ -4447,12 +4554,28 @@ function moDropdown(options = {}) {
     button.setAttribute('aria-expanded', 'true');
     _focusedIndex = _items.findIndex(i => i.value === _selectedValue);
     updateFocusedClass();
-    // Auto-flip: open upward if not enough space below
+    // Auto-flip: open upward if not enough space below. Bound the available
+    // space to the nearest clipping ancestor (overflow auto/hidden/scroll) so
+    // dropdowns near the bottom of a panel don't get hidden behind sibling
+    // panels even when the viewport itself has more room.
     requestAnimationFrame(() => {
       const btnRect = button.getBoundingClientRect();
-      const listRect = list.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - btnRect.bottom;
-      if (spaceBelow < listRect.height && btnRect.top > listRect.height) {
+      const listH = list.scrollHeight || list.getBoundingClientRect().height;
+      let bottomBound = window.innerHeight;
+      let topBound = 0;
+      let node = wrapper.parentElement;
+      while (node && node !== document.body) {
+        const cs = window.getComputedStyle(node);
+        if (/(auto|hidden|scroll|clip)/.test(cs.overflowY) || /(auto|hidden|scroll|clip)/.test(cs.overflow)) {
+          const r = node.getBoundingClientRect();
+          if (r.bottom < bottomBound) bottomBound = r.bottom;
+          if (r.top > topBound) topBound = r.top;
+        }
+        node = node.parentElement;
+      }
+      const spaceBelow = bottomBound - btnRect.bottom;
+      const spaceAbove = btnRect.top - topBound;
+      if (spaceBelow < listH && spaceAbove > spaceBelow) {
         wrapper.classList.add('mo-dropdown--up');
       } else {
         wrapper.classList.remove('mo-dropdown--up');
@@ -4732,6 +4855,58 @@ const MO_CSS = `
   color: var(--mo-rating-color, #f5c518);
   pointer-events: none;
 }
+/* ── M59 P9 / F12 — Color labels ── */
+:root {
+  --mo-label-red: #e15554;
+  --mo-label-yellow: #e1a93c;
+  --mo-label-green: #4caf50;
+  --mo-label-blue: #4a8fe6;
+  --mo-label-purple: #a06cd5;
+}
+.mo-card-color-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 4px;
+  pointer-events: none;
+  z-index: 1;
+}
+.mo-card-color-label[data-label="red"] { background: var(--mo-label-red); }
+.mo-card-color-label[data-label="yellow"] { background: var(--mo-label-yellow); }
+.mo-card-color-label[data-label="green"] { background: var(--mo-label-green); }
+.mo-card-color-label[data-label="blue"] { background: var(--mo-label-blue); }
+.mo-card-color-label[data-label="purple"] { background: var(--mo-label-purple); }
+.mo-list-color-label {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.mo-list-color-label[data-label="red"] { background: var(--mo-label-red); }
+.mo-list-color-label[data-label="yellow"] { background: var(--mo-label-yellow); }
+.mo-list-color-label[data-label="green"] { background: var(--mo-label-green); }
+.mo-list-color-label[data-label="blue"] { background: var(--mo-label-blue); }
+.mo-list-color-label[data-label="purple"] { background: var(--mo-label-purple); }
+.mo-lb-color-label {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin: 0 6px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.25);
+}
+.mo-lb-color-label[data-label="red"] { background: var(--mo-label-red); }
+.mo-lb-color-label[data-label="yellow"] { background: var(--mo-label-yellow); }
+.mo-lb-color-label[data-label="green"] { background: var(--mo-label-green); }
+.mo-lb-color-label[data-label="blue"] { background: var(--mo-label-blue); }
+.mo-lb-color-label[data-label="purple"] { background: var(--mo-label-purple); }
+.mo-lb-color-label:empty,
+.mo-lb-color-label:not([data-label]) { display: none; }
 .mo-card-select {
   position: absolute;
   top: 4px;
@@ -4862,6 +5037,26 @@ const MO_CSS = `
   flex-shrink: 0;
 }
 .mo-sidebar-item .mo-icon-wrap { flex-shrink: 0; display: flex; align-items: center; }
+/* M59 P9 / F13 — Hierarchical album rows */
+.mo-sidebar-item.mo-album-row { padding-left: 16px; }
+.mo-album-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--vscode-icon-foreground, #cccccc);
+  transition: transform 120ms ease;
+}
+.mo-album-chevron.mo-collapsed { transform: rotate(-90deg); }
+.mo-album-chevron.mo-leaf { visibility: hidden; }
+.mo-album-children.mo-collapsed { display: none; }
+.mo-sidebar-item.mo-reparent-target {
+  background: var(--vscode-list-dropBackground, rgba(0,100,200,0.18));
+  outline: 1px dashed var(--vscode-focusBorder, #9333ea);
+}
 .mo-empty {
   text-align: center;
   padding: 24px 16px;
@@ -5431,6 +5626,13 @@ const MO_CSS = `
 .mo-selection-bar button:hover {
   background: var(--vscode-button-secondaryHoverBackground, #555);
 }
+.mo-selection-bar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.mo-selection-bar button:disabled:hover {
+  background: none;
+}
 .mo-selection-bar .mo-sel-spacer { flex: 1; }
 .mo-selection-bar .mo-sel-delete {
   border-color: var(--vscode-errorForeground, #f44747);
@@ -5445,6 +5647,17 @@ const MO_CSS = `
   color: var(--vscode-descriptionForeground, #999);
   margin: 4px 0 8px;
 }
+.mo-bulk-dialog-opt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--parallx-fontSize-sm, 12px);
+  color: var(--vscode-foreground, #ccc);
+  margin: 4px 0 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.mo-bulk-dialog-opt input { margin: 0; }
 .mo-bulk-dialog .mo-sel-delete {
   background: var(--vscode-errorForeground, #f44747);
   color: #fff;
@@ -5630,6 +5843,33 @@ const MO_CSS = `
   font-size: var(--parallx-fontSize-base, 14px);
   padding: 0 4px;
   z-index: 1;
+}
+/* M59 P9 / F14 — Manual sort drag affordance */
+.mo-album-drag-handle {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.45);
+  color: var(--vscode-icon-foreground, #cccccc);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  z-index: 1;
+}
+.mo-album-mini-card:hover .mo-album-drag-handle { opacity: 1; }
+.mo-album-drag-handle:active { cursor: grabbing; }
+.mo-album-mini-card.mo-dragging { opacity: 0.4; }
+.mo-album-mini-card.mo-drop-before {
+  box-shadow: -2px 0 0 0 var(--vscode-focusBorder, #9333ea);
+}
+.mo-album-mini-card.mo-drop-after {
+  box-shadow: 2px 0 0 0 var(--vscode-focusBorder, #9333ea);
 }
 .mo-album-empty {
   opacity: 0.6;
@@ -5830,6 +6070,146 @@ const MO_CSS = `
   transition: opacity 0.15s, border-color 0.15s, background 0.15s;
 }
 .mo-lightbox-close:hover {
+  opacity: 1;
+  background: rgba(255,255,255,0.18);
+  border-color: var(--vscode-focusBorder, #9333ea);
+}
+
+/* ═══ M59 P10 / F15 — Compare View ═══
+   Shares the lightbox aesthetic (dark overlay, translucent chrome) so the
+   modal reads as the same surface family. */
+.mo-compare {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.94);
+  color: #fff;
+}
+.mo-compare-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.7);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  font-size: var(--parallx-fontSize-md, 13px);
+}
+.mo-compare-bar .mo-cmp-spacer { flex: 1; }
+.mo-compare-bar button {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: var(--parallx-radius-sm, 3px);
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-xs, 11px);
+  line-height: 18px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.mo-compare-bar button:hover {
+  background: rgba(255,255,255,0.16);
+  border-color: var(--vscode-focusBorder, #9333ea);
+}
+.mo-compare-bar button.active {
+  background: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, #9333ea);
+  color: var(--vscode-button-foreground, #fff);
+}
+.mo-compare-bar .mo-cmp-zoom-indicator {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+  padding: 2px 6px;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--parallx-radius-sm, 3px);
+  min-width: 48px;
+  text-align: center;
+}
+.mo-compare-grid {
+  flex: 1;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  overflow: hidden;
+}
+.mo-compare-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--parallx-radius-sm, 3px);
+  overflow: hidden;
+}
+.mo-compare-pane.mo-cmp-active {
+  border-color: var(--vscode-focusBorder, #9333ea);
+}
+.mo-cmp-canvas {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+}
+.mo-cmp-canvas:active { cursor: grabbing; }
+.mo-cmp-canvas img,
+.mo-cmp-canvas video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transform-origin: center center;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+.mo-cmp-canvas video {
+  pointer-events: auto; /* allow native controls */
+}
+.mo-cmp-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.6);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  font-size: var(--parallx-fontSize-xs, 11px);
+}
+.mo-cmp-info .mo-cmp-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mo-cmp-info .mo-cmp-dims {
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+.mo-cmp-info .mo-cmp-rating { color: var(--mo-rating-color, #f5c518); }
+.mo-compare-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: #fff;
+  font-size: 18px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.85;
+  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
+  z-index: 1;
+}
+.mo-compare-close:hover {
   opacity: 1;
   background: rgba(255,255,255,0.18);
   border-color: var(--vscode-focusBorder, #9333ea);
@@ -6119,6 +6499,65 @@ const MO_CSS = `
 .mo-player-rail-btn:hover { background: rgba(0,0,0,0.85); border-color: rgba(255,255,255,0.3); }
 .mo-player-rail-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: 2px; }
 .mo-player-rail-btn:disabled { opacity: 0.4; cursor: default; }
+.mo-player-rail-btn.mo-active {
+  background: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, #9333ea);
+}
+
+/* M59 P10 / F16 — Filmstrip thumbnail row.
+   Renders above the bottom bar so it tucks beside the existing chrome
+   without colliding with the seek hover preview or the action rail. */
+.mo-player-filmstrip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 64px; /* sit just above the bottombar */
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.55);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  z-index: 2;
+}
+.mo-player-chrome-hidden .mo-player-filmstrip { display: none; }
+.mo-player-fs-thumb {
+  flex: 0 0 auto;
+  width: 96px;
+  height: 54px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--parallx-radius-sm, 3px);
+  background: #000;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.1s, transform 0.1s;
+}
+.mo-player-fs-thumb:hover {
+  border-color: var(--vscode-focusBorder, #9333ea);
+  transform: translateY(-1px);
+}
+.mo-player-fs-thumb.mo-active {
+  border-color: var(--vscode-focusBorder, #9333ea);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, #9333ea);
+}
+.mo-player-fs-thumb canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: var(--parallx-radius-sm, 3px);
+}
+.mo-player-fs-thumb .mo-fs-time {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  font-size: 10px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 0 4px;
+  border-radius: 2px;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ─── Clip / WebP modal ─── */
 .mo-modal-overlay {
@@ -6163,6 +6602,8 @@ const MO_CSS = `
 
 /* ── M59 P4: large two-column clip dialog ── */
 .mo-clip-dialog { width: 1180px; max-width: 96vw; }
+.mo-frame-dialog { width: 880px; max-width: 92vw; }
+.mo-frame-dialog .mo-clip-grid { grid-template-columns: minmax(0, 1fr) 260px; }
 .mo-clip-body {
   padding: 12px 16px; display: flex; flex-direction: column; gap: 10px;
   overflow: hidden;
@@ -6400,6 +6841,23 @@ const MO_CSS = `
 }
 select.mo-clip-input { appearance: none; padding-right: 22px; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 12px) 50%, calc(100% - 7px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
 select.mo-clip-input.mo-select-bound { cursor: pointer; }
+.mo-clip-input--num { flex: 0 0 auto; max-width: 80px; }
+.mo-clip-unit {
+  font-size: 11px; opacity: 0.7;
+  color: var(--vscode-descriptionForeground, var(--vscode-foreground, inherit));
+}
+.mo-clip-chiprow { display: inline-flex; gap: 4px; margin-left: 4px; }
+.mo-clip-chip {
+  padding: 2px 7px; font-size: 10px; line-height: 1; cursor: pointer;
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #ddd);
+  border: 1px solid var(--vscode-panel-border, #444);
+  border-radius: 3px;
+  font-family: inherit;
+}
+.mo-clip-chip:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
 .mo-select-popup {
   position: fixed; z-index: 10001;
   min-width: 120px;
@@ -6432,6 +6890,137 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
   background: color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 40%, transparent);
 }
 .mo-clip-check { margin: 0 6px 0 0; }
+
+/* Clip queue (batch export) */
+.mo-clip-queue {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-top: 4px; padding-top: 8px;
+  border-top: 1px solid var(--vscode-panel-border, #444);
+}
+.mo-clip-queue-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 11px; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.mo-clip-queue-list {
+  display: flex; flex-direction: column; gap: 3px;
+  max-height: 160px; overflow-y: auto;
+}
+.mo-clip-queue-empty {
+  font-size: 11px; opacity: 0.55; padding: 6px 4px;
+}
+.mo-clip-queue-row {
+  display: flex; align-items: center; gap: 6px;
+  min-width: 0;
+  padding: 4px 6px; border-radius: 3px;
+  background: var(--vscode-list-inactiveSelectionBackground, rgba(255,255,255,0.04));
+  cursor: pointer;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.mo-clip-queue-row:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.08));
+}
+.mo-clip-queue-row.mo-active {
+  background: color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 22%, transparent);
+  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+}
+.mo-clip-queue-num {
+  flex: 0 0 auto; min-width: 22px;
+  font-weight: 600; opacity: 0.75;
+}
+.mo-clip-queue-meta {
+  flex: 1 1 auto; min-width: 0; opacity: 0.85;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mo-clip-queue-fmt {
+  flex: 0 0 auto; padding: 1px 4px; border-radius: 2px;
+  font-size: 10px; opacity: 0.85;
+  background: var(--vscode-input-background, rgba(255,255,255,0.06));
+  color: var(--vscode-input-foreground, inherit);
+  border: 1px solid var(--vscode-input-border, transparent);
+  text-transform: uppercase;
+  cursor: pointer;
+  height: 20px;
+}
+.mo-clip-queue-fmt:hover { opacity: 1; }
+.mo-clip-queue-del {
+  flex: 0 0 auto; background: transparent; border: 0; color: inherit;
+  opacity: 0.55; cursor: pointer; padding: 0 4px; font-size: 14px; line-height: 1;
+}
+.mo-clip-queue-del:hover { opacity: 1; color: var(--vscode-errorForeground, #f48771); }
+
+.mo-clip-queue-row.mo-dragging { opacity: 0.4; }
+.mo-clip-queue-row.mo-drop-above { box-shadow: 0 -2px 0 0 var(--vscode-focusBorder, #9333ea); }
+.mo-clip-queue-row.mo-drop-below { box-shadow: 0 2px 0 0 var(--vscode-focusBorder, #9333ea); }
+.mo-clip-queue-handle {
+  flex: 0 0 auto; cursor: grab; opacity: 0.4;
+  font-size: 11px; line-height: 1; user-select: none;
+  padding: 0 2px;
+}
+.mo-clip-queue-handle:hover { opacity: 0.85; }
+.mo-clip-queue-row:active .mo-clip-queue-handle { cursor: grabbing; }
+.mo-clip-queue-thumb {
+  flex: 0 0 auto; width: 38px; height: 22px; border-radius: 2px;
+  background: rgba(0,0,0,0.4); object-fit: cover; display: block;
+}
+.mo-clip-queue-name {
+  flex: 0 1 110px; min-width: 40px;
+  background: var(--vscode-input-background, #2a2a2a);
+  color: var(--vscode-input-foreground, inherit);
+  border: 1px solid transparent;
+  border-radius: 2px;
+  padding: 1px 4px;
+  font-size: 11px;
+  font-family: inherit;
+}
+.mo-clip-queue-name:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder, #9333ea);
+}
+.mo-clip-queue-dup {
+  flex: 0 0 auto; background: transparent; border: 0; color: inherit;
+  opacity: 0.55; cursor: pointer; padding: 0 4px; font-size: 12px; line-height: 1;
+}
+.mo-clip-queue-dup:hover { opacity: 1; }
+.mo-clip-queue-total {
+  font-size: 10px; opacity: 0.7; margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.mo-clip-aspect-row {
+  display: flex; gap: 4px; flex-wrap: wrap; padding-left: 70px; margin-top: -4px;
+}
+.mo-clip-aspect-btn {
+  font-size: 10px; line-height: 1; padding: 3px 6px; border-radius: 3px;
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #ddd);
+  border: 1px solid var(--vscode-panel-border, #444);
+  cursor: pointer;
+}
+.mo-clip-aspect-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+.mo-clip-aspect-btn.mo-active {
+  background: color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 28%, transparent);
+  border-color: var(--vscode-focusBorder, #9333ea);
+}
+.mo-clip-presets-row {
+  display: flex; gap: 4px; flex-wrap: wrap; align-items: center;
+  padding-top: 6px; margin-top: 4px;
+  border-top: 1px dashed var(--vscode-panel-border, #444);
+}
+.mo-clip-preset-chip {
+  font-size: 10px; line-height: 1; padding: 3px 7px; border-radius: 10px;
+  background: var(--vscode-badge-background, rgba(255,255,255,0.08));
+  color: var(--vscode-badge-foreground, inherit);
+  border: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+}
+.mo-clip-preset-chip:hover {
+  background: color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 28%, transparent);
+}
+.mo-clip-preset-chip-x {
+  opacity: 0.5; cursor: pointer; padding: 0 1px;
+}
+.mo-clip-preset-chip-x:hover { opacity: 1; color: var(--vscode-errorForeground, #f48771); }
 .mo-clip-length {
   font-size: 11px; opacity: 0.7; font-variant-numeric: tabular-nums;
 }
@@ -6611,6 +7200,13 @@ function renderMediaCard(item, options) {
     thumb.appendChild(moEl('span', 'mo-card-rating', { textContent: stars }));
   }
 
+  // M59 P9 / F12 — Color label stripe (left edge of thumb)
+  if (item.colorLabel) {
+    const stripe = moEl('span', 'mo-card-color-label');
+    stripe.dataset.label = item.colorLabel;
+    thumb.appendChild(stripe);
+  }
+
   // Selection checkbox — always render, show on hover or in selection mode
   const selectWrap = moEl('label', `mo-card-select${selecting ? ' mo-selecting' : ''}`);
   const cb = moEl('input', null, { type: 'checkbox' });
@@ -6710,6 +7306,12 @@ function renderMediaListRow(item, options) {
   row.appendChild(cb);
 
   const title = item.title || `${item.type} #${item.id}`;
+  // M59 P9 / F12 — Color label dot before title
+  if (item.colorLabel) {
+    const dot = moEl('span', 'mo-list-color-label');
+    dot.dataset.label = item.colorLabel;
+    row.appendChild(dot);
+  }
   row.appendChild(moEl('span', 'mo-list-title', { textContent: title, title: title }));
   row.appendChild(moEl('span', 'mo-list-type', { textContent: item.type }));
 
@@ -6745,6 +7347,14 @@ function renderMediaListRow(item, options) {
       ? [...options.selectedIds]
       : [key];
     e.dataTransfer.setData('application/x-mo-items', JSON.stringify(keys));
+    // Mirror the grid-card behavior: publish standard MIMEs so the drop
+    // can be accepted by chat / canvas / OS surfaces.
+    const filePath = row._filePath || item._sourcePath;
+    if (filePath) {
+      const fileUrl = `file:///${String(filePath).replace(/\\/g, '/').replace(/^\/+/, '')}`;
+      try { e.dataTransfer.setData('text/uri-list', fileUrl); } catch { /* ignore */ }
+      try { e.dataTransfer.setData('text/plain', filePath); } catch { /* ignore */ }
+    }
     e.dataTransfer.effectAllowed = 'copy';
   });
   row._imgEl = img;
@@ -7036,9 +7646,13 @@ function renderBrowserSidebar(container, api) {
 
   async function loadAlbums() {
     try {
+      // Load all albums in a single query, then build the tree client-side.
+      // 200-row cap matches the prior flat behaviour; deeper hierarchies are paged
+      // implicitly because the cap is applied to the full library, not per level.
       const result = await AlbumQueries.findMany({}, { field: 'title', direction: 'ASC' }, { page: 1, perPage: 200 });
       albumBody.innerHTML = '';
-      // "Create Album" action
+
+      // "Create Album" action stays at the top of the section.
       albumBody.appendChild(sidebarItem('add', 'Create Album...', null, () => {
         api.editors.openEditor({
           typeId: 'media-organizer-grid',
@@ -7047,58 +7661,247 @@ function renderBrowserSidebar(container, api) {
           instanceId: 'album:new',
         });
       }));
-      if (!result.items || result.items.length === 0) {
+
+      const items = result.items || [];
+      if (items.length === 0) {
         albumBody.appendChild(moEl('div', 'mo-empty', { textContent: 'No albums yet' }));
         return;
       }
-      for (const album of result.items) {
-        const icon = album.folderId ? 'folder' : 'folder-library';
-        // Count items in album via efficient SQL
+
+      // Build an id→album map plus a parentId→[children] index.
+      // Albums whose parent is missing (deleted, foreign, or set-null) are
+      // surfaced at the root so user data is never silently hidden.
+      const byId = new Map(items.map(a => [a.id, a]));
+      const childrenOf = new Map();
+      childrenOf.set(null, []);
+      for (const a of items) {
+        const pid = a.parentAlbumId && byId.has(a.parentAlbumId) ? a.parentAlbumId : null;
+        if (!childrenOf.has(pid)) childrenOf.set(pid, []);
+        childrenOf.get(pid).push(a);
+      }
+
+      // Pre-fetch counts for every album in one round-trip per item.
+      // (Cheap for typical libraries; could be a UNION later if perf demands it.)
+      const counts = new Map();
+      for (const album of items) {
         const countRow = await db.get(
           `SELECT (SELECT COUNT(*) FROM mo_albums_photos WHERE album_id = ?) + (SELECT COUNT(*) FROM mo_albums_videos WHERE album_id = ?) AS total`,
           [album.id, album.id]
         );
-        const itemCount = countRow ? countRow.total : 0;
-        const badge = itemCount > 0 ? String(itemCount) : null;
-        const albumItem = sidebarItem(icon, album.title || `Album #${album.id}`, badge, () => {
-          api.editors.openEditor({
-            typeId: 'media-organizer-grid',
-            title: album.title || 'Album',
-            icon: 'folder-library',
-            instanceId: `album:${album.id}`,
-          });
-        });
-        // F5: Drag-to-Album drop target
-        albumItem.addEventListener('dragover', (e) => {
-          if (e.dataTransfer.types.includes('application/x-mo-items')) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'copy';
-            albumItem.classList.add('mo-drop-target');
-          }
-        });
-        albumItem.addEventListener('dragleave', () => { albumItem.classList.remove('mo-drop-target'); });
-        albumItem.addEventListener('drop', async (e) => {
-          e.preventDefault();
-          albumItem.classList.remove('mo-drop-target');
-          try {
-            const keys = JSON.parse(e.dataTransfer.getData('application/x-mo-items'));
-            const photoIds = [];
-            const videoIds = [];
-            for (const k of keys) {
-              const [type, id] = k.split(':');
-              if (type === 'photo') photoIds.push(parseInt(id, 10));
-              else if (type === 'video') videoIds.push(parseInt(id, 10));
-            }
-            if (photoIds.length > 0) await AlbumQueries.updatePhotos(album.id, { mode: 'ADD', ids: photoIds });
-            if (videoIds.length > 0) await AlbumQueries.updateVideos(album.id, { mode: 'ADD', ids: videoIds });
-            api.statusBar.setMessage(`Added ${keys.length} item(s) to "${album.title || 'Album'}"`, 3000);
-            loadAlbums(); // refresh counts
-          } catch (err) {
-            console.error('[MO] drag-to-album error:', err);
-          }
-        });
-        albumBody.appendChild(albumItem);
+        counts.set(album.id, countRow ? countRow.total : 0);
       }
+
+      // Persisted expand/collapse state (per-album), keyed in mo_settings.
+      const expandedRaw = await moGetSetting('album_tree_expanded', '');
+      const expandedSet = new Set(
+        String(expandedRaw || '').split(',').map(s => s.trim()).filter(Boolean).map(s => parseInt(s, 10))
+      );
+      const persistExpanded = () => {
+        moSetSetting('album_tree_expanded', [...expandedSet].join(',')).catch(() => {});
+      };
+
+      // Recursive renderer. `depth` controls left-padding so children indent
+      // visually; 12px per level matches the VS Code tree visual rhythm.
+      function renderLevel(parentId, depth, container) {
+        const kids = childrenOf.get(parentId) || [];
+        for (const album of kids) {
+          const grandKids = childrenOf.get(album.id) || [];
+          const hasChildren = grandKids.length > 0;
+          const isExpanded = expandedSet.has(album.id);
+
+          const icon = album.folderId ? 'folder' : 'folder-library';
+          const itemCount = counts.get(album.id) || 0;
+          const badge = itemCount > 0 ? String(itemCount) : null;
+
+          const row = moEl('div', 'mo-sidebar-item mo-album-row');
+          row.style.paddingLeft = `${16 + depth * 12}px`;
+          row.dataset.albumId = String(album.id);
+          row.setAttribute('draggable', 'true');
+
+          const chevron = moEl('span', `mo-album-chevron${hasChildren ? '' : ' mo-leaf'}${isExpanded || !hasChildren ? '' : ' mo-collapsed'}`);
+          chevron.innerHTML = moIcon('chevron-down', 10);
+          row.appendChild(chevron);
+
+          const iconWrap = moEl('span', 'mo-icon-wrap', { innerHTML: moIcon(icon, 14) });
+          row.appendChild(iconWrap);
+          row.appendChild(moEl('span', 'mo-sidebar-item-label', { textContent: album.title || `Album #${album.id}` }));
+          if (badge !== null) row.appendChild(moEl('span', 'mo-sidebar-item-count', { textContent: badge }));
+
+          // Open album in editor on click (chevron click toggles instead).
+          row.addEventListener('click', (e) => {
+            if (e.target.closest('.mo-album-chevron')) return;
+            api.editors.openEditor({
+              typeId: 'media-organizer-grid',
+              title: album.title || 'Album',
+              icon: 'folder-library',
+              instanceId: `album:${album.id}`,
+            });
+          });
+
+          // Children container — created up-front so toggling is just a class flip.
+          const childContainer = moEl('div', `mo-album-children${isExpanded || !hasChildren ? '' : ' mo-collapsed'}`);
+          childContainer.dataset.parentId = String(album.id);
+
+          chevron.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!hasChildren) return;
+            if (expandedSet.has(album.id)) {
+              expandedSet.delete(album.id);
+              chevron.classList.add('mo-collapsed');
+              childContainer.classList.add('mo-collapsed');
+            } else {
+              expandedSet.add(album.id);
+              chevron.classList.remove('mo-collapsed');
+              childContainer.classList.remove('mo-collapsed');
+            }
+            persistExpanded();
+          });
+
+          // F5: Drag-media-to-album drop target (existing behaviour preserved).
+          row.addEventListener('dragover', (e) => {
+            const types = e.dataTransfer.types;
+            if (types.includes('application/x-mo-items')) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+              row.classList.add('mo-drop-target');
+            } else if (types.includes('application/x-mo-album')) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              row.classList.add('mo-reparent-target');
+            }
+          });
+          row.addEventListener('dragleave', () => {
+            row.classList.remove('mo-drop-target');
+            row.classList.remove('mo-reparent-target');
+          });
+          row.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            row.classList.remove('mo-drop-target');
+            row.classList.remove('mo-reparent-target');
+            // Branch 1: media items dropped onto album
+            const mediaPayload = e.dataTransfer.getData('application/x-mo-items');
+            if (mediaPayload) {
+              try {
+                const keys = JSON.parse(mediaPayload);
+                const photoIds = [];
+                const videoIds = [];
+                for (const k of keys) {
+                  const [type, id] = k.split(':');
+                  if (type === 'photo') photoIds.push(parseInt(id, 10));
+                  else if (type === 'video') videoIds.push(parseInt(id, 10));
+                }
+                if (photoIds.length > 0) await AlbumQueries.updatePhotos(album.id, { mode: 'ADD', ids: photoIds });
+                if (videoIds.length > 0) await AlbumQueries.updateVideos(album.id, { mode: 'ADD', ids: videoIds });
+                api.statusBar.setMessage(`Added ${keys.length} item(s) to "${album.title || 'Album'}"`, 3000);
+                loadAlbums();
+              } catch (err) {
+                console.error('[MO] drag-to-album error:', err);
+              }
+              return;
+            }
+            // Branch 2: another album dropped onto this album (reparent)
+            const albumPayload = e.dataTransfer.getData('application/x-mo-album');
+            if (albumPayload) {
+              try {
+                const movedId = parseInt(albumPayload, 10);
+                if (!Number.isFinite(movedId) || movedId === album.id) return;
+                // Cycle guard: dropping a parent onto its own descendant must be rejected.
+                const wouldCycle = await AlbumQueries.isDescendantOf(album.id, movedId);
+                if (wouldCycle) {
+                  api.window.showWarningMessage('Cannot move an album into one of its descendants.');
+                  return;
+                }
+                await AlbumQueries.update(movedId, { parentAlbumId: album.id });
+                expandedSet.add(album.id);
+                persistExpanded();
+                loadAlbums();
+              } catch (err) {
+                console.error('[MO] reparent-album error:', err);
+              }
+            }
+          });
+
+          // Drag the album row itself to reparent into another album (or into root).
+          row.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('application/x-mo-album', String(album.id));
+            e.dataTransfer.effectAllowed = 'move';
+          });
+
+          // Right-click context menu: child / move-to-root / delete.
+          row.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            showContextMenu(e.clientX, e.clientY, [
+              { label: 'New Child Album\u2026', handler: async () => {
+                const name = await api.window.showInputBox({ prompt: `New child album under "${album.title}"`, placeHolder: 'Album name' });
+                if (!name || !name.trim()) return;
+                try {
+                  await AlbumQueries.create({ title: name.trim(), parentAlbumId: album.id });
+                  expandedSet.add(album.id);
+                  persistExpanded();
+                  loadAlbums();
+                } catch (err) {
+                  api.window.showErrorMessage('Failed to create child album: ' + err.message);
+                }
+              }},
+              { label: 'Move to Root', handler: async () => {
+                if (!album.parentAlbumId) return;
+                try {
+                  await AlbumQueries.update(album.id, { parentAlbumId: null });
+                  loadAlbums();
+                } catch (err) {
+                  api.window.showErrorMessage('Failed to move album: ' + err.message);
+                }
+              }},
+              { separator: true },
+              { label: 'Delete\u2026', danger: true, handler: async () => {
+                const childCount = (childrenOf.get(album.id) || []).length;
+                const msg = childCount > 0
+                  ? `Delete album "${album.title}"? Its ${childCount} child album(s) will be moved to the root.`
+                  : `Delete album "${album.title}"?`;
+                const confirmed = await api.window.showWarningMessage(msg, { modal: true }, 'Delete');
+                if (confirmed === 'Delete') {
+                  try {
+                    await AlbumQueries.destroy(album.id);
+                    loadAlbums();
+                  } catch (err) {
+                    api.window.showErrorMessage('Failed to delete album: ' + err.message);
+                  }
+                }
+              }},
+            ]);
+          });
+
+          container.appendChild(row);
+          container.appendChild(childContainer);
+          renderLevel(album.id, depth + 1, childContainer);
+        }
+      }
+
+      renderLevel(null, 0, albumBody);
+
+      // Allow dragging an album onto the section body itself (outside any row)
+      // to move it to root.
+      albumBody.addEventListener('dragover', (e) => {
+        if (e.dataTransfer.types.includes('application/x-mo-album') && e.target === albumBody) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        }
+      });
+      albumBody.addEventListener('drop', async (e) => {
+        if (e.target !== albumBody) return;
+        const albumPayload = e.dataTransfer.getData('application/x-mo-album');
+        if (!albumPayload) return;
+        e.preventDefault();
+        try {
+          const movedId = parseInt(albumPayload, 10);
+          if (!Number.isFinite(movedId)) return;
+          await AlbumQueries.update(movedId, { parentAlbumId: null });
+          loadAlbums();
+        } catch (err) {
+          console.error('[MO] drop-to-root error:', err);
+        }
+      });
     } catch {
       albumBody.appendChild(moEl('div', 'mo-empty', { textContent: 'Could not load albums' }));
     }
@@ -7686,10 +8489,10 @@ function renderGridBrowser(container, api, input) {
 
     const dataQuery = `
       SELECT * FROM (
-        SELECT 'photo' AS media_type, p.id, p.title, p.rating, p.created_at, p.taken_at, NULL AS duration${photoModTime}
+        SELECT 'photo' AS media_type, p.id, p.title, p.rating, p.color_label, p.created_at, p.taken_at, NULL AS duration${photoModTime}
         FROM mo_photos p${photoJoin}${pw}
         UNION ALL
-        SELECT 'video' AS media_type, v.id, v.title, v.rating, v.created_at, NULL AS taken_at, v.duration${videoModTime}
+        SELECT 'video' AS media_type, v.id, v.title, v.rating, v.color_label, v.created_at, NULL AS taken_at, v.duration${videoModTime}
         FROM mo_videos v${videoJoin}${vw}
       ) combined
       ORDER BY ${effectiveSort} ${safeDir}, COALESCE(title, '') COLLATE NOCASE ASC, id ASC
@@ -7783,11 +8586,11 @@ function renderGridBrowser(container, api, input) {
   function rowToMediaItem(row, type) {
     if (type === 'photo') {
       const p = PhotoQueries.fromRow(row);
-      return { type: 'photo', id: p.id, title: p.title, rating: p.rating, createdAt: p.createdAt, takenAt: p.takenAt, duration: null, thumbnailPath: null, thumbnailStatus: 'pending' };
+      return { type: 'photo', id: p.id, title: p.title, rating: p.rating, colorLabel: p.colorLabel, createdAt: p.createdAt, takenAt: p.takenAt, duration: null, thumbnailPath: null, thumbnailStatus: 'pending' };
     }
     if (type === 'video') {
       const v = VideoQueries.fromRow(row);
-      return { type: 'video', id: v.id, title: v.title, rating: v.rating, createdAt: v.createdAt, takenAt: null, duration: v.duration, thumbnailPath: null, thumbnailStatus: 'pending' };
+      return { type: 'video', id: v.id, title: v.title, rating: v.rating, colorLabel: v.colorLabel, createdAt: v.createdAt, takenAt: null, duration: v.duration, thumbnailPath: null, thumbnailStatus: 'pending' };
     }
     // UNION result row (media_type column present)
     return {
@@ -7795,6 +8598,7 @@ function renderGridBrowser(container, api, input) {
       id: row.id,
       title: row.title,
       rating: row.rating,
+      colorLabel: row.color_label || null,
       createdAt: row.created_at,
       takenAt: row.taken_at || null,
       duration: row.duration || null,
@@ -8182,6 +8986,49 @@ function renderGridBrowser(container, api, input) {
     refreshAfterStateChange();
   }
 
+  // M59 P9 / F12 — Set color label on selected/focused items.
+  // Pass null to clear the label. Mirrors rateItemsByKey's selection logic.
+  async function colorLabelItemsByKey(label) {
+    const targetKeys = state.selectedIds.size > 0
+      ? [...state.selectedIds]
+      : (state.focusedIndex !== null && state.items[state.focusedIndex]
+          ? [`${state.items[state.focusedIndex].type}:${state.items[state.focusedIndex].id}`]
+          : []);
+    if (targetKeys.length === 0) return;
+
+    const photoIds = [];
+    const videoIds = [];
+    for (const k of targetKeys) {
+      const [type, id] = k.split(':');
+      if (type === 'photo') photoIds.push(parseInt(id, 10));
+      else if (type === 'video') videoIds.push(parseInt(id, 10));
+    }
+
+    const txnOps = [];
+    for (const id of photoIds) {
+      txnOps.push({ type: 'run', sql: 'UPDATE mo_photos SET color_label = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', params: [label, id] });
+    }
+    for (const id of videoIds) {
+      txnOps.push({ type: 'run', sql: 'UPDATE mo_videos SET color_label = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', params: [label, id] });
+    }
+    if (txnOps.length > 0) {
+      await db.transaction(txnOps);
+    }
+
+    // Update local item data
+    for (const item of state.items) {
+      const k = `${item.type}:${item.id}`;
+      if (targetKeys.includes(k)) item.colorLabel = label;
+    }
+
+    if (_statusBarItem) {
+      const desc = label ? `${label} label` : 'cleared label';
+      _statusBarItem.text = `Set ${targetKeys.length} item${targetKeys.length > 1 ? 's' : ''} \u2192 ${desc}`;
+      _statusBarItem.show();
+    }
+    refreshAfterStateChange();
+  }
+
   // Keyboard shortcuts for grid — adapted from stash: useListSelect + KeyboardShortcuts.md
   function handleGridKeydown(e) {
     // Skip when focus is in input/textarea/select
@@ -8297,6 +9144,25 @@ function renderGridBrowser(container, api, input) {
       return;
     }
 
+    // M59 P9 / F12 — Number keys 6-9 set color labels (toggle off on repeat)
+    if (!inInput && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === '6' || e.key === '7' || e.key === '8' || e.key === '9')) {
+      e.preventDefault();
+      const labelMap = { '6': 'red', '7': 'yellow', '8': 'green', '9': 'blue' };
+      const want = labelMap[e.key];
+      // If every selected item already has this label, clear it instead.
+      const targetKeys = state.selectedIds.size > 0
+        ? [...state.selectedIds]
+        : (state.focusedIndex !== null && state.items[state.focusedIndex]
+            ? [`${state.items[state.focusedIndex].type}:${state.items[state.focusedIndex].id}`]
+            : []);
+      const allMatch = targetKeys.length > 0 && targetKeys.every(k => {
+        const item = state.items.find(it => `${it.type}:${it.id}` === k);
+        return item && item.colorLabel === want;
+      });
+      colorLabelItemsByKey(allMatch ? null : want);
+      return;
+    }
+
     // F8: Ctrl+Shift+E — open file location for focused item
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'E' && !inInput && state.focusedIndex !== null) {
       e.preventDefault();
@@ -8379,6 +9245,14 @@ function renderGridBrowser(container, api, input) {
         { label: '\u2605\u2605\u2605\u2605', handler: () => rateItemsByKey(4) },
         { label: '\u2605\u2605\u2605\u2605\u2605', handler: () => rateItemsByKey(5) },
       ]});
+      actions.push({ label: 'Color Label', submenu: [
+        { label: 'Clear', handler: () => colorLabelItemsByKey(null) },
+        { label: 'Red', handler: () => colorLabelItemsByKey('red') },
+        { label: 'Yellow', handler: () => colorLabelItemsByKey('yellow') },
+        { label: 'Green', handler: () => colorLabelItemsByKey('green') },
+        { label: 'Blue', handler: () => colorLabelItemsByKey('blue') },
+        { label: 'Purple', handler: () => colorLabelItemsByKey('purple') },
+      ]});
       actions.push({ label: 'Add to Album\u2026', handler: () => {
         const tmpState = { selectedIds: new Set([`${item.type}:${item.id}`]) };
         showAddToAlbumDialog(tmpState, api, () => loadPage());
@@ -8415,6 +9289,14 @@ function renderGridBrowser(container, api, input) {
         { label: '\u2605\u2605\u2605', handler: () => rateItemsByKey(3) },
         { label: '\u2605\u2605\u2605\u2605', handler: () => rateItemsByKey(4) },
         { label: '\u2605\u2605\u2605\u2605\u2605', handler: () => rateItemsByKey(5) },
+      ]});
+      actions.push({ label: 'Color Label', submenu: [
+        { label: 'Clear', handler: () => colorLabelItemsByKey(null) },
+        { label: 'Red', handler: () => colorLabelItemsByKey('red') },
+        { label: 'Yellow', handler: () => colorLabelItemsByKey('yellow') },
+        { label: 'Green', handler: () => colorLabelItemsByKey('green') },
+        { label: 'Blue', handler: () => colorLabelItemsByKey('blue') },
+        { label: 'Purple', handler: () => colorLabelItemsByKey('purple') },
       ]});
       actions.push({ label: 'Add to Album\u2026', handler: () => {
         showAddToAlbumDialog(state, api, () => { if (selectionBar) selectionBar.update(); loadPage(); });
@@ -9066,11 +9948,132 @@ function buildVideoPlayer(container, fullPath, ctx) {
     e.stopPropagation();
     const inT = inPoint != null ? inPoint : 0;
     const outT = outPoint != null ? outPoint : (video.duration || 0);
-    moOpenClipDialog(_api, fullPath, video.duration || 0, inT, outT);
+    void moOpenClipDialog(_api, fullPath, video.duration || 0, inT, outT);
   });
 
-  rail.append(captureBtn, coverBtn, trimBtn);
+  // M59 P10 / F16 — Filmstrip toggle. Rendered next to the existing rail
+  // buttons so the player chrome stays a single coherent surface.
+  const filmstripBtn = moEl('button', 'mo-player-rail-btn', { title: 'Toggle filmstrip' });
+  filmstripBtn.innerHTML = moIcon('gallery-thumbnails', 14);
+  filmstripBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setFilmstripVisible(!filmstripVisible, /* persist */ true);
+  });
+
+  rail.append(captureBtn, coverBtn, trimBtn, filmstripBtn);
   container.appendChild(rail);
+
+  // ── Filmstrip surface ──
+  // The filmstrip element lives inside the player so it inherits the
+  // chrome-hidden behaviour (auto-hide with the rest of the controls).
+  const filmstrip = moEl('div', 'mo-player-filmstrip mo-hidden');
+  container.appendChild(filmstrip);
+  let filmstripVisible = false;
+  let filmstripPopulated = false;
+  let filmstripGeneration = 0; // increments to abort in-flight generations
+
+  function setFilmstripVisible(visible, persist) {
+    filmstripVisible = visible;
+    filmstrip.classList.toggle('mo-hidden', !visible);
+    filmstripBtn.classList.toggle('mo-active', visible);
+    if (visible && !filmstripPopulated && (video.duration || 0) > 0) {
+      populateFilmstrip();
+    }
+    if (persist) {
+      moSetSetting('video_filmstrip_default', visible ? '1' : '0').catch(() => {});
+    }
+  }
+
+  /**
+   * Generate N evenly-spaced thumbnails by seeking a dedicated offscreen
+   * <video> and drawing each frame into a canvas. We use a separate element
+   * (not previewVid) because previewVid is owned by the hover-preview path
+   * and we don't want to fight it for seek state.
+   */
+  async function populateFilmstrip() {
+    if (filmstripPopulated) return;
+    filmstripPopulated = true;
+    const myGen = ++filmstripGeneration;
+    filmstrip.innerHTML = '';
+    const dur = video.duration || 0;
+    if (dur <= 0) { filmstripPopulated = false; return; }
+    // Roughly 1 thumb per ~12s, clamped to 6..24 thumbs total.
+    const n = Math.max(6, Math.min(24, Math.round(dur / 12)));
+
+    const fsVid = document.createElement('video');
+    fsVid.preload = 'metadata';
+    fsVid.muted = true;
+    fsVid.playsInline = true;
+    fsVid.src = video.src;
+
+    const thumbs = [];
+    for (let i = 0; i < n; i++) {
+      const t = (dur * (i + 0.5)) / n;
+      const thumb = moEl('div', 'mo-player-fs-thumb');
+      const cv = document.createElement('canvas');
+      cv.width = 192; cv.height = 108;
+      thumb.appendChild(cv);
+      const tLabel = moEl('span', 'mo-fs-time', { textContent: moTimeStr(t) });
+      thumb.appendChild(tLabel);
+      thumb.addEventListener('click', () => {
+        try { video.currentTime = t; } catch { /* ignore */ }
+      });
+      filmstrip.appendChild(thumb);
+      thumbs.push({ thumb, canvas: cv, t });
+    }
+
+    await new Promise((resolve) => {
+      const onMeta = () => { fsVid.removeEventListener('loadedmetadata', onMeta); resolve(); };
+      if (fsVid.readyState >= 1) resolve();
+      else fsVid.addEventListener('loadedmetadata', onMeta);
+    });
+    if (myGen !== filmstripGeneration) return; // aborted
+
+    for (const t of thumbs) {
+      if (myGen !== filmstripGeneration) return;
+      try {
+        await new Promise((resolve) => {
+          const onSeeked = () => { fsVid.removeEventListener('seeked', onSeeked); resolve(); };
+          fsVid.addEventListener('seeked', onSeeked);
+          try { fsVid.currentTime = t.t; } catch { resolve(); }
+        });
+        if (myGen !== filmstripGeneration) return;
+        const ctx2d = t.canvas.getContext('2d');
+        if (ctx2d) ctx2d.drawImage(fsVid, 0, 0, t.canvas.width, t.canvas.height);
+      } catch { /* skip this thumb on failure */ }
+    }
+    // Release the offscreen video.
+    try { fsVid.removeAttribute('src'); fsVid.load(); } catch { /* ignore */ }
+  }
+
+  // Update active highlight as playback progresses.
+  function updateFilmstripActive() {
+    if (!filmstripVisible || !filmstripPopulated) return;
+    const dur = video.duration || 0;
+    if (dur <= 0) return;
+    const children = filmstrip.children;
+    const n = children.length;
+    if (!n) return;
+    const idx = Math.min(n - 1, Math.floor((video.currentTime / dur) * n));
+    for (let i = 0; i < n; i++) {
+      children[i].classList.toggle('mo-active', i === idx);
+    }
+  }
+  video.addEventListener('timeupdate', updateFilmstripActive);
+
+  // Restore persisted toggle once metadata loads (so we know duration > 0).
+  (async () => {
+    try {
+      const pref = await moGetSetting('video_filmstrip_default', '0');
+      if (pref === '1') {
+        const tryShow = () => {
+          if ((video.duration || 0) > 0) setFilmstripVisible(true, /* persist */ false);
+          else video.addEventListener('loadedmetadata', () => setFilmstripVisible(true, false), { once: true });
+        };
+        tryShow();
+      }
+    } catch { /* ignore */ }
+  })();
 
   // ── State ──
   let inPoint = null;
@@ -9096,7 +10099,7 @@ function buildVideoPlayer(container, fullPath, ctx) {
 
   function setPlayingClass() {
     container.classList.toggle('mo-player-playing', !video.paused);
-    playBtn.innerHTML = moIcon(video.paused ? 'play' : 'debug-pause', 14);
+    playBtn.innerHTML = moIcon(video.paused ? 'play' : 'pause', 14);
   }
   video.addEventListener('play', setPlayingClass);
   video.addEventListener('pause', setPlayingClass);
@@ -10035,13 +11038,42 @@ async function loadAlbumContents(album, container, api) {
       return;
     }
 
+    // M59 P9 / F14 — Manual sort within album.
+    // Position is stored per-type (mo_albums_photos.position vs mo_albums_videos.position),
+    // so drag-to-reorder is constrained to same-type drops. Photos render before videos
+    // (preserved from prior behaviour); reordering inside each group is independent.
+    let dragSource = null; // { card, item, type }
+
+    async function persistOrderForType(type) {
+      const cards = Array.from(container.querySelectorAll(`.mo-album-mini-card[data-type="${type}"]`));
+      const ids = cards.map(c => parseInt(c.dataset.id, 10)).filter(Number.isFinite);
+      if (ids.length === 0) return;
+      const joinTable = type === 'photo' ? 'mo_albums_photos' : 'mo_albums_videos';
+      const idCol = type === 'photo' ? 'photo_id' : 'video_id';
+      const ops = ids.map((id, i) => ({
+        type: 'run',
+        sql: `UPDATE ${joinTable} SET position = ? WHERE album_id = ? AND ${idCol} = ?`,
+        params: [i, album.id, id],
+      }));
+      try { await db.transaction(ops); }
+      catch (err) { console.error('[MO-Album] reorder persist failed:', err); }
+    }
+
     for (const item of items) {
       const miniCard = moEl('div', 'mo-album-mini-card mo-card');
+      miniCard.dataset.type = item.type;
+      miniCard.dataset.id = String(item.id);
+      miniCard.setAttribute('draggable', 'true');
       const thumb = moEl('div', 'mo-card-thumb');
       const img = moEl('img');
       img.alt = item.title || '';
       img.loading = 'lazy';
       thumb.appendChild(img);
+
+      // Drag handle (visible on hover) — gives users an unambiguous grab target.
+      const dragHandle = moEl('span', 'mo-album-drag-handle', { title: 'Drag to reorder' });
+      dragHandle.innerHTML = moIcon('grip-vertical', 12);
+      thumb.appendChild(dragHandle);
 
       // Remove button
       const removeBtn = moEl('button', 'mo-toolbar-btn mo-album-remove-btn', { textContent: '×', title: 'Remove from album' });
@@ -10062,6 +11094,56 @@ async function loadAlbumContents(album, container, api) {
       const info = moEl('div', 'mo-card-info');
       info.appendChild(moEl('div', 'mo-card-title', { textContent: item.title || `${item.type} #${item.id}`, title: item.title || '' }));
       miniCard.appendChild(info);
+
+      // Drag-to-reorder wiring. Uses a custom MIME so external drags (e.g. from
+      // the main grid) don't accidentally trigger reorder logic.
+      miniCard.addEventListener('dragstart', (e) => {
+        dragSource = { card: miniCard, item, type: item.type };
+        miniCard.classList.add('mo-dragging');
+        try {
+          e.dataTransfer.setData('application/x-mo-album-reorder', `${item.type}:${item.id}`);
+          e.dataTransfer.effectAllowed = 'move';
+        } catch { /* ignore — some browsers throw on synthetic events */ }
+      });
+      miniCard.addEventListener('dragend', () => {
+        miniCard.classList.remove('mo-dragging');
+        for (const c of container.querySelectorAll('.mo-drop-before, .mo-drop-after')) {
+          c.classList.remove('mo-drop-before');
+          c.classList.remove('mo-drop-after');
+        }
+        dragSource = null;
+      });
+      miniCard.addEventListener('dragover', (e) => {
+        if (!dragSource || dragSource.type !== item.type || dragSource.card === miniCard) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const rect = miniCard.getBoundingClientRect();
+        const before = (e.clientX - rect.left) < rect.width / 2;
+        miniCard.classList.toggle('mo-drop-before', before);
+        miniCard.classList.toggle('mo-drop-after', !before);
+      });
+      miniCard.addEventListener('dragleave', () => {
+        miniCard.classList.remove('mo-drop-before');
+        miniCard.classList.remove('mo-drop-after');
+      });
+      miniCard.addEventListener('drop', async (e) => {
+        if (!dragSource || dragSource.type !== item.type || dragSource.card === miniCard) return;
+        e.preventDefault();
+        const rect = miniCard.getBoundingClientRect();
+        const before = (e.clientX - rect.left) < rect.width / 2;
+        miniCard.classList.remove('mo-drop-before');
+        miniCard.classList.remove('mo-drop-after');
+        // Re-insert the source card before/after the target in the DOM, then
+        // persist the new positions for that media type.
+        if (before) {
+          container.insertBefore(dragSource.card, miniCard);
+        } else if (miniCard.nextSibling) {
+          container.insertBefore(dragSource.card, miniCard.nextSibling);
+        } else {
+          container.appendChild(dragSource.card);
+        }
+        await persistOrderForType(item.type);
+      });
 
       miniCard.addEventListener('click', () => {
         api.editors.openEditor({
@@ -10161,9 +11243,10 @@ function openLightbox(items, startIndex, resolveFilePath) {
   const bar = moEl('div', 'mo-lightbox-bar');
   const titleEl = moEl('span', 'mo-lb-title');
   const ratingEl = moEl('span', 'mo-lb-rating');
+  const colorDotEl = moEl('span', 'mo-lb-color-label');
   const counterEl = moEl('span', 'mo-lb-counter');
   const zoomIndicator = moEl('span', 'mo-lb-zoom-indicator');
-  bar.append(titleEl, ratingEl, counterEl, zoomIndicator);
+  bar.append(titleEl, ratingEl, colorDotEl, counterEl, zoomIndicator);
 
   // Slideshow controls
   const playBtn = moEl('button', null, { textContent: '\u25B6 Slideshow' });
@@ -10336,6 +11419,11 @@ function openLightbox(items, startIndex, resolveFilePath) {
     const title = item.title || (item.filePath ? item.filePath.split(/[/\\]/).pop() : `${item.type} #${item.id}`);
     titleEl.textContent = title;
     ratingEl.textContent = item.rating > 0 ? '\u2605'.repeat(item.rating) : '';
+    if (item.colorLabel) {
+      colorDotEl.dataset.label = item.colorLabel;
+    } else {
+      delete colorDotEl.dataset.label;
+    }
     counterEl.textContent = `${idx + 1} of ${items.length}`;
 
     // Nav button visibility
@@ -10380,6 +11468,42 @@ function openLightbox(items, startIndex, resolveFilePath) {
     if (e.key === '+' || e.key === '=') { zoomBy(LB_ZOOM_STEP); e.preventDefault(); return; }
     if (e.key === '-' || e.key === '_') { zoomBy(-LB_ZOOM_STEP); e.preventDefault(); return; }
     if (e.key === '0' && !e.ctrlKey) { resetZoom(); e.preventDefault(); return; }
+    // M59 P9 / F12 — 1-5 set rating, 6-9 set/toggle color label on the current item
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key >= '1' && e.key <= '9') {
+      const item = items[currentIdx];
+      if (!item) return;
+      e.preventDefault();
+      const n = parseInt(e.key, 10);
+      if (n >= 1 && n <= 5) {
+        applyLightboxRating(item, n);
+      } else {
+        const labelMap = { 6: 'red', 7: 'yellow', 8: 'green', 9: 'blue' };
+        const want = labelMap[n];
+        applyLightboxColorLabel(item, item.colorLabel === want ? null : want);
+      }
+      return;
+    }
+  }
+
+  // Persist a rating change made from the lightbox; mutates the in-memory item too.
+  async function applyLightboxRating(item, rating) {
+    try {
+      const table = item.type === 'photo' ? 'mo_photos' : 'mo_videos';
+      await db.run(`UPDATE ${table} SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [rating, item.id]);
+      item.rating = rating;
+      ratingEl.textContent = rating > 0 ? '\u2605'.repeat(rating) : '';
+    } catch (err) { console.error('[mo] lightbox rating failed', err); }
+  }
+
+  // Persist a color label change made from the lightbox; mutates the in-memory item too.
+  async function applyLightboxColorLabel(item, label) {
+    try {
+      const table = item.type === 'photo' ? 'mo_photos' : 'mo_videos';
+      await db.run(`UPDATE ${table} SET color_label = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [label, item.id]);
+      item.colorLabel = label;
+      if (label) colorDotEl.dataset.label = label;
+      else delete colorDotEl.dataset.label;
+    } catch (err) { console.error('[mo] lightbox color label failed', err); }
   }
 
   document.addEventListener('keydown', onKey, true);
@@ -10396,6 +11520,287 @@ function openLightbox(items, startIndex, resolveFilePath) {
   };
 
   showItem(currentIdx);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 31C: COMPARE VIEW (M59 P10 / F15)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let _activeCompareView = null;
+
+function dismissCompareView() {
+  if (_activeCompareView) {
+    _activeCompareView.cleanup();
+    _activeCompareView.el.remove();
+    _activeCompareView = null;
+  }
+}
+
+/**
+ * Open a side-by-side compare modal for 2-4 media items.
+ *
+ * Each pane shows the resolved file (image or video) with shared zoom/pan.
+ * Sync mode (default ON) mirrors transforms across panes so users can scrub
+ * the same region of every image at once. Toggling sync OFF lets users
+ * inspect each pane independently.
+ *
+ * Adapted from the lightbox's zoom/pan model (transform: translate + scale).
+ */
+function openCompareView(items, resolveFilePath) {
+  dismissCompareView();
+  if (!items || items.length < 2) return;
+  // Cap at 4 panes — beyond that, individual panes get too small to be useful.
+  items = items.slice(0, 4);
+
+  const overlay = moEl('div', 'mo-compare');
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', 'Compare media');
+  overlay.tabIndex = -1;
+
+  // ── Top toolbar ──
+  const bar = moEl('div', 'mo-compare-bar');
+  const titleEl = moEl('span', null, { textContent: `Compare (${items.length})` });
+  bar.appendChild(titleEl);
+
+  bar.appendChild(moEl('span', 'mo-cmp-spacer'));
+
+  const zoomIndicator = moEl('span', 'mo-cmp-zoom-indicator', { textContent: '100%' });
+
+  const fitBtn = moEl('button', null, { textContent: 'Fit', title: 'Fit to pane' });
+  const oneToOneBtn = moEl('button', null, { textContent: '100%', title: 'Actual size' });
+  const zoomInBtn = moEl('button', null, { textContent: '+', title: 'Zoom in' });
+  const zoomOutBtn = moEl('button', null, { textContent: '−', title: 'Zoom out' });
+  const syncBtn = moEl('button', 'active', { textContent: 'Sync', title: 'Mirror zoom & pan across panes' });
+  const closeBtn = moEl('button', 'mo-compare-close', { textContent: '×', title: 'Close (Esc)' });
+
+  bar.append(fitBtn, oneToOneBtn, zoomOutBtn, zoomIndicator, zoomInBtn, syncBtn);
+  overlay.appendChild(bar);
+  overlay.appendChild(closeBtn);
+
+  // ── Pane grid ──
+  const grid = moEl('div', 'mo-compare-grid');
+  overlay.appendChild(grid);
+
+  let syncEnabled = true;
+  let activeIdx = 0; // pane that owns the next operation when sync is OFF
+  // Per-pane transform state: { zoom (1=100%, fit-relative), tx, ty }.
+  const ZOOM_MIN = 0.1;
+  const ZOOM_MAX = 16;
+  const ZOOM_STEP = 1.2;
+  const panes = [];
+  // Single window-level drag tracker shared across panes — avoids leaking N
+  // pairs of listeners and makes cleanup deterministic.
+  let dragging = null; // { pane, startX, startY, startTx, startTy }
+
+  function applyTransform(p) {
+    const m = p.media;
+    if (!m) return;
+    m.style.transform = `translate(${p.tx}px, ${p.ty}px) scale(${p.zoom})`;
+    if (p === panes[activeIdx]) {
+      zoomIndicator.textContent = `${Math.round(p.zoom * 100)}%`;
+    }
+  }
+
+  function setZoomAt(pane, newZoom, anchorX, anchorY) {
+    const p = pane;
+    const z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
+    if (z === p.zoom) return;
+    // Anchor zoom around (anchorX, anchorY) in canvas-local coordinates so
+    // the cursor stays over the same image pixel.
+    if (anchorX != null && anchorY != null) {
+      const canvasRect = p.canvas.getBoundingClientRect();
+      const cx = anchorX - canvasRect.left - canvasRect.width / 2;
+      const cy = anchorY - canvasRect.top - canvasRect.height / 2;
+      const ratio = z / p.zoom;
+      p.tx = cx - (cx - p.tx) * ratio;
+      p.ty = cy - (cy - p.ty) * ratio;
+    }
+    p.zoom = z;
+    applyTransform(p);
+  }
+
+  function syncFrom(srcPane) {
+    if (!syncEnabled) return;
+    for (const p of panes) {
+      if (p === srcPane) continue;
+      p.zoom = srcPane.zoom;
+      p.tx = srcPane.tx;
+      p.ty = srcPane.ty;
+      applyTransform(p);
+    }
+  }
+
+  function resetPane(p) {
+    p.zoom = 1;
+    p.tx = 0;
+    p.ty = 0;
+    applyTransform(p);
+  }
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const pane = moEl('div', 'mo-compare-pane');
+    if (i === 0) pane.classList.add('mo-cmp-active');
+    const canvas = moEl('div', 'mo-cmp-canvas');
+    pane.appendChild(canvas);
+
+    // Build media element up front; src is set after path resolution.
+    const isVideo = item.type === 'video';
+    const media = isVideo ? moEl('video') : moEl('img');
+    if (isVideo) {
+      media.controls = true;
+      media.preload = 'metadata';
+    } else {
+      media.alt = item.title || '';
+    }
+    canvas.appendChild(media);
+
+    const info = moEl('div', 'mo-cmp-info');
+    const titleSpan = moEl('span', 'mo-cmp-title', { textContent: item.title || `${item.type} #${item.id}`, title: item.title || '' });
+    const dimsSpan = moEl('span', 'mo-cmp-dims');
+    if (item.width && item.height) dimsSpan.textContent = `${item.width}×${item.height}`;
+    const ratingSpan = moEl('span', 'mo-cmp-rating');
+    if (typeof item.rating === 'number' && item.rating > 0) {
+      ratingSpan.textContent = '★'.repeat(item.rating);
+    }
+    info.append(titleSpan, dimsSpan, ratingSpan);
+    pane.appendChild(info);
+
+    grid.appendChild(pane);
+
+    const p = { item, pane, canvas, media, zoom: 1, tx: 0, ty: 0, idx: i };
+    panes.push(p);
+
+    // Mark pane active on click — drives the zoom indicator when sync is OFF.
+    pane.addEventListener('mousedown', () => {
+      activeIdx = i;
+      for (const q of panes) q.pane.classList.toggle('mo-cmp-active', q === p);
+      applyTransform(p);
+    });
+
+    // Wheel = zoom (anchored on cursor).
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+      setZoomAt(p, p.zoom * factor, e.clientX, e.clientY);
+      syncFrom(p);
+    }, { passive: false });
+
+    // Drag-to-pan. Skip when the click target is the video element so its
+    // native controls keep working.
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.target instanceof HTMLVideoElement) return;
+      if (e.button !== 0) return;
+      dragging = { pane: p, startX: e.clientX, startY: e.clientY, startTx: p.tx, startTy: p.ty };
+      e.preventDefault();
+    });
+
+    // Resolve and assign the file URL.
+    (async () => {
+      try {
+        const fp = await resolveFilePath(item);
+        if (!fp) return;
+        const url = await localFileToUrl(fp);
+        if (url) media.src = url;
+      } catch (err) { console.warn('[MO-Compare] resolve failed', err); }
+    })();
+  }
+
+  // ── Toolbar wiring ──
+  fitBtn.addEventListener('click', () => {
+    for (const p of panes) resetPane(p);
+    activeIdx = 0;
+    applyTransform(panes[0]);
+  });
+  oneToOneBtn.addEventListener('click', () => {
+    // 100% means: render the media at its natural size, anchored center.
+    for (const p of panes) {
+      const m = p.media;
+      const natW = (m instanceof HTMLImageElement) ? m.naturalWidth : (m instanceof HTMLVideoElement ? m.videoWidth : 0);
+      if (!natW) { resetPane(p); continue; }
+      const rect = p.canvas.getBoundingClientRect();
+      // The media is fitted inside the canvas via object-fit: contain. To
+      // jump to natural pixels, scale = natW / displayed-width.
+      // displayed-width = min(natW, rect.width). Solve scale so final pixel
+      // size equals natW: scale = natW / displayed-width.
+      const displayedW = Math.min(natW, rect.width);
+      p.zoom = displayedW > 0 ? (natW / displayedW) : 1;
+      p.tx = 0;
+      p.ty = 0;
+      applyTransform(p);
+    }
+  });
+  zoomInBtn.addEventListener('click', () => {
+    const p = panes[activeIdx];
+    setZoomAt(p, p.zoom * ZOOM_STEP, null, null);
+    syncFrom(p);
+  });
+  zoomOutBtn.addEventListener('click', () => {
+    const p = panes[activeIdx];
+    setZoomAt(p, p.zoom / ZOOM_STEP, null, null);
+    syncFrom(p);
+  });
+  syncBtn.addEventListener('click', () => {
+    syncEnabled = !syncEnabled;
+    syncBtn.classList.toggle('active', syncEnabled);
+    if (syncEnabled) syncFrom(panes[activeIdx]);
+  });
+  closeBtn.addEventListener('click', () => dismissCompareView());
+
+  // Keyboard shortcuts — keep parity with lightbox where it makes sense.
+  function onKey(e) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      dismissCompareView();
+    } else if (e.key === '+' || e.key === '=') {
+      e.preventDefault();
+      const p = panes[activeIdx];
+      setZoomAt(p, p.zoom * ZOOM_STEP, null, null);
+      syncFrom(p);
+    } else if (e.key === '-' || e.key === '_') {
+      e.preventDefault();
+      const p = panes[activeIdx];
+      setZoomAt(p, p.zoom / ZOOM_STEP, null, null);
+      syncFrom(p);
+    } else if (e.key === '0') {
+      e.preventDefault();
+      for (const p of panes) resetPane(p);
+    }
+  }
+  document.addEventListener('keydown', onKey);
+
+  function onMouseMove(e) {
+    if (!dragging) return;
+    const p = dragging.pane;
+    p.tx = dragging.startTx + (e.clientX - dragging.startX);
+    p.ty = dragging.startTy + (e.clientY - dragging.startY);
+    applyTransform(p);
+    syncFrom(p);
+  }
+  function onMouseUp() { dragging = null; }
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', onMouseUp);
+
+  document.body.appendChild(overlay);
+  overlay.focus();
+
+  _activeCompareView = {
+    el: overlay,
+    cleanup: () => {
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      // Stop any playing videos to release decoders.
+      for (const p of panes) {
+        if (p.media instanceof HTMLVideoElement) {
+          try { p.media.pause(); p.media.removeAttribute('src'); p.media.load(); } catch { /* ignore */ }
+        } else if (p.media instanceof HTMLImageElement) {
+          try { p.media.removeAttribute('src'); } catch { /* ignore */ }
+        }
+      }
+    },
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -10608,6 +12013,32 @@ function buildSelectionToolbar(container, state, api, refreshFn) {
   });
   bar.appendChild(addToAlbumBtn);
 
+  // M59 P10 / F15 — Compare button (visible when 2-4 items are selected)
+  const compareBtn = moEl('button', null, { textContent: 'Compare' });
+  compareBtn.addEventListener('click', () => {
+    const keys = Array.from(state.selectedIds);
+    if (keys.length < 2 || keys.length > 4) return;
+    const items = keys
+      .map(k => state.items.find(it => `${it.type}:${it.id}` === k))
+      .filter(Boolean);
+    if (items.length < 2) return;
+    openCompareView(items, async (it) => {
+      // Re-resolve via the same primary-file lookup the lightbox uses.
+      try {
+        const type = it.type;
+        const primary = type === 'photo'
+          ? await db.get(`SELECT f.basename, fo.path AS folder_path FROM mo_photos_files pf JOIN mo_files f ON f.id = pf.file_id JOIN mo_folders fo ON fo.id = f.folder_id WHERE pf.photo_id = ? AND pf.is_primary = 1`, [it.id])
+          : await db.get(`SELECT f.basename, fo.path AS folder_path FROM mo_videos_files vf JOIN mo_files f ON f.id = vf.file_id JOIN mo_folders fo ON fo.id = f.folder_id WHERE vf.video_id = ? AND vf.is_primary = 1`, [it.id]);
+        if (primary) {
+          const sep = primary.folder_path.includes('\\') ? '\\' : '/';
+          return primary.folder_path.replace(/[\\/]+$/, '') + sep + primary.basename;
+        }
+      } catch { /* ignore */ }
+      return null;
+    });
+  });
+  bar.appendChild(compareBtn);
+
   // F9: Export button
   const exportBtn = moEl('button', null, { textContent: 'Export...' });
   exportBtn.addEventListener('click', () => {
@@ -10626,6 +12057,10 @@ function buildSelectionToolbar(container, state, api, refreshFn) {
     const count = state.selectedIds.size;
     countEl.textContent = `${count} selected`;
     bar.style.display = count > 0 ? 'flex' : 'none';
+    // Compare requires 2-4 items; disable outside that window so the button
+    // never silently no-ops on click.
+    compareBtn.disabled = count < 2 || count > 4;
+    compareBtn.title = compareBtn.disabled ? 'Select 2 to 4 items to compare' : 'Compare selected items side by side';
   }
 
   updateBar();
@@ -10880,8 +12315,18 @@ function showBulkDeleteDialog(state, api, onComplete) {
   const count = state.selectedIds.size;
   dialog.appendChild(moEl('h3', null, { textContent: `Delete ${count} item${count !== 1 ? 's' : ''}?` }));
   dialog.appendChild(moEl('p', 'mo-bulk-dialog-warn', {
-    textContent: 'This will remove the selected items from the Media Organizer database. Original files on disk will NOT be deleted.',
+    textContent: 'This permanently removes the selected items and all of their metadata (tags, ratings, custom fields, album links).',
   }));
+
+  // Permanent + irreversible — also delete the source files from disk by
+  // default. Users can opt out to keep files on disk while still purging the DB.
+  const optsRow = moEl('label', 'mo-bulk-dialog-opt');
+  const fileCheckbox = moEl('input');
+  fileCheckbox.type = 'checkbox';
+  fileCheckbox.checked = true;
+  optsRow.appendChild(fileCheckbox);
+  optsRow.appendChild(moEl('span', null, { textContent: ' Also delete source files (home-drive files → recycle bin; external/removable-drive files are permanently deleted in place)' }));
+  dialog.appendChild(optsRow);
 
   const footer = moEl('div', 'mo-bulk-dialog-footer');
   const cancelBtn = moEl('button', null, { textContent: 'Cancel' });
@@ -10892,12 +12337,18 @@ function showBulkDeleteDialog(state, api, onComplete) {
     cancelBtn.disabled = true;
     confirmBtn.textContent = 'Deleting…';
     const { photos, videos } = parseSelectedIds(state.selectedIds);
+    const items = [
+      ...photos.map((id) => ({ type: 'photo', id })),
+      ...videos.map((id) => ({ type: 'video', id })),
+    ];
     try {
-      for (const id of photos) await PhotoQueries.destroy(id);
-      for (const id of videos) await VideoQueries.destroy(id);
+      const result = await moPurgeMedia(api, items, { deleteFiles: !!fileCheckbox.checked });
       state.selectedIds.clear();
       state.selecting = false;
-      api.window.showInformationMessage(`${photos.length + videos.length} item(s) deleted.`);
+      const fileMsg = fileCheckbox.checked
+        ? ` (${result.filesTrashed} file${result.filesTrashed === 1 ? '' : 's'} removed${result.filesPermanent ? `, ${result.filesPermanent} on external drive permanently deleted` : ''}${result.filesFailed ? `, ${result.filesFailed} failed` : ''})`
+        : '';
+      api.window.showInformationMessage(`${result.purged} item${result.purged === 1 ? '' : 's'} deleted${fileMsg}.`);
       overlay.remove();
       onComplete();
     } catch (err) {
@@ -10921,49 +12372,364 @@ function showBulkDeleteDialog(state, api, onComplete) {
 // SECTION 10.5: M59 PHASE 1 — CLIP/GIF EXPORT, FRAME CAPTURE, WEBP CONVERSION
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ─── Frame capture: extract still from video, save next to source, link to video ──
+// ─── Frame capture dialog: preview + crop + save-as ──
+// Opens a modal preview of the frame at the given timestamp with a draggable
+// crop rectangle and a Save button that opens the native save dialog. Mirrors
+// the clip/gif export UX so cropping a still feels identical to cropping a
+// clip.
 async function moCaptureFrame(api, videoPath, timestampSec, ctx) {
+  if (!_toolPaths.ffmpeg) {
+    try { await detectAllTools(); } catch { /* ignore */ }
+  }
   if (!_toolPaths.ffmpeg) {
     api.window.showErrorMessage('ffmpeg not available — cannot capture frames.');
     return;
   }
-  if (!ctx || !ctx.entity || !ctx.entity.id) {
-    api.window.showErrorMessage('Cannot capture frame — video context missing.');
-    return;
-  }
-  const sep = _isWindows ? '\\' : '/';
-  const lastSep = videoPath.lastIndexOf(sep);
-  const dir = videoPath.slice(0, lastSep);
-  const base = videoPath.slice(lastSep + 1).replace(/\.[^.]+$/, '');
-  const ts = moTimeStr(timestampSec, true).replace(/[:.]/g, '-');
-  const outPath = `${dir}${sep}${base}_frame_${ts}.jpg`;
+  moOpenFrameDialog(api, videoPath, timestampSec, ctx);
+}
 
-  const cmd = [
+function moOpenFrameDialog(api, videoPath, timestampSec, _ctx) {
+  const overlay = moEl('div', 'mo-modal-overlay');
+  const dialog = moEl('div', 'mo-modal mo-clip-dialog mo-frame-dialog');
+  overlay.appendChild(dialog);
+
+  const header = moEl('div', 'mo-modal-header');
+  header.appendChild(moEl('div', 'mo-modal-title', { textContent: 'Capture Frame' }));
+  const closeBtn = moEl('button', 'mo-modal-close', { textContent: '×' });
+  closeBtn.addEventListener('click', () => overlay.remove());
+  header.appendChild(closeBtn);
+  dialog.appendChild(header);
+
+  // ── State ──
+  let cropEnabled = false;
+  let cropNorm = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
+
+  // Preview <video> seeked to the requested timestamp. Identical setup to the
+  // clip dialog so the crop overlay math reuses videoWidth/videoHeight.
+  const preview = document.createElement('video');
+  preview.className = 'mo-clip-preview';
+  preview.muted = true;
+  preview.controls = false;
+  preview.preload = 'auto';
+  localFileToUrl(videoPath).then((u) => { if (u) preview.src = u; });
+  preview.addEventListener('loadedmetadata', () => {
+    try { preview.currentTime = Math.max(0, timestampSec || 0); } catch { /* ignore */ }
+  });
+
+  const body = moEl('div', 'mo-clip-body');
+  dialog.appendChild(body);
+  const grid = moEl('div', 'mo-clip-grid');
+  body.appendChild(grid);
+
+  // LEFT: stage with preview + crop overlay ─────────────────────────────────
+  const stageWrap = moEl('div');
+  stageWrap.style.display = 'flex';
+  stageWrap.style.flexDirection = 'column';
+  stageWrap.style.gap = '8px';
+  stageWrap.style.minWidth = '0';
+
+  const stage = moEl('div', 'mo-clip-stage');
+  stage.appendChild(preview);
+
+  const cropOverlay = moEl('div', 'mo-crop-overlay');
+  const cropShade = moEl('div', 'mo-crop-shade');
+  const cropRect = moEl('div', 'mo-crop-rect');
+  const HANDLE_DIRS = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+  const cropHandles = {};
+  for (const d of HANDLE_DIRS) {
+    const h = moEl('div', 'mo-crop-handle mo-crop-h-' + d);
+    cropRect.appendChild(h);
+    cropHandles[d] = h;
+  }
+  cropOverlay.appendChild(cropShade);
+  cropOverlay.appendChild(cropRect);
+  cropOverlay.style.display = 'none';
+  stage.appendChild(cropOverlay);
+
+  stage.appendChild(moEl('div', 'mo-clip-stage-hint', {
+    textContent: `Frame at ${moTimeStr(timestampSec || 0, true)}`,
+  }));
+  stageWrap.appendChild(stage);
+  grid.appendChild(stageWrap);
+
+  // RIGHT: controls ─────────────────────────────────────────────────────────
+  const controls = moEl('div', 'mo-clip-controls');
+  grid.appendChild(controls);
+  const lbl = (t) => moEl('label', 'mo-clip-label', { textContent: t });
+
+  // Format
+  const fmtRow = moEl('div', 'mo-clip-row');
+  fmtRow.appendChild(lbl('Format'));
+  const fmtSel = document.createElement('select');
+  fmtSel.className = 'mo-clip-input';
+  for (const f of [['jpg', 'JPEG'], ['png', 'PNG'], ['webp', 'WebP']]) {
+    const o = document.createElement('option');
+    o.value = f[0]; o.textContent = f[1];
+    if (f[0] === 'jpg') o.selected = true;
+    fmtSel.appendChild(o);
+  }
+  fmtRow.appendChild(fmtSel);
+  controls.appendChild(fmtRow);
+
+  // Quality (jpg/webp only)
+  const qRow = moEl('div', 'mo-clip-row');
+  qRow.appendChild(lbl('Quality'));
+  const qInput = document.createElement('input');
+  qInput.type = 'number'; qInput.min = '1'; qInput.max = '100'; qInput.value = '92'; qInput.step = '1';
+  qInput.className = 'mo-clip-input';
+  qRow.appendChild(qInput);
+  controls.appendChild(qRow);
+
+  // Scale
+  const sizeRow = moEl('div', 'mo-clip-row');
+  sizeRow.appendChild(lbl('Scale (%)'));
+  const sizeInput = document.createElement('input');
+  sizeInput.type = 'number'; sizeInput.min = '10'; sizeInput.max = '200'; sizeInput.value = '100'; sizeInput.step = '5';
+  sizeInput.className = 'mo-clip-input';
+  sizeRow.appendChild(sizeInput);
+  controls.appendChild(sizeRow);
+
+  // Crop toggle
+  const cropRow = moEl('div', 'mo-clip-row');
+  const cropChk = document.createElement('input');
+  cropChk.type = 'checkbox'; cropChk.id = 'mo-frame-crop'; cropChk.className = 'mo-clip-check';
+  cropRow.appendChild(cropChk);
+  const cropLabel = lbl('Crop region'); cropLabel.htmlFor = 'mo-frame-crop';
+  cropRow.appendChild(cropLabel);
+  const cropResetBtn = moEl('button', 'mo-mark-btn', { textContent: 'Reset', title: 'Reset crop to full frame' });
+  cropResetBtn.style.marginLeft = 'auto';
+  cropResetBtn.style.display = 'none';
+  cropRow.appendChild(cropResetBtn);
+  controls.appendChild(cropRow);
+
+  // Status (lives in footer, declared here so closures can reach it)
+  const status = moEl('div', 'mo-clip-status', { textContent: '' });
+
+  // Format toggles quality enable state
+  function syncFmt() {
+    const fmt = fmtSel.value;
+    qInput.disabled = (fmt === 'png');
+    qRow.style.opacity = qInput.disabled ? '0.5' : '';
+  }
+  fmtSel.addEventListener('change', syncFmt);
+  syncFmt();
+
+  // ── Crop overlay (mirrors clip dialog) ──
+  function getVideoDisplayRect() {
+    const stageR = stage.getBoundingClientRect();
+    const vw = preview.videoWidth || 16;
+    const vh = preview.videoHeight || 9;
+    const sw = stageR.width, sh = stageR.height;
+    const videoAR = vw / vh, stageAR = sw / sh;
+    let dw, dh;
+    if (videoAR > stageAR) { dw = sw; dh = sw / videoAR; }
+    else { dh = sh; dw = sh * videoAR; }
+    return { dx: (sw - dw) / 2, dy: (sh - dh) / 2, dw, dh };
+  }
+  function applyCropRect() {
+    if (!cropEnabled) { cropOverlay.style.display = 'none'; return; }
+    cropOverlay.style.display = '';
+    const r = getVideoDisplayRect();
+    cropRect.style.left = (r.dx + cropNorm.x * r.dw) + 'px';
+    cropRect.style.top = (r.dy + cropNorm.y * r.dh) + 'px';
+    cropRect.style.width = (cropNorm.w * r.dw) + 'px';
+    cropRect.style.height = (cropNorm.h * r.dh) + 'px';
+  }
+  cropChk.addEventListener('change', () => {
+    cropEnabled = cropChk.checked;
+    cropOverlay.classList.toggle('mo-crop-active', cropEnabled);
+    cropResetBtn.style.display = cropEnabled ? '' : 'none';
+    applyCropRect();
+  });
+  cropResetBtn.addEventListener('click', () => {
+    cropNorm = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
+    applyCropRect();
+  });
+  preview.addEventListener('loadedmetadata', applyCropRect);
+  const cropResizeObs = new ResizeObserver(applyCropRect);
+  cropResizeObs.observe(stage);
+
+  cropRect.addEventListener('mousedown', (e) => {
+    if (e.target !== cropRect) return;
+    e.preventDefault(); e.stopPropagation();
+    const r0 = getVideoDisplayRect();
+    const sx = e.clientX, sy = e.clientY;
+    const start = { ...cropNorm };
+    const move = (ev) => {
+      const dxN = (ev.clientX - sx) / r0.dw;
+      const dyN = (ev.clientY - sy) / r0.dh;
+      cropNorm.x = Math.max(0, Math.min(1 - start.w, start.x + dxN));
+      cropNorm.y = Math.max(0, Math.min(1 - start.h, start.y + dyN));
+      applyCropRect();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  });
+  function bindCropHandle(dir) {
+    const handleEl = cropHandles[dir];
+    handleEl.addEventListener('mousedown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const r0 = getVideoDisplayRect();
+      const sx = e.clientX, sy = e.clientY;
+      const start = { ...cropNorm };
+      const minN = 0.02;
+      const move = (ev) => {
+        const dxN = (ev.clientX - sx) / r0.dw;
+        const dyN = (ev.clientY - sy) / r0.dh;
+        let { x, y, w, h: hh } = start;
+        if (dir.includes('e')) w = Math.max(minN, Math.min(1 - x, start.w + dxN));
+        if (dir.includes('s')) hh = Math.max(minN, Math.min(1 - y, start.h + dyN));
+        if (dir.includes('w')) {
+          const nx = Math.max(0, Math.min(start.x + start.w - minN, start.x + dxN));
+          w = start.w + (start.x - nx);
+          x = nx;
+        }
+        if (dir.includes('n')) {
+          const ny = Math.max(0, Math.min(start.y + start.h - minN, start.y + dyN));
+          hh = start.h + (start.y - ny);
+          y = ny;
+        }
+        cropNorm = { x, y, w, h: hh };
+        applyCropRect();
+      };
+      const up = () => {
+        window.removeEventListener('mousemove', move);
+        window.removeEventListener('mouseup', up);
+      };
+      window.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', up);
+    });
+  }
+  HANDLE_DIRS.forEach(bindCropHandle);
+
+  // ── Footer ──
+  const footer = moEl('div', 'mo-modal-footer');
+  const cancelBtn = moEl('button', 'mo-btn-secondary', { textContent: 'Cancel' });
+  const saveBtn = moEl('button', 'mo-btn-primary', { textContent: 'Save…' });
+  footer.append(status, cancelBtn, saveBtn);
+  dialog.appendChild(footer);
+
+  cancelBtn.addEventListener('click', () => {
+    cropResizeObs.disconnect();
+    overlay.remove();
+  });
+
+  saveBtn.addEventListener('click', async () => {
+    const sep = _isWindows ? '\\' : '/';
+    const lastSep = videoPath.lastIndexOf(sep);
+    const srcDir = videoPath.slice(0, lastSep);
+    const srcBase = videoPath.slice(lastSep + 1).replace(/\.[^.]+$/, '');
+    const ts = moTimeStr(timestampSec || 0, true).replace(/[:.]/g, '-');
+    const ext = fmtSel.value;
+    const filterMap = {
+      jpg:  [{ name: 'JPEG', extensions: ['jpg', 'jpeg'] }],
+      png:  [{ name: 'PNG',  extensions: ['png'] }],
+      webp: [{ name: 'WebP', extensions: ['webp'] }],
+    };
+    const chosen = await window.parallxElectron.dialog.saveFile({
+      defaultPath: srcDir + sep + `${srcBase}_frame_${ts}.${ext}`,
+      filters: filterMap[ext] || [],
+    });
+    if (!chosen) return;
+
+    saveBtn.disabled = true; cancelBtn.disabled = true;
+    status.textContent = 'Saving…';
+
+    try {
+      await _moExtractFrame(api, {
+        videoPath,
+        timestampSec: timestampSec || 0,
+        outPath: chosen,
+        format: ext,
+        quality: Math.max(1, Math.min(100, parseInt(qInput.value, 10) || 92)),
+        scalePct: Math.max(10, Math.min(200, parseInt(sizeInput.value, 10) || 100)),
+        crop: cropEnabled ? { ...cropNorm } : null,
+      });
+      api.window.showInformationMessage('Frame saved: ' + chosen.split(sep).pop());
+      cropResizeObs.disconnect();
+      overlay.remove();
+    } catch (err) {
+      saveBtn.disabled = false; cancelBtn.disabled = false;
+      status.textContent = '';
+      api.window.showErrorMessage('Frame save failed: ' + (err && err.message || err));
+    }
+  });
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      cropResizeObs.disconnect();
+      overlay.remove();
+    }
+  });
+  document.body.appendChild(overlay);
+}
+
+// Single-frame extractor used by the capture dialog. ffmpeg seeks to the
+// requested timestamp, applies optional crop + scale, and writes one image.
+async function _moExtractFrame(api, opts) {
+  const filters = [];
+  if (opts.crop && opts.crop.w > 0 && opts.crop.h > 0) {
+    const cx = Math.max(0, Math.min(1, opts.crop.x)).toFixed(4);
+    const cy = Math.max(0, Math.min(1, opts.crop.y)).toFixed(4);
+    const cw = Math.max(0.01, Math.min(1, opts.crop.w)).toFixed(4);
+    const ch = Math.max(0.01, Math.min(1, opts.crop.h)).toFixed(4);
+    filters.push(`crop=trunc(iw*${cw}):trunc(ih*${ch}):trunc(iw*${cx}):trunc(ih*${cy})`);
+  }
+  if (opts.scalePct && opts.scalePct !== 100) {
+    const s = (opts.scalePct / 100).toFixed(3);
+    filters.push(`scale=trunc(iw*${s}):trunc(ih*${s})`);
+  }
+
+  // Format-specific encoder args. Quality maps as follows:
+  //   jpg : ffmpeg -q:v 2..31 (lower = better) — invert the user's 1..100.
+  //   webp: ffmpeg -quality 0..100 (higher = better) — pass through.
+  //   png : lossless, quality is ignored.
+  const encArgs = [];
+  if (opts.format === 'jpg') {
+    const q = Math.max(1, Math.min(100, opts.quality));
+    const ffq = Math.max(2, Math.round(31 - (q - 1) * (29 / 99)));
+    encArgs.push('-q:v', String(ffq));
+  } else if (opts.format === 'webp') {
+    encArgs.push('-quality', String(Math.max(1, Math.min(100, opts.quality))));
+  }
+
+  const parts = [
     shellInvoke(_toolPaths.ffmpeg),
     '-hide_banner', '-loglevel', 'error', '-y',
-    '-ss', String(timestampSec),
-    '-i', shellQuote(videoPath),
+    '-ss', String(opts.timestampSec),
+    '-i', shellQuote(opts.videoPath),
     '-frames:v', '1',
-    '-q:v', '2',
-    shellQuote(outPath),
-  ].join(' ');
-  try {
-    const r = await window.parallxElectron.terminal.exec(cmd, { timeout: 30000 });
-    if (r.exitCode !== 0) {
-      api.window.showErrorMessage('Frame capture failed: ' + (r.stderr || 'ffmpeg error'));
-      return;
-    }
-    api.window.showInformationMessage('Frame captured: ' + outPath.split(sep).pop());
-    // Trigger a delta-scan of the folder so the new frame becomes a Photo entry.
-    // The mo_video_frames link will be populated by the watcher in a follow-up
-    // (Phase 1 keeps it simple — the user's filesystem now has the frame).
-  } catch (err) {
-    api.window.showErrorMessage('Frame capture error: ' + (err && err.message || err));
+  ];
+  if (filters.length) {
+    parts.push('-vf', shellQuote(filters.join(',')));
+  }
+  parts.push(...encArgs, shellQuote(opts.outPath));
+
+  const r = await window.parallxElectron.terminal.exec(parts.join(' '), { timeout: 30000 });
+  if (r.exitCode !== 0) {
+    throw new Error((r.stderr || 'ffmpeg error').toString().split(/\r?\n/).filter(Boolean).pop());
   }
 }
 
 // ─── Clip / GIF export dialog ──────────────────────────────────────────────────
-function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
+// Per-video clip-queue cache. Lives only for the lifetime of the renderer
+// process — cleared whenever Parallx relaunches or this script reloads.
+// Keyed by absolute video path; value is the same array referenced by the
+// dialog's local `clipQueue`, so mutations are auto-persisted without an
+// explicit save step. Cleared per-entry after a successful batch export.
+const _moClipQueueByVideo = new Map();
+
+async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
+  // Tool detection only runs during a scan, so a fresh session that opens
+  // an already-indexed video and clicks "trim" would see _toolPaths.ffmpeg
+  // as null even though ffmpeg is on PATH. Detect on demand.
+  if (!_toolPaths.ffmpeg) {
+    try { await detectAllTools(); } catch { /* ignore — fall through to error */ }
+  }
   if (!_toolPaths.ffmpeg) {
     api.window.showErrorMessage('ffmpeg not available — cannot export clips.');
     return;
@@ -10993,10 +12759,15 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
   // Crop in normalized [0..1] coords relative to the actual video frame
   let cropNorm = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
 
-  // Preview video (lives inside the stage)
+  // Preview video (lives inside the stage). Audio plays during preview
+  // regardless of export format — the user can audition the soundtrack
+  // even when exporting to GIF. The "Mute audio" checkbox below mirrors
+  // the export-time strip-audio decision; it also mutes the preview so
+  // the toggle is honest.
   const preview = document.createElement('video');
   preview.className = 'mo-clip-preview';
-  preview.muted = true;
+  preview.muted = false;
+  preview.volume = 1;
   preview.loop = false;
   preview.controls = false;
   localFileToUrl(videoPath).then(u => { if (u) preview.src = u; });
@@ -11167,6 +12938,77 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
   cropRow.appendChild(cropResetBtn);
   controls.appendChild(cropRow);
 
+  // Aspect-ratio presets \u2014 active only when crop is enabled. Centers the crop
+  // rect on the source frame and sizes it to the target ratio while staying
+  // inside [0..1]. "Free" releases the constraint (any-shape drag).
+  const aspectRow = moEl('div', 'mo-clip-aspect-row');
+  /** @type {Array<{label:string, ratio:number|null}>} */
+  const aspects = [
+    { label: 'Free',   ratio: null },
+    { label: '1:1',    ratio: 1 },
+    { label: '9:16',   ratio: 9 / 16 },
+    { label: '16:9',   ratio: 16 / 9 },
+    { label: '4:5',    ratio: 4 / 5 },
+    { label: '4:3',    ratio: 4 / 3 },
+  ];
+  /** @type {{label:string, ratio:number|null}} */
+  let activeAspect = aspects[0];
+  const aspectBtns = aspects.map(a => {
+    const b = moEl('button', 'mo-clip-aspect-btn', { textContent: a.label, title: a.ratio == null ? 'Free crop \u2014 no aspect-ratio constraint' : `Constrain crop to ${a.label}` });
+    b.addEventListener('click', () => {
+      activeAspect = a;
+      aspectBtns.forEach((bb, i) => bb.classList.toggle('mo-active', aspects[i] === activeAspect));
+      if (a.ratio != null && cropEnabled) {
+        applyAspectRatio(a.ratio);
+      }
+    });
+    aspectRow.appendChild(b);
+    return b;
+  });
+  aspectBtns[0].classList.add('mo-active');
+  controls.appendChild(aspectRow);
+
+  // Compute crop rect (in normalized [0..1] source coords) sized to a ratio,
+  // centered on the current crop center, and clamped to the source frame.
+  // Source frame ratio comes from preview.videoWidth/Height; without those we
+  // fall back to the rect ratio at 1:1.
+  function applyAspectRatio(ratio) {
+    const vw = preview.videoWidth || 1280;
+    const vh = preview.videoHeight || 720;
+    if (!vw || !vh) return;
+    // Convert normalized rect to source pixels, then resize to ratio
+    const cxN = cropNorm.x + cropNorm.w / 2;
+    const cyN = cropNorm.y + cropNorm.h / 2;
+    // Maximum width that fits ratio inside [0..1] source frame:
+    // hN = wN * (vw/vh) / ratio  \u2192 we want wN<=1 and hN<=1
+    const srcRatio = vw / vh;
+    let wN = Math.min(1, cropNorm.w);
+    let hN = wN * srcRatio / ratio;
+    if (hN > 1) {
+      hN = 1;
+      wN = hN * ratio / srcRatio;
+    }
+    // Center then clamp
+    let xN = cxN - wN / 2;
+    let yN = cyN - hN / 2;
+    xN = Math.max(0, Math.min(1 - wN, xN));
+    yN = Math.max(0, Math.min(1 - hN, yN));
+    cropNorm = { x: xN, y: yN, w: wN, h: hN };
+    try { applyCropRect(); } catch { /* ignore */ }
+  }
+
+  // Mute audio toggle (video formats only \u2014 GIF has no audio anyway).
+  // Drives both the preview audio and the export-time -an decision so
+  // what the user hears in preview is what they'll get on export.
+  const muteRow = moEl('div', 'mo-clip-row mo-clip-video-only');
+  const muteChk = document.createElement('input');
+  muteChk.type = 'checkbox'; muteChk.id = 'mo-clip-mute'; muteChk.className = 'mo-clip-check';
+  muteChk.addEventListener('change', () => { preview.muted = muteChk.checked; });
+  muteRow.appendChild(muteChk);
+  const muteLabel = lbl('Mute audio'); muteLabel.htmlFor = 'mo-clip-mute';
+  muteRow.appendChild(muteLabel);
+  controls.appendChild(muteRow);
+
   // Reverse playback
   const revRow = moEl('div', 'mo-clip-row');
   const revChk = document.createElement('input');
@@ -11209,14 +13051,79 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
   revFrRow.appendChild(revFrLabel);
   controls.appendChild(revFrRow);
 
-  // MP4/WebM CRF
+  // MP4/WebM encode mode: quality (CRF) vs target file size (MB).
+  // CRF mode: legacy behaviour, single-pass, controlled by crfInput.
+  // Size mode: two-pass encode targeting an exact MB budget. Bitrate is
+  // computed from duration at export time so a clip that gets re-trimmed
+  // automatically scales the bitrate. Audio is fixed at 128 kbps when kept.
   const crfBox = moEl('div', 'mo-clip-row mo-clip-vid-only');
-  crfBox.appendChild(lbl('Quality (CRF)'));
+  crfBox.appendChild(lbl('Encode mode'));
+  const encModeSel = document.createElement('select');
+  encModeSel.className = 'mo-clip-input';
+  encModeSel.innerHTML = '<option value="crf">Quality (CRF)</option><option value="size">Target size (MB)</option>';
+  crfBox.appendChild(encModeSel);
   const crfInput = document.createElement('input');
   crfInput.type = 'number'; crfInput.min = '15'; crfInput.max = '35'; crfInput.value = '23';
-  crfInput.className = 'mo-clip-input'; crfInput.title = 'Lower = better quality, larger file';
+  crfInput.className = 'mo-clip-input mo-clip-input--num'; crfInput.title = 'Lower = better quality, larger file';
   crfBox.appendChild(crfInput);
+  const sizeInputMB = document.createElement('input');
+  sizeInputMB.type = 'number'; sizeInputMB.min = '0.5'; sizeInputMB.max = '500'; sizeInputMB.step = '0.5';
+  sizeInputMB.value = '8';
+  sizeInputMB.className = 'mo-clip-input mo-clip-input--num';
+  sizeInputMB.title = 'Target size in megabytes. Two-pass encode \u2014 actual size is usually within 5%';
+  sizeInputMB.style.display = 'none';
+  const mbLabel = moEl('span', 'mo-clip-unit', { textContent: 'MB' });
+  mbLabel.style.display = 'none';
+  crfBox.appendChild(sizeInputMB);
+  crfBox.appendChild(mbLabel);
+  // Quick-pick chips for common social-media size targets
+  const sizeChips = moEl('span', 'mo-clip-chiprow');
+  sizeChips.style.display = 'none';
+  for (const [label, mb] of [['8', 8], ['25', 25], ['50', 50], ['100', 100]]) {
+    const chip = moEl('button', 'mo-clip-chip', { textContent: label });
+    chip.addEventListener('click', () => {
+      sizeInputMB.value = String(mb);
+      sizeInputMB.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    sizeChips.appendChild(chip);
+  }
+  crfBox.appendChild(sizeChips);
+  encModeSel.addEventListener('change', () => {
+    const isSize = encModeSel.value === 'size';
+    crfInput.style.display = isSize ? 'none' : '';
+    sizeInputMB.style.display = isSize ? '' : 'none';
+    mbLabel.style.display = isSize ? '' : 'none';
+    sizeChips.style.display = isSize ? '' : 'none';
+  });
   controls.appendChild(crfBox);
+
+  // GPU acceleration row (auto-detected encoders only). Only relevant for
+  // MP4 \u2014 WebM/VP9 hardware support is rare and inconsistent across vendors,
+  // so we restrict GPU paths to H.264 (mp4) for now.
+  const gpuBox = moEl('div', 'mo-clip-row mo-clip-vid-only');
+  gpuBox.appendChild(lbl('GPU encoder'));
+  const gpuSel = document.createElement('select');
+  gpuSel.className = 'mo-clip-input';
+  // Populated after detection (see _moDetectHwEncoders below).
+  gpuSel.innerHTML = '<option value="off">Off (CPU \u2014 libx264)</option>';
+  gpuSel.title = 'Use GPU hardware encoder \u2014 5\u201320\u00d7 faster, slightly lower quality at the same bitrate. MP4 only.';
+  gpuBox.appendChild(gpuSel);
+  controls.appendChild(gpuBox);
+  // Populate GPU dropdown asynchronously \u2014 detection runs ffmpeg, so we
+  // don't block dialog open. The user is unlikely to click GPU in the
+  // first ~50ms anyway.
+  detectHwEncoders().then(hw => {
+    if (hw.nvenc) gpuSel.appendChild(moEl('option', null, { value: 'nvenc', textContent: 'NVIDIA (NVENC)' }));
+    if (hw.qsv) gpuSel.appendChild(moEl('option', null, { value: 'qsv', textContent: 'Intel (QuickSync)' }));
+    if (hw.amf) gpuSel.appendChild(moEl('option', null, { value: 'amf', textContent: 'AMD (AMF)' }));
+    if (hw.videotoolbox) gpuSel.appendChild(moEl('option', null, { value: 'videotoolbox', textContent: 'Apple (VideoToolbox)' }));
+    if (gpuSel.options.length === 1) {
+      // No hardware encoders detected \u2014 leave the single "Off" option but
+      // disable the dropdown so the user understands why nothing's listed.
+      gpuSel.disabled = true;
+      gpuSel.title = 'No GPU encoder detected. ffmpeg was built without nvenc/qsv/amf support, or the drivers are missing.';
+    }
+  });
 
   // ── Frame strip lives below the grid (full width) ──
   const stripWrap = moEl('div', 'mo-clip-stripwrap');
@@ -11235,10 +13142,13 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
   // ── Format visibility ──
   function syncFormatVisibility() {
     const isGif = fmtSel.value === 'gif';
+    const isMp4 = fmtSel.value === 'mp4';
     gifBox.style.display = isGif ? '' : 'none';
     loopRow.style.display = isGif ? '' : 'none';
     revFrRow.style.display = isGif ? '' : 'none';
     crfBox.style.display = isGif ? 'none' : '';
+    // GPU encoders are H.264 (NVENC/QSV/AMF) only \u2014 hide for WebM/GIF.
+    gpuBox.style.display = isMp4 ? '' : 'none';
   }
   fmtSel.addEventListener('change', syncFormatVisibility);
   syncFormatVisibility();
@@ -11642,6 +13552,504 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
     stripDir = null;
   }
 
+  // ── Clip queue (batch export) ─────────────────────────────────────────────
+  // In-memory only (per user M59 design): queue is dropped when the dialog
+  // closes. Each entry is a fully self-contained snapshot \u2014 no shared/global
+  // settings, no cross-contamination between clips. GIF per-frame edits and
+  // reverse-frame-order are NOT batched; they only apply to single-clip
+  // exports (queue empty path).
+  /** @type {Array<{id:number,inT:number,outT:number,format:string,fps:number,scale:number,speed:number,reverse:boolean,crf:number,dither:string,loops:number,cropEnabled:boolean,cropNorm:{x:number,y:number,w:number,h:number}}>} */
+  let clipQueue = _moClipQueueByVideo.get(videoPath);
+  if (!clipQueue) { clipQueue = []; _moClipQueueByVideo.set(videoPath, clipQueue); }
+  // Seed the id sequence above the highest existing id so re-opening a
+  // populated queue and adding new clips can't collide with old ones.
+  let clipSeq = clipQueue.reduce((m, c) => Math.max(m, c.id | 0), 0);
+  // When non-null, the Add button morphs into "Update clip #N" and replaces
+  // the queue entry at this id rather than appending a new one. Cleared by
+  // a successful update, by deleting the row being edited, or by the user
+  // clicking the "stop editing" link.
+  let editingId = null;
+
+  function snapshotCurrent() {
+    const [aa, bb] = getInOut();
+    return {
+      id: ++clipSeq,
+      inT: aa, outT: bb,
+      format: fmtSel.value,
+      fps: parseInt(fpsSel.value, 10) || 30,
+      scale: Math.max(10, parseInt(sizeInput.value, 10) || 100),
+      speed: parseFloat(speedSel.value) || 1,
+      reverse: revChk.checked,
+      mute: muteChk.checked,
+      crf: parseInt(crfInput.value, 10) || 23,
+      // Encode mode: 'crf' (quality, single-pass) or 'size' (target MB,
+      // two-pass). Only meaningful for mp4/webm.
+      encodeMode: encModeSel.value,
+      targetMB: Math.max(0.5, parseFloat(sizeInputMB.value) || 8),
+      // GPU encoder selection: 'off', 'nvenc', 'qsv', 'amf', 'videotoolbox'.
+      // moExportClip silently falls back to libx264 if the selected encoder
+      // isn't actually available (e.g. preset cloned from another machine).
+      hwAccel: gpuSel.value,
+      dither: ditherSel.value,
+      loops: parseInt(loopInput.value, 10) || 0,
+      cropEnabled,
+      cropNorm: { ...cropNorm },
+      name: '',
+      thumb: null,
+    };
+  }
+
+  // Capture a thumb for a snapshot at its in-point. Renderer-only \u2014 uses
+  // canvas#toDataURL so no fs writes are needed.
+  async function captureThumbForSnapshot(c) {
+    try {
+      if (!preview.videoWidth || !preview.videoHeight) return;
+      const targetW = 76; // 38px UI \u00d7 2 for HiDPI
+      const ratio = preview.videoWidth / preview.videoHeight;
+      const w = targetW;
+      const h = Math.max(1, Math.round(targetW / ratio));
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d');
+      // Seek without disturbing the user's playhead too much: stash, seek,
+      // capture, restore.
+      const wasPaused = preview.paused;
+      const prevTime = preview.currentTime;
+      preview.pause();
+      await new Promise((resolve) => {
+        const onSeeked = () => { preview.removeEventListener('seeked', onSeeked); resolve(); };
+        preview.addEventListener('seeked', onSeeked, { once: true });
+        try { preview.currentTime = c.inT; } catch { resolve(); }
+      });
+      ctx.drawImage(preview, 0, 0, w, h);
+      c.thumb = cv.toDataURL('image/jpeg', 0.6);
+      // Restore playhead. Don't await \u2014 best-effort.
+      try { preview.currentTime = prevTime; } catch { /* ignore */ }
+      if (!wasPaused) { try { preview.play(); } catch { /* ignore */ } }
+    } catch { /* ignore \u2014 thumbs are decorative */ }
+  }
+
+  // Load every control + crop state from a queue snapshot. Used when the user
+  // clicks a queued clip to edit it. We dispatch 'change' on selects/inputs so
+  // existing listeners (estimate, preview-speed) re-run; .value alone wouldn't
+  // notify them.
+  function loadSnapshot(c) {
+    inInput.value = c.inT.toFixed(2);
+    outInput.value = c.outT.toFixed(2);
+    fmtSel.value = c.format;
+    fpsSel.value = String(c.fps);
+    sizeInput.value = String(c.scale);
+    speedSel.value = String(c.speed);
+    revChk.checked = !!c.reverse;
+    muteChk.checked = !!c.mute;
+    crfInput.value = String(c.crf);
+    encModeSel.value = c.encodeMode || 'crf';
+    sizeInputMB.value = String(c.targetMB || 8);
+    // Restore hwAccel selection if the option exists; otherwise drop to 'off'
+    // (covers the case where a preset was made on a different machine).
+    if (c.hwAccel && Array.from(gpuSel.options).some(o => o.value === c.hwAccel)) {
+      gpuSel.value = c.hwAccel;
+    } else {
+      gpuSel.value = 'off';
+    }
+    ditherSel.value = c.dither;
+    loopInput.value = String(c.loops);
+    cropEnabled = !!c.cropEnabled;
+    cropChk.checked = cropEnabled;
+    cropNorm = { ...c.cropNorm };
+    try { applyCropRect(); } catch { /* ignore \u2014 overlay may not be ready */ }
+    // Notify listeners
+    for (const el of [inInput, outInput, sizeInput, crfInput, sizeInputMB, loopInput]) {
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    for (const el of [fmtSel, fpsSel, speedSel, ditherSel, revChk, cropChk, muteChk, encModeSel, gpuSel]) {
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    // Jump preview playhead to the clip's in-point so the user can audition it
+    try { if (Number.isFinite(c.inT)) preview.currentTime = c.inT; } catch { /* ignore */ }
+  }
+
+  const queueWrap = moEl('div', 'mo-clip-queue');
+  const queueHead = moEl('div', 'mo-clip-queue-head');
+  const queueHeadLeft = moEl('div');
+  queueHeadLeft.style.display = 'flex';
+  queueHeadLeft.style.alignItems = 'center';
+  queueHeadLeft.appendChild(moEl('span', null, { textContent: 'Batch queue' }));
+  const queueTotal = moEl('span', 'mo-clip-queue-total', { textContent: '' });
+  queueHeadLeft.appendChild(queueTotal);
+  queueHead.appendChild(queueHeadLeft);
+  const queueHeadActions = moEl('div');
+  queueHeadActions.style.display = 'flex';
+  queueHeadActions.style.gap = '6px';
+  queueHeadActions.style.alignItems = 'center';
+  const stopEditBtn = moEl('button', 'mo-clip-queue-del', { textContent: '\u2715 stop editing', title: 'Cancel editing this clip (settings stay as-is)' });
+  stopEditBtn.style.fontSize = '10px';
+  stopEditBtn.style.opacity = '0.75';
+  stopEditBtn.style.display = 'none';
+  stopEditBtn.addEventListener('click', () => {
+    editingId = null;
+    renderQueue();
+    updateAddBtnLabel();
+  });
+  const addBtn = moEl('button', 'mo-mark-btn', { textContent: '+ Add to queue', title: 'Snapshot current settings as a clip in the batch (Q)' });
+  queueHeadActions.append(stopEditBtn, addBtn);
+  queueHead.appendChild(queueHeadActions);
+  queueWrap.appendChild(queueHead);
+  const queueList = moEl('div', 'mo-clip-queue-list');
+  queueWrap.appendChild(queueList);
+  // ── Queue presets ────────────────────────────────────────────────────────
+  // Persisted JSON in mo_settings (key 'clip_presets_v1'). Each preset is a
+  // named array of partial snapshots: { name: string, clips: Snapshot[] }.
+  // Load applies the saved snapshots verbatim to the current source video
+  // \u2014 in/out times can therefore exceed the source duration; we clamp at
+  // load. Save uses whatever is currently in the queue.
+  const presetsRow = moEl('div', 'mo-clip-presets-row');
+  const saveBtn = moEl('button', 'mo-mark-btn', { textContent: 'Save preset', title: 'Save the current queue as a named preset' });
+  saveBtn.style.fontSize = '10px';
+  saveBtn.style.padding = '3px 7px';
+  presetsRow.appendChild(saveBtn);
+  const presetsHost = moEl('div');
+  presetsHost.style.display = 'flex';
+  presetsHost.style.gap = '4px';
+  presetsHost.style.flexWrap = 'wrap';
+  presetsRow.appendChild(presetsHost);
+  queueWrap.appendChild(presetsRow);
+
+  /** @type {Array<{name:string, clips:Array<object>}>} */
+  let presets = [];
+  async function loadPresetsFromStore() {
+    try {
+      const raw = await moGetSetting('clip_presets_v1', '');
+      if (!raw) { presets = []; return; }
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) presets = parsed;
+    } catch { presets = []; }
+  }
+  async function savePresetsToStore() {
+    try { await moSetSetting('clip_presets_v1', JSON.stringify(presets)); }
+    catch { /* settings unavailable \u2014 in-memory only this session */ }
+  }
+  function renderPresets() {
+    presetsHost.innerHTML = '';
+    if (presets.length === 0) {
+      presetsHost.appendChild(moEl('span', 'mo-clip-queue-empty', { textContent: 'No saved presets yet.' }));
+      return;
+    }
+    for (const p of presets) {
+      const chip = moEl('button', 'mo-clip-preset-chip', { title: `Apply preset "${p.name}" \u2014 ${p.clips.length} clip${p.clips.length === 1 ? '' : 's'}` });
+      chip.appendChild(document.createTextNode(p.name + ' '));
+      const sub = moEl('span', null, { textContent: `\u00b7 ${p.clips.length}` });
+      sub.style.opacity = '0.6';
+      chip.appendChild(sub);
+      const x = moEl('span', 'mo-clip-preset-chip-x', { textContent: ' \u2715', title: 'Delete preset' });
+      x.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const ok = await api.window.showWarningMessage(`Delete preset "${p.name}"?`, 'Delete', 'Cancel');
+        if (ok !== 'Delete') return;
+        presets = presets.filter(pp => pp !== p);
+        await savePresetsToStore();
+        renderPresets();
+      });
+      chip.appendChild(x);
+      chip.addEventListener('click', () => {
+        // Apply: append preset clips to the current queue (clamped to source
+        // duration). Doesn't replace \u2014 user can stack multiple presets.
+        const dur = preview.duration || duration || 0;
+        const before = clipQueue.length;
+        for (const src of p.clips) {
+          const clamp = (n) => Math.max(0, Math.min(dur || n, n));
+          const c = JSON.parse(JSON.stringify(src));
+          c.id = ++clipSeq;
+          c.inT = clamp(c.inT);
+          c.outT = clamp(c.outT);
+          if (c.outT <= c.inT) continue;
+          c.thumb = null; // recapture for the current video
+          clipQueue.push(c);
+          captureThumbForSnapshot(c).then(() => renderQueue());
+        }
+        renderQueue();
+        updateExportLabel();
+        updateAddBtnLabel();
+        updateQueueTotal();
+        status.textContent = `Applied preset "${p.name}" (+${clipQueue.length - before} clip${(clipQueue.length - before) === 1 ? '' : 's'}).`;
+      });
+      presetsHost.appendChild(chip);
+    }
+  }
+  saveBtn.addEventListener('click', async () => {
+    if (clipQueue.length === 0) {
+      api.window.showWarningMessage('Add at least one clip to the queue before saving a preset.');
+      return;
+    }
+    const name = await api.window.showInputBox({
+      prompt: 'Name this preset',
+      placeHolder: 'e.g. social-bundle, intro-outro\u2026',
+    });
+    if (!name) return;
+    const trimmed = String(name).trim();
+    if (!trimmed) return;
+    // Strip thumbs (they're tied to the source video) but keep names + all
+    // settings + crop. ID will be regenerated at apply time.
+    const stored = clipQueue.map(c => {
+      const { thumb, id, ...rest } = c; void thumb; void id;
+      return rest;
+    });
+    const existing = presets.findIndex(p => p.name === trimmed);
+    if (existing >= 0) {
+      const ok = await api.window.showWarningMessage(`Overwrite preset "${trimmed}"?`, 'Overwrite', 'Cancel');
+      if (ok !== 'Overwrite') return;
+      presets[existing] = { name: trimmed, clips: stored };
+    } else {
+      presets.push({ name: trimmed, clips: stored });
+    }
+    await savePresetsToStore();
+    renderPresets();
+    status.textContent = `Saved preset "${trimmed}".`;
+  });
+  loadPresetsFromStore().then(renderPresets);
+  controls.appendChild(queueWrap);
+
+  // Estimate bytes for a snapshot (mirrors the live estimateBytes() used for
+  // the current-editor controls, but reads from the snapshot rather than the
+  // controls so totals reflect each clip's own settings).
+  function estimateBytesForSnapshot(c) {
+    // Target-size mode: estimate is exact (it's literally the user's request).
+    if (c.encodeMode === 'size' && c.format !== 'gif') {
+      return Math.max(0.5, c.targetMB || 8) * 1048576;
+    }
+    const dur = Math.max(0.05, (c.outT - c.inT) / Math.max(0.1, c.speed));
+    const fps = Math.max(1, c.fps);
+    const scale = Math.max(0.1, c.scale / 100);
+    const vw = preview.videoWidth || 1280;
+    const vh = preview.videoHeight || 720;
+    let w = vw, h = vh;
+    if (c.cropEnabled) { w *= c.cropNorm.w; h *= c.cropNorm.h; }
+    w = Math.max(2, w * scale);
+    h = Math.max(2, h * scale);
+    const pixels = w * h;
+    const frameCount = dur * fps;
+    if (c.format === 'gif') return frameCount * pixels * 0.18;
+    const bpp23 = c.format === 'webm' ? 0.06 : 0.10;
+    const bpp = bpp23 * Math.pow(2, (23 - c.crf) / 6);
+    return (bpp * pixels * fps * dur) / 8;
+  }
+
+  function updateQueueTotal() {
+    if (clipQueue.length === 0) { queueTotal.textContent = ''; return; }
+    let total = 0;
+    for (const c of clipQueue) total += estimateBytesForSnapshot(c);
+    queueTotal.textContent = `(\u2248 ${fmtBytes(total)} total)`;
+  }
+
+  function renderQueue() {
+    queueList.innerHTML = '';
+    stopEditBtn.style.display = editingId != null ? '' : 'none';
+    if (clipQueue.length === 0) {
+      queueList.appendChild(moEl('div', 'mo-clip-queue-empty', {
+        textContent: 'No clips queued. Configure a clip and click "+ Add to queue" to batch-export multiple clips at once.',
+      }));
+    } else {
+      clipQueue.forEach((c, idx) => {
+        const row = moEl('div', 'mo-clip-queue-row');
+        if (c.id === editingId) row.classList.add('mo-active');
+        row.draggable = true;
+        row.dataset.clipId = String(c.id);
+        // Drag handle (visual affordance only \u2014 the row itself is the drag source)
+        row.appendChild(moEl('span', 'mo-clip-queue-handle', { textContent: '\u22ee\u22ee', title: 'Drag to reorder' }));
+        // Thumbnail (or placeholder)
+        if (c.thumb) {
+          const img = document.createElement('img');
+          img.className = 'mo-clip-queue-thumb';
+          img.src = c.thumb;
+          img.alt = '';
+          row.appendChild(img);
+        } else {
+          row.appendChild(moEl('span', 'mo-clip-queue-thumb'));
+        }
+        row.appendChild(moEl('span', 'mo-clip-queue-num', { textContent: String(idx + 1) }));
+        const dur = Math.max(0, (c.outT - c.inT) / Math.max(0.1, c.speed));
+        row.appendChild(moEl('span', 'mo-clip-queue-meta', {
+          textContent: `${moTimeStr(c.inT)} \u2192 ${moTimeStr(c.outT)} \u00b7 ${dur.toFixed(2)}s${c.reverse ? ' \u00b7 rev' : ''}${c.cropEnabled ? ' \u00b7 crop' : ''}${c.mute ? ' \u00b7 mute' : ''}`,
+        }));
+        // Optional name (becomes the filename suffix if non-empty)
+        const nameInput = document.createElement('input');
+        nameInput.className = 'mo-clip-queue-name';
+        nameInput.type = 'text';
+        nameInput.placeholder = 'name\u2026';
+        nameInput.value = c.name || '';
+        nameInput.title = 'Optional name \u2014 used as the filename suffix in place of the auto number';
+        nameInput.addEventListener('click', (e) => e.stopPropagation());
+        nameInput.addEventListener('input', () => { c.name = nameInput.value; });
+        row.appendChild(nameInput);
+        // Per-row format override (#18) \u2014 lets the user retarget a queued
+        // clip without re-loading it for editing. Changing the format also
+        // clears any encode-mode/CRF/GPU mismatch (e.g. switching to webm
+        // disables hwAccel since we only support H.264 hardware encoders).
+        const fmtRowSel = document.createElement('select');
+        fmtRowSel.className = 'mo-clip-queue-fmt';
+        fmtRowSel.innerHTML = '<option value="mp4">mp4</option><option value="webm">webm</option><option value="gif">gif</option>';
+        fmtRowSel.value = c.format;
+        fmtRowSel.title = 'Output format for this clip';
+        fmtRowSel.addEventListener('click', (e) => e.stopPropagation());
+        fmtRowSel.addEventListener('change', () => {
+          c.format = fmtRowSel.value;
+          if (c.format !== 'mp4') c.hwAccel = 'off';
+          if (c.format === 'gif') c.encodeMode = 'crf';
+          updateQueueTotal();
+        });
+        row.appendChild(fmtRowSel);
+        // Duplicate
+        const dup = moEl('button', 'mo-clip-queue-dup', { textContent: '\u29c9', title: 'Duplicate this clip' });
+        dup.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const i = clipQueue.findIndex(x => x.id === c.id);
+          if (i < 0) return;
+          const copy = JSON.parse(JSON.stringify(c));
+          copy.id = ++clipSeq;
+          // Append "(copy)" once if name is set; otherwise leave empty so the
+          // numbered fallback distinguishes them.
+          if (copy.name) copy.name = copy.name + ' (copy)';
+          clipQueue.splice(i + 1, 0, copy);
+          renderQueue();
+          updateExportLabel();
+          updateQueueTotal();
+        });
+        row.appendChild(dup);
+        const del = moEl('button', 'mo-clip-queue-del', { textContent: '\u00d7', title: 'Remove from queue' });
+        del.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const i = clipQueue.findIndex(x => x.id === c.id);
+          if (i >= 0) clipQueue.splice(i, 1);
+          if (editingId === c.id) editingId = null;
+          renderQueue();
+          updateExportLabel();
+          updateAddBtnLabel();
+          updateQueueTotal();
+        });
+        row.appendChild(del);
+        // Click anywhere else on the row to load it for editing.
+        row.addEventListener('click', (e) => {
+          if (e.target === nameInput || e.target === del || e.target === dup) return;
+          if (editingId === c.id) return;
+          editingId = c.id;
+          loadSnapshot(c);
+          renderQueue();
+          updateAddBtnLabel();
+          status.textContent = `Editing clip ${idx + 1} \u2014 click "Update" when done.`;
+        });
+        // Drag-to-reorder
+        row.addEventListener('dragstart', (e) => {
+          row.classList.add('mo-dragging');
+          if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', String(c.id));
+          }
+        });
+        row.addEventListener('dragend', () => {
+          row.classList.remove('mo-dragging');
+          queueList.querySelectorAll('.mo-drop-above, .mo-drop-below').forEach(el => {
+            el.classList.remove('mo-drop-above');
+            el.classList.remove('mo-drop-below');
+          });
+        });
+        row.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+          const r = row.getBoundingClientRect();
+          const above = (e.clientY - r.top) < r.height / 2;
+          row.classList.toggle('mo-drop-above', above);
+          row.classList.toggle('mo-drop-below', !above);
+        });
+        row.addEventListener('dragleave', () => {
+          row.classList.remove('mo-drop-above');
+          row.classList.remove('mo-drop-below');
+        });
+        row.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const srcId = parseInt((e.dataTransfer && e.dataTransfer.getData('text/plain')) || '0', 10);
+          if (!srcId || srcId === c.id) return;
+          const r = row.getBoundingClientRect();
+          const above = (e.clientY - r.top) < r.height / 2;
+          const fromIdx = clipQueue.findIndex(x => x.id === srcId);
+          if (fromIdx < 0) return;
+          const [moved] = clipQueue.splice(fromIdx, 1);
+          let toIdx = clipQueue.findIndex(x => x.id === c.id);
+          if (toIdx < 0) toIdx = clipQueue.length;
+          if (!above) toIdx += 1;
+          clipQueue.splice(toIdx, 0, moved);
+          renderQueue();
+          updateExportLabel();
+          updateQueueTotal();
+        });
+        queueList.appendChild(row);
+      });
+    }
+    updateQueueTotal();
+  }
+  renderQueue();
+
+  function updateAddBtnLabel() {
+    if (editingId == null) {
+      addBtn.textContent = '+ Add to queue';
+      addBtn.title = 'Snapshot current settings as a clip in the batch (Q)';
+    } else {
+      const idx = clipQueue.findIndex(x => x.id === editingId);
+      addBtn.textContent = idx >= 0 ? `Update clip ${idx + 1}` : '+ Add to queue';
+      addBtn.title = 'Replace the queued clip with the current settings';
+    }
+  }
+  updateAddBtnLabel();
+
+  addBtn.addEventListener('click', async () => {
+    const [aa, bb] = getInOut();
+    if (bb <= aa) { api.window.showWarningMessage('Out point must be after in point.'); return; }
+    if (editingId != null) {
+      const idx = clipQueue.findIndex(x => x.id === editingId);
+      if (idx >= 0) {
+        const replacement = snapshotCurrent();
+        replacement.id = editingId;
+        // Preserve user-set name + thumb across an update unless the user
+        // explicitly retyped them; we copy from the existing entry first.
+        replacement.name = clipQueue[idx].name || '';
+        replacement.thumb = clipQueue[idx].thumb || null;
+        clipQueue[idx] = replacement;
+        // Refresh thumb in case the in-point moved
+        captureThumbForSnapshot(replacement).then(() => renderQueue());
+        status.textContent = `Updated clip ${idx + 1}.`;
+        editingId = null;
+        renderQueue();
+        updateExportLabel();
+        updateAddBtnLabel();
+        updateQueueTotal();
+        return;
+      }
+      editingId = null;
+    }
+    const snap = snapshotCurrent();
+    clipQueue.push(snap);
+    renderQueue();
+    updateExportLabel();
+    updateAddBtnLabel();
+    updateQueueTotal();
+    status.textContent = `Added clip ${clipQueue.length} to queue.`;
+    // Best-effort thumb capture (async). Re-render when done.
+    captureThumbForSnapshot(snap).then(() => renderQueue());
+  });
+
+  // Q hotkey \u2014 only when not typing in an input
+  dialog.addEventListener('keydown', (e) => {
+    if (e.key !== 'q' && e.key !== 'Q') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    e.preventDefault();
+    addBtn.click();
+  });
+
+  function updateExportLabel() {
+    if (clipQueue.length > 0) exportBtn.textContent = `Export ${clipQueue.length} clip${clipQueue.length === 1 ? '' : 's'}\u2026`;
+    else exportBtn.textContent = 'Export\u2026';
+  }
+
   // ── Footer (with size estimate) ──
   const footer = moEl('div', 'mo-modal-footer');
   const estimateEl = moEl('div', 'mo-clip-estimate', { textContent: '' });
@@ -11682,6 +14090,18 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
     if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
     return (n / 1073741824).toFixed(2) + ' GB';
   }
+  // Render a millisecond ETA as a compact "1m23s" / "45s" / "<1s" string.
+  // Used by the progress callback to keep status text short on small
+  // dialog footers.
+  function formatEta(ms) {
+    if (!isFinite(ms) || ms <= 0) return '<1s';
+    const totalSec = Math.round(ms / 1000);
+    if (totalSec < 1) return '<1s';
+    if (totalSec < 60) return `${totalSec}s`;
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return s > 0 ? `${m}m${s}s` : `${m}m`;
+  }
   function updateEstimate() {
     const [aa, bb] = getInOut();
     const dur = Math.max(0, bb - aa);
@@ -11696,12 +14116,143 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
   crfInput.addEventListener('input', updateEstimate);
   cropChk.addEventListener('change', updateEstimate);
   preview.addEventListener('loadedmetadata', updateEstimate);
+  // Live-preview playback speed — match the export speed so users can audition
+  // their choice before committing. Browsers clamp playbackRate (~0.0625\u201316)
+  // and our menu only offers 0.25\u20134, well inside the safe range.
+  function applyPreviewSpeed() {
+    const s = parseFloat(speedSel.value);
+    if (Number.isFinite(s) && s > 0) preview.playbackRate = s;
+  }
+  speedSel.addEventListener('change', applyPreviewSpeed);
+  preview.addEventListener('loadedmetadata', applyPreviewSpeed);
+  // The HTMLMediaElement resets playbackRate to defaultPlaybackRate on some
+  // src/seek transitions \u2014 reapply on play to keep the audition consistent.
+  preview.addEventListener('play', applyPreviewSpeed);
   // Refresh estimate whenever crop rect is resized (drag/handle interactions
   // mutate width/height directly via applyCropRect)
   try { new ResizeObserver(updateEstimate).observe(cropRect); } catch { /* ignore */ }
   updateEstimate();
 
+  // Cancel-batch flag (set by the in-flight cancel button below)
+  let batchCancelled = false;
+
   exportBtn.addEventListener('click', async () => {
+    // ── Batch-export path: queue has at least one entry ─────────────────────
+    // Each queued clip is a fully isolated snapshot \u2014 settings, crop, format
+    // are not shared with the working state. Per-frame GIF edits and the
+    // reverse-frame-order option are not supported in batch mode (they only
+    // apply to single-clip exports below).
+    if (clipQueue.length > 0) {
+      const sep = _isWindows ? '\\' : '/';
+      const lastSep = videoPath.lastIndexOf(sep);
+      const srcDir = videoPath.slice(0, lastSep);
+      const srcBase = videoPath.slice(lastSep + 1).replace(/\.[^.]+$/, '');
+      // Default the picker to the source video's folder so the user can
+      // navigate from there to wherever they actually want to save.
+      const folderRes = await window.parallxElectron.dialog.openFolder({
+        title: `Choose output folder for ${clipQueue.length} clip${clipQueue.length === 1 ? '' : 's'}`,
+        defaultPath: srcDir,
+      });
+      const outDir = Array.isArray(folderRes) ? folderRes[0] : folderRes;
+      if (!outDir) return; // cancelled
+
+      const pad = String(clipQueue.length).length;
+      // While the batch runs, the Export button morphs into Cancel.
+      batchCancelled = false;
+      const origExportLabel = exportBtn.textContent;
+      exportBtn.textContent = 'Cancel batch';
+      exportBtn.classList.add('mo-btn-secondary');
+      exportBtn.classList.remove('mo-btn-primary');
+      const onCancelClick = (e) => { e.stopPropagation(); batchCancelled = true; exportBtn.disabled = true; status.textContent = 'Cancelling after current clip\u2026'; };
+      exportBtn.addEventListener('click', onCancelClick, { capture: true });
+      cancelBtn.disabled = true;
+
+      // Sanitize a name for filesystem safety.
+      const safeName = (s) => String(s || '').trim().replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_').slice(0, 64);
+
+      let okCount = 0, failCount = 0;
+      const exportedIds = new Set();
+      try {
+        for (let i = 0; i < clipQueue.length; i++) {
+          if (batchCancelled) break;
+          const c = clipQueue[i];
+          const ext = c.format === 'mp4' ? 'mp4' : (c.format === 'webm' ? 'webm' : 'gif');
+          const num = String(i + 1).padStart(pad, '0');
+          const named = safeName(c.name);
+          const stem = named ? `${srcBase}_${named}` : `${srcBase}_clip_${num}`;
+          let candidate = `${outDir}${sep}${stem}.${ext}`;
+          let suffix = 0;
+          while (await window.parallxElectron.fs.exists(candidate)) {
+            suffix++;
+            const tail = String.fromCharCode(96 + suffix);
+            candidate = `${outDir}${sep}${stem}_${tail}.${ext}`;
+            if (suffix > 25) { candidate = `${outDir}${sep}${stem}_${Date.now()}.${ext}`; break; }
+          }
+          status.textContent = `Exporting ${i + 1} / ${clipQueue.length}\u2026`;
+          try {
+            await moExportClip(api, {
+              videoPath, inPoint: c.inT, outPoint: c.outT,
+              outPath: candidate,
+              format: c.format,
+              fps: c.fps,
+              scalePct: c.scale,
+              speed: c.speed,
+              reverse: c.reverse,
+              mute: !!c.mute,
+              crf: c.crf,
+              encodeMode: c.encodeMode,
+              targetMB: c.targetMB,
+              hwAccel: c.hwAccel,
+              dither: c.dither,
+              loops: c.loops,
+              crop: c.cropEnabled ? { ...c.cropNorm } : null,
+              frameEdits: null,
+              onProgress: ({ pct, etaMs }) => {
+                const pctStr = (pct * 100).toFixed(0).padStart(2, ' ');
+                const etaStr = etaMs != null && etaMs > 0 ? ` \u00b7 ETA ${formatEta(etaMs)}` : '';
+                status.textContent = `Exporting ${i + 1} / ${clipQueue.length}\u2026 ${pctStr}%${etaStr}`;
+              },
+            });
+            okCount++;
+            exportedIds.add(c.id);
+          } catch (err) {
+            failCount++;
+            // eslint-disable-next-line no-console
+            console.warn('[media-organizer] batch clip export failed', err);
+          }
+        }
+      } finally {
+        exportBtn.removeEventListener('click', onCancelClick, { capture: true });
+        exportBtn.textContent = origExportLabel;
+        exportBtn.classList.add('mo-btn-primary');
+        exportBtn.classList.remove('mo-btn-secondary');
+        exportBtn.disabled = false;
+        cancelBtn.disabled = false;
+      }
+      const cancelledTail = batchCancelled ? ' (cancelled)' : '';
+      status.textContent = `Batch done: ${okCount} exported${failCount ? `, ${failCount} failed` : ''}${cancelledTail}.`;
+      api.window.showInformationMessage(`Batch export: ${okCount} clip${okCount === 1 ? '' : 's'} written to ${outDir}` + (failCount ? ` (${failCount} failed)` : '') + cancelledTail + '.');
+      // Auto-drain successfully-exported clips from the queue. Failed and
+      // cancelled clips stay so the user can retry without re-adding them.
+      if (exportedIds.size > 0) {
+        for (let i = clipQueue.length - 1; i >= 0; i--) {
+          if (exportedIds.has(clipQueue[i].id)) clipQueue.splice(i, 1);
+        }
+        if (editingId != null && !clipQueue.some(c => c.id === editingId)) editingId = null;
+        renderQueue();
+        updateExportLabel();
+        updateAddBtnLabel();
+        updateQueueTotal();
+      }
+      // Reveal the output folder in the OS file manager when at least one
+      // clip succeeded.
+      if (okCount > 0) {
+        try { await window.parallxElectron.shell.openPath(outDir); } catch { /* ignore */ }
+      }
+      return;
+    }
+
+    // ── Single-clip path (queue empty) \u2014 unchanged behaviour ──────────────
     const [a, b] = getInOut();
     if (b <= a) { api.window.showWarningMessage('Out point must be after in point.'); return; }
 
@@ -11739,7 +14290,11 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
         scalePct: Math.max(10, parseInt(sizeInput.value, 10) || 100),
         speed: parseFloat(speedSel.value),
         reverse: revChk.checked,
+        mute: muteChk.checked,
         crf: parseInt(crfInput.value, 10) || 23,
+        encodeMode: encModeSel.value,
+        targetMB: Math.max(0.5, parseFloat(sizeInputMB.value) || 8),
+        hwAccel: gpuSel.value,
         dither: ditherSel.value,
         loops: parseInt(loopInput.value, 10) || 0,
         // M59 P4: crop region (normalized [0..1] relative to source frame)
@@ -11749,6 +14304,14 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
           frames: frames.map(f => ({ src: f.src, deleted: f.deleted, delayMs: f.delayMs })),
           reverseFrameOrder: revFrames,
         } : null,
+        // Real-time progress \u2014 streams from ffmpeg's `-progress pipe:1`.
+        onProgress: ({ pct, etaMs }) => {
+          const pctStr = (pct * 100).toFixed(0).padStart(2, ' ');
+          const etaStr = etaMs != null && etaMs > 0
+            ? ` \u00b7 ETA ${formatEta(etaMs)}`
+            : '';
+          status.textContent = `Exporting\u2026 ${pctStr}%${etaStr}`;
+        },
       });
       // Show actual on-disk size so the user can compare to the estimate;
       // keep the dialog open so multiple exports can iterate on settings.
@@ -11852,24 +14415,209 @@ async function moExportClip(api, opts) {
       shellQuote(outPath),
     ].join(' ');
     const r2 = await window.parallxElectron.terminal.exec(cmd2, { timeout: 600000 });
-    await window.parallxElectron.fs.delete(tmpPalette).catch(() => {});
+    await window.parallxElectron.fs.delete(tmpPalette, { useTrash: false }).catch(() => {});
     if (r2.exitCode !== 0) throw new Error('paletteuse: ' + (r2.stderr || 'unknown'));
   } else {
-    const vid = opts.format === 'mp4'
-      ? ['-c:v', 'libx264', '-preset', 'medium', '-crf', String(opts.crf), '-pix_fmt', 'yuv420p', '-movflags', '+faststart']
-      : ['-c:v', 'libvpx-vp9', '-crf', String(opts.crf), '-b:v', '0', '-row-mt', '1'];
-    const cmd = [
-      ff, '-hide_banner', '-loglevel', 'error', '-y',
-      '-ss', startSs, '-t', len, '-i', shellQuote(opts.videoPath),
-      '-vf', shellQuote(filters.join(',')),
-      ...vid,
-      // strip audio if reversed (audio reverse is rarely desired) or speed != 1 (atempo handles 0.5-2 only)
-      (opts.reverse || opts.speed !== 1) ? '-an' : '-c:a',
-      (opts.reverse || opts.speed !== 1) ? '' : 'aac',
-      shellQuote(outPath),
-    ].filter(Boolean).join(' ');
-    const r = await window.parallxElectron.terminal.exec(cmd, { timeout: 1800000 });
-    if (r.exitCode !== 0) throw new Error(r.stderr || 'ffmpeg failed');
+    // ── Codec/encoder selection ─────────────────────────────────────────────
+    // hwAccel options: 'off' | 'nvenc' | 'qsv' | 'amf' | 'videotoolbox'.
+    // We only support hardware paths for H.264 (mp4); webm/vp9 stays on
+    // libvpx-vp9 regardless. If a hwAccel was selected but ffmpeg lacks it
+    // (e.g. preset cloned from a different machine), fall back silently to
+    // libx264 \u2014 detectHwEncoders has already populated _hwEncoders for us.
+    const wantHw = opts.format === 'mp4' && opts.hwAccel && opts.hwAccel !== 'off';
+    const hwOk = wantHw && _hwEncoders && _hwEncoders[opts.hwAccel];
+    const hwCodec = hwOk
+      ? (opts.hwAccel === 'nvenc' ? 'h264_nvenc'
+         : opts.hwAccel === 'qsv' ? 'h264_qsv'
+         : opts.hwAccel === 'amf' ? 'h264_amf'
+         : opts.hwAccel === 'videotoolbox' ? 'h264_videotoolbox'
+         : null)
+      : null;
+
+    const sizeMode = opts.encodeMode === 'size';
+    const dur = Math.max(0.01, opts.outPoint - opts.inPoint) / Math.max(0.1, opts.speed || 1);
+    // Audio: explicit mute (opts.mute === true) always strips. Otherwise we
+    // keep audio unless reverse/speed makes it impractical (atempo only spans
+    // 0.5\u20132\u00d7, audio reverse is rarely desired).
+    const stripAudio = opts.mute === true || opts.reverse || (opts.speed !== 1 && opts.speed !== undefined);
+    const audioKbps = stripAudio ? 0 : 128;
+
+    // Build the codec arg array. For NVENC/QSV/AMF in CRF mode we use the
+    // vendor-specific quality knobs; in size mode we use bitrate.
+    const buildCodecArgs = (passNum) => {
+      // passNum: undefined for single-pass, 1 for first-pass, 2 for second
+      if (sizeMode) {
+        const overheadKbps = 16; // muxing + container overhead estimate
+        const targetKbits = (opts.targetMB || 8) * 8192; // MB \u2192 kilobits
+        const videoKbps = Math.max(80, Math.round(targetKbits / dur - audioKbps - overheadKbps));
+        if (hwCodec === 'h264_nvenc') {
+          return ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-b:v', `${videoKbps}k`, '-maxrate', `${Math.round(videoKbps * 1.4)}k`, '-pix_fmt', 'yuv420p'];
+        }
+        if (hwCodec === 'h264_qsv') {
+          return ['-c:v', 'h264_qsv', '-preset', 'medium', '-b:v', `${videoKbps}k`, '-maxrate', `${Math.round(videoKbps * 1.4)}k`, '-pix_fmt', 'nv12'];
+        }
+        if (hwCodec === 'h264_amf') {
+          return ['-c:v', 'h264_amf', '-quality', 'balanced', '-rc', 'vbr_peak', '-b:v', `${videoKbps}k`, '-maxrate', `${Math.round(videoKbps * 1.4)}k`, '-pix_fmt', 'yuv420p'];
+        }
+        if (hwCodec === 'h264_videotoolbox') {
+          return ['-c:v', 'h264_videotoolbox', '-b:v', `${videoKbps}k`, '-pix_fmt', 'yuv420p'];
+        }
+        // Software two-pass libx264 (mp4) or libvpx-vp9 (webm)
+        if (opts.format === 'mp4') {
+          const pass = passNum ? ['-pass', String(passNum)] : [];
+          return ['-c:v', 'libx264', '-preset', 'medium', '-b:v', `${videoKbps}k`, ...pass, '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
+        }
+        const pass = passNum ? ['-pass', String(passNum)] : [];
+        return ['-c:v', 'libvpx-vp9', '-b:v', `${videoKbps}k`, '-row-mt', '1', ...pass];
+      }
+      // CRF mode
+      if (hwCodec === 'h264_nvenc') {
+        // NVENC quality scale: cq 0\u201351 (lower=better). Map CRF 15\u201335 \u2192 cq 19\u201338.
+        const cq = Math.max(15, Math.min(40, opts.crf + 4));
+        return ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', String(cq), '-b:v', '0', '-pix_fmt', 'yuv420p'];
+      }
+      if (hwCodec === 'h264_qsv') {
+        const q = Math.max(15, Math.min(40, opts.crf));
+        return ['-c:v', 'h264_qsv', '-preset', 'medium', '-global_quality', String(q), '-pix_fmt', 'nv12'];
+      }
+      if (hwCodec === 'h264_amf') {
+        const q = Math.max(15, Math.min(40, opts.crf));
+        return ['-c:v', 'h264_amf', '-quality', 'balanced', '-rc', 'cqp', '-qp_i', String(q), '-qp_p', String(q), '-pix_fmt', 'yuv420p'];
+      }
+      if (hwCodec === 'h264_videotoolbox') {
+        // VideoToolbox uses -q:v 1\u2013100 (higher=better). Inverse-map CRF.
+        const q = Math.max(40, Math.min(95, 100 - opts.crf * 2));
+        return ['-c:v', 'h264_videotoolbox', '-q:v', String(q), '-pix_fmt', 'yuv420p'];
+      }
+      // Software CRF
+      if (opts.format === 'mp4') {
+        return ['-c:v', 'libx264', '-preset', 'medium', '-crf', String(opts.crf), '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
+      }
+      return ['-c:v', 'libvpx-vp9', '-crf', String(opts.crf), '-b:v', '0', '-row-mt', '1'];
+    };
+
+    // Two-pass log file path — unique per export so concurrent batch
+    // exports of different clips don't clobber each other's stats. Lives
+    // next to the source video (we already have write access there since
+    // the GIF branch writes a palette PNG to the same place).
+    const passLogBase = `${dir}${sep}.mo_2pass_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+
+    // WebM containers reject AAC; use libopus for vp9/webm. mp4 keeps aac.
+    const audioCodec = opts.format === 'mp4' ? 'aac' : 'libopus';
+
+    // Build argv for spawn (no shell parsing). Each ffmpeg flag/value is its
+    // own array element so paths with spaces are safe without quoting.
+    const buildArgv = (codecArgs, output, isFirstPass = false) => {
+      const argv = [
+        '-hide_banner', '-loglevel', 'error', '-y',
+        '-ss', startSs, '-t', String(len),
+        '-i', opts.videoPath,
+        '-vf', filters.join(','),
+        ...codecArgs,
+      ];
+      // Per-clip pass log path keeps concurrent exports independent.
+      if (codecArgs.includes('-pass')) {
+        argv.push('-passlogfile', passLogBase);
+      }
+      // Real-time progress on stdout (both passes — first pass is half the
+      // work and users want to see it move).
+      argv.push('-progress', 'pipe:1', '-nostats');
+      if (isFirstPass) {
+        argv.push('-an', '-f', 'null', _isWindows ? 'NUL' : '/dev/null');
+      } else {
+        if (stripAudio) argv.push('-an');
+        else argv.push('-c:a', audioCodec, '-b:a', `${audioKbps}k`);
+        argv.push(output);
+      }
+      return argv;
+    };
+
+    // Progress parser: ffmpeg -progress emits key=value lines, terminated by
+    // `progress=continue` or `progress=end`. We watch out_time_us \u2192 elapsed
+    // encoded seconds, divide by total *output* duration for percent. With
+    // setpts speed != 1 the output is shorter/longer than the input clip and
+    // ffmpeg reports output time, so use `dur` (already speed-adjusted) not
+    // raw `outPoint - inPoint` -- otherwise progress stalls or overshoots.
+    const totalEncodedSec = dur;
+    let progressBuffer = '';
+    let lastEncodedSec = 0;
+    let startedAt = Date.now();
+    const onStdout = (chunk) => {
+      progressBuffer += chunk;
+      let nl;
+      while ((nl = progressBuffer.indexOf('\n')) !== -1) {
+        const line = progressBuffer.slice(0, nl).trim();
+        progressBuffer = progressBuffer.slice(nl + 1);
+        const eq = line.indexOf('=');
+        if (eq < 0) continue;
+        const key = line.slice(0, eq);
+        const val = line.slice(eq + 1);
+        if (key === 'out_time_us' || key === 'out_time_ms') {
+          // out_time_us is in microseconds despite the name being ambiguous.
+          const us = parseInt(val, 10);
+          if (Number.isFinite(us)) lastEncodedSec = us / 1_000_000;
+        }
+        if (key === 'progress' && opts.onProgress) {
+          const pct = Math.max(0, Math.min(1, lastEncodedSec / totalEncodedSec));
+          const elapsedMs = Date.now() - startedAt;
+          const etaMs = pct > 0.01 ? Math.max(0, elapsedMs * (1 - pct) / pct) : null;
+          opts.onProgress({ pct, encodedSec: lastEncodedSec, totalSec: totalEncodedSec, etaMs });
+        }
+      }
+    };
+    let stderrTail = '';
+    const onStderr = (chunk) => {
+      stderrTail = (stderrTail + chunk).slice(-4000); // keep last 4 KB for diag
+    };
+
+    if (sizeMode && !hwCodec) {
+      // Software two-pass (libx264 or libvpx-vp9). Hardware encoders all do
+      // single-pass VBR \u2014 they don't benefit from two-pass.
+      startedAt = Date.now();
+      const r1 = await window.parallxElectron.terminal.execStream(
+        { command: _toolPaths.ffmpeg, args: buildArgv(buildCodecArgs(1), outPath, true), timeout: 1800000 },
+        { onStdout, onStderr },
+      );
+      if (r1.exitCode !== 0) throw new Error('ffmpeg pass 1: ' + (stderrTail || 'failed'));
+      lastEncodedSec = 0; progressBuffer = ''; startedAt = Date.now();
+      const r2 = await window.parallxElectron.terminal.execStream(
+        { command: _toolPaths.ffmpeg, args: buildArgv(buildCodecArgs(2), outPath, false), timeout: 1800000 },
+        { onStdout, onStderr },
+      );
+      if (r2.exitCode !== 0) throw new Error('ffmpeg pass 2: ' + (stderrTail || 'failed'));
+      // Clean up the per-export pass log files (libx264 may also drop a
+      // .mbtree sibling). Best-effort — silent if missing. Pass
+      // useTrash:false so these throwaway temps don't pollute the system
+      // recycle bin (esp. important on encrypted volumes).
+      try { await window.parallxElectron.fs.delete(`${passLogBase}-0.log`, { useTrash: false }); } catch { /* missing is fine */ }
+      try { await window.parallxElectron.fs.delete(`${passLogBase}-0.log.mbtree`, { useTrash: false }); } catch { /* x264 only */ }
+    } else {
+      // Single-pass (CRF mode, or hardware encoder in size mode).
+      startedAt = Date.now();
+      const r = await window.parallxElectron.terminal.execStream(
+        { command: _toolPaths.ffmpeg, args: buildArgv(buildCodecArgs(), outPath, false), timeout: 1800000 },
+        { onStdout, onStderr },
+      );
+      if (r.exitCode !== 0) {
+        // If we were trying a hardware encoder and it failed, retry once on
+        // the CPU \u2014 some drivers reject specific resolutions / pixel formats
+        // and silently failing into libx264 is friendlier than a crash.
+        if (hwCodec && /no NVENC|nvenc|qsv|amf|cuda|impossible to convert/i.test(stderrTail)) {
+          console.warn('[media-organizer] hardware encoder failed, retrying on CPU:', stderrTail.slice(-200));
+          stderrTail = ''; lastEncodedSec = 0; progressBuffer = ''; startedAt = Date.now();
+          const fallback = opts.format === 'mp4'
+            ? ['-c:v', 'libx264', '-preset', 'medium', '-crf', String(opts.crf), '-pix_fmt', 'yuv420p', '-movflags', '+faststart']
+            : ['-c:v', 'libvpx-vp9', '-crf', String(opts.crf), '-b:v', '0', '-row-mt', '1'];
+          const rr = await window.parallxElectron.terminal.execStream(
+            { command: _toolPaths.ffmpeg, args: buildArgv(fallback, outPath, false), timeout: 1800000 },
+            { onStdout, onStderr },
+          );
+          if (rr.exitCode !== 0) throw new Error('ffmpeg (cpu fallback): ' + (stderrTail || 'failed'));
+        } else {
+          throw new Error('ffmpeg: ' + (stderrTail || `exit ${r.exitCode}`));
+        }
+      }
+    }
   }
 
   return { outPath };
@@ -12527,19 +15275,25 @@ function buildDupGroup(api, files, label) {
       'Move to Trash', 'Cancel'
     );
     if (ok !== 'Move to Trash') return;
-    let moved = 0, failed = 0;
+    let moved = 0, failed = 0, perm = 0;
     for (const f of targets) {
       const fpath = (f.folder_path || '') + sep + f.basename;
-      // Use Electron shell.trashItem via fs.delete (extension fs API uses recycle bin on Windows)
-      const r = await window.parallxElectron.fs.delete(fpath).catch(() => ({ error: 'fail' }));
+      // useTrash:'auto' — files on the home volume go to the OS recycle bin;
+      // files on external/removable drives are permanently deleted in place
+      // so they never leak into the internal recycle bin.
+      const r = await window.parallxElectron.fs.delete(fpath, { useTrash: 'auto' }).catch(() => ({ error: 'fail' }));
       if (r && !r.error) {
         await db.run('DELETE FROM mo_files WHERE id = ?', [f.id]);
         moved++;
+        if (r.deletedPermanently) perm++;
       } else {
         failed++;
       }
     }
-    api.window.showInformationMessage(`Trashed ${moved} file${moved === 1 ? '' : 's'}` + (failed ? `, ${failed} failed` : '') + '.');
+    let msg = `Trashed ${moved} file${moved === 1 ? '' : 's'}`;
+    if (perm) msg += ` (${perm} on external drive permanently deleted)`;
+    if (failed) msg += `, ${failed} failed`;
+    api.window.showInformationMessage(msg + '.');
     group.style.opacity = '0.4'; group.style.pointerEvents = 'none';
     _notifySidebarRefresh();
     moRebuildSearchIndex().catch(() => {});
@@ -12680,6 +15434,182 @@ async function moAutoStackByBasename(api) {
   _notifySidebarRefresh();
 }
 
+// ── Permanent purge ──
+// Permanently removes photo/video items: cascades DB rows (via FK CASCADE on
+// mo_photos / mo_videos), purges orphan mo_files rows (cascades fingerprints +
+// type-specific metadata), removes thumbnail + cover-frame files, and (by
+// default) sends the source files to the OS recycle bin.
+//
+//   items: [{ type: 'photo'|'video', id: number }, ...]
+//   opts.deleteFiles (default true): also trash the on-disk source files.
+//
+// Returns { purged, filesTrashed, filesFailed }.
+async function moPurgeMedia(api, items, opts = {}) {
+  if (!items || items.length === 0) return { purged: 0, filesTrashed: 0, filesFailed: 0, filesPermanent: 0 };
+  const deleteFiles = opts.deleteFiles !== false;
+  const sep = _isWindows ? '\\' : '/';
+  const thumbDir = getThumbDir(api);
+
+  const photoIds = items.filter((i) => i.type === 'photo').map((i) => Number(i.id)).filter((n) => Number.isFinite(n));
+  const videoIds = items.filter((i) => i.type === 'video').map((i) => Number(i.id)).filter((n) => Number.isFinite(n));
+
+  // 1. Capture every backing file row up-front; cascade will wipe the join
+  //    tables before we get a chance to read them otherwise.
+  const fileRows = []; // { fileId, sourcePath, checksum }
+  if (photoIds.length > 0) {
+    const ph = `(${photoIds.map(() => '?').join(',')})`;
+    const rows = await db.all(
+      `SELECT DISTINCT f.id AS fileId, fl.path AS folder_path, f.basename AS basename,
+              (SELECT value FROM mo_fingerprints WHERE file_id = f.id AND type = 'md5' LIMIT 1) AS checksum
+         FROM mo_photos_files pf
+         JOIN mo_files f ON f.id = pf.file_id
+         JOIN mo_folders fl ON fl.id = f.folder_id
+        WHERE pf.photo_id IN ${ph}`,
+      photoIds
+    );
+    for (const r of rows) {
+      fileRows.push({ fileId: r.fileId, sourcePath: (r.folder_path || '') + sep + r.basename, checksum: r.checksum || null });
+    }
+  }
+  if (videoIds.length > 0) {
+    const vh = `(${videoIds.map(() => '?').join(',')})`;
+    const rows = await db.all(
+      `SELECT DISTINCT f.id AS fileId, fl.path AS folder_path, f.basename AS basename,
+              (SELECT value FROM mo_fingerprints WHERE file_id = f.id AND type = 'md5' LIMIT 1) AS checksum
+         FROM mo_videos_files vf
+         JOIN mo_files f ON f.id = vf.file_id
+         JOIN mo_folders fl ON fl.id = f.folder_id
+        WHERE vf.video_id IN ${vh}`,
+      videoIds
+    );
+    for (const r of rows) {
+      fileRows.push({ fileId: r.fileId, sourcePath: (r.folder_path || '') + sep + r.basename, checksum: r.checksum || null });
+    }
+  }
+
+  // 2. Hard-delete the domain rows. FK CASCADE clears mo_photos_files,
+  //    mo_videos_files, mo_photos_tags, mo_videos_tags, mo_albums_photos,
+  //    mo_photos_custom_fields, and mo_video_frames automatically.
+  for (const id of photoIds) await db.run(`DELETE FROM mo_photos WHERE id = ?`, [id]);
+  for (const id of videoIds) await db.run(`DELETE FROM mo_videos WHERE id = ?`, [id]);
+
+  // 3. Hard-delete now-orphan mo_files rows. Cascade clears mo_fingerprints,
+  //    mo_image_files, mo_video_files. A file is orphan iff no surviving
+  //    photo/video link references it.
+  const orphanFileIds = new Set();
+  for (const fr of fileRows) {
+    const stillUsed = await db.get(
+      `SELECT 1 AS used FROM mo_photos_files WHERE file_id = ?
+        UNION ALL
+       SELECT 1 AS used FROM mo_videos_files WHERE file_id = ?
+        LIMIT 1`,
+      [fr.fileId, fr.fileId]
+    );
+    if (!stillUsed) {
+      await db.run(`DELETE FROM mo_files WHERE id = ?`, [fr.fileId]);
+      orphanFileIds.add(fr.fileId);
+    }
+  }
+
+  // 4. Thumbnail + cover-frame cleanup for orphaned checksums (best-effort).
+  const orphanChecksums = new Set();
+  for (const fr of fileRows) {
+    if (fr.checksum && orphanFileIds.has(fr.fileId)) orphanChecksums.add(fr.checksum);
+  }
+  for (const ck of orphanChecksums) {
+    // Skip if another file shares this md5 (rare cross-photo dedup).
+    const stillRef = await db.get(`SELECT 1 FROM mo_fingerprints WHERE type = 'md5' AND value = ? LIMIT 1`, [ck]);
+    if (stillRef) continue;
+    const candidates = [
+      getThumbnailPath(thumbDir, ck, THUMB_MAX_SIZE),
+      getCoverFramePath(thumbDir, ck),
+    ];
+    for (const p of candidates) {
+      try { await window.parallxElectron.fs.delete(p, { useTrash: false }); } catch { /* missing thumbs are fine */ }
+    }
+  }
+
+  // 5. Optionally send source files to the OS recycle bin.
+  let filesTrashed = 0;
+  let filesFailed = 0;
+  let filesPermanent = 0;
+  if (deleteFiles) {
+    const seen = new Set();
+    for (const fr of fileRows) {
+      if (!fr.sourcePath || seen.has(fr.sourcePath)) continue;
+      seen.add(fr.sourcePath);
+      const r = await window.parallxElectron.fs.delete(fr.sourcePath, { useTrash: 'auto' }).catch(() => ({ error: 'fail' }));
+      if (r && !r.error) {
+        filesTrashed++;
+        if (r.deletedPermanently) filesPermanent++;
+      }
+      else filesFailed++;
+    }
+  }
+
+  // 6. Folder-backed albums whose last member just disappeared should be
+  //    removed too — otherwise the sidebar shows phantom empty albums.
+  await moPruneOrphanFolderAlbums();
+
+  // 7. FTS lives on top of mo_photos / mo_videos; rebuild so deletions are
+  //    reflected in search.
+  moRebuildSearchIndex().catch(() => {});
+  _notifySidebarRefresh();
+
+  return { purged: photoIds.length + videoIds.length, filesTrashed, filesFailed, filesPermanent };
+}
+
+// One-shot startup sweep: any mo_files row whose backing file is missing on
+// disk is purged, and any photo/video that has no surviving backing file is
+// purged with it. Guards against historical bugs where deletion left orphan
+// rows behind, and against folders that drift out of scan roots.
+async function moPurgeMissingFiles() {
+  try {
+    const files = await db.all(
+      `SELECT f.id AS id, fl.path AS folder_path, f.basename AS basename
+         FROM mo_files f
+         JOIN mo_folders fl ON fl.id = f.folder_id`
+    );
+    const sep = _isWindows ? '\\' : '/';
+    let purged = 0;
+    for (const f of files) {
+      const p = (f.folder_path || '') + sep + f.basename;
+      const exists = await window.parallxElectron.fs.exists(p).catch(() => false);
+      if (exists) continue;
+      // Find domain rows that depend solely on this missing file and remove them.
+      const photoLinks = await db.all(`SELECT photo_id FROM mo_photos_files WHERE file_id = ?`, [f.id]);
+      const videoLinks = await db.all(`SELECT video_id FROM mo_videos_files WHERE file_id = ?`, [f.id]);
+      for (const pl of photoLinks) {
+        const others = await db.get(
+          `SELECT COUNT(*) AS c FROM mo_photos_files WHERE photo_id = ? AND file_id <> ?`,
+          [pl.photo_id, f.id]
+        );
+        if (!others || others.c === 0) {
+          await db.run(`DELETE FROM mo_photos WHERE id = ?`, [pl.photo_id]);
+        }
+      }
+      for (const vl of videoLinks) {
+        const others = await db.get(
+          `SELECT COUNT(*) AS c FROM mo_videos_files WHERE video_id = ? AND file_id <> ?`,
+          [vl.video_id, f.id]
+        );
+        if (!others || others.c === 0) {
+          await db.run(`DELETE FROM mo_videos WHERE id = ?`, [vl.video_id]);
+        }
+      }
+      await db.run(`DELETE FROM mo_files WHERE id = ?`, [f.id]);
+      purged++;
+    }
+    if (purged > 0) {
+      await moPruneOrphanFolderAlbums();
+      moRebuildSearchIndex().catch(() => {});
+      _notifySidebarRefresh();
+    }
+  } catch (err) {
+    console.warn('[media-organizer] moPurgeMissingFiles failed:', err && err.message);
+  }
+}
+
 // ── Trash ──
 async function moMoveToTrash(api, items) {
   // items: array of { type, id }
@@ -12729,12 +15659,12 @@ async function moEmptyTrash(api) {
     return;
   }
   const ok = await api.window.showWarningMessage(
-    `Permanently delete ${total} trashed item${total === 1 ? '' : 's'}? Files will be moved to OS recycle bin.`,
+    `Permanently delete ${total} trashed item${total === 1 ? '' : 's'}? Files on your home drive go to the OS recycle bin; files on external/removable drives are permanently deleted in place (no internal recycle bin leakage).`,
     'Empty Trash', 'Cancel'
   );
   if (ok !== 'Empty Trash') return;
   const sep = _isWindows ? '\\' : '/';
-  let trashed = 0, failed = 0;
+  let trashed = 0, failed = 0, perm = 0;
   // Delete OS files first
   const allItems = [...photos, ...videos];
   const seenFiles = new Set();
@@ -12742,8 +15672,9 @@ async function moEmptyTrash(api) {
     const fpath = (it.folder_path || '') + sep + it.basename;
     if (seenFiles.has(fpath)) continue;
     seenFiles.add(fpath);
-    const r = await window.parallxElectron.fs.delete(fpath).catch(() => ({ error: 'fail' }));
-    if (r && !r.error) trashed++; else failed++;
+    const r = await window.parallxElectron.fs.delete(fpath, { useTrash: 'auto' }).catch(() => ({ error: 'fail' }));
+    if (r && !r.error) { trashed++; if (r.deletedPermanently) perm++; }
+    else failed++;
   }
   // Hard-delete DB rows (cascades take care of joins via FK if defined)
   await db.run(`DELETE FROM mo_photos WHERE deleted_at IS NOT NULL`);
@@ -12754,7 +15685,10 @@ async function moEmptyTrash(api) {
      WHERE id NOT IN (SELECT file_id FROM mo_photos_files)
        AND id NOT IN (SELECT file_id FROM mo_videos_files)
   `);
-  api.window.showInformationMessage(`Trash emptied: ${trashed} file${trashed === 1 ? '' : 's'} moved to recycle bin` + (failed ? `, ${failed} failed` : '') + '.');
+  let emsg = `Trash emptied: ${trashed} file${trashed === 1 ? '' : 's'} removed`;
+  if (perm) emsg += ` (${perm} on external drive permanently deleted)`;
+  if (failed) emsg += `, ${failed} failed`;
+  api.window.showInformationMessage(emsg + '.');
   _notifySidebarRefresh();
   moRebuildSearchIndex().catch(() => {});
 }
@@ -13585,6 +16519,9 @@ export async function activate(api, context) {
 
   // M59 P5: auto-empty trash older than N days (default 30)
   moAutoEmptyTrashIfStale().catch(() => {});
+  // Sweep orphan DB rows whose backing file vanished — guards against historical
+  // bugs and folders that drifted out of scan roots.
+  moPurgeMissingFiles().catch(() => {});
   // One-shot sweep for phantom folder-backed albums left over from earlier sessions.
   moPruneOrphanFolderAlbums().catch(() => {});
   // M59 P8: register AI chat tools

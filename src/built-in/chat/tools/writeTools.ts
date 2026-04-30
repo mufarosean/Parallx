@@ -242,7 +242,7 @@ export function createDeleteFileTool(
           const absPath = workspaceRoot
             ? (workspaceRoot.replace(/[\\/]$/, '') + '/' + cleanPath.replace(/^[\\/]/, '')).replace(/\//g, (globalThis as Record<string, unknown>).process ? '\\' : '/')
             : cleanPath;
-          const result = await fsBridge.delete(absPath, { useTrash: true });
+          const result = await fsBridge.delete(absPath, { useTrash: 'auto' as unknown as boolean });
           if (result.error) {
             return { content: `Failed to delete "${cleanPath}": ${result.error.message}`, isError: true };
           }
