@@ -2680,6 +2680,10 @@ async function runScan(rootPath, api) {
       startWatcherForRoot(rootPath);
     }
 
+    // Prune folder-backed albums that no longer have any linked items
+    // (e.g. all photos in a folder were deleted between scans).
+    await moPruneOrphanFolderAlbums();
+
     // Refresh sidebar sections (folders, tags, albums)
     _notifySidebarRefresh();
 
@@ -2857,6 +2861,7 @@ async function drainWatcherQueue() {
 
     if (created + updated + deleted > 0) {
       console.log(`[MediaOrganizer] Auto-scan: ${created} new, ${updated} updated, ${deleted} removed`);
+      if (deleted > 0) await moPruneOrphanFolderAlbums();
       _notifySidebarRefresh();
     }
   } finally {
@@ -3007,6 +3012,7 @@ async function runDeltaScan(api) {
 
   if (totalCreated + totalUpdated + totalDeleted > 0) {
     console.log(`[MediaOrganizer] Delta scan: ${totalCreated} new, ${totalUpdated} updated, ${totalDeleted} removed`);
+    if (totalDeleted > 0) await moPruneOrphanFolderAlbums();
     if (api) {
       api.window.showInformationMessage(
         `Media auto-scan: ${totalCreated} new, ${totalUpdated} updated, ${totalDeleted} removed`
@@ -9413,6 +9419,35 @@ async function associateWithFolderAlbum(folderId, entityType, entityId) {
   }
 }
 
+// Delete folder-backed albums (folder_id IS NOT NULL) that have no remaining
+// linked photos or videos. These are auto-created by associateWithFolderAlbum
+// when the first item is scanned in a folder; once every item is removed we
+// have a phantom album pointing at a folder that may no longer exist on disk.
+//
+// Run after delta scans, after watcher batches that deleted files, and on
+// activation as a one-shot sweep for stale rows from earlier sessions.
+async function moPruneOrphanFolderAlbums() {
+  try {
+    const orphans = await db.all(
+      `SELECT id FROM mo_albums
+       WHERE folder_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM mo_albums_photos WHERE album_id = mo_albums.id)
+         AND NOT EXISTS (SELECT 1 FROM mo_albums_videos WHERE album_id = mo_albums.id)`
+    );
+    if (!orphans || orphans.length === 0) return 0;
+    const ids = orphans.map(r => r.id);
+    const placeholders = ids.map(() => '?').join(',');
+    await db.run(`DELETE FROM mo_albums WHERE id IN (${placeholders})`, ids);
+    // Drop cache so next scan can recreate them on demand if files reappear.
+    _folderAlbumCache.clear();
+    console.log(`[MediaOrganizer] Pruned ${orphans.length} empty folder-backed album(s)`);
+    return orphans.length;
+  } catch (err) {
+    console.warn('[MediaOrganizer] Folder-album prune failed:', err);
+    return 0;
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 31: ALBUM EDITOR VIEW (F32)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -12745,6 +12780,8 @@ export async function activate(api, context) {
 
   // M59 P5: auto-empty trash older than N days (default 30)
   moAutoEmptyTrashIfStale().catch(() => {});
+  // One-shot sweep for phantom folder-backed albums left over from earlier sessions.
+  moPruneOrphanFolderAlbums().catch(() => {});
   // M59 P8: register AI chat tools
   moRegisterAITools(api);
 
