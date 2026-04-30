@@ -2446,23 +2446,26 @@ async function processFile(entry) {
   // Adapted from stash: pkg/file/scan.go — onNewFile wraps Create+Handlers in WithTxn
   const meta = await extractMetadata(entry.path, entry.fileType);
 
-  // M59: detect animated webp for later conversion review
-  const animatedWebp = entry.fileType === 'image' && /\.webp$/i.test(entry.path)
-    ? (await isWebPAnimated(entry.path)) ? 1 : 0
-    : 0;
+  // M59: detect webp for later conversion. Animated -> gif, static -> jpg.
+  const isWebp = entry.fileType === 'image' && /\.webp$/i.test(entry.path);
+  let webpTarget = null; // 'gif' | 'jpg' | null
+  if (isWebp) {
+    webpTarget = (await isWebPAnimated(entry.path)) ? 'gif' : 'jpg';
+  }
+  const needsConversion = webpTarget ? 1 : 0;
 
   const txnOps = [
     { type: 'run',
       sql: `INSERT INTO mo_files (basename, size, mod_time, folder_id, needs_conversion, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      params: [entry.name, entry.size, entry.mtime, entry.folderId, animatedWebp] },
+      params: [entry.name, entry.size, entry.mtime, entry.folderId, needsConversion] },
   ];
 
   const txnResult = await db.transaction(txnOps);
   const fileId = txnResult[0].lastInsertRowid;
 
-  // M59 P2: queue for auto-convert after scan if it's an animated WebP
-  if (animatedWebp) _newAnimatedWebPIds.push(fileId);
+  // M59 P2: queue for auto-convert after scan if it's a WebP
+  if (webpTarget) _newWebPConversions.push({ id: fileId, target: webpTarget });
 
   // 5. Store fingerprints (outside txn — these are idempotent via upsert)
   for (const fp of fps) {
@@ -2554,7 +2557,7 @@ async function runScan(rootPath, api) {
   const startTime = Date.now();
   _scanRunning = true;
   _scanCancelled = false;
-  _newAnimatedWebPIds = [];
+  _newWebPConversions = [];
 
   const stats = { total: 0, created: 0, updated: 0, renamed: 0, skipped: 0, duplicates: 0, errors: 0, cancelled: false };
 
@@ -11075,42 +11078,43 @@ async function moSetSetting(key, value) {
 }
 
 // ─── Auto-WebP conversion (background, after scan) ────────────────────────────
-// New animated WebP files discovered during scan are queued here so we can
-// optionally auto-convert them after scan completes.
-let _newAnimatedWebPIds = [];
+// New WebP files discovered during scan are queued here for automatic
+// conversion after scan completes. Animated -> GIF, static -> JPG.
+// Originals are hard-deleted after a successful conversion (no quarantine).
+let _newWebPConversions = []; // [{ id, target: 'gif' | 'jpg' }]
 
 async function moAutoConvertWebPAfterScan(api) {
-  const ids = _newAnimatedWebPIds.slice();
-  _newAnimatedWebPIds = [];
-  if (ids.length === 0) return;
-  const mode = await moGetSetting('autoWebpMode', 'suggest');
+  const queue = _newWebPConversions.slice();
+  _newWebPConversions = [];
+  if (queue.length === 0) return;
+  const mode = await moGetSetting('autoWebpMode', 'auto');
   if (mode === 'off') return;
   if (mode === 'suggest') {
     api.window.showInformationMessage(
-      `${ids.length} animated WebP file${ids.length === 1 ? '' : 's'} found. Run "Review Animated WebP Files" to convert.`
+      `${queue.length} WebP file${queue.length === 1 ? '' : 's'} found. Run "Review WebP Files" to convert.`
     );
     return;
   }
-  // mode === 'auto' — convert each in sequence (default target: mp4)
+  // mode === 'auto' — animated -> gif, static -> jpg, hard-delete original.
   let ok = 0, fail = 0;
-  for (const id of ids) {
-    try { await moConvertWebP(api, id, 'mp4'); ok++; }
+  for (const item of queue) {
+    try { await moConvertWebP(api, item.id, item.target); ok++; }
     catch (err) { console.warn('[MediaOrganizer] auto webp convert failed:', err); fail++; }
   }
   if (ok > 0 || fail > 0) {
     api.window.showInformationMessage(
-      `Auto-converted ${ok} animated WebP${ok === 1 ? '' : 's'}` + (fail > 0 ? ` (${fail} failed)` : '') + '.'
+      `Auto-converted ${ok} WebP file${ok === 1 ? '' : 's'}` + (fail > 0 ? ` (${fail} failed)` : '') + '.'
     );
     _notifySidebarRefresh();
   }
 }
 
 async function moPickAutoWebPMode(api) {
-  const current = await moGetSetting('autoWebpMode', 'suggest');
+  const current = await moGetSetting('autoWebpMode', 'auto');
   const items = [
-    { label: 'Off', description: 'Ignore animated WebP files' },
-    { label: 'Suggest', description: 'Notify after scan; convert via Review command (default)' },
-    { label: 'Auto', description: 'Convert to MP4 immediately after scan, with quarantine' },
+    { label: 'Off', description: 'Ignore WebP files' },
+    { label: 'Suggest', description: 'Notify after scan; convert via Review command' },
+    { label: 'Auto', description: 'Convert animated->GIF, static->JPG, delete original (default)' },
   ];
   for (const it of items) {
     if (it.label.toLowerCase() === current) it.description = '✓ Currently selected — ' + it.description;
@@ -11166,7 +11170,7 @@ async function moOpenWebPReviewDialog(api) {
   overlay.appendChild(dialog);
 
   const header = moEl('div', 'mo-modal-header');
-  header.appendChild(moEl('div', 'mo-modal-title', { textContent: `Animated WebP review (${rows.length})` }));
+  header.appendChild(moEl('div', 'mo-modal-title', { textContent: `WebP review (${rows.length})` }));
   const closeBtn = moEl('button', 'mo-modal-close', { textContent: '×' });
   closeBtn.addEventListener('click', () => overlay.remove());
   header.appendChild(closeBtn);
@@ -11174,21 +11178,30 @@ async function moOpenWebPReviewDialog(api) {
 
   const list = moEl('div', 'mo-webp-list');
   if (rows.length === 0) {
-    list.appendChild(moEl('div', 'mo-webp-empty', { textContent: 'No animated WebP files pending review.' }));
+    list.appendChild(moEl('div', 'mo-webp-empty', { textContent: 'No WebP files pending review.' }));
   }
-  const choices = new Map(); // fileId → 'mp4' | 'gif' | 'skip'
+  const choices = new Map(); // fileId → 'mp4' | 'gif' | 'jpg' | 'skip'
   for (const r of rows) {
+    // Detect animated vs static so we can default the right target.
+    const sep = _isWindows ? '\\' : '/';
+    const fullPath = (r.folder_path || '') + sep + r.basename;
+    let isAnim = false;
+    try { isAnim = await isWebPAnimated(fullPath); } catch (_) { isAnim = false; }
     const row = moEl('div', 'mo-webp-row');
-    const label = moEl('div', 'mo-webp-name', { textContent: r.basename });
+    const label = moEl('div', 'mo-webp-name', { textContent: r.basename + (isAnim ? ' (animated)' : ' (static)') });
     const meta = moEl('div', 'mo-webp-meta', { textContent: `${(r.size / 1024).toFixed(0)} KB · ${r.folder_path || ''}` });
     const sel = document.createElement('select');
     sel.className = 'mo-clip-input';
-    for (const opt of [['mp4', 'Convert to MP4'], ['gif', 'Convert to GIF'], ['skip', 'Skip']]) {
+    const opts = isAnim
+      ? [['gif', 'Convert to GIF'], ['mp4', 'Convert to MP4'], ['skip', 'Skip']]
+      : [['jpg', 'Convert to JPG'], ['skip', 'Skip']];
+    for (const opt of opts) {
       const o = document.createElement('option'); o.value = opt[0]; o.textContent = opt[1];
-      if (opt[0] === 'mp4') o.selected = true;
       sel.appendChild(o);
     }
-    choices.set(r.id, 'mp4');
+    const defaultTarget = isAnim ? 'gif' : 'jpg';
+    sel.value = defaultTarget;
+    choices.set(r.id, defaultTarget);
     sel.addEventListener('change', () => choices.set(r.id, sel.value));
     row.append(label, meta, sel);
     list.appendChild(row);
@@ -11253,6 +11266,14 @@ async function moConvertWebP(api, fileId, target) {
       '-vf', shellQuote('scale=trunc(iw/2)*2:trunc(ih/2)*2'),
       shellQuote(outPath),
     ].join(' ');
+  } else if (target === 'jpg') {
+    // Static WebP -> JPG. -q:v 2 is high quality (1 best, 31 worst).
+    cmd = [
+      ff, '-hide_banner', '-loglevel', 'error', '-y',
+      '-i', shellQuote(srcPath),
+      '-q:v', '2',
+      shellQuote(outPath),
+    ].join(' ');
   } else {
     // GIF — use a single-pass conversion (palette generation baked in via split filter)
     const vf = "split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer";
@@ -11267,18 +11288,7 @@ async function moConvertWebP(api, fileId, target) {
   const r = await window.parallxElectron.terminal.exec(cmd, { timeout: 600000 });
   if (r.exitCode !== 0) throw new Error('ffmpeg: ' + (r.stderr || 'failed'));
 
-  // Move original to quarantine
-  const today = new Date().toISOString().slice(0, 10);
-  const quarantineRoot = moQuarantineDir(api);
-  if (!quarantineRoot) throw new Error('No workspace open');
-  const quarantineDir = quarantineRoot + sep + today;
-  await window.parallxElectron.fs.mkdir(quarantineDir);
-  const quarantinePath = quarantineDir + sep + fileRow.basename;
-  // Copy original then delete
-  const readResult = await window.parallxElectron.fs.readFile(srcPath);
-  if (!readResult.error) {
-    await window.parallxElectron.fs.writeFile(quarantinePath, readResult.content, readResult.encoding || 'base64');
-  }
+  // Hard-delete original WebP — user opted out of quarantine to avoid duplicates.
   await window.parallxElectron.fs.delete(srcPath).catch(() => {});
 
   // Update DB row to point at new file
