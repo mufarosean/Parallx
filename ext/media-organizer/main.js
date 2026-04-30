@@ -4501,6 +4501,40 @@ const MO_CSS = `
   pointer-events: none;
   box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
+/* M59 P6: timeline + map */
+.mo-timeline-dialog { width: 96vw; height: 92vh; max-width: 1400px; max-height: none; }
+.mo-timeline-body {
+  flex: 1; overflow-y: auto; padding: 0 16px 16px 16px;
+  scroll-behavior: smooth;
+}
+.mo-timeline-section-header {
+  position: sticky; top: 0;
+  background: var(--parallx-color-background, #1f1f1f);
+  font-weight: 600; font-size: 13px; padding: 10px 4px; margin-top: 8px;
+  border-bottom: 1px solid var(--parallx-color-border, #444);
+  z-index: 1;
+}
+.mo-timeline-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 6px; padding: 8px 0;
+}
+.mo-timeline-tile {
+  position: relative; aspect-ratio: 1 / 1;
+  background: var(--parallx-color-input-background, #2a2a2a);
+  border-radius: 4px; cursor: pointer; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid transparent;
+}
+.mo-timeline-tile:hover { border-color: var(--parallx-color-accent, #9333ea); }
+.mo-timeline-tile img { width: 100%; height: 100%; object-fit: cover; }
+.mo-timeline-tile-ph { opacity: 0.5; }
+.mo-map-dialog { width: 940px; max-width: 96vw; }
+.mo-map-canvas {
+  display: block; width: 100%; height: auto;
+  background: #1e1e1e; cursor: grab;
+}
+.mo-map-canvas:active { cursor: grabbing; }
 .mo-card-rating {
   position: absolute;
   bottom: 4px;
@@ -6476,6 +6510,8 @@ function renderBrowserSidebar(container, api) {
   qfBody.appendChild(sidebarItem('clock', 'Recent', null, () => openGrid('recent', 'Recent')));
   qfBody.appendChild(sidebarItem('copy', 'Duplicates', null, () => openGrid('duplicates', 'Duplicates')));
   qfBody.appendChild(sidebarItem('trash', 'Trash', null, () => openGrid('trash', 'Trash')));
+  qfBody.appendChild(sidebarItem('calendar', 'Timeline', null, () => moOpenTimeline(_api)));
+  qfBody.appendChild(sidebarItem('globe', 'Map', null, () => moOpenMap(_api)));
   sections.appendChild(qfSection);
 
   // Folders section
@@ -12023,6 +12059,280 @@ async function moAutoEmptyTrashIfStale() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 10E: TIMELINE + MAP — M59 P6
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Timeline view ──
+// Modal full-screen view: all photos+videos grouped by year/month/day with
+// sticky date headers. Click a thumbnail to open the detail dialog (delegated
+// via the standard mo:request-open-detail event).
+async function moOpenTimeline(api) {
+  const photos = await db.all(
+    `SELECT 'photo' AS type, p.id, p.title, COALESCE(p.taken_at, p.created_at) AS dt
+       FROM mo_photos p
+      WHERE p.deleted_at IS NULL
+      ORDER BY dt DESC
+      LIMIT 5000`
+  );
+  const videos = await db.all(
+    `SELECT 'video' AS type, v.id, v.title, v.created_at AS dt
+       FROM mo_videos v
+      WHERE v.deleted_at IS NULL
+      ORDER BY dt DESC
+      LIMIT 5000`
+  );
+  const all = [...photos, ...videos].sort((a, b) => (b.dt || '').localeCompare(a.dt || ''));
+  if (all.length === 0) {
+    api.window.showInformationMessage('No items to show on timeline.');
+    return;
+  }
+
+  // Bucket by year-month-day
+  const buckets = new Map(); // key = YYYY-MM-DD
+  for (const it of all) {
+    const day = (it.dt || '').slice(0, 10) || 'Unknown';
+    if (!buckets.has(day)) buckets.set(day, []);
+    buckets.get(day).push(it);
+  }
+
+  const overlay = moEl('div', 'mo-modal-overlay');
+  const dialog = moEl('div', 'mo-modal mo-timeline-dialog');
+  overlay.appendChild(dialog);
+  const header = moEl('div', 'mo-modal-header');
+  header.appendChild(moEl('div', 'mo-modal-title', { textContent: `Timeline (${all.length} items)` }));
+  const closeBtn = moEl('button', 'mo-modal-close', { textContent: '×' });
+  closeBtn.addEventListener('click', () => overlay.remove());
+  header.appendChild(closeBtn);
+  dialog.appendChild(header);
+
+  const body = moEl('div', 'mo-timeline-body');
+  dialog.appendChild(body);
+
+  const monthFmt = (key) => {
+    if (key === 'Unknown') return 'Unknown date';
+    const [y, m, d] = key.split('-');
+    const date = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
+    return date.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
+  for (const [day, items] of buckets) {
+    const sectHeader = moEl('div', 'mo-timeline-section-header');
+    sectHeader.textContent = monthFmt(day);
+    body.appendChild(sectHeader);
+
+    const grid = moEl('div', 'mo-timeline-grid');
+    for (const item of items) {
+      const tile = moEl('div', 'mo-timeline-tile');
+      tile.dataset.type = item.type; tile.dataset.id = String(item.id);
+      tile.title = item.title || `${item.type} #${item.id}`;
+      const ph = moEl('div', 'mo-timeline-tile-ph', { innerHTML: moIcon(item.type === 'video' ? 'device-camera-video' : 'image', 24) });
+      tile.appendChild(ph);
+      // Lazy thumbnail: defer until visible
+      tile.addEventListener('click', () => {
+        _api.editors.openEditor({
+          typeId: 'media-organizer-grid',
+          title: item.title || `${item.type} #${item.id}`,
+          icon: item.type === 'video' ? 'file-media' : 'image',
+          instanceId: `detail:${item.type}:${item.id}`,
+        });
+        overlay.remove();
+      });
+      grid.appendChild(tile);
+    }
+    body.appendChild(grid);
+  }
+
+  // Lazy-load thumbnails as tiles enter viewport
+  if ('IntersectionObserver' in window) {
+    const tilesObs = new IntersectionObserver(async (entries, obs) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        const tile = e.target;
+        obs.unobserve(tile);
+        const type = tile.dataset.type;
+        const id = parseInt(tile.dataset.id, 10);
+        try {
+          const r = await resolveThumbnail(type, id, _api);
+          if (r && r.path) {
+            const url = await localFileToUrl(r.path);
+            if (url) {
+              tile.innerHTML = '';
+              const img = moEl('img');
+              img.src = url; img.loading = 'lazy';
+              tile.appendChild(img);
+            }
+          }
+        } catch { /* ignore */ }
+      }
+    }, { rootMargin: '300px 0px' });
+    body.querySelectorAll('.mo-timeline-tile').forEach(t => tilesObs.observe(t));
+  }
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+// ── Map view ──
+// Offline canvas-based world plot. Uses an equirectangular projection;
+// adequate for "where were these taken?" overview. Click a point to open
+// the detail dialog. Pan via drag, zoom via wheel.
+async function moOpenMap(api) {
+  const rows = await db.all(
+    `SELECT p.id, p.title, p.gps_latitude AS lat, p.gps_longitude AS lon
+       FROM mo_photos p
+      WHERE p.deleted_at IS NULL
+        AND p.gps_latitude IS NOT NULL
+        AND p.gps_longitude IS NOT NULL`
+  );
+  if (rows.length === 0) {
+    api.window.showInformationMessage('No photos with GPS coordinates found.');
+    return;
+  }
+
+  const overlay = moEl('div', 'mo-modal-overlay');
+  const dialog = moEl('div', 'mo-modal mo-map-dialog');
+  overlay.appendChild(dialog);
+  const header = moEl('div', 'mo-modal-header');
+  header.appendChild(moEl('div', 'mo-modal-title', { textContent: `Map (${rows.length} geotagged)` }));
+  const closeBtn = moEl('button', 'mo-modal-close', { textContent: '×' });
+  closeBtn.addEventListener('click', () => overlay.remove());
+  header.appendChild(closeBtn);
+  dialog.appendChild(header);
+
+  const canvas = moEl('canvas', 'mo-map-canvas');
+  canvas.width = 900; canvas.height = 540;
+  dialog.appendChild(canvas);
+
+  const ctx = canvas.getContext('2d');
+  // Camera state — pan offsets in screen px, zoom factor
+  let zoom = 1;
+  let panX = 0, panY = 0;
+  let dragging = false;
+  let dragStartX = 0, dragStartY = 0, panStartX = 0, panStartY = 0;
+
+  function project(lat, lon) {
+    // Equirectangular: lon → x ∈ [-180,180] → [0, w], lat → y ∈ [90,-90] → [0, h]
+    const baseW = canvas.width, baseH = canvas.height;
+    let x = ((lon + 180) / 360) * baseW;
+    let y = ((90 - lat) / 180) * baseH;
+    x = (x - baseW / 2) * zoom + baseW / 2 + panX;
+    y = (y - baseH / 2) * zoom + baseH / 2 + panY;
+    return { x, y };
+  }
+
+  function unproject(sx, sy) {
+    const baseW = canvas.width, baseH = canvas.height;
+    let x = (sx - baseW / 2 - panX) / zoom + baseW / 2;
+    let y = (sy - baseH / 2 - panY) / zoom + baseH / 2;
+    const lon = (x / baseW) * 360 - 180;
+    const lat = 90 - (y / baseH) * 180;
+    return { lat, lon };
+  }
+
+  // Draw world graticule + points
+  function draw() {
+    ctx.fillStyle = '#1e1e1e';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Graticule lines every 30°
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+    for (let lon = -180; lon <= 180; lon += 30) {
+      const a = project(-90, lon), b = project(90, lon);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    for (let lat = -60; lat <= 60; lat += 30) {
+      const a = project(lat, -180), b = project(lat, 180);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    // Equator stronger
+    ctx.strokeStyle = '#555';
+    const a = project(0, -180), b = project(0, 180);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+
+    // Cluster points by approximate proximity at current zoom
+    const clusters = [];
+    const radius = 14;
+    for (const r of rows) {
+      const p = project(r.lat, r.lon);
+      let assigned = false;
+      for (const c of clusters) {
+        if (Math.hypot(c.x - p.x, c.y - p.y) < radius) {
+          c.x = (c.x * c.count + p.x) / (c.count + 1);
+          c.y = (c.y * c.count + p.y) / (c.count + 1);
+          c.count++;
+          c.items.push(r);
+          assigned = true; break;
+        }
+      }
+      if (!assigned) clusters.push({ x: p.x, y: p.y, count: 1, items: [r] });
+    }
+
+    // Draw clusters
+    for (const c of clusters) {
+      const r = c.count > 1 ? Math.min(28, 8 + Math.sqrt(c.count) * 2) : 6;
+      ctx.fillStyle = c.count > 1 ? 'rgba(147,51,234,0.85)' : 'rgba(245,197,24,0.95)';
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      if (c.count > 1) {
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(c.count), c.x, c.y);
+      }
+    }
+    canvas._clusters = clusters;
+  }
+
+  draw();
+
+  canvas.addEventListener('mousedown', (e) => {
+    dragging = true;
+    dragStartX = e.clientX; dragStartY = e.clientY;
+    panStartX = panX; panStartY = panY;
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    panX = panStartX + (e.clientX - dragStartX);
+    panY = panStartY + (e.clientY - dragStartY);
+    draw();
+  });
+  window.addEventListener('mouseup', () => { dragging = false; });
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
+    zoom = Math.max(1, Math.min(20, zoom * factor));
+    draw();
+  }, { passive: false });
+  canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+    const clusters = canvas._clusters || [];
+    for (const c of clusters) {
+      if (Math.hypot(c.x - sx, c.y - sy) < 16) {
+        if (c.count === 1) {
+          _api.editors.openEditor({
+            typeId: 'media-organizer-grid',
+            title: c.items[0].title || `photo #${c.items[0].id}`,
+            icon: 'image',
+            instanceId: `detail:photo:${c.items[0].id}`,
+          });
+          overlay.remove();
+        } else {
+          // Zoom in toward cluster
+          zoom = Math.min(20, zoom * 2);
+          const baseW = canvas.width, baseH = canvas.height;
+          panX -= (c.x - baseW / 2);
+          panY -= (c.y - baseH / 2);
+          draw();
+        }
+        return;
+      }
+    }
+  });
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 11: ACTIVATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -12314,6 +12624,14 @@ export async function activate(api, context) {
   );
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.emptyTrash', () => moEmptyTrash(api))
+  );
+
+  // M59 P6: timeline + map views
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.openTimeline', () => moOpenTimeline(api))
+  );
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.openMap', () => moOpenMap(api))
   );
 
   // M59 P1: Purge expired quarantine (>30d)
