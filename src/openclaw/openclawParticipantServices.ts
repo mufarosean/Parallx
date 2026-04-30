@@ -58,6 +58,9 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly sessionManager?: IDefaultParticipantServices['sessionManager'];
   readonly unifiedConfigService?: IDefaultParticipantServices['unifiedConfigService'];
   readonly queueFollowupRequest?: IDefaultParticipantServices['queueFollowupRequest'];
+  // M60 §3.8 + §3.10: autonomy controls layer hooks.
+  readonly isAutonomyFlagEnabled?: IDefaultParticipantServices['isAutonomyFlagEnabled'];
+  readonly emitAutonomyEvent?: IDefaultParticipantServices['emitAutonomyEvent'];
   readonly createAutonomyMirror?: IDefaultParticipantServices['createAutonomyMirror'];
   readonly getSkillCatalog?: IDefaultParticipantServices['getSkillCatalog'];
   readonly getToolPermissions?: IDefaultParticipantServices['getToolPermissions'];
@@ -178,6 +181,9 @@ export function buildOpenclawDefaultParticipantServices(
     sessionManager: deps.sessionManager,
     unifiedConfigService: deps.unifiedConfigService,
     queueFollowupRequest: deps.queueFollowupRequest,
+    // M60 §3.8 + §3.10
+    isAutonomyFlagEnabled: deps.isAutonomyFlagEnabled,
+    emitAutonomyEvent: deps.emitAutonomyEvent,
     createAutonomyMirror: deps.createAutonomyMirror,
     getSkillCatalog: deps.getSkillCatalog,
     getToolPermissions: deps.getToolPermissions,

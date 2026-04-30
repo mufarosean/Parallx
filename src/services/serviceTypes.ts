@@ -2011,3 +2011,25 @@ export const IMcpClientService = createServiceIdentifier<IMcpClientService>('IMc
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type IAutonomyLogService = import('./autonomyLogService.js').AutonomyLogService;
 export const IAutonomyLogService = createServiceIdentifier<IAutonomyLogService>('IAutonomyLogService');
+
+// ─── IAutonomyFeatureFlagsService (M60 §3.8) ────────────────────────────────
+//
+// Live-toggleable boolean flags that gate autonomy entry points. Defaults
+// per M60 §3.8. Followup runner + SurfaceRouter consult this service on
+// every autonomous-trigger hot path.
+
+import type { IAutonomyFeatureFlagsService as IAutonomyFeatureFlagsServiceType } from './autonomyFeatureFlags.js';
+export type IAutonomyFeatureFlagsService = IAutonomyFeatureFlagsServiceType;
+export const IAutonomyFeatureFlagsService =
+  createServiceIdentifier<IAutonomyFeatureFlagsServiceType>('IAutonomyFeatureFlagsService');
+
+// ─── IAutonomyEventLog (M60 §3.10) ──────────────────────────────────────────
+//
+// Structured ndjson event log for autonomous turns. One record per
+// followup / cron firing / heartbeat tick / subagent spawn / surface route.
+// Bodies, message contents, file contents — never logged. Hashes only.
+
+import type { IAutonomyEventLog as IAutonomyEventLogType } from './autonomyEventLog.js';
+export type IAutonomyEventLog = IAutonomyEventLogType;
+export const IAutonomyEventLog =
+  createServiceIdentifier<IAutonomyEventLogType>('IAutonomyEventLog');

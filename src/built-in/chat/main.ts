@@ -54,6 +54,13 @@ import {
 import { SubagentSpawner } from '../../openclaw/openclawSubagentSpawn.js';
 import { AutonomyLogService } from '../../services/autonomyLogService.js';
 import {
+  AutonomyFeatureFlagsService,
+} from '../../services/autonomyFeatureFlags.js';
+import {
+  AutonomyEventLog,
+  type IAutonomyEventLogFs,
+} from '../../services/autonomyEventLog.js';
+import {
   createSubagentTurnExecutor,
   createSubagentAnnouncer,
 } from '../../openclaw/openclawSubagentExecutor.js';
@@ -274,6 +281,40 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     ? api.services.get<AutonomyLogService>(IAutonomyLogService)
     : new AutonomyLogService();
 
+  // ── M60 §3.8 + §3.10: Autonomy controls layer ──────────────────────────
+  //
+  // Feature flags + structured event log. Constructed here in the chat
+  // extension activation so they sit alongside the autonomy machinery
+  // they gate, and are wired into:
+  //   - SurfaceRouterService (§3.8 surface gating + §3.10 route events)
+  //   - openclaw default participant services (§3.8 followup gating +
+  //     §3.10 followup outcome events)
+  //
+  // Defaults from M60 §3.8: followup + chat/notification/statusbar surfaces
+  // ON; canvas + filesystem surfaces OFF until C3 lands.
+  const _autonomyFlagsStorage = api.services.has(IWorkspaceStorageService)
+    ? api.services.get<import('../../platform/storage.js').IStorage>(IWorkspaceStorageService)
+    : undefined;
+  const autonomyFlags = new AutonomyFeatureFlagsService(_autonomyFlagsStorage);
+  void autonomyFlags.initialize().catch(() => { /* defaults apply */ });
+  context.subscriptions.push(autonomyFlags);
+
+  // §3.10 event log — writes ndjson to <APP_ROOT>/data/autonomy-events.<day>.ndjson.
+  // Falls back to a no-op writer when the fs bridge is unavailable (tests).
+  const _bridge = (globalThis as { parallxElectron?: {
+    appPath?: string;
+    fs?: IAutonomyEventLogFs;
+  } }).parallxElectron;
+  const _appPath = _bridge?.appPath;
+  const _fsBridge = _bridge?.fs;
+  let autonomyEventLog: AutonomyEventLog | undefined;
+  if (_appPath && _fsBridge) {
+    autonomyEventLog = new AutonomyEventLog(_fsBridge, {
+      dataDir: `${_appPath}/data`,
+    });
+    context.subscriptions.push(autonomyEventLog);
+  }
+
   // ── 1. Retrieve DI services ──
 
   const languageModelsService = api.services.get<import('../../services/chatTypes.js').ILanguageModelsService>(ILanguageModelsService);
@@ -304,6 +345,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const surfaceRouter = api.services.has(ISurfaceRouterService)
     ? api.services.get<import('../../services/surfaceRouterService.js').ISurfaceRouterService>(ISurfaceRouterService)
     : undefined;
+  // M60 §3.8 + §3.10: install controls layer on the workbench-owned router.
+  // Setters (not constructor args) so the workbench bootstrap stays
+  // unchanged — the chat extension owns the autonomy services.
+  if (surfaceRouter) {
+    surfaceRouter.setFeatureFlags(autonomyFlags);
+    surfaceRouter.setEventLog(autonomyEventLog);
+  }
   let retrievalService = api.services.has(IRetrievalService)
     ? api.services.get<import('../../services/serviceTypes.js').IRetrievalService>(IRetrievalService)
     : undefined;
@@ -773,6 +821,20 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     queueFollowupRequest: (sessionId: string, message: string) => {
       chatService.queueRequest(sessionId, message, ChatRequestQueueKind.Queued);
     },
+    // M60 §3.8: gate followup evaluation on autonomy.followup.enabled.
+    isAutonomyFlagEnabled: (flagId: string) => {
+      // Only known flags are honored; unknown ids default to true so a
+      // misconfiguration does not silently disable autonomy.
+      try {
+        return autonomyFlags.isEnabled(flagId as Parameters<typeof autonomyFlags.isEnabled>[0]);
+      } catch {
+        return true;
+      }
+    },
+    // M60 §3.10: emit a structured autonomy event record.
+    emitAutonomyEvent: autonomyEventLog
+      ? (input) => { autonomyEventLog!.emit(input); }
+      : undefined,
     getAvailableModelIds: _ollamaProvider ? async () => {
       const models = await _ollamaProvider!.listModels().catch(() => []);
       return models.map(m => m.id);
@@ -1373,6 +1435,20 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     context.subscriptions.push(
       api.commands.registerCommand('parallx.wakeAgent', () => {
         heartbeatRunner.wake('wake');
+      }),
+    );
+  }
+
+  // ── M60 §3.10: dev-only autonomy:replay command ──
+  // Reconstructs (stub) a previous autonomous turn from the event log.
+  // Read-only by default; pass --apply to execute (not implemented in α).
+  if (autonomyEventLog) {
+    context.subscriptions.push(
+      api.commands.registerCommand('autonomy.replay', async (...args: unknown[]) => {
+        const eventId = typeof args[0] === 'string' ? (args[0] as string) : '';
+        const apply = args.includes('--apply') || args.includes('apply');
+        const { executeAutonomyReplay } = await import('../../commands/autonomyReplayCommand.js');
+        return executeAutonomyReplay(autonomyEventLog, eventId, { apply });
       }),
     );
   }

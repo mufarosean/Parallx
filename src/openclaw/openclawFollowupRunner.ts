@@ -174,11 +174,20 @@ export function createFollowupRunner(
     maxDepth?: number;
     followupEnabled?: boolean;
   },
-): (turnResult: IOpenclawTurnResult, currentDepth: number) => Promise<IFollowupEvaluation> {
+): (turnResult: IOpenclawTurnResult, currentDepth: number, token?: { isCancellationRequested: boolean }) => Promise<IFollowupEvaluation> {
   const maxDepth = options?.maxDepth ?? MAX_FOLLOWUP_DEPTH;
   const followupEnabled = options?.followupEnabled ?? true;
 
-  return async (turnResult: IOpenclawTurnResult, currentDepth: number): Promise<IFollowupEvaluation> => {
+  return async (
+    turnResult: IOpenclawTurnResult,
+    currentDepth: number,
+    token?: { isCancellationRequested: boolean },
+  ): Promise<IFollowupEvaluation> => {
+    // M60 §3.7: cancellation cooperation — refuse to evaluate after cancel.
+    if (token?.isCancellationRequested) {
+      return { shouldFollowup: false, reason: 'cancelled' };
+    }
+
     const evaluation = evaluateFollowup(turnResult, {
       currentDepth,
       maxDepth,
@@ -189,7 +198,12 @@ export function createFollowupRunner(
       // Upstream: queue debounce via DEFAULT_QUEUE_DEBOUNCE_MS (queue/state.ts:18)
       // and waitForQueueDebounce in drain.ts prevents rapid-fire followup turns.
       // Parallx: explicit delay since we have no queue drain mechanism.
-      await new Promise<void>(resolve => setTimeout(resolve, FOLLOWUP_DELAY_MS));
+      // M60 §3.7: delay must be cancellable so the kill-switch terminates
+      // a chain mid-flight in <2s rather than after the full FOLLOWUP_DELAY_MS.
+      const cancelled = await waitCancellable(FOLLOWUP_DELAY_MS, token);
+      if (cancelled) {
+        return { shouldFollowup: false, reason: 'cancelled' };
+      }
 
       const followupRun: IOpenclawFollowupRun = {
         message: evaluation.message,
@@ -202,4 +216,27 @@ export function createFollowupRunner(
 
     return evaluation;
   };
+}
+
+/**
+ * Sleep for `ms` ms, returning true if the wait was cut short by cancellation.
+ * Polls the token at a 50ms cadence — fine for the 500ms debounce.
+ */
+async function waitCancellable(
+  ms: number,
+  token: { isCancellationRequested: boolean } | undefined,
+): Promise<boolean> {
+  if (!token) {
+    await new Promise<void>(resolve => setTimeout(resolve, ms));
+    return false;
+  }
+  const step = 50;
+  let waited = 0;
+  while (waited < ms) {
+    if (token.isCancellationRequested) return true;
+    const tick = Math.min(step, ms - waited);
+    await new Promise<void>(resolve => setTimeout(resolve, tick));
+    waited += tick;
+  }
+  return token.isCancellationRequested;
 }

@@ -24,6 +24,11 @@ import {
   type IDeliveryResult,
   type SurfaceContentType,
 } from '../openclaw/openclawSurfacePlugin.js';
+import {
+  SURFACE_FLAG_BY_ID,
+  type IAutonomyFeatureFlagsService,
+} from './autonomyFeatureFlags.js';
+import type { IAutonomyEventLog } from './autonomyEventLog.js';
 
 // ---------------------------------------------------------------------------
 // Origin tag — used by the feedback-loop guard
@@ -96,6 +101,20 @@ export interface ISurfaceRouterService extends Disposable {
   readonly deliveryHistory: readonly ISurfaceDelivery[];
   /** Filter delivery history by origin tag. */
   getDeliveriesByOrigin(origin: string): readonly ISurfaceDelivery[];
+
+  /**
+   * M60 §3.8: install/replace the autonomy feature-flag service used to
+   * gate per-surface deliveries. Setter (rather than constructor arg) so
+   * the workbench can wire after activation, before the chat extension
+   * starts dispatching. Calling with `undefined` removes gating.
+   */
+  setFeatureFlags(flags: IAutonomyFeatureFlagsService | undefined): void;
+
+  /**
+   * M60 §3.10: install/replace the structured event log so every route
+   * attempt produces an autonomy event record (success, gated, error).
+   */
+  setEventLog(log: IAutonomyEventLog | undefined): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -104,11 +123,21 @@ export interface ISurfaceRouterService extends Disposable {
 
 export class SurfaceRouterService extends Disposable implements ISurfaceRouterService {
   private readonly _router: SurfaceRouter;
+  private _flags: IAutonomyFeatureFlagsService | undefined;
+  private _eventLog: IAutonomyEventLog | undefined;
 
   constructor() {
     super();
     this._router = new SurfaceRouter();
     this._register({ dispose: () => this._router.dispose() });
+  }
+
+  setFeatureFlags(flags: IAutonomyFeatureFlagsService | undefined): void {
+    this._flags = flags;
+  }
+
+  setEventLog(log: IAutonomyEventLog | undefined): void {
+    this._eventLog = log;
   }
 
   registerSurface(plugin: ISurfacePlugin): void {
@@ -132,7 +161,7 @@ export class SurfaceRouterService extends Disposable implements ISurfaceRouterSe
   }
 
   send(params: ISurfaceDeliveryParams): Promise<IDeliveryResult> {
-    return this._router.send(params);
+    return this._sendGated(params, undefined);
   }
 
   sendWithOrigin(params: ISurfaceDeliveryParams, origin: string): Promise<IDeliveryResult> {
@@ -143,7 +172,57 @@ export class SurfaceRouterService extends Disposable implements ISurfaceRouterSe
       ...(params.metadata ?? {}),
       [SURFACE_ORIGIN_KEY]: origin,
     };
-    return this._router.send({ ...params, metadata });
+    return this._sendGated({ ...params, metadata }, origin);
+  }
+
+  /**
+   * Shared dispatch path: enforces the §3.8 surface-enable flags and emits
+   * a §3.10 autonomy event for every route attempt (success, gated, error).
+   */
+  private async _sendGated(
+    params: ISurfaceDeliveryParams,
+    origin: string | undefined,
+  ): Promise<IDeliveryResult> {
+    const flagId = SURFACE_FLAG_BY_ID[params.surfaceId];
+    if (this._flags && flagId && !this._flags.isEnabled(flagId)) {
+      // Gated: refuse the route. Caller treats this as an error path.
+      this._eventLog?.emit({
+        trigger: { kind: this._triggerKindForOrigin(origin), ref: origin },
+        outcome: 'gated',
+        surfaceRoutes: [{ surface: params.surfaceId, ok: false, reason: 'gated' }],
+        note: `surface gated by ${flagId}`,
+      });
+      return {
+        deliveryId: '',
+        surfaceId: params.surfaceId,
+        status: 'failed',
+        error: `Surface "${params.surfaceId}" is disabled by feature flag (${flagId})`,
+      };
+    }
+
+    const t0 = Date.now();
+    const result = await this._router.send(params);
+    const duration = Date.now() - t0;
+    this._eventLog?.emit({
+      trigger: { kind: this._triggerKindForOrigin(origin), ref: origin },
+      outcome: result.status === 'delivered' ? 'completed' : 'error',
+      surfaceRoutes: [{
+        surface: params.surfaceId,
+        ok: result.status === 'delivered',
+        reason: result.status === 'delivered' ? undefined : (result.error ?? 'route-failed'),
+      }],
+      durationMs: duration,
+    });
+    return result;
+  }
+
+  private _triggerKindForOrigin(origin: string | undefined): import('./autonomyEventLog.js').AutonomyTriggerKind {
+    switch (origin) {
+      case 'cron': return 'cron';
+      case 'heartbeat': return 'heartbeat';
+      case 'subagent': return 'subagent';
+      default: return 'chat';
+    }
   }
 
   broadcast(

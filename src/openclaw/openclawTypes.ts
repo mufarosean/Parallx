@@ -270,6 +270,19 @@ export interface IDefaultParticipantServices {
    * enqueueFollowupRun (queue/enqueue.ts:44).
    */
   queueFollowupRequest?(sessionId: string, message: string): void;
+  /**
+   * M60 §3.8: read an autonomy feature flag. Used at the participant
+   * post-turn hook to gate followup evaluation. When undefined, callers
+   * default to "on" (legacy behavior).
+   */
+  isAutonomyFlagEnabled?(flagId: string): boolean;
+  /**
+   * M60 §3.10: emit a structured autonomy event record. Used at the
+   * post-turn hook to record followup outcomes (completed / cancelled /
+   * gated). When undefined, the runtime is observability-blind and
+   * proceeds without logging.
+   */
+  emitAutonomyEvent?(input: import('../services/autonomyEventLog.js').IAutonomyEventInput): void;
   createAutonomyMirror?(input: { sessionId: string; requestText: string; mode: ChatMode; runtime: 'claw' | 'openclaw' }): Promise<IChatRuntimeAutonomyMirror | undefined>;
   getSkillCatalog?(): ISkillCatalogEntry[];
   getToolPermissions?(): Record<string, ToolPermissionLevel>;

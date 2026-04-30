@@ -287,9 +287,19 @@ async function runOpenclawDefaultTurn(
       });
     }
 
-    // Aborted — skip memory writeback and record as aborted, not completed
+    // Aborted — skip memory writeback and record as aborted, not completed.
+    // M60 §3.10: emit a 'cancelled' autonomy event so the chain has an
+    // observability record of the kill-switch firing mid-turn.
     if (token.isCancellationRequested) {
       lifecycle.recordAborted();
+      const cancelState = getFollowupState?.(context.sessionId);
+      services.emitAutonomyEvent?.({
+        trigger: { kind: 'followup', ref: context.sessionId },
+        outcome: 'cancelled',
+        budgetSnapshot: { depth: cancelState?.depth ?? 0 },
+        note: 'cancelled mid-turn (kill-switch)',
+      });
+      if (cancelState) cancelState.depth = 0;
       return {
         metadata: {
           runtimeBoundary: {
@@ -352,19 +362,63 @@ async function runOpenclawDefaultTurn(
     // Upstream: finalizeWithFollowup (agent-runner-helpers.ts:55-58) \u2014
     // a post-turn hook that schedules queue drain. Parallx maps the drain
     // to chatService.queueRequest + _processNextPending.
-    const followupState = getFollowupState?.(context.sessionId);
-    if (followupState) {
-      try {
-        const evaluation = await followupState.runner(result, followupState.depth);
-        if (evaluation.shouldFollowup) {
-          followupState.depth += 1;
-        } else {
+    //
+    // M60 §3.7 + §3.8 + §3.10: gate on autonomy.followup.enabled, observe
+    // the participant's CancellationToken, and emit a structured autonomy
+    // event for the chain outcome.
+    const followupFlagOn = services.isAutonomyFlagEnabled?.('autonomy.followup.enabled') ?? true;
+    const followupState = followupFlagOn ? getFollowupState?.(context.sessionId) : undefined;
+    if (followupFlagOn && followupState) {
+      if (token.isCancellationRequested) {
+        // Kill-switch fired before we even got to evaluate — record cancel,
+        // reset depth, do not queue.
+        services.emitAutonomyEvent?.({
+          trigger: { kind: 'followup', ref: context.sessionId },
+          outcome: 'cancelled',
+          budgetSnapshot: { depth: followupState.depth },
+          note: 'cancelled before followup evaluation',
+        });
+        followupState.depth = 0;
+      } else {
+        try {
+          const evaluation = await followupState.runner(result, followupState.depth, token);
+          if (evaluation.shouldFollowup) {
+            followupState.depth += 1;
+            services.emitAutonomyEvent?.({
+              trigger: { kind: 'followup', ref: context.sessionId },
+              outcome: 'completed',
+              budgetSnapshot: { depth: followupState.depth },
+              note: evaluation.reason,
+            });
+          } else {
+            const outcome = evaluation.reason === 'cancelled' ? 'cancelled' : 'completed';
+            services.emitAutonomyEvent?.({
+              trigger: { kind: 'followup', ref: context.sessionId },
+              outcome,
+              budgetSnapshot: { depth: followupState.depth },
+              note: evaluation.reason,
+            });
+            followupState.depth = 0;
+          }
+        } catch (err) {
+          console.warn('[OpenClaw:W1] Followup evaluation failed:', err);
+          services.emitAutonomyEvent?.({
+            trigger: { kind: 'followup', ref: context.sessionId },
+            outcome: 'error',
+            budgetSnapshot: { depth: followupState.depth },
+            note: err instanceof Error ? err.message : String(err),
+          });
           followupState.depth = 0;
         }
-      } catch (err) {
-        console.warn('[OpenClaw:W1] Followup evaluation failed:', err);
-        followupState.depth = 0;
       }
+    } else if (!followupFlagOn) {
+      // Flag is off — runner is a no-op, no FOLLOWUP_DELAY_MS waits emitted.
+      // Emit a single 'gated' event so observability records the bypass.
+      services.emitAutonomyEvent?.({
+        trigger: { kind: 'followup', ref: context.sessionId },
+        outcome: 'gated',
+        note: 'autonomy.followup.enabled=false',
+      });
     }
 
     return {
