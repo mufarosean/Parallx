@@ -350,3 +350,28 @@ With the first autonomy slice now implemented, the next highest-value expansion 
 3. extend the real-model AIR eval with milestone-owned AIR behavior dimensions.
 
 That will move AIR testing from an initial product-quality suite to a fuller milestone-grade AIR behavior matrix, with the remaining deterministic gaps centered on identity/new-session hygiene and deeper diagnostics assertions.
+---
+
+## Autonomy E2E — eval runner (M60 Phase ? F5)
+
+The autonomy eval runner has landed in partial form at
+`tests/autonomy-eval/runner/runner.ts`. It is exercised by
+`tests/unit/autonomyEvalRunner.test.ts`. See
+`tests/autonomy-eval/README.md` for runner status, scenario shape, and
+the `PARALLX_GMAIL_E2E` mode flag.
+
+Phase ? F5 scope:
+
+- runner discovers + parses every shipped `*.scenario.json`;
+- runner resolves rubrics (inline OR sidecar `*.rubric.json`);
+- runner validates fixture coherence for Gmail (metadata-only invariant);
+- Gmail scenario (`gmail-inbox-digest.scenario.json`) ships with a
+  recorded fixture and a sidecar §9.3 six-dimension rubric;
+- runner refuses live Gmail (`PARALLX_GMAIL_E2E=1`) until F2+F3+F4 land,
+  guarding CI against accidental live OAuth flow;
+- end-to-end execution of the cron-driven Gmail digest is gated on F4
+  (`gmail.list_unread` tool registration), itself gated on F2 (OAuth)
+  and F3 (safeStorage IPC). When those land, the runner upgrades to
+  service-level scenario execution and the Playwright AIR plan extends
+  with an autonomy E2E section that drives Gmail digest ? Canvas page ?
+  notification surface.

@@ -1,0 +1,64 @@
+{
+  "$schema": "../autonomy-eval.fixture.schema.json",
+  "id": "gmail-inbox",
+  "_doc": "Recorded Gmail fixture used when PARALLX_GMAIL_E2E is unset. The runner injects this as the response of the gmail.list_unread tool, bypassing the MCP child process entirely. Contents are synthetic — no real mail, no real sender addresses.",
+  "tool": "gmail.list_unread",
+  "messages": [
+    {
+      "id": "fix-001",
+      "from": "Alice Patel <alice@acme.example>",
+      "subject": "Q2 plan — final draft for tomorrow",
+      "snippet": "Wrapping the deck tonight; need your sign-off on slides 4-7 before 9am.",
+      "receivedAt": "2026-04-30T07:14:22.000Z",
+      "labels": ["INBOX", "IMPORTANT", "UNREAD"]
+    },
+    {
+      "id": "fix-002",
+      "from": "GitHub <noreply@github.com>",
+      "subject": "[parallx-community/parallx] PR #482 needs review",
+      "snippet": "Christine Liu opened pull request #482 — Replace polling fs.watcher with chokidar.",
+      "receivedAt": "2026-04-30T06:51:08.000Z",
+      "labels": ["INBOX", "UNREAD", "CATEGORY_UPDATES"]
+    },
+    {
+      "id": "fix-003",
+      "from": "Stripe <receipts@stripe.com>",
+      "subject": "Your receipt from Stripe — $19.00",
+      "snippet": "Thanks for your business. Receipt #ch_3OABcd7 dated April 29, 2026.",
+      "receivedAt": "2026-04-30T03:22:10.000Z",
+      "labels": ["INBOX", "UNREAD", "CATEGORY_UPDATES"]
+    },
+    {
+      "id": "fix-004",
+      "from": "Dr. Morgan Chen <morgan.chen@clinic.example>",
+      "subject": "Lab results ready — please log in to portal",
+      "snippet": "Your lab results from April 27 are ready to view in the patient portal.",
+      "receivedAt": "2026-04-30T02:08:44.000Z",
+      "labels": ["INBOX", "UNREAD", "IMPORTANT"]
+    },
+    {
+      "id": "fix-005",
+      "from": "Hacker News Daily <digest@hndaily.example>",
+      "subject": "Top stories — April 29",
+      "snippet": "Show HN: A faster JSON parser written in Zig (412 points, 287 comments).",
+      "receivedAt": "2026-04-29T22:00:00.000Z",
+      "labels": ["INBOX", "UNREAD", "CATEGORY_PROMOTIONS"]
+    },
+    {
+      "id": "fix-006",
+      "from": "Sam Rivera <sam@startup.example>",
+      "subject": "Re: Coffee next Tuesday?",
+      "snippet": "Tuesday 10am works great. Ferry Building? I'll bring the brief.",
+      "receivedAt": "2026-04-29T19:33:51.000Z",
+      "labels": ["INBOX", "UNREAD"]
+    },
+    {
+      "id": "fix-007",
+      "from": "Calendar <calendar-noreply@acme.example>",
+      "subject": "Reminder: 1:1 with manager — Friday 2pm",
+      "snippet": "Reminder for your event on Friday at 2:00 PM Pacific.",
+      "receivedAt": "2026-04-29T17:00:00.000Z",
+      "labels": ["INBOX", "UNREAD", "CATEGORY_UPDATES"]
+    }
+  ]
+}

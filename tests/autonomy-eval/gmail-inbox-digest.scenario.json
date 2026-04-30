@@ -1,0 +1,52 @@
+{
+  "$schema": "../autonomy-eval.schema.json",
+  "id": "gmail-inbox-digest",
+  "title": "Cron-driven Gmail inbox digest surfaces a Canvas page + statusbar note",
+  "trigger": {
+    "kind": "cron",
+    "fixture": {
+      "jobs": [
+        {
+          "id": "gmail-digest-daily",
+          "name": "gmail-inbox-digest",
+          "schedule": { "every": "30s" },
+          "schedule_production": { "every": "24h" },
+          "payload": {
+            "agentTurn": "Read my unread email and tell me what matters. Surface the digest to a canvas page named 'Inbox Digest — ${YYYY-MM-DD}'."
+          },
+          "wakeMode": "now",
+          "enabled": true
+        }
+      ]
+    },
+    "fixturePath": "fixtures/gmail-inbox.json",
+    "modeFlag": "PARALLX_GMAIL_E2E",
+    "modeNotes": {
+      "PARALLX_GMAIL_E2E=0": "Default. Runner injects fixtures/gmail-inbox.json as the gmail.list_unread response. No network egress.",
+      "PARALLX_GMAIL_E2E=1": "Runner spawns the real tools/gmail-mcp-server child process with a live access token from the user's OAuth session. Live mail. CI never runs this."
+    }
+  },
+  "preconditions": {
+    "flags": {
+      "autonomy.cron.enabled": true,
+      "mcp.gmail.enabled": true
+    },
+    "settings": {
+      "mcp.gmail.clientId": "<user-provided>",
+      "mcp.gmail.clientSecret": "<user-provided, secret>"
+    }
+  },
+  "expected": {
+    "toolCalls": [
+      { "name": "gmail.list_unread", "atLeast": 1 },
+      { "name": "create_page",       "atLeast": 1 }
+    ],
+    "surfaceRoutes": [
+      { "kind": "notification" },
+      { "kind": "statusbar"    }
+    ],
+    "noBodyLeak": true
+  },
+  "rubric": "gmail-inbox-digest.rubric.json",
+  "_runner_status": "GATED — execution end-to-end requires F2 (OAuth) + F3 (safeStorage) + F4 (gmail.list_unread tool) to land. Until then the runner validates schema + fixture coherence in fixture mode."
+}
