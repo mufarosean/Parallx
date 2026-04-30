@@ -5915,7 +5915,7 @@ const MO_CSS = `
 }
 .mo-player-progress-buf { background: rgba(255,255,255,0.35); width: 0; }
 .mo-player-progress-played {
-  background: var(--parallx-color-accent, #4d8eff);
+  background: var(--vscode-focusBorder, #9333ea);
   width: 0; z-index: 1;
 }
 .mo-player-loop-range {
@@ -5930,7 +5930,7 @@ const MO_CSS = `
 .mo-player-progress-thumb {
   position: absolute; top: 50%; transform: translate(-50%, -50%);
   width: 11px; height: 11px; border-radius: 50%;
-  background: var(--parallx-color-accent, #4d8eff);
+  background: var(--vscode-focusBorder, #9333ea);
   border: 2px solid #fff; display: none; z-index: 3;
   pointer-events: none;
 }
@@ -5956,7 +5956,8 @@ const MO_CSS = `
   align-items: center; justify-content: center; min-width: 28px; height: 28px;
 }
 .mo-player-btn:hover { background: rgba(255,255,255,0.15); }
-.mo-player-btn-active { color: var(--parallx-color-accent, #4d8eff); }
+.mo-player-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
+.mo-player-btn-active { color: var(--vscode-focusBorder, #9333ea); }
 .mo-player-time {
   color: #fff; font-size: 12px; font-variant-numeric: tabular-nums;
   margin: 0 8px; opacity: 0.9;
@@ -5974,10 +5975,11 @@ const MO_CSS = `
   padding: 4px 8px; text-align: left; font-size: 12px; border-radius: 3px;
 }
 .mo-player-speed-item:hover { background: rgba(255,255,255,0.15); }
+.mo-player-speed-item:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
 .mo-hidden { display: none !important; }
 .mo-player-vol { display: flex; align-items: center; gap: 4px; }
 .mo-player-vol-slider {
-  width: 60px; height: 4px; cursor: pointer; accent-color: var(--parallx-color-accent, #4d8eff);
+  width: 60px; height: 4px; cursor: pointer; accent-color: var(--vscode-focusBorder, #9333ea);
 }
 .mo-player-rail-btn {
   width: 36px; height: 36px; border-radius: 50%;
@@ -5986,6 +5988,7 @@ const MO_CSS = `
   display: flex; align-items: center; justify-content: center;
 }
 .mo-player-rail-btn:hover { background: rgba(0,0,0,0.85); border-color: rgba(255,255,255,0.3); }
+.mo-player-rail-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: 2px; }
 .mo-player-rail-btn:disabled { opacity: 0.4; cursor: default; }
 
 /* ─── Clip / WebP modal ─── */
