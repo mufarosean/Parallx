@@ -11318,7 +11318,7 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
 
   async function ensureStripDir() {
     if (stripDir) return stripDir;
-    const base = await getThumbDir();
+    const base = getThumbDir(api);
     if (!base) return null;
     stripDir = base + sepCh + '.clipstrip-' + Date.now();
     await window.parallxElectron.fs.mkdir(stripDir);
@@ -11363,7 +11363,12 @@ function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
     ].join(' ');
     const r = await window.parallxElectron.terminal.exec(cmd, { timeout: 60000 });
     if (myGen !== stripGen) return; // superseded
-    if (r.exitCode !== 0) { stripStatus.textContent = 'Frame extract failed'; return; }
+    if (r.exitCode !== 0) {
+      const msg = (r.stderr || r.stdout || '').toString().split(/\r?\n/).filter(Boolean).pop() || 'unknown error';
+      stripStatus.textContent = 'Frame extract failed: ' + msg.slice(0, 180);
+      console.warn('[MediaOrganizer] strip extract failed', { cmd, stderr: r.stderr, stdout: r.stdout });
+      return;
+    }
 
     const list = await window.parallxElectron.fs.readdir(dir);
     if (myGen !== stripGen) return;
@@ -11612,7 +11617,7 @@ async function moExportGifWithFrameEdits(api, opts, outPath) {
   const defaultDelaySec = 1 / Math.max(1, stripFps);
 
   // Temp dir under thumbDir
-  const baseDir = await getThumbDir();
+  const baseDir = getThumbDir(api);
   if (!baseDir) throw new Error('No workspace open');
   const workDir = baseDir + sep + '.clipexport-' + Date.now();
   await window.parallxElectron.fs.mkdir(workDir);
