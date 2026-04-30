@@ -42,7 +42,7 @@ on the same thread that handles UI events. Key issues:
 ### Proposed Solutions (prioritized)
 
 #### Option 1: Cooperative yielding in all indexing loops
-**Impact: HIGH | Effort: LOW (~10 lines)**
+**Impact: HIGH | Effort: LOW (~10 lines)** — ✅ **Landed in M60 Phase β** (see [`STARTUP_PERFORMANCE.md`](./STARTUP_PERFORMANCE.md))
 
 Add `await new Promise(r => setTimeout(r, 0))` between page iterations in
 `_indexAllPages()` and between batches in `_embedChunks()`. The directory walker
@@ -51,7 +51,7 @@ embedding batches. This alone would eliminate the "Not Responding" dialog for
 most workspaces.
 
 #### Option 2: Deferred start with idle scheduling
-**Impact: HIGH | Effort: LOW (~15 lines)**
+**Impact: HIGH | Effort: LOW (~15 lines)** — ✅ **Landed in M60 Phase β** (see [`STARTUP_PERFORMANCE.md`](./STARTUP_PERFORMANCE.md))
 
 Instead of starting the pipeline immediately after DB open, wait for
 `requestIdleCallback` or a fixed 2–3s delay after Phase 5 completes. This lets

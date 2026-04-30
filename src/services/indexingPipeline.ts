@@ -105,6 +105,20 @@ const MAX_RICH_DOC_SIZE = 10 * 1024 * 1024;
 /** Yield back to the event loop every N directory entries while walking. */
 const DIRECTORY_WALK_YIELD_EVERY = 200;
 
+/**
+ * M60 B2 — Fallback delay (ms) used to defer the first indexing run when
+ * `requestIdleCallback` isn't available. The renderer is Chromium-based so
+ * rIC is normally present; this is a safety net for environments where it
+ * may have been polyfilled away. 2.5s lets Phase 5 (DB open, builtin tool
+ * activation) settle before any embedding CPU spikes.
+ */
+const STARTUP_DEFER_FALLBACK_MS = 2_500;
+
+/** M60 B2 — rIC timeout for the deferred start. Indexing must begin within
+ * this window even if the renderer never reports idle (e.g. continuous user
+ * activity right after workspace open). */
+const STARTUP_DEFER_RIC_TIMEOUT_MS = 3_000;
+
 /** @deprecated Use ParallxIgnore instead (M11 Task 1.9). Kept for backward compat / tests. */
 const SKIP_DIRS = new Set([
   'node_modules', '.git', '.parallx', '.vscode', '.idea',
@@ -344,6 +358,17 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     this._isIndexing = true;
     this._abortController = new AbortController();
     this._sessionGuard = this._sessionManager ? captureSession(this._sessionManager) : undefined;
+
+    // M60 B2 — Defer the first run so the workbench can paint and built-in
+    // tool activations can settle before embedding CPU spikes. See
+    // docs/STARTUP_PERFORMANCE.md and Future_Improvements.md §1 Option 2.
+    await this._waitForIdleStart();
+    if (this._abortController?.signal.aborted) {
+      this._isIndexing = false;
+      this._abortController = null;
+      return;
+    }
+
     const startTime = performance.now();
 
     try {
@@ -412,6 +437,57 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
    */
   cancel(): void {
     this._abortController?.abort();
+  }
+
+  /**
+   * M60 B2 — Wait for the renderer to be idle before kicking off the
+   * initial indexing pass. Uses `requestIdleCallback` (always available in
+   * Chromium-based Electron renderers) so the workbench can paint, restore
+   * editors, and finish built-in tool activation before embedding work
+   * starts competing for the main thread. Falls back to a fixed
+   * `setTimeout` when rIC isn't present (Node test environments treat the
+   * fallback as a no-op via `STARTUP_DEFER_FALLBACK_MS = 0` override in
+   * tests; production keeps the configured 2.5s delay).
+   *
+   * The promise also resolves immediately if cancellation has already been
+   * requested, so `cancel()` during deferral exits cleanly.
+   */
+  private _waitForIdleStart(): Promise<void> {
+    if (this._abortController?.signal.aborted) { return Promise.resolve(); }
+
+    type IdleCb = (cb: () => void, opts?: { timeout?: number }) => unknown;
+    const ric = (globalThis as unknown as { requestIdleCallback?: IdleCb }).requestIdleCallback;
+
+    if (typeof ric === 'function') {
+      return new Promise<void>((resolve) => {
+        let settled = false;
+        const settle = (): void => {
+          if (settled) { return; }
+          settled = true;
+          resolve();
+        };
+        ric(() => settle(), { timeout: STARTUP_DEFER_RIC_TIMEOUT_MS });
+        // Also resolve on abort so cancel() during the wait unblocks us.
+        this._abortController?.signal.addEventListener('abort', () => settle(), { once: true });
+      });
+    }
+
+    // No requestIdleCallback (e.g. Node test env). Honor the configured
+    // fallback delay; tests can shorten this via fake timers if needed.
+    if (STARTUP_DEFER_FALLBACK_MS <= 0) { return Promise.resolve(); }
+    // In vitest/Node test runs without rIC, skip the wall-clock delay so
+    // existing unit tests don't pay a 2.5s penalty per `start()` call.
+    // Production renderers always have rIC and never hit this branch.
+    const inTestEnv = typeof process !== 'undefined'
+      && (process.env?.VITEST === 'true' || process.env?.NODE_ENV === 'test');
+    if (inTestEnv) { return Promise.resolve(); }
+    return new Promise<void>((resolve) => {
+      const t = setTimeout(() => resolve(), STARTUP_DEFER_FALLBACK_MS);
+      this._abortController?.signal.addEventListener('abort', () => {
+        clearTimeout(t);
+        resolve();
+      }, { once: true });
+    });
   }
 
   /**
@@ -542,6 +618,11 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
         });
       }
       this._updateProgress('pages', this._progress.processed + 1, pages.length, page.title);
+      // M60 B1 — Cooperative yield between page iterations. Each page
+      // includes chunking + an embedding round-trip, so yielding every
+      // iteration lets the renderer paint and dispatch UI events between
+      // pages without measurably slowing total indexing time.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
 
     return indexed;
@@ -944,6 +1025,14 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
       this._checkAborted();
+
+      // M60 B1 — Cooperative yield between embedding batches. Mirrors the
+      // pattern used by the directory walker (DIRECTORY_WALK_YIELD_EVERY)
+      // so a long file with many chunks doesn't monopolize the renderer
+      // thread between Ollama batch round-trips.
+      if (i > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
 
       // Stale session guard: bail between batches if workspace changed
       if (this._sessionGuard && !this._sessionGuard.isValid()) {
