@@ -50,26 +50,28 @@ Returns:
 }
 ```
 
-## One-time setup
+## End-user setup (in Parallx)
 
-> **End users:** ignore this section. The bundled server ships pre-built
-> at `bundle/server.mjs` and registration happens through the Parallx
-> MCP Servers UI. This section is for developers building the server
-> from source.
+1. Open Parallx → **chat-gear → MCP Servers → + Add Server → Catalog → Gmail**.
+2. Click **Install**. The Gmail row appears with status "Disconnected".
+3. Click **Authorize**. Your default browser opens to Google's consent
+   screen. Sign in and approve read-only access to your inbox.
+4. The server saves a refresh token to
+   `~/.parallx/gmail-mcp/credentials.json` (mode `0600`) and the row
+   flips to **Connected**.
+5. `list_unread` is now available to foreground chat, cron, heartbeat,
+   and subagent turns.
 
-### 1. Create a Google OAuth client (developers only)
+No terminal, no Google Cloud Console, no `npm install`. The server
+ships pre-built at `bundle/server.mjs` and uses the bundled Parallx
+OAuth client.
 
-1. Visit <https://console.cloud.google.com/apis/credentials>.
-2. Create an **OAuth client ID** of type **Desktop app**.
-3. Enable the **Gmail API** for the project.
-4. Add yourself as a test user under **OAuth consent screen → Test users**.
-5. Copy the client ID and client secret.
+## Developer setup (building from source)
 
-> Per RFC 8252 §8.4, OAuth clients shipped with desktop apps are
-> **public-by-design**. The "secret" is not actually secret — Google
-> still requires it for token exchange.
+> Skip this section if you're an end user — the committed bundle is
+> what runs in production.
 
-### 2. Build
+### 1. Build
 
 ```powershell
 cd tools/gmail-mcp-server
@@ -78,10 +80,14 @@ npm run build
 ```
 
 This produces a single bundled file at `bundle/server.mjs` (~18 kB,
-zero runtime dependencies). The bundle is committed to the repo so
-end users never need a Node toolchain.
+zero runtime dependencies).
 
-### 3. Authorize
+### 2. Override the bundled OAuth client (optional)
+
+The bundle ships with the Parallx-owned Google OAuth Desktop client
+baked in (see `src/bundledOAuthClient.ts`). To authorize against a
+different Google project — e.g. when developing against a staging
+project — set environment variables before running `--auth`:
 
 ```powershell
 $env:GMAIL_OAUTH_CLIENT_ID     = "<your-client-id>"
@@ -89,28 +95,22 @@ $env:GMAIL_OAUTH_CLIENT_SECRET = "<your-client-secret>"
 node bundle/server.mjs --auth
 ```
 
-The server will:
+> Per RFC 8252 §8.4, OAuth clients shipped with desktop apps are
+> **public-by-design**. The "secret" baked into the bundle is not
+> confidential — Google still requires it for the token-exchange call,
+> but it grants no access on its own. The user's consent for their own
+> data is the actual authorization boundary.
 
-1. Start a one-shot HTTP listener on `127.0.0.1:<random-port>`.
-2. Print a Google authorization URL — open it in your browser.
-3. After you approve, Google redirects to the loopback URL.
-4. The server exchanges the auth code for tokens and writes them to
-   `~/.parallx/gmail-mcp/credentials.json` with mode `0600`.
-5. Exits 0.
+### 3. Manual `--auth` run (developers)
 
-### 4. Register in Parallx
+```powershell
+node bundle/server.mjs --auth
+```
 
-In Parallx: **chat-gear → MCP Servers → + Add Server**
-
-| Field    | Value                                                                |
-|----------|----------------------------------------------------------------------|
-| Name     | `gmail`                                                              |
-| Command  | `node`                                                               |
-| Args     | `<absolute-path-to>/tools/gmail-mcp-server/bundle/server.mjs`        |
-
-Save. The server registers `list_unread` with the agent. The same tool
-is available to foreground chat turns and to autonomous turns (cron,
-heartbeat, subagent) — they all share Parallx's tool catalog.
+The server starts a one-shot loopback listener, prints a Google
+authorization URL to stderr, opens it (you do, in a browser), exchanges
+the redirect code for tokens, and writes
+`~/.parallx/gmail-mcp/credentials.json` with mode `0600`.
 
 ## Runtime behavior
 

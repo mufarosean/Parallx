@@ -20,21 +20,23 @@ import {
 } from './oauth.js';
 import { startLoopback } from './loopback.js';
 import { defaultCredPath, writeCredentials } from './credStore.js';
+import {
+  BUNDLED_GMAIL_OAUTH_CLIENT_ID,
+  BUNDLED_GMAIL_OAUTH_CLIENT_SECRET,
+} from './bundledOAuthClient.js';
 
 function out(msg: string): void {
   process.stderr.write(msg + '\n');
 }
 
 export async function runAuth(): Promise<number> {
-  const clientId = process.env.GMAIL_OAUTH_CLIENT_ID;
-  const clientSecret = process.env.GMAIL_OAUTH_CLIENT_SECRET;
+  const clientId = process.env.GMAIL_OAUTH_CLIENT_ID || BUNDLED_GMAIL_OAUTH_CLIENT_ID;
+  const clientSecret =
+    process.env.GMAIL_OAUTH_CLIENT_SECRET || BUNDLED_GMAIL_OAUTH_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    out('error: GMAIL_OAUTH_CLIENT_ID and GMAIL_OAUTH_CLIENT_SECRET must be set.');
-    out('');
-    out('Create a Google OAuth client (Desktop app) at');
-    out('  https://console.cloud.google.com/apis/credentials');
-    out('then run:');
-    out('  GMAIL_OAUTH_CLIENT_ID=... GMAIL_OAUTH_CLIENT_SECRET=... node dist/index.js --auth');
+    out('error: no OAuth client configured. This build is missing the bundled');
+    out('Parallx OAuth client. Set GMAIL_OAUTH_CLIENT_ID and');
+    out('GMAIL_OAUTH_CLIENT_SECRET in the environment to override.');
     return 2;
   }
 
