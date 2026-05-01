@@ -54,6 +54,12 @@ export const FLAG_CANVAS_DATAVIEW_ENABLED = 'canvas.dataview.enabled';
 export const FLAG_PAUSED_GLOBAL = 'autonomy.paused.global';
 export const FLAG_RAIL_ENABLED = 'autonomy.rail.enabled';
 export const FLAG_PATTERN_MEMORY_ENABLED = 'autonomy.patternMemory.enabled';
+// M60 Phase θ §6 — T2 perf finish (B3 worker + B5 lazy mtime fast-skip).
+// `indexing.lazyMtime.enabled` (default ON) gates the page mtime fast-skip in
+// `IndexingPipelineService._indexAllPages`. `indexing.worker.enabled` (default
+// OFF per §3.8 line 188) gates the embedding worker offload.
+export const FLAG_INDEXING_LAZY_MTIME_ENABLED = 'indexing.lazyMtime.enabled';
+export const FLAG_INDEXING_WORKER_ENABLED = 'indexing.worker.enabled';
 
 export type AutonomyFlagId =
   | typeof FLAG_FOLLOWUP_ENABLED
@@ -69,7 +75,9 @@ export type AutonomyFlagId =
   | typeof FLAG_CANVAS_DATAVIEW_ENABLED
   | typeof FLAG_PAUSED_GLOBAL
   | typeof FLAG_RAIL_ENABLED
-  | typeof FLAG_PATTERN_MEMORY_ENABLED;
+  | typeof FLAG_PATTERN_MEMORY_ENABLED
+  | typeof FLAG_INDEXING_LAZY_MTIME_ENABLED
+  | typeof FLAG_INDEXING_WORKER_ENABLED;
 
 /**
  * Defaults per M60 §3.8. Canvas + filesystem are gated until C3 lands.
@@ -92,6 +100,8 @@ export const AUTONOMY_FLAG_DEFAULTS: Readonly<Record<AutonomyFlagId, boolean>> =
   [FLAG_PAUSED_GLOBAL]: false,
   [FLAG_RAIL_ENABLED]: true,
   [FLAG_PATTERN_MEMORY_ENABLED]: true,
+  [FLAG_INDEXING_LAZY_MTIME_ENABLED]: true,
+  [FLAG_INDEXING_WORKER_ENABLED]: false,
 });
 
 /** Surface plugin id → flag id. Used by SurfaceRouterService gating. */

@@ -486,6 +486,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   let indexingPipelineService = api.services.has(IIndexingPipelineService)
     ? api.services.get<import('../../services/serviceTypes.js').IIndexingPipelineService>(IIndexingPipelineService)
     : undefined;
+  // M60 Phase θ B5 — wire flag accessor so the pipeline can consult
+  // `indexing.lazyMtime.enabled` for page mtime fast-skip. The pipeline is
+  // constructed by the workbench before the chat extension activates, so
+  // this is the first reachable seam.
+  if (indexingPipelineService && typeof indexingPipelineService.setFlagAccessor === 'function') {
+    indexingPipelineService.setFlagAccessor((id) => autonomyFlags.isEnabled(id as Parameters<typeof autonomyFlags.isEnabled>[0]));
+  }
   const vectorStoreService = api.services.has(IVectorStoreService)
     ? api.services.get<import('../../services/serviceTypes.js').IVectorStoreService>(IVectorStoreService)
     : undefined;

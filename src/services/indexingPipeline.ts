@@ -184,6 +184,12 @@ interface PageRow {
   content: string;
 }
 
+/** Lightweight page row for the mtime fast-skip pass (B5). */
+interface PageMtimeRow {
+  id: string;
+  updated_at: string;
+}
+
 /** A file discovered during directory walk, with its mtime for fast-skip. */
 interface IndexableFile {
   /** Absolute filesystem path (for file I/O). */
@@ -280,6 +286,17 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   /** Optional config provider for feature-gated indexing behavior. */
   private _configProvider: { getEffectiveConfig(): { memory?: { transcriptIndexingEnabled?: boolean } } } | undefined;
 
+  /**
+   * M60 B5 — Optional flag accessor. When the host wires this and it returns
+   * `true` for `'indexing.lazyMtime.enabled'`, `_indexAllPages` partitions
+   * pages by `updated_at` against the persisted `indexed_at` timestamp (the
+   * same fast-skip pattern files already use), avoiding content reads + hash
+   * computation for unchanged pages. Default behavior (no accessor wired or
+   * flag returning falsy) is the legacy content-hash check, preserving
+   * compatibility for existing tests + cold paths.
+   */
+  private _flagAccessor: ((flagId: string) => boolean) | undefined;
+
   /** Session guard captured at pipeline start — checked before commits. */
   private _sessionGuard: SessionGuard | undefined;
 
@@ -323,6 +340,20 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
   setConfigProvider(provider: { getEffectiveConfig(): { memory?: { transcriptIndexingEnabled?: boolean } } }): void {
     this._configProvider = provider;
+  }
+
+  /**
+   * M60 B5 — Wire the feature-flag accessor (typically backed by
+   * `AutonomyFeatureFlagsService`). Optional; tests + early-boot paths
+   * may leave it unset and the pipeline falls back to the legacy hash check.
+   */
+  setFlagAccessor(accessor: (flagId: string) => boolean): void {
+    this._flagAccessor = accessor;
+  }
+
+  private _isLazyMtimeEnabled(): boolean {
+    try { return this._flagAccessor?.('indexing.lazyMtime.enabled') === true; }
+    catch { return false; }
   }
 
   private _isTranscriptIndexingEnabled(): boolean {
@@ -590,14 +621,70 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   // ── Internal: Full Page Indexing ──
 
   private async _indexAllPages(): Promise<number> {
-    const pages = await this._db.all<PageRow>(
-      'SELECT id, title, content FROM pages WHERE is_archived = 0',
-    );
+    // M60 B5 — page mtime fast-skip. When the lazyMtime flag is enabled,
+    // partition pages by `updated_at` against persisted `indexed_at` and
+    // only hydrate content + properties for the candidates that need
+    // re-checking. Mirrors the file-side fast-skip path that landed in
+    // Phase β.
+    const lazyMtimeEnabled = this._isLazyMtimeEnabled();
+    let candidates: PageRow[];
+    let mtimeSkipped = 0;
+    let totalPages = 0;
 
-    this._updateProgress('pages', 0, pages.length);
+    if (lazyMtimeEnabled) {
+      const pageRows = await this._db.all<PageMtimeRow>(
+        'SELECT id, updated_at FROM pages WHERE is_archived = 0',
+      );
+      totalPages = pageRows.length;
+      const indexedAtMap = await this._vectorStore.getIndexedAtMap('page_block');
+      const candidateIds: string[] = [];
+      for (const row of pageRows) {
+        const indexedAtMs = indexedAtMap.get(row.id);
+        // updated_at is SQLite UTC datetime without TZ suffix — append 'Z' for parse.
+        const updatedAtMs = new Date(row.updated_at + 'Z').getTime();
+        if (
+          indexedAtMs !== undefined
+          && Number.isFinite(updatedAtMs)
+          && updatedAtMs <= indexedAtMs
+        ) {
+          mtimeSkipped++;
+          continue;
+        }
+        candidateIds.push(row.id);
+      }
+      if (candidateIds.length === 0) {
+        candidates = [];
+      } else {
+        // Hydrate only the candidates. SQLite caps placeholders at ~999.
+        candidates = [];
+        const CHUNK = 500;
+        for (let i = 0; i < candidateIds.length; i += CHUNK) {
+          const slice = candidateIds.slice(i, i + CHUNK);
+          const placeholders = slice.map(() => '?').join(', ');
+          const rows = await this._db.all<PageRow>(
+            `SELECT id, title, content FROM pages WHERE id IN (${placeholders})`,
+            slice,
+          );
+          candidates.push(...rows);
+        }
+      }
+      if (mtimeSkipped > 0) {
+        console.log(
+          '%s [IndexingPipeline] page mtime fast-skip: %d/%d pages unchanged since last index',
+          this._logPrefix, mtimeSkipped, totalPages,
+        );
+      }
+    } else {
+      candidates = await this._db.all<PageRow>(
+        'SELECT id, title, content FROM pages WHERE is_archived = 0',
+      );
+    }
+    void totalPages;
+
+    this._updateProgress('pages', 0, candidates.length);
     let indexed = 0;
 
-    for (const page of pages) {
+    for (const page of candidates) {
       this._checkAborted();
       const t0 = performance.now();
       try {
@@ -617,7 +704,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
           durationMs: performance.now() - t0,
         });
       }
-      this._updateProgress('pages', this._progress.processed + 1, pages.length, page.title);
+      this._updateProgress('pages', this._progress.processed + 1, candidates.length, page.title);
       // M60 B1 — Cooperative yield between page iterations. Each page
       // includes chunking + an embedding round-trip, so yielding every
       // iteration lets the renderer paint and dispatch UI events between

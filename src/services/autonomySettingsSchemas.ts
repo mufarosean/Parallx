@@ -49,6 +49,10 @@ const FLAG_DESCRIPTIONS: Readonly<Record<AutonomyFlagId, string>> = Object.freez
     'Show the Autonomy Rail panel. Default on; toggle off to hide the rail UI without disabling autonomy itself.',
   'autonomy.patternMemory.enabled':
     'Allow remembering "approve this pattern" decisions for sub-agent spawns. When off, every spawn requires a fresh approval (M60 §8 E3).',
+  'indexing.lazyMtime.enabled':
+    'Use page mtime fast-skip during workspace re-open. Avoids re-hashing pages whose `updated_at` predates the persisted `indexed_at` timestamp. Default on (M60 §6 B5).',
+  'indexing.worker.enabled':
+    'Run embedding generation inside a Web Worker so the renderer thread stays responsive during bulk indexing. Default off; bake before flipping (M60 §3.8 line 188, §6 B3).',
 });
 
 const FLAG_CATEGORY: Readonly<Record<AutonomyFlagId, string>> = Object.freeze({
@@ -66,6 +70,8 @@ const FLAG_CATEGORY: Readonly<Record<AutonomyFlagId, string>> = Object.freeze({
   'autonomy.paused.global': 'Autonomy',
   'autonomy.rail.enabled': 'Autonomy',
   'autonomy.patternMemory.enabled': 'Autonomy',
+  'indexing.lazyMtime.enabled': 'Indexing',
+  'indexing.worker.enabled': 'Indexing',
 });
 
 // ─── Substrate (non-flag) autonomy settings ────────────────────────────────
@@ -117,26 +123,10 @@ const SUBSTRATE_SCHEMAS: readonly ISettingSchema[] = [
       'Filesystem path used to persist cron jobs across restarts. Use the literal token <APP_ROOT> for the portable app root.',
     category: 'Autonomy',
   },
-  // T2 toggles per §7.2 acceptance criteria. Schema-only until B3/B5 ship.
-  {
-    key: 'indexing.worker.enabled',
-    type: 'boolean',
-    default: false,
-    scope: 'user',
-    description:
-      'Run the indexing pipeline inside a Web Worker. Off in α; on in β. Pending T2.B3.',
-    category: 'Indexing',
-    deprecated: undefined,
-  },
-  {
-    key: 'indexing.lazy.enabled',
-    type: 'boolean',
-    default: false,
-    scope: 'user',
-    description:
-      'Defer indexing work until the file is opened. Behavioral change — keep off in M60. Pending T2.B5.',
-    category: 'Indexing',
-  },
+  // T2 toggles per §7.2 acceptance criteria are now flag-bound via
+  // `registerAutonomyFlagSettings` (`indexing.worker.enabled`,
+  // `indexing.lazyMtime.enabled`). Old schema-only stubs were removed when
+  // the flags landed in Phase θ.
 ];
 
 // ─── Registration helpers ──────────────────────────────────────────────────

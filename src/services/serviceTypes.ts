@@ -1521,6 +1521,14 @@ export interface IIndexingPipelineService extends IDisposable {
   /** Schedule a debounced file re-index. */
   scheduleFileReindex(filePath: string): void;
 
+  /**
+   * M60 B5 — Wire a feature-flag accessor (typically backed by
+   * `AutonomyFeatureFlagsService`). When `'indexing.lazyMtime.enabled'`
+   * returns true, page-side mtime fast-skip is active. Optional;
+   * unwired pipelines fall back to the legacy content-hash check.
+   */
+  setFlagAccessor?(accessor: (flagId: string) => boolean): void;
+
   /** Fires when indexing progress changes. */
   readonly onDidChangeProgress: Event<import('./indexingPipeline.js').IndexingProgress>;
 
