@@ -7127,6 +7127,23 @@ const _blobUrlCache = new Map();
 const _BLOB_CACHE_MAX = 1500;
 const _blobUrlReverse = new Map(); // url -> filePath (for fast in-use lookup)
 
+// Module-level cache of resolved thumbnail paths, keyed by `${type}:${id}`.
+// Persists across loadPage() calls so navigating away and back to the grid
+// doesn't blank every card while the IntersectionObserver re-runs. The grid
+// hydrates new rowToMediaItem() results from this cache so already-resolved
+// thumbnails render immediately on re-entry.
+const _moResolvedThumbs = new Map();
+function _moRememberThumb(type, id, info) {
+  if (!type || id == null) return;
+  const key = `${type}:${id}`;
+  const prev = _moResolvedThumbs.get(key) || {};
+  _moResolvedThumbs.set(key, { ...prev, ...info });
+}
+function _moRecallThumb(type, id) {
+  if (!type || id == null) return null;
+  return _moResolvedThumbs.get(`${type}:${id}`) || null;
+}
+
 function _evictOneBlobUrl() {
   // Walk in insertion (LRU) order; first entry whose URL is not currently
   // referenced by an <img> in the document gets evicted. If every cached URL
@@ -7566,6 +7583,12 @@ function renderCardGrid(container, items, options) {
           card._filePath = result.sourcePath;
           item._sourcePath = result.sourcePath;
         }
+        // Remember across loadPage() / navigation so re-entering the grid
+        // shows already-resolved thumbnails immediately.
+        _moRememberThumb(item.type, item.id, {
+          thumbnailPath: result.path || null,
+          sourcePath: result.sourcePath || null,
+        });
         const img = card._imgEl;
         if (img) {
           // For GIFs, show the original animated file instead of the static thumbnail
@@ -8745,27 +8768,43 @@ function renderGridBrowser(container, api, input) {
   }
 
   function rowToMediaItem(row, type) {
+    let item;
     if (type === 'photo') {
       const p = PhotoQueries.fromRow(row);
-      return { type: 'photo', id: p.id, title: p.title, rating: p.rating, colorLabel: p.colorLabel, createdAt: p.createdAt, takenAt: p.takenAt, duration: null, thumbnailPath: null, thumbnailStatus: 'pending' };
-    }
-    if (type === 'video') {
+      item = { type: 'photo', id: p.id, title: p.title, rating: p.rating, colorLabel: p.colorLabel, createdAt: p.createdAt, takenAt: p.takenAt, duration: null, thumbnailPath: null, thumbnailStatus: 'pending' };
+    } else if (type === 'video') {
       const v = VideoQueries.fromRow(row);
-      return { type: 'video', id: v.id, title: v.title, rating: v.rating, colorLabel: v.colorLabel, createdAt: v.createdAt, takenAt: null, duration: v.duration, thumbnailPath: null, thumbnailStatus: 'pending' };
+      item = { type: 'video', id: v.id, title: v.title, rating: v.rating, colorLabel: v.colorLabel, createdAt: v.createdAt, takenAt: null, duration: v.duration, thumbnailPath: null, thumbnailStatus: 'pending' };
+    } else {
+      // UNION result row (media_type column present)
+      item = {
+        type: row.media_type,
+        id: row.id,
+        title: row.title,
+        rating: row.rating,
+        colorLabel: row.color_label || null,
+        createdAt: row.created_at,
+        takenAt: row.taken_at || null,
+        duration: row.duration || null,
+        thumbnailPath: null,
+        thumbnailStatus: 'pending',
+      };
     }
-    // UNION result row (media_type column present)
-    return {
-      type: row.media_type,
-      id: row.id,
-      title: row.title,
-      rating: row.rating,
-      colorLabel: row.color_label || null,
-      createdAt: row.created_at,
-      takenAt: row.taken_at || null,
-      duration: row.duration || null,
-      thumbnailPath: null,
-      thumbnailStatus: 'pending',
-    };
+    // Hydrate from the resolved-thumb cache so re-entering the grid after
+    // opening an item doesn't blank thumbnails that we already resolved
+    // earlier in this session.
+    const cached = _moRecallThumb(item.type, item.id);
+    if (cached) {
+      if (cached.thumbnailPath) item.thumbnailPath = cached.thumbnailPath;
+      if (cached.sourcePath) {
+        item._gifSourcePath = cached.sourcePath;
+        item._sourcePath = cached.sourcePath;
+      }
+      if (item.thumbnailPath || item._gifSourcePath) {
+        item.thumbnailStatus = 'ready';
+      }
+    }
+    return item;
   }
 
   // ── Data loading ──
