@@ -4967,6 +4967,11 @@ const MO_CSS = `
   background: var(--vscode-editor-background);
   border: 1px solid var(--vscode-panel-border, #333);
   transition: border-color 0.15s;
+  /* Prevent shift+click from triggering native text selection across cards.
+     Without this, browsers select the text under the pointer instead of
+     dispatching a clean click event for our range-select handler. */
+  user-select: none;
+  -webkit-user-select: none;
   /* M59 P4: browser-native virtualization — skip rendering work for off-screen cards */
   content-visibility: auto;
   contain-intrinsic-size: 280px 240px;
@@ -5295,6 +5300,9 @@ const MO_CSS = `
   border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
   cursor: pointer;
   min-height: 40px;
+  /* See .mo-card for rationale: shift+click would otherwise select text. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 .mo-list-row:hover { background: var(--vscode-list-hoverBackground, #2a2d2e); }
 .mo-list-row:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
@@ -7375,6 +7383,70 @@ const MO_ZOOM_DEFAULT = 280;
 const MO_CARD_GAP = 8;
 const MO_DEFAULT_PER_PAGE = 40;
 
+/**
+ * Pure helper — compute the next selection state for a click on a media card.
+ *
+ * Extracted so it can be unit-tested in isolation (the real handleSelect
+ * mutates closure state and updates the DOM, which is hard to test).
+ *
+ * @param {object} args
+ * @param {Array<{type:string,id:number}>} args.items   Current grid items in display order.
+ * @param {{type:string,id:number}} args.clickedItem    The item that was clicked.
+ * @param {boolean} args.checked                        New checkbox state (ignored when shiftKey).
+ * @param {boolean} args.shiftKey                       Whether shift was held.
+ * @param {Set<string>} args.prevSelectedIds            Selection before the click ("type:id" keys).
+ * @param {string|null} args.lastClickedKey             Anchor for shift-range, or null.
+ * @param {number|null} args.focusedIndex               Currently focused card, used as fallback anchor.
+ * @returns {{selectedIds:Set<string>, lastClickedKey:string, selecting:boolean}}
+ */
+function computeNextSelection({ items, clickedItem, checked, shiftKey, prevSelectedIds, lastClickedKey, focusedIndex }) {
+  const key = `${clickedItem.type}:${clickedItem.id}`;
+  const next = new Set(prevSelectedIds);
+
+  if (shiftKey) {
+    // Shift-click range select. Resolve the anchor in this priority order:
+    //   1) Last clicked key, if it still exists in items
+    //   2) Focused card, if any
+    //   3) First item
+    // Without all three fallbacks, the very first shift-click in a session
+    // (or after a page change that invalidated the anchor) would only
+    // toggle the clicked card.
+    let anchorKey = null;
+    if (lastClickedKey && items.some(i => `${i.type}:${i.id}` === lastClickedKey)) {
+      anchorKey = lastClickedKey;
+    } else if (focusedIndex != null && items[focusedIndex]) {
+      const f = items[focusedIndex];
+      anchorKey = `${f.type}:${f.id}`;
+    } else if (items.length > 0) {
+      const f = items[0];
+      anchorKey = `${f.type}:${f.id}`;
+    }
+
+    const startIdx = anchorKey ? items.findIndex(i => `${i.type}:${i.id}` === anchorKey) : -1;
+    const endIdx = items.findIndex(i => `${i.type}:${i.id}` === key);
+    if (startIdx >= 0 && endIdx >= 0) {
+      const lo = Math.min(startIdx, endIdx);
+      const hi = Math.max(startIdx, endIdx);
+      for (let j = lo; j <= hi; j++) {
+        next.add(`${items[j].type}:${items[j].id}`);
+      }
+    } else {
+      next.add(key);
+    }
+  } else {
+    if (checked) next.add(key);
+    else next.delete(key);
+  }
+
+  return { selectedIds: next, lastClickedKey: key, selecting: next.size > 0 };
+}
+
+// Expose for unit testing in jsdom (Vitest sets globalThis to the jsdom window
+// when the test file declares `@vitest-environment jsdom`). No-op in production.
+if (typeof globalThis !== 'undefined') {
+  globalThis.__moComputeNextSelection = computeNextSelection;
+}
+
 // Session-level state: survives grid editor re-opens within the same session
 let _sessionZoomWidth = MO_ZOOM_DEFAULT;
 const _sessionGridState = new Map(); // keyed by instanceId
@@ -9272,43 +9344,18 @@ function renderGridBrowser(container, api, input) {
   }
 
   function handleSelect(item, checked, shiftKey) {
-    const key = `${item.type}:${item.id}`;
-
-    if (shiftKey) {
-      // Shift-click range selection — adapted from stash: useListSelect.multiSelect.
-      // Anchor is the last clicked item; if there is none yet (user hasn't
-      // selected anything yet), fall back to the focused card, then to the
-      // first item. Without this fallback, the very first shift-click in a
-      // session could only ever select one card.
-      let anchorKey = state.lastClickedKey;
-      if (!anchorKey && state.focusedIndex != null && state.items[state.focusedIndex]) {
-        const f = state.items[state.focusedIndex];
-        anchorKey = `${f.type}:${f.id}`;
-      }
-      if (!anchorKey && state.items.length > 0) {
-        const f = state.items[0];
-        anchorKey = `${f.type}:${f.id}`;
-      }
-      const startIdx = anchorKey ? state.items.findIndex(i => `${i.type}:${i.id}` === anchorKey) : -1;
-      const endIdx = state.items.findIndex(i => `${i.type}:${i.id}` === key);
-      if (startIdx >= 0 && endIdx >= 0) {
-        const lo = Math.min(startIdx, endIdx);
-        const hi = Math.max(startIdx, endIdx);
-        for (let j = lo; j <= hi; j++) {
-          const k = `${state.items[j].type}:${state.items[j].id}`;
-          state.selectedIds.add(k);
-        }
-      } else {
-        // No usable anchor — at least toggle the clicked card on.
-        state.selectedIds.add(key);
-      }
-    } else {
-      if (checked) state.selectedIds.add(key);
-      else state.selectedIds.delete(key);
-    }
-
-    state.lastClickedKey = key;
-    state.selecting = state.selectedIds.size > 0;
+    const result = computeNextSelection({
+      items: state.items,
+      clickedItem: item,
+      checked,
+      shiftKey,
+      prevSelectedIds: state.selectedIds,
+      lastClickedKey: state.lastClickedKey,
+      focusedIndex: state.focusedIndex,
+    });
+    state.selectedIds = result.selectedIds;
+    state.lastClickedKey = result.lastClickedKey;
+    state.selecting = result.selecting;
     if (selectionBar) selectionBar.update();
     // Incremental: just toggle classes/checkboxes on the affected cards;
     // a full refresh here would tear down every <img> and cause the click
@@ -12866,6 +12913,10 @@ function showBulkTagDialog(state, api, onComplete) {
       renderChips();
       renderBrowse('');
       searchInput.focus();
+      // New tag must appear in the sidebar Tags list immediately — otherwise
+      // users see the picker create a tag but the sidebar stays stale until
+      // the next reload.
+      _notifySidebarRefresh();
     } catch (err) {
       api.window.showErrorMessage('Tag creation failed: ' + (err && err.message ? err.message : String(err)));
     }
@@ -12943,6 +12994,9 @@ function showBulkTagDialog(state, api, onComplete) {
       const tagWord = tagIds.length === 1 ? 'tag' : 'tags';
       api.window.showInformationMessage(`${tagIds.length} ${tagWord} ${verb} ${photos.length + videos.length} items.`);
       overlay.remove();
+      // Tag membership changed for many items — refresh the sidebar so the
+      // tag counts/visibility update without a manual reload.
+      _notifySidebarRefresh();
       onComplete();
     } catch (err) {
       applyBtn.disabled = false;
