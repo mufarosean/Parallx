@@ -46,35 +46,49 @@ The key shift from earlier revisions: **autonomous results do not auto-post into
 
 ## 2. Step 1 — Add a Gmail MCP server
 
-Parallx consumes any server that speaks the Model Context Protocol. Several open-source Gmail MCP servers exist (`gmail-mcp`, `@modelcontextprotocol/server-gmail`, etc.). Pick one that fits your OAuth comfort level — Parallx doesn't care which.
+Parallx ships a self-contained, read-only Gmail MCP server in
+`tools/gmail-mcp-server/`. It owns its own OAuth flow and credential
+store — Parallx core has no Gmail-specific code. (You can also use any
+third-party Gmail MCP server; the registration steps below are
+identical, only the command/args change.)
 
-1. Install the server per its own README. A typical `stdio`-transport server looks like:
+1. Build and authenticate the server (one-time):
    ```bash
-   npm install -g some-gmail-mcp-server
-   # run its OAuth bootstrap once to store credentials on disk
-   some-gmail-mcp-server --auth
+   cd tools/gmail-mcp-server
+   npm install
+   npm run build
+   GMAIL_OAUTH_CLIENT_ID=...   \
+   GMAIL_OAUTH_CLIENT_SECRET=... \
+     node dist/index.js --auth
    ```
-2. Open Parallx → **AI Settings** (gear icon in the chat title bar) → **MCP Servers** section.
+   The `--auth` step persists a refresh token to
+   `~/.parallx/gmail-mcp/credentials.json` (mode `0600`). Full setup is
+   documented in [docs/ai/GMAIL_MCP_INTEGRATION.md](./GMAIL_MCP_INTEGRATION.md).
+2. Open Parallx → **chat-gear** (gear icon in the chat title bar) →
+   **MCP Servers** section.
 3. Click **+ Add Server**. Fill in:
    - **Name**: `gmail`
    - **Transport**: `stdio`
-   - **Command**: `some-gmail-mcp-server`
-   - **Args**: whatever the server's docs call for (e.g. `--inbox-only`)
-   - **Env**: any required API keys (stored locally, never round-tripped through chat)
+   - **Command**: `node`
+   - **Args**: absolute path to `tools/gmail-mcp-server/dist/index.js`
    - **Enabled**: ✓
-4. Save. The status dot should go `Connecting… → Connected` within a few seconds. If it goes `Error`, hover the dot to see the diagnostic — usually it's the OAuth token not being bootstrapped yet.
+4. Save. The status dot should go `Connecting… → Connected` within a
+   few seconds. If it goes `Error`, hover the dot — usually the
+   `--auth` step hasn't been run yet, or the credential file is
+   missing.
 
-Once connected, Parallx auto-discovers the tools the server exposes. For a typical Gmail MCP server that's something like:
+Once connected, Parallx auto-discovers the tools the server exposes.
+For `tools/gmail-mcp-server/` that's:
 
-- `gmail_list_messages(query, max_results)`
-- `gmail_get_message(id)`
-- `gmail_search(query)`
-- `gmail_mark_read(id)`
-- `gmail_send(to, subject, body)`
+- `gmail.list_unread(since, query, maxResults)`
 
-These appear in the agent's tool catalog automatically. You can verify with the `/tools` slash command in chat or by opening **AI Settings → Tools**.
+The tool appears in the agent's catalog automatically. You can verify
+with the `/tools` slash command in chat or by opening **AI Settings →
+Tools**.
 
-**Safety default:** all MCP tools land with their upstream approval posture. Destructive ones (`gmail_send`, `gmail_mark_read`) will ask before running. Read-only ones (`gmail_list_messages`, `gmail_get_message`) run without prompting. You can override per-tool in **AI Settings → Tools**.
+**Safety default:** all MCP tools land at the **require-approval**
+tier on first use. After approving once you can remember the decision
+so subsequent calls run without prompting.
 
 ---
 
@@ -87,8 +101,9 @@ In any chat, type:
 > Read my Gmail inbox for unread messages from today, summarize them, and rank them high / medium / low priority. Use the `gmail` MCP tools.
 
 The agent will:
-1. Call `gmail_list_messages({ query: "is:unread newer_than:1d", max_results: 50 })`.
-2. Call `gmail_get_message(id)` per hit (batched).
+1. Call `gmail.list_unread({ since: <ts of yesterday>, query: "", maxResults: 50 })`.
+2. Summarize each returned message (subject + sender + snippet are
+   already returned; bodies are never fetched).
 3. Produce a markdown report.
 4. Post it as a normal assistant reply in your current chat.
 
@@ -211,9 +226,9 @@ Or use **AI Settings → Scheduled jobs** (for cron) and the **Autonomy Log** pa
 
 ## 9. What *doesn't* work today (and the workaround)
 
-- **Push notifications** — the Autonomy Log is a pull surface. You have to either click the Autonomy Log panel tab or ask the agent what ran. If you want a ping, the cron prompt can end with `gmail_send(...)` to mail the report to yourself, or hit another MCP you have wired up (Slack, Discord, push notification service).
+- **Push notifications** — the Autonomy Log is a pull surface. You have to either click the Autonomy Log panel tab or ask the agent what ran. If you want a ping, wire up another MCP server (Slack, Discord, push notification service) and have the cron prompt end with that server's send tool. The shipped Gmail server is read-only by design — it cannot send mail.
 - **Persistence across restarts** — the Autonomy Log is in-memory with a 200-entry ring buffer. Quit Parallx and the log is gone. File-backed persistence is on the M53 roadmap. For durable archives today, end the cron prompt with a `fs_write` to a file in your workspace.
-- **Webhook / email / Slack delivery** — cron can't push the report *out* of Parallx by itself. The agent's turn prompt ending with `gmail_send(...)` is the real workaround and it works today.
+- **Webhook / email / Slack delivery** — cron can't push the report *out* of Parallx by itself. The shipped Gmail server is read-only; for outbound delivery wire up a separate MCP server (a writeable Gmail server, Slack, Discord, push notifications) and end the cron prompt with that server's send tool.
 - **Conditional skipping** — cron doesn't have native "skip if no unread." The agent can do this itself in the prompt: *"If there are no unread messages from the last 24 hours, reply with exactly 'no mail.'"* — then a one-line log entry is your signal that it ran and had nothing to report.
 - **Cross-session memory** — each cron run is a fresh ephemeral turn. It doesn't remember yesterday's summary on its own, *but* it can now read the last N Autonomy Log entries via the `autonomy_log` tool if you put that in the prompt: *"Before summarizing, read the last 3 morning-mail entries from the autonomy log and note which threads are carrying over."*
 
@@ -234,9 +249,14 @@ Or use **AI Settings → Scheduled jobs** (for cron) and the **Autonomy Log** pa
 
 ```
 # Connect
-AI Settings → MCP Servers → + Add Server
+chat-gear → MCP Servers → + Add Server
   name: gmail   transport: stdio
-  command: <your gmail mcp server>   enabled: ✓
+  command: node
+  args:    <absolute path>/tools/gmail-mcp-server/dist/index.js
+  enabled: ✓
+  (one-time: cd tools/gmail-mcp-server && npm install && npm run build
+              && GMAIL_OAUTH_CLIENT_ID=… GMAIL_OAUTH_CLIENT_SECRET=… \
+                 node dist/index.js --auth)
 
 # Prove it works (foreground, lands in chat)
 Chat: "read my unread gmail from today, summarize, prioritize"

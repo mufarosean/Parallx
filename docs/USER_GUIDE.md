@@ -38,7 +38,9 @@ workspaces** (see §4).
 The short list:
 
 - **Integrations** — OAuth client IDs / secrets that you only set up once
-  on your machine (e.g. Gmail).
+  on your machine. (Provider integrations now ship as MCP servers —
+  e.g. `tools/gmail-mcp-server/` — which manage their own credentials
+  outside the settings registry.)
 - **Settings editor enabled** — internal kill switch.
 
 Everything else (persona, model defaults, retrieval, indexing,
@@ -166,10 +168,10 @@ fallback for any other server you want.
 1. Open `Ctrl+Alt+S`.
 2. Click **Manage MCP servers…**.
 3. Pick a server from the catalog list.
-4. Fill in any required fields (e.g. Gmail asks for an OAuth client ID
-   + client secret — both come from
-   [console.cloud.google.com](https://console.cloud.google.com) →
-   *APIs & Services → Credentials → OAuth client → Desktop app*).
+4. Fill in any required fields. (Some servers handle their own OAuth
+   in a one-time CLI bootstrap — e.g. `tools/gmail-mcp-server/` runs
+   `node dist/index.js --auth` once before you register it here. See
+   `docs/ai/GMAIL_MCP_INTEGRATION.md`.)
 5. Click **Install**. The server entry is written to your workspace
    config; the client connects on the next chat turn.
 
