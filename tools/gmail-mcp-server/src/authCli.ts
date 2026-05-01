@@ -126,6 +126,6 @@ export async function runAuth(): Promise<number> {
   out('    chat-gear → MCP Servers → + Add Server');
   out('    name:    gmail');
   out('    command: node');
-  out('    args:    <absolute-path-to>/tools/gmail-mcp-server/dist/index.js');
+  out('    args:    <absolute-path-to>/tools/gmail-mcp-server/bundle/server.mjs');
   return 0;
 }

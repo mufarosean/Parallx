@@ -70,7 +70,7 @@ identical, only the command/args change.)
    - **Name**: `gmail`
    - **Transport**: `stdio`
    - **Command**: `node`
-   - **Args**: absolute path to `tools/gmail-mcp-server/dist/index.js`
+   - **Args**: absolute path to `tools/gmail-mcp-server/bundle/server.mjs`
    - **Enabled**: ✓
 4. Save. The status dot should go `Connecting… → Connected` within a
    few seconds. If it goes `Error`, hover the dot — usually the
@@ -252,7 +252,7 @@ Or use **AI Settings → Scheduled jobs** (for cron) and the **Autonomy Log** pa
 chat-gear → MCP Servers → + Add Server
   name: gmail   transport: stdio
   command: node
-  args:    <absolute path>/tools/gmail-mcp-server/dist/index.js
+  args:    <absolute path>/tools/gmail-mcp-server/bundle/server.mjs
   enabled: ✓
   (one-time: cd tools/gmail-mcp-server && npm install && npm run build
               && GMAIL_OAUTH_CLIENT_ID=… GMAIL_OAUTH_CLIENT_SECRET=… \

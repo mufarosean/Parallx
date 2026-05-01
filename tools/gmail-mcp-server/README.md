@@ -52,7 +52,12 @@ Returns:
 
 ## One-time setup
 
-### 1. Create a Google OAuth client
+> **End users:** ignore this section. The bundled server ships pre-built
+> at `bundle/server.mjs` and registration happens through the Parallx
+> MCP Servers UI. This section is for developers building the server
+> from source.
+
+### 1. Create a Google OAuth client (developers only)
 
 1. Visit <https://console.cloud.google.com/apis/credentials>.
 2. Create an **OAuth client ID** of type **Desktop app**.
@@ -72,12 +77,16 @@ npm install
 npm run build
 ```
 
+This produces a single bundled file at `bundle/server.mjs` (~18 kB,
+zero runtime dependencies). The bundle is committed to the repo so
+end users never need a Node toolchain.
+
 ### 3. Authorize
 
 ```powershell
 $env:GMAIL_OAUTH_CLIENT_ID     = "<your-client-id>"
 $env:GMAIL_OAUTH_CLIENT_SECRET = "<your-client-secret>"
-node dist/index.js --auth
+node bundle/server.mjs --auth
 ```
 
 The server will:
@@ -93,11 +102,11 @@ The server will:
 
 In Parallx: **chat-gear → MCP Servers → + Add Server**
 
-| Field    | Value                                                           |
-|----------|-----------------------------------------------------------------|
-| Name     | `gmail`                                                         |
-| Command  | `node`                                                          |
-| Args     | `<absolute-path-to>/tools/gmail-mcp-server/dist/index.js`       |
+| Field    | Value                                                                |
+|----------|----------------------------------------------------------------------|
+| Name     | `gmail`                                                              |
+| Command  | `node`                                                               |
+| Args     | `<absolute-path-to>/tools/gmail-mcp-server/bundle/server.mjs`        |
 
 Save. The server registers `list_unread` with the agent. The same tool
 is available to foreground chat turns and to autonomous turns (cron,
@@ -132,7 +141,7 @@ mode-`0600` credentials file.
 ## Manual JSON-RPC test
 
 ```powershell
-node dist/index.js
+node bundle/server.mjs
 ```
 
 Then send requests on stdin, one per line:
@@ -146,7 +155,7 @@ Then send requests on stdin, one per line:
 ## Re-authorizing or revoking
 
 - **Re-auth:** delete `~/.parallx/gmail-mcp/credentials.json` and re-run
-  `node dist/index.js --auth`.
+  `node bundle/server.mjs --auth`.
 - **Revoke:** revoke at <https://myaccount.google.com/permissions>, then
   delete the credentials file.
 

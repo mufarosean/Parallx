@@ -16,7 +16,7 @@ your approval.
 
 | Component                         | Location                                                  | Trust boundary                          |
 |-----------------------------------|-----------------------------------------------------------|-----------------------------------------|
-| Gmail MCP server                  | `tools/gmail-mcp-server/dist/`                            | Spawned as a Node child process.        |
+| Gmail MCP server                  | `tools/gmail-mcp-server/bundle/server.mjs`                | Spawned as a Node child process.        |
 | OAuth client config (your input)  | `GMAIL_OAUTH_CLIENT_ID` / `GMAIL_OAUTH_CLIENT_SECRET` env | Used only by the `--auth` flow.         |
 | Refresh token + client creds      | `~/.parallx/gmail-mcp/credentials.json` (mode 0600)       | File-system permissions only.           |
 | Access token (transient)          | In-process memory (60 s skew refresh)                     | Never persisted to disk.                |
@@ -58,7 +58,7 @@ your approval.
      - **Name**: `gmail`
      - **Transport**: `stdio`
      - **Command**: `node`
-     - **Args**: absolute path to `tools/gmail-mcp-server/dist/index.js`
+     - **Args**: absolute path to `tools/gmail-mcp-server/bundle/server.mjs`
      - **Enabled**: ✓
    - Save. The status dot should go `Connecting… → Connected`. The
      server reads the on-disk credentials and refreshes its access
