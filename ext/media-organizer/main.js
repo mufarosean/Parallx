@@ -7451,6 +7451,17 @@ function renderCardGrid(container, items, options) {
   grid.style.setProperty('--mo-card-min-width', `${zoomWidth || MO_ZOOM_DEFAULT}px`);
   container.appendChild(grid);
 
+  // Mounted card references keyed by `${type}:${id}`. Maintained by renderAll
+  // so cheap incremental updates (focus/selection toggles) can mutate already-
+  // mounted cards in place instead of forcing a full DOM rebuild — which would
+  // tear down every <img>, kill the click→dblclick sequence, and re-trigger
+  // GIF decoders on every click.
+  const _cardByKey = new Map();
+  let _currentItems = items || [];
+  let _currentFocusedIndex = options.focusedIndex ?? null;
+  let _currentSelectedIds = options.selectedIds || new Set();
+  let _currentSelecting = !!options.selecting;
+
   // M59 P4: lazy thumbnail resolution — only kick off DB queries for cards
   // visible (or near-visible) in the viewport. Saves 100s of queries when
   // perPage is high or "Auto" mode is on.
@@ -7487,6 +7498,11 @@ function renderCardGrid(container, items, options) {
 
   function renderAll(itemList, opts) {
     grid.innerHTML = '';
+    _cardByKey.clear();
+    _currentItems = itemList || [];
+    _currentFocusedIndex = opts.focusedIndex ?? null;
+    _currentSelectedIds = opts.selectedIds || new Set();
+    _currentSelecting = !!opts.selecting;
     if (_thumbObserver) _thumbObserver.disconnect();
     const listMode = opts.displayMode === 'list';
     grid.classList.toggle('mo-list-mode', listMode);
@@ -7512,6 +7528,7 @@ function renderCardGrid(container, items, options) {
         if (focIdx === idx) row.scrollIntoView({ block: 'nearest' });
         // List rows: lazy-load via observer too (treat row as card)
         _attachLazyThumb(row, item);
+        _cardByKey.set(`${item.type}:${item.id}`, row);
       }
     } else {
       const zw = opts.zoomWidth ?? zoomWidth;
@@ -7532,6 +7549,7 @@ function renderCardGrid(container, items, options) {
 
         // M59 P4: defer thumbnail resolution until card scrolls near viewport
         _attachLazyThumb(card, item);
+        _cardByKey.set(`${item.type}:${item.id}`, card);
       }
     }
   }
@@ -7567,12 +7585,74 @@ function renderCardGrid(container, items, options) {
 
   renderAll(items, options);
 
+  // Incremental update helpers — toggle classes/checkboxes on already-mounted
+  // cards instead of rebuilding the grid. Used for focus & selection changes
+  // so a single click doesn't tear down every card (which would kill the
+  // click→dblclick sequence to open the lightbox and cause visible flicker).
+  function _toggleFocusOnCard(item, focused) {
+    if (!item) return;
+    const card = _cardByKey.get(`${item.type}:${item.id}`);
+    if (!card) return;
+    card.classList.toggle('mo-focused', focused);
+  }
+  function _toggleSelectionOnCard(item, isSelected) {
+    if (!item) return;
+    const card = _cardByKey.get(`${item.type}:${item.id}`);
+    if (!card) return;
+    card.classList.toggle('mo-selected', isSelected);
+    const cb = card.querySelector('input[type="checkbox"]');
+    if (cb) cb.checked = isSelected;
+  }
+
   return {
     refresh(newItems, newOptions) {
       renderAll(newItems, { ...options, ...newOptions });
     },
+    setFocus(newFocusedIndex) {
+      const prevIdx = _currentFocusedIndex;
+      if (prevIdx === newFocusedIndex) return;
+      if (prevIdx != null && _currentItems[prevIdx]) {
+        _toggleFocusOnCard(_currentItems[prevIdx], false);
+      }
+      if (newFocusedIndex != null && _currentItems[newFocusedIndex]) {
+        _toggleFocusOnCard(_currentItems[newFocusedIndex], true);
+      }
+      _currentFocusedIndex = newFocusedIndex;
+    },
+    setSelection(newSelectedIds, newSelecting) {
+      const prevSet = _currentSelectedIds || new Set();
+      const nextSet = newSelectedIds || new Set();
+      // Diff: only touch cards whose membership flipped.
+      for (const key of prevSet) {
+        if (!nextSet.has(key)) {
+          const [type, idStr] = key.split(':');
+          const id = Number(idStr);
+          const item = _currentItems.find(i => i.type === type && i.id === id);
+          if (item) _toggleSelectionOnCard(item, false);
+        }
+      }
+      for (const key of nextSet) {
+        if (!prevSet.has(key)) {
+          const [type, idStr] = key.split(':');
+          const id = Number(idStr);
+          const item = _currentItems.find(i => i.type === type && i.id === id);
+          if (item) _toggleSelectionOnCard(item, true);
+        }
+      }
+      _currentSelectedIds = nextSet;
+      const nextSelecting = !!newSelecting;
+      if (nextSelecting !== _currentSelecting) {
+        // .mo-selecting on cards reveals the checkbox; toggle on each mounted card.
+        for (const card of _cardByKey.values()) {
+          const wrap = card.querySelector('.mo-card-select, .mo-list-select');
+          if (wrap) wrap.classList.toggle('mo-selecting', nextSelecting);
+        }
+        _currentSelecting = nextSelecting;
+      }
+    },
     dispose() {
       if (_thumbObserver) _thumbObserver.disconnect();
+      _cardByKey.clear();
       grid.innerHTML = '';
       grid.remove();
     },
@@ -8870,7 +8950,14 @@ function renderGridBrowser(container, api, input) {
     state.lastClickedKey = key;
     state.selecting = state.selectedIds.size > 0;
     if (selectionBar) selectionBar.update();
-    if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+    // Incremental: just toggle classes/checkboxes on the affected cards;
+    // a full refresh here would tear down every <img> and cause the click
+    // that triggered selection to lose its dblclick partner.
+    if (cardGrid && cardGrid.setSelection) {
+      cardGrid.setSelection(state.selectedIds, state.selecting);
+    } else if (cardGrid) {
+      cardGrid.refresh(state.items, refreshOpts());
+    }
   }
 
   function handleCardClick(item) {
@@ -8878,7 +8965,13 @@ function renderGridBrowser(container, api, input) {
     const idx = state.items.indexOf(item);
     if (idx >= 0) {
       state.focusedIndex = idx;
-      if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+      // Incremental focus update — avoids a full grid rebuild between the
+      // first click and the dblclick that opens the editor.
+      if (cardGrid && cardGrid.setFocus) {
+        cardGrid.setFocus(idx);
+      } else if (cardGrid) {
+        cardGrid.refresh(state.items, refreshOpts());
+      }
     }
   }
 
