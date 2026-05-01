@@ -85,24 +85,10 @@ export const MCP_CATALOG: readonly IMcpCatalogEntry[] = Object.freeze([
       },
     ],
   },
-  {
-    id: 'gmail',
-    displayName: 'Gmail',
-    description: 'Read and send Gmail messages on the signed-in account.',
-    category: 'Communication',
-    homepage: 'https://github.com/modelcontextprotocol/servers/tree/main/src/gmail',
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-gmail'],
-    env: [
-      {
-        key: 'GMAIL_CREDENTIALS_PATH',
-        label: 'Credentials JSON path',
-        description:
-          'Absolute path to a Google OAuth client credentials JSON file. See docs/ai/GMAIL_MCP_INTEGRATION.md.',
-        required: true,
-      },
-    ],
-  },
+  // Gmail intentionally not in the npx catalog: the bundled
+  // `tools/gmail-mcp-server/` is self-contained and installed via the
+  // local clone+build+`--auth` flow described in
+  // docs/ai/GMAIL_MCP_INTEGRATION.md, not via a single `npx -y` invocation.
   {
     id: 'slack',
     displayName: 'Slack',

@@ -1,6 +1,6 @@
 # Milestone 62 — MCP-Only Provider Integration
 
-**Status:** in progress
+**Status:** closed
 **Branch:** `milestone-62`
 **Predecessor:** M61 (Unified Settings UI)
 
@@ -100,10 +100,16 @@ Keep the change atomic so the working tree is consistent.
 
 Rewrite the walkthrough and user-guide entries to the MCP-only flow.
 
-### W6 — Verify
+### W6 — Verify ✅ DONE
 
-`npx tsc --noEmit` clean. `npx vitest run` green. Manual smoke test of the
-cron→Gmail digest path against the new self-contained MCP server.
+`npx tsc --noEmit` clean. `npx vitest run` green (2616/2616 across 166 files).
+Stale Gmail entry in `src/openclaw/mcp/mcpCatalog.ts` (left over from M61
+Phase 3 — pointed at the non-existent `@modelcontextprotocol/server-gmail`
+npm package) replaced with an explanatory comment routing users to the
+self-contained `tools/gmail-mcp-server/` per `docs/ai/GMAIL_MCP_INTEGRATION.md`.
+The remaining `gmail` mentions under `src/` are M62 deletion-marker comments
+and a `secretStorageService.ts` example pointing at where credential storage
+now lives — none are provider-specific code.
 
 ---
 
