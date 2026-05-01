@@ -8497,13 +8497,30 @@ function renderGridBrowser(container, api, input) {
   const gridArea = moEl('div', 'mo-grid-area');
   root.appendChild(gridArea);
 
-  // Live-track scroll position for session restore
+  // Live-track scroll position for session restore.
+  //
+  // We only need the *latest* scroll position when the user reopens the grid;
+  // we don't need a fresh state snapshot on every scroll tick. The browser
+  // dispatches scroll events at the display refresh rate (60–240 Hz) and each
+  // saveSessionState() call allocates a new state object, two spread arrays,
+  // and writes to a Map. Doing that on the same thread that's painting scroll
+  // frames produced visible jank.
+  //
+  // Fix: assignment to _lastScrollTop stays synchronous (cheap, used by the
+  // scroll-restore path in loadPage), but the snapshot is debounced so it
+  // only runs once after scrolling pauses. Marked passive so the browser
+  // doesn't have to wait for our handler before committing the scroll frame.
+  let _scrollSaveTimer = null;
   gridArea.addEventListener('scroll', (e) => {
     if (e.target && e.target.classList && e.target.classList.contains('mo-grid')) {
       _lastScrollTop = e.target.scrollTop;
-      saveSessionState();
+      if (_scrollSaveTimer) clearTimeout(_scrollSaveTimer);
+      _scrollSaveTimer = setTimeout(() => {
+        _scrollSaveTimer = null;
+        saveSessionState();
+      }, 150);
     }
-  }, true);
+  }, { capture: true, passive: true });
 
   // Loading overlay
   const loadingOverlay = moEl('div', 'mo-loading-overlay');
@@ -9643,6 +9660,18 @@ function renderGridBrowser(container, api, input) {
   return {
     dispose() {
       clearTimeout(searchTimer);
+      // Flush pending debounced writes so closing the pane immediately after
+      // scrolling or moving the zoom slider doesn't lose the final value.
+      if (_scrollSaveTimer) {
+        clearTimeout(_scrollSaveTimer);
+        _scrollSaveTimer = null;
+        saveSessionState();
+      }
+      if (zoomSlider._persistTimer) {
+        clearTimeout(zoomSlider._persistTimer);
+        zoomSlider._persistTimer = null;
+        moSetSetting('grid_zoom_width', String(state.zoomWidth)).catch(() => {});
+      }
       document.removeEventListener('keydown', docKeyHandler, true);
       if (cardGrid) cardGrid.dispose();
       container.innerHTML = '';
