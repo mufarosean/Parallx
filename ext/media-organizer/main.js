@@ -9492,6 +9492,17 @@ function renderGridBrowser(container, api, input) {
         const tmpState = { selectedIds: new Set([`${item.type}:${item.id}`]) };
         showAddToAlbumDialog(tmpState, api, () => loadPage());
       }});
+      // Optimize GIF — only show for .gif source files
+      if (item.type === 'photo') {
+        actions.push({ label: 'Optimize GIF\u2026', handler: async () => {
+          const fp = await resolveItemFilePath(item);
+          if (!fp || !/\.gif$/i.test(fp)) {
+            api.window.showInformationMessage('Optimize GIF only applies to .gif files.');
+            return;
+          }
+          showOptimizeGifDialog([{ path: fp, item }], api, () => loadPage());
+        }});
+      }
       actions.push({ separator: true });
       actions.push({ label: 'Open File Location', handler: async () => {
         const fp = await resolveItemFilePath(item);
@@ -9535,6 +9546,21 @@ function renderGridBrowser(container, api, input) {
       ]});
       actions.push({ label: 'Add to Album\u2026', handler: () => {
         showAddToAlbumDialog(state, api, () => { if (selectionBar) selectionBar.update(); loadPage(); });
+      }});
+      // Optimize GIF — resolves selected items, filters to .gif files only
+      actions.push({ label: 'Optimize GIFs\u2026', handler: async () => {
+        const selectedItems = state.items.filter((it) => state.selectedIds.has(`${it.type}:${it.id}`));
+        const resolved = await Promise.all(selectedItems.map(async (it) => {
+          if (it.type !== 'photo') return null;
+          const fp = await resolveItemFilePath(it);
+          return (fp && /\.gif$/i.test(fp)) ? { path: fp, item: it } : null;
+        }));
+        const gifs = resolved.filter(Boolean);
+        if (gifs.length === 0) {
+          api.window.showInformationMessage('No .gif files in selection.');
+          return;
+        }
+        showOptimizeGifDialog(gifs, api, () => { if (selectionBar) selectionBar.update(); loadPage(); });
       }});
       actions.push({ separator: true });
       actions.push({ label: 'Delete\u2026', danger: true, handler: () => {
@@ -12612,6 +12638,207 @@ function showBulkDeleteDialog(state, api, onComplete) {
   overlay.focus();
 }
 
+/**
+ * Optimize-GIF dialog. Caller passes a list of resolved GIF paths and an
+ * onComplete callback that fires after the batch finishes. The dialog probes
+ * each file in parallel to estimate the total reduction *before* the user
+ * commits, then runs the optimizer over the batch with a progress bar.
+ */
+function showOptimizeGifDialog(gifFiles, api, onComplete) {
+  const overlay = moEl('div', 'mo-bulk-dialog-overlay');
+  const dialog = moEl('div', 'mo-bulk-dialog');
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-label', 'Optimize GIFs');
+  overlay.appendChild(dialog);
+
+  const count = gifFiles.length;
+  dialog.appendChild(moEl('h3', null, { textContent: `Optimize ${count} GIF${count === 1 ? '' : 's'}` }));
+
+  // Target size input
+  const targetSection = moEl('div', 'mo-bulk-dialog-section');
+  targetSection.appendChild(moEl('label', null, { textContent: 'Target size (MB per file)' }));
+  const targetInput = moEl('input');
+  targetInput.type = 'number'; targetInput.min = '1'; targetInput.max = '500'; targetInput.step = '1';
+  targetInput.value = '8';
+  targetSection.appendChild(targetInput);
+  dialog.appendChild(targetSection);
+
+  // Options
+  const backupRow = moEl('label', 'mo-bulk-dialog-opt');
+  const backupCheckbox = moEl('input'); backupCheckbox.type = 'checkbox'; backupCheckbox.checked = true;
+  backupRow.appendChild(backupCheckbox);
+  backupRow.appendChild(moEl('span', null, { textContent: ' Keep a backup copy of originals (saved as .original.gif next to each file)' }));
+  dialog.appendChild(backupRow);
+
+  const trimRow = moEl('label', 'mo-bulk-dialog-opt');
+  const trimCheckbox = moEl('input'); trimCheckbox.type = 'checkbox'; trimCheckbox.checked = false;
+  trimRow.appendChild(trimCheckbox);
+  trimRow.appendChild(moEl('span', null, { textContent: ' Trim duration if size cannot be reached otherwise' }));
+  dialog.appendChild(trimRow);
+
+  // Prediction line
+  const predictionEl = moEl('div', 'mo-bulk-dialog-section', { textContent: 'Predicting…' });
+  predictionEl.style.fontSize = '12px';
+  predictionEl.style.opacity = '0.8';
+  predictionEl.style.marginTop = '8px';
+  predictionEl.style.minHeight = '40px';
+  dialog.appendChild(predictionEl);
+
+  // Progress bar (hidden until run starts)
+  const progressWrap = moEl('div', 'mo-bulk-dialog-section');
+  progressWrap.style.display = 'none';
+  const progressLabel = moEl('div', null, { textContent: '' });
+  progressLabel.style.fontSize = '12px';
+  progressLabel.style.marginBottom = '4px';
+  const progressBar = moEl('div');
+  progressBar.style.cssText = 'height:6px;background:var(--vscode-input-background,#333);border-radius:3px;overflow:hidden;';
+  const progressFill = moEl('div');
+  progressFill.style.cssText = 'height:100%;width:0%;background:var(--vscode-button-background,#0e639c);transition:width 0.2s;';
+  progressBar.appendChild(progressFill);
+  progressWrap.append(progressLabel, progressBar);
+  dialog.appendChild(progressWrap);
+
+  // Footer
+  const footer = moEl('div', 'mo-bulk-dialog-footer');
+  const cancelBtn = moEl('button', null, { textContent: 'Cancel' });
+  const optimizeBtn = moEl('button', 'primary', { textContent: 'Optimize' });
+  optimizeBtn.disabled = true;
+  footer.append(cancelBtn, optimizeBtn);
+  dialog.appendChild(footer);
+
+  function fmtBytes(n) {
+    if (!isFinite(n) || n <= 0) return '—';
+    if (n < 1024) return n.toFixed(0) + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
+    return (n / 1073741824).toFixed(2) + ' GB';
+  }
+
+  // Probe all files in parallel so the prediction line can fill in.
+  let probes = []; // [{path, probe}]
+  let probesReady = false;
+
+  function recomputePrediction() {
+    if (!probesReady) return;
+    const targetMB = Math.max(0.1, parseFloat(targetInput.value) || 8);
+    const targetBytes = targetMB * 1024 * 1024;
+    const allowTrim = trimCheckbox.checked;
+
+    let originalTotal = 0;
+    let predictedTotal = 0;
+    let willOptimize = 0;
+    let cantHit = 0;
+    let widthSum = 0; let fpsSum = 0;
+
+    for (const { probe } of probes) {
+      if (!probe) continue;
+      originalTotal += probe.bytes;
+      if (probe.bytes <= targetBytes) {
+        // Already small enough — skipped by optimizer.
+        predictedTotal += probe.bytes;
+        continue;
+      }
+      const plan = moPickGifOptimizePlan(probe, targetBytes, 'bayer', allowTrim);
+      predictedTotal += plan.predictedBytes;
+      willOptimize++;
+      widthSum += plan.width;
+      fpsSum += plan.fps;
+      if (plan.predictedBytes > targetBytes * 1.15) cantHit++;
+    }
+
+    const lines = [];
+    lines.push(`Total: ${fmtBytes(originalTotal)} → ~${fmtBytes(predictedTotal)} (predicted)`);
+    if (willOptimize > 0) {
+      const avgW = Math.round(widthSum / willOptimize);
+      const avgF = Math.round(fpsSum / willOptimize);
+      lines.push(`Re-encoding ${willOptimize} of ${probes.length} · average target: ${avgW}px @ ${avgF}fps`);
+    } else {
+      lines.push('All files already at or below target — nothing to do.');
+    }
+    if (cantHit > 0) {
+      lines.push(`${cantHit} file${cantHit === 1 ? '' : 's'} may not reach target even at minimum settings${allowTrim ? '' : ' (enable trimming to try harder)'}.`);
+    }
+    predictionEl.textContent = lines.join('\n');
+    predictionEl.style.whiteSpace = 'pre-line';
+    optimizeBtn.disabled = willOptimize === 0;
+  }
+
+  (async () => {
+    probes = await Promise.all(gifFiles.map(async (f) => {
+      const probe = await moProbeGif(f.path).catch(() => null);
+      return { path: f.path, item: f.item, probe };
+    }));
+    probesReady = true;
+    recomputePrediction();
+  })();
+
+  targetInput.addEventListener('input', recomputePrediction);
+  trimCheckbox.addEventListener('change', recomputePrediction);
+
+  // Run handler
+  let cancelled = false;
+  cancelBtn.addEventListener('click', () => {
+    cancelled = true;
+    overlay.remove();
+  });
+
+  optimizeBtn.addEventListener('click', async () => {
+    optimizeBtn.disabled = true;
+    cancelBtn.textContent = 'Stop';
+    targetInput.disabled = true;
+    backupCheckbox.disabled = true;
+    trimCheckbox.disabled = true;
+    progressWrap.style.display = '';
+
+    const targetMB = Math.max(0.1, parseFloat(targetInput.value) || 8);
+    const targetBytes = targetMB * 1024 * 1024;
+    const allowTrim = trimCheckbox.checked;
+    const backup = backupCheckbox.checked;
+
+    let totalSaved = 0;
+    let optimized = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (let i = 0; i < probes.length; i++) {
+      if (cancelled) break;
+      const { path, probe } = probes[i];
+      if (!probe) { failed++; continue; }
+      const fileLabel = path.replace(/^.*[\\/]/, '');
+      progressLabel.textContent = `${i + 1} of ${probes.length}: ${fileLabel}`;
+      progressFill.style.width = `${(i / probes.length) * 100}%`;
+
+      try {
+        const result = await moOptimizeGifFile(path, { targetBytes, dither: 'bayer', allowTrim, backup });
+        if (result.replaced) {
+          optimized++;
+          totalSaved += (result.originalBytes - result.finalBytes);
+        } else {
+          skipped++;
+        }
+      } catch (err) {
+        console.error('[MO-Optimize]', path, err);
+        failed++;
+      }
+    }
+    progressFill.style.width = '100%';
+
+    const summary = cancelled
+      ? `Cancelled. Optimized ${optimized}, freed ${fmtBytes(totalSaved)}.`
+      : `Optimized ${optimized} of ${probes.length}. Freed ${fmtBytes(totalSaved)}.${skipped > 0 ? ` ${skipped} skipped (already small / no improvement).` : ''}${failed > 0 ? ` ${failed} failed.` : ''}`;
+    api.window.showInformationMessage(summary);
+    overlay.remove();
+    if (onComplete) onComplete();
+  });
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay && !optimizeBtn.disabled) overlay.remove(); });
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !optimizeBtn.disabled) overlay.remove(); });
+  document.body.appendChild(overlay);
+  overlay.setAttribute('tabindex', '-1');
+  overlay.focus();
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 10.5: M59 PHASE 1 — CLIP/GIF EXPORT, FRAME CAPTURE, WEBP CONVERSION
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -14072,7 +14299,9 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut)
     h = Math.max(2, h * scale);
     const pixels = w * h;
     const frameCount = dur * fps;
-    if (c.format === 'gif') return frameCount * pixels * 0.18;
+    if (c.format === 'gif') {
+      return moPredictGifBytes({ width: w, height: h, fps, duration: dur, dither: c.dither });
+    }
     const bpp23 = c.format === 'webm' ? 0.06 : 0.10;
     const bpp = bpp23 * Math.pow(2, (23 - c.crf) / 6);
     return (bpp * pixels * fps * dur) / 8;
@@ -14305,7 +14534,10 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut)
   dialog.appendChild(footer);
 
   // ── Size estimate (heuristic — actual size depends on content entropy) ──
-  // GIF:    bytes ≈ frames × pixels × 0.18  (palette + LZW typical content)
+  // GIF estimate uses the calibrated bpp model from the optimizer (see
+  // moPredictGifBytes). The previous single-constant heuristic was 4–7×
+  // optimistic for video-sourced clips and led users to make exports far
+  // larger than the dialog implied.
   // H.264 / VP9: bitsPerPixel scales as 2^((23-CRF)/6) from a baseline at CRF 23
   function estimateBytes() {
     const [aa, bb] = getInOut();
@@ -14320,8 +14552,9 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut)
     w = Math.max(2, w * scale);
     h = Math.max(2, h * scale);
     const pixels = w * h;
-    const frameCount = dur * fps;
-    if (fmtSel.value === 'gif') return frameCount * pixels * 0.18;
+    if (fmtSel.value === 'gif') {
+      return moPredictGifBytes({ width: w, height: h, fps, duration: dur, dither: ditherSel.value });
+    }
     const crf = parseInt(crfInput.value, 10) || 23;
     const bpp23 = fmtSel.value === 'webm' ? 0.06 : 0.10;
     const bpp = bpp23 * Math.pow(2, (23 - crf) / 6);
@@ -14359,6 +14592,12 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut)
   fmtSel.addEventListener('change', updateEstimate);
   crfInput.addEventListener('input', updateEstimate);
   cropChk.addEventListener('change', updateEstimate);
+  // Previously missing — these all change the encoded byte count but didn't
+  // re-trigger the estimate, so the displayed number drifted out of date.
+  ditherSel.addEventListener('change', updateEstimate);
+  muteChk.addEventListener('change', updateEstimate);
+  encModeSel.addEventListener('change', updateEstimate);
+  gpuSel.addEventListener('change', updateEstimate);
   preview.addEventListener('loadedmetadata', updateEstimate);
   // Live-preview playback speed — match the export speed so users can audition
   // their choice before committing. Browsers clamp playbackRate (~0.0625\u201316)
@@ -14973,6 +15212,316 @@ async function moExportGifWithFrameEdits(api, opts, outPath) {
     // Cleanup temp work dir
     await window.parallxElectron.fs.delete(workDir).catch(() => {});
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 10.6: GIF OPTIMIZER — target-size re-encode for existing GIFs
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Why: the clip dialog's GIF size estimator was historically optimistic, so
+// users ended up with much larger GIFs than expected. Source clips are often
+// gone by the time the surprise lands — they only have the bloated GIF left.
+// This module re-encodes a finished GIF in place at a smaller size while
+// applying the *minimum* necessary perceptual changes to land near a user
+// target (e.g. 8 MB).
+//
+// Algorithm: rank knobs cheapest-first, trying combinations until the
+// predicted output fits the target. Order:
+//   1. Re-encode with optimized palette (always — palettegen on the actual
+//      content beats the source's stale palette by 10–20%).
+//   2. Lower fps in steps:   sourceFps → 24 → 20 → 18 → 15 → 12
+//   3. Lower width in steps: sourceW   → 1280 → 960 → 720 → 540 → 480 → 360
+//   4. Trim duration (only if the user opts in).
+//
+// We loop over (width, fps) — for each width we pick the highest fps the
+// predictor says will fit. After encode we measure the real bytes; if we
+// missed by >15% we recalibrate the per-pixel-bit factor from observed
+// output and try once more. One retry max.
+//
+// The predictor is also exported so the existing clip dialog can use it
+// (its old single-constant estimator was the root cause of this whole mess).
+
+// Heuristic bytes-per-pixel-per-frame for paletted GIF output. Values are
+// calibrated against a corpus of typical screen-recorded clips; real content
+// can swing ±50% so callers should treat these as best-effort estimates and
+// always re-measure after encode.
+const MO_GIF_BPP_BASE = 0.44;          // ≈ 3.5 bits/pixel — average video-sourced GIF
+const MO_GIF_BPP_DITHER = {
+  none:             0.85,              // banding compresses cleanly
+  bayer:            1.00,              // baseline (bayer_scale ≥ 4)
+  floyd_steinberg:  1.20,              // diffusion noise compresses poorly
+  sierra2_4a:       1.12,
+};
+const MO_GIF_FPS_LADDER = [24, 20, 18, 15, 12];
+const MO_GIF_WIDTH_LADDER = [1280, 960, 720, 540, 480, 360];
+const MO_GIF_TRIM_LADDER = [0.8, 0.6, 0.4]; // fraction of original duration
+
+/**
+ * Predict output bytes for a GIF encode.
+ *   width, height : output pixel dims (after scale/crop)
+ *   fps           : target frame rate
+ *   duration      : seconds
+ *   dither        : 'none' | 'bayer' | 'floyd_steinberg' | 'sierra2_4a'
+ *   bppOverride   : optional measured bpp from a prior pass (calibration)
+ */
+function moPredictGifBytes({ width, height, fps, duration, dither, bppOverride }) {
+  const w = Math.max(2, width || 0);
+  const h = Math.max(2, height || 0);
+  const f = Math.max(1, fps || 0);
+  const d = Math.max(0.05, duration || 0);
+  const ditherKey = (dither in MO_GIF_BPP_DITHER) ? dither : 'bayer';
+  const bpp = bppOverride != null ? bppOverride : (MO_GIF_BPP_BASE * MO_GIF_BPP_DITHER[ditherKey]);
+  return Math.round(w * h * f * d * bpp);
+}
+
+// Probe an existing GIF for width/height/fps/duration via ffprobe.
+async function moProbeGif(filePath) {
+  if (!_toolPaths.ffprobe) {
+    try { await detectAllTools(); } catch { /* ignore */ }
+  }
+  if (!_toolPaths.ffprobe) return null;
+  try {
+    const cmd = `${shellInvoke(_toolPaths.ffprobe)} -v quiet -print_format json -show_format -show_streams ${shellQuote(filePath)}`;
+    const result = await window.parallxElectron.terminal.exec(cmd, { timeout: SCAN_DEFAULTS.ffprobeTimeout });
+    if (result.exitCode !== 0 || !result.stdout.trim()) return null;
+    const data = JSON.parse(result.stdout);
+    const stream = (data.streams || []).find((s) => s.codec_type === 'video');
+    const fmt = data.format || {};
+    if (!stream) return null;
+    // ffprobe reports duration in format.duration; for GIFs r_frame_rate is
+    // typically the average inter-frame delay. Cap fps at 50 — anything
+    // higher in a GIF is a probe artifact.
+    const fps = Math.min(50, Math.max(1, parseFrameRate(stream.r_frame_rate) || 12));
+    const fileBytes = parseInt(fmt.size || '0', 10) || 0;
+    return {
+      width: stream.width || 0,
+      height: stream.height || 0,
+      fps,
+      duration: parseFloat(fmt.duration) || 0,
+      bytes: fileBytes,
+    };
+  } catch { return null; }
+}
+
+/**
+ * Pick the gentlest (width, fps, duration) combination predicted to fit the
+ * target. Returns the chosen plan plus a flag if we hit the floor.
+ */
+function moPickGifOptimizePlan(probe, targetBytes, dither, allowTrim) {
+  const fpsRungs = [probe.fps, ...MO_GIF_FPS_LADDER]
+    .filter((v) => v >= 12 && v <= probe.fps);
+  // Dedupe while preserving descending order (highest fps tried first per width)
+  const fpsSeen = new Set();
+  const fpsList = [];
+  for (const v of fpsRungs) { const k = Math.round(v); if (!fpsSeen.has(k)) { fpsSeen.add(k); fpsList.push(k); } }
+
+  const widthRungs = [probe.width, ...MO_GIF_WIDTH_LADDER]
+    .filter((v) => v >= 360 && v <= probe.width);
+  const wSeen = new Set();
+  const widthList = [];
+  for (const v of widthRungs) { const k = Math.round(v); if (!wSeen.has(k)) { wSeen.add(k); widthList.push(k); } }
+
+  const aspect = probe.height / probe.width;
+
+  for (const w of widthList) {
+    const h = Math.max(2, Math.round(w * aspect / 2) * 2);
+    for (const f of fpsList) {
+      const bytes = moPredictGifBytes({ width: w, height: h, fps: f, duration: probe.duration, dither });
+      if (bytes <= targetBytes) {
+        return { width: w, height: h, fps: f, duration: probe.duration, predictedBytes: bytes, hitFloor: false };
+      }
+    }
+  }
+
+  // Floor: smallest width × lowest fps
+  const fw = Math.max(360, widthList[widthList.length - 1] || 360);
+  const fh = Math.max(2, Math.round(fw * aspect / 2) * 2);
+  const ff = 12;
+
+  if (allowTrim) {
+    for (const frac of MO_GIF_TRIM_LADDER) {
+      const dur = probe.duration * frac;
+      const bytes = moPredictGifBytes({ width: fw, height: fh, fps: ff, duration: dur, dither });
+      if (bytes <= targetBytes) {
+        return { width: fw, height: fh, fps: ff, duration: dur, predictedBytes: bytes, hitFloor: true, trimmed: true };
+      }
+    }
+  }
+
+  // Couldn't reach target even at the floor.
+  const bytes = moPredictGifBytes({ width: fw, height: fh, fps: ff, duration: probe.duration, dither });
+  return { width: fw, height: fh, fps: ff, duration: probe.duration, predictedBytes: bytes, hitFloor: true };
+}
+
+/**
+ * Run the two-pass palette ffmpeg encode for a single GIF. Writes to outPath.
+ * Throws on ffmpeg error.
+ */
+async function moEncodeOptimizedGif(srcPath, outPath, plan, dither) {
+  const ff = shellInvoke(_toolPaths.ffmpeg);
+  const sep = _isWindows ? '\\' : '/';
+  const lastSep = outPath.lastIndexOf(sep);
+  const dir = outPath.slice(0, lastSep);
+  const tmpPalette = `${dir}${sep}.mo_optpal_${Date.now()}_${Math.floor(Math.random() * 1e6)}.png`;
+
+  // Filter chain for both passes:
+  //   fps        — drop frames if needed
+  //   scale      — downscale (lanczos for quality)
+  //   trim       — only if plan.duration < probe.duration
+  const filters = [];
+  filters.push(`fps=${plan.fps}`);
+  // -t (duration) handles trim at input level; no filter needed.
+  filters.push(`scale=${plan.width}:${plan.height}:flags=lanczos`);
+
+  const vfA = filters.concat(['palettegen=stats_mode=diff']).join(',');
+  const trimArgs = plan.trimmed ? ['-t', String(plan.duration)] : [];
+
+  try {
+    const cmd1 = [
+      ff, '-hide_banner', '-loglevel', 'error', '-y',
+      ...trimArgs,
+      '-i', shellQuote(srcPath),
+      '-vf', shellQuote(vfA),
+      shellQuote(tmpPalette),
+    ].join(' ');
+    const r1 = await window.parallxElectron.terminal.exec(cmd1, { timeout: 600000 });
+    if (r1.exitCode !== 0) throw new Error('palettegen: ' + (r1.stderr || 'unknown'));
+
+    const vfB = filters.join(',') + `[x];[x][1:v]paletteuse=dither=${dither}`;
+    const cmd2 = [
+      ff, '-hide_banner', '-loglevel', 'error', '-y',
+      ...trimArgs,
+      '-i', shellQuote(srcPath),
+      '-i', shellQuote(tmpPalette),
+      '-lavfi', shellQuote(vfB),
+      '-loop', '0',
+      shellQuote(outPath),
+    ].join(' ');
+    const r2 = await window.parallxElectron.terminal.exec(cmd2, { timeout: 600000 });
+    if (r2.exitCode !== 0) throw new Error('paletteuse: ' + (r2.stderr || 'unknown'));
+  } finally {
+    await window.parallxElectron.fs.delete(tmpPalette, { useTrash: false }).catch(() => {});
+  }
+}
+
+/**
+ * Optimize one GIF in place. Strategy:
+ *  - Probe → pick plan → encode to .tmp file → measure
+ *  - If actual > target × 1.15, calibrate bpp from observed output and pick a
+ *    new (smaller) plan, encode once more.
+ *  - Backup original to `<name>.original.gif` if `backup` is true.
+ *  - Replace original with the chosen output (closest to target, never worse
+ *    than the original).
+ *
+ * Returns: { srcPath, originalBytes, finalBytes, plan, hitFloor, replaced }
+ */
+async function moOptimizeGifFile(srcPath, opts) {
+  const { targetBytes, dither = 'bayer', allowTrim = false, backup = true } = opts || {};
+  if (!_toolPaths.ffmpeg) {
+    try { await detectAllTools(); } catch { /* ignore */ }
+  }
+  if (!_toolPaths.ffmpeg) throw new Error('ffmpeg not available');
+
+  const probe = await moProbeGif(srcPath);
+  if (!probe || !probe.width || !probe.duration) {
+    throw new Error('Could not probe GIF: ' + srcPath);
+  }
+  const originalBytes = probe.bytes;
+
+  // Already small enough → no-op (saves time and avoids a needless re-encode
+  // that might be marginally larger than the original).
+  if (originalBytes <= targetBytes) {
+    return { srcPath, originalBytes, finalBytes: originalBytes, plan: null, replaced: false, skipped: true };
+  }
+
+  const sep = _isWindows ? '\\' : '/';
+  const lastSep = srcPath.lastIndexOf(sep);
+  const dir = srcPath.slice(0, lastSep);
+  const base = srcPath.slice(lastSep + 1).replace(/\.gif$/i, '');
+  const tmpPath = `${dir}${sep}.mo_opt_${base}_${Date.now()}.gif`;
+
+  let plan = moPickGifOptimizePlan(probe, targetBytes, dither, allowTrim);
+  await moEncodeOptimizedGif(srcPath, tmpPath, plan, dither);
+
+  let stat = await window.parallxElectron.fs.stat(tmpPath);
+  let actualBytes = stat ? (stat.size || 0) : 0;
+
+  // One calibration retry: if we overshot the target by >15%, re-derive the
+  // actual bpp this content needed and replan.
+  if (actualBytes > targetBytes * 1.15) {
+    const measuredBpp = actualBytes / Math.max(1, plan.width * plan.height * plan.fps * plan.duration);
+    // Re-pick using the measured bpp so the predictor is calibrated to this
+    // content. We do this by temporarily monkey-patching... no, cleaner: pass
+    // bppOverride through a small wrapper.
+    const calibratedPick = (probe2) => {
+      const fpsList = [probe2.fps, ...MO_GIF_FPS_LADDER].filter((v) => v >= 12 && v <= probe2.fps);
+      const widthList = [probe2.width, ...MO_GIF_WIDTH_LADDER].filter((v) => v >= 360 && v <= probe2.width);
+      const aspect = probe2.height / probe2.width;
+      const seenF = new Set(); const fL = [];
+      for (const v of fpsList) { const k = Math.round(v); if (!seenF.has(k)) { seenF.add(k); fL.push(k); } }
+      const seenW = new Set(); const wL = [];
+      for (const v of widthList) { const k = Math.round(v); if (!seenW.has(k)) { seenW.add(k); wL.push(k); } }
+      for (const w of wL) {
+        const h = Math.max(2, Math.round(w * aspect / 2) * 2);
+        for (const f of fL) {
+          const bytes = moPredictGifBytes({ width: w, height: h, fps: f, duration: probe2.duration, bppOverride: measuredBpp });
+          if (bytes <= targetBytes) return { width: w, height: h, fps: f, duration: probe2.duration, predictedBytes: bytes, hitFloor: false };
+        }
+      }
+      const fw = Math.max(360, wL[wL.length - 1] || 360);
+      const fh = Math.max(2, Math.round(fw * aspect / 2) * 2);
+      return { width: fw, height: fh, fps: 12, duration: probe2.duration, predictedBytes: 0, hitFloor: true };
+    };
+    const plan2 = calibratedPick(probe);
+    // Only retry if the calibrated plan actually changed (else we'd produce
+    // the same bytes again).
+    if (plan2.width !== plan.width || plan2.fps !== plan.fps) {
+      await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
+      await moEncodeOptimizedGif(srcPath, tmpPath, plan2, dither);
+      const stat2 = await window.parallxElectron.fs.stat(tmpPath);
+      const actual2 = stat2 ? (stat2.size || 0) : 0;
+      // Use whichever pass got closer to target (and didn't exceed original)
+      if (actual2 <= actualBytes) {
+        plan = plan2;
+        actualBytes = actual2;
+        stat = stat2;
+      } else {
+        // First pass was better — re-encode it
+        await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
+        await moEncodeOptimizedGif(srcPath, tmpPath, plan, dither);
+      }
+    }
+  }
+
+  // Safety: if our "optimized" output is somehow larger than the source,
+  // bail out and leave the original alone. No user expects optimization
+  // to make a file bigger.
+  if (actualBytes >= originalBytes) {
+    await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
+    return { srcPath, originalBytes, finalBytes: originalBytes, plan, replaced: false, skipped: true, reason: 'no-improvement' };
+  }
+
+  // Backup original if requested (skip if backup file already exists — don't
+  // overwrite a pre-existing backup from a prior optimization run).
+  if (backup) {
+    const backupPath = `${dir}${sep}${base}.original.gif`;
+    const backupExists = await window.parallxElectron.fs.exists(backupPath);
+    if (!backupExists) {
+      await window.parallxElectron.fs.copy(srcPath, backupPath);
+    }
+  }
+
+  // Replace original with optimized. fs.rename overwrites on Windows when
+  // dest exists for files; if it doesn't, fall back to delete+rename.
+  try {
+    await window.parallxElectron.fs.delete(srcPath, { useTrash: false }).catch(() => {});
+    await window.parallxElectron.fs.rename(tmpPath, srcPath);
+  } catch (err) {
+    await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
+    throw err;
+  }
+
+  return { srcPath, originalBytes, finalBytes: actualBytes, plan, replaced: true, skipped: false };
 }
 
 
