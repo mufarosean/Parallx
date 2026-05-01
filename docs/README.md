@@ -7,6 +7,9 @@ This folder contains both canonical product docs and historical snapshots.
 - Treat milestone files as implementation history; they may contain intentionally unchecked future tasks.
 - Treat `docs/archive/` as historical context, not current source-of-truth.
 
+## Getting Started
+- [USER_GUIDE.md](./USER_GUIDE.md) — short, practical end-user guide (settings, autonomy, MCP, workspaces, troubleshooting).
+
 ## Core Architecture
 - [ARCHITECTURE.md](../ARCHITECTURE.md)
 - [FULL_AUDIT_REPORT.md](./FULL_AUDIT_REPORT.md)
