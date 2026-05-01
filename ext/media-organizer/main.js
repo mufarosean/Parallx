@@ -9096,6 +9096,11 @@ function renderGridBrowser(container, api, input) {
     if (cardGrid) {
       cardGrid.refresh(state.items, refreshOpts());
     }
+    // Persist (debounced) so the workspace remembers grid zoom across sessions.
+    clearTimeout(zoomSlider._persistTimer);
+    zoomSlider._persistTimer = setTimeout(() => {
+      moSetSetting('grid_zoom_width', String(state.zoomWidth)).catch(() => {});
+    }, 250);
   });
 
   // Display mode toggle handlers
@@ -16457,6 +16462,15 @@ export async function activate(api, context) {
     console.error('[MediaOrganizer] Activation failed — database not ready');
     return;
   }
+
+  // Hydrate the workspace-persisted grid zoom so it survives across sessions.
+  try {
+    const z = await moGetSetting('grid_zoom_width', null);
+    const zNum = z != null ? parseInt(z, 10) : NaN;
+    if (Number.isFinite(zNum) && zNum >= MO_ZOOM_MIN && zNum <= MO_ZOOM_MAX) {
+      _sessionZoomWidth = zNum;
+    }
+  } catch { /* fall back to default */ }
 
   // Status bar item for scan progress
   _statusBarItem = api.window.createStatusBarItem(1, 100);
