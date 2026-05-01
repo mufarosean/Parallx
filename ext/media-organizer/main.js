@@ -7109,8 +7109,37 @@ function formatShortDate(isoStr) {
 // ── Local file → blob URL converter ──────────────────────────────────────────
 // The renderer loads from http://127.0.0.1, so file:// URLs are blocked by
 // same-origin policy. Read files via IPC (base64) and create object URLs.
+//
+// Eviction discipline: revoking a blob URL that is still set as an <img src=>
+// silently breaks the image (no retry path), which manifests as inconsistent
+// thumbnails when the grid renders more items than _BLOB_CACHE_MAX. We bump
+// the cap and refuse to revoke URLs currently referenced by any <img> in the
+// DOM, falling back to the LRU oldest only when every entry is in active use.
 const _blobUrlCache = new Map();
-const _BLOB_CACHE_MAX = 500;
+const _BLOB_CACHE_MAX = 1500;
+const _blobUrlReverse = new Map(); // url -> filePath (for fast in-use lookup)
+
+function _evictOneBlobUrl() {
+  // Walk in insertion (LRU) order; first entry whose URL is not currently
+  // referenced by an <img> in the document gets evicted. If every cached URL
+  // is still in use, revoke the oldest as a memory-bound fallback.
+  let fallbackKey = null;
+  for (const [filePath, url] of _blobUrlCache) {
+    if (fallbackKey === null) fallbackKey = filePath;
+    if (!document.querySelector(`img[src="${url}"]`)) {
+      URL.revokeObjectURL(url);
+      _blobUrlCache.delete(filePath);
+      _blobUrlReverse.delete(url);
+      return;
+    }
+  }
+  if (fallbackKey !== null) {
+    const url = _blobUrlCache.get(fallbackKey);
+    URL.revokeObjectURL(url);
+    _blobUrlCache.delete(fallbackKey);
+    _blobUrlReverse.delete(url);
+  }
+}
 
 const _MIME_FROM_EXT = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
@@ -7140,16 +7169,62 @@ async function localFileToUrl(filePath) {
     const blob = new Blob([bytes], { type: mime });
     const url = URL.createObjectURL(blob);
     if (_blobUrlCache.size >= _BLOB_CACHE_MAX) {
-      const firstKey = _blobUrlCache.keys().next().value;
-      URL.revokeObjectURL(_blobUrlCache.get(firstKey));
-      _blobUrlCache.delete(firstKey);
+      _evictOneBlobUrl();
     }
     _blobUrlCache.set(filePath, url);
+    _blobUrlReverse.set(url, filePath);
     return url;
   } catch (err) {
     console.warn('[MediaOrganizer] localFileToUrl failed:', filePath, err);
     return null;
   }
+}
+
+// Set an <img> src to a local file path via blob URL, with one auto-retry if
+// the load errors (e.g. blob URL was revoked under cache pressure, or the
+// underlying file was momentarily locked). Idempotent — resets state on every
+// call so it is safe to use across grid re-renders.
+//
+// Behavior:
+//   - clears the cached blob URL on error before retrying so the read goes
+//     through fs.readFile again instead of handing back a dead URL.
+//   - hides the <img> only after the retry also fails.
+function setThumbImgSrc(img, filePath, opts) {
+  if (!img || !filePath) return;
+  const onPlaceholderRemove = opts && opts.onPlaceholderRemove;
+  let attemptedRetry = false;
+  const onError = () => {
+    if (attemptedRetry) {
+      img.style.display = 'none';
+      return;
+    }
+    attemptedRetry = true;
+    // Drop any stale cache entry for this path before retrying so a revoked
+    // URL doesn't get handed back a second time.
+    const stale = _blobUrlCache.get(filePath);
+    if (stale) {
+      _blobUrlCache.delete(filePath);
+      _blobUrlReverse.delete(stale);
+      try { URL.revokeObjectURL(stale); } catch { /* already revoked */ }
+    }
+    localFileToUrl(filePath).then(retryUrl => {
+      if (retryUrl) {
+        img.style.display = '';
+        img.src = retryUrl;
+      } else {
+        img.style.display = 'none';
+      }
+    });
+  };
+  // addEventListener allows multiple handlers across re-renders to coexist;
+  // the attempt counter is closed over so each call manages its own retry.
+  img.addEventListener('error', onError);
+  localFileToUrl(filePath).then(url => {
+    if (!url) return;
+    img.style.display = '';
+    img.src = url;
+    if (onPlaceholderRemove) onPlaceholderRemove();
+  });
 }
 
 function renderMediaCard(item, options) {
@@ -7168,7 +7243,7 @@ function renderMediaCard(item, options) {
   img.loading = 'lazy';
   if (item._gifSourcePath || item.thumbnailPath) {
     // Prefer animated GIF source over static JPEG thumbnail
-    localFileToUrl(item._gifSourcePath || item.thumbnailPath).then(url => { if (url) img.src = url; });
+    setThumbImgSrc(img, item._gifSourcePath || item.thumbnailPath);
   } else {
     // Placeholder
     const placeholder = moEl('div', 'mo-thumb-placeholder', { innerHTML: moIcon('image', 32) });
@@ -7291,7 +7366,7 @@ function renderMediaListRow(item, options) {
   img.alt = item.title || '';
   img.loading = 'lazy';
   if (item.thumbnailPath) {
-    localFileToUrl(item.thumbnailPath).then(url => { if (url) img.src = url; });
+    setThumbImgSrc(img, item.thumbnailPath);
   } else {
     img.style.display = 'none';
   }
@@ -7469,14 +7544,12 @@ function renderCardGrid(container, items, options) {
         if (img) {
           // For GIFs, show the original animated file instead of the static thumbnail
           const displayPath = result.sourcePath || result.path;
-          const url = await localFileToUrl(displayPath);
-          if (url) {
-            img.src = url;
-            img.style.display = '';
-            // Remove placeholder if present
-            const ph = card._thumbEl?.querySelector('.mo-thumb-placeholder');
-            if (ph) ph.remove();
-          }
+          setThumbImgSrc(img, displayPath, {
+            onPlaceholderRemove: () => {
+              const ph = card._thumbEl?.querySelector('.mo-thumb-placeholder');
+              if (ph) ph.remove();
+            },
+          });
         }
       }
     } catch { /* thumbnail resolution failure — leave placeholder */ }
@@ -11174,10 +11247,7 @@ async function resolveThumbnailForMiniCard(card, item) {
     const result = await resolveThumbnail(item.type === 'photo' ? 'photo' : 'video', item.id, _api);
     if (result && result.path) {
       const img = card._imgEl;
-      if (img) {
-        const url = await localFileToUrl(result.path);
-        if (url) img.src = url;
-      }
+      if (img) setThumbImgSrc(img, result.path);
     }
   } catch { /* thumbnail resolution failure */ }
 }
