@@ -135,6 +135,52 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     return this._permissionService;
   }
 
+  // ── Tool-enablement binding (M62 follow-up) ──
+
+  /**
+   * Bind the tool-enablement service so the LLM-facing tool list can
+   * filter out chat tools whose owning extension is disabled in this
+   * workspace. Without this filter, tools registered via
+   * `api.chat.registerTool` from an extension that has been disabled
+   * (or never enabled) at runtime would leak into the system prompt
+   * and bloat token usage. Wired up from workbench.ts after both
+   * services are constructed.
+   */
+  setToolEnablementService(service: {
+    isEnabled(toolId: string): boolean;
+    has(toolId: string): boolean;
+    onDidChangeEnablement: Event<{ toolId: string }>;
+  }): void {
+    this._toolEnablement = service;
+    // Fire onDidChangeTools whenever any extension toggles, so the
+    // chat UI re-fetches the filtered tool list.
+    this._register(
+      service.onDidChangeEnablement(() => this._onDidChangeTools.fire()),
+    );
+  }
+
+  private _toolEnablement?: {
+    isEnabled(toolId: string): boolean;
+    has(toolId: string): boolean;
+  };
+
+  /**
+   * True iff the tool comes from an extension bridge whose owner
+   * extension is currently disabled. Returns false for built-in tools,
+   * MCP tools (whose ownerToolId is a server ID, not a registered
+   * extension), and tools without an enablement service bound.
+   */
+  private _isOwnerExtensionDisabled(tool: IChatTool): boolean {
+    if (!this._toolEnablement) return false;
+    if (tool.source !== 'bridge') return false;
+    if (!tool.ownerToolId) return false;
+    // Only filter when the ownerToolId actually corresponds to a
+    // registered extension. MCP server IDs and other non-extension
+    // owners are not in the tool registry and must not be filtered.
+    if (!this._toolEnablement.has(tool.ownerToolId)) return false;
+    return !this._toolEnablement.isEnabled(tool.ownerToolId);
+  }
+
   // ── Registration ──
 
   registerTool(tool: IChatTool): { dispose(): void } {
@@ -173,6 +219,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     return Array.from(this._tools.values())
       .filter((tool) => {
         if (this._disabledTools.has(tool.name)) { return false; }
+        if (this._isOwnerExtensionDisabled(tool)) { return false; }
         // Exclude never-allowed tools from the LLM's view entirely
         const level = this._getEffectiveLevel(tool);
         return level !== 'never-allowed';
@@ -192,6 +239,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     return Array.from(this._tools.values())
       .filter((tool) => {
         if (this._disabledTools.has(tool.name)) { return false; }
+        if (this._isOwnerExtensionDisabled(tool)) { return false; }
         const level = this._getEffectiveLevel(tool);
         return level === 'always-allowed';
       })
@@ -312,7 +360,10 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   // ── Tool enablement ──
 
   isToolEnabled(name: string): boolean {
-    return !this._disabledTools.has(name);
+    if (this._disabledTools.has(name)) return false;
+    const tool = this._tools.get(name);
+    if (tool && this._isOwnerExtensionDisabled(tool)) return false;
+    return true;
   }
 
   setToolEnabled(name: string, enabled: boolean): void {

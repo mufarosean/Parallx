@@ -2247,6 +2247,20 @@ export class Workbench extends Layout {
     // Wire enablement service into API factory deps (created before enablement service)
     (apiFactoryDeps as any).toolEnablementService = this._toolEnablementService;
 
+    // M62 follow-up: wire enablement into LanguageModelToolsService so that
+    // chat tools registered by an extension's bridge are filtered out of the
+    // LLM tool list when that extension is disabled in this workspace.
+    // Without this, a workspace where the user never enabled e.g. media-
+    // organizer would still see its 4 chat tools in the system prompt.
+    const lmts = this._services.tryGet(ILanguageModelToolsService);
+    if (lmts && typeof (lmts as any).setToolEnablementService === 'function') {
+      (lmts as any).setToolEnablementService({
+        isEnabled: (id: string) => this._toolEnablementService.isEnabled(id),
+        has: (id: string) => registry.getById(id) !== undefined,
+        onDidChangeEnablement: this._toolEnablementService.onDidChangeEnablement,
+      });
+    }
+
     // ── Database Service (M6 Capability 1) ──
     this._databaseService = this._register(new DatabaseService());
     this._services.registerInstance(IDatabaseService, this._databaseService);
