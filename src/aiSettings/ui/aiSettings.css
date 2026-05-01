@@ -1234,6 +1234,149 @@
   margin-top: 4px;
 }
 
+/* ── M61 Phase 3 — install form: tabs + catalog cards ───────────────────── */
+
+.ai-settings-mcp-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  margin-bottom: 8px;
+}
+
+.ai-settings-mcp-tab {
+  background: transparent;
+  border: none;
+  color: var(--vscode-foreground, #ccc);
+  padding: 6px 12px;
+  font-size: var(--parallx-fontSize-base);
+  font-family: inherit;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.ai-settings-mcp-tab:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+.ai-settings-mcp-tab--active {
+  border-bottom-color: var(--vscode-focusBorder, #007fd4);
+  color: var(--vscode-foreground, #fff);
+}
+
+.ai-settings-mcp-form-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-settings-mcp-catalog-intro {
+  font-size: var(--parallx-fontSize-base);
+  color: var(--vscode-descriptionForeground, #888);
+  margin-bottom: 4px;
+}
+
+.ai-settings-mcp-catalog-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.08));
+  border-radius: 3px;
+  background: var(--vscode-editor-background, transparent);
+}
+
+.ai-settings-mcp-catalog-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-settings-mcp-catalog-card__title {
+  font-weight: 500;
+  color: var(--vscode-foreground, #ccc);
+}
+
+.ai-settings-mcp-catalog-card__tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--vscode-badge-background, rgba(255, 255, 255, 0.08));
+  color: var(--vscode-badge-foreground, #aaa);
+}
+
+.ai-settings-mcp-catalog-card__desc {
+  font-size: var(--parallx-fontSize-base);
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-mcp-catalog-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.ai-settings-mcp-catalog-card__home {
+  font-size: var(--parallx-fontSize-base);
+  color: var(--vscode-textLink-foreground, #3794ff);
+  text-decoration: none;
+}
+
+.ai-settings-mcp-catalog-card__home:hover {
+  text-decoration: underline;
+}
+
+.ai-settings-mcp-install-heading {
+  font-size: var(--parallx-fontSize-md);
+  font-weight: 500;
+  color: var(--vscode-foreground, #ccc);
+}
+
+.ai-settings-mcp-install-desc {
+  font-size: var(--parallx-fontSize-base);
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-mcp-install-cmd {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  padding: 4px 8px;
+  background: var(--vscode-textBlockQuote-background, rgba(255, 255, 255, 0.04));
+  border-radius: 3px;
+  color: var(--vscode-foreground, #ccc);
+}
+
+.ai-settings-mcp-install-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.ai-settings-mcp-install-label {
+  font-size: var(--parallx-fontSize-base);
+  color: var(--vscode-foreground, #ccc);
+  font-weight: 500;
+}
+
+.ai-settings-mcp-install-help {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-mcp-install-status {
+  font-size: var(--parallx-fontSize-base);
+  color: var(--vscode-errorForeground, #f48771);
+  min-height: 1em;
+}
+
+.ai-settings-mcp-textarea {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  resize: vertical;
+}
+
 /* ── Agent Card ─────────────────── */
 
 .ai-settings-agent-card {
