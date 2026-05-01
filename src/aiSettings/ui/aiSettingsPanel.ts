@@ -1,14 +1,12 @@
 // aiSettingsPanel.ts — AI Hub Panel Shell (M20 Task C.1, originally M15 Task 2.2)
 //
-// Two-column layout:
-//   Left (200px): section navigation + preset switcher
-//   Right (flex): search bar + scrollable section content
-//
-// Sections: Behavior (Persona+Chat merged), Suggestions, Model, Retrieval,
-// Agent, Indexing, Advanced, Preview
-//
-// All sections stack vertically. Navigation smooth-scrolls to section headers.
-// Search bar dims non-matching fields (never hides them).
+// M61 Phase 5: trimmed to a managers-only sidebar. The unified Settings
+// overlay (`Ctrl+Alt+S` → `settings.open`) is the canonical editor for
+// every value-shaped setting; this panel now only hosts the four
+// manager sections (Tools, MCP servers, Agent, Cron) that action rows
+// in the overlay deep-link to. Persona / Chat / Model / Retrieval /
+// Indexing / Suggestions / Heartbeat / Advanced / Preview sections, the
+// PresetSwitcher, and the profiles concept have been removed.
 
 import { Disposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
@@ -16,16 +14,10 @@ import { InputBox } from '../../ui/inputBox.js';
 import type { IAISettingsService, AISettingsProfile } from '../aiSettingsTypes.js';
 import type { ILanguageModelsService } from '../../services/chatTypes.js';
 import type { IUnifiedAIConfigService } from '../unifiedConfigTypes.js';
-import { PresetSwitcher } from './presetSwitcher.js';
 import type { SettingsSection } from './sectionBase.js';
-import { ModelSection } from './sections/modelSection.js';
-import { RetrievalSection } from './sections/retrievalSection.js';
 import { AgentSection } from './sections/agentSection.js';
-import { HeartbeatSection } from './sections/heartbeatSection.js';
 import { CronSection } from './sections/cronSection.js';
 import { ToolsSection } from './sections/toolsSection.js';
-import { AdvancedSection } from './sections/advancedSection.js';
-import { PreviewSection } from './sections/previewSection.js';
 import { McpSection } from './sections/mcpSection.js';
 import type { IToolPickerServices } from '../../services/chatTypes.js';
 import type { IMcpClientService } from '../../services/serviceTypes.js';
@@ -49,9 +41,10 @@ export class AISettingsPanel extends Disposable {
     private readonly _unifiedConfigService?: IUnifiedAIConfigService,
     private readonly _toolPickerServices?: IToolPickerServices,
     private readonly _mcpClientService?: IMcpClientService,
-    private readonly _autonomyFlagsService?: IAutonomyFeatureFlagsService,
+    _autonomyFlagsService?: IAutonomyFeatureFlagsService,
   ) {
     super();
+    void _autonomyFlagsService;
 
     // Root two-column layout
     this.element = $('div.ai-settings-panel');
@@ -66,9 +59,6 @@ export class AISettingsPanel extends Disposable {
     leftCol.appendChild(nav);
     this._buildNav(nav);
 
-    // Preset Switcher (below nav)
-    this._register(new PresetSwitcher(leftCol, this._service));
-
     // ── Right Column ──
     const rightCol = $('div.ai-settings-panel__right');
     this.element.appendChild(rightCol);
@@ -76,8 +66,8 @@ export class AISettingsPanel extends Disposable {
     // Search bar
     const searchRow = $('div.ai-settings-panel__search');
     this._searchBox = this._register(new InputBox(searchRow, {
-      placeholder: 'Search settings…',
-      ariaLabel: 'Search AI settings',
+      placeholder: 'Search managers…',
+      ariaLabel: 'Search AI settings managers',
     }));
     rightCol.appendChild(searchRow);
 
@@ -85,16 +75,11 @@ export class AISettingsPanel extends Disposable {
     const content = $('div.ai-settings-panel__content');
     rightCol.appendChild(content);
 
-    // ── Build Sections ──
+    // ── Build Sections (managers only — M61 Phase 5) ──
     this._sections = [
-      this._register(new ModelSection(this._service, _languageModelsService)),
-      this._register(new RetrievalSection(this._service, this._unifiedConfigService)),
       this._register(new AgentSection(this._service, this._unifiedConfigService)),
-      this._register(new HeartbeatSection(this._service, this._unifiedConfigService, this._autonomyFlagsService)),
       this._register(new CronSection(this._service)),
       this._register(new ToolsSection(this._service, this._toolPickerServices, this._unifiedConfigService)),
-      this._register(new AdvancedSection(this._service)),
-      this._register(new PreviewSection(this._service)),
       this._register(new McpSection(this._service, this._mcpClientService)),
     ];
 
@@ -127,13 +112,9 @@ export class AISettingsPanel extends Disposable {
 
   private _buildNav(nav: HTMLElement): void {
     const navSections = [
-      { id: 'chat', label: 'Chat' },
-      { id: 'model', label: 'Model' },
-      { id: 'retrieval', label: 'Retrieval' },
       { id: 'agent', label: 'Agent' },
+      { id: 'cron', label: 'Scheduled jobs' },
       { id: 'tools', label: 'Tools' },
-      { id: 'advanced', label: 'Advanced' },
-      { id: 'preview', label: 'Preview' },
       { id: 'mcp', label: 'MCP Servers' },
     ];
 

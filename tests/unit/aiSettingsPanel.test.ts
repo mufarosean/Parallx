@@ -1,19 +1,23 @@
 // @vitest-environment jsdom
-// tests/unit/aiSettingsPanel.test.ts — M15 Group D: AI Settings Panel UI tests
+// tests/unit/aiSettingsPanel.test.ts — M61 Phase 5: trimmed sidebar tests.
 //
-// Validates PresetSwitcher, SettingsSection base, AISettingsPanel shell,
-// all six sections, and the built-in tool activation.
+// The AI Settings sidebar is now a managers-only deep-link target for
+// action rows in the unified Settings overlay. Persona / Chat / Model /
+// Retrieval / Indexing / Suggestions / Heartbeat / Advanced / Preview
+// sections and the PresetSwitcher have been deleted; the panel renders
+// only Agent, Cron (Scheduled jobs), Tools, and MCP. These tests cover:
+//   - createSettingRow helper
+//   - SettingsSection base class (via ToolsSection, still alive)
+//   - AISettingsPanel shell (4 nav items, 4 sections, no preset switcher)
+//   - built-in activation (registerViewProvider + ai-settings.open)
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { AISettingsProfile } from '../../src/aiSettings/aiSettingsTypes';
 import { DEFAULT_PROFILE, BUILT_IN_PRESETS } from '../../src/aiSettings/aiSettingsDefaults';
 import { Emitter } from '../../src/platform/events';
-import { createSettingRow, SettingsSection } from '../../src/aiSettings/ui/sectionBase';
-import { PresetSwitcher } from '../../src/aiSettings/ui/presetSwitcher';
+import { createSettingRow } from '../../src/aiSettings/ui/sectionBase';
 import { AISettingsPanel } from '../../src/aiSettings/ui/aiSettingsPanel';
-import { ModelSection } from '../../src/aiSettings/ui/sections/modelSection';
-import { AdvancedSection } from '../../src/aiSettings/ui/sections/advancedSection';
-import { PreviewSection } from '../../src/aiSettings/ui/sections/previewSection';
+import { ToolsSection } from '../../src/aiSettings/ui/sections/toolsSection';
 import { activate, deactivate } from '../../src/built-in/ai-settings/main';
 
 // ─── Mock IAISettingsService ─────────────────────────────────────────────────
@@ -36,16 +40,12 @@ function createMockService(overrides?: Partial<AISettingsProfile>) {
     getAllProfiles: vi.fn(() => [...profiles]),
     setActiveProfile: vi.fn(async () => {}),
     updateActiveProfile: vi.fn(async () => {}),
-    createProfile: vi.fn(async (name: string) => {
-      const newProfile: AISettingsProfile = {
-        ...structuredClone(DEFAULT_PROFILE),
-        id: `custom-${Date.now()}`,
-        presetName: name,
-        isBuiltIn: false,
-      };
-      profiles.push(newProfile);
-      return newProfile;
-    }),
+    createProfile: vi.fn(async (name: string) => ({
+      ...structuredClone(DEFAULT_PROFILE),
+      id: `custom-${Date.now()}`,
+      presetName: name,
+      isBuiltIn: false,
+    })),
     deleteProfile: vi.fn(async () => {}),
     renameProfile: vi.fn(async () => {}),
     resetSection: vi.fn(async () => {}),
@@ -53,13 +53,10 @@ function createMockService(overrides?: Partial<AISettingsProfile>) {
     runPreviewTest: vi.fn(async (msg: string) => `Echo: ${msg}`),
     onDidChange: onDidChangeEmitter.event,
     dispose: vi.fn(),
-    // Test helpers
     _fireChange: (p?: AISettingsProfile) => onDidChangeEmitter.fire(p ?? profile),
     _emitter: onDidChangeEmitter,
   };
 }
-
-// ─── DOM Helper ──────────────────────────────────────────────────────────────
 
 function cont(): HTMLElement {
   const el = document.createElement('div');
@@ -114,134 +111,23 @@ describe('createSettingRow', () => {
   });
 });
 
-// ─── SettingsSection (via ModelSection as concrete subclass) ────────────────
+// ─── SettingsSection (via ToolsSection as concrete subclass) ────────────────
 
 describe('SettingsSection (base class)', () => {
-  let parent: HTMLElement;
   let service: ReturnType<typeof createMockService>;
 
   beforeEach(() => {
     document.body.innerHTML = '';
-    parent = cont();
     service = createMockService();
   });
 
   it('creates section with header and content elements', () => {
-    const section = new ModelSection(service as any);
+    const section = new ToolsSection(service as any);
     expect(section.element.classList.contains('ai-settings-section')).toBe(true);
-    expect(section.element.dataset.sectionId).toBe('model');
-    expect(section.headerElement.textContent).toBe('Model');
-    expect(section.headerElement.id).toBe('ai-settings-section-model');
+    expect(section.element.dataset.sectionId).toBe('tools');
+    expect(section.headerElement.id).toBe('ai-settings-section-tools');
     expect(section.contentElement.classList.contains('ai-settings-section__content')).toBe(true);
     section.dispose();
-  });
-
-  it('applySearch dims non-matching rows', () => {
-    const section = new ModelSection(service as any);
-    section.build();
-
-    // All rows should be visible initially
-    let matches = section.applySearch('');
-    expect(matches).toBeGreaterThanOrEqual(2); // temperature, maxTokens
-
-    // Search for 'temperature' should match
-    matches = section.applySearch('temperature');
-    expect(matches).toBeGreaterThanOrEqual(1);
-
-    const rows = section.element.querySelectorAll('.ai-settings-row');
-    let dimmedCount = 0;
-    rows.forEach(r => { if (r.classList.contains('ai-settings-row--dimmed')) dimmedCount++; });
-    expect(dimmedCount).toBeGreaterThan(0); // some rows dimmed
-
-    // Clear search
-    matches = section.applySearch('');
-    rows.forEach(r => expect(r.classList.contains('ai-settings-row--dimmed')).toBe(false));
-
-    section.dispose();
-  });
-
-  it('marks section as no-matches when nothing matches', () => {
-    const section = new ModelSection(service as any);
-    section.build();
-
-    const matches = section.applySearch('zzznonexistent');
-    expect(matches).toBe(0);
-    expect(section.element.classList.contains('ai-settings-section--no-matches')).toBe(true);
-    section.dispose();
-  });
-});
-
-// ─── PresetSwitcher ──────────────────────────────────────────────────────────
-
-describe('PresetSwitcher', () => {
-  let parent: HTMLElement;
-  let service: ReturnType<typeof createMockService>;
-
-  beforeEach(() => {
-    document.body.innerHTML = '';
-    parent = cont();
-    service = createMockService();
-  });
-
-  it('renders into the container with header and list', () => {
-    const switcher = new PresetSwitcher(parent, service as any);
-    expect(parent.querySelector('.ai-settings-preset-switcher')).toBeTruthy();
-    expect(parent.querySelector('.ai-settings-preset-switcher__header')?.textContent).toBe('Presets');
-    switcher.dispose();
-  });
-
-  it('renders all profiles from the service', () => {
-    const switcher = new PresetSwitcher(parent, service as any);
-    const items = parent.querySelectorAll('.ai-settings-preset-switcher__item');
-    expect(items.length).toBe(3); // Default, Finance Focus, Creative Mode
-    switcher.dispose();
-  });
-
-  it('marks the active profile with active class', () => {
-    const switcher = new PresetSwitcher(parent, service as any);
-    const activeItems = parent.querySelectorAll('.ai-settings-preset-switcher__item--active');
-    expect(activeItems.length).toBe(1);
-    const indicator = activeItems[0].querySelector('.ai-settings-preset-switcher__indicator');
-    expect(indicator?.textContent).toBe('●');
-    switcher.dispose();
-  });
-
-  it('shows built-in badge for built-in profiles', () => {
-    const switcher = new PresetSwitcher(parent, service as any);
-    const badges = parent.querySelectorAll('.ai-settings-preset-switcher__badge');
-    expect(badges.length).toBe(3); // all are built-in
-    expect(badges[0].textContent).toBe('built-in');
-    switcher.dispose();
-  });
-
-  it('calls setActiveProfile on click', () => {
-    const switcher = new PresetSwitcher(parent, service as any);
-    const items = parent.querySelectorAll('.ai-settings-preset-switcher__item');
-    // Click the second profile (Finance Focus)
-    (items[1] as HTMLElement).click();
-    expect(service.setActiveProfile).toHaveBeenCalledWith('finance-focus');
-    switcher.dispose();
-  });
-
-  it('re-renders when onDidChange fires', () => {
-    const switcher = new PresetSwitcher(parent, service as any);
-    expect(parent.querySelectorAll('.ai-settings-preset-switcher__item').length).toBe(3);
-
-    // Add a custom profile to the mock and fire change
-    service.getAllProfiles.mockReturnValue([
-      ...BUILT_IN_PRESETS,
-      { ...structuredClone(DEFAULT_PROFILE), id: 'custom-1', presetName: 'Custom', isBuiltIn: false },
-    ]);
-    service._fireChange();
-
-    expect(parent.querySelectorAll('.ai-settings-preset-switcher__item').length).toBe(4);
-    switcher.dispose();
-  });
-
-  it('has New Preset button', () => {
-    const switcher = new PresetSwitcher(parent, service as any);
-    expect(parent.querySelector('.ai-settings-preset-switcher__new')).toBeTruthy();
-    switcher.dispose();
   });
 });
 
@@ -265,18 +151,16 @@ describe('AISettingsPanel', () => {
     panel.dispose();
   });
 
-  it('renders navigation with 8 section buttons', () => {
+  it('renders navigation with the four manager sections', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const navItems = parent.querySelectorAll('.ai-settings-nav__item');
-    expect(navItems.length).toBe(8);
-    expect(navItems[0].textContent).toBe('Chat');
-    expect(navItems[1].textContent).toBe('Model');
-    expect(navItems[2].textContent).toBe('Retrieval');
-    expect(navItems[3].textContent).toBe('Agent');
-    expect(navItems[4].textContent).toBe('Tools');
-    expect(navItems[5].textContent).toBe('Advanced');
-    expect(navItems[6].textContent).toBe('Preview');
-    expect(navItems[7].textContent).toBe('MCP Servers');
+    expect(navItems.length).toBe(4);
+    expect(Array.from(navItems).map((n) => n.textContent)).toEqual([
+      'Agent',
+      'Scheduled jobs',
+      'Tools',
+      'MCP Servers',
+    ]);
     panel.dispose();
   });
 
@@ -286,155 +170,32 @@ describe('AISettingsPanel', () => {
     panel.dispose();
   });
 
-  it('renders all nine sections in content area', () => {
+  it('renders only the four manager sections in content area', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const sections = parent.querySelectorAll('.ai-settings-section');
-    expect(sections.length).toBe(9);
-    const ids = Array.from(sections).map(s => (s as HTMLElement).dataset.sectionId);
-    expect(ids).toEqual(['model', 'retrieval', 'agent', 'heartbeat', 'cron', 'tools', 'advanced', 'preview', 'mcp']);
+    expect(sections.length).toBe(4);
+    const ids = Array.from(sections).map((s) => (s as HTMLElement).dataset.sectionId);
+    expect(ids).toEqual(['agent', 'cron', 'tools', 'mcp']);
     panel.dispose();
   });
 
-  it('includes preset switcher in left column', () => {
+  it('does NOT include a preset switcher (M61 Phase 5)', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const left = parent.querySelector('.ai-settings-panel__left');
-    expect(left?.querySelector('.ai-settings-preset-switcher')).toBeTruthy();
+    expect(left?.querySelector('.ai-settings-preset-switcher')).toBeNull();
     panel.dispose();
   });
 
-  it('updates sections when onDidChange fires', () => {
+  it('does not throw when onDidChange fires', () => {
     const panel = new AISettingsPanel(parent, service as any);
-    // Change person name and fire change
-    const updated = { ...structuredClone(DEFAULT_PROFILE), persona: { ...DEFAULT_PROFILE.persona, name: 'New Name' } };
+    const updated = {
+      ...structuredClone(DEFAULT_PROFILE),
+      persona: { ...DEFAULT_PROFILE.persona, name: 'New Name' },
+    };
     service.getActiveProfile.mockReturnValue(updated);
     service._fireChange(updated);
-
-    // The persona section should have updated (we verify the name input value later in section tests)
-    // Here we just verify the panel didn't throw on the change
     expect(parent.querySelector('.ai-settings-panel')).toBeTruthy();
     panel.dispose();
-  });
-});
-
-// ─── ModelSection ────────────────────────────────────────────────────────────
-
-describe('ModelSection', () => {
-  let service: ReturnType<typeof createMockService>;
-
-  beforeEach(() => {
-    document.body.innerHTML = '';
-    service = createMockService();
-  });
-
-  it('builds with defaultModel, temperature and maxTokens rows', () => {
-    const section = new ModelSection(service as any);
-    section.build();
-
-    const rows = section.element.querySelectorAll('.ai-settings-row');
-    expect(rows.length).toBe(3);
-
-    const keys = Array.from(rows).map(r => (r as HTMLElement).dataset.settingKey);
-    expect(keys).toContain('model.defaultModel');
-    expect(keys).toContain('model.temperature');
-    expect(keys).toContain('model.maxTokens');
-    section.dispose();
-  });
-
-  it('has model section header', () => {
-    const section = new ModelSection(service as any);
-    expect(section.sectionId).toBe('model');
-    expect(section.headerElement.textContent).toBe('Model');
-    section.dispose();
-  });
-
-  it('has reset section link', () => {
-    const section = new ModelSection(service as any);
-    section.build();
-    const link = section.element.querySelector('.ai-settings-section__reset-link');
-    expect(link).toBeTruthy();
-    (link as HTMLElement).click();
-    expect(service.resetSection).toHaveBeenCalledWith('model');
-    section.dispose();
-  });
-});
-
-// ─── AdvancedSection ─────────────────────────────────────────────────────────
-
-describe('AdvancedSection', () => {
-  let service: ReturnType<typeof createMockService>;
-
-  beforeEach(() => {
-    document.body.innerHTML = '';
-    service = createMockService();
-  });
-
-  it('builds with export, import, and reset rows', () => {
-    const section = new AdvancedSection(service as any);
-    section.build();
-
-    const rows = section.element.querySelectorAll('.ai-settings-row');
-    expect(rows.length).toBe(3);
-    section.dispose();
-  });
-
-  it('has advanced section header', () => {
-    const section = new AdvancedSection(service as any);
-    expect(section.sectionId).toBe('advanced');
-    expect(section.headerElement.textContent).toBe('Advanced');
-    section.dispose();
-  });
-});
-
-// ─── PreviewSection ──────────────────────────────────────────────────────────
-
-describe('PreviewSection', () => {
-  let service: ReturnType<typeof createMockService>;
-
-  beforeEach(() => {
-    document.body.innerHTML = '';
-    service = createMockService();
-  });
-
-  it('builds with starter chips', () => {
-    const section = new PreviewSection(service as any);
-    section.build();
-
-    const chips = section.element.querySelectorAll('.ai-settings-preview__chip');
-    expect(chips.length).toBe(3);
-    section.dispose();
-  });
-
-  it('has preview section header', () => {
-    const section = new PreviewSection(service as any);
-    expect(section.sectionId).toBe('preview');
-    expect(section.headerElement.textContent).toBe('Preview');
-    section.dispose();
-  });
-
-  it('has input row with run button', () => {
-    const section = new PreviewSection(service as any);
-    section.build();
-
-    expect(section.element.querySelector('.ai-settings-preview__input-row')).toBeTruthy();
-    section.dispose();
-  });
-
-  it('custom applySearch matches "preview" keyword', () => {
-    const section = new PreviewSection(service as any);
-    section.build();
-
-    const matches = section.applySearch('preview');
-    expect(matches).toBeGreaterThanOrEqual(1);
-    section.dispose();
-  });
-
-  it('custom applySearch matches "test" keyword', () => {
-    const section = new PreviewSection(service as any);
-    section.build();
-
-    const matches = section.applySearch('test');
-    expect(matches).toBeGreaterThanOrEqual(1);
-    section.dispose();
   });
 });
 
