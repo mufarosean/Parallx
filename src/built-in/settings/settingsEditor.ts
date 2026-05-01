@@ -34,6 +34,11 @@ import type {
 } from '../../services/settingsRegistryService.js';
 import './settings.css';
 
+/** Optional command runner — registry action rows fire commands when present. */
+export interface IEditorCommandRunner {
+  executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
+}
+
 // ─── Filter state ──────────────────────────────────────────────────────────
 
 type ScopeFilter = 'all' | SettingScope;
@@ -51,6 +56,7 @@ export class SettingsEditor extends Disposable {
   constructor(
     parent: HTMLElement,
     private readonly _registry: ISettingsRegistryService,
+    private readonly _commands?: IEditorCommandRunner,
   ) {
     super();
 
@@ -279,6 +285,7 @@ export class SettingsEditor extends Disposable {
         const inputBox = new InputBox(host, {
           value: current as string,
           ariaLabel: schema.key,
+          type: schema.secret ? 'password' : 'text',
         });
         this._controlDisposables.push(inputBox);
         const write = async (raw: string) => {
@@ -293,6 +300,45 @@ export class SettingsEditor extends Disposable {
           void write(inputBox.inputElement.value);
         }));
         break;
+      }
+      case 'multiline': {
+        const textarea = document.createElement('textarea');
+        textarea.className = 'settings-editor__multiline';
+        textarea.spellcheck = false;
+        textarea.rows = schema.rows ?? 4;
+        textarea.value = current as string;
+        textarea.setAttribute('aria-label', schema.key);
+        host.appendChild(textarea);
+        const write = async () => {
+          try {
+            await this._registry.setValue(schema.key, textarea.value);
+          } catch (err) {
+            console.warn(`[SettingsEditor] multiline write rejected for ${schema.key}:`, err);
+          }
+        };
+        this._controlDisposables.push(addDisposableListener(textarea, 'blur', () => void write()));
+        break;
+      }
+      case 'action': {
+        const btn = document.createElement('button');
+        btn.className = 'settings-editor__action';
+        btn.type = 'button';
+        btn.textContent = schema.actionLabel ?? 'Open…';
+        btn.setAttribute('aria-label', schema.actionLabel ?? schema.key);
+        this._controlDisposables.push(addDisposableListener(btn, 'click', () => {
+          if (!this._commands || !schema.command) {
+            console.warn(`[SettingsEditor] no command runner for ${schema.key}`);
+            return;
+          }
+          // Hide overlay so the launched manager (or external view) is unobscured.
+          this.hide();
+          this._commands.executeCommand(schema.command).catch((err) => {
+            console.warn(`[SettingsEditor] command ${schema.command} failed:`, err);
+          });
+        }));
+        host.appendChild(btn);
+        // Action rows have no value to reset — skip the reset button below.
+        return;
       }
       case 'enum': {
         const dropdown = new Dropdown(host, {

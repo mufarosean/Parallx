@@ -86,7 +86,7 @@ const SUBSTRATE_SCHEMAS: readonly ISettingSchema[] = [
     key: 'autonomy.heartbeat.intervalMs',
     type: 'number',
     default: 60_000,
-    scope: 'user',
+    scope: 'workspace',
     description:
       'Heartbeat tick interval in milliseconds. Minimum 15 000 ms per M60 §3.6 floor; default 60 000 ms.',
     category: 'Autonomy',
@@ -97,7 +97,7 @@ const SUBSTRATE_SCHEMAS: readonly ISettingSchema[] = [
     key: 'autonomy.followup.maxDepth',
     type: 'number',
     default: 5,
-    scope: 'user',
+    scope: 'workspace',
     description:
       'Maximum follow-up chain depth before the runner refuses to continue. Existing MAX_FOLLOWUP_DEPTH constant.',
     category: 'Autonomy',
@@ -108,7 +108,7 @@ const SUBSTRATE_SCHEMAS: readonly ISettingSchema[] = [
     key: 'autonomy.subagent.approvalMode',
     type: 'enum',
     default: 'always-ask',
-    scope: 'user',
+    scope: 'workspace',
     description:
       'How sub-agent spawn requests are gated. always-ask = prompt every time; session-allow = remember for the session; remember = persist across sessions (T5.E3).',
     category: 'Autonomy',
@@ -146,7 +146,7 @@ export function registerAutonomyFlagSettings(
       key: id,
       type: 'boolean',
       default: AUTONOMY_FLAG_DEFAULTS[id],
-      scope: 'user',
+      scope: 'workspace',
       description: FLAG_DESCRIPTIONS[id],
       category: FLAG_CATEGORY[id],
     });

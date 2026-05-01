@@ -37,7 +37,14 @@ import type { IStorage } from '../platform/storage.js';
 
 // ─── Schema types ──────────────────────────────────────────────────────────
 
-export type SettingType = 'boolean' | 'number' | 'string' | 'enum' | 'object';
+export type SettingType =
+  | 'boolean'
+  | 'number'
+  | 'string'
+  | 'multiline'
+  | 'enum'
+  | 'object'
+  | 'action';
 export type SettingScope = 'user' | 'workspace';
 
 export interface ISettingSchema {
@@ -60,6 +67,14 @@ export interface ISettingSchema {
   /** For type='number'. Inclusive bounds. */
   readonly min?: number;
   readonly max?: number;
+  /** For type='action'. Label rendered on the button. */
+  readonly actionLabel?: string;
+  /** For type='action'. Command id executed when the button is clicked. */
+  readonly command?: string;
+  /** For type='multiline'. Number of textarea rows. */
+  readonly rows?: number;
+  /** For sensitive values (passwords, API keys). Masks input + excludes from export. */
+  readonly secret?: boolean;
 }
 
 /**
@@ -359,8 +374,16 @@ function _validateSchema(schema: ISettingSchema): void {
       }
       break;
     case 'string':
+    case 'multiline':
       if (typeof schema.default !== 'string') {
         throw new Error(`[SettingsRegistry] ${schema.key}: string default required`);
+      }
+      break;
+    case 'action':
+      // Actions have no value; default is unused but must be present per the
+      // ISettingSchema contract. Accept anything (including undefined cast).
+      if (typeof schema.command !== 'string' || schema.command.length === 0) {
+        throw new Error(`[SettingsRegistry] ${schema.key}: action requires command id`);
       }
       break;
     case 'enum':
@@ -400,9 +423,13 @@ function _validateValue(schema: ISettingSchema, value: unknown): void {
       }
       break;
     case 'string':
+    case 'multiline':
       if (typeof value !== 'string') {
         throw new Error(`[SettingsRegistry] ${schema.key}: expected string`);
       }
+      break;
+    case 'action':
+      // No value to validate.
       break;
     case 'enum':
       if (typeof value !== 'string' || !schema.enumValues!.includes(value)) {

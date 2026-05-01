@@ -44,8 +44,11 @@ import { SettingsRegistryService } from '../../services/settingsRegistryService.
 import { setGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import {
   registerAutonomyFlagSettings,
-  registerAutonomySubstrateSettings,
-} from '../../services/autonomySettingsSchemas.js';
+  registerAutonomySubstrateSettings,} from '../../services/autonomySettingsSchemas.js';
+import {
+  registerAIProfileSettings,
+  registerSettingsActions,
+} from '../../aiSettings/aiProfileSettingsSchemas.js';
 import { ChatSurfacePlugin } from './surfaces/chatSurface.js';
 import { FilesystemSurfacePlugin } from '../../services/surfaces/filesystemSurface.js';
 import { CanvasSurfacePlugin } from '../canvas/surfaces/canvasSurface.js';
@@ -390,9 +393,73 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       default: '',
       scope: 'user',
       description:
-        'Google OAuth Desktop-app client secret. SENSITIVE — TODO(M61): mark `secret: true` once the registry supports per-field secret flag so the editor masks/excludes from export.',
+        'Google OAuth Desktop-app client secret. Stored locally in <APP_ROOT>/data/global-storage.json — never sent anywhere except Google.',
       category: 'Integrations',
+      secret: true,
     });
+
+    // ── M61 Phase 4: AI profile settings (persona/chat/model/etc) ────────
+    // Register schemas + bind to UnifiedAIConfigService when present so the
+    // unified settings overlay is the single editor for these values.
+    if (api.services.has(IUnifiedAIConfigService)) {
+      const _unified = api.services.get<
+        import('../../aiSettings/unifiedConfigTypes.js').IUnifiedAIConfigService
+      >(IUnifiedAIConfigService);
+      registerAIProfileSettings(settingsRegistry, _unified);
+    }
+
+    // ── M61 Phase 4: action rows (managers + workspace import/export/reset) ──
+    registerSettingsActions(settingsRegistry, [
+      {
+        key: 'tools.manage',
+        category: 'Tools',
+        description: 'Open the tool tree to enable or disable individual tools.',
+        actionLabel: 'Manage tools…',
+        command: 'aiSettings.manageTools',
+      },
+      {
+        key: 'mcp.servers.manage',
+        category: 'Integrations',
+        description: 'Install MCP servers from the catalog or add a custom one.',
+        actionLabel: 'Manage MCP servers…',
+        command: 'aiSettings.manageMcp',
+      },
+      {
+        key: 'agent.configs.manage',
+        category: 'Agent',
+        description: 'Configure individual sub-agents (model, max iterations, custom instructions).',
+        actionLabel: 'Manage agents…',
+        command: 'aiSettings.manageAgents',
+      },
+      {
+        key: 'autonomy.cron.jobs.manage',
+        category: 'Autonomy',
+        description: 'View and edit the scheduled cron jobs for this workspace.',
+        actionLabel: 'Manage cron jobs…',
+        command: 'aiSettings.manageCron',
+      },
+      {
+        key: 'workspace.exportConfig',
+        category: 'Workspace',
+        description: 'Export every workspace setting (and the active preset) to a JSON file.',
+        actionLabel: 'Export workspace config…',
+        command: 'workspace.exportConfig',
+      },
+      {
+        key: 'workspace.importConfig',
+        category: 'Workspace',
+        description: 'Import a previously exported workspace settings JSON file.',
+        actionLabel: 'Import workspace config…',
+        command: 'workspace.importConfig',
+      },
+      {
+        key: 'workspace.resetConfig',
+        category: 'Workspace',
+        description: 'Reset every workspace setting to its default. Cannot be undone.',
+        actionLabel: 'Reset workspace settings…',
+        command: 'workspace.resetConfig',
+      },
+    ]);
 
     api.services.registerInstance(ISettingsRegistryService, settingsRegistry);
     setGlobalSettingsRegistry(settingsRegistry);
@@ -1786,9 +1853,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // ── 4. Build widget services bridge (delegates to ChatDataService) ──
 
   const widgetServices = dataService.buildWidgetServices();
-  // C2: Wire AI Settings opener — accessible from the chat title bar gear icon
+  // C2: Wire AI Settings opener — accessible from the chat title bar gear icon.
+  // M61 Phase 6 — route to the unified `settings.open` overlay (Ctrl+Alt+S)
+  // instead of the legacy AI Settings sidebar so there is one entry point.
   (widgetServices as unknown as Record<string, unknown>).openAISettings = () => {
-    api.commands.executeCommand('ai-settings.open');
+    api.commands.executeCommand('settings.open');
   };
 
   // Wire token bar services into widget services (for in-widget token indicator)

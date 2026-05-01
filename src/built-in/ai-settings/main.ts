@@ -133,6 +133,22 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
+  // ── M61 Phase 5 manager commands ──
+  // Action rows in the unified settings overlay use these to launch the
+  // existing section-scoped managers. Each opens the AI Settings sidebar
+  // and scrolls to the right section.
+  const _openSection = async (sectionId: string): Promise<void> => {
+    await api.commands.executeCommand('workbench.view.show', 'view.aiSettings');
+    // Wait one tick so the panel has time to mount before we scroll.
+    setTimeout(() => api.commands.executeCommand('ai-settings.scrollToSection', sectionId), 0);
+  };
+  context.subscriptions.push(
+    api.commands.registerCommand('aiSettings.manageTools', () => _openSection('tools')),
+    api.commands.registerCommand('aiSettings.manageMcp', () => _openSection('mcp')),
+    api.commands.registerCommand('aiSettings.manageAgents', () => _openSection('agent')),
+    api.commands.registerCommand('aiSettings.manageCron', () => _openSection('cron')),
+  );
+
   async function openCanonicalMemoryFile(relativePathPromise: Promise<string> | string): Promise<void> {
     if (!workspaceMemoryService) {
       notificationService?.warn('Workspace memory service is not available.');
