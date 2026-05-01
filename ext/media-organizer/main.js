@@ -10539,13 +10539,59 @@ function buildVideoPlayer(container, fullPath, ctx) {
 
   // Load video src
   localFileToUrl(fullPath).then(url => {
-    if (!url) { container.textContent = 'Failed to load video'; return; }
+    if (!url) { _showPlayerError('Failed to read video file', 'The file could not be read from disk. It may be locked, deleted, or larger than 512 MB.'); return; }
     video.src = url;
     previewVid.src = url;
     video.load();
   });
 
-  video.addEventListener('error', () => { container.textContent = 'Failed to load video'; });
+  // Render an in-player error overlay with a clear reason and an
+  // "Open Externally" fallback. Replaces the old `container.textContent`
+  // wipe which destroyed every child node (toolbar, etc) and gave the
+  // user no way to actually watch their file.
+  function _showPlayerError(title, detail) {
+    const overlay = moEl('div', 'mo-player-error');
+    overlay.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;background:rgba(0,0,0,0.85);color:var(--vscode-foreground);text-align:center;z-index:50;';
+    const t = moEl('div'); t.style.cssText = 'font-size:14px;font-weight:600;'; t.textContent = title;
+    const d = moEl('div'); d.style.cssText = 'font-size:12px;opacity:0.8;max-width:480px;line-height:1.4;'; d.textContent = detail || '';
+    const btn = moEl('button', 'mo-btn mo-btn-primary');
+    btn.style.cssText = 'margin-top:8px;padding:6px 14px;';
+    btn.textContent = 'Open externally';
+    btn.addEventListener('click', () => {
+      window.parallxElectron.shell.openPath(fullPath).catch(() => {});
+    });
+    overlay.append(t, d, btn);
+    container.appendChild(overlay);
+  }
+
+  // Detect codecs Chromium's <video> element refuses to decode in mp4
+  // containers. Even a small file (<50 MB) silently shows a black frame
+  // when the codec is HEVC/H.265 or AV1 — there's no decoder error,
+  // just no pixels. We have the codec from ffprobe at scan time, so
+  // pre-flight against a known-bad list before even loading the blob.
+  const _CODEC_UNSUPPORTED = new Set(['hevc', 'h265', 'vp8', 'mpeg4', 'mpeg2video', 'wmv3', 'vc1', 'prores']);
+  const codec = String((ctx && ctx.entity && ctx.entity.codec) || '').toLowerCase();
+  if (codec && _CODEC_UNSUPPORTED.has(codec)) {
+    _showPlayerError(
+      `Codec "${codec}" is not supported by the in-app player`,
+      'Chromium\u2019s built-in video element cannot decode this codec. Open it in your system player or transcode it to H.264 (mp4) to play it inline.'
+    );
+    return;
+  }
+
+  video.addEventListener('error', () => {
+    const err = video.error;
+    let detail = 'The video could not be decoded.';
+    if (err) {
+      switch (err.code) {
+        case 1: detail = 'Loading was aborted.'; break;
+        case 2: detail = 'Network error while loading.'; break;
+        case 3: detail = 'The video is corrupt or the decoder failed.'; break;
+        case 4: detail = `The codec "${codec || 'unknown'}" is not supported by the in-app player. Open externally to play.`; break;
+      }
+    }
+    _showPlayerError('Cannot play this video', detail);
+  });
 
   video.addEventListener('loadedmetadata', () => {
     metaEl.textContent = `${video.videoWidth || '?'}×${video.videoHeight || '?'}  ·  ${moTimeStr(video.duration)}`;
