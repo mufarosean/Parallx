@@ -5948,6 +5948,102 @@ const MO_CSS = `
   color: var(--vscode-button-foreground, #fff);
   border-color: var(--vscode-button-background, #0e639c);
 }
+/* Bulk Tag dialog — multi-select chips + searchable browse list */
+.mo-bulk-tag-dialog { min-width: 420px; max-width: 520px; }
+.mo-bulk-tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 26px;
+  padding: 4px;
+  background: var(--vscode-input-background, #1e1e1e);
+  border: 1px solid var(--vscode-input-border, #333);
+  border-radius: var(--parallx-radius-sm, 3px);
+}
+.mo-bulk-tag-chips-empty {
+  font-size: var(--parallx-fontSize-xs, 11px);
+  color: var(--vscode-descriptionForeground, #888);
+  padding: 2px 4px;
+  font-style: italic;
+}
+.mo-bulk-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 8px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #fff);
+  border-radius: 10px;
+  font-size: var(--parallx-fontSize-xs, 11px);
+  line-height: 16px;
+}
+.mo-bulk-tag-chip button {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+  opacity: 0.7;
+  border-radius: 50%;
+}
+.mo-bulk-tag-chip button:hover { opacity: 1; background: rgba(255,255,255,0.15); }
+.mo-bulk-tag-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  background: var(--vscode-input-background, #1e1e1e);
+  color: var(--vscode-input-foreground, #ccc);
+  border: 1px solid var(--vscode-input-border, #333);
+  border-radius: var(--parallx-radius-sm, 3px);
+  font-size: var(--parallx-fontSize-sm, 12px);
+}
+.mo-bulk-tag-search:focus {
+  border-color: var(--vscode-focusBorder, #9333ea);
+  outline: none;
+}
+.mo-bulk-tag-browse-section { margin-bottom: 4px; }
+.mo-bulk-tag-browse {
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  border-radius: var(--parallx-radius-sm, 3px);
+}
+.mo-bulk-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-xs, 11px);
+  user-select: none;
+}
+.mo-bulk-tag-row:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+.mo-bulk-tag-row.is-picked {
+  background: var(--vscode-list-activeSelectionBackground, #094771);
+  color: var(--vscode-list-activeSelectionForeground, #fff);
+}
+.mo-bulk-tag-row input[type="checkbox"] { margin: 0; pointer-events: none; }
+.mo-bulk-tag-row-create {
+  font-style: italic;
+  color: var(--vscode-textLink-foreground, #3794ff);
+}
+.mo-bulk-tag-row-icon {
+  display: inline-block;
+  width: 13px;
+  text-align: center;
+  font-weight: 700;
+}
+.mo-bulk-tag-empty {
+  padding: 12px 8px;
+  text-align: center;
+  font-size: var(--parallx-fontSize-xs, 11px);
+  color: var(--vscode-descriptionForeground, #888);
+}
 .mo-bulk-dialog-footer button:hover {
   background: var(--vscode-button-secondaryHoverBackground, #555);
 }
@@ -9178,9 +9274,22 @@ function renderGridBrowser(container, api, input) {
   function handleSelect(item, checked, shiftKey) {
     const key = `${item.type}:${item.id}`;
 
-    if (shiftKey && state.lastClickedKey) {
-      // Shift-click range selection — adapted from stash: useListSelect.multiSelect
-      const startIdx = state.items.findIndex(i => `${i.type}:${i.id}` === state.lastClickedKey);
+    if (shiftKey) {
+      // Shift-click range selection — adapted from stash: useListSelect.multiSelect.
+      // Anchor is the last clicked item; if there is none yet (user hasn't
+      // selected anything yet), fall back to the focused card, then to the
+      // first item. Without this fallback, the very first shift-click in a
+      // session could only ever select one card.
+      let anchorKey = state.lastClickedKey;
+      if (!anchorKey && state.focusedIndex != null && state.items[state.focusedIndex]) {
+        const f = state.items[state.focusedIndex];
+        anchorKey = `${f.type}:${f.id}`;
+      }
+      if (!anchorKey && state.items.length > 0) {
+        const f = state.items[0];
+        anchorKey = `${f.type}:${f.id}`;
+      }
+      const startIdx = anchorKey ? state.items.findIndex(i => `${i.type}:${i.id}` === anchorKey) : -1;
       const endIdx = state.items.findIndex(i => `${i.type}:${i.id}` === key);
       if (startIdx >= 0 && endIdx >= 0) {
         const lo = Math.min(startIdx, endIdx);
@@ -9189,6 +9298,9 @@ function renderGridBrowser(container, api, input) {
           const k = `${state.items[j].type}:${state.items[j].id}`;
           state.selectedIds.add(k);
         }
+      } else {
+        // No usable anchor — at least toggle the clicked card on.
+        state.selectedIds.add(key);
       }
     } else {
       if (checked) state.selectedIds.add(key);
@@ -9209,10 +9321,13 @@ function renderGridBrowser(container, api, input) {
   }
 
   function handleCardClick(item) {
-    // Single click: focus the card (keyboard shortcuts act on it)
+    // Single click: focus the card (keyboard shortcuts act on it) and seed
+    // the shift-click anchor so a follow-up Shift+Click range-selects from
+    // here without requiring a checkbox click first.
     const idx = state.items.indexOf(item);
     if (idx >= 0) {
       state.focusedIndex = idx;
+      state.lastClickedKey = `${item.type}:${item.id}`;
       // Incremental focus update — avoids a full grid rebuild between the
       // first click and the dblclick that opens the editor.
       if (cardGrid && cardGrid.setFocus) {
@@ -12607,7 +12722,7 @@ function parseSelectedIds(selectedIds) {
 // Adapted from stash: EditGalleriesDialog — bulk tag with Set/Add/Remove modes
 function showBulkTagDialog(state, api, onComplete) {
   const overlay = moEl('div', 'mo-bulk-dialog-overlay');
-  const dialog = moEl('div', 'mo-bulk-dialog');
+  const dialog = moEl('div', 'mo-bulk-dialog mo-bulk-tag-dialog');
   dialog.setAttribute('role', 'dialog');
   dialog.setAttribute('aria-modal', 'true');
   dialog.setAttribute('aria-label', 'Bulk Tag');
@@ -12616,7 +12731,6 @@ function showBulkTagDialog(state, api, onComplete) {
   dialog.appendChild(moEl('h3', null, { textContent: `Bulk Tag (${state.selectedIds.size} items)` }));
 
   // Mode selector (Add / Remove)
-  // Adapted from stash: MultiSet — BulkUpdateIdMode buttons
   const modeSection = moEl('div', 'mo-bulk-dialog-section');
   modeSection.appendChild(moEl('label', null, { textContent: 'Mode' }));
   const modeBtns = moEl('div', 'mo-bulk-mode-btns');
@@ -12629,23 +12743,168 @@ function showBulkTagDialog(state, api, onComplete) {
   modeSection.appendChild(modeBtns);
   dialog.appendChild(modeSection);
 
-  // Tag selector
-  const tagSection = moEl('div', 'mo-bulk-dialog-section');
-  tagSection.appendChild(moEl('label', null, { textContent: 'Tag' }));
-  const bulkTagDropdown = moDropdown({
-    items: [],
-    placeholder: 'Select a tag...',
-    ariaLabel: 'Select tag',
+  // ── Selected tags (chips) ──
+  const chipsSection = moEl('div', 'mo-bulk-dialog-section');
+  const chipsLabel = moEl('label', null, { textContent: 'Selected tags (0)' });
+  chipsSection.appendChild(chipsLabel);
+  const chipsWrap = moEl('div', 'mo-bulk-tag-chips');
+  const chipsEmpty = moEl('span', 'mo-bulk-tag-chips-empty', { textContent: 'No tags selected — pick from below or type to search/create.' });
+  chipsWrap.appendChild(chipsEmpty);
+  chipsSection.appendChild(chipsWrap);
+  dialog.appendChild(chipsSection);
+
+  // ── Search / create ──
+  const searchSection = moEl('div', 'mo-bulk-dialog-section');
+  searchSection.appendChild(moEl('label', null, { textContent: 'Search or create' }));
+  const searchInput = moEl('input', 'mo-bulk-tag-search', { type: 'text', placeholder: 'Type to filter tags or create a new one…' });
+  searchInput.setAttribute('aria-label', 'Search or create tag');
+  searchSection.appendChild(searchInput);
+  dialog.appendChild(searchSection);
+
+  // ── Browse all tags ──
+  const browseSection = moEl('div', 'mo-bulk-dialog-section mo-bulk-tag-browse-section');
+  const browseLabel = moEl('label', null, { textContent: 'Available tags' });
+  browseSection.appendChild(browseLabel);
+  const browseList = moEl('div', 'mo-bulk-tag-browse');
+  browseList.setAttribute('role', 'listbox');
+  browseList.setAttribute('aria-label', 'Available tags');
+  browseSection.appendChild(browseList);
+  dialog.appendChild(browseSection);
+
+  // State
+  /** @type {Map<number, {id:number,name:string}>} */
+  const allTags = new Map();
+  /** @type {Map<number, {id:number,name:string}>} */
+  const pickedTags = new Map();
+
+  function renderChips() {
+    chipsWrap.innerHTML = '';
+    chipsLabel.textContent = `Selected tags (${pickedTags.size})`;
+    if (pickedTags.size === 0) {
+      chipsWrap.appendChild(chipsEmpty);
+      return;
+    }
+    const sorted = [...pickedTags.values()].sort((a, b) => a.name.localeCompare(b.name));
+    for (const tag of sorted) {
+      const chip = moEl('span', 'mo-bulk-tag-chip');
+      chip.appendChild(moEl('span', null, { textContent: tag.name }));
+      const x = moEl('button', null, { textContent: '×', type: 'button' });
+      x.setAttribute('aria-label', `Remove ${tag.name}`);
+      x.addEventListener('click', () => {
+        pickedTags.delete(tag.id);
+        renderChips();
+        renderBrowse(searchInput.value.trim());
+      });
+      chip.appendChild(x);
+      chipsWrap.appendChild(chip);
+    }
+  }
+
+  function renderBrowse(query) {
+    browseList.innerHTML = '';
+    const q = (query || '').toLowerCase();
+    const tags = [...allTags.values()]
+      .filter(t => !q || t.name.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    // "Create" row when search has no exact match
+    const exact = q && [...allTags.values()].some(t => t.name.toLowerCase() === q);
+    if (q && !exact) {
+      const createRow = moEl('div', 'mo-bulk-tag-row mo-bulk-tag-row-create');
+      createRow.setAttribute('role', 'option');
+      createRow.appendChild(moEl('span', 'mo-bulk-tag-row-icon', { textContent: '+' }));
+      createRow.appendChild(moEl('span', null, { textContent: `Create "${query.trim()}"` }));
+      createRow.addEventListener('click', () => createAndPick(query.trim()));
+      browseList.appendChild(createRow);
+    }
+
+    if (tags.length === 0 && (!q || exact)) {
+      const empty = moEl('div', 'mo-bulk-tag-empty', { textContent: q ? 'No matching tags.' : 'No tags exist yet — type a name above to create one.' });
+      browseList.appendChild(empty);
+      return;
+    }
+
+    for (const tag of tags) {
+      const isPicked = pickedTags.has(tag.id);
+      const row = moEl('div', `mo-bulk-tag-row${isPicked ? ' is-picked' : ''}`);
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', isPicked ? 'true' : 'false');
+      const cb = moEl('input', null, { type: 'checkbox' });
+      cb.checked = isPicked;
+      cb.tabIndex = -1;
+      row.appendChild(cb);
+      row.appendChild(moEl('span', null, { textContent: tag.name }));
+      row.addEventListener('click', () => {
+        if (pickedTags.has(tag.id)) pickedTags.delete(tag.id);
+        else pickedTags.set(tag.id, tag);
+        renderChips();
+        renderBrowse(searchInput.value.trim());
+      });
+      browseList.appendChild(row);
+    }
+  }
+
+  async function createAndPick(name) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    // Avoid duplicate if a case-insensitive match snuck in.
+    const existing = [...allTags.values()].find(t => t.name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      pickedTags.set(existing.id, existing);
+      searchInput.value = '';
+      renderChips();
+      renderBrowse('');
+      searchInput.focus();
+      return;
+    }
+    try {
+      const newTag = await TagQueries.create({ name: trimmed });
+      const lite = { id: newTag.id, name: newTag.name };
+      allTags.set(lite.id, lite);
+      pickedTags.set(lite.id, lite);
+      searchInput.value = '';
+      renderChips();
+      renderBrowse('');
+      searchInput.focus();
+    } catch (err) {
+      api.window.showErrorMessage('Tag creation failed: ' + (err && err.message ? err.message : String(err)));
+    }
+  }
+
+  searchInput.addEventListener('input', () => renderBrowse(searchInput.value.trim()));
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const q = searchInput.value.trim();
+      if (!q) return;
+      const exact = [...allTags.values()].find(t => t.name.toLowerCase() === q.toLowerCase());
+      if (exact) {
+        pickedTags.set(exact.id, exact);
+        searchInput.value = '';
+        renderChips();
+        renderBrowse('');
+      } else {
+        createAndPick(q);
+      }
+    } else if (e.key === 'Escape') {
+      if (searchInput.value) {
+        e.preventDefault();
+        searchInput.value = '';
+        renderBrowse('');
+      }
+    }
   });
-  tagSection.appendChild(bulkTagDropdown.el);
-  dialog.appendChild(tagSection);
 
   // Load tags
-  TagQueries.findMany({}, { field: 'name', direction: 'ASC' }, { page: 1, perPage: 500 })
+  TagQueries.findMany({}, { field: 'name', direction: 'ASC' }, { page: 1, perPage: 1000 })
     .then(result => {
-      bulkTagDropdown.setItems(result.items.map(tag => ({ value: String(tag.id), label: tag.name })));
+      for (const t of result.items) allTags.set(t.id, { id: t.id, name: t.name });
+      renderBrowse('');
     })
-    .catch(() => {});
+    .catch(() => {
+      const err = moEl('div', 'mo-bulk-tag-empty', { textContent: 'Could not load tags.' });
+      browseList.appendChild(err);
+    });
 
   // Footer
   const footer = moEl('div', 'mo-bulk-dialog-footer');
@@ -12653,30 +12912,36 @@ function showBulkTagDialog(state, api, onComplete) {
   cancelBtn.addEventListener('click', () => overlay.remove());
   const applyBtn = moEl('button', 'primary', { textContent: 'Apply' });
   applyBtn.addEventListener('click', async () => {
-    const tagId = parseInt(bulkTagDropdown.getValue(), 10);
-    if (!tagId) { api.window.showWarningMessage('Please select a tag.'); return; }
+    if (pickedTags.size === 0) { api.window.showWarningMessage('Pick at least one tag.'); return; }
     applyBtn.disabled = true;
     cancelBtn.disabled = true;
     applyBtn.textContent = 'Applying…';
     const { photos, videos } = parseSelectedIds(state.selectedIds);
+    const tagIds = [...pickedTags.keys()];
     try {
       const txnOps = [];
       for (const photoId of photos) {
-        if (mode === 'ADD') {
-          txnOps.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id) VALUES (?, ?)', params: [photoId, tagId] });
-        } else {
-          txnOps.push({ type: 'run', sql: 'DELETE FROM mo_photos_tags WHERE photo_id = ? AND tag_id = ?', params: [photoId, tagId] });
+        for (const tagId of tagIds) {
+          if (mode === 'ADD') {
+            txnOps.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id) VALUES (?, ?)', params: [photoId, tagId] });
+          } else {
+            txnOps.push({ type: 'run', sql: 'DELETE FROM mo_photos_tags WHERE photo_id = ? AND tag_id = ?', params: [photoId, tagId] });
+          }
         }
       }
       for (const videoId of videos) {
-        if (mode === 'ADD') {
-          txnOps.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_videos_tags (video_id, tag_id) VALUES (?, ?)', params: [videoId, tagId] });
-        } else {
-          txnOps.push({ type: 'run', sql: 'DELETE FROM mo_videos_tags WHERE video_id = ? AND tag_id = ?', params: [videoId, tagId] });
+        for (const tagId of tagIds) {
+          if (mode === 'ADD') {
+            txnOps.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_videos_tags (video_id, tag_id) VALUES (?, ?)', params: [videoId, tagId] });
+          } else {
+            txnOps.push({ type: 'run', sql: 'DELETE FROM mo_videos_tags WHERE video_id = ? AND tag_id = ?', params: [videoId, tagId] });
+          }
         }
       }
       if (txnOps.length > 0) await db.transaction(txnOps);
-      api.window.showInformationMessage(`Tags ${mode === 'ADD' ? 'added to' : 'removed from'} ${photos.length + videos.length} items.`);
+      const verb = mode === 'ADD' ? 'added to' : 'removed from';
+      const tagWord = tagIds.length === 1 ? 'tag' : 'tags';
+      api.window.showInformationMessage(`${tagIds.length} ${tagWord} ${verb} ${photos.length + videos.length} items.`);
       overlay.remove();
       onComplete();
     } catch (err) {
@@ -12690,10 +12955,12 @@ function showBulkTagDialog(state, api, onComplete) {
   dialog.appendChild(footer);
 
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') overlay.remove(); });
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !searchInput.value) overlay.remove(); });
   document.body.appendChild(overlay);
-  overlay.setAttribute('tabindex', '-1');
-  overlay.focus();
+  // Focus the search input so the user can type immediately.
+  setTimeout(() => searchInput.focus(), 0);
+
+  renderChips();
 }
 
 function showBulkRatingDialog(state, api, onComplete) {
