@@ -1735,15 +1735,15 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // process-wide handle to revoke here.
   context.subscriptions.push(
     api.commands.registerCommand('gmail.disconnect', async () => {
-      const secret = (globalThis as { parallxElectron?: {
-        secret?: { delete?: (k: string) => Promise<{ ok: boolean; error?: string }> };
-      } }).parallxElectron?.secret;
+      const { createSecretStorageService } = await import('../../services/secretStorageService.js');
+      const { clearPersistedRefreshToken } = await import('../../services/gmailOAuthService.js');
+      const secretStorage = createSecretStorageService();
       const registry = api.services.has(ISettingsRegistryService)
         ? api.services.get<import('../../services/settingsRegistryService.js').ISettingsRegistryService>(ISettingsRegistryService)
         : undefined;
       try {
-        if (secret?.delete) {
-          await secret.delete('mcp.gmail.refreshToken');
+        if (secretStorage.available) {
+          await clearPersistedRefreshToken(secretStorage);
         }
         if (registry) {
           await registry.setValue('mcp.gmail.enabled', false);

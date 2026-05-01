@@ -345,3 +345,71 @@ export const _internals = {
   GOOGLE_TOKEN_ENDPOINT,
   GMAIL_READONLY_SCOPE,
 };
+
+// ─── Persistence wiring (F3) ──────────────────────────────────────────
+//
+// Refresh tokens persist via secret-storage; access tokens stay in
+// memory. These helpers keep that contract testable without coupling
+// the OAuth protocol module to the secret-storage IPC.
+
+import { GMAIL_REFRESH_TOKEN_KEY, type ISecretStorageService } from './secretStorageService.js';
+
+/**
+ * Persist a refresh token (if present) returned from a token endpoint
+ * call. No-op if the response carries no refresh_token (Google omits
+ * it on subsequent grants without `prompt=consent`).
+ */
+export async function persistRefreshToken(
+  tokens: IGoogleTokenResponse,
+  secretStorage: ISecretStorageService,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!tokens.refresh_token) return { ok: true };
+  return secretStorage.setString(GMAIL_REFRESH_TOKEN_KEY, tokens.refresh_token);
+}
+
+/**
+ * Load the persisted refresh token. Returns `undefined` when not yet
+ * stored or when the secret bridge is unavailable.
+ */
+export async function loadPersistedRefreshToken(
+  secretStorage: ISecretStorageService,
+): Promise<string | undefined> {
+  const r = await secretStorage.getString(GMAIL_REFRESH_TOKEN_KEY);
+  if (!r.ok || typeof r.value !== 'string' || r.value.length === 0) return undefined;
+  return r.value;
+}
+
+/**
+ * Clear the persisted refresh token (Disconnect Gmail flow).
+ */
+export async function clearPersistedRefreshToken(
+  secretStorage: ISecretStorageService,
+): Promise<{ ok: boolean; error?: string }> {
+  return secretStorage.delete(GMAIL_REFRESH_TOKEN_KEY);
+}
+
+/**
+ * In-memory access token cache. Refresh-on-expiry is callers' job;
+ * this just holds the value for the current process lifetime.
+ *
+ * F3 contract: access tokens MUST NOT be persisted. This class has no
+ * persistence path on purpose.
+ */
+export class InMemoryAccessTokenCache {
+  private _value?: { readonly token: string; readonly expiresAt: number };
+
+  /** Store a freshly-obtained access token + ttl. */
+  set(token: string, expiresInSec: number, now: () => number = Date.now): void {
+    this._value = { token, expiresAt: now() + expiresInSec * 1000 };
+  }
+
+  /** Returns the token if still valid (with 30s skew margin), else undefined. */
+  get(now: () => number = Date.now): string | undefined {
+    if (!this._value) return undefined;
+    if (now() + 30_000 >= this._value.expiresAt) return undefined;
+    return this._value.token;
+  }
+
+  clear(): void { this._value = undefined; }
+}
+
