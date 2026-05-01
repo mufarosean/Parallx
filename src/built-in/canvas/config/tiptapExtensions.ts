@@ -27,6 +27,11 @@ import type { EditorExtensionContext } from './blockRegistry.js';
 import type { Extensions } from '@tiptap/core';
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import {
+  hasImageExtension,
+  fileUrlToPath,
+  readLocalImageAsDataUrl,
+} from '../menus/imagePathResolver.js';
 
 /**
  * Every block-level node type that receives a persistent unique ID via
@@ -135,6 +140,114 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
     },
   });
 
+  // ── Drop image files / local paths into the editor ─────────────────────
+  //
+  // Accepts three drag sources:
+  //   • OS Explorer files          (event.dataTransfer.files with image MIME)
+  //   • Parallx file explorer rows (text/uri-list with `file:///…` URLs)
+  //   • Plain text absolute paths  (text/plain with Windows or POSIX path)
+  //
+  // Local paths are inlined as base64 data URLs because canvas's CSP forbids
+  // `file://` in `img-src`. Internal moves (`moved === true`) pass through so
+  // the column-drop plugin can handle block reordering.
+  const imageFileDrop = Extension.create({
+    name: 'imageFileDrop',
+    addProseMirrorPlugins() {
+      return [
+        new Plugin({
+          key: new PluginKey('canvasImageFileDrop'),
+          props: {
+            handleDrop(view, event, _slice, moved) {
+              if (moved) return false;
+              const dt = (event as DragEvent).dataTransfer;
+              if (!dt) return false;
+
+              // ── Collect candidate paths from uri-list / plain text ──
+              const paths: string[] = [];
+              const uriList = dt.getData('text/uri-list');
+              if (uriList) {
+                for (const line of uriList.split(/\r?\n/)) {
+                  const trimmed = line.trim();
+                  if (!trimmed || trimmed.startsWith('#')) continue;
+                  if (trimmed.startsWith('file://')) {
+                    paths.push(fileUrlToPath(trimmed));
+                  }
+                }
+              }
+              if (paths.length === 0) {
+                const plain = dt.getData('text/plain').trim();
+                if (plain && (/^[a-zA-Z]:[\\/]/.test(plain) || plain.startsWith('/'))) {
+                  paths.push(plain);
+                }
+              }
+
+              // ── Native OS files ──
+              const files = Array.from(dt.files || []).filter(
+                (f) => f.type.startsWith('image/') || hasImageExtension(f.name),
+              );
+
+              const imagePaths = paths.filter(hasImageExtension);
+              if (imagePaths.length === 0 && files.length === 0) return false;
+
+              event.preventDefault();
+
+              const imageType = view.state.schema.nodes.image;
+              if (!imageType) return true;
+
+              const dropPos = view.posAtCoords({
+                left: (event as DragEvent).clientX,
+                top: (event as DragEvent).clientY,
+              });
+              if (!dropPos) return true;
+
+              (async () => {
+                const sources: string[] = [];
+                for (const p of imagePaths) {
+                  const r = await readLocalImageAsDataUrl(p);
+                  if (r.dataUrl) sources.push(r.dataUrl);
+                }
+                for (const f of files) {
+                  // Prefer Electron's `.path` (avoids re-reading via FileReader)
+                  const fullPath = (f as File & { path?: string }).path;
+                  if (fullPath) {
+                    const r = await readLocalImageAsDataUrl(fullPath);
+                    if (r.dataUrl) sources.push(r.dataUrl);
+                    continue;
+                  }
+                  const dataUrl = await new Promise<string>((res) => {
+                    const reader = new FileReader();
+                    reader.onload = () => res(typeof reader.result === 'string' ? reader.result : '');
+                    reader.onerror = () => res('');
+                    reader.readAsDataURL(f);
+                  });
+                  if (dataUrl) sources.push(dataUrl);
+                }
+                if (sources.length === 0) return;
+
+                let tr = view.state.tr;
+                let pos = dropPos.pos;
+                for (const src of sources) {
+                  const node = imageType.create({ src });
+                  tr = tr.insert(pos, node);
+                  pos += node.nodeSize;
+                }
+                tr.setSelection(
+                  TextSelection.near(tr.doc.resolve(Math.min(pos, tr.doc.content.size))),
+                );
+                view.dispatch(tr);
+                view.focus();
+              })().catch((err) => {
+                console.error('[imageFileDrop] insert failed:', err);
+              });
+
+              return true;
+            },
+          },
+        }),
+      ];
+    },
+  });
+
   return [
     // ── 1. StarterKit (bundled blocks) ──
     StarterKit.configure({
@@ -191,6 +304,7 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
     CharacterCount,
     AutoJoiner,
     clipboardImagePaste,
+    imageFileDrop,
     UniqueID.configure({
       types: UNIQUE_ID_BLOCK_TYPES,
       // attributeName defaults to 'id', rendered as data-id in HTML.

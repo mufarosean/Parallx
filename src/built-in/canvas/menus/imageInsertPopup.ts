@@ -10,6 +10,7 @@
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 import { isolateInputFromEditor } from './inputIsolation.js';
+import { looksLikeLocalPath, readLocalImageAsDataUrl } from './imagePathResolver.js';
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -136,15 +137,24 @@ export function showImageInsertPopup(
 
     const row = $('div.canvas-image-insert-link-row');
     const input = $('input.canvas-image-insert-link-input') as HTMLInputElement;
-    input.type = 'url';
-    input.placeholder = 'Paste image URL…';
+    input.type = 'text';
+    input.placeholder = 'Paste image URL or local path…';
 
     const embedBtn = $('button.canvas-image-insert-link-apply');
     embedBtn.textContent = 'Embed';
 
-    const submit = () => {
-      const url = input.value.trim();
-      if (url) insertImage(url);
+    const submit = async () => {
+      const value = input.value.trim();
+      if (!value) return;
+      if (looksLikeLocalPath(value)) {
+        embedBtn.setAttribute('disabled', 'true');
+        const result = await readLocalImageAsDataUrl(value);
+        embedBtn.removeAttribute('disabled');
+        if (result.error) { renderError(result.error); return; }
+        if (result.dataUrl) insertImage(result.dataUrl);
+        return;
+      }
+      insertImage(value);
     };
 
     embedBtn.addEventListener('click', submit);
@@ -153,6 +163,10 @@ export function showImageInsertPopup(
     row.appendChild(input);
     row.appendChild(embedBtn);
     content.appendChild(row);
+
+    const hint = $('div.canvas-image-insert-hint');
+    hint.textContent = 'Paste a web URL (http/https) or a local file path.';
+    content.appendChild(hint);
 
     // Auto-focus
     requestAnimationFrame(() => input.focus());
