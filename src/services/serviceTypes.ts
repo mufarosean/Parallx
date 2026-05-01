@@ -1387,6 +1387,20 @@ export interface IEmbeddingService extends IDisposable {
 
   /** Fires when an embedding batch completes. */
   readonly onDidFinishEmbedding: Event<{ count: number; durationMs: number }>;
+
+  /**
+   * M60 B3 — install (or clear) an off-thread transport that replaces the
+   * in-process `/api/embed` fetch. Caching, retry, and prefixing all stay
+   * on the main thread; the transport just owns the network round-trip +
+   * JSON parse + dimension check.
+   */
+  setTransport?(transport: ((inputs: string[], signal?: AbortSignal) => Promise<number[][]>) | null): void;
+
+  /** M60 B3 — Ollama base URL (so transports can forward the same config). */
+  readonly baseUrl?: string;
+
+  /** M60 B3 — embedding model name (so transports can forward the same config). */
+  readonly model?: string;
 }
 
 export const IEmbeddingService = createServiceIdentifier<IEmbeddingService>('IEmbeddingService');

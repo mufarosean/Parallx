@@ -80,6 +80,19 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
   /** Whether the model is confirmed installed (avoids repeated checks). */
   private _modelVerified = false;
 
+  /**
+   * M60 B3 — optional off-thread transport. When set, replaces the in-process
+   * `_callEmbedApi` for the actual `/api/embed` call. Caching, retry, and
+   * prefixing all stay on the renderer thread; the transport is responsible
+   * only for the network round-trip + JSON parse + dimension check.
+   *
+   * Wired by `IndexingPipelineService` when `indexing.worker.enabled` is on.
+   * On any transport throw, callers (`embedDocumentBatch`) catch + retry
+   * individually via the same path so transport errors never poison the
+   * pipeline — the worker is purely an optimization.
+   */
+  private _transport: ((inputs: string[], signal?: AbortSignal) => Promise<number[][]>) | null = null;
+
   // ── Events ──
 
   private readonly _onDidStartEmbedding = this._register(new Emitter<{ count: number }>());
@@ -93,6 +106,22 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
     this._baseUrl = baseUrl;
     this._model = model;
   }
+
+  /**
+   * M60 B3 — install (or clear, with `null`) an off-thread transport for the
+   * actual `/api/embed` fetch. Pass a function with the same shape as
+   * `_callEmbedApi`. Pass `null` to revert to the in-process default.
+   */
+  setTransport(transport: ((inputs: string[], signal?: AbortSignal) => Promise<number[][]>) | null): void {
+    this._transport = transport;
+  }
+
+  /**
+   * M60 B3 — read-only accessors for the worker transport (so callers can
+   * forward the same Ollama config without re-deriving it).
+   */
+  get baseUrl(): string { return this._baseUrl; }
+  get model(): string { return this._model; }
 
   // ── Public API ──
 
@@ -300,8 +329,18 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
 
   /**
    * Single /api/embed API call.
+   *
+   * M60 B3: when an off-thread transport is installed via `setTransport`,
+   * the actual fetch + parse runs there; otherwise we use the in-process
+   * default. Either way, model verification + dimension validation logic
+   * for the in-process branch is preserved here.
    */
   private async _callEmbedApi(inputs: string[], signal?: AbortSignal): Promise<number[][]> {
+    if (this._transport) {
+      // Worker transport: input cleansing, dim check, status mapping all
+      // happen inside the worker so the renderer thread doesn't pay them.
+      return this._transport(inputs, signal);
+    }
     // Filter out empty inputs — Ollama rejects them with 400
     const cleanInputs = inputs.map((s) => s.trim() || 'empty');
 

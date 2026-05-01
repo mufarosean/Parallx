@@ -44,6 +44,7 @@ import { DocumentClassifier } from './documentClassifier.js';
 import type { ClassificationResult } from './documentClassifier.js';
 import type { SourceIndexMetadata } from './vectorStoreService.js';
 import { renderTranscriptForIndexing } from './transcriptFormat.js';
+import { EmbeddingWorkerClient } from './embeddingWorker.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -328,6 +329,15 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
    */
   private _pendingUpsertBatch: UpsertRecord[] | null = null;
 
+  /**
+   * M60 B3 — off-thread embedding transport. Lazily constructed in
+   * `beginIndexing` when `indexing.worker.enabled` is on AND `Worker`
+   * is available. On worker error or disposal we revert
+   * `_embeddingService.setTransport(null)` so subsequent calls go
+   * back to the in-process fetch path.
+   */
+  private _embeddingWorker: EmbeddingWorkerClient | null = null;
+
   /** Session guard captured at pipeline start — checked before commits. */
   private _sessionGuard: SessionGuard | undefined;
 
@@ -385,6 +395,52 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   private _isLazyMtimeEnabled(): boolean {
     try { return this._flagAccessor?.('indexing.lazyMtime.enabled') === true; }
     catch { return false; }
+  }
+
+  private _isWorkerEnabled(): boolean {
+    try { return this._flagAccessor?.('indexing.worker.enabled') === true; }
+    catch { return false; }
+  }
+
+  /**
+   * B3 — install off-thread embedding transport when the flag is on AND
+   * the runtime supports Workers. On any failure (esbuild bundling
+   * disagreement, sandboxed worker, missing fetch, etc.) we leave the
+   * default in-process transport in place.
+   */
+  private _maybeInstallEmbeddingWorker(): void {
+    if (!this._isWorkerEnabled()) { return; }
+    if (typeof this._embeddingService.setTransport !== 'function') {
+      // Test fakes etc. may not implement the optional interface.
+      return;
+    }
+    try {
+      const client = new EmbeddingWorkerClient();
+      if (!client.isAvailable()) {
+        client.dispose();
+        return;
+      }
+      const baseUrl = this._embeddingService.baseUrl ?? 'http://localhost:11434';
+      const model = this._embeddingService.model ?? 'nomic-embed-text';
+      this._embeddingService.setTransport((inputs: string[], signal?: AbortSignal) =>
+        client.embedBatch(baseUrl, model, inputs, signal),
+      );
+      this._embeddingWorker = client;
+      console.log('[IndexingPipeline] %s B3 embedding worker installed', this._logPrefix);
+    } catch (err) {
+      console.warn('[IndexingPipeline] B3 worker spawn failed; falling back to in-process transport:', err);
+      this._embeddingWorker = null;
+    }
+  }
+
+  /**
+   * B3 — revert to in-process transport and tear the worker down. Idempotent.
+   */
+  private _teardownEmbeddingWorker(): void {
+    if (!this._embeddingWorker) { return; }
+    try { this._embeddingService.setTransport?.(null); } catch { /* ignore */ }
+    try { this._embeddingWorker.dispose(); } catch { /* ignore */ }
+    this._embeddingWorker = null;
   }
 
   /**
@@ -486,6 +542,11 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       this._updateProgress('pages', 0, 0, 'Checking embedding model...');
       await this._embeddingService.ensureModel(this._abortController?.signal);
 
+      // M60 B3 — Off-thread embedding transport. Default-OFF flag; on a
+      // worker error we revert to the in-process transport (the
+      // EmbeddingService cache + retry path still owns correctness).
+      this._maybeInstallEmbeddingWorker();
+
       // 2. Index all pages
       const pageCount = await this._indexAllPages();
 
@@ -532,6 +593,8 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       this._isIndexing = false;
       this._abortController = null;
       this._updateProgress('idle', 0, 0);
+      // B3 — tear down worker if installed; the cache stays warm in EmbeddingService.
+      this._teardownEmbeddingWorker();
     }
   }
 
