@@ -40,10 +40,22 @@ triage, summarize, and route — with your approval.
 3. **Sign in.**
    - Click **Sign in with Google** in the Gmail settings panel.
    - Parallx opens your default browser to Google's OAuth consent
-     screen, then catches the redirect on a localhost loopback port.
-   - On consent, Parallx exchanges the auth code for a refresh token,
+     screen via the `shell:openExternal` IPC (https-only allowlist).
+   - **Loopback gap (Phase η):** until the loopback-listener IPC is
+     approved, Parallx does **not** automatically catch the redirect.
+     After consenting, copy the redirected URL from your browser's
+     address bar and paste it back into Parallx when prompted. The
+     full `code` + `state` query params travel together, so a single
+     paste suffices. M61 will replace this with an in-process loopback
+     listener.
+   - On paste, Parallx exchanges the auth code for a refresh token,
      encrypts it via `safeStorage`, and stores it under
-     `<userData>/secrets/gmail-tokens.enc`.
+     `<APP_ROOT>/data/secrets/<sha256(key)[:32]>.enc` (M53-portable).
+     **Portability tradeoff:** because the encrypted blob lives inside
+     the Parallx install directory rather than `<userData>`, it travels
+     with the app when the install folder is moved. The OS-level
+     keychain still gates decryption, so a copied install on a
+     different user account cannot decrypt the token.
 
 4. **Test the connection.**
    - Open chat → ask: *"What unread email do I have?"*
@@ -76,9 +88,12 @@ Token lifecycle:
 - **Access token** (~1 hour TTL) lives in main-process memory, injected
   into each spawned MCP child via env. Never written to disk. When
   expired, Parallx refreshes it and respawns the child.
-- **Refresh token** (long-lived) lives in `<userData>/secrets/gmail-tokens.enc`,
+- **Refresh token** (long-lived) lives in
+  `<APP_ROOT>/data/secrets/<sha256('mcp.gmail.refreshToken')[:32]>.enc`,
   encrypted by `safeStorage`. Decryption is gated on the OS-level
-  user keychain.
+  user keychain. Path lives under `APP_ROOT` (M53 portable storage)
+  rather than `<userData>` so the install is self-contained when
+  relocated; see the portability tradeoff in step 3.
 
 ## What the tool can read
 
@@ -111,8 +126,10 @@ What the tool **never** reads:
 Settings → Integrations → Gmail → **Disconnect Gmail**. This:
 
 1. Revokes the refresh token at Google's side via
-   `https://oauth2.googleapis.com/revoke`.
-2. Deletes `<userData>/secrets/gmail-tokens.enc`.
+   `https://oauth2.googleapis.com/revoke` (when reachable).
+2. Deletes the encrypted blob at
+   `<APP_ROOT>/data/secrets/<sha256('mcp.gmail.refreshToken')[:32]>.enc`
+   via the `secret:delete` IPC.
 3. Sets `mcp.gmail.enabled = false`.
 4. Kills any running Gmail MCP child process.
 
@@ -129,14 +146,23 @@ host check that throws on any other host. The OAuth flow itself reaches
 
 ## Linux note
 
-Electron's `safeStorage` falls back to plaintext on Linux when no
-keyring is available (gnome-keyring, kwallet, etc.). Parallx will:
+Electron's `safeStorage` requires a system keyring on Linux
+(gnome-keyring, kwallet, etc.). When the keyring is unavailable,
+the `secret:set` IPC handler returns a typed error:
 
-- In **dev builds**: warn at sign-in time and proceed.
-- In **production builds**: hard-fail sign-in with a remediation
-  message. (Per Phase η F3 plan; lands with F3.)
+```
+{ ok: false, error: 'safe-storage-unavailable' }
+```
 
-Set up a system keyring before connecting Gmail on Linux.
+Parallx never falls through to plaintext storage in this state — the
+refresh token is simply not persisted, sign-in surfaces the error, and
+the Gmail tool reports "Gmail OAuth not configured" until the keyring
+is available. Install + start gnome-keyring or kwallet before
+connecting Gmail on Linux.
+
+This behavior is identical across dev and production builds (the
+F3-plan dev/production split was simplified during η implementation
+in favor of a single typed-error contract).
 
 ## Troubleshooting
 
