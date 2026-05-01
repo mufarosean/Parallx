@@ -4068,7 +4068,15 @@ async function resolvePhotoThumbnail(photoId, api) {
     );
 
     if (result.generated) return { path: result.path, status: 'generated', sourcePath: gifSource };
-    if (result.encoder === 'skip_small' || result.encoder === 'skip_animated') {
+    if (result.encoder === 'skip_small') {
+      // Image is already ≤ THUMB_MAX_SIZE on both axes — the original file
+      // IS the thumbnail. Surface the source path so the grid card can
+      // display it directly instead of stranding the placeholder.
+      // (Adapted from stash: serveThumbnail returns the original when no
+      // resize is required.)
+      return { path: sourceFilePath, status: 'skip', sourcePath: gifSource };
+    }
+    if (result.encoder === 'skip_animated') {
       return { path: null, status: 'skip', sourcePath: gifSource };
     }
     if (result.encoder === 'cached') return { path: result.path, status: 'cached', sourcePath: gifSource };
