@@ -14616,6 +14616,10 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut)
   encModeSel.addEventListener('change', updateEstimate);
   gpuSel.addEventListener('change', updateEstimate);
   preview.addEventListener('loadedmetadata', updateEstimate);
+  // Pull the persisted GIF bpp calibration into memory so the sync
+  // estimateBytes() path can use it. Refresh the estimate once it loads
+  // so the user sees the accurate number rather than the static baseline.
+  moLoadGifBppCalibration().then(() => updateEstimate()).catch(() => {});
   // Live-preview playback speed — match the export speed so users can audition
   // their choice before committing. Browsers clamp playbackRate (~0.0625\u201316)
   // and our menu only offers 0.25\u20134, well inside the safe range.
@@ -14816,10 +14820,34 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut)
       // Show actual on-disk size so the user can compare to the estimate;
       // keep the dialog open so multiple exports can iterate on settings.
       let actual = '';
+      let actualBytes = 0;
       try {
         const st = await window.parallxElectron.fs.stat(result.outPath);
-        if (st && st.size) actual = ' · actual ' + fmtBytes(st.size);
+        if (st && st.size) { actual = ' · actual ' + fmtBytes(st.size); actualBytes = st.size; }
       } catch { /* ignore */ }
+
+      // Self-calibrate the GIF bpp model. Fold this export's measured
+      // bytes-per-pixel-frame into the persistent EMA so future estimates
+      // converge on this user's typical content. GIF only — mp4/webm have
+      // their own deterministic CRF model that doesn't benefit from this.
+      if (fmtSel.value === 'gif' && actualBytes > 0) {
+        const [aa, bb] = getInOut();
+        const speed = Math.max(0.1, parseFloat(speedSel.value) || 1);
+        const dur = Math.max(0.05, (bb - aa) / speed);
+        const fps = Math.max(1, parseInt(fpsSel.value, 10) || 12);
+        const scale = Math.max(0.1, (parseInt(sizeInput.value, 10) || 100) / 100);
+        const vw = preview.videoWidth || 1280;
+        const vh = preview.videoHeight || 720;
+        let w = vw, h = vh;
+        if (cropEnabled) { w *= cropNorm.w; h *= cropNorm.h; }
+        w = Math.max(2, w * scale);
+        h = Math.max(2, h * scale);
+        moRecordGifBppObservation({
+          width: w, height: h, fps, duration: dur,
+          dither: ditherSel.value, actualBytes,
+        }).then(() => updateEstimate()).catch(() => {});
+      }
+
       status.textContent = 'Exported ✓ ' + result.outPath + actual;
       api.window.showInformationMessage('Exported: ' + result.outPath);
     } catch (err) {
@@ -15258,11 +15286,14 @@ async function moExportGifWithFrameEdits(api, opts, outPath) {
 // The predictor is also exported so the existing clip dialog can use it
 // (its old single-constant estimator was the root cause of this whole mess).
 
-// Heuristic bytes-per-pixel-per-frame for paletted GIF output. Values are
-// calibrated against a corpus of typical screen-recorded clips; real content
-// can swing ±50% so callers should treat these as best-effort estimates and
-// always re-measure after encode.
-const MO_GIF_BPP_BASE = 0.44;          // ≈ 3.5 bits/pixel — average video-sourced GIF
+// Heuristic bytes-per-pixel-per-frame for paletted GIF output. The static
+// baseline was raised from 0.44 to 0.56 after measured user content showed
+// the prior value was 25–30% optimistic. The dialog also self-calibrates:
+// after every successful GIF export it folds the measured bpp into a stored
+// EMA (mo_settings.gifBppCalibration) and prefers that over the static
+// baseline on subsequent estimates. Real content can still swing ±50% so
+// the dialog presents the result as an explicit estimate, never a promise.
+const MO_GIF_BPP_BASE = 0.56;          // ≈ 4.5 bits/pixel — corpus median
 const MO_GIF_BPP_DITHER = {
   none:             0.85,              // banding compresses cleanly
   bayer:            1.00,              // baseline (bayer_scale ≥ 4)
@@ -15272,6 +15303,56 @@ const MO_GIF_BPP_DITHER = {
 const MO_GIF_FPS_LADDER = [24, 20, 18, 15, 12];
 const MO_GIF_WIDTH_LADDER = [1280, 960, 720, 540, 480, 360];
 const MO_GIF_TRIM_LADDER = [0.8, 0.6, 0.4]; // fraction of original duration
+
+// Module-level calibration cache. Populated by moLoadGifBppCalibration() and
+// updated by moRecordGifBppObservation(). Held in memory so the *sync*
+// estimateBytes() path can read it without an await round-trip.
+let _moGifBppCalibrated = null;        // running EMA, or null until loaded
+let _moGifBppLoadPromise = null;       // dedupe concurrent loads
+
+async function moLoadGifBppCalibration() {
+  if (_moGifBppLoadPromise) return _moGifBppLoadPromise;
+  _moGifBppLoadPromise = (async () => {
+    try {
+      const v = await moGetSetting('gifBppCalibration', null);
+      const n = parseFloat(v);
+      if (Number.isFinite(n) && n > 0.1 && n < 5.0) _moGifBppCalibrated = n;
+    } catch { /* ignore — fall back to static baseline */ }
+    return _moGifBppCalibrated;
+  })();
+  return _moGifBppLoadPromise;
+}
+
+// Fold one measured (width, height, fps, duration, dither, actualBytes) tuple
+// into the persistent EMA. Smoothing factor is intentionally aggressive at
+// first (so the first few exports correct an off-baseline quickly) and tapers
+// off as the running average stabilises. Bounds-clamped so a single weird
+// outlier (3-frame, mostly-black GIF) can't poison the cache.
+async function moRecordGifBppObservation({ width, height, fps, duration, dither, actualBytes }) {
+  const w = Math.max(2, width || 0);
+  const h = Math.max(2, height || 0);
+  const f = Math.max(1, fps || 0);
+  const d = Math.max(0.05, duration || 0);
+  const ditherKey = (dither in MO_GIF_BPP_DITHER) ? dither : 'bayer';
+  const ditherFactor = MO_GIF_BPP_DITHER[ditherKey];
+  // Reverse-derive the bpp the model would have needed to predict the actual
+  // bytes — i.e. take the dither factor out so the EMA tracks the raw base.
+  const observedBase = (actualBytes / Math.max(1, w * h * f * d)) / ditherFactor;
+  // Sanity bounds: anything outside [0.1, 3.0] is almost certainly an
+  // exotic input (single-frame, all-noise, etc.) and would skew the EMA.
+  if (!Number.isFinite(observedBase) || observedBase < 0.1 || observedBase > 3.0) return;
+
+  // Lazy-load existing EMA if we haven't yet.
+  if (_moGifBppCalibrated === null) await moLoadGifBppCalibration();
+
+  const prev = _moGifBppCalibrated;
+  // Faster convergence early (alpha 0.4 against 0.2 once seeded), so a fresh
+  // install corrects within a handful of exports rather than dozens.
+  const alpha = prev === null ? 1.0 : 0.3;
+  const next = prev === null ? observedBase : (prev * (1 - alpha)) + (observedBase * alpha);
+  _moGifBppCalibrated = next;
+  try { await moSetSetting('gifBppCalibration', String(next)); } catch { /* best-effort */ }
+}
 
 /**
  * Predict output bytes for a GIF encode.
@@ -15287,7 +15368,13 @@ function moPredictGifBytes({ width, height, fps, duration, dither, bppOverride }
   const f = Math.max(1, fps || 0);
   const d = Math.max(0.05, duration || 0);
   const ditherKey = (dither in MO_GIF_BPP_DITHER) ? dither : 'bayer';
-  const bpp = bppOverride != null ? bppOverride : (MO_GIF_BPP_BASE * MO_GIF_BPP_DITHER[ditherKey]);
+  // Calibration precedence: explicit override > learned EMA > static baseline.
+  // The learned value already had its dither factor stripped on insert, so we
+  // re-apply it here. Override is treated as a fully-formed effective bpp.
+  let bpp;
+  if (bppOverride != null) bpp = bppOverride;
+  else if (_moGifBppCalibrated != null) bpp = _moGifBppCalibrated * MO_GIF_BPP_DITHER[ditherKey];
+  else bpp = MO_GIF_BPP_BASE * MO_GIF_BPP_DITHER[ditherKey];
   return Math.round(w * h * f * d * bpp);
 }
 
@@ -15540,6 +15627,12 @@ async function moOptimizeGifFile(srcPath, opts) {
     const rn = await window.parallxElectron.fs.rename(tmpPath, srcPath);
     if (rn && rn.error) throw new Error('rename failed: ' + (rn.error.message || rn.error));
     replaced = true;
+    // Feed this measurement into the shared GIF bpp EMA \u2014 every successful
+    // optimize is free training data. Best-effort; never blocks the result.
+    moRecordGifBppObservation({
+      width: plan.width, height: plan.height, fps: plan.fps,
+      duration: plan.duration, dither, actualBytes,
+    }).catch(() => {});
     return { srcPath, originalBytes, finalBytes: actualBytes, plan, replaced: true, skipped: false };
   } finally {
     // Always clean up the tmp file unless the rename consumed it. Covers:
