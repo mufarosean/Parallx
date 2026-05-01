@@ -66,17 +66,23 @@ duplicated Gmail-specific path and ensuring autonomous turns (cron / heartbeat
 
 ## Phases
 
-### W1 — Audit MCP-tools-to-autonomous-turns wiring
+### W1 — Audit MCP-tools-to-autonomous-turns wiring ✅ DONE
 
 Read-only investigation. Goal: produce a clear answer to "do cron, heartbeat,
-and subagent executors include MCP tools in their tool catalogs?" If yes, W2
-is a no-op. If no, W2 is "make them."
+and subagent executors include MCP tools in their tool catalogs?"
 
-### W2 — Fix MCP→autonomous wiring (if W1 finds gaps)
+**Finding: ALIGNED.** All four executors (foreground, cron, heartbeat,
+subagent) read from the same `ILanguageModelToolsService` instance
+(`src/services/languageModelToolsService.ts:172`). MCP tools register into
+that same service via `McpToolBridge`
+(`src/workbench/workbenchServices.ts:327`). Autonomous turns therefore see
+MCP tools by construction; no gap exists.
 
-Wire the MCP tool registry into the cron/heartbeat/subagent executors. Add a
-unit test asserting that an autonomous turn's tool catalog contains MCP tools
-when an MCP server is registered.
+### W2 — Fix MCP→autonomous wiring (skipped — W1 found no gap)
+
+No work needed. Cron jobs that call MCP-provided tools (e.g. `gmail_list_unread`)
+will succeed at fire-time. Recorded for future regression vigilance: any
+change to executor tool-catalog assembly must preserve this invariant.
 
 ### W3 — Make `tools/gmail-mcp-server/` self-contained
 
