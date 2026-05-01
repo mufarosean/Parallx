@@ -3,23 +3,25 @@
 Read-only Gmail access exposed to Parallx agents via the
 [Model Context Protocol](https://modelcontextprotocol.io/) over STDIO.
 
-This server is part of Milestone 60 / Tier 6 (autonomy proof).
+This server is **self-contained**: it owns the OAuth flow, persists its
+own refresh token, and refreshes the access token in-process. Parallx
+talks to it like any other MCP server — no Gmail-specific code lives in
+Parallx core.
 
 ## Design tenets
 
+- **Self-contained.** OAuth, credential storage, token refresh — all
+  inside this directory. Parallx core has zero knowledge that this is
+  a Gmail server vs. any other MCP server.
 - **Process isolation.** Runs as a child Node process — never inside
-  the Parallx renderer or main process. (M60 §9.5 process isolation.)
+  the Parallx renderer or main process.
 - **Read-only.** Single tool: `list_unread`. No mutations, no writes.
 - **Scope minimization.** Hits only `gmail.googleapis.com`; no other
-  network egress.
+  network egress at runtime.
 - **Privacy.** Never logs message bodies. Subjects and senders are
   metadata required for agent routing and ARE returned to the caller.
-- **Zero refresh logic.** The server has no `client_secret` and no
-  refresh endpoint. Parallx main process holds the refresh token,
-  refreshes when needed, and respawns this server with a fresh
-  `GMAIL_ACCESS_TOKEN`.
-- **Zero runtime deps.** Plain Node 18+ (`fetch` is built in). Only
-  `@types/node` and `typescript` for build.
+- **Zero runtime deps.** Plain Node 18+ (`fetch`, `crypto`, `http` are
+  built in). Only `@types/node` and `typescript` for build.
 
 ## Tool
 
@@ -48,36 +50,92 @@ Returns:
 }
 ```
 
-## How Parallx spawns this server
+## One-time setup
 
-Via the existing MCP STDIO transport (`src/openclaw/mcp/mcpTransport.ts`),
-which goes through the `mcp:spawn` IPC handler in `electron/mcpBridge.cjs`.
+### 1. Create a Google OAuth client
 
-Conceptual spawn:
+1. Visit <https://console.cloud.google.com/apis/credentials>.
+2. Create an **OAuth client ID** of type **Desktop app**.
+3. Enable the **Gmail API** for the project.
+4. Add yourself as a test user under **OAuth consent screen → Test users**.
+5. Copy the client ID and client secret.
 
-```
-node tools/gmail-mcp-server/dist/index.js
-  env:
-    GMAIL_ACCESS_TOKEN=<short-lived OAuth access token>
-```
+> Per RFC 8252 §8.4, OAuth clients shipped with desktop apps are
+> **public-by-design**. The "secret" is not actually secret — Google
+> still requires it for token exchange.
 
-The server:
-
-1. Reads JSON-RPC envelopes one per line on STDIN.
-2. Writes responses one per line on STDOUT.
-3. Logs to STDERR only (so as not to corrupt the JSON-RPC stream).
-
-## Running standalone
+### 2. Build
 
 ```powershell
 cd tools/gmail-mcp-server
 npm install
 npm run build
-$env:GMAIL_ACCESS_TOKEN = "<your-token>"
+```
+
+### 3. Authorize
+
+```powershell
+$env:GMAIL_OAUTH_CLIENT_ID     = "<your-client-id>"
+$env:GMAIL_OAUTH_CLIENT_SECRET = "<your-client-secret>"
+node dist/index.js --auth
+```
+
+The server will:
+
+1. Start a one-shot HTTP listener on `127.0.0.1:<random-port>`.
+2. Print a Google authorization URL — open it in your browser.
+3. After you approve, Google redirects to the loopback URL.
+4. The server exchanges the auth code for tokens and writes them to
+   `~/.parallx/gmail-mcp/credentials.json` with mode `0600`.
+5. Exits 0.
+
+### 4. Register in Parallx
+
+In Parallx: **chat-gear → MCP Servers → + Add Server**
+
+| Field    | Value                                                           |
+|----------|-----------------------------------------------------------------|
+| Name     | `gmail`                                                         |
+| Command  | `node`                                                          |
+| Args     | `<absolute-path-to>/tools/gmail-mcp-server/dist/index.js`       |
+
+Save. The server registers `list_unread` with the agent. The same tool
+is available to foreground chat turns and to autonomous turns (cron,
+heartbeat, subagent) — they all share Parallx's tool catalog.
+
+## Runtime behavior
+
+When Parallx spawns the server, it:
+
+1. Reads `~/.parallx/gmail-mcp/credentials.json`.
+2. On every `tools/call`, ensures the access token is fresh — if it's
+   missing or within 60s of expiring, refreshes via
+   `https://oauth2.googleapis.com/token` using the persisted refresh
+   token.
+3. Calls Gmail with the access token.
+
+Access tokens **never touch disk**. Only the refresh token does, in the
+mode-`0600` credentials file.
+
+## Files
+
+| Path                | Role                                                            |
+|---------------------|-----------------------------------------------------------------|
+| `src/index.ts`      | MCP server entry; `--auth` dispatch; access-token cache.        |
+| `src/oauth.ts`      | PKCE, build URL, exchange/refresh — pure Node, no Parallx imports. |
+| `src/loopback.ts`   | One-shot `127.0.0.1:0` redirect listener.                       |
+| `src/credStore.ts`  | Read/write `~/.parallx/gmail-mcp/credentials.json` (mode 600).   |
+| `src/authCli.ts`    | `--auth` orchestration.                                         |
+| `src/gmailClient.ts`| Read-only REST client; `gmail.googleapis.com` allowlist.        |
+| `src/types.ts`      | JSON-RPC + tool I/O types.                                      |
+
+## Manual JSON-RPC test
+
+```powershell
 node dist/index.js
 ```
 
-Then send JSON-RPC requests on stdin, one per line:
+Then send requests on stdin, one per line:
 
 ```json
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"manual","version":"0"}}}
@@ -85,27 +143,21 @@ Then send JSON-RPC requests on stdin, one per line:
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_unread","arguments":{"max":5}}}
 ```
 
-## Build pipeline
+## Re-authorizing or revoking
 
-The Parallx top-level build does NOT currently invoke this sub-package.
-Build it explicitly when you change it:
+- **Re-auth:** delete `~/.parallx/gmail-mcp/credentials.json` and re-run
+  `node dist/index.js --auth`.
+- **Revoke:** revoke at <https://myaccount.google.com/permissions>, then
+  delete the credentials file.
 
-```powershell
-cd tools/gmail-mcp-server
-npm install
-npm run build
-```
+## Security model
 
-A future milestone may wire this into `scripts/build.mjs`.
-
-## Security review (M60 §9.5)
-
-| Control                       | How                                                                              |
-|-------------------------------|----------------------------------------------------------------------------------|
-| Token storage                 | Owned by Parallx main process via `safeStorage` (F3). Server never persists.     |
-| Scope minimization            | Read-only. Only `users.messages.list` + `users.messages.get` (metadata format).  |
-| Process isolation             | Separate Node child process spawned via `mcp:spawn` IPC.                         |
-| Network egress allowlist      | `gmail.googleapis.com` only; `GmailClient.fetchAuthorized` enforces.             |
-| Audit log                     | Parallx's autonomy event log records the tool call with arg digest (F4).         |
-| Revocation path               | Settings: `mcp.gmail.enabled = false` plus "Disconnect Gmail" (F2).              |
-| Body confidentiality          | Bodies are never fetched (`format=metadata`) and never logged.                   |
+| Control                 | How                                                                            |
+|-------------------------|--------------------------------------------------------------------------------|
+| Refresh token at rest   | `~/.parallx/gmail-mcp/credentials.json`, mode 0600.                            |
+| Access token at rest    | Never persisted. In-memory only, with expiry.                                  |
+| Scope minimization      | Read-only `gmail.readonly`. `users.messages.list` + `users.messages.get` only. |
+| Process isolation       | Separate Node child process spawned via Parallx's MCP STDIO transport.         |
+| Network egress          | `gmail.googleapis.com` + `oauth2.googleapis.com` + `accounts.google.com` only. |
+| Audit log               | Parallx's autonomy event log records every tool call.                          |
+| Body confidentiality    | Message bodies are never fetched (`format=metadata`) and never logged.         |

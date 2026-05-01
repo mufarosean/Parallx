@@ -5,15 +5,18 @@
 // Protocol: MCP (initialize → tools/list → tools/call).
 // Tools: one read-only tool — `list_unread`.
 //
-// Auth: GMAIL_ACCESS_TOKEN env var. Refresh logic stays in Parallx
-// main process (security: server has no client_secret, no refresh
-// endpoint reachable). When the token expires, the server returns
-// an error and Parallx refreshes + respawns.
+// Auth: self-contained. Run `node dist/index.js --auth` once to
+// authorize Gmail (PKCE + loopback redirect). Credentials are saved
+// to ~/.parallx/gmail-mcp/credentials.json (chmod 600) and the
+// server refreshes the access token in-process on demand.
 //
 // Privacy: NEVER logs message bodies. Subject + sender are surfaced
 // to the agent because they are routing-relevant metadata.
 
 import { GmailClient } from './gmailClient.js';
+import { runAuth } from './authCli.js';
+import { readCredentials, type StoredCredentials } from './credStore.js';
+import { refreshAccessToken } from './oauth.js';
 import type {
   JsonRpcRequest,
   JsonRpcResponse,
@@ -94,6 +97,38 @@ function handleToolsList(id: number | string): JsonRpcResponse {
   };
 }
 
+// ── Access token cache (refreshed in-process) ─────────────────────
+
+interface CachedToken {
+  readonly accessToken: string;
+  readonly expiresAt: number; // epoch ms
+}
+let tokenCache: CachedToken | null = null;
+const TOKEN_REFRESH_SKEW_MS = 60_000; // refresh 60s before expiry
+
+async function getAccessToken(): Promise<string> {
+  const now = Date.now();
+  if (tokenCache && tokenCache.expiresAt - TOKEN_REFRESH_SKEW_MS > now) {
+    return tokenCache.accessToken;
+  }
+  const creds: StoredCredentials | null = await readCredentials();
+  if (!creds) {
+    throw new Error(
+      'no credentials on disk — run `node dist/index.js --auth` first',
+    );
+  }
+  const tokens = await refreshAccessToken({
+    clientId: creds.client_id,
+    clientSecret: creds.client_secret,
+    refreshToken: creds.refresh_token,
+  });
+  tokenCache = {
+    accessToken: tokens.access_token,
+    expiresAt: now + tokens.expires_in * 1000,
+  };
+  return tokens.access_token;
+}
+
 async function handleToolsCall(
   id: number | string,
   params: Record<string, unknown> | undefined,
@@ -104,13 +139,12 @@ async function handleToolsCall(
     return makeError(id, -32601, `Unknown tool: ${name}`);
   }
 
-  const accessToken = process.env.GMAIL_ACCESS_TOKEN;
-  if (!accessToken) {
-    return makeError(
-      id,
-      -32000,
-      'GMAIL_ACCESS_TOKEN env var is not set — Parallx must inject the token at spawn time.',
-    );
+  let accessToken: string;
+  try {
+    accessToken = await getAccessToken();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return makeError(id, -32000, message);
   }
 
   const input: ListUnreadInput = {
@@ -221,5 +255,27 @@ async function handleLine(line: string): Promise<void> {
 
 // ── Boot ───────────────────────────────────────────────────────────
 
-logInfo(`${SERVER_NAME} v${SERVER_VERSION} starting (protocol ${PROTOCOL_VERSION})`);
-startReader();
+async function main(): Promise<void> {
+  const argv = process.argv.slice(2);
+  if (argv.includes('--auth')) {
+    const code = await runAuth();
+    process.exit(code);
+  }
+  if (argv.includes('--help') || argv.includes('-h')) {
+    process.stderr.write(
+      `${SERVER_NAME} v${SERVER_VERSION}\n` +
+        '\nUsage:\n' +
+        '  node dist/index.js            run as MCP server (STDIO JSON-RPC)\n' +
+        '  node dist/index.js --auth     authorize Gmail (one-time)\n' +
+        '  node dist/index.js --help     show this help\n' +
+        '\nAuth env vars (only required for --auth):\n' +
+        '  GMAIL_OAUTH_CLIENT_ID\n' +
+        '  GMAIL_OAUTH_CLIENT_SECRET\n',
+    );
+    process.exit(0);
+  }
+  logInfo(`${SERVER_NAME} v${SERVER_VERSION} starting (protocol ${PROTOCOL_VERSION})`);
+  startReader();
+}
+
+void main();
