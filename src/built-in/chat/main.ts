@@ -1854,10 +1854,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
   const widgetServices = dataService.buildWidgetServices();
   // C2: Wire AI Settings opener — accessible from the chat title bar gear icon.
-  // M61 Phase 6 — route to the unified `settings.open` overlay (Ctrl+Alt+S)
-  // instead of the legacy AI Settings sidebar so there is one entry point.
+  // The gear toggles the AI Settings sidebar (auxiliary bar). Clicking it
+  // again hides the sidebar so the user is back on chat — that toggle is
+  // owned by `ai-settings.open` → `workbench.view.show view.aiSettings`,
+  // which the contribution handler implements as a toggle for aux-bar
+  // containers. The unified Settings overlay is reachable via Ctrl+Alt+S.
   (widgetServices as unknown as Record<string, unknown>).openAISettings = () => {
-    api.commands.executeCommand('settings.open');
+    api.commands.executeCommand('ai-settings.open');
   };
 
   // Wire token bar services into widget services (for in-widget token indicator)
