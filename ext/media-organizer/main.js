@@ -2993,8 +2993,14 @@ async function drainWatcherQueue() {
         if (!settled) {
           try {
             const exists = await window.parallxElectron.fs.exists(evt.path);
-            if (exists) {
-              setTimeout(() => enqueueWatcherEvent({ type: 'changed', path: evt.path }), 5_000);
+            // Bounded retry: if a file genuinely never settles (a log being
+            // continuously appended, a clock-skewed network share, etc.),
+            // we'd otherwise re-enqueue every 5s forever. Cap at 3 retries
+            // and let the periodic delta scan pick it up later if it ever
+            // does stop changing.
+            const tries = (evt._settleRetries || 0) + 1;
+            if (exists && tries <= 3) {
+              setTimeout(() => enqueueWatcherEvent({ type: 'changed', path: evt.path, _settleRetries: tries }), 5_000);
             }
           } catch { /* ignore */ }
           continue;
@@ -3245,7 +3251,10 @@ const FOCUS_DELTA_SCAN_DEBOUNCE_MS = 1500;
 const PERIODIC_DELTA_SCAN_MS = 5 * 60 * 1000;
 
 async function _runDeltaScanSafe() {
-  if (_deltaScanRunning || _scanRunning || !_api) return;
+  // Bail if any other scanner is active. _watcherProcessing is the drain
+  // loop — racing it would re-process every file the watcher is currently
+  // ingesting, doubling ffprobe work and competing for IO.
+  if (_deltaScanRunning || _scanRunning || _watcherProcessing || !_api) return;
   _deltaScanRunning = true;
   try {
     await runDeltaScan(_api);
@@ -9266,7 +9275,21 @@ function renderGridBrowser(container, api, input) {
     }));
   };
   document.addEventListener('mo:request-selection', _selectionReplyHandler);
-  const _gridRefreshHandler = () => { state.selectedIds.clear(); state.selecting = false; loadPage(); };
+  // Grid refresh broadcasts come from many sources: watcher drain (per-file
+  // during a batch), runDeltaScan, sidebar mutations. We coalesce them on a
+  // 200ms debounce so a 100-file copy fires one reload instead of 100, and
+  // we PRESERVE the user's current selection across the refresh — the prior
+  // implementation cleared selectedIds on every event, which silently wiped
+  // multi-select while the user was actively curating. Selection survives;
+  // any items that no longer exist after the reload are simply not visible.
+  let _gridRefreshTimer = null;
+  const _gridRefreshHandler = () => {
+    if (_gridRefreshTimer) clearTimeout(_gridRefreshTimer);
+    _gridRefreshTimer = setTimeout(() => {
+      _gridRefreshTimer = null;
+      loadPage();
+    }, 200);
+  };
   document.addEventListener('mo:refresh-grid', _gridRefreshHandler);
 
   // Event handlers
