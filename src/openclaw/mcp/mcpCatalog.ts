@@ -36,6 +36,23 @@ export interface IMcpCatalogEntry {
   readonly command: string;
   /** stdio args. */
   readonly args: readonly string[];
+  /**
+   * Optional: marks this entry as a bundled server shipped inside the
+   * Parallx repo. When set, `args` may contain the placeholder
+   * `{appRoot}` which is substituted at install time with the absolute
+   * path to the Parallx install root (`window.parallxElectron.appPath`).
+   * This lets bundled servers (like the Gmail MCP server at
+   * `tools/gmail-mcp-server/bundle/server.mjs`) be installed with one
+   * click — no manual path entry by the user.
+   */
+  readonly bundled?: boolean;
+  /**
+   * Optional: this server requires a one-time OAuth flow before it can
+   * be used. When set, the install dialog shows a "Connect" button that
+   * spawns the server with `--auth` to complete authorization. The
+   * server is only registered with Parallx after auth succeeds.
+   */
+  readonly requiresOAuth?: boolean;
   /** Env vars the user must / may provide. */
   readonly env: readonly IMcpCatalogEnvVar[];
 }
@@ -89,6 +106,19 @@ export const MCP_CATALOG: readonly IMcpCatalogEntry[] = Object.freeze([
   // `tools/gmail-mcp-server/` is self-contained and installed via the
   // local clone+build+`--auth` flow described in
   // docs/ai/GMAIL_MCP_INTEGRATION.md, not via a single `npx -y` invocation.
+  {
+    id: 'gmail',
+    displayName: 'Gmail',
+    description:
+      'Read-only Gmail access. Lists unread messages with sender, subject, snippet, and labels. Bundled — no install or build required.',
+    category: 'Communication',
+    homepage: 'https://github.com/modelcontextprotocol/servers',
+    command: 'node',
+    args: ['{appRoot}/tools/gmail-mcp-server/bundle/server.mjs'],
+    bundled: true,
+    requiresOAuth: true,
+    env: [],
+  },
   {
     id: 'slack',
     displayName: 'Slack',

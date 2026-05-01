@@ -317,8 +317,18 @@ export class McpSection extends SettingsSection {
     host.appendChild(desc);
 
     const cmdLine = $('div.ai-settings-mcp-install-cmd');
-    cmdLine.textContent = `${entry.command} ${entry.args.join(' ')}`;
+    const appRootForDisplay = (window as unknown as { parallxElectron?: { appPath?: string } })
+      .parallxElectron?.appPath ?? '{appRoot}';
+    const displayArgs = entry.args.map((a) => a.replace('{appRoot}', appRootForDisplay));
+    cmdLine.textContent = `${entry.command} ${displayArgs.join(' ')}`;
     host.appendChild(cmdLine);
+
+    if (entry.requiresOAuth) {
+      const oauthNote = $('div.ai-settings-mcp-install-help');
+      oauthNote.textContent =
+        'After installing, this server will run a one-time OAuth flow in your browser to grant access. The "Connect" button on the server row triggers it.';
+      host.appendChild(oauthNote);
+    }
 
     const envInputs: { key: string; el: HTMLInputElement; required: boolean }[] = [];
     for (const v of entry.env) {
@@ -364,12 +374,18 @@ export class McpSection extends SettingsSection {
         }
         env[f.key] = v;
       }
+      // {appRoot} substitution for bundled servers (e.g. Gmail MCP).
+      // Resolves at install time so the saved config has an absolute
+      // path and the user never types one.
+      const appRoot = (window as unknown as { parallxElectron?: { appPath?: string } })
+        .parallxElectron?.appPath ?? '';
+      const resolvedArgs = entry.args.map((a) => a.replace('{appRoot}', appRoot));
       void this._addServer({
         id: this._uniqueServerId(entry.id),
         name: entry.displayName,
         transport: 'stdio',
         command: entry.command,
-        args: [...entry.args],
+        args: resolvedArgs,
         env: Object.keys(env).length > 0 ? env : undefined,
         enabled: true,
       });
