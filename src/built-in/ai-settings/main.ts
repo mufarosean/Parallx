@@ -5,7 +5,7 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { IAISettingsService, IUnifiedAIConfigService, INotificationService, IWorkspaceMemoryService, IMcpClientService } from '../../services/serviceTypes.js';
+import { IAISettingsService, IUnifiedAIConfigService, INotificationService, IWorkspaceMemoryService, IMcpClientService, IAutonomyFeatureFlagsService } from '../../services/serviceTypes.js';
 import { ILanguageModelsService, ILanguageModelToolsService } from '../../services/chatTypes.js';
 import type { IToolPickerServices } from '../../services/chatTypes.js';
 import { AISettingsPanel } from '../../aiSettings/ui/aiSettingsPanel.js';
@@ -100,11 +100,18 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     ? api.services.get<import('../../openclaw/mcp/mcpClientService.js').McpClientService>(IMcpClientService)
     : undefined;
 
+  // Get the Autonomy Feature Flags service so the Heartbeat section's
+  // "Enable" toggle drives the single source of truth for the runtime gate
+  // (M60 §3.8) instead of exposing two parallel switches.
+  const autonomyFlagsService = api.services.has(IAutonomyFeatureFlagsService)
+    ? api.services.get<import('../../services/autonomyFeatureFlags.js').IAutonomyFeatureFlagsService>(IAutonomyFeatureFlagsService)
+    : undefined;
+
   // Register view provider
   context.subscriptions.push(
     api.views.registerViewProvider('view.aiSettings', {
       createView(container: HTMLElement): IDisposable {
-        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService, toolPickerServices, mcpClientService);
+        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService, toolPickerServices, mcpClientService, autonomyFlagsService);
         return _panel;
       },
     }),

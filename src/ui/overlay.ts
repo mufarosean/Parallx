@@ -21,6 +21,8 @@ export interface IOverlayOptions {
   readonly closeOnEscape?: boolean;
   /** Extra CSS class added to the content container. */
   readonly contentClass?: string;
+  /** Center the content vertically as well as horizontally. Default: false (top-aligned with `padding-top: 20vh`). */
+  readonly centered?: boolean;
 }
 
 // ─── Overlay ─────────────────────────────────────────────────────────────────
@@ -61,10 +63,12 @@ export class Overlay extends Disposable {
     const transparent = options?.transparent ?? false;
     const closeOnClickOutside = options?.closeOnClickOutside ?? true;
     const closeOnEscape = options?.closeOnEscape ?? true;
+    const centered = options?.centered ?? false;
 
     // Backdrop
     this.element = $('div.ui-overlay');
     toggleClass(this.element, 'ui-overlay--transparent', transparent);
+    toggleClass(this.element, 'ui-overlay--centered', centered);
 
     // Content area
     this.contentElement = $('div.ui-overlay-content');

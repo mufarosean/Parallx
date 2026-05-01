@@ -190,12 +190,15 @@ const openSettings: CommandDescriptor = {
   id: 'workbench.action.openSettings',
   title: 'Open Settings',
   category: 'Preferences',
-  keybinding: 'Ctrl+,',
+  // Keybinding is owned by the `parallx.settings` manifest binding `settings.open`
+  // to `Ctrl+,`. This legacy id is kept as an alias so menus, the welcome card,
+  // and any external command-palette muscle memory all route to the single,
+  // schema-driven editor (M60 Phase ε).
   async handler(ctx) {
-    const editorService = ctx.getService<IEditorService>('IEditorService');
-    if (!editorService) return;
-    const { SettingsEditorInput } = await import('../built-in/editor/settingsEditorInput.js');
-    await editorService.openEditor(SettingsEditorInput.getInstance(), { pinned: true });
+    const commandService = ctx.getService<import('../services/serviceTypes.js').ICommandService>('ICommandService');
+    if (commandService) {
+      await commandService.executeCommand('settings.open');
+    }
   },
 };
 

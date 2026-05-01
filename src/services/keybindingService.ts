@@ -232,7 +232,11 @@ export class KeybindingService extends Disposable implements IKeybindingService 
 
   private _handleKeydown(e: KeyboardEvent): void {
     const target = e.target as Element | null;
-    if (this._isEditableTarget(target)) {
+    // Bare-key bindings (no Ctrl/Alt/Meta) are blocked from editable targets so
+    // typing isn't hijacked. Bindings with a non-Shift modifier can never be
+    // produced by typing, so they fire even from inputs/textareas/contenteditable.
+    const hasCommandModifier = e.ctrlKey || e.altKey || e.metaKey;
+    if (!hasCommandModifier && this._isEditableTarget(target)) {
       return;
     }
 

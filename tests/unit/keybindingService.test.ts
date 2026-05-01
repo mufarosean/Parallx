@@ -275,15 +275,30 @@ describe('KeybindingService', () => {
   // ── Editable target exclusion ──
 
   describe('editable target exclusion', () => {
-    it('skips keybinding when target is a text input', async () => {
-      commandService.addCommand('cmd.skip');
-      service.registerKeybinding('Ctrl+B', 'cmd.skip');
+    it('does NOT skip Ctrl-modifier keybinding when target is a text input (modifier combos can’t conflict with typing)', async () => {
+      commandService.addCommand('cmd.modkey');
+      service.registerKeybinding('Ctrl+B', 'cmd.modkey');
 
       const input = document.createElement('input');
       input.type = 'text';
       document.body.appendChild(input);
 
       fireKeydown('b', { ctrlKey: true, target: input });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(commandService.getExecuted()).toContain('cmd.modkey');
+      document.body.removeChild(input);
+    });
+
+    it('skips bare-key (no modifier) keybinding when target is a text input', async () => {
+      commandService.addCommand('cmd.skip');
+      service.registerKeybinding('F2', 'cmd.skip');
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      document.body.appendChild(input);
+
+      fireKeydown('F2', { target: input });
       await vi.advanceTimersByTimeAsync(0);
 
       expect(commandService.getExecuted()).not.toContain('cmd.skip');
@@ -321,9 +336,9 @@ describe('KeybindingService', () => {
       document.body.removeChild(input);
     });
 
-    it('skips for contenteditable elements', async () => {
+    it('skips for contenteditable elements (bare key)', async () => {
       commandService.addCommand('cmd.ce');
-      service.registerKeybinding('Ctrl+B', 'cmd.ce');
+      service.registerKeybinding('a', 'cmd.ce');
 
       const div = document.createElement('div');
       div.setAttribute('contenteditable', 'true');
@@ -334,7 +349,7 @@ describe('KeybindingService', () => {
       // won't detect the element as editable via the final fallback.
       // Skip assertion if jsdom lacks support.
       if (div.isContentEditable === true) {
-        fireKeydown('b', { ctrlKey: true, target: div });
+        fireKeydown('a', { target: div });
         await vi.advanceTimersByTimeAsync(0);
         expect(commandService.getExecuted()).not.toContain('cmd.ce');
       } else {

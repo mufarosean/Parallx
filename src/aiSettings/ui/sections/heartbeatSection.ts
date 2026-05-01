@@ -20,6 +20,8 @@ import type { IUnifiedAIConfigService, IUnifiedAIConfig } from '../../unifiedCon
 import { DEFAULT_UNIFIED_CONFIG } from '../../unifiedConfigTypes.js';
 import { SettingsSection, createSettingRow } from '../sectionBase.js';
 import type { IAISettingsService, AISettingsProfile } from '../../aiSettingsTypes.js';
+import type { IAutonomyFeatureFlagsService } from '../../../services/autonomyFeatureFlags.js';
+import { FLAG_HEARTBEAT_ENABLED } from '../../../services/autonomyFeatureFlags.js';
 
 const MIN_MS = 30 * 1000;      // mirror MIN_HEARTBEAT_INTERVAL_MS
 const MAX_MS = 60 * 60 * 1000; // mirror MAX_HEARTBEAT_INTERVAL_MS
@@ -52,10 +54,16 @@ export class HeartbeatSection extends SettingsSection {
   private _excludeTextarea!: Textarea;
 
   private readonly _unifiedService: IUnifiedAIConfigService | undefined;
+  private readonly _autonomyFlags: IAutonomyFeatureFlagsService | undefined;
 
-  constructor(service: IAISettingsService, unifiedService?: IUnifiedAIConfigService) {
+  constructor(
+    service: IAISettingsService,
+    unifiedService?: IUnifiedAIConfigService,
+    autonomyFlags?: IAutonomyFeatureFlagsService,
+  ) {
     super(service, 'heartbeat', 'Heartbeat');
     this._unifiedService = unifiedService;
+    this._autonomyFlags = autonomyFlags;
   }
 
   build(): void {
@@ -68,19 +76,25 @@ export class HeartbeatSection extends SettingsSection {
     this.contentElement.appendChild(intro);
 
     // ── Enabled ──
+    // Single source of truth: the autonomy flag `autonomy.heartbeat.enabled`
+    // (M60 §3.8). The legacy `heartbeat.enabled` field on the unified config
+    // is mirrored here so the heartbeat runner's `config.enabled` gate stays
+    // consistent without exposing a second user-visible toggle.
+    const initialEnabled = this._autonomyFlags?.isEnabled(FLAG_HEARTBEAT_ENABLED) ?? defaults.enabled;
     const enabledRow = createSettingRow({
       label: 'Enable Heartbeat',
       description: 'When on, a periodic tick runs between chats to react to events. Disabled by default.',
       key: 'heartbeat.enabled',
-      onReset: () => this._updateHeartbeat({ enabled: defaults.enabled }),
+      onReset: () => this._setEnabled(defaults.enabled),
       scopePath: 'heartbeat.enabled',
       unifiedService: this._unifiedService,
     });
     this._enabledToggle = this._register(new Toggle(enabledRow.controlSlot, {
       ariaLabel: 'Enable heartbeat',
+      checked: initialEnabled,
     }));
     this._register(this._enabledToggle.onDidChange((checked) => {
-      this._updateHeartbeat({ enabled: checked });
+      this._setEnabled(checked);
       this._notifySaved('heartbeat.enabled');
     }));
     this._addRow(enabledRow.row);
@@ -196,13 +210,29 @@ export class HeartbeatSection extends SettingsSection {
     }
   }
 
+  /**
+   * Flip both the autonomy flag and the unified-config `heartbeat.enabled`
+   * field together. The autonomy flag is the user-facing source of truth
+   * (M60 §3.8); the config field is mirrored so the heartbeat runner's
+   * legacy `config.enabled` gate stays in sync.
+   */
+  private _setEnabled(checked: boolean): void {
+    this._updateHeartbeat({ enabled: checked });
+    if (this._autonomyFlags) {
+      void this._autonomyFlags.setEnabled(FLAG_HEARTBEAT_ENABLED, checked);
+    }
+  }
+
   update(_profile: AISettingsProfile): void {
     const config = this._unifiedService
       ? this._unifiedService.getEffectiveConfig().heartbeat
       : DEFAULT_UNIFIED_CONFIG.heartbeat;
 
-    if (this._enabledToggle.checked !== config.enabled) {
-      this._enabledToggle.checked = config.enabled;
+    // The toggle reflects the autonomy flag (source of truth); fall back to
+    // the unified-config field when the flags service isn't available.
+    const flagEnabled = this._autonomyFlags?.isEnabled(FLAG_HEARTBEAT_ENABLED) ?? config.enabled;
+    if (this._enabledToggle.checked !== flagEnabled) {
+      this._enabledToggle.checked = flagEnabled;
     }
     if (this._intervalSlider.value !== config.intervalMs) {
       this._intervalSlider.value = config.intervalMs;

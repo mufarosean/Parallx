@@ -342,6 +342,11 @@
   background-color: transparent;
 }
 
+.ui-overlay--centered {
+  align-items: center;
+  padding-top: 0;
+}
+
 .ui-overlay-content {
   /* Content container — consumers add their own sizing/styling */
   position: relative;

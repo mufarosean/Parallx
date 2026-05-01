@@ -58,6 +58,7 @@ export class SettingsEditor extends Disposable {
       closeOnClickOutside: true,
       closeOnEscape: true,
       contentClass: 'settings-editor-overlay',
+      centered: true,
     }));
 
     this._root = $('div.settings-editor');

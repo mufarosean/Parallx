@@ -199,7 +199,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
 
   const helpItems = [
     { icon: 'ui-keyboard', text: 'Command Palette', hint: 'Ctrl+Shift+P', command: 'workbench.action.showCommands' },
-    { icon: 'gear', text: 'Settings', hint: 'Ctrl+,', command: 'workbench.action.openSettings' },
+    { icon: 'gear', text: 'Settings', hint: 'Ctrl+Alt+S', command: 'settings.open' },
     { icon: 'ui-keyboard', text: 'Keyboard Shortcuts', hint: 'Ctrl+K Ctrl+S', command: 'workbench.action.openKeybindings' },
   ];
 

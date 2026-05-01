@@ -29,6 +29,7 @@ import { PreviewSection } from './sections/previewSection.js';
 import { McpSection } from './sections/mcpSection.js';
 import type { IToolPickerServices } from '../../services/chatTypes.js';
 import type { IMcpClientService } from '../../services/serviceTypes.js';
+import type { IAutonomyFeatureFlagsService } from '../../services/autonomyFeatureFlags.js';
 import './aiSettings.css';
 
 // ─── AISettingsPanel ─────────────────────────────────────────────────────────
@@ -48,6 +49,7 @@ export class AISettingsPanel extends Disposable {
     private readonly _unifiedConfigService?: IUnifiedAIConfigService,
     private readonly _toolPickerServices?: IToolPickerServices,
     private readonly _mcpClientService?: IMcpClientService,
+    private readonly _autonomyFlagsService?: IAutonomyFeatureFlagsService,
   ) {
     super();
 
@@ -88,7 +90,7 @@ export class AISettingsPanel extends Disposable {
       this._register(new ModelSection(this._service, _languageModelsService)),
       this._register(new RetrievalSection(this._service, this._unifiedConfigService)),
       this._register(new AgentSection(this._service, this._unifiedConfigService)),
-      this._register(new HeartbeatSection(this._service, this._unifiedConfigService)),
+      this._register(new HeartbeatSection(this._service, this._unifiedConfigService, this._autonomyFlagsService)),
       this._register(new CronSection(this._service)),
       this._register(new ToolsSection(this._service, this._toolPickerServices, this._unifiedConfigService)),
       this._register(new AdvancedSection(this._service)),

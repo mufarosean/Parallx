@@ -30,7 +30,7 @@ triage, summarize, and route — with your approval.
      `https://www.googleapis.com/auth/gmail.readonly`.
 
 2. **Paste credentials into Parallx.**
-   - Open Parallx → `Ctrl+,` → search for **gmail**.
+   - Open Parallx → `Ctrl+Alt+S` → search for **gmail**.
    - Set:
      - `mcp.gmail.clientId` — paste your Client ID.
      - `mcp.gmail.clientSecret` — paste your Client Secret. (Stored as

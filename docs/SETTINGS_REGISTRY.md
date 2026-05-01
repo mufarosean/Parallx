@@ -119,7 +119,7 @@ reg.bind<boolean>('autonomy.heartbeat', {
 ## Editor UI
 
 The Settings extension contributes the `settings.open` command
-(`Ctrl+,`). The editor renders an Overlay with a search box, a
+(`Ctrl+Alt+S`). The editor renders an Overlay with a search box, a
 scope segmented control (All / User / Workspace), and one row per
 schema grouped by category. Controls are type-driven:
 

@@ -212,9 +212,9 @@ export class MenuBuilder extends Disposable {
         disabled: true,
       },
       {
-        id: 'workbench.action.openSettings',
+        id: 'settings.open',
         label: 'Settings',
-        keybinding: this.keybindingHint('workbench.action.openSettings'),
+        keybinding: this.keybindingHint('settings.open'),
         group: '2_preferences',
       },
       {

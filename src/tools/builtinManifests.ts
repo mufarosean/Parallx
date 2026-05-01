@@ -353,7 +353,7 @@ export const SETTINGS_MANIFEST: IToolManifest = {
       { id: 'settings.open', title: 'Parallx: Open Settings' },
     ],
     keybindings: [
-      { command: 'settings.open', key: 'Ctrl+,' },
+      { command: 'settings.open', key: 'Ctrl+Alt+S' },
     ],
   },
 };

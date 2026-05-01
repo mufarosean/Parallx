@@ -198,9 +198,13 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
   }
   header.appendChild(tabs);
 
+  header.appendChild($('div.autonomy-log-divider'));
+
   // Filter chips
   const filters = $('div.autonomy-log-filters');
   header.appendChild(filters);
+
+  header.appendChild($('div.autonomy-log-divider'));
 
   // Actions
   const markAll = $('button.autonomy-log-action') as HTMLButtonElement;

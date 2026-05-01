@@ -40,15 +40,29 @@
 
 .autonomy-log-filters {
   display: flex;
-  gap: 4px;
+  gap: 2px;
+  align-items: center;
+}
+
+.autonomy-log-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--vscode-panel-border, #333);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.autonomy-log-filters:empty,
+.autonomy-log-filters:empty + .autonomy-log-divider {
+  display: none;
 }
 
 .autonomy-log-chip {
   background: transparent;
   color: var(--vscode-descriptionForeground, #999);
-  border: 1px solid var(--vscode-panel-border, #333);
-  border-radius: 10px;
-  padding: 2px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--parallx-radius-sm, 3px);
+  padding: 2px 8px;
   font-size: var(--parallx-fontSize-xs);
   cursor: pointer;
   line-height: 1.4;
@@ -56,27 +70,27 @@
 
 .autonomy-log-chip:hover {
   color: var(--vscode-foreground, #ccc);
-  border-color: var(--vscode-focusBorder, #007acc);
+  background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.06));
 }
 
 .autonomy-log-chip--active {
-  color: var(--vscode-button-foreground, #fff);
-  background: var(--vscode-button-background, #0e639c);
-  border-color: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-foreground, #fff);
+  background: var(--vscode-toolbar-activeBackground, rgba(255, 255, 255, 0.1));
 }
 
 .autonomy-log-action {
   background: none;
   border: none;
-  color: var(--vscode-icon-foreground, #c5c5c5);
+  color: var(--vscode-descriptionForeground, #999);
   cursor: pointer;
   padding: 2px 8px;
   font-size: var(--parallx-fontSize-xs);
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm, 3px);
+  line-height: 1.4;
 }
 
 .autonomy-log-action:hover {
-  background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.05));
+  background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.06));
   color: var(--vscode-foreground, #ccc);
 }
 
@@ -170,7 +184,7 @@
 .autonomy-log-badge--subagent  { background: #c586c0; color: #fff; }
 .autonomy-log-badge--agent     { background: #888; color: #fff; }
 
-/* M60 §8 Phase ? — task rail polish: tabs, pause toggle, pattern list. */
+/* M60 Â§8 Phase Î¶ â€” task rail polish: tabs, pause toggle, pattern list. */
 .autonomy-log-tabs {
   display: flex;
   gap: 2px;
@@ -179,12 +193,14 @@
 
 .autonomy-log-tab {
   background: transparent;
-  border: 1px solid transparent;
+  border: none;
   color: var(--vscode-descriptionForeground, #999);
   font-size: var(--parallx-fontSize-xs);
   padding: 2px 8px;
-  border-radius: 3px;
+  border-radius: var(--parallx-radius-sm, 3px);
   cursor: pointer;
+  line-height: 1.4;
+  font-weight: 500;
 }
 
 .autonomy-log-tab:hover {
@@ -193,9 +209,8 @@
 }
 
 .autonomy-log-tab--active {
-  background: var(--vscode-list-activeSelectionBackground, rgba(255, 255, 255, 0.1));
-  color: var(--vscode-list-activeSelectionForeground, #fff);
-  border-color: var(--vscode-focusBorder, transparent);
+  background: var(--vscode-toolbar-activeBackground, rgba(255, 255, 255, 0.1));
+  color: var(--vscode-foreground, #fff);
 }
 
 .autonomy-log-pause {
