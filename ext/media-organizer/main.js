@@ -13539,6 +13539,46 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut)
   revFrRow.appendChild(revFrLabel);
   controls.appendChild(revFrRow);
 
+  // GIF-only: auto-optimize after export. The GIF estimator can still miss
+  // by ±20% on unusual content; this safety net runs the optimizer in place
+  // when the actual output exceeds the user's threshold. No backup is taken
+  // — the freshly-exported file is itself the "original" and the user can
+  // re-export with different settings if the optimizer's compromise is
+  // unacceptable.
+  const autoOptRow = moEl('div', 'mo-clip-row mo-clip-gif-only');
+  const autoOptChk = document.createElement('input');
+  autoOptChk.type = 'checkbox'; autoOptChk.id = 'mo-clip-auto-opt'; autoOptChk.className = 'mo-clip-check';
+  autoOptChk.checked = true;
+  autoOptRow.appendChild(autoOptChk);
+  const autoOptLabel = lbl('Auto-optimize if over');
+  autoOptLabel.htmlFor = 'mo-clip-auto-opt';
+  autoOptLabel.title = 'After export, re-encode in place if the actual file size exceeds the threshold';
+  autoOptRow.appendChild(autoOptLabel);
+  const autoOptThreshold = document.createElement('input');
+  autoOptThreshold.type = 'number'; autoOptThreshold.min = '1'; autoOptThreshold.max = '500'; autoOptThreshold.step = '1';
+  autoOptThreshold.value = '8';
+  autoOptThreshold.className = 'mo-clip-input mo-clip-input--num';
+  autoOptRow.appendChild(autoOptThreshold);
+  autoOptRow.appendChild(moEl('span', 'mo-clip-unit', { textContent: 'MB' }));
+  controls.appendChild(autoOptRow);
+  // Persist the user's last choice so it survives across dialog opens.
+  (async () => {
+    try {
+      const enabled = await moGetSetting('clipAutoOptimizeEnabled', '1');
+      const threshold = await moGetSetting('clipAutoOptimizeThresholdMB', '8');
+      autoOptChk.checked = enabled !== '0';
+      const n = parseFloat(threshold);
+      if (Number.isFinite(n) && n > 0) autoOptThreshold.value = String(n);
+    } catch { /* defaults are fine */ }
+  })();
+  autoOptChk.addEventListener('change', () => {
+    moSetSetting('clipAutoOptimizeEnabled', autoOptChk.checked ? '1' : '0').catch(() => {});
+  });
+  autoOptThreshold.addEventListener('change', () => {
+    const n = parseFloat(autoOptThreshold.value);
+    if (Number.isFinite(n) && n > 0) moSetSetting('clipAutoOptimizeThresholdMB', String(n)).catch(() => {});
+  });
+
   // MP4/WebM encode mode: quality (CRF) vs target file size (MB).
   // CRF mode: legacy behaviour, single-pass, controlled by crfInput.
   // Size mode: two-pass encode targeting an exact MB budget. Bitrate is
@@ -14848,7 +14888,40 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut)
         }).then(() => updateEstimate()).catch(() => {});
       }
 
-      status.textContent = 'Exported ✓ ' + result.outPath + actual;
+      // Auto-optimize safety net: if the user opted in and the actual GIF
+      // came in over their threshold, re-encode in place using the same
+      // ladder the standalone optimizer uses. Best-effort — failures are
+      // non-fatal (the original export is still on disk).
+      if (fmtSel.value === 'gif' && autoOptChk.checked && actualBytes > 0) {
+        const thresholdMB = Math.max(0.5, parseFloat(autoOptThreshold.value) || 8);
+        const thresholdBytes = thresholdMB * 1024 * 1024;
+        if (actualBytes > thresholdBytes) {
+          try {
+            status.textContent = `Optimizing\u2026 ${fmtBytes(actualBytes)} \u2192 target ${thresholdMB} MB`;
+            // backup:false because the freshly-exported file IS the user's
+            // chosen output \u2014 they didn't ask for a sibling .original.gif.
+            // allowTrim:false because trimming a clip the user just hand-cut
+            // would silently lose content; better to leave a slightly-large
+            // file and let them re-export.
+            const optResult = await moOptimizeGifFile(result.outPath, {
+              targetBytes: thresholdBytes,
+              dither: ditherSel.value,
+              allowTrim: false,
+              backup: false,
+            });
+            if (optResult.replaced) {
+              actual = ` \u00b7 actual ${fmtBytes(actualBytes)} \u2192 ${fmtBytes(optResult.finalBytes)} (optimized)`;
+            } else if (optResult.skipped && optResult.reason === 'no-improvement') {
+              actual += ' \u00b7 already minimal';
+            }
+          } catch (err) {
+            console.warn('[media-organizer] auto-optimize failed:', err);
+            actual += ' \u00b7 (auto-optimize failed; see console)';
+          }
+        }
+      }
+
+      status.textContent = 'Exported \u2713 ' + result.outPath + actual;
       api.window.showInformationMessage('Exported: ' + result.outPath);
     } catch (err) {
       status.textContent = '';
