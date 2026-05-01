@@ -1428,6 +1428,21 @@ export interface IVectorStoreService extends IDisposable {
     sourceMetadata?: import('./vectorStoreService.js').SourceIndexMetadata,
   ): Promise<void>;
 
+  /**
+   * M60 B4 — batch upsert N sources into one `runTransaction` IPC.
+   * Drops main-process IPC count by ≥10× during bulk indexing.
+   */
+  upsertMany?(
+    records: ReadonlyArray<{
+      sourceType: string;
+      sourceId: string;
+      chunks: import('./vectorStoreService.js').EmbeddedChunk[];
+      contentHash: string;
+      summary?: string;
+      sourceMetadata?: import('./vectorStoreService.js').SourceIndexMetadata;
+    }>,
+  ): Promise<void>;
+
   /** Delete all chunks for a source. */
   deleteSource(sourceType: string, sourceId: string): Promise<void>;
 

@@ -56,6 +56,14 @@ const FILE_DEBOUNCE_MS = 5_000;
 /** Max concurrent embedding batches (serialized — one at a time). */
 const BATCH_SIZE = 32;
 
+/**
+ * M60 B4 — Flush the pending upsert batch every N source records during
+ * bulk indexing. Empirically 20 sources × ~6 chunks/source ≈ 120 ops per
+ * `runTransaction`, well under SQLite's per-transaction practical ceiling
+ * and small enough that a renderer cancel mid-bulk only loses ≤20 sources.
+ */
+const UPSERT_FLUSH_EVERY = 20;
+
 /** File extensions supported for text indexing. */
 const INDEXABLE_EXTENSIONS = new Set([
   '.md', '.txt', '.ts', '.tsx', '.js', '.jsx', '.json', '.jsonl',
@@ -190,6 +198,16 @@ interface PageMtimeRow {
   updated_at: string;
 }
 
+/** B4 — A single source-upsert payload buffered for batched flush. */
+interface UpsertRecord {
+  sourceType: string;
+  sourceId: string;
+  chunks: import('./vectorStoreService.js').EmbeddedChunk[];
+  contentHash: string;
+  summary?: string;
+  sourceMetadata?: import('./vectorStoreService.js').SourceIndexMetadata;
+}
+
 /** A file discovered during directory walk, with its mtime for fast-skip. */
 interface IndexableFile {
   /** Absolute filesystem path (for file I/O). */
@@ -297,6 +315,19 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
    */
   private _flagAccessor: ((flagId: string) => boolean) | undefined;
 
+  /**
+   * M60 B4 — IPC batching. When the bulk paths (`_indexAllPages` /
+   * `_indexAllFiles`) set this to a non-null array, `_commitSource()`
+   * enqueues into it instead of doing an immediate `vectorStore.upsert`
+   * (= one `runTransaction` IPC). The bulk caller flushes every
+   * `UPSERT_FLUSH_EVERY` records and at the end of its loop, dropping
+   * IPC count by ~`UPSERT_FLUSH_EVERY×`. Incremental paths
+   * (`reindexPage`/`reindexFile` / `_indexSinglePage` / `_indexSingleFile`
+   * called outside the bulk wrappers) leave this null and behave exactly
+   * as before.
+   */
+  private _pendingUpsertBatch: UpsertRecord[] | null = null;
+
   /** Session guard captured at pipeline start — checked before commits. */
   private _sessionGuard: SessionGuard | undefined;
 
@@ -354,6 +385,47 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   private _isLazyMtimeEnabled(): boolean {
     try { return this._flagAccessor?.('indexing.lazyMtime.enabled') === true; }
     catch { return false; }
+  }
+
+  /**
+   * B4 — commit one source. When a bulk loop has installed a pending batch
+   * (`_pendingUpsertBatch`), this enqueues; otherwise it flushes immediately
+   * via `vectorStore.upsert` (legacy single-source path).
+   */
+  private async _commitSource(record: UpsertRecord): Promise<void> {
+    if (this._pendingUpsertBatch) {
+      this._pendingUpsertBatch.push(record);
+      if (this._pendingUpsertBatch.length >= UPSERT_FLUSH_EVERY) {
+        await this._flushUpsertBatch();
+      }
+      return;
+    }
+    await this._vectorStore.upsert(
+      record.sourceType, record.sourceId, record.chunks,
+      record.contentHash, record.summary, record.sourceMetadata,
+    );
+  }
+
+  /**
+   * B4 — drain `_pendingUpsertBatch` via `upsertMany` (one IPC for N sources)
+   * or fall back to per-source `upsert` if the host's vector-store
+   * implementation doesn't expose the batch path (defensive — the contract
+   * marks `upsertMany` optional on `IVectorStoreService`).
+   */
+  private async _flushUpsertBatch(): Promise<void> {
+    const batch = this._pendingUpsertBatch;
+    if (!batch || batch.length === 0) { return; }
+    this._pendingUpsertBatch = [];
+    if (typeof this._vectorStore.upsertMany === 'function') {
+      await this._vectorStore.upsertMany(batch);
+    } else {
+      for (const r of batch) {
+        await this._vectorStore.upsert(
+          r.sourceType, r.sourceId, r.chunks,
+          r.contentHash, r.summary, r.sourceMetadata,
+        );
+      }
+    }
   }
 
   private _isTranscriptIndexingEnabled(): boolean {
@@ -684,6 +756,9 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     this._updateProgress('pages', 0, candidates.length);
     let indexed = 0;
 
+    // B4 — install pending batch so per-page commits coalesce into batched IPC.
+    this._pendingUpsertBatch = [];
+    try {
     for (const page of candidates) {
       this._checkAborted();
       const t0 = performance.now();
@@ -710,6 +785,10 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       // iteration lets the renderer paint and dispatch UI events between
       // pages without measurably slowing total indexing time.
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+    } finally {
+      // B4 — flush any remaining queued commits and tear down the batch.
+      try { await this._flushUpsertBatch(); } finally { this._pendingUpsertBatch = null; }
     }
 
     return indexed;
@@ -757,20 +836,20 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     // Store — generate a content summary from the page's first chunk for the workspace digest.
     const pageText = chunks.map(c => c.text).join(' ');
     const summary = _generateSummary(pageText);
-    await this._vectorStore.upsert(
-      'page_block',
-      pageId,
-      embeddedChunks,
+    await this._commitSource({
+      sourceType: 'page_block',
+      sourceId: pageId,
+      chunks: embeddedChunks,
       contentHash,
       summary,
-      {
+      sourceMetadata: {
         documentKind: 'canvas',
         extractionPipeline: 'canvas',
         extractionFallback: false,
         classificationConfidence: 1,
         classificationReason: 'Canvas page',
       },
-    );
+    });
 
     return true;
   }
@@ -836,6 +915,9 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     this._updateProgress('files', 0, candidates.length);
     let indexed = 0;
 
+    // B4 — install pending batch so per-file commits coalesce into batched IPC.
+    this._pendingUpsertBatch = [];
+    try {
     // ── C.3: Batch pre-extract digital docs via Docling ──────────────────
     // Group candidates by classification. Digital docs get batched (fewer
     // round-trips to the Python bridge). Scanned/image docs stay sequential
@@ -901,6 +983,11 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
     // Clear batch cache after indexing run
     this._batchExtractionCache.clear();
+
+    } finally {
+      // B4 — flush any remaining queued commits and tear down the batch.
+      try { await this._flushUpsertBatch(); } finally { this._pendingUpsertBatch = null; }
+    }
 
     return indexed;
   }
@@ -1023,14 +1110,14 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     // Store — workspace-relative sourceId so retrieval context matches read_file paths
     // Generate a content summary from the first ~200 chars for the workspace digest.
     const summary = _generateSummary(content);
-    await this._vectorStore.upsert(
-      'file_chunk',
-      relPath,
-      embeddedChunks,
+    await this._commitSource({
+      sourceType: 'file_chunk',
+      sourceId: relPath,
+      chunks: embeddedChunks,
       contentHash,
       summary,
-      toSourceIndexMetadata(classification, pipelineUsed, didFallback),
-    );
+      sourceMetadata: toSourceIndexMetadata(classification, pipelineUsed, didFallback),
+    });
 
     // E.1/E.2: Record pipeline metadata for the caller
     this._lastFilePipeline = pipelineUsed;

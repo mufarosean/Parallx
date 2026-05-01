@@ -211,6 +211,60 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     summary?: string,
     sourceMetadata?: SourceIndexMetadata,
   ): Promise<void> {
+    const operations = await this._buildUpsertOps(
+      sourceType, sourceId, chunks, contentHash, summary, sourceMetadata,
+    );
+    await this._db.runTransaction(operations);
+    this._onDidUpdateIndex.fire({ sourceId, chunkCount: chunks.length });
+  }
+
+  /**
+   * M60 B4 — batch multiple source upserts into ONE `runTransaction` IPC.
+   *
+   * The `$lastRowId` sentinel is per-op (resolved against the most-recent
+   * INSERT's rowid), so concatenating ops across sources stays correct as
+   * long as each source's vec_embeddings INSERT immediately precedes its
+   * chunk_metadata + fts_chunks INSERTs (which `_buildUpsertOps` guarantees).
+   *
+   * Acceptance contract from M60 §6 B4: ≥10× IPC reduction at the existing
+   * BATCH_SIZE under bulk indexing.
+   */
+  async upsertMany(
+    records: ReadonlyArray<{
+      sourceType: string;
+      sourceId: string;
+      chunks: EmbeddedChunk[];
+      contentHash: string;
+      summary?: string;
+      sourceMetadata?: SourceIndexMetadata;
+    }>,
+  ): Promise<void> {
+    if (records.length === 0) { return; }
+    const allOps: { type: 'run'; sql: string; params?: unknown[] }[] = [];
+    for (const r of records) {
+      const ops = await this._buildUpsertOps(
+        r.sourceType, r.sourceId, r.chunks, r.contentHash, r.summary, r.sourceMetadata,
+      );
+      allOps.push(...ops);
+    }
+    await this._db.runTransaction(allOps);
+    for (const r of records) {
+      this._onDidUpdateIndex.fire({ sourceId: r.sourceId, chunkCount: r.chunks.length });
+    }
+  }
+
+  /**
+   * Build the operation list for a single source upsert.
+   * Shared between `upsert` (one source) and `upsertMany` (N sources).
+   */
+  private async _buildUpsertOps(
+    sourceType: string,
+    sourceId: string,
+    chunks: EmbeddedChunk[],
+    contentHash: string,
+    summary?: string,
+    sourceMetadata?: SourceIndexMetadata,
+  ): Promise<{ type: 'run'; sql: string; params?: unknown[] }[]> {
     // Build transaction operations: delete old, insert new
     const operations: { type: 'run'; sql: string; params?: unknown[] }[] = [];
 
@@ -326,10 +380,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
       ],
     });
 
-    // Execute all in one transaction
-    await this._db.runTransaction(operations);
-
-    this._onDidUpdateIndex.fire({ sourceId, chunkCount: chunks.length });
+    return operations;
   }
 
   // ── Delete ──
