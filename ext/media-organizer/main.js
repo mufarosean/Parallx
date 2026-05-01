@@ -2886,11 +2886,52 @@ async function processIncrementalDelete(filePath) {
 
 // ── Batched watcher event processor ──
 
+/**
+ * Wait for a path's size + mtime to stop changing. Videos (and large
+ * images on slow disks / network shares / cloud sync folders) arrive
+ * via many small writes; if we run ffprobe before the writer is done,
+ * we hash a partial file and ffprobe fails because the moov atom isn't
+ * written yet. Result: a half-broken DB row with no metadata that the
+ * grid won't render properly.
+ *
+ * Polls stat every `intervalMs` and returns once two consecutive polls
+ * agree on size + mtime (or `maxWaitMs` elapses). Returns false if the
+ * file vanished or never settled.
+ */
+async function _waitForFileToSettle(filePath, { intervalMs = 400, maxWaitMs = 8000 } = {}) {
+  const start = Date.now();
+  let prevSize = -1;
+  let prevMtime = -1;
+  while (Date.now() - start < maxWaitMs) {
+    let st;
+    try { st = await window.parallxElectron.fs.stat(filePath); } catch { return false; }
+    if (!st || st.error || typeof st.size !== 'number') return false;
+    if (st.size === prevSize && Number(st.mtime) === Number(prevMtime) && st.size > 0) {
+      return true;
+    }
+    prevSize = st.size;
+    prevMtime = Number(st.mtime);
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  return false; // timed out — caller decides what to do
+}
+
 async function drainWatcherQueue() {
   if (_watcherProcessing || _watcherQueue.length === 0) return;
   _watcherProcessing = true;
 
-  const batch = _watcherQueue.splice(0);
+  // Snapshot + dedup the queue. We dedup by path keeping the LAST event
+  // for each path — fs.watch fires a torrent of events during a copy
+  // (created → changed × N) and we only need to act on the final state.
+  // A 'deleted' for a path always wins over earlier creates/changes.
+  const rawBatch = _watcherQueue.splice(0);
+  const dedup = new Map();
+  for (const evt of rawBatch) {
+    const prior = dedup.get(evt.path);
+    if (prior && prior.type === 'deleted' && evt.type !== 'deleted') continue;
+    dedup.set(evt.path, evt);
+  }
+  const batch = [...dedup.values()];
   let created = 0, updated = 0, deleted = 0, errors = 0;
 
   try {
@@ -2903,7 +2944,22 @@ async function drainWatcherQueue() {
           const result = await processIncrementalDelete(evt.path);
           if (result) deleted++;
         } else {
-          // 'created' or 'changed' — upsert via processFile
+          // For non-delete events, wait for the file to finish being
+          // written before we hash and ffprobe it. Critical for videos
+          // copied/downloaded into a watched folder.
+          const settled = await _waitForFileToSettle(evt.path);
+          if (!settled) {
+            // File vanished mid-settle, OR didn't stabilize within 8s.
+            // If it still exists, push back into the queue with a small
+            // delay so we retry once more.
+            try {
+              const exists = await window.parallxElectron.fs.exists(evt.path);
+              if (exists) {
+                setTimeout(() => enqueueWatcherEvent({ type: 'changed', path: evt.path }), 5_000);
+              }
+            } catch { /* ignore */ }
+            continue;
+          }
           const result = await processIncrementalCreate(evt.path);
           if (result) {
             if (result.action === 'created') created++;
@@ -2920,6 +2976,11 @@ async function drainWatcherQueue() {
       console.log(`[MediaOrganizer] Auto-scan: ${created} new, ${updated} updated, ${deleted} removed`);
       if (deleted > 0) await moPruneOrphanFolderAlbums();
       _notifySidebarRefresh();
+      // Refresh the grid too — sidebar only owns folders/tags/albums;
+      // without this dispatch the user sees the new file count in the
+      // sidebar but the actual cards don't show up until they navigate
+      // folders or relaunch.
+      try { document.dispatchEvent(new CustomEvent('mo:refresh-grid')); } catch { /* ignore */ }
     }
   } finally {
     _watcherProcessing = false;
@@ -3103,6 +3164,9 @@ async function runDeltaScan(api) {
       );
     }
     _notifySidebarRefresh();
+    // Refresh the grid too — sidebar callbacks only own the folder/tag/
+    // album panels, not the actual cards.
+    try { document.dispatchEvent(new CustomEvent('mo:refresh-grid')); } catch { /* ignore */ }
   } else {
     console.log('[MediaOrganizer] Delta scan: no changes detected');
   }
