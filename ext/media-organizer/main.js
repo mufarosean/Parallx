@@ -2902,7 +2902,25 @@ async function _waitForFileToSettle(filePath, { intervalMs = 400, maxWaitMs = 80
   const start = Date.now();
   let prevSize = -1;
   let prevMtime = -1;
+  // Fast path: if the file's mtime is already comfortably in the past
+  // (>2s), the writer is almost certainly done. Skip the second-poll
+  // confirmation and return immediately. This is the common case for
+  // small files (single fs.watch burst, then quiescent) and shaves
+  // ~800ms off the perceived latency for GIFs and small images.
+  try {
+    const st = await window.parallxElectron.fs.stat(filePath);
+    if (st && !st.error && typeof st.size === 'number' && st.size > 0) {
+      const ageMs = Date.now() - Number(st.mtime);
+      if (ageMs > 2000) return true;
+      prevSize = st.size;
+      prevMtime = Number(st.mtime);
+    } else if (!st || st.error) {
+      return false;
+    }
+  } catch { return false; }
+
   while (Date.now() - start < maxWaitMs) {
+    await new Promise(r => setTimeout(r, intervalMs));
     let st;
     try { st = await window.parallxElectron.fs.stat(filePath); } catch { return false; }
     if (!st || st.error || typeof st.size !== 'number') return false;
@@ -2911,7 +2929,6 @@ async function _waitForFileToSettle(filePath, { intervalMs = 400, maxWaitMs = 80
     }
     prevSize = st.size;
     prevMtime = Number(st.mtime);
-    await new Promise(r => setTimeout(r, intervalMs));
   }
   return false; // timed out — caller decides what to do
 }
@@ -2932,39 +2949,60 @@ async function drainWatcherQueue() {
     dedup.set(evt.path, evt);
   }
   const batch = [...dedup.values()];
+  // Process deletes BEFORE creates. Deletes are ~milliseconds; creates
+  // can be 10-30 seconds for large videos (md5 hash + ffprobe + cover
+  // frame). If a batch contains both, we don't want the user's deletion
+  // to wait behind an unrelated create's ffmpeg run. Two-phase drain:
+  // (1) all deletes, refresh, (2) all creates one at a time, refresh
+  // after each so the file lands in the grid as soon as its own
+  // pipeline finishes rather than at end-of-batch.
+  const deletes = batch.filter(e => e.type === 'deleted');
+  const creates = batch.filter(e => e.type !== 'deleted');
   let created = 0, updated = 0, deleted = 0, errors = 0;
+
+  const refreshGrid = () => {
+    try { document.dispatchEvent(new CustomEvent('mo:refresh-grid')); } catch { /* ignore */ }
+  };
 
   try {
     // Ensure tools are detected for metadata extraction
     await detectAllTools();
 
-    for (const evt of batch) {
+    // Phase 1: deletes (fast)
+    for (const evt of deletes) {
       try {
-        if (evt.type === 'deleted') {
-          const result = await processIncrementalDelete(evt.path);
-          if (result) deleted++;
-        } else {
-          // For non-delete events, wait for the file to finish being
-          // written before we hash and ffprobe it. Critical for videos
-          // copied/downloaded into a watched folder.
-          const settled = await _waitForFileToSettle(evt.path);
-          if (!settled) {
-            // File vanished mid-settle, OR didn't stabilize within 8s.
-            // If it still exists, push back into the queue with a small
-            // delay so we retry once more.
-            try {
-              const exists = await window.parallxElectron.fs.exists(evt.path);
-              if (exists) {
-                setTimeout(() => enqueueWatcherEvent({ type: 'changed', path: evt.path }), 5_000);
-              }
-            } catch { /* ignore */ }
-            continue;
-          }
-          const result = await processIncrementalCreate(evt.path);
-          if (result) {
-            if (result.action === 'created') created++;
-            else if (result.action === 'updated') updated++;
-          }
+        const result = await processIncrementalDelete(evt.path);
+        if (result) deleted++;
+      } catch (err) {
+        console.warn(`[MediaOrganizer] Watcher: error processing ${evt.path}:`, err);
+        errors++;
+      }
+    }
+    if (deleted > 0) {
+      await moPruneOrphanFolderAlbums();
+      _notifySidebarRefresh();
+      refreshGrid();
+    }
+
+    // Phase 2: creates (slow — refresh after each so the user sees
+    // results as they become available instead of waiting for the
+    // whole batch).
+    for (const evt of creates) {
+      try {
+        const settled = await _waitForFileToSettle(evt.path);
+        if (!settled) {
+          try {
+            const exists = await window.parallxElectron.fs.exists(evt.path);
+            if (exists) {
+              setTimeout(() => enqueueWatcherEvent({ type: 'changed', path: evt.path }), 5_000);
+            }
+          } catch { /* ignore */ }
+          continue;
+        }
+        const result = await processIncrementalCreate(evt.path);
+        if (result) {
+          if (result.action === 'created') { created++; _notifySidebarRefresh(); refreshGrid(); }
+          else if (result.action === 'updated') { updated++; refreshGrid(); }
         }
       } catch (err) {
         console.warn(`[MediaOrganizer] Watcher: error processing ${evt.path}:`, err);
@@ -2974,13 +3012,6 @@ async function drainWatcherQueue() {
 
     if (created + updated + deleted > 0) {
       console.log(`[MediaOrganizer] Auto-scan: ${created} new, ${updated} updated, ${deleted} removed`);
-      if (deleted > 0) await moPruneOrphanFolderAlbums();
-      _notifySidebarRefresh();
-      // Refresh the grid too — sidebar only owns folders/tags/albums;
-      // without this dispatch the user sees the new file count in the
-      // sidebar but the actual cards don't show up until they navigate
-      // folders or relaunch.
-      try { document.dispatchEvent(new CustomEvent('mo:refresh-grid')); } catch { /* ignore */ }
     }
   } finally {
     _watcherProcessing = false;
