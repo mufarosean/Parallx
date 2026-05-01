@@ -54,8 +54,9 @@ The runner is exercised by `tests/unit/autonomyEvalRunner.test.ts` (vitest).
 | `PARALLX_GMAIL_E2E=0`     | Same as unset.                                                            |
 | `PARALLX_GMAIL_E2E=1`     | Live mode. Real Gmail. **CI never sets this.** Requires F2+F3+F4 landed.  |
 
-The runner refuses live mode (`outcome: 'gated'`) until F4 lands so that no
-accidental live OAuth flow is driven from a test environment.
+With F2+F3+F4 landed, live mode reports `outcome: 'live-mode-ready'` and skips
+fixture coherence; an end-to-end driver that spawns the MCP child + drives the
+OAuth flow is a future increment.
 
 ## Runner status
 

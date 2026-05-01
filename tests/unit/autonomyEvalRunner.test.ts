@@ -67,11 +67,11 @@ describe('autonomy-eval runner — Gmail fixture mode', () => {
     expect(result.rubric?.passThreshold).toBe(10);
   });
 
-  it('Gmail scenario refuses live execution (returns gated) until F4 lands', () => {
+  it('Gmail scenario reports live-mode-ready when PARALLX_GMAIL_E2E=1 (post-F4)', () => {
     const scenarioPath = join(ROOT, 'gmail-inbox-digest.scenario.json');
     const result = runOne(scenarioPath, { rootDir: ROOT, env: { PARALLX_GMAIL_E2E: '1' } });
-    expect(result.outcome).toBe('gated');
-    expect(result.note).toContain('F4');
+    expect(result.outcome).toBe('live-mode-ready');
+    expect(result.note).toMatch(/F2\+F3\+F4/);
   });
 
   it('runAll reports loaded for non-Gmail scenarios + fixture-ok for Gmail (offline)', () => {

@@ -18,9 +18,12 @@
 //   • Drive cron / heartbeat / sub-agent / canvas scenarios end-to-end.
 //     Those need the full Parallx service graph mounted; that work is
 //     deferred until each domain has a service-level test entry point.
-//   • Execute the Gmail scenario end-to-end. That's gated on:
-//       F2 (OAuth) + F3 (safeStorage IPC) + F4 (gmail.list_unread tool).
-//     Until F4 lands, the Gmail scenario is reported as `gated`.
+//   • Execute the Gmail scenario end-to-end. With F2 (OAuth) + F3
+//     (safeStorage IPC) + F4 (gmail.list_unread tool) landed, the
+//     integration primitives are in place. Live mode (PARALLX_GMAIL_E2E=1)
+//     reports `live-mode-ready` and skips fixture coherence; the
+//     end-to-end driver that spawns the MCP child + drives the OAuth
+//     flow is a future increment.
 //   • LLM-graded rubric scoring. Rubrics are loaded but not graded.
 //     Grading hooks into the configured chat provider; that wiring
 //     lands when the runner is upgraded to drive scenarios live.
@@ -75,7 +78,7 @@ export interface IGmailFixture {
 
 export interface IScenarioResult {
   readonly scenarioId: string;
-  readonly outcome: 'loaded' | 'gated' | 'fixture-ok' | 'fixture-mismatch' | 'invalid';
+  readonly outcome: 'loaded' | 'gated' | 'fixture-ok' | 'fixture-mismatch' | 'invalid' | 'live-mode-ready';
   readonly note?: string;
   readonly rubric?: IRubricFile;
 }
@@ -223,11 +226,21 @@ export function runOne(scenarioPath: string, opts: IRunOptions): IScenarioResult
 
   // Gmail-shaped scenario.
   if (isLiveMode(opts.env)) {
+    // M60 Phase η F5 follow-up: with F2 (OAuth) + F3 (encrypted token
+    // storage) + F4 (gmail.list_unread tool) landed, the integration
+    // primitives are in place. Live mode skips fixture coherence and
+    // signals the caller to drive the real MCP server. The runner
+    // itself remains a static validator — it does not spawn the MCP
+    // child or perform the OAuth flow. Callers (manual harness or
+    // future end-to-end driver) are expected to consume this outcome
+    // and exercise the wiring.
     return {
       scenarioId: scenario.id,
-      outcome: 'gated',
+      outcome: 'live-mode-ready',
       rubric,
-      note: 'PARALLX_GMAIL_E2E=1 — live execution requires F2+F3+F4 to land. Runner refuses to drive the live OAuth flow under test.',
+      note:
+        'PARALLX_GMAIL_E2E=1 — F2+F3+F4 landed; integration primitives ready. ' +
+        'Fixture coherence skipped. Driver/harness should now exercise the real Gmail MCP path.',
     };
   }
 
@@ -269,6 +282,6 @@ export function runOne(scenarioPath: string, opts: IRunOptions): IScenarioResult
     scenarioId: scenario.id,
     outcome: 'fixture-ok',
     rubric,
-    note: `Fixture has ${fixture.messages.length} message(s); execution gated on F4.`,
+    note: `Fixture has ${fixture.messages.length} message(s); execution gated on integration driver (F4 wiring landed; an end-to-end driver remains a future increment).`,
   };
 }

@@ -99,8 +99,9 @@ describe('registerBuiltInTools', () => {
     // M58 W5: sessions_spawn brings the total to 33.
     // M58-real post-ship UX reshape: autonomy_log brings the total to 34.
     // M60 Phase δ: 5 block-level + property-query tools bring the total to 39.
-    expect(toolsService.registeredTools).toHaveLength(39);
-    expect(disposables).toHaveLength(39);
+    // M60 Phase η §T6.F4: gmail.list_unread brings the total to 40.
+    expect(toolsService.registeredTools).toHaveLength(40);
+    expect(disposables).toHaveLength(40);
 
     const names = toolsService.registeredTools.map(t => t.name).sort();
     expect(names).toEqual([
@@ -119,6 +120,7 @@ describe('registerBuiltInTools', () => {
       'edit_file',
       'find_pages_by_property',
       'get_page_properties',
+      'gmail.list_unread',
       'grep_search',
       'insert_block_after',
       'link_block',
