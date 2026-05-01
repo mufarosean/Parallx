@@ -2948,13 +2948,25 @@ function startWatcherForRoot(rootPath) {
   fsApi.watch(rootPath, { recursive: true }).then(({ watchId, error }) => {
     if (error) {
       console.warn(`[MediaOrganizer] Could not watch ${rootPath}:`, error.message);
+      // Schedule a retry — disk may have been temporarily unavailable
+      // (USB unplug, network drop, etc).
+      _scheduleWatcherRearm(rootPath, 30_000);
       return;
     }
 
     const unsubscribe = fsApi.onDidChange((payload) => {
       if (payload.watchId !== watchId) return;
       if (payload.error) {
-        console.warn('[MediaOrganizer] Watcher error:', payload.error);
+        // Main-process watcher hit an error and self-cleaned. We must
+        // mirror that cleanup here, otherwise startWatcherForRoot's
+        // "already watching" guard will block re-arming forever.
+        console.warn('[MediaOrganizer] Watcher error, will re-arm:', payload.error);
+        const stale = _activeMediaWatchers.get(rootPath);
+        if (stale && stale.watchId === watchId) {
+          try { stale.unsubscribe(); } catch { /* ignore */ }
+          _activeMediaWatchers.delete(rootPath);
+          _scheduleWatcherRearm(rootPath, 5_000);
+        }
         return;
       }
       for (const evt of payload.events) {
@@ -2969,7 +2981,22 @@ function startWatcherForRoot(rootPath) {
 
     _activeMediaWatchers.set(rootPath, { watchId, unsubscribe });
     console.log(`[MediaOrganizer] Watching ${rootPath} (${watchId})`);
+  }).catch(err => {
+    console.warn(`[MediaOrganizer] watch() rejected for ${rootPath}:`, err);
+    _scheduleWatcherRearm(rootPath, 30_000);
   });
+}
+
+/** Re-arm a watcher after `delayMs`. No-op if it's already been re-armed. */
+function _scheduleWatcherRearm(rootPath, delayMs) {
+  setTimeout(() => {
+    if (_activeMediaWatchers.has(rootPath)) return;
+    // Verify the path still exists before retrying — avoids tight retry
+    // loops on permanently-removed roots (e.g. unplugged USB).
+    window.parallxElectron.fs.exists(rootPath).then(exists => {
+      if (exists) startWatcherForRoot(rootPath);
+    }).catch(() => {});
+  }, delayMs);
 }
 
 function stopAllWatchers() {
@@ -3097,6 +3124,67 @@ async function resumeWatchersAndDeltaScan(api) {
   runDeltaScan(api).catch(err => {
     console.warn('[MediaOrganizer] Background delta scan failed:', err);
   });
+
+  // Arm the auto-recovery loop so we self-heal from dropped fs.watch
+  // events. Windows recursive fs.watch silently coalesces/drops events
+  // under load, on network drives, and on USB volumes. Without this
+  // safety net the only recovery is a full app relaunch.
+  startAutoRecovery();
+}
+
+// ── Auto-recovery: focus + periodic delta scans ──
+//
+// fs.watch is best-effort, especially on Windows with recursive:true.
+// To bound the worst-case "I added a file and Parallx didn't notice"
+// window we additionally:
+//   1. Run a delta scan on window focus (debounced) — typically within
+//      ~1.5s of the user returning to the app.
+//   2. Run a periodic delta scan every 5 minutes while visible.
+// Both reuse runDeltaScan(), which already walks each scan root once
+// and reconciles against the DB (creates, updates, deletes).
+
+let _deltaScanRunning = false;
+let _focusDeltaScanTimer = null;
+let _periodicDeltaScanTimer = null;
+const FOCUS_DELTA_SCAN_DEBOUNCE_MS = 1500;
+const PERIODIC_DELTA_SCAN_MS = 5 * 60 * 1000;
+
+async function _runDeltaScanSafe() {
+  if (_deltaScanRunning || _scanRunning || !_api) return;
+  _deltaScanRunning = true;
+  try {
+    await runDeltaScan(_api);
+  } catch (err) {
+    console.warn('[MediaOrganizer] Auto-delta scan failed:', err);
+  } finally {
+    _deltaScanRunning = false;
+  }
+}
+
+function _onWindowFocusOrVisible() {
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+  if (_focusDeltaScanTimer) clearTimeout(_focusDeltaScanTimer);
+  _focusDeltaScanTimer = setTimeout(() => {
+    _focusDeltaScanTimer = null;
+    _runDeltaScanSafe();
+  }, FOCUS_DELTA_SCAN_DEBOUNCE_MS);
+}
+
+function startAutoRecovery() {
+  if (_periodicDeltaScanTimer) return; // already armed
+  window.addEventListener('focus', _onWindowFocusOrVisible);
+  document.addEventListener('visibilitychange', _onWindowFocusOrVisible);
+  _periodicDeltaScanTimer = setInterval(() => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    _runDeltaScanSafe();
+  }, PERIODIC_DELTA_SCAN_MS);
+}
+
+function stopAutoRecovery() {
+  try { window.removeEventListener('focus', _onWindowFocusOrVisible); } catch { /* ignore */ }
+  try { document.removeEventListener('visibilitychange', _onWindowFocusOrVisible); } catch { /* ignore */ }
+  if (_focusDeltaScanTimer) { clearTimeout(_focusDeltaScanTimer); _focusDeltaScanTimer = null; }
+  if (_periodicDeltaScanTimer) { clearInterval(_periodicDeltaScanTimer); _periodicDeltaScanTimer = null; }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -17565,6 +17653,7 @@ export async function activate(api, context) {
 export function deactivate() {
   cancelScan();
   stopAllWatchers();
+  stopAutoRecovery();
   for (const d of _commandDisposables) {
     if (d && typeof d.dispose === 'function') d.dispose();
   }
