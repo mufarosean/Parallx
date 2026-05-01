@@ -1,12 +1,13 @@
 // electron/main.cjs — Electron main process
 // Uses CommonJS because Electron's main process doesn't support ESM by default.
 
-const { app, BrowserWindow, ipcMain, dialog, shell, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen, safeStorage } = require('electron');
 const http = require('http');
 const path = require('path');
 const fs = require('fs/promises');
 const fsSync = require('fs');
 const os = require('os');
+const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 const { databaseManager, extensionDatabaseManager } = require('./database.cjs');
 const { extractText, isRichDocument, RICH_DOCUMENT_EXTENSIONS } = require('./documentExtractor.cjs');
@@ -1103,6 +1104,129 @@ ipcMain.handle('shell:showItemInFolder', async (_event, filePath) => {
 // ── shell:openPath ──
 ipcMain.handle('shell:openPath', async (_event, filePath) => {
   return shell.openPath(filePath);
+});
+
+// ── shell:openExternal ──
+//
+// M60 §T6.F2 — Gmail OAuth desktop flow needs to launch the user's
+// default browser at Google's auth endpoint. Renderer cannot call
+// shell.openExternal directly (contextIsolation: true), so it goes
+// through this IPC.
+//
+// Validation: the URL MUST start with `https://`. Any other scheme
+// (`http://`, `file://`, `javascript:`, `data:`, custom protocols) is
+// rejected. This blocks both classical XSS-via-IPC vectors and any
+// loopback scheme; the OAuth flow uses the Google-hosted
+// `accounts.google.com` URL which is always https.
+ipcMain.handle('shell:openExternal', async (_event, url) => {
+  if (typeof url !== 'string' || !url.startsWith('https://')) {
+    return { ok: false, error: 'invalid-url-scheme: only https:// is allowed' };
+  }
+  try {
+    await shell.openExternal(url);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : String(err) };
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Secret Storage IPC (M60 §T6.F3)
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// Encrypted-at-rest secret storage backed by `app.safeStorage`. Used by
+// the Gmail OAuth service for the long-lived refresh token. Access
+// tokens stay in renderer memory and never reach disk.
+//
+// Storage path: <APP_ROOT>/data/secrets/<sha256(key)[:32]>.enc
+//   — Lives inside the portable APP_ROOT/data tree (M53), so encrypted
+//     blobs travel with the install. This is a deliberate trade-off:
+//     portability beats per-user-profile isolation. Documented in
+//     docs/ai/GMAIL_MCP_INTEGRATION.md.
+//
+// Key allowlist:   /^[a-zA-Z0-9._-]{1,128}$/
+//   — keeps the filename derivation tight and prevents traversal.
+//
+// Linux fallback: when `safeStorage.isEncryptionAvailable()` is false
+// (no libsecret / unseeded keyring), set/get/delete all return
+// { ok: false, error: 'safe-storage-unavailable' }. We do NOT fall
+// through to plaintext storage.
+
+const SECRETS_DIR = path.join(APP_ROOT, 'data', 'secrets');
+const SECRET_KEY_REGEX = /^[a-zA-Z0-9._-]{1,128}$/;
+
+function _secretKeyValid(key) {
+  return typeof key === 'string' && SECRET_KEY_REGEX.test(key);
+}
+
+function _secretFilePath(key) {
+  const hash = crypto.createHash('sha256').update(key, 'utf8').digest('hex').slice(0, 32);
+  return path.join(SECRETS_DIR, hash + '.enc');
+}
+
+async function _ensureSecretsDir() {
+  try {
+    await fs.mkdir(SECRETS_DIR, { recursive: true });
+  } catch (err) {
+    if (err && err.code !== 'EEXIST') throw err;
+  }
+}
+
+ipcMain.handle('secret:set', async (_event, key, valueB64) => {
+  if (!_secretKeyValid(key)) {
+    return { ok: false, error: 'invalid-key' };
+  }
+  if (typeof valueB64 !== 'string') {
+    return { ok: false, error: 'invalid-value' };
+  }
+  if (!safeStorage.isEncryptionAvailable()) {
+    return { ok: false, error: 'safe-storage-unavailable' };
+  }
+  try {
+    await _ensureSecretsDir();
+    const encrypted = safeStorage.encryptString(valueB64);
+    await fs.writeFile(_secretFilePath(key), encrypted);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : String(err) };
+  }
+});
+
+ipcMain.handle('secret:get', async (_event, key) => {
+  if (!_secretKeyValid(key)) {
+    return { ok: false, error: 'invalid-key' };
+  }
+  if (!safeStorage.isEncryptionAvailable()) {
+    return { ok: false, error: 'safe-storage-unavailable' };
+  }
+  const filePath = _secretFilePath(key);
+  try {
+    const encrypted = await fs.readFile(filePath);
+    const valueB64 = safeStorage.decryptString(encrypted);
+    return { ok: true, valueB64 };
+  } catch (err) {
+    if (err && err.code === 'ENOENT') {
+      return { ok: false, error: 'not-found' };
+    }
+    return { ok: false, error: err && err.message ? err.message : String(err) };
+  }
+});
+
+ipcMain.handle('secret:delete', async (_event, key) => {
+  if (!_secretKeyValid(key)) {
+    return { ok: false, error: 'invalid-key' };
+  }
+  const filePath = _secretFilePath(key);
+  try {
+    await fs.unlink(filePath);
+    return { ok: true };
+  } catch (err) {
+    if (err && err.code === 'ENOENT') {
+      // Idempotent — deleting a missing key is success.
+      return { ok: true };
+    }
+    return { ok: false, error: err && err.message ? err.message : String(err) };
+  }
 });
 
 // ── fs:mkdir ──

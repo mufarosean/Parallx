@@ -107,6 +107,35 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     showItemInFolder: (filePath) => ipcRenderer.invoke('shell:showItemInFolder', filePath),
     /** Open file with the system default application. Returns error string or ''. */
     openPath: (filePath) => ipcRenderer.invoke('shell:openPath', filePath),
+    /**
+     * Open an external https:// URL in the user's default browser.
+     * Main-process validation: only `https://` is accepted; any other
+     * scheme (`file://`, `javascript:`, `http://`, etc.) is rejected.
+     * Returns { ok: true } on success or { ok: false, error } on rejection.
+     * (M60 §T6.F2 — Gmail OAuth desktop flow.)
+     */
+    openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Secret Storage API (M60 §T6.F3 — encrypted token storage)
+  // ══════════════════════════════════════════════════════════════════════════
+  //
+  // Backed by Electron's `app.safeStorage` (DPAPI on Windows, Keychain on
+  // macOS, libsecret on Linux). Encrypted blobs are written to
+  // `<APP_ROOT>/data/secrets/<sha256(key)[:32]>.enc` so they travel with
+  // the portable install (M53 contract — see GMAIL_MCP_INTEGRATION.md).
+  //
+  // Key allowlist regex: `^[a-zA-Z0-9._-]{1,128}$`. Values are passed as
+  // base64-encoded strings to avoid utf8 round-tripping.
+
+  secret: {
+    /** Store a base64-encoded value under `key`. Returns { ok, error? }. */
+    set: (key, valueB64) => ipcRenderer.invoke('secret:set', key, valueB64),
+    /** Retrieve the base64 value for `key`. Returns { ok, valueB64?, error? }. */
+    get: (key) => ipcRenderer.invoke('secret:get', key),
+    /** Remove the encrypted blob for `key`. Returns { ok, error? }. */
+    delete: (key) => ipcRenderer.invoke('secret:delete', key),
   },
 
   // ══════════════════════════════════════════════════════════════════════════
