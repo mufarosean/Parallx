@@ -117,10 +117,10 @@ const SUBSTRATE_SCHEMAS: readonly ISettingSchema[] = [
   {
     key: 'autonomy.cron.persistencePath',
     type: 'string',
-    default: '<APP_ROOT>/data/cron.json',
-    scope: 'user',
+    default: '<workspace>/.parallx/cron.json',
+    scope: 'workspace',
     description:
-      'Filesystem path used to persist cron jobs across restarts. Use the literal token <APP_ROOT> for the portable app root.',
+      'Filesystem path used to persist cron jobs across restarts. Stored per-workspace so jobs in one workspace do not fire in another (M61 Phase 2). Use the literal token <workspace> for the active workspace folder.',
     category: 'Autonomy',
   },
   // T2 toggles per §7.2 acceptance criteria are now flag-bound via

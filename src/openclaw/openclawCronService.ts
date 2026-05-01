@@ -191,7 +191,7 @@ export interface ICronPersistedSnapshot {
   readonly jobs: readonly ICronJob[];
 }
 
-/** Persistence interface — implementations route to portable storage (`<APP_ROOT>/data/cron.json`). */
+/** Persistence interface — implementations route to portable storage (`<workspace>/.parallx/cron.json` per M61 Phase 2). */
 export interface ICronPersistence {
   load(): Promise<ICronPersistedSnapshot | null>;
   save(snapshot: ICronPersistedSnapshot): Promise<void>;

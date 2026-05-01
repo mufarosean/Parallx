@@ -1364,26 +1364,48 @@ export function activate(api: ParallxApi, context: ToolContext): void {
           : undefined,
       });
 
-      // ── M60 Phase γ — cron persistence (`<APP_ROOT>/data/cron.json`) ──
-      // Routed through the same fs bridge as the autonomy event log; falls
-      // back to in-memory when the bridge is unavailable (test envs).
-      if (_appPath && _fsBridge) {
-        const cronJsonPath = `${_appPath}/data/cron.json`;
+      // ── M61 Phase 2 — cron persistence (`<workspace>/.parallx/cron.json`) ──
+      //
+      // Per-workspace persistence so cron jobs scheduled in workspace A
+      // don't fire in workspace B (decision B in `Parallx_Milestone_61.md`).
+      // Migration shim: on first load, if the legacy global file
+      // `<APP_ROOT>/data/cron.json` exists and the workspace file does not,
+      // copy it once. The legacy file is left in place for one release.
+      //
+      // Falls back to in-memory when the fs bridge or workspace folder is
+      // unavailable (test envs, no folder open).
+      const _cronWorkspaceFolder = workspaceService?.folders[0]?.uri.fsPath;
+      if (_appPath && _fsBridge && _cronWorkspaceFolder) {
+        const cronJsonPath = `${_cronWorkspaceFolder}/.parallx/cron.json`;
+        const cronJsonDir = `${_cronWorkspaceFolder}/.parallx`;
+        const legacyCronJsonPath = `${_appPath}/data/cron.json`;
         cronService.setPersistence({
           load: async () => {
             try {
-              const exists = await _fsBridge.exists(cronJsonPath);
-              if (!exists.ok || !exists.exists) return null;
-              const result = await _fsBridge.readFile(cronJsonPath, 'utf-8');
-              if (!result.ok || typeof result.data !== 'string') return null;
-              return JSON.parse(result.data);
+              const wsExists = await _fsBridge.exists(cronJsonPath);
+              if (wsExists.ok && wsExists.exists) {
+                const result = await _fsBridge.readFile(cronJsonPath, 'utf-8');
+                if (!result.ok || typeof result.data !== 'string') return null;
+                return JSON.parse(result.data);
+              }
+              // Migration shim: copy legacy global file once.
+              const legacyExists = await _fsBridge.exists(legacyCronJsonPath);
+              if (legacyExists.ok && legacyExists.exists) {
+                const legacyRead = await _fsBridge.readFile(legacyCronJsonPath, 'utf-8');
+                if (legacyRead.ok && typeof legacyRead.data === 'string') {
+                  await _fsBridge.mkdir(cronJsonDir);
+                  await _fsBridge.writeFile(cronJsonPath, legacyRead.data, 'utf-8');
+                  return JSON.parse(legacyRead.data);
+                }
+              }
+              return null;
             } catch {
               return null;
             }
           },
           save: async (snapshot) => {
             try {
-              await _fsBridge.mkdir(`${_appPath}/data`);
+              await _fsBridge.mkdir(cronJsonDir);
               await _fsBridge.writeFile(cronJsonPath, JSON.stringify(snapshot, null, 2), 'utf-8');
             } catch {
               /* persistence failures don't affect in-memory truth */
