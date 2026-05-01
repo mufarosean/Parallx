@@ -73,9 +73,33 @@ agent to run on its own:
 3. The agent has at least one **surface** turned on so its output can
    land somewhere.
 
-### 2.1 Heartbeat (file-watcher → agent)
+### 2.1 Heartbeat vs. Cron — which one do I want?
 
-A periodic tick that runs the agent against recent file activity.
+Both run the agent on its own. The difference is **what triggers them**:
+
+| | **Heartbeat** | **Cron** |
+|---|---|---|
+| **Trigger** | File changes in the workspace (debounced) | A clock — fires at fixed times |
+| **Cadence** | Reactive — only when you've been editing | Scheduled — fires whether or not you're working |
+| **Configuration** | A single interval floor + coalesce window | A cron expression per job (e.g. `0 9 * * 1` = Mon 9 am) |
+| **Number of jobs** | One global runner | Many independent jobs, each with its own prompt + schedule |
+| **Use it for…** | "Watch what I'm doing and suggest things" — keep notes tidy, flag broken links, surface related material as you write | "Do this on a clock" — morning digest, weekly review, daily backup, end-of-day summary |
+| **Don't use it for…** | Anything that needs a fixed time | Anything that should react to live edits |
+
+Rule of thumb:
+
+- If your prompt starts with **"every time I…"** → heartbeat.
+- If your prompt starts with **"every Monday at…"** or **"once a day…"** → cron.
+- You can run both at the same time. They don't conflict — they answer
+  different questions.
+
+### 2.2 Heartbeat (file-watcher → agent)
+
+A periodic tick that runs the agent against recent file activity. The
+heartbeat is **idle by default** — it only does work when there have
+been file changes since the last tick. If nothing has changed, it
+silently skips. The "interval" is really a *floor*: the agent will not
+run more often than once per interval, even if you save furiously.
 
 1. Open `Ctrl+Alt+S`.
 2. Search "heartbeat".
@@ -85,9 +109,12 @@ A periodic tick that runs the agent against recent file activity.
 5. Make sure at least one of **Autonomy → Surface … enabled** is `On`
    (e.g. Chat or Notification — that's where heartbeat output appears).
 
-### 2.2 Cron (scheduled jobs)
+### 2.3 Cron (scheduled jobs)
 
-Run an agent at a fixed schedule (cron expression).
+Run an agent at a fixed schedule (cron expression). Each cron job has
+its own prompt and runs independently of the others. Cron is **not**
+idle-aware — if the schedule says fire, it fires, even if you haven't
+touched the workspace.
 
 1. Open `Ctrl+Alt+S`.
 2. Search "cron".
@@ -100,7 +127,7 @@ Run an agent at a fixed schedule (cron expression).
 > jobs in `<APP_ROOT>/data/cron.json` are **copied** (not moved) into
 > the workspace file. The global file is left in place.
 
-### 2.3 Follow-up
+### 2.4 Follow-up
 
 Lets the agent chain follow-up turns after a tool call.
 
@@ -109,13 +136,13 @@ Lets the agent chain follow-up turns after a tool call.
 3. Set **Autonomy → Followup enabled** to `On`.
 4. (Optional) **Autonomy → Followup max depth** — default 5.
 
-### 2.4 The kill switch
+### 2.5 The kill switch
 
 If anything feels wrong, search "paused" in the overlay and flip
 **Autonomy → Paused (global)** to `On`. That stops every autonomous
 runner immediately. No restart needed.
 
-### 2.5 Where do I see what the agent did?
+### 2.6 Where do I see what the agent did?
 
 - **Chat panel** — heartbeat outputs appear here when the chat surface
   is enabled.
