@@ -62,8 +62,20 @@ export async function readLocalImageAsDataUrl(
   }
   try {
     const result = await electron.fs.readFile(filePath, 'base64');
-    if (result?.error) return { error: `Could not read file: ${result.error}` };
+    if (result?.error) {
+      // fs:readFile returns `{ error: { code, message, path } }`, not a string.
+      const msg = typeof result.error === 'string'
+        ? result.error
+        : (result.error?.message || result.error?.code || 'unknown error');
+      return { error: `Could not read file: ${msg}` };
+    }
     if (!result?.content) return { error: 'File is empty or unreadable.' };
+    // Main process auto-detects binary and returns base64 regardless of the
+    // encoding param. If a non-binary text file is requested with `'base64'`
+    // we'd get utf-8 back — guard with the returned encoding.
+    if (result.encoding !== 'base64') {
+      return { error: 'File is not a recognized binary image.' };
+    }
     if (typeof result.content === 'string' && result.content.length > MAX_BASE64_LEN) {
       return { error: 'Image is too large (max 5 MB).' };
     }

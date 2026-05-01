@@ -153,6 +153,7 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
   const imageFileDrop = Extension.create({
     name: 'imageFileDrop',
     addProseMirrorPlugins() {
+      const editor = this.editor;
       return [
         new Plugin({
           key: new PluginKey('canvasImageFileDrop'),
@@ -191,20 +192,19 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
 
               event.preventDefault();
 
-              const imageType = view.state.schema.nodes.image;
-              if (!imageType) return true;
+              if (!view.state.schema.nodes.image) return true;
 
-              const dropPos = view.posAtCoords({
-                left: (event as DragEvent).clientX,
-                top: (event as DragEvent).clientY,
-              });
-              if (!dropPos) return true;
+              // Capture drop coords now; resolve to a position post-await so
+              // we use a fresh view.state (doc may have changed during reads).
+              const clientX = (event as DragEvent).clientX;
+              const clientY = (event as DragEvent).clientY;
 
               (async () => {
                 const sources: string[] = [];
                 for (const p of imagePaths) {
                   const r = await readLocalImageAsDataUrl(p);
                   if (r.dataUrl) sources.push(r.dataUrl);
+                  else if (r.error) console.warn('[imageFileDrop]', p, r.error);
                 }
                 for (const f of files) {
                   // Prefer Electron's `.path` (avoids re-reading via FileReader)
@@ -212,6 +212,7 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
                   if (fullPath) {
                     const r = await readLocalImageAsDataUrl(fullPath);
                     if (r.dataUrl) sources.push(r.dataUrl);
+                    else if (r.error) console.warn('[imageFileDrop]', fullPath, r.error);
                     continue;
                   }
                   const dataUrl = await new Promise<string>((res) => {
@@ -223,19 +224,22 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
                   if (dataUrl) sources.push(dataUrl);
                 }
                 if (sources.length === 0) return;
+                if (!editor || editor.isDestroyed) return;
 
-                let tr = view.state.tr;
-                let pos = dropPos.pos;
-                for (const src of sources) {
-                  const node = imageType.create({ src });
-                  tr = tr.insert(pos, node);
-                  pos += node.nodeSize;
-                }
-                tr.setSelection(
-                  TextSelection.near(tr.doc.resolve(Math.min(pos, tr.doc.content.size))),
-                );
-                view.dispatch(tr);
-                view.focus();
+                // Re-resolve drop position against the CURRENT view state.
+                const dropPos = view.posAtCoords({ left: clientX, top: clientY });
+                const insertAt = dropPos
+                  ? dropPos.pos
+                  : view.state.selection.from;
+
+                // Use TipTap's chain — handles block-vs-inline schema fit
+                // (splits paragraphs, etc.) the same way the slash-menu's
+                // Upload tab and Embed link path do.
+                const content = sources.map((src) => ({
+                  type: 'image' as const,
+                  attrs: { src },
+                }));
+                editor.chain().insertContentAt(insertAt, content).focus().run();
               })().catch((err) => {
                 console.error('[imageFileDrop] insert failed:', err);
               });
