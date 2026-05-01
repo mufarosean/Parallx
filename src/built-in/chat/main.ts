@@ -362,41 +362,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       category: 'Canvas',
     });
 
-    // ── M60 §T6.F2 — Gmail MCP integration toggles ───────────────────────
-    //
-    // `mcp.gmail.clientId` + `mcp.gmail.clientSecret` are user-supplied
-    // OAuth desktop-client credentials registered at console.cloud.google.com.
-    // The settings registry does not yet model a `secret: true` flag — TODO:
-    // when M61 adds it, update `mcp.gmail.clientSecret` so the editor masks
-    // the value and excludes it from settings export. For now the description
-    // marks the field as sensitive.
-    settingsRegistry.register({
-      key: 'mcp.gmail.enabled',
-      type: 'boolean',
-      default: false,
-      scope: 'user',
-      description: 'Enable the read-only Gmail MCP integration (M60 T6).',
-      category: 'Integrations',
-    });
-    settingsRegistry.register({
-      key: 'mcp.gmail.clientId',
-      type: 'string',
-      default: '',
-      scope: 'user',
-      description:
-        'Google OAuth Desktop-app client ID. Create at console.cloud.google.com → APIs & Services → Credentials.',
-      category: 'Integrations',
-    });
-    settingsRegistry.register({
-      key: 'mcp.gmail.clientSecret',
-      type: 'string',
-      default: '',
-      scope: 'user',
-      description:
-        'Google OAuth Desktop-app client secret. Stored locally in <APP_ROOT>/data/global-storage.json — never sent anywhere except Google.',
-      category: 'Integrations',
-      secret: true,
-    });
+    // M62: Gmail-specific settings removed. Provider integrations now
+    // ship as MCP servers (see tools/gmail-mcp-server). Users register
+    // them via chat-gear → MCP Servers.
 
     // ── M61 Phase 4: AI profile settings (persona/chat/model/etc) ────────
     // Register schemas + bind to UnifiedAIConfigService when present so the
@@ -1823,32 +1791,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     );
   }
 
-  // ── M60 §T6.F2 — Disconnect Gmail command ────────────────────────────
-  //
-  // Wipes the persisted refresh token via secret-storage IPC and toggles
-  // `mcp.gmail.enabled` off. The access token, if any, lives in service
-  // memory and is dropped on next process boundary; we don't keep a
-  // process-wide handle to revoke here.
-  context.subscriptions.push(
-    api.commands.registerCommand('gmail.disconnect', async () => {
-      const { createSecretStorageService } = await import('../../services/secretStorageService.js');
-      const { clearPersistedRefreshToken } = await import('../../services/gmailOAuthService.js');
-      const secretStorage = createSecretStorageService();
-      const registry = api.services.has(ISettingsRegistryService)
-        ? api.services.get<import('../../services/settingsRegistryService.js').ISettingsRegistryService>(ISettingsRegistryService)
-        : undefined;
-      try {
-        if (secretStorage.available) {
-          await clearPersistedRefreshToken(secretStorage);
-        }
-        if (registry) {
-          await registry.setValue('mcp.gmail.enabled', false);
-        }
-      } catch (err) {
-        console.warn('[gmail.disconnect] failed:', (err as Error).message);
-      }
-    }),
-  );
+  // M62: `gmail.disconnect` removed. To disconnect the Gmail MCP server,
+  // delete `~/.parallx/gmail-mcp/credentials.json` and remove the entry
+  // from chat-gear → MCP Servers.
 
   // ── 4. Build widget services bridge (delegates to ChatDataService) ──
 

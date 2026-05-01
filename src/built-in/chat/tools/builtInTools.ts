@@ -80,7 +80,6 @@ import type { IAutonomyLogReader } from '../../../services/autonomyLogService.js
 import { createCronTools, type ICronToolHost } from './cronTools.js';
 import { createAutonomyLogTool } from './autonomyLogTool.js';
 import { createSessionsSpawnTool } from './subagentTools.js';
-import { createGmailListUnreadTool, type IGmailListUnreadDeps } from './gmailTools.js';
 import type { SubagentSpawner } from '../../../openclaw/openclawSubagentSpawn.js';
 
 // ── Registration ──
@@ -106,7 +105,6 @@ export function registerBuiltInTools(
   cronHost?: ICronToolHost,
   subagentSpawner?: SubagentSpawner,
   autonomyLog?: IAutonomyLogReader,
-  gmail?: IGmailListUnreadDeps,
 ): IDisposable[] {
   const disposables: IDisposable[] = [];
 
@@ -150,8 +148,6 @@ export function registerBuiltInTools(
     createSessionsSpawnTool(subagentSpawner),
     // ── Autonomy log read tool (M58-real post-ship UX reshape) ──
     createAutonomyLogTool(autonomyLog),
-    // ── Gmail integration (M60 Phase η §T6.F4) — gmail.list_unread ──
-    createGmailListUnreadTool(gmail ?? {}),
   ];
 
   for (const tool of tools) {

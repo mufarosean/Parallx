@@ -96,12 +96,6 @@ export function createSecretStorageService(
   };
 }
 
-// ─── Well-known keys ────────────────────────────────────────────────
-
-/**
- * Storage key for the Gmail OAuth refresh token.
- *
- * F3 contract: refresh tokens persist via this key; access tokens
- * stay in renderer memory (gmailOAuthService) and never reach disk.
- */
-export const GMAIL_REFRESH_TOKEN_KEY = 'mcp.gmail.refreshToken';
+// M62: well-known provider-specific keys removed. Provider MCP
+// servers own their own credential storage (e.g. tools/gmail-mcp-server
+// stores its refresh token in ~/.parallx/gmail-mcp/credentials.json).
