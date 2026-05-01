@@ -15164,7 +15164,11 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut)
             if (optResult.replaced) {
               actual = ` \u00b7 actual ${fmtBytes(actualBytes)} \u2192 ${fmtBytes(optResult.finalBytes)} (optimized)`;
             } else if (optResult.skipped && optResult.reason === 'no-improvement') {
-              actual += ' \u00b7 already minimal';
+              // The file is still over the threshold but the optimizer's
+              // ladder couldn't find a smaller-than-original encoding. Don't
+              // claim "already minimal" \u2014 that's misleading. Tell the user
+              // the truth so they can lower fps/scale and re-export manually.
+              actual += ' \u00b7 (over threshold; optimizer could not reduce further)';
             }
           } catch (err) {
             console.warn('[media-organizer] auto-optimize failed:', err);
