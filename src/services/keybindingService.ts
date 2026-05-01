@@ -50,6 +50,24 @@ interface KeybindingEntry {
 /** Chord timeout in milliseconds (matches VS Code). */
 const CHORD_TIMEOUT_MS = 1500;
 
+/**
+ * Native editing shortcuts that must not be intercepted from editable
+ * targets. The browser's built-in handling for cut/copy/paste/undo/redo/
+ * select-all inside <input>/<textarea>/contenteditable is what users
+ * expect, and `document.execCommand('paste')` is disabled by Chromium
+ * for security — so any commands we bound to these keys would silently
+ * no-op. Letting the event reach the input is the only thing that works.
+ */
+const NATIVE_EDIT_KEYS: ReadonlySet<string> = new Set([
+  'ctrl+x', 'ctrl+c', 'ctrl+v',
+  'ctrl+a',
+  'ctrl+z', 'ctrl+y', 'ctrl+shift+z',
+  'meta+x', 'meta+c', 'meta+v',
+  'meta+a',
+  'meta+z', 'meta+shift+z',
+  'shift+insert', 'shift+delete', 'ctrl+insert',
+]);
+
 // ─── KeybindingService ───────────────────────────────────────────────────────
 
 export class KeybindingService extends Disposable implements IKeybindingService {
@@ -242,6 +260,15 @@ export class KeybindingService extends Disposable implements IKeybindingService 
 
     const normalizedKey = keyFromEvent(e);
     if (!normalizedKey) return;
+
+    // Native editing shortcuts (Ctrl+X/C/V/A/Z/Y, ⌘+…) must reach the
+    // browser when the focused element is an editable input. Otherwise
+    // paste etc. silently fail because document.execCommand('paste') is
+    // disabled by Chromium and our keybinding wrapper preventDefaults the
+    // event before the native input ever sees it.
+    if (NATIVE_EDIT_KEYS.has(normalizedKey) && this._isEditableTarget(target)) {
+      return;
+    }
 
     // ── Chord: waiting for second key ──
     if (this._pendingChordPrefix) {
