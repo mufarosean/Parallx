@@ -403,6 +403,8 @@ contextBridge.exposeInMainWorld('parallxElectron', {
       ipcRenderer.invoke('mcp:send', serverId, message),
     kill: (serverId) =>
       ipcRenderer.invoke('mcp:kill', serverId),
+    oauthBootstrap: (serverId, command, args, env) =>
+      ipcRenderer.invoke('mcp:oauth-bootstrap', serverId, command, args, env),
     onMessage: (callback) => {
       const handler = (_event, serverId, data) => callback(serverId, data);
       ipcRenderer.on('mcp:message', handler);
@@ -412,6 +414,16 @@ contextBridge.exposeInMainWorld('parallxElectron', {
       const handler = (_event, serverId, code) => callback(serverId, code);
       ipcRenderer.on('mcp:exit', handler);
       return () => ipcRenderer.removeListener('mcp:exit', handler);
+    },
+    onOauthStderr: (callback) => {
+      const handler = (_event, serverId, text) => callback(serverId, text);
+      ipcRenderer.on('mcp:oauth-stderr', handler);
+      return () => ipcRenderer.removeListener('mcp:oauth-stderr', handler);
+    },
+    onOauthUrl: (callback) => {
+      const handler = (_event, serverId, url) => callback(serverId, url);
+      ipcRenderer.on('mcp:oauth-url', handler);
+      return () => ipcRenderer.removeListener('mcp:oauth-url', handler);
     },
   },
 

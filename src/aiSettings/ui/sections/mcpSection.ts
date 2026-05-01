@@ -171,11 +171,17 @@ export class McpSection extends SettingsSection {
         this._mcpClient?.disconnectServer(server.id);
       }));
     } else {
-      right.appendChild(this._makeBtn('Connect', () => {
-        this._mcpClient?.connectServer(server).catch((err) => {
-          console.error(`[McpSection] Connect failed for ${server.id}:`, err);
-        });
-      }));
+      if (server.requiresOAuth) {
+        right.appendChild(this._makeBtn('Authorize', () => {
+          void this._authorizeServer(server);
+        }));
+      } else {
+        right.appendChild(this._makeBtn('Connect', () => {
+          this._mcpClient?.connectServer(server).catch((err) => {
+            console.error(`[McpSection] Connect failed for ${server.id}:`, err);
+          });
+        }));
+      }
     }
 
     // Remove
@@ -388,6 +394,7 @@ export class McpSection extends SettingsSection {
         args: resolvedArgs,
         env: Object.keys(env).length > 0 ? env : undefined,
         enabled: true,
+        requiresOAuth: entry.requiresOAuth ?? undefined,
       });
       close();
     });
@@ -499,11 +506,95 @@ export class McpSection extends SettingsSection {
     this._updateSummary();
     // M61 Phase 3: auto-connect when enabled, so the user doesn't have to
     // click Connect after install.
-    if (server.enabled) {
+    // M62 follow-up: skip auto-connect for OAuth servers — they need
+    // authorization first. The user clicks "Authorize" on the row,
+    // which runs the --auth bootstrap and then connects on success.
+    if (server.enabled && !server.requiresOAuth) {
       this._mcpClient.connectServer(server).catch((err) => {
         console.error(`[McpSection] Auto-connect failed for ${server.id}:`, err);
       });
     }
+  }
+
+  /**
+   * M62 follow-up: drive the server's `--auth` bootstrap from the UI so
+   * the user never opens a terminal. Spawns `<command> <args> --auth`
+   * via the main-process IPC bridge; the bridge opens the auth URL in
+   * the user's default browser, the server writes its credentials file
+   * itself, and we connect on exit-0.
+   */
+  private async _authorizeServer(server: IMcpServerConfig): Promise<void> {
+    if (!this._mcpClient) return;
+    const electronApi = (window as unknown as {
+      parallxElectron?: {
+        mcp?: {
+          oauthBootstrap?: (
+            serverId: string,
+            command: string,
+            args: readonly string[],
+            env: Record<string, string>,
+          ) => Promise<{ error: string | null; exitCode: number | null; stderr?: string }>;
+        };
+      };
+    }).parallxElectron;
+    const oauthBootstrap = electronApi?.mcp?.oauthBootstrap;
+    if (!oauthBootstrap) {
+      console.error('[McpSection] OAuth bootstrap IPC unavailable');
+      return;
+    }
+    if (!server.command) {
+      console.error('[McpSection] Cannot authorize a non-stdio server');
+      return;
+    }
+
+    // Disable the row's buttons by re-rendering with status=connecting.
+    // (We can't drive the connection-state cache from here without a
+    // service hook, so just inform the user via the status badge.)
+    const row = this._listContainer?.querySelector(
+      `.ai-settings-mcp-row[data-server-id="${server.id}"]`,
+    );
+    const badge = row?.querySelector('.ai-settings-mcp-badge') as HTMLElement | null;
+    if (badge) {
+      badge.textContent = 'Authorizing — check your browser…';
+      badge.dataset.status = 'connecting';
+    }
+
+    let result: { error: string | null; exitCode: number | null; stderr?: string };
+    try {
+      result = await oauthBootstrap(
+        server.id,
+        server.command,
+        server.args ?? [],
+        (server.env as Record<string, string> | undefined) ?? {},
+      );
+    } catch (err) {
+      console.error('[McpSection] OAuth bootstrap threw:', err);
+      this._renderServerList();
+      return;
+    }
+
+    if (result.error || result.exitCode !== 0) {
+      console.error(
+        `[McpSection] Authorization failed for ${server.id}: exit=${result.exitCode}, error=${result.error ?? 'none'}`,
+        result.stderr ?? '',
+      );
+      if (badge) {
+        badge.textContent = 'Authorization failed';
+        badge.dataset.status = 'error';
+      }
+      // Restore Authorize button after a short delay.
+      setTimeout(() => this._renderServerList(), 2000);
+      return;
+    }
+
+    // Auth succeeded — connect.
+    try {
+      await this._mcpClient.connectServer(server);
+    } catch (err) {
+      console.error(`[McpSection] Connect after auth failed for ${server.id}:`, err);
+    }
+    this._renderServerList();
+    this._updateSummary();
   }
 
   private _removeServer(serverId: string): void {

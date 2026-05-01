@@ -118,6 +118,12 @@ export interface IMcpServerConfig {
   readonly autoReconnect?: boolean;         // default: true
   readonly maxReconnectAttempts?: number;    // default: 5
   readonly reconnectBaseDelayMs?: number;    // default: 1000
+  // M62 follow-up: server requires a one-time OAuth bootstrap before
+  // it can connect. The MCP Servers UI renders an "Authorize" button
+  // for these and runs `<command> <args> --auth` in a separate process,
+  // opening the auth URL in the user's browser. Set automatically when
+  // installed from a catalog entry whose `requiresOAuth` is true.
+  readonly requiresOAuth?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
