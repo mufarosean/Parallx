@@ -12796,6 +12796,16 @@ function showOptimizeGifDialog(gifFiles, api, onComplete) {
     const allowTrim = trimCheckbox.checked;
     const backup = backupCheckbox.checked;
 
+    // Sweep stale tmp files from prior crashes before we start. Best-effort —
+    // if it fails we just proceed; the per-file try/finally will still keep
+    // this run clean. Logged to console for diagnosis.
+    try {
+      const removed = await moCleanupOptimizerOrphans(probes.map((p) => p.path));
+      if (removed > 0) console.log(`[MO-Optimize] cleaned ${removed} stale tmp file(s) from prior runs`);
+    } catch (err) {
+      console.warn('[MO-Optimize] orphan cleanup failed:', err);
+    }
+
     let totalSaved = 0;
     let optimized = 0;
     let skipped = 0;
@@ -12818,6 +12828,10 @@ function showOptimizeGifDialog(gifFiles, api, onComplete) {
           skipped++;
         }
       } catch (err) {
+        // moOptimizeGifFile's internal try/finally has already removed the
+        // tmp file, so there is nothing to clean up here. Surface the error
+        // to the console for diagnosis and move on to the next file — one
+        // bad clip should not abort the whole batch.
         console.error('[MO-Optimize]', path, err);
         failed++;
       }
@@ -12825,13 +12839,16 @@ function showOptimizeGifDialog(gifFiles, api, onComplete) {
     progressFill.style.width = '100%';
 
     const summary = cancelled
-      ? `Cancelled. Optimized ${optimized}, freed ${fmtBytes(totalSaved)}.`
-      : `Optimized ${optimized} of ${probes.length}. Freed ${fmtBytes(totalSaved)}.${skipped > 0 ? ` ${skipped} skipped (already small / no improvement).` : ''}${failed > 0 ? ` ${failed} failed.` : ''}`;
+      ? `Cancelled. Optimized ${optimized}, freed ${fmtBytes(totalSaved)}.${failed > 0 ? ` ${failed} failed.` : ''}`
+      : `Optimized ${optimized} of ${probes.length}. Freed ${fmtBytes(totalSaved)}.${skipped > 0 ? ` ${skipped} skipped (already small / no improvement).` : ''}${failed > 0 ? ` ${failed} failed (see console).` : ''}`;
     api.window.showInformationMessage(summary);
     overlay.remove();
     if (onComplete) onComplete();
   });
 
+  // While a run is in progress, clicking the backdrop or pressing Escape
+  // should NOT close the dialog — it would orphan the in-flight encode.
+  // Use the Stop button to cancel cleanly.
   overlay.addEventListener('click', (e) => { if (e.target === overlay && !optimizeBtn.disabled) overlay.remove(); });
   overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !optimizeBtn.disabled) overlay.remove(); });
   document.body.appendChild(overlay);
@@ -15438,90 +15455,134 @@ async function moOptimizeGifFile(srcPath, opts) {
   const lastSep = srcPath.lastIndexOf(sep);
   const dir = srcPath.slice(0, lastSep);
   const base = srcPath.slice(lastSep + 1).replace(/\.gif$/i, '');
-  const tmpPath = `${dir}${sep}.mo_opt_${base}_${Date.now()}.gif`;
+  // Random suffix in addition to timestamp guards against collisions when two
+  // optimize runs land in the same millisecond, and makes orphan cleanup
+  // unambiguous (any file matching .mo_opt_*.gif is a stale tmp from a prior
+  // crash — never a user file).
+  const tmpPath = `${dir}${sep}.mo_opt_${base}_${Date.now()}_${Math.floor(Math.random() * 1e6)}.gif`;
 
   let plan = moPickGifOptimizePlan(probe, targetBytes, dither, allowTrim);
-  await moEncodeOptimizedGif(srcPath, tmpPath, plan, dither);
+  let actualBytes = 0;
+  let replaced = false;
 
-  let stat = await window.parallxElectron.fs.stat(tmpPath);
-  let actualBytes = stat ? (stat.size || 0) : 0;
+  try {
+    await moEncodeOptimizedGif(srcPath, tmpPath, plan, dither);
+    let stat = await window.parallxElectron.fs.stat(tmpPath);
+    actualBytes = stat ? (stat.size || 0) : 0;
 
-  // One calibration retry: if we overshot the target by >15%, re-derive the
-  // actual bpp this content needed and replan.
-  if (actualBytes > targetBytes * 1.15) {
-    const measuredBpp = actualBytes / Math.max(1, plan.width * plan.height * plan.fps * plan.duration);
-    // Re-pick using the measured bpp so the predictor is calibrated to this
-    // content. We do this by temporarily monkey-patching... no, cleaner: pass
-    // bppOverride through a small wrapper.
-    const calibratedPick = (probe2) => {
-      const fpsList = [probe2.fps, ...MO_GIF_FPS_LADDER].filter((v) => v >= 12 && v <= probe2.fps);
-      const widthList = [probe2.width, ...MO_GIF_WIDTH_LADDER].filter((v) => v >= 360 && v <= probe2.width);
-      const aspect = probe2.height / probe2.width;
-      const seenF = new Set(); const fL = [];
-      for (const v of fpsList) { const k = Math.round(v); if (!seenF.has(k)) { seenF.add(k); fL.push(k); } }
-      const seenW = new Set(); const wL = [];
-      for (const v of widthList) { const k = Math.round(v); if (!seenW.has(k)) { seenW.add(k); wL.push(k); } }
-      for (const w of wL) {
-        const h = Math.max(2, Math.round(w * aspect / 2) * 2);
-        for (const f of fL) {
-          const bytes = moPredictGifBytes({ width: w, height: h, fps: f, duration: probe2.duration, bppOverride: measuredBpp });
-          if (bytes <= targetBytes) return { width: w, height: h, fps: f, duration: probe2.duration, predictedBytes: bytes, hitFloor: false };
+    // One calibration retry: if we overshot the target by >15%, re-derive the
+    // actual bpp this content needed and replan.
+    if (actualBytes > targetBytes * 1.15) {
+      const measuredBpp = actualBytes / Math.max(1, plan.width * plan.height * plan.fps * plan.duration);
+      const calibratedPick = (probe2) => {
+        const fpsList = [probe2.fps, ...MO_GIF_FPS_LADDER].filter((v) => v >= 12 && v <= probe2.fps);
+        const widthList = [probe2.width, ...MO_GIF_WIDTH_LADDER].filter((v) => v >= 360 && v <= probe2.width);
+        const aspect = probe2.height / probe2.width;
+        const seenF = new Set(); const fL = [];
+        for (const v of fpsList) { const k = Math.round(v); if (!seenF.has(k)) { seenF.add(k); fL.push(k); } }
+        const seenW = new Set(); const wL = [];
+        for (const v of widthList) { const k = Math.round(v); if (!seenW.has(k)) { seenW.add(k); wL.push(k); } }
+        for (const w of wL) {
+          const h = Math.max(2, Math.round(w * aspect / 2) * 2);
+          for (const f of fL) {
+            const bytes = moPredictGifBytes({ width: w, height: h, fps: f, duration: probe2.duration, bppOverride: measuredBpp });
+            if (bytes <= targetBytes) return { width: w, height: h, fps: f, duration: probe2.duration, predictedBytes: bytes, hitFloor: false };
+          }
+        }
+        const fw = Math.max(360, wL[wL.length - 1] || 360);
+        const fh = Math.max(2, Math.round(fw * aspect / 2) * 2);
+        return { width: fw, height: fh, fps: 12, duration: probe2.duration, predictedBytes: 0, hitFloor: true };
+      };
+      const plan2 = calibratedPick(probe);
+      if (plan2.width !== plan.width || plan2.fps !== plan.fps) {
+        await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
+        await moEncodeOptimizedGif(srcPath, tmpPath, plan2, dither);
+        const stat2 = await window.parallxElectron.fs.stat(tmpPath);
+        const actual2 = stat2 ? (stat2.size || 0) : 0;
+        if (actual2 <= actualBytes) {
+          plan = plan2;
+          actualBytes = actual2;
+          stat = stat2;
+        } else {
+          // First pass was better — re-encode it (still in tmpPath, so
+          // overwrite the worse calibrated pass).
+          await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
+          await moEncodeOptimizedGif(srcPath, tmpPath, plan, dither);
         }
       }
-      const fw = Math.max(360, wL[wL.length - 1] || 360);
-      const fh = Math.max(2, Math.round(fw * aspect / 2) * 2);
-      return { width: fw, height: fh, fps: 12, duration: probe2.duration, predictedBytes: 0, hitFloor: true };
-    };
-    const plan2 = calibratedPick(probe);
-    // Only retry if the calibrated plan actually changed (else we'd produce
-    // the same bytes again).
-    if (plan2.width !== plan.width || plan2.fps !== plan.fps) {
+    }
+
+    // Safety: if our "optimized" output is somehow larger than the source,
+    // bail out and leave the original alone. No user expects optimization
+    // to make a file bigger.
+    if (actualBytes >= originalBytes) {
+      return { srcPath, originalBytes, finalBytes: originalBytes, plan, replaced: false, skipped: true, reason: 'no-improvement' };
+    }
+
+    // Backup original if requested. Done BEFORE the rename so the user always
+    // has a recoverable copy if the renderer crashes mid-replace. Skip if a
+    // backup from a prior optimize run already exists — never overwrite an
+    // older backup with the already-optimized file.
+    if (backup) {
+      const backupPath = `${dir}${sep}${base}.original.gif`;
+      const backupExists = await window.parallxElectron.fs.exists(backupPath);
+      if (!backupExists) {
+        const cp = await window.parallxElectron.fs.copy(srcPath, backupPath);
+        if (cp && cp.error) throw new Error('backup copy failed: ' + (cp.error.message || cp.error));
+      }
+    }
+
+    // Atomic replace: fs.rename with an existing destination uses
+    // MoveFileEx(MOVEFILE_REPLACE_EXISTING) on Windows and rename(2) on POSIX,
+    // both of which are atomic on the same volume. There is no observable
+    // intermediate state where the original could be lost — even if the app
+    // crashes, the file system guarantees one of {old src, new src}.
+    const rn = await window.parallxElectron.fs.rename(tmpPath, srcPath);
+    if (rn && rn.error) throw new Error('rename failed: ' + (rn.error.message || rn.error));
+    replaced = true;
+    return { srcPath, originalBytes, finalBytes: actualBytes, plan, replaced: true, skipped: false };
+  } finally {
+    // Always clean up the tmp file unless the rename consumed it. Covers:
+    // ffmpeg failure, partial encode, backup failure, rename failure, abort.
+    if (!replaced) {
       await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
-      await moEncodeOptimizedGif(srcPath, tmpPath, plan2, dither);
-      const stat2 = await window.parallxElectron.fs.stat(tmpPath);
-      const actual2 = stat2 ? (stat2.size || 0) : 0;
-      // Use whichever pass got closer to target (and didn't exceed original)
-      if (actual2 <= actualBytes) {
-        plan = plan2;
-        actualBytes = actual2;
-        stat = stat2;
-      } else {
-        // First pass was better — re-encode it
-        await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
-        await moEncodeOptimizedGif(srcPath, tmpPath, plan, dither);
+    }
+  }
+}
+
+// Sweep stale optimizer tmp files left behind by a prior crash. Looks at the
+// folder containing each given path and removes any `.mo_opt_*.gif` /
+// `.mo_optpal_*.png` files older than 5 minutes. The age cutoff prevents this
+// from interfering with a concurrent optimize run started from another window.
+async function moCleanupOptimizerOrphans(filePaths) {
+  if (!Array.isArray(filePaths) || filePaths.length === 0) return 0;
+  const sep = _isWindows ? '\\' : '/';
+  const dirs = new Set();
+  for (const p of filePaths) {
+    const i = p.lastIndexOf(sep);
+    if (i > 0) dirs.add(p.slice(0, i));
+  }
+  const cutoff = Date.now() - 5 * 60 * 1000;
+  let removed = 0;
+  for (const dir of dirs) {
+    let result;
+    try { result = await window.parallxElectron.fs.readdir(dir); } catch { continue; }
+    const entries = (result && result.entries) || [];
+    for (const entry of entries) {
+      const name = entry?.name;
+      if (!name) continue;
+      if (!/^\.mo_opt(pal)?_/.test(name)) continue;
+      if (!/\.(gif|png)$/i.test(name)) continue;
+      // mtime from fs:readdir is already ms since epoch (see main.cjs).
+      const mtime = entry.mtime || 0;
+      if (mtime > 0 && mtime < cutoff) {
+        const full = `${dir}${sep}${name}`;
+        await window.parallxElectron.fs.delete(full, { useTrash: false }).catch(() => {});
+        removed++;
       }
     }
   }
-
-  // Safety: if our "optimized" output is somehow larger than the source,
-  // bail out and leave the original alone. No user expects optimization
-  // to make a file bigger.
-  if (actualBytes >= originalBytes) {
-    await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
-    return { srcPath, originalBytes, finalBytes: originalBytes, plan, replaced: false, skipped: true, reason: 'no-improvement' };
-  }
-
-  // Backup original if requested (skip if backup file already exists — don't
-  // overwrite a pre-existing backup from a prior optimization run).
-  if (backup) {
-    const backupPath = `${dir}${sep}${base}.original.gif`;
-    const backupExists = await window.parallxElectron.fs.exists(backupPath);
-    if (!backupExists) {
-      await window.parallxElectron.fs.copy(srcPath, backupPath);
-    }
-  }
-
-  // Replace original with optimized. fs.rename overwrites on Windows when
-  // dest exists for files; if it doesn't, fall back to delete+rename.
-  try {
-    await window.parallxElectron.fs.delete(srcPath, { useTrash: false }).catch(() => {});
-    await window.parallxElectron.fs.rename(tmpPath, srcPath);
-  } catch (err) {
-    await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
-    throw err;
-  }
-
-  return { srcPath, originalBytes, finalBytes: actualBytes, plan, replaced: true, skipped: false };
+  return removed;
 }
 
 
