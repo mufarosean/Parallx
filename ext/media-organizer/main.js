@@ -7726,6 +7726,19 @@ function renderMediaCard(item, options) {
       const fileUrl = `file:///${String(filePath).replace(/\\/g, '/').replace(/^\/+/, '')}`;
       try { e.dataTransfer.setData('text/uri-list', fileUrl); } catch { /* ignore */ }
       try { e.dataTransfer.setData('text/plain', filePath); } catch { /* ignore */ }
+      // Native OS drag — lets the user drop into Discord / Explorer / browsers.
+      // HTML5 DataTransfer alone does not produce an OS-level file drag.
+      try {
+        const apiRef = options.api || _api;
+        if (apiRef?.window?.startDrag) {
+          const iconUrl = (card._imgEl?.src && card._imgEl.src.startsWith('data:image/'))
+            ? card._imgEl.src
+            : undefined;
+          apiRef.window.startDrag(filePath, iconUrl);
+        }
+      } catch (err) {
+        console.warn('[mo] native startDrag failed', err);
+      }
     }
     e.dataTransfer.effectAllowed = 'copy';
   });
@@ -7814,6 +7827,18 @@ function renderMediaListRow(item, options) {
       const fileUrl = `file:///${String(filePath).replace(/\\/g, '/').replace(/^\/+/, '')}`;
       try { e.dataTransfer.setData('text/uri-list', fileUrl); } catch { /* ignore */ }
       try { e.dataTransfer.setData('text/plain', filePath); } catch { /* ignore */ }
+      // Native OS drag — drops into Discord / Explorer / browsers.
+      try {
+        const apiRef = options.api || _api;
+        if (apiRef?.window?.startDrag) {
+          const iconUrl = (row._imgEl?.src && row._imgEl.src.startsWith('data:image/'))
+            ? row._imgEl.src
+            : undefined;
+          apiRef.window.startDrag(filePath, iconUrl);
+        }
+      } catch (err) {
+        console.warn('[mo] native startDrag failed', err);
+      }
     }
     e.dataTransfer.effectAllowed = 'copy';
   });
@@ -12056,7 +12081,7 @@ function openLightbox(items, startIndex, resolveFilePath) {
     const fp = await resolveFilePath(item);
     if (fp) {
       const url = await localFileToUrl(fp);
-      if (url) preloadCache.set(cacheKey, { url, type: item.type });
+      if (url) preloadCache.set(cacheKey, { url, type: item.type, sourcePath: fp });
     }
   }
 
@@ -12072,15 +12097,19 @@ function openLightbox(items, startIndex, resolveFilePath) {
 
     // Resolve URL
     let cached = preloadCache.get(cacheKey);
+    let resolvedPath = null;
     if (!cached) {
       const fp = await resolveFilePath(item);
+      resolvedPath = fp;
       if (fp) {
         const url = await localFileToUrl(fp);
         if (url) {
-          cached = { url, type: item.type };
+          cached = { url, type: item.type, sourcePath: fp };
           preloadCache.set(cacheKey, cached);
         }
       }
+    } else {
+      resolvedPath = cached.sourcePath || null;
     }
 
     if (cached) {
@@ -12089,11 +12118,39 @@ function openLightbox(items, startIndex, resolveFilePath) {
         mediaEl.src = cached.url;
         mediaEl.controls = true;
         mediaEl.autoplay = true;
+        mediaEl.draggable = false;
       } else {
         mediaEl = moEl('img');
         mediaEl.src = cached.url;
         mediaEl.alt = item.title || '';
-        mediaEl.draggable = false;
+        // Native OS drag-out: lets the user drag the open image into
+        // Discord / Explorer / browsers. We only enable when zoom is 1x —
+        // when zoomed, mousedown is reserved for panning.
+        mediaEl.draggable = true;
+        mediaEl._filePath = resolvedPath;
+        mediaEl.addEventListener('dragstart', (e) => {
+          const isZoomed = Math.abs(lbZoom - 1) > 0.01;
+          if (isZoomed || !mediaEl._filePath) {
+            e.preventDefault();
+            return;
+          }
+          try {
+            if (e.dataTransfer) {
+              const fileUrl = `file:///${String(mediaEl._filePath).replace(/\\/g, '/').replace(/^\/+/, '')}`;
+              try { e.dataTransfer.setData('text/uri-list', fileUrl); } catch { /* ignore */ }
+              try { e.dataTransfer.setData('text/plain', mediaEl._filePath); } catch { /* ignore */ }
+              e.dataTransfer.effectAllowed = 'copy';
+            }
+            if (_api?.window?.startDrag) {
+              const iconUrl = (mediaEl.src && mediaEl.src.startsWith('data:image/'))
+                ? mediaEl.src
+                : undefined;
+              _api.window.startDrag(mediaEl._filePath, iconUrl);
+            }
+          } catch (err) {
+            console.warn('[mo] lightbox native startDrag failed', err);
+          }
+        });
       }
       // Insert before close button
       content.insertBefore(mediaEl, closeBtn);

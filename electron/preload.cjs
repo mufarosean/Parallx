@@ -47,6 +47,18 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   /** Read a tool module's source code for blob URL loading (external tools only). Returns { source } or { error }. */
   readToolModule: (filePath) => ipcRenderer.invoke('tools:read-module', filePath),
 
+  // ── Native OS drag-and-drop ──
+  /**
+   * Initiate a real OS-level file drag so the user can drop files into
+   * external apps (Discord, Explorer, browser uploads, etc.).
+   * MUST be called synchronously from a `dragstart` handler. The HTML5
+   * DataTransfer object should typically be left empty (or set with
+   * preventDefault()) since startDrag takes over.
+   *
+   * @param {{ filePaths: string | string[], iconDataUrl?: string }} payload
+   */
+  startDrag: (payload) => ipcRenderer.invoke('shell:startDrag', payload),
+
   // ══════════════════════════════════════════════════════════════════════════
   // Filesystem API (M4 Cap 0)
   // ══════════════════════════════════════════════════════════════════════════

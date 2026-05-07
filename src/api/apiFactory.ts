@@ -115,6 +115,17 @@ export interface ParallxApiObject {
     };
     readonly activeColorTheme: { kind: number };
     readonly onDidChangeActiveColorTheme: (listener: (e: { kind: number }) => void) => IDisposable;
+    /**
+     * Initiate a native OS drag-and-drop so the user can drop files
+     * into external apps (Discord, browser, file managers, etc.).
+     * Must be called synchronously from a `dragstart` event handler.
+     * Resolves once the drag has been handed off to the OS; the promise
+     * does NOT track drop success.
+     *
+     * @param filePaths Absolute path(s) to the file(s) being dragged.
+     * @param iconDataUrl Optional data URL (PNG/JPEG) used as the drag image.
+     */
+    startDrag(filePaths: string | readonly string[], iconDataUrl?: string): Promise<void>;
   };
   readonly context: {
     createContextKey<T extends ContextKeyValue>(name: string, defaultValue: T): { key: string; get(): T; set(value: T): void; reset(): void };
@@ -447,6 +458,14 @@ export function createToolApi(
         return ts.onDidChangeTheme((theme) => {
           listener({ kind: _themeTypeToKind(theme.type) });
         });
+      },
+      startDrag: async (filePaths, iconDataUrl) => {
+        const bridge = (globalThis as any).parallxElectron;
+        if (!bridge || typeof bridge.startDrag !== 'function') {
+          throw new Error('[parallx.window.startDrag] Electron bridge not available');
+        }
+        const res = await bridge.startDrag({ filePaths, iconDataUrl });
+        if (res && res.error) throw new Error(`[parallx.window.startDrag] ${res.error}`);
       },
     }),
 

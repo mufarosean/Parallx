@@ -1,7 +1,7 @@
 // electron/main.cjs — Electron main process
 // Uses CommonJS because Electron's main process doesn't support ESM by default.
 
-const { app, BrowserWindow, ipcMain, dialog, shell, screen, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen, safeStorage, nativeImage } = require('electron');
 const http = require('http');
 const path = require('path');
 const fs = require('fs/promises');
@@ -853,6 +853,75 @@ ipcMain.handle('tools:read-module', async (_event, filePath) => {
     return { source };
   } catch (err) {
     return { error: `Failed to read module: ${err.message}` };
+  }
+});
+
+/**
+ * Start a native OS drag operation. The renderer calls this from a
+ * `dragstart` handler when it wants the dragged item to be droppable into
+ * external apps (Discord, Explorer, browser file uploads, etc.). HTML5
+ * DataTransfer alone does not produce a real OS file drag — webContents
+ * .startDrag() does.
+ *
+ * Args:
+ *   - filePaths: string | string[] — absolute path(s) to the file(s)
+ *   - iconDataUrl?: string — data URL for the drag-image (PNG/JPEG)
+ *
+ * Reference: https://www.electronjs.org/docs/latest/tutorial/native-file-drag-drop
+ */
+ipcMain.handle('shell:startDrag', async (event, payload) => {
+  try {
+    const raw = payload?.filePaths;
+    const files = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    if (files.length === 0) return { error: 'No file paths provided' };
+
+    // Validate every file exists and is absolute
+    for (const f of files) {
+      if (typeof f !== 'string' || !path.isAbsolute(f)) {
+        return { error: `Invalid file path: ${f}` };
+      }
+      try {
+        await fs.access(f);
+      } catch {
+        return { error: `File not found: ${f}` };
+      }
+    }
+
+    // Build the drag icon. Windows requires a non-empty icon or startDrag throws.
+    let icon;
+    const iconDataUrl = payload?.iconDataUrl;
+    if (iconDataUrl && typeof iconDataUrl === 'string' && iconDataUrl.startsWith('data:image/')) {
+      icon = nativeImage.createFromDataURL(iconDataUrl);
+    } else {
+      // Try the file itself (works for images on most platforms)
+      try {
+        icon = nativeImage.createFromPath(files[0]);
+      } catch {
+        icon = null;
+      }
+    }
+    // Fallback: 1x1 transparent PNG (last resort — Windows just needs *something*)
+    if (!icon || icon.isEmpty()) {
+      icon = nativeImage.createFromBuffer(Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+        'base64',
+      ));
+    } else {
+      // Resize so the drag-image isn't huge
+      const size = icon.getSize();
+      if (size.width > 128 || size.height > 128) {
+        icon = icon.resize({ width: 128, quality: 'good' });
+      }
+    }
+
+    if (files.length === 1) {
+      event.sender.startDrag({ file: files[0], icon });
+    } else {
+      event.sender.startDrag({ files, icon });
+    }
+    return { error: null };
+  } catch (err) {
+    return { error: `Failed to start drag: ${err.message}` };
   }
 });
 
