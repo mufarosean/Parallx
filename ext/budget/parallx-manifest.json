@@ -43,7 +43,7 @@
             "description": "The MCP server ID under which the Gmail server is registered (Settings → MCP Servers → row id). Defaults to 'gmail' to match the bundled catalog entry. If you renamed the row on install, update this to match exactly."
           },
           "budget.syncStartDays": {
-            "type": "integer",
+            "type": "number",
             "default": 90,
             "minimum": 1,
             "maximum": 3650,
@@ -55,7 +55,7 @@
             "description": "Model id to use for classification/extraction/categorization. Empty = first model returned by api.lm.getModels()."
           },
           "budget.syncIntervalMinutes": {
-            "type": "integer",
+            "type": "number",
             "default": 30,
             "minimum": 5,
             "maximum": 1440,
