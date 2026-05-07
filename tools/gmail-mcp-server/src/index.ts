@@ -191,8 +191,14 @@ async function handleToolsCall(
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logError(`list_unread failed: ${message}`);
-    return makeError(id, -32001, `list_unread failed: ${message}`);
+    const cause = err && typeof err === 'object' ? (err as { cause?: unknown }).cause : undefined;
+    let causeStr = '';
+    if (cause) {
+      const c = cause as { code?: string; message?: string };
+      causeStr = ` (cause: ${c.code ?? c.message ?? String(cause)})`;
+    }
+    logError(`list_unread failed: ${message}${causeStr}`);
+    return makeError(id, -32001, `list_unread failed: ${message}${causeStr}`);
   }
 }
 
