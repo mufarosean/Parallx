@@ -387,6 +387,325 @@ function renderEditorPane(container, api, input) {
   };
 }
 
+// ─── AI pipeline (Stage 1 / 1b / 2 / 3) ────────────────────────────────────
+//
+// Every stage is a single LLM call with `temperature:0, format:'json'`. We
+// stream chunks until done and JSON.parse the concatenation. On parse fail,
+// retry ONCE with a stricter follow-up turn before treating as malformed.
+// All prompts are literal templates from docs/Parallx_Milestone_63.md §AI Pipeline.
+
+async function lmRunJson(api, modelId, systemPrompt, userPrompt) {
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user',   content: userPrompt   },
+  ];
+  const opts = { temperature: 0, format: 'json' };
+  const collect = async (msgs) => {
+    let out = '';
+    for await (const chunk of api.lm.sendChatRequest(modelId, msgs, opts)) {
+      if (chunk && typeof chunk.content === 'string') out += chunk.content;
+      if (chunk && chunk.done) break;
+    }
+    return out;
+  };
+  const tryParse = (s) => { try { return JSON.parse(s); } catch { return undefined; } };
+  let raw = await collect(messages);
+  let parsed = tryParse(raw);
+  if (parsed !== undefined) return parsed;
+  const retryMessages = messages.concat([
+    { role: 'assistant', content: raw },
+    { role: 'user', content: 'Respond ONLY with the JSON object — no prose, no markdown.' },
+  ]);
+  raw = await collect(retryMessages);
+  parsed = tryParse(raw);
+  return parsed; // may still be undefined — caller treats as malformed
+}
+
+async function aiStage1(api, modelId, msg) {
+  const sys = 'You classify emails. Respond with a single JSON object and nothing else.';
+  const usr = `Subject: ${msg.subject || ''}\nSnippet: ${msg.snippet || ''}\n\nReturn:\n{\n  "is_transaction": <true if this email reports a single bank or card transaction (charge, payment, refund, transfer); false otherwise>,\n  "is_balance":     <true if this email reports an account balance (statement, daily balance alert); false otherwise>\n}`;
+  const r = await lmRunJson(api, modelId, sys, usr);
+  if (!r || typeof r !== 'object') return { is_transaction: false, is_balance: false, malformed: true };
+  return {
+    is_transaction: r.is_transaction === true,
+    is_balance:     r.is_balance === true,
+    malformed:      false,
+  };
+}
+
+async function aiStage2(api, modelId, msg) {
+  const sys = 'You extract financial transaction data from emails. Respond with a single JSON object and nothing else. Money is reported in dollars; if you see cents, divide by 100. If multiple transactions are mentioned, return them in the "items" array.';
+  const usr = `Subject: ${msg.subject || ''}\nSnippet: ${msg.snippet || ''}\n\nReturn:\n{\n  "items": [\n    {\n      "merchant":         <string or null>,\n      "amount":           <number — positive for spend/charge, negative for refund/credit>,\n      "card_last_four":   <string of 4 digits or null>,\n      "transaction_date": <"YYYY-MM-DD">,\n      "confidence":       <"high" | "medium" | "low">\n    }\n  ]\n}`;
+  const r = await lmRunJson(api, modelId, sys, usr);
+  if (!r || !Array.isArray(r.items)) return { items: [], malformed: !r };
+  const items = [];
+  for (const raw of r.items) {
+    if (!raw || typeof raw !== 'object') continue;
+    const amt = typeof raw.amount === 'number' ? raw.amount : Number(raw.amount);
+    if (!Number.isFinite(amt)) continue;
+    const date = typeof raw.transaction_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.transaction_date)
+      ? raw.transaction_date
+      : isoLocalDate(msg.receivedAt);
+    const confidence = (raw.confidence === 'high' || raw.confidence === 'medium' || raw.confidence === 'low')
+      ? raw.confidence : 'low';
+    items.push({
+      merchant:         typeof raw.merchant === 'string' ? raw.merchant : null,
+      amount:           amt,
+      card_last_four:   typeof raw.card_last_four === 'string' && /^\d{4}$/.test(raw.card_last_four) ? raw.card_last_four : null,
+      transaction_date: date,
+      confidence,
+    });
+  }
+  return { items, malformed: false };
+}
+
+async function aiStage3(api, modelId, tx, categoryNames) {
+  const sys = 'You pick the best-fitting budget category for a transaction. Respond with a single JSON object and nothing else. The category MUST be one of the listed names (case-insensitive); if none fits, pick "Other".';
+  const usr = `Merchant: ${tx.merchant ?? ''}\nAmount:   ${tx.amount} USD\nCategories: ${categoryNames.join(', ')}\n\nReturn:\n{ "category": <one of the listed category names> }`;
+  const r = await lmRunJson(api, modelId, sys, usr);
+  if (!r || typeof r.category !== 'string') return null;
+  return r.category.trim();
+}
+
+async function aiStage1bExtract(api, modelId, msg) {
+  const sys = 'You extract account balance information from emails. Respond with a single JSON object and nothing else.';
+  const usr = `Subject: ${msg.subject || ''}\nSnippet: ${msg.snippet || ''}\n\nReturn:\n{\n  "account_last_four": <string of 4 digits or null>,\n  "balance":           <number, in dollars>,\n  "snapshot_date":     <"YYYY-MM-DD">\n}`;
+  const r = await lmRunJson(api, modelId, sys, usr);
+  if (!r || typeof r !== 'object') return null;
+  const bal = typeof r.balance === 'number' ? r.balance : Number(r.balance);
+  if (!Number.isFinite(bal)) return null;
+  const date = typeof r.snapshot_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.snapshot_date)
+    ? r.snapshot_date
+    : isoLocalDate(msg.receivedAt);
+  return {
+    account_last_four: typeof r.account_last_four === 'string' && /^\d{4}$/.test(r.account_last_four) ? r.account_last_four : null,
+    balance:           bal,
+    snapshot_date:     date,
+  };
+}
+
+// ─── Sync helpers ──────────────────────────────────────────────────────────
+
+function dollarsToCents(n) {
+  // Math.round avoids 0.1+0.2 binary drift; we already store as INTEGER.
+  return Math.round(Number(n) * 100);
+}
+
+function isoLocalDate(isoTs) {
+  // Convert an ISO-8601 UTC timestamp to local YYYY-MM-DD per D4.
+  if (!isoTs) return new Date().toISOString().slice(0, 10);
+  try {
+    const d = new Date(isoTs);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+function isoNDaysAgo(n) {
+  const t = Date.now() - (Math.max(1, n | 0) * 24 * 60 * 60 * 1000);
+  return new Date(t).toISOString();
+}
+
+async function syncLog(runId, level, stage, message, msgId) {
+  try {
+    await db.run(
+      `INSERT INTO sync_log (run_id, ts, level, msg_id, stage, message) VALUES (?,?,?,?,?,?)`,
+      [runId, new Date().toISOString(), level, msgId || null, stage || null, String(message)],
+    );
+  } catch { /* logging is best-effort */ }
+}
+
+async function getSyncStateValue(key) {
+  const row = await db.get('SELECT value FROM sync_state WHERE key=?', [key]);
+  if (!row) return undefined;
+  try { return JSON.parse(row.value); } catch { return undefined; }
+}
+
+async function pickModelId(api) {
+  const cfg = api.workspace.getConfiguration('budget');
+  const preferred = cfg.get('preferredModelId', '') || '';
+  const models = await api.lm.getModels();
+  if (!models || models.length === 0) {
+    throw new Error('No language models available — install/start Ollama first.');
+  }
+  if (preferred) {
+    const hit = models.find(m => m.id === preferred);
+    if (hit) return hit.id;
+  }
+  return models[0].id;
+}
+
+// ─── Sync engine ───────────────────────────────────────────────────────────
+
+async function budgetSync(api) {
+  const runId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
+  await syncLog(runId, 'info', 'fetch', 'Sync started');
+
+  const counts = { confirmed: 0, review: 0, snapshot: 0, skipped: 0, errors: 0 };
+  try {
+    const cfg = api.workspace.getConfiguration('budget');
+    const serverId = cfg.get('gmailMcpServerId', 'parallx-gmail-mcp');
+    const toolName = `mcp__${serverId}__list_unread`;
+
+    const available = await api.mcp.listTools();
+    if (!available || !available.some(t => t.name === toolName)) {
+      throw new Error(`Gmail MCP tool '${toolName}' is not connected. Open Settings → MCP Servers and connect '${serverId}'.`);
+    }
+
+    const lastSyncedAt = await getSyncStateValue('last_synced_at');
+    const sinceIso = (typeof lastSyncedAt === 'string' && lastSyncedAt)
+      ? lastSyncedAt
+      : isoNDaysAgo(cfg.get('syncStartDays', 90));
+
+    const modelId = await pickModelId(api);
+
+    const result = await api.mcp.invokeTool(toolName, {
+      since: sinceIso,
+      max: 100,
+      read_state: 'all',
+    });
+    if (result && result.isError) {
+      throw new Error(`Gmail MCP error: ${result.content?.[0]?.text ?? 'unknown'}`);
+    }
+    const payload = result?.content?.[0]?.text ?? '[]';
+    let messages;
+    try { messages = JSON.parse(payload); } catch (e) {
+      throw new Error('Gmail MCP returned non-JSON payload: ' + (e instanceof Error ? e.message : String(e)));
+    }
+    if (!Array.isArray(messages)) messages = [];
+
+    // Cache active expense category names for Stage 3
+    const categoryRows = await db.all(
+      `SELECT id, name FROM categories WHERE archived=0 AND kind='expense' ORDER BY sort_order`,
+    );
+    const categoryNames = categoryRows.map(r => r.name);
+    const categoryByName = new Map(categoryRows.map(r => [String(r.name).toLowerCase(), r.id]));
+
+    let newestSeenIso = sinceIso;
+    let newestSeenId = null;
+
+    for (const msg of messages) {
+      if (!msg || !msg.id) { counts.skipped++; continue; }
+      const already = await db.get('SELECT 1 AS x FROM email_imports WHERE gmail_message_id=?', [msg.id]);
+      if (already) { counts.skipped++; continue; }
+
+      // Stage 1 — classify
+      let cls;
+      try { cls = await aiStage1(api, modelId, msg); }
+      catch (e) {
+        await syncLog(runId, 'warn', 'stage1', 'Classify error: ' + (e instanceof Error ? e.message : String(e)), msg.id);
+        cls = { is_transaction: false, is_balance: false, malformed: true };
+        counts.errors++;
+      }
+
+      await db.run(
+        `INSERT INTO email_imports (gmail_message_id, received_at, raw_subject, raw_snippet, is_transaction, is_balance, classifier_model, processed_at)
+         VALUES (?,?,?,?,?,?,?,?)`,
+        [msg.id, msg.receivedAt || new Date().toISOString(), msg.subject || null, msg.snippet || null,
+         cls.is_transaction ? 1 : 0, cls.is_balance ? 1 : 0, modelId, new Date().toISOString()],
+      );
+
+      // Stage 2 — extract transaction(s)
+      if (cls.is_transaction) {
+        let extracted;
+        try { extracted = await aiStage2(api, modelId, msg); }
+        catch (e) {
+          await syncLog(runId, 'warn', 'stage2', 'Extract error: ' + (e instanceof Error ? e.message : String(e)), msg.id);
+          extracted = { items: [], malformed: true };
+        }
+        if (extracted.malformed || extracted.items.length === 0) {
+          // Synthetic review row so user can manually triage.
+          await db.run(
+            `INSERT INTO transactions (id, gmail_message_id, amount_cents, transaction_date, ai_confidence, status, extractor_model)
+             VALUES (?,?,?,?,?,?,?)`,
+            [crypto.randomUUID(), msg.id, 0, isoLocalDate(msg.receivedAt), 'low', 'review', modelId],
+          );
+          counts.review++;
+        } else {
+          for (const item of extracted.items) {
+            let categoryId = null;
+            if (item.confidence !== 'low' && categoryNames.length > 0) {
+              try {
+                const picked = await aiStage3(api, modelId, item, categoryNames);
+                if (picked) categoryId = categoryByName.get(picked.toLowerCase()) || null;
+              } catch (e) {
+                await syncLog(runId, 'warn', 'stage3', 'Categorize error: ' + (e instanceof Error ? e.message : String(e)), msg.id);
+              }
+            }
+            await db.run(
+              `INSERT INTO transactions (id, gmail_message_id, merchant, amount_cents, card_last_four, transaction_date, category_id, ai_confidence, extractor_model, categorizer_model, status)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+              [
+                crypto.randomUUID(), msg.id, item.merchant, dollarsToCents(item.amount),
+                item.card_last_four, item.transaction_date, categoryId,
+                item.confidence, modelId, modelId,
+                item.confidence === 'low' ? 'review' : 'confirmed',
+              ],
+            );
+            if (item.confidence === 'low') counts.review++; else counts.confirmed++;
+          }
+        }
+      }
+
+      // Stage 1b — balance snapshot
+      if (cls.is_balance) {
+        try {
+          const snap = await aiStage1bExtract(api, modelId, msg);
+          if (snap) {
+            await db.run(
+              `INSERT INTO balance_snapshots (id, gmail_message_id, account_last_four, balance_cents, snapshot_date)
+               VALUES (?,?,?,?,?)`,
+              [crypto.randomUUID(), msg.id, snap.account_last_four, dollarsToCents(snap.balance), snap.snapshot_date],
+            );
+            counts.snapshot++;
+          } else {
+            await syncLog(runId, 'warn', 'snapshot', 'Balance parse failed', msg.id);
+            counts.errors++;
+          }
+        } catch (e) {
+          await syncLog(runId, 'warn', 'snapshot', 'Snapshot error: ' + (e instanceof Error ? e.message : String(e)), msg.id);
+          counts.errors++;
+        }
+      }
+
+      if (msg.receivedAt && msg.receivedAt > newestSeenIso) {
+        newestSeenIso = msg.receivedAt;
+        newestSeenId = msg.id;
+      }
+    }
+
+    // Cursor write — last step (no transaction wrapper needed; three KV upserts).
+    await db.run(
+      `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_gmail_message_id', ?)`,
+      [JSON.stringify(newestSeenId)],
+    );
+    await db.run(
+      `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_synced_at', ?)`,
+      [JSON.stringify(newestSeenIso)],
+    );
+    await db.run(
+      `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_run_status', ?)`,
+      [JSON.stringify({ ok: true, ...counts })],
+    );
+    await syncLog(runId, 'info', 'commit', `Sync complete: ${JSON.stringify(counts)}`);
+    return counts;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await syncLog(runId, 'error', 'fetch', message);
+    try {
+      await db.run(
+        `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_run_status', ?)`,
+        [JSON.stringify({ ok: false, error: message, ...counts })],
+      );
+    } catch { /* best-effort */ }
+    throw err;
+  }
+}
+
 // ─── activate() ────────────────────────────────────────────────────────────
 
 export async function activate(api, context) {
@@ -439,25 +758,74 @@ export async function activate(api, context) {
     }));
   }
 
-  // ── Sync command ─────────────────────────────────────────────────────
+  // ── Sync entry-points ────────────────────────────────────────────────
+  // Three surfaces share one engine:
+  //   1. `budget.sync` command   — toolbar / "Sync now" button (direct call).
+  //   2. `budget.sync` chat tool — invoked by the cron job's isolated turn.
+  //   3. The cron job itself     — registered idempotently via api.cron.upsertJob.
+
+  // 1) Direct command — bypasses the agent for impatient users.
   _disposables.push(api.commands.registerCommand('budget.sync', async () => {
-    // P0 dependencies: api.mcp.invokeTool + api.cron.upsertJob.
-    // Until they land, surface a clear notification rather than failing silently.
-    if (!api.mcp || !api.cron || !api.chat || !api.lm) {
-      const missing = [
-        !api.mcp && 'api.mcp',
-        !api.cron && 'api.cron',
-        !api.chat && 'api.chat',
-        !api.lm && 'api.lm',
-      ].filter(Boolean).join(', ');
-      await api.window.showWarningMessage(
-        `Budget sync requires P0 capabilities not yet landed: ${missing}. See Milestone 63 plan.`,
+    if (!api.mcp || !api.lm) {
+      const missing = [!api.mcp && 'api.mcp', !api.lm && 'api.lm'].filter(Boolean).join(', ');
+      await api.window?.showWarningMessage?.(
+        `Budget sync requires capabilities not available: ${missing}.`,
       );
       return;
     }
-    // Sync engine arrives in P2 — wired through api.chat.registerTool('budget.sync', ...).
-    await api.window.showInformationMessage('Budget sync engine ships in M63 P2.');
+    try {
+      const counts = await budgetSync(api);
+      await api.window?.showInformationMessage?.(
+        `Budget sync complete — confirmed: ${counts.confirmed}, review: ${counts.review}, snapshots: ${counts.snapshot}, skipped: ${counts.skipped}.`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await api.window?.showErrorMessage?.(`Budget sync failed: ${msg}`);
+    }
   }));
+
+  // 2) Chat tool — same handler, MCP-shaped result so the agent can read it.
+  if (api.chat && typeof api.chat.registerTool === 'function') {
+    try {
+      _disposables.push(api.chat.registerTool('budget.sync', {
+        description: 'Pull new transaction emails from Gmail and run them through the Budget AI pipeline. Returns counts of confirmed, review-queue, and snapshot rows inserted.',
+        parameters: { type: 'object', properties: {} },
+        requiresConfirmation: false,
+        handler: async () => {
+          if (!api.mcp || !api.lm) {
+            return { content: 'Budget sync unavailable — api.mcp or api.lm missing.', isError: true };
+          }
+          try {
+            const counts = await budgetSync(api);
+            return { content: JSON.stringify(counts) };
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return { content: msg, isError: true };
+          }
+        },
+      }));
+    } catch (e) {
+      console.warn('[Budget] chat tool registration failed:', e);
+    }
+  }
+
+  // 3) Cron job — idempotent upsert; preserves user-edited fields on rerun.
+  if (api.cron && typeof api.cron.upsertJob === 'function') {
+    try {
+      const intervalMin = api.workspace.getConfiguration('budget').get('syncIntervalMinutes', 30);
+      await api.cron.upsertJob({
+        id: 'budget.sync.scheduled',
+        description: 'Pulls new transaction emails and runs them through the Budget AI pipeline.',
+        schedule: { every: `${intervalMin}m` },
+        payload: { agentTurn: 'Run a budget sync now using the budget.sync tool. Report the count of confirmed, review-queue, and snapshot items in two short sentences.' },
+        wakeMode: 'next-heartbeat',
+        contextMessages: 0,
+        enabled: true,
+      });
+    } catch (e) {
+      console.warn('[Budget] cron upsert failed:', e);
+    }
+  }
 }
 
 // ─── deactivate() ──────────────────────────────────────────────────────────
