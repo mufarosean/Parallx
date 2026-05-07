@@ -39,8 +39,8 @@
         "properties": {
           "budget.gmailMcpServerId": {
             "type": "string",
-            "default": "parallx-gmail-mcp",
-            "description": "The MCP server ID under which the Gmail server is registered. Must match the ID used in the MCP Servers UI exactly."
+            "default": "gmail",
+            "description": "The MCP server ID under which the Gmail server is registered (Settings → MCP Servers → row id). Defaults to 'gmail' to match the bundled catalog entry. If you renamed the row on install, update this to match exactly."
           },
           "budget.syncStartDays": {
             "type": "integer",

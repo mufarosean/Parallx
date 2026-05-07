@@ -1517,7 +1517,7 @@ async function budgetSync(api) {
   const counts = { confirmed: 0, review: 0, snapshot: 0, skipped: 0, errors: 0 };
   try {
     const cfg = api.workspace.getConfiguration('budget');
-    const serverId = cfg.get('gmailMcpServerId', 'parallx-gmail-mcp');
+    const serverId = cfg.get('gmailMcpServerId', 'gmail');
     const toolName = `mcp__${serverId}__list_unread`;
 
     const available = await api.mcp.listTools();
