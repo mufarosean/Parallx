@@ -270,8 +270,31 @@ async function writeCredentials(creds, path = defaultCredPath()) {
 }
 
 // src/bundledOAuthClient.ts
-var BUNDLED_GMAIL_OAUTH_CLIENT_ID = "242493707221-qhd75htges3cmd9hhq97u8sh1g5or8sp.apps.googleusercontent.com";
-var BUNDLED_GMAIL_OAUTH_CLIENT_SECRET = "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";
+import { readFileSync } from "node:fs";
+import { homedir as homedir2 } from "node:os";
+import { join as join2 } from "node:path";
+function oauthClientConfigPath() {
+  return join2(homedir2(), ".parallx", "gmail-mcp", "oauth-client.json");
+}
+function loadBundledOAuthClient() {
+  const envId = process.env.GMAIL_OAUTH_CLIENT_ID;
+  const envSecret = process.env.GMAIL_OAUTH_CLIENT_SECRET;
+  if (envId && envSecret) {
+    return { clientId: envId, clientSecret: envSecret };
+  }
+  try {
+    const raw = readFileSync(oauthClientConfigPath(), "utf8");
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.client_id === "string" && typeof parsed.client_secret === "string") {
+      return { clientId: parsed.client_id, clientSecret: parsed.client_secret };
+    }
+  } catch {
+  }
+  return { clientId: "", clientSecret: "" };
+}
+var _bundled = loadBundledOAuthClient();
+var BUNDLED_GMAIL_OAUTH_CLIENT_ID = _bundled.clientId;
+var BUNDLED_GMAIL_OAUTH_CLIENT_SECRET = _bundled.clientSecret;
 
 // src/authCli.ts
 function out(msg) {
