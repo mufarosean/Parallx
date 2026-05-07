@@ -17,15 +17,15 @@ a decision below blocks implementation, raise it as a question — do not improv
 | D2 | **Database location:** `<workspacePath>/.parallx/extensions/budget/data.db`. **Not** `db.sqlite`, **not** `<APP_ROOT>/data/extensions/...`. The directory name is the **extension short name** (`budget`), derived from the tool ID by `toolId.split('.').slice(1).join('.')` — verified `apiFactory.ts` `extName` derivation. | Single source of truth — both `electron/database.cjs` (line 340) and the `apiFactory` `database` namespace agree on this layout. |
 | D3 | **Money is stored as INTEGER cents.** Column `amount_cents INTEGER NOT NULL`. All UI converts to dollars at display time. **Never store dollars as REAL.** | SQLite REAL = IEEE-754 double; `0.1 + 0.2 ≠ 0.3`. Cents-as-integer is the only correct way to add up money. |
 | D4 | **Dates are ISO 8601 text in the user's local timezone.** `transaction_date = 'YYYY-MM-DD'` (date only). `received_at`, `created_at`, `processed_at = 'YYYY-MM-DDTHH:MM:SS.sssZ'` (UTC for timestamps). | Local-date for transactions matches what the user sees on their statement; UTC for system timestamps avoids DST bugs. |
-| D5 | **MCP server ID is configurable, not hardcoded.** Read from `budget.gmailMcpServerId` (default `parallx-gmail-mcp`). The full namespaced tool name is `mcp__${configValue}__list_since`. | The user names their MCP server when adding it — verified `src/openclaw/mcp/mcpToolBridge.ts:80` (`mcp__${serverId}__${schema.name}`). |
-| D6 | **Gmail MCP tool input shape:** `list_since` accepts `{ since: ISO8601 string, max?: 1..500, query?: GmailSearchSyntax }`. `since` is required. Returns ALL messages (read + unread) received strictly after `since`, oldest-first. | New tool added by M63 P0 (D7). |
-| D7 | **Sync uses the new `list_since` MCP tool**, which returns ALL messages received after a cursor timestamp regardless of Gmail read/unread status. `list_unread` is NOT used by Budget. The new tool is shipped as part of M63 P0 inside `tools/gmail-mcp-server`. | A budget needs historical mail; read-status-filtering breaks that. |
-| D8 | **One targeted core change is required.** Add `api.mcp.invokeTool(toolName, args, token?)` to `ParallxApiObject` in `src/api/apiFactory.ts`. External extensions cannot today reach `ILanguageModelToolsService` (the symbol lives in `src/services/chatTypes.ts` which they cannot import). This is P0 of M63. **Do not attempt the workaround of calling `api.services.get({ id: '...' })` with a magic string** — the identifier comparison is by reference, not by string. | Honest reading of `apiFactory.ts` — `services.get/has` take a `ServiceIdentifier` *object*, not a string id. |
+| D5 | **MCP server ID is configurable, not hardcoded.** Read from `budget.gmailMcpServerId` (default `parallx-gmail-mcp`). The full namespaced tool name is `mcp__${configValue}__list_unread`. | The user names their MCP server when adding it — verified `src/openclaw/mcp/mcpToolBridge.ts:80` (`mcp__${serverId}__${schema.name}`). |
+| D6 | **Gmail MCP tool input shape (post-M63 P0):** `list_unread` accepts `{ since?: ISO8601, max?: 1..100, query?: string, read_state?: 'unread'|'all'|'read' }`. `read_state` defaults to `'unread'` for back-compat with existing callers (chat, autonomy). Budget passes `read_state: 'all'`. | Additive change to one existing tool — no new MCP tool, no breaking change. |
+| D7 | **Sync passes `read_state: 'all'`** so historical (already-read) transaction emails are included. The user does not have to manage Gmail's read state. | Closes Q10 by modifying the existing tool, not adding a new one. |
+| D8 | **Two targeted core changes are required.** (1) Add `api.mcp.invokeTool/listTools` to `ParallxApiObject` in `src/api/apiFactory.ts` (extensions cannot today reach `ILanguageModelToolsService`). (2) Expose `api.cron.upsertJob({...})` so an extension can declaratively own a cron job (idempotent: creates if absent, updates schedule if present, leaves user-edited fields alone). The underlying `CronService` already exists — P0 is just the api surface. | Reuses existing `CronService` (`src/openclaw/openclawCronService.ts`); adds zero new scheduling code. |
 | D9 | **`api.views.reveal()` does not exist.** To navigate to a view from a command, call `api.commands.executeCommand('workbench.view.<viewId>')` (the workbench registers a navigation command per contributed view) — or, if that command is not registered for sub-views in this workbench, use `api.commands.executeCommand('budget.openDashboard')` which itself uses an internal mechanism (e.g. setting a context key the side-bar listens to). **Verify the exact command at P1 implementation time** — do not invent. | Verified: `apiFactory.ts` `views` shape exposes only `registerViewProvider` and `setBadge`. |
 | D10 | **`api.commands.executeCommand`** (not `execute`). | Verified `apiFactory.ts` line ~99. |
 | D11 | **Database open() must precede migrate().** Migration directory is **absolute**, computed from `api.env.toolPath` + platform separator + `'db/migrations'`. Not relative. | Verified pattern in `ext/media-organizer/main.js:17910-17924`. |
 | D12 | **No external npm dependencies in the extension bundle for P1.** All UI is hand-written DOM via `$()` from `src/ui/dom.ts` (extension copies the helper, since it can't import from `src/`). Charts are inline SVG. JSON parsing is `JSON.parse`. | Same shape as `ext/media-organizer/main.js` (single bundled JS file). |
-| D13 | **Sync runs single-flight.** A module-level `_syncInProgress` boolean guards against concurrent invocations of `runSync`. If true, the second call no-ops and the UI shows "Sync already running". | SQLite is single-writer; concurrent syncs would interleave inserts and corrupt the cursor. |
+| D13 | **Sync runs as a chat tool (`budget.sync`), scheduled by the existing `CronService`.** Budget does NOT build its own scheduler, mutex, retry loop, or cancellation primitive. The cron service guarantees one run at a time per job (verified in `openclawCronExecutor.ts`). The chat-tool handler is the only sync code; cron triggers it via an isolated LLM turn (does not touch user chat history). | Reuse over reinvention. Cron + chat-tool dispatch already exists for autonomy. |
 | D14 | **Categories are FK-referenced but the FK is enforced.** Order of CREATE TABLE in the migration file places `categories` BEFORE `transactions` so a strict reader can verify FK validity at parse time. (SQLite is lenient about order, but a less-smart human/AI reader is not.) | Readability + reviewability. |
 | D15 | **Visual placeholders in ASCII are not literal Unicode in the UI.** Glyphs like `🔁`, `⇄`, `ⓘ`, `◀`, `▶`, `▾`, `⚙` in this doc represent **codicons** to be rendered via `api.icons.createIconHtml(<id>)`. The codicon-id mapping table is in the "Visual Design" section. The extension MUST NOT emit raw Unicode emojis in HTML. | Visual consistency with the workbench. |
 
@@ -42,7 +42,7 @@ a decision below blocks implementation, raise it as a question — do not improv
 The pipeline is:
 
 ```
-Gmail MCP (list_since)
+Gmail MCP (list_unread, read_state='all')
     → AI extraction layer  (classify + parse transaction fields)
     → AI categorization layer  (merchant → budget category)
     → SQLite database  (source of truth)
@@ -66,7 +66,7 @@ through the same `parallx.*` API. This milestone follows that contract exactly:
 | Mirror VS Code's structure | Budget tool is a registered extension — manifest, contribute.views, contribute.commands, no core changes |
 | Never reinvent the wheel | Reuses `DatabaseService` (IPC SQLite bridge), `ILanguageModelToolsService.invokeToolWithRuntimeControl`, `View` base class, design tokens |
 | Local-only AI via Ollama | AI pipeline calls `ILanguageModelsService.sendChatRequest` — same path as all other model calls in the app |
-| Skill-based tool system | Budget sync is a programmatic pipeline, not a chat skill — but it calls the same MCP tool (`mcp__parallx-gmail-mcp__list_since`) via the same `invokeToolWithRuntimeControl` path autonomy already uses |
+| Skill-based tool system | Budget sync is a programmatic pipeline triggered as a chat tool. The handler calls the same MCP tool (`mcp__parallx-gmail-mcp__list_unread`) via the same `invokeToolWithRuntimeControl` path autonomy already uses |
 | No provider names in core (M62) | The Gmail MCP is an external server; core never sees Gmail-specific code |
 | Second brain, not app store | Budget dashboard is a **domain tool** in the workbench, not a separate window or Electron app |
 
@@ -457,7 +457,7 @@ MUST be:
 readonly mcp: {
   /**
    * Invoke a registered MCP tool by its namespaced name.
-   * @param toolName e.g. 'mcp__parallx-gmail-mcp__list_since'
+   * @param toolName e.g. 'mcp__parallx-gmail-mcp__list_unread'
    * @param args    JSON-serializable arguments matching the tool's inputSchema
    * @param token   optional CancellationToken-shaped object { isCancellationRequested, onCancellationRequested }
    * @returns { content: { type: 'text'; text: string }[]; isError?: boolean }
@@ -486,7 +486,7 @@ if (!api.mcp) {
 }
 const gmailServerId = api.workspace.getConfiguration('budget')
   .get<string>('gmailMcpServerId', 'parallx-gmail-mcp');
-const toolName = `mcp__${gmailServerId}__list_since`;
+const toolName = `mcp__${gmailServerId}__list_unread`;
 
 // Verify the tool is reachable BEFORE running the sync loop
 const available = await api.mcp.listTools();
@@ -504,11 +504,13 @@ const sinceIso = lastSync ? JSON.parse(lastSync.value)
                           : isoNDaysAgo(api.workspace.getConfiguration('budget')
                               .get<number>('syncStartDays', 90));
 
-// D6: { since, max, query }. Do NOT pass after: in `query`.
+// D6: { since, max, query, read_state }. Budget passes read_state:'all' so the
+// existing list_unread tool returns historical (already-read) mail too.
 const result = await api.mcp.invokeTool(toolName, {
   since: sinceIso,
   max: 100,
-  // Optional: narrow with Gmail label (D7 mitigation)
+  read_state: 'all',
+  // Optional Gmail-search narrower (e.g. 'from:chase.com OR from:venmo.com')
   // query: 'label:transactions',
 });
 if (result.isError) {
@@ -645,78 +647,134 @@ Stage 3 only — no Gmail calls, no re-extraction.
 
 ## Gmail MCP Server Changes (M63 P0)
 
-The existing `tools/gmail-mcp-server` ships only `list_unread`, which filters
-by Gmail's read state and is therefore unfit for a budget pipeline (D7).
-M63 P0 adds a NEW tool **alongside** `list_unread` (do not remove the old one
-— other consumers may rely on it):
+The existing `tools/gmail-mcp-server/src/index.ts` ships `list_unread`, which
+hard-filters by Gmail's `is:unread` state. That filter is wrong for a budget
+pipeline (which needs historical mail). M63 P0 makes ONE additive change to
+the existing tool — no new tool, no breaking change.
 
-### Tool spec — `list_since`
+### Change to `list_unread`
 
-**Name:** `list_since`
-**Description (used by tool catalog):** `"List Gmail messages received after a cursor timestamp, regardless of read/unread status. Returns oldest-first."`
+Add a new optional input field `read_state` to the existing input schema.
+Default behavior is preserved (`read_state: 'unread'`), so chat / autonomy
+callers that did not pass the field continue to behave exactly as before.
 
-**Input schema (JSON Schema):**
+**Updated input schema (only the new field is added; `since`, `max`, `query`
+already exist):**
 
 ```json
 {
   "type": "object",
-  "required": ["since"],
   "properties": {
-    "since": {
+    "since":      { "type": "string", "format": "date-time" },
+    "max":        { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 },
+    "query":      { "type": "string", "description": "Gmail search syntax, ANDed with the read-state filter." },
+    "read_state": {
       "type": "string",
-      "format": "date-time",
-      "description": "ISO 8601 UTC timestamp. Returns messages with internalDate strictly greater than this."
-    },
-    "max": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 500,
-      "default": 100,
-      "description": "Maximum number of messages to return in this call."
-    },
-    "query": {
-      "type": "string",
-      "description": "Optional Gmail search syntax to narrow results (e.g. 'from:chase.com OR from:venmo.com'). Combined with the since cursor via AND."
+      "enum": ["unread", "all", "read"],
+      "default": "unread",
+      "description": "Which Gmail messages to include. 'unread' (default) preserves existing behavior; 'all' returns read+unread; 'read' returns only already-read."
     }
   }
 }
 ```
 
-**Output (returned as JSON-encoded string in MCP `content[0].text`):**
+**Output payload:** must include `id`, `threadId`, `receivedAt` (ISO 8601 UTC),
+`from`, `subject`, `snippet`, `labels`. If the existing tool already returns
+fewer fields, extend it to return these — Budget needs all of them and the
+existing callers will simply ignore extra fields.
 
-```typescript
-Array<{
-  id: string;            // Gmail message id (stable, used for dedup)
-  threadId: string;
-  receivedAt: string;    // ISO 8601 UTC, derived from internalDate
-  from: string;          // header value, raw
-  subject: string;       // header value, raw
-  snippet: string;       // Gmail snippet — first ~200 chars, no HTML
-  labels: string[];      // e.g. ["INBOX", "CATEGORY_UPDATES", "Label_123"]
-}>
-```
-
-The array MUST be sorted **oldest-first** (ascending `receivedAt`) so the
-sync engine processes mail in chronological order and the cursor advances
+The output array MUST be sorted **oldest-first** (ascending `receivedAt`) so
+the sync engine processes mail chronologically and the cursor advances
 monotonically.
 
 ### Implementation notes
 
-- Use Gmail API `users.messages.list` with `q: \`after:${unixSeconds(since)} ${userQuery ?? ''}\`.trim()`. Gmail's `after:` is **inclusive at second granularity**; the budget engine's dedup table (`email_imports.gmail_message_id`) handles the off-by-one second case correctly.
-- For each id returned by `list`, call `users.messages.get(id, { format: 'metadata', metadataHeaders: ['From','Subject'] })` to fetch headers + snippet without downloading bodies. **Do not request `format: 'full'`** — bodies are not needed and inflate latency / response size.
-- Pagination: if Gmail returns `nextPageToken` AND total fetched < `max`, follow it. Otherwise return what was fetched.
+- Map `read_state` to a Gmail query fragment:
+  - `'unread'` → `is:unread` (back-compat)
+  - `'read'`   → `-is:unread`
+  - `'all'`    → empty (no read-state constraint)
+- Combine fragments with the user's `query` via space (Gmail AND).
+- For each id returned by `users.messages.list`, call
+  `users.messages.get(id, { format: 'metadata', metadataHeaders: ['From','Subject'] })`.
+  **Do not request `format: 'full'`** — bodies are unneeded and inflate latency.
+- Pagination: follow `nextPageToken` until total fetched ≥ `max` OR no more pages.
 - Errors propagate as MCP `{ isError: true, content: [{ type: 'text', text: '<message>' }] }`.
 
-### Rationale for not modifying `list_unread`
+### Why additive, not a new tool
 
-Other surfaces (chat, autonomy) already invoke `list_unread`. Touching its
-schema would be a breaking change. Adding a sibling tool keeps the contract
-clean and lets the existing tool keep its (legitimate) "show me what's new
-in my inbox" semantics.
+The user's principle: **don't create new surfaces when an existing one fits.**
+`list_unread` is already the Gmail-read tool; adding one parameter is cheaper
+than maintaining two near-identical tools and forces no migration on existing
+callers. Renaming to `list_messages` was considered and rejected: rename would
+force every existing skill/prompt that references `list_unread` to update.
+
+---
+
+## Scheduling — Use the Existing CronService (M63 P0)
+
+Budget does NOT build its own scheduler, mutex, retry loop, or "Sync now"
+background worker. Parallx already has a complete cron service
+(`src/openclaw/openclawCronService.ts` — M58 W4) that:
+
+- Schedules via `at` (one-shot ISO 8601), `every` (duration like `"30m"`), or
+  `cron` (5-field cron expression).
+- Fires payloads as `agentTurn: '<seed message>'` which executes an **isolated
+  LLM turn** (verified `openclawCronExecutor.ts:161`) — does NOT pollute user
+  chat history.
+- Persists job state across restarts; surfaces job list + history in the
+  AI Settings → Scheduled Jobs UI.
+- Guarantees one in-flight execution per job.
+
+### How Budget uses it
+
+On `activate()`, Budget calls `api.cron.upsertJob(...)` (added in P0 — see D8)
+exactly once per workspace:
+
+```javascript
+const intervalMin = api.workspace.getConfiguration('budget').get('syncIntervalMinutes', 30);
+api.cron.upsertJob({
+  id: 'budget.sync.scheduled',                     // stable id; idempotent upsert
+  name: 'Budget sync',
+  description: 'Pulls new transaction emails and runs them through the Budget AI pipeline.',
+  schedule: { every: `${intervalMin}m` },
+  payload: { agentTurn: 'Run a budget sync now using the budget.sync tool. Report the count of new transactions and review-queue items in two short sentences.' },
+  wakeMode: 'next-heartbeat',
+  contextMessages: 0,
+  enabled: true,
+});
+```
+
+**Idempotency contract for `api.cron.upsertJob`:** if a job with the given `id`
+exists, the schedule is updated to match config but the user's manual edits to
+`enabled`, `name`, `description`, and `wakeMode` are **preserved**. (User can
+disable budget sync from Scheduled Jobs UI without it being re-enabled on next
+activation.)
+
+### Sync entry-point is a chat tool
+
+Budget registers ONE chat tool via `api.chat.registerTool('budget.sync', { ... })`
+(verified pattern in `ext/media-organizer/main.js:17850`). The cron job's
+isolated turn calls this tool. The tool handler IS the sync engine — described
+in the next section.
+
+A user-facing command `budget.sync` (registered via `api.commands.registerCommand`)
+calls the same handler directly, bypassing the agent, for impatient users
+clicking "Sync now" in the Dashboard toolbar.
+
+### What this consolidates away
+
+| Was going to build | Replaced by |
+|---|---|
+| Custom in-Budget mutex (`_syncInProgress` flag) | CronService's per-job single-flight + chat-tool invocation lock |
+| Custom retry / next-run scheduling logic | CronService's `nextRunAt` calculator |
+| "Cancel sync" command | Out of P1. Sync is short (<60s typical); cancel adds complexity for negligible benefit. |
+| `budget.syncStartDays` first-sync logic embedded in sync engine | Still used, but only on first invocation when `last_synced_at` is empty |
+| Standalone "Sync Log" view as primary surface | Still kept as a Budget sub-view for DB-side per-message logs, but cron run history is read from AI Settings → Scheduled Jobs |
 
 ---
 
 ## Sync Engine
+
 
 ### Cursor pattern
 
@@ -728,25 +786,29 @@ cursor. Message-id is only used for dedup once a message has been fetched.
 sync_state key: "last_synced_at"          # JSON string of an ISO 8601 UTC timestamp
 sync_state key: "last_gmail_message_id"   # JSON string of the newest msg.id seen (audit/debug only)
 sync_state key: "last_run_status"         # JSON object: { ok, errors, new, ... }
-sync_state key: "in_progress"             # JSON "true"/"false" — D13 single-flight heartbeat
 ```
 
-### Flow (precise pseudocode)
+Note: there is no `in_progress` key. Single-flight is enforced by the
+CronService (per-job) and by chat-tool dispatch — both already serialize
+calls. The sync engine itself does NOT need a mutex.
+
+### Flow (precise pseudocode — body of the `budget.sync` chat tool handler)
 
 ```
-runSync(api, db):
-  if _syncInProgress: return                                      # D13 mutex
-  _syncInProgress = true
+# Entry: invoked either by the cron-scheduled isolated turn (every N min) or
+# by the user clicking "Sync now" (which calls api.commands.executeCommand).
+# CronService + chat-tool dispatch already serialize calls, so no mutex here.
+budgetSync(api, db) -> { new, review, snapshot, skipped, errors }:
   runId = uuidv4()
   log(runId, 'info', 'fetch', 'Sync started')
   try:
     cfg = api.workspace.getConfiguration('budget')
     serverId = cfg.get('gmailMcpServerId', 'parallx-gmail-mcp')
-    toolName = `mcp__${serverId}__list_since`
+    toolName = `mcp__${serverId}__list_unread`
     sinceIso = (await db.get('SELECT value FROM sync_state WHERE key=?', ['last_synced_at']))?.value
                ? JSON.parse(prev) : isoNDaysAgo(cfg.get('syncStartDays', 90))
 
-    result = await api.mcp.invokeTool(toolName, { since: sinceIso, max: 100 })
+    result = await api.mcp.invokeTool(toolName, { since: sinceIso, max: 100, read_state: 'all' })
     if result.isError: throw...
     messages = JSON.parse(result.content[0].text)        # array, oldest-first
 
@@ -759,7 +821,6 @@ runSync(api, db):
     counts = { confirmed: 0, review: 0, snapshot: 0, skipped: 0, errors: 0 }
 
     for msg in messages:                                  # ORDERED: oldest → newest
-      if _cancelRequested: break
       already = await db.get('SELECT 1 FROM email_imports WHERE gmail_message_id=?', [msg.id])
       if already: { counts.skipped++; continue }
 
@@ -814,11 +875,11 @@ runSync(api, db):
       { type:'run', sql:"INSERT OR REPLACE INTO sync_state(key,value) VALUES('last_run_status', ?)",       params:[JSON.stringify({ ok:true, ...counts })] },
     ])
     log(runId, 'info', 'commit', `Sync complete: ${JSON.stringify(counts)}`)
+    return counts
   catch err:
     log(runId, 'error', 'fetch', err.message)
     await db.run("INSERT OR REPLACE INTO sync_state(key,value) VALUES('last_run_status', ?)", [JSON.stringify({ ok:false, error: err.message })])
-  finally:
-    _syncInProgress = false
+    throw err   # surfaced to the caller (chat tool result -> agent reports failure)
 ```
 
 **Cursor update is the last write.** If sync crashes mid-run, the next run
@@ -918,6 +979,13 @@ ext/budget/
             "type": "string",
             "default": "",
             "description": "Model id to use for classification/extraction/categorization. Empty = first model returned by api.lm.getModels()."
+          },
+          "budget.syncIntervalMinutes": {
+            "type": "integer",
+            "default": 30,
+            "minimum": 5,
+            "maximum": 1440,
+            "description": "How often the scheduled cron job runs `budget.sync`. Set to 0 (disable from Scheduled Jobs UI) to turn off automatic sync."
           }
         }
       }
@@ -933,8 +1001,6 @@ ext/budget/
 let _dbBridge = null;
 let _api = null;
 let _activated = false;
-let _syncInProgress = false;     // D13 mutex
-let _cancelRequested = false;
 const _disposables = [];
 
 const db = {
@@ -953,6 +1019,8 @@ export async function activate(api, context) {
   if (!api.database) { throw new Error('[budget] api.database unavailable — ext must not be built-in'); }
   if (!api.lm)       { throw new Error('[budget] api.lm unavailable — language models service missing'); }
   if (!api.mcp)      { throw new Error('[budget] api.mcp unavailable — core too old; M63 P0 not landed'); }
+  if (!api.cron)     { throw new Error('[budget] api.cron unavailable — core too old; M63 P0 not landed'); }
+  if (!api.chat)     { throw new Error('[budget] api.chat unavailable — chat tool registration missing'); }
 
   // ── Open + migrate (D11: open() must precede migrate(), absolute path) ────────────
   _dbBridge = api.database;
@@ -973,14 +1041,43 @@ export async function activate(api, context) {
   _disposables.push(api.views.registerViewProvider('budget.syncLog',      { createView: el => new SyncLogView(el, db, api) }));
   _disposables.push(api.views.registerViewProvider('budget.categories',   { createView: el => new CategoriesView(el, db, api) }));
 
+  // ── Register the sync entry point as a CHAT TOOL (the cron job calls this) ──────
+  // The same handler is called directly by the "Sync now" command for impatient users.
+  _disposables.push(api.chat.registerTool('budget.sync', {
+    description: 'Pull new transaction emails from Gmail and run them through the Budget AI pipeline. Returns counts of new, review-queue, and snapshot rows inserted.',
+    inputSchema: { type: 'object', properties: {} },
+    requiresConfirmation: false,
+    handler: async () => {
+      const counts = await budgetSync(api, db);  // pseudocode body in "Sync Engine" section
+      return { content: [{ type: 'text', text: JSON.stringify(counts) }] };
+    },
+  }));
+
   // ── Register commands (D10: executeCommand, not execute) ──────────────────────────────
-  _disposables.push(api.commands.registerCommand('budget.sync',           () => runSync(api, db)));
-  _disposables.push(api.commands.registerCommand('budget.cancelSync',     () => { _cancelRequested = true; }));
+  _disposables.push(api.commands.registerCommand('budget.sync', async () => {
+    // Direct path (bypasses the agent) for the "Sync now" toolbar button.
+    return budgetSync(api, db);
+  }));
   // D9: navigation command — EXACT workbench command id MUST be verified during P1.
   // The candidate is 'workbench.view.show' with the viewId arg; if that does not exist in this build,
   // fall back to wiring through a Parallx-internal context key. DO NOT INVENT a method on api.views.
   _disposables.push(api.commands.registerCommand('budget.openDashboard', () =>
     api.commands.executeCommand('workbench.view.show', 'budget.dashboard')));
+
+  // ── Schedule recurring sync via the existing CronService ──────────────────────────
+  // Idempotent: upsertJob preserves user's enabled/name/wakeMode edits.
+  const intervalMin = api.workspace.getConfiguration('budget').get('syncIntervalMinutes', 30);
+  await api.cron.upsertJob({
+    id: 'budget.sync.scheduled',
+    name: 'Budget sync',
+    description: 'Pulls new transaction emails and runs them through the Budget AI pipeline.',
+    schedule: { every: `${intervalMin}m` },
+    payload: { agentTurn: 'Run a budget sync now using the budget.sync tool. Report the count of new, review-queue, and snapshot items in two short sentences.' },
+    wakeMode: 'next-heartbeat',
+    contextMessages: 0,
+    enabled: true,
+  });
+}
 }
 
 export async function deactivate() {
@@ -999,9 +1096,10 @@ export async function deactivate() {
 - `api.lm.getModels()` — returns the list of available models from `LanguageModelsService`.
 - `api.mcp.invokeTool(name, args, token?)` — **added by M63 P0** (D8). Returns `Promise<{ content: { type: string; text: string }[]; isError?: boolean }>`.
 - `api.mcp.listTools()` — added by M63 P0. Returns `Promise<readonly { name; description? }[]>`.
+- `api.cron.upsertJob({ id, name, schedule, payload, wakeMode, contextMessages, enabled, description })` — **added by M63 P0** (D8). Wraps `CronService.addJob`/`updateJob` with idempotent semantics keyed by `id`. Preserves user-edited `enabled`/`name`/`wakeMode` on subsequent calls.
+- `api.chat.registerTool(name, def)` — verified usage in `ext/media-organizer/main.js:17850`. `def: { description, inputSchema, requiresConfirmation, handler }`. **`api.chat` may be `undefined`; guard before use.**
 - `api.icons.createIconHtml(iconId, size?)` — codicon-rendering helper. Used everywhere ASCII layouts in this doc show a Unicode glyph (D15).
 - `api.env.toolPath` — absolute path to the unpacked extension directory (used to derive `migrationsDir`).
-- `api.chat.registerTool(name, def)` — used by media-organizer at line 17850 if we want to expose budget queries to chat (P5 stretch). May be `undefined`.
 
 ---
 
@@ -1626,7 +1724,7 @@ Dashboard tile shows progress bars (e.g. "Emergency fund · $4,200 / $10,000").
 
 | # | Question | Current thinking |
 |---|---|---|
-| Q1 | Does `mcp__parallx-gmail-mcp__list_since` return message ID, subject, snippet, received-at, from, and labels in one call? | **MUST** — implementer designs the tool's response payload to include all of these fields per the schema in the "Gmail MCP server changes" section. Log the first response in P2 to confirm. |
+| Q1 | Does `list_unread` (post-`read_state` change) return message ID, subject, snippet, received-at, from, and labels in one call? | **MUST** — implementer extends the existing tool's response payload to include all of these fields per the schema in the "Gmail MCP server changes" section. Log the first response in P2 to confirm. |
 | Q2 | How do we handle multi-transaction emails (e.g. "5 transactions this week")? | Stage 2 returns an array. Each item gets its own `transactions` row referencing the same `email_imports` row. |
 | Q3 | First sync — how far back? | `budget.syncStartDays` config (integer days), default 90. |
 | Q4 | Where does the budget DB file live exactly? | **ANSWERED (D2):** `<workspacePath>/.parallx/extensions/budget/data.db`. Verified `electron/database.cjs:340`. |
@@ -1635,7 +1733,7 @@ Dashboard tile shows progress bars (e.g. "Emergency fund · $4,200 / $10,000").
 | Q7 | Which model does the AI pipeline use? | P1: first model returned by `api.lm.getModels()`. P5 polish: read user's preferred default if/when that becomes a settable preference. |
 | Q8 | What does the MCP tool's content shape actually look like? | MCP tools return `{ content: [{ type: 'text', text: '...' }] }`. The text payload is the JSON string. Confirmed in P2 first-run logging. |
 | Q9 | Are migrations stored as files inside the .plx package, or shipped alongside? | Inside the package — same as media-organizer (`db/migrations/`). The packager script picks them up; `api.database.migrate(<absolute path>)` reads from the extension's installed dir. **Path MUST be absolute** (D11). |
-| Q10 | How do we sync transactions whose emails the user has already read? | **ANSWERED.** P1 ships a NEW MCP tool `list_since` in `tools/gmail-mcp-server` that returns ALL messages received after a cursor timestamp **regardless of read/unread status**. The Budget sync engine calls `mcp__<serverId>__list_since` (not `list_unread`). Tool spec is in the "Gmail MCP server changes" section below. |
+| Q10 | How do we sync transactions whose emails the user has already read? | **ANSWERED.** Budget calls the existing `list_unread` MCP tool with the new `read_state: 'all'` parameter (additive, back-compat preserved). No new MCP tool. See "Gmail MCP Server Changes" section. |
 | Q11 | What is the exact workbench command id to programmatically reveal a sub-view? (D9) | **Implementer's call at P1.** Candidate: `api.commands.executeCommand('workbench.view.show', 'budget.dashboard')`. If that command id does not exist, the implementer picks a working alternative (Parallx context-key listener, or registering a custom command). The constraint stays: do NOT invent a method on `api.views`. |
 
 ---
