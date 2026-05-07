@@ -4245,7 +4245,7 @@ async function resolvePhotoThumbnail(photoId, api) {
   // Adapted from stash: serveThumbnail — exists check before generation
   const thumbPath = getThumbnailPath(thumbDir, row.checksum, THUMB_MAX_SIZE);
   const valid = await validateCachedThumbnail(thumbPath);
-  if (valid) return { path: thumbPath, status: 'cached', sourcePath: gifSource };
+  if (valid) return { path: thumbPath, status: 'cached', sourcePath: gifSource, originalPath: sourceFilePath };
 
   // Lazy generation: ensure tools are available, then generate under semaphore
   await detectAllTools();
@@ -4253,26 +4253,26 @@ async function resolvePhotoThumbnail(photoId, api) {
   try {
     // Double-check after acquiring semaphore (another call may have generated it)
     const validNow = await validateCachedThumbnail(thumbPath);
-    if (validNow) return { path: thumbPath, status: 'cached', sourcePath: gifSource };
+    if (validNow) return { path: thumbPath, status: 'cached', sourcePath: gifSource, originalPath: sourceFilePath };
 
     const result = await generateImageThumbnail(
       row.checksum, sourceFilePath, row.width || 0, row.height || 0, api
     );
 
-    if (result.generated) return { path: result.path, status: 'generated', sourcePath: gifSource };
+    if (result.generated) return { path: result.path, status: 'generated', sourcePath: gifSource, originalPath: sourceFilePath };
     if (result.encoder === 'skip_small') {
       // Image is already ≤ THUMB_MAX_SIZE on both axes — the original file
       // IS the thumbnail. Surface the source path so the grid card can
       // display it directly instead of stranding the placeholder.
       // (Adapted from stash: serveThumbnail returns the original when no
       // resize is required.)
-      return { path: sourceFilePath, status: 'skip', sourcePath: gifSource };
+      return { path: sourceFilePath, status: 'skip', sourcePath: gifSource, originalPath: sourceFilePath };
     }
     if (result.encoder === 'skip_animated') {
-      return { path: null, status: 'skip', sourcePath: gifSource };
+      return { path: null, status: 'skip', sourcePath: gifSource, originalPath: sourceFilePath };
     }
-    if (result.encoder === 'cached') return { path: result.path, status: 'cached', sourcePath: gifSource };
-    return { path: null, status: 'failed' };
+    if (result.encoder === 'cached') return { path: result.path, status: 'cached', sourcePath: gifSource, originalPath: sourceFilePath };
+    return { path: null, status: 'failed', originalPath: sourceFilePath };
   } catch (err) {
     console.warn('[MediaOrganizer] resolvePhotoThumbnail failed for photo', photoId, err);
     return { path: null, status: 'failed' };
@@ -4312,31 +4312,34 @@ async function resolveVideoThumbnail(videoId, api) {
 
   if (!row || !row.checksum) return { path: null, status: 'failed' };
 
+  // Compute the source file path early so we can surface it on every
+  // return path (used by drag-out to chat / canvas / Explorer).
+  const sep = _isWindows ? '\\' : '/';
+  const sourceFilePath = row.folder_path + sep + row.basename;
+
   // Fast path: check if cover already exists and is valid
   const coverPath = getCoverFramePath(thumbDir, row.checksum);
   const valid = await validateCachedThumbnail(coverPath);
-  if (valid) return { path: coverPath, status: 'cached' };
+  if (valid) return { path: coverPath, status: 'cached', originalPath: sourceFilePath };
 
   // Lazy generation under semaphore
   await detectAllTools();
   await _thumbSemaphore.acquire();
   try {
     const validNow = await validateCachedThumbnail(coverPath);
-    if (validNow) return { path: coverPath, status: 'cached' };
+    if (validNow) return { path: coverPath, status: 'cached', originalPath: sourceFilePath };
 
-    const sep = _isWindows ? '\\' : '/';
-    const filePath = row.folder_path + sep + row.basename;
     const result = await generateVideoCoverFrame(
-      row.checksum, filePath, row.duration || 0, api, false, null,
+      row.checksum, sourceFilePath, row.duration || 0, api, false, null,
       row.video_width || 0, row.video_height || 0
     );
 
-    if (result.generated) return { path: result.path, status: 'generated' };
-    if (result.encoder === 'cached') return { path: result.path, status: 'cached' };
+    if (result.generated) return { path: result.path, status: 'generated', originalPath: sourceFilePath };
+    if (result.encoder === 'cached') return { path: result.path, status: 'cached', originalPath: sourceFilePath };
     if (result.encoder === 'skip_no_ffmpeg' || result.encoder === 'skip_no_video_stream') {
-      return { path: null, status: 'skip' };
+      return { path: null, status: 'skip', originalPath: sourceFilePath };
     }
-    return { path: null, status: 'failed' };
+    return { path: null, status: 'failed', originalPath: sourceFilePath };
   } catch (err) {
     console.warn('[MediaOrganizer] resolveVideoThumbnail failed for video', videoId, err);
     return { path: null, status: 'failed' };
@@ -8003,20 +8006,24 @@ function renderCardGrid(container, items, options) {
   async function resolveThumbnailForCard(card, item) {
     try {
       const result = await resolveThumbnail(item.type === 'photo' ? 'photo' : 'video', item.id, _api);
-      if (result && (result.path || result.sourcePath)) {
+      if (result && (result.path || result.sourcePath || result.originalPath)) {
         item.thumbnailPath = result.path;
         // Persist GIF source on item so it survives grid refreshes (zoom changes)
         if (result.sourcePath) item._gifSourcePath = result.sourcePath;
-        // M59 P7: stash original source path for drag-out interop (text/uri-list)
-        if (result.sourcePath) {
-          card._filePath = result.sourcePath;
-          item._sourcePath = result.sourcePath;
+        // M59 P7: stash original source path for drag-out interop (text/uri-list).
+        // Prefer the explicit originalPath (always present for resolved photos +
+        // videos) and fall back to sourcePath (GIF/skip-small case) for safety.
+        const dragPath = result.originalPath || result.sourcePath;
+        if (dragPath) {
+          card._filePath = dragPath;
+          item._sourcePath = dragPath;
         }
         // Remember across loadPage() / navigation so re-entering the grid
         // shows already-resolved thumbnails immediately.
         _moRememberThumb(item.type, item.id, {
           thumbnailPath: result.path || null,
           sourcePath: result.sourcePath || null,
+          originalPath: result.originalPath || null,
         });
         const img = card._imgEl;
         if (img) {
@@ -8578,7 +8585,7 @@ function renderGridBrowser(container, api, input) {
   };
 
   // Save state snapshot on every loadPage
-  let _scrollResetOnLoad = false; // true = scroll to top after loadPage
+  let _lastLoadKey = null;          // serialized filter/sort/page snapshot — used to detect actual state changes (vs. cosmetic re-loads) so scroll position is only reset when the user changes something
   let _lastScrollTop = cached?.scrollTop ?? 0; // live-tracked scroll position
   function saveSessionState() {
     _sessionGridState.set(instanceId, {
@@ -9244,8 +9251,11 @@ function renderGridBrowser(container, api, input) {
       if (cached.thumbnailPath) item.thumbnailPath = cached.thumbnailPath;
       if (cached.sourcePath) {
         item._gifSourcePath = cached.sourcePath;
-        item._sourcePath = cached.sourcePath;
       }
+      // Drag-out source: prefer the explicit originalPath (covers JPG/PNG/MP4)
+      // and fall back to sourcePath (legacy GIF/skip-small entries).
+      const dragPath = cached.originalPath || cached.sourcePath;
+      if (dragPath) item._sourcePath = dragPath;
       if (item.thumbnailPath || item._gifSourcePath) {
         item.thumbnailStatus = 'ready';
       }
@@ -9394,10 +9404,24 @@ function renderGridBrowser(container, api, input) {
       cardGrid.refresh(items, refreshOpts());
     }
 
-    // Scroll: reset on page change, restore on re-open
+    // Scroll: reset only when filter/sort/page state actually changed.
+    // Re-loads triggered by lightbox close, refresh events, or in-place
+    // mutations (rating, tag edits) keep the user where they were so
+    // navigating into item N of a 500-item grid and back doesn't snap to
+    // the top.
     const scrollEl = gridArea.querySelector('.mo-grid');
+    const loadKey = JSON.stringify({
+      p: state.currentPage,
+      pp: state.perPage,
+      sb: state.sortBy,
+      sd: state.sortDir,
+      mt: state.mediaType,
+      dm: state.displayMode,
+      f: state.filters,
+    });
+    const stateChanged = _lastLoadKey !== null && _lastLoadKey !== loadKey;
     if (scrollEl) {
-      if (_scrollResetOnLoad) {
+      if (stateChanged) {
         scrollEl.scrollTop = 0;
         _lastScrollTop = 0;
       } else if (_lastScrollTop > 0) {
@@ -9406,7 +9430,7 @@ function renderGridBrowser(container, api, input) {
         requestAnimationFrame(() => { scrollEl.scrollTop = restoreTo; });
       }
     }
-    _scrollResetOnLoad = true; // all subsequent loads reset to top
+    _lastLoadKey = loadKey;
 
     // Persist state for session
     saveSessionState();
