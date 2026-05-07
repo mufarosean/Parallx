@@ -8954,7 +8954,11 @@ function renderGridBrowser(container, api, input) {
   // doesn't have to wait for our handler before committing the scroll frame.
   let _scrollSaveTimer = null;
   gridArea.addEventListener('scroll', (e) => {
-    if (e.target && e.target.classList && e.target.classList.contains('mo-grid')) {
+    // .mo-grid-area is the actual overflow:auto scroll container — its inner
+    // .mo-grid is just a CSS Grid layout (no overflow). Earlier this guard
+    // checked for 'mo-grid', so _lastScrollTop never updated and the restore
+    // path below could never run.
+    if (e.target === gridArea) {
       _lastScrollTop = e.target.scrollTop;
       if (_scrollSaveTimer) clearTimeout(_scrollSaveTimer);
       _scrollSaveTimer = setTimeout(() => {
@@ -9415,7 +9419,7 @@ function renderGridBrowser(container, api, input) {
     // mutations (rating, tag edits) keep the user where they were so
     // navigating into item N of a 500-item grid and back doesn't snap to
     // the top.
-    const scrollEl = gridArea.querySelector('.mo-grid');
+    const scrollEl = gridArea; // .mo-grid-area owns overflow-y
     const loadKey = JSON.stringify({
       p: state.currentPage,
       pp: state.perPage,
