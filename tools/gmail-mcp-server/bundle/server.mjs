@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+// src/index.ts
+import { setDefaultResultOrder } from "node:dns";
+
 // src/gmailClient.ts
 var GMAIL_API_HOST = "gmail.googleapis.com";
 var GMAIL_API_BASE = `https://${GMAIL_API_HOST}/gmail/v1`;
@@ -399,6 +402,10 @@ async function runAuth() {
 }
 
 // src/index.ts
+try {
+  setDefaultResultOrder("ipv4first");
+} catch {
+}
 var SERVER_NAME = "parallx-gmail-mcp";
 var SERVER_VERSION = "0.1.0";
 var PROTOCOL_VERSION = "2024-11-05";

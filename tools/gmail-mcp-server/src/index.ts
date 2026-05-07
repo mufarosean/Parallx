@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+// Force IPv4-first DNS resolution. Node's default `fetch` (undici) otherwise
+// races IPv6 (AAAA) records first; on hosts where IPv6 routes to Google blackhole
+// or is misconfigured, the connect attempt stalls until UND_ERR_CONNECT_TIMEOUT.
+import { setDefaultResultOrder } from 'node:dns';
+try { setDefaultResultOrder('ipv4first'); } catch { /* older node */ }
+
 // index.ts — Parallx Gmail MCP server entry point.
 //
 // Transport: STDIO JSON-RPC 2.0 (newline-delimited).
