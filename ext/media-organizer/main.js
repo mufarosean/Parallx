@@ -9420,13 +9420,16 @@ function renderGridBrowser(container, api, input) {
     // navigating into item N of a 500-item grid and back doesn't snap to
     // the top.
     const scrollEl = gridArea; // .mo-grid-area owns overflow-y
+    // perPage is intentionally excluded from the reset key: increasing the
+    // page size just appends more cards below the user's current position
+    // (and decreasing it leaves the cards above untouched), so scroll should
+    // be preserved across that change. Same for displayMode toggles between
+    // grid/list — the user is still looking at the same items.
     const loadKey = JSON.stringify({
       p: state.currentPage,
-      pp: state.perPage,
       sb: state.sortBy,
       sd: state.sortDir,
       mt: state.mediaType,
-      dm: state.displayMode,
       f: state.filters,
     });
     const stateChanged = _lastLoadKey !== null && _lastLoadKey !== loadKey;
