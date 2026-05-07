@@ -17,9 +17,9 @@ a decision below blocks implementation, raise it as a question — do not improv
 | D2 | **Database location:** `<workspacePath>/.parallx/extensions/budget/data.db`. **Not** `db.sqlite`, **not** `<APP_ROOT>/data/extensions/...`. The directory name is the **extension short name** (`budget`), derived from the tool ID by `toolId.split('.').slice(1).join('.')` — verified `apiFactory.ts` `extName` derivation. | Single source of truth — both `electron/database.cjs` (line 340) and the `apiFactory` `database` namespace agree on this layout. |
 | D3 | **Money is stored as INTEGER cents.** Column `amount_cents INTEGER NOT NULL`. All UI converts to dollars at display time. **Never store dollars as REAL.** | SQLite REAL = IEEE-754 double; `0.1 + 0.2 ≠ 0.3`. Cents-as-integer is the only correct way to add up money. |
 | D4 | **Dates are ISO 8601 text in the user's local timezone.** `transaction_date = 'YYYY-MM-DD'` (date only). `received_at`, `created_at`, `processed_at = 'YYYY-MM-DDTHH:MM:SS.sssZ'` (UTC for timestamps). | Local-date for transactions matches what the user sees on their statement; UTC for system timestamps avoids DST bugs. |
-| D5 | **MCP server ID is configurable, not hardcoded.** Read from `budget.gmailMcpServerId` (default `parallx-gmail-mcp`). The full namespaced tool name is `mcp__${configValue}__list_unread`. | The user names their MCP server when adding it — verified `src/openclaw/mcp/mcpToolBridge.ts:80` (`mcp__${serverId}__${schema.name}`). |
-| D6 | **Gmail MCP tool input shape:** `{ since?: ISO8601 string, max?: 1..100, query?: GmailSearchSyntax }`. Not `{ query: "after:..." }` only. | Verified `tools/gmail-mcp-server/src/index.ts` `LIST_UNREAD_TOOL.inputSchema`. |
-| D7 | **`list_unread` returns ONLY UNREAD mail.** This is a known limitation. P1 mitigation: instruct the user to keep transaction emails unread, OR pre-pass a Gmail label via the `query` param (e.g. `query: 'label:transactions'`). P3 mitigation: extend the MCP server with a `list_messages` tool that ignores read state. **Do not assume `list_unread` sees all transaction history.** | See open question Q10. |
+| D5 | **MCP server ID is configurable, not hardcoded.** Read from `budget.gmailMcpServerId` (default `parallx-gmail-mcp`). The full namespaced tool name is `mcp__${configValue}__list_since`. | The user names their MCP server when adding it — verified `src/openclaw/mcp/mcpToolBridge.ts:80` (`mcp__${serverId}__${schema.name}`). |
+| D6 | **Gmail MCP tool input shape:** `list_since` accepts `{ since: ISO8601 string, max?: 1..500, query?: GmailSearchSyntax }`. `since` is required. Returns ALL messages (read + unread) received strictly after `since`, oldest-first. | New tool added by M63 P0 (D7). |
+| D7 | **Sync uses the new `list_since` MCP tool**, which returns ALL messages received after a cursor timestamp regardless of Gmail read/unread status. `list_unread` is NOT used by Budget. The new tool is shipped as part of M63 P0 inside `tools/gmail-mcp-server`. | A budget needs historical mail; read-status-filtering breaks that. |
 | D8 | **One targeted core change is required.** Add `api.mcp.invokeTool(toolName, args, token?)` to `ParallxApiObject` in `src/api/apiFactory.ts`. External extensions cannot today reach `ILanguageModelToolsService` (the symbol lives in `src/services/chatTypes.ts` which they cannot import). This is P0 of M63. **Do not attempt the workaround of calling `api.services.get({ id: '...' })` with a magic string** — the identifier comparison is by reference, not by string. | Honest reading of `apiFactory.ts` — `services.get/has` take a `ServiceIdentifier` *object*, not a string id. |
 | D9 | **`api.views.reveal()` does not exist.** To navigate to a view from a command, call `api.commands.executeCommand('workbench.view.<viewId>')` (the workbench registers a navigation command per contributed view) — or, if that command is not registered for sub-views in this workbench, use `api.commands.executeCommand('budget.openDashboard')` which itself uses an internal mechanism (e.g. setting a context key the side-bar listens to). **Verify the exact command at P1 implementation time** — do not invent. | Verified: `apiFactory.ts` `views` shape exposes only `registerViewProvider` and `setBadge`. |
 | D10 | **`api.commands.executeCommand`** (not `execute`). | Verified `apiFactory.ts` line ~99. |
@@ -42,7 +42,7 @@ a decision below blocks implementation, raise it as a question — do not improv
 The pipeline is:
 
 ```
-Gmail MCP (list_unread)
+Gmail MCP (list_since)
     → AI extraction layer  (classify + parse transaction fields)
     → AI categorization layer  (merchant → budget category)
     → SQLite database  (source of truth)
@@ -66,7 +66,7 @@ through the same `parallx.*` API. This milestone follows that contract exactly:
 | Mirror VS Code's structure | Budget tool is a registered extension — manifest, contribute.views, contribute.commands, no core changes |
 | Never reinvent the wheel | Reuses `DatabaseService` (IPC SQLite bridge), `ILanguageModelToolsService.invokeToolWithRuntimeControl`, `View` base class, design tokens |
 | Local-only AI via Ollama | AI pipeline calls `ILanguageModelsService.sendChatRequest` — same path as all other model calls in the app |
-| Skill-based tool system | Budget sync is a programmatic pipeline, not a chat skill — but it calls the same MCP tool (`mcp__parallx-gmail-mcp__list_unread`) via the same `invokeToolWithRuntimeControl` path autonomy already uses |
+| Skill-based tool system | Budget sync is a programmatic pipeline, not a chat skill — but it calls the same MCP tool (`mcp__parallx-gmail-mcp__list_since`) via the same `invokeToolWithRuntimeControl` path autonomy already uses |
 | No provider names in core (M62) | The Gmail MCP is an external server; core never sees Gmail-specific code |
 | Second brain, not app store | Budget dashboard is a **domain tool** in the workbench, not a separate window or Electron app |
 
@@ -457,7 +457,7 @@ MUST be:
 readonly mcp: {
   /**
    * Invoke a registered MCP tool by its namespaced name.
-   * @param toolName e.g. 'mcp__parallx-gmail-mcp__list_unread'
+   * @param toolName e.g. 'mcp__parallx-gmail-mcp__list_since'
    * @param args    JSON-serializable arguments matching the tool's inputSchema
    * @param token   optional CancellationToken-shaped object { isCancellationRequested, onCancellationRequested }
    * @returns { content: { type: 'text'; text: string }[]; isError?: boolean }
@@ -486,7 +486,7 @@ if (!api.mcp) {
 }
 const gmailServerId = api.workspace.getConfiguration('budget')
   .get<string>('gmailMcpServerId', 'parallx-gmail-mcp');
-const toolName = `mcp__${gmailServerId}__list_unread`;
+const toolName = `mcp__${gmailServerId}__list_since`;
 
 // Verify the tool is reachable BEFORE running the sync loop
 const available = await api.mcp.listTools();
@@ -643,6 +643,79 @@ Stage 3 only — no Gmail calls, no re-extraction.
 
 ---
 
+## Gmail MCP Server Changes (M63 P0)
+
+The existing `tools/gmail-mcp-server` ships only `list_unread`, which filters
+by Gmail's read state and is therefore unfit for a budget pipeline (D7).
+M63 P0 adds a NEW tool **alongside** `list_unread` (do not remove the old one
+— other consumers may rely on it):
+
+### Tool spec — `list_since`
+
+**Name:** `list_since`
+**Description (used by tool catalog):** `"List Gmail messages received after a cursor timestamp, regardless of read/unread status. Returns oldest-first."`
+
+**Input schema (JSON Schema):**
+
+```json
+{
+  "type": "object",
+  "required": ["since"],
+  "properties": {
+    "since": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp. Returns messages with internalDate strictly greater than this."
+    },
+    "max": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 500,
+      "default": 100,
+      "description": "Maximum number of messages to return in this call."
+    },
+    "query": {
+      "type": "string",
+      "description": "Optional Gmail search syntax to narrow results (e.g. 'from:chase.com OR from:venmo.com'). Combined with the since cursor via AND."
+    }
+  }
+}
+```
+
+**Output (returned as JSON-encoded string in MCP `content[0].text`):**
+
+```typescript
+Array<{
+  id: string;            // Gmail message id (stable, used for dedup)
+  threadId: string;
+  receivedAt: string;    // ISO 8601 UTC, derived from internalDate
+  from: string;          // header value, raw
+  subject: string;       // header value, raw
+  snippet: string;       // Gmail snippet — first ~200 chars, no HTML
+  labels: string[];      // e.g. ["INBOX", "CATEGORY_UPDATES", "Label_123"]
+}>
+```
+
+The array MUST be sorted **oldest-first** (ascending `receivedAt`) so the
+sync engine processes mail in chronological order and the cursor advances
+monotonically.
+
+### Implementation notes
+
+- Use Gmail API `users.messages.list` with `q: \`after:${unixSeconds(since)} ${userQuery ?? ''}\`.trim()`. Gmail's `after:` is **inclusive at second granularity**; the budget engine's dedup table (`email_imports.gmail_message_id`) handles the off-by-one second case correctly.
+- For each id returned by `list`, call `users.messages.get(id, { format: 'metadata', metadataHeaders: ['From','Subject'] })` to fetch headers + snippet without downloading bodies. **Do not request `format: 'full'`** — bodies are not needed and inflate latency / response size.
+- Pagination: if Gmail returns `nextPageToken` AND total fetched < `max`, follow it. Otherwise return what was fetched.
+- Errors propagate as MCP `{ isError: true, content: [{ type: 'text', text: '<message>' }] }`.
+
+### Rationale for not modifying `list_unread`
+
+Other surfaces (chat, autonomy) already invoke `list_unread`. Touching its
+schema would be a breaking change. Adding a sibling tool keeps the contract
+clean and lets the existing tool keep its (legitimate) "show me what's new
+in my inbox" semantics.
+
+---
+
 ## Sync Engine
 
 ### Cursor pattern
@@ -669,7 +742,7 @@ runSync(api, db):
   try:
     cfg = api.workspace.getConfiguration('budget')
     serverId = cfg.get('gmailMcpServerId', 'parallx-gmail-mcp')
-    toolName = `mcp__${serverId}__list_unread`
+    toolName = `mcp__${serverId}__list_since`
     sinceIso = (await db.get('SELECT value FROM sync_state WHERE key=?', ['last_synced_at']))?.value
                ? JSON.parse(prev) : isoNDaysAgo(cfg.get('syncStartDays', 90))
 
@@ -1553,7 +1626,7 @@ Dashboard tile shows progress bars (e.g. "Emergency fund · $4,200 / $10,000").
 
 | # | Question | Current thinking |
 |---|---|---|
-| Q1 | Does `mcp__parallx-gmail-mcp__list_unread` return message ID, subject, snippet, and date in one call? | Yes per the MCP server implementation (`gmailClient.ts`). Verify in P2 by logging the first response. |
+| Q1 | Does `mcp__parallx-gmail-mcp__list_since` return message ID, subject, snippet, received-at, from, and labels in one call? | **MUST** — implementer designs the tool's response payload to include all of these fields per the schema in the "Gmail MCP server changes" section. Log the first response in P2 to confirm. |
 | Q2 | How do we handle multi-transaction emails (e.g. "5 transactions this week")? | Stage 2 returns an array. Each item gets its own `transactions` row referencing the same `email_imports` row. |
 | Q3 | First sync — how far back? | `budget.syncStartDays` config (integer days), default 90. |
 | Q4 | Where does the budget DB file live exactly? | **ANSWERED (D2):** `<workspacePath>/.parallx/extensions/budget/data.db`. Verified `electron/database.cjs:340`. |
@@ -1562,9 +1635,8 @@ Dashboard tile shows progress bars (e.g. "Emergency fund · $4,200 / $10,000").
 | Q7 | Which model does the AI pipeline use? | P1: first model returned by `api.lm.getModels()`. P5 polish: read user's preferred default if/when that becomes a settable preference. |
 | Q8 | What does the MCP tool's content shape actually look like? | MCP tools return `{ content: [{ type: 'text', text: '...' }] }`. The text payload is the JSON string. Confirmed in P2 first-run logging. |
 | Q9 | Are migrations stored as files inside the .plx package, or shipped alongside? | Inside the package — same as media-organizer (`db/migrations/`). The packager script picks them up; `api.database.migrate(<absolute path>)` reads from the extension's installed dir. **Path MUST be absolute** (D11). |
-| Q10 | `list_unread` returns only UNREAD messages (D7) — how do we sync historical transactions a user has already read? | **OPEN.** Three candidates: (a) instruct user to keep transaction emails unread; (b) extend the MCP tool with `include_read: boolean` (a small change in `tools/gmail-mcp-server`); (c) document Gmail label workflow (`query: 'label:transactions'`) and verify whether the server's query param overrides the `is:unread` filter. P1 ships with (a) documented in onboarding; (b) is the recommended P3 enhancement. |
-| Q11 | What is the exact workbench command id to programmatically reveal a sub-view? (D9) | **TO VERIFY in P1.** Candidate: `workbench.view.show` with the viewId. If absent, wire through a Parallx-internal context-key listener — do NOT invent an `api.views.reveal`. |
-| Q12 | Does Ollama via `api.lm.sendChatRequest` honor `options: { format: 'json' }`? | **TO VERIFY in P1 first run.** If yes, prompts can drop the "respond with JSON only" reminder. If no, retry-on-parse-failure (current contract) is sufficient. |
+| Q10 | How do we sync transactions whose emails the user has already read? | **ANSWERED.** P1 ships a NEW MCP tool `list_since` in `tools/gmail-mcp-server` that returns ALL messages received after a cursor timestamp **regardless of read/unread status**. The Budget sync engine calls `mcp__<serverId>__list_since` (not `list_unread`). Tool spec is in the "Gmail MCP server changes" section below. |
+| Q11 | What is the exact workbench command id to programmatically reveal a sub-view? (D9) | **Implementer's call at P1.** Candidate: `api.commands.executeCommand('workbench.view.show', 'budget.dashboard')`. If that command id does not exist, the implementer picks a working alternative (Parallx context-key listener, or registering a custom command). The constraint stays: do NOT invent a method on `api.views`. |
 
 ---
 
