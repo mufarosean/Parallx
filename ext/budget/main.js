@@ -4,12 +4,14 @@
 //   • Single bundled module, no runtime build step.
 //   • Per-extension SQLite via api.database. Migrations under ./db/migrations.
 //   • Money is INTEGER cents (D3). Dates are 'YYYY-MM-DD' local (D4).
-//   • Sync (chat tool) + scheduled cron upsert require api.mcp + api.cron
-//     which arrive in P0. This scaffold soft-guards both so the extension
-//     boots and the views render today; the sync command surfaces a clear
-//     "P0 not landed" notification until then.
 //
-// Extension contract: external unpacked tool. Loaded by ToolLoader as ESM.
+// UX shape (matches media-organizer):
+//   • Sidebar contributes one nav view ('budget.nav') — a list of sections
+//     (Dashboard, Transactions, Review Queue, Sync Log, Categories).
+//   • Each section opens as an editor tab via a single editor provider
+//     ('budget.editor'), routed by instanceId 'budget:<section>'.
+//   • Sync is a command. Until P0 (api.mcp + api.cron) lands, it surfaces a
+//     clear notification rather than firing.
 
 // ─── Module-level state ────────────────────────────────────────────────────
 let _activated = false;
@@ -88,36 +90,146 @@ async function seedDefaultCategoriesIfEmpty() {
   }
 }
 
-// ─── View provider — placeholder shell ─────────────────────────────────────
+// ─── Section registry ──────────────────────────────────────────────────────
 //
-// Every view contributes a card explaining its eventual purpose plus a
-// "scaffold" note. This keeps the activity bar entry meaningful while P2+
-// features land. Disposing the view tears down our DOM; we hold no
-// per-view subscriptions yet.
-function makePlaceholderProvider(viewLabel, blurb) {
+// One source of truth for: sidebar nav items, editor routing, and command IDs.
+const SECTIONS = [
+  { id: 'dashboard',    title: 'Dashboard',    icon: 'layout-dashboard', commandId: 'budget.openDashboard',    blurb: 'Month-to-date spend, category breakdown, and balance reconciliation.' },
+  { id: 'transactions', title: 'Transactions', icon: 'list',             commandId: 'budget.openTransactions', blurb: 'Searchable, filterable ledger of every imported transaction.' },
+  { id: 'reviewQueue',  title: 'Review Queue', icon: 'inbox',            commandId: 'budget.openReviewQueue',  blurb: 'AI-flagged low-confidence imports awaiting your confirmation.' },
+  { id: 'syncLog',      title: 'Sync Log',     icon: 'scroll-text',      commandId: 'budget.openSyncLog',      blurb: 'Per-message trace of the last few sync runs — including AI stage outcomes.' },
+  { id: 'categories',   title: 'Categories',   icon: 'tag',              commandId: 'budget.openCategories',   blurb: 'Manage your category list — colour, icon, kind, and monthly limits.' },
+];
+
+function sectionByEditorInstanceId(instanceId) {
+  // Editor instanceId convention: 'budget:<sectionId>'.
+  const idx = (instanceId || '').indexOf(':');
+  const sectionId = idx >= 0 ? instanceId.slice(idx + 1) : instanceId || '';
+  return SECTIONS.find(s => s.id === sectionId) || null;
+}
+
+// ─── Sidebar nav view ──────────────────────────────────────────────────────
+function renderSidebarNav(container, api) {
+  const root = document.createElement('div');
+  root.className = 'budget-nav';
+  root.style.cssText = 'display:flex;flex-direction:column;padding:6px 0;font-family:var(--font-family);';
+
+  for (const section of SECTIONS) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'budget-nav-row';
+    row.style.cssText = [
+      'display:flex',
+      'align-items:center',
+      'gap:8px',
+      'padding:6px 12px',
+      'border:none',
+      'background:transparent',
+      'color:var(--foreground)',
+      'font-size:13px',
+      'text-align:left',
+      'cursor:pointer',
+      'border-radius:0',
+    ].join(';');
+    row.addEventListener('mouseenter', () => { row.style.background = 'var(--list-hoverBackground, rgba(255,255,255,0.06))'; });
+    row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
+
+    if (api.icons && typeof api.icons.createIconHtml === 'function' && api.icons.hasIcon(section.icon)) {
+      const iconWrap = document.createElement('span');
+      iconWrap.style.cssText = 'display:inline-flex;width:16px;height:16px;flex:0 0 16px;color:var(--description-foreground);';
+      iconWrap.innerHTML = api.icons.createIconHtml(section.icon, 16);
+      row.appendChild(iconWrap);
+    }
+
+    const label = document.createElement('span');
+    label.textContent = section.title;
+    label.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    row.appendChild(label);
+
+    row.addEventListener('click', () => {
+      api.commands.executeCommand(section.commandId).catch(err => {
+        console.error('[Budget] open section failed:', err);
+      });
+    });
+
+    root.appendChild(row);
+  }
+
+  // Footer: Sync action
+  const footer = document.createElement('div');
+  footer.style.cssText = 'margin-top:8px;padding:6px 12px;border-top:1px solid var(--panel-border, rgba(255,255,255,0.08));';
+  const syncBtn = document.createElement('button');
+  syncBtn.type = 'button';
+  syncBtn.textContent = 'Sync now';
+  syncBtn.style.cssText = [
+    'width:100%',
+    'padding:6px 8px',
+    'background:var(--button-secondaryBackground, rgba(255,255,255,0.06))',
+    'color:var(--foreground)',
+    'border:1px solid var(--panel-border, rgba(255,255,255,0.12))',
+    'border-radius:4px',
+    'font-size:12px',
+    'cursor:pointer',
+  ].join(';');
+  syncBtn.addEventListener('click', () => {
+    api.commands.executeCommand('budget.sync').catch(err => {
+      console.error('[Budget] sync failed:', err);
+    });
+  });
+  footer.appendChild(syncBtn);
+  root.appendChild(footer);
+
+  container.appendChild(root);
+
   return {
-    createView(container) {
-      const el = document.createElement('div');
-      el.className = 'budget-view-placeholder';
-      el.style.cssText = 'padding:20px;display:flex;flex-direction:column;gap:8px;color:var(--foreground);font-family:var(--font-family);';
-      const h = document.createElement('h3');
-      h.textContent = viewLabel;
-      h.style.cssText = 'margin:0 0 4px 0;font-size:14px;font-weight:600;';
-      const p = document.createElement('p');
-      p.textContent = blurb;
-      p.style.cssText = 'margin:0;font-size:12px;color:var(--description-foreground);line-height:1.5;';
-      const tag = document.createElement('div');
-      tag.textContent = 'Scaffold — populated by Milestone 63 P2.';
-      tag.style.cssText = 'margin-top:12px;font-size:11px;color:var(--description-foreground);font-style:italic;';
-      el.appendChild(h);
-      el.appendChild(p);
-      el.appendChild(tag);
-      container.appendChild(el);
-      return {
-        dispose() {
-          try { container.removeChild(el); } catch { /* container already gone */ }
-        },
-      };
+    dispose() {
+      try { container.removeChild(root); } catch { /* container already gone */ }
+    },
+  };
+}
+
+// ─── Editor pane — placeholder shell ───────────────────────────────────────
+//
+// Single editor provider. Routes by instanceId 'budget:<sectionId>'.
+// Each section will be replaced by a real renderer in P2+.
+function renderEditorPane(container, api, input) {
+  const section = sectionByEditorInstanceId(input && input.id);
+
+  const el = document.createElement('div');
+  el.className = 'budget-editor';
+  el.style.cssText = [
+    'display:flex',
+    'flex-direction:column',
+    'gap:12px',
+    'padding:24px 32px',
+    'height:100%',
+    'overflow:auto',
+    'color:var(--foreground)',
+    'font-family:var(--font-family)',
+    'box-sizing:border-box',
+  ].join(';');
+
+  const heading = document.createElement('h2');
+  heading.textContent = section ? section.title : 'Budget';
+  heading.style.cssText = 'margin:0;font-size:20px;font-weight:600;';
+  el.appendChild(heading);
+
+  if (section) {
+    const blurb = document.createElement('p');
+    blurb.textContent = section.blurb;
+    blurb.style.cssText = 'margin:0;font-size:13px;color:var(--description-foreground);line-height:1.5;max-width:680px;';
+    el.appendChild(blurb);
+  }
+
+  const tag = document.createElement('div');
+  tag.textContent = 'Scaffold — populated by Milestone 63 P2.';
+  tag.style.cssText = 'margin-top:8px;font-size:12px;color:var(--description-foreground);font-style:italic;';
+  el.appendChild(tag);
+
+  container.appendChild(el);
+  return {
+    dispose() {
+      try { container.removeChild(el); } catch { /* container already gone */ }
     },
   };
 }
@@ -149,33 +261,32 @@ export async function activate(api, context) {
     // Non-fatal: user can create categories manually.
   }
 
-  // ── Views ────────────────────────────────────────────────────────────
-  _disposables.push(api.views.registerViewProvider('budget.dashboard',
-    makePlaceholderProvider('Dashboard',
-      'Month-to-date spend, category breakdown, and balance reconciliation.'),
-  ));
-  _disposables.push(api.views.registerViewProvider('budget.transactions',
-    makePlaceholderProvider('Transactions',
-      'Searchable, filterable ledger of every imported transaction.'),
-  ));
-  _disposables.push(api.views.registerViewProvider('budget.reviewQueue',
-    makePlaceholderProvider('Review Queue',
-      'AI-flagged low-confidence imports awaiting your confirmation.'),
-  ));
-  _disposables.push(api.views.registerViewProvider('budget.syncLog',
-    makePlaceholderProvider('Sync Log',
-      'Per-message trace of the last few sync runs — including AI stage outcomes.'),
-  ));
-  _disposables.push(api.views.registerViewProvider('budget.categories',
-    makePlaceholderProvider('Categories',
-      'Manage your category list — colour, icon, kind, and monthly limits.'),
-  ));
-
-  // ── Commands ─────────────────────────────────────────────────────────
-  _disposables.push(api.commands.registerCommand('budget.openDashboard', async () => {
-    await api.commands.executeCommand('workbench.view.show', 'budget.dashboard');
+  // ── Sidebar nav view ─────────────────────────────────────────────────
+  _disposables.push(api.views.registerViewProvider('budget.nav', {
+    createView(container) { return renderSidebarNav(container, api); },
   }));
 
+  // ── Editor provider (single, instanceId-routed) ──────────────────────
+  _disposables.push(api.editors.registerEditorProvider('budget.editor', {
+    createEditorPane(container, input) { return renderEditorPane(container, api, input); },
+  }));
+
+  // ── "Open <section>" commands ────────────────────────────────────────
+  for (const section of SECTIONS) {
+    const sectionId = section.id;
+    const title = section.title;
+    const icon = section.icon;
+    _disposables.push(api.commands.registerCommand(section.commandId, async () => {
+      await api.editors.openEditor({
+        typeId: 'budget.editor',
+        title,
+        icon,
+        instanceId: 'budget:' + sectionId,
+      });
+    }));
+  }
+
+  // ── Sync command ─────────────────────────────────────────────────────
   _disposables.push(api.commands.registerCommand('budget.sync', async () => {
     // P0 dependencies: api.mcp.invokeTool + api.cron.upsertJob.
     // Until they land, surface a clear notification rather than failing silently.

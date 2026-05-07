@@ -20,15 +20,18 @@
       }
     ],
     "views": [
-      { "id": "budget.dashboard",    "name": "Dashboard",    "defaultContainerId": "budget-container" },
-      { "id": "budget.transactions", "name": "Transactions", "defaultContainerId": "budget-container" },
-      { "id": "budget.reviewQueue",  "name": "Review Queue", "defaultContainerId": "budget-container" },
-      { "id": "budget.syncLog",      "name": "Sync Log",     "defaultContainerId": "budget-container" },
-      { "id": "budget.categories",   "name": "Categories",   "defaultContainerId": "budget-container" }
+      { "id": "budget.nav", "name": "Budget", "defaultContainerId": "budget-container" }
+    ],
+    "editors": [
+      { "typeId": "budget.editor", "displayName": "Budget" }
     ],
     "commands": [
-      { "id": "budget.sync",          "title": "Sync Gmail Transactions", "category": "Budget" },
-      { "id": "budget.openDashboard", "title": "Open Dashboard",          "category": "Budget" }
+      { "id": "budget.openDashboard",    "title": "Open Dashboard",          "category": "Budget" },
+      { "id": "budget.openTransactions", "title": "Open Transactions",       "category": "Budget" },
+      { "id": "budget.openReviewQueue",  "title": "Open Review Queue",       "category": "Budget" },
+      { "id": "budget.openSyncLog",      "title": "Open Sync Log",           "category": "Budget" },
+      { "id": "budget.openCategories",   "title": "Open Categories",         "category": "Budget" },
+      { "id": "budget.sync",             "title": "Sync Gmail Transactions", "category": "Budget" }
     ],
     "configuration": [
       {
