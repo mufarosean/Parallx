@@ -705,6 +705,11 @@ function renderTransactionsSection(body, api) {
     catch (e) { tableWrap.appendChild(emptyState('Query error: ' + (e instanceof Error ? e.message : String(e)))); return; }
     if (!rows || rows.length === 0) { tableWrap.appendChild(emptyState('No transactions yet — run a sync.')); return; }
 
+    // Cache active expense categories for the per-row dropdown.
+    let categoriesList = [];
+    try { categoriesList = await db.all(`SELECT id, name, color FROM categories WHERE archived=0 ORDER BY sort_order, name`); }
+    catch { categoriesList = []; }
+
     const table = document.createElement('table');
     table.className = 'budget-table';
     table.innerHTML = `
@@ -718,15 +723,43 @@ function renderTransactionsSection(body, api) {
       const tr = document.createElement('tr');
       const cents = Number(r.amount_cents) || 0;
       const amtCls = cents < 0 ? 'positive' : (cents > 0 ? 'negative' : '');
-      const swatch = r.category_color ? `<span class="budget-cat-swatch" style="background:${escHtml(r.category_color)}"></span>` : '';
-      tr.innerHTML = `
-        <td>${escHtml(fmtDate(r.transaction_date))}</td>
-        <td>${escHtml(r.merchant || '—')}</td>
-        <td>${swatch}${escHtml(r.category_name || '—')}</td>
-        <td class="budget-amount ${amtCls}">${escHtml(fmtMoney(cents))}</td>
-        <td><span class="budget-pill ${escHtml(r.status)}">${escHtml(r.status)}</span></td>
-        <td>${r.ai_confidence ? `<span class="budget-pill ${escHtml(r.ai_confidence)}">${escHtml(r.ai_confidence)}</span>` : ''}</td>
-        <td>${r.card_last_four ? '••' + escHtml(r.card_last_four) : ''}</td>`;
+
+      const tdDate = document.createElement('td'); tdDate.textContent = fmtDate(r.transaction_date);
+      const tdMerch = document.createElement('td'); tdMerch.textContent = r.merchant || '—';
+      const tdCat = document.createElement('td');
+      const sel = document.createElement('select'); sel.className = 'budget-select';
+      const blank = document.createElement('option'); blank.value = ''; blank.textContent = '— uncategorized —';
+      sel.appendChild(blank);
+      for (const c of categoriesList) {
+        const o = document.createElement('option'); o.value = c.id; o.textContent = c.name;
+        if (r.category_id === c.id) o.selected = true;
+        sel.appendChild(o);
+      }
+      sel.addEventListener('change', async () => {
+        try {
+          await db.run(
+            `UPDATE transactions SET category_id=?, user_overridden=1, updated_at=? WHERE id=?`,
+            [sel.value || null, new Date().toISOString(), r.id],
+          );
+        } catch (e) {
+          await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e)));
+          await refresh();
+        }
+      });
+      tdCat.appendChild(sel);
+
+      const tdAmt = document.createElement('td');
+      tdAmt.className = 'budget-amount ' + amtCls;
+      tdAmt.textContent = fmtMoney(cents);
+      const tdStatus = document.createElement('td');
+      tdStatus.innerHTML = `<span class="budget-pill ${escHtml(r.status)}">${escHtml(r.status)}</span>`;
+      const tdConf = document.createElement('td');
+      tdConf.innerHTML = r.ai_confidence ? `<span class="budget-pill ${escHtml(r.ai_confidence)}">${escHtml(r.ai_confidence)}</span>` : '';
+      const tdCard = document.createElement('td');
+      tdCard.textContent = r.card_last_four ? '••' + r.card_last_four : '';
+
+      tr.appendChild(tdDate); tr.appendChild(tdMerch); tr.appendChild(tdCat);
+      tr.appendChild(tdAmt); tr.appendChild(tdStatus); tr.appendChild(tdConf); tr.appendChild(tdCard);
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
@@ -951,6 +984,24 @@ function renderCategoriesSection(body, api) {
     iconHtml: makeIcon(api, 'refresh-cw', 12),
     onClick: () => void refresh(),
   }));
+  toolbar.appendChild(makeButton('Add category', {
+    primary: true,
+    iconHtml: makeIcon(api, 'plus', 12),
+    onClick: async () => {
+      const name = (await api.window?.showInputBox?.({ prompt: 'Category name', placeHolder: 'e.g. Pets' }) || '').trim();
+      if (!name) return;
+      try {
+        const lastSort = (await db.get('SELECT MAX(sort_order) AS m FROM categories'))?.m ?? 0;
+        await db.run(
+          `INSERT INTO categories (id, name, color, icon, kind, sort_order) VALUES (?,?,?,?,?,?)`,
+          [crypto.randomUUID(), name, '#94a3b8', 'circle', 'expense', Number(lastSort) + 10],
+        );
+        await refresh();
+      } catch (e) {
+        await api.window?.showErrorMessage?.('Add failed: ' + (e instanceof Error ? e.message : String(e)));
+      }
+    },
+  }));
   body.appendChild(toolbar);
 
   const tableWrap = document.createElement('div');
@@ -976,19 +1027,93 @@ function renderCategoriesSection(body, api) {
     table.className = 'budget-table';
     table.innerHTML = `
       <thead><tr>
-        <th>Name</th><th>Kind</th><th style="text-align:right">Monthly limit</th>
-        <th style="text-align:right">Tx</th><th>Status</th>
+        <th>Name</th><th>Color</th><th>Kind</th>
+        <th style="text-align:right">Monthly limit</th>
+        <th style="text-align:right">Tx</th><th>Status</th><th>Actions</th>
       </tr></thead>`;
     const tbody = document.createElement('tbody');
     for (const r of rows) {
       const tr = document.createElement('tr');
-      const swatch = r.color ? `<span class="budget-cat-swatch" style="background:${escHtml(r.color)}"></span>` : '';
-      tr.innerHTML = `
-        <td>${swatch}${escHtml(r.name)}</td>
-        <td>${escHtml(r.kind)}</td>
-        <td class="budget-amount">${r.monthly_limit_cents != null ? escHtml(fmtMoney(r.monthly_limit_cents)) : ''}</td>
-        <td class="budget-amount">${escHtml(String(r.tx_count || 0))}</td>
-        <td>${r.archived ? '<span class="budget-pill hidden">archived</span>' : '<span class="budget-pill confirmed">active</span>'}</td>`;
+
+      // Name (click to rename)
+      const tdName = document.createElement('td');
+      const swatch = document.createElement('span'); swatch.className = 'budget-cat-swatch'; swatch.style.background = r.color || '#888';
+      const nameSpan = document.createElement('span'); nameSpan.textContent = r.name;
+      tdName.appendChild(swatch); tdName.appendChild(nameSpan);
+      tr.appendChild(tdName);
+
+      // Color
+      const tdColor = document.createElement('td');
+      const colorInput = document.createElement('input');
+      colorInput.type = 'color'; colorInput.value = r.color || '#94a3b8';
+      colorInput.style.width = '32px'; colorInput.style.height = '20px'; colorInput.style.border = 'none'; colorInput.style.background = 'transparent'; colorInput.style.cursor = 'pointer';
+      colorInput.addEventListener('change', async () => {
+        try { await db.run(`UPDATE categories SET color=? WHERE id=?`, [colorInput.value, r.id]); swatch.style.background = colorInput.value; }
+        catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
+      });
+      tdColor.appendChild(colorInput);
+      tr.appendChild(tdColor);
+
+      // Kind
+      const tdKind = document.createElement('td');
+      const kindSel = document.createElement('select'); kindSel.className = 'budget-select';
+      for (const k of ['expense','income','transfer']) {
+        const o = document.createElement('option'); o.value = k; o.textContent = k;
+        if (r.kind === k) o.selected = true;
+        kindSel.appendChild(o);
+      }
+      kindSel.addEventListener('change', async () => {
+        try { await db.run(`UPDATE categories SET kind=? WHERE id=?`, [kindSel.value, r.id]); }
+        catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
+      });
+      tdKind.appendChild(kindSel);
+      tr.appendChild(tdKind);
+
+      // Monthly limit (editable)
+      const tdLimit = document.createElement('td'); tdLimit.className = 'budget-amount';
+      const limitInput = document.createElement('input');
+      limitInput.type = 'number'; limitInput.step = '1'; limitInput.min = '0';
+      limitInput.className = 'budget-input';
+      limitInput.style.width = '90px'; limitInput.style.textAlign = 'right';
+      limitInput.placeholder = '—';
+      limitInput.value = r.monthly_limit_cents != null ? String(Math.round(r.monthly_limit_cents) / 100) : '';
+      limitInput.addEventListener('change', async () => {
+        const v = limitInput.value.trim();
+        const cents = v === '' ? null : Math.round(Number(v) * 100);
+        if (cents !== null && !Number.isFinite(cents)) { limitInput.value = r.monthly_limit_cents != null ? String(r.monthly_limit_cents/100) : ''; return; }
+        try { await db.run(`UPDATE categories SET monthly_limit_cents=? WHERE id=?`, [cents, r.id]); }
+        catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
+      });
+      tdLimit.appendChild(limitInput);
+      tr.appendChild(tdLimit);
+
+      // Tx count
+      const tdTx = document.createElement('td'); tdTx.className = 'budget-amount'; tdTx.textContent = String(r.tx_count || 0);
+      tr.appendChild(tdTx);
+
+      // Status pill
+      const tdStat = document.createElement('td');
+      tdStat.innerHTML = r.archived ? '<span class="budget-pill hidden">archived</span>' : '<span class="budget-pill confirmed">active</span>';
+      tr.appendChild(tdStat);
+
+      // Actions
+      const tdAct = document.createElement('td'); tdAct.style.display = 'flex'; tdAct.style.gap = '4px';
+      tdAct.appendChild(makeButton('Rename', {
+        onClick: async () => {
+          const next = (await api.window?.showInputBox?.({ prompt: 'New name', value: r.name }) || '').trim();
+          if (!next || next === r.name) return;
+          try { await db.run(`UPDATE categories SET name=? WHERE id=?`, [next, r.id]); await refresh(); }
+          catch (e) { await api.window?.showErrorMessage?.('Rename failed: ' + (e instanceof Error ? e.message : String(e))); }
+        },
+      }));
+      tdAct.appendChild(makeButton(r.archived ? 'Unarchive' : 'Archive', {
+        onClick: async () => {
+          try { await db.run(`UPDATE categories SET archived=? WHERE id=?`, [r.archived ? 0 : 1, r.id]); await refresh(); }
+          catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
+        },
+      }));
+      tr.appendChild(tdAct);
+
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
@@ -1074,6 +1199,23 @@ function renderDashboardSection(body, api) {
     if (!catRows || catRows.length === 0) {
       catSection.appendChild(emptyState('No category data yet.'));
     } else {
+      const totalSpend = catRows.reduce((acc, r) => acc + (Number(r.spend) || 0), 0);
+
+      // Donut + bars side by side when room allows; CSS already wraps.
+      const layout = document.createElement('div');
+      layout.style.display = 'flex';
+      layout.style.gap = '20px';
+      layout.style.flexWrap = 'wrap';
+      layout.style.alignItems = 'flex-start';
+
+      // Donut (only when there's at least one non-zero slice).
+      if (totalSpend > 0) {
+        layout.appendChild(buildDonut(catRows.filter(r => (Number(r.spend) || 0) > 0), totalSpend));
+      }
+
+      const bars = document.createElement('div');
+      bars.style.flex = '1 1 320px';
+      bars.style.minWidth = '280px';
       const max = Math.max(1, ...catRows.map(r => Number(r.spend) || 0));
       for (const r of catRows) {
         const spend = Number(r.spend) || 0;
@@ -1086,8 +1228,10 @@ function renderDashboardSection(body, api) {
           <div><span class="budget-cat-swatch" style="background:${escHtml(r.color || '#888')}"></span>${escHtml(r.name)}</div>
           <div class="bar-track"><div class="bar-fill" style="width:${pct}%; background:${escHtml(overLimit ? '#ef4444' : (r.color || '#888'))}"></div></div>
           <div class="amt">${escHtml(fmtMoney(spend))}${limit ? ' / ' + escHtml(fmtMoney(limit)) : ''}</div>`;
-        catSection.appendChild(row);
+        bars.appendChild(row);
       }
+      layout.appendChild(bars);
+      catSection.appendChild(layout);
     }
 
     // ── Reconciliation: latest snapshot vs. derived ───────────
@@ -1118,6 +1262,98 @@ function makeCard(label, value, sub) {
   c.appendChild(l); c.appendChild(v);
   if (sub) { const s = document.createElement('div'); s.className = 'budget-card-sub'; s.textContent = sub; c.appendChild(s); }
   return c;
+}
+
+// Inline SVG donut. No external libs. `slices` is [{name,color,spend}] with
+// spend > 0; total is the sum of those spends.
+function buildDonut(slices, total) {
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const size = 180;
+  const cx = size / 2, cy = size / 2;
+  const rOuter = 78, rInner = 50;
+
+  const wrap = document.createElement('div');
+  wrap.style.position = 'relative';
+  wrap.style.flex = '0 0 auto';
+  wrap.style.width = size + 'px';
+  wrap.style.height = size + 'px';
+
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('width', String(size));
+  svg.setAttribute('height', String(size));
+  svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+
+  // Edge case: only one slice -> draw a full ring.
+  if (slices.length === 1) {
+    const ring = document.createElementNS(SVG_NS, 'path');
+    const d = `M ${cx - rOuter} ${cy} A ${rOuter} ${rOuter} 0 1 0 ${cx + rOuter} ${cy} A ${rOuter} ${rOuter} 0 1 0 ${cx - rOuter} ${cy} Z ` +
+              `M ${cx - rInner} ${cy} A ${rInner} ${rInner} 0 1 1 ${cx + rInner} ${cy} A ${rInner} ${rInner} 0 1 1 ${cx - rInner} ${cy} Z`;
+    ring.setAttribute('d', d);
+    ring.setAttribute('fill-rule', 'evenodd');
+    ring.setAttribute('fill', slices[0].color || '#888');
+    const t = document.createElementNS(SVG_NS, 'title');
+    t.textContent = `${slices[0].name}: ${fmtMoney(slices[0].spend)}`;
+    ring.appendChild(t);
+    svg.appendChild(ring);
+  } else {
+    let acc = 0;
+    for (const s of slices) {
+      const value = Number(s.spend) || 0;
+      if (value <= 0) continue;
+      const startAngle = (acc / total) * Math.PI * 2 - Math.PI / 2;
+      acc += value;
+      const endAngle = (acc / total) * Math.PI * 2 - Math.PI / 2;
+      const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+      const x1 = cx + rOuter * Math.cos(startAngle);
+      const y1 = cy + rOuter * Math.sin(startAngle);
+      const x2 = cx + rOuter * Math.cos(endAngle);
+      const y2 = cy + rOuter * Math.sin(endAngle);
+      const x3 = cx + rInner * Math.cos(endAngle);
+      const y3 = cy + rInner * Math.sin(endAngle);
+      const x4 = cx + rInner * Math.cos(startAngle);
+      const y4 = cy + rInner * Math.sin(startAngle);
+      const d = [
+        `M ${x1} ${y1}`,
+        `A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${x2} ${y2}`,
+        `L ${x3} ${y3}`,
+        `A ${rInner} ${rInner} 0 ${largeArc} 0 ${x4} ${y4}`,
+        'Z',
+      ].join(' ');
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('fill', s.color || '#888');
+      const t = document.createElementNS(SVG_NS, 'title');
+      const pct = Math.round((value / total) * 100);
+      t.textContent = `${s.name}: ${fmtMoney(value)} (${pct}%)`;
+      path.appendChild(t);
+      svg.appendChild(path);
+    }
+  }
+
+  wrap.appendChild(svg);
+
+  // Center label
+  const center = document.createElement('div');
+  center.style.position = 'absolute';
+  center.style.inset = '0';
+  center.style.display = 'flex';
+  center.style.flexDirection = 'column';
+  center.style.alignItems = 'center';
+  center.style.justifyContent = 'center';
+  center.style.pointerEvents = 'none';
+  const label = document.createElement('div');
+  label.className = 'budget-card-label';
+  label.textContent = 'Total';
+  const value = document.createElement('div');
+  value.style.fontSize = '15px';
+  value.style.fontWeight = '600';
+  value.style.fontVariantNumeric = 'tabular-nums';
+  value.textContent = fmtMoney(total);
+  center.appendChild(label);
+  center.appendChild(value);
+  wrap.appendChild(center);
+
+  return wrap;
 }
 
 // ─── AI pipeline (Stage 1 / 1b / 2 / 3) ────────────────────────────────────
@@ -1439,6 +1675,113 @@ async function budgetSync(api) {
   }
 }
 
+// ─── Read-only chat-tool helpers ───────────────────────────────────────────
+
+function isYmd(s) { return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s); }
+
+async function resolveCategoryByName(name) {
+  if (!name || typeof name !== 'string') return null;
+  const row = await db.get(
+    `SELECT id, name FROM categories WHERE LOWER(name) = LOWER(?) LIMIT 1`,
+    [name.trim()],
+  );
+  return row || null;
+}
+
+async function budgetToolSummary(args) {
+  const today = new Date();
+  const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const from = isYmd(args.from) ? args.from : monthStart;
+  const to = isYmd(args.to) ? args.to : todayStr;
+
+  let categoryId = null, categoryName = null;
+  if (args.category) {
+    const cat = await resolveCategoryByName(args.category);
+    if (!cat) return { ok: false, error: `Unknown category: ${args.category}`, from, to };
+    categoryId = cat.id; categoryName = cat.name;
+  }
+
+  const where = [`status='confirmed'`, `transaction_date >= ?`, `transaction_date <= ?`];
+  const params = [from, to];
+  if (categoryId) { where.push(`category_id = ?`); params.push(categoryId); }
+
+  const totals = await db.get(
+    `SELECT COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END),0) AS spend_cents,
+            COALESCE(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END),0) AS refund_cents,
+            COUNT(*) AS count
+       FROM transactions WHERE ${where.join(' AND ')}`,
+    params,
+  ) || { spend_cents: 0, refund_cents: 0, count: 0 };
+
+  const breakdown = await db.all(
+    `SELECT COALESCE(c.name, '— uncategorized —') AS category,
+            COALESCE(SUM(CASE WHEN t.amount_cents > 0 THEN t.amount_cents ELSE 0 END), 0) AS spend_cents,
+            COUNT(*) AS count
+       FROM transactions t
+       LEFT JOIN categories c ON c.id = t.category_id
+      WHERE t.status='confirmed' AND t.transaction_date >= ? AND t.transaction_date <= ?
+        ${categoryId ? 'AND t.category_id = ?' : ''}
+      GROUP BY t.category_id
+      ORDER BY spend_cents DESC`,
+    categoryId ? [from, to, categoryId] : [from, to],
+  );
+
+  const toDollars = (c) => Math.round(Number(c) || 0) / 100;
+  return {
+    ok: true,
+    from, to,
+    category: categoryName,
+    spend: toDollars(totals.spend_cents),
+    refunds: toDollars(totals.refund_cents),
+    net: toDollars((Number(totals.spend_cents) || 0) - (Number(totals.refund_cents) || 0)),
+    transactionCount: Number(totals.count) || 0,
+    byCategory: breakdown.map(r => ({
+      category: r.category,
+      spend: toDollars(r.spend_cents),
+      count: Number(r.count) || 0,
+    })),
+  };
+}
+
+async function budgetToolSearch(args) {
+  const limit = Math.max(1, Math.min(200, Number(args.limit) || 50));
+  const where = [`t.status='confirmed'`];
+  const params = [];
+  if (typeof args.query === 'string' && args.query.trim()) {
+    where.push(`LOWER(t.merchant) LIKE ?`);
+    params.push(`%${args.query.trim().toLowerCase()}%`);
+  }
+  if (isYmd(args.from)) { where.push(`t.transaction_date >= ?`); params.push(args.from); }
+  if (isYmd(args.to))   { where.push(`t.transaction_date <= ?`); params.push(args.to); }
+  if (args.category) {
+    const cat = await resolveCategoryByName(args.category);
+    if (!cat) return { ok: false, error: `Unknown category: ${args.category}`, results: [] };
+    where.push(`t.category_id = ?`); params.push(cat.id);
+  }
+  const rows = await db.all(
+    `SELECT t.id, t.merchant, t.amount_cents, t.transaction_date, t.card_last_four, c.name AS category
+       FROM transactions t
+       LEFT JOIN categories c ON c.id = t.category_id
+      WHERE ${where.join(' AND ')}
+      ORDER BY t.transaction_date DESC, t.created_at DESC
+      LIMIT ?`,
+    [...params, limit],
+  );
+  return {
+    ok: true,
+    count: rows.length,
+    results: rows.map(r => ({
+      id: r.id,
+      merchant: r.merchant,
+      amount: Math.round(Number(r.amount_cents) || 0) / 100,
+      date: r.transaction_date,
+      cardLastFour: r.card_last_four,
+      category: r.category,
+    })),
+  };
+}
+
 // ─── activate() ────────────────────────────────────────────────────────────
 
 export async function activate(api, context) {
@@ -1534,6 +1877,52 @@ export async function activate(api, context) {
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             return { content: msg, isError: true };
+          }
+        },
+      }));
+
+      // Read-only query tools so the chat agent can answer
+      // "how much did I spend on dining last month?" style questions.
+      _disposables.push(api.chat.registerTool('budget.summary', {
+        description: 'Summarise budget totals over a date range, optionally narrowed to one category. Returns spend, refunds, net, and per-category breakdown.',
+        parameters: {
+          type: 'object',
+          properties: {
+            from:     { type: 'string', description: 'Start date YYYY-MM-DD (inclusive). Default: first of current month.' },
+            to:       { type: 'string', description: 'End date YYYY-MM-DD (inclusive). Default: today.' },
+            category: { type: 'string', description: 'Optional category name (case-insensitive).' },
+          },
+        },
+        requiresConfirmation: false,
+        handler: async (args) => {
+          try {
+            const out = await budgetToolSummary(args || {});
+            return { content: JSON.stringify(out) };
+          } catch (err) {
+            return { content: err instanceof Error ? err.message : String(err), isError: true };
+          }
+        },
+      }));
+
+      _disposables.push(api.chat.registerTool('budget.search', {
+        description: 'Search confirmed transactions by merchant substring, optional category, and date range. Returns up to 50 matching rows.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query:    { type: 'string', description: 'Merchant substring (case-insensitive).' },
+            category: { type: 'string', description: 'Optional category name (case-insensitive).' },
+            from:     { type: 'string', description: 'Start date YYYY-MM-DD inclusive.' },
+            to:       { type: 'string', description: 'End date YYYY-MM-DD inclusive.' },
+            limit:    { type: 'integer', description: 'Max rows (default 50, max 200).' },
+          },
+        },
+        requiresConfirmation: false,
+        handler: async (args) => {
+          try {
+            const out = await budgetToolSearch(args || {});
+            return { content: JSON.stringify(out) };
+          } catch (err) {
+            return { content: err instanceof Error ? err.message : String(err), isError: true };
           }
         },
       }));
