@@ -20,6 +20,7 @@
  */
 
 import type { IDisposable } from '../platform/lifecycle.js';
+import { createServiceIdentifier } from '../platform/types.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -968,3 +969,16 @@ function computeNextCronRun(expr: string, fromMs: number): number | null {
 
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// DI Service Identifier (M63 P0)
+// ---------------------------------------------------------------------------
+
+/**
+ * DI identifier for the {@link CronService}.
+ *
+ * Registered after construction in built-in/chat/main.ts so extensions can
+ * resolve it via parallx.services.get(ICronService) and so the api.cron
+ * bridge can wire upsertJob through DI.
+ */
+export const ICronService = createServiceIdentifier<CronService>('ICronService');

@@ -37,6 +37,9 @@ import { EditorsBridge } from './bridges/editorsBridge.js';
 import { LanguageModelBridge } from './bridges/languageModelBridge.js';
 import { ChatBridge } from './bridges/chatBridge.js';
 import { IconsBridge } from './bridges/iconsBridge.js';
+import { McpBridge, type IMcpInvokeToken, type IMcpInvokeResult, type IMcpToolInfo } from './bridges/mcpBridge.js';
+import { CronBridge, type IExtensionCronJob } from './bridges/cronBridge.js';
+import { ICronService } from '../openclaw/openclawCronService.js';
 import type { IThemeService } from '../services/serviceTypes.js';
 import { ThemeType } from '../theme/colorRegistry.js';
 import type { ViewManager } from '../views/viewManager.js';
@@ -224,6 +227,24 @@ export interface ParallxApiObject {
     isOpen(): Promise<{ isOpen: boolean }>;
     runTransaction(operations: { type: 'run' | 'get' | 'all'; sql: string; params?: unknown[] }[]): Promise<{ error: null; results: unknown[] } | { error: { code: string; message: string } }>;
   } | undefined;
+  /**
+   * MCP tool invocation surface (M63 P0).
+   * Wraps {@link ILanguageModelToolsService} to invoke MCP-namespaced tools
+   * (`mcp__<serverId>__<toolName>`). Undefined when the service is unavailable.
+   */
+  readonly mcp: {
+    invokeTool(toolName: string, args: Record<string, unknown>, token?: IMcpInvokeToken): Promise<IMcpInvokeResult>;
+    listTools(): readonly IMcpToolInfo[];
+  } | undefined;
+  /**
+   * Cron scheduling surface (M63 P0).
+   * Idempotent upsert by stable extension-owned id. Undefined when
+   * {@link ICronService} is not registered.
+   */
+  readonly cron: {
+    upsertJob(job: IExtensionCronJob): void;
+    removeJob(id: string): boolean;
+  } | undefined;
 }
 
 // ─── Global Tool Lifecycle Emitters ──────────────────────────────────────────
@@ -341,6 +362,15 @@ export function createToolApi(
 
   const chatBridge = chatAgentService
     ? new ChatBridge(toolId, chatAgentService, languageModelToolsService, subscriptions)
+    : undefined;
+
+  // M63 P0 — MCP & Cron bridges. Undefined when underlying services absent.
+  const mcpBridge = languageModelToolsService
+    ? new McpBridge(toolId, languageModelToolsService)
+    : undefined;
+
+  const cronBridge = deps.services.has(ICronService)
+    ? new CronBridge(toolId, deps.services.get<import('../openclaw/openclawCronService.js').CronService>(ICronService))
     : undefined;
 
   // ── Build API object ──
@@ -694,6 +724,23 @@ export function createToolApi(
       ? Object.freeze({
           createChatParticipant: (id: string, handler: any) => chatBridge.createChatParticipant(id, handler),
           registerTool: (name: string, tool: any) => chatBridge.registerTool(name, tool),
+        })
+      : undefined,
+
+    // M63 P0 — MCP tool invocation surface.
+    mcp: mcpBridge
+      ? Object.freeze({
+          invokeTool: (toolName: string, args: Record<string, unknown>, token?: IMcpInvokeToken) =>
+            mcpBridge.invokeTool(toolName, args, token),
+          listTools: () => mcpBridge.listTools(),
+        })
+      : undefined,
+
+    // M63 P0 — Cron scheduling surface.
+    cron: cronBridge
+      ? Object.freeze({
+          upsertJob: (job: IExtensionCronJob) => cronBridge.upsertJob(job),
+          removeJob: (id: string) => cronBridge.removeJob(id),
         })
       : undefined,
   };

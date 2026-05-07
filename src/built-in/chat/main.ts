@@ -55,7 +55,7 @@ import { CanvasSurfacePlugin } from '../canvas/surfaces/canvasSurface.js';
 import { HeartbeatRunner, type IHeartbeatConfig } from '../../openclaw/openclawHeartbeatRunner.js';
 import { createHeartbeatTurnExecutor } from '../../openclaw/openclawHeartbeatExecutor.js';
 import { shouldHeartbeatAcceptPath } from '../../openclaw/openclawHeartbeatFileFilter.js';
-import { CronService, type HeartbeatWaker } from '../../openclaw/openclawCronService.js';
+import { CronService, ICronService, type HeartbeatWaker } from '../../openclaw/openclawCronService.js';
 import {
   createCronTurnExecutor,
   createCronContextLineFetcher,
@@ -1376,6 +1376,10 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         },
       });
       cronService = new CronService(cronExecutor, cronContextFetcher, cronHeartbeatWaker);
+
+      // M63 P0 — expose CronService through DI so extensions can reach it
+      // via parallx.services.get(ICronService) (used by parallx.cron.upsertJob).
+      api.services.registerInstance(ICronService, cronService);
 
       // ── M60 Phase γ §3.8/§3.10 — cron controls layer ──
       cronService.setObservers({
