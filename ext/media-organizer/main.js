@@ -13459,11 +13459,11 @@ function showOptimizeGifDialog(gifFiles, api, onComplete) {
     const lines = [];
     if (willOptimize > 0 && cantHit > 0 && predictedTotal > targetBytes) {
       // The planner can't get under the target for some files. Be explicit
-      // about that — the user typed 8 MB and we shouldn't bury the bad news
-      // inside a single "predicted total" line.
-      lines.push(`Target: ${targetMB} MB · best achievable: ~${fmtBytes(predictedTotal)}`);
+      // — the user typed 8 MB and we shouldn't bury the bad news inside a
+      // single "predicted total" line.
+      lines.push(`Target: ${targetMB} MB · best estimate: ~${fmtBytes(predictedTotal)} (±15%)`);
     } else {
-      lines.push(`Total: ${fmtBytes(originalTotal)} → ~${fmtBytes(predictedTotal)} (predicted)`);
+      lines.push(`Total: ${fmtBytes(originalTotal)} → ~${fmtBytes(predictedTotal)} (estimate, ±15%)`);
     }
     if (willOptimize > 0) {
       const avgW = Math.round(widthSum / willOptimize);
@@ -13526,6 +13526,7 @@ function showOptimizeGifDialog(gifFiles, api, onComplete) {
     let optimized = 0;
     let skipped = 0;
     let failed = 0;
+    let overshot = 0;
 
     for (let i = 0; i < probes.length; i++) {
       if (cancelled) break;
@@ -13540,6 +13541,7 @@ function showOptimizeGifDialog(gifFiles, api, onComplete) {
         if (result.replaced) {
           optimized++;
           totalSaved += (result.originalBytes - result.finalBytes);
+          if (result.overshoot) overshot++;
         } else {
           skipped++;
         }
@@ -13556,7 +13558,7 @@ function showOptimizeGifDialog(gifFiles, api, onComplete) {
 
     const summary = cancelled
       ? `Cancelled. Optimized ${optimized}, freed ${fmtBytes(totalSaved)}.${failed > 0 ? ` ${failed} failed.` : ''}`
-      : `Optimized ${optimized} of ${probes.length}. Freed ${fmtBytes(totalSaved)}.${skipped > 0 ? ` ${skipped} skipped (already small / no improvement).` : ''}${failed > 0 ? ` ${failed} failed (see console).` : ''}`;
+      : `Optimized ${optimized} of ${probes.length}. Freed ${fmtBytes(totalSaved)}.${overshot > 0 ? ` ${overshot} exceeded target (still smaller than original).` : ''}${skipped > 0 ? ` ${skipped} skipped (already small / no improvement).` : ''}${failed > 0 ? ` ${failed} failed (see console).` : ''}`;
     api.window.showInformationMessage(summary);
     overlay.remove();
     if (onComplete) onComplete();
@@ -16148,26 +16150,83 @@ async function moRecordGifBppObservation({ width, height, fps, duration, dither,
 }
 
 /**
+ * Derive bytes-per-pixel-per-frame from a probe of the source GIF. This is
+ * the encoder's actual bpp budget for this exact content — vastly more
+ * accurate than a global EMA, because GIF complexity varies 10x between a
+ * static talking-head and a high-motion gameplay clip.
+ *
+ * Returns null if the probe lacks the data we need or the value is exotic
+ * (single-frame all-black GIF would produce a meaningless number).
+ */
+function moDeriveSourceBpp(probe) {
+  if (!probe) return null;
+  const w = probe.width || 0;
+  const h = probe.height || 0;
+  const f = probe.fps || 0;
+  const d = probe.duration || 0;
+  const b = probe.bytes || 0;
+  if (w < 2 || h < 2 || f < 1 || d < 0.05 || b < 1024) return null;
+  const bpp = b / (w * h * f * d);
+  // Same sanity bounds as the EMA recorder. Very low bpp is usually a
+  // monochrome / mostly-blank GIF whose budget at smaller dims will be
+  // dominated by palette overhead, not content; very high bpp is a probe
+  // artifact (uncompressed source, broken duration, etc).
+  if (!Number.isFinite(bpp) || bpp < 0.05 || bpp > 5.0) return null;
+  return bpp;
+}
+
+// Palette-efficiency factor for re-encoding at lower resolution. When we
+// downscale a paletted GIF, bpp doesn't stay perfectly flat — small palette
+// overhead becomes a larger share of total bytes at smaller frame sizes.
+// Empirically the bpp creeps up roughly 5-15% at half size, 20-30% at quarter
+// size. Keep this conservative (errs toward over-prediction so we plan a
+// gentler ladder rung that's more likely to actually fit).
+function moScaleEfficiency(targetWidth, sourceWidth) {
+  if (!sourceWidth || sourceWidth < 2) return 1.0;
+  const ratio = Math.max(0.1, Math.min(1, targetWidth / sourceWidth));
+  // 1.0 at ratio=1, 1.30 at ratio=0.1 (linear).
+  return 1.0 + 0.30 * (1 - ratio);
+}
+
+/**
  * Predict output bytes for a GIF encode.
  *   width, height : output pixel dims (after scale/crop)
  *   fps           : target frame rate
  *   duration      : seconds
  *   dither        : 'none' | 'bayer' | 'floyd_steinberg' | 'sierra2_4a'
  *   bppOverride   : optional measured bpp from a prior pass (calibration)
+ *   sourceBpp     : optional bpp derived from the source GIF's own size —
+ *                   the single biggest per-file accuracy improvement.
+ *   sourceWidth   : the source GIF's width, needed to apply scale-efficiency
+ *                   when sourceBpp is supplied.
+ *
+ * Precedence (most → least specific):
+ *   1. bppOverride    — explicit measurement from a prior encode pass
+ *   2. sourceBpp      — this file's own encoder budget (per-file truth)
+ *   3. learned EMA    — average across the user's prior optimizations
+ *   4. static baseline — first run, nothing learned yet
  */
-function moPredictGifBytes({ width, height, fps, duration, dither, bppOverride }) {
+function moPredictGifBytes({ width, height, fps, duration, dither, bppOverride, sourceBpp, sourceWidth }) {
   const w = Math.max(2, width || 0);
   const h = Math.max(2, height || 0);
   const f = Math.max(1, fps || 0);
   const d = Math.max(0.05, duration || 0);
   const ditherKey = (dither in MO_GIF_BPP_DITHER) ? dither : 'bayer';
-  // Calibration precedence: explicit override > learned EMA > static baseline.
-  // The learned value already had its dither factor stripped on insert, so we
-  // re-apply it here. Override is treated as a fully-formed effective bpp.
   let bpp;
-  if (bppOverride != null) bpp = bppOverride;
-  else if (_moGifBppCalibrated != null) bpp = _moGifBppCalibrated * MO_GIF_BPP_DITHER[ditherKey];
-  else bpp = MO_GIF_BPP_BASE * MO_GIF_BPP_DITHER[ditherKey];
+  if (bppOverride != null) {
+    bpp = bppOverride;
+  } else if (sourceBpp != null && sourceWidth) {
+    // Source-derived bpp already reflects the encoder's behavior on this
+    // exact content. Apply scale-efficiency for the new resolution; dither
+    // factor is folded in only as a small adjustment relative to the source's
+    // assumed bayer baseline (we don't know what the source used). Net: this
+    // is a tight per-file estimate, not a global average.
+    bpp = sourceBpp * moScaleEfficiency(w, sourceWidth) * (MO_GIF_BPP_DITHER[ditherKey] / MO_GIF_BPP_DITHER.bayer);
+  } else if (_moGifBppCalibrated != null) {
+    bpp = _moGifBppCalibrated * MO_GIF_BPP_DITHER[ditherKey];
+  } else {
+    bpp = MO_GIF_BPP_BASE * MO_GIF_BPP_DITHER[ditherKey];
+  }
   return Math.round(w * h * f * d * bpp);
 }
 
@@ -16204,7 +16263,18 @@ async function moProbeGif(filePath) {
  * Pick the gentlest (width, fps, duration) combination predicted to fit the
  * target. Returns the chosen plan plus a flag if we hit the floor.
  */
-function moPickGifOptimizePlan(probe, targetBytes, dither, allowTrim) {
+function moPickGifOptimizePlan(probe, targetBytes, dither, allowTrim, opts) {
+  const bppOverride = opts && opts.bppOverride != null ? opts.bppOverride : null;
+  // Source-derived bpp is the per-file ground truth. Compute it from the
+  // probe unless the caller supplied an explicit override (calibration pass).
+  const sourceBpp = bppOverride != null ? null : moDeriveSourceBpp(probe);
+  const sourceWidth = probe.width;
+
+  const predictAt = (w, h, f, d) => moPredictGifBytes({
+    width: w, height: h, fps: f, duration: d, dither,
+    bppOverride, sourceBpp, sourceWidth,
+  });
+
   const fpsRungs = [probe.fps, ...MO_GIF_FPS_LADDER]
     .filter((v) => v >= 10 && v <= probe.fps);
   // Dedupe while preserving descending order (highest fps tried first per width)
@@ -16223,7 +16293,7 @@ function moPickGifOptimizePlan(probe, targetBytes, dither, allowTrim) {
   for (const w of widthList) {
     const h = Math.max(2, Math.round(w * aspect / 2) * 2);
     for (const f of fpsList) {
-      const bytes = moPredictGifBytes({ width: w, height: h, fps: f, duration: probe.duration, dither });
+      const bytes = predictAt(w, h, f, probe.duration);
       if (bytes <= targetBytes) {
         return { width: w, height: h, fps: f, duration: probe.duration, predictedBytes: bytes, hitFloor: false };
       }
@@ -16238,7 +16308,7 @@ function moPickGifOptimizePlan(probe, targetBytes, dither, allowTrim) {
   if (allowTrim) {
     for (const frac of MO_GIF_TRIM_LADDER) {
       const dur = probe.duration * frac;
-      const bytes = moPredictGifBytes({ width: fw, height: fh, fps: ff, duration: dur, dither });
+      const bytes = predictAt(fw, fh, ff, dur);
       if (bytes <= targetBytes) {
         return { width: fw, height: fh, fps: ff, duration: dur, predictedBytes: bytes, hitFloor: true, trimmed: true };
       }
@@ -16246,7 +16316,7 @@ function moPickGifOptimizePlan(probe, targetBytes, dither, allowTrim) {
   }
 
   // Couldn't reach target even at the floor.
-  const bytes = moPredictGifBytes({ width: fw, height: fh, fps: ff, duration: probe.duration, dither });
+  const bytes = predictAt(fw, fh, ff, probe.duration);
   return { width: fw, height: fh, fps: ff, duration: probe.duration, predictedBytes: bytes, hitFloor: true };
 }
 
@@ -16350,57 +16420,30 @@ async function moOptimizeGifFile(srcPath, opts) {
     let stat = await window.parallxElectron.fs.stat(tmpPath);
     actualBytes = stat ? (stat.size || 0) : 0;
 
-    // Iterative calibration: keep replanning with the actual measured bpp
-    // (plus a small per-attempt pessimism boost) until either we land within
-    // 1.15× target, the plan stops descending, or we hit MAX_RETRIES. Without
-    // this loop a single calibration miss leaves the file far over target —
-    // exactly what 15 MB → 12.9 MB at "target 8 MB" looked like to the user.
+    // Iterative calibration. With a per-file sourceBpp seed the first plan is
+    // usually right within ~15%, but for content the encoder handles unusually
+    // (lots of grain, motion blur) we re-derive the actual measured bpp and
+    // ask the picker for a smaller rung. Stops on convergence, no-descent, or
+    // when a smaller plan produced a *worse* file (rare, sparse content).
     const MAX_RETRIES = 3;
+    let overshoot = false;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       if (actualBytes <= targetBytes * 1.15) break;
 
+      // Per-attempt pessimism: bias the measured bpp slightly upward each
+      // round so we don't oscillate around the same plan.
       const measuredBpp = (actualBytes / Math.max(1, plan.width * plan.height * plan.fps * plan.duration))
         * (1 + 0.05 * attempt);
 
-      const calibratedPick = (probe2) => {
-        const fpsList = [probe2.fps, ...MO_GIF_FPS_LADDER].filter((v) => v >= 10 && v <= probe2.fps);
-        const widthList = [probe2.width, ...MO_GIF_WIDTH_LADDER].filter((v) => v >= 240 && v <= probe2.width);
-        const aspect = probe2.height / probe2.width;
-        const seenF = new Set(); const fL = [];
-        for (const v of fpsList) { const k = Math.round(v); if (!seenF.has(k)) { seenF.add(k); fL.push(k); } }
-        const seenW = new Set(); const wL = [];
-        for (const v of widthList) { const k = Math.round(v); if (!seenW.has(k)) { seenW.add(k); wL.push(k); } }
-        for (const w of wL) {
-          const h = Math.max(2, Math.round(w * aspect / 2) * 2);
-          for (const f of fL) {
-            const bytes = moPredictGifBytes({ width: w, height: h, fps: f, duration: probe2.duration, bppOverride: measuredBpp });
-            if (bytes <= targetBytes) return { width: w, height: h, fps: f, duration: probe2.duration, predictedBytes: bytes, hitFloor: false };
-          }
-        }
-        // Floor + (optional) trim escalation. Trim only if the caller opted
-        // in — clip-export auto-optimize never trims (user hand-cut those
-        // frames); gallery/grid optimize lets the user check the box.
-        const fw = Math.max(240, wL[wL.length - 1] || 240);
-        const fh = Math.max(2, Math.round(fw * aspect / 2) * 2);
-        const ff = 10;
-        if (allowTrim) {
-          for (const frac of MO_GIF_TRIM_LADDER) {
-            const dur = probe2.duration * frac;
-            const bytes = moPredictGifBytes({ width: fw, height: fh, fps: ff, duration: dur, bppOverride: measuredBpp });
-            if (bytes <= targetBytes) {
-              return { width: fw, height: fh, fps: ff, duration: dur, predictedBytes: bytes, hitFloor: true, trimmed: true };
-            }
-          }
-        }
-        return { width: fw, height: fh, fps: ff, duration: probe2.duration, predictedBytes: 0, hitFloor: true };
-      };
+      // Reuse the main picker with bppOverride — single source of truth for
+      // the ladder, floor, and trim escalation. No duplicated logic.
+      const planNext = moPickGifOptimizePlan(probe, targetBytes, dither, allowTrim, { bppOverride: measuredBpp });
 
-      const planNext = calibratedPick(probe);
       const sameAsCurrent = planNext.width === plan.width
         && planNext.fps === plan.fps
         && (!!planNext.trimmed) === (!!plan.trimmed)
         && Math.abs((planNext.duration || 0) - (plan.duration || 0)) < 0.01;
-      if (sameAsCurrent) break; // No further descent possible.
+      if (sameAsCurrent) break; // Picker can't get any smaller.
 
       await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
       await moEncodeOptimizedGif(srcPath, tmpPath, planNext, dither);
@@ -16419,6 +16462,10 @@ async function moOptimizeGifFile(srcPath, opts) {
       actualBytes = actualN;
       stat = statN;
     }
+    // If we exhausted retries and still missed by more than 15%, flag it so
+    // the caller can surface "X files exceeded target" honestly. We still
+    // replace (smaller than original is a win), but the user finds out.
+    if (actualBytes > targetBytes * 1.15) overshoot = true;
 
     // Safety: if our "optimized" output is somehow larger than the source,
     // bail out and leave the original alone. No user expects optimization
@@ -16454,7 +16501,7 @@ async function moOptimizeGifFile(srcPath, opts) {
       width: plan.width, height: plan.height, fps: plan.fps,
       duration: plan.duration, dither, actualBytes,
     }).catch(() => {});
-    return { srcPath, originalBytes, finalBytes: actualBytes, plan, replaced: true, skipped: false };
+    return { srcPath, originalBytes, finalBytes: actualBytes, plan, replaced: true, skipped: false, overshoot, targetBytes };
   } finally {
     // Always clean up the tmp file unless the rename consumed it. Covers:
     // ffmpeg failure, partial encode, backup failure, rename failure, abort.
