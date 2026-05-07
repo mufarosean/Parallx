@@ -258,6 +258,197 @@ function injectStyles() {
   color: var(--vscode-descriptionForeground, #888);
   width: fit-content;
 }
+
+/* ═══ Section toolbar + content ═══ */
+.budget-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.budget-toolbar .spacer { flex: 1; }
+.budget-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--vscode-button-secondaryBackground, #3a3a3a);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+  border: 1px solid var(--vscode-panel-border, #555);
+  border-radius: var(--parallx-radius-sm, 3px);
+  font-family: inherit;
+  font-size: var(--parallx-fontSize-sm, 11px);
+  cursor: pointer;
+}
+.budget-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
+.budget-btn[aria-pressed="true"] {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  border-color: transparent;
+}
+.budget-btn:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline-offset: -1px;
+}
+.budget-btn-primary {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  border-color: transparent;
+}
+.budget-btn-primary:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
+.budget-btn .budget-icon { width: 12px; height: 12px; flex: 0 0 12px; }
+
+.budget-input, .budget-select {
+  background: var(--vscode-input-background, rgba(255,255,255,0.04));
+  color: var(--vscode-input-foreground, #ccc);
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, #555));
+  border-radius: var(--parallx-radius-sm, 3px);
+  padding: 4px 8px;
+  font: inherit;
+  font-size: var(--parallx-fontSize-sm, 11px);
+}
+.budget-input:focus, .budget-select:focus {
+  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline-offset: -1px;
+}
+
+.budget-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground, #888);
+  font-size: var(--parallx-fontSize-sm, 11px);
+}
+
+/* Tables */
+.budget-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--parallx-fontSize-sm, 11px);
+}
+.budget-table th, .budget-table td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  vertical-align: middle;
+}
+.budget-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--vscode-editor-background);
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground, #aaa);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.budget-table tbody tr:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+}
+.budget-amount { font-variant-numeric: tabular-nums; text-align: right; }
+.budget-amount.negative { color: var(--vscode-charts-red, #f87171); }
+.budget-amount.positive { color: var(--vscode-charts-green, #4ade80); }
+
+.budget-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #fff);
+}
+.budget-pill.review  { background: #b45309; color: #fff; }
+.budget-pill.confirmed { background: #166534; color: #fff; }
+.budget-pill.hidden  { background: #4b5563; color: #ddd; }
+.budget-pill.deleted { background: #7f1d1d; color: #fff; }
+.budget-pill.low    { background: #b45309; color: #fff; }
+.budget-pill.medium { background: #4d6b80; color: #fff; }
+.budget-pill.high   { background: #166534; color: #fff; }
+
+.budget-cat-swatch {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* Dashboard cards */
+.budget-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.budget-card {
+  padding: 12px 14px;
+  border: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-radius: var(--parallx-radius-md, 4px);
+  background: var(--vscode-input-background, rgba(255,255,255,0.02));
+}
+.budget-card-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--vscode-descriptionForeground, #888);
+}
+.budget-card-value {
+  font-size: 20px;
+  font-weight: 600;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.budget-card-sub {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #888);
+  margin-top: 2px;
+}
+
+.budget-cat-bar {
+  display: grid;
+  grid-template-columns: 110px 1fr 70px;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: var(--parallx-fontSize-sm, 11px);
+}
+.budget-cat-bar .bar-track {
+  height: 6px;
+  background: var(--vscode-input-background, rgba(255,255,255,0.06));
+  border-radius: 3px;
+  overflow: hidden;
+}
+.budget-cat-bar .bar-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+.budget-cat-bar .amt {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--vscode-descriptionForeground, #aaa);
+}
+
+.budget-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.budget-section h3 {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--vscode-descriptionForeground, #888);
+  font-weight: 600;
+}
+
+.budget-log-row {
+  font-family: var(--parallx-fontFamily-mono, ui-monospace, Consolas, monospace);
+  font-size: 11px;
+}
+.budget-log-row.warn  td { color: #f59e0b; }
+.budget-log-row.error td { color: #f87171; }
+
 `;
   document.head.appendChild(style);
 }
@@ -367,24 +558,566 @@ function renderEditorPane(container, api, input) {
   const body = document.createElement('div');
   body.className = 'budget-editor-body';
 
-  if (section) {
-    const blurb = document.createElement('p');
-    blurb.className = 'budget-editor-blurb';
-    blurb.textContent = section.blurb;
-    body.appendChild(blurb);
+  // Per-section renderer. Each returns nothing; mutates `body` directly.
+  // When a section is unknown we fall back to a tiny placeholder.
+  const sectionId = section ? section.id : '';
+  let cleanup = null;
+  if (sectionId === 'dashboard')          cleanup = renderDashboardSection(body, api);
+  else if (sectionId === 'transactions')  cleanup = renderTransactionsSection(body, api);
+  else if (sectionId === 'reviewQueue')   cleanup = renderReviewQueueSection(body, api);
+  else if (sectionId === 'syncLog')       cleanup = renderSyncLogSection(body, api);
+  else if (sectionId === 'categories')    cleanup = renderCategoriesSection(body, api);
+  else {
+    const tag = document.createElement('div');
+    tag.className = 'budget-editor-tag';
+    tag.textContent = 'Unknown section';
+    body.appendChild(tag);
   }
-
-  const tag = document.createElement('div');
-  tag.className = 'budget-editor-tag';
-  tag.textContent = 'Scaffold — populated by Milestone 63 P2.';
-  body.appendChild(tag);
 
   el.appendChild(body);
 
   container.appendChild(el);
   return {
-    dispose() { try { container.removeChild(el); } catch { /* container already gone */ } },
+    dispose() {
+      try { if (typeof cleanup === 'function') cleanup(); } catch { /* best-effort */ }
+      try { container.removeChild(el); } catch { /* container already gone */ }
+    },
   };
+}
+
+// ─── Display helpers ───────────────────────────────────────────────────────
+
+function fmtMoney(cents) {
+  const n = Number(cents) || 0;
+  const sign = n < 0 ? '-' : '';
+  const abs = Math.abs(n);
+  const dollars = Math.floor(abs / 100);
+  const c = String(abs % 100).padStart(2, '0');
+  return `${sign}$${dollars.toLocaleString('en-US')}.${c}`;
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  return String(d).slice(0, 10);
+}
+
+function escHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, ch => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+  ));
+}
+
+function makeButton(label, opts) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'budget-btn' + (opts && opts.primary ? ' budget-btn-primary' : '');
+  if (opts && opts.iconHtml) {
+    const ic = document.createElement('span');
+    ic.className = 'budget-icon';
+    ic.innerHTML = opts.iconHtml;
+    b.appendChild(ic);
+  }
+  const span = document.createElement('span');
+  span.textContent = label;
+  b.appendChild(span);
+  if (opts && typeof opts.onClick === 'function') b.addEventListener('click', opts.onClick);
+  return b;
+}
+
+function emptyState(msg) {
+  const div = document.createElement('div');
+  div.className = 'budget-empty';
+  div.textContent = msg;
+  return div;
+}
+
+// ─── Section: Transactions ─────────────────────────────────────────────────
+
+function renderTransactionsSection(body, api) {
+  let statusFilter = 'all'; // all|confirmed|review|hidden
+  let search = '';
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'budget-toolbar';
+
+  const searchInput = document.createElement('input');
+  searchInput.type = 'search';
+  searchInput.className = 'budget-input';
+  searchInput.placeholder = 'Search merchant…';
+  searchInput.style.minWidth = '180px';
+  searchInput.addEventListener('input', () => { search = searchInput.value; void refresh(); });
+
+  const statusFilters = document.createElement('div');
+  statusFilters.style.display = 'flex';
+  statusFilters.style.gap = '4px';
+  for (const f of [['all','All'],['confirmed','Confirmed'],['review','Review'],['hidden','Hidden']]) {
+    const b = makeButton(f[1], { onClick: () => { statusFilter = f[0]; updatePressed(); void refresh(); } });
+    b.dataset.filter = f[0];
+    statusFilters.appendChild(b);
+  }
+  function updatePressed() {
+    statusFilters.querySelectorAll('button').forEach(btn => {
+      btn.setAttribute('aria-pressed', btn.dataset.filter === statusFilter ? 'true' : 'false');
+    });
+  }
+  updatePressed();
+
+  const refreshBtn = makeButton('Refresh', {
+    iconHtml: makeIcon(api, 'refresh-cw', 12),
+    onClick: () => void refresh(),
+  });
+  const syncBtn = makeButton('Sync now', {
+    primary: true,
+    iconHtml: makeIcon(api, 'refresh-cw', 12),
+    onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
+  });
+
+  toolbar.appendChild(searchInput);
+  toolbar.appendChild(statusFilters);
+  const spacer = document.createElement('div'); spacer.className = 'spacer';
+  toolbar.appendChild(spacer);
+  toolbar.appendChild(refreshBtn);
+  toolbar.appendChild(syncBtn);
+  body.appendChild(toolbar);
+
+  const tableWrap = document.createElement('div');
+  body.appendChild(tableWrap);
+
+  let alive = true;
+  async function refresh() {
+    if (!alive) return;
+    tableWrap.innerHTML = '';
+    const where = [];
+    const params = [];
+    if (statusFilter !== 'all') { where.push('t.status = ?'); params.push(statusFilter); }
+    else { where.push("t.status IN ('confirmed','review','hidden')"); }
+    if (search.trim()) { where.push('LOWER(t.merchant) LIKE ?'); params.push(`%${search.trim().toLowerCase()}%`); }
+    const sql = `
+      SELECT t.id, t.merchant, t.amount_cents, t.transaction_date, t.status, t.ai_confidence,
+             t.card_last_four, c.name AS category_name, c.color AS category_color
+        FROM transactions t
+        LEFT JOIN categories c ON c.id = t.category_id
+       WHERE ${where.join(' AND ')}
+       ORDER BY t.transaction_date DESC, t.created_at DESC
+       LIMIT 500`;
+    let rows;
+    try { rows = await db.all(sql, params); }
+    catch (e) { tableWrap.appendChild(emptyState('Query error: ' + (e instanceof Error ? e.message : String(e)))); return; }
+    if (!rows || rows.length === 0) { tableWrap.appendChild(emptyState('No transactions yet — run a sync.')); return; }
+
+    const table = document.createElement('table');
+    table.className = 'budget-table';
+    table.innerHTML = `
+      <thead><tr>
+        <th>Date</th><th>Merchant</th><th>Category</th>
+        <th style="text-align:right">Amount</th>
+        <th>Status</th><th>Conf</th><th>Card</th>
+      </tr></thead>`;
+    const tbody = document.createElement('tbody');
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      const cents = Number(r.amount_cents) || 0;
+      const amtCls = cents < 0 ? 'positive' : (cents > 0 ? 'negative' : '');
+      const swatch = r.category_color ? `<span class="budget-cat-swatch" style="background:${escHtml(r.category_color)}"></span>` : '';
+      tr.innerHTML = `
+        <td>${escHtml(fmtDate(r.transaction_date))}</td>
+        <td>${escHtml(r.merchant || '—')}</td>
+        <td>${swatch}${escHtml(r.category_name || '—')}</td>
+        <td class="budget-amount ${amtCls}">${escHtml(fmtMoney(cents))}</td>
+        <td><span class="budget-pill ${escHtml(r.status)}">${escHtml(r.status)}</span></td>
+        <td>${r.ai_confidence ? `<span class="budget-pill ${escHtml(r.ai_confidence)}">${escHtml(r.ai_confidence)}</span>` : ''}</td>
+        <td>${r.card_last_four ? '••' + escHtml(r.card_last_four) : ''}</td>`;
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+  }
+  void refresh();
+  return () => { alive = false; };
+}
+
+// ─── Section: Review Queue ─────────────────────────────────────────────────
+
+function renderReviewQueueSection(body, api) {
+  const toolbar = document.createElement('div');
+  toolbar.className = 'budget-toolbar';
+  const refreshBtn = makeButton('Refresh', {
+    iconHtml: makeIcon(api, 'refresh-cw', 12),
+    onClick: () => void refresh(),
+  });
+  toolbar.appendChild(refreshBtn);
+  body.appendChild(toolbar);
+
+  const tableWrap = document.createElement('div');
+  body.appendChild(tableWrap);
+
+  let alive = true;
+  let categories = [];
+
+  async function refresh() {
+    if (!alive) return;
+    tableWrap.innerHTML = '';
+    try {
+      categories = await db.all(
+        `SELECT id, name, color FROM categories WHERE archived=0 AND kind='expense' ORDER BY sort_order`,
+      );
+    } catch { categories = []; }
+
+    let rows;
+    try {
+      rows = await db.all(`
+        SELECT t.id, t.merchant, t.amount_cents, t.transaction_date, t.ai_confidence, t.category_id,
+               t.card_last_four, e.raw_subject, e.raw_snippet
+          FROM transactions t
+          LEFT JOIN email_imports e ON e.gmail_message_id = t.gmail_message_id
+         WHERE t.status = 'review'
+         ORDER BY t.transaction_date DESC, t.created_at DESC
+         LIMIT 200`);
+    } catch (e) {
+      tableWrap.appendChild(emptyState('Query error: ' + (e instanceof Error ? e.message : String(e))));
+      return;
+    }
+    if (!rows || rows.length === 0) {
+      tableWrap.appendChild(emptyState('Nothing to review — review-queue is empty.'));
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'budget-table';
+    table.innerHTML = `
+      <thead><tr>
+        <th>Date</th><th>Merchant / Email</th>
+        <th style="text-align:right">Amount</th>
+        <th>Category</th><th>Actions</th>
+      </tr></thead>`;
+    const tbody = document.createElement('tbody');
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      const tdDate = document.createElement('td'); tdDate.textContent = fmtDate(r.transaction_date); tr.appendChild(tdDate);
+      const tdMerch = document.createElement('td');
+      const mTitle = document.createElement('div'); mTitle.textContent = r.merchant || '— (parse failed)'; tdMerch.appendChild(mTitle);
+      if (r.raw_subject) {
+        const sub = document.createElement('div');
+        sub.style.fontSize = '10px';
+        sub.style.color = 'var(--vscode-descriptionForeground, #888)';
+        sub.textContent = r.raw_subject;
+        tdMerch.appendChild(sub);
+      }
+      tr.appendChild(tdMerch);
+      const tdAmt = document.createElement('td'); tdAmt.className = 'budget-amount';
+      tdAmt.textContent = fmtMoney(r.amount_cents);
+      tr.appendChild(tdAmt);
+
+      const tdCat = document.createElement('td');
+      const sel = document.createElement('select');
+      sel.className = 'budget-select';
+      const blank = document.createElement('option'); blank.value = ''; blank.textContent = '— pick category —';
+      sel.appendChild(blank);
+      for (const c of categories) {
+        const o = document.createElement('option');
+        o.value = c.id; o.textContent = c.name;
+        if (r.category_id === c.id) o.selected = true;
+        sel.appendChild(o);
+      }
+      tdCat.appendChild(sel);
+      tr.appendChild(tdCat);
+
+      const tdAct = document.createElement('td');
+      tdAct.style.display = 'flex'; tdAct.style.gap = '4px';
+      const confirmBtn = makeButton('Confirm', {
+        primary: true,
+        onClick: async () => {
+          try {
+            await db.run(
+              `UPDATE transactions SET status='confirmed', user_overridden=1, category_id=?, updated_at=? WHERE id=?`,
+              [sel.value || null, new Date().toISOString(), r.id],
+            );
+            await refresh();
+          } catch (e) {
+            await api.window?.showErrorMessage?.('Confirm failed: ' + (e instanceof Error ? e.message : String(e)));
+          }
+        },
+      });
+      const hideBtn = makeButton('Hide', {
+        onClick: async () => {
+          try {
+            await db.run(
+              `UPDATE transactions SET status='hidden', user_overridden=1, updated_at=? WHERE id=?`,
+              [new Date().toISOString(), r.id],
+            );
+            await refresh();
+          } catch (e) {
+            await api.window?.showErrorMessage?.('Hide failed: ' + (e instanceof Error ? e.message : String(e)));
+          }
+        },
+      });
+      tdAct.appendChild(confirmBtn);
+      tdAct.appendChild(hideBtn);
+      tr.appendChild(tdAct);
+
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+  }
+  void refresh();
+  return () => { alive = false; };
+}
+
+// ─── Section: Sync Log ─────────────────────────────────────────────────────
+
+function renderSyncLogSection(body, api) {
+  const toolbar = document.createElement('div');
+  toolbar.className = 'budget-toolbar';
+  toolbar.appendChild(makeButton('Refresh', {
+    iconHtml: makeIcon(api, 'refresh-cw', 12),
+    onClick: () => void refresh(),
+  }));
+  toolbar.appendChild(makeButton('Sync now', {
+    primary: true,
+    iconHtml: makeIcon(api, 'refresh-cw', 12),
+    onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
+  }));
+  body.appendChild(toolbar);
+
+  const statusEl = document.createElement('div');
+  statusEl.className = 'budget-card';
+  statusEl.style.maxWidth = '520px';
+  body.appendChild(statusEl);
+
+  const tableWrap = document.createElement('div');
+  body.appendChild(tableWrap);
+
+  let alive = true;
+  async function refresh() {
+    if (!alive) return;
+    statusEl.innerHTML = '';
+    let last;
+    try { last = await getSyncStateValue('last_run_status'); } catch { last = null; }
+    const lastSyncedAt = await getSyncStateValue('last_synced_at');
+    const lab = document.createElement('div'); lab.className = 'budget-card-label'; lab.textContent = 'Last run';
+    const val = document.createElement('div'); val.className = 'budget-card-value';
+    val.style.fontSize = '13px';
+    if (last && typeof last === 'object') {
+      if (last.ok) {
+        val.textContent = `OK — confirmed ${last.confirmed||0}, review ${last.review||0}, snapshots ${last.snapshot||0}`;
+      } else {
+        val.textContent = 'Failed: ' + (last.error || 'unknown');
+        val.style.color = 'var(--vscode-charts-red, #f87171)';
+      }
+    } else {
+      val.textContent = 'No sync recorded yet';
+    }
+    const sub = document.createElement('div'); sub.className = 'budget-card-sub';
+    sub.textContent = lastSyncedAt ? `Cursor: ${lastSyncedAt}` : 'No cursor — first sync will fetch the configured window.';
+    statusEl.appendChild(lab); statusEl.appendChild(val); statusEl.appendChild(sub);
+
+    tableWrap.innerHTML = '';
+    let rows;
+    try {
+      rows = await db.all(`SELECT id, run_id, ts, level, msg_id, stage, message FROM sync_log ORDER BY id DESC LIMIT 200`);
+    } catch (e) {
+      tableWrap.appendChild(emptyState('Query error: ' + (e instanceof Error ? e.message : String(e))));
+      return;
+    }
+    if (!rows || rows.length === 0) { tableWrap.appendChild(emptyState('Sync log is empty.')); return; }
+    const table = document.createElement('table');
+    table.className = 'budget-table';
+    table.innerHTML = `<thead><tr><th>Time</th><th>Level</th><th>Stage</th><th>Message</th></tr></thead>`;
+    const tbody = document.createElement('tbody');
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      tr.className = 'budget-log-row ' + (r.level || 'info');
+      tr.innerHTML = `
+        <td>${escHtml(String(r.ts).slice(11, 19))}</td>
+        <td>${escHtml(r.level)}</td>
+        <td>${escHtml(r.stage || '')}</td>
+        <td>${escHtml(r.message)}</td>`;
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+  }
+  void refresh();
+  return () => { alive = false; };
+}
+
+// ─── Section: Categories ───────────────────────────────────────────────────
+
+function renderCategoriesSection(body, api) {
+  const toolbar = document.createElement('div');
+  toolbar.className = 'budget-toolbar';
+  toolbar.appendChild(makeButton('Refresh', {
+    iconHtml: makeIcon(api, 'refresh-cw', 12),
+    onClick: () => void refresh(),
+  }));
+  body.appendChild(toolbar);
+
+  const tableWrap = document.createElement('div');
+  body.appendChild(tableWrap);
+
+  let alive = true;
+  async function refresh() {
+    if (!alive) return;
+    tableWrap.innerHTML = '';
+    let rows;
+    try {
+      rows = await db.all(`
+        SELECT c.id, c.name, c.color, c.icon, c.kind, c.monthly_limit_cents, c.archived, c.sort_order,
+               (SELECT COUNT(*) FROM transactions t WHERE t.category_id = c.id AND t.status='confirmed') AS tx_count
+          FROM categories c
+         ORDER BY c.archived ASC, c.sort_order ASC, c.name ASC`);
+    } catch (e) {
+      tableWrap.appendChild(emptyState('Query error: ' + (e instanceof Error ? e.message : String(e))));
+      return;
+    }
+    if (!rows || rows.length === 0) { tableWrap.appendChild(emptyState('No categories yet.')); return; }
+    const table = document.createElement('table');
+    table.className = 'budget-table';
+    table.innerHTML = `
+      <thead><tr>
+        <th>Name</th><th>Kind</th><th style="text-align:right">Monthly limit</th>
+        <th style="text-align:right">Tx</th><th>Status</th>
+      </tr></thead>`;
+    const tbody = document.createElement('tbody');
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      const swatch = r.color ? `<span class="budget-cat-swatch" style="background:${escHtml(r.color)}"></span>` : '';
+      tr.innerHTML = `
+        <td>${swatch}${escHtml(r.name)}</td>
+        <td>${escHtml(r.kind)}</td>
+        <td class="budget-amount">${r.monthly_limit_cents != null ? escHtml(fmtMoney(r.monthly_limit_cents)) : ''}</td>
+        <td class="budget-amount">${escHtml(String(r.tx_count || 0))}</td>
+        <td>${r.archived ? '<span class="budget-pill hidden">archived</span>' : '<span class="budget-pill confirmed">active</span>'}</td>`;
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+  }
+  void refresh();
+  return () => { alive = false; };
+}
+
+// ─── Section: Dashboard ────────────────────────────────────────────────────
+
+function renderDashboardSection(body, api) {
+  const toolbar = document.createElement('div');
+  toolbar.className = 'budget-toolbar';
+  toolbar.appendChild(makeButton('Refresh', {
+    iconHtml: makeIcon(api, 'refresh-cw', 12),
+    onClick: () => void refresh(),
+  }));
+  toolbar.appendChild(makeButton('Sync now', {
+    primary: true,
+    iconHtml: makeIcon(api, 'refresh-cw', 12),
+    onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
+  }));
+  body.appendChild(toolbar);
+
+  const cards = document.createElement('div');
+  cards.className = 'budget-cards';
+  body.appendChild(cards);
+
+  const catSection = document.createElement('div');
+  catSection.className = 'budget-section';
+  body.appendChild(catSection);
+
+  const recoSection = document.createElement('div');
+  recoSection.className = 'budget-section';
+  body.appendChild(recoSection);
+
+  let alive = true;
+  async function refresh() {
+    if (!alive) return;
+    cards.innerHTML = '';
+    catSection.innerHTML = '';
+    recoSection.innerHTML = '';
+
+    const now = new Date();
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+
+    // ── Headline cards ────────────────────────────────────────
+    const sumRow = await db.get(
+      `SELECT COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END),0) AS spend,
+              COALESCE(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END),0) AS refunds,
+              COUNT(*) AS n
+         FROM transactions
+        WHERE status='confirmed' AND transaction_date >= ?`,
+      [monthStart],
+    ) || { spend: 0, refunds: 0, n: 0 };
+
+    const reviewCnt = (await db.get(`SELECT COUNT(*) AS n FROM transactions WHERE status='review'`)) || { n: 0 };
+    const lastSyncedAt = await getSyncStateValue('last_synced_at');
+
+    cards.appendChild(makeCard('Spend (MTD)', fmtMoney(sumRow.spend), `${sumRow.n} transactions`));
+    cards.appendChild(makeCard('Refunds (MTD)', fmtMoney(sumRow.refunds), ''));
+    cards.appendChild(makeCard('Review queue', String(reviewCnt.n || 0), reviewCnt.n ? 'Items awaiting confirmation' : 'All clear'));
+    cards.appendChild(makeCard('Last sync', lastSyncedAt ? fmtDate(lastSyncedAt) + ' ' + String(lastSyncedAt).slice(11,16) : 'Never', ''));
+
+    // ── Category breakdown ────────────────────────────────────
+    const catHeader = document.createElement('h3'); catHeader.textContent = 'Spend by category (this month)';
+    catSection.appendChild(catHeader);
+    let catRows;
+    try {
+      catRows = await db.all(`
+        SELECT c.id, c.name, c.color, c.monthly_limit_cents,
+               COALESCE(SUM(CASE WHEN t.amount_cents > 0 THEN t.amount_cents ELSE 0 END), 0) AS spend
+          FROM categories c
+          LEFT JOIN transactions t
+            ON t.category_id = c.id AND t.status='confirmed' AND t.transaction_date >= ?
+         WHERE c.archived = 0 AND c.kind='expense'
+         GROUP BY c.id
+         ORDER BY spend DESC, c.sort_order ASC`,
+        [monthStart],
+      );
+    } catch { catRows = []; }
+    if (!catRows || catRows.length === 0) {
+      catSection.appendChild(emptyState('No category data yet.'));
+    } else {
+      const max = Math.max(1, ...catRows.map(r => Number(r.spend) || 0));
+      for (const r of catRows) {
+        const spend = Number(r.spend) || 0;
+        const pct = Math.round((spend / max) * 100);
+        const limit = Number(r.monthly_limit_cents) || 0;
+        const overLimit = limit > 0 && spend > limit;
+        const row = document.createElement('div');
+        row.className = 'budget-cat-bar';
+        row.innerHTML = `
+          <div><span class="budget-cat-swatch" style="background:${escHtml(r.color || '#888')}"></span>${escHtml(r.name)}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%; background:${escHtml(overLimit ? '#ef4444' : (r.color || '#888'))}"></div></div>
+          <div class="amt">${escHtml(fmtMoney(spend))}${limit ? ' / ' + escHtml(fmtMoney(limit)) : ''}</div>`;
+        catSection.appendChild(row);
+      }
+    }
+
+    // ── Reconciliation: latest snapshot vs. derived ───────────
+    const recoHeader = document.createElement('h3'); recoHeader.textContent = 'Reconciliation';
+    recoSection.appendChild(recoHeader);
+    let snap;
+    try { snap = await db.get(`SELECT account_last_four, balance_cents, snapshot_date FROM balance_snapshots ORDER BY snapshot_date DESC, created_at DESC LIMIT 1`); }
+    catch { snap = null; }
+    if (!snap) {
+      recoSection.appendChild(emptyState('No balance snapshots yet — sync to reconcile.'));
+    } else {
+      const card = document.createElement('div'); card.className = 'budget-card'; card.style.maxWidth = '520px';
+      card.innerHTML = `
+        <div class="budget-card-label">Latest snapshot${snap.account_last_four ? ' • ••' + escHtml(snap.account_last_four) : ''}</div>
+        <div class="budget-card-value">${escHtml(fmtMoney(snap.balance_cents))}</div>
+        <div class="budget-card-sub">As of ${escHtml(fmtDate(snap.snapshot_date))}</div>`;
+      recoSection.appendChild(card);
+    }
+  }
+  void refresh();
+  return () => { alive = false; };
+}
+
+function makeCard(label, value, sub) {
+  const c = document.createElement('div'); c.className = 'budget-card';
+  const l = document.createElement('div'); l.className = 'budget-card-label'; l.textContent = label;
+  const v = document.createElement('div'); v.className = 'budget-card-value'; v.textContent = value;
+  c.appendChild(l); c.appendChild(v);
+  if (sub) { const s = document.createElement('div'); s.className = 'budget-card-sub'; s.textContent = sub; c.appendChild(s); }
+  return c;
 }
 
 // ─── AI pipeline (Stage 1 / 1b / 2 / 3) ────────────────────────────────────
