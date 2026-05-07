@@ -6,6 +6,31 @@
 
 ---
 
+## Decisions & Invariants — Read This First
+
+These are non-negotiable. The implementation MUST NOT silently change them. If
+a decision below blocks implementation, raise it as a question — do not improvise.
+
+| # | Decision | Reason |
+|---|---|---|
+| D1 | **Extension type:** external, unpacked at `ext/budget/`. ID `parallx.budget`. | Needs `api.database` (built-ins don't get it — verified `apiFactory.ts` `database` factory branch on `isBuiltin`). |
+| D2 | **Database location:** `<workspacePath>/.parallx/extensions/budget/data.db`. **Not** `db.sqlite`, **not** `<APP_ROOT>/data/extensions/...`. The directory name is the **extension short name** (`budget`), derived from the tool ID by `toolId.split('.').slice(1).join('.')` — verified `apiFactory.ts` `extName` derivation. | Single source of truth — both `electron/database.cjs` (line 340) and the `apiFactory` `database` namespace agree on this layout. |
+| D3 | **Money is stored as INTEGER cents.** Column `amount_cents INTEGER NOT NULL`. All UI converts to dollars at display time. **Never store dollars as REAL.** | SQLite REAL = IEEE-754 double; `0.1 + 0.2 ≠ 0.3`. Cents-as-integer is the only correct way to add up money. |
+| D4 | **Dates are ISO 8601 text in the user's local timezone.** `transaction_date = 'YYYY-MM-DD'` (date only). `received_at`, `created_at`, `processed_at = 'YYYY-MM-DDTHH:MM:SS.sssZ'` (UTC for timestamps). | Local-date for transactions matches what the user sees on their statement; UTC for system timestamps avoids DST bugs. |
+| D5 | **MCP server ID is configurable, not hardcoded.** Read from `budget.gmailMcpServerId` (default `parallx-gmail-mcp`). The full namespaced tool name is `mcp__${configValue}__list_unread`. | The user names their MCP server when adding it — verified `src/openclaw/mcp/mcpToolBridge.ts:80` (`mcp__${serverId}__${schema.name}`). |
+| D6 | **Gmail MCP tool input shape:** `{ since?: ISO8601 string, max?: 1..100, query?: GmailSearchSyntax }`. Not `{ query: "after:..." }` only. | Verified `tools/gmail-mcp-server/src/index.ts` `LIST_UNREAD_TOOL.inputSchema`. |
+| D7 | **`list_unread` returns ONLY UNREAD mail.** This is a known limitation. P1 mitigation: instruct the user to keep transaction emails unread, OR pre-pass a Gmail label via the `query` param (e.g. `query: 'label:transactions'`). P3 mitigation: extend the MCP server with a `list_messages` tool that ignores read state. **Do not assume `list_unread` sees all transaction history.** | See open question Q10. |
+| D8 | **One targeted core change is required.** Add `api.mcp.invokeTool(toolName, args, token?)` to `ParallxApiObject` in `src/api/apiFactory.ts`. External extensions cannot today reach `ILanguageModelToolsService` (the symbol lives in `src/services/chatTypes.ts` which they cannot import). This is P0 of M63. **Do not attempt the workaround of calling `api.services.get({ id: '...' })` with a magic string** — the identifier comparison is by reference, not by string. | Honest reading of `apiFactory.ts` — `services.get/has` take a `ServiceIdentifier` *object*, not a string id. |
+| D9 | **`api.views.reveal()` does not exist.** To navigate to a view from a command, call `api.commands.executeCommand('workbench.view.<viewId>')` (the workbench registers a navigation command per contributed view) — or, if that command is not registered for sub-views in this workbench, use `api.commands.executeCommand('budget.openDashboard')` which itself uses an internal mechanism (e.g. setting a context key the side-bar listens to). **Verify the exact command at P1 implementation time** — do not invent. | Verified: `apiFactory.ts` `views` shape exposes only `registerViewProvider` and `setBadge`. |
+| D10 | **`api.commands.executeCommand`** (not `execute`). | Verified `apiFactory.ts` line ~99. |
+| D11 | **Database open() must precede migrate().** Migration directory is **absolute**, computed from `api.env.toolPath` + platform separator + `'db/migrations'`. Not relative. | Verified pattern in `ext/media-organizer/main.js:17910-17924`. |
+| D12 | **No external npm dependencies in the extension bundle for P1.** All UI is hand-written DOM via `$()` from `src/ui/dom.ts` (extension copies the helper, since it can't import from `src/`). Charts are inline SVG. JSON parsing is `JSON.parse`. | Same shape as `ext/media-organizer/main.js` (single bundled JS file). |
+| D13 | **Sync runs single-flight.** A module-level `_syncInProgress` boolean guards against concurrent invocations of `runSync`. If true, the second call no-ops and the UI shows "Sync already running". | SQLite is single-writer; concurrent syncs would interleave inserts and corrupt the cursor. |
+| D14 | **Categories are FK-referenced but the FK is enforced.** Order of CREATE TABLE in the migration file places `categories` BEFORE `transactions` so a strict reader can verify FK validity at parse time. (SQLite is lenient about order, but a less-smart human/AI reader is not.) | Readability + reviewability. |
+| D15 | **Visual placeholders in ASCII are not literal Unicode in the UI.** Glyphs like `🔁`, `⇄`, `ⓘ`, `◀`, `▶`, `▾`, `⚙` in this doc represent **codicons** to be rendered via `api.icons.createIconHtml(<id>)`. The codicon-id mapping table is in the "Visual Design" section. The extension MUST NOT emit raw Unicode emojis in HTML. | Visual consistency with the workbench. |
+
+---
+
 ## Vision
 
 > Your Gmail inbox is already a ledger. Every transaction notification, every
@@ -65,8 +90,11 @@ through the same `parallx.*` API. This milestone follows that contract exactly:
    extract a transaction, the row is inserted with `status = 'review'` and
    surfaced in a review queue. It does not count toward budget totals until
    confirmed.
-6. **No core changes.** This is a Parallx tool — a manifest, its own views,
-   and its own SQLite database domain. It does not modify `src/` core files.
+6. **One targeted core change, then no more.** Per D8, M63 P0 adds an
+   `api.mcp.invokeTool(toolName, args, token?)` namespace to
+   `src/api/apiFactory.ts` so external extensions can invoke MCP tools
+   without importing service-identifier symbols. Once shipped, the extension
+   itself lives entirely under `ext/budget/` and modifies no other `src/` file.
 
 ---
 
@@ -151,7 +179,7 @@ namespace exposed to Budget:
 | Namespace | Purpose | Notes |
 |---|---|---|
 | `api.commands` | `registerCommand(id, handler)` (line 100) | Adds to command palette + lets other code invoke. Disposed on deactivate. |
-| `api.views` | `registerViewProvider(viewId, { createView })` (line 96), `reveal(viewId)` | View id must match a `contributes.views` entry. |
+| `api.views` | `registerViewProvider(viewId, { createView })` (line 96), `setBadge(viewId, badge)` | View id must match a `contributes.views` entry. **No `reveal()` method** (D9) — use `api.commands.executeCommand` to navigate. |
 | `api.database` | `run / get / all / runTransaction / migrate(dir)` (line 217) | **External-only** — built-in tools do not receive this. Each extension gets its own SQLite file. |
 | `api.lm` | `getModels()`, `sendChatRequest(modelId, messages, options?)` (line 686) | Streaming async-iterable. The **only** way to call models. |
 | `api.services` | `has(id)`, `get<T>(id)` (line 668) | DI bridge. Budget uses `get(ILanguageModelToolsService)` to invoke MCP tools. |
@@ -193,18 +221,31 @@ artifact is the manifest + the compiled `main.js` + the SQL migration files
 
 ### 5. Per-extension storage layout (verified)
 
+Verified by reading `electron/database.cjs:340` and the `database` factory
+branch in `src/api/apiFactory.ts`:
+
 ```
-<APP_ROOT>/data/extensions/parallx.budget/
-    db.sqlite        ← the SQLite file, opened with WAL + foreign keys by DatabaseManager
-    db.sqlite-shm
-    db.sqlite-wal
-    state/           ← reserved for future api.storage
+<workspacePath>/.parallx/extensions/<extName>/
+    data.db            ← SQLite, WAL + foreign keys, opened by ExtensionDatabaseManager
+    data.db-shm
+    data.db-wal
 ```
 
-Migrations live inside the extension package at `db/migrations/*.sql`,
-applied lexicographically by filename. Convention is
+For Budget: `extName = 'budget'` (derived from `toolId 'parallx.budget'` by
+`toolId.split('.').slice(1).join('.')`).
+
+Migrations live inside the extension's installed directory at
+`<api.env.toolPath>/db/migrations/*.sql` and are applied lexicographically.
+Migration filenames MUST start with a zero-padded ordinal:
 `budget_001_initial.sql`, `budget_002_*.sql`, …
 (verified `scripts/package-media-organizer.mjs` lines 28–33).
+
+**`api.database.migrate()` requires an absolute path.** Compute it as:
+
+```js
+const sep = api.env.toolPath.includes('\\') ? '\\' : '/';
+const migrationsDir = api.env.toolPath + sep + 'db' + sep + 'migrations';
+```
 
 ### 6. Packaging
 
@@ -233,76 +274,137 @@ restart the workbench.
 
 ### Where it lives
 
-Extension databases live at:
-`<workspacePath>/.parallx/extensions/parallx.budget/data.db`
-
-This is the standard path used by all Parallx extensions (same pattern as
-media-organizer). The `DatabaseManager` in `electron/database.cjs` handles
-opening, WAL mode, foreign keys, and migrations automatically.
-The renderer calls through `api.database` (the `IDatabaseService` IPC bridge).
+See D2: `<workspacePath>/.parallx/extensions/budget/data.db`. WAL + foreign
+keys are enabled automatically by `ExtensionDatabaseManager`
+(`electron/database.cjs`).
 
 ### Migration file: `db/migrations/budget_001_initial.sql`
 
+Tables are CREATEd in dependency order so a sequential reader can verify FKs
+without backtracking. Money is INTEGER cents (D3). Dates follow D4.
+
 ```sql
--- Cursor state
+PRAGMA foreign_keys = ON;
+
+-- ── Cursor + log state (key/value blob) ─────────────────────────────────────
 CREATE TABLE IF NOT EXISTS sync_state (
     key   TEXT PRIMARY KEY,
-    value TEXT
+    value TEXT NOT NULL          -- JSON-encoded; readers MUST JSON.parse
 );
 
--- Every email that passed classification.
--- Stored so we can re-run categorization without re-fetching Gmail.
+-- Reserved keys (writers MUST use these spellings):
+--   'last_gmail_message_id'   value: "<id>"          (JSON string)
+--   'last_synced_at'          value: "<ISO8601>"    (JSON string)
+--   'last_run_status'         value: {"ok":bool,"errors":number,"new":number}
+--   'in_progress'             value: "true"|"false" (heartbeat for D13 mutex)
+
+-- ── Sync log (one row per sync event line) ──────────────────────────────────
+CREATE TABLE IF NOT EXISTS sync_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id      TEXT NOT NULL,             -- UUID v4 per sync run
+    ts          TEXT NOT NULL,             -- ISO 8601 UTC
+    level       TEXT NOT NULL CHECK(level IN ('info','warn','error')),
+    msg_id      TEXT,                      -- gmail message id if applicable
+    stage       TEXT,                      -- 'fetch'|'stage1'|'stage2'|'stage3'|'snapshot'|'commit'
+    message     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sync_log_run_id_idx ON sync_log(run_id, id);
+
+-- ── Categories (FK target, defined first) ──────────────────────────────────
+CREATE TABLE IF NOT EXISTS categories (
+    id              TEXT PRIMARY KEY,         -- UUID v4
+    name            TEXT UNIQUE NOT NULL,
+    color           TEXT,                     -- hex like '#7aa2f7' OR semantic key like 'charts-blue'
+    icon            TEXT,                     -- codicon id
+    kind            TEXT NOT NULL DEFAULT 'expense'
+                        CHECK(kind IN ('expense','income','transfer')),
+    monthly_limit_cents INTEGER,              -- NULL = uncapped
+    rollover        INTEGER NOT NULL DEFAULT 0 CHECK(rollover IN (0,1)),
+    sort_order      INTEGER NOT NULL DEFAULT 0,
+    archived        INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)),
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS categories_sort_idx ON categories(sort_order);
+
+-- ── Email imports (one row per Gmail message we have processed) ────────────
 CREATE TABLE IF NOT EXISTS email_imports (
     gmail_message_id  TEXT PRIMARY KEY,
-    received_at       TEXT NOT NULL,  -- ISO 8601
+    received_at       TEXT NOT NULL,                  -- ISO 8601 UTC
     raw_subject       TEXT,
-    raw_snippet       TEXT,           -- snippet only, no full body
-    processed_at      TEXT DEFAULT (datetime('now'))
+    raw_snippet       TEXT,                           -- snippet only — no full body
+    is_transaction    INTEGER,                        -- 0|1|NULL=unknown (Stage 1 result, cached)
+    is_balance        INTEGER,                        -- 0|1|NULL=unknown (Stage 1b result, cached)
+    classifier_model  TEXT,                           -- model id used for Stage 1 (audit)
+    processed_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+CREATE INDEX IF NOT EXISTS email_imports_received_idx ON email_imports(received_at);
 
--- One row per extracted transaction.
+-- ── Transactions ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS transactions (
-    id                TEXT PRIMARY KEY,  -- UUID v4
-    gmail_message_id  TEXT NOT NULL REFERENCES email_imports(gmail_message_id),
+    id                TEXT PRIMARY KEY,                          -- UUID v4
+    gmail_message_id  TEXT REFERENCES email_imports(gmail_message_id) ON DELETE SET NULL,
+                                                                -- NULLable: manual-entry txns have no email source
+    parent_id         TEXT REFERENCES transactions(id) ON DELETE CASCADE,
+                                                                -- non-NULL = this is a split child of parent_id
     merchant          TEXT,
-    amount            REAL NOT NULL,     -- positive = debit, negative = credit/refund
+    amount_cents      INTEGER NOT NULL,                          -- positive = debit/spend, negative = refund/credit
+    currency          TEXT NOT NULL DEFAULT 'USD',
     card_last_four    TEXT,
-    transaction_date  TEXT NOT NULL,     -- YYYY-MM-DD
-    category_id       TEXT REFERENCES categories(id),
+    transaction_date  TEXT NOT NULL,                             -- YYYY-MM-DD (local TZ)
+    category_id       TEXT REFERENCES categories(id) ON DELETE SET NULL,
     ai_confidence     TEXT CHECK(ai_confidence IN ('high','medium','low')),
-    user_overridden   INTEGER NOT NULL DEFAULT 0,
+    extractor_model   TEXT,                                      -- model id used for Stage 2
+    categorizer_model TEXT,                                      -- model id used for Stage 3
+    user_overridden   INTEGER NOT NULL DEFAULT 0 CHECK(user_overridden IN (0,1)),
     status            TEXT NOT NULL DEFAULT 'confirmed'
-                          CHECK(status IN ('confirmed','review','deleted')),
+                          CHECK(status IN ('confirmed','review','hidden','deleted')),
     notes             TEXT,
-    created_at        TEXT DEFAULT (datetime('now'))
+    created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+CREATE INDEX IF NOT EXISTS tx_date_idx     ON transactions(transaction_date);
+CREATE INDEX IF NOT EXISTS tx_category_idx ON transactions(category_id);
+CREATE INDEX IF NOT EXISTS tx_status_idx   ON transactions(status);
+CREATE INDEX IF NOT EXISTS tx_parent_idx   ON transactions(parent_id);
 
--- Balance snapshots from bank alert emails (reconciliation only).
+-- ── Balance snapshots (reconciliation source) ──────────────────────────────
 CREATE TABLE IF NOT EXISTS balance_snapshots (
     id                TEXT PRIMARY KEY,
-    gmail_message_id  TEXT REFERENCES email_imports(gmail_message_id),
+    gmail_message_id  TEXT REFERENCES email_imports(gmail_message_id) ON DELETE SET NULL,
     account_last_four TEXT,
-    balance           REAL NOT NULL,
-    snapshot_date     TEXT NOT NULL,
-    created_at        TEXT DEFAULT (datetime('now'))
+    balance_cents     INTEGER NOT NULL,
+    currency          TEXT NOT NULL DEFAULT 'USD',
+    snapshot_date     TEXT NOT NULL,                             -- YYYY-MM-DD
+    created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
-
--- User-managed categories (seeded on first activate).
-CREATE TABLE IF NOT EXISTS categories (
-    id    TEXT PRIMARY KEY,
-    name  TEXT UNIQUE NOT NULL,
-    color TEXT,
-    icon  TEXT
-);
+CREATE INDEX IF NOT EXISTS bs_date_idx ON balance_snapshots(snapshot_date);
 ```
 
-**SQLite type notes:** `DECIMAL` is not a native SQLite type; we use `REAL`.
-`DATETIME` columns use ISO 8601 text — consistent with every other table in the
-codebase (media-organizer uses the same convention).
+**Default categories** are seeded on first `activate()` only when
+`SELECT COUNT(*) FROM categories = 0`. UUIDs MUST be generated at seed time
+(do not embed literal UUIDs in the migration — every workspace gets fresh ones):
 
-**Default categories (inserted in activate() if `categories` is empty):**
-Groceries, Dining, Transport, Utilities, Shopping, Health, Entertainment,
-Subscriptions, Travel, Other.
+| name | kind | color | icon | monthly_limit_cents | rollover |
+|---|---|---|---|---|---|
+| Groceries | expense | charts-green | basket | NULL | 1 |
+| Dining | expense | charts-orange | flame | NULL | 0 |
+| Transport | expense | charts-blue | rocket | NULL | 1 |
+| Utilities | expense | charts-purple | plug | NULL | 0 |
+| Shopping | expense | charts-yellow | tag | NULL | 1 |
+| Health | expense | charts-red | heart | NULL | 1 |
+| Entertainment | expense | charts-orange | play | NULL | 0 |
+| Subscriptions | expense | charts-purple | sync | NULL | 0 |
+| Travel | expense | charts-blue | globe | NULL | 1 |
+| Other | expense | foreground | circle-outline | NULL | 0 |
+| Income | income | charts-green | arrow-down | NULL | 0 |
+| Transfer | transfer | descriptionForeground | arrow-swap | NULL | 0 |
+
+### Future migrations (not in 001 — explicit deferral)
+
+The "Best-in-Class" features below describe additional tables (`rules`,
+`recurring_transactions`, `goals`). These are **not** part of `001_initial.sql`.
+They ship in successive numbered files (`002_rules.sql`, `003_recurring.sql`,
+`004_goals.sql`) at the phase that introduces the feature. P1 ships only `001`.
 
 ---
 
@@ -345,100 +447,199 @@ flag on the sync engine and break the iteration loop — sufficient for a UI
 "Cancel Sync" button. (If a stricter primitive is needed later, add it to
 `api.lm` then.)
 
-### How MCP tools are called programmatically
+### How MCP tools are called programmatically (after P0 lands)
 
-`api.tools` is the **management** surface (install/uninstall/enable) — it does
-not expose tool invocation. The actual invocation primitive lives on
-`ILanguageModelToolsService`, which extensions reach via the DI bridge
-`api.services` (verified pattern in `src/built-in/ai-settings/main.ts`):
+Per D8, P0 of M63 adds a new namespace to the extension API. The exact shape
+MUST be:
 
 ```typescript
-import { ILanguageModelToolsService } from '../../services/chatTypes.js';
-// (Path resolved at build time; in compiled main.js we use a string-id ref.)
+// Added to ParallxApiObject in src/api/apiFactory.ts
+readonly mcp: {
+  /**
+   * Invoke a registered MCP tool by its namespaced name.
+   * @param toolName e.g. 'mcp__parallx-gmail-mcp__list_unread'
+   * @param args    JSON-serializable arguments matching the tool's inputSchema
+   * @param token   optional CancellationToken-shaped object { isCancellationRequested, onCancellationRequested }
+   * @returns { content: { type: 'text'; text: string }[]; isError?: boolean }
+   */
+  invokeTool(
+    toolName: string,
+    args: Record<string, unknown>,
+    token?: { isCancellationRequested: boolean },
+  ): Promise<{ content: { type: string; text: string }[]; isError?: boolean }>;
+  /** List currently-registered MCP tools (so the extension can verify connection). */
+  listTools(): Promise<readonly { name: string; description?: string }[]>;
+} | undefined;
+```
 
-const toolsService = api.services.has(ILanguageModelToolsService)
-  ? api.services.get(ILanguageModelToolsService)
-  : null;
-if (!toolsService) throw new Error('Tools service not available');
+Implementation: `invokeTool` is a thin bridge that resolves
+`ILanguageModelToolsService` from the workbench's services container and calls
+`invokeToolWithRuntimeControl`, mapping result/errors through the standard
+MCP content shape. `listTools` returns the names of currently-registered tools
+(intersection of installed MCP servers' capabilities).
 
-const result = await toolsService.invokeToolWithRuntimeControl(
-  'mcp__parallx-gmail-mcp__list_unread',
-  { max: 100, query: `after:${cursorDate}` },
-  cancellationToken,
+Sync-engine usage:
+
+```typescript
+if (!api.mcp) {
+  throw new Error('parallx.mcp namespace unavailable — core too old');
+}
+const gmailServerId = api.workspace.getConfiguration('budget')
+  .get<string>('gmailMcpServerId', 'parallx-gmail-mcp');
+const toolName = `mcp__${gmailServerId}__list_unread`;
+
+// Verify the tool is reachable BEFORE running the sync loop
+const available = await api.mcp.listTools();
+if (!available.some(t => t.name === toolName)) {
+  throw new Error(
+    `Gmail MCP tool '${toolName}' is not connected. ` +
+    `Open Settings → MCP Servers and connect '${gmailServerId}'.`,
+  );
+}
+
+const lastSync = await db.get(
+  `SELECT value FROM sync_state WHERE key = 'last_synced_at'`,
 );
+const sinceIso = lastSync ? JSON.parse(lastSync.value)
+                          : isoNDaysAgo(api.workspace.getConfiguration('budget')
+                              .get<number>('syncStartDays', 90));
+
+// D6: { since, max, query }. Do NOT pass after: in `query`.
+const result = await api.mcp.invokeTool(toolName, {
+  since: sinceIso,
+  max: 100,
+  // Optional: narrow with Gmail label (D7 mitigation)
+  // query: 'label:transactions',
+});
 if (result.isError) {
   throw new Error(`Gmail MCP error: ${result.content?.[0]?.text ?? 'unknown'}`);
 }
 const messages = JSON.parse(result.content[0].text);
+// messages: Array<{ id: string; receivedAt: ISO8601; subject: string; snippet: string; from: string; labels: string[] }>
 ```
 
-The Gmail MCP server must be connected (added via the MCP Servers UI) before
-sync runs. If it is not connected, `invokeToolWithRuntimeControl` returns
-`{ isError: true }` — the sync engine surfaces this as a clear error in the
-Sync Log view.
+### Prompt contract — applies to ALL stages
 
-### Stage 1 — Classification
+Every prompt below is a **literal template**. Substitute `{var}` placeholders
+from the row data. Do not paraphrase. The implementation MUST:
 
-One model call per email. Short prompt, binary answer.
+1. Send `messages: [{ role: 'system', content: <SYSTEM> }, { role: 'user', content: <USER> }]`.
+2. Pass `options: { temperature: 0, format: 'json' }` to `sendChatRequest`
+   (the Ollama provider honors `format: 'json'` to constrain output).
+3. Concatenate the streamed `content` chunks until `done: true`.
+4. Wrap `JSON.parse(response)` in try/catch. On parse failure: retry **once**
+   with the same prompt + a trailing user message `'Respond ONLY with the
+   JSON object — no prose, no markdown.'`. On second failure, treat as a
+   malformed response per the per-stage rules below.
+5. Validate the parsed object's shape against the schema below. Missing or
+   wrong-typed fields → treat as malformed.
 
-```
-System: You are a transaction classifier. Answer only with valid JSON.
-User:
-  Subject: {subject}
-  Snippet: {snippet}
-
-  Is this a bank or card transaction notification? Answer:
-  { "is_transaction": true | false }
-```
-
-If `false` → skip. No DB write. No Stage 2.
-
-### Stage 2 — Extraction (only if Stage 1 = true)
+### Stage 1 — Classification (one model call per email)
 
 ```
-System: You are a financial data extractor. Answer only with valid JSON.
-User:
-  Subject: {subject}
-  Snippet: {snippet}
+SYSTEM:
+You classify emails. Respond with a single JSON object and nothing else.
 
-  Extract:
-  {
-    "merchant": string | null,
-    "amount": number,           // positive = charge, negative = refund/credit
-    "card_last_four": string | null,
-    "transaction_date": "YYYY-MM-DD",
-    "confidence": "high" | "medium" | "low"
-  }
+USER:
+Subject: {subject}
+Snippet: {snippet}
+
+Return:
+{
+  "is_transaction": <true if this email reports a single bank or card transaction (charge, payment, refund, transfer); false otherwise>,
+  "is_balance":     <true if this email reports an account balance (statement, daily balance alert); false otherwise>
+}
 ```
 
-`confidence = "low"` → insert with `status = 'review'`, skip Stage 3.
+Expected response schema: `{ is_transaction: boolean, is_balance: boolean }`.
+Malformed → set both to `false` (skip). Log a warn line to `sync_log`.
 
-### Stage 3 — Categorization (confidence ≥ medium only)
-
-```
-System: You are a budget categorizer. Answer only with valid JSON.
-User:
-  Merchant: {merchant}
-  Amount: ${amount}
-  Categories: {comma-separated list from categories table}
-
-  Assign one category: { "category": string }
-```
-
-Keeping stages separate means Stage 3 can be re-run independently when the
-user edits the category list — without re-fetching any emails.
-
-### Balance snapshot detection (parallel to Stage 1)
-
-A second Stage 1 variant checks for balance-notification emails:
+### Stage 2 — Extraction (only if Stage 1 `is_transaction = true`)
 
 ```
-  Is this a bank balance notification (shows an account balance, not a
-  specific transaction)? { "is_balance_snapshot": true | false }
+SYSTEM:
+You extract financial transaction data from emails. Respond with a single JSON
+object and nothing else. Money is reported in dollars; if you see cents, divide
+by 100. If multiple transactions are mentioned, return them in the "items" array.
+
+USER:
+Subject: {subject}
+Snippet: {snippet}
+
+Return:
+{
+  "items": [
+    {
+      "merchant":         <string or null>,
+      "amount":           <number — positive for spend/charge, negative for refund/credit>,
+      "card_last_four":   <string of 4 digits or null>,
+      "transaction_date": <"YYYY-MM-DD">,
+      "confidence":       <"high" | "medium" | "low">
+    }
+  ]
+}
 ```
 
-If true, a second extraction prompt pulls `account_last_four` and `balance`
-and inserts into `balance_snapshots`.
+Expected schema: `{ items: Array<{ merchant: string|null, amount: number,
+card_last_four: string|null, transaction_date: string, confidence:
+'high'|'medium'|'low' }> }`. Empty `items` → no transactions extracted, skip
+this email entirely (no `transactions` rows). For each item with
+`confidence='low'` → insert with `status='review'`, skip Stage 3 for that item.
+Malformed → insert one synthetic `review` row with `amount_cents=0` linked to
+the email so the user can manually triage.
+
+### Stage 3 — Categorization (per-item, confidence ≥ medium only)
+
+The categories list is fetched once per sync run as
+`SELECT id, name FROM categories WHERE archived=0 AND kind='expense' ORDER BY sort_order` — Income/Transfer kinds are excluded so the AI doesn't mis-assign them.
+
+```
+SYSTEM:
+You pick the best-fitting budget category for a transaction. Respond with a
+single JSON object and nothing else. The category MUST be one of the listed
+names (case-insensitive); if none fits, pick "Other".
+
+USER:
+Merchant: {merchant}
+Amount:   {amount} {currency}
+Categories: {comma-separated category names}
+
+Return:
+{ "category": <one of the listed category names> }
+```
+
+The response's `category` is matched case-insensitively against `categories.name`;
+on match, `transactions.category_id` is set to that row's id. On no-match or
+malformed → leave `category_id = NULL` and `status = 'review'`.
+
+### Stage 1b — Balance snapshot extraction (only if Stage 1 `is_balance = true`)
+
+```
+SYSTEM:
+You extract account balance information from emails. Respond with a single JSON
+object and nothing else.
+
+USER:
+Subject: {subject}
+Snippet: {snippet}
+
+Return:
+{
+  "account_last_four": <string of 4 digits or null>,
+  "balance":           <number, in dollars>,
+  "snapshot_date":     <"YYYY-MM-DD">
+}
+```
+
+Malformed → log warn, no `balance_snapshots` row inserted.
+
+### Re-running stages independently
+
+Because Stage 1 results are cached in `email_imports.is_transaction` and
+`is_balance`, the user can run "Re-categorize all" (Categories view command)
+which loops `SELECT t.id, t.merchant, t.amount_cents, t.currency FROM
+transactions t WHERE t.user_overridden=0 AND t.status='confirmed'` and re-runs
+Stage 3 only — no Gmail calls, no re-extraction.
 
 ---
 
@@ -446,37 +647,121 @@ and inserts into `balance_snapshots`.
 
 ### Cursor pattern
 
+Cursor lives in the `sync_state` key/value table (see schema). The Gmail MCP
+tool is queried with the **timestamp** cursor (`since`), not the message-id
+cursor. Message-id is only used for dedup once a message has been fetched.
+
 ```
-sync_state key: "last_gmail_message_id"
-sync_state key: "last_synced_at"
+sync_state key: "last_synced_at"          # JSON string of an ISO 8601 UTC timestamp
+sync_state key: "last_gmail_message_id"   # JSON string of the newest msg.id seen (audit/debug only)
+sync_state key: "last_run_status"         # JSON object: { ok, errors, new, ... }
+sync_state key: "in_progress"             # JSON "true"/"false" — D13 single-flight heartbeat
 ```
 
-### Flow
+### Flow (precise pseudocode)
 
-1. Read `last_gmail_message_id` from `sync_state`.
-2. Resolve the tools service (`api.services.get(ILanguageModelToolsService)`),
-   then call `mcp__parallx-gmail-mcp__list_unread` via
-   `invokeToolWithRuntimeControl`.
-   - If cursor exists: `{ query: "after:<last_date>", max: 100 }`
-   - If no cursor (first sync): use `budget.syncStartDate` config value,
-     default 90 days ago.
-3. For each message, chronological order:
-   a. Check `email_imports` — if `gmail_message_id` exists, skip (dedup).
-   b. Run Stage 1 classification (is_transaction + is_balance_snapshot).
-   c. If transaction: run Stage 2 + Stage 3, insert rows.
-   d. If balance snapshot: insert into `balance_snapshots`.
-   e. Log result to `sync_state` progress key (for UI progress updates).
-4. After all messages processed: update `last_gmail_message_id` and
-   `last_synced_at` to the newest values seen.
+```
+runSync(api, db):
+  if _syncInProgress: return                                      # D13 mutex
+  _syncInProgress = true
+  runId = uuidv4()
+  log(runId, 'info', 'fetch', 'Sync started')
+  try:
+    cfg = api.workspace.getConfiguration('budget')
+    serverId = cfg.get('gmailMcpServerId', 'parallx-gmail-mcp')
+    toolName = `mcp__${serverId}__list_unread`
+    sinceIso = (await db.get('SELECT value FROM sync_state WHERE key=?', ['last_synced_at']))?.value
+               ? JSON.parse(prev) : isoNDaysAgo(cfg.get('syncStartDays', 90))
+
+    result = await api.mcp.invokeTool(toolName, { since: sinceIso, max: 100 })
+    if result.isError: throw...
+    messages = JSON.parse(result.content[0].text)        # array, oldest-first
+
+    models = await api.lm.getModels()
+    if models.length == 0: throw 'No local models — install/start Ollama'
+    modelId = cfg.get('preferredModelId', '') || models[0].id
+
+    newestSeenIso = sinceIso
+    newestSeenId  = null
+    counts = { confirmed: 0, review: 0, snapshot: 0, skipped: 0, errors: 0 }
+
+    for msg in messages:                                  # ORDERED: oldest → newest
+      if _cancelRequested: break
+      already = await db.get('SELECT 1 FROM email_imports WHERE gmail_message_id=?', [msg.id])
+      if already: { counts.skipped++; continue }
+
+      # Stage 1 (transaction?) and 1b (balance snapshot?) — two prompts, parallel ok
+      [isTxn, isBal] = await stage1(api, modelId, msg)
+      await db.run(
+        'INSERT INTO email_imports(gmail_message_id, received_at, raw_subject, raw_snippet, is_transaction, is_balance, classifier_model, processed_at) VALUES (?,?,?,?,?,?,?,?)',
+        [msg.id, msg.receivedAt, msg.subject, msg.snippet, isTxn?1:0, isBal?1:0, modelId, nowIso()]
+      )
+
+      if isTxn:
+        try:
+          extracted = await stage2(api, modelId, msg)        # may return array (multi-tx)
+          for tx in extracted:
+            categoryId = tx.confidence != 'low'
+              ? await stage3(api, modelId, tx, categoriesList)   # returns category id or null
+              : null
+            await db.run(
+              'INSERT INTO transactions(id, gmail_message_id, merchant, amount_cents, card_last_four, transaction_date, category_id, ai_confidence, extractor_model, categorizer_model, status) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+              [uuidv4(), msg.id, tx.merchant, dollarsToCents(tx.amount), tx.card_last_four,
+               tx.transaction_date, categoryId, tx.confidence, modelId, modelId,
+               tx.confidence == 'low' ? 'review' : 'confirmed']
+            )
+            counts[tx.confidence == 'low' ? 'review' : 'confirmed']++
+        catch jsonErr:
+          log(runId, 'warn', 'stage2', `Parse failed for ${msg.id}: ${jsonErr.message}`)
+          # fall through to review-queue insert with NULL fields
+          await db.run('INSERT INTO transactions(id, gmail_message_id, status, ai_confidence, transaction_date, amount_cents) VALUES (?,?,?,?,?,?)',
+            [uuidv4(), msg.id, 'review', 'low', isoDate(msg.receivedAt), 0])
+          counts.review++
+
+      if isBal:
+        try:
+          snap = await stage1bExtract(api, modelId, msg)
+          await db.run(
+            'INSERT INTO balance_snapshots(id, gmail_message_id, account_last_four, balance_cents, snapshot_date) VALUES (?,?,?,?,?)',
+            [uuidv4(), msg.id, snap.account_last_four, dollarsToCents(snap.balance), snap.snapshot_date]
+          )
+          counts.snapshot++
+        catch e:
+          log(runId, 'warn', 'snapshot', `Balance parse failed for ${msg.id}: ${e.message}`)
+          counts.errors++
+
+      if msg.receivedAt > newestSeenIso:
+        newestSeenIso = msg.receivedAt
+        newestSeenId  = msg.id
+
+    # Cursor write — LAST step, single transaction
+    await db.tx([
+      { type:'run', sql:"INSERT OR REPLACE INTO sync_state(key,value) VALUES('last_gmail_message_id', ?)", params:[JSON.stringify(newestSeenId)] },
+      { type:'run', sql:"INSERT OR REPLACE INTO sync_state(key,value) VALUES('last_synced_at', ?)",        params:[JSON.stringify(newestSeenIso)] },
+      { type:'run', sql:"INSERT OR REPLACE INTO sync_state(key,value) VALUES('last_run_status', ?)",       params:[JSON.stringify({ ok:true, ...counts })] },
+    ])
+    log(runId, 'info', 'commit', `Sync complete: ${JSON.stringify(counts)}`)
+  catch err:
+    log(runId, 'error', 'fetch', err.message)
+    await db.run("INSERT OR REPLACE INTO sync_state(key,value) VALUES('last_run_status', ?)", [JSON.stringify({ ok:false, error: err.message })])
+  finally:
+    _syncInProgress = false
+```
 
 **Cursor update is the last write.** If sync crashes mid-run, the next run
-re-processes the same window. Dedup prevents double-inserts.
+re-processes the same window. Dedup via `email_imports.gmail_message_id`
+PRIMARY KEY prevents double-inserts.
 
 ### First-sync bootstrapping
 
-`sync_state` has no `last_gmail_message_id`. Use `budget.syncStartDate`
-config value (settable in Parallx settings UI via the contributed
-`configuration` schema in the manifest).
+`sync_state` has no `last_synced_at`. Use `budget.syncStartDays` config value
+(integer; default 90). Compute `sinceIso = now - N days` in UTC.
+
+### Multi-transaction emails
+
+If Stage 2 returns an **array**, each element becomes its own `transactions`
+row, all referencing the same `email_imports.gmail_message_id`. The prompt
+must explicitly allow array-or-single output (see updated Stage 2 prompt below).
 
 ### Error handling
 
@@ -544,7 +829,23 @@ ext/budget/
       {
         "title": "Budget",
         "properties": {
-          "budget.syncStartDate": { "type": "string", "default": "", "description": "ISO date — import mail from this date on first sync." }
+          "budget.gmailMcpServerId": {
+            "type": "string",
+            "default": "parallx-gmail-mcp",
+            "description": "The MCP server ID under which the Gmail server is registered. Must match the ID used in the MCP Servers UI exactly."
+          },
+          "budget.syncStartDays": {
+            "type": "integer",
+            "default": 90,
+            "minimum": 1,
+            "maximum": 3650,
+            "description": "On the very first sync (no cursor yet), import mail received within this many days."
+          },
+          "budget.preferredModelId": {
+            "type": "string",
+            "default": "",
+            "description": "Model id to use for classification/extraction/categorization. Empty = first model returned by api.lm.getModels()."
+          }
         }
       }
     ]
@@ -552,11 +853,16 @@ ext/budget/
 }
 ```
 
-### activate() entry point (follows media-organizer pattern)
+### activate() entry point (follows verified media-organizer pattern)
 
 ```javascript
-// main.js (compiled)
+// main.js (compiled, single-file bundle — no imports from src/)
 let _dbBridge = null;
+let _api = null;
+let _activated = false;
+let _syncInProgress = false;     // D13 mutex
+let _cancelRequested = false;
+const _disposables = [];
 
 const db = {
   async run(sql, params = [])  { const r = await _dbBridge.run(sql, params);  if (r.error) throw r.error; return r; },
@@ -566,29 +872,63 @@ const db = {
 };
 
 export async function activate(api, context) {
+  if (_activated) return;
+  _activated = true;
+  _api = api;
+
+  // ── Hard guards (D-list invariants) ─────────────────────────────────────────────
+  if (!api.database) { throw new Error('[budget] api.database unavailable — ext must not be built-in'); }
+  if (!api.lm)       { throw new Error('[budget] api.lm unavailable — language models service missing'); }
+  if (!api.mcp)      { throw new Error('[budget] api.mcp unavailable — core too old; M63 P0 not landed'); }
+
+  // ── Open + migrate (D11: open() must precede migrate(), absolute path) ────────────
   _dbBridge = api.database;
-  await _dbBridge.migrate('db/migrations/');           // runs budget_001_initial.sql once
+  const openRes = await _dbBridge.open();
+  if (openRes.error) throw new Error('[budget] db open failed: ' + openRes.error.message);
+  const sep = api.env.toolPath.includes('\\') ? '\\' : '/';
+  const migrationsDir = api.env.toolPath + sep + 'db' + sep + 'migrations';
+  const migRes = await _dbBridge.migrate(migrationsDir);
+  if (migRes.error) throw new Error('[budget] migration failed: ' + migRes.error.message);
 
-  // Register view providers
-  api.views.registerViewProvider('budget.dashboard',    { createView: (el) => new DashboardView(el, db, api) });
-  api.views.registerViewProvider('budget.transactions', { createView: (el) => new TransactionListView(el, db, api) });
-  api.views.registerViewProvider('budget.reviewQueue',  { createView: (el) => new ReviewQueueView(el, db, api) });
-  api.views.registerViewProvider('budget.syncLog',      { createView: (el) => new SyncLogView(el, db, api) });
+  // Seed default categories on first run (idempotent: COUNT(*)=0 check)
+  await seedDefaultCategoriesIfEmpty(db);
 
-  // Register commands
-  api.commands.registerCommand('budget.sync',          () => runSync(api, db));
-  api.commands.registerCommand('budget.openDashboard', () => api.views.reveal('budget.dashboard'));
+  // ── Register sub-views ──────────────────────────────────────────────────────
+  _disposables.push(api.views.registerViewProvider('budget.dashboard',    { createView: el => new DashboardView(el, db, api) }));
+  _disposables.push(api.views.registerViewProvider('budget.transactions', { createView: el => new TransactionListView(el, db, api) }));
+  _disposables.push(api.views.registerViewProvider('budget.reviewQueue',  { createView: el => new ReviewQueueView(el, db, api) }));
+  _disposables.push(api.views.registerViewProvider('budget.syncLog',      { createView: el => new SyncLogView(el, db, api) }));
+  _disposables.push(api.views.registerViewProvider('budget.categories',   { createView: el => new CategoriesView(el, db, api) }));
+
+  // ── Register commands (D10: executeCommand, not execute) ──────────────────────────────
+  _disposables.push(api.commands.registerCommand('budget.sync',           () => runSync(api, db)));
+  _disposables.push(api.commands.registerCommand('budget.cancelSync',     () => { _cancelRequested = true; }));
+  // D9: navigation command — EXACT workbench command id MUST be verified during P1.
+  // The candidate is 'workbench.view.show' with the viewId arg; if that does not exist in this build,
+  // fall back to wiring through a Parallx-internal context key. DO NOT INVENT a method on api.views.
+  _disposables.push(api.commands.registerCommand('budget.openDashboard', () =>
+    api.commands.executeCommand('workbench.view.show', 'budget.dashboard')));
+}
+
+export async function deactivate() {
+  for (const d of _disposables.splice(0)) { try { d.dispose?.(); } catch {} }
+  if (_dbBridge) await _dbBridge.close();
+  _activated = false;
 }
 ```
 
 **Verified API surfaces (in `src/api/apiFactory.ts`):**
-- `api.database` — line 217, includes `migrate(dir)`, `run/get/all/runTransaction`. External-extension only.
-- `api.views.registerViewProvider(viewId, { createView(container) })` — line 96. Called by media-organizer at `ext/media-organizer/main.js` line 18068.
+- `api.database` — line 217. Methods: `open()`, `close()`, `migrate(absoluteDir)`, `run(sql, params)`, `get(sql, params)`, `all(sql, params)`, `runTransaction(ops)`. All return `Promise<{ error?, row?, rows?, results? }>`. **External-extension only** — returns `undefined` for built-ins.
+- `api.views.registerViewProvider(viewId, { createView(container) })` — line 96. Used by media-organizer at `ext/media-organizer/main.js:18068`. **`api.views` does NOT expose `reveal` (D9).**
 - `api.commands.registerCommand(id, handler)` — line 100.
-- `api.lm.sendChatRequest(modelId, messages, options?)` — line 686. Streaming `AsyncIterable<{ content, done }>`.
+- `api.commands.executeCommand(id, ...args)` — line 99. **Not `execute` (D10).**
+- `api.lm.sendChatRequest(modelId, messages, options?)` — line 686. Returns `AsyncIterable<{ content?: string; done: boolean }>`. May be `undefined` (guard before use).
 - `api.lm.getModels()` — returns the list of available models from `LanguageModelsService`.
-- `api.services.get(ILanguageModelToolsService)` — line 668. Returns the tools service for `invokeToolWithRuntimeControl`.
-- `api.chat.registerTool(name, def)` — used by media-organizer at line 17850 if we want to expose budget queries to chat (P5 stretch).
+- `api.mcp.invokeTool(name, args, token?)` — **added by M63 P0** (D8). Returns `Promise<{ content: { type: string; text: string }[]; isError?: boolean }>`.
+- `api.mcp.listTools()` — added by M63 P0. Returns `Promise<readonly { name; description? }[]>`.
+- `api.icons.createIconHtml(iconId, size?)` — codicon-rendering helper. Used everywhere ASCII layouts in this doc show a Unicode glyph (D15).
+- `api.env.toolPath` — absolute path to the unpacked extension directory (used to derive `migrationsDir`).
+- `api.chat.registerTool(name, def)` — used by media-organizer at line 17850 if we want to expose budget queries to chat (P5 stretch). May be `undefined`.
 
 ---
 
@@ -672,7 +1012,7 @@ class TransactionListView extends View {
   private render() {
     const root = $('div.budget-tx-list', { tabindex: '0' });
     const toolbar = new ActionBar(root, [
-      { id: 'sync',   icon: 'refresh', label: 'Sync',   run: () => this.api.commands.execute('budget.sync') },
+      { id: 'sync',   icon: 'refresh', label: 'Sync',   run: () => this.api.commands.executeCommand('budget.sync') },
       { id: 'add',    icon: 'plus',    label: 'Add',    run: () => this.openAddModal() },
       { id: 'export', icon: 'export',  label: 'Export', run: () => this.exportCsv() },
     ]);
@@ -686,6 +1026,29 @@ class TransactionListView extends View {
   }
 }
 ```
+
+### Glyph → codicon mapping (D15)
+
+The ASCII art below uses Unicode characters as **placeholders** so the document
+is readable. The runtime extension MUST render every glyph as a codicon via
+`api.icons.createIconHtml(<id>, 16)`. **Do not emit raw Unicode emojis in the
+extension's HTML** — use the table below.
+
+| ASCII glyph | codicon id | Used for |
+|---|---|---|
+| `🔁` `↻` | `sync` | Sync now, refresh |
+| `⇄` | `arrow-swap` | Transfers, swap |
+| `ⓘ` | `info` | Info hints |
+| `◀` `▶` | `chevron-left` `chevron-right` | Month nav |
+| `▾` `▸` | `chevron-down` `chevron-right` | Tree expand |
+| `⋮` | `more` | Row context menu |
+| `⚙` | `gear` | Settings |
+| `✓` | `check` | Confirmed |
+| `!` (warning) | `warning` | Over-budget |
+| `▼` (down delta) | `arrow-down` | Spending trend down |
+| `▲` (up delta) | `arrow-up` | Spending trend up |
+| `●` (color dot) | (no codicon) | Hand-drawn `<span class="cat-dot">` colored with `--vscode-charts-*` |
+| `▓` `░` (bars) | (no codicon) | Hand-drawn `<div>` bars styled with category color + neutral track |
 
 ### ASCII layouts — the four core views
 
@@ -936,13 +1299,13 @@ last 90 days. Store in `recurring_transactions` table:
 
 ```sql
 CREATE TABLE recurring_transactions (
-    id              TEXT PRIMARY KEY,
-    merchant        TEXT NOT NULL,
-    expected_amount REAL,
-    cadence_days    INTEGER,
-    last_seen_date  TEXT,
-    next_expected   TEXT,
-    category_id     TEXT REFERENCES categories(id)
+    id                   TEXT PRIMARY KEY,
+    merchant             TEXT NOT NULL,
+    expected_amount_cents INTEGER,                       -- D3: cents, not REAL
+    cadence_days         INTEGER,
+    last_seen_date       TEXT,                           -- YYYY-MM-DD
+    next_expected        TEXT,                           -- YYYY-MM-DD
+    category_id          TEXT REFERENCES categories(id) ON DELETE SET NULL
 );
 ```
 
@@ -1011,12 +1374,12 @@ manual non-bank assets/liabilities later.
 
 ```sql
 CREATE TABLE goals (
-    id             TEXT PRIMARY KEY,
-    name           TEXT NOT NULL,
-    target_amount  REAL NOT NULL,
-    target_date    TEXT,
-    category_id    TEXT REFERENCES categories(id),  -- contributions count toward goal
-    created_at     TEXT DEFAULT (datetime('now'))
+    id                  TEXT PRIMARY KEY,
+    name                TEXT NOT NULL,
+    target_amount_cents INTEGER NOT NULL,                          -- D3: cents
+    target_date         TEXT,                                      -- YYYY-MM-DD
+    category_id         TEXT REFERENCES categories(id) ON DELETE SET NULL,
+    created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 ```
 
@@ -1192,13 +1555,16 @@ Dashboard tile shows progress bars (e.g. "Emergency fund · $4,200 / $10,000").
 |---|---|---|
 | Q1 | Does `mcp__parallx-gmail-mcp__list_unread` return message ID, subject, snippet, and date in one call? | Yes per the MCP server implementation (`gmailClient.ts`). Verify in P2 by logging the first response. |
 | Q2 | How do we handle multi-transaction emails (e.g. "5 transactions this week")? | Stage 2 returns an array. Each item gets its own `transactions` row referencing the same `email_imports` row. |
-| Q3 | First sync — how far back? | `budget.syncStartDate` config, default 90 days ago. |
-| Q4 | Where does the budget DB file live exactly? | Per-extension isolated DB at `<APP_ROOT>/data/extensions/parallx.budget/db.sqlite` (path managed by `DatabaseManager`; extension only sees `api.database`). |
+| Q3 | First sync — how far back? | `budget.syncStartDays` config (integer days), default 90. |
+| Q4 | Where does the budget DB file live exactly? | **ANSWERED (D2):** `<workspacePath>/.parallx/extensions/budget/data.db`. Verified `electron/database.cjs:340`. |
 | Q5 | Should categories be editable before first sync? | Yes — seed defaults on `activate()`, let user customize in settings, then sync. |
 | Q6 | Does the Gmail MCP tool require the server to be running/connected at sync time? | Yes. `invokeToolWithRuntimeControl` returns `{ isError: true, content: [...] }` if the MCP server is not connected. The sync engine must check this and surface a clear error. |
 | Q7 | Which model does the AI pipeline use? | P1: first model returned by `api.lm.getModels()`. P5 polish: read user's preferred default if/when that becomes a settable preference. |
 | Q8 | What does the MCP tool's content shape actually look like? | MCP tools return `{ content: [{ type: 'text', text: '...' }] }`. The text payload is the JSON string. Confirmed in P2 first-run logging. |
-| Q9 | Are migrations stored as files inside the .plx package, or shipped alongside? | Inside the package — same as media-organizer (`db/migrations/`). The packager script picks them up; `api.database.migrate('db/migrations/')` reads from the extension's installed dir. |
+| Q9 | Are migrations stored as files inside the .plx package, or shipped alongside? | Inside the package — same as media-organizer (`db/migrations/`). The packager script picks them up; `api.database.migrate(<absolute path>)` reads from the extension's installed dir. **Path MUST be absolute** (D11). |
+| Q10 | `list_unread` returns only UNREAD messages (D7) — how do we sync historical transactions a user has already read? | **OPEN.** Three candidates: (a) instruct user to keep transaction emails unread; (b) extend the MCP tool with `include_read: boolean` (a small change in `tools/gmail-mcp-server`); (c) document Gmail label workflow (`query: 'label:transactions'`) and verify whether the server's query param overrides the `is:unread` filter. P1 ships with (a) documented in onboarding; (b) is the recommended P3 enhancement. |
+| Q11 | What is the exact workbench command id to programmatically reveal a sub-view? (D9) | **TO VERIFY in P1.** Candidate: `workbench.view.show` with the viewId. If absent, wire through a Parallx-internal context-key listener — do NOT invent an `api.views.reveal`. |
+| Q12 | Does Ollama via `api.lm.sendChatRequest` honor `options: { format: 'json' }`? | **TO VERIFY in P1 first run.** If yes, prompts can drop the "respond with JSON only" reminder. If no, retry-on-parse-failure (current contract) is sufficient. |
 
 ---
 
