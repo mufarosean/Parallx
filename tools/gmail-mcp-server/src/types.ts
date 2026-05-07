@@ -38,10 +38,19 @@ export interface ListUnreadInput {
   max?: number;
   /** Optional Gmail search query (e.g. "from:alice OR is:important"). */
   query?: string;
+  /**
+   * Read-state filter (M63 P0).
+   * - `'unread'` (default): `is:unread` — preserves the legacy semantics.
+   * - `'read'`: `-is:unread` — only mail the user has already seen.
+   * - `'all'`: no read-state constraint.
+   */
+  read_state?: 'unread' | 'read' | 'all';
 }
 
 export interface UnreadMessage {
   id: string;
+  /** Gmail thread id (M63 P0). */
+  threadId: string;
   /** Display name + email (parsed from Gmail `From:` header). */
   from: string;
   subject: string;

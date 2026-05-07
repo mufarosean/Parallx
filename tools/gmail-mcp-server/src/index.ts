@@ -32,7 +32,7 @@ const PROTOCOL_VERSION = '2024-11-05';
 const LIST_UNREAD_TOOL: McpToolSchema = {
   name: 'list_unread',
   description:
-    'List unread Gmail messages with sender, subject, snippet, received-at, and labels. Read-only.',
+    'List Gmail messages with sender, subject, snippet, received-at, thread id, and labels. Read-only. Defaults to unread; pass read_state to widen the search.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -49,6 +49,12 @@ const LIST_UNREAD_TOOL: McpToolSchema = {
       query: {
         type: 'string',
         description: 'Optional Gmail search query, e.g. "from:alice OR is:important".',
+      },
+      read_state: {
+        type: 'string',
+        enum: ['unread', 'read', 'all'],
+        description:
+          'Read-state filter. "unread" (default) preserves legacy is:unread; "read" returns only seen mail; "all" applies no read-state constraint.',
       },
     },
     additionalProperties: false,
@@ -147,10 +153,17 @@ async function handleToolsCall(
     return makeError(id, -32000, message);
   }
 
+  const rawReadState = args.read_state;
+  const readState: 'unread' | 'read' | 'all' =
+    rawReadState === 'read' || rawReadState === 'all' || rawReadState === 'unread'
+      ? rawReadState
+      : 'unread';
+
   const input: ListUnreadInput = {
     since: typeof args.since === 'string' ? args.since : undefined,
     max: typeof args.max === 'number' ? args.max : 25,
     query: typeof args.query === 'string' ? args.query : undefined,
+    read_state: readState,
   };
 
   try {
@@ -159,6 +172,7 @@ async function handleToolsCall(
       max: input.max ?? 25,
       query: input.query,
       since: input.since,
+      readState,
     });
     const output: ListUnreadOutput = { messages };
     // We log COUNTS only — never subjects or snippets.

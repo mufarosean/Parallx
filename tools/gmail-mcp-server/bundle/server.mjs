@@ -16,22 +16,27 @@ var GmailClient = class {
    */
   async listUnread(opts) {
     const max = Math.max(1, Math.min(100, Math.floor(opts.max)));
-    const queryParts = ["is:unread"];
+    const queryParts = [];
+    const readState = opts.readState ?? "unread";
+    if (readState === "unread") queryParts.push("is:unread");
+    else if (readState === "read") queryParts.push("-is:unread");
     if (opts.query) queryParts.push(`(${opts.query})`);
     if (opts.since) {
       const epoch = Math.floor(new Date(opts.since).getTime() / 1e3);
       if (Number.isFinite(epoch)) queryParts.push(`after:${epoch}`);
     }
-    const q = queryParts.join(" ");
+    const q = queryParts.join(" ").trim();
     const listUrl = new URL(`${GMAIL_API_BASE}/users/me/messages`);
-    listUrl.searchParams.set("q", q);
+    if (q) listUrl.searchParams.set("q", q);
     listUrl.searchParams.set("maxResults", String(max));
     const listRes = await this.fetchAuthorized(listUrl.toString());
     const listJson = await listRes.json();
     const ids = (listJson.messages ?? []).map((m) => m.id).slice(0, max);
     if (ids.length === 0) return [];
     const hydrated = await Promise.all(ids.map((id) => this.getMessageMetadata(id)));
-    return hydrated.filter((m) => m !== null);
+    const messages = hydrated.filter((m) => m !== null);
+    messages.sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
+    return messages;
   }
   async getMessageMetadata(id) {
     const url = new URL(`${GMAIL_API_BASE}/users/me/messages/${encodeURIComponent(id)}`);
@@ -52,6 +57,7 @@ var GmailClient = class {
     const receivedAt = Number.isFinite(internalDateMs) && internalDateMs > 0 ? new Date(internalDateMs).toISOString() : (/* @__PURE__ */ new Date(0)).toISOString();
     return {
       id: json.id,
+      threadId: json.threadId ?? "",
       from: fromRaw,
       subject,
       snippet: json.snippet ?? "",
@@ -398,7 +404,7 @@ var SERVER_VERSION = "0.1.0";
 var PROTOCOL_VERSION = "2024-11-05";
 var LIST_UNREAD_TOOL = {
   name: "list_unread",
-  description: "List unread Gmail messages with sender, subject, snippet, received-at, and labels. Read-only.",
+  description: "List Gmail messages with sender, subject, snippet, received-at, thread id, and labels. Read-only. Defaults to unread; pass read_state to widen the search.",
   inputSchema: {
     type: "object",
     properties: {
@@ -415,6 +421,11 @@ var LIST_UNREAD_TOOL = {
       query: {
         type: "string",
         description: 'Optional Gmail search query, e.g. "from:alice OR is:important".'
+      },
+      read_state: {
+        type: "string",
+        enum: ["unread", "read", "all"],
+        description: 'Read-state filter. "unread" (default) preserves legacy is:unread; "read" returns only seen mail; "all" applies no read-state constraint.'
       }
     },
     additionalProperties: false
@@ -489,17 +500,21 @@ async function handleToolsCall(id, params) {
     const message = err instanceof Error ? err.message : String(err);
     return makeError(id, -32e3, message);
   }
+  const rawReadState = args.read_state;
+  const readState = rawReadState === "read" || rawReadState === "all" || rawReadState === "unread" ? rawReadState : "unread";
   const input = {
     since: typeof args.since === "string" ? args.since : void 0,
     max: typeof args.max === "number" ? args.max : 25,
-    query: typeof args.query === "string" ? args.query : void 0
+    query: typeof args.query === "string" ? args.query : void 0,
+    read_state: readState
   };
   try {
     const client = new GmailClient(accessToken);
     const messages = await client.listUnread({
       max: input.max ?? 25,
       query: input.query,
-      since: input.since
+      since: input.since,
+      readState
     });
     const output = { messages };
     logInfo(`list_unread \u2192 ${messages.length} message(s)`);

@@ -24,6 +24,11 @@ export interface GmailListOptions {
   query?: string;
   /** ISO 8601 — only mail after this time. */
   since?: string;
+  /**
+   * Read-state filter (M63 P0). `'unread'` is the default; matches the
+   * legacy `is:unread` query.
+   */
+  readState?: 'unread' | 'read' | 'all';
 }
 
 export class GmailClient {
@@ -39,17 +44,21 @@ export class GmailClient {
    */
   async listUnread(opts: GmailListOptions): Promise<UnreadMessage[]> {
     const max = Math.max(1, Math.min(100, Math.floor(opts.max)));
-    const queryParts: string[] = ['is:unread'];
+    const queryParts: string[] = [];
+    const readState = opts.readState ?? 'unread';
+    if (readState === 'unread') queryParts.push('is:unread');
+    else if (readState === 'read') queryParts.push('-is:unread');
+    // 'all' contributes no read-state constraint.
     if (opts.query) queryParts.push(`(${opts.query})`);
     if (opts.since) {
       // Gmail accepts `after:<unix-seconds>`.
       const epoch = Math.floor(new Date(opts.since).getTime() / 1000);
       if (Number.isFinite(epoch)) queryParts.push(`after:${epoch}`);
     }
-    const q = queryParts.join(' ');
+    const q = queryParts.join(' ').trim();
 
     const listUrl = new URL(`${GMAIL_API_BASE}/users/me/messages`);
-    listUrl.searchParams.set('q', q);
+    if (q) listUrl.searchParams.set('q', q);
     listUrl.searchParams.set('maxResults', String(max));
 
     const listRes = await this.fetchAuthorized(listUrl.toString());
@@ -61,7 +70,10 @@ export class GmailClient {
 
     // Hydrate each message with metadata format (headers + snippet only).
     const hydrated = await Promise.all(ids.map((id) => this.getMessageMetadata(id)));
-    return hydrated.filter((m): m is UnreadMessage => m !== null);
+    const messages = hydrated.filter((m): m is UnreadMessage => m !== null);
+    // Sort oldest-first so callers can process chronologically (M63 P0).
+    messages.sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
+    return messages;
   }
 
   private async getMessageMetadata(id: string): Promise<UnreadMessage | null> {
@@ -73,6 +85,7 @@ export class GmailClient {
     const res = await this.fetchAuthorized(url.toString());
     const json = (await res.json()) as {
       id?: string;
+      threadId?: string;
       snippet?: string;
       internalDate?: string;
       labelIds?: string[];
@@ -95,6 +108,7 @@ export class GmailClient {
 
     return {
       id: json.id,
+      threadId: json.threadId ?? '',
       from: fromRaw,
       subject,
       snippet: json.snippet ?? '',
