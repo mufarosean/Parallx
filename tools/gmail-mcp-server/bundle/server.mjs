@@ -270,8 +270,8 @@ async function writeCredentials(creds, path = defaultCredPath()) {
 }
 
 // src/bundledOAuthClient.ts
-var BUNDLED_GMAIL_OAUTH_CLIENT_ID = "";
-var BUNDLED_GMAIL_OAUTH_CLIENT_SECRET = "";
+var BUNDLED_GMAIL_OAUTH_CLIENT_ID = "242493707221-qhd75htges3cmd9hhq97u8sh1g5or8sp.apps.googleusercontent.com";
+var BUNDLED_GMAIL_OAUTH_CLIENT_SECRET = "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";
 
 // src/authCli.ts
 function out(msg) {
