@@ -108,42 +108,193 @@ function sectionByEditorInstanceId(instanceId) {
   return SECTIONS.find(s => s.id === sectionId) || null;
 }
 
+// ─── Stylesheet (injected once) ────────────────────────────────────────────
+//
+// All Parallx-native tokens. No hard-coded colours outside design fallbacks.
+let _stylesInjected = false;
+function injectStyles() {
+  if (_stylesInjected) return;
+  _stylesInjected = true;
+  const style = document.createElement('style');
+  style.id = 'budget-extension-styles';
+  style.textContent = `
+/* ═══ Sidebar nav ═══ */
+.budget-nav {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  color: var(--vscode-sideBar-foreground, var(--vscode-editor-foreground));
+  font-family: var(--parallx-fontFamily-ui, system-ui, sans-serif);
+  font-size: var(--parallx-fontSize-md, 13px);
+  overflow: hidden;
+}
+.budget-nav-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.budget-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.budget-nav-row:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
+}
+.budget-nav-row:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline-offset: -1px;
+}
+.budget-nav-row .budget-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  color: var(--vscode-icon-foreground, #cccccc);
+}
+.budget-nav-row .budget-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.budget-nav-footer {
+  flex-shrink: 0;
+  padding: 8px 10px;
+  border-top: 1px solid var(--vscode-panel-border, #2a2a2a);
+}
+.budget-sync-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--vscode-button-secondaryBackground, #3a3a3a);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+  border: 1px solid var(--vscode-panel-border, #555);
+  border-radius: var(--parallx-radius-sm, 3px);
+  font-family: inherit;
+  font-size: var(--parallx-fontSize-sm, 11px);
+  cursor: pointer;
+}
+.budget-sync-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #4a4a4a);
+}
+.budget-sync-btn:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline-offset: -1px;
+}
+.budget-sync-btn .budget-icon { width: 14px; height: 14px; flex: 0 0 14px; }
+
+/* ═══ Editor pane ═══ */
+.budget-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: auto;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  font-family: var(--parallx-fontFamily-ui, system-ui, sans-serif);
+  font-size: var(--parallx-fontSize-md, 13px);
+  box-sizing: border-box;
+}
+.budget-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 24px 12px 24px;
+  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+}
+.budget-editor-header .budget-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  color: var(--vscode-icon-foreground, #cccccc);
+}
+.budget-editor-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.budget-editor-body {
+  flex: 1;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.budget-editor-blurb {
+  margin: 0;
+  font-size: var(--parallx-fontSize-md, 13px);
+  color: var(--vscode-descriptionForeground, #888);
+  line-height: 1.55;
+  max-width: 680px;
+}
+.budget-editor-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--vscode-input-background, rgba(255,255,255,0.04));
+  border: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-radius: var(--parallx-radius-sm, 3px);
+  font-size: var(--parallx-fontSize-sm, 11px);
+  color: var(--vscode-descriptionForeground, #888);
+  width: fit-content;
+}
+`;
+  document.head.appendChild(style);
+}
+
+function makeIcon(api, name, size) {
+  if (!api.icons || typeof api.icons.createIconHtml !== 'function' || !api.icons.hasIcon(name)) return '';
+  return api.icons.createIconHtml(name, size || 16);
+}
+
 // ─── Sidebar nav view ──────────────────────────────────────────────────────
 function renderSidebarNav(container, api) {
+  injectStyles();
+
   const root = document.createElement('div');
   root.className = 'budget-nav';
-  root.style.cssText = 'display:flex;flex-direction:column;padding:6px 0;font-family:var(--font-family);';
+
+  const list = document.createElement('div');
+  list.className = 'budget-nav-list';
+  root.appendChild(list);
 
   for (const section of SECTIONS) {
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'budget-nav-row';
-    row.style.cssText = [
-      'display:flex',
-      'align-items:center',
-      'gap:8px',
-      'padding:6px 12px',
-      'border:none',
-      'background:transparent',
-      'color:var(--foreground)',
-      'font-size:13px',
-      'text-align:left',
-      'cursor:pointer',
-      'border-radius:0',
-    ].join(';');
-    row.addEventListener('mouseenter', () => { row.style.background = 'var(--list-hoverBackground, rgba(255,255,255,0.06))'; });
-    row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
+    row.title = section.title;
 
-    if (api.icons && typeof api.icons.createIconHtml === 'function' && api.icons.hasIcon(section.icon)) {
+    const iconHtml = makeIcon(api, section.icon, 16);
+    if (iconHtml) {
       const iconWrap = document.createElement('span');
-      iconWrap.style.cssText = 'display:inline-flex;width:16px;height:16px;flex:0 0 16px;color:var(--description-foreground);';
-      iconWrap.innerHTML = api.icons.createIconHtml(section.icon, 16);
+      iconWrap.className = 'budget-icon';
+      iconWrap.innerHTML = iconHtml;
       row.appendChild(iconWrap);
     }
 
     const label = document.createElement('span');
+    label.className = 'budget-label';
     label.textContent = section.title;
-    label.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
     row.appendChild(label);
 
     row.addEventListener('click', () => {
@@ -152,25 +303,25 @@ function renderSidebarNav(container, api) {
       });
     });
 
-    root.appendChild(row);
+    list.appendChild(row);
   }
 
-  // Footer: Sync action
+  // Footer: Sync now
   const footer = document.createElement('div');
-  footer.style.cssText = 'margin-top:8px;padding:6px 12px;border-top:1px solid var(--panel-border, rgba(255,255,255,0.08));';
+  footer.className = 'budget-nav-footer';
   const syncBtn = document.createElement('button');
   syncBtn.type = 'button';
-  syncBtn.textContent = 'Sync now';
-  syncBtn.style.cssText = [
-    'width:100%',
-    'padding:6px 8px',
-    'background:var(--button-secondaryBackground, rgba(255,255,255,0.06))',
-    'color:var(--foreground)',
-    'border:1px solid var(--panel-border, rgba(255,255,255,0.12))',
-    'border-radius:4px',
-    'font-size:12px',
-    'cursor:pointer',
-  ].join(';');
+  syncBtn.className = 'budget-sync-btn';
+  const syncIconHtml = makeIcon(api, 'refresh-cw', 14);
+  if (syncIconHtml) {
+    const ic = document.createElement('span');
+    ic.className = 'budget-icon';
+    ic.innerHTML = syncIconHtml;
+    syncBtn.appendChild(ic);
+  }
+  const syncLabel = document.createElement('span');
+  syncLabel.textContent = 'Sync now';
+  syncBtn.appendChild(syncLabel);
   syncBtn.addEventListener('click', () => {
     api.commands.executeCommand('budget.sync').catch(err => {
       console.error('[Budget] sync failed:', err);
@@ -180,11 +331,8 @@ function renderSidebarNav(container, api) {
   root.appendChild(footer);
 
   container.appendChild(root);
-
   return {
-    dispose() {
-      try { container.removeChild(root); } catch { /* container already gone */ }
-    },
+    dispose() { try { container.removeChild(root); } catch { /* container already gone */ } },
   };
 }
 
@@ -193,44 +341,49 @@ function renderSidebarNav(container, api) {
 // Single editor provider. Routes by instanceId 'budget:<sectionId>'.
 // Each section will be replaced by a real renderer in P2+.
 function renderEditorPane(container, api, input) {
+  injectStyles();
   const section = sectionByEditorInstanceId(input && input.id);
 
   const el = document.createElement('div');
   el.className = 'budget-editor';
-  el.style.cssText = [
-    'display:flex',
-    'flex-direction:column',
-    'gap:12px',
-    'padding:24px 32px',
-    'height:100%',
-    'overflow:auto',
-    'color:var(--foreground)',
-    'font-family:var(--font-family)',
-    'box-sizing:border-box',
-  ].join(';');
 
+  // Header
+  const header = document.createElement('div');
+  header.className = 'budget-editor-header';
+  const headerIconHtml = makeIcon(api, section ? section.icon : 'wallet', 20);
+  if (headerIconHtml) {
+    const ic = document.createElement('span');
+    ic.className = 'budget-icon';
+    ic.innerHTML = headerIconHtml;
+    header.appendChild(ic);
+  }
   const heading = document.createElement('h2');
+  heading.className = 'budget-editor-title';
   heading.textContent = section ? section.title : 'Budget';
-  heading.style.cssText = 'margin:0;font-size:20px;font-weight:600;';
-  el.appendChild(heading);
+  header.appendChild(heading);
+  el.appendChild(header);
+
+  // Body
+  const body = document.createElement('div');
+  body.className = 'budget-editor-body';
 
   if (section) {
     const blurb = document.createElement('p');
+    blurb.className = 'budget-editor-blurb';
     blurb.textContent = section.blurb;
-    blurb.style.cssText = 'margin:0;font-size:13px;color:var(--description-foreground);line-height:1.5;max-width:680px;';
-    el.appendChild(blurb);
+    body.appendChild(blurb);
   }
 
   const tag = document.createElement('div');
+  tag.className = 'budget-editor-tag';
   tag.textContent = 'Scaffold — populated by Milestone 63 P2.';
-  tag.style.cssText = 'margin-top:8px;font-size:12px;color:var(--description-foreground);font-style:italic;';
-  el.appendChild(tag);
+  body.appendChild(tag);
+
+  el.appendChild(body);
 
   container.appendChild(el);
   return {
-    dispose() {
-      try { container.removeChild(el); } catch { /* container already gone */ }
-    },
+    dispose() { try { container.removeChild(el); } catch { /* container already gone */ } },
   };
 }
 
