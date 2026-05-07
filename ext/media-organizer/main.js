@@ -7722,10 +7722,30 @@ function renderMediaCard(item, options) {
       try {
         const apiRef = options.api || _api;
         if (apiRef?.window?.startDrag) {
+          // Multi-select: include every selected item that has a resolved path.
+          // We always include the dragged item even if not selected.
+          let paths = [filePath];
+          const sel = options.selectedIds;
+          const reg = options.cardByKey;
+          const myKey = `${item.type}:${item.id}`;
+          if (isSelected && sel && sel.size > 1 && reg) {
+            const collected = [];
+            for (const k of sel) {
+              const el = reg.get(k);
+              const p = el?._filePath;
+              if (p && !collected.includes(p)) collected.push(p);
+            }
+            // Ensure the dragged item is first (used as the drag-image source)
+            if (collected.length > 0) {
+              paths = collected.includes(filePath)
+                ? [filePath, ...collected.filter(p => p !== filePath)]
+                : [filePath, ...collected];
+            }
+          }
           const iconUrl = (card._imgEl?.src && card._imgEl.src.startsWith('data:image/'))
             ? card._imgEl.src
             : undefined;
-          apiRef.window.startDrag(filePath, iconUrl);
+          apiRef.window.startDrag(paths.length === 1 ? paths[0] : paths, iconUrl);
         }
       } catch (err) {
         console.warn('[mo] native startDrag failed', err);
@@ -7825,10 +7845,26 @@ function renderMediaListRow(item, options) {
       try {
         const apiRef = options.api || _api;
         if (apiRef?.window?.startDrag) {
+          let paths = [filePath];
+          const sel = options.selectedIds;
+          const reg = options.cardByKey;
+          if (isSelected && sel && sel.size > 1 && reg) {
+            const collected = [];
+            for (const k of sel) {
+              const el = reg.get(k);
+              const p = el?._filePath;
+              if (p && !collected.includes(p)) collected.push(p);
+            }
+            if (collected.length > 0) {
+              paths = collected.includes(filePath)
+                ? [filePath, ...collected.filter(p => p !== filePath)]
+                : [filePath, ...collected];
+            }
+          }
           const iconUrl = (row._imgEl?.src && row._imgEl.src.startsWith('data:image/'))
             ? row._imgEl.src
             : undefined;
-          apiRef.window.startDrag(filePath, iconUrl);
+          apiRef.window.startDrag(paths.length === 1 ? paths[0] : paths, iconUrl);
         }
       } catch (err) {
         console.warn('[mo] native startDrag failed', err);
@@ -7928,6 +7964,7 @@ function renderCardGrid(container, items, options) {
           isSelected: opts.selectedIds ? opts.selectedIds.has(`${item.type}:${item.id}`) : false,
           isFocused: focIdx === idx,
           selectedIds: opts.selectedIds ?? selectedIds,
+          cardByKey: _cardByKey,
           onSelect: opts.onSelect ?? onSelect,
           onClick: opts.onClick ?? onClick,
           onDblClick: opts.onDblClick ?? onDblClick,
@@ -7948,6 +7985,7 @@ function renderCardGrid(container, items, options) {
           isSelected: opts.selectedIds ? opts.selectedIds.has(`${item.type}:${item.id}`) : false,
           isFocused: focIdx === idx,
           selectedIds: opts.selectedIds ?? selectedIds,
+          cardByKey: _cardByKey,
           onSelect: opts.onSelect ?? onSelect,
           onClick: opts.onClick ?? onClick,
           onDblClick: opts.onDblClick ?? onDblClick,
