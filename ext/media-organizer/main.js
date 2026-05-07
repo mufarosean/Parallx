@@ -7713,21 +7713,12 @@ function renderMediaCard(item, options) {
     if (onDblClick) onDblClick(item);
   });
   card.addEventListener('dragstart', (e) => {
-    const key = `${item.type}:${item.id}`;
-    const keys = (isSelected && options.selectedIds && options.selectedIds.size > 1)
-      ? [...options.selectedIds]
-      : [key];
-    e.dataTransfer.setData('application/x-mo-items', JSON.stringify(keys));
-    // M59 P7: also publish standard MIME types so OS / canvas / chat surfaces
-    // can accept the drop natively. Path is best-effort — populated lazily by
-    // resolveThumbnailForCard. If unresolved, we still set the MO key payload.
     const filePath = card._filePath || item._sourcePath;
-    if (filePath) {
-      const fileUrl = `file:///${String(filePath).replace(/\\/g, '/').replace(/^\/+/, '')}`;
-      try { e.dataTransfer.setData('text/uri-list', fileUrl); } catch { /* ignore */ }
-      try { e.dataTransfer.setData('text/plain', filePath); } catch { /* ignore */ }
-      // Native OS drag — lets the user drop into Discord / Explorer / browsers.
-      // HTML5 DataTransfer alone does not produce an OS-level file drag.
+    // Alt-drag: native OS file drag (drop into Discord / Explorer / browsers).
+    // We must NOT also call setData — running HTML5 + native drags concurrently
+    // crashes the renderer on Windows.
+    if (e.altKey && filePath) {
+      e.preventDefault();
       try {
         const apiRef = options.api || _api;
         if (apiRef?.window?.startDrag) {
@@ -7739,6 +7730,18 @@ function renderMediaCard(item, options) {
       } catch (err) {
         console.warn('[mo] native startDrag failed', err);
       }
+      return;
+    }
+    // Standard HTML5 drag — used for in-app drops (albums, chat, canvas).
+    const key = `${item.type}:${item.id}`;
+    const keys = (isSelected && options.selectedIds && options.selectedIds.size > 1)
+      ? [...options.selectedIds]
+      : [key];
+    e.dataTransfer.setData('application/x-mo-items', JSON.stringify(keys));
+    if (filePath) {
+      const fileUrl = `file:///${String(filePath).replace(/\\/g, '/').replace(/^\/+/, '')}`;
+      try { e.dataTransfer.setData('text/uri-list', fileUrl); } catch { /* ignore */ }
+      try { e.dataTransfer.setData('text/plain', filePath); } catch { /* ignore */ }
     }
     e.dataTransfer.effectAllowed = 'copy';
   });
@@ -7815,19 +7818,10 @@ function renderMediaListRow(item, options) {
     if (onDblClick) onDblClick(item);
   });
   row.addEventListener('dragstart', (e) => {
-    const key = `${item.type}:${item.id}`;
-    const keys = (isSelected && options.selectedIds && options.selectedIds.size > 1)
-      ? [...options.selectedIds]
-      : [key];
-    e.dataTransfer.setData('application/x-mo-items', JSON.stringify(keys));
-    // Mirror the grid-card behavior: publish standard MIMEs so the drop
-    // can be accepted by chat / canvas / OS surfaces.
     const filePath = row._filePath || item._sourcePath;
-    if (filePath) {
-      const fileUrl = `file:///${String(filePath).replace(/\\/g, '/').replace(/^\/+/, '')}`;
-      try { e.dataTransfer.setData('text/uri-list', fileUrl); } catch { /* ignore */ }
-      try { e.dataTransfer.setData('text/plain', filePath); } catch { /* ignore */ }
-      // Native OS drag — drops into Discord / Explorer / browsers.
+    // Alt-drag: native OS file drag (Discord / Explorer / browsers).
+    if (e.altKey && filePath) {
+      e.preventDefault();
       try {
         const apiRef = options.api || _api;
         if (apiRef?.window?.startDrag) {
@@ -7839,6 +7833,18 @@ function renderMediaListRow(item, options) {
       } catch (err) {
         console.warn('[mo] native startDrag failed', err);
       }
+      return;
+    }
+    // Standard HTML5 drag — used for in-app drops (albums, chat, canvas).
+    const key = `${item.type}:${item.id}`;
+    const keys = (isSelected && options.selectedIds && options.selectedIds.size > 1)
+      ? [...options.selectedIds]
+      : [key];
+    e.dataTransfer.setData('application/x-mo-items', JSON.stringify(keys));
+    if (filePath) {
+      const fileUrl = `file:///${String(filePath).replace(/\\/g, '/').replace(/^\/+/, '')}`;
+      try { e.dataTransfer.setData('text/uri-list', fileUrl); } catch { /* ignore */ }
+      try { e.dataTransfer.setData('text/plain', filePath); } catch { /* ignore */ }
     }
     e.dataTransfer.effectAllowed = 'copy';
   });
@@ -12134,13 +12140,11 @@ function openLightbox(items, startIndex, resolveFilePath) {
             e.preventDefault();
             return;
           }
+          // Native-only drag from the lightbox: there is no in-app drop target
+          // for an open image, so always go native. preventDefault() suppresses
+          // the HTML5 drag and avoids the dual-drag crash.
+          e.preventDefault();
           try {
-            if (e.dataTransfer) {
-              const fileUrl = `file:///${String(mediaEl._filePath).replace(/\\/g, '/').replace(/^\/+/, '')}`;
-              try { e.dataTransfer.setData('text/uri-list', fileUrl); } catch { /* ignore */ }
-              try { e.dataTransfer.setData('text/plain', mediaEl._filePath); } catch { /* ignore */ }
-              e.dataTransfer.effectAllowed = 'copy';
-            }
             if (_api?.window?.startDrag) {
               const iconUrl = (mediaEl.src && mediaEl.src.startsWith('data:image/'))
                 ? mediaEl.src
