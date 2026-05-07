@@ -162,39 +162,65 @@ Subscriptions, Travel, Other.
 ### How model calls work in Parallx (the real pattern)
 
 The sync engine needs to call the local Ollama model programmatically — not
-through a chat turn. The existing path for this is `ILanguageModelsService`:
+through a chat turn. The exposed extension surface is `api.lm` (verified in
+`src/api/apiFactory.ts` line 686). It requires a `modelId`:
 
 ```typescript
-// Exposed to extensions via api.chat (the LanguageModelsService)
-const chunks: string[] = [];
-for await (const chunk of api.chat.sendChatRequest(
+// 1. Pick a model. Prefer the user's default; fall back to the first available.
+const models = await api.lm.getModels();
+if (!models || models.length === 0) {
+  throw new Error('No language models available — install/start Ollama first.');
+}
+const modelId = models[0].id; // P2: read user default once we wire that in
+
+// 2. Stream chunks until done.
+const chunks = [];
+for await (const chunk of api.lm.sendChatRequest(
+  modelId,
   [{ role: 'user', content: prompt }],
-  undefined,    // no special options
-  signal,       // AbortSignal for cancellation
+  { /* options */ },
 )) {
-  chunks.push(chunk);
+  if (chunk.content) chunks.push(chunk.content);
+  if (chunk.done) break;
 }
 const response = chunks.join('');
 ```
 
-This is the same path used by `openclawAttempt.ts` and the autonomy
-heartbeat executor. No direct Ollama HTTP calls — model selection,
-token streaming, and error handling are all in the service.
+Under the hood `api.lm` is the `LanguageModelsService` IPC bridge — the same
+path chat / autonomy use. No direct Ollama HTTP calls; model selection,
+token streaming, and error handling all live in the service.
+
+**Cancellation:** `sendChatRequest` does not currently take an `AbortSignal`
+on the `api.lm` surface. To cancel a sync mid-run we will track a `cancelled`
+flag on the sync engine and break the iteration loop — sufficient for a UI
+"Cancel Sync" button. (If a stricter primitive is needed later, add it to
+`api.lm` then.)
 
 ### How MCP tools are called programmatically
 
-The sync engine calls `list_unread` via `ILanguageModelToolsService`, the same
-path autonomous turns use:
+`api.tools` is the **management** surface (install/uninstall/enable) — it does
+not expose tool invocation. The actual invocation primitive lives on
+`ILanguageModelToolsService`, which extensions reach via the DI bridge
+`api.services` (verified pattern in `src/built-in/ai-settings/main.ts`):
 
 ```typescript
-// Tool name follows the mcpToolBridge namespacing convention
-const result = await api.tools.invokeToolWithRuntimeControl(
+import { ILanguageModelToolsService } from '../../services/chatTypes.js';
+// (Path resolved at build time; in compiled main.js we use a string-id ref.)
+
+const toolsService = api.services.has(ILanguageModelToolsService)
+  ? api.services.get(ILanguageModelToolsService)
+  : null;
+if (!toolsService) throw new Error('Tools service not available');
+
+const result = await toolsService.invokeToolWithRuntimeControl(
   'mcp__parallx-gmail-mcp__list_unread',
   { max: 100, query: `after:${cursorDate}` },
   cancellationToken,
 );
-// result.content is the JSON string from the MCP server
-const messages = JSON.parse(result.content);
+if (result.isError) {
+  throw new Error(`Gmail MCP error: ${result.content?.[0]?.text ?? 'unknown'}`);
+}
+const messages = JSON.parse(result.content[0].text);
 ```
 
 The Gmail MCP server must be connected (added via the MCP Servers UI) before
@@ -279,8 +305,9 @@ sync_state key: "last_synced_at"
 ### Flow
 
 1. Read `last_gmail_message_id` from `sync_state`.
-2. Call `mcp__parallx-gmail-mcp__list_unread` via
-   `api.tools.invokeToolWithRuntimeControl`.
+2. Resolve the tools service (`api.services.get(ILanguageModelToolsService)`),
+   then call `mcp__parallx-gmail-mcp__list_unread` via
+   `invokeToolWithRuntimeControl`.
    - If cursor exists: `{ query: "after:<last_date>", max: 100 }`
    - If no cursor (first sync): use `budget.syncStartDate` config value,
      default 90 days ago.
@@ -393,17 +420,26 @@ export async function activate(api, context) {
   _dbBridge = api.database;
   await _dbBridge.migrate('db/migrations/');           // runs budget_001_initial.sql once
 
-  // Register view factories
-  api.views.registerView('budget.dashboard',    () => new DashboardView(db));
-  api.views.registerView('budget.transactions', () => new TransactionListView(db));
-  api.views.registerView('budget.reviewQueue',  () => new ReviewQueueView(db));
-  api.views.registerView('budget.syncLog',      () => new SyncLogView(db));
+  // Register view providers
+  api.views.registerViewProvider('budget.dashboard',    { createView: (el) => new DashboardView(el, db, api) });
+  api.views.registerViewProvider('budget.transactions', { createView: (el) => new TransactionListView(el, db, api) });
+  api.views.registerViewProvider('budget.reviewQueue',  { createView: (el) => new ReviewQueueView(el, db, api) });
+  api.views.registerViewProvider('budget.syncLog',      { createView: (el) => new SyncLogView(el, db, api) });
 
   // Register commands
-  api.commands.registerCommand('budget.sync',  () => runSync(api, db));
+  api.commands.registerCommand('budget.sync',          () => runSync(api, db));
   api.commands.registerCommand('budget.openDashboard', () => api.views.reveal('budget.dashboard'));
 }
 ```
+
+**Verified API surfaces (in `src/api/apiFactory.ts`):**
+- `api.database` — line 217, includes `migrate(dir)`, `run/get/all/runTransaction`. External-extension only.
+- `api.views.registerViewProvider(viewId, { createView(container) })` — line 96. Called by media-organizer at `ext/media-organizer/main.js` line 18068.
+- `api.commands.registerCommand(id, handler)` — line 100.
+- `api.lm.sendChatRequest(modelId, messages, options?)` — line 686. Streaming `AsyncIterable<{ content, done }>`.
+- `api.lm.getModels()` — returns the list of available models from `LanguageModelsService`.
+- `api.services.get(ILanguageModelToolsService)` — line 668. Returns the tools service for `invokeToolWithRuntimeControl`.
+- `api.chat.registerTool(name, def)` — used by media-organizer at line 17850 if we want to expose budget queries to chat (P5 stretch).
 
 ---
 
@@ -487,14 +523,20 @@ a charting library can be dropped in without changing the data layer.
 - `budgetDatabase.ts`: mirrors media-organizer `db` wrapper pattern
 - Seed default categories on first `activate()`
 - Unit tests: schema, insert, dedup, cursor read/write
+- **Verification gate:** `npx tsc --noEmit` clean, `npx vitest run` green
 
 ### P2 — AI pipeline + sync engine
 - `aiPipeline.ts`: Stage 1/2/3 prompt builders, JSON response parsers,
   retry-on-malformed logic
 - `syncEngine.ts`: cursor logic, MCP tool call, pipeline orchestration,
   error logging to `sync_state`
-- Unit tests with fixture emails (Chase, BofA, Venmo, PayPal formats)
-- **Validate AI extraction against real emails before building the full UI**
+- **First task in P2:** capture 5–10 real transaction emails (Chase, BofA,
+  Venmo, PayPal) as test fixtures. Build the parser tests against these
+  before wiring the live MCP call. The biggest unknown in this milestone is
+  whether the model can extract reliably — prove it on fixtures first.
+- Unit tests with fixture emails
+- Smoke test: `budget.sync` command runs end-to-end against a real Gmail
+  account, fixtures land in DB, dedup verified by running twice.
 
 ### P3 — Tool scaffold + basic views
 - Wire `parallx-manifest.json` contributions: viewContainers, views, commands,
@@ -510,6 +552,8 @@ a charting library can be dropped in without changing the data layer.
 
 ### P5 — Polish + verification
 - Edge cases: refunds (negative amounts), split transactions, duplicate alerts
+- (Stretch) Expose `budget.search` and `budget.summary` via `api.chat.registerTool`
+  so the chat agent can answer "how much did I spend on dining last month?"
 - `npx tsc --noEmit` clean
 - `npx vitest run` green
 - Manual end-to-end: sync real Gmail → review queue → confirm → dashboard
@@ -523,11 +567,12 @@ a charting library can be dropped in without changing the data layer.
 | Concern | Existing solution | Where |
 |---|---|---|
 | Extension manifest + registration | `parallx-manifest.json` + `ToolRegistry` | `src/tools/toolRegistry.ts`, `src/tools/parallx-manifest.schema.json` |
-| SQLite database access | `DatabaseManager` + `DatabaseService` IPC bridge | `electron/database.cjs`, `src/services/databaseService.ts` |
-| DB migrations | Lexicographic `.sql` file runner | `electron/database.cjs` `migrate()` |
-| Model calls outside chat | `ILanguageModelsService.sendChatRequest` | `src/services/languageModelsService.ts` |
-| MCP tool invocation | `ILanguageModelToolsService.invokeToolWithRuntimeControl` | `src/services/languageModelToolsService.ts` |
+| SQLite database access | `DatabaseManager` + per-extension IPC bridge | `electron/database.cjs`, `api.database` (apiFactory.ts:217) |
+| DB migrations | Lexicographic `.sql` file runner | `electron/database.cjs` `migrate()`, called via `api.database.migrate(dir)` |
+| Model calls outside chat | `LanguageModelsService` via `api.lm.sendChatRequest(modelId, msgs)` | `src/services/languageModelsService.ts`, exposed at apiFactory.ts:686 |
+| MCP tool invocation | `ILanguageModelToolsService.invokeToolWithRuntimeControl` via `api.services.get(...)` | `src/services/languageModelToolsService.ts`, accessed via apiFactory.ts:668 |
 | View base class + DOM rendering | `View` + `$()` + `addDisposableListener` | `src/views/view.ts`, `src/ui/dom.ts` |
+| View registration | `api.views.registerViewProvider(viewId, { createView(container) })` | apiFactory.ts:96, used at media-organizer/main.js:18068 |
 | Design tokens | `--vscode-*` + `--parallx-*` CSS properties | `src/workbench.css`, `src/theme/` |
 | List with keyboard nav + filter | `FilterableList` | `src/ui/list.ts` |
 | Dropdown, Button, Tabs, ActionBar, Overlay | All exist | `src/ui/` |
@@ -550,12 +595,15 @@ a charting library can be dropped in without changing the data layer.
 
 | # | Question | Current thinking |
 |---|---|---|
-| Q1 | Does `mcp__parallx-gmail-mcp__list_unread` return message ID, subject, snippet, and date in one call? | Yes per the MCP server implementation (`gmailClient.ts`). Verify in P2. |
+| Q1 | Does `mcp__parallx-gmail-mcp__list_unread` return message ID, subject, snippet, and date in one call? | Yes per the MCP server implementation (`gmailClient.ts`). Verify in P2 by logging the first response. |
 | Q2 | How do we handle multi-transaction emails (e.g. "5 transactions this week")? | Stage 2 returns an array. Each item gets its own `transactions` row referencing the same `email_imports` row. |
 | Q3 | First sync — how far back? | `budget.syncStartDate` config, default 90 days ago. |
-| Q4 | Where does the budget DB file live exactly? | Standard extension path: `<workspacePath>/.parallx/extensions/parallx.budget/data.db` — set by `api.database` automatically. |
+| Q4 | Where does the budget DB file live exactly? | Per-extension isolated DB at `<APP_ROOT>/data/extensions/parallx.budget/db.sqlite` (path managed by `DatabaseManager`; extension only sees `api.database`). |
 | Q5 | Should categories be editable before first sync? | Yes — seed defaults on `activate()`, let user customize in settings, then sync. |
-| Q6 | Does the Gmail MCP tool require the server to be running/connected at sync time? | Yes. `invokeToolWithRuntimeControl` will return `isError: true` if the MCP server is not connected. The sync engine must check this and surface a clear error. |
+| Q6 | Does the Gmail MCP tool require the server to be running/connected at sync time? | Yes. `invokeToolWithRuntimeControl` returns `{ isError: true, content: [...] }` if the MCP server is not connected. The sync engine must check this and surface a clear error. |
+| Q7 | Which model does the AI pipeline use? | P1: first model returned by `api.lm.getModels()`. P5 polish: read user's preferred default if/when that becomes a settable preference. |
+| Q8 | What does the MCP tool's content shape actually look like? | MCP tools return `{ content: [{ type: 'text', text: '...' }] }`. The text payload is the JSON string. Confirmed in P2 first-run logging. |
+| Q9 | Are migrations stored as files inside the .plx package, or shipped alongside? | Inside the package — same as media-organizer (`db/migrations/`). The packager script picks them up; `api.database.migrate('db/migrations/')` reads from the extension's installed dir. |
 
 ---
 
