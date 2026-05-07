@@ -21,7 +21,7 @@ a decision below blocks implementation, raise it as a question — do not improv
 | D6 | **Gmail MCP tool input shape (post-M63 P0):** `list_unread` accepts `{ since?: ISO8601, max?: 1..100, query?: string, read_state?: 'unread'|'all'|'read' }`. `read_state` defaults to `'unread'` for back-compat with existing callers (chat, autonomy). Budget passes `read_state: 'all'`. | Additive change to one existing tool — no new MCP tool, no breaking change. |
 | D7 | **Sync passes `read_state: 'all'`** so historical (already-read) transaction emails are included. The user does not have to manage Gmail's read state. | Closes Q10 by modifying the existing tool, not adding a new one. |
 | D8 | **Two targeted core changes are required.** (1) Add `api.mcp.invokeTool/listTools` to `ParallxApiObject` in `src/api/apiFactory.ts` (extensions cannot today reach `ILanguageModelToolsService`). (2) Expose `api.cron.upsertJob({...})` so an extension can declaratively own a cron job (idempotent: creates if absent, updates schedule if present, leaves user-edited fields alone). The underlying `CronService` already exists — P0 is just the api surface. | Reuses existing `CronService` (`src/openclaw/openclawCronService.ts`); adds zero new scheduling code. |
-| D9 | **`api.views.reveal()` does not exist.** To navigate to a view from a command, call `api.commands.executeCommand('workbench.view.<viewId>')` (the workbench registers a navigation command per contributed view) — or, if that command is not registered for sub-views in this workbench, use `api.commands.executeCommand('budget.openDashboard')` which itself uses an internal mechanism (e.g. setting a context key the side-bar listens to). **Verify the exact command at P1 implementation time** — do not invent. | Verified: `apiFactory.ts` `views` shape exposes only `registerViewProvider` and `setBadge`. |
+| D9 | **`api.views.reveal()` does not exist.** To navigate to a sub-view from a command, call `api.commands.executeCommand('workbench.view.show', '<viewId>')`. The `workbench.view.show` command is registered at `src/commands/viewCommands.ts:221` and accepts the view id as its first argument; it calls `wb(ctx).showSidebarView(viewId)` internally. Verified production use at `src/built-in/ai-settings/main.ts:123,141`. Do NOT invent a method on `api.views`. | Verified: `apiFactory.ts` `views` shape exposes only `registerViewProvider` and `setBadge`. |
 | D10 | **`api.commands.executeCommand`** (not `execute`). | Verified `apiFactory.ts` line ~99. |
 | D11 | **Database open() must precede migrate().** Migration directory is **absolute**, computed from `api.env.toolPath` + platform separator + `'db/migrations'`. Not relative. | Verified pattern in `ext/media-organizer/main.js:17910-17924`. |
 | D12 | **No external npm dependencies in the extension bundle for P1.** All UI is hand-written DOM via `$()` from `src/ui/dom.ts` (extension copies the helper, since it can't import from `src/`). Charts are inline SVG. JSON parsing is `JSON.parse`. | Same shape as `ext/media-organizer/main.js` (single bundled JS file). |
@@ -1058,9 +1058,8 @@ export async function activate(api, context) {
     // Direct path (bypasses the agent) for the "Sync now" toolbar button.
     return budgetSync(api, db);
   }));
-  // D9: navigation command — EXACT workbench command id MUST be verified during P1.
-  // The candidate is 'workbench.view.show' with the viewId arg; if that does not exist in this build,
-  // fall back to wiring through a Parallx-internal context key. DO NOT INVENT a method on api.views.
+  // D9: navigation uses the registered `workbench.view.show` command
+  // (verified at src/commands/viewCommands.ts:221, in production use by ai-settings).
   _disposables.push(api.commands.registerCommand('budget.openDashboard', () =>
     api.commands.executeCommand('workbench.view.show', 'budget.dashboard')));
 
