@@ -69,7 +69,20 @@ export class GmailClient {
     if (ids.length === 0) return [];
 
     // Hydrate each message with metadata format (headers + snippet only).
-    const hydrated = await Promise.all(ids.map((id) => this.getMessageMetadata(id)));
+    // Bounded concurrency: firing all ids in parallel via Promise.all
+    // saturates undici's connection pool and triggers UND_ERR_CONNECT_TIMEOUT
+    // on larger batches (e.g. max=100). 6 in flight is a safe ceiling.
+    const CONCURRENCY = 6;
+    const hydrated: Array<UnreadMessage | null> = new Array(ids.length);
+    let cursor = 0;
+    const workers = Array.from({ length: Math.min(CONCURRENCY, ids.length) }, async () => {
+      while (true) {
+        const i = cursor++;
+        if (i >= ids.length) return;
+        hydrated[i] = await this.getMessageMetadata(ids[i]);
+      }
+    });
+    await Promise.all(workers);
     const messages = hydrated.filter((m): m is UnreadMessage => m !== null);
     // Sort oldest-first so callers can process chronologically (M63 P0).
     messages.sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));

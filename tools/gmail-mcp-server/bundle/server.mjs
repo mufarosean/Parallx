@@ -36,7 +36,17 @@ var GmailClient = class {
     const listJson = await listRes.json();
     const ids = (listJson.messages ?? []).map((m) => m.id).slice(0, max);
     if (ids.length === 0) return [];
-    const hydrated = await Promise.all(ids.map((id) => this.getMessageMetadata(id)));
+    const CONCURRENCY = 6;
+    const hydrated = new Array(ids.length);
+    let cursor = 0;
+    const workers = Array.from({ length: Math.min(CONCURRENCY, ids.length) }, async () => {
+      while (true) {
+        const i = cursor++;
+        if (i >= ids.length) return;
+        hydrated[i] = await this.getMessageMetadata(ids[i]);
+      }
+    });
+    await Promise.all(workers);
     const messages = hydrated.filter((m) => m !== null);
     messages.sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
     return messages;

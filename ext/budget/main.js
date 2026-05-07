@@ -1536,6 +1536,7 @@ async function budgetSync(api) {
       since: sinceIso,
       max: 100,
       read_state: 'all',
+      query: 'from:chase.com',
     });
     if (result && result.isError) {
       throw new Error(`Gmail MCP error: ${result.content?.[0]?.text ?? 'unknown'}`);
