@@ -80,6 +80,155 @@ through the same `parallx.*` API. This milestone follows that contract exactly:
 
 ---
 
+## Extension System Contract — How Budget Gets Wired
+
+This milestone produces a Parallx **extension**, not a core feature. Everything
+below is the contract every extension obeys, restated here so the implementation
+plan has zero ambiguity.
+
+### 1. What "being an extension" means in Parallx
+
+An extension is a **directory containing a `parallx-manifest.json` and an entry
+module** that exports `activate(api, context)` (and optionally `deactivate()`).
+It ships either:
+
+- **Unpacked** at `ext/<id>/` (development + first-party tools today: media-organizer, text-generator, workspace-graph), or
+- **Packed** as a `.plx` zip (publishable artifact, produced by `scripts/package-*.mjs`).
+
+At runtime the extension is a sandboxed module:
+
+- It runs in the renderer process under the workbench's module loader (`ToolModuleLoader`).
+- It cannot `import` from the core `src/` tree. The only external symbols it
+  receives are the two arguments to `activate(api, context)`. There is no other
+  channel — no `window.parallx`, no globals, no IPC handles.
+- All persistent capability is through `api.*` and the `context.subscriptions`
+  disposable list. Anything the extension creates that needs cleanup must be
+  pushed onto `context.subscriptions` so deactivation can dispose it in reverse.
+
+### 2. Discovery and lifecycle
+
+Source: `src/tools/toolScanner.ts`, `src/tools/toolRegistry.ts`,
+`src/tools/toolActivator.ts`.
+
+```
+startup
+  → ToolScanner walks ext/* and the .plx install directory
+  → For each: read parallx-manifest.json
+  → Validate against src/tools/parallx-manifest.schema.json (toolValidator.ts)
+  → Register an IToolDescription in ToolRegistry  (state: Discovered)
+  → ActivationEventService matches activationEvents
+       "*"               → activate immediately
+       "onStartupFinished" → activate after first idle
+       "onCommand:<id>"  → activate when command runs
+       "onView:<id>"     → activate when view is first revealed
+  → ToolActivator:
+       Discovered → Activating
+       loads main module via dynamic import
+       constructs ToolContext { subscriptions, memento, toolPath }
+       constructs scoped api via createToolApi(deps, toolId)
+       calls module.activate(api, context) inside ToolErrorService isolation
+       Activating → Activated
+  → on shutdown / disable / force-deactivate:
+       Activated → Deactivating
+       calls module.deactivate() (if exported) in try/catch
+       disposes context.subscriptions in reverse
+       removes contributed views/commands/configuration
+       Deactivating → Deactivated
+```
+
+State machine (verified `src/tools/toolRegistry.ts`):
+`Discovered → Activating → Activated → Deactivating → Deactivated → (Disposed)`.
+
+The Budget extension declares `"activationEvents": ["*"]` so it is active at
+startup — same as media-organizer. View-on-demand activation
+(`onView:budget.dashboard`) is a P5 optimization, not P1.
+
+### 3. The `api` surface — what extensions are allowed to do
+
+Built per-extension by `createToolApi()` in `src/api/apiFactory.ts`. The frozen
+namespace exposed to Budget:
+
+| Namespace | Purpose | Notes |
+|---|---|---|
+| `api.commands` | `registerCommand(id, handler)` (line 100) | Adds to command palette + lets other code invoke. Disposed on deactivate. |
+| `api.views` | `registerViewProvider(viewId, { createView })` (line 96), `reveal(viewId)` | View id must match a `contributes.views` entry. |
+| `api.database` | `run / get / all / runTransaction / migrate(dir)` (line 217) | **External-only** — built-in tools do not receive this. Each extension gets its own SQLite file. |
+| `api.lm` | `getModels()`, `sendChatRequest(modelId, messages, options?)` (line 686) | Streaming async-iterable. The **only** way to call models. |
+| `api.services` | `has(id)`, `get<T>(id)` (line 668) | DI bridge. Budget uses `get(ILanguageModelToolsService)` to invoke MCP tools. |
+| `api.chat` | `registerTool(name, def)` | Optional — lets extension expose its data to chat (P5 stretch). |
+| `api.workspace` | Read-only workspace info | Used to scope storage paths. |
+| `api.window` | Notifications, status messages | Toast / status bar. |
+| `api.configuration` | Read settings declared in `contributes.configuration` | Reactive — `onDidChange` fires on edits. |
+
+**Forbidden / will not work:**
+- Importing anything from `src/` directly.
+- Touching the DOM outside the container the view system gives you.
+- Registering global keyboard shortcuts outside command contributions.
+- Calling Electron `ipcRenderer` / `shell` / `app` directly (preload doesn't
+  expose them to extensions).
+- Reading another extension's database. `api.database` is namespaced by
+  extension id at the `DatabaseManager` layer (`electron/database.cjs`).
+- Modifying core CSS, icons, or theme tokens.
+
+### 4. Dependencies — what Budget needs
+
+Parallx **does not** support extension-to-extension dependencies. There is no
+`extensionDependencies` field in the manifest schema (verified
+`src/tools/parallx-manifest.schema.json`). Extensions are independent units.
+
+Budget therefore depends only on:
+
+1. **Parallx core** (manifest `engines.parallx: "^0.1.0"`).
+2. **The Gmail MCP server** at `tools/gmail-mcp-server/` — but only at
+   *runtime*. The dependency is not declared in the manifest because MCP servers
+   are user-managed via the MCP Servers UI; Budget queries
+   `ILanguageModelToolsService` for the tool by name and surfaces a clear error
+   when the server isn't connected.
+3. **An installed local model** (Ollama). Discovered via `api.lm.getModels()`;
+   if empty, the sync engine errors with actionable guidance.
+
+No npm dependencies bundled into the extension itself for P1. The packaged
+artifact is the manifest + the compiled `main.js` + the SQL migration files
+(mirrors `scripts/package-media-organizer.mjs` shape).
+
+### 5. Per-extension storage layout (verified)
+
+```
+<APP_ROOT>/data/extensions/parallx.budget/
+    db.sqlite        ← the SQLite file, opened with WAL + foreign keys by DatabaseManager
+    db.sqlite-shm
+    db.sqlite-wal
+    state/           ← reserved for future api.storage
+```
+
+Migrations live inside the extension package at `db/migrations/*.sql`,
+applied lexicographically by filename. Convention is
+`budget_001_initial.sql`, `budget_002_*.sql`, …
+(verified `scripts/package-media-organizer.mjs` lines 28–33).
+
+### 6. Packaging
+
+When Budget ships beyond development, `scripts/package-budget.mjs` (new, to be
+modeled on `scripts/package-media-organizer.mjs`) will produce
+`budget-0.1.0.plx` containing:
+
+```
+parallx-manifest.json
+main.js
+db/migrations/budget_001_initial.sql
+```
+
+Until then, Budget runs unpacked from `ext/budget/` — no install step, just
+restart the workbench.
+
+### 7. The sandbox boundary in one sentence
+
+> An extension is a frozen `api.*` object plus a disposable subscription bag,
+> running inside an error-isolated module loader, with its own SQLite file and
+> no direct access to anything else in the workbench.
+
+---
+
 ## SQLite Schema
 
 ### Where it lives
@@ -443,65 +592,511 @@ export async function activate(api, context) {
 
 ---
 
-## UI / UX — Grounded in Parallx Design System
+## Visual Design — How Budget Looks
 
-### How views work
+The Budget extension contributes one **viewContainer** to the activity bar
+("Budget", icon `graph`) sitting below the Media Organizer container. Selecting
+it reveals a vertical stack of four collapsible sub-views in the side panel.
+Selecting a sub-view opens the full editor area to that view.
 
-Every budget view extends the `View` base class from `src/views/view.ts`.
-Views render raw DOM (no React/JSX — consistent with all other Parallx views).
-They use the standard design tokens and the `$()` DOM utility from `src/ui/dom.ts`.
+### Layout philosophy
 
-### Design tokens in use
+- **Native first.** Budget should feel like part of the workbench, not a
+  brought-in third-party app. Every color, font, radius, hover, focus ring is a
+  Parallx token. Nothing custom-styled.
+- **Information-dense, not decorative.** A budget is read at a glance. Tables
+  beat cards. Hard numbers beat icons-as-data.
+- **Keyboard-first.** Every action is reachable from the keyboard. The mouse
+  is optional. (Same principle as the rest of Parallx.)
+- **One amount per row, big and aligned.** Spending data fails when amounts are
+  small or misaligned. Right-aligned tabular numerals, baseline `--parallx-fontSize-base`,
+  bold `--vscode-foreground` for debits, regular `--vscode-descriptionForeground`
+  for credits.
+- **Sparing color.** Categories get a muted dot (8×8 px) in their assigned
+  color. Status uses semantic tokens (warning amber, error red). No gradients,
+  no shadows, no decorative imagery.
+
+### Design tokens — full mapping
 
 ```css
-var(--vscode-sideBar-background)    /* view background */
-var(--vscode-panel-border)          /* dividers */
-var(--vscode-foreground)            /* primary text */
-var(--vscode-descriptionForeground) /* secondary text, amounts */
-var(--vscode-list-hoverBackground)  /* row hover */
-var(--vscode-focusBorder)           /* focus rings */
-var(--vscode-input-background)      /* inline dropdowns */
-var(--vscode-editorWarning-foreground) /* reconciliation amber gap */
-var(--vscode-errorForeground)       /* reconciliation red gap */
-var(--parallx-fontFamily-ui)
-var(--parallx-fontSize-base)
-var(--parallx-fontSize-sm)
-var(--parallx-radius-sm)
+/* Surfaces */
+--vscode-sideBar-background           /* view background */
+--vscode-editor-background            /* nested panels (chart card, snapshot card) */
+--vscode-panel-border                 /* dividers between rows + view sections */
+--vscode-list-hoverBackground         /* row hover */
+--vscode-list-activeSelectionBackground   /* selected row */
+--vscode-list-activeSelectionForeground
+
+/* Text */
+--vscode-foreground                   /* primary numbers + merchant names */
+--vscode-descriptionForeground        /* dates, card last-four, secondary metadata */
+--vscode-disabledForeground           /* hidden / pending rows */
+
+/* Inputs */
+--vscode-input-background
+--vscode-input-foreground
+--vscode-input-border
+--vscode-focusBorder                  /* focus rings (everywhere) */
+--vscode-button-background
+--vscode-button-foreground
+--vscode-button-hoverBackground
+
+/* Semantic */
+--vscode-charts-blue / -green / -yellow / -orange / -red / -purple
+                                       /* category dots + chart slices */
+--vscode-editorWarning-foreground     /* reconciliation amber gap, low-confidence badge */
+--vscode-errorForeground              /* reconciliation red gap, sync errors */
+--vscode-testing-iconPassed           /* "confirmed" badge */
+
+/* Parallx */
+--parallx-fontFamily-ui               /* all UI text */
+--parallx-fontFamily-mono             /* amounts (tabular nums) */
+--parallx-fontSize-base               /* 13px — table rows */
+--parallx-fontSize-sm                 /* 11px — metadata */
+--parallx-radius-sm                   /* 4px — inputs, buttons */
+--parallx-radius-md                   /* 6px — cards (chart panels) */
 ```
 
-### Existing UI components we reuse
+### How a view renders (the actual pattern)
 
-| Need | Existing component |
-|---|---|
-| Category selector per row | `Dropdown` from `src/ui/dropdown.ts` |
-| Transaction list with keyboard nav | `FilterableList` from `src/ui/list.ts` |
-| Sync / Confirm / Delete buttons | `Button` from `src/ui/button.ts` |
-| Month filter tabs | `SegmentedControl` from `src/ui/segmentedControl.ts` |
-| View toolbars | `ActionBar` from `src/ui/actionBar.ts` |
-| Confirmation dialogs | `Overlay` from `src/ui/overlay.ts` |
-| Row hover tooltips | `Tooltip` from `src/ui/tooltip.ts` |
+Every view extends `View` from `src/views/view.ts`, returns a root `HTMLElement`,
+and uses `$()` from `src/ui/dom.ts` for construction. There is no JSX, no
+React. Example skeleton (matches what `media-organizer/main.js` does):
 
-### What we need to build new
+```typescript
+class TransactionListView extends View {
+  constructor(private readonly el: HTMLElement, private readonly db: BudgetDb, private readonly api: ParallxApi) {
+    super();
+    this.render();
+  }
+  private render() {
+    const root = $('div.budget-tx-list', { tabindex: '0' });
+    const toolbar = new ActionBar(root, [
+      { id: 'sync',   icon: 'refresh', label: 'Sync',   run: () => this.api.commands.execute('budget.sync') },
+      { id: 'add',    icon: 'plus',    label: 'Add',    run: () => this.openAddModal() },
+      { id: 'export', icon: 'export',  label: 'Export', run: () => this.exportCsv() },
+    ]);
+    const monthTabs = new SegmentedControl(root, this.last6Months(), { onChange: m => this.filterMonth(m) });
+    const list = new FilterableList(root, this.rows(), {
+      renderRow: (tx) => this.renderRow(tx),
+      onSelect: (tx) => this.openDetail(tx),
+    });
+    this._register(toolbar); this._register(monthTabs); this._register(list);
+    this.el.append(root);
+  }
+}
+```
 
-**Charts** — No chart component exists in `src/ui/`. The dashboard needs a
-donut chart (spending by category) and a bar chart (month-over-month totals).
+### ASCII layouts — the four core views
 
-We build minimal **SVG charts** inline — ~150 lines total, no third-party
-dependency, full control over design tokens. If more capability is needed later,
-a charting library can be dropped in without changing the data layer.
+**Side panel (collapsed sub-views):**
 
-### Dashboard view
-- SVG donut chart: spending by category (current month)
-- SVG bar chart: month-over-month total spend (last 6 months)
+```
+╔═ BUDGET ════════════════╗
+║ ▾ Dashboard             ║   ← active view chevron
+║   Transactions          ║
+║   Review Queue   [3]    ║   ← badge for pending
+║   Sync Log              ║
+║   Categories            ║
+╚═════════════════════════╝
+```
+
+**Dashboard (main editor area):**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ Dashboard                                  [Sync now] [Settings ⚙] │  ← ActionBar
+├─────────────────────────────────────────────────────────────────────┤
+│  This month · November 2026                          ◀ Nov ▶        │  ← SegmentedControl
+├─────────────────────────────────────────────────────────────────────┤
+│ ┌─ Spent so far ────────┐ ┌─ Budget left ────┐ ┌─ Net worth ────┐ │
+│ │  $2,481.93            │ │  $1,018.07       │ │  $14,290.55    │ │  ← KPI tiles
+│ │  ▼ 12% vs last month  │ │  29% remaining    │ │  ▲ $812 / 30d  │ │
+│ └───────────────────────┘ └───────────────────┘ └────────────────┘ │
+├─────────────────────────────────────────────────────────────────────┤
+│  Spending by category                Budget vs actual               │
+│  ╭───────────╮                       ▓▓▓▓▓▓▓▓░░  Groceries  $410/$500 │
+│  │  ◔  ◑   │  ● Groceries  $410   ▓▓▓▓▓▓▓▓▓▓▓ Dining     $235/$200 ! │
+│  │ ◐ donut │  ● Dining     $235   ▓▓▓▓▓▓░░░░  Transport $ 78/$150 │
+│  │  ◓  ◔   │  ● Transport  $ 78   ▓▓▓▓▓▓▓▓▓░  Utilities $185/$200 │
+│  ╰───────────╯  ● Utilities $185   ▓▓░░░░░░░░  Shopping  $ 92/$300 │
+│                  + 5 more →         ▓▓▓▓▓░░░░░  Subs      $ 47/$100 │
+├─────────────────────────────────────────────────────────────────────┤
+│  Reconciliation                                                     │
+│  Derived $14,290.55  ·  Last snapshot $14,288.40 (Nov 18)  ·       │
+│  Gap +$2.15  (within tolerance)                              ✓     │
+├─────────────────────────────────────────────────────────────────────┤
+│  Recent activity                                          See all → │
+│  Nov 21  STARBUCKS                Dining          -$ 7.45   ····2391 │
+│  Nov 21  TRADER JOES              Groceries       -$83.12   ····2391 │
+│  Nov 20  AMAZON.COM               Shopping        -$24.99   ····5872 │
+│  Nov 20  PAYCHECK · ACME CORP     Income         +$2,400.00 ····0033 │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Transactions:**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ Transactions                          [Sync] [Add] [Export] [⋮]    │
+├─────────────────────────────────────────────────────────────────────┤
+│  ◀ Sep · Oct · [Nov] · Dec ▶          🔍 amount:>50 cat:Dining     │  ← month tabs + smart filter
+├─────────────────────────────────────────────────────────────────────┤
+│ □ Date   Merchant            Category ▾    Amount    Card    Notes │  ← header (sortable)
+│ □ Nov21  STARBUCKS           ● Dining   ▾  -$ 7.45   2391    —    │
+│ ☑ Nov21  TRADER JOES         ● Groceries▾  -$83.12   2391    —    │  ← selected (active row)
+│ □ Nov20  AMAZON.COM   ⓘ      ● Shopping ▾  -$24.99   5872    —    │  ← ⓘ = AI low-conf
+│ □ Nov20  ACME PAYROLL        ● Income   ▾ +$2,400    0033    —    │
+│ □ Nov19  ZELLE → Sarah ⇄     ● Transfer ▾ -$ 50.00   2391    rent │  ← transfer (excluded)
+│ □ Nov18  NETFLIX 🔁          ● Subs     ▾ -$ 15.49   5872    —    │  ← 🔁 = recurring
+│ □ Nov18  CHEVRON             ● Transport▾ -$ 42.10   2391    —    │
+│ ─────────────────────────────────────────────────────────────────  │
+│  47 transactions · $2,481.93 spent · $2,400 income                 │  ← footer summary
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Review Queue:**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ Review Queue · 3 pending                  [Confirm all] [Reject all]│
+├─────────────────────────────────────────────────────────────────────┤
+│ ┌───────────────────────────────────────────────────────────────┐  │
+│ │ ⚠ Low-confidence — Nov 19                                     │  │
+│ │ Subject: "Your statement is ready"                            │  │
+│ │ Snippet: "...balance changed by $42.10..."                    │  │
+│ │                                                               │  │
+│ │ Merchant     [ CHEVRON              ▾ ]  ← editable          │  │
+│ │ Amount       [ 42.10                  ]                       │  │
+│ │ Date         [ 2026-11-18  ▾]                                 │  │
+│ │ Category     [ ● Transport          ▾ ]                       │  │
+│ │                                                               │  │
+│ │       [Confirm]   [Reject (delete)]   [Mark as not a tx]     │  │
+│ └───────────────────────────────────────────────────────────────┘  │
+│  ↓ next ↓                                                          │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Sync Log:**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ Sync Log                                            [Run sync now]  │
+├─────────────────────────────────────────────────────────────────────┤
+│  Last sync · Nov 21, 14:22 · 4 new tx · 0 errors           ✓       │
+│  Cursor: msg_18f3a92b (Nov 21 14:18)                                │
+├─────────────────────────────────────────────────────────────────────┤
+│  14:22:41  Sync started · cursor=msg_18f3a92b                       │
+│  14:22:41  Gmail MCP returned 12 new messages                       │
+│  14:22:43  msg_18f3a91f  CHASE                stage1 → tx           │
+│  14:22:45  msg_18f3a91f  $7.45 STARBUCKS      stage2 → high         │
+│  14:22:46  msg_18f3a91f  → Dining             stage3 → confirmed    │
+│  14:22:47  msg_18f3a920  CHASE                stage1 → balance      │
+│  14:22:48  msg_18f3a920  bal $14,288.40       snapshot inserted     │
+│  14:22:50  msg_18f3a92b  AMAZON               stage2 → low ⚠       │
+│  14:22:50  msg_18f3a92b  → review queue                             │
+│  14:23:01  Sync complete · 4 confirmed · 1 review · 1 snapshot     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Categories:**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ Categories                                          [+ Add category]│
+├─────────────────────────────────────────────────────────────────────┤
+│  ●  Groceries        $500/mo  rollover ✓    47 tx     [Edit] [×]   │
+│  ●  Dining           $200/mo  rollover ✗    23 tx     [Edit] [×]   │
+│  ●  Transport        $150/mo  rollover ✓    12 tx     [Edit] [×]   │
+│  ●  Utilities        $200/mo  rollover ✗     4 tx     [Edit] [×]   │
+│  ●  Shopping         $300/mo  rollover ✓    18 tx     [Edit] [×]   │
+│  ●  Subscriptions    $100/mo  rollover ✗     8 tx     [Edit] [×]   │
+│  ◌  Income          (no cap)               12 tx     [Edit]        │
+│  ⇄  Transfer        (excluded from spend)   6 tx     [Edit]        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Per-View Control Inventory
+
+The single source of truth for what the user can do in each view. Implementation
+checklist for P1–P4.
+
+### Dashboard
+
+| Control | Mechanism | Action |
+|---|---|---|
+| Sync now | `ActionBar` button | Runs `budget.sync` command |
+| Settings | `ActionBar` button | Opens Parallx settings filtered to `budget.*` |
+| Period selector | `SegmentedControl` (`This month`, `Last month`, `YTD`, `Custom…`) | Filters all KPI + chart data |
+| Month nav arrows | Buttons `◀ ▶` | Step the period one unit |
+| KPI tile click | Click handler | Navigates to Transactions filtered to that scope |
+| Donut slice click | SVG event | Navigates to Transactions filtered to that category |
+| Bar click | SVG event | Selects that month in Transactions |
+| Reconciliation row | Click | Opens snapshot detail overlay |
+| Recent activity row | Click | Opens transaction detail overlay |
+| `R` shortcut | Keyboard | Sync now |
+| `T` shortcut | Keyboard | Jump to Transactions |
+| `Q` shortcut | Keyboard | Jump to Review Queue |
+
+### Transactions
+
+| Control | Mechanism | Action |
+|---|---|---|
+| Sync / Add / Export / ⋮ | `ActionBar` | Sync · manual add · CSV/JSON export · overflow menu |
+| ⋮ overflow | `Dropdown` | Hide/show columns · Show hidden tx · Rebuild from scratch |
+| Smart search | Text input with parser | `amount:>50 cat:Dining month:Nov merchant:starb` |
+| Month tabs | `SegmentedControl` (last 12) | Filter month |
+| Header click | Sort | Date · Merchant · Category · Amount · Card |
+| Checkbox | Multi-select | Bulk re-categorize / bulk delete / bulk hide |
+| Row category dropdown | Inline `Dropdown` | Re-categorize one tx (sets `user_overridden=1`) |
+| Row click | Selection + detail overlay | Shows full email source + edit form |
+| Right-click row | Context menu | Edit · Split · Mark as transfer · Hide · Delete · Create rule from this · Open source email |
+| `↑/↓` | Keyboard | Move selection |
+| `Enter` | Keyboard | Open detail |
+| `C` | Keyboard | Open category dropdown for selected row |
+| `Del` | Keyboard | Soft-delete (status=deleted) |
+| `H` | Keyboard | Hide / unhide |
+| `/` | Keyboard | Focus search |
+| Footer | Live summary | Count · spent · income · net |
+
+### Review Queue
+
+| Control | Mechanism | Action |
+|---|---|---|
+| Confirm all | Header button | Bulk-promote all queue items to `confirmed` |
+| Reject all | Header button | Bulk soft-delete |
+| Per-item editable fields | Inline inputs + `Dropdown` | Merchant · amount · date · category |
+| Confirm | Button | Sets `status='confirmed'`, `user_overridden=1` |
+| Reject | Button | Sets `status='deleted'` |
+| Mark as not a transaction | Button | Removes from `transactions`, marks `email_imports.is_transaction=false` so it never re-promotes |
+| `↓` | Keyboard | Next item |
+| `Enter` | Keyboard | Confirm |
+| `Esc` | Keyboard | Reject |
+
+### Sync Log
+
+| Control | Mechanism | Action |
+|---|---|---|
+| Run sync now | Header button | Runs `budget.sync` |
+| Cancel sync | Conditional button (during sync) | Sets cancel flag, breaks loop after current message |
+| Clear log | ⋮ menu | Truncates `sync_state` log entries |
+| Filter | Search box | Substring filter on log lines |
+| Click on `msg_…` | Link | Opens Gmail in browser via `shell:openExternal` (if supported) or copies the message id |
+
+### Categories
+
+| Control | Mechanism | Action |
+|---|---|---|
+| + Add category | Header button | Opens overlay form (name, color, monthly limit, rollover) |
+| Edit | Row button | Same overlay, prefilled |
+| × delete | Row button | Confirmation, then soft-deletes (re-categorizes affected tx to "Other") |
+| Drag handle | Drag-to-reorder | Persists `sort_order` |
+
+---
+
+## Best-in-Class Budgeting Features
+
+The reference set, drawn from envelope budgeting (YNAB, Actual Budget) and
+modern reconciliation tools (Copilot Money, Monarch, Lunch Money). Items marked
+**P1** ship in the first cut; the rest are stretch in this milestone, planned
+for follow-on iterations.
+
+### Core financial model — envelope / zero-sum (P2)
+
+- **Monthly category limits** with **rollover** (unspent rolls to next month)
+  vs **reset** (use it or lose it). Field already in the categories table:
+  `monthly_limit REAL`, `rollover INTEGER`.
+- **Available = limit + previous rollover − spent this month**. Computed in
+  the dashboard's "Budget vs actual" bar.
+- **Overage warning** (red bar) when actual > limit. Suggested reallocation
+  ("Move from Subscriptions?") via the row's overflow menu.
+- **Income separate from spending categories.** "Income" and "Transfer" are
+  reserved category kinds, excluded from spend totals.
+
+### Transactions you actually have to handle (P1)
+
+- **Splits** — one transaction → multiple categories (`amount` divided across
+  child rows that link back via `parent_id`).
+- **Transfers** — Zelle / internal transfers between owned accounts. Marked
+  `category='Transfer'`, excluded from spend rollups, paired by detection rule.
+- **Refunds / credits** — negative amounts, reduce category spend totals.
+- **Manual transactions** — cash spending, gifts, anything not in email.
+  Inserted with `gmail_message_id=NULL` (need to relax FK in `001`).
+- **Pending vs cleared** — extracted from email when present, surfaced as a
+  row badge.
+- **Hidden** — `status='hidden'`, excluded from totals but visible behind the
+  ⋮ → "Show hidden" toggle. Useful for medical reimbursements, business expenses.
+
+### Recurring detection (P3)
+
+Detect recurring charges by `(merchant, amount±10%, monthly cadence)` over the
+last 90 days. Store in `recurring_transactions` table:
+
+```sql
+CREATE TABLE recurring_transactions (
+    id              TEXT PRIMARY KEY,
+    merchant        TEXT NOT NULL,
+    expected_amount REAL,
+    cadence_days    INTEGER,
+    last_seen_date  TEXT,
+    next_expected   TEXT,
+    category_id     TEXT REFERENCES categories(id)
+);
+```
+
+Surfaced on the dashboard as "Upcoming this week" and on rows as the 🔁 badge.
+
+### Rules engine (P3)
+
+Persistent rule table — when a future transaction matches, apply the action.
+
+```sql
+CREATE TABLE rules (
+    id            TEXT PRIMARY KEY,
+    match_type    TEXT CHECK(match_type IN ('merchant_eq','merchant_contains','amount_eq','regex')),
+    match_value   TEXT NOT NULL,
+    set_category  TEXT REFERENCES categories(id),
+    set_status    TEXT,
+    set_hidden    INTEGER DEFAULT 0,
+    sort_order    INTEGER NOT NULL,
+    created_at    TEXT DEFAULT (datetime('now'))
+);
+```
+
+Right-click any transaction → "Create rule from this…" → pre-fills merchant
++ category. Rules apply at insert time (after Stage 3, overrides AI category)
+and via "Apply rules to history" command.
+
+### Search & filters (P2)
+
+Smart-search bar with a tiny parser:
+
+```
+amount:>50              amount greater than 50
+amount:<10              less than 10
+amount:25..100          between
+cat:Dining              category equals
+merchant:starb          merchant substring
+month:Nov  month:2026-11
+year:2026
+status:review
+recurring:true
+```
+
+Free text outside qualifiers searches merchant + notes.
+
+### Charts & insights (P1 + P3)
+
+- **P1:** Donut (spend by category, current period), bar (last 6 months total),
+  KPI tiles (spent, budget left, net worth).
+- **P3:** Sankey (income → categories → savings), heatmap calendar (spend per
+  day), trend line (per-category 12-month), forecast bar (projected month-end
+  based on current pace).
+
+### Comparison periods (P2)
+
+Every KPI tile and bar can show **vs previous** in muted overlay (e.g. ▼ 12%
+vs last month). The period selector includes "Compare to: previous period /
+same month last year / none".
+
+### Net worth tracking (P2)
+
+`balance_snapshots` already exists. Net worth = sum of latest snapshot per
+distinct `account_last_four`. Dashboard tile + 30-day delta. New table for
+manual non-bank assets/liabilities later.
+
+### Goals (P3)
+
+```sql
+CREATE TABLE goals (
+    id             TEXT PRIMARY KEY,
+    name           TEXT NOT NULL,
+    target_amount  REAL NOT NULL,
+    target_date    TEXT,
+    category_id    TEXT REFERENCES categories(id),  -- contributions count toward goal
+    created_at     TEXT DEFAULT (datetime('now'))
+);
+```
+
+Dashboard tile shows progress bars (e.g. "Emergency fund · $4,200 / $10,000").
+
+### Export & import (P1 export, P3 import)
+
+- **Export:** CSV (transactions, all columns) and JSON (full DB dump). One
+  click in Transactions toolbar.
+- **Import (P3):** Drop a CSV from a bank that doesn't email; same dedup key
+  mechanism (synthetic id when `gmail_message_id` is null).
+
+### Privacy & data integrity (P1)
+
+- All data local — no network calls except Ollama (local) and Gmail MCP
+  (user-owned OAuth token).
+- "Forget transaction" — hard delete, removes from all rollups.
+- "Reset extension" — drops db.sqlite, re-runs migrations. (Confirmation overlay.)
+- "Export & wipe" — export CSV + JSON, then reset.
+
+### AI features beyond the import pipeline (P5)
+
+- **Natural-language query via chat:** Budget registers `api.chat.registerTool`
+  with a `budget.query` tool that accepts a question and returns numbers
+  ("How much did I spend on coffee in October?"). Implementation: convert NL →
+  SQL via the local model, run against the read-only DB view, return the result.
+- **Categorization improvement:** When a user overrides a category, optionally
+  auto-create a rule.
+
+---
+
+## UI / UX Details — Per-View Implementation Notes
+
+### Dashboard view (`DashboardView.ts`)
+
+- KPI tiles: 3 fixed slots (Spent, Budget left, Net worth). Each is a
+  `div.kpi-tile` with primary number + delta line; click navigates to filtered
+  Transactions.
+- Donut: inline SVG, ~80 lines. Slices use `--vscode-charts-*` tokens. Hover
+  reveals category name + amount via `Tooltip`.
+- Budget bars: stacked horizontal. Filled portion uses category color, overage
+  portion uses `--vscode-errorForeground`.
 - Reconciliation row: `Derived: $X | Last snapshot: $Y | Gap: $Z`
-  (amber if gap > $5, red if gap > $50)
-- "Sync Now" via `ActionBar`
+  (amber if `|gap| > $5`, red if `|gap| > $50`, green if within $5).
 
-### Transaction list view
-- `FilterableList` base for keyboard nav + fuzzy filter
-- Each row: date · merchant · amount · card · inline `Dropdown` for category
-- Soft-delete via right-click context menu
-- Month filter via `SegmentedControl`
+### Transactions view (`TransactionListView.ts`)
+
+- Built on `FilterableList` from `src/ui/list.ts`.
+- Each row: date · merchant · `Dropdown` for category · amount · card · notes.
+- Selection model: single (Enter for detail) + multi via checkbox (bulk actions).
+- Smart search bar above; query parsed into a SQL `WHERE` fragment.
+- Footer: live count · sum · income · net.
+- Right-click → context menu (see Per-View Control Inventory).
+
+### Review Queue view (`ReviewQueueView.ts`)
+
+- One card per pending row. Cards stack vertically.
+- Editable fields prefilled with AI-extracted values.
+- Confirm / Reject / Mark-as-not-a-tx buttons at the bottom of each card.
+- Auto-advance to next card after action.
+
+### Sync Log view (`SyncLogView.ts`)
+
+- Header: last sync time, count, status icon, Run/Cancel button.
+- Body: virtualized log list (newest first). Each line: timestamp · message id ·
+  message · status. Color by status (info/warn/error).
+- Filter: substring search.
+
+### Categories view (`CategoriesView.ts`)
+
+- Table: name · monthly limit · rollover toggle · current spend · tx count · actions.
+- Drag-to-reorder via row handle.
+- Add/Edit overlay: name, color picker (predefined chart palette), monthly
+  limit, rollover checkbox.
+
+---
+
+## Reuse table
+
+(Repeats from earlier sections, consolidated for the implementation reviewer.)
 
 ### Review queue view
 - Same layout as transaction list, filtered to `status = 'review'`
