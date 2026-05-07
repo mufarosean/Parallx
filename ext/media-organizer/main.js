@@ -7627,6 +7627,10 @@ function renderMediaCard(item, options) {
   // Thumbnail section
   const thumb = moEl('div', 'mo-card-thumb');
   const img = moEl('img');
+  // Disable native image-drag so the parent card's dragstart owns the
+  // DataTransfer (otherwise the browser starts an image-drag with the
+  // GENERATED thumbnail path, not the original source file).
+  img.draggable = false;
   img.alt = item.title || '';
   img.loading = 'lazy';
   if (item._gifSourcePath || item.thumbnailPath) {
@@ -7787,6 +7791,8 @@ function renderMediaListRow(item, options) {
   // Thumb
   const thumb = moEl('div', 'mo-list-thumb');
   const img = moEl('img');
+  // Disable native image-drag so the row's dragstart owns the DataTransfer
+  img.draggable = false;
   img.alt = item.title || '';
   img.loading = 'lazy';
   if (item.thumbnailPath) {
