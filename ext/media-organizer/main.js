@@ -13457,7 +13457,14 @@ function showOptimizeGifDialog(gifFiles, api, onComplete) {
     }
 
     const lines = [];
-    lines.push(`Total: ${fmtBytes(originalTotal)} → ~${fmtBytes(predictedTotal)} (predicted)`);
+    if (willOptimize > 0 && cantHit > 0 && predictedTotal > targetBytes) {
+      // The planner can't get under the target for some files. Be explicit
+      // about that — the user typed 8 MB and we shouldn't bury the bad news
+      // inside a single "predicted total" line.
+      lines.push(`Target: ${targetMB} MB · best achievable: ~${fmtBytes(predictedTotal)}`);
+    } else {
+      lines.push(`Total: ${fmtBytes(originalTotal)} → ~${fmtBytes(predictedTotal)} (predicted)`);
+    }
     if (willOptimize > 0) {
       const avgW = Math.round(widthSum / willOptimize);
       const avgF = Math.round(fpsSum / willOptimize);
@@ -13466,7 +13473,7 @@ function showOptimizeGifDialog(gifFiles, api, onComplete) {
       lines.push('All files already at or below target — nothing to do.');
     }
     if (cantHit > 0) {
-      lines.push(`${cantHit} file${cantHit === 1 ? '' : 's'} may not reach target even at minimum settings${allowTrim ? '' : ' (enable trimming to try harder)'}.`);
+      lines.push(`${cantHit} file${cantHit === 1 ? '' : 's'} cannot reach ${targetMB} MB at minimum settings${allowTrim ? '' : ' (enable trimming to try harder)'}.`);
     }
     predictionEl.textContent = lines.join('\n');
     predictionEl.style.whiteSpace = 'pre-line';
@@ -16086,8 +16093,8 @@ const MO_GIF_BPP_DITHER = {
   floyd_steinberg:  1.20,              // diffusion noise compresses poorly
   sierra2_4a:       1.12,
 };
-const MO_GIF_FPS_LADDER = [24, 20, 18, 15, 12];
-const MO_GIF_WIDTH_LADDER = [1280, 960, 720, 540, 480, 360];
+const MO_GIF_FPS_LADDER = [24, 20, 18, 15, 12, 10];
+const MO_GIF_WIDTH_LADDER = [1280, 960, 720, 540, 480, 360, 320, 240];
 const MO_GIF_TRIM_LADDER = [0.8, 0.6, 0.4]; // fraction of original duration
 
 // Module-level calibration cache. Populated by moLoadGifBppCalibration() and
@@ -16199,14 +16206,14 @@ async function moProbeGif(filePath) {
  */
 function moPickGifOptimizePlan(probe, targetBytes, dither, allowTrim) {
   const fpsRungs = [probe.fps, ...MO_GIF_FPS_LADDER]
-    .filter((v) => v >= 12 && v <= probe.fps);
+    .filter((v) => v >= 10 && v <= probe.fps);
   // Dedupe while preserving descending order (highest fps tried first per width)
   const fpsSeen = new Set();
   const fpsList = [];
   for (const v of fpsRungs) { const k = Math.round(v); if (!fpsSeen.has(k)) { fpsSeen.add(k); fpsList.push(k); } }
 
   const widthRungs = [probe.width, ...MO_GIF_WIDTH_LADDER]
-    .filter((v) => v >= 360 && v <= probe.width);
+    .filter((v) => v >= 240 && v <= probe.width);
   const wSeen = new Set();
   const widthList = [];
   for (const v of widthRungs) { const k = Math.round(v); if (!wSeen.has(k)) { wSeen.add(k); widthList.push(k); } }
@@ -16224,9 +16231,9 @@ function moPickGifOptimizePlan(probe, targetBytes, dither, allowTrim) {
   }
 
   // Floor: smallest width × lowest fps
-  const fw = Math.max(360, widthList[widthList.length - 1] || 360);
+  const fw = Math.max(240, widthList[widthList.length - 1] || 240);
   const fh = Math.max(2, Math.round(fw * aspect / 2) * 2);
-  const ff = 12;
+  const ff = 10;
 
   if (allowTrim) {
     for (const frac of MO_GIF_TRIM_LADDER) {
@@ -16343,13 +16350,21 @@ async function moOptimizeGifFile(srcPath, opts) {
     let stat = await window.parallxElectron.fs.stat(tmpPath);
     actualBytes = stat ? (stat.size || 0) : 0;
 
-    // One calibration retry: if we overshot the target by >15%, re-derive the
-    // actual bpp this content needed and replan.
-    if (actualBytes > targetBytes * 1.15) {
-      const measuredBpp = actualBytes / Math.max(1, plan.width * plan.height * plan.fps * plan.duration);
+    // Iterative calibration: keep replanning with the actual measured bpp
+    // (plus a small per-attempt pessimism boost) until either we land within
+    // 1.15× target, the plan stops descending, or we hit MAX_RETRIES. Without
+    // this loop a single calibration miss leaves the file far over target —
+    // exactly what 15 MB → 12.9 MB at "target 8 MB" looked like to the user.
+    const MAX_RETRIES = 3;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      if (actualBytes <= targetBytes * 1.15) break;
+
+      const measuredBpp = (actualBytes / Math.max(1, plan.width * plan.height * plan.fps * plan.duration))
+        * (1 + 0.05 * attempt);
+
       const calibratedPick = (probe2) => {
-        const fpsList = [probe2.fps, ...MO_GIF_FPS_LADDER].filter((v) => v >= 12 && v <= probe2.fps);
-        const widthList = [probe2.width, ...MO_GIF_WIDTH_LADDER].filter((v) => v >= 360 && v <= probe2.width);
+        const fpsList = [probe2.fps, ...MO_GIF_FPS_LADDER].filter((v) => v >= 10 && v <= probe2.fps);
+        const widthList = [probe2.width, ...MO_GIF_WIDTH_LADDER].filter((v) => v >= 240 && v <= probe2.width);
         const aspect = probe2.height / probe2.width;
         const seenF = new Set(); const fL = [];
         for (const v of fpsList) { const k = Math.round(v); if (!seenF.has(k)) { seenF.add(k); fL.push(k); } }
@@ -16362,27 +16377,47 @@ async function moOptimizeGifFile(srcPath, opts) {
             if (bytes <= targetBytes) return { width: w, height: h, fps: f, duration: probe2.duration, predictedBytes: bytes, hitFloor: false };
           }
         }
-        const fw = Math.max(360, wL[wL.length - 1] || 360);
+        // Floor + (optional) trim escalation. Trim only if the caller opted
+        // in — clip-export auto-optimize never trims (user hand-cut those
+        // frames); gallery/grid optimize lets the user check the box.
+        const fw = Math.max(240, wL[wL.length - 1] || 240);
         const fh = Math.max(2, Math.round(fw * aspect / 2) * 2);
-        return { width: fw, height: fh, fps: 12, duration: probe2.duration, predictedBytes: 0, hitFloor: true };
-      };
-      const plan2 = calibratedPick(probe);
-      if (plan2.width !== plan.width || plan2.fps !== plan.fps) {
-        await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
-        await moEncodeOptimizedGif(srcPath, tmpPath, plan2, dither);
-        const stat2 = await window.parallxElectron.fs.stat(tmpPath);
-        const actual2 = stat2 ? (stat2.size || 0) : 0;
-        if (actual2 <= actualBytes) {
-          plan = plan2;
-          actualBytes = actual2;
-          stat = stat2;
-        } else {
-          // First pass was better — re-encode it (still in tmpPath, so
-          // overwrite the worse calibrated pass).
-          await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
-          await moEncodeOptimizedGif(srcPath, tmpPath, plan, dither);
+        const ff = 10;
+        if (allowTrim) {
+          for (const frac of MO_GIF_TRIM_LADDER) {
+            const dur = probe2.duration * frac;
+            const bytes = moPredictGifBytes({ width: fw, height: fh, fps: ff, duration: dur, bppOverride: measuredBpp });
+            if (bytes <= targetBytes) {
+              return { width: fw, height: fh, fps: ff, duration: dur, predictedBytes: bytes, hitFloor: true, trimmed: true };
+            }
+          }
         }
+        return { width: fw, height: fh, fps: ff, duration: probe2.duration, predictedBytes: 0, hitFloor: true };
+      };
+
+      const planNext = calibratedPick(probe);
+      const sameAsCurrent = planNext.width === plan.width
+        && planNext.fps === plan.fps
+        && (!!planNext.trimmed) === (!!plan.trimmed)
+        && Math.abs((planNext.duration || 0) - (plan.duration || 0)) < 0.01;
+      if (sameAsCurrent) break; // No further descent possible.
+
+      await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
+      await moEncodeOptimizedGif(srcPath, tmpPath, planNext, dither);
+      const statN = await window.parallxElectron.fs.stat(tmpPath);
+      const actualN = statN ? (statN.size || 0) : 0;
+
+      if (actualN >= actualBytes) {
+        // Smaller plan made things worse (rare, sparse content). Restore the
+        // previous plan's output so tmp is in a known-good state.
+        await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
+        await moEncodeOptimizedGif(srcPath, tmpPath, plan, dither);
+        break;
       }
+
+      plan = planNext;
+      actualBytes = actualN;
+      stat = statN;
     }
 
     // Safety: if our "optimized" output is somehow larger than the source,
