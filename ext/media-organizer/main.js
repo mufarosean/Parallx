@@ -17269,9 +17269,11 @@ async function moAutoStackByBasename(api) {
 // - Reads `mediaOrganizer.eraserPath` from configuration (default
 //   `C:\Program Files\Eraser\Eraser.exe`).
 // - If the executable is missing or invocation fails, returns false so the
-//   caller can fall back to the OS recycle bin.
-// - Eraser is fire-and-forget: we queue an `addtask --schedule=now` with one
-//   `--file=<path>` per target. Eraser handles its own progress + confirm UI.
+//   caller can fall back to the OS recycle bin and surfaces a toast so the
+//   user knows why Eraser didn't run.
+// - Eraser is fire-and-forget: we run `Eraser.exe erase file=<p1> file=<p2> ...`
+//   (equivalent to addtask /schedule=now). Eraser shows its own confirmation
+//   dialog and tracks progress in the system tray.
 async function _tryEraseWithEraser(api, filePaths) {
   if (!_isWindows) return false;
   if (!filePaths || filePaths.length === 0) return false;
@@ -17279,17 +17281,31 @@ async function _tryEraseWithEraser(api, filePaths) {
     'C:\\Program Files\\Eraser\\Eraser.exe');
   if (!cfgPath) return false;
 
-  // Verify the executable exists before spawning.
   const exists = await window.parallxElectron.fs.exists(cfgPath).catch(() => false);
-  if (!exists) return false;
+  if (!exists) {
+    api.window.showInformationMessage(
+      `Eraser not found at ${cfgPath} — falling back to recycle bin. Set mediaOrganizer.eraserPath in settings to point at your install.`
+    );
+    return false;
+  }
 
-  // Build args: addtask --schedule=now --file="<p1>" --file="<p2>" ...
-  // Quote every path token to survive spaces. terminal.exec runs through a
-  // shell, so we double-quote both the exe and each --file= value.
-  const fileArgs = filePaths.map((p) => `--file="${p}"`).join(' ');
-  const cmd = `"${cfgPath}" addtask --schedule=now ${fileArgs}`;
-  const r = await window.parallxElectron.terminal.exec(cmd, {}).catch((e) => ({ error: String(e) }));
-  if (!r || r.error || (typeof r.exitCode === 'number' && r.exitCode !== 0)) return false;
+  // Eraser CLI: `Eraser.exe erase file=<path1> file=<path2> ...`
+  // Slash-prefixed switches, target prefixes are bare keywords (no -- or /).
+  const args = ['erase', ...filePaths.map((p) => `file=${p}`)];
+  let stderr = '';
+  let stdout = '';
+  const result = await window.parallxElectron.terminal.execStream(
+    { command: cfgPath, args, timeout: 60000 },
+    {
+      onStdout: (c) => { stdout += c; },
+      onStderr: (c) => { stderr += c; },
+    }
+  );
+  if (result.error || (typeof result.exitCode === 'number' && result.exitCode !== 0)) {
+    const reason = result.error?.message || stderr.trim() || stdout.trim() || `exit ${result.exitCode}`;
+    api.window.showErrorMessage(`Eraser failed: ${reason}. Falling back to recycle bin.`);
+    return false;
+  }
   return true;
 }
 
