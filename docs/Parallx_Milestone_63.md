@@ -1830,3 +1830,36 @@ df518e2  budget: manifest type integer -> number (validator rejects integer)
 b9952e3  M63: default gmailMcpServerId to 'gmail' to match catalog install id
 3905870  M63 P5: Budget polish � editable categories, inline tx category override, donut chart, query chat tools
 ```
+
+---
+
+## Path B — Bug-fix iteration (post-audit)
+
+Self-audit of the just-shipped Path B turned up six real defects. All fixed
+together, no separate milestone:
+
+1. **CSV export was non-functional.** The command body called
+   pi.workspace.writeWorkspaceFile, which does not exist on the extension
+   API surface. The guard always failed, so the clipboard fallback was the
+   only path that ever ran. Rewired to use pi.workspace.fs.writeFile with
+   a workspace-folder URI; clipboard remains the no-folder fallback.
+2. **CSV import was single-line.** pi.window.showInputBox is strictly a
+   single-line <input type="text"> — multi-line CSV paste was impossible.
+   Replaced with a real Import / Export editor section (textarea) and made
+   the udget.importCsv command open it.
+3. **11 of 17 commands were missing from contributes.commands.** Expanded
+   the manifest so every section + action is discoverable in the palette.
+4. **eprocessHistory ignored the rules engine.** It only backfilled
+   	x_type / ccount_id for legacy rows. Added a second pass that walks
+   every confirmed purchase/refund row with a NULL category and applies the
+   active rules set, so override-learning actually propagates back through
+   the user's ledger.
+5. **Recurring detection was case-sensitive on merchant.** "STARBUCKS",
+   "Starbucks", and "starbucks" produced separate series. Now grouped by
+   LOWER(merchant) with the most-recent original casing kept as the
+   canonical pattern.
+6. **CSV dedupe was case-sensitive on merchant.** Same root cause; switched
+   to LOWER(merchant)=LOWER(?) in the duplicate check.
+
+All 31 helper unit tests still pass. New behaviors are SQL- or DOM-level so
+not exercised by the pure-helper suite.

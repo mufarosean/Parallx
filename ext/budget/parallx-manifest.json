@@ -26,12 +26,23 @@
       { "typeId": "budget.editor", "displayName": "Budget" }
     ],
     "commands": [
-      { "id": "budget.openDashboard",    "title": "Open Dashboard",          "category": "Budget" },
-      { "id": "budget.openTransactions", "title": "Open Transactions",       "category": "Budget" },
-      { "id": "budget.openReviewQueue",  "title": "Open Review Queue",       "category": "Budget" },
-      { "id": "budget.openSyncLog",      "title": "Open Sync Log",           "category": "Budget" },
-      { "id": "budget.openCategories",   "title": "Open Categories",         "category": "Budget" },
-      { "id": "budget.sync",             "title": "Sync Gmail Transactions", "category": "Budget" }
+      { "id": "budget.openDashboard",     "title": "Open Dashboard",           "category": "Budget" },
+      { "id": "budget.openAccounts",      "title": "Open Accounts",            "category": "Budget" },
+      { "id": "budget.openTransactions",  "title": "Open Transactions",        "category": "Budget" },
+      { "id": "budget.openBudgets",       "title": "Open Budgets",             "category": "Budget" },
+      { "id": "budget.openRecurring",     "title": "Open Recurring",           "category": "Budget" },
+      { "id": "budget.openCashFlow",      "title": "Open Cash Flow",           "category": "Budget" },
+      { "id": "budget.openReports",       "title": "Open Reports",             "category": "Budget" },
+      { "id": "budget.openRules",         "title": "Open Rules",               "category": "Budget" },
+      { "id": "budget.openReconcile",     "title": "Open Reconcile",           "category": "Budget" },
+      { "id": "budget.openCategories",    "title": "Open Categories",          "category": "Budget" },
+      { "id": "budget.openReviewQueue",   "title": "Open Review Queue",        "category": "Budget" },
+      { "id": "budget.openSyncLog",       "title": "Open Sync Log",            "category": "Budget" },
+      { "id": "budget.openImportExport",  "title": "Open Import / Export",     "category": "Budget" },
+      { "id": "budget.sync",              "title": "Sync Gmail Transactions",  "category": "Budget" },
+      { "id": "budget.reprocessHistory",  "title": "Reprocess History (apply rules to old rows)", "category": "Budget" },
+      { "id": "budget.exportCsv",         "title": "Export Transactions to CSV", "category": "Budget" },
+      { "id": "budget.importCsv",         "title": "Import Transactions from CSV", "category": "Budget" }
     ],
     "configuration": [
       {

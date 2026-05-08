@@ -110,6 +110,7 @@ const SECTIONS = [
   { id: 'categories',   title: 'Categories',   icon: 'tag',              commandId: 'budget.openCategories',   blurb: 'Manage your category list — colour, kind, and monthly limits.' },
   { id: 'reviewQueue',  title: 'Review Queue', icon: 'inbox',            commandId: 'budget.openReviewQueue',  blurb: 'AI-flagged low-confidence imports awaiting your confirmation.' },
   { id: 'syncLog',      title: 'Sync Log',     icon: 'scroll-text',      commandId: 'budget.openSyncLog',      blurb: 'Per-message trace of the last few sync runs.' },
+  { id: 'importExport', title: 'Import / Export', icon: 'arrow-up-down',  commandId: 'budget.openImportExport', blurb: 'Paste a CSV to import, or export your full ledger as CSV.' },
 ];
 
 function sectionByEditorInstanceId(instanceId) {
@@ -675,6 +676,7 @@ function renderEditorPane(container, api, input) {
   else if (sectionId === 'categories')    cleanup = renderCategoriesSection(body, api);
   else if (sectionId === 'reviewQueue')   cleanup = renderReviewQueueSection(body, api);
   else if (sectionId === 'syncLog')       cleanup = renderSyncLogSection(body, api);
+  else if (sectionId === 'importExport')  cleanup = renderImportExportSection(body, api);
   else {
     const tag = document.createElement('div');
     tag.className = 'budget-editor-tag';
@@ -2576,6 +2578,139 @@ function renderReconcileSection(body, api) {
   return () => { alive = false; };
 }
 
+// ─── Section: Import / Export ──────────────────────────────────────────────
+//
+// Replaces the broken `showInputBox`-driven CSV paste (which is single-line by
+// design and silently strips newlines). This section gives users a real
+// multi-line textarea, a preview of the parse result, and a one-click export
+// that writes to the workspace via api.workspace.fs.writeFile (the previous
+// `writeWorkspaceFile` call referenced an API that does not exist).
+function renderImportExportSection(body, api) {
+  const wrap = document.createElement('div'); wrap.className = 'budget-section'; body.appendChild(wrap);
+
+  // ── Import ──
+  const importHdr = document.createElement('h3'); importHdr.textContent = 'Import CSV'; wrap.appendChild(importHdr);
+  const importHelp = document.createElement('div');
+  importHelp.style.fontSize = '12px'; importHelp.style.color = 'var(--vscode-descriptionForeground,#888)';
+  importHelp.style.marginBottom = '8px';
+  importHelp.textContent = 'Paste a CSV with a header row. Required columns: date, merchant, amount. Optional: type, category, account, last_four, notes. Amount convention: positive = spend, negative = refund/deposit.';
+  wrap.appendChild(importHelp);
+
+  const ta = document.createElement('textarea');
+  ta.className = 'budget-input';
+  ta.placeholder = 'date,merchant,amount,category,account,last_four,notes\n2026-05-01,Starbucks,4.75,Dining,Chase Checking,1234,';
+  ta.rows = 10;
+  ta.style.width = '100%'; ta.style.fontFamily = 'var(--monospace-font-family, monospace)';
+  ta.style.fontSize = '12px'; ta.style.padding = '8px';
+  wrap.appendChild(ta);
+
+  const importActions = document.createElement('div');
+  importActions.style.display = 'flex'; importActions.style.gap = '6px'; importActions.style.marginTop = '6px';
+  const status = document.createElement('div');
+  status.style.marginTop = '8px'; status.style.fontSize = '12px';
+
+  const importBtn = makeButton('Import', {
+    primary: true,
+    onClick: async () => {
+      const text = ta.value.trim();
+      if (!text) { status.textContent = 'Paste a CSV first.'; return; }
+      importBtn.setAttribute('disabled', 'true'); status.textContent = 'Importing…';
+      try {
+        const result = await importCsvText(text);
+        status.textContent = `Imported ${result.inserted}, skipped ${result.skipped} duplicate(s), ${result.errors} error(s).`;
+      } catch (e) {
+        status.textContent = 'Import failed: ' + (e instanceof Error ? e.message : String(e));
+      } finally {
+        importBtn.removeAttribute('disabled');
+      }
+    },
+  });
+  const clearBtn = makeButton('Clear', { onClick: () => { ta.value = ''; status.textContent = ''; } });
+  importActions.appendChild(importBtn); importActions.appendChild(clearBtn);
+  wrap.appendChild(importActions);
+  wrap.appendChild(status);
+
+  // ── Export ──
+  const exportHdr = document.createElement('h3'); exportHdr.textContent = 'Export CSV'; exportHdr.style.marginTop = '24px';
+  wrap.appendChild(exportHdr);
+  const exportHelp = document.createElement('div');
+  exportHelp.style.fontSize = '12px'; exportHelp.style.color = 'var(--vscode-descriptionForeground,#888)';
+  exportHelp.style.marginBottom = '8px';
+  exportHelp.textContent = 'Writes confirmed + review-queue rows to budget-export-YYYY-MM-DD.csv in your workspace root. Falls back to clipboard if no workspace folder is open.';
+  wrap.appendChild(exportHelp);
+
+  const exportStatus = document.createElement('div');
+  exportStatus.style.marginTop = '8px'; exportStatus.style.fontSize = '12px';
+  const exportBtn = makeButton('Export now', {
+    primary: true,
+    onClick: async () => {
+      exportBtn.setAttribute('disabled', 'true'); exportStatus.textContent = 'Exporting…';
+      try {
+        const r = await runCsvExport(api);
+        exportStatus.textContent = r.writtenTo
+          ? `Wrote ${r.count} rows to ${r.writtenTo}.`
+          : `Copied ${r.count} rows to clipboard (${r.reason || 'no workspace folder'}).`;
+      } catch (e) {
+        exportStatus.textContent = 'Export failed: ' + (e instanceof Error ? e.message : String(e));
+      } finally {
+        exportBtn.removeAttribute('disabled');
+      }
+    },
+  });
+  wrap.appendChild(exportBtn);
+  wrap.appendChild(exportStatus);
+
+  return () => {};
+}
+
+// Build the CSV string for export. Pure-ish — only depends on the db helper.
+async function buildExportCsv() {
+  const rows = await db.all(`
+    SELECT t.transaction_date, t.merchant, t.amount_cents, t.tx_type, t.status,
+           c.name AS category, t.card_last_four, a.display_name AS account, t.notes
+      FROM transactions t
+      LEFT JOIN categories c ON c.id = t.category_id
+      LEFT JOIN accounts a   ON a.id = t.account_id
+     WHERE t.status IN ('confirmed','review')
+     ORDER BY t.transaction_date DESC, t.created_at DESC`);
+  const esc = (v) => {
+    if (v == null) return '';
+    const s = String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = ['date,merchant,amount,type,status,category,account,last_four,notes'];
+  for (const r of rows) {
+    lines.push([
+      r.transaction_date, esc(r.merchant), (Number(r.amount_cents) / 100).toFixed(2),
+      r.tx_type || '', r.status || '', esc(r.category || ''), esc(r.account || ''),
+      r.card_last_four || '', esc(r.notes || ''),
+    ].join(','));
+  }
+  return { csv: lines.join('\n'), count: rows.length };
+}
+
+// Run the export side-effect: write to workspace fs, or fall back to clipboard.
+async function runCsvExport(api) {
+  const { csv, count } = await buildExportCsv();
+  const fname = `budget-export-${todayYmd()}.csv`;
+  const folders = api.workspace && api.workspace.workspaceFolders;
+  const fs = api.workspace && api.workspace.fs;
+  if (folders && folders.length > 0 && fs && typeof fs.writeFile === 'function') {
+    const folderUri = folders[0].uri;
+    // Build child URI by string concatenation — workspaceBoundary verifies it.
+    const sep = folderUri.endsWith('/') ? '' : '/';
+    const targetUri = folderUri + sep + fname;
+    await fs.writeFile(targetUri, csv);
+    return { count, writtenTo: fname };
+  }
+  // Fallback: clipboard.
+  if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(csv);
+    return { count, writtenTo: null, reason: 'no workspace folder' };
+  }
+  throw new Error('No workspace folder open and clipboard unavailable.');
+}
+
 // Inline SVG donut. No external libs. `slices` is [{name,color,spend}] with
 // spend > 0; total is the sum of those spends.
 function buildDonut(slices, total) {
@@ -3027,14 +3162,20 @@ function addDays(ymd, days) {
 }
 
 async function detectRecurring(api) {
-  // Pull last 180 days of confirmed purchases grouped by merchant.
+  // Suppress unused-arg lint (kept for future progress notifications).
+  void api;
+
+  // Pull last 180 days of confirmed purchases grouped by merchant. We
+  // case-fold the GROUP BY so "STARBUCKS", "Starbucks", and "starbucks"
+  // count as one series. We pick the most common original casing as the
+  // canonical pattern when upserting.
   const since = isoNDaysAgo(180);
   const candidates = await db.all(
-    `SELECT merchant, COUNT(*) AS n
+    `SELECT LOWER(merchant) AS merchant_key, COUNT(*) AS n
        FROM transactions
       WHERE status='confirmed' AND tx_type='purchase' AND merchant IS NOT NULL
         AND transaction_date >= ?
-      GROUP BY merchant
+      GROUP BY LOWER(merchant)
       HAVING n >= 3
       ORDER BY n DESC`,
     [since],
@@ -3043,14 +3184,17 @@ async function detectRecurring(api) {
   let detected = 0;
   for (const c of candidates) {
     const rows = await db.all(
-      `SELECT id, transaction_date, amount_cents, category_id
+      `SELECT id, transaction_date, amount_cents, category_id, merchant
          FROM transactions
-        WHERE status='confirmed' AND tx_type='purchase' AND merchant = ?
+        WHERE status='confirmed' AND tx_type='purchase' AND LOWER(merchant) = ?
           AND transaction_date >= ?
         ORDER BY transaction_date ASC`,
-      [c.merchant, since],
+      [c.merchant_key, since],
     );
     if (rows.length < 3) continue;
+
+    // Canonical merchant string: the most-recently-seen original casing.
+    const canonical = rows[rows.length - 1].merchant;
 
     const dates = rows.map(r => r.transaction_date);
     const amounts = rows.map(r => Math.abs(Number(r.amount_cents) || 0));
@@ -3072,11 +3216,11 @@ async function detectRecurring(api) {
     const nextDue = addDays(lastSeen, Math.max(1, Math.round(medGap)));
     const guessedCategoryId = rows[rows.length - 1].category_id;
 
-    // Upsert by exact-merchant pattern.
+    // Upsert by exact-merchant pattern (case-insensitive).
     const now = new Date().toISOString();
     const existing = await db.get(
-      `SELECT id, user_confirmed, cancelled FROM recurring_series WHERE LOWER(merchant_pattern) = LOWER(?) LIMIT 1`,
-      [c.merchant],
+      `SELECT id, user_confirmed, cancelled FROM recurring_series WHERE LOWER(merchant_pattern) = ? LIMIT 1`,
+      [c.merchant_key],
     );
     let seriesId;
     if (existing) {
@@ -3098,7 +3242,7 @@ async function detectRecurring(api) {
                                        occurrence_count, detection_confidence, user_confirmed, cancelled,
                                        created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
-        [seriesId, c.merchant, c.merchant, guessedCategoryId, cadence,
+        [seriesId, canonical, canonical, guessedCategoryId, cadence,
          avgAmt, lastAmt, lastSeen, nextDue, rows.length, confidence, now, now],
       );
       detected++;
@@ -3116,26 +3260,34 @@ async function detectRecurring(api) {
 
 // ─── Reprocess history ──────────────────────────────────────────────────────
 //
-// Backfills tx_type and account_id for legacy rows imported before migration 002.
-// Called from a command. Re-runs Stage 1 (classify) + Stage 2 (extract) on every
-// email_imports row that produced a transaction.
+// Two passes, both safe to re-run:
+//
+//   1. Backfill `tx_type` and `account_id` for legacy rows imported before
+//      migration 002 (those columns were NULL).
+//   2. Apply the current rules engine to any confirmed purchase/refund row
+//      with a NULL category. This is the part users actually want — once
+//      they've taught the rules engine via the Rules section, hitting
+//      "Reprocess" should propagate those decisions back through their
+//      historical ledger. Rows with a non-NULL category are left untouched
+//      (we never overwrite a human or AI categorization here).
 async function reprocessHistory(api) {
-  const modelId = await pickModelId(api);
-  const rows = await db.all(`
-    SELECT t.id, t.gmail_message_id, t.merchant, t.amount_cents, t.card_last_four, t.transaction_date
+  // Suppress unused-arg lint when api is not consumed (kept for future use
+  // — e.g. surfacing a progress notification).
+  void api;
+
+  // ── Pass 1: tx_type / account_id backfill ────────────────────────────
+  const legacyRows = await db.all(`
+    SELECT t.id, t.merchant, t.amount_cents, t.card_last_four
       FROM transactions t
      WHERE t.tx_type IS NULL AND t.gmail_message_id IS NOT NULL`);
 
   let updated = 0, errors = 0;
-  for (const r of rows) {
+  for (const r of legacyRows) {
     try {
       const cents = Number(r.amount_cents) || 0;
-      // Cheap heuristic backfill: most legacy rows are purchases. Refunds = negative.
-      // Without re-fetching email bodies we can't be perfect; this is good enough
-      // to make filters work and stops the "all NULL" UX drag.
-      let tx_type = 'purchase';
-      if (cents < 0) tx_type = 'refund';
-      // Account: link by last_four if we can.
+      // Cheap heuristic backfill: most legacy rows are purchases. Refunds
+      // were originally stored as negative cents.
+      const tx_type = cents < 0 ? 'refund' : 'purchase';
       let accountId = null;
       if (r.card_last_four) {
         const acct = await upsertAccount(r.card_last_four, 'other', null);
@@ -3148,7 +3300,32 @@ async function reprocessHistory(api) {
       updated++;
     } catch (e) { errors++; }
   }
-  return { updated, errors, total: rows.length };
+
+  // ── Pass 2: apply rules to NULL-category purchase/refund rows ────────
+  // We deliberately leave non-NULL rows untouched — both human overrides
+  // and AI guesses survive. This pass is purely additive.
+  const activeRules = await loadActiveRules();
+  let categorized = 0;
+  if (activeRules.length > 0) {
+    const candidates = await db.all(`
+      SELECT id, merchant FROM transactions
+       WHERE category_id IS NULL AND status='confirmed'
+         AND tx_type IN ('purchase','refund') AND merchant IS NOT NULL`);
+    for (const r of candidates) {
+      try {
+        const matched = await applyRules(r.merchant, activeRules);
+        if (matched && matched.categoryId) {
+          await db.run(
+            `UPDATE transactions SET category_id = ?, categorizer_model = ?, updated_at = ? WHERE id = ?`,
+            [matched.categoryId, 'rule:' + matched.ruleId + ':reprocess', new Date().toISOString(), r.id],
+          );
+          categorized++;
+        }
+      } catch { errors++; }
+    }
+  }
+
+  return { updated, errors, total: legacyRows.length, categorized };
 }
 
 // ─── CSV import ────────────────────────────────────────────────────────────
@@ -3217,9 +3394,9 @@ async function importCsvText(text) {
       const acctName = acctIdx >= 0 ? cols[acctIdx] : '';
       const notes = notesIdx >= 0 ? cols[notesIdx] : '';
 
-      // Dedupe within source='csv' on (date, merchant, amount).
+      // Dedupe within source='csv' on (date, LOWER(merchant), amount).
       const dup = await db.get(
-        `SELECT id FROM transactions WHERE source='csv' AND transaction_date=? AND merchant=? AND amount_cents=? LIMIT 1`,
+        `SELECT id FROM transactions WHERE source='csv' AND transaction_date=? AND LOWER(merchant)=LOWER(?) AND amount_cents=? LIMIT 1`,
         [date, merchant, cents],
       );
       if (dup) { skipped++; continue; }
@@ -3916,73 +4093,38 @@ export async function activate(api, context) {
   _disposables.push(api.commands.registerCommand('budget.reprocessHistory', async () => {
     try {
       const r = await reprocessHistory(api);
-      await api.window?.showInformationMessage?.(`Reprocessed ${r.updated} of ${r.total} legacy rows. Errors: ${r.errors}.`);
+      await api.window?.showInformationMessage?.(
+        `Reprocessed ${r.updated} legacy row(s); rules categorized ${r.categorized} previously-uncategorized row(s). Errors: ${r.errors}.`,
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       await api.window?.showErrorMessage?.(`Reprocess failed: ${msg}`);
     }
   }));
 
-  // 1c) CSV export — write all confirmed transactions to a file.
+  // 1c) CSV export — write all confirmed + review-queue transactions to a file.
+  // Uses api.workspace.fs.writeFile directly. The previous version called a
+  // non-existent `writeWorkspaceFile`, so it always silently fell through to
+  // clipboard.
   _disposables.push(api.commands.registerCommand('budget.exportCsv', async () => {
     try {
-      const rows = await db.all(`
-        SELECT t.transaction_date, t.merchant, t.amount_cents, t.tx_type, t.status,
-               c.name AS category, t.card_last_four, a.display_name AS account, t.notes
-          FROM transactions t
-          LEFT JOIN categories c ON c.id = t.category_id
-          LEFT JOIN accounts a   ON a.id = t.account_id
-         WHERE t.status IN ('confirmed','review')
-         ORDER BY t.transaction_date DESC, t.created_at DESC`);
-      const header = 'date,merchant,amount,type,status,category,account,last_four,notes';
-      const esc = (v) => {
-        if (v == null) return '';
-        const s = String(v);
-        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-      };
-      const lines = [header];
-      for (const r of rows) {
-        lines.push([
-          r.transaction_date, esc(r.merchant), (Number(r.amount_cents) / 100).toFixed(2),
-          r.tx_type || '', r.status || '', esc(r.category || ''), esc(r.account || ''),
-          r.card_last_four || '', esc(r.notes || ''),
-        ].join(','));
-      }
-      const csv = lines.join('\n');
-      const fname = `budget-export-${todayYmd()}.csv`;
-      if (api.workspace && typeof api.workspace.writeWorkspaceFile === 'function') {
-        await api.workspace.writeWorkspaceFile(fname, csv);
-        await api.window?.showInformationMessage?.(`Exported ${rows.length} rows to ${fname} in your workspace.`);
-      } else {
-        // Fallback: copy to clipboard.
-        await navigator.clipboard?.writeText(csv);
-        await api.window?.showInformationMessage?.(`Exported ${rows.length} rows to clipboard (no workspace API available).`);
-      }
+      const r = await runCsvExport(api);
+      await api.window?.showInformationMessage?.(
+        r.writtenTo
+          ? `Exported ${r.count} rows to ${r.writtenTo} in your workspace.`
+          : `Exported ${r.count} rows to clipboard (${r.reason || 'no workspace folder'}).`,
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       await api.window?.showErrorMessage?.(`CSV export failed: ${msg}`);
     }
   }));
 
-  // 1d) CSV import — paste-driven (no native file picker dependency).
-  // Expected columns: date, merchant, amount, type?, category?, account?, last_four?, notes?
-  // Amounts: positive = money out (spend), negative = money in (refund/deposit) —
-  // matches our internal convention. Status defaults to 'confirmed'. source='csv'.
+  // 1d) CSV import — opens the Import / Export section. The previous version
+  // called showInputBox (which is single-line by design) so any pasted CSV
+  // beyond the first row was silently dropped.
   _disposables.push(api.commands.registerCommand('budget.importCsv', async () => {
-    const csv = await api.window?.showInputBox?.({
-      prompt: 'Paste CSV (header row required: date,merchant,amount,...)',
-      placeholder: 'date,merchant,amount,category,account,last_four,notes',
-    });
-    if (!csv || !csv.trim()) return;
-    try {
-      const result = await importCsvText(csv);
-      await api.window?.showInformationMessage?.(
-        `CSV import: ${result.inserted} added, ${result.skipped} skipped, ${result.errors} errors.`,
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      await api.window?.showErrorMessage?.(`CSV import failed: ${msg}`);
-    }
+    await api.commands.executeCommand('budget.openImportExport');
   }));
 
   // 2) Chat tool — same handler, MCP-shaped result so the agent can read it.
