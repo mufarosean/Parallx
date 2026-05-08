@@ -17289,9 +17289,11 @@ async function _tryEraseWithEraser(api, filePaths) {
     return false;
   }
 
-  // Eraser CLI: `Eraser.exe erase file=<path1> file=<path2> ...`
-  // Slash-prefixed switches, target prefixes are bare keywords (no -- or /).
-  const args = ['erase', ...filePaths.map((p) => `file=${p}`)];
+  // Eraser CLI: `Eraser.exe erase /quiet file=<path1> file=<path2> ...`
+  // /quiet is required when spawned headlessly (windowsHide:true) — otherwise
+  // Eraser tries to open a console window, fails, and exits with a CLR
+  // exception code (0xE0434352) even though the erase still succeeds.
+  const args = ['erase', '/quiet', ...filePaths.map((p) => `file=${p}`)];
   let stderr = '';
   let stdout = '';
   const result = await window.parallxElectron.terminal.execStream(
