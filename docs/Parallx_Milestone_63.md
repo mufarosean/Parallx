@@ -1,6 +1,6 @@
 # Milestone 63 — Budget Dashboard (Gmail → AI → SQLite → UI)
 
-**Status:** planning
+**Status:** shipped (P0–P5 + Path B)
 **Branch:** `milestone-63`
 **Predecessor:** M62 (MCP-Only Provider Integration)
 
@@ -1751,3 +1751,82 @@ Dashboard tile shows progress bars (e.g. "Emergency fund · $4,200 / $10,000").
   recent balance snapshot.
 - `npx tsc --noEmit` produces no output.
 - `npx vitest run` green.
+
+
+---
+
+## Path B � Shipped (May 2026)
+
+**Status:** shipped, branch `milestone-63`, last commit `d72160e`.
+
+After P0�P5 landed the Gmail?AI?SQLite?UI pipeline, a follow-on Path B
+overhaul turned the dashboard into a credible no-cloud alternative to
+Monarch / YNAB / Copilot. Everything below is in `ext/budget/main.js` plus
+two new SQL migrations, behind no new dependencies.
+
+### Summary
+
+| Area | What shipped |
+|---|---|
+| Schema | Migration `budget_003_rules_recurring_budgets.sql` adds `categorization_rules`, `recurring_series`, `recurring_occurrences`, `budgets` (UNIQUE per category � month), `reconciliations`, plus `transactions.posted` and `transactions.source` columns and a `v_recurring_upcoming` view. |
+| Rules engine | Deterministic categorization runs **before** the AI. Active rules are loaded once per sync and matched in priority order (`exact`, `prefix`, `contains`, `regex`). Hits increment a counter; matches set `categorizer_model = 'rule:<id>'`. |
+| Auto-rule learning | When the user overrides a transaction's category, the extension learns a `prefix`-match rule from the merchant token and writes it back. Re-sync respects the rule. |
+| Recurring detection | `detectRecurring()` reads the last 180 days of confirmed transactions, groups by normalized merchant, and uses median gap + amount/gap coefficient-of-variation to infer a cadence (`weekly`, `biweekly`, `monthly`, `quarterly`, `yearly`). Series are upserted to `recurring_series`; user can confirm or cancel; cancelled series stay cancelled across re-detection. |
+| Real budgets | New **Budgets** section: month picker, editable per-category limits, progress bar, status pill (`ok` / `near` / `over`), copy-from-previous-month. `evalBudgetStatus()` is the pure helper � testable, rollover-aware. |
+| Reconciliation | New **Reconcile** section: pick an account, see latest snapshot vs derived running balance since the last reconciliation, file a new reconciliation with a discrepancy note, view history. |
+| CSV I/O | `budget.exportCsv` writes confirmed transactions to a workspace file; `budget.importCsv` parses pasted CSV (header `date,merchant,amount` required), dedupes on `(date, merchant, amount, source='csv')`, runs the rules engine on import. |
+| Reprocess history | Toolbar action backfills legacy NULL `tx_type` rows (`charge` vs `credit` derived from sign of `amount_cents`). |
+| Per-workspace isolation | Hooked `api.workspace.onDidChangeWorkspace`: re-runs migrations, re-seeds default categories, clears in-memory `_navState`. All persistence already routes through `api.database` ? per-workspace `<workspace>/.parallx/extensions/budget/data.db`. **No `localStorage`, `globalState`, or cross-workspace state.** |
+| Onboarding | Dashboard banner with 3-step welcome; dismiss flag persisted to `sync_state` (per-workspace). Auto-hides once any transaction or sync timestamp exists. |
+
+### UI � final section list
+
+12 sections live in the editor router:
+
+`dashboard`, `accounts`, `transactions`, **`budgets`**, **`recurring`**,
+`cashflow`, `reports`, **`rules`**, **`reconcile`**, `categories`,
+`reviewQueue`, `syncLog`. (Bold = added in Path B.)
+
+### Tests
+
+`tests/unit/budget-helpers.test.ts` � 31 unit tests for the pure helpers
+exposed via the `__testables` named export:
+
+- `median` (4)
+- `coefficientOfVariation` (4)
+- `gapDays` (3 � signed semantics)
+- `addDays` (4)
+- `inferCadence` (6)
+- `parseCsvLine` (5)
+- `ruleMatchesMerchant` (5 � exact / prefix / contains / regex)
+
+All 31 pass. Full repo suite (excluding the 3 pre-existing `gateCompliance`
+policy tests) is green: 2655 / 2658.
+
+### Deferred
+
+- **esbuild split.** `ext/budget/main.js` is ~4100 lines in a single file.
+  The blob-URL extension loader requires a single bundled file, so splitting
+  needs a build step before it adds any value. Not blocking � pure code
+  organization.
+
+### Verifying privacy / data isolation
+
+1. Open workspace A, run a sync, verify transactions appear.
+2. Switch to workspace B (`File ? Open Workspace�`).
+3. Budget dashboard shows zero transactions. No category, rule, recurring
+   series, or budget from workspace A is visible.
+4. Inspect: `<workspace-A>/.parallx/extensions/budget/data.db` and
+   `<workspace-B>/.parallx/extensions/budget/data.db` are distinct files.
+
+### Commit trail (Path B)
+
+```
+d72160e  budget: rules engine, recurring detection, real budgets, reconciliation, CSV io
+787bf47  gmail-mcp: add include_body to list_unread; budget: feed body to AI stages
+479470b  budget: unwrap {messages:[]} envelope from gmail-mcp list_unread
+10b84c6  gmail-mcp: bounded hydration concurrency; budget: scope sync to from:chase.com
+df518e2  budget: manifest type integer -> number (validator rejects integer)
+b9952e3  M63: default gmailMcpServerId to 'gmail' to match catalog install id
+3905870  M63 P5: Budget polish � editable categories, inline tx category override, donut chart, query chat tools
+```
