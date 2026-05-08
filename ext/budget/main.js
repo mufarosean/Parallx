@@ -2582,83 +2582,157 @@ function renderReconcileSection(body, api) {
 //
 // Replaces the broken `showInputBox`-driven CSV paste (which is single-line by
 // design and silently strips newlines). This section gives users a real
-// multi-line textarea, a preview of the parse result, and a one-click export
-// that writes to the workspace via api.workspace.fs.writeFile (the previous
+// multi-line textarea, a live row preview, and a one-click export that writes
+// to the workspace via api.workspace.fs.writeFile (the previous
 // `writeWorkspaceFile` call referenced an API that does not exist).
 function renderImportExportSection(body, api) {
-  const wrap = document.createElement('div'); wrap.className = 'budget-section'; body.appendChild(wrap);
+  // Top-level blurb — matches the look of the editor-pane subtitle used
+  // elsewhere (descriptionForeground, ~13px, line-height 1.55).
+  const blurb = document.createElement('p');
+  blurb.className = 'budget-editor-blurb';
+  blurb.textContent = 'Move ledger data in and out without leaving Parallx. Imports dedupe against your CSV history; exports include both confirmed transactions and the review queue.';
+  body.appendChild(blurb);
 
-  // ── Import ──
-  const importHdr = document.createElement('h3'); importHdr.textContent = 'Import CSV'; wrap.appendChild(importHdr);
+  // ── Import section ────────────────────────────────────────────────
+  const importWrap = document.createElement('div');
+  importWrap.className = 'budget-section';
+  body.appendChild(importWrap);
+
+  const importHdr = document.createElement('h3');
+  importHdr.textContent = 'Import CSV';
+  importWrap.appendChild(importHdr);
+
   const importHelp = document.createElement('div');
-  importHelp.style.fontSize = '12px'; importHelp.style.color = 'var(--vscode-descriptionForeground,#888)';
-  importHelp.style.marginBottom = '8px';
-  importHelp.textContent = 'Paste a CSV with a header row. Required columns: date, merchant, amount. Optional: type, category, account, last_four, notes. Amount convention: positive = spend, negative = refund/deposit.';
-  wrap.appendChild(importHelp);
+  importHelp.style.fontSize = 'var(--parallx-fontSize-sm, 11px)';
+  importHelp.style.color = 'var(--vscode-descriptionForeground, #888)';
+  importHelp.style.lineHeight = '1.5';
+  importHelp.innerHTML =
+    'Header row required: <code>date,merchant,amount</code> (and optional <code>type, category, account, last_four, notes</code>). Amounts are positive for spend, negative for refund / deposit. Duplicates within prior CSV imports — same date, merchant, and amount — are skipped automatically.';
+  importWrap.appendChild(importHelp);
 
   const ta = document.createElement('textarea');
   ta.className = 'budget-input';
   ta.placeholder = 'date,merchant,amount,category,account,last_four,notes\n2026-05-01,Starbucks,4.75,Dining,Chase Checking,1234,';
   ta.rows = 10;
-  ta.style.width = '100%'; ta.style.fontFamily = 'var(--monospace-font-family, monospace)';
-  ta.style.fontSize = '12px'; ta.style.padding = '8px';
-  wrap.appendChild(ta);
+  ta.spellcheck = false;
+  ta.style.width = '100%';
+  ta.style.boxSizing = 'border-box';
+  ta.style.fontFamily = 'var(--parallx-fontFamily-mono, ui-monospace, Consolas, monospace)';
+  ta.style.fontSize = 'var(--parallx-fontSize-sm, 11px)';
+  ta.style.lineHeight = '1.5';
+  ta.style.resize = 'vertical';
+  ta.style.minHeight = '160px';
+  importWrap.appendChild(ta);
 
-  const importActions = document.createElement('div');
-  importActions.style.display = 'flex'; importActions.style.gap = '6px'; importActions.style.marginTop = '6px';
+  // Toolbar: actions on the left, live preview on the right.
+  const importBar = document.createElement('div');
+  importBar.className = 'budget-toolbar';
+  importWrap.appendChild(importBar);
+
+  const importBtn = makeButton('Import', { primary: true, onClick: doImport });
+  const clearBtn = makeButton('Clear', { onClick: () => { ta.value = ''; updatePreview(); status.textContent = ''; status.dataset.tone = ''; } });
+  importBar.appendChild(importBtn);
+  importBar.appendChild(clearBtn);
+
+  const spacer = document.createElement('div'); spacer.className = 'spacer';
+  importBar.appendChild(spacer);
+
+  const preview = document.createElement('div');
+  preview.style.fontSize = 'var(--parallx-fontSize-sm, 11px)';
+  preview.style.color = 'var(--vscode-descriptionForeground, #888)';
+  preview.style.fontVariantNumeric = 'tabular-nums';
+  importBar.appendChild(preview);
+
   const status = document.createElement('div');
-  status.style.marginTop = '8px'; status.style.fontSize = '12px';
+  status.style.fontSize = 'var(--parallx-fontSize-sm, 11px)';
+  status.style.color = 'var(--vscode-descriptionForeground, #888)';
+  status.style.minHeight = '1.4em';
+  importWrap.appendChild(status);
 
-  const importBtn = makeButton('Import', {
-    primary: true,
-    onClick: async () => {
-      const text = ta.value.trim();
-      if (!text) { status.textContent = 'Paste a CSV first.'; return; }
-      importBtn.setAttribute('disabled', 'true'); status.textContent = 'Importing…';
-      try {
-        const result = await importCsvText(text);
-        status.textContent = `Imported ${result.inserted}, skipped ${result.skipped} duplicate(s), ${result.errors} error(s).`;
-      } catch (e) {
-        status.textContent = 'Import failed: ' + (e instanceof Error ? e.message : String(e));
-      } finally {
-        importBtn.removeAttribute('disabled');
-      }
-    },
-  });
-  const clearBtn = makeButton('Clear', { onClick: () => { ta.value = ''; status.textContent = ''; } });
-  importActions.appendChild(importBtn); importActions.appendChild(clearBtn);
-  wrap.appendChild(importActions);
-  wrap.appendChild(status);
+  function updatePreview() {
+    const lines = ta.value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length === 0) { preview.textContent = ''; return; }
+    const dataRows = Math.max(0, lines.length - 1); // assume first row is header
+    preview.textContent = `${dataRows} row${dataRows === 1 ? '' : 's'} ready`;
+  }
+  ta.addEventListener('input', updatePreview);
+  updatePreview();
 
-  // ── Export ──
-  const exportHdr = document.createElement('h3'); exportHdr.textContent = 'Export CSV'; exportHdr.style.marginTop = '24px';
-  wrap.appendChild(exportHdr);
+  function setStatus(text, tone) {
+    status.textContent = text;
+    status.dataset.tone = tone || '';
+    if (tone === 'error') status.style.color = 'var(--vscode-errorForeground, #f87171)';
+    else if (tone === 'success') status.style.color = 'var(--vscode-charts-green, #6ec77a)';
+    else status.style.color = 'var(--vscode-descriptionForeground, #888)';
+  }
+
+  async function doImport() {
+    const text = ta.value.trim();
+    if (!text) { setStatus('Paste a CSV first.', 'error'); return; }
+    importBtn.setAttribute('disabled', 'true');
+    clearBtn.setAttribute('disabled', 'true');
+    setStatus('Importing…');
+    try {
+      const r = await importCsvText(text);
+      const parts = [`Imported ${r.inserted} row${r.inserted === 1 ? '' : 's'}`];
+      if (r.skipped) parts.push(`${r.skipped} skipped (duplicates)`);
+      if (r.errors)  parts.push(`${r.errors} error${r.errors === 1 ? '' : 's'}`);
+      setStatus(parts.join(' • '), r.errors ? 'error' : 'success');
+    } catch (e) {
+      setStatus('Import failed: ' + (e instanceof Error ? e.message : String(e)), 'error');
+    } finally {
+      importBtn.removeAttribute('disabled');
+      clearBtn.removeAttribute('disabled');
+    }
+  }
+
+  // ── Export section ────────────────────────────────────────────────
+  const exportWrap = document.createElement('div');
+  exportWrap.className = 'budget-section';
+  body.appendChild(exportWrap);
+
+  const exportHdr = document.createElement('h3');
+  exportHdr.textContent = 'Export CSV';
+  exportWrap.appendChild(exportHdr);
+
   const exportHelp = document.createElement('div');
-  exportHelp.style.fontSize = '12px'; exportHelp.style.color = 'var(--vscode-descriptionForeground,#888)';
-  exportHelp.style.marginBottom = '8px';
-  exportHelp.textContent = 'Writes confirmed + review-queue rows to budget-export-YYYY-MM-DD.csv in your workspace root. Falls back to clipboard if no workspace folder is open.';
-  wrap.appendChild(exportHelp);
+  exportHelp.style.fontSize = 'var(--parallx-fontSize-sm, 11px)';
+  exportHelp.style.color = 'var(--vscode-descriptionForeground, #888)';
+  exportHelp.style.lineHeight = '1.5';
+  exportHelp.innerHTML = 'Writes <code>budget-export-YYYY-MM-DD.csv</code> to your workspace root, including every confirmed and review-queue row. Falls back to your clipboard if no workspace folder is open.';
+  exportWrap.appendChild(exportHelp);
+
+  const exportBar = document.createElement('div');
+  exportBar.className = 'budget-toolbar';
+  exportWrap.appendChild(exportBar);
 
   const exportStatus = document.createElement('div');
-  exportStatus.style.marginTop = '8px'; exportStatus.style.fontSize = '12px';
+  exportStatus.style.fontSize = 'var(--parallx-fontSize-sm, 11px)';
+  exportStatus.style.color = 'var(--vscode-descriptionForeground, #888)';
+  exportStatus.style.minHeight = '1.4em';
+
   const exportBtn = makeButton('Export now', {
     primary: true,
     onClick: async () => {
-      exportBtn.setAttribute('disabled', 'true'); exportStatus.textContent = 'Exporting…';
+      exportBtn.setAttribute('disabled', 'true');
+      exportStatus.textContent = 'Exporting…';
+      exportStatus.style.color = 'var(--vscode-descriptionForeground, #888)';
       try {
         const r = await runCsvExport(api);
         exportStatus.textContent = r.writtenTo
-          ? `Wrote ${r.count} rows to ${r.writtenTo}.`
-          : `Copied ${r.count} rows to clipboard (${r.reason || 'no workspace folder'}).`;
+          ? `Wrote ${r.count} row${r.count === 1 ? '' : 's'} to ${r.writtenTo}.`
+          : `Copied ${r.count} row${r.count === 1 ? '' : 's'} to clipboard (${r.reason || 'no workspace folder'}).`;
+        exportStatus.style.color = 'var(--vscode-charts-green, #6ec77a)';
       } catch (e) {
         exportStatus.textContent = 'Export failed: ' + (e instanceof Error ? e.message : String(e));
+        exportStatus.style.color = 'var(--vscode-errorForeground, #f87171)';
       } finally {
         exportBtn.removeAttribute('disabled');
       }
     },
   });
-  wrap.appendChild(exportBtn);
-  wrap.appendChild(exportStatus);
+  exportBar.appendChild(exportBtn);
+  exportWrap.appendChild(exportStatus);
 
   return () => {};
 }
