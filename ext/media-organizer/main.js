@@ -17297,20 +17297,23 @@ async function _tryEraseWithEraser(api, filePaths) {
   //   it Eraser tries to open a console window, fails, and exits with a CLR
   //   exception code (0xE0434352) even though the erase still succeeds.
   const args = ['addtask', '/quiet', '/schedule=now', ...filePaths.map((p) => `file=${p}`)];
-  let stderr = '';
-  let stdout = '';
-  const result = await window.parallxElectron.terminal.execStream(
-    { command: cfgPath, args, timeout: 60000 },
-    {
-      onStdout: (c) => { stdout += c; },
-      onStderr: (c) => { stderr += c; },
+
+  // Fire-and-forget: we do NOT await Eraser's exit. Multi-pass secure
+  // overwrite on large files takes seconds-to-minutes; blocking the dialog
+  // (and the renderer) on that is unacceptable. Once the process is spawned,
+  // Eraser owns the work — its tray UI is the user's progress indicator.
+  // We attach a late-firing handler purely to surface non-zero exits as a
+  // toast after-the-fact; it does not gate the return value.
+  window.parallxElectron.terminal.execStream(
+    { command: cfgPath, args, timeout: 0 },
+    {}
+  ).then((result) => {
+    if (result.error || (typeof result.exitCode === 'number' && result.exitCode !== 0)) {
+      const reason = result.error?.message || `exit ${result.exitCode}`;
+      api.window.showErrorMessage(`Eraser later reported a failure: ${reason}. Check the Eraser task list.`);
     }
-  );
-  if (result.error || (typeof result.exitCode === 'number' && result.exitCode !== 0)) {
-    const reason = result.error?.message || stderr.trim() || stdout.trim() || `exit ${result.exitCode}`;
-    api.window.showErrorMessage(`Eraser failed: ${reason}. Falling back to recycle bin.`);
-    return false;
-  }
+  }).catch(() => { /* ignore — late failures aren't fatal */ });
+
   return true;
 }
 
