@@ -37,13 +37,14 @@ var GmailClient = class {
     const ids = (listJson.messages ?? []).map((m) => m.id).slice(0, max);
     if (ids.length === 0) return [];
     const CONCURRENCY = 6;
+    const includeBody = opts.includeBody === true;
     const hydrated = new Array(ids.length);
     let cursor = 0;
     const workers = Array.from({ length: Math.min(CONCURRENCY, ids.length) }, async () => {
       while (true) {
         const i = cursor++;
         if (i >= ids.length) return;
-        hydrated[i] = await this.getMessageMetadata(ids[i]);
+        hydrated[i] = await this.getMessageMetadata(ids[i], includeBody);
       }
     });
     await Promise.all(workers);
@@ -51,11 +52,15 @@ var GmailClient = class {
     messages.sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
     return messages;
   }
-  async getMessageMetadata(id) {
+  async getMessageMetadata(id, includeBody = false) {
     const url = new URL(`${GMAIL_API_BASE}/users/me/messages/${encodeURIComponent(id)}`);
-    url.searchParams.set("format", "metadata");
-    url.searchParams.append("metadataHeaders", "From");
-    url.searchParams.append("metadataHeaders", "Subject");
+    if (includeBody) {
+      url.searchParams.set("format", "full");
+    } else {
+      url.searchParams.set("format", "metadata");
+      url.searchParams.append("metadataHeaders", "From");
+      url.searchParams.append("metadataHeaders", "Subject");
+    }
     const res = await this.fetchAuthorized(url.toString());
     const json = await res.json();
     if (!json.id) return null;
@@ -68,6 +73,10 @@ var GmailClient = class {
     const subject = findHeader("Subject");
     const internalDateMs = Number(json.internalDate ?? "0");
     const receivedAt = Number.isFinite(internalDateMs) && internalDateMs > 0 ? new Date(internalDateMs).toISOString() : (/* @__PURE__ */ new Date(0)).toISOString();
+    let body;
+    if (includeBody && json.payload) {
+      body = extractPlainBody(json.payload);
+    }
     return {
       id: json.id,
       threadId: json.threadId ?? "",
@@ -75,7 +84,8 @@ var GmailClient = class {
       subject,
       snippet: json.snippet ?? "",
       receivedAt,
-      labels: Object.freeze([...json.labelIds ?? []])
+      labels: Object.freeze([...json.labelIds ?? []]),
+      ...body !== void 0 ? { body } : {}
     };
   }
   async fetchAuthorized(url) {
@@ -97,6 +107,47 @@ var GmailClient = class {
     return res;
   }
 };
+var MAX_BODY_BYTES = 8 * 1024;
+function decodeBase64Url(data) {
+  try {
+    return Buffer.from(data, "base64url").toString("utf8");
+  } catch {
+    const std = data.replace(/-/g, "+").replace(/_/g, "/");
+    const pad = std.length % 4 === 0 ? "" : "=".repeat(4 - std.length % 4);
+    try {
+      return Buffer.from(std + pad, "base64").toString("utf8");
+    } catch {
+      return "";
+    }
+  }
+}
+function findPart(part, mime) {
+  if (!part) return void 0;
+  if (part.mimeType === mime && part.body?.data && !part.filename) {
+    return decodeBase64Url(part.body.data);
+  }
+  if (Array.isArray(part.parts)) {
+    for (const child of part.parts) {
+      const found = findPart(child, mime);
+      if (found) return found;
+    }
+  }
+  return void 0;
+}
+function stripHtml(html) {
+  return html.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;/gi, "'").replace(/\s+/g, " ").trim();
+}
+function extractPlainBody(payload) {
+  let text = findPart(payload, "text/plain");
+  if (!text) {
+    const html = findPart(payload, "text/html");
+    if (html) text = stripHtml(html);
+  }
+  if (!text) return "";
+  const buf = Buffer.from(text, "utf8");
+  if (buf.byteLength <= MAX_BODY_BYTES) return text;
+  return buf.subarray(0, MAX_BODY_BYTES).toString("utf8");
+}
 
 // src/oauth.ts
 import { createHash, randomBytes } from "node:crypto";
@@ -443,6 +494,10 @@ var LIST_UNREAD_TOOL = {
         type: "string",
         enum: ["unread", "read", "all"],
         description: 'Read-state filter. "unread" (default) preserves legacy is:unread; "read" returns only seen mail; "all" applies no read-state constraint.'
+      },
+      include_body: {
+        type: "boolean",
+        description: "Include decoded plain-text body (truncated to 8 KB). Default false. Set true when callers (e.g. transaction-extractor pipelines) need the email body and not just the snippet preview."
       }
     },
     additionalProperties: false
@@ -523,7 +578,8 @@ async function handleToolsCall(id, params) {
     since: typeof args.since === "string" ? args.since : void 0,
     max: typeof args.max === "number" ? args.max : 25,
     query: typeof args.query === "string" ? args.query : void 0,
-    read_state: readState
+    read_state: readState,
+    include_body: args.include_body === true
   };
   try {
     const client = new GmailClient(accessToken);
@@ -531,7 +587,8 @@ async function handleToolsCall(id, params) {
       max: input.max ?? 25,
       query: input.query,
       since: input.since,
-      readState
+      readState,
+      includeBody: input.include_body === true
     });
     const output = { messages };
     logInfo(`list_unread \u2192 ${messages.length} message(s)`);

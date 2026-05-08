@@ -1392,7 +1392,7 @@ async function lmRunJson(api, modelId, systemPrompt, userPrompt) {
 
 async function aiStage1(api, modelId, msg) {
   const sys = 'You classify emails. Respond with a single JSON object and nothing else.';
-  const usr = `Subject: ${msg.subject || ''}\nSnippet: ${msg.snippet || ''}\n\nReturn:\n{\n  "is_transaction": <true if this email reports a single bank or card transaction (charge, payment, refund, transfer); false otherwise>,\n  "is_balance":     <true if this email reports an account balance (statement, daily balance alert); false otherwise>\n}`;
+  const usr = `Subject: ${msg.subject || ''}\nSnippet: ${msg.snippet || ''}\nBody: ${truncateBody(msg.body)}\n\nReturn:\n{\n  "is_transaction": <true if this email reports a single bank or card transaction (charge, payment, refund, transfer, deposit); false otherwise>,\n  "is_balance":     <true if this email reports an account balance (statement, daily balance alert); false otherwise>\n}`;
   const r = await lmRunJson(api, modelId, sys, usr);
   if (!r || typeof r !== 'object') return { is_transaction: false, is_balance: false, malformed: true };
   return {
@@ -1404,7 +1404,7 @@ async function aiStage1(api, modelId, msg) {
 
 async function aiStage2(api, modelId, msg) {
   const sys = 'You extract financial transaction data from emails. Respond with a single JSON object and nothing else. Money is reported in dollars; if you see cents, divide by 100. If multiple transactions are mentioned, return them in the "items" array.';
-  const usr = `Subject: ${msg.subject || ''}\nSnippet: ${msg.snippet || ''}\n\nReturn:\n{\n  "items": [\n    {\n      "merchant":         <string or null>,\n      "amount":           <number — positive for spend/charge, negative for refund/credit>,\n      "card_last_four":   <string of 4 digits or null>,\n      "transaction_date": <"YYYY-MM-DD">,\n      "confidence":       <"high" | "medium" | "low">\n    }\n  ]\n}`;
+  const usr = `Subject: ${msg.subject || ''}\nSnippet: ${msg.snippet || ''}\nBody: ${truncateBody(msg.body)}\n\nReturn:\n{\n  "items": [\n    {\n      "merchant":         <string or null>,\n      "amount":           <number — positive for spend/charge, negative for refund/credit>,\n      "card_last_four":   <string of 4 digits or null>,\n      "transaction_date": <"YYYY-MM-DD">,\n      "confidence":       <"high" | "medium" | "low">\n    }\n  ]\n}`;
   const r = await lmRunJson(api, modelId, sys, usr);
   if (!r || !Array.isArray(r.items)) return { items: [], malformed: !r };
   const items = [];
@@ -1438,7 +1438,7 @@ async function aiStage3(api, modelId, tx, categoryNames) {
 
 async function aiStage1bExtract(api, modelId, msg) {
   const sys = 'You extract account balance information from emails. Respond with a single JSON object and nothing else.';
-  const usr = `Subject: ${msg.subject || ''}\nSnippet: ${msg.snippet || ''}\n\nReturn:\n{\n  "account_last_four": <string of 4 digits or null>,\n  "balance":           <number, in dollars>,\n  "snapshot_date":     <"YYYY-MM-DD">\n}`;
+  const usr = `Subject: ${msg.subject || ''}\nSnippet: ${msg.snippet || ''}\nBody: ${truncateBody(msg.body)}\n\nReturn:\n{\n  "account_last_four": <string of 4 digits or null>,\n  "balance":           <number, in dollars>,\n  "snapshot_date":     <"YYYY-MM-DD">\n}`;
   const r = await lmRunJson(api, modelId, sys, usr);
   if (!r || typeof r !== 'object') return null;
   const bal = typeof r.balance === 'number' ? r.balance : Number(r.balance);
@@ -1458,6 +1458,19 @@ async function aiStage1bExtract(api, modelId, msg) {
 function dollarsToCents(n) {
   // Math.round avoids 0.1+0.2 binary drift; we already store as INTEGER.
   return Math.round(Number(n) * 100);
+}
+
+function truncateBody(body) {
+  // The MCP returns up to 8 KB. We further trim and strip soft hyphens / zwnj
+  // before feeding the LLM so prompt budget stays under ~3 KB.
+  if (typeof body !== 'string' || !body) return '';
+  const cleaned = body
+    .replace(/&zwnj;|\u200c/gi, '')
+    .replace(/&nbsp;|\u00a0/gi, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return cleaned.length > 3000 ? cleaned.slice(0, 3000) : cleaned;
 }
 
 function isoLocalDate(isoTs) {
@@ -1537,6 +1550,7 @@ async function budgetSync(api) {
       max: 100,
       read_state: 'all',
       query: 'from:chase.com',
+      include_body: true,
     });
     if (result && result.isError) {
       throw new Error(`Gmail MCP error: ${result.content?.[0]?.text ?? 'unknown'}`);

@@ -45,6 +45,13 @@ export interface ListUnreadInput {
    * - `'all'`: no read-state constraint.
    */
   read_state?: 'unread' | 'read' | 'all';
+  /**
+   * Include decoded plain-text body (M63 P0b).
+   * When true, `format=full` is used and the text/plain MIME part is decoded
+   * (truncated to 8 KB) into UnreadMessage.body. Default false — caller pays
+   * the extra bandwidth + privacy surface only when needed.
+   */
+  include_body?: boolean;
 }
 
 export interface UnreadMessage {
@@ -60,6 +67,8 @@ export interface UnreadMessage {
   receivedAt: string;
   /** Gmail label IDs (e.g. `INBOX`, `IMPORTANT`, `CATEGORY_PERSONAL`). */
   labels: readonly string[];
+  /** Decoded plain-text body (M63 P0b). Present only when caller passed include_body=true. Truncated to 8 KB. */
+  body?: string;
 }
 
 export interface ListUnreadOutput {

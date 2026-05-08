@@ -29,6 +29,8 @@ export interface GmailListOptions {
    * legacy `is:unread` query.
    */
   readState?: 'unread' | 'read' | 'all';
+  /** Include decoded text/plain body (M63 P0b). Default false. */
+  includeBody?: boolean;
 }
 
 export class GmailClient {
@@ -73,13 +75,14 @@ export class GmailClient {
     // saturates undici's connection pool and triggers UND_ERR_CONNECT_TIMEOUT
     // on larger batches (e.g. max=100). 6 in flight is a safe ceiling.
     const CONCURRENCY = 6;
+    const includeBody = opts.includeBody === true;
     const hydrated: Array<UnreadMessage | null> = new Array(ids.length);
     let cursor = 0;
     const workers = Array.from({ length: Math.min(CONCURRENCY, ids.length) }, async () => {
       while (true) {
         const i = cursor++;
         if (i >= ids.length) return;
-        hydrated[i] = await this.getMessageMetadata(ids[i]);
+        hydrated[i] = await this.getMessageMetadata(ids[i], includeBody);
       }
     });
     await Promise.all(workers);
@@ -89,20 +92,31 @@ export class GmailClient {
     return messages;
   }
 
-  private async getMessageMetadata(id: string): Promise<UnreadMessage | null> {
+  private async getMessageMetadata(id: string, includeBody = false): Promise<UnreadMessage | null> {
     const url = new URL(`${GMAIL_API_BASE}/users/me/messages/${encodeURIComponent(id)}`);
-    url.searchParams.set('format', 'metadata');
-    url.searchParams.append('metadataHeaders', 'From');
-    url.searchParams.append('metadataHeaders', 'Subject');
+    if (includeBody) {
+      url.searchParams.set('format', 'full');
+    } else {
+      url.searchParams.set('format', 'metadata');
+      url.searchParams.append('metadataHeaders', 'From');
+      url.searchParams.append('metadataHeaders', 'Subject');
+    }
 
     const res = await this.fetchAuthorized(url.toString());
+    type GmailPart = {
+      mimeType?: string;
+      filename?: string;
+      body?: { data?: string; size?: number };
+      parts?: GmailPart[];
+      headers?: Array<{ name: string; value: string }>;
+    };
     const json = (await res.json()) as {
       id?: string;
       threadId?: string;
       snippet?: string;
       internalDate?: string;
       labelIds?: string[];
-      payload?: { headers?: Array<{ name: string; value: string }> };
+      payload?: GmailPart;
     };
     if (!json.id) return null;
 
@@ -119,6 +133,11 @@ export class GmailClient {
       ? new Date(internalDateMs).toISOString()
       : new Date(0).toISOString();
 
+    let body: string | undefined;
+    if (includeBody && json.payload) {
+      body = extractPlainBody(json.payload);
+    }
+
     return {
       id: json.id,
       threadId: json.threadId ?? '',
@@ -127,6 +146,7 @@ export class GmailClient {
       snippet: json.snippet ?? '',
       receivedAt,
       labels: Object.freeze([...(json.labelIds ?? [])]),
+      ...(body !== undefined ? { body } : {}),
     };
   }
 
@@ -150,4 +170,73 @@ export class GmailClient {
     }
     return res;
   }
+}
+
+// ── Body extraction (M63 P0b) ─────────────────────────────────────────
+//
+// Walk the Gmail payload tree to find the first text/plain part. Fall back
+// to text/html stripped of tags if no plain part exists. Output truncated
+// to 8 KB so a single email never blows up downstream prompts.
+
+const MAX_BODY_BYTES = 8 * 1024;
+
+interface GmailPartLike {
+  mimeType?: string;
+  filename?: string;
+  body?: { data?: string; size?: number };
+  parts?: GmailPartLike[];
+}
+
+function decodeBase64Url(data: string): string {
+  // Gmail uses URL-safe base64 without padding. Buffer handles base64url natively in Node 16+.
+  try {
+    return Buffer.from(data, 'base64url').toString('utf8');
+  } catch {
+    // Older runtimes: pad and translate manually.
+    const std = data.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = std.length % 4 === 0 ? '' : '='.repeat(4 - (std.length % 4));
+    try { return Buffer.from(std + pad, 'base64').toString('utf8'); } catch { return ''; }
+  }
+}
+
+function findPart(part: GmailPartLike | undefined, mime: string): string | undefined {
+  if (!part) return undefined;
+  if (part.mimeType === mime && part.body?.data && !part.filename) {
+    return decodeBase64Url(part.body.data);
+  }
+  if (Array.isArray(part.parts)) {
+    for (const child of part.parts) {
+      const found = findPart(child, mime);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractPlainBody(payload: GmailPartLike): string {
+  let text = findPart(payload, 'text/plain');
+  if (!text) {
+    const html = findPart(payload, 'text/html');
+    if (html) text = stripHtml(html);
+  }
+  if (!text) return '';
+  // Byte-truncate (not char-truncate) so we honor the 8 KB ceiling deterministically.
+  const buf = Buffer.from(text, 'utf8');
+  if (buf.byteLength <= MAX_BODY_BYTES) return text;
+  return buf.subarray(0, MAX_BODY_BYTES).toString('utf8');
 }

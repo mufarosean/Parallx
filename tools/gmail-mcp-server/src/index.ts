@@ -62,6 +62,11 @@ const LIST_UNREAD_TOOL: McpToolSchema = {
         description:
           'Read-state filter. "unread" (default) preserves legacy is:unread; "read" returns only seen mail; "all" applies no read-state constraint.',
       },
+      include_body: {
+        type: 'boolean',
+        description:
+          'Include decoded plain-text body (truncated to 8 KB). Default false. Set true when callers (e.g. transaction-extractor pipelines) need the email body and not just the snippet preview.',
+      },
     },
     additionalProperties: false,
   },
@@ -170,6 +175,7 @@ async function handleToolsCall(
     max: typeof args.max === 'number' ? args.max : 25,
     query: typeof args.query === 'string' ? args.query : undefined,
     read_state: readState,
+    include_body: args.include_body === true,
   };
 
   try {
@@ -179,6 +185,7 @@ async function handleToolsCall(
       query: input.query,
       since: input.since,
       readState,
+      includeBody: input.include_body === true,
     });
     const output: ListUnreadOutput = { messages };
     // We log COUNTS only — never subjects or snippets.
