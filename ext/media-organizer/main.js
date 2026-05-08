@@ -13327,9 +13327,9 @@ function showBulkDeleteDialog(state, api, onComplete) {
       let fileMsg = '';
       if (fileCheckbox.checked) {
         if (result.filesErased) {
-          fileMsg = ` (${result.filesErased} file${result.filesErased === 1 ? '' : 's'} queued in Eraser)`;
+          fileMsg = ` — securely erased ${result.filesErased} file${result.filesErased === 1 ? '' : 's'} via Eraser (check the Eraser task list to confirm)`;
         } else {
-          fileMsg = ` (${result.filesTrashed} file${result.filesTrashed === 1 ? '' : 's'} removed${result.filesPermanent ? `, ${result.filesPermanent} on external drive permanently deleted` : ''}${result.filesFailed ? `, ${result.filesFailed} failed` : ''})`;
+          fileMsg = ` — recycle-bin fallback: ${result.filesTrashed} file${result.filesTrashed === 1 ? '' : 's'} removed${result.filesPermanent ? `, ${result.filesPermanent} on external drive permanently deleted` : ''}${result.filesFailed ? `, ${result.filesFailed} failed` : ''}`;
         }
       }
       api.window.showInformationMessage(`${result.purged} item${result.purged === 1 ? '' : 's'} deleted${fileMsg}.`);
@@ -17289,11 +17289,14 @@ async function _tryEraseWithEraser(api, filePaths) {
     return false;
   }
 
-  // Eraser CLI: `Eraser.exe erase /quiet file=<path1> file=<path2> ...`
-  // /quiet is required when spawned headlessly (windowsHide:true) — otherwise
-  // Eraser tries to open a console window, fails, and exits with a CLR
-  // exception code (0xE0434352) even though the erase still succeeds.
-  const args = ['erase', '/quiet', ...filePaths.map((p) => `file=${p}`)];
+  // Eraser CLI: `Eraser.exe addtask /quiet /schedule=now file=<path1> ...`
+  // - addtask (vs. erase) ensures the operation is registered in Eraser's
+  //   persistent task list, so the user can confirm it ran by opening the
+  //   Eraser UI.
+  // - /quiet is required when spawned headlessly (windowsHide:true) — without
+  //   it Eraser tries to open a console window, fails, and exits with a CLR
+  //   exception code (0xE0434352) even though the erase still succeeds.
+  const args = ['addtask', '/quiet', '/schedule=now', ...filePaths.map((p) => `file=${p}`)];
   let stderr = '';
   let stdout = '';
   const result = await window.parallxElectron.terminal.execStream(
