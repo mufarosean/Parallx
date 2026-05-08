@@ -1541,12 +1541,15 @@ async function budgetSync(api) {
     if (result && result.isError) {
       throw new Error(`Gmail MCP error: ${result.content?.[0]?.text ?? 'unknown'}`);
     }
-    const payload = result?.content?.[0]?.text ?? '[]';
-    let messages;
-    try { messages = JSON.parse(payload); } catch (e) {
+    const payload = result?.content?.[0]?.text ?? '{"messages":[]}';
+    let parsed;
+    try { parsed = JSON.parse(payload); } catch (e) {
       throw new Error('Gmail MCP returned non-JSON payload: ' + (e instanceof Error ? e.message : String(e)));
     }
-    if (!Array.isArray(messages)) messages = [];
+    // Tool envelope is { messages: [...] }; fall back to bare array for compat.
+    let messages = Array.isArray(parsed)
+      ? parsed
+      : (Array.isArray(parsed?.messages) ? parsed.messages : []);
 
     // Cache active expense category names for Stage 3
     const categoryRows = await db.all(
