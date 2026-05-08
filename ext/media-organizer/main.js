@@ -13324,9 +13324,14 @@ function showBulkDeleteDialog(state, api, onComplete) {
       const result = await moPurgeMedia(api, items, { deleteFiles: !!fileCheckbox.checked });
       state.selectedIds.clear();
       state.selecting = false;
-      const fileMsg = fileCheckbox.checked
-        ? ` (${result.filesTrashed} file${result.filesTrashed === 1 ? '' : 's'} removed${result.filesPermanent ? `, ${result.filesPermanent} on external drive permanently deleted` : ''}${result.filesFailed ? `, ${result.filesFailed} failed` : ''})`
-        : '';
+      let fileMsg = '';
+      if (fileCheckbox.checked) {
+        if (result.filesErased) {
+          fileMsg = ` (${result.filesErased} file${result.filesErased === 1 ? '' : 's'} queued in Eraser)`;
+        } else {
+          fileMsg = ` (${result.filesTrashed} file${result.filesTrashed === 1 ? '' : 's'} removed${result.filesPermanent ? `, ${result.filesPermanent} on external drive permanently deleted` : ''}${result.filesFailed ? `, ${result.filesFailed} failed` : ''})`;
+        }
+      }
       api.window.showInformationMessage(`${result.purged} item${result.purged === 1 ? '' : 's'} deleted${fileMsg}.`);
       overlay.remove();
       onComplete();
@@ -17259,8 +17264,37 @@ async function moAutoStackByBasename(api) {
 //   opts.deleteFiles (default true): also trash the on-disk source files.
 //
 // Returns { purged, filesTrashed, filesFailed }.
+
+// Attempt to securely overwrite + delete files via Eraser (Heidi).
+// - Reads `mediaOrganizer.eraserPath` from configuration (default
+//   `C:\Program Files\Eraser\Eraser.exe`).
+// - If the executable is missing or invocation fails, returns false so the
+//   caller can fall back to the OS recycle bin.
+// - Eraser is fire-and-forget: we queue an `addtask --schedule=now` with one
+//   `--file=<path>` per target. Eraser handles its own progress + confirm UI.
+async function _tryEraseWithEraser(api, filePaths) {
+  if (!_isWindows) return false;
+  if (!filePaths || filePaths.length === 0) return false;
+  const cfgPath = api.workspace.getConfiguration('mediaOrganizer').get('eraserPath',
+    'C:\\Program Files\\Eraser\\Eraser.exe');
+  if (!cfgPath) return false;
+
+  // Verify the executable exists before spawning.
+  const exists = await window.parallxElectron.fs.exists(cfgPath).catch(() => false);
+  if (!exists) return false;
+
+  // Build args: addtask --schedule=now --file="<p1>" --file="<p2>" ...
+  // Quote every path token to survive spaces. terminal.exec runs through a
+  // shell, so we double-quote both the exe and each --file= value.
+  const fileArgs = filePaths.map((p) => `--file="${p}"`).join(' ');
+  const cmd = `"${cfgPath}" addtask --schedule=now ${fileArgs}`;
+  const r = await window.parallxElectron.terminal.exec(cmd, {}).catch((e) => ({ error: String(e) }));
+  if (!r || r.error || (typeof r.exitCode === 'number' && r.exitCode !== 0)) return false;
+  return true;
+}
+
 async function moPurgeMedia(api, items, opts = {}) {
-  if (!items || items.length === 0) return { purged: 0, filesTrashed: 0, filesFailed: 0, filesPermanent: 0 };
+  if (!items || items.length === 0) return { purged: 0, filesTrashed: 0, filesFailed: 0, filesPermanent: 0, filesErased: 0 };
   const deleteFiles = opts.deleteFiles !== false;
   const sep = _isWindows ? '\\' : '/';
   const thumbDir = getThumbDir(api);
@@ -17344,21 +17378,39 @@ async function moPurgeMedia(api, items, opts = {}) {
     }
   }
 
-  // 5. Optionally send source files to the OS recycle bin.
+  // 5. Optionally remove the source files. Try Eraser (Heidi) for secure
+  //    overwrite first; fall back to OS recycle bin if Eraser is not
+  //    installed/configured. Eraser is fire-and-forget — it queues the task
+  //    and shows its own progress + confirmation in the system tray.
   let filesTrashed = 0;
   let filesFailed = 0;
   let filesPermanent = 0;
+  let filesErased = 0;
   if (deleteFiles) {
     const seen = new Set();
+    const uniquePaths = [];
     for (const fr of fileRows) {
       if (!fr.sourcePath || seen.has(fr.sourcePath)) continue;
       seen.add(fr.sourcePath);
-      const r = await window.parallxElectron.fs.delete(fr.sourcePath, { useTrash: 'auto' }).catch(() => ({ error: 'fail' }));
-      if (r && !r.error) {
-        filesTrashed++;
-        if (r.deletedPermanently) filesPermanent++;
+      uniquePaths.push(fr.sourcePath);
+    }
+
+    let erasedHere = false;
+    try {
+      erasedHere = await _tryEraseWithEraser(api, uniquePaths);
+    } catch { /* fall through to recycle-bin path */ }
+
+    if (erasedHere) {
+      filesErased = uniquePaths.length;
+    } else {
+      for (const p of uniquePaths) {
+        const r = await window.parallxElectron.fs.delete(p, { useTrash: 'auto' }).catch(() => ({ error: 'fail' }));
+        if (r && !r.error) {
+          filesTrashed++;
+          if (r.deletedPermanently) filesPermanent++;
+        }
+        else filesFailed++;
       }
-      else filesFailed++;
     }
   }
 
@@ -17371,7 +17423,7 @@ async function moPurgeMedia(api, items, opts = {}) {
   moRebuildSearchIndex().catch(() => {});
   _notifySidebarRefresh();
 
-  return { purged: photoIds.length + videoIds.length, filesTrashed, filesFailed, filesPermanent };
+  return { purged: photoIds.length + videoIds.length, filesTrashed, filesFailed, filesPermanent, filesErased };
 }
 
 // One-shot startup sweep: any mo_files row whose backing file is missing on
