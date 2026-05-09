@@ -26,7 +26,9 @@
       { "typeId": "budget.editor", "displayName": "Budget" }
     ],
     "commands": [
-      { "id": "budget.openDashboard",     "title": "Open Dashboard",           "category": "Budget" },
+      { "id": "budget.openDashboard",     "title": "Open Overview",            "category": "Budget" },
+      { "id": "budget.openPlan",          "title": "Open Plan",                "category": "Budget" },
+      { "id": "budget.openSettings",      "title": "Open Settings",            "category": "Budget" },
       { "id": "budget.openAccounts",      "title": "Open Accounts",            "category": "Budget" },
       { "id": "budget.openTransactions",  "title": "Open Transactions",        "category": "Budget" },
       { "id": "budget.openBudgets",       "title": "Open Budgets",             "category": "Budget" },
@@ -52,6 +54,11 @@
             "type": "string",
             "default": "gmail",
             "description": "The MCP server ID under which the Gmail server is registered (Settings → MCP Servers → row id). Defaults to 'gmail' to match the bundled catalog entry. If you renamed the row on install, update this to match exactly."
+          },
+          "budget.gmailQuery": {
+            "type": "string",
+            "default": "from:(chase.com OR americanexpress.com OR capitalone.com OR discover.com OR citibank.com OR wellsfargo.com OR bankofamerica.com OR usbank.com)",
+            "description": "Gmail search filter applied to every sync. Defaults cover major US issuers. Use Gmail search syntax (e.g. add OR clauses for additional banks)."
           },
           "budget.syncStartDays": {
             "type": "number",

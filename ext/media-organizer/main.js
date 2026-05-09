@@ -4982,6 +4982,22 @@ const MO_CSS = `
 .mo-card:hover { border-color: var(--vscode-focusBorder, #9333ea); }
 .mo-card:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
 .mo-card.mo-selected { border-color: var(--vscode-focusBorder, #9333ea); box-shadow: 0 0 0 1px var(--vscode-focusBorder, #9333ea); }
+/* Items currently being securely erased by Eraser — visible-but-pending. */
+.mo-card.mo-card-erasing { opacity: 0.55; pointer-events: none; filter: grayscale(0.4); position: relative; }
+.mo-card.mo-card-erasing::after {
+  content: 'erasing…';
+  position: absolute;
+  top: 6px; left: 6px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  background: var(--vscode-statusBarItem-warningBackground, #b27e1a);
+  color: var(--vscode-statusBarItem-warningForeground, #fff);
+  border-radius: 3px;
+  pointer-events: none;
+}
 .mo-card-thumb {
   position: relative;
   overflow: hidden;
@@ -5158,6 +5174,46 @@ const MO_CSS = `
   text-overflow: ellipsis;
   margin-top: 1px;
 }
+.mo-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 1px;
+  min-width: 0;
+  overflow: hidden;
+}
+.mo-card-meta .mo-card-detail {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+.mo-card-tags {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+}
+/* Edge fade only when the inner scroll width actually exceeds the visible
+   width — i.e. tags are truncated. Toggled by a ResizeObserver in the card
+   render path so it stays correct across zoom / column-width changes. */
+.mo-card-tags.is-overflowing {
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 12px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 12px), transparent 100%);
+}
+.mo-card-tag-pill {
+  display: inline-block;
+  padding: 0 5px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #fff);
+  border-radius: 8px;
+  font-size: 9px;
+  line-height: 14px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 
 
@@ -5327,14 +5383,17 @@ const MO_CSS = `
 /* ═══ Filter Panel ═══ */
 .mo-filter-panel {
   display: none;
-  flex-direction: column;
-  gap: 10px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 18px 24px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--vscode-panel-border, #333);
   background: var(--vscode-sideBar-background, #1e1e1e);
   font-size: var(--parallx-fontSize-sm, 11px);
 }
-.mo-filter-section { display: flex; flex-direction: column; gap: 4px; }
+.mo-filter-section { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.mo-filter-section.mo-filter-section-tags { flex: 1 1 320px; max-width: 520px; }
 .mo-filter-section-label {
   font-weight: 600;
   font-size: var(--parallx-fontSize-xs, 10px);
@@ -5342,13 +5401,13 @@ const MO_CSS = `
   color: var(--vscode-descriptionForeground, #888);
   letter-spacing: 0.5px;
 }
-.mo-filter-tag-row { display: flex; align-items: flex-start; gap: 6px; }
+.mo-filter-tag-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .mo-filter-row-label {
-  font-size: var(--parallx-fontSize-sm, 11px);
-  color: var(--vscode-foreground, #ccc);
-  min-width: 48px;
-  padding-top: 3px;
+  font-size: var(--parallx-fontSize-xs, 10px);
+  color: var(--vscode-descriptionForeground, #888);
   flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
 }
 .mo-filter-pills {
   display: flex;
@@ -5410,7 +5469,8 @@ const MO_CSS = `
 }
 .mo-star {
   cursor: pointer;
-  font-size: var(--parallx-fontSize-md, 16px);
+  font-size: 18px;
+  line-height: 1;
   color: var(--vscode-descriptionForeground, #555);
   transition: color 0.1s;
   user-select: none;
@@ -5433,8 +5493,9 @@ const MO_CSS = `
   width: 130px;
 }
 .mo-filter-clear {
-  align-self: flex-start;
-  padding: 3px 8px;
+  margin-left: auto;
+  align-self: flex-end;
+  padding: 4px 10px;
   font-size: var(--parallx-fontSize-xs, 10px);
   background: var(--vscode-button-secondaryBackground, #3a3d41);
   color: var(--vscode-button-secondaryForeground, #ccc);
@@ -6039,6 +6100,41 @@ const MO_CSS = `
   color: var(--vscode-list-activeSelectionForeground, #fff);
 }
 .mo-bulk-tag-row input[type="checkbox"] { margin: 0; pointer-events: none; }
+.mo-bulk-tag-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-bulk-tag-row-state {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.mo-bulk-tag-row-state-all {
+  background: var(--vscode-testing-iconPassed, #388a34);
+  color: #fff;
+}
+.mo-bulk-tag-row-state-some {
+  background: var(--vscode-editorWarning-foreground, #b89500);
+  color: #1e1e1e;
+  font-weight: 600;
+}
+.mo-bulk-tag-row-state-none {
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #888);
+  border: 1px solid var(--vscode-input-border, #444);
+}
+.mo-bulk-tag-chip-all { outline: 1px solid var(--vscode-testing-iconPassed, #388a34); }
+.mo-bulk-tag-chip-some { outline: 1px solid var(--vscode-editorWarning-foreground, #b89500); }
+.mo-bulk-mode-hint {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground, #888);
+  margin-top: 2px;
+  font-style: italic;
+}
+.mo-bulk-tag-dialog.mo-mode-replace .mo-bulk-mode-hint {
+  color: var(--vscode-errorForeground, #f48771);
+  font-style: normal;
+  font-weight: 600;
+}
 .mo-bulk-tag-row-create {
   font-style: italic;
   color: var(--vscode-textLink-foreground, #3794ff);
@@ -7507,6 +7603,23 @@ function _moRecallThumb(type, id) {
   return _moResolvedThumbs.get(`${type}:${id}`) || null;
 }
 
+// Revoke any blob URLs the renderer is holding for the supplied file paths.
+// Used by the delete-purge flow so a future request for the same path goes
+// back to disk instead of being served the OLD bytes from a still-cached
+// blob (which would otherwise look like a thumbnail "leak" — the file on
+// disk is gone but the cached blob still holds its content).
+function _revokeCachedBlobUrlsFor(filePaths) {
+  if (!filePaths || filePaths.length === 0) return;
+  for (const p of filePaths) {
+    if (!p) continue;
+    const url = _blobUrlCache.get(p);
+    if (!url) continue;
+    _blobUrlCache.delete(p);
+    _blobUrlReverse.delete(url);
+    try { URL.revokeObjectURL(url); } catch { /* already revoked */ }
+  }
+}
+
 function _evictOneBlobUrl() {
   // Walk in insertion (LRU) order; first entry whose URL is not currently
   // referenced by an <img> in the document gets evicted. If every cached URL
@@ -7620,6 +7733,12 @@ function renderMediaCard(item, options) {
   let cls = 'mo-card';
   if (isSelected) cls += ' mo-selected';
   if (isFocused) cls += ' mo-focused';
+  // Decorate items currently being securely erased — they remain visible in
+  // the grid until Eraser finishes wiping the file from disk, so the user
+  // needs feedback that they're already in flight.
+  const itemId = Number(item.id);
+  if (item.type === 'photo' && _pendingEraserCommits.pendingPhotoIds.has(itemId)) cls += ' mo-card-erasing';
+  else if (item.type === 'video' && _pendingEraserCommits.pendingVideoIds.has(itemId)) cls += ' mo-card-erasing';
   const card = moEl('div', cls);
   card.dataset.key = `${item.type}:${item.id}`;
   card.setAttribute('draggable', 'true');
@@ -7693,7 +7812,44 @@ function renderMediaCard(item, options) {
   const title = item.title || (item.filePath ? item.filePath.split(/[/\\]/).pop() : `${item.type} #${item.id}`);
   info.appendChild(moEl('div', 'mo-card-title', { textContent: title, title: title }));
   const detail = item.takenAt ? formatShortDate(item.takenAt) : formatShortDate(item.createdAt);
-  if (detail) info.appendChild(moEl('div', 'mo-card-detail', { textContent: detail }));
+  // Date + tags share one row so tags sit "next to the date" as requested.
+  // The row only renders if either piece exists. Tags are also gated on the
+  // `mediaOrganizer.showCardTags` setting so users can declutter the grid;
+  // the date still renders when tags are hidden.
+  const tagsVisible = _showCardTags && Array.isArray(item.tags) && item.tags.length > 0;
+  if (detail || tagsVisible) {
+    const metaRow = moEl('div', 'mo-card-meta');
+    if (detail) metaRow.appendChild(moEl('span', 'mo-card-detail', { textContent: detail }));
+    if (tagsVisible) {
+      const tagsWrap = moEl('span', 'mo-card-tags');
+      // Tooltip lists every tag, even when the visible row truncates.
+      tagsWrap.title = item.tags.map(t => t.name).join(', ');
+      for (const tag of item.tags) {
+        const pill = moEl('span', 'mo-card-tag-pill', { textContent: tag.name });
+        tagsWrap.appendChild(pill);
+      }
+      metaRow.appendChild(tagsWrap);
+      // Fade only when the row actually overflows. Card width changes with
+      // the user's zoom slider (--mo-card-min-width) and with viewport size,
+      // so we observe the wrap and recompute on every resize.
+      const updateOverflow = () => {
+        // scrollWidth includes flex gaps; allow 1px tolerance for sub-pixel
+        // rounding so a perfect-fit row doesn't flicker the fade on/off.
+        const overflowing = tagsWrap.scrollWidth - tagsWrap.clientWidth > 1;
+        tagsWrap.classList.toggle('is-overflowing', overflowing);
+      };
+      // Initial pass after layout settles.
+      requestAnimationFrame(updateOverflow);
+      if (typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(updateOverflow);
+        ro.observe(tagsWrap);
+        // Stop observing when the card leaves the DOM to avoid leaks across
+        // re-renders. cardGrid.refresh replaces nodes wholesale.
+        card._moTagsResizeObserver = ro;
+      }
+    }
+    info.appendChild(metaRow);
+  }
   card.appendChild(info);
 
   card.addEventListener('pointerdown', (e) => {
@@ -7772,6 +7928,37 @@ function renderMediaCard(item, options) {
     }
     e.dataTransfer.effectAllowed = 'copy';
   });
+
+  // Drop target: tag dragged from sidebar (#6). Applies tag to this item, or
+  // to the entire current selection if this card is part of it.
+  card.addEventListener('dragover', (e) => {
+    if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.includes('application/x-mo-tag')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      card.classList.add('mo-drop-target');
+    }
+  });
+  card.addEventListener('dragleave', () => { card.classList.remove('mo-drop-target'); });
+  card.addEventListener('drop', async (e) => {
+    if (!(e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.includes('application/x-mo-tag'))) return;
+    e.preventDefault();
+    e.stopPropagation();
+    card.classList.remove('mo-drop-target');
+    try {
+      const tagId = parseInt(e.dataTransfer.getData('application/x-mo-tag'), 10);
+      if (!Number.isFinite(tagId)) return;
+      const myKey = `${item.type}:${item.id}`;
+      const sel = options.selectedIds;
+      const targetKeys = (sel && sel.has(myKey) && sel.size > 1) ? [...sel] : [myKey];
+      const n = await moApplyTagToKeys(tagId, targetKeys);
+      const apiRef = options.api || _api;
+      if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied tag to ${n} item${n === 1 ? '' : 's'}`, 2000);
+      document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+    } catch (err) {
+      console.warn('[mo] tag-drop failed', err);
+    }
+  });
+
   card._imgEl = img;
   card._thumbEl = thumb;
 
@@ -7893,6 +8080,36 @@ function renderMediaListRow(item, options) {
     }
     e.dataTransfer.effectAllowed = 'copy';
   });
+
+  // Drop target: tag dragged from sidebar (#6).
+  row.addEventListener('dragover', (e) => {
+    if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.includes('application/x-mo-tag')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      row.classList.add('mo-drop-target');
+    }
+  });
+  row.addEventListener('dragleave', () => { row.classList.remove('mo-drop-target'); });
+  row.addEventListener('drop', async (e) => {
+    if (!(e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.includes('application/x-mo-tag'))) return;
+    e.preventDefault();
+    e.stopPropagation();
+    row.classList.remove('mo-drop-target');
+    try {
+      const tagId = parseInt(e.dataTransfer.getData('application/x-mo-tag'), 10);
+      if (!Number.isFinite(tagId)) return;
+      const myKey = `${item.type}:${item.id}`;
+      const sel = options.selectedIds;
+      const targetKeys = (sel && sel.has(myKey) && sel.size > 1) ? [...sel] : [myKey];
+      const n = await moApplyTagToKeys(tagId, targetKeys);
+      const apiRef = options.api || _api;
+      if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied tag to ${n} item${n === 1 ? '' : 's'}`, 2000);
+      document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+    } catch (err) {
+      console.warn('[mo] tag-drop failed', err);
+    }
+  });
+
   row._imgEl = img;
   row._thumbEl = thumb;
   return row;
@@ -8183,6 +8400,7 @@ function renderBrowserSidebar(container, api) {
   qfBody.appendChild(sidebarItem('grid', 'All Media', null, () => openGrid('all', 'All Media')));
   qfBody.appendChild(sidebarItem('image', 'Photos', null, () => openGrid('photos', 'Photos')));
   qfBody.appendChild(sidebarItem('film', 'Videos', null, () => openGrid('videos', 'Videos')));
+  qfBody.appendChild(sidebarItem('circle-help', 'Untagged', null, () => openGrid('untagged', 'Untagged')));
   qfBody.appendChild(sidebarItem('star', 'Favorites', null, () => openGrid('favorites', 'Favorites')));
   qfBody.appendChild(sidebarItem('clock', 'Recent', null, () => openGrid('recent', 'Recent')));
   qfBody.appendChild(sidebarItem('copy', 'Duplicates', null, () => openGrid('duplicates', 'Duplicates')));
@@ -8194,6 +8412,81 @@ function renderBrowserSidebar(container, api) {
   // Folders section
   const { section: folderSection, body: folderBody } = sidebarSection('Folders', 'folder', false);
   sections.appendChild(folderSection);
+  // Cap height + filter input — parity with the Tags section (#10, #11).
+  folderBody.style.maxHeight = '260px';
+  folderBody.style.overflowY = 'auto';
+  let folderFilterText = '';
+  let folderSearchOpen = false;
+  const folderHeader = folderSection.querySelector('.mo-sidebar-section-header');
+  const folderChevron = folderHeader.querySelector('.mo-chevron');
+  const mkFolderHeaderBtn = (icon, title) => {
+    const b = moEl('button', 'mo-sidebar-header-btn', { type: 'button', title, innerHTML: moIcon(icon, 11) });
+    b.style.cssText = 'background:none;border:none;color:inherit;cursor:pointer;padding:0 4px;display:flex;align-items:center;opacity:0.65;';
+    b.addEventListener('mouseenter', () => { b.style.opacity = '1'; });
+    b.addEventListener('mouseleave', () => { b.style.opacity = b.classList.contains('is-active') ? '1' : '0.65'; });
+    b.addEventListener('click', (e) => e.stopPropagation());
+    return b;
+  };
+  const folderSearchBtn = mkFolderHeaderBtn('search', 'Filter folders');
+  folderSearchBtn.style.marginLeft = 'auto';
+  if (folderChevron) {
+    // CSS gives .mo-chevron margin-left:auto, which would split free space
+    // with our button. Zero it so only the button drives the right alignment.
+    folderChevron.style.marginLeft = '0';
+    folderHeader.insertBefore(folderSearchBtn, folderChevron);
+  } else {
+    folderHeader.appendChild(folderSearchBtn);
+  }
+  const folderSearchWrap = moEl('div', 'mo-folder-search-wrap');
+  folderSearchWrap.style.cssText = 'display:none;position:relative;margin:2px 8px 4px 8px;';
+  const folderSearchInput = moEl('input', 'mo-folder-search', { type: 'text', placeholder: 'Filter folders…' });
+  folderSearchInput.style.cssText = 'width:100%;padding:3px 22px 3px 6px;font-size:11px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border,transparent);border-radius:3px;box-sizing:border-box;';
+  const folderSearchClearBtn = moEl('button', null, { type: 'button', title: 'Clear filter', textContent: '\u00D7' });
+  folderSearchClearBtn.style.cssText = 'position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--vscode-input-placeholderForeground,#888);cursor:pointer;font-size:14px;line-height:1;padding:0 4px;display:none;';
+  folderSearchClearBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    folderSearchInput.value = '';
+    folderFilterText = '';
+    folderSearchClearBtn.style.display = 'none';
+    loadFolders();
+    folderSearchInput.focus();
+  });
+  folderSearchInput.addEventListener('input', () => {
+    folderFilterText = folderSearchInput.value.trim().toLowerCase();
+    folderSearchClearBtn.style.display = folderSearchInput.value ? '' : 'none';
+    loadFolders();
+  });
+  folderSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const hadText = !!folderSearchInput.value;
+      folderSearchInput.value = '';
+      folderFilterText = '';
+      folderSearchClearBtn.style.display = 'none';
+      if (!hadText) {
+        folderSearchOpen = false;
+        folderSearchWrap.style.display = 'none';
+        folderSearchBtn.classList.remove('is-active');
+        folderSearchBtn.style.opacity = '0.65';
+      }
+      loadFolders();
+    }
+  });
+  folderSearchWrap.appendChild(folderSearchInput);
+  folderSearchWrap.appendChild(folderSearchClearBtn);
+  folderSection.insertBefore(folderSearchWrap, folderBody);
+  folderSearchBtn.addEventListener('click', () => {
+    folderSearchOpen = !folderSearchOpen;
+    folderSearchWrap.style.display = folderSearchOpen ? '' : 'none';
+    folderSearchBtn.classList.toggle('is-active', folderSearchOpen);
+    folderSearchBtn.style.opacity = folderSearchOpen ? '1' : '0.65';
+    if (folderSearchOpen) folderSearchInput.focus();
+    else if (folderFilterText) {
+      folderSearchInput.value = '';
+      folderFilterText = '';
+      folderSearchClearBtn.style.display = 'none';
+      loadFolders();
+    }
+  });
 
   // Tags section
   const { section: tagSection, body: tagBody } = sidebarSection('Tags', 'tag', false);
@@ -8242,6 +8535,7 @@ function renderBrowserSidebar(container, api) {
       for (const row of filtered) {
         const relPath = commonPrefix ? row.path.slice(commonPrefix.length) : row.path;
         const displayName = relPath.replace(/\\/g, '/') || row.path.split(/[/\\]/).pop() || `Folder ${row.id}`;
+        if (folderFilterText && !displayName.toLowerCase().includes(folderFilterText) && !row.path.toLowerCase().includes(folderFilterText)) continue;
         const badge = String(row.file_count);
         folderBody.appendChild(sidebarItem('folder', displayName, badge, () => openGrid(`folder:${row.id}`, displayName, 'folder')));
       }
@@ -8250,25 +8544,462 @@ function renderBrowserSidebar(container, api) {
     }
   }
 
+  // ─── Tag sidebar header controls (sort + search) ─────────────────────────
+  // Minimal, in-place with the section chevron. No checkboxes, no pills, no
+  // bulk bar — bulk ops live behind right-click on a tag (Rename / Merge /
+  // Delete / Favorite), matching the rest of the sidebar.
+  // Icons must exist in the iconRegistry; an unknown name renders an empty
+  // string and the button collapses to 0 width (invisible). Stick to the
+  // lucide-derived names that are confirmed present.
+  const tagSortModes = [
+    { value: 'az',    icon: 'arrow-down-a-z', tooltip: 'Sort: name A → Z' },
+    { value: 'za',    icon: 'arrow-up-a-z',   tooltip: 'Sort: name Z → A' },
+    { value: 'most',  icon: 'arrow-down-1-0', tooltip: 'Sort: most used first' },
+    { value: 'least', icon: 'arrow-down-0-1', tooltip: 'Sort: least used first' },
+  ];
+  let tagSortIdx = 0;
+  let tagFilterText = '';
+  let tagSearchOpen = false;
+
+  const tagHeader = tagSection.querySelector('.mo-sidebar-section-header');
+  const tagChevron = tagHeader.querySelector('.mo-chevron');
+
+  // Total tag count badge next to "Tags" label (#3). Updated by loadTags().
+  const tagCountSpan = moEl('span', 'mo-tag-section-count', { textContent: '' });
+  tagCountSpan.style.cssText = 'opacity:0.5;margin-left:6px;font-size:11px;font-weight:normal;';
+  // Header structure is: [icon, labelSpan, chevron]. Insert after the label.
+  if (tagHeader.children.length >= 2) {
+    tagHeader.insertBefore(tagCountSpan, tagHeader.children[2] || null);
+  }
+
+  const mkHeaderBtn = (icon, title) => {
+    const b = moEl('button', 'mo-tag-header-btn', { type: 'button', title, innerHTML: moIcon(icon, 11) });
+    b.style.cssText = 'background:none;border:none;color:inherit;cursor:pointer;padding:0 4px;display:flex;align-items:center;opacity:0.65;';
+    b.addEventListener('mouseenter', () => { b.style.opacity = '1'; });
+    b.addEventListener('mouseleave', () => { b.style.opacity = b.classList.contains('is-active') ? '1' : '0.65'; });
+    b.addEventListener('click', (e) => e.stopPropagation()); // don't toggle section
+    return b;
+  };
+
+  const tagSearchBtn = mkHeaderBtn('search', 'Filter tags ( / to focus )');
+  const tagSortBtn = mkHeaderBtn(tagSortModes[0].icon, tagSortModes[0].tooltip);
+  // Group both buttons in a flush-right wrapper. Avoids fragile margin-auto
+  // interactions with the chevron (which has its own margin-left:auto in CSS).
+  const tagBtnGroup = moEl('div', 'mo-tag-header-btns');
+  tagBtnGroup.style.cssText = 'display:flex;align-items:center;margin-left:auto;gap:2px;';
+  tagBtnGroup.appendChild(tagSearchBtn);
+  tagBtnGroup.appendChild(tagSortBtn);
+  if (tagChevron) {
+    tagChevron.style.marginLeft = '4px';
+    tagHeader.insertBefore(tagBtnGroup, tagChevron);
+  } else {
+    tagHeader.appendChild(tagBtnGroup);
+  }
+  tagSortBtn.addEventListener('click', () => {
+    tagSortIdx = (tagSortIdx + 1) % tagSortModes.length;
+    tagSortBtn.title = tagSortModes[tagSortIdx].tooltip;
+    tagSortBtn.innerHTML = moIcon(tagSortModes[tagSortIdx].icon, 11);
+    moSetSetting('tag_sort_mode', tagSortModes[tagSortIdx].value).catch(() => {});
+    loadTags();
+  });
+
+  // Search input wrapped to host a clear-× control (#4). Hidden by default;
+  // toggled via the search icon or the "/" shortcut (#5).
+  const tagSearchWrap = moEl('div', 'mo-tag-search-wrap');
+  tagSearchWrap.style.cssText = 'display:none;position:relative;margin:2px 8px 4px 8px;';
+  const tagSearchInput = moEl('input', 'mo-tag-search', {
+    type: 'text',
+    placeholder: 'Filter tags…',
+  });
+  tagSearchInput.style.cssText = 'width:100%;padding:3px 22px 3px 6px;font-size:11px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border,transparent);border-radius:3px;box-sizing:border-box;';
+  const tagSearchClearBtn = moEl('button', null, { type: 'button', title: 'Clear filter', textContent: '\u00D7' });
+  tagSearchClearBtn.style.cssText = 'position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--vscode-input-placeholderForeground,#888);cursor:pointer;font-size:14px;line-height:1;padding:0 4px;display:none;';
+  tagSearchClearBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    tagSearchInput.value = '';
+    tagFilterText = '';
+    tagSearchClearBtn.style.display = 'none';
+    loadTags();
+    tagSearchInput.focus();
+  });
+  tagSearchInput.addEventListener('input', () => {
+    tagFilterText = tagSearchInput.value.trim().toLowerCase();
+    tagSearchClearBtn.style.display = tagSearchInput.value ? '' : 'none';
+    loadTags();
+  });
+  tagSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const hadText = !!tagSearchInput.value;
+      tagSearchInput.value = '';
+      tagFilterText = '';
+      tagSearchClearBtn.style.display = 'none';
+      if (!hadText) {
+        tagSearchOpen = false;
+        tagSearchWrap.style.display = 'none';
+        tagSearchBtn.classList.remove('is-active');
+        tagSearchBtn.style.opacity = '0.65';
+        moSetSetting('tag_search_open', '0').catch(() => {});
+      }
+      loadTags();
+    }
+  });
+  tagSearchWrap.appendChild(tagSearchInput);
+  tagSearchWrap.appendChild(tagSearchClearBtn);
+  tagSection.insertBefore(tagSearchWrap, tagBody);
+
+  function setTagSearchOpen(open, focus) {
+    tagSearchOpen = !!open;
+    tagSearchWrap.style.display = tagSearchOpen ? '' : 'none';
+    tagSearchBtn.classList.toggle('is-active', tagSearchOpen);
+    tagSearchBtn.style.opacity = tagSearchOpen ? '1' : '0.65';
+    moSetSetting('tag_search_open', tagSearchOpen ? '1' : '0').catch(() => {});
+    if (tagSearchOpen && focus) tagSearchInput.focus();
+    if (!tagSearchOpen && tagFilterText) {
+      tagSearchInput.value = '';
+      tagFilterText = '';
+      tagSearchClearBtn.style.display = 'none';
+      loadTags();
+    }
+  }
+  tagSearchBtn.addEventListener('click', () => setTagSearchOpen(!tagSearchOpen, true));
+
+  // Hydrate persisted preferences (#1). UI defaults remain valid until the
+  // async load completes, then we re-render once with the saved settings.
+  (async () => {
+    try {
+      const savedSort = await moGetSetting('tag_sort_mode', 'az');
+      const idx = tagSortModes.findIndex(m => m.value === savedSort);
+      if (idx >= 0) {
+        tagSortIdx = idx;
+        tagSortBtn.title = tagSortModes[tagSortIdx].tooltip;
+        tagSortBtn.innerHTML = moIcon(tagSortModes[tagSortIdx].icon, 11);
+      }
+      const savedOpen = (await moGetSetting('tag_search_open', '0')) === '1';
+      if (savedOpen) setTagSearchOpen(true, false);
+      loadTags();
+    } catch { /* defaults already in place */ }
+  })();
+
+  // "/" focuses the tag search from anywhere in the sidebar (#5).
+  root.addEventListener('keydown', (e) => {
+    if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      e.preventDefault();
+      setTagSearchOpen(true, true);
+    }
+  });
+
+  // Cap the visible list height so long tag libraries scroll inside the
+  // section instead of pushing Albums / Quick Filters off-screen.
+  tagBody.style.maxHeight = '260px';
+  tagBody.style.overflowY = 'auto';
+
+  // buildTagRow: a single tag row in the sidebar. Encapsulates highlight (#2),
+  // favorite star (#7), drag-source (#6), keyboard nav (#8), inline rename (#9),
+  // and the existing right-click menu.
+  function buildTagRow(tag) {
+    const row = moEl('div', 'mo-sidebar-item mo-tag-row');
+    row.setAttribute('tabindex', '0');
+    row.setAttribute('draggable', 'true');
+    row.dataset.tagId = String(tag.id);
+
+    // Icon (★ if favorite, else generic tag icon).
+    const iconWrap = moEl('span', 'mo-icon-wrap', { innerHTML: moIcon(tag.favorite ? 'star' : 'tag', 14) });
+    if (tag.favorite) iconWrap.style.color = 'var(--vscode-charts-yellow, #e2b714)';
+    row.appendChild(iconWrap);
+
+    // Label with optional substring highlight (#2).
+    const label = moEl('span', 'mo-sidebar-item-label');
+    const name = String(tag.name || '');
+    if (tagFilterText) {
+      const idx = name.toLowerCase().indexOf(tagFilterText);
+      if (idx >= 0) {
+        label.appendChild(document.createTextNode(name.slice(0, idx)));
+        const mark = moEl('mark', null, { textContent: name.slice(idx, idx + tagFilterText.length) });
+        mark.style.cssText = 'background:var(--vscode-editor-findMatchHighlightBackground,rgba(234,92,0,0.33));color:inherit;border-radius:2px;padding:0 1px;';
+        label.appendChild(mark);
+        label.appendChild(document.createTextNode(name.slice(idx + tagFilterText.length)));
+      } else {
+        label.textContent = name;
+      }
+    } else {
+      label.textContent = name;
+    }
+    row.appendChild(label);
+
+    if (tag._count > 0) {
+      row.appendChild(moEl('span', 'mo-sidebar-item-count', { textContent: String(tag._count) }));
+    }
+
+    // Open grid filtered by this tag.
+    row.addEventListener('click', () => openGrid(`tag:${tag.id}`, tag.name, 'tag'));
+
+    // Right-click — Rename / Merge / Delete / Favorite.
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showTagContextMenu(e.clientX, e.clientY, tag, tag._count);
+    });
+
+    // Inline rename on double-click (#9). Replaces label with an <input>.
+    row.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      startInlineRename(row, label, tag);
+    });
+
+    // Drag-source: tag id flows via 'application/x-mo-tag' (#6).
+    row.addEventListener('dragstart', (e) => {
+      try {
+        e.dataTransfer.setData('application/x-mo-tag', String(tag.id));
+        e.dataTransfer.setData('text/plain', tag.name || `tag:${tag.id}`);
+        e.dataTransfer.effectAllowed = 'copy';
+      } catch { /* ignore */ }
+    });
+
+    // Keyboard nav (#8): Up/Down move focus, Enter opens, F2 renames, Delete deletes.
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const next = row.nextElementSibling;
+        if (next && next.classList.contains('mo-sidebar-item')) next.focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const prev = row.previousElementSibling;
+        if (prev && prev.classList.contains('mo-sidebar-item')) prev.focus();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        openGrid(`tag:${tag.id}`, tag.name, 'tag');
+      } else if (e.key === 'F2') {
+        e.preventDefault();
+        startInlineRename(row, label, tag);
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        triggerTagDelete(tag);
+      }
+    });
+
+    return row;
+  }
+
+  // Inline rename: turn the row's label into an editable input, save on blur/Enter,
+  // cancel on Escape.
+  function startInlineRename(row, label, tag) {
+    if (row.querySelector('.mo-tag-rename-input')) return;
+    const input = moEl('input', 'mo-tag-rename-input', { type: 'text', value: tag.name || '' });
+    input.style.cssText = 'flex:1;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-focusBorder,#9333ea);border-radius:3px;padding:1px 4px;font-size:inherit;min-width:0;';
+    label.style.display = 'none';
+    label.parentNode.insertBefore(input, label.nextSibling);
+    // Disable row drag while editing — otherwise Chromium intercepts mousedown
+    // inside the input to start a drag, which kills cursor placement and text
+    // selection (this was the "rename is broken" symptom).
+    const wasDraggable = row.draggable;
+    row.draggable = false;
+    // Belt-and-braces: stop mousedown bubbling so the row never sees it.
+    const blockMouse = (e) => e.stopPropagation();
+    input.addEventListener('mousedown', blockMouse);
+    setTimeout(() => { try { input.focus(); input.select(); } catch { /* ignore */ } }, 0);
+    let done = false;
+    const cleanup = () => {
+      if (done) return;
+      done = true;
+      input.remove();
+      label.style.display = '';
+      row.draggable = wasDraggable;
+    };
+    const commit = async () => {
+      const next = String(input.value || '').trim();
+      cleanup();
+      if (!next || next === tag.name) return;
+      try {
+        await TagQueries.update(tag.id, { name: next });
+        api.statusBar.setMessage(`Renamed tag to "${next}"`, 3000);
+        _notifySidebarRefresh();
+        document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+      } catch (err) {
+        api.window.showErrorMessage('Rename failed: ' + (err && err.message ? err.message : String(err)));
+      }
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cleanup(); }
+      e.stopPropagation();
+    });
+    input.addEventListener('blur', () => { if (!done) commit(); });
+    input.addEventListener('click', (e) => e.stopPropagation());
+  }
+
+  // Trigger delete-with-confirm for a tag (used by keyboard Delete and the
+  // right-click menu's Delete entry).
+  async function triggerTagDelete(tag) {
+    const usageCount = tag._count || 0;
+    const msg = usageCount > 0
+      ? `Delete tag "${tag.name}"? It is currently applied to ${usageCount} item(s); those items will lose this tag. Files are not deleted.`
+      : `Delete tag "${tag.name}"?`;
+    const confirmed = await api.window.showWarningMessage(msg, { modal: true }, 'Delete');
+    if (confirmed !== 'Delete') return;
+    try {
+      await TagQueries.destroy(tag.id);
+      api.statusBar.setMessage(`Deleted tag "${tag.name}"`, 3000);
+      _notifySidebarRefresh();
+      document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+    } catch (err) {
+      api.window.showErrorMessage('Delete failed: ' + (err && err.message ? err.message : String(err)));
+    }
+  }
+
   async function loadTags() {
     try {
-      const result = await TagQueries.findMany({ hasParents: false }, { field: 'name', direction: 'ASC' }, { page: 1, perPage: 200 });
+      const result = await TagQueries.findMany(
+        { hasParents: false },
+        { field: 'name', direction: 'ASC' },
+        { page: 1, perPage: 500 }
+      );
       tagBody.innerHTML = '';
-      if (!result.items || result.items.length === 0) {
+      const itemsRaw = result.items || [];
+      if (itemsRaw.length === 0) {
         tagBody.appendChild(moEl('div', 'mo-empty', { textContent: 'No tags created yet' }));
         return;
       }
-      for (const tag of result.items) {
-        tagBody.appendChild(sidebarItem('tag', tag.name, null, () => openGrid(`tag:${tag.id}`, tag.name, 'tag')));
+
+      // Per-tag usage counts (best effort; one round-trip).
+      const counts = new Map();
+      try {
+        const rows = await db.all(
+          `SELECT tag_id, SUM(n) AS n FROM (
+             SELECT tag_id, COUNT(*) AS n FROM mo_photos_tags GROUP BY tag_id
+             UNION ALL
+             SELECT tag_id, COUNT(*) AS n FROM mo_videos_tags GROUP BY tag_id
+           ) GROUP BY tag_id`
+        );
+        for (const r of rows || []) counts.set(r.tag_id, r.n || 0);
+      } catch {}
+
+      // Filter + sort.
+      let items = itemsRaw.map(t => ({ ...t, _count: counts.get(t.id) || 0 }));
+      if (tagCountSpan) tagCountSpan.textContent = itemsRaw.length > 0 ? `(${itemsRaw.length})` : '';
+      if (tagFilterText) items = items.filter(t => t.name.toLowerCase().includes(tagFilterText));
+      const sortValue = tagSortModes[tagSortIdx].value;
+      const cmpName = (a, b) => a.name.localeCompare(b.name);
+      let baseSort;
+      if (sortValue === 'az')         baseSort = cmpName;
+      else if (sortValue === 'za')    baseSort = (a, b) => b.name.localeCompare(a.name);
+      else if (sortValue === 'most')  baseSort = (a, b) => b._count - a._count || cmpName(a, b);
+      else if (sortValue === 'least') baseSort = (a, b) => a._count - b._count || cmpName(a, b);
+      else                            baseSort = cmpName;
+      // Favorites pin to the top regardless of chosen sort (#7).
+      items.sort((a, b) => {
+        const fa = a.favorite ? 1 : 0;
+        const fb = b.favorite ? 1 : 0;
+        if (fa !== fb) return fb - fa;
+        return baseSort(a, b);
+      });
+
+      if (items.length === 0) {
+        tagBody.appendChild(moEl('div', 'mo-empty', { textContent: 'No tags match filter' }));
+        return;
       }
-    } catch {
+
+      for (const tag of items) {
+        tagBody.appendChild(buildTagRow(tag));
+      }
+    } catch (err) {
+      tagBody.innerHTML = '';
       tagBody.appendChild(moEl('div', 'mo-empty', { textContent: 'Could not load tags' }));
     }
+  }
+
+  // Right-click on a tag row in the sidebar — Rename / Merge / Delete.
+  // Uses the already-tested TagQueries primitives.
+  function showTagContextMenu(x, y, tag, usageCount) {
+    showContextMenu(x, y, [
+      { label: tag.favorite ? 'Unmark Favorite' : 'Mark Favorite', handler: async () => {
+        try {
+          await TagQueries.update(tag.id, { favorite: !tag.favorite });
+          api.statusBar.setMessage(tag.favorite ? `Unfavorited "${tag.name}"` : `Favorited "${tag.name}"`, 2000);
+          _notifySidebarRefresh();
+        } catch (err) {
+          api.window.showErrorMessage('Favorite toggle failed: ' + (err && err.message ? err.message : String(err)));
+        }
+      }},
+      { separator: true },
+      { label: 'Rename\u2026', handler: async () => {
+        const next = await api.window.showInputBox({
+          prompt: `Rename tag "${tag.name}"`,
+          value: tag.name,
+          placeHolder: 'New tag name',
+        });
+        if (next == null) return;
+        const trimmed = String(next).trim();
+        if (!trimmed || trimmed === tag.name) return;
+        try {
+          await TagQueries.update(tag.id, { name: trimmed });
+          api.statusBar.setMessage(`Renamed tag to "${trimmed}"`, 3000);
+          _notifySidebarRefresh();
+          document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+        } catch (err) {
+          api.window.showErrorMessage('Rename failed: ' + (err && err.message ? err.message : String(err)));
+        }
+      }},
+      { label: 'Merge into\u2026', handler: async () => {
+        let others = [];
+        try {
+          const all = await TagQueries.findMany({}, { field: 'name', direction: 'ASC' }, { page: 1, perPage: 5000 });
+          others = (all.items || []).filter(t => t.id !== tag.id);
+        } catch (err) {
+          api.window.showErrorMessage('Could not load tags: ' + (err && err.message ? err.message : String(err)));
+          return;
+        }
+        if (others.length === 0) {
+          api.window.showInformationMessage('No other tags to merge into.');
+          return;
+        }
+        const picked = await api.window.showQuickPick(
+          others.map(t => ({ label: t.name, description: `id ${t.id}`, _id: t.id })),
+          { placeHolder: `Merge "${tag.name}" into which tag?` }
+        );
+        if (!picked) return;
+        const destId = picked._id;
+        const confirmed = await api.window.showWarningMessage(
+          `Merge "${tag.name}" into "${picked.label}"? All ${usageCount} item(s) will be re-tagged and "${tag.name}" will be deleted.`,
+          { modal: true }, 'Merge'
+        );
+        if (confirmed !== 'Merge') return;
+        try {
+          await TagQueries.merge([tag.id], destId);
+          api.statusBar.setMessage(`Merged into "${picked.label}"`, 3000);
+          _notifySidebarRefresh();
+          document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+        } catch (err) {
+          api.window.showErrorMessage('Merge failed: ' + (err && err.message ? err.message : String(err)));
+        }
+      }},
+      { separator: true },
+      { label: 'Delete\u2026', danger: true, handler: async () => {
+        const msg = usageCount > 0
+          ? `Delete tag "${tag.name}"? It is currently applied to ${usageCount} item(s); those items will lose this tag. Files are not deleted.`
+          : `Delete tag "${tag.name}"?`;
+        const confirmed = await api.window.showWarningMessage(msg, { modal: true }, 'Delete');
+        if (confirmed !== 'Delete') return;
+        try {
+          await TagQueries.destroy(tag.id);
+          api.statusBar.setMessage(`Deleted tag "${tag.name}"`, 3000);
+          _notifySidebarRefresh();
+          document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+        } catch (err) {
+          api.window.showErrorMessage('Delete failed: ' + (err && err.message ? err.message : String(err)));
+        }
+      }},
+    ]);
   }
 
   // Albums section (D8)
   const { section: albumSection, body: albumBody } = sidebarSection('Albums', 'folder-library', false);
   sections.appendChild(albumSection);
+  // Cap height — parity with Tags / Folders (#10).
+  albumBody.style.maxHeight = '320px';
+  albumBody.style.overflowY = 'auto';
 
   async function loadAlbums() {
     try {
@@ -8316,6 +9047,10 @@ function renderBrowserSidebar(container, api) {
         );
         counts.set(album.id, countRow ? countRow.total : 0);
       }
+
+      // Sort each level by title (A → Z) for stable, predictable rendering.
+      const cmpAlbumTitle = (a, b) => String(a.title || '').localeCompare(String(b.title || ''));
+      for (const list of childrenOf.values()) list.sort(cmpAlbumTitle);
 
       // Persisted expand/collapse state (per-album), keyed in mo_settings.
       const expandedRaw = await moGetSetting('album_tree_expanded', '');
@@ -8625,6 +9360,15 @@ function renderGridBrowser(container, api, input) {
   const toolbar = moEl('div', 'mo-toolbar');
   root.appendChild(toolbar);
 
+  // Quick-filter chips strip (#14) — shows the instance filter (Tag/Folder/
+  // Album that was clicked in the sidebar) plus any active panel filters
+  // (rating, dates, include/exclude tags). Each panel-filter chip has a ×
+  // to clear it. The instance-filter chip is read-only — to leave it the
+  // user navigates to a different entry in the sidebar.
+  const chipBar = moEl('div', 'mo-filter-chip-bar');
+  chipBar.style.cssText = 'display:none;flex-wrap:wrap;gap:4px;padding:4px 8px;border-bottom:1px solid var(--vscode-panel-border,transparent);';
+  root.appendChild(chipBar);
+
   const searchInput = moEl('input', 'mo-toolbar-search', {
     type: 'text',
     placeholder: 'Search… (try: cat tag:beach rating:>=4 taken:2024)',
@@ -8684,6 +9428,47 @@ function renderGridBrowser(container, api, input) {
   filterToggleBtn.appendChild(filterBadge);
   toolbar.appendChild(filterToggleBtn);
 
+  // Save Smart Album button (#15) — invokes the registered command which reads
+  // the current grid query state via custom event.
+  const saveSmartBtn = moEl('button', 'mo-toolbar-btn', { title: 'Save current view as Smart Album' });
+  saveSmartBtn.innerHTML = moIcon('bookmark', 12);
+  saveSmartBtn.setAttribute('aria-label', 'Save as Smart Album');
+  saveSmartBtn.addEventListener('click', () => {
+    api.commands.executeCommand('media-organizer.saveSmartAlbum').catch(() => {});
+  });
+  toolbar.appendChild(saveSmartBtn);
+
+  // Show-card-tags toggle (#16) — flips the workspace setting; affects all
+  // grids globally via the existing onDidChangeConfiguration listener.
+  const showTagsBtn = moEl('button', 'mo-toolbar-btn', { title: 'Show tags on cards' });
+  function refreshShowTagsBtn() {
+    showTagsBtn.classList.toggle('active', _showCardTags);
+    showTagsBtn.innerHTML = moIcon(_showCardTags ? 'eye' : 'eye-closed', 12);
+    showTagsBtn.title = _showCardTags ? 'Hide tags on cards' : 'Show tags on cards';
+  }
+  refreshShowTagsBtn();
+  showTagsBtn.setAttribute('aria-label', 'Toggle tags on cards');
+  showTagsBtn.addEventListener('click', async () => {
+    try {
+      const cfg = api.workspace.getConfiguration('mediaOrganizer');
+      if (cfg && typeof cfg.update === 'function') {
+        await cfg.update('showCardTags', !_showCardTags);
+      } else {
+        // Fallback: flip in-process and refresh; persists via the existing
+        // change handler on next reload if cfg.update is unavailable.
+        _showCardTags = !_showCardTags;
+        document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+      }
+      refreshShowTagsBtn();
+    } catch (err) {
+      console.warn('[mo] showCardTags toggle failed', err);
+    }
+  });
+  toolbar.appendChild(showTagsBtn);
+  // Re-read button state when the config changes elsewhere.
+  const showTagsCfgListener = () => { refreshShowTagsBtn(); };
+  document.addEventListener('mo:show-card-tags-changed', showTagsCfgListener);
+
   function updateFilterBadge() {
     let count = 0;
     if (state.filters.tagIds.length > 0) count++;
@@ -8693,6 +9478,80 @@ function renderGridBrowser(container, api, input) {
     if (state.filters.dateTo) count++;
     filterBadge.textContent = count > 0 ? String(count) : '';
     filterBadge.style.display = count > 0 ? '' : 'none';
+    renderFilterChips();
+  }
+
+  // Renders the chip bar (#14). Each chip shows a label + optional × to clear.
+  function renderFilterChips() {
+    chipBar.innerHTML = '';
+    // Lazy-load the tag-name cache the first time chips render so we can show
+    // "Tag: name" labels even when the user never opened the filter panel.
+    if (!_filterTagCache) {
+      loadFilterTags().then(() => { renderFilterChips(); }).catch(() => {});
+    }
+    const tagMap = new Map((_filterTagCache || []).map(t => [t.id, t.name]));
+    const mkChip = (label, onClear) => {
+      const chip = moEl('span', 'mo-filter-chip');
+      chip.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:2px 6px;font-size:11px;border-radius:10px;background:var(--vscode-badge-background,#3c3c3c);color:var(--vscode-badge-foreground,#fff);';
+      chip.appendChild(document.createTextNode(label));
+      if (onClear) {
+        const x = moEl('span', null, { textContent: '\u00D7' });
+        x.style.cssText = 'cursor:pointer;opacity:0.7;font-size:13px;line-height:1;';
+        x.addEventListener('mouseenter', () => { x.style.opacity = '1'; });
+        x.addEventListener('mouseleave', () => { x.style.opacity = '0.7'; });
+        x.addEventListener('click', (e) => { e.stopPropagation(); onClear(); });
+        chip.appendChild(x);
+      }
+      chipBar.appendChild(chip);
+    };
+
+    // Instance-filter chip (read-only). Derived from filterType / filterId.
+    if (filterType && filterType !== 'all') {
+      let instanceLabel = null;
+      if (filterType === 'photos') instanceLabel = 'Photos';
+      else if (filterType === 'videos') instanceLabel = 'Videos';
+      else if (filterType === 'favorites') instanceLabel = 'Favorites';
+      else if (filterType === 'untagged') instanceLabel = 'Untagged';
+      else if (filterType === 'recent') instanceLabel = 'Recent';
+      else if (filterType === 'duplicates') instanceLabel = 'Duplicates';
+      else if (filterType === 'trash') instanceLabel = 'Trash';
+      else if (filterType === 'tag' && filterId != null) instanceLabel = `Tag: ${tagMap.get(filterId) || `#${filterId}`}`;
+      else if (filterType === 'folder' && filterId != null) instanceLabel = `Folder #${filterId}`;
+      if (instanceLabel) mkChip(instanceLabel, null);
+    }
+
+    for (const id of state.filters.tagIds) {
+      const name = tagMap.get(id) || `#${id}`;
+      mkChip(`Tag: ${name}`, () => {
+        state.filters.tagIds = state.filters.tagIds.filter(i => i !== id);
+        renderTagPills(); refreshTagDropdown(); state.currentPage = 1; loadPage();
+      });
+    }
+    for (const id of state.filters.excludeTagIds) {
+      const name = tagMap.get(id) || `#${id}`;
+      mkChip(`Not: ${name}`, () => {
+        state.filters.excludeTagIds = state.filters.excludeTagIds.filter(i => i !== id);
+        renderTagPills(); refreshTagDropdown(); state.currentPage = 1; loadPage();
+      });
+    }
+    if (state.filters.ratingMin != null) {
+      mkChip(`\u2265 ${state.filters.ratingMin}\u2605`, () => {
+        state.filters.ratingMin = null;
+        updateStarBar(); state.currentPage = 1; loadPage();
+      });
+    }
+    if (state.filters.dateFrom || state.filters.dateTo) {
+      const label = `Date: ${state.filters.dateFrom || '…'} → ${state.filters.dateTo || '…'}`;
+      mkChip(label, () => {
+        state.filters.dateFrom = null;
+        state.filters.dateTo = null;
+        if (typeof dateFrom !== 'undefined') dateFrom.value = '';
+        if (typeof dateTo !== 'undefined') dateTo.value = '';
+        state.currentPage = 1; loadPage();
+      });
+    }
+
+    chipBar.style.display = chipBar.children.length > 0 ? 'flex' : 'none';
   }
 
   // Item count
@@ -8714,17 +9573,17 @@ function renderGridBrowser(container, api, input) {
   root.appendChild(filterPanel);
 
   // -- Tag filter section --
-  const tagSection = moEl('div', 'mo-filter-section');
+  const tagSection = moEl('div', 'mo-filter-section mo-filter-section-tags');
   tagSection.appendChild(moEl('div', 'mo-filter-section-label', { textContent: 'Tags' }));
 
   const tagIncludeRow = moEl('div', 'mo-filter-tag-row');
-  tagIncludeRow.appendChild(moEl('span', 'mo-filter-row-label', { textContent: 'Include:' }));
+  tagIncludeRow.appendChild(moEl('span', 'mo-filter-row-label', { textContent: 'Include' }));
   const tagIncludePills = moEl('div', 'mo-filter-pills');
   tagIncludeRow.appendChild(tagIncludePills);
   tagSection.appendChild(tagIncludeRow);
 
   const tagExcludeRow = moEl('div', 'mo-filter-tag-row');
-  tagExcludeRow.appendChild(moEl('span', 'mo-filter-row-label', { textContent: 'Exclude:' }));
+  tagExcludeRow.appendChild(moEl('span', 'mo-filter-row-label', { textContent: 'Exclude' }));
   const tagExcludePills = moEl('div', 'mo-filter-pills');
   tagExcludeRow.appendChild(tagExcludePills);
   tagSection.appendChild(tagExcludeRow);
@@ -8774,9 +9633,8 @@ function renderGridBrowser(container, api, input) {
   dateFrom.setAttribute('aria-label', 'From date');
   const dateTo = moEl('input', 'mo-filter-date', { type: 'text', placeholder: 'YYYY-MM-DD', title: 'To date' });
   dateTo.setAttribute('aria-label', 'To date');
-  dateRow.appendChild(moEl('span', 'mo-filter-row-label', { textContent: 'From:' }));
   dateRow.appendChild(dateFrom);
-  dateRow.appendChild(moEl('span', 'mo-filter-row-label', { textContent: 'To:' }));
+  dateRow.appendChild(moEl('span', 'mo-filter-row-label', { textContent: '→' }));
   dateRow.appendChild(dateTo);
   dateSection.appendChild(dateRow);
   filterPanel.appendChild(dateSection);
@@ -8850,8 +9708,16 @@ function renderGridBrowser(container, api, input) {
       pill.appendChild(removeBtn);
       tagExcludePills.appendChild(pill);
     }
-    if (state.filters.tagIds.length === 0) tagIncludePills.appendChild(moEl('span', 'mo-filter-empty', { textContent: 'none' }));
-    if (state.filters.excludeTagIds.length === 0) tagExcludePills.appendChild(moEl('span', 'mo-filter-empty', { textContent: 'none' }));
+    if (state.filters.tagIds.length === 0) {
+      tagIncludeRow.style.display = 'none';
+    } else {
+      tagIncludeRow.style.display = '';
+    }
+    if (state.filters.excludeTagIds.length === 0) {
+      tagExcludeRow.style.display = 'none';
+    } else {
+      tagExcludeRow.style.display = '';
+    }
   }
 
   function updateStarBar() {
@@ -9083,6 +9949,9 @@ function renderGridBrowser(container, api, input) {
       videoWhere.push('vt.tag_id = ?'); videoParams.push(filterId);
     } else if (filterType === 'favorites') {
       photoWhere.push('p.rating >= 5'); videoWhere.push('v.rating >= 5');
+    } else if (filterType === 'untagged') {
+      photoWhere.push('NOT EXISTS (SELECT 1 FROM mo_photos_tags upt WHERE upt.photo_id = p.id)');
+      videoWhere.push('NOT EXISTS (SELECT 1 FROM mo_videos_tags uvt WHERE uvt.video_id = v.id)');
     } else if (filterType === 'duplicates') {
       photoJoinParts.push(` JOIN mo_photos_files dpf ON dpf.photo_id = p.id JOIN mo_fingerprints dfp ON dfp.file_id = dpf.file_id AND dfp.type = 'md5'`);
       photoWhere.push(`dfp.value IN (SELECT value FROM mo_fingerprints WHERE type = 'md5' GROUP BY value HAVING COUNT(DISTINCT file_id) > 1)`);
@@ -9176,6 +10045,10 @@ function renderGridBrowser(container, api, input) {
       where.push('jt.tag_id = ?'); params.push(filterId);
     } else if (filterType === 'favorites') {
       where.push(`${alias}.rating >= 5`);
+    } else if (filterType === 'untagged') {
+      const tagTbl = type === 'photo' ? 'mo_photos_tags' : 'mo_videos_tags';
+      const tagFkCol = type === 'photo' ? 'photo_id' : 'video_id';
+      where.push(`NOT EXISTS (SELECT 1 FROM ${tagTbl} ut WHERE ut.${tagFkCol} = ${alias}.id)`);
     } else if (filterType === 'duplicates') {
       const fileJoin = type === 'photo' ? 'mo_photos_files' : 'mo_videos_files';
       const fileCol = type === 'photo' ? 'photo_id' : 'video_id';
@@ -9296,7 +10169,7 @@ function renderGridBrowser(container, api, input) {
 
     // Search text fed into the legacy LIKE path is only the leftover free text
     // when FTS is NOT used (we'll prefer FTS for free text). Pass empty when FTS is used.
-    const fallbackSearchText = '';
+    let fallbackSearchText = '';
 
     let items = [];
     let totalCount = 0;
@@ -9348,11 +10221,20 @@ function renderGridBrowser(container, api, input) {
     }
 
     // M59 P3: FTS lookup → restrict to matching ids
+    // If FTS returns no hits (index empty/stale, or tokenizer doesn't match
+    // the query), fall back to a LIKE-on-title path so basic name search
+    // always works even when FTS hasn't been rebuilt.
     const ftsExpr = moBuildFtsMatch(parsed.freeText);
+    let usedLikeFallback = false;
     if (ftsExpr) {
       const fts = await moFtsLookup(ftsExpr, 50000);
-      resolvedFilters.idWhitelistPhotos = fts.photoIds;
-      resolvedFilters.idWhitelistVideos = fts.videoIds;
+      if ((fts.photoIds && fts.photoIds.length) || (fts.videoIds && fts.videoIds.length)) {
+        resolvedFilters.idWhitelistPhotos = fts.photoIds;
+        resolvedFilters.idWhitelistVideos = fts.videoIds;
+      } else {
+        // FTS missed — let the SQL builder LIKE-match title/details/basename instead.
+        usedLikeFallback = true;
+      }
     }
 
     // M59 P3: folder: operator → restrict ids
@@ -9369,6 +10251,11 @@ function renderGridBrowser(container, api, input) {
       } else {
         resolvedFilters.idWhitelistVideos = fids.videoIds;
       }
+    }
+
+    // LIKE fallback when FTS missed — feed leftover free text into title LIKE.
+    if (usedLikeFallback && parsed.freeText) {
+      fallbackSearchText = parsed.freeText;
     }
 
     try {
@@ -9409,6 +10296,59 @@ function renderGridBrowser(container, api, input) {
     countLabel.textContent = `${totalCount} items`;
     updatePagination();
     updateFilterBadge();
+
+    // Batch-load tags for the current page so cards can show them inline
+    // next to the date. One grouped SELECT per entity type — much cheaper
+    // than per-card lookups, and only the items currently on screen pay
+    // the cost.
+    try {
+      const photoIds = [];
+      const videoIds = [];
+      for (const it of items) {
+        if (it.type === 'photo') photoIds.push(it.id);
+        else if (it.type === 'video') videoIds.push(it.id);
+        it.tags = []; // default; replaced below if any
+      }
+      const byKey = new Map();
+      if (photoIds.length > 0) {
+        const ph = photoIds.map(() => '?').join(',');
+        const rows = await db.all(
+          `SELECT pt.photo_id AS eid, t.id AS tid, t.name AS tname
+             FROM mo_photos_tags pt
+             JOIN mo_tags t ON t.id = pt.tag_id
+            WHERE pt.photo_id IN (${ph})
+            ORDER BY t.name COLLATE NOCASE ASC`,
+          photoIds
+        );
+        for (const r of rows || []) {
+          const k = `photo:${r.eid}`;
+          let arr = byKey.get(k); if (!arr) { arr = []; byKey.set(k, arr); }
+          arr.push({ id: r.tid, name: r.tname });
+        }
+      }
+      if (videoIds.length > 0) {
+        const vh = videoIds.map(() => '?').join(',');
+        const rows = await db.all(
+          `SELECT vt.video_id AS eid, t.id AS tid, t.name AS tname
+             FROM mo_videos_tags vt
+             JOIN mo_tags t ON t.id = vt.tag_id
+            WHERE vt.video_id IN (${vh})
+            ORDER BY t.name COLLATE NOCASE ASC`,
+          videoIds
+        );
+        for (const r of rows || []) {
+          const k = `video:${r.eid}`;
+          let arr = byKey.get(k); if (!arr) { arr = []; byKey.set(k, arr); }
+          arr.push({ id: r.tid, name: r.tname });
+        }
+      }
+      for (const it of items) {
+        const arr = byKey.get(`${it.type}:${it.id}`);
+        if (arr) it.tags = arr;
+      }
+    } catch (err) {
+      console.error('[MO-Grid] tag batch load failed:', err);
+    }
 
     if (cardGrid) {
       cardGrid.refresh(items, refreshOpts());
@@ -9882,6 +10822,23 @@ function renderGridBrowser(container, api, input) {
             window.parallxElectron.shell.showItemInFolder(fp);
           }
         });
+      }
+      return;
+    }
+
+    // T — open the bulk-tag dialog for the current selection (or the focused
+    // item if there is no multi-selection) (#13).
+    if (e.key === 't' && !inInput && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+      let target = null;
+      if (state.selectedIds.size > 0) {
+        target = state;
+      } else if (state.focusedIndex !== null && state.items[state.focusedIndex]) {
+        const item = state.items[state.focusedIndex];
+        target = { selectedIds: new Set([`${item.type}:${item.id}`]) };
+      }
+      if (target) {
+        e.preventDefault();
+        showBulkTagDialog(target, api, () => { if (selectionBar) selectionBar.update(); loadPage(); });
       }
       return;
     }
@@ -12902,7 +13859,60 @@ function parseSelectedIds(selectedIds) {
   return { photos, videos };
 }
 
-// Adapted from stash: EditGalleriesDialog — bulk tag with Set/Add/Remove modes
+// Apply a tag to a target set of media keys. Used by drag-tag-onto-card (#6).
+async function moApplyTagToKeys(tagId, keys) {
+  if (!Array.isArray(keys) || keys.length === 0) return 0;
+  const ops = [];
+  for (const k of keys) {
+    const [type, idStr] = String(k).split(':');
+    const id = parseInt(idStr, 10);
+    if (!Number.isFinite(id)) continue;
+    if (type === 'photo') {
+      ops.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id) VALUES (?, ?)', params: [id, tagId] });
+    } else if (type === 'video') {
+      ops.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_videos_tags (video_id, tag_id) VALUES (?, ?)', params: [id, tagId] });
+    }
+  }
+  if (ops.length === 0) return 0;
+  await db.transaction(ops);
+  return keys.length;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BULK TAGGING — DETERMINISTIC RULES
+// ─────────────────────────────────────────────────────────────────────────────
+// The bulk tag dialog has exactly three modes. Each mode has a precise,
+// auditable contract. No mode ever reads one selected item's tags and writes
+// them to another item — propagation between items is impossible by design.
+//
+//   ADD  — For every (selected_item, picked_tag) pair, INSERT OR IGNORE.
+//          Items keep ALL their existing tags. Tags not in `picked` are
+//          never touched. Idempotent. Picking a tag that ALL selected items
+//          already have is a no-op.
+//
+//   REMOVE — For every (selected_item, picked_tag) pair, DELETE the join row
+//          if present. Items keep ALL their other existing tags. Tags not in
+//          `picked` are never touched. Idempotent.
+//
+//   REPLACE — For every selected item, DELETE all existing tag joins, then
+//          INSERT the picked set. This is the ONLY mode that touches an
+//          item's existing tags. Destructive — requires explicit
+//          confirmation. Each item ends up with exactly the picked set.
+//
+// The browse list shows each tag's membership state across the selection:
+//   • All N    — every selected item already has this tag
+//   • M of N   — some but not all have it (mixed/indeterminate)
+//   • None     — no selected item has it
+// In REMOVE mode, only "All" and "M of N" tags are eligible (a tag nobody has
+// can't be removed). In ADD mode, picking an "All" tag is a no-op and warned.
+// REPLACE mode shows all tags; pre-checks tags that ALL items have so the
+// default REPLACE picks the intersection. The user can edit before applying.
+//
+// All writes go through the same primitives. No other code path in this file
+// adds/removes tags on multi-selection. Single-item add/remove (the detail
+// editor) calls Queries.updateTags with mode ADD/REMOVE per single tag,
+// which uses the same INSERT OR IGNORE / DELETE WHERE pattern.
+// ─────────────────────────────────────────────────────────────────────────────
 function showBulkTagDialog(state, api, onComplete) {
   const overlay = moEl('div', 'mo-bulk-dialog-overlay');
   const dialog = moEl('div', 'mo-bulk-dialog mo-bulk-tag-dialog');
@@ -12911,27 +13921,36 @@ function showBulkTagDialog(state, api, onComplete) {
   dialog.setAttribute('aria-label', 'Bulk Tag');
   overlay.appendChild(dialog);
 
-  dialog.appendChild(moEl('h3', null, { textContent: `Bulk Tag (${state.selectedIds.size} items)` }));
+  const { photos, videos } = parseSelectedIds(state.selectedIds);
+  const totalItems = photos.length + videos.length;
 
-  // Mode selector (Add / Remove)
+  dialog.appendChild(moEl('h3', null, { textContent: `Bulk Tag (${totalItems} item${totalItems === 1 ? '' : 's'})` }));
+
+  // Mode selector (Add / Remove / Replace)
   const modeSection = moEl('div', 'mo-bulk-dialog-section');
   modeSection.appendChild(moEl('label', null, { textContent: 'Mode' }));
   const modeBtns = moEl('div', 'mo-bulk-mode-btns');
   let mode = 'ADD';
-  const addBtn = moEl('button', 'active', { textContent: 'Add' });
-  const removeBtn = moEl('button', null, { textContent: 'Remove' });
-  addBtn.addEventListener('click', () => { mode = 'ADD'; addBtn.classList.add('active'); removeBtn.classList.remove('active'); });
-  removeBtn.addEventListener('click', () => { mode = 'REMOVE'; removeBtn.classList.add('active'); addBtn.classList.remove('active'); });
-  modeBtns.append(addBtn, removeBtn);
+  const addBtn = moEl('button', 'active', { textContent: 'Add', type: 'button' });
+  addBtn.title = 'Add picked tags to all selected items. Existing tags are kept.';
+  const removeBtn = moEl('button', null, { textContent: 'Remove', type: 'button' });
+  removeBtn.title = 'Remove picked tags from all selected items. Other tags are kept.';
+  const replaceBtn = moEl('button', null, { textContent: 'Replace', type: 'button' });
+  replaceBtn.title = 'Replace each item\u2019s tags with exactly the picked set. Destructive.';
+  modeBtns.append(addBtn, removeBtn, replaceBtn);
   modeSection.appendChild(modeBtns);
+
+  // Mode hint line under the buttons
+  const modeHint = moEl('div', 'mo-bulk-mode-hint');
+  modeSection.appendChild(modeHint);
   dialog.appendChild(modeSection);
 
   // ── Selected tags (chips) ──
   const chipsSection = moEl('div', 'mo-bulk-dialog-section');
-  const chipsLabel = moEl('label', null, { textContent: 'Selected tags (0)' });
+  const chipsLabel = moEl('label', null, { textContent: 'Picked tags (0)' });
   chipsSection.appendChild(chipsLabel);
   const chipsWrap = moEl('div', 'mo-bulk-tag-chips');
-  const chipsEmpty = moEl('span', 'mo-bulk-tag-chips-empty', { textContent: 'No tags selected — pick from below or type to search/create.' });
+  const chipsEmpty = moEl('span', 'mo-bulk-tag-chips-empty', { textContent: 'No tags picked — choose from below or type to search/create.' });
   chipsWrap.appendChild(chipsEmpty);
   chipsSection.appendChild(chipsWrap);
   dialog.appendChild(chipsSection);
@@ -12954,25 +13973,75 @@ function showBulkTagDialog(state, api, onComplete) {
   browseSection.appendChild(browseList);
   dialog.appendChild(browseSection);
 
-  // State
-  /** @type {Map<number, {id:number,name:string}>} */
+  // ── State ──
+  /** @type {Map<number, {id:number,name:string}>} all known tags */
   const allTags = new Map();
-  /** @type {Map<number, {id:number,name:string}>} */
+  /** @type {Map<number, {id:number,name:string}>} user-picked tags */
   const pickedTags = new Map();
+  /**
+   * Per-tag membership count across the current selection.
+   * counts.get(tagId) = number of selected items that have this tag.
+   * Computed once on dialog open from a single SELECT per entity type.
+   * @type {Map<number, number>}
+   */
+  const counts = new Map();
+
+  function membershipState(tagId) {
+    const c = counts.get(tagId) || 0;
+    if (c === 0) return 'none';
+    if (c >= totalItems) return 'all';
+    return 'some';
+  }
+
+  function membershipLabel(tagId) {
+    const c = counts.get(tagId) || 0;
+    if (c === 0) return 'None';
+    if (c >= totalItems) return `All ${totalItems}`;
+    return `${c} of ${totalItems}`;
+  }
+
+  function updateModeHint() {
+    if (mode === 'ADD') modeHint.textContent = 'Picked tags will be added to all selected items. Other tags are kept.';
+    else if (mode === 'REMOVE') modeHint.textContent = 'Picked tags will be removed from all selected items that have them. Other tags are kept.';
+    else modeHint.textContent = 'Each item will be set to exactly the picked tags. All other tags will be removed.';
+  }
+
+  function setMode(next) {
+    if (mode === next) return;
+    mode = next;
+    addBtn.classList.toggle('active', mode === 'ADD');
+    removeBtn.classList.toggle('active', mode === 'REMOVE');
+    replaceBtn.classList.toggle('active', mode === 'REPLACE');
+    dialog.classList.toggle('mo-mode-replace', mode === 'REPLACE');
+    updateModeHint();
+    // REMOVE mode auto-prunes picked tags that nobody has.
+    if (mode === 'REMOVE') {
+      for (const id of [...pickedTags.keys()]) {
+        if (membershipState(id) === 'none') pickedTags.delete(id);
+      }
+    }
+    renderChips();
+    renderBrowse(searchInput.value.trim());
+  }
+
+  addBtn.addEventListener('click', () => setMode('ADD'));
+  removeBtn.addEventListener('click', () => setMode('REMOVE'));
+  replaceBtn.addEventListener('click', () => setMode('REPLACE'));
+  updateModeHint();
 
   function renderChips() {
     chipsWrap.innerHTML = '';
-    chipsLabel.textContent = `Selected tags (${pickedTags.size})`;
+    chipsLabel.textContent = `Picked tags (${pickedTags.size})`;
     if (pickedTags.size === 0) {
       chipsWrap.appendChild(chipsEmpty);
       return;
     }
     const sorted = [...pickedTags.values()].sort((a, b) => a.name.localeCompare(b.name));
     for (const tag of sorted) {
-      const chip = moEl('span', 'mo-bulk-tag-chip');
+      const chip = moEl('span', `mo-bulk-tag-chip mo-bulk-tag-chip-${membershipState(tag.id)}`);
       chip.appendChild(moEl('span', null, { textContent: tag.name }));
       const x = moEl('button', null, { textContent: '×', type: 'button' });
-      x.setAttribute('aria-label', `Remove ${tag.name}`);
+      x.setAttribute('aria-label', `Unpick ${tag.name}`);
       x.addEventListener('click', () => {
         pickedTags.delete(tag.id);
         renderChips();
@@ -12986,13 +14055,27 @@ function showBulkTagDialog(state, api, onComplete) {
   function renderBrowse(query) {
     browseList.innerHTML = '';
     const q = (query || '').toLowerCase();
-    const tags = [...allTags.values()]
-      .filter(t => !q || t.name.toLowerCase().includes(q))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    let tags = [...allTags.values()]
+      .filter(t => !q || t.name.toLowerCase().includes(q));
 
-    // "Create" row when search has no exact match
+    // REMOVE mode: only show tags that exist on at least one selected item.
+    if (mode === 'REMOVE') {
+      tags = tags.filter(t => membershipState(t.id) !== 'none');
+    }
+
+    // Sort: All first, then Some, then None, then alphabetical.
+    const order = { all: 0, some: 1, none: 2 };
+    tags.sort((a, b) => {
+      const oa = order[membershipState(a.id)];
+      const ob = order[membershipState(b.id)];
+      if (oa !== ob) return oa - ob;
+      return a.name.localeCompare(b.name);
+    });
+
+    // "Create" row when search has no exact match (Add/Replace only — REMOVE
+    // can't operate on a brand-new tag).
     const exact = q && [...allTags.values()].some(t => t.name.toLowerCase() === q);
-    if (q && !exact) {
+    if (q && !exact && mode !== 'REMOVE') {
       const createRow = moEl('div', 'mo-bulk-tag-row mo-bulk-tag-row-create');
       createRow.setAttribute('role', 'option');
       createRow.appendChild(moEl('span', 'mo-bulk-tag-row-icon', { textContent: '+' }));
@@ -13002,24 +14085,47 @@ function showBulkTagDialog(state, api, onComplete) {
     }
 
     if (tags.length === 0 && (!q || exact)) {
-      const empty = moEl('div', 'mo-bulk-tag-empty', { textContent: q ? 'No matching tags.' : 'No tags exist yet — type a name above to create one.' });
+      const msg = mode === 'REMOVE'
+        ? 'No tags on the current selection to remove.'
+        : (q ? 'No matching tags.' : 'No tags exist yet — type a name above to create one.');
+      const empty = moEl('div', 'mo-bulk-tag-empty', { textContent: msg });
       browseList.appendChild(empty);
       return;
     }
 
     for (const tag of tags) {
       const isPicked = pickedTags.has(tag.id);
-      const row = moEl('div', `mo-bulk-tag-row${isPicked ? ' is-picked' : ''}`);
+      const memb = membershipState(tag.id);
+      const row = moEl('div', `mo-bulk-tag-row mo-bulk-tag-state-${memb}${isPicked ? ' is-picked' : ''}`);
       row.setAttribute('role', 'option');
       row.setAttribute('aria-selected', isPicked ? 'true' : 'false');
+
+      // The checkbox represents ONE thing: whether this tag is in the picked
+      // set that will be written by Apply. It DOES NOT reflect membership —
+      // that goes in the badge to the right. Coupling the checkbox to
+      // membership was the source of a destructive UX bug: a user seeing
+      // an indeterminate "1 of 5" checkbox would click it thinking they were
+      // unchecking the tag, but the click toggled `pickedTags`, so the tag
+      // ended up applied to all 5 items in ADD mode. The visual now matches
+      // the click semantic exactly: checked ⇔ will be applied.
       const cb = moEl('input', null, { type: 'checkbox' });
       cb.checked = isPicked;
       cb.tabIndex = -1;
       row.appendChild(cb);
-      row.appendChild(moEl('span', null, { textContent: tag.name }));
+
+      row.appendChild(moEl('span', 'mo-bulk-tag-row-name', { textContent: tag.name }));
+
+      const badge = moEl('span', `mo-bulk-tag-row-state mo-bulk-tag-row-state-${memb}`, { textContent: membershipLabel(tag.id) });
+      row.appendChild(badge);
+
       row.addEventListener('click', () => {
-        if (pickedTags.has(tag.id)) pickedTags.delete(tag.id);
-        else pickedTags.set(tag.id, tag);
+        // Pure toggle of the pick set. No reads of membership, no implicit
+        // selections — only what the user explicitly clicks gets applied.
+        if (pickedTags.has(tag.id)) {
+          pickedTags.delete(tag.id);
+        } else {
+          pickedTags.set(tag.id, tag);
+        }
         renderChips();
         renderBrowse(searchInput.value.trim());
       });
@@ -13030,6 +14136,10 @@ function showBulkTagDialog(state, api, onComplete) {
   async function createAndPick(name) {
     const trimmed = name.trim();
     if (!trimmed) return;
+    if (mode === 'REMOVE') {
+      api.window.showWarningMessage('Cannot create a new tag in Remove mode.');
+      return;
+    }
     // Avoid duplicate if a case-insensitive match snuck in.
     const existing = [...allTags.values()].find(t => t.name.toLowerCase() === trimmed.toLowerCase());
     if (existing) {
@@ -13045,13 +14155,11 @@ function showBulkTagDialog(state, api, onComplete) {
       const lite = { id: newTag.id, name: newTag.name };
       allTags.set(lite.id, lite);
       pickedTags.set(lite.id, lite);
+      // A brand-new tag has zero membership — no count entry needed.
       searchInput.value = '';
       renderChips();
       renderBrowse('');
       searchInput.focus();
-      // New tag must appear in the sidebar Tags list immediately — otherwise
-      // users see the picker create a tag but the sidebar stays stale until
-      // the next reload.
       _notifySidebarRefresh();
     } catch (err) {
       api.window.showErrorMessage('Tag creation failed: ' + (err && err.message ? err.message : String(err)));
@@ -13070,7 +14178,7 @@ function showBulkTagDialog(state, api, onComplete) {
         searchInput.value = '';
         renderChips();
         renderBrowse('');
-      } else {
+      } else if (mode !== 'REMOVE') {
         createAndPick(q);
       }
     } else if (e.key === 'Escape') {
@@ -13082,63 +14190,142 @@ function showBulkTagDialog(state, api, onComplete) {
     }
   });
 
-  // Load tags
-  TagQueries.findMany({}, { field: 'name', direction: 'ASC' }, { page: 1, perPage: 1000 })
-    .then(result => {
+  // --- Load tags + selection-membership counts in parallel (robust, sidebar-independent) ---
+  async function loadInitial() {
+    allTags.clear();
+    counts.clear();
+    try {
+      // Fetch all tags (same as sidebar, but always fresh)
+      const result = await TagQueries.findMany({}, { field: 'name', direction: 'ASC' }, { page: 1, perPage: 5000 });
       for (const t of result.items) allTags.set(t.id, { id: t.id, name: t.name });
+      if (photos.length > 0) {
+        const ph = photos.map(() => '?').join(',');
+        const rows = await db.all(
+          `SELECT tag_id, COUNT(*) AS n FROM mo_photos_tags WHERE photo_id IN (${ph}) GROUP BY tag_id`,
+          photos
+        );
+        for (const r of rows || []) counts.set(r.tag_id, (counts.get(r.tag_id) || 0) + (r.n || 0));
+      }
+      if (videos.length > 0) {
+        const vh = videos.map(() => '?').join(',');
+        const rows = await db.all(
+          `SELECT tag_id, COUNT(*) AS n FROM mo_videos_tags WHERE video_id IN (${vh}) GROUP BY tag_id`,
+          videos
+        );
+        for (const r of rows || []) counts.set(r.tag_id, (counts.get(r.tag_id) || 0) + (r.n || 0));
+      }
       renderBrowse('');
-    })
-    .catch(() => {
-      const err = moEl('div', 'mo-bulk-tag-empty', { textContent: 'Could not load tags.' });
-      browseList.appendChild(err);
-    });
+    } catch (err) {
+      browseList.innerHTML = '';
+      const errEl = moEl('div', 'mo-bulk-tag-empty', { textContent: 'Could not load tags: ' + (err && err.message ? err.message : String(err)) });
+      browseList.appendChild(errEl);
+    }
+  }
+  loadInitial();
 
   // Footer
   const footer = moEl('div', 'mo-bulk-dialog-footer');
-  const cancelBtn = moEl('button', null, { textContent: 'Cancel' });
+  const cancelBtn = moEl('button', null, { textContent: 'Cancel', type: 'button' });
   cancelBtn.addEventListener('click', () => overlay.remove());
-  const applyBtn = moEl('button', 'primary', { textContent: 'Apply' });
+  const applyBtn = moEl('button', 'primary', { textContent: 'Apply', type: 'button' });
+
   applyBtn.addEventListener('click', async () => {
-    if (pickedTags.size === 0) { api.window.showWarningMessage('Pick at least one tag.'); return; }
+    if (totalItems === 0) { api.window.showWarningMessage('No items selected.'); return; }
+
+    if (mode !== 'REPLACE' && pickedTags.size === 0) {
+      api.window.showWarningMessage('Pick at least one tag.');
+      return;
+    }
+
+    // REPLACE confirmation — destructive, must be explicit.
+    if (mode === 'REPLACE') {
+      const willClear = pickedTags.size === 0;
+      const msg = willClear
+        ? `Replace mode with no tags picked will REMOVE ALL TAGS from ${totalItems} item${totalItems === 1 ? '' : 's'}. Continue?`
+        : `Replace mode will set every selected item to exactly ${pickedTags.size} tag${pickedTags.size === 1 ? '' : 's'}, removing any other tags they have. Continue?`;
+      const ok = window.confirm(msg);
+      if (!ok) return;
+    }
+
     applyBtn.disabled = true;
     cancelBtn.disabled = true;
+    addBtn.disabled = true;
+    removeBtn.disabled = true;
+    replaceBtn.disabled = true;
     applyBtn.textContent = 'Applying…';
-    const { photos, videos } = parseSelectedIds(state.selectedIds);
+
     const tagIds = [...pickedTags.keys()];
     try {
       const txnOps = [];
-      for (const photoId of photos) {
-        for (const tagId of tagIds) {
-          if (mode === 'ADD') {
-            txnOps.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id) VALUES (?, ?)', params: [photoId, tagId] });
-          } else {
-            txnOps.push({ type: 'run', sql: 'DELETE FROM mo_photos_tags WHERE photo_id = ? AND tag_id = ?', params: [photoId, tagId] });
+
+      if (mode === 'ADD' || mode === 'REMOVE') {
+        // Pure per-(item, picked_tag) ops. No reads of existing tags.
+        // Tags not in `tagIds` are never touched on any item.
+        for (const photoId of photos) {
+          for (const tagId of tagIds) {
+            if (mode === 'ADD') {
+              txnOps.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id) VALUES (?, ?)', params: [photoId, tagId] });
+            } else {
+              txnOps.push({ type: 'run', sql: 'DELETE FROM mo_photos_tags WHERE photo_id = ? AND tag_id = ?', params: [photoId, tagId] });
+            }
+          }
+        }
+        for (const videoId of videos) {
+          for (const tagId of tagIds) {
+            if (mode === 'ADD') {
+              txnOps.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_videos_tags (video_id, tag_id) VALUES (?, ?)', params: [videoId, tagId] });
+            } else {
+              txnOps.push({ type: 'run', sql: 'DELETE FROM mo_videos_tags WHERE video_id = ? AND tag_id = ?', params: [videoId, tagId] });
+            }
+          }
+        }
+      } else {
+        // REPLACE: per-item DELETE-all-tags then INSERT picked set.
+        // Each item ends with EXACTLY the picked set. Items are independent —
+        // one item's prior tags never bleed into another.
+        for (const photoId of photos) {
+          txnOps.push({ type: 'run', sql: 'DELETE FROM mo_photos_tags WHERE photo_id = ?', params: [photoId] });
+          for (const tagId of tagIds) {
+            txnOps.push({ type: 'run', sql: 'INSERT INTO mo_photos_tags (photo_id, tag_id) VALUES (?, ?)', params: [photoId, tagId] });
+          }
+        }
+        for (const videoId of videos) {
+          txnOps.push({ type: 'run', sql: 'DELETE FROM mo_videos_tags WHERE video_id = ?', params: [videoId] });
+          for (const tagId of tagIds) {
+            txnOps.push({ type: 'run', sql: 'INSERT INTO mo_videos_tags (video_id, tag_id) VALUES (?, ?)', params: [videoId, tagId] });
           }
         }
       }
-      for (const videoId of videos) {
-        for (const tagId of tagIds) {
-          if (mode === 'ADD') {
-            txnOps.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_videos_tags (video_id, tag_id) VALUES (?, ?)', params: [videoId, tagId] });
-          } else {
-            txnOps.push({ type: 'run', sql: 'DELETE FROM mo_videos_tags WHERE video_id = ? AND tag_id = ?', params: [videoId, tagId] });
-          }
-        }
-      }
+
       if (txnOps.length > 0) await db.transaction(txnOps);
-      const verb = mode === 'ADD' ? 'added to' : 'removed from';
-      const tagWord = tagIds.length === 1 ? 'tag' : 'tags';
-      api.window.showInformationMessage(`${tagIds.length} ${tagWord} ${verb} ${photos.length + videos.length} items.`);
+
+      let summary;
+      if (mode === 'ADD') {
+        summary = `Added ${tagIds.length} tag${tagIds.length === 1 ? '' : 's'} to ${totalItems} item${totalItems === 1 ? '' : 's'}.`;
+      } else if (mode === 'REMOVE') {
+        summary = `Removed ${tagIds.length} tag${tagIds.length === 1 ? '' : 's'} from ${totalItems} item${totalItems === 1 ? '' : 's'}.`;
+      } else {
+        summary = `Replaced tags on ${totalItems} item${totalItems === 1 ? '' : 's'} with ${tagIds.length} tag${tagIds.length === 1 ? '' : 's'}.`;
+      }
+      api.window.showInformationMessage(summary);
       overlay.remove();
-      // Tag membership changed for many items — refresh the sidebar so the
-      // tag counts/visibility update without a manual reload.
       _notifySidebarRefresh();
+      // The selection-bar caller's onComplete only re-renders cards from the
+      // already-loaded state.items, which still hold the pre-apply tag arrays.
+      // Dispatch a grid refresh so loadPage re-runs the per-page tag batch
+      // query and the cards show the new tag set immediately. Other callers
+      // (which already invoke loadPage themselves) simply get one extra
+      // debounced reload — harmless, the listener coalesces.
+      document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
       onComplete();
     } catch (err) {
       applyBtn.disabled = false;
       cancelBtn.disabled = false;
+      addBtn.disabled = false;
+      removeBtn.disabled = false;
+      replaceBtn.disabled = false;
       applyBtn.textContent = 'Apply';
-      api.window.showErrorMessage('Bulk tag failed: ' + err.message);
+      api.window.showErrorMessage('Bulk tag failed: ' + (err && err.message ? err.message : String(err)));
     }
   });
   footer.append(cancelBtn, applyBtn);
@@ -13147,7 +14334,6 @@ function showBulkTagDialog(state, api, onComplete) {
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
   overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !searchInput.value) overlay.remove(); });
   document.body.appendChild(overlay);
-  // Focus the search input so the user can type immediately.
   setTimeout(() => searchInput.focus(), 0);
 
   renderChips();
@@ -13321,16 +14507,32 @@ function showBulkDeleteDialog(state, api, onComplete) {
       ...videos.map((id) => ({ type: 'video', id })),
     ];
     try {
+      // If anything in this selection is already mid-erase (user clicked
+      // Delete twice while Eraser is still working), short-circuit before
+      // we spawn a second redundant Eraser task and a duplicate scheduler
+      // batch on the same files.
+      if (_isAnyIdPendingErase(items)) {
+        api.window.showInformationMessage('Some of the selected items are already being erased. Wait for Eraser to finish before deleting them again.');
+        confirmBtn.disabled = false;
+        cancelBtn.disabled = false;
+        confirmBtn.textContent = 'Delete';
+        return;
+      }
       const result = await moPurgeMedia(api, items, { deleteFiles: !!fileCheckbox.checked });
       state.selectedIds.clear();
       state.selecting = false;
+      // Eraser path: result.purged is 0 (DB cleanup is deferred until disk
+      // catches up), result.filesErased reports how many files were queued.
+      // _scheduleEraserCommit already showed its own info toast — don't
+      // double up; just close the dialog and refresh.
+      if (result.filesErased > 0) {
+        overlay.remove();
+        onComplete();
+        return;
+      }
       let fileMsg = '';
       if (fileCheckbox.checked) {
-        if (result.filesErased) {
-          fileMsg = ` — securely erased ${result.filesErased} file${result.filesErased === 1 ? '' : 's'} via Eraser (check the Eraser task list to confirm)`;
-        } else {
-          fileMsg = ` — recycle-bin fallback: ${result.filesTrashed} file${result.filesTrashed === 1 ? '' : 's'} removed${result.filesPermanent ? `, ${result.filesPermanent} on external drive permanently deleted` : ''}${result.filesFailed ? `, ${result.filesFailed} failed` : ''}`;
-        }
+        fileMsg = ` — recycle-bin fallback: ${result.filesTrashed} file${result.filesTrashed === 1 ? '' : 's'} removed${result.filesPermanent ? `, ${result.filesPermanent} on external drive permanently deleted` : ''}${result.filesFailed ? `, ${result.filesFailed} failed` : ''}`;
       }
       api.window.showInformationMessage(`${result.purged} item${result.purged === 1 ? '' : 's'} deleted${fileMsg}.`);
       overlay.remove();
@@ -16579,11 +17781,17 @@ async function moSetSetting(key, value) {
 // Wipes and repopulates mo_photos_fts and mo_videos_fts. Called after scan,
 // after tag mutations, and after photo/video updates. Cheap enough for the
 // expected library sizes (sub-100k items) — full rebuild keeps logic simple.
-let _ftsRebuilding = false;
-async function moRebuildSearchIndex() {
-  if (_ftsRebuilding) return;
-  _ftsRebuilding = true;
-  try {
+//
+// Single-flight: while a rebuild is in flight, concurrent callers AWAIT the
+// same promise instead of either bailing (old behavior — silently dropped
+// the request) or stacking (would saturate the IPC channel). Callers can
+// rely on `await moRebuildSearchIndex()` meaning "FTS reflects DB at this
+// point in time".
+let _ftsRebuildInFlight = null;
+function moRebuildSearchIndex() {
+  if (_ftsRebuildInFlight) return _ftsRebuildInFlight;
+  _ftsRebuildInFlight = (async () => {
+    try {
     // Photos
     const photos = await db.all(
       `SELECT p.id AS pid, p.title AS title, p.details AS details,
@@ -16624,10 +17832,24 @@ async function moRebuildSearchIndex() {
         [r.vid, r.title || '', r.details || '', r.tags_text || '', r.folder_text || '']
       );
     }
-  } catch (err) {
-    console.warn('[MediaOrganizer] FTS rebuild failed:', err);
-  } finally {
-    _ftsRebuilding = false;
+    } catch (err) {
+      console.warn('[MediaOrganizer] FTS rebuild failed:', err);
+    }
+  })().finally(() => { _ftsRebuildInFlight = null; });
+  return _ftsRebuildInFlight;
+}
+
+// Refresh just the FTS rows for the supplied photo/video ids — used by
+// flows that mutate a known subset (duplicate resolver, empty trash) and
+// don't want to pay for a full rebuild.
+async function _refreshFtsForIds(photoIds, videoIds) {
+  if ((photoIds?.length || 0) > 0) {
+    const ph = `(${photoIds.map(() => '?').join(',')})`;
+    try { await db.run(`DELETE FROM mo_photos_fts WHERE rowid IN ${ph}`, photoIds); } catch { /* fts may be absent */ }
+  }
+  if ((videoIds?.length || 0) > 0) {
+    const vh = `(${videoIds.map(() => '?').join(',')})`;
+    try { await db.run(`DELETE FROM mo_videos_fts WHERE rowid IN ${vh}`, videoIds); } catch { /* fts may be absent */ }
   }
 }
 
@@ -17095,6 +18317,15 @@ function buildDupGroup(api, files, label) {
       'Move to Trash', 'Cancel'
     );
     if (ok !== 'Move to Trash') return;
+    // Capture which photos/videos point at these files BEFORE we delete the
+    // mo_files rows — afterwards the join-table cascade has already wiped
+    // the link rows we'd need to find them.
+    const targetFileIds = targets.map(f => f.id);
+    const ph = `(${targetFileIds.map(() => '?').join(',')})`;
+    const photoLinks = await db.all(`SELECT DISTINCT photo_id AS id FROM mo_photos_files WHERE file_id IN ${ph}`, targetFileIds).catch(() => []);
+    const videoLinks = await db.all(`SELECT DISTINCT video_id AS id FROM mo_videos_files WHERE file_id IN ${ph}`, targetFileIds).catch(() => []);
+    const affectedPhotoIds = photoLinks.map(r => r.id).filter(Number.isFinite);
+    const affectedVideoIds = videoLinks.map(r => r.id).filter(Number.isFinite);
     let moved = 0, failed = 0, perm = 0;
     for (const f of targets) {
       const fpath = (f.folder_path || '') + sep + f.basename;
@@ -17116,7 +18347,10 @@ function buildDupGroup(api, files, label) {
     api.window.showInformationMessage(msg + '.');
     group.style.opacity = '0.4'; group.style.pointerEvents = 'none';
     _notifySidebarRefresh();
-    moRebuildSearchIndex().catch(() => {});
+    // Incremental FTS update — drop the affected rows. They'll be re-inserted
+    // on the next post-scan rebuild with refreshed folder_text. Avoids the
+    // full-rebuild stall pattern that froze the workbench previously.
+    _refreshFtsForIds(affectedPhotoIds, affectedVideoIds).catch(() => {});
   });
   actions.appendChild(trashBtn);
   group.appendChild(actions);
@@ -17267,13 +18501,21 @@ async function moAutoStackByBasename(api) {
 
 // Attempt to securely overwrite + delete files via Eraser (Heidi).
 // - Reads `mediaOrganizer.eraserPath` from configuration (default
+// Attempt to securely overwrite + delete files via Eraser (Heidi).
+// - Reads `mediaOrganizer.eraserPath` from configuration (default
 //   `C:\Program Files\Eraser\Eraser.exe`).
 // - If the executable is missing or invocation fails, returns false so the
 //   caller can fall back to the OS recycle bin and surfaces a toast so the
 //   user knows why Eraser didn't run.
-// - Eraser is fire-and-forget: we run `Eraser.exe erase file=<p1> file=<p2> ...`
-//   (equivalent to addtask /schedule=now). Eraser shows its own confirmation
-//   dialog and tracks progress in the system tray.
+// - `addtask /schedule=now` returns within milliseconds: it queues the work
+//   in Eraser's persistent service, which performs the multi-pass overwrite
+//   asynchronously over the following seconds-to-minutes. The CLI's exit
+//   does NOT mean the files are erased — only that the task has been queued.
+// Cached availability — `fs.exists` for the same path on every delete is
+// pure noise. Cache `{path, exists}` for the session; the cache key is the
+// configured path so settings changes invalidate naturally on next call.
+const _eraserAvail = { path: null, exists: null, missingNotified: false };
+
 async function _tryEraseWithEraser(api, filePaths) {
   if (!_isWindows) return false;
   if (!filePaths || filePaths.length === 0) return false;
@@ -17281,11 +18523,18 @@ async function _tryEraseWithEraser(api, filePaths) {
     'C:\\Program Files\\Eraser\\Eraser.exe');
   if (!cfgPath) return false;
 
-  const exists = await window.parallxElectron.fs.exists(cfgPath).catch(() => false);
-  if (!exists) {
-    api.window.showInformationMessage(
-      `Eraser not found at ${cfgPath} — falling back to recycle bin. Set mediaOrganizer.eraserPath in settings to point at your install.`
-    );
+  if (_eraserAvail.path !== cfgPath) {
+    _eraserAvail.path = cfgPath;
+    _eraserAvail.exists = await window.parallxElectron.fs.exists(cfgPath).catch(() => false);
+    _eraserAvail.missingNotified = false;
+  }
+  if (!_eraserAvail.exists) {
+    if (!_eraserAvail.missingNotified) {
+      _eraserAvail.missingNotified = true;
+      api.window.showInformationMessage(
+        `Eraser not found at ${cfgPath} — falling back to recycle bin. Set mediaOrganizer.eraserPath in settings to point at your install.`
+      );
+    }
     return false;
   }
 
@@ -17298,30 +18547,334 @@ async function _tryEraseWithEraser(api, filePaths) {
   //   exception code (0xE0434352) even though the erase still succeeds.
   const args = ['addtask', '/quiet', '/schedule=now', ...filePaths.map((p) => `file=${p}`)];
 
-  // Fire-and-forget: we do NOT await Eraser's exit. Multi-pass secure
-  // overwrite on large files takes seconds-to-minutes; blocking the dialog
-  // (and the renderer) on that is unacceptable. Once the process is spawned,
-  // Eraser owns the work — its tray UI is the user's progress indicator.
-  // We attach a late-firing handler purely to surface non-zero exits as a
-  // toast after-the-fact; it does not gate the return value.
+  // The Eraser CLI itself only queues the task and exits in milliseconds.
+  // We use execStream because it's the existing IPC primitive for spawning
+  // an exe with argv (no shell parsing). With /quiet, Eraser produces no
+  // stdout — the renderer is not pumped with output during the erase.
+  // We do NOT await the returned promise: the queueing has happened by the
+  // time the function returns (Eraser's CLI is synchronous about that).
   window.parallxElectron.terminal.execStream(
     { command: cfgPath, args, timeout: 0 },
     {}
   ).then((result) => {
     if (result.error || (typeof result.exitCode === 'number' && result.exitCode !== 0)) {
       const reason = result.error?.message || `exit ${result.exitCode}`;
-      api.window.showErrorMessage(`Eraser later reported a failure: ${reason}. Check the Eraser task list.`);
+      api.window.showErrorMessage(`Eraser failed to queue task: ${reason}.`);
     }
   }).catch(() => { /* ignore — late failures aren't fatal */ });
 
   return true;
 }
 
+// ── Deferred DB commit for Eraser-backed deletions ──────────────────────────
+//
+// User-observed bug: clicking Delete in the grid froze the workbench for the
+// duration of Eraser's secure overwrite (often minutes). Root cause is the
+// state mismatch between Parallx's DB and the disk:
+//
+//   - Old flow: DELETE from DB rows immediately, then queue Eraser. Result:
+//     Parallx considers the file gone and refreshes the library, while the
+//     file is still physically present on disk being overwritten. Anything
+//     that scans / reconciles / rebuilds (FTS rebuild, sidebar refresh,
+//     thumbnail orphan sweep, file-watcher events landing on a path the
+//     extension doesn't know about anymore) hits an inconsistent world and
+//     stalls until disk catches up to memory.
+//
+//   - New flow: queue Eraser first, leave the DB completely alone, then
+//     poll until each file disappears from disk on its own. At that moment,
+//     the file genuinely IS gone — it's now safe to drop the DB rows and
+//     refresh the library. Disk and DB are always in agreement.
+//
+// `_pendingEraserCommits` is a single-flight scheduler: if the user fires
+// off another delete while a previous batch is still being polled, we
+// merge it into the same tick loop instead of spawning competing intervals.
+// We also track every photo/video id currently mid-erase so the dialog
+// caller can skip re-queuing duplicates and the grid can decorate them.
+//
+// `tickCount` drives polling backoff: 5 s for the first minute, 15 s up to
+// 5 min, 30 s thereafter. Avoids hammering the renderer's IPC channel for
+// long-running secure-overwrite jobs (which can run for tens of minutes on
+// large files / multi-pass profiles).
+const MAX_PENDING_BATCHES = 32;
+const _pendingEraserCommits = {
+  timer: null,
+  batches: [], // { fileRows, photoIds, videoIds, deadlineMs }
+  pendingPhotoIds: new Set(),
+  pendingVideoIds: new Set(),
+  tickCount: 0,
+};
+
+function _pendingErasePath(api) {
+  const folders = api.workspace.workspaceFolders;
+  if (!folders || folders.length === 0) return null;
+  const wsPath = uriToFsPath(folders[0].uri);
+  const sep = _isWindows ? '\\' : '/';
+  return wsPath + sep + '.parallx' + sep + 'extensions' + sep + 'media-organizer' + sep + 'pending-erase.json';
+}
+
+async function _persistPendingQueue(api) {
+  const p = _pendingErasePath(api);
+  if (!p) return;
+  try {
+    if (_pendingEraserCommits.batches.length === 0) {
+      await window.parallxElectron.fs.delete(p, { useTrash: false }).catch(() => {});
+      return;
+    }
+    const payload = JSON.stringify({
+      version: 1,
+      batches: _pendingEraserCommits.batches.map((b) => ({
+        fileRows: b.fileRows,
+        photoIds: b.photoIds,
+        videoIds: b.videoIds,
+        deadlineMs: b.deadlineMs,
+      })),
+    });
+    await window.parallxElectron.fs.writeFile(p, payload, 'utf8');
+  } catch (err) {
+    console.warn('[MediaOrganizer] Failed to persist pending erase queue:', err?.message || err);
+  }
+}
+
+async function _resumePendingErase(api) {
+  const p = _pendingErasePath(api);
+  if (!p) return;
+  const exists = await window.parallxElectron.fs.exists(p).catch(() => false);
+  if (!exists) return;
+  let payload;
+  try {
+    const r = await window.parallxElectron.fs.readFile(p, 'utf8');
+    if (r?.error) return;
+    const text = typeof r === 'string' ? r : (r?.content ?? '');
+    payload = JSON.parse(text);
+  } catch {
+    // Corrupt file — drop it.
+    await window.parallxElectron.fs.delete(p, { useTrash: false }).catch(() => {});
+    return;
+  }
+  const batches = Array.isArray(payload?.batches) ? payload.batches : [];
+  if (batches.length === 0) return;
+  for (const b of batches) {
+    if (!Array.isArray(b?.fileRows)) continue;
+    const photoIds = Array.isArray(b.photoIds) ? b.photoIds.map(Number).filter(Number.isFinite) : [];
+    const videoIds = Array.isArray(b.videoIds) ? b.videoIds.map(Number).filter(Number.isFinite) : [];
+    _scheduleEraserCommit(api, {
+      fileRows: b.fileRows,
+      photoIds,
+      videoIds,
+      _resumedDeadlineMs: Number.isFinite(b.deadlineMs) ? b.deadlineMs : undefined,
+    });
+  }
+}
+
+/** True iff any of these ids is already mid-erase. */
+function _isAnyIdPendingErase(items) {
+  for (const it of items || []) {
+    if (it.type === 'photo' && _pendingEraserCommits.pendingPhotoIds.has(Number(it.id))) return true;
+    if (it.type === 'video' && _pendingEraserCommits.pendingVideoIds.has(Number(it.id))) return true;
+  }
+  return false;
+}
+
+/** Walk the current grid DOM and toggle the .mo-card-erasing decoration. */
+function _refreshErasingDecoration() {
+  try {
+    const cards = document.querySelectorAll('.mo-card[data-key]');
+    for (const card of cards) {
+      const key = card.dataset.key || '';
+      const idx = key.indexOf(':');
+      if (idx < 0) continue;
+      const type = key.slice(0, idx);
+      const id = parseInt(key.slice(idx + 1), 10);
+      if (!Number.isFinite(id)) continue;
+      const erasing = (type === 'photo' && _pendingEraserCommits.pendingPhotoIds.has(id))
+        || (type === 'video' && _pendingEraserCommits.pendingVideoIds.has(id));
+      card.classList.toggle('mo-card-erasing', erasing);
+    }
+  } catch { /* DOM not ready / non-renderer ctx */ }
+}
+
+/** Compute next tick delay using a coarse backoff curve. */
+function _nextPollDelay(tickCount) {
+  if (tickCount < 12) return 5000;        // first 60 s
+  if (tickCount < 12 + 16) return 15000;  // up to ~5 min
+  return 30000;                            // long tail
+}
+
+/**
+ * Returns true if the batch was scheduled, false if rejected (queue full).
+ * `batch._resumedDeadlineMs` (optional) preserves the deadline across restart.
+ */
+function _scheduleEraserCommit(api, batch) {
+  if (_pendingEraserCommits.batches.length >= MAX_PENDING_BATCHES) {
+    api.window?.showWarningMessage?.(
+      `Too many secure-erase batches in flight (${MAX_PENDING_BATCHES}). Wait for the current ones to finish before deleting more.`
+    );
+    return false;
+  }
+  for (const id of batch.photoIds) _pendingEraserCommits.pendingPhotoIds.add(id);
+  for (const id of batch.videoIds) _pendingEraserCommits.pendingVideoIds.add(id);
+  _pendingEraserCommits.batches.push({
+    fileRows: batch.fileRows,
+    photoIds: batch.photoIds,
+    videoIds: batch.videoIds,
+    deadlineMs: Number.isFinite(batch._resumedDeadlineMs)
+      ? batch._resumedDeadlineMs
+      : Date.now() + 60 * 60 * 1000, // 1 h safety; gives up after that
+  });
+  _refreshErasingDecoration();
+  _persistPendingQueue(api).catch(() => {});
+
+  if (_pendingEraserCommits.timer) return true;
+  _pendingEraserCommits.tickCount = 0;
+
+  const tick = async () => {
+    _pendingEraserCommits.timer = null;
+    _pendingEraserCommits.tickCount++;
+    const stillPending = [];
+    let mutated = false;
+    for (const b of _pendingEraserCommits.batches) {
+      const ready = await _allPathsGone(b.fileRows.map((fr) => fr.sourcePath));
+      const expired = Date.now() > b.deadlineMs;
+      if (ready) {
+        try {
+          await _commitMediaPurge(api, b.photoIds, b.videoIds, b.fileRows);
+        } catch (err) {
+          api.window.showWarningMessage(`Library cleanup after Eraser failed: ${err?.message || err}`);
+        }
+        for (const id of b.photoIds) _pendingEraserCommits.pendingPhotoIds.delete(id);
+        for (const id of b.videoIds) _pendingEraserCommits.pendingVideoIds.delete(id);
+        mutated = true;
+      } else if (expired) {
+        api.window.showWarningMessage(
+          `Eraser timeout: ${b.fileRows.length} file(s) didn't disappear within an hour. Library entries left intact; restart Parallx to reconcile if Eraser eventually finishes.`
+        );
+        for (const id of b.photoIds) _pendingEraserCommits.pendingPhotoIds.delete(id);
+        for (const id of b.videoIds) _pendingEraserCommits.pendingVideoIds.delete(id);
+        mutated = true;
+      } else {
+        stillPending.push(b);
+      }
+    }
+    _pendingEraserCommits.batches = stillPending;
+    if (mutated) {
+      _refreshErasingDecoration();
+      _persistPendingQueue(api).catch(() => {});
+    }
+    if (stillPending.length > 0) {
+      _pendingEraserCommits.timer = setTimeout(tick, _nextPollDelay(_pendingEraserCommits.tickCount));
+    } else {
+      _pendingEraserCommits.tickCount = 0;
+    }
+  };
+  _pendingEraserCommits.timer = setTimeout(tick, _nextPollDelay(0));
+  return true;
+}
+
+async function _allPathsGone(paths) {
+  // Parallel exists checks — sequential round-trips are wasteful for batches
+  // with hundreds of files and stall the polling cadence.
+  const results = await Promise.all(
+    paths.map((p) => window.parallxElectron.fs.exists(p).catch(() => true))
+  );
+  return results.every((e) => !e);
+}
+
+// Run the original step 2-7 DB cleanup. Extracted so the deferred Eraser
+// path can call it after disk has caught up, and the synchronous (recycle
+// bin) path can call it immediately after the unlinks land.
+async function _commitMediaPurge(api, photoIds, videoIds, fileRows) {
+  // 2. Hard-delete the domain rows.
+  for (const id of photoIds) await db.run(`DELETE FROM mo_photos WHERE id = ?`, [id]);
+  for (const id of videoIds) await db.run(`DELETE FROM mo_videos WHERE id = ?`, [id]);
+
+  // 3. Hard-delete now-orphan mo_files rows.
+  const orphanFileIds = new Set();
+  for (const fr of fileRows) {
+    const stillUsed = await db.get(
+      `SELECT 1 AS used FROM mo_photos_files WHERE file_id = ?
+        UNION ALL
+       SELECT 1 AS used FROM mo_videos_files WHERE file_id = ?
+        LIMIT 1`,
+      [fr.fileId, fr.fileId]
+    );
+    if (!stillUsed) {
+      await db.run(`DELETE FROM mo_files WHERE id = ?`, [fr.fileId]);
+      orphanFileIds.add(fr.fileId);
+    }
+  }
+
+  // 4. Thumbnail + cover-frame cleanup for orphaned checksums.
+  //
+  // Beyond the on-disk delete, we also evict the renderer-side caches that
+  // could otherwise serve stale bytes back to a future card with the same
+  // path. Two caches matter here:
+  //   - `_blobUrlCache` keys by file path; if a thumb is regenerated under
+  //     the same checksum (rare but possible after fingerprint upsert
+  //     races) the cached blob would still hold the OLD content.
+  //   - `_moResolvedThumbs` keys by `${type}:${id}` and survives across
+  //     loadPage() calls; deleted entities should not leave entries behind.
+  const thumbDir = getThumbDir(api);
+  const orphanChecksums = new Set();
+  for (const fr of fileRows) {
+    if (fr.checksum && orphanFileIds.has(fr.fileId)) orphanChecksums.add(fr.checksum);
+  }
+  const deletedThumbPaths = [];
+  for (const ck of orphanChecksums) {
+    const stillRef = await db.get(`SELECT 1 FROM mo_fingerprints WHERE type = 'md5' AND value = ? LIMIT 1`, [ck]);
+    if (stillRef) continue;
+    const candidates = [
+      getThumbnailPath(thumbDir, ck, THUMB_MAX_SIZE),
+      getCoverFramePath(thumbDir, ck),
+    ];
+    for (const p of candidates) {
+      try { await window.parallxElectron.fs.delete(p, { useTrash: false }); } catch { /* missing thumbs are fine */ }
+      deletedThumbPaths.push(p);
+    }
+  }
+  // Revoke any blob URLs the renderer cached for the now-gone thumbnail
+  // files so a future request for the same path forces a fresh disk read
+  // (or a placeholder, if the file is genuinely gone).
+  _revokeCachedBlobUrlsFor(deletedThumbPaths);
+  // Drop resolved-thumb cache entries for the deleted entities to prevent
+  // a stale `_moResolvedThumbs[type:id].thumbnailPath` surviving past the
+  // delete. SQLite autoincrement ids are normally not reused, but the
+  // cache itself is unbounded — cleaning up keeps it tidy and removes any
+  // leak surface if ids ever do collide (e.g. after a manual rowid reset).
+  for (const id of photoIds) _moResolvedThumbs.delete(`photo:${id}`);
+  for (const id of videoIds) _moResolvedThumbs.delete(`video:${id}`);
+
+  // 6 + 7. Folder-album pruning, FTS incremental delete, sidebar refresh.
+  //
+  // CRITICAL — incremental FTS update, NOT full rebuild:
+  //   `moRebuildSearchIndex()` does `DELETE FROM mo_photos_fts` followed by
+  //   one INSERT per surviving photo and one per surviving video — every
+  //   statement is its own SQL IPC round-trip. On a library with thousands
+  //   of items this saturates the renderer's IPC channel for several
+  //   seconds, choking the event loop. While that loop is starved, the
+  //   Ollama provider's `/api/version` health check (10 s timeout) fires,
+  //   the chat panel flips to "Connecting to Ollama…", and the workbench
+  //   appears to freeze.
+  //
+  //   The FTS tables are keyed by `rowid` = photo/video id. Since we know
+  //   exactly which ids were removed, we delete just those FTS rows in a
+  //   single SQL statement per table — bounded, predictable, fast — instead
+  //   of rewriting the entire index from scratch.
+  await moPruneOrphanFolderAlbums();
+  if (photoIds.length > 0) {
+    const ph = `(${photoIds.map(() => '?').join(',')})`;
+    try { await db.run(`DELETE FROM mo_photos_fts WHERE rowid IN ${ph}`, photoIds); } catch { /* FTS may be absent */ }
+  }
+  if (videoIds.length > 0) {
+    const vh = `(${videoIds.map(() => '?').join(',')})`;
+    try { await db.run(`DELETE FROM mo_videos_fts WHERE rowid IN ${vh}`, videoIds); } catch { /* FTS may be absent */ }
+  }
+  _notifySidebarRefresh();
+}
+
 async function moPurgeMedia(api, items, opts = {}) {
   if (!items || items.length === 0) return { purged: 0, filesTrashed: 0, filesFailed: 0, filesPermanent: 0, filesErased: 0 };
   const deleteFiles = opts.deleteFiles !== false;
   const sep = _isWindows ? '\\' : '/';
-  const thumbDir = getThumbDir(api);
 
   const photoIds = items.filter((i) => i.type === 'photo').map((i) => Number(i.id)).filter((n) => Number.isFinite(n));
   const videoIds = items.filter((i) => i.type === 'video').map((i) => Number(i.id)).filter((n) => Number.isFinite(n));
@@ -17360,65 +18913,33 @@ async function moPurgeMedia(api, items, opts = {}) {
     }
   }
 
-  // 2. Hard-delete the domain rows. FK CASCADE clears mo_photos_files,
-  //    mo_videos_files, mo_photos_tags, mo_videos_tags, mo_albums_photos,
-  //    mo_photos_custom_fields, and mo_video_frames automatically.
-  for (const id of photoIds) await db.run(`DELETE FROM mo_photos WHERE id = ?`, [id]);
-  for (const id of videoIds) await db.run(`DELETE FROM mo_videos WHERE id = ?`, [id]);
-
-  // 3. Hard-delete now-orphan mo_files rows. Cascade clears mo_fingerprints,
-  //    mo_image_files, mo_video_files. A file is orphan iff no surviving
-  //    photo/video link references it.
-  const orphanFileIds = new Set();
+  // Build unique source-path list once; we need it for both flows below.
+  const seen = new Set();
+  const uniquePaths = [];
   for (const fr of fileRows) {
-    const stillUsed = await db.get(
-      `SELECT 1 AS used FROM mo_photos_files WHERE file_id = ?
-        UNION ALL
-       SELECT 1 AS used FROM mo_videos_files WHERE file_id = ?
-        LIMIT 1`,
-      [fr.fileId, fr.fileId]
-    );
-    if (!stillUsed) {
-      await db.run(`DELETE FROM mo_files WHERE id = ?`, [fr.fileId]);
-      orphanFileIds.add(fr.fileId);
-    }
+    if (!fr.sourcePath || seen.has(fr.sourcePath)) continue;
+    seen.add(fr.sourcePath);
+    uniquePaths.push(fr.sourcePath);
   }
 
-  // 4. Thumbnail + cover-frame cleanup for orphaned checksums (best-effort).
-  const orphanChecksums = new Set();
-  for (const fr of fileRows) {
-    if (fr.checksum && orphanFileIds.has(fr.fileId)) orphanChecksums.add(fr.checksum);
-  }
-  for (const ck of orphanChecksums) {
-    // Skip if another file shares this md5 (rare cross-photo dedup).
-    const stillRef = await db.get(`SELECT 1 FROM mo_fingerprints WHERE type = 'md5' AND value = ? LIMIT 1`, [ck]);
-    if (stillRef) continue;
-    const candidates = [
-      getThumbnailPath(thumbDir, ck, THUMB_MAX_SIZE),
-      getCoverFramePath(thumbDir, ck),
-    ];
-    for (const p of candidates) {
-      try { await window.parallxElectron.fs.delete(p, { useTrash: false }); } catch { /* missing thumbs are fine */ }
-    }
-  }
-
-  // 5. Optionally remove the source files. Try Eraser (Heidi) for secure
-  //    overwrite first; fall back to OS recycle bin if Eraser is not
-  //    installed/configured. Eraser is fire-and-forget — it queues the task
-  //    and shows its own progress + confirmation in the system tray.
+  // 2-7. Two flows depending on delete strategy:
+  //
+  //   A. Eraser path (deferred):
+  //      Queue Eraser FIRST, do not touch the DB. Eraser overwrites the
+  //      files in the background; we poll until they're gone, then commit
+  //      the DB cleanup. This keeps Parallx's library state in sync with
+  //      disk throughout — no phantom-deleted entries while files still
+  //      exist on disk.
+  //
+  //   B. Recycle-bin path (synchronous):
+  //      Files are unlinked immediately by the OS; commit DB cleanup right
+  //      after.
   let filesTrashed = 0;
   let filesFailed = 0;
   let filesPermanent = 0;
   let filesErased = 0;
-  if (deleteFiles) {
-    const seen = new Set();
-    const uniquePaths = [];
-    for (const fr of fileRows) {
-      if (!fr.sourcePath || seen.has(fr.sourcePath)) continue;
-      seen.add(fr.sourcePath);
-      uniquePaths.push(fr.sourcePath);
-    }
 
+  if (deleteFiles && uniquePaths.length > 0) {
     let erasedHere = false;
     try {
       erasedHere = await _tryEraseWithEraser(api, uniquePaths);
@@ -17426,26 +18947,37 @@ async function moPurgeMedia(api, items, opts = {}) {
 
     if (erasedHere) {
       filesErased = uniquePaths.length;
-    } else {
-      for (const p of uniquePaths) {
-        const r = await window.parallxElectron.fs.delete(p, { useTrash: 'auto' }).catch(() => ({ error: 'fail' }));
-        if (r && !r.error) {
-          filesTrashed++;
-          if (r.deletedPermanently) filesPermanent++;
-        }
-        else filesFailed++;
+      // Defer the DB cleanup — _scheduleEraserCommit will run it once disk
+      // confirms each path is gone. Library entries stay visible until then.
+      const scheduled = _scheduleEraserCommit(api, { fileRows, photoIds, videoIds });
+      if (!scheduled) {
+        // Queue at capacity — the schedule call already showed a toast.
+        // Eraser is still working in the background; reconcile on next
+        // startup via moPurgeMissingFiles. Nothing else to do here.
+        return { purged: 0, filesTrashed: 0, filesFailed: 0, filesPermanent: 0, filesErased: 0 };
       }
+      api.window.showInformationMessage(
+        `Eraser is securely erasing ${uniquePaths.length} file(s). They'll be removed from your library once erasure completes.`
+      );
+      return { purged: 0, filesTrashed: 0, filesFailed: 0, filesPermanent: 0, filesErased };
+    }
+
+    // Recycle-bin fallback (Eraser unavailable or refused). The OS unlink
+    // happens synchronously, so DB cleanup right after is safe.
+    for (const p of uniquePaths) {
+      const r = await window.parallxElectron.fs.delete(p, { useTrash: 'auto' }).catch(() => ({ error: 'fail' }));
+      if (r && !r.error) {
+        filesTrashed++;
+        if (r.deletedPermanently) filesPermanent++;
+      }
+      else filesFailed++;
     }
   }
 
-  // 6. Folder-backed albums whose last member just disappeared should be
-  //    removed too — otherwise the sidebar shows phantom empty albums.
-  await moPruneOrphanFolderAlbums();
-
-  // 7. FTS lives on top of mo_photos / mo_videos; rebuild so deletions are
-  //    reflected in search.
-  moRebuildSearchIndex().catch(() => {});
-  _notifySidebarRefresh();
+  // Commit DB cleanup synchronously: either we didn't touch files at all
+  // (deleteFiles=false), or we used the recycle bin and the unlinks have
+  // landed. Either way, disk now matches the cleanup we're about to do.
+  await _commitMediaPurge(api, photoIds, videoIds, fileRows);
 
   return { purged: photoIds.length + videoIds.length, filesTrashed, filesFailed, filesPermanent, filesErased };
 }
@@ -17457,12 +18989,20 @@ async function moPurgeMedia(api, items, opts = {}) {
 async function moPurgeMissingFiles() {
   try {
     const files = await db.all(
-      `SELECT f.id AS id, fl.path AS folder_path, f.basename AS basename
+      `SELECT f.id AS id, fl.path AS folder_path, f.basename AS basename,
+              (SELECT value FROM mo_fingerprints WHERE file_id = f.id AND type = 'md5' LIMIT 1) AS checksum
          FROM mo_files f
          JOIN mo_folders fl ON fl.id = f.folder_id`
     );
     const sep = _isWindows ? '\\' : '/';
     let purged = 0;
+    // Track checksums of purged files so we can sweep their orphan
+    // thumbnails after the DB rows are gone. Without this, a vanished
+    // file's `<checksum>_cover.jpg` lingers on disk forever — dead bytes
+    // today, but a leak vector if a future flow ever reuses that path.
+    const purgedChecksums = new Set();
+    const purgedPhotoIds = [];
+    const purgedVideoIds = [];
     for (const f of files) {
       const p = (f.folder_path || '') + sep + f.basename;
       const exists = await window.parallxElectron.fs.exists(p).catch(() => false);
@@ -17477,6 +19017,7 @@ async function moPurgeMissingFiles() {
         );
         if (!others || others.c === 0) {
           await db.run(`DELETE FROM mo_photos WHERE id = ?`, [pl.photo_id]);
+          purgedPhotoIds.push(pl.photo_id);
         }
       }
       for (const vl of videoLinks) {
@@ -17486,12 +19027,35 @@ async function moPurgeMissingFiles() {
         );
         if (!others || others.c === 0) {
           await db.run(`DELETE FROM mo_videos WHERE id = ?`, [vl.video_id]);
+          purgedVideoIds.push(vl.video_id);
         }
       }
       await db.run(`DELETE FROM mo_files WHERE id = ?`, [f.id]);
+      if (f.checksum) purgedChecksums.add(f.checksum);
       purged++;
     }
     if (purged > 0) {
+      // Sweep orphan thumbnails for checksums that no surviving file row
+      // still references. Mirrors the cleanup in `_commitMediaPurge`.
+      const thumbDir = _api ? getThumbDir(_api) : null;
+      if (thumbDir) {
+        const deletedThumbPaths = [];
+        for (const ck of purgedChecksums) {
+          const stillRef = await db.get(`SELECT 1 FROM mo_fingerprints WHERE type = 'md5' AND value = ? LIMIT 1`, [ck]);
+          if (stillRef) continue;
+          const candidates = [
+            getThumbnailPath(thumbDir, ck, THUMB_MAX_SIZE),
+            getCoverFramePath(thumbDir, ck),
+          ];
+          for (const cp of candidates) {
+            try { await window.parallxElectron.fs.delete(cp, { useTrash: false }); } catch { /* missing thumbs are fine */ }
+            deletedThumbPaths.push(cp);
+          }
+        }
+        _revokeCachedBlobUrlsFor(deletedThumbPaths);
+      }
+      for (const id of purgedPhotoIds) _moResolvedThumbs.delete(`photo:${id}`);
+      for (const id of purgedVideoIds) _moResolvedThumbs.delete(`video:${id}`);
       await moPruneOrphanFolderAlbums();
       moRebuildSearchIndex().catch(() => {});
       _notifySidebarRefresh();
@@ -17556,6 +19120,10 @@ async function moEmptyTrash(api) {
   if (ok !== 'Empty Trash') return;
   const sep = _isWindows ? '\\' : '/';
   let trashed = 0, failed = 0, perm = 0;
+  // Capture ids up-front for incremental FTS cleanup after the cascade
+  // wipes the join rows we'd otherwise need.
+  const trashedPhotoIds = photos.map(p => Number(p.id)).filter(Number.isFinite);
+  const trashedVideoIds = videos.map(v => Number(v.id)).filter(Number.isFinite);
   // Delete OS files first
   const allItems = [...photos, ...videos];
   const seenFiles = new Set();
@@ -17581,7 +19149,10 @@ async function moEmptyTrash(api) {
   if (failed) emsg += `, ${failed} failed`;
   api.window.showInformationMessage(emsg + '.');
   _notifySidebarRefresh();
-  moRebuildSearchIndex().catch(() => {});
+  // Incremental FTS — delete just the rowids we know are gone. The full
+  // rebuild pattern was the culprit behind the bulk-delete freeze; same
+  // anti-pattern applies here on a large trash.
+  _refreshFtsForIds(trashedPhotoIds, trashedVideoIds).catch(() => {});
 }
 
 // Auto-empty trash older than N days (default 30). Setting key: trash_auto_purge_days.
@@ -17884,21 +19455,277 @@ async function moOpenMap(api) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 10F: AI CHAT TOOLS — M59 P8
+// SECTION 10F: AI CHAT TOOLS
 // ═══════════════════════════════════════════════════════════════════════════════
 //
 // Tools registered via `api.chat.registerTool(name, def)` so the AI agent
-// (and users via /tool invocation) can query the library deterministically.
+// (and users via /tool invocation) can both query AND mutate the library.
 //
-// Vision-based tools (tagUntagged, describePhoto, autoRate, searchByDescription)
-// are NOT registered — the current `parallx.lm` API only accepts text content
-// (no image attachments), so a vision pipeline cannot be implemented from an
-// extension today. They will be added when the LM API gains multimodal support.
+// Design:
+//   • Reads return rich, deterministic JSON (no hallucination room).
+//   • Writes accept arrays of {type:"photo"|"video", id} so batches feel natural.
+//   • A `describeSchema` tool gives the agent a structured reference of tables,
+//     columns, and conventions so it never has to guess.
+//   • Write tools set requiresConfirmation:true — Parallx prompts the user
+//     before any mutation is applied.
+//
+// Vision-based tools (auto-tag, describe, auto-rate) are not registered yet —
+// the current `parallx.lm` API only accepts text. They will land when LM gains
+// multimodal support.
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
+
+function moToolOk(obj)    { return { content: JSON.stringify(obj, null, 2) }; }
+function moToolError(msg) { return { content: String(msg), isError: true }; }
+
+function moNormalizeItems(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error('items must be a non-empty array of {type,id}');
+  }
+  const out = [];
+  for (const it of items) {
+    if (!it || (it.type !== 'photo' && it.type !== 'video')) {
+      throw new Error(`Invalid item: ${JSON.stringify(it)} - type must be "photo" or "video"`);
+    }
+    const id = parseInt(it.id, 10);
+    if (!id || isNaN(id)) throw new Error(`Invalid id: ${it.id}`);
+    out.push({ type: it.type, id });
+  }
+  return out;
+}
+
+async function moResolveTagIds({ tagIds, tagNames, createMissing }) {
+  const ids = new Set();
+  const created = [];
+  const notFound = [];
+  if (Array.isArray(tagIds)) {
+    for (const raw of tagIds) {
+      const tid = parseInt(raw, 10);
+      if (!tid) continue;
+      const t = await TagQueries.findById(tid);
+      if (t) ids.add(t.id); else notFound.push(`#${tid}`);
+    }
+  }
+  if (Array.isArray(tagNames)) {
+    for (const raw of tagNames) {
+      const name = String(raw || '').trim();
+      if (!name) continue;
+      let t = await TagQueries.findByName(name);
+      if (!t && createMissing) {
+        t = await TagQueries.create({ name });
+        created.push({ id: t.id, name: t.name });
+      }
+      if (t) ids.add(t.id); else notFound.push(name);
+    }
+  }
+  return { ids: [...ids], created, notFound };
+}
+
+// ─── READ TOOLS ────────────────────────────────────────────────────────────
+
+async function moToolDescribeSchema() {
+  return moToolOk({
+    overview: 'Media-Organizer is a SQLite-backed photo/video library. Items are referenced as {type:"photo"|"video", id}. Photos and videos are separate domains that share folders, tags, and albums.',
+    primaryEntities: {
+      mo_photos: 'Photo records. Columns: id, title, rating(0-5), color_label, curated(0|1), details, camera_make, camera_model, lens, iso, aperture, shutter_speed, focal_length, gps_latitude, gps_longitude, taken_at, deleted_at(NULL=live, set=in trash), created_at, updated_at.',
+      mo_videos: 'Video records. Columns: id, title, rating(0-5), color_label, curated, details, duration, deleted_at, created_at, updated_at.',
+      mo_files: 'Filesystem rows. Columns: id, basename, size, mod_time, folder_id.',
+      mo_folders: 'Folder tree. Columns: id, path, parent_folder_id.',
+      mo_image_files: 'Per-image metadata. Columns: file_id, width, height, format, phash(integer or NULL).',
+      mo_video_files: 'Per-video metadata. Columns: file_id, duration, width, height, codec, bit_rate, frame_rate.',
+      mo_tags: 'Tag dictionary. Columns: id, name(unique), description, image_path, sort_name, favorite, created_at, updated_at.',
+      mo_tags_relations: 'Tag hierarchy. Columns: parent_id, child_id (acyclic).',
+      mo_albums: 'Albums (manual collections). Columns: id, title, description, rating, folder_id, parent_album_id.',
+      mo_smart_albums: 'Saved searches. Columns: id, name, query_json.',
+      mo_stacks: 'Stacked items. Columns: id, primary_type("photo"|"video"), primary_id, name.',
+      mo_stack_members: 'Stack membership. Columns: stack_id, member_type, member_id, role, position.',
+    },
+    junctionTables: {
+      mo_photos_files:  '(photo_id, file_id, is_primary) - photo->files',
+      mo_videos_files:  '(video_id, file_id, is_primary) - video->files',
+      mo_photos_tags:   '(photo_id, tag_id) - photo->tags',
+      mo_videos_tags:   '(video_id, tag_id) - video->tags',
+      mo_albums_photos: '(album_id, photo_id, position)',
+      mo_albums_videos: '(album_id, video_id, position)',
+      mo_albums_tags:   '(album_id, tag_id)',
+    },
+    importantNotes: [
+      'A photo/video is "in trash" when deleted_at IS NOT NULL. Use trashItems action:"trash"|"restore", never DELETE rows.',
+      'Tag membership is plural-plural: mo_photos_tags and mo_videos_tags. There is NO mo_photo_tags table.',
+      'Color labels are free-form strings (e.g. "red","green","yellow"). NULL = unset.',
+      'curated is the "favorite" flag (0|1).',
+      'rating is 0-5 inclusive; 0 means unrated.',
+      'List/search tools default to live items only (exclude trash) unless includeTrashed:true.',
+      'To find items needing tags, call search with untagged:true. To exclude items already tagged, use excludeTagNames:[...]. getStats also returns untagged counts.',
+      'You CANNOT see image content from tool results directly (results are text only). To visually inspect a photo or video, call viewImage(type,id) — it attaches the file to chat the same way the user right-clicks "Add to Chat". The image arrives on your NEXT turn, so after calling viewImage end your turn briefly. Then on the following turn you can describe the image and generate accurate content tags.',
+    ],
+    availableTools: [
+      'describeSchema, getStats, getItem, viewImage, search, findSimilar, suggestStacks',
+      'listTags, listAlbums, listFolders, listSmartAlbums',
+      'tagItems, updateTag, updateItems, trashItems',
+      'updateAlbum, albumMembers, updateSmartAlbum',
+    ],
+  });
+}
+
+async function moToolGetItem(args) {
+  const type = args.type;
+  const id = parseInt(args.id, 10);
+  if ((type !== 'photo' && type !== 'video') || !id) {
+    return moToolError('type ("photo"|"video") and id are required');
+  }
+  if (type === 'photo') {
+    const photo = await PhotoQueries.findById(id);
+    if (!photo) return moToolError(`Photo ${id} not found`);
+    const [tags, files, albums] = await Promise.all([
+      PhotoQueries.loadTags(id),
+      PhotoQueries.loadFiles(id),
+      db.all(`SELECT a.id, a.title FROM mo_albums a JOIN mo_albums_photos ap ON ap.album_id = a.id WHERE ap.photo_id = ?`, [id]),
+    ]);
+    const primary = (files || []).find(f => f.isPrimary) || (files || [])[0] || null;
+    const imagePath = await moResolveFilePath(primary);
+    return moToolOk({ type: 'photo', ...photo, tags, files, albums, imagePath });
+  }
+  const video = await VideoQueries.findById(id);
+  if (!video) return moToolError(`Video ${id} not found`);
+  const [tags, files, albums] = await Promise.all([
+    VideoQueries.loadTags(id),
+    VideoQueries.loadFiles(id),
+    db.all(`SELECT a.id, a.title FROM mo_albums a JOIN mo_albums_videos av ON av.album_id = a.id WHERE av.video_id = ?`, [id]),
+  ]);
+  const primary = (files || []).find(f => f.isPrimary) || (files || [])[0] || null;
+  const videoPath = await moResolveFilePath(primary);
+  return moToolOk({ type: 'video', ...video, tags, files, albums, videoPath });
+}
+
+// Compose absolute file path from a loaded file row { folderId, basename }.
+async function moResolveFilePath(fileRow) {
+  if (!fileRow || !fileRow.folderId || !fileRow.basename) return null;
+  const folder = await FolderQueries.findById(fileRow.folderId);
+  if (!folder || !folder.path) return null;
+  const sep = folder.path.includes('\\') ? '\\' : '/';
+  return folder.path.replace(/[\\/]+$/, '') + sep + fileRow.basename;
+}
+
+// Attach a photo/video file to the chat input as an image attachment so the
+// model can actually see it on the next turn. Mirrors the explorer's
+// "Add to Chat" right-click flow (chat.addFileAttachment command).
+async function moToolViewImage(args) {
+  const type = args && args.type;
+  const id = parseInt(args && args.id, 10);
+  if ((type !== 'photo' && type !== 'video') || !id) {
+    return moToolError('type ("photo"|"video") and id are required');
+  }
+  const Q = type === 'photo' ? PhotoQueries : VideoQueries;
+  const item = await Q.findById(id);
+  if (!item) return moToolError(`${type} ${id} not found`);
+  const files = await Q.loadFiles(id);
+  const primary = (files || []).find(f => f.isPrimary) || (files || [])[0] || null;
+  const fullPath = await moResolveFilePath(primary);
+  if (!fullPath) return moToolError(`No primary file path for ${type} ${id}`);
+  try {
+    await _api.commands.executeCommand('chat.addFileAttachment', {
+      file: { name: primary.basename, fullPath },
+    });
+  } catch (err) {
+    return moToolError(`Failed to attach image: ${err && err.message ? err.message : String(err)}`);
+  }
+  return moToolOk({
+    attached: true,
+    type,
+    id,
+    path: fullPath,
+    note: 'Image attached to the chat input. End your current turn (e.g. ask the user to send, or stop here). On the NEXT user turn the image will be in your context and you can describe it / generate content tags.',
+  });
+}
+
+async function moToolListTags(args) {
+  const limit = Math.min(500, parseInt((args && args.limit), 10) || 200);
+  const filter = String((args && args.nameContains) || '').trim();
+  const onlyFavorites = !!(args && args.onlyFavorites);
+  const where = []; const params = [];
+  if (filter) { where.push(`t.name LIKE ?`); params.push(`%${filter.replace(/[%_]/g, '\\$&')}%`); }
+  if (onlyFavorites) where.push(`t.favorite = 1`);
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const rows = await db.all(
+    `SELECT t.id, t.name, t.favorite,
+            (SELECT COUNT(*) FROM mo_photos_tags pt WHERE pt.tag_id = t.id) AS photo_count,
+            (SELECT COUNT(*) FROM mo_videos_tags vt WHERE vt.tag_id = t.id) AS video_count
+       FROM mo_tags t ${whereSql}
+       ORDER BY (photo_count + video_count) DESC, t.name COLLATE NOCASE
+       LIMIT ?`,
+    [...params, limit]
+  );
+  return moToolOk({
+    count: rows.length,
+    tags: rows.map(r => ({
+      id: r.id, name: r.name, favorite: !!r.favorite,
+      photoCount: r.photo_count, videoCount: r.video_count, total: r.photo_count + r.video_count,
+    })),
+  });
+}
+
+async function moToolListAlbums(args) {
+  const limit = Math.min(500, parseInt((args && args.limit), 10) || 200);
+  const filter = String((args && args.titleContains) || '').trim();
+  const where = []; const params = [];
+  if (filter) { where.push(`a.title LIKE ?`); params.push(`%${filter.replace(/[%_]/g, '\\$&')}%`); }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const rows = await db.all(
+    `SELECT a.id, a.title, a.parent_album_id,
+            (SELECT COUNT(*) FROM mo_albums_photos ap WHERE ap.album_id = a.id) AS photo_count,
+            (SELECT COUNT(*) FROM mo_albums_videos av WHERE av.album_id = a.id) AS video_count
+       FROM mo_albums a ${whereSql}
+       ORDER BY a.title COLLATE NOCASE
+       LIMIT ?`,
+    [...params, limit]
+  );
+  return moToolOk({
+    count: rows.length,
+    albums: rows.map(r => ({
+      id: r.id, title: r.title, parentAlbumId: r.parent_album_id,
+      photoCount: r.photo_count, videoCount: r.video_count, total: r.photo_count + r.video_count,
+    })),
+  });
+}
+
+async function moToolListFolders(args) {
+  const limit = Math.min(500, parseInt((args && args.limit), 10) || 200);
+  const filter = String((args && args.pathContains) || '').trim();
+  const where = []; const params = [];
+  if (filter) { where.push(`fl.path LIKE ?`); params.push(`%${filter.replace(/[%_]/g, '\\$&')}%`); }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const rows = await db.all(
+    `SELECT fl.id, fl.path, fl.parent_folder_id,
+            (SELECT COUNT(*) FROM mo_files f WHERE f.folder_id = fl.id) AS file_count
+       FROM mo_folders fl ${whereSql}
+       ORDER BY fl.path
+       LIMIT ?`,
+    [...params, limit]
+  );
+  return moToolOk({
+    count: rows.length,
+    folders: rows.map(r => ({ id: r.id, path: r.path, parentFolderId: r.parent_folder_id, fileCount: r.file_count })),
+  });
+}
+
+async function moToolListSmartAlbums() {
+  const rows = await db.all(`SELECT id, name, query_json, created_at, updated_at FROM mo_smart_albums ORDER BY name COLLATE NOCASE`);
+  return moToolOk({
+    count: rows.length,
+    smartAlbums: rows.map(r => {
+      let query = null;
+      try { query = JSON.parse(r.query_json); } catch { query = r.query_json; }
+      return { id: r.id, name: r.name, query, createdAt: r.created_at, updatedAt: r.updated_at };
+    }),
+  });
+}
 
 async function moToolFindSimilar(args) {
   const photoId = parseInt(args.photoId, 10);
   const limit = Math.min(100, parseInt(args.limit, 10) || 20);
-  if (!photoId || isNaN(photoId)) {
+  const maxDistance = args.maxDistance != null ? parseInt(args.maxDistance, 10) : 16;
+  if (!photoId) {
     return { content: 'Error: photoId is required (integer).', isError: true };
   }
   const seedRow = await db.get(
@@ -17924,13 +19751,10 @@ async function moToolFindSimilar(args) {
   const scored = [];
   for (const r of all) {
     const d = moHammingDistance(seedBig, moSqliteToBigInt(r.phash));
-    scored.push({ photoId: r.photo_id, title: r.title || '', distance: d });
+    if (d <= maxDistance) scored.push({ photoId: r.photo_id, title: r.title || '', distance: d });
   }
   scored.sort((a, b) => a.distance - b.distance);
-  const top = scored.slice(0, limit);
-  return {
-    content: JSON.stringify({ seed: photoId, results: top }, null, 2),
-  };
+  return moToolOk({ seed: photoId, maxDistance, results: scored.slice(0, limit) });
 }
 
 async function moToolSuggestStacks(args) {
@@ -17967,73 +19791,325 @@ async function moToolSuggestStacks(args) {
 }
 
 async function moToolGetStats() {
-  const photoCount = await db.get(`SELECT COUNT(*) AS n FROM mo_photos WHERE deleted_at IS NULL`);
-  const videoCount = await db.get(`SELECT COUNT(*) AS n FROM mo_videos WHERE deleted_at IS NULL`);
-  const trashedPhotos = await db.get(`SELECT COUNT(*) AS n FROM mo_photos WHERE deleted_at IS NOT NULL`);
-  const trashedVideos = await db.get(`SELECT COUNT(*) AS n FROM mo_videos WHERE deleted_at IS NOT NULL`);
-  const untaggedPhotos = await db.get(
-    `SELECT COUNT(*) AS n FROM mo_photos p
-      WHERE p.deleted_at IS NULL
-        AND NOT EXISTS (SELECT 1 FROM mo_photo_tags pt WHERE pt.photo_id = p.id)`
-  );
-  const geotagged = await db.get(
-    `SELECT COUNT(*) AS n FROM mo_photos
-      WHERE deleted_at IS NULL AND gps_latitude IS NOT NULL AND gps_longitude IS NOT NULL`
-  );
-  const phashed = await db.get(`SELECT COUNT(*) AS n FROM mo_image_files WHERE phash IS NOT NULL`);
-  const stacks = await db.get(`SELECT COUNT(*) AS n FROM mo_stacks`);
+  const q = (sql, p = []) => db.get(sql, p).then(r => (r && r.n) || 0);
+  const [
+    photos, videos, trashedPhotos, trashedVideos,
+    untaggedPhotos, untaggedVideos, geotagged, phashed,
+    totalFiles, totalFolders, totalTags, totalAlbums, totalSmartAlbums, totalStacks,
+  ] = await Promise.all([
+    q(`SELECT COUNT(*) AS n FROM mo_photos WHERE deleted_at IS NULL`),
+    q(`SELECT COUNT(*) AS n FROM mo_videos WHERE deleted_at IS NULL`),
+    q(`SELECT COUNT(*) AS n FROM mo_photos WHERE deleted_at IS NOT NULL`),
+    q(`SELECT COUNT(*) AS n FROM mo_videos WHERE deleted_at IS NOT NULL`),
+    q(`SELECT COUNT(*) AS n FROM mo_photos p
+        WHERE p.deleted_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM mo_photos_tags pt WHERE pt.photo_id = p.id)`),
+    q(`SELECT COUNT(*) AS n FROM mo_videos v
+        WHERE v.deleted_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM mo_videos_tags vt WHERE vt.video_id = v.id)`),
+    q(`SELECT COUNT(*) AS n FROM mo_photos
+        WHERE deleted_at IS NULL
+          AND gps_latitude IS NOT NULL AND gps_longitude IS NOT NULL`),
+    q(`SELECT COUNT(*) AS n FROM mo_image_files WHERE phash IS NOT NULL`),
+    q(`SELECT COUNT(*) AS n FROM mo_files`),
+    q(`SELECT COUNT(*) AS n FROM mo_folders`),
+    q(`SELECT COUNT(*) AS n FROM mo_tags`),
+    q(`SELECT COUNT(*) AS n FROM mo_albums`),
+    q(`SELECT COUNT(*) AS n FROM mo_smart_albums`),
+    q(`SELECT COUNT(*) AS n FROM mo_stacks`),
+  ]);
   const topTags = await db.all(
-    `SELECT t.name AS name, COUNT(*) AS n FROM mo_photo_tags pt
-       JOIN mo_tags t ON t.id = pt.tag_id
-      GROUP BY t.id ORDER BY n DESC LIMIT 10`
+    `SELECT t.id, t.name,
+            (SELECT COUNT(*) FROM mo_photos_tags pt WHERE pt.tag_id = t.id) AS photo_count,
+            (SELECT COUNT(*) FROM mo_videos_tags vt WHERE vt.tag_id = t.id) AS video_count
+       FROM mo_tags t
+       ORDER BY (photo_count + video_count) DESC
+       LIMIT 10`
   );
-  return {
-    content: JSON.stringify({
-      photos: photoCount.n,
-      videos: videoCount.n,
-      trashed: { photos: trashedPhotos.n, videos: trashedVideos.n },
-      untaggedPhotos: untaggedPhotos.n,
-      geotagged: geotagged.n,
-      perceptualHashIndexed: phashed.n,
-      stacks: stacks.n,
-      topTags: topTags.map(t => ({ name: t.name, count: t.n })),
-    }, null, 2),
-  };
+  return moToolOk({
+    photos, videos,
+    trashed: { photos: trashedPhotos, videos: trashedVideos },
+    untagged: { photos: untaggedPhotos, videos: untaggedVideos },
+    geotaggedPhotos: geotagged,
+    perceptualHashIndexed: phashed,
+    totals: {
+      files: totalFiles,
+      folders: totalFolders,
+      tags: totalTags,
+      albums: totalAlbums,
+      smartAlbums: totalSmartAlbums,
+      stacks: totalStacks,
+    },
+    topTags: topTags.map(t => ({
+      id: t.id, name: t.name,
+      photoCount: t.photo_count, videoCount: t.video_count,
+      total: t.photo_count + t.video_count,
+    })),
+  });
 }
 
 async function moToolSearch(args) {
   const query = String(args.query || '').trim();
   const limit = Math.min(200, parseInt(args.limit, 10) || 50);
-  if (!query) return { content: 'Error: query is required.', isError: true };
-  // Use FTS5 if available for free-text; otherwise LIKE fallback
-  const like = `%${query.replace(/[%_]/g, '\\$&')}%`;
+  const ratingMin = args.ratingMin != null ? Math.max(0, Math.min(5, parseInt(args.ratingMin, 10) || 0)) : null;
+  const dateFrom = args.dateFrom || null;
+  const dateTo   = args.dateTo   || null;
+  const tagNames = Array.isArray(args.tagNames) ? args.tagNames : null;
+  const excludeTagNames = Array.isArray(args.excludeTagNames) ? args.excludeTagNames : null;
+  const untagged = !!args.untagged;
+  const includeTrashed = !!args.includeTrashed;
+
+  let tagIds = null;
+  if (tagNames && tagNames.length > 0) {
+    const resolved = await moResolveTagIds({ tagNames });
+    tagIds = resolved.ids;
+    if (tagIds.length === 0) {
+      return moToolOk({ query, photos: [], videos: [], note: `No tags matched: ${resolved.notFound.join(', ')}` });
+    }
+  }
+  let excludeTagIds = null;
+  if (excludeTagNames && excludeTagNames.length > 0) {
+    const resolved = await moResolveTagIds({ tagNames: excludeTagNames });
+    excludeTagIds = resolved.ids;
+  }
+
+  const buildWhere = (titleCol, detailsCol, tableAlias, dateExpr, tagsJunction, tagsEntityCol) => {
+    const where = [];
+    const params = [];
+    if (!includeTrashed) where.push(`${tableAlias}.deleted_at IS NULL`);
+    if (query) {
+      const like = `%${query.replace(/[%_]/g, '\\$&')}%`;
+      where.push(`(${tableAlias}.${titleCol} LIKE ? ESCAPE '\\' OR ${tableAlias}.${detailsCol} LIKE ? ESCAPE '\\' OR f.basename LIKE ? ESCAPE '\\')`);
+      params.push(like, like, like);
+    }
+    if (ratingMin != null) { where.push(`${tableAlias}.rating >= ?`); params.push(ratingMin); }
+    if (dateFrom) { where.push(`${dateExpr} >= ?`); params.push(dateFrom); }
+    if (dateTo)   { where.push(`${dateExpr} <= ?`); params.push(dateTo); }
+    if (tagIds && tagIds.length > 0) {
+      const ph = tagIds.map(() => '?').join(',');
+      where.push(`${tableAlias}.id IN (SELECT ${tagsEntityCol} FROM ${tagsJunction} WHERE tag_id IN (${ph}) GROUP BY ${tagsEntityCol} HAVING COUNT(DISTINCT tag_id) = ?)`);
+      params.push(...tagIds, tagIds.length);
+    }
+    if (excludeTagIds && excludeTagIds.length > 0) {
+      const ph = excludeTagIds.map(() => '?').join(',');
+      where.push(`${tableAlias}.id NOT IN (SELECT ${tagsEntityCol} FROM ${tagsJunction} WHERE tag_id IN (${ph}))`);
+      params.push(...excludeTagIds);
+    }
+    if (untagged) {
+      where.push(`NOT EXISTS (SELECT 1 FROM ${tagsJunction} jx WHERE jx.${tagsEntityCol} = ${tableAlias}.id)`);
+    }
+    return { where: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
+  };
+
+  const photoSql = buildWhere('title', 'details', 'p', 'COALESCE(p.taken_at, p.created_at)', 'mo_photos_tags', 'photo_id');
+  const videoSql = buildWhere('title', 'details', 'v', 'v.created_at', 'mo_videos_tags', 'video_id');
+
   const photos = await db.all(
-    `SELECT p.id, p.title, p.taken_at FROM mo_photos p
+    `SELECT DISTINCT p.id, p.title, p.rating, p.color_label, p.taken_at, p.created_at, p.deleted_at
+       FROM mo_photos p
        JOIN mo_photos_files pf ON pf.photo_id = p.id
        JOIN mo_files f ON f.id = pf.file_id
-      WHERE p.deleted_at IS NULL
-        AND (p.title LIKE ? ESCAPE '\\' OR p.details LIKE ? ESCAPE '\\' OR f.basename LIKE ? ESCAPE '\\')
-      ORDER BY COALESCE(p.taken_at, p.created_at) DESC
-      LIMIT ?`,
-    [like, like, like, limit]
+       ${photoSql.where}
+       ORDER BY COALESCE(p.taken_at, p.created_at) DESC
+       LIMIT ?`,
+    [...photoSql.params, limit]
   );
   const videos = await db.all(
-    `SELECT v.id, v.title, v.created_at FROM mo_videos v
+    `SELECT DISTINCT v.id, v.title, v.rating, v.color_label, v.created_at, v.deleted_at
+       FROM mo_videos v
        JOIN mo_videos_files vf ON vf.video_id = v.id
        JOIN mo_files f ON f.id = vf.file_id
-      WHERE v.deleted_at IS NULL
-        AND (v.title LIKE ? ESCAPE '\\' OR v.details LIKE ? ESCAPE '\\' OR f.basename LIKE ? ESCAPE '\\')
-      ORDER BY v.created_at DESC
-      LIMIT ?`,
-    [like, like, like, limit]
+       ${videoSql.where}
+       ORDER BY v.created_at DESC
+       LIMIT ?`,
+    [...videoSql.params, limit]
   );
-  return {
-    content: JSON.stringify({
-      query,
-      photos: photos.map(p => ({ id: p.id, title: p.title, taken_at: p.taken_at })),
-      videos: videos.map(v => ({ id: v.id, title: v.title, created_at: v.created_at })),
-    }, null, 2),
-  };
+  return moToolOk({
+    query, ratingMin, dateFrom, dateTo, tagNames, excludeTagNames, untagged, includeTrashed,
+    counts: { photos: photos.length, videos: videos.length },
+    photos: photos.map(p => ({
+      id: p.id, title: p.title, rating: p.rating, colorLabel: p.color_label,
+      takenAt: p.taken_at, createdAt: p.created_at, trashed: p.deleted_at != null,
+    })),
+    videos: videos.map(v => ({
+      id: v.id, title: v.title, rating: v.rating, colorLabel: v.color_label,
+      createdAt: v.created_at, trashed: v.deleted_at != null,
+    })),
+  });
+}
+
+// ─── WRITE TOOLS ───────────────────────────────────────────────────────────
+
+async function moToolTagItems(args) {
+  const mode = args.mode === 'remove' ? 'REMOVE' : 'ADD';
+  const items = moNormalizeItems(args.items);
+  const resolved = await moResolveTagIds({
+    tagIds: args.tagIds,
+    tagNames: args.tagNames,
+    createMissing: !!args.createMissing && mode === 'ADD',
+  });
+  if (resolved.ids.length === 0) {
+    return moToolError(`No tags resolved. Not found: ${resolved.notFound.join(', ') || '(none provided)'}`);
+  }
+  let touched = 0;
+  for (const it of items) {
+    if (it.type === 'photo') await PhotoQueries.updateTags(it.id, { mode, ids: resolved.ids });
+    else                     await VideoQueries.updateTags(it.id, { mode, ids: resolved.ids });
+    touched++;
+  }
+  _notifySidebarRefresh();
+  return moToolOk({
+    mode: mode.toLowerCase(),
+    itemsTouched: touched,
+    tagIds: resolved.ids,
+    tagsCreated: resolved.created,
+    tagsNotFound: resolved.notFound,
+  });
+}
+
+async function moToolUpdateTag(args) {
+  const action = String(args.action || '').toLowerCase();
+  if (action === 'create') {
+    const name = String(args.name || '').trim();
+    if (!name) return moToolError('name is required for action "create"');
+    const tag = await TagQueries.create({
+      name,
+      description: args.description || '',
+      favorite: args.favorite ? 1 : 0,
+    });
+    _notifySidebarRefresh();
+    return moToolOk({ action: 'create', tag });
+  }
+  const tagId = parseInt(args.id, 10);
+  if (!tagId) return moToolError('id is required for actions "rename"|"delete"|"favorite"');
+  if (action === 'rename') {
+    const name = String(args.name || '').trim();
+    if (!name) return moToolError('name is required for action "rename"');
+    const tag = await TagQueries.update(tagId, { name });
+    _notifySidebarRefresh();
+    return moToolOk({ action: 'rename', tag });
+  }
+  if (action === 'delete') {
+    await TagQueries.destroy(tagId);
+    _notifySidebarRefresh();
+    return moToolOk({ action: 'delete', id: tagId, deleted: true });
+  }
+  if (action === 'favorite') {
+    const tag = await TagQueries.update(tagId, { favorite: args.favorite ? 1 : 0 });
+    _notifySidebarRefresh();
+    return moToolOk({ action: 'favorite', tag });
+  }
+  return moToolError(`Unknown action "${args.action}". Use: create | rename | delete | favorite`);
+}
+
+async function moToolUpdateItems(args) {
+  const items = moNormalizeItems(args.items);
+  const partial = {};
+  if (args.rating != null) {
+    const r = parseInt(args.rating, 10);
+    if (r < 0 || r > 5) return moToolError('rating must be 0-5');
+    partial.rating = r;
+  }
+  if (args.colorLabel !== undefined) partial.colorLabel = args.colorLabel; // null clears
+  if (args.curated != null)          partial.curated = args.curated ? 1 : 0;
+  if (args.title !== undefined)      partial.title = String(args.title);
+  if (args.details !== undefined)    partial.details = String(args.details);
+  if (Object.keys(partial).length === 0) {
+    return moToolError('Provide at least one field: rating, colorLabel, curated, title, details');
+  }
+  let touched = 0;
+  for (const it of items) {
+    if (it.type === 'photo') await PhotoQueries.update(it.id, partial);
+    else                     await VideoQueries.update(it.id, partial);
+    touched++;
+  }
+  _notifySidebarRefresh();
+  return moToolOk({ itemsTouched: touched, fieldsSet: Object.keys(partial) });
+}
+
+async function moToolTrashItems(args) {
+  const items = moNormalizeItems(args.items);
+  const action = args.action === 'restore' ? 'restore' : 'trash';
+  const stamp = action === 'trash' ? `datetime('now')` : `NULL`;
+  let n = 0;
+  for (const it of items) {
+    const table = it.type === 'photo' ? 'mo_photos' : 'mo_videos';
+    await db.run(`UPDATE ${table} SET deleted_at = ${stamp} WHERE id = ?`, [it.id]);
+    n++;
+  }
+  _notifySidebarRefresh();
+  return moToolOk({ action, itemsTouched: n });
+}
+
+async function moToolUpdateAlbum(args) {
+  const action = String(args.action || '').toLowerCase();
+  if (action === 'create') {
+    const title = String(args.title || '').trim();
+    if (!title) return moToolError('title is required for action "create"');
+    const album = await AlbumQueries.create({
+      title,
+      description: args.description || '',
+      parentAlbumId: args.parentAlbumId ?? null,
+    });
+    _notifySidebarRefresh();
+    return moToolOk({ action: 'create', album });
+  }
+  const id = parseInt(args.id, 10);
+  if (!id) return moToolError('id is required for actions "rename"|"delete"');
+  if (action === 'rename') {
+    const album = await AlbumQueries.update(id, { title: args.title, description: args.description });
+    _notifySidebarRefresh();
+    return moToolOk({ action: 'rename', album });
+  }
+  if (action === 'delete') {
+    await db.run(`DELETE FROM mo_albums WHERE id = ?`, [id]);
+    _notifySidebarRefresh();
+    return moToolOk({ action: 'delete', id, deleted: true });
+  }
+  return moToolError(`Unknown action "${args.action}". Use: create | rename | delete`);
+}
+
+async function moToolAlbumMembers(args) {
+  const albumId = parseInt(args.albumId, 10);
+  if (!albumId) return moToolError('albumId is required');
+  const items = moNormalizeItems(args.items);
+  const mode = args.action === 'remove' ? 'REMOVE' : 'ADD';
+  const photoIds = items.filter(i => i.type === 'photo').map(i => i.id);
+  const videoIds = items.filter(i => i.type === 'video').map(i => i.id);
+  if (photoIds.length > 0) await AlbumQueries.updatePhotos(albumId, { mode, ids: photoIds });
+  if (videoIds.length > 0) await AlbumQueries.updateVideos(albumId, { mode, ids: videoIds });
+  _notifySidebarRefresh();
+  return moToolOk({
+    albumId, action: mode.toLowerCase(),
+    photosTouched: photoIds.length,
+    videosTouched: videoIds.length,
+  });
+}
+
+async function moToolUpdateSmartAlbum(args) {
+  const action = String(args.action || '').toLowerCase();
+  if (action === 'create' || action === 'save') {
+    const name = String(args.name || '').trim();
+    if (!name) return moToolError('name is required');
+    const queryJson = JSON.stringify(args.query || {});
+    const existing = await db.get(`SELECT id FROM mo_smart_albums WHERE name = ?`, [name]);
+    if (existing) {
+      await db.run(`UPDATE mo_smart_albums SET query_json = ?, updated_at = datetime('now') WHERE id = ?`, [queryJson, existing.id]);
+      _notifySidebarRefresh();
+      return moToolOk({ action: 'update', id: existing.id, name });
+    }
+    const res = await db.run(`INSERT INTO mo_smart_albums (name, query_json) VALUES (?, ?)`, [name, queryJson]);
+    _notifySidebarRefresh();
+    return moToolOk({ action: 'create', id: res.lastInsertRowid, name });
+  }
+  if (action === 'delete') {
+    const id = parseInt(args.id, 10);
+    if (!id) return moToolError('id is required for action "delete"');
+    await db.run(`DELETE FROM mo_smart_albums WHERE id = ?`, [id]);
+    _notifySidebarRefresh();
+    return moToolOk({ action: 'delete', id, deleted: true });
+  }
+  return moToolError(`Unknown action "${args.action}". Use: create | save | delete`);
 }
 
 function moRegisterAITools(api) {
@@ -18042,50 +20118,243 @@ function moRegisterAITools(api) {
     return;
   }
   try {
-    _commandDisposables.push(api.chat.registerTool('mediaOrganizer.findSimilar', {
+    const reg = (name, def) => _commandDisposables.push(api.chat.registerTool(name, def));
+
+    // ── READ TOOLS ──
+    reg('mediaOrganizer.describeSchema', {
+      description: 'Return a structured reference of the media-organizer database schema (tables, columns, junctions, conventions). Call this FIRST before constructing other queries to avoid hallucinating table or column names.',
+      parameters: { type: 'object', properties: {} },
+      handler: async () => moToolDescribeSchema(),
+      requiresConfirmation: false,
+    });
+    reg('mediaOrganizer.getStats', {
+      description: 'Return summary statistics: photo/video counts, trash counts, untagged counts, geotag/phash coverage, totals, and top 10 tags.',
+      parameters: { type: 'object', properties: {} },
+      handler: async () => moToolGetStats(),
+      requiresConfirmation: false,
+    });
+    reg('mediaOrganizer.getItem', {
+      description: 'Fetch full details for a single photo or video including tags, files, album memberships, and the absolute imagePath/videoPath of the primary file. To actually SEE the image content, call viewImage afterwards — getItem alone returns metadata only.',
+      parameters: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', enum: ['photo', 'video'] },
+          id:   { type: 'integer' },
+        },
+        required: ['type', 'id'],
+      },
+      handler: async (args) => moToolGetItem(args),
+      requiresConfirmation: false,
+    });
+    reg('mediaOrganizer.viewImage', {
+      description: 'Attach a photo or video file to the chat as an image so you can visually inspect it. Use this before generating descriptive/content tags. IMPORTANT: the image arrives on your NEXT turn, not this one — after calling this tool, end your turn (briefly tell the user you have queued the image). On the next turn the image will be in your context and you can describe it and propose tags. Same flow as the user right-clicking "Add to Chat" in the file explorer.',
+      parameters: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', enum: ['photo', 'video'] },
+          id:   { type: 'integer' },
+        },
+        required: ['type', 'id'],
+      },
+      handler: async (args) => moToolViewImage(args),
+      requiresConfirmation: false,
+    });
+    reg('mediaOrganizer.search', {
+      description: 'Search the library with optional filters: free-text query (matches title/details/filename), minimum rating, date range, required tag names (ALL must match), excluded tag names, or untagged-only. Defaults to live items only.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query:           { type: 'string',  description: 'Free-text search (optional).' },
+          ratingMin:       { type: 'integer', description: '0-5; minimum rating.' },
+          dateFrom:        { type: 'string',  description: 'ISO date/time lower bound (compares to taken_at for photos, created_at for videos).' },
+          dateTo:          { type: 'string',  description: 'ISO date/time upper bound.' },
+          tagNames:        { type: 'array', items: { type: 'string' }, description: 'Items must have ALL of these tags (AND).' },
+          excludeTagNames: { type: 'array', items: { type: 'string' }, description: 'Items must NOT have any of these tags.' },
+          untagged:        { type: 'boolean', description: 'If true, return only items with zero tags. Use this to find items that need tagging.' },
+          includeTrashed:  { type: 'boolean', description: 'Include items in trash (default false).' },
+          limit:           { type: 'integer', description: 'Max results per type (default 50, max 200).' },
+        },
+      },
+      handler: async (args) => moToolSearch(args),
+      requiresConfirmation: false,
+    });
+    reg('mediaOrganizer.findSimilar', {
       description: 'Find photos visually similar to a given photo using perceptual hash (Hamming distance). Requires pHash indexing to have run first.',
       parameters: {
         type: 'object',
         properties: {
-          photoId: { type: 'integer', description: 'The mo_photos.id to find similar images for.' },
-          limit: { type: 'integer', description: 'Max results (default 20, max 100).' },
+          photoId:     { type: 'integer' },
+          limit:       { type: 'integer', description: 'Max results (default 20, max 100).' },
+          maxDistance: { type: 'integer', description: 'Max Hamming distance (default 16; lower = more similar).' },
         },
         required: ['photoId'],
       },
       handler: async (args) => moToolFindSimilar(args),
       requiresConfirmation: false,
-    }));
-    _commandDisposables.push(api.chat.registerTool('mediaOrganizer.suggestStacks', {
-      description: 'Suggest photo stacks (versions/variants) by grouping unstacked photos with similar basenames in the same folder. Returns proposed groups; does not apply them.',
+    });
+    reg('mediaOrganizer.suggestStacks', {
+      description: 'Propose photo stacks (versions/variants) by grouping unstacked photos with similar basenames in the same folder. Returns proposed groups; does not apply them.',
       parameters: {
         type: 'object',
-        properties: {
-          limit: { type: 'integer', description: 'Max proposed groups to return (default 20, max 50).' },
-        },
+        properties: { limit: { type: 'integer', description: 'Max proposed groups (default 20, max 50).' } },
       },
       handler: async (args) => moToolSuggestStacks(args),
       requiresConfirmation: false,
-    }));
-    _commandDisposables.push(api.chat.registerTool('mediaOrganizer.getStats', {
-      description: 'Return summary statistics for the media library: photo/video counts, trashed counts, untagged photos, geotagged photos, perceptual-hash coverage, stack count, top 10 tags.',
-      parameters: { type: 'object', properties: {} },
-      handler: async () => moToolGetStats(),
-      requiresConfirmation: false,
-    }));
-    _commandDisposables.push(api.chat.registerTool('mediaOrganizer.search', {
-      description: 'Search the media library by free-text against title, description, and filename. Returns matching photos and videos with IDs.',
+    });
+    reg('mediaOrganizer.listTags', {
+      description: 'List tags with usage counts. Optionally filter by name substring or favorites only.',
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'The search query.' },
-          limit: { type: 'integer', description: 'Max results per type (default 50, max 200).' },
+          nameContains:  { type: 'string' },
+          onlyFavorites: { type: 'boolean' },
+          limit:         { type: 'integer', description: 'Max results (default 200, max 500).' },
         },
-        required: ['query'],
       },
-      handler: async (args) => moToolSearch(args),
+      handler: async (args) => moToolListTags(args),
       requiresConfirmation: false,
-    }));
-    console.log('[MediaOrganizer] Registered 4 AI chat tools (findSimilar, suggestStacks, getStats, search)');
+    });
+    reg('mediaOrganizer.listAlbums', {
+      description: 'List albums with photo/video counts. Optionally filter by title substring.',
+      parameters: {
+        type: 'object',
+        properties: {
+          titleContains: { type: 'string' },
+          limit:         { type: 'integer', description: 'Max results (default 200, max 500).' },
+        },
+      },
+      handler: async (args) => moToolListAlbums(args),
+      requiresConfirmation: false,
+    });
+    reg('mediaOrganizer.listFolders', {
+      description: 'List folders with file counts. Optionally filter by path substring.',
+      parameters: {
+        type: 'object',
+        properties: {
+          pathContains: { type: 'string' },
+          limit:        { type: 'integer', description: 'Max results (default 200, max 500).' },
+        },
+      },
+      handler: async (args) => moToolListFolders(args),
+      requiresConfirmation: false,
+    });
+    reg('mediaOrganizer.listSmartAlbums', {
+      description: 'List all saved smart albums (saved searches).',
+      parameters: { type: 'object', properties: {} },
+      handler: async () => moToolListSmartAlbums(),
+      requiresConfirmation: false,
+    });
+
+    // ── WRITE TOOLS (require user confirmation) ──
+    reg('mediaOrganizer.tagItems', {
+      description: 'Add or remove tags on a batch of photos/videos. Provide tagNames and/or tagIds. Set createMissing:true to auto-create missing tag names (ADD mode only). For descriptive/content tags ("sunset", "dog", "portrait"), DO NOT guess from filenames — first call viewImage on each item, end your turn, then on the next turn describe what you actually see and propose tags. Organizational tags (folder name, year, camera) can be inferred from getItem metadata alone.',
+      parameters: {
+        type: 'object',
+        properties: {
+          mode:          { type: 'string', enum: ['add', 'remove'], description: 'add (default) | remove' },
+          items:         { type: 'array', description: 'Array of {type:"photo"|"video", id:integer}.', items: { type: 'object' } },
+          tagNames:      { type: 'array', items: { type: 'string' } },
+          tagIds:        { type: 'array', items: { type: 'integer' } },
+          createMissing: { type: 'boolean', description: 'If true and mode=add, create tags that do not exist.' },
+        },
+        required: ['items'],
+      },
+      handler: async (args) => moToolTagItems(args),
+      requiresConfirmation: true,
+    });
+    reg('mediaOrganizer.updateTag', {
+      description: 'Create, rename, delete, or toggle-favorite a single tag.',
+      parameters: {
+        type: 'object',
+        properties: {
+          action:      { type: 'string', enum: ['create', 'rename', 'delete', 'favorite'] },
+          id:          { type: 'integer', description: 'Required for rename/delete/favorite.' },
+          name:        { type: 'string',  description: 'Required for create/rename.' },
+          description: { type: 'string' },
+          favorite:    { type: 'boolean' },
+        },
+        required: ['action'],
+      },
+      handler: async (args) => moToolUpdateTag(args),
+      requiresConfirmation: true,
+    });
+    reg('mediaOrganizer.updateItems', {
+      description: 'Update fields (rating, colorLabel, curated/favorite, title, details) on a batch of photos/videos. Pass colorLabel:null to clear.',
+      parameters: {
+        type: 'object',
+        properties: {
+          items:      { type: 'array', items: { type: 'object' }, description: 'Array of {type,id}.' },
+          rating:     { type: 'integer', description: '0-5.' },
+          colorLabel: { type: ['string', 'null'] },
+          curated:    { type: 'boolean' },
+          title:      { type: 'string' },
+          details:    { type: 'string' },
+        },
+        required: ['items'],
+      },
+      handler: async (args) => moToolUpdateItems(args),
+      requiresConfirmation: true,
+    });
+    reg('mediaOrganizer.trashItems', {
+      description: 'Move items to trash or restore from trash. Sets/clears deleted_at; does NOT permanently delete.',
+      parameters: {
+        type: 'object',
+        properties: {
+          items:  { type: 'array', items: { type: 'object' } },
+          action: { type: 'string', enum: ['trash', 'restore'] },
+        },
+        required: ['items', 'action'],
+      },
+      handler: async (args) => moToolTrashItems(args),
+      requiresConfirmation: true,
+    });
+    reg('mediaOrganizer.updateAlbum', {
+      description: 'Create, rename, or delete an album.',
+      parameters: {
+        type: 'object',
+        properties: {
+          action:        { type: 'string', enum: ['create', 'rename', 'delete'] },
+          id:            { type: 'integer' },
+          title:         { type: 'string' },
+          description:   { type: 'string' },
+          parentAlbumId: { type: 'integer' },
+        },
+        required: ['action'],
+      },
+      handler: async (args) => moToolUpdateAlbum(args),
+      requiresConfirmation: true,
+    });
+    reg('mediaOrganizer.albumMembers', {
+      description: 'Add or remove photos/videos in an album.',
+      parameters: {
+        type: 'object',
+        properties: {
+          albumId: { type: 'integer' },
+          items:   { type: 'array', items: { type: 'object' } },
+          action:  { type: 'string', enum: ['add', 'remove'] },
+        },
+        required: ['albumId', 'items', 'action'],
+      },
+      handler: async (args) => moToolAlbumMembers(args),
+      requiresConfirmation: true,
+    });
+    reg('mediaOrganizer.updateSmartAlbum', {
+      description: 'Create, save (upsert by name), or delete a smart album. The "query" field is an arbitrary JSON object describing the saved search.',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['create', 'save', 'delete'] },
+          id:     { type: 'integer' },
+          name:   { type: 'string' },
+          query:  { type: 'object' },
+        },
+        required: ['action'],
+      },
+      handler: async (args) => moToolUpdateSmartAlbum(args),
+      requiresConfirmation: true,
+    });
+
+    console.log('[MediaOrganizer] Registered 17 AI chat tools');
   } catch (err) {
     console.warn('[MediaOrganizer] AI tool registration failed:', err);
   }
@@ -18101,6 +20370,11 @@ const _sidebarRefreshCallbacks = [];
 function _notifySidebarRefresh() { for (const cb of _sidebarRefreshCallbacks) { try { cb(); } catch {} } }
 let _commandDisposables = [];
 let _api = null;
+
+// Cached config — read at activation, refreshed on config-change events.
+// Card render reads from this synchronously; using the bridge per-card would
+// add an async hop to a hot path. Default mirrors the manifest default.
+let _showCardTags = true;
 
 async function ensureDatabase(api) {
   // Open the per-extension database (creates it if needed)
@@ -18121,23 +20395,57 @@ async function ensureDatabase(api) {
 }
 
 export async function activate(api, context) {
+    try {
+      console.log('[MediaOrganizer] activate() called');
+    } catch (e) {
+      // fallback for environments with no console
+    }
   if (_activated) return;
   _activated = true;
   _api = api;
   _toolPath = api.env.toolPath;
 
+  try {
+    console.log('[MediaOrganizer] after _activated, api:', !!api, 'context:', !!context);
+  } catch (e) {}
+
   // Bind the per-extension database bridge for the db wrapper
   if (!api.database) {
-    console.error('[MediaOrganizer] Activation failed — api.database not available (extension database required)');
+    try { console.error('[MediaOrganizer] Activation failed — api.database not available (extension database required)'); } catch (e) {}
     return;
   }
   _dbBridge = api.database;
 
   const ok = await ensureDatabase(api);
   if (!ok) {
-    console.error('[MediaOrganizer] Activation failed — database not ready');
+    try { console.error('[MediaOrganizer] Activation failed — database not ready'); } catch (e) {}
     return;
   }
+  try {
+    console.log('[MediaOrganizer] activate() completed core init, registering views...');
+  } catch (e) {}
+
+  // M59 P3: Ensure the FTS index is populated on cold start. If the user has
+  // photos/videos in the DB but the FTS tables are empty (e.g. they upgraded
+  // to a build with FTS but haven't re-scanned), search would return nothing.
+  // Rebuild lazily here — best-effort, never blocks activation.
+  (async () => {
+    try {
+      const photoCountRow = await db.get('SELECT COUNT(*) AS n FROM mo_photos').catch(() => null);
+      const videoCountRow = await db.get('SELECT COUNT(*) AS n FROM mo_videos').catch(() => null);
+      const hasContent = (photoCountRow && photoCountRow.n > 0) || (videoCountRow && videoCountRow.n > 0);
+      if (!hasContent) return;
+      const ftsP = await db.get('SELECT COUNT(*) AS n FROM mo_photos_fts').catch(() => null);
+      const ftsV = await db.get('SELECT COUNT(*) AS n FROM mo_videos_fts').catch(() => null);
+      const ftsEmpty = (!ftsP || ftsP.n === 0) && (!ftsV || ftsV.n === 0);
+      if (ftsEmpty) {
+        console.log('[MediaOrganizer] FTS index empty on activation — rebuilding…');
+        await moRebuildSearchIndex();
+      }
+    } catch (err) {
+      console.warn('[MediaOrganizer] FTS activation check failed:', err && err.message);
+    }
+  })();
 
   // Hydrate the workspace-persisted grid zoom so it survives across sessions.
   try {
@@ -18147,6 +20455,26 @@ export async function activate(api, context) {
       _sessionZoomWidth = zNum;
     }
   } catch { /* fall back to default */ }
+
+  // Hydrate the show-card-tags toggle and watch for changes. When it flips
+  // we dispatch a grid refresh so cards re-render immediately without the
+  // user having to scroll, change page, or reopen the grid.
+  try {
+    const cfg = api.workspace.getConfiguration('mediaOrganizer');
+    _showCardTags = cfg.get('showCardTags', true) !== false;
+  } catch { /* keep default */ }
+  if (api.workspace.onDidChangeConfiguration) {
+    const sub = api.workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration('mediaOrganizer.showCardTags')) return;
+      try {
+        const cfg = api.workspace.getConfiguration('mediaOrganizer');
+        _showCardTags = cfg.get('showCardTags', true) !== false;
+      } catch { /* ignore */ }
+      document.dispatchEvent(new CustomEvent('mo:show-card-tags-changed'));
+      document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+    });
+    if (sub && typeof sub.dispose === 'function') _commandDisposables.push(sub);
+  }
 
   // Status bar item for scan progress
   _statusBarItem = api.window.createStatusBarItem(1, 100);
@@ -18422,6 +20750,10 @@ export async function activate(api, context) {
   // Sweep orphan DB rows whose backing file vanished — guards against historical
   // bugs and folders that drifted out of scan roots.
   moPurgeMissingFiles().catch(() => {});
+  // Resume any in-flight Eraser batches saved from a previous session. The
+  // tick loop will poll until disk catches up; if Eraser already finished
+  // while Parallx was closed, the very next tick commits the cleanup.
+  _resumePendingErase(api).catch(() => {});
   // One-shot sweep for phantom folder-backed albums left over from earlier sessions.
   moPruneOrphanFolderAlbums().catch(() => {});
   // M59 P8: register AI chat tools
@@ -18456,3 +20788,5 @@ export function deactivate() {
   _activated = false;
   console.log('[MediaOrganizer] Deactivated');
 }
+
+

@@ -52,6 +52,18 @@
         "typeId": "media-organizer-grid",
         "displayName": "Media Grid"
       }
+    ],
+    "configuration": [
+      {
+        "title": "Media Organizer",
+        "properties": {
+          "mediaOrganizer.showCardTags": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show each item's tags on the grid card next to the date. Turn off to declutter the grid; tags remain visible in the detail view and sidebar."
+          }
+        }
+      }
     ]
   }
 }
