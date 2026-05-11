@@ -1293,7 +1293,7 @@ export const ILanguageModelToolsService = createServiceIdentifier<ILanguageModel
  * AI Hub Tools section and the (deprecated) ChatToolPicker modal.
  */
 export interface IToolPickerServices {
-  getTools(): readonly { name: string; description: string; enabled: boolean }[];
+  getTools(): readonly { name: string; description: string; enabled: boolean; extensionId?: string }[];
   setToolEnabled(name: string, enabled: boolean): void;
   readonly onDidChangeTools: Event<void>;
   getEnabledCount(): number;

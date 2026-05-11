@@ -143,7 +143,7 @@ export class ToolsSection extends SettingsSection {
     const allTools = services.getTools();
     const q = query.toLowerCase().trim();
 
-    type ToolEntry = { name: string; description: string; enabled: boolean };
+    type ToolEntry = { name: string; description: string; enabled: boolean; extensionId?: string };
 
     // Filter by search
     const filtered: ToolEntry[] = q
@@ -158,85 +158,60 @@ export class ToolsSection extends SettingsSection {
       return;
     }
 
-    // ── Top-level "Built-In" group ──
-    const builtInHeader = $('div.ai-settings-tools-group-header');
-
-    const builtInChevron = $('span.ai-settings-tools-chevron');
-    const builtInCollapsed = this._collapsedState.get('Built-In') ?? false;
-    builtInChevron.textContent = builtInCollapsed ? '\u25B6' : '\u25BC'; // ▶ or ▼
-    builtInHeader.appendChild(builtInChevron);
-
-    // Built-In checkbox (tri-state)
-    const builtInCb = document.createElement('input');
-    builtInCb.type = 'checkbox';
-    builtInCb.className = 'ai-settings-tools-checkbox';
-    const enabledCount = filtered.filter((t: ToolEntry) => t.enabled).length;
-    builtInCb.checked = enabledCount > 0;
-    builtInCb.indeterminate = enabledCount > 0 && enabledCount < filtered.length;
-    builtInHeader.appendChild(builtInCb);
-
-    const builtInLabel = $('span.ai-settings-tools-group-label', 'Built-In');
-    builtInHeader.appendChild(builtInLabel);
-    this._treeContainer.appendChild(builtInHeader);
-
-    // Toggle collapse
-    builtInHeader.addEventListener('click', (e) => {
-      if (e.target === builtInCb) return;
-      this._collapsedState.set('Built-In', !builtInCollapsed);
-      this._renderTree(this._searchInput.value);
+    // ── M66: Group tools by extension ──
+    // Built-in tools (no extensionId) appear under "Built-In"; tools contributed
+    // by an extension are grouped under that extension's id. Order: built-ins
+    // first, then extension groups alphabetically.
+    const extGroups = new Map<string, ToolEntry[]>();
+    for (const t of filtered) {
+      const key = t.extensionId ?? 'built-in';
+      let bucket = extGroups.get(key);
+      if (!bucket) { bucket = []; extGroups.set(key, bucket); }
+      bucket.push(t);
+    }
+    const orderedKeys = Array.from(extGroups.keys()).sort((a, b) => {
+      if (a === 'built-in') return -1;
+      if (b === 'built-in') return 1;
+      return a.localeCompare(b);
     });
 
-    // Toggle all tools
-    builtInCb.addEventListener('change', () => {
-      const enable = builtInCb.checked;
-      for (const tool of allTools) {
-        services.setToolEnabled(tool.name, enable);
-        this._persistToolOverride(tool.name, enable);
-      }
-      this._renderTree(this._searchInput.value);
-      this._updateSummary();
-    });
+    for (const groupKey of orderedKeys) {
+      const groupTools = extGroups.get(groupKey)!;
+      const groupLabel = groupKey === 'built-in' ? 'Built-In' : groupKey;
+      const groupCollapsed = this._collapsedState.get(groupLabel) ?? false;
 
-    if (builtInCollapsed && !q) return;
+      const groupHeader = $('div.ai-settings-tools-group-header');
 
-    // ── Sub-categories ──
-    const categories = this._buildCategories(filtered);
-    for (const cat of categories) {
-      const catHeader = $('div.ai-settings-tools-cat-header');
+      const groupChevron = $('span.ai-settings-tools-chevron');
+      groupChevron.textContent = groupCollapsed ? '\u25B6' : '\u25BC';
+      groupHeader.appendChild(groupChevron);
 
-      const catChevron = $('span.ai-settings-tools-chevron');
-      catChevron.textContent = cat.collapsed ? '\u25B6' : '\u25BC';
-      catHeader.appendChild(catChevron);
+      const groupCb = document.createElement('input');
+      groupCb.type = 'checkbox';
+      groupCb.className = 'ai-settings-tools-checkbox';
+      const groupEnabled = groupTools.filter((t) => t.enabled).length;
+      groupCb.checked = groupEnabled > 0;
+      groupCb.indeterminate = groupEnabled > 0 && groupEnabled < groupTools.length;
+      groupHeader.appendChild(groupCb);
 
-      // Category checkbox (tri-state)
-      const catCb = document.createElement('input');
-      catCb.type = 'checkbox';
-      catCb.className = 'ai-settings-tools-checkbox';
-      const catEnabled = cat.tools.filter((t) => t.enabled).length;
-      catCb.checked = catEnabled > 0;
-      catCb.indeterminate = catEnabled > 0 && catEnabled < cat.tools.length;
-      catHeader.appendChild(catCb);
+      const groupLabelEl = $('span.ai-settings-tools-group-label', groupLabel);
+      groupHeader.appendChild(groupLabelEl);
 
-      const catLabel = $('span.ai-settings-tools-cat-label', cat.label);
-      catHeader.appendChild(catLabel);
+      const groupDesc = $('span.ai-settings-tools-cat-desc');
+      groupDesc.textContent = `${groupTools.length} tool${groupTools.length !== 1 ? 's' : ''}`;
+      groupHeader.appendChild(groupDesc);
 
-      const catDesc = $('span.ai-settings-tools-cat-desc');
-      catDesc.textContent = `${cat.tools.length} tool${cat.tools.length !== 1 ? 's' : ''}`;
-      catHeader.appendChild(catDesc);
+      this._treeContainer.appendChild(groupHeader);
 
-      this._treeContainer.appendChild(catHeader);
-
-      // Toggle category collapse
-      catHeader.addEventListener('click', (e) => {
-        if (e.target === catCb) return;
-        this._collapsedState.set(cat.label, !cat.collapsed);
+      groupHeader.addEventListener('click', (e) => {
+        if (e.target === groupCb) return;
+        this._collapsedState.set(groupLabel, !groupCollapsed);
         this._renderTree(this._searchInput.value);
       });
 
-      // Toggle all tools in category
-      catCb.addEventListener('change', () => {
-        const enable = catCb.checked;
-        for (const tool of cat.tools) {
+      groupCb.addEventListener('change', () => {
+        const enable = groupCb.checked;
+        for (const tool of groupTools) {
           services.setToolEnabled(tool.name, enable);
           this._persistToolOverride(tool.name, enable);
         }
@@ -244,8 +219,58 @@ export class ToolsSection extends SettingsSection {
         this._updateSummary();
       });
 
-      // ── Individual tools (if not collapsed) ──
-      if (!cat.collapsed || q) {
+      if (groupCollapsed && !q) continue;
+
+      // ── Sub-categories within this group (Pages/Files for built-ins) ──
+      const categories = this._buildCategories(groupTools);
+      for (const cat of categories) {
+        // For single-category extension groups, skip the redundant category header
+        // and render tools directly under the group.
+        const renderCatHeader = groupKey === 'built-in' && categories.length > 1;
+
+        if (renderCatHeader) {
+          const catHeader = $('div.ai-settings-tools-cat-header');
+
+          const catChevron = $('span.ai-settings-tools-chevron');
+          catChevron.textContent = cat.collapsed ? '\u25B6' : '\u25BC';
+          catHeader.appendChild(catChevron);
+
+          const catCb = document.createElement('input');
+          catCb.type = 'checkbox';
+          catCb.className = 'ai-settings-tools-checkbox';
+          const catEnabled = cat.tools.filter((t) => t.enabled).length;
+          catCb.checked = catEnabled > 0;
+          catCb.indeterminate = catEnabled > 0 && catEnabled < cat.tools.length;
+          catHeader.appendChild(catCb);
+
+          const catLabel = $('span.ai-settings-tools-cat-label', cat.label);
+          catHeader.appendChild(catLabel);
+
+          const catDesc = $('span.ai-settings-tools-cat-desc');
+          catDesc.textContent = `${cat.tools.length} tool${cat.tools.length !== 1 ? 's' : ''}`;
+          catHeader.appendChild(catDesc);
+
+          this._treeContainer.appendChild(catHeader);
+
+          catHeader.addEventListener('click', (e) => {
+            if (e.target === catCb) return;
+            this._collapsedState.set(cat.label, !cat.collapsed);
+            this._renderTree(this._searchInput.value);
+          });
+
+          catCb.addEventListener('change', () => {
+            const enable = catCb.checked;
+            for (const tool of cat.tools) {
+              services.setToolEnabled(tool.name, enable);
+              this._persistToolOverride(tool.name, enable);
+            }
+            this._renderTree(this._searchInput.value);
+            this._updateSummary();
+          });
+
+          if (cat.collapsed && !q) continue;
+        }
+
         for (const tool of cat.tools) {
           const toolRow = $('div.ai-settings-tools-tool-row');
 
@@ -266,7 +291,6 @@ export class ToolsSection extends SettingsSection {
           toolRow.appendChild(toolInfo);
           this._treeContainer.appendChild(toolRow);
 
-          // Toggle individual tool
           toolCb.addEventListener('change', () => {
             services.setToolEnabled(tool.name, toolCb.checked);
             this._persistToolOverride(tool.name, toolCb.checked);
@@ -274,7 +298,6 @@ export class ToolsSection extends SettingsSection {
             this._updateSummary();
           });
 
-          // Clicking the row also toggles
           toolRow.addEventListener('click', (e) => {
             if (e.target === toolCb) return;
             toolCb.checked = !toolCb.checked;

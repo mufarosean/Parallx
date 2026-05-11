@@ -641,6 +641,57 @@ async function logResearchEventTool(args) {
 // SECTION 8 — Tool registration
 // ═══════════════════════════════════════════════════════════════════════════
 
+function _registerLinkContract(api) {
+  if (!api.links || typeof api.links.register !== 'function') {
+    console.warn('[web-research] api.links.register not available — link contract skipped');
+    return;
+  }
+  // `parallx://web-research/page?url=<canonicalUrl>` opens the page in the
+  // user's default OS browser via the existing egress chokepoint. The link
+  // never bypasses the allowlist — the OS browser is the user's own trust
+  // boundary, not ours.
+  const disp = api.links.register({
+    segment: 'web-research',
+    displayName: 'Web Research',
+    kinds: {
+      page: {
+        uriTemplate: 'parallx://web-research/page?url=<canonicalUrl>',
+        description: 'Open a web page (returned by webSearch or webFetch) in the user\'s default OS browser.',
+        examples: ['parallx://web-research/page?url=https%3A%2F%2Fexample.com%2Farticle'],
+        async open(parsed) {
+          const url = parsed.params && parsed.params.url;
+          if (!url || !/^https?:\/\//i.test(url)) return false;
+          try {
+            const bridge = globalThis.parallxElectron;
+            if (bridge && typeof bridge.openExternal === 'function') {
+              await bridge.openExternal(url);
+              return true;
+            }
+            if (typeof globalThis.window !== 'undefined' && typeof globalThis.window.open === 'function') {
+              globalThis.window.open(url, '_blank', 'noopener,noreferrer');
+              return true;
+            }
+            return false;
+          } catch {
+            return false;
+          }
+        },
+        async resolveMetadata(parsed) {
+          const url = parsed.params && parsed.params.url;
+          if (!url) return null;
+          try {
+            const u = new URL(url);
+            return { title: u.hostname + u.pathname, icon: '🔗' };
+          } catch {
+            return null;
+          }
+        },
+      },
+    },
+  });
+  if (disp) _commandDisposables.push(disp);
+}
+
 function _registerTools(api) {
   if (!api.chat || typeof api.chat.registerTool !== 'function') {
     console.warn('[web-research] api.chat.registerTool not available — tools skipped');
@@ -752,6 +803,7 @@ export async function activate(api, _context) {
   }
 
   _registerTools(api);
+  _registerLinkContract(api);
   console.log('[web-research] Activated');
 }
 

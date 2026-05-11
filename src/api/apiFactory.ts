@@ -40,6 +40,9 @@ import { IconsBridge } from './bridges/iconsBridge.js';
 import { McpBridge, type IMcpInvokeToken, type IMcpInvokeResult, type IMcpToolInfo } from './bridges/mcpBridge.js';
 import { CronBridge, type IExtensionCronJob } from './bridges/cronBridge.js';
 import { ICronService } from '../openclaw/openclawCronService.js';
+import { LinksBridge, type LinkContractInput } from './bridges/linksBridge.js';
+import { ILinkResolverService, type LinkContract, type LinkMetadata } from '../links/linkResolverService.js';
+import type { ParsedLink } from '../links/parallxUri.js';
 import type { IThemeService } from '../services/serviceTypes.js';
 import { ThemeType } from '../theme/colorRegistry.js';
 import type { ViewManager } from '../views/viewManager.js';
@@ -165,6 +168,15 @@ export interface ParallxApiObject {
     openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
     readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
     onDidChangeOpenEditors(listener: () => void): IDisposable;
+  };
+  readonly links: {
+    register(contract: LinkContractInput): IDisposable;
+    open(uri: string): Promise<boolean>;
+    mint(segment: string, path: string | readonly string[], params?: Record<string, string | number | undefined | null>): string;
+    parse(uri: string): ParsedLink | null;
+    allContracts(): readonly LinkContract[];
+    resolveMetadata(uri: string): Promise<LinkMetadata | null>;
+    onDidChangeContracts(listener: () => void): IDisposable;
   };
   readonly tools: {
     getAll(): { id: string; name: string; version: string; publisher: string; description: string; isBuiltin: boolean; toolPath: string; state: string; activationEvents: readonly string[]; contributes: Record<string, unknown> }[];
@@ -373,6 +385,12 @@ export function createToolApi(
     ? new CronBridge(toolId, deps.services.get<import('../openclaw/openclawCronService.js').CronService>(ICronService))
     : undefined;
 
+  // M66 — Links / unified citation linking. Shared workbench service.
+  const linkResolverService = deps.services.has(ILinkResolverService)
+    ? deps.services.get<ILinkResolverService>(ILinkResolverService)
+    : undefined;
+  const linksBridge = new LinksBridge(toolId, linkResolverService, subscriptions);
+
   // ── Build API object ──
   const api: ParallxApiObject = {
     views: Object.freeze({
@@ -562,6 +580,17 @@ export function createToolApi(
       openFileEditor: (uri, options) => editorsBridge.openFileEditor(uri, options),
       get openEditors() { return editorsBridge.getOpenEditors(); },
       onDidChangeOpenEditors: (listener: () => void) => editorsBridge.onDidChangeOpenEditors(listener),
+    }),
+
+    links: Object.freeze({
+      register: (contract: LinkContractInput) => linksBridge.register(contract),
+      open: (uri: string) => linksBridge.open(uri),
+      mint: (segment: string, path: string | readonly string[], params?: Record<string, string | number | undefined | null>) =>
+        linksBridge.mint(segment, path, params),
+      parse: (uri: string) => linksBridge.parse(uri),
+      allContracts: () => linksBridge.allContracts(),
+      resolveMetadata: (uri: string) => linksBridge.resolveMetadata(uri),
+      onDidChangeContracts: (listener: () => void) => linksBridge.onDidChangeContracts(listener),
     }),
 
     tools: Object.freeze({

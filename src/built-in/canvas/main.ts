@@ -14,6 +14,7 @@ import './canvas.css';
 import 'katex/dist/katex.min.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
+import type { LinksApi } from '../../links/linksApi.js';
 import { ICanvasPageQueryService, IIndexingPipelineService, IVectorStoreService } from '../../services/serviceTypes.js';
 import { CanvasDataService } from './canvasDataService.js';
 import type { ICanvasDataService } from './canvasTypes.js';
@@ -58,6 +59,7 @@ interface ParallxApi {
     readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
     onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
+  links: LinksApi;
   services: {
     get<T>(id: { readonly id: string }): T;
     has(id: { readonly id: string }): boolean;
@@ -280,6 +282,48 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           await api.editors.closeEditor(ed.id);
         }
       }
+    }),
+  );
+
+  // 5d. M66 — register the canvas link contract. Makes
+  // `parallx://canvas/page/<pageId>` clickable from anywhere in the app
+  // (chat markdown, canvas link chips, future parallx_link AI tool).
+  context.subscriptions.push(
+    api.links.register({
+      segment: 'canvas',
+      displayName: 'Canvas',
+      kinds: {
+        page: {
+          uriTemplate: 'parallx://canvas/page/<pageId>',
+          description: 'Open a canvas page by id. Optional ?block=<blockId> param to scroll to a specific block.',
+          examples: ['parallx://canvas/page/01HZX7...'],
+          async open(parsed) {
+            const pageId = parsed.pathSegments[1];
+            if (!pageId) return false;
+            // Verify the page exists before opening so missing targets
+            // return false (renderers can show a "(missing)" state).
+            try {
+              const page = await _dataService?.getPage(pageId);
+              if (!page) return false;
+            } catch {
+              return false;
+            }
+            await openPageInEditor(pageId);
+            return true;
+          },
+          async resolveMetadata(parsed) {
+            const pageId = parsed.pathSegments[1];
+            if (!pageId || !_dataService) return null;
+            try {
+              const page = await _dataService.getPage(pageId);
+              if (!page) return null;
+              return { title: page.title || 'Untitled', icon: page.icon ?? '📄' };
+            } catch {
+              return null;
+            }
+          },
+        },
+      },
     }),
   );
 

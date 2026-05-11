@@ -111,6 +111,9 @@ import type { ConfigurationRegistry } from '../configuration/configurationRegist
 // Tool Enablement (M6 Capability 0)
 import { ToolEnablementService } from '../tools/toolEnablementService.js';
 
+// M66 — Unified linking (link contracts registered per extension)
+import { ILinkResolverService, LinkResolverService } from '../links/linkResolverService.js';
+
 // Database Service (M6 Capability 1)
 import { DatabaseService } from '../services/databaseService.js';
 import { IDatabaseService } from '../services/serviceTypes.js';
@@ -2246,6 +2249,42 @@ export class Workbench extends Layout {
 
     // Wire enablement service into API factory deps (created before enablement service)
     (apiFactoryDeps as any).toolEnablementService = this._toolEnablementService;
+
+    // ── Link Resolver Service (M66) ──
+    // Shared workbench-wide registry of LinkContracts. Every extension's
+    // `parallx.links.register(...)` call ultimately writes here. Has no
+    // dependencies — safe to register before tool activation.
+    const linkResolverService = this._register(new LinkResolverService());
+    this._services.registerInstance(ILinkResolverService, linkResolverService);
+
+    // M66 — workbench-wide click interceptor for `parallx://` anchors.
+    // A single document-level listener routes every parallx:// click in
+    // every surface (chat markdown, canvas content, panels, anywhere) into
+    // the link resolver. Plain `http://` / `file://` / etc. links are
+    // untouched. Capture phase is used so extensions inside iframes/
+    // shadow-roots can still intercept locally before this fires.
+    const onParallxClick = (e: MouseEvent) => {
+      // Only handle primary-button clicks without modifier keys (let
+      // Ctrl/Shift/Meta + click fall through for the rare case where a
+      // user wants to copy the URI or open it in a new surface).
+      if (e.defaultPrevented) return;
+      if (e.button !== 0) return;
+      if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      const target = e.target as Element | null;
+      if (!target || typeof (target as Element).closest !== 'function') return;
+      const anchor = (target as Element).closest('a[href^="parallx://"]') as HTMLAnchorElement | null;
+      if (!anchor) return;
+      const href = anchor.getAttribute('href');
+      if (!href) return;
+      e.preventDefault();
+      void linkResolverService.open(href).catch((err) => {
+        console.warn('[Workbench] parallx:// link resolution failed:', err);
+      });
+    };
+    document.addEventListener('click', onParallxClick);
+    this._register(toDisposable(() => {
+      document.removeEventListener('click', onParallxClick);
+    }));
 
     // M62 follow-up: wire enablement into LanguageModelToolsService so that
     // chat tools registered by an extension's bridge are filtered out of the

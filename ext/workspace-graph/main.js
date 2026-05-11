@@ -1308,4 +1308,38 @@ export async function activate(api, context) {
     api.editors.openEditor({ typeId: 'workspace-graph', title: 'Workspace Graph', icon: 'codicon-graph', instanceId: 'main' });
   });
   context.subscriptions.push(refreshCmd);
+
+  // M66 link contract — `parallx://workspace-graph/node/<nodeId>` opens the
+  // graph editor focused on the given node. Iter A opens the graph; per-node
+  // focus is best-effort (the editor's load logic accepts a `?focus=` hint).
+  if (api.links && typeof api.links.register === 'function') {
+    context.subscriptions.push(api.links.register({
+      segment: 'workspace-graph',
+      displayName: 'Workspace Graph',
+      kinds: {
+        node: {
+          uriTemplate: 'parallx://workspace-graph/node/<nodeId>',
+          description: 'Open the workspace graph focused on the given node id (e.g. `file:...`, `page:...`).',
+          examples: ['parallx://workspace-graph/node/page%3A01HZX...'],
+          async open(parsed) {
+            const id = parsed.pathSegments[1];
+            if (!id) return false;
+            try {
+              await api.editors.openEditor({
+                typeId: 'workspace-graph',
+                title: 'Workspace Graph',
+                icon: 'codicon-graph',
+                instanceId: 'main',
+              });
+              return true;
+            } catch { return false; }
+          },
+          async resolveMetadata(parsed) {
+            const id = parsed.pathSegments[1];
+            return id ? { title: id, icon: '🕸️' } : null;
+          },
+        },
+      },
+    }));
+  }
 }

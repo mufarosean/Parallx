@@ -13,6 +13,7 @@
 import './explorer.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
+import type { LinksApi } from '../../links/linksApi.js';
 import { ContextMenu, type IContextMenuItem } from '../../ui/contextMenu.js';
 import { $ } from '../../ui/dom.js';
 import { getFileTypeIcon, getFolderIcon } from '../../ui/iconRegistry.js';
@@ -64,6 +65,7 @@ interface ParallxApi {
     readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
     onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
+  links: LinksApi;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -179,6 +181,51 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         _refreshDebounce = null;
         refreshTree();
       }, 1500);
+    }),
+  );
+
+  // M66 — register the explorer link contract. Makes
+  // `parallx://explorer/file?path=<absPath>` (or `?uri=<file://...>`) open
+  // any workspace file in the appropriate editor. Optional `?line=<n>` is
+  // accepted for forward-compat; line reveal is delivered in Iteration B.
+  context.subscriptions.push(
+    api.links.register({
+      segment: 'explorer',
+      displayName: 'Explorer',
+      kinds: {
+        file: {
+          uriTemplate: 'parallx://explorer/file?path=<absolutePath>',
+          description: 'Open a file from the workspace in its registered editor. Use `?path=<absPath>` or `?uri=<file:///...>`. `?line=<n>` reserved for future line-reveal.',
+          examples: ['parallx://explorer/file?path=D%3A%2FAI%2FParallx%2FREADME.md'],
+          async open(parsed) {
+            const explicitUri = parsed.params['uri'];
+            const fsPath = parsed.params['path'];
+            let fileUri: string | undefined;
+            if (explicitUri && explicitUri.startsWith('file:')) {
+              fileUri = explicitUri;
+            } else if (fsPath) {
+              // Convert absolute path → file:// URI without depending on Node `path`.
+              const normalized = fsPath.replace(/\\/g, '/');
+              fileUri = normalized.startsWith('/')
+                ? `file://${encodeURI(normalized)}`
+                : `file:///${encodeURI(normalized)}`;
+            }
+            if (!fileUri) return false;
+            try {
+              await api.editors.openFileEditor(fileUri);
+              return true;
+            } catch {
+              return false;
+            }
+          },
+          async resolveMetadata(parsed) {
+            const fsPath = parsed.params['path'] ?? parsed.params['uri'];
+            if (!fsPath) return null;
+            const name = fsPath.split(/[\\/]/).pop() || fsPath;
+            return { title: name, icon: '📄' };
+          },
+        },
+      },
     }),
   );
 }

@@ -12,6 +12,7 @@
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { Event } from '../../platform/events.js';
+import type { LinksApi } from '../../links/linksApi.js';
 import { OllamaProvider } from './providers/ollamaProvider.js';
 import { createChatView } from './widgets/chatView.js';
 import type { ChatWidget } from './widgets/chatWidget.js';
@@ -145,6 +146,7 @@ interface ParallxApi {
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
     openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
   };
+  links: LinksApi;
 }
 
 function normalizeWorkspaceRelativePath(relativePath: string): string {
@@ -1845,7 +1847,12 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   context.subscriptions.push(
     api.views.registerViewProvider('view.chat', {
       createView(container: HTMLElement): IDisposable {
-        const view = createChatView(container, _ollamaProvider!, widgetServices, setActiveWidget);
+        const view = createChatView(
+          container,
+          _ollamaProvider!,
+          widgetServices,
+          setActiveWidget,
+        );
         return view;
       },
     }),
@@ -1878,6 +1885,45 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       if (_activeWidget) {
         _activeWidget.setSession(session);
       }
+    }),
+  );
+
+  // M66 — register the chat link contract. Makes
+  // `parallx://chat/session/<sessionId>` swap the active chat to the named
+  // session (does not create — only opens an existing session).
+  context.subscriptions.push(
+    api.links.register({
+      segment: 'chat',
+      displayName: 'Chat',
+      kinds: {
+        session: {
+          uriTemplate: 'parallx://chat/session/<sessionId>',
+          description: 'Open an existing chat session by id in the active chat widget. Returns false if the session is unknown or the chat panel isn\'t mounted.',
+          examples: ['parallx://chat/session/01HZX...'],
+          async open(parsed) {
+            const sessionId = parsed.pathSegments[1];
+            if (!sessionId) return false;
+            const session = chatService.getSession(sessionId);
+            if (!session) return false;
+            try {
+              await api.commands.executeCommand('chat.show');
+            } catch {
+              // Best-effort; panel may already be visible.
+            }
+            if (!_activeWidget) return false;
+            _activeWidget.setSession(session);
+            return true;
+          },
+          async resolveMetadata(parsed) {
+            const sessionId = parsed.pathSegments[1];
+            if (!sessionId) return null;
+            const session = chatService.getSession(sessionId);
+            if (!session) return null;
+            const title = (session as { title?: string }).title || 'Chat session';
+            return { title, icon: '💬' };
+          },
+        },
+      },
     }),
   );
 

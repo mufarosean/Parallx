@@ -20907,6 +20907,55 @@ export async function activate(api, context) {
   // M59 P8: register AI chat tools
   moRegisterAITools(api);
 
+  // M66 — register the media-organizer link contract. Iter A: open the grid;
+  // Iter B will deepen to per-item focus (photo lightbox, video clip).
+  if (api.links && typeof api.links.register === 'function') {
+    _commandDisposables.push(api.links.register({
+      segment: 'media-organizer',
+      displayName: 'Media Organizer',
+      kinds: {
+        photo: {
+          uriTemplate: 'parallx://media-organizer/photo/<photoId>',
+          description: 'Open the media-organizer grid focused on the given photo id. Iter A opens the grid; per-item lightbox lands in Iter B.',
+          examples: ['parallx://media-organizer/photo/12345'],
+          async open(parsed) {
+            const id = parsed.pathSegments[1];
+            if (!id) return false;
+            try {
+              await api.commands.executeCommand('media-organizer.openGrid');
+              return true;
+            } catch {
+              return false;
+            }
+          },
+          async resolveMetadata(parsed) {
+            const id = parsed.pathSegments[1];
+            return id ? { title: 'Photo #' + id, icon: '🖼️' } : null;
+          },
+        },
+        video: {
+          uriTemplate: 'parallx://media-organizer/video/<videoId>',
+          description: 'Open the media-organizer grid focused on the given video id. Optional `?t=<seconds>` reserved for future seek. Iter A opens the grid only.',
+          examples: ['parallx://media-organizer/video/789?t=42'],
+          async open(parsed) {
+            const id = parsed.pathSegments[1];
+            if (!id) return false;
+            try {
+              await api.commands.executeCommand('media-organizer.openGrid');
+              return true;
+            } catch {
+              return false;
+            }
+          },
+          async resolveMetadata(parsed) {
+            const id = parsed.pathSegments[1];
+            return id ? { title: 'Video #' + id, icon: '🎬' } : null;
+          },
+        },
+      },
+    }));
+  }
+
   console.log('[MediaOrganizer] Activated — D1-D8 ready (data, scan, thumbnails, tags, grid, filter, detail, albums)');
 
   // Resume file watchers for previously scanned directories + run delta scan

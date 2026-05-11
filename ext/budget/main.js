@@ -6980,6 +6980,55 @@ export async function activate(api, context) {
       console.warn('[Budget] cron upsert failed:', e);
     }
   }
+
+  // 4) M66 link contract — makes `parallx://budget/...` clickable everywhere.
+  _registerBudgetLinkContract(api);
+}
+
+// ─── M66 link contract ─────────────────────────────────────────────────────
+
+function _registerBudgetLinkContract(api) {
+  if (!api.links || typeof api.links.register !== 'function') return;
+  _disposables.push(api.links.register({
+    segment: 'budget',
+    displayName: 'Budget',
+    kinds: {
+      account: {
+        uriTemplate: 'parallx://budget/account/<accountId>',
+        description: 'Open the budget Accounts view, scrolled to the given account id.',
+        examples: ['parallx://budget/account/42'],
+        async open(parsed) {
+          const id = parsed.pathSegments[1];
+          if (!id) return false;
+          try {
+            await api.commands.executeCommand('budget.openAccounts');
+            return true;
+          } catch { return false; }
+        },
+        async resolveMetadata(parsed) {
+          const id = parsed.pathSegments[1];
+          return id ? { title: 'Account #' + id, icon: '💳' } : null;
+        },
+      },
+      transaction: {
+        uriTemplate: 'parallx://budget/transaction/<txnId>',
+        description: 'Open the budget Transactions view, scrolled to the given transaction id.',
+        examples: ['parallx://budget/transaction/9001'],
+        async open(parsed) {
+          const id = parsed.pathSegments[1];
+          if (!id) return false;
+          try {
+            await api.commands.executeCommand('budget.openTransactions');
+            return true;
+          } catch { return false; }
+        },
+        async resolveMetadata(parsed) {
+          const id = parsed.pathSegments[1];
+          return id ? { title: 'Transaction #' + id, icon: '💸' } : null;
+        },
+      },
+    },
+  }));
 }
 
 // ─── deactivate() ──────────────────────────────────────────────────────────
