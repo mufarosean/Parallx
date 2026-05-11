@@ -197,7 +197,14 @@ export const PageBlock = Node.create<PageBlockOptions>({
             updateAttributes({ title: nextTitle, icon: nextIcon });
           }
         } catch {
-          // Ignore transient lookup failures.
+          // Treat a thrown lookup the same as a null result \u2014 the card is
+          // unusable so surface the broken state instead of silently leaving
+          // the previous title rendered.
+          dom.classList.add('canvas-page-block--broken');
+          dom.setAttribute('title', 'Linked page could not be loaded');
+          resolvedTitle = '(unavailable)';
+          resolvedIcon = null;
+          render();
         }
       };
 
@@ -364,9 +371,16 @@ export const PageBlock = Node.create<PageBlockOptions>({
       });
 
       dom.addEventListener('dragover', (event) => {
+        // Reject OS-level file drops outright. The pageBlock card is for
+        // in-canvas block moves only; if a user drags a file from Explorer
+        // onto a card we don't want to claim the gesture or trigger a move.
+        if (event.dataTransfer?.types?.includes?.('Files')) {
+          dom.classList.remove('canvas-page-block--drop-target');
+          return;
+        }
         // Detect active canvas block drag via in-memory state.
         // Note: event.dataTransfer.getData() returns empty during dragover
-        // in Chromium/Electron (security restriction) — only available in drop.
+        // in Chromium/Electron (security restriction) \u2014 only available in drop.
         const hasEditorDragging = !!editor.view.dragging?.slice;
         const dragSession = getActiveCanvasDragSession();
         const currentPage = this.options.currentPageId ?? '';

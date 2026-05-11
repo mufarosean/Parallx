@@ -6,6 +6,36 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { svgIcon } from '../config/blockRegistry.js';
 
+/**
+ * Allowlist for bookmark navigation. `javascript:`, `data:`, `vbscript:`, and
+ * `file:` are explicit XSS vectors via `window.open` and must be rejected.
+ */
+function isSafeNavUrl(raw: string): boolean {
+  if (!raw) return false;
+  try {
+    const u = new URL(raw);
+    return u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'mailto:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Allowlist for image sources rendered inline (favicon, preview image).
+ * Anything that isn't https (or a same-origin app URL) gets dropped \u2014 we never
+ * load attacker-supplied http/data/file images, which would either bypass the
+ * M65 egress chokepoint or act as tracking pixels.
+ */
+function isSafeImageUrl(raw: string): boolean {
+  if (!raw) return false;
+  try {
+    const u = new URL(raw);
+    return u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export const Bookmark = Node.create({
   name: 'bookmark',
   group: 'block',
@@ -67,11 +97,13 @@ export const Bookmark = Node.create({
         const urlRow = document.createElement('div');
         urlRow.classList.add('canvas-bookmark-url');
 
-        if (attrs.favicon) {
+        if (attrs.favicon && isSafeImageUrl(attrs.favicon)) {
           const fav = document.createElement('img');
           fav.classList.add('canvas-bookmark-favicon');
           fav.src = attrs.favicon;
           fav.alt = '';
+          fav.referrerPolicy = 'no-referrer';
+          fav.onerror = () => fav.remove();
           urlRow.appendChild(fav);
         } else {
           const globeEl = document.createElement('span');
@@ -91,18 +123,20 @@ export const Bookmark = Node.create({
 
         dom.appendChild(info);
 
-        // Image section (optional)
-        if (attrs.image) {
+        // Image section (optional) \u2014 https only, no-referrer to limit tracking pixels.
+        if (attrs.image && isSafeImageUrl(attrs.image)) {
           const img = document.createElement('img');
           img.classList.add('canvas-bookmark-image');
           img.src = attrs.image;
           img.alt = '';
+          img.referrerPolicy = 'no-referrer';
+          img.onerror = () => img.remove();
           dom.appendChild(img);
         }
 
-        // Click to open URL
+        // Click to open URL \u2014 protocol-allowlisted so `javascript:` / `data:` cannot fire.
         dom.onclick = () => {
-          if (attrs.url) window.open(attrs.url, '_blank');
+          if (isSafeNavUrl(attrs.url)) window.open(attrs.url, '_blank', 'noopener,noreferrer');
         };
       };
 
