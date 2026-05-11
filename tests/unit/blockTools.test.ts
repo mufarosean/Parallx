@@ -1,7 +1,6 @@
 // blockTools.test.ts — M60 Phase δ T3 chat tool behavioral tests.
 //
-// Verifies all 5 block tools (M60 §6.2) end-to-end against an in-memory DB mock:
-//   query_pages_by_property — multi-filter AND, sort by property, group.
+// Verifies all 4 block tools (M60 §6.2) end-to-end against an in-memory DB mock:
 //   read_block — finds a block by id, returns json + plaintext.
 //   edit_block — replaces block content, bumps revision, preserves blockId.
 //   insert_block_after — inserts new paragraph with new blockId.
@@ -96,59 +95,14 @@ function buildDocEnvelope(blocks: { id: string; text: string }[]): string {
 }
 
 describe('blockTools — registration', () => {
-  it('exposes 5 tools matching BLOCK_TOOL_NAMES', () => {
+  it('exposes 4 tools matching BLOCK_TOOL_NAMES', () => {
     const tools = createBlockTools(undefined);
     expect(tools.map(t => t.name).sort()).toEqual([...BLOCK_TOOL_NAMES].sort());
   });
 });
 
-describe('query_pages_by_property (M60 §6.3 C1)', () => {
-  let db: IBuiltInToolDatabase;
-  let tool: any;
-  beforeEach(() => {
-    db = makeDb(
-      [
-        { id: 'p1', title: 'Alpha', content: '', revision: 1, updated_at: '2026-01-01' },
-        { id: 'p2', title: 'Beta', content: '', revision: 1, updated_at: '2026-01-02' },
-        { id: 'p3', title: 'Gamma', content: '', revision: 1, updated_at: '2026-01-03' },
-      ],
-      [
-        { page_id: 'p1', key: 'status', value: JSON.stringify('Draft') },
-        { page_id: 'p1', key: 'tag', value: JSON.stringify('research') },
-        { page_id: 'p2', key: 'status', value: JSON.stringify('Draft') },
-        { page_id: 'p2', key: 'tag', value: JSON.stringify('product') },
-        { page_id: 'p3', key: 'status', value: JSON.stringify('Final') },
-      ],
-    );
-    tool = createBlockTools(db).find(t => t.name === 'query_pages_by_property')!;
-  });
-
-  it('intersects multiple filters (status=Draft AND tag=research)', async () => {
-    const result = await tool.handler({
-      filter: [
-        { prop: 'status', op: 'equals', value: 'Draft' },
-        { prop: 'tag', op: 'equals', value: 'research' },
-      ],
-    }, token());
-    expect(result.isError).toBeFalsy();
-    expect(result.content).toContain('Alpha');
-    expect(result.content).not.toContain('Beta');
-    expect(result.content).not.toContain('Gamma');
-  });
-
-  it('rejects empty filter array', async () => {
-    const result = await tool.handler({ filter: [] }, token());
-    expect(result.isError).toBe(true);
-  });
-
-  it('groups results by a property', async () => {
-    const result = await tool.handler({
-      filter: [{ prop: 'status', op: 'equals', value: 'Draft' }],
-      group: 'tag',
-    }, token());
-    expect(result.content).toContain('### tag = research');
-    expect(result.content).toContain('### tag = product');
-  });
+describe('query_pages_by_property (M60 §6.3 C1) — REMOVED in M64 Iter 3', () => {
+  it.skip('functionality folded into find_pages tool', () => { /* see builtInTools.test.ts find_pages tool */ });
 });
 
 describe('read_block / edit_block / insert_block_after / link_block', () => {

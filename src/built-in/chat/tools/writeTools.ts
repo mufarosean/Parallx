@@ -66,6 +66,7 @@ export function createWriteFileTool(
 ): IChatTool {
   return {
     name: 'write_file',
+    displaySummary: 'Create or overwrite a file (approval).',
     description:
       'Write (create or overwrite) a file in the workspace. Path is relative to the workspace root. ' +
       'Validates path against .parallxignore sandbox rules. Requires user approval.',
@@ -117,6 +118,7 @@ export function createEditFileTool(
 ): IChatTool {
   return {
     name: 'edit_file',
+    displaySummary: 'Edit a file by find-and-replace (approval).',
     description:
       'Edit an existing file by replacing a specific substring. ' +
       'Provide the exact old content to replace and the new content. ' +
@@ -203,6 +205,7 @@ export function createDeleteFileTool(
 ): IChatTool {
   return {
     name: 'delete_file',
+    displaySummary: 'Delete a workspace file (approval).',
     description:
       'Delete a file from the workspace. Path is relative to the workspace root. ' +
       'The file is moved to the OS trash/recycle bin when possible. Requires user approval.',

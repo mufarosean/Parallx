@@ -49,12 +49,15 @@ export function buildOpenclawPromptArtifacts(
   const toolSummaries = input.toolState.availableDefinitions.map((tool) => ({
     name: tool.name,
     description: tool.description,
+    displaySummary: tool.displaySummary,
   }));
 
   const systemPrompt = buildOpenclawSystemPrompt({
     bootstrapFiles: input.bootstrapFiles,
     workspaceDigest: input.workspaceDigest,
     skills: input.skillState.promptEntries,
+    skillsCompact: input.skillState.compact,
+    skillsTruncationNote: input.skillState.truncationNote || undefined,
     tools: toolSummaries,
     runtimeInfo: input.runtimeInfo,
     systemPromptAddition: input.systemPromptAddition,
@@ -71,7 +74,10 @@ export function buildOpenclawPromptArtifacts(
 
   const workspaceSection = buildWorkspaceSection(input.bootstrapFiles, input.workspaceDigest);
   const skillsSection = input.skillState.promptEntries.length > 0
-    ? buildSkillsSection(input.skillState.promptEntries)
+    ? buildSkillsSection(input.skillState.promptEntries, {
+        compact: input.skillState.compact,
+        truncationNote: input.skillState.truncationNote || undefined,
+      })
     : '';
   const toolSection = input.toolState.availableDefinitions.length > 0
     ? buildToolSummariesSection(toolSummaries)

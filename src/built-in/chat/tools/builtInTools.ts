@@ -42,15 +42,14 @@ export type {
 
 // ── Domain tool factories ──
 import {
-  createSearchWorkspaceTool,
+  createFindPagesTool,
   createReadPageTool,
-  createReadCurrentPageTool,
-  createListPagesTool,
-  createGetPagePropertiesTool,
+  createGetPageTool,
   createCreatePageTool,
+  createComposePageTool,
   createListPropertyDefinitionsTool,
   createSetPagePropertyTool,
-  createFindPagesByPropertyTool,
+  createSetPageStyleTool,
 } from './pageTools.js';
 import {
   createListFilesTool,
@@ -109,16 +108,15 @@ export function registerBuiltInTools(
   const disposables: IDisposable[] = [];
 
   const tools: IChatTool[] = [
-    // ── Canvas/Database tools ──
-    createSearchWorkspaceTool(db),
-    createReadPageTool(db),
-    createReadCurrentPageTool(db, getCurrentPageId ?? (() => undefined)),
-    createListPagesTool(db),
-    createGetPagePropertiesTool(db),
+    // ── Canvas/Database tools (M64 Iter 3: consolidated) ──
+    createFindPagesTool(db),
+    createReadPageTool(db, getCurrentPageId ?? (() => undefined)),
+    createGetPageTool(db),
     createCreatePageTool(db),
+    createComposePageTool(db),
     createListPropertyDefinitionsTool(db),
     createSetPagePropertyTool(db),
-    createFindPagesByPropertyTool(db),
+    createSetPageStyleTool(db),
     // ── File system tools ──
     createListFilesTool(fs),
     createReadFileTool(fs),

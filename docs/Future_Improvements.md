@@ -42,7 +42,7 @@ on the same thread that handles UI events. Key issues:
 ### Proposed Solutions (prioritized)
 
 #### Option 1: Cooperative yielding in all indexing loops
-**Impact: HIGH | Effort: LOW (~10 lines)** — ✅ **Landed in M60 Phase β** (see [`STARTUP_PERFORMANCE.md`](./STARTUP_PERFORMANCE.md))
+**Impact: HIGH | Effort: LOW (~10 lines)** — ✅ **Landed in M60 Phase β** (see [`STARTUP_PERFORMANCE.md`](./archive/root-audits/STARTUP_PERFORMANCE.md))
 
 Add `await new Promise(r => setTimeout(r, 0))` between page iterations in
 `_indexAllPages()` and between batches in `_embedChunks()`. The directory walker
@@ -51,7 +51,7 @@ embedding batches. This alone would eliminate the "Not Responding" dialog for
 most workspaces.
 
 #### Option 2: Deferred start with idle scheduling
-**Impact: HIGH | Effort: LOW (~15 lines)** — ✅ **Landed in M60 Phase β** (see [`STARTUP_PERFORMANCE.md`](./STARTUP_PERFORMANCE.md))
+**Impact: HIGH | Effort: LOW (~15 lines)** — ✅ **Landed in M60 Phase β** (see [`STARTUP_PERFORMANCE.md`](./archive/root-audits/STARTUP_PERFORMANCE.md))
 
 Instead of starting the pipeline immediately after DB open, wait for
 `requestIdleCallback` or a fixed 2–3s delay after Phase 5 completes. This lets
@@ -60,7 +60,7 @@ finish — before any indexing work begins. The user sees a responsive app
 immediately; indexing starts silently once idle.
 
 #### Option 3: Move indexing pipeline to a Web Worker
-**Impact: HIGHEST | Effort: MEDIUM (significant refactor)** — ✅ **Landed in M60 Phase θ B3** (see [`STARTUP_PERFORMANCE.md`](./STARTUP_PERFORMANCE.md)) — off-thread `/api/embed` transport behind `indexing.worker.enabled` (default OFF for bake time).
+**Impact: HIGHEST | Effort: MEDIUM (significant refactor)** — ✅ **Landed in M60 Phase θ B3** (see [`STARTUP_PERFORMANCE.md`](./archive/root-audits/STARTUP_PERFORMANCE.md)) — off-thread `/api/embed` transport behind `indexing.worker.enabled` (default OFF for bake time).
 
 The pipeline's work is entirely non-DOM: content hashing, chunking, `fetch()`
 to Ollama, IPC to SQLite. All of this can run in a Web Worker, completely
@@ -73,7 +73,7 @@ via `postMessage`. The pipeline already communicates through a clean interface
 (`IIndexingPipelineService`), which helps.
 
 #### Option 4: Throttle and batch IPC writes
-**Impact: MEDIUM | Effort: LOW (~30 lines)** — ✅ **Landed in M60 Phase θ B4** (see [`STARTUP_PERFORMANCE.md`](./STARTUP_PERFORMANCE.md)) — `vectorStore.upsertMany` + `_pendingUpsertBatch` queue (UPSERT_FLUSH_EVERY=20).
+**Impact: MEDIUM | Effort: LOW (~30 lines)** — ✅ **Landed in M60 Phase θ B4** (see [`STARTUP_PERFORMANCE.md`](./archive/root-audits/STARTUP_PERFORMANCE.md)) — `vectorStore.upsertMany` + `_pendingUpsertBatch` queue (UPSERT_FLUSH_EVERY=20).
 
 Each `_indexSinglePage` and `_indexSingleFile` calls `vectorStore.upsert()`
 which fires IPC to the main process. Under heavy load, this creates an IPC
@@ -81,7 +81,7 @@ storm. Batching — queue upserts and flush every 500ms or every 10 items — wo
 reduce contention. The vector store already supports `runTransaction`.
 
 #### Option 5: Index-on-demand for pages (lazy indexing)
-**Impact: MEDIUM | Effort: MEDIUM** — ✅ **Landed in M60 Phase θ B5** (see [`STARTUP_PERFORMANCE.md`](./STARTUP_PERFORMANCE.md)) — page mtime fast-skip behind `indexing.lazyMtime.enabled` (default ON; ≥95% pages skipped on warm reopen).
+**Impact: MEDIUM | Effort: MEDIUM** — ✅ **Landed in M60 Phase θ B5** (see [`STARTUP_PERFORMANCE.md`](./archive/root-audits/STARTUP_PERFORMANCE.md)) — page mtime fast-skip behind `indexing.lazyMtime.enabled` (default ON; ≥95% pages skipped on warm reopen).
 
 Pages are already in SQLite. They don't need pre-embedding for the app to work
 — they only need embeddings when someone performs a RAG query. Instead of

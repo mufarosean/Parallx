@@ -350,7 +350,7 @@ mutation. `--apply` mode is intentionally not implemented in Phase α.
   - `src/openclaw/openclawFollowupRunner.ts`
   - `src/openclaw/participants/openclawDefaultParticipant.ts`
   - `src/commands/autonomyReplayCommand.ts`
-- Spec: [Parallx_Milestone_60.md](../Parallx_Milestone_60.md) §3.7, §3.8, §3.10, §3.11
+- Spec: [Parallx_Milestone_60.md](../archive/milestones/Parallx_Milestone_60.md) §3.7, §3.8, §3.10, §3.11
 - Tests: `tests/unit/autonomy*.test.ts` (5 files, 19 tests)
 
 

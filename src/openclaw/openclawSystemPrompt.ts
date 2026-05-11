@@ -15,6 +15,7 @@
  */
 
 import { estimateTokens, trimTextToBudget } from './openclawTokenBudget.js';
+import { summarizeToolDescriptionText } from './openclawToolDescriptionSummary.js';
 import type { IAgentIdentityConfig } from './agents/openclawAgentConfig.js';
 
 // ---------------------------------------------------------------------------
@@ -35,6 +36,15 @@ export interface ISkillEntry {
 export interface IToolSummary {
   readonly name: string;
   readonly description: string;
+  /**
+   * Optional short prompt-only summary (≤120 chars). When present, the
+   * prompt builder uses this verbatim; otherwise it derives a summary
+   * from `description` via summarizeToolDescriptionText().
+   *
+   * Upstream parity: src/agents/tool-description-presets.ts —
+   * upstream's `coreToolSummaries` map is the equivalent.
+   */
+  readonly displaySummary?: string;
 }
 
 export interface IOpenclawRuntimeInfo {
@@ -54,6 +64,10 @@ export interface IOpenclawSystemPromptParams {
   readonly workspaceDigest: string;
   /** Skill entries from the skill catalog */
   readonly skills: readonly ISkillEntry[];
+  /** When true, render `<skill>` entries without `<description>` (upstream compact form). */
+  readonly skillsCompact?: boolean;
+  /** Optional warning line prepended to the skills section (truncation notice). */
+  readonly skillsTruncationNote?: string;
   /** Tool name + description pairs for prompt injection */
   readonly tools: readonly IToolSummary[];
   /** Runtime metadata */
@@ -102,9 +116,12 @@ export interface IOpenclawSystemPromptParams {
 export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): string {
   const sections: string[] = [];
 
-  // 1. Skills (upstream: agents/system-prompt.ts lines 20-37)
+  // 1. Skills (upstream: agents/system-prompt.ts buildSkillsSection)
   if (params.skills.length > 0) {
-    sections.push(buildSkillsSection(params.skills));
+    sections.push(buildSkillsSection(params.skills, {
+      compact: params.skillsCompact,
+      truncationNote: params.skillsTruncationNote,
+    }));
   }
 
   // 3. Tool summaries (upstream: buildToolSummaryMap in pi-embedded-runner/system-prompt.ts)
@@ -196,25 +213,53 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
 // ---------------------------------------------------------------------------
 
 /**
- * Skills section following upstream XML pattern.
+ * Skills section following upstream pattern.
  *
- * Upstream: agents/system-prompt.ts lines 20-37
- * Pattern: XML-tagged entries with mandatory scan instruction.
+ * Upstream parity (raw.githubusercontent.com/openclaw/openclaw/main):
+ *   - src/agents/system-prompt.ts `buildSkillsSection` — 4-line preamble,
+ *     heading `## Skills`, parameterized read tool name.
+ *   - src/agents/skills/workspace.ts `formatSkillsForPrompt` /
+ *     `formatSkillsCompact` — pretty-printed `<skill>` XML; compact form
+ *     drops `<description>` to preserve catalog awareness over content.
+ *
+ * Parallx adaptation:
+ *   - Default read tool name is `read_file` (Parallx's tool registry name).
+ *   - Skill `location` is workspace-relative (`.parallx/skills/<n>/SKILL.md`),
+ *     so upstream's `~/` home-prefix compaction is not applied — paths are
+ *     already minimal.
  */
-export function buildSkillsSection(skills: readonly ISkillEntry[]): string {
+export function buildSkillsSection(
+  skills: readonly ISkillEntry[],
+  opts?: {
+    /** Tool name embedded in the scan instruction. Defaults to `read_file`. */
+    readonly readToolName?: string;
+    /** When true, emit name+location only (mirrors upstream `formatSkillsCompact`). */
+    readonly compact?: boolean;
+    /** Optional warning line prepended to the section (truncation notice). */
+    readonly truncationNote?: string;
+  },
+): string {
+  const readToolName = opts?.readToolName ?? 'read_file';
+  const compact = opts?.compact === true;
+
   const entries = skills
-    .map(s => `<skill><name>${escapeXml(s.name)}</name><description>${escapeXml(s.description)}</description><location>${escapeXml(s.location)}</location></skill>`)
+    .map(s => {
+      const inner = [
+        `    <name>${escapeXml(s.name)}</name>`,
+        compact ? undefined : `    <description>${escapeXml(s.description)}</description>`,
+        `    <location>${escapeXml(s.location)}</location>`,
+      ].filter((line): line is string => line !== undefined).join('\n');
+      return `  <skill>\n${inner}\n  </skill>`;
+    })
     .join('\n');
 
-  return `## Skills (mandatory)
-Before replying: scan <available_skills> <description> entries.
-- If exactly one skill clearly applies: read its SKILL.md at <location> using read_file, then follow its instructions step by step.
-- If the user explicitly names a skill (e.g. "use the X skill"): read that skill's SKILL.md at <location> using read_file, then follow its instructions.
-- If multiple could apply: choose the most specific one.
-- If none clearly apply: do not read any SKILL.md.
-- NEVER describe a skill's instructions from memory or the description alone — always read the actual SKILL.md file first.
-Constraints: never read more than one skill up front; only read after selecting.
-When a skill drives external API writes, assume rate limits: prefer fewer larger writes, avoid tight one-item loops, serialize bursts when possible, and respect 429/Retry-After.
+  const truncationLine = opts?.truncationNote ? `${opts.truncationNote}\n` : '';
+
+  return `## Skills
+${truncationLine}Scan <available_skills>. If one clearly applies, read its SKILL.md at exact <location> with \`${readToolName}\`, then follow it.
+If several apply, choose the most specific. If none clearly apply, read none.
+One skill up front max. Never guess/fabricate skill paths.
+External API writes: batch when safe, avoid tight loops, respect 429/Retry-After.
 <available_skills>
 ${entries}
 </available_skills>`;
@@ -223,83 +268,30 @@ ${entries}
 /**
  * Tool summaries section.
  *
- * Upstream: buildToolSummaryMap in pi-embedded-runner/system-prompt.ts line 74
- * One line per tool: name + description. This supplements the API tool schema
- * with human-readable context in the prompt text.
+ * Upstream parity (raw.githubusercontent.com/openclaw/openclaw/main):
+ *   - src/agents/system-prompt.ts — emits a single flat `## Tooling` section
+ *     with `- name: summary` bullets. No subheadings.
+ *   - src/agents/tool-description-presets.ts — short `displaySummary` text
+ *     (≤7 words) is the source of each bullet's right-hand side.
  *
- * Tools are grouped by domain so the model can distinguish canvas page tools
- * from file system tools, memory tools, etc.
+ * Parallx M65 parity fix (divergence 2 + 3 + 4):
+ *   - Single flat heading (`## Tooling`).
+ *   - Per-tool: prefer `displaySummary`; else summarize `description` via
+ *     `summarizeToolDescriptionText` (120-char sentence-boundary cut,
+ *     strips JSON/schema/action blocks).
+ *   - No more `### Canvas Pages` / `### Workspace Files` / etc.
+ *     subheadings — those bloated the prompt and confused small models
+ *     without matching upstream behaviour.
  */
-
-/** Domain groups — order determines section order in the prompt. */
-const TOOL_GROUPS: readonly { readonly heading: string; readonly names: ReadonlySet<string> }[] = [
-  {
-    heading: 'Canvas Pages',
-    names: new Set([
-      'search_workspace', 'read_page', 'read_current_page', 'list_pages',
-      'get_page_properties', 'create_page', 'list_property_definitions',
-      'set_page_property', 'find_pages_by_property',
-    ]),
-  },
-  {
-    heading: 'Workspace Files',
-    names: new Set(['list_files', 'read_file', 'search_files', 'grep_search']),
-  },
-  {
-    heading: 'Knowledge Index',
-    names: new Set(['search_knowledge']),
-  },
-  {
-    heading: 'Memory',
-    names: new Set(['memory_get', 'memory_search']),
-  },
-  {
-    heading: 'Session Transcripts',
-    names: new Set(['transcript_get', 'transcript_search']),
-  },
-  {
-    heading: 'File Editing',
-    names: new Set(['write_file', 'edit_file', 'delete_file']),
-  },
-  {
-    heading: 'Terminal',
-    names: new Set(['run_command']),
-  },
-];
-
 export function buildToolSummariesSection(tools: readonly IToolSummary[]): string {
-  const grouped = new Map<string, IToolSummary[]>();
-  const ungrouped: IToolSummary[] = [];
-
+  const lines: string[] = ['## Tooling'];
   for (const tool of tools) {
-    let placed = false;
-    for (const group of TOOL_GROUPS) {
-      if (group.names.has(tool.name)) {
-        let arr = grouped.get(group.heading);
-        if (!arr) { arr = []; grouped.set(group.heading, arr); }
-        arr.push(tool);
-        placed = true;
-        break;
-      }
-    }
-    if (!placed) { ungrouped.push(tool); }
+    const summary = tool.displaySummary
+      || summarizeToolDescriptionText(tool.description)
+      || tool.name;
+    lines.push(`- ${tool.name}: ${summary}`);
   }
-
-  const parts: string[] = [];
-  for (const group of TOOL_GROUPS) {
-    const items = grouped.get(group.heading);
-    if (items && items.length > 0) {
-      parts.push(`### ${group.heading}`);
-      for (const t of items) { parts.push(`- ${t.name}: ${t.description}`); }
-    }
-  }
-  // MCP tools, extension tools, or any future tools that don't match a group
-  if (ungrouped.length > 0) {
-    if (parts.length > 0) { parts.push('### Other'); }
-    for (const t of ungrouped) { parts.push(`- ${t.name}: ${t.description}`); }
-  }
-
-  return `Tool availability (filtered by policy):\n${parts.join('\n')}`;
+  return lines.join('\n');
 }
 
 /**
@@ -434,7 +426,7 @@ function truncateSystemPromptToBudget(
 
   // Find truncatable sections
   const workspaceIdx = mutableSections.findIndex(s => s.startsWith('## Workspace Context'));
-  const toolsIdx = mutableSections.findIndex(s => s.startsWith('Tool availability'));
+  const toolsIdx = mutableSections.findIndex(s => s.startsWith('## Tooling'));
 
   // Try truncating workspace first
   if (workspaceIdx >= 0) {

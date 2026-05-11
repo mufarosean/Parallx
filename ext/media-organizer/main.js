@@ -7953,7 +7953,7 @@ function renderMediaCard(item, options) {
       const n = await moApplyTagToKeys(tagId, targetKeys);
       const apiRef = options.api || _api;
       if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied tag to ${n} item${n === 1 ? '' : 's'}`, 2000);
-      document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+      document.dispatchEvent(new CustomEvent('mo:tag-applied', { detail: { tagId, keys: targetKeys } }));
     } catch (err) {
       console.warn('[mo] tag-drop failed', err);
     }
@@ -8104,7 +8104,7 @@ function renderMediaListRow(item, options) {
       const n = await moApplyTagToKeys(tagId, targetKeys);
       const apiRef = options.api || _api;
       if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied tag to ${n} item${n === 1 ? '' : 's'}`, 2000);
-      document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+      document.dispatchEvent(new CustomEvent('mo:tag-applied', { detail: { tagId, keys: targetKeys } }));
     } catch (err) {
       console.warn('[mo] tag-drop failed', err);
     }
@@ -8755,7 +8755,8 @@ function renderBrowserSidebar(container, api) {
         e.dataTransfer.setData('application/x-mo-tag', String(tag.id));
         e.dataTransfer.setData('text/plain', tag.name || `tag:${tag.id}`);
         e.dataTransfer.effectAllowed = 'copy';
-      } catch { /* ignore */ }
+        console.log('[mo-dnd] tag dragstart', { tagId: tag.id, name: tag.name });
+      } catch (err) { console.warn('[mo-dnd] tag dragstart failed', err); }
     });
 
     // Keyboard nav (#8): Up/Down move focus, Enter opens, F2 renames, Delete deletes.
@@ -8814,7 +8815,7 @@ function renderBrowserSidebar(container, api) {
       if (!next || next === tag.name) return;
       try {
         await TagQueries.update(tag.id, { name: next });
-        api.statusBar.setMessage(`Renamed tag to "${next}"`, 3000);
+        api.statusBar?.setMessage?.(`Renamed tag to "${next}"`, 3000);
         _notifySidebarRefresh();
         document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
       } catch (err) {
@@ -8837,11 +8838,11 @@ function renderBrowserSidebar(container, api) {
     const msg = usageCount > 0
       ? `Delete tag "${tag.name}"? It is currently applied to ${usageCount} item(s); those items will lose this tag. Files are not deleted.`
       : `Delete tag "${tag.name}"?`;
-    const confirmed = await api.window.showWarningMessage(msg, { modal: true }, 'Delete');
-    if (confirmed !== 'Delete') return;
+    const confirmed = await api.window.showWarningMessage(msg, { title: 'Delete' }, { title: 'Cancel' });
+    if (!confirmed || confirmed.title !== 'Delete') return;
     try {
       await TagQueries.destroy(tag.id);
-      api.statusBar.setMessage(`Deleted tag "${tag.name}"`, 3000);
+      api.statusBar?.setMessage?.(`Deleted tag "${tag.name}"`, 3000);
       _notifySidebarRefresh();
       document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
     } catch (err) {
@@ -8917,7 +8918,7 @@ function renderBrowserSidebar(container, api) {
       { label: tag.favorite ? 'Unmark Favorite' : 'Mark Favorite', handler: async () => {
         try {
           await TagQueries.update(tag.id, { favorite: !tag.favorite });
-          api.statusBar.setMessage(tag.favorite ? `Unfavorited "${tag.name}"` : `Favorited "${tag.name}"`, 2000);
+          api.statusBar?.setMessage?.(tag.favorite ? `Unfavorited "${tag.name}"` : `Favorited "${tag.name}"`, 2000);
           _notifySidebarRefresh();
         } catch (err) {
           api.window.showErrorMessage('Favorite toggle failed: ' + (err && err.message ? err.message : String(err)));
@@ -8935,7 +8936,7 @@ function renderBrowserSidebar(container, api) {
         if (!trimmed || trimmed === tag.name) return;
         try {
           await TagQueries.update(tag.id, { name: trimmed });
-          api.statusBar.setMessage(`Renamed tag to "${trimmed}"`, 3000);
+          api.statusBar?.setMessage?.(`Renamed tag to "${trimmed}"`, 3000);
           _notifySidebarRefresh();
           document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
         } catch (err) {
@@ -8963,12 +8964,12 @@ function renderBrowserSidebar(container, api) {
         const destId = picked._id;
         const confirmed = await api.window.showWarningMessage(
           `Merge "${tag.name}" into "${picked.label}"? All ${usageCount} item(s) will be re-tagged and "${tag.name}" will be deleted.`,
-          { modal: true }, 'Merge'
+          { title: 'Merge' }, { title: 'Cancel' }
         );
-        if (confirmed !== 'Merge') return;
+        if (!confirmed || confirmed.title !== 'Merge') return;
         try {
           await TagQueries.merge([tag.id], destId);
-          api.statusBar.setMessage(`Merged into "${picked.label}"`, 3000);
+          api.statusBar?.setMessage?.(`Merged into "${picked.label}"`, 3000);
           _notifySidebarRefresh();
           document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
         } catch (err) {
@@ -8980,11 +8981,11 @@ function renderBrowserSidebar(container, api) {
         const msg = usageCount > 0
           ? `Delete tag "${tag.name}"? It is currently applied to ${usageCount} item(s); those items will lose this tag. Files are not deleted.`
           : `Delete tag "${tag.name}"?`;
-        const confirmed = await api.window.showWarningMessage(msg, { modal: true }, 'Delete');
-        if (confirmed !== 'Delete') return;
+        const confirmed = await api.window.showWarningMessage(msg, { title: 'Delete' }, { title: 'Cancel' });
+        if (!confirmed || confirmed.title !== 'Delete') return;
         try {
           await TagQueries.destroy(tag.id);
-          api.statusBar.setMessage(`Deleted tag "${tag.name}"`, 3000);
+          api.statusBar?.setMessage?.(`Deleted tag "${tag.name}"`, 3000);
           _notifySidebarRefresh();
           document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
         } catch (err) {
@@ -9153,7 +9154,7 @@ function renderBrowserSidebar(container, api) {
                 }
                 if (photoIds.length > 0) await AlbumQueries.updatePhotos(album.id, { mode: 'ADD', ids: photoIds });
                 if (videoIds.length > 0) await AlbumQueries.updateVideos(album.id, { mode: 'ADD', ids: videoIds });
-                api.statusBar.setMessage(`Added ${keys.length} item(s) to "${album.title || 'Album'}"`, 3000);
+                api.statusBar?.setMessage?.(`Added ${keys.length} item(s) to "${album.title || 'Album'}"`, 3000);
                 loadAlbums();
               } catch (err) {
                 console.error('[MO] drag-to-album error:', err);
@@ -9220,8 +9221,8 @@ function renderBrowserSidebar(container, api) {
                 const msg = childCount > 0
                   ? `Delete album "${album.title}"? Its ${childCount} child album(s) will be moved to the root.`
                   : `Delete album "${album.title}"?`;
-                const confirmed = await api.window.showWarningMessage(msg, { modal: true }, 'Delete');
-                if (confirmed === 'Delete') {
+                const confirmed = await api.window.showWarningMessage(msg, { title: 'Delete' }, { title: 'Cancel' });
+                if (confirmed && confirmed.title === 'Delete') {
                   try {
                     await AlbumQueries.destroy(album.id);
                     loadAlbums();
@@ -9328,6 +9329,14 @@ function renderGridBrowser(container, api, input) {
   // Save state snapshot on every loadPage
   let _lastLoadKey = null;          // serialized filter/sort/page snapshot — used to detect actual state changes (vs. cosmetic re-loads) so scroll position is only reset when the user changes something
   let _lastScrollTop = cached?.scrollTop ?? 0; // live-tracked scroll position
+  // Key (type:id) of the card the user most recently opened as a detail
+  // editor from this grid. When they navigate back, we anchor scroll to
+  // that card instead of trusting the raw scrollTop — quick-filter grids
+  // like Untagged shrink as items get tagged, so cached scrollTop can
+  // exceed the new max scroll and the grid snaps to the bottom/top. The
+  // anchor key is consumed (cleared) after the first restore so subsequent
+  // refreshes (tag drops, watcher events) keep the user where they are.
+  let _lastOpenedKey = cached?.lastOpenedKey ?? null;
   function saveSessionState() {
     _sessionGridState.set(instanceId, {
       currentPage: state.currentPage,
@@ -9337,6 +9346,7 @@ function renderGridBrowser(container, api, input) {
       mediaType: state.mediaType,
       displayMode: state.displayMode,
       scrollTop: _lastScrollTop,
+      lastOpenedKey: _lastOpenedKey,
       filters: {
         tagIds: [...state.filters.tagIds],
         excludeTagIds: [...state.filters.excludeTagIds],
@@ -10149,6 +10159,22 @@ function renderGridBrowser(container, api, input) {
   // ── Data loading ──
   let _pageRecursionGuard = false;
   async function loadPage() {
+    // Snapshot scroll position FIRST. The later cardGrid.refresh() wipes
+    // grid.innerHTML which dispatches a scroll event resetting _lastScrollTop
+    // to 0 — if we read _lastScrollTop after the refresh, the restore is a
+    // no-op and the grid snaps to top after every tag edit.
+    //
+    // First-mount case (e.g. user opened an image as a page and navigated
+    // back): gridArea is a brand-new DOM node at scrollTop 0, but the cached
+    // session state holds the real position. _lastScrollTop was seeded from
+    // cached?.scrollTop at init, so fall back to it when the live scroll is
+    // 0 AND this is the first loadPage call for this mount.
+    const _isFirstLoad = _lastLoadKey === null;
+    const _liveScroll = gridArea ? gridArea.scrollTop : 0;
+    const _scrollBeforeLoad = (_isFirstLoad && _liveScroll === 0 && _lastScrollTop > 0)
+      ? _lastScrollTop
+      : _liveScroll;
+
     // Show loading spinner
     loadingOverlay.style.display = '';
     loadingOverlay.style.animation = 'none';
@@ -10377,10 +10403,34 @@ function renderGridBrowser(container, api, input) {
       if (stateChanged) {
         scrollEl.scrollTop = 0;
         _lastScrollTop = 0;
-      } else if (_lastScrollTop > 0) {
-        // Defer restore to next frame so the grid has its full height
-        const restoreTo = _lastScrollTop;
-        requestAnimationFrame(() => { scrollEl.scrollTop = restoreTo; });
+        _lastOpenedKey = null; // filter changed — anchor is no longer relevant
+      } else if (_lastOpenedKey || _scrollBeforeLoad > 0) {
+        // Defer restore to next frame so the grid has its full height.
+        // Prefer scrolling the last-opened card into view (robust against
+        // totalCount changes from tag/trash ops); fall back to raw scrollTop
+        // only when no anchor card is present. Consume the anchor so a
+        // later refresh-grid event doesn't re-anchor.
+        const restoreTo = _scrollBeforeLoad;
+        const anchorKey = _lastOpenedKey;
+        _lastOpenedKey = null;
+        requestAnimationFrame(() => {
+          if (anchorKey) {
+            // Escape the colon for CSS attribute matching by quoting.
+            const card = gridArea && gridArea.querySelector(
+              `.mo-card[data-key="${anchorKey}"], .mo-list-row[data-key="${anchorKey}"]`
+            );
+            if (card) {
+              card.scrollIntoView({ block: 'center' });
+              _lastScrollTop = scrollEl.scrollTop;
+              saveSessionState();
+              return;
+            }
+          }
+          if (restoreTo > 0) {
+            scrollEl.scrollTop = restoreTo;
+            _lastScrollTop = restoreTo;
+          }
+        });
       }
     }
     _lastLoadKey = loadKey;
@@ -10433,6 +10483,11 @@ function renderGridBrowser(container, api, input) {
 
   // Double-click / Enter: open detail editor
   function handleCardOpen(item) {
+    // Remember which card we left from so the grid can scroll back to it
+    // when the user navigates back. Survives totalCount changes from tag
+    // or trash operations performed in the detail view.
+    _lastOpenedKey = `${item.type}:${item.id}`;
+    saveSessionState();
     api.editors.openEditor({
       typeId: 'media-organizer-grid',
       title: item.title || `${item.type} #${item.id}`,
@@ -10499,6 +10554,45 @@ function renderGridBrowser(container, api, input) {
     }, 200);
   };
   document.addEventListener('mo:refresh-grid', _gridRefreshHandler);
+
+  // Surgical, non-debounced refresh path for tag-drop (#6). Updates the
+  // affected cards' tag arrays in state.items so the new chip appears
+  // immediately, without waiting on the 200ms debounce or a full DB reload.
+  const _tagAppliedHandler = async (e) => {
+    const detail = e.detail || {};
+    const tagId = Number(detail.tagId);
+    const keys = Array.isArray(detail.keys) ? detail.keys : [];
+    if (!Number.isFinite(tagId) || keys.length === 0) return;
+    let tagName = null;
+    try {
+      const t = await TagQueries.findById(tagId);
+      if (t && t.name) tagName = t.name;
+    } catch { /* fall through — refresh below will still pick it up */ }
+    if (tagName) {
+      for (const key of keys) {
+        const it = state.items.find((x) => `${x.type}:${x.id}` === key);
+        if (!it) continue;
+        if (!Array.isArray(it.tags)) it.tags = [];
+        if (!it.tags.some((tg) => tg.id === tagId)) {
+          it.tags = [...it.tags, { id: tagId, name: tagName }].sort((a, b) =>
+            String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' })
+          );
+        }
+      }
+      // Preserve scroll across the rebuild — cardGrid.refresh() wipes
+      // grid.innerHTML which momentarily drops content height to 0 and
+      // the scroll container resets to the top. Same trick loadPage uses.
+      const savedScroll = gridArea ? gridArea.scrollTop : 0;
+      if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+      if (gridArea && savedScroll > 0) {
+        requestAnimationFrame(() => { gridArea.scrollTop = savedScroll; });
+      }
+    } else {
+      // Fallback: full reload, no debounce.
+      loadPage();
+    }
+  };
+  document.addEventListener('mo:tag-applied', _tagAppliedHandler);
 
   // Event handlers
   let searchTimer = null;
@@ -10838,7 +10932,10 @@ function renderGridBrowser(container, api, input) {
       }
       if (target) {
         e.preventDefault();
-        showBulkTagDialog(target, api, () => { if (selectionBar) selectionBar.update(); loadPage(); });
+        showBulkTagDialog(target, api, () => {
+          if (selectionBar) selectionBar.update();
+          document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+        });
       }
       return;
     }
@@ -10901,7 +10998,9 @@ function renderGridBrowser(container, api, input) {
       actions.push({ separator: true });
       actions.push({ label: 'Tag\u2026', handler: () => {
         const tmpState = { selectedIds: new Set([`${item.type}:${item.id}`]) };
-        showBulkTagDialog(tmpState, api, () => loadPage());
+        showBulkTagDialog(tmpState, api, () => {
+          document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+        });
       }});
       actions.push({ label: 'Rate', submenu: [
         { label: '\u2606 Clear', handler: () => rateItemsByKey(0) },
@@ -10957,7 +11056,10 @@ function renderGridBrowser(container, api, input) {
       actions.push({ label: `${state.selectedIds.size} selected`, handler: () => {} });
       actions.push({ separator: true });
       actions.push({ label: 'Tag\u2026', handler: () => {
-        showBulkTagDialog(state, api, () => { if (selectionBar) selectionBar.update(); loadPage(); });
+        showBulkTagDialog(state, api, () => {
+          if (selectionBar) selectionBar.update();
+          document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+        });
       }});
       actions.push({ label: 'Rate', submenu: [
         { label: '\u2606 Clear', handler: () => rateItemsByKey(0) },
@@ -12644,10 +12746,10 @@ function buildAlbumUI(root, album, api, isNew) {
     deleteBtn.addEventListener('click', async () => {
       const confirmed = await api.window.showWarningMessage(
         `Delete album "${album.title}"? This cannot be undone.`,
-        { modal: true },
-        'Delete'
+        { title: 'Delete' },
+        { title: 'Cancel' }
       );
-      if (confirmed !== 'Delete') return;
+      if (!confirmed || confirmed.title !== 'Delete') return;
       try {
         await AlbumQueries.destroy(album.id);
         api.window.showInformationMessage(`Album "${album.title}" deleted.`);
@@ -13685,7 +13787,7 @@ async function exportSelectedItems(state, api) {
   let copied = 0;
   let failed = 0;
 
-  api.statusBar.setMessage(`Exporting ${state.selectedIds.size} file(s)…`, 0);
+  api.statusBar?.setMessage?.(`Exporting ${state.selectedIds.size} file(s)…`, 0);
 
   for (const id of photos) {
     try {
@@ -13722,7 +13824,7 @@ async function exportSelectedItems(state, api) {
   const msg = failed > 0
     ? `Exported ${copied} file(s), ${failed} failed`
     : `Exported ${copied} file(s) to ${destFolder}`;
-  api.statusBar.setMessage(msg, 5000);
+  api.statusBar?.setMessage?.(msg, 5000);
 }
 
 function buildSelectionToolbar(container, state, api, refreshFn) {
@@ -13914,6 +14016,9 @@ async function moApplyTagToKeys(tagId, keys) {
 // which uses the same INSERT OR IGNORE / DELETE WHERE pattern.
 // ─────────────────────────────────────────────────────────────────────────────
 function showBulkTagDialog(state, api, onComplete) {
+  // Visible diagnostics for debugging dialog rendering
+  const diagnostics = [];
+  diagnostics.push('showBulkTagDialog: creating overlay and dialog');
   const overlay = moEl('div', 'mo-bulk-dialog-overlay');
   const dialog = moEl('div', 'mo-bulk-dialog mo-bulk-tag-dialog');
   dialog.setAttribute('role', 'dialog');
@@ -13933,10 +14038,13 @@ function showBulkTagDialog(state, api, onComplete) {
   let mode = 'ADD';
   const addBtn = moEl('button', 'active', { textContent: 'Add', type: 'button' });
   addBtn.title = 'Add picked tags to all selected items. Existing tags are kept.';
+  diagnostics.push('showBulkTagDialog: created Add button');
   const removeBtn = moEl('button', null, { textContent: 'Remove', type: 'button' });
   removeBtn.title = 'Remove picked tags from all selected items. Other tags are kept.';
+  diagnostics.push('showBulkTagDialog: created Remove button');
   const replaceBtn = moEl('button', null, { textContent: 'Replace', type: 'button' });
   replaceBtn.title = 'Replace each item\u2019s tags with exactly the picked set. Destructive.';
+  diagnostics.push('showBulkTagDialog: created Replace button');
   modeBtns.append(addBtn, removeBtn, replaceBtn);
   modeSection.appendChild(modeBtns);
 
@@ -14226,8 +14334,10 @@ function showBulkTagDialog(state, api, onComplete) {
   // Footer
   const footer = moEl('div', 'mo-bulk-dialog-footer');
   const cancelBtn = moEl('button', null, { textContent: 'Cancel', type: 'button' });
+  diagnostics.push('showBulkTagDialog: created Cancel button');
   cancelBtn.addEventListener('click', () => overlay.remove());
   const applyBtn = moEl('button', 'primary', { textContent: 'Apply', type: 'button' });
+  diagnostics.push('showBulkTagDialog: created Apply button');
 
   applyBtn.addEventListener('click', async () => {
     if (totalItems === 0) { api.window.showWarningMessage('No items selected.'); return; }
@@ -14329,11 +14439,20 @@ function showBulkTagDialog(state, api, onComplete) {
     }
   });
   footer.append(cancelBtn, applyBtn);
+  // Add visible diagnostics to the top of the dialog
+  const diagBox = moEl('div', 'mo-bulk-dialog-diagnostics', {
+    style: 'background:#222;color:#fff;padding:6px 10px;font-size:12px;margin-bottom:8px;border-radius:4px;word-break:break-all;',
+    textContent: diagnostics.join(' | ')
+  });
+  dialog.insertBefore(diagBox, dialog.firstChild);
+
   dialog.appendChild(footer);
 
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
   overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !searchInput.value) overlay.remove(); });
   document.body.appendChild(overlay);
+  diagnostics.push('showBulkTagDialog: overlay appended to body');
+  diagBox.textContent = diagnostics.join(' | ');
   setTimeout(() => searchInput.focus(), 0);
 
   renderChips();
@@ -14496,7 +14615,7 @@ function showBulkDeleteDialog(state, api, onComplete) {
   const footer = moEl('div', 'mo-bulk-dialog-footer');
   const cancelBtn = moEl('button', null, { textContent: 'Cancel' });
   cancelBtn.addEventListener('click', () => overlay.remove());
-  const confirmBtn = moEl('button', 'mo-sel-delete', { textContent: 'Delete' });
+  const confirmBtn = moEl('button', 'mo-sel-delete primary', { textContent: 'Delete' });
   confirmBtn.addEventListener('click', async () => {
     confirmBtn.disabled = true;
     cancelBtn.disabled = true;
@@ -19557,10 +19676,10 @@ async function moToolDescribeSchema() {
       'rating is 0-5 inclusive; 0 means unrated.',
       'List/search tools default to live items only (exclude trash) unless includeTrashed:true.',
       'To find items needing tags, call search with untagged:true. To exclude items already tagged, use excludeTagNames:[...]. getStats also returns untagged counts.',
-      'You CANNOT see image content from tool results directly (results are text only). To visually inspect a photo or video, call viewImage(type,id) — it attaches the file to chat the same way the user right-clicks "Add to Chat". The image arrives on your NEXT turn, so after calling viewImage end your turn briefly. Then on the following turn you can describe the image and generate accurate content tags.',
+      'You CANNOT see image content from tool results directly (results are text only). To visually inspect a photo or video, call viewImage(type,id) — it attaches the file to chat the same way the user right-clicks "Add to Chat". The image arrives on your NEXT turn, so after calling viewImage end your turn briefly. Then on the following turn you can describe the image and generate accurate content tags. The viewImage tool result also returns ANCHOR_ID=type:id — that is the canonical id for the image in front of you. When the user says "tag this one" / "this image", that anchor is the item to tag. If you are unsure (multiple images attached, or the user attached one manually), call getCurrentMediaItem or ASK the user to confirm — NEVER pick the first untagged item from a search result as a stand-in for "this one".',
     ],
     availableTools: [
-      'describeSchema, getStats, getItem, viewImage, search, findSimilar, suggestStacks',
+      'describeSchema, getStats, getItem, viewImage, getCurrentMediaItem, search, findSimilar, suggestStacks',
       'listTags, listAlbums, listFolders, listSmartAlbums',
       'tagItems, updateTag, updateItems, trashItems',
       'updateAlbum, albumMembers, updateSmartAlbum',
@@ -19607,6 +19726,10 @@ async function moResolveFilePath(fileRow) {
   return folder.path.replace(/[\\/]+$/, '') + sep + fileRow.basename;
 }
 
+// Tracks the most recent viewImage call so the AI can disambiguate "this one"
+// references on the next turn. Reset on extension activate.
+let _lastViewedMedia = null;
+
 // Attach a photo/video file to the chat input as an image attachment so the
 // model can actually see it on the next turn. Mirrors the explorer's
 // "Add to Chat" right-click flow (chat.addFileAttachment command).
@@ -19630,12 +19753,31 @@ async function moToolViewImage(args) {
   } catch (err) {
     return moToolError(`Failed to attach image: ${err && err.message ? err.message : String(err)}`);
   }
+  // Record what we attached so a follow-up "tag this one" can be resolved
+  // unambiguously via getCurrentMediaItem.
+  _lastViewedMedia = {
+    type,
+    id,
+    basename: primary.basename,
+    viewedAt: Date.now(),
+  };
   return moToolOk({
     attached: true,
     type,
     id,
+    basename: primary.basename,
     path: fullPath,
-    note: 'Image attached to the chat input. End your current turn (e.g. ask the user to send, or stop here). On the NEXT user turn the image will be in your context and you can describe it / generate content tags.',
+    // The anchor line is the source of truth on the AI's NEXT turn. The image
+    // pixels alone carry no id; the AI MUST cite this anchor when the user
+    // says "this one" / "tag this".
+    anchor: `${type}:${id}`,
+    note:
+      `Image attached. ANCHOR_ID=${type}:${id} (${primary.basename}). ` +
+      'End your current turn now. On the next turn the image will be in your context. ' +
+      `When the user says "tag this" / "this one", the item is ${type}:${id} — ` +
+      'do NOT pick a different id from a prior search result. If you are unsure ' +
+      '(e.g. multiple images attached, or the user attached one via right-click), ' +
+      'call mediaOrganizer.getCurrentMediaItem or ask the user to confirm the id before tagging.',
   });
 }
 
@@ -20147,7 +20289,7 @@ function moRegisterAITools(api) {
       requiresConfirmation: false,
     });
     reg('mediaOrganizer.viewImage', {
-      description: 'Attach a photo or video file to the chat as an image so you can visually inspect it. Use this before generating descriptive/content tags. IMPORTANT: the image arrives on your NEXT turn, not this one — after calling this tool, end your turn (briefly tell the user you have queued the image). On the next turn the image will be in your context and you can describe it and propose tags. Same flow as the user right-clicking "Add to Chat" in the file explorer.',
+      description: 'Attach a photo or video file to the chat as an image so you can visually inspect it. Use this before generating descriptive/content tags. IMPORTANT: the image arrives on your NEXT turn, not this one — after calling this tool, end your turn (briefly tell the user you have queued the image). On the next turn the image will be in your context AND the previous tool result will show ANCHOR_ID=type:id — use that id, not a guess from search results. Same flow as the user right-clicking "Add to Chat" in the file explorer.',
       parameters: {
         type: 'object',
         properties: {
@@ -20157,6 +20299,12 @@ function moRegisterAITools(api) {
         required: ['type', 'id'],
       },
       handler: async (args) => moToolViewImage(args),
+      requiresConfirmation: false,
+    });
+    reg('mediaOrganizer.getCurrentMediaItem', {
+      description: 'Return {type, id, basename, viewedAt} of the most recently attached image (the LAST mediaOrganizer.viewImage call this session), or null if none. Call this BEFORE tagging when the user uses deictic language ("this one", "that image", "the one you\'re looking at") to confirm which item to tag. Returns null if the user attached an image via right-click "Add to Chat" instead — in that case ASK the user to confirm the id before tagging.',
+      parameters: { type: 'object', properties: {} },
+      handler: async () => moToolOk(_lastViewedMedia ? { ..._lastViewedMedia, ageMs: Date.now() - _lastViewedMedia.viewedAt } : null),
       requiresConfirmation: false,
     });
     reg('mediaOrganizer.search', {
@@ -20247,7 +20395,7 @@ function moRegisterAITools(api) {
 
     // ── WRITE TOOLS (require user confirmation) ──
     reg('mediaOrganizer.tagItems', {
-      description: 'Add or remove tags on a batch of photos/videos. Provide tagNames and/or tagIds. Set createMissing:true to auto-create missing tag names (ADD mode only). For descriptive/content tags ("sunset", "dog", "portrait"), DO NOT guess from filenames — first call viewImage on each item, end your turn, then on the next turn describe what you actually see and propose tags. Organizational tags (folder name, year, camera) can be inferred from getItem metadata alone.',
+      description: 'Add or remove tags on a batch of photos/videos. Provide tagNames and/or tagIds. Set createMissing:true to auto-create missing tag names (ADD mode only). For descriptive/content tags ("sunset", "dog", "portrait"), DO NOT guess from filenames — first call viewImage on each item, end your turn, then on the next turn describe what you actually see and propose tags. Organizational tags (folder name, year, camera) can be inferred from getItem metadata alone. CRITICAL: if the user refers to an image with deictic language ("this one", "that image", "the one shown"), you MUST resolve the item id first — call getCurrentMediaItem to get the last-attached id, or ask the user to confirm. NEVER pick the first untagged item from a prior search result as a proxy for "this one".',
       parameters: {
         type: 'object',
         properties: {
@@ -20566,10 +20714,10 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.regenerateThumbnails', async () => {
       const confirmed = await api.window.showInformationMessage(
         'This will re-generate ALL thumbnails at the current quality setting. Continue?',
-        { modal: true },
-        'Regenerate'
+        { title: 'Regenerate' },
+        { title: 'Cancel' }
       );
-      if (confirmed === 'Regenerate') generateAllThumbnails(api, true);
+      if (confirmed && confirmed.title === 'Regenerate') generateAllThumbnails(api, true);
     })
   );
 

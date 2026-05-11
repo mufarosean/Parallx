@@ -12,7 +12,8 @@ import type { IBootstrapFile, IOpenclawRuntimeInfo } from '../openclawSystemProm
 import { buildOpenclawRuntimeSkillState } from '../openclawSkillState.js';
 import { buildOpenclawRuntimeToolState } from '../openclawToolState.js';
 import { buildOpenclawPromptArtifacts as buildRuntimePromptArtifacts } from '../openclawPromptArtifacts.js';
-import { resolveToolProfile } from '../openclawToolPolicy.js';
+import { applyTierToProfile, resolveToolProfile } from '../openclawToolPolicy.js';
+import { resolveModelTier } from '../openclawModelTier.js';
 
 export type IOpenclawPromptArtifacts = {
   systemPrompt: string;
@@ -48,14 +49,15 @@ export async function buildOpenclawPromptArtifacts(
     .map((entry) => ({ name: entry.name, content: entry.content! }));
   const skillCatalog = services.getSkillCatalog?.() ?? [];
   const skillState = buildOpenclawRuntimeSkillState(skillCatalog);
+  const activeModel = services.getActiveModel?.() ?? 'unknown';
   const toolState = buildOpenclawRuntimeToolState({
     platformTools: resolveToolDefinitions(services, mode),
     skillCatalog,
-    mode: resolveToolProfile(mode),
+    mode: applyTierToProfile(resolveToolProfile(mode), resolveModelTier(activeModel)),
     permissions: services.getToolPermissions?.(),
   });
   const runtimeInfo: IOpenclawRuntimeInfo = {
-    model: services.getActiveModel?.() ?? 'unknown',
+    model: activeModel,
     provider: 'ollama',
     host: 'localhost',
     parallxVersion: '0.1.0',

@@ -67,6 +67,7 @@ function summarize(entry: IAutonomyLogEntry): Record<string, unknown> {
 export function createAutonomyLogTool(log: IAutonomyLogReader | undefined): IChatTool {
   return {
     name: 'autonomy_log',
+    displaySummary: 'Read background autonomy events.',
     description:
       'Read the autonomy log — results from heartbeat, cron, and subagent runs that happened while you were not on turn. Use this at the start of a turn if the user references background activity, or to catch up on events. Optional filters: origin ("heartbeat"|"cron"|"subagent"|"agent"), limit (default 50, max 200), onlyUnread. Pass markRead: true to mark returned entries as seen.',
     parameters: {

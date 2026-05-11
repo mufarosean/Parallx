@@ -87,6 +87,7 @@ async function buildWorkspaceTree(fs: IBuiltInToolFileSystem): Promise<string> {
 export function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
     name: 'list_files',
+    displaySummary: 'List files at a workspace path.',
     description: 'List files and directories at a workspace path. Returns name, type (file/directory), and size. Path is relative to the workspace root. IMPORTANT: This only lists names — to see file contents, you must follow up with read_file for each file you need.',
     parameters: {
       type: 'object',
@@ -124,6 +125,7 @@ export function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): ICh
 export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
     name: 'read_file',
+    displaySummary: 'Read a workspace file.',
     description:
       'Read the content of a workspace file. Returns the file content along with a workspace directory tree for navigation. ' +
       'Path is relative to the workspace root. ' +
@@ -206,6 +208,7 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
 export function createSearchFilesTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
     name: 'search_files',
+    displaySummary: 'Find files by name pattern.',
     description: 'Find files in the workspace matching a name pattern (case-insensitive substring match). Returns relative paths. Max depth 5, max 50 results.',
     parameters: {
       type: 'object',
@@ -250,6 +253,7 @@ export function createSearchFilesTool(fs: IBuiltInToolFileSystem | undefined): I
 export function createGrepSearchTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
     name: 'grep_search',
+    displaySummary: 'Search file contents by pattern.',
     description:
       'Search for text content inside workspace files. Finds lines matching a pattern (plain text or regex) ' +
       'and returns matching lines with surrounding context. Use this to find specific code, strings, or patterns ' +
@@ -464,6 +468,7 @@ function formatSize(bytes: number): string {
 export function createSearchKnowledgeTool(retrieval: IBuiltInToolRetrieval | undefined): IChatTool {
   return {
     name: 'search_knowledge',
+    displaySummary: 'Semantic search across indexed content.',
     description:
       'Semantic search across all indexed knowledge (canvas pages, workspace files, and rich documents like PDFs, DOCX, and XLSX). ' +
       'Use this when you need to find information beyond what is already provided in the context. ' +

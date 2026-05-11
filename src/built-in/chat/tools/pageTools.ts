@@ -11,6 +11,12 @@ import type {
   CurrentPageIdGetter,
 } from '../chatTypes.js';
 import { extractSnippet, extractTextContent } from './builtInTools.js';
+import { markdownToTiptapJson } from '../../canvas/markdownImport.js';
+import {
+  decodeCanvasContent,
+  encodeCanvasContentFromDoc,
+} from '../../canvas/contentSchema.js';
+import { filterToSubquery, type IPropertyFilter, type IPropertySort } from './blockApi.js';
 
 // ── Tool helpers ──
 
@@ -26,67 +32,225 @@ function generateId(): string {
 
 // ── Tool definitions ──
 
-export function createSearchWorkspaceTool(db: IBuiltInToolDatabase | undefined): IChatTool {
+/**
+ * find_pages — unified page discovery (folds list_pages, search_workspace,
+ * find_pages_by_property, query_pages_by_property into one tool).
+ *
+ * Modes (combined with AND):
+ *   - No args                → list all non-archived pages by recency.
+ *   - `query`                → full-text LIKE search over title + content.
+ *   - `filter: [{prop,op,value}…]` → property filter chain (INTERSECT).
+ *   - `sort`, `group`, `limit` apply to the result set.
+ */
+export function createFindPagesTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
-    name: 'search_workspace',
-    description: 'Search pages and blocks by text query. Returns matching page titles and content snippets.',
+    name: 'find_pages',
+    displaySummary: 'Find or list workspace pages.',
+    description:
+      'Find pages by text query, property filters, or both. With no args, lists recent pages. ' +
+      '`query` does full-text LIKE matching on title/content. ' +
+      '`filter` is an array of {prop, op, value} (ops: equals, not_equals, contains, is_empty, is_not_empty, greater_than, less_than) combined with AND. ' +
+      'Optional `sort: {by, dir}` (`by` may be "title", "updated_at", "created_at", or any property name) and `group: <propertyName>`.',
     parameters: {
       type: 'object',
-      required: ['query'],
       properties: {
-        query: { type: 'string', description: 'Search text to match against page titles and content' },
-        limit: { type: 'number', description: 'Maximum number of results (default: 10)' },
+        query: { type: 'string', description: 'Text to match against page titles and content.' },
+        filter: {
+          type: 'array',
+          description: 'Property filters combined with AND.',
+          items: {
+            type: 'object',
+            required: ['prop', 'op'],
+            properties: {
+              prop: { type: 'string' },
+              op: { type: 'string' },
+              value: {},
+            },
+          },
+        },
+        sort: {
+          type: 'object',
+          properties: {
+            by: { type: 'string' },
+            dir: { type: 'string', enum: ['asc', 'desc'] },
+          },
+        },
+        group: { type: 'string', description: 'Property name to group results by.' },
+        limit: { type: 'number', description: 'Maximum results (default 50, cap 200).' },
       },
     },
     requiresConfirmation: false,
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
-      const query = String(args['query'] || '');
-      const limit = Math.min(Number(args['limit']) || 10, 50);
 
-      if (!query.trim()) {
-        return { content: 'Search query is empty', isError: true };
+      const query = typeof args['query'] === 'string' ? (args['query'] as string).trim() : '';
+      const rawFilter = args['filter'];
+      const sort = args['sort'] as IPropertySort | undefined;
+      const group = typeof args['group'] === 'string' ? (args['group'] as string).trim() : '';
+      const limit = Math.min(Math.max(Number(args['limit']) || 50, 1), 200);
+
+      // Parse filters if present.
+      const filters: IPropertyFilter[] = [];
+      if (Array.isArray(rawFilter)) {
+        for (const f of rawFilter) {
+          if (!f || typeof f !== 'object') {
+            return { content: 'each filter must be an object {prop, op, value}', isError: true };
+          }
+          const fo = f as Record<string, unknown>;
+          const prop = String(fo['prop'] || '').trim();
+          const op = String(fo['op'] || '').trim();
+          if (!prop || !op) {
+            return { content: 'each filter requires prop and op', isError: true };
+          }
+          filters.push({ prop, op: op as IPropertyFilter['op'], value: fo['value'] });
+        }
       }
 
-      const pattern = `%${query}%`;
-      const pages = await db!.all<{ id: string; title: string; content: string }>(
-        'SELECT id, title, content FROM pages WHERE is_archived = 0 AND (title LIKE ? OR content LIKE ?) ORDER BY updated_at DESC LIMIT ?',
-        [pattern, pattern, limit],
-      );
+      // Build WHERE clauses + params.
+      const whereParts: string[] = ['p.is_archived = 0'];
+      const params: unknown[] = [];
 
-      if (pages.length === 0) {
-        return { content: `No pages found matching "${query}".` };
+      if (query) {
+        whereParts.push('(p.title LIKE ? OR p.content LIKE ?)');
+        const pattern = `%${query}%`;
+        params.push(pattern, pattern);
       }
 
-      const results = pages.map((p) => {
-        const snippet = extractSnippet(p.content, query, 150);
-        return `- **${p.title}** (id: ${p.id})${snippet ? `\n  ${snippet}` : ''}`;
+      if (filters.length > 0) {
+        const subqueries: string[] = [];
+        try {
+          for (const f of filters) {
+            const sub = filterToSubquery(f);
+            subqueries.push(sub.subquery);
+            params.push(...sub.params);
+          }
+        } catch (err) {
+          return { content: (err as Error).message, isError: true };
+        }
+        whereParts.push(`p.id IN (${subqueries.join(' INTERSECT ')})`);
+      }
+
+      // Sort: built-in column or joined property.
+      let sortClause = 'p.updated_at DESC';
+      const dir = sort?.dir === 'asc' ? 'ASC' : 'DESC';
+      if (sort?.by) {
+        if (sort.by === 'title') sortClause = `p.title ${dir}`;
+        else if (sort.by === 'updated_at') sortClause = `p.updated_at ${dir}`;
+        else if (sort.by === 'created_at') sortClause = `p.created_at ${dir}`;
+        else sortClause = `(SELECT value FROM page_properties WHERE page_id = p.id AND key = ${escapeSqlLiteral(sort.by)}) ${dir}`;
+      }
+
+      const sql =
+        `SELECT p.id, p.title, p.icon, p.content, p.updated_at FROM pages p ` +
+        `WHERE ${whereParts.join(' AND ')} ORDER BY ${sortClause} LIMIT ?`;
+      params.push(limit);
+
+      const rows = await db!.all<{ id: string; title: string; icon: string | null; content: string; updated_at: string }>(sql, params);
+
+      if (rows.length === 0) {
+        if (query && filters.length === 0) return { content: `No pages found matching "${query}".` };
+        if (filters.length > 0) return { content: `No pages matched ${filters.length} filter(s)${query ? ` and query "${query}"` : ''}.` };
+        return { content: 'No pages found in the workspace.' };
+      }
+
+      // Optional grouping.
+      if (group) {
+        const ids = rows.map((r) => r.id);
+        const placeholders = ids.map(() => '?').join(',');
+        const propRows = await db!.all<{ page_id: string; value: string }>(
+          `SELECT page_id, value FROM page_properties WHERE key = ? AND page_id IN (${placeholders})`,
+          [group, ...ids],
+        );
+        const groupValues = new Map<string, string>();
+        for (const pr of propRows) groupValues.set(pr.page_id, pr.value);
+        const grouped = new Map<string, typeof rows>();
+        for (const r of rows) {
+          const raw = groupValues.get(r.id) ?? 'null';
+          let label = raw;
+          try { label = String(JSON.parse(raw)); } catch { /* keep raw */ }
+          if (!grouped.has(label)) grouped.set(label, []);
+          grouped.get(label)!.push(r);
+        }
+        const sections = [...grouped.entries()].map(([label, items]) => {
+          const lines = items.map((p) => `  - **${p.title}** (id: ${p.id})`).join('\n');
+          return `### ${group} = ${label}\n${lines}`;
+        });
+        return { content: `Found ${rows.length} page(s) grouped by ${group}:\n\n${sections.join('\n\n')}` };
+      }
+
+      // Default rendering.
+      const lines = rows.map((p) => {
+        const icon = p.icon ? `${p.icon} ` : '';
+        const snippet = query ? extractSnippet(p.content, query, 150) : '';
+        return `- ${icon}**${p.title}** (id: ${p.id}, updated: ${p.updated_at})${snippet ? `\n  ${snippet}` : ''}`;
       });
 
-      return { content: `Found ${pages.length} page(s) matching "${query}":\n\n${results.join('\n')}` };
+      const header =
+        query && filters.length > 0
+          ? `Found ${rows.length} page(s) matching "${query}" + ${filters.length} filter(s):`
+          : query
+            ? `Found ${rows.length} page(s) matching "${query}":`
+            : filters.length > 0
+              ? `Found ${rows.length} page(s) matching ${filters.length} filter(s):`
+              : `${rows.length} page(s) in workspace:`;
+
+      return { content: `${header}\n\n${lines.join('\n')}` };
     },
   };
 }
 
-export function createReadPageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
+/** Escape a string literal for inline use in a SQL ORDER BY subquery. */
+function escapeSqlLiteral(s: string): string {
+  return `'${s.replace(/'/g, "''")}'`;
+}
+
+/**
+ * read_page — read a page by UUID, title, or the literal 'current'.
+ *
+ * Folds the former read_current_page tool: pass `pageId: 'current'` to read
+ * whatever page the user has open in the editor.
+ */
+export function createReadPageTool(
+  db: IBuiltInToolDatabase | undefined,
+  getCurrentPageId?: CurrentPageIdGetter,
+): IChatTool {
   return {
     name: 'read_page',
-    description: 'Read the full content of a page by its ID or title. Accepts a page UUID or a page title (case-insensitive match). Returns the page title and text content.',
+    displaySummary: 'Read a page by id, title, or "current".',
+    description:
+      'Read the full content of a page. `pageId` accepts a UUID, a page title (case-insensitive match), or the literal "current" to read the page the user has open in the editor.',
     parameters: {
       type: 'object',
       required: ['pageId'],
       properties: {
-        pageId: { type: 'string', description: 'The page UUID or page title' },
+        pageId: { type: 'string', description: 'Page UUID, page title, or "current" for the active page.' },
       },
     },
     requiresConfirmation: false,
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
-      const identifier = String(args['pageId'] || '');
+      const identifier = String(args['pageId'] || '').trim();
       if (!identifier) {
         return { content: 'pageId is required', isError: true };
+      }
+
+      // Special form: 'current' → resolve to the active editor page.
+      if (identifier.toLowerCase() === 'current') {
+        const currentId = getCurrentPageId?.();
+        if (!currentId) {
+          return { content: 'No page is currently open in the editor.', isError: true };
+        }
+        const page = await db!.get<{ id: string; title: string; content: string }>(
+          'SELECT id, title, content FROM pages WHERE id = ?',
+          [currentId],
+        );
+        if (!page) {
+          return { content: `The active editor page (${currentId}) was not found in the database.`, isError: true };
+        }
+        const text = extractTextContent(page.content);
+        return { content: `**${page.title}** (id: ${page.id}) — currently open\n\n${text || '(empty page)'}` };
       }
 
       // Try UUID lookup first (exact match)
@@ -112,7 +276,7 @@ export function createReadPageTool(db: IBuiltInToolDatabase | undefined): IChatT
       }
 
       if (!page) {
-        return { content: `Page "${identifier}" not found. Use list_pages to see available pages.`, isError: true };
+        return { content: `Page "${identifier}" not found. Use find_pages to see available pages.`, isError: true };
       }
 
       const text = extractTextContent(page.content);
@@ -121,77 +285,20 @@ export function createReadPageTool(db: IBuiltInToolDatabase | undefined): IChatT
   };
 }
 
-export function createReadCurrentPageTool(db: IBuiltInToolDatabase | undefined, getCurrentPageId: CurrentPageIdGetter): IChatTool {
+/**
+ * get_page — return page metadata, custom properties, and applicable
+ * property definitions in one shot.
+ *
+ * Replaces the former get_page_properties tool and additionally surfaces
+ * the workspace property definitions that the assistant can use with
+ * set_page_property.
+ */
+export function createGetPageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
-    name: 'read_current_page',
-    description: 'Read the content of the page the user currently has open. No parameters needed — reads whatever page is active in the editor.',
-    parameters: {
-      type: 'object',
-      properties: {},
-    },
-    requiresConfirmation: false,
-    permissionLevel: 'always-allowed' as ToolPermissionLevel,
-    async handler(_args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
-      requireDb(db);
-      const pageId = getCurrentPageId();
-      if (!pageId) {
-        return { content: 'No page is currently open in the editor.', isError: true };
-      }
-
-      const page = await db!.get<{ id: string; title: string; content: string }>(
-        'SELECT id, title, content FROM pages WHERE id = ?',
-        [pageId],
-      );
-
-      if (!page) {
-        return { content: `The active editor page (${pageId}) was not found in the database.`, isError: true };
-      }
-
-      const text = extractTextContent(page.content);
-      return { content: `**${page.title}** (id: ${page.id}) — currently open\n\n${text || '(empty page)'}` };
-    },
-  };
-}
-
-export function createListPagesTool(db: IBuiltInToolDatabase | undefined): IChatTool {
-  return {
-    name: 'list_pages',
-    description: 'List all pages in the workspace with their titles and IDs.',
-    parameters: {
-      type: 'object',
-      properties: {
-        limit: { type: 'number', description: 'Maximum number of pages to return (default: 50)' },
-      },
-    },
-    requiresConfirmation: false,
-    permissionLevel: 'always-allowed' as ToolPermissionLevel,
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
-      requireDb(db);
-      const limit = Math.min(Number(args['limit']) || 50, 200);
-
-      const pages = await db!.all<{ id: string; title: string; icon: string | null; updated_at: string }>(
-        'SELECT id, title, icon, updated_at FROM pages WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT ?',
-        [limit],
-      );
-
-      if (pages.length === 0) {
-        return { content: 'No pages found in the workspace.' };
-      }
-
-      const lines = pages.map((p) => {
-        const icon = p.icon ? `${p.icon} ` : '';
-        return `- ${icon}**${p.title}** (id: ${p.id}, updated: ${p.updated_at})`;
-      });
-
-      return { content: `${pages.length} page(s) in workspace:\n\n${lines.join('\n')}` };
-    },
-  };
-}
-
-export function createGetPagePropertiesTool(db: IBuiltInToolDatabase | undefined): IChatTool {
-  return {
-    name: 'get_page_properties',
-    description: 'Get metadata and custom properties of a page including title, icon, creation date, block count, and all custom property values.',
+    name: 'get_page',
+    displaySummary: 'Get page metadata, properties, and applicable definitions.',
+    description:
+      'Get a page\'s metadata (title, icon, dates, block count), its custom property values, and the workspace property definitions available for the page.',
     parameters: {
       type: 'object',
       required: ['pageId'],
@@ -229,7 +336,7 @@ export function createGetPagePropertiesTool(db: IBuiltInToolDatabase | undefined
         [pageId],
       );
 
-      const lines = [
+      const lines: (string | null)[] = [
         `**Title:** ${page.title}`,
         `**ID:** ${page.id}`,
         page.icon ? `**Icon:** ${page.icon}` : null,
@@ -237,9 +344,9 @@ export function createGetPagePropertiesTool(db: IBuiltInToolDatabase | undefined
         `**Updated:** ${page.updated_at}`,
         `**Archived:** ${page.is_archived ? 'Yes' : 'No'}`,
         `**Blocks:** ${blockCount?.cnt ?? 0}`,
-      ].filter(Boolean);
+      ];
 
-      // Custom properties from page_properties table
+      // Custom properties.
       const props = await db!.all<{
         key: string;
         value_type: string;
@@ -259,7 +366,18 @@ export function createGetPagePropertiesTool(db: IBuiltInToolDatabase | undefined
         }
       }
 
-      return { content: lines.join('\n') };
+      // Applicable property definitions (workspace-wide).
+      const defs = await db!.all<{ name: string; type: string }>(
+        'SELECT name, type FROM property_definitions ORDER BY sort_order, name',
+      );
+      if (defs.length > 0) {
+        lines.push('', '**Applicable Property Definitions:**');
+        for (const d of defs) {
+          lines.push(`- **${d.name}** (${d.type})`);
+        }
+      }
+
+      return { content: lines.filter((l) => l !== null).join('\n') };
     },
   };
 }
@@ -282,6 +400,7 @@ function formatPropertyValue(raw: string, _type: string): string {
 export function createListPropertyDefinitionsTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
     name: 'list_property_definitions',
+    displaySummary: 'List workspace property definitions.',
     description: 'List all property definitions in the workspace. Shows available property names, types, and configuration.',
     parameters: {
       type: 'object',
@@ -326,6 +445,7 @@ export function createListPropertyDefinitionsTool(db: IBuiltInToolDatabase | und
 export function createSetPagePropertyTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
     name: 'set_page_property',
+    displaySummary: 'Set a property on a page.',
     description: 'Set a property value on a canvas page. Creates the property definition automatically if it doesn\'t exist.',
     parameters: {
       type: 'object',
@@ -396,94 +516,19 @@ function inferPropertyType(value: unknown): string {
   return 'text';
 }
 
-export function createFindPagesByPropertyTool(db: IBuiltInToolDatabase | undefined): IChatTool {
-  return {
-    name: 'find_pages_by_property',
-    description: 'Find canvas pages by property value. Supports operators: equals, contains, is_empty, is_not_empty, greater_than, less_than.',
-    parameters: {
-      type: 'object',
-      required: ['propertyName', 'operator'],
-      properties: {
-        propertyName: { type: 'string', description: 'The property name to filter by' },
-        operator: { type: 'string', description: 'Comparison operator: equals, contains, is_empty, is_not_empty, greater_than, less_than' },
-        value: { description: 'The value to compare against (not required for is_empty/is_not_empty)' },
-      },
-    },
-    requiresConfirmation: false,
-    permissionLevel: 'always-allowed' as ToolPermissionLevel,
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
-      requireDb(db);
-      const propertyName = String(args['propertyName'] || '').trim();
-      const operator = String(args['operator'] || '').trim();
-      const value = args['value'];
-
-      if (!propertyName) { return { content: 'propertyName is required', isError: true }; }
-      if (!operator) { return { content: 'operator is required', isError: true }; }
-
-      const validOperators = ['equals', 'contains', 'is_empty', 'is_not_empty', 'greater_than', 'less_than'];
-      if (!validOperators.includes(operator)) {
-        return { content: `Invalid operator "${operator}". Valid operators: ${validOperators.join(', ')}`, isError: true };
-      }
-
-      let whereClause: string;
-      const params: unknown[] = [propertyName];
-
-      switch (operator) {
-        case 'equals':
-          whereClause = 'pp.value = ?';
-          params.push(JSON.stringify(value));
-          break;
-        case 'contains':
-          whereClause = "pp.value LIKE ? ESCAPE '\\'";
-          params.push(`%${String(value).replace(/[\\%_]/g, '\\$&')}%`);
-          break;
-        case 'is_empty':
-          whereClause = "pp.value IS NULL OR pp.value = 'null' OR pp.value = '\"\"'";
-          break;
-        case 'is_not_empty':
-          whereClause = "pp.value IS NOT NULL AND pp.value != 'null' AND pp.value != '\"\"'";
-          break;
-        case 'greater_than':
-          whereClause = "CAST(json_extract(pp.value, '$') AS REAL) > ?";
-          params.push(Number(value));
-          break;
-        case 'less_than':
-          whereClause = "CAST(json_extract(pp.value, '$') AS REAL) < ?";
-          params.push(Number(value));
-          break;
-        default:
-          return { content: `Unsupported operator: ${operator}`, isError: true };
-      }
-
-      const rows = await db!.all<{ id: string; title: string; value: string }>(
-        `SELECT p.id, p.title, pp.value FROM page_properties pp JOIN pages p ON pp.page_id = p.id WHERE pp.key = ? AND (${whereClause})`,
-        params,
-      );
-
-      if (rows.length === 0) {
-        return { content: `No pages found where '${propertyName}' ${operator}${value !== undefined ? ' ' + JSON.stringify(value) : ''}.` };
-      }
-
-      const lines = rows.map((r) => {
-        const formatted = formatPropertyValue(r.value, 'text');
-        return `- **${r.title}** (id: ${r.id}) — ${propertyName}: ${formatted}`;
-      });
-
-      return { content: `Found ${rows.length} page(s):\n\n${lines.join('\n')}` };
-    },
-  };
-}
-
 export function createCreatePageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
     name: 'create_page',
-    description: 'Create a new page in the workspace with a title and optional content.',
+    displaySummary: 'Create a new workspace page.',
+    description:
+      'Create a new canvas page with a title, optional icon, and optional markdown body. The page is created with a proper canvas content envelope so it opens correctly in the editor. Use the `markdown` field for any structured body (headings, lists, code, tables, etc.). The deprecated `content` field is treated as a plain-text fallback wrapped in a single paragraph.',
     parameters: {
       type: 'object',
       required: ['title'],
       properties: {
         title: { type: 'string', description: 'Page title' },
-        content: { type: 'string', description: 'Initial text content for the page (plain text)' },
+        markdown: { type: 'string', description: 'Initial body as markdown (supports headings, lists, code, tables, math, callouts, images)' },
+        content: { type: 'string', description: 'DEPRECATED: plain text used as a single paragraph if markdown is not provided' },
         icon: { type: 'string', description: 'Page icon emoji' },
       },
     },
@@ -498,15 +543,246 @@ export function createCreatePageTool(db: IBuiltInToolDatabase | undefined): ICha
 
       const id = generateId();
       const icon = args['icon'] ? String(args['icon']) : null;
-      const content = args['content'] ? String(args['content']) : '';
+      const markdown = typeof args['markdown'] === 'string' ? args['markdown'] : '';
+      const plainContent = typeof args['content'] === 'string' ? args['content'] : '';
       const now = new Date().toISOString();
 
+      // Build TipTap doc: markdown → JSON if provided, plain text → single paragraph,
+      // otherwise empty paragraph (matches canvasDataService.createPage initial doc).
+      let doc: { type: 'doc'; content: unknown[] };
+      if (markdown.trim()) {
+        doc = markdownToTiptapJson(markdown) as { type: 'doc'; content: unknown[] };
+        if (!doc.content || doc.content.length === 0) {
+          doc = { type: 'doc', content: [{ type: 'paragraph' }] };
+        }
+      } else if (plainContent.trim()) {
+        doc = {
+          type: 'doc',
+          content: [
+            { type: 'paragraph', content: [{ type: 'text', text: plainContent }] },
+          ],
+        };
+      } else {
+        doc = { type: 'doc', content: [{ type: 'paragraph' }] };
+      }
+
+      const encoded = encodeCanvasContentFromDoc(doc as Parameters<typeof encodeCanvasContentFromDoc>[0]);
+
       await db!.run(
-        'INSERT INTO pages (id, title, icon, content, is_archived, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)',
-        [id, title, icon, content, now, now],
+        'INSERT INTO pages (id, title, icon, content, content_schema_version, is_archived, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)',
+        [id, title, icon, encoded.storedContent, encoded.schemaVersion, now, now],
       );
 
-      return { content: `Created page "${title}" (id: ${id})` };
+      const blockCount = doc.content.length;
+      return { content: `Created page "${title}" (id: ${id}) with ${blockCount} block${blockCount === 1 ? '' : 's'}.` };
+    },
+  };
+}
+
+/**
+ * compose_page — author or update a canvas page using markdown.
+ *
+ * Parses the provided markdown into TipTap JSON via `markdownToTiptapJson`,
+ * combines it with the page's current content per `mode`, encodes it via the
+ * canvas content schema envelope, and persists it in `pages.content`.
+ *
+ * Modes:
+ *   - `replace` (default): overwrite the body entirely
+ *   - `append`: insert blocks at the end
+ *   - `prepend`: insert blocks at the start
+ *
+ * NOTE: This writes directly via SQL, matching the existing `create_page`
+ * pattern. If the target page is open in a live editor, the editor will not
+ * reflect the change until reload. Reconciling that is a separate concern
+ * for a later iteration.
+ */
+export function createComposePageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
+  return {
+    name: 'compose_page',
+    displaySummary: 'Compose a page from markdown.',
+    description:
+      'Author or update a canvas page from markdown. Supports headings, lists, tables, callouts, code blocks, math, images, and inline marks. Use mode "replace" to overwrite, "append" or "prepend" to add to existing content.',
+    parameters: {
+      type: 'object',
+      required: ['pageId', 'markdown'],
+      properties: {
+        pageId: { type: 'string', description: 'The page UUID to update' },
+        markdown: {
+          type: 'string',
+          description:
+            'Markdown body to render into the page. Supports # headings, lists, - [ ] tasks, > [!type] callouts, ```code fences, pipe tables, $$math$$, ![images](src), and inline **bold** / *italic* / `code` / [links](url).',
+        },
+        mode: {
+          type: 'string',
+          enum: ['replace', 'append', 'prepend'],
+          description: 'How to combine with existing content. Default: replace.',
+        },
+      },
+    },
+    requiresConfirmation: true,
+    permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      requireDb(db);
+
+      const pageId = String(args['pageId'] || '').trim();
+      const markdown = args['markdown'] != null ? String(args['markdown']) : '';
+      const modeRaw = String(args['mode'] || 'replace').toLowerCase();
+      const mode: 'replace' | 'append' | 'prepend' =
+        modeRaw === 'append' ? 'append' : modeRaw === 'prepend' ? 'prepend' : 'replace';
+
+      if (!pageId) {
+        return { content: 'pageId is required', isError: true };
+      }
+
+      const page = await db!.get<{ id: string; title: string; content: string }>(
+        'SELECT id, title, content FROM pages WHERE id = ?',
+        [pageId],
+      );
+      if (!page) {
+        return { content: `Page not found: ${pageId}`, isError: true };
+      }
+
+      const incomingDoc = markdownToTiptapJson(markdown);
+      const incomingBlocks = Array.isArray(incomingDoc.content) ? incomingDoc.content : [];
+
+      let finalDoc: { type: 'doc'; content: unknown[] };
+      if (mode === 'replace') {
+        finalDoc = { type: 'doc', content: incomingBlocks };
+      } else {
+        const existing = decodeCanvasContent(page.content);
+        const existingBlocks = Array.isArray(existing.doc?.content) ? existing.doc.content : [];
+        const merged = mode === 'append'
+          ? [...existingBlocks, ...incomingBlocks]
+          : [...incomingBlocks, ...existingBlocks];
+        finalDoc = { type: 'doc', content: merged };
+      }
+
+      // Doc must contain at least one block — guard against empty-markdown
+      // append/prepend that would yield an empty body.
+      if (finalDoc.content.length === 0) {
+        finalDoc = { type: 'doc', content: [{ type: 'paragraph' }] };
+      }
+
+      const encoded = encodeCanvasContentFromDoc(finalDoc);
+      const now = new Date().toISOString();
+      await db!.run(
+        'UPDATE pages SET content = ?, content_schema_version = ?, updated_at = ? WHERE id = ?',
+        [encoded.storedContent, encoded.schemaVersion, now, pageId],
+      );
+
+      const blockCount = finalDoc.content.length;
+      const verb = mode === 'replace' ? 'Replaced' : mode === 'append' ? 'Appended to' : 'Prepended to';
+      return {
+        content: `${verb} page "${page.title}" — ${blockCount} block${blockCount === 1 ? '' : 's'}.`,
+      };
+    },
+  };
+}
+
+/**
+ * set_page_style — update a page's display settings (icon, cover, font, width, text size).
+ *
+ * Only the fields provided in `style` are updated. Matches the page-settings
+ * columns added in `003_page_settings.sql` (icon, cover_url, font_family,
+ * full_width, small_text). Requires approval since it mutates user-visible
+ * presentation.
+ */
+export function createSetPageStyleTool(db: IBuiltInToolDatabase | undefined): IChatTool {
+  return {
+    name: 'set_page_style',
+    displaySummary: 'Update a page\'s style (icon, cover, font, width).',
+    description:
+      'Update a page\'s display settings. Provide only the fields you want to change. fontFamily must be "default" | "serif" | "mono". fullWidth and smallText are booleans. icon is an emoji string (pass empty string to clear). coverUrl is a URL string (pass empty string to clear).',
+    parameters: {
+      type: 'object',
+      required: ['pageId', 'style'],
+      properties: {
+        pageId: { type: 'string', description: 'ID of the page to update' },
+        style: {
+          type: 'object',
+          description: 'Style fields to update (omit fields you do not want to change)',
+          properties: {
+            icon: { type: 'string', description: 'Emoji icon (empty string to clear)' },
+            coverUrl: { type: 'string', description: 'Cover image URL (empty string to clear)' },
+            fontFamily: { type: 'string', enum: ['default', 'serif', 'mono'], description: 'Body font family' },
+            fullWidth: { type: 'boolean', description: 'Use the full canvas width' },
+            smallText: { type: 'boolean', description: 'Render the page in a smaller text size' },
+          },
+        },
+      },
+    },
+    requiresConfirmation: true,
+    permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      requireDb(db);
+      const pageId = String(args['pageId'] || '').trim();
+      if (!pageId) {
+        return { content: 'pageId is required', isError: true };
+      }
+      const style = (args['style'] && typeof args['style'] === 'object') ? args['style'] as Record<string, unknown> : null;
+      if (!style) {
+        return { content: 'style object is required', isError: true };
+      }
+
+      const page = await db!.get<{ id: string; title: string }>(
+        'SELECT id, title FROM pages WHERE id = ?',
+        [pageId],
+      );
+      if (!page) {
+        return { content: `Page not found: ${pageId}`, isError: true };
+      }
+
+      const sets: string[] = [];
+      const params: unknown[] = [];
+      const changed: string[] = [];
+
+      if ('icon' in style) {
+        const v = String(style['icon'] ?? '');
+        sets.push('icon = ?');
+        params.push(v === '' ? null : v);
+        changed.push('icon');
+      }
+      if ('coverUrl' in style) {
+        const v = String(style['coverUrl'] ?? '');
+        sets.push('cover_url = ?');
+        params.push(v === '' ? null : v);
+        changed.push('coverUrl');
+      }
+      if ('fontFamily' in style) {
+        const v = String(style['fontFamily']);
+        if (v !== 'default' && v !== 'serif' && v !== 'mono') {
+          return { content: `Invalid fontFamily: ${v}. Must be "default", "serif", or "mono".`, isError: true };
+        }
+        sets.push('font_family = ?');
+        params.push(v);
+        changed.push('fontFamily');
+      }
+      if ('fullWidth' in style) {
+        sets.push('full_width = ?');
+        params.push(style['fullWidth'] ? 1 : 0);
+        changed.push('fullWidth');
+      }
+      if ('smallText' in style) {
+        sets.push('small_text = ?');
+        params.push(style['smallText'] ? 1 : 0);
+        changed.push('smallText');
+      }
+
+      if (sets.length === 0) {
+        return { content: 'No style fields provided. Specify at least one of: icon, coverUrl, fontFamily, fullWidth, smallText.', isError: true };
+      }
+
+      const now = new Date().toISOString();
+      sets.push('updated_at = ?');
+      params.push(now);
+      params.push(pageId);
+
+      await db!.run(
+        `UPDATE pages SET ${sets.join(', ')} WHERE id = ?`,
+        params,
+      );
+
+      return { content: `Updated page "${page.title}" style: ${changed.join(', ')}.` };
     },
   };
 }

@@ -55,6 +55,7 @@ function formatSearchResults(results: Array<{ sourceId: string; contextPrefix: s
 export function createMemoryGetTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
     name: 'memory_get',
+    displaySummary: 'Read canonical workspace memory.',
     description:
       'Read canonical workspace memory from `.parallx/memory/`. ' +
       'Use `layer="durable"` for long-term memory in `.parallx/memory/MEMORY.md`, ' +
@@ -99,6 +100,7 @@ export function createMemoryGetTool(fs: IBuiltInToolFileSystem | undefined): ICh
 export function createMemorySearchTool(memorySearch: IBuiltInToolCanonicalMemorySearch | undefined): IChatTool {
   return {
     name: 'memory_search',
+    displaySummary: 'Semantic search over workspace memory.',
     description:
       'Semantic search over canonical workspace memory in `.parallx/memory/`. ' +
       'Use this when answering questions about remembered decisions, preferences, and recent notes. ' +

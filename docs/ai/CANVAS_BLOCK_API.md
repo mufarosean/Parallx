@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-30  
 **Status:** Shipped (Phase δ)  
-**Source of truth:** `docs/Parallx_Milestone_60.md` §6 (Tier 3 — Canvas Depth).
+**Source of truth:** `docs/archive/milestones/Parallx_Milestone_60.md` §6 (Tier 3 — Canvas Depth).
 
 Block-level addressing and queryable property substrate for the Parallx
 canvas. The agent can:
@@ -257,7 +257,7 @@ Each scenario carries `_runner_status: "TODO — runner from T6"`.
 
 ## 7. References
 
-- M55 — page properties baseline (`docs/Parallx_Milestone_55.md`).
+- M55 — page properties baseline (`docs/archive/milestones/Parallx_Milestone_55.md`).
 - M60 §6 — Tier 3 plan.
 - M60 §3.6 — budgets (100 disk ops/turn).
 - M60 §3.7 — idempotency keys.

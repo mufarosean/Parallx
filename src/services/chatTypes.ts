@@ -872,6 +872,24 @@ export interface IToolDefinition {
   readonly description: string;
   /** JSON Schema object describing the parameters. */
   readonly parameters: Record<string, unknown>;
+  /**
+   * Short prompt-only summary (≤120 chars, single line).
+   * Upstream parity: src/agents/tool-description-presets.ts —
+   * upstream tools carry both `description` (full, for the API tool schema)
+   * and `displaySummary` (short, for the prompt catalog).
+   * When omitted, the prompt builder derives a summary from `description`.
+   */
+  readonly displaySummary?: string;
+  /**
+   * Tool profile membership.
+   * Upstream parity: src/agents/tool-catalog.ts CoreToolDefinition.profiles[].
+   * If present, the tool is exposed only in these profiles (the `full`
+   * profile always allows everything). If omitted, built-in tools rely on
+   * the static profile allowlist in openclawToolPolicy.ts.
+   * Values: 'readonly' | 'standard' | 'full' (kept as string[] to avoid
+   * a cross-layer import of OpenclawToolProfile).
+   */
+  readonly profiles?: readonly string[];
 }
 
 /**
@@ -939,6 +957,16 @@ export interface IChatTool {
   readonly source?: 'built-in' | 'bridge' | 'mcp';
   /** Owning tool ID when contributed through ChatBridge. */
   readonly ownerToolId?: string;
+  /**
+   * Short prompt-only summary (≤120 chars). See `IToolDefinition.displaySummary`.
+   * Upstream parity: src/agents/tool-description-presets.ts.
+   */
+  readonly displaySummary?: string;
+  /**
+   * Tool profile membership. See `IToolDefinition.profiles`.
+   * Upstream parity: src/agents/tool-catalog.ts CoreToolDefinition.profiles[].
+   */
+  readonly profiles?: readonly string[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
