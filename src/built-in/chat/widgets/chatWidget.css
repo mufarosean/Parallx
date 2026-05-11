@@ -1474,12 +1474,21 @@
 
 /* ── Confirmation Card (Cap 6 Task 6.4, M11 Task 2.1) ── */
 
+/* Tool-approval card. Appended directly to `.parallx-chat-message-list`
+ * (see chat/main.ts confirmation handler) — the list has no horizontal
+ * padding, so the card must reserve its own gutter to align with
+ * assistant message bodies. Width caps at the same 920px the assistant
+ * body uses, and the left gutter (22px) matches `.parallx-chat-message`
+ * horizontal padding so the card visually sits inside the conversation
+ * column instead of bleeding to the panel border. */
 .parallx-chat-confirmation {
-  margin: 6px 0;
+  margin: 6px 22px;
   padding: 10px 12px;
   border-radius: var(--parallx-radius-md);
   background: var(--vscode-editorWidget-background, #252526);
   border: 1px solid var(--vscode-editorWidget-border, #454545);
+  max-width: min(920px, calc(100% - 44px));
+  box-sizing: border-box;
 }
 
 .parallx-chat-confirmation-message {
