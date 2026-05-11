@@ -263,20 +263,21 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     });
   });
 
-  // 5b. Auto-close editor tabs when their page is deleted or archived
+  // 5b. Auto-close editor tabs when their page is deleted or archived.
+  // Canvas opens page editors with `instanceId: pageId`, and EditorsBridge
+  // uses the supplied instanceId verbatim as the editor input id — so the
+  // descriptor id is the pageId itself (NOT "parallx.canvas:canvas:<pageId>"
+  // as an older comment claimed). Match descriptor.id directly against the
+  // deleted pageId, scoped to tool editors of typeId "canvas" or "database"
+  // so unrelated tools that happen to use the same id are not affected.
   context.subscriptions.push(
     _dataService.onDidChangePage(async (e) => {
       if (e.kind !== PageChangeKind.Deleted) return;
-      // Editor IDs follow the pattern "parallx.canvas:<typeId>:<pageId>"
-      // Check both canvas and database editors
       const editors = api.editors.openEditors;
       for (const ed of editors) {
-        const parts = ed.id.split(':');
-        if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
-          const edPageId = parts.slice(2).join(':');
-          if (edPageId === e.pageId) {
-            await api.editors.closeEditor(ed.id);
-          }
+        if (ed.id !== e.pageId) continue;
+        if (ed.description === 'Tool editor: canvas' || ed.description === 'Tool editor: database') {
+          await api.editors.closeEditor(ed.id);
         }
       }
     }),
