@@ -82,16 +82,6 @@ export const Callout = Node.create<CalloutOptions>({
       dom.classList.add('canvas-callout');
       dom.setAttribute('data-type', 'callout');
 
-      const applyBg = (attrs: any) => {
-        if (attrs.backgroundColor) {
-          dom.style.backgroundColor = attrs.backgroundColor;
-        } else {
-          dom.style.backgroundColor = '';
-        }
-      };
-
-      applyBg(node.attrs);
-
       const iconSpan = document.createElement('span');
       iconSpan.classList.add('canvas-callout-emoji');
       iconSpan.contentEditable = 'false';
@@ -145,7 +135,6 @@ export const Callout = Node.create<CalloutOptions>({
         update(updatedNode: any) {
           if (updatedNode.type.name !== 'callout') return false;
           renderIcon(updatedNode.attrs.emoji);
-          applyBg(updatedNode.attrs);
           return true;
         },
         destroy() {

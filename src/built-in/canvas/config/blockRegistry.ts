@@ -777,10 +777,34 @@ const definitions: BlockDefinition[] = [
         }
       } catch (error) {
         if (child) {
+          // Rollback the orphaned database row.
           try {
             await context.dataService.deletePage(child.id);
           } catch {
             // Best-effort rollback only.
+          }
+          // Also strip the pageBlock node out of the editor's in-memory doc \u2014
+          // otherwise the next save would persist a reference to the deleted
+          // child page, leaving a permanently-broken card.
+          try {
+            const { state, view } = editor;
+            const tr = state.tr;
+            const toRemove: { from: number; to: number }[] = [];
+            state.doc.descendants((node: any, pos: number) => {
+              if (node.type?.name === 'pageBlock' && node.attrs?.pageId === child!.id) {
+                toRemove.push({ from: pos, to: pos + node.nodeSize });
+                return false;
+              }
+              return true;
+            });
+            // Delete from the end so earlier positions stay valid.
+            for (let i = toRemove.length - 1; i >= 0; i--) {
+              const r = toRemove[i];
+              tr.delete(r.from, r.to);
+            }
+            if (toRemove.length > 0) view.dispatch(tr);
+          } catch {
+            // Best-effort cleanup; the throw below still surfaces the failure.
           }
         }
         throw error;

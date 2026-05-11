@@ -14,6 +14,7 @@
 // plugins/ directory.
 
 import { Node, mergeAttributes } from '@tiptap/core';
+import { TextSelection } from '@tiptap/pm/state';
 import {
   COLUMN_CONTENT_EXPRESSION,
   columnResizePlugin,
@@ -157,8 +158,30 @@ export const ColumnList = Node.create({
             const colPos = $from.before(columnDepth);
             const colListPos = $from.before(columnListDepth);
             const { tr } = editor.state;
+            // Remember which sibling to land in. If we're deleting the first
+            // column, land in what becomes the new first column; otherwise
+            // land in the previous column.
+            const columnIndex = $from.index(columnListDepth);
+            const targetIndex = columnIndex === 0 ? 0 : columnIndex - 1;
             tr.delete(colPos, colPos + columnNode.nodeSize);
             normalizeColumnList(tr, colListPos);
+            // After the delete + normalize, place the cursor inside the
+            // surviving target column so the user keeps typing in a sensible
+            // spot instead of wherever ProseMirror's default resolution lands.
+            try {
+              const mappedListPos = tr.mapping.map(colListPos);
+              const $listPos = tr.doc.resolve(mappedListPos);
+              const listNode = $listPos.nodeAfter;
+              if (listNode && listNode.type.name === 'columnList' && listNode.childCount > 0) {
+                const safeIndex = Math.min(targetIndex, listNode.childCount - 1);
+                let inner = mappedListPos + 1; // enter columnList
+                for (let i = 0; i < safeIndex; i++) inner += listNode.child(i).nodeSize;
+                inner += 2; // enter target column, then its first child block
+                tr.setSelection(TextSelection.near(tr.doc.resolve(inner)));
+              }
+            } catch {
+              /* best-effort cursor placement */
+            }
             editor.view.dispatch(tr);
             return true;
           }
