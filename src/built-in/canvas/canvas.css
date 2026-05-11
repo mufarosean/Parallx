@@ -2058,7 +2058,7 @@
   align-items: center;
   gap: 3px;
   transition: color 0.1s ease;
-  max-width: 150px;
+  max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2079,6 +2079,9 @@
   align-items: center;
   gap: 3px;
   color: rgba(255, 255, 255, 0.5);
+  /* The page you're on should show its full name when there's room; only
+     ancestor crumbs are capped to keep the bar from exploding horizontally. */
+  max-width: none;
 }
 
 .canvas-breadcrumb-icon {
