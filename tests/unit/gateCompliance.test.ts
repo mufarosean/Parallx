@@ -92,7 +92,7 @@ const GATE_RULES: Record<string, string[]> = {
 
   // tiptapExtensions.ts — assembler role: imports from blockRegistry +
   // infrastructure extensions that have zero canvas-internal imports.
-  'config/tiptapExtensions.ts':            ['config/blockRegistry', 'extensions/', 'plugins/'],
+  'config/tiptapExtensions.ts':            ['config/blockRegistry', 'extensions/', 'plugins/', 'menus/imagePathResolver'],
 
   // ── CanvasMenuRegistry children ─────────────────────────────────────────
   'menus/slashMenu.ts':                    ['menus/canvasMenuRegistry'],
@@ -105,7 +105,8 @@ const GATE_RULES: Record<string, string[]> = {
   'menus/slashMenuItems.ts':               [],  // pure data — zero imports
   'menus/inputPasteContextMenu.ts':        [],  // pure UI — no canvas imports
   'menus/inputIsolation.ts':               [],  // pure UI helper — no canvas imports
-  'menus/imageInsertPopup.ts':             ['menus/inputIsolation'],  // pure UI
+  'menus/imageInsertPopup.ts':             ['menus/inputIsolation', 'menus/imagePathResolver'],  // pure UI
+  'menus/imagePathResolver.ts':            [],  // pure utility — zero canvas imports
   'menus/mediaInsertPopup.ts':             ['menus/inputPasteContextMenu', 'menus/inputIsolation'],  // pure UI
   'menus/bookmarkInsertPopup.ts':          ['menus/inputPasteContextMenu', 'menus/inputIsolation'],  // pure UI
 
