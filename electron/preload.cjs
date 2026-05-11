@@ -290,6 +290,27 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     addToDictionary: (word) => ipcRenderer.invoke('editableMenu:addToDictionary', word),
   },
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // Web Research API (M65 — ext/web-research/ chokepoint)
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // SECURITY: This is the ONLY outbound HTTP channel the web-research
+  // extension may use. See electron/webFetchBridge.cjs for the egress
+  // controls (DNS allowlist, blocklist, HTTPS-only, redirect re-resolve,
+  // body/timeout caps, fixed UA, no cookies/auth/referer).
+
+  webFetch: {
+    /** Fetch a single URL through the egress chokepoint. Returns { ok, result?, error? }. */
+    request: (opts) => ipcRenderer.invoke('webFetch:request', opts),
+    /** Reset the per-turn fetch backstop counter for the given turnId. */
+    resetTurn: (turnId) => ipcRenderer.invoke('webFetch:resetTurn', turnId),
+  },
+
+  webSearch: {
+    /** Call Brave Search API (host-locked). Returns { ok, result?, error? }. */
+    request: (opts) => ipcRenderer.invoke('webSearch:request', opts),
+  },
+
   // ══════════════════════════════════════════════════════════════════════════
   // Document Extraction API
   // ══════════════════════════════════════════════════════════════════════════

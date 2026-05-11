@@ -19,9 +19,11 @@ import { AgentSection } from './sections/agentSection.js';
 import { CronSection } from './sections/cronSection.js';
 import { ToolsSection } from './sections/toolsSection.js';
 import { McpSection } from './sections/mcpSection.js';
+import { WebResearchSection } from './sections/webResearchSection.js';
 import type { IToolPickerServices } from '../../services/chatTypes.js';
 import type { IMcpClientService } from '../../services/serviceTypes.js';
 import type { IAutonomyFeatureFlagsService } from '../../services/autonomyFeatureFlags.js';
+import type { IStorage } from '../../platform/storage.js';
 import './aiSettings.css';
 
 // ─── AISettingsPanel ─────────────────────────────────────────────────────────
@@ -42,6 +44,7 @@ export class AISettingsPanel extends Disposable {
     private readonly _toolPickerServices?: IToolPickerServices,
     private readonly _mcpClientService?: IMcpClientService,
     _autonomyFlagsService?: IAutonomyFeatureFlagsService,
+    private readonly _globalStorage?: IStorage,
   ) {
     super();
     void _autonomyFlagsService;
@@ -81,6 +84,7 @@ export class AISettingsPanel extends Disposable {
       this._register(new CronSection(this._service)),
       this._register(new ToolsSection(this._service, this._toolPickerServices, this._unifiedConfigService)),
       this._register(new McpSection(this._service, this._mcpClientService)),
+      this._register(new WebResearchSection(this._service, this._globalStorage)),
     ];
 
     for (const section of this._sections) {
@@ -116,6 +120,7 @@ export class AISettingsPanel extends Disposable {
       { id: 'cron', label: 'Scheduled jobs' },
       { id: 'tools', label: 'Tools' },
       { id: 'mcp', label: 'MCP Servers' },
+      { id: 'web-research', label: 'Web Research' },
     ];
 
     for (const s of navSections) {

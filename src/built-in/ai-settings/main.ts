@@ -5,7 +5,7 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { IAISettingsService, IUnifiedAIConfigService, INotificationService, IWorkspaceMemoryService, IMcpClientService, IAutonomyFeatureFlagsService } from '../../services/serviceTypes.js';
+import { IAISettingsService, IUnifiedAIConfigService, INotificationService, IWorkspaceMemoryService, IMcpClientService, IAutonomyFeatureFlagsService, IGlobalStorageService } from '../../services/serviceTypes.js';
 import { ILanguageModelsService, ILanguageModelToolsService } from '../../services/chatTypes.js';
 import type { IToolPickerServices } from '../../services/chatTypes.js';
 import { AISettingsPanel } from '../../aiSettings/ui/aiSettingsPanel.js';
@@ -107,11 +107,17 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     ? api.services.get<import('../../services/autonomyFeatureFlags.js').IAutonomyFeatureFlagsService>(IAutonomyFeatureFlagsService)
     : undefined;
 
+  // Global storage — needed by the Web Research section to read/write
+  // webResearch.* keys (Brave API key, daily budget, ambient toggle).
+  const globalStorage = api.services.has(IGlobalStorageService)
+    ? api.services.get<import('../../platform/storage.js').IStorage>(IGlobalStorageService)
+    : undefined;
+
   // Register view provider
   context.subscriptions.push(
     api.views.registerViewProvider('view.aiSettings', {
       createView(container: HTMLElement): IDisposable {
-        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService, toolPickerServices, mcpClientService, autonomyFlagsService);
+        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService, toolPickerServices, mcpClientService, autonomyFlagsService, globalStorage);
         return _panel;
       },
     }),

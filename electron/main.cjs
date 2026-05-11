@@ -14,6 +14,7 @@ const { extractText, isRichDocument, RICH_DOCUMENT_EXTENSIONS } = require('./doc
 const doclingBridge = require('./doclingBridge.cjs');
 const { setupMcpBridge, killAllMcpProcesses } = require('./mcpBridge.cjs');
 const { setupStorageHandlers } = require('./storageHandlers.cjs');
+const { setupWebFetchBridge } = require('./webFetchBridge.cjs');
 
 // ════════════════════════════════════════════════════════════════════════════════
 // Workspace Teardown Registry
@@ -135,6 +136,7 @@ try { app.setPath('crashDumps', path.join(APP_ROOT, 'data', 'crash-dumps')); } c
 try { app.setPath('logs', path.join(APP_ROOT, 'data', 'logs')); } catch { /* ignore */ }
 
 setupStorageHandlers(ipcMain, APP_ROOT);
+setupWebFetchBridge(ipcMain, APP_ROOT, _readSecretString);
 
 const USER_EXTENSIONS_DIR = path.join(APP_ROOT, 'data', 'extensions');
 
@@ -1238,6 +1240,23 @@ async function _ensureSecretsDir() {
     await fs.mkdir(SECRETS_DIR, { recursive: true });
   } catch (err) {
     if (err && err.code !== 'EEXIST') throw err;
+  }
+}
+
+// Main-process-only reader for a secret. Returns the decoded UTF-8 string
+// (after base64 decode — see secretStorageService.ts for the round-trip
+// contract) or null when the secret is missing/unavailable. Used by the
+// web-research bridge so the Brave API key never enters the renderer.
+async function _readSecretString(key) {
+  if (!_secretKeyValid(key)) return null;
+  if (!safeStorage.isEncryptionAvailable()) return null;
+  try {
+    const encrypted = await fs.readFile(_secretFilePath(key));
+    const valueB64 = safeStorage.decryptString(encrypted);
+    if (typeof valueB64 !== 'string') return null;
+    return Buffer.from(valueB64, 'base64').toString('utf8');
+  } catch {
+    return null;
   }
 }
 

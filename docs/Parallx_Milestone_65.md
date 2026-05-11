@@ -315,9 +315,9 @@ core files**: `electron/main.cjs` (the egress chokepoint), `src/openclaw/opencla
 
 | Iteration | Status | Verification | Notes |
 |---|---|---|---|
-| 1 — Egress + tools + provenance | not started | — | — |
-| 2 — Color gating + renderer | not started | — | — |
-| 3 — Skill + Research Hub | not started | — | — |
+| 1 — Egress + tools + provenance | **complete** (2026-05-11) | 2816 pass / 1 skipped (+83 new), tsc clean, build clean | Security Analyst APPROVED after one veto fix routing Brave API key through `safeStorage` (main-process only, never crosses into LLM context). 10/10 Regression Sentinel checks PASS. Follow-ups: F1 vendor Mozilla Readability before Iter 3, F2 replace storage DI shim with real identifier ref, F3 pin connect-time IP via `https.request({ lookup })` for within-hop DNS rebinding — scheduled for Iter 2. |
+| 2 — Color gating + renderer | not started | — | Picks up F3 (connect-time IP pin) alongside Layer 5/6 work. |
+| 3 — Skill + Research Hub | not started | — | F1 (Readability vendor) must land before this iteration closes. |
 
 ## Decisions log
 

@@ -1,0 +1,32 @@
+{
+  "manifestVersion": 1,
+  "id": "parallx.web-research",
+  "name": "Web Research",
+  "version": "0.1.0",
+  "publisher": "parallx",
+  "description": "Secure web research: search the public web, fetch pages through an egress chokepoint, sanitize, and frame as untrusted content. Implements the M65 seven-layer trifecta defense.",
+  "main": "main.js",
+  "activationEvents": ["*"],
+  "engines": {
+    "parallx": "^0.1.0"
+  },
+  "contributes": {
+    "configuration": [
+      {
+        "title": "Web Research",
+        "properties": {
+          "webResearch.dailyBudget": {
+            "type": "number",
+            "default": 100,
+            "description": "Maximum Brave Search API calls allowed per local-time day."
+          },
+          "webResearch.ambientEnabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Allow the agent to autonomously invoke web tools without an explicit user ask. Off by default to bound free-tier query spend."
+          }
+        }
+      }
+    ]
+  }
+}
