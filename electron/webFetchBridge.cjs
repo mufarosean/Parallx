@@ -17,7 +17,11 @@
 //   C7 — 15s wall-clock budget = single AbortController covering everything.
 //   C8 — Sanitization in extension (Readability + DOMParser post-strip).
 //   C9 — <untrusted_web_content> wrapping in extension.
-//   C10 — Fixed UA 'Parallx-Research/1.0'. No cookies/auth/referer. No jar.
+//   C10 — Fixed generic browser UA (Chrome/Windows). No cookies/auth/referer. No jar.
+//          Generic UA chosen over an identifying one so research traffic blends with
+//          ordinary browser traffic at the remote endpoint. Trade-off: loses honest
+//          identifiability; gains privacy hygiene. No cookies, no Referer, no
+//          session jar still hold — nothing else about the request reveals identity.
 //   C11 — Per-turn / per-day budget in tool handler before calling bridge.
 //   C12 — webSearch allowlisted to api.search.brave.com only.
 //   C13 — Test coverage; see tests/unit/webFetchBridge.test.ts.
@@ -41,7 +45,9 @@ const { URL } = require('url');
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const FIXED_USER_AGENT = 'Parallx-Research/1.0';
+// C10: generic, current-ish Chrome on Windows. Update periodically so we don't
+// fingerprint as an outdated browser. No version-rotation logic — keep it simple.
+const FIXED_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const MAX_REDIRECTS = 3;
 const MAX_BODY_BYTES = 10 * 1024 * 1024;       // 10 MB (C6)
 const TOTAL_TIMEOUT_MS = 15_000;                // 15 s wall clock (C7)
@@ -496,6 +502,7 @@ async function doWebSearch({ query, apiKey, turnId, _injectedFetch } = {}) {
       signal: controller.signal,
       headers: {
         'Accept': 'application/json',
+        'User-Agent': FIXED_USER_AGENT,
         'X-Subscription-Token': apiKey,
       },
     });

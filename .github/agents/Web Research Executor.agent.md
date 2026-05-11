@@ -70,8 +70,8 @@ Requirements (every one is a Security Analyst veto trigger if missed):
 - Follow redirects manually (do NOT use Node's auto-follow). Re-run DNS +
   IP + blocklist + HTTPS checks on every hop. Max 3 hops.
 - 15s total timeout. 10MB body cap (abort if exceeded).
-- Request UA: `Parallx-Research/1.0`. No cookies. No auth headers. No
-  Referer.
+- Request UA: fixed generic Chrome/Windows string (see `FIXED_USER_AGENT`
+  in `webFetchBridge.cjs`). No cookies. No auth headers. No Referer.
 - Backstop per-turn ceiling: bridge tracks a per-turn fetch counter (turn
   id passed by the renderer). Hard cap at 5 fetches/turn even if the
   extension forgets to enforce.

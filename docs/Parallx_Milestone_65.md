@@ -160,8 +160,11 @@ The complete defense, every layer deterministic and enforced outside the LLM.
 ### Layer 7 — Ephemerality
 
 - No cookies, no `User-Agent` rotation, no auth headers, no shared session
-  state across research tasks. Every fetch is a fresh anonymous request
-  identifying itself as `Parallx-Research/1.0`.
+  state across research tasks. Every fetch is a fresh anonymous request.
+  UA is a fixed generic Chrome/Windows string (changed 2026-05-11 from the
+  honest `Parallx-Research/1.0` identifier to a generic browser UA at user
+  request — trade-off: loses honest identifiability at the remote endpoint;
+  gains privacy hygiene by blending with ordinary browser traffic).
 
 ### What this gives up
 
