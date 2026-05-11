@@ -581,6 +581,14 @@ export interface IBuiltInToolDatabase {
   readonly isOpen: boolean;
 }
 
+/**
+ * Notifier invoked by built-in tools after they mutate a canvas page via raw SQL,
+ * so the canvas data service can fire `onDidChangePage` and the sidebar (plus
+ * other listeners) refreshes promptly. No-op when the canvas extension is not
+ * loaded.
+ */
+export type PageMutationNotifier = (pageId: string, kind: 'created' | 'updated' | 'deleted') => void;
+
 /** Result from reading any file (text or rich document). */
 export interface IFileReadResult {
   /** Extracted text content. */

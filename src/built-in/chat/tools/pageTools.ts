@@ -9,6 +9,7 @@ import type {
 import type {
   IBuiltInToolDatabase,
   CurrentPageIdGetter,
+  PageMutationNotifier,
 } from '../chatTypes.js';
 import { extractSnippet, extractTextContent } from './builtInTools.js';
 import { markdownToTiptapJson } from '../../canvas/markdownImport.js';
@@ -516,7 +517,10 @@ function inferPropertyType(value: unknown): string {
   return 'text';
 }
 
-export function createCreatePageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
+export function createCreatePageTool(
+  db: IBuiltInToolDatabase | undefined,
+  notifyPageMutated?: PageMutationNotifier,
+): IChatTool {
   return {
     name: 'create_page',
     displaySummary: 'Create a new workspace page.',
@@ -572,6 +576,11 @@ export function createCreatePageTool(db: IBuiltInToolDatabase | undefined): ICha
         'INSERT INTO pages (id, title, icon, content, content_schema_version, is_archived, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)',
         [id, title, icon, encoded.storedContent, encoded.schemaVersion, now, now],
       );
+
+      // Notify the canvas data service so the sidebar (and other listeners)
+      // refresh promptly. Raw SQL bypasses CanvasDataService.createPage, which
+      // is normally where `onDidChangePage` fires.
+      try { notifyPageMutated?.(id, 'created'); } catch { /* never block the tool result on notifier errors */ }
 
       const blockCount = doc.content.length;
       return { content: `Created page "${title}" (id: ${id}) with ${blockCount} block${blockCount === 1 ? '' : 's'}.` };

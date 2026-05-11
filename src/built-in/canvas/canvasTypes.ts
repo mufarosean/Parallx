@@ -167,6 +167,14 @@ export interface ICanvasDataService {
   /** Signal that a page's stored content was changed externally and open editors should reload. */
   fireContentReload(pageId: string): void;
 
+  /**
+   * Notify the service that a page was mutated via raw SQL by an external
+   * writer (e.g. AI chat tools) that bypassed `createPage` / `updatePage`.
+   * Re-reads the page (when applicable) and fires `onDidChangePage` so the
+   * sidebar and other listeners refresh promptly.
+   */
+  notifyExternalPageMutation(pageId: string, kind: 'created' | 'updated' | 'deleted'): Promise<void>;
+
   // ── Page CRUD ──
 
   createPage(parentId?: string | null, title?: string): Promise<IPage>;

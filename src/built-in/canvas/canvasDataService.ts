@@ -108,6 +108,34 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     this._onRequestContentReload.fire(pageId);
   }
 
+  /**
+   * Notify the service that an external writer (e.g. AI chat tools writing
+   * directly via raw SQL) mutated a page. Re-reads the page and fires
+   * `onDidChangePage` so the sidebar / index / other listeners refresh.
+   * For `kind === 'updated'` also signals open editors to reload content.
+   */
+  async notifyExternalPageMutation(pageId: string, kind: 'created' | 'updated' | 'deleted'): Promise<void> {
+    if (kind === 'deleted') {
+      this._onDidChangePage.fire({ kind: PageChangeKind.Deleted, pageId });
+      return;
+    }
+    let page: IPage | null = null;
+    try {
+      page = await this.getPage(pageId);
+    } catch (err) {
+      console.warn('[CanvasDataService] notifyExternalPageMutation: getPage failed for', pageId, err);
+    }
+    if (!page) return;
+    this._onDidChangePage.fire({
+      kind: kind === 'created' ? PageChangeKind.Created : PageChangeKind.Updated,
+      pageId,
+      page,
+    });
+    if (kind === 'updated') {
+      this._onRequestContentReload.fire(pageId);
+    }
+  }
+
   // ── Auto-save debounce state ──
 
   /** Per-page debounce timers for content auto-save. */

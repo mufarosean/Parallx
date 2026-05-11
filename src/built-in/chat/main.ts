@@ -1571,7 +1571,14 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       context.subscriptions.push(subagentSpawner);
     }
 
-    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, canonicalMemorySearchAccessor, transcriptSearchAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath, surfaceRouter, cronService, subagentSpawner, autonomyLog);
+    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, canonicalMemorySearchAccessor, transcriptSearchAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath, surfaceRouter, cronService, subagentSpawner, autonomyLog, (pageId, kind) => {
+      // Lazy import — avoids hard dependency cycle and silently no-ops if
+      // the canvas extension is not loaded.
+      void import('../canvas/main.js').then((mod) => {
+        const ds = mod.getDataService?.();
+        if (ds) { void ds.notifyExternalPageMutation(pageId, kind); }
+      }).catch(() => { /* canvas not present — no-op */ });
+    });
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }

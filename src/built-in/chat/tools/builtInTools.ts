@@ -26,6 +26,7 @@ import type {
   IBuiltInToolTranscriptSearch,
   IBuiltInToolTerminal,
   CurrentPageIdGetter,
+  PageMutationNotifier,
 } from '../chatTypes.js';
 
 // Re-export for backward compatibility (M13 Phase 1)
@@ -38,6 +39,7 @@ export type {
   IBuiltInToolTranscriptSearch,
   IBuiltInToolTerminal,
   CurrentPageIdGetter,
+  PageMutationNotifier,
 } from '../chatTypes.js';
 
 // ── Domain tool factories ──
@@ -104,6 +106,7 @@ export function registerBuiltInTools(
   cronHost?: ICronToolHost,
   subagentSpawner?: SubagentSpawner,
   autonomyLog?: IAutonomyLogReader,
+  pageMutationNotifier?: PageMutationNotifier,
 ): IDisposable[] {
   const disposables: IDisposable[] = [];
 
@@ -112,7 +115,7 @@ export function registerBuiltInTools(
     createFindPagesTool(db),
     createReadPageTool(db, getCurrentPageId ?? (() => undefined)),
     createGetPageTool(db),
-    createCreatePageTool(db),
+    createCreatePageTool(db, pageMutationNotifier),
     createComposePageTool(db),
     createListPropertyDefinitionsTool(db),
     createSetPagePropertyTool(db),
