@@ -37,7 +37,7 @@ Phase α emits `chat`, `followup`, and `replay`. Phase γ adds `heartbeat`,
 
 Every chain — successful or not — emits at least one record. Records are
 written as ndjson lines to
-`<APP_ROOT>/data/autonomy-events.<yyyy-mm-dd>.ndjson`. Daily rotation,
+`<workspace>/.parallx/logs/autonomy-events.<yyyy-mm-dd>.ndjson`. Per-workspace, daily rotation,
 90-day retention.
 
 ```ts

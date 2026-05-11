@@ -151,7 +151,7 @@ runner immediately. No restart needed.
 - **Notifications** — toasts appear when the notification surface is on.
 - **Status bar** — compact tick indicator when the statusbar surface is
   on.
-- **Event log** — `<APP_ROOT>/data/autonomy-events.<YYYY-MM-DD>.ndjson`
+- **Event log** — `<workspace>/.parallx/logs/autonomy-events.<YYYY-MM-DD>.ndjson` (per-workspace; legacy global logs from before this change live under `<workspace>/.parallx/logs/legacy/`)
   records every autonomy event in newline-delimited JSON. Open in any
   text viewer.
 
@@ -228,7 +228,7 @@ There is no global "preferences sync" — Parallx is intentionally local-first.
 2. Check the specific feature toggle (heartbeat / cron / followup).
 3. Check at least one **surface** is enabled — without surfaces the
    runner has nowhere to deliver output and silently no-ops.
-4. Open `<APP_ROOT>/data/autonomy-events.<today>.ndjson` and look for
+4. Open `<workspace>/.parallx/logs/autonomy-events.<today>.ndjson` and look for
    `{"event":"runner.skipped"…}` lines — they include the reason.
 
 ### MCP server won't connect

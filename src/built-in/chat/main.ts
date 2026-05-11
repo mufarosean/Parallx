@@ -436,18 +436,67 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     context.subscriptions.push({ dispose: () => setGlobalSettingsRegistry(undefined) });
   }
 
-  // §3.10 event log — writes ndjson to <APP_ROOT>/data/autonomy-events.<day>.ndjson.
-  // Falls back to a no-op writer when the fs bridge is unavailable (tests).
+  // §3.10 event log — writes ndjson to per-workspace
+  // `<workspace>/.parallx/logs/autonomy-events.<day>.ndjson`. Legacy global
+  // logs at `<APP_ROOT>/data/autonomy-events.*.ndjson` are migrated into
+  // `<workspace>/.parallx/logs/legacy/` on first launch so old runs don't
+  // interleave with new workspace-scoped events. Falls back to a no-op
+  // writer when the fs bridge is unavailable (tests).
   const _bridge = (globalThis as { parallxElectron?: {
     appPath?: string;
-    fs?: IAutonomyEventLogFs;
+    fs?: IAutonomyEventLogFs & {
+      readdir?: (path: string) => Promise<{ ok: boolean; entries?: Array<{ name: string }>; error?: string }>;
+      rename?: (oldPath: string, newPath: string) => Promise<{ ok: boolean; error?: string }>;
+    };
   } }).parallxElectron;
   const _appPath = _bridge?.appPath;
   const _fsBridge = _bridge?.fs;
+
+  // Resolve the active workspace folder up front so the autonomy log can be
+  // scoped to it. We re-derive workspaceService here (the canonical lookup
+  // happens below at line ~495) rather than reorder the whole activate
+  // body — it's idempotent and keeps the autonomy block self-contained.
+  const _autonomyWsFolder = (api.services.has(IWorkspaceService)
+    ? api.services.get<import('../../services/serviceTypes.js').IWorkspaceService>(IWorkspaceService)
+    : undefined)?.folders[0]?.uri.fsPath;
+
+  const _autonomyLogDir = _autonomyWsFolder
+    ? `${_autonomyWsFolder}/.parallx/logs`
+    : (_appPath ? `${_appPath}/data` : undefined);
+
+  // One-shot migration: move any legacy global autonomy-events.*.ndjson into
+  // the workspace's `legacy/` subfolder. Best-effort — if it fails, legacy
+  // files remain at APP_ROOT/data and the workspace gets a fresh log dir.
+  if (_autonomyWsFolder && _appPath && _fsBridge?.readdir && _fsBridge.rename) {
+    void (async () => {
+      try {
+        const legacyDir = `${_appPath}/data`;
+        const targetDir = `${_autonomyWsFolder}/.parallx/logs/legacy`;
+        const listing = await _fsBridge.readdir!(legacyDir);
+        if (!listing.ok || !listing.entries) return;
+        const matches = listing.entries
+          .map(e => e.name)
+          .filter(n => typeof n === 'string' && n.startsWith('autonomy-events.') && n.endsWith('.ndjson'));
+        if (matches.length === 0) return;
+        await _fsBridge.mkdir(targetDir);
+        for (const name of matches) {
+          const src = `${legacyDir}/${name}`;
+          const dst = `${targetDir}/${name}`;
+          const dstExists = await _fsBridge.exists(dst);
+          if (dstExists.ok && dstExists.exists) continue;
+          await _fsBridge.rename!(src, dst);
+        }
+        console.log(`[AutonomyEventLog] Migrated ${matches.length} legacy global log(s) to ${targetDir}`);
+      } catch (err) {
+        console.warn('[AutonomyEventLog] Legacy log migration skipped:', err);
+      }
+    })();
+  }
+
   let autonomyEventLog: AutonomyEventLog | undefined;
-  if (_appPath && _fsBridge) {
+  if (_autonomyLogDir && _fsBridge) {
     autonomyEventLog = new AutonomyEventLog(_fsBridge, {
-      dataDir: `${_appPath}/data`,
+      dataDir: _autonomyLogDir,
     });
     context.subscriptions.push(autonomyEventLog);
   }
