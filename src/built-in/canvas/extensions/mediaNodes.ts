@@ -208,8 +208,16 @@ export const Video = Node.create({
           if (updatedNode.type.name !== 'video') return false;
           render(updatedNode.attrs);
           return true;
-        },
-      };
+        },        destroy() {
+          // Detaching <video> from the DOM does not pause it in Chromium.
+          // Stop playback and release the media handle explicitly.
+          const media = dom.querySelector('video');
+          if (media) {
+            try { media.pause(); } catch { /* noop */ }
+            media.removeAttribute('src');
+            try { media.load(); } catch { /* noop */ }
+          }
+        },      };
     };
   },
 });
@@ -285,6 +293,15 @@ export const Audio = Node.create({
           if (updatedNode.type.name !== 'audio') return false;
           render(updatedNode.attrs);
           return true;
+        },
+        destroy() {
+          // Detaching <audio> from the DOM does not pause it in Chromium.
+          const media = dom.querySelector('audio');
+          if (media) {
+            try { media.pause(); } catch { /* noop */ }
+            media.removeAttribute('src');
+            try { media.load(); } catch { /* noop */ }
+          }
         },
       };
     };

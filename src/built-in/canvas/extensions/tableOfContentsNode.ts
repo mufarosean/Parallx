@@ -71,7 +71,41 @@ export const TableOfContents = Node.create({
             );
             item.textContent = text;
             item.addEventListener('click', () => {
+              // Move selection to the heading first so the editor records intent.
               editor.chain().setTextSelection(pos + 1).focus().run();
+
+              // Walk up the DOM from the resolved position and open any collapsed
+              // ancestors (details, toggleHeading). Their open state lives in DOM
+              // classes / `hidden` attrs \u2014 not the document model \u2014 so we cannot
+              // do this with a ProseMirror transaction.
+              try {
+                const view = editor.view;
+                const domAtPos = view.domAtPos(pos + 1);
+                let el: HTMLElement | null = (domAtPos?.node as HTMLElement | null) ?? null;
+                while (el && el !== view.dom) {
+                  if (el.matches?.('[data-type=\"details\"]') && !el.classList.contains('is-open')) {
+                    el.classList.add('is-open');
+                  }
+                  if (el.matches?.('[data-type=\"toggleHeading\"]') && !el.classList.contains('is-open')) {
+                    el.classList.add('is-open');
+                    const body = el.querySelector(':scope > [data-type=\"detailsContent\"]') as HTMLElement | null;
+                    if (body) body.hidden = false;
+                  }
+                  el = el.parentElement;
+                }
+
+                // Scroll the heading into view after layout settles.
+                requestAnimationFrame(() => {
+                  const target = view.domAtPos(pos + 1)?.node as HTMLElement | null;
+                  const scrollEl =
+                    target && (target as any).scrollIntoView
+                      ? (target as HTMLElement)
+                      : (target?.parentElement ?? null);
+                  scrollEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+              } catch {
+                /* best-effort scroll; selection move already happened */
+              }
             });
             list.appendChild(item);
           }
@@ -92,8 +126,17 @@ export const TableOfContents = Node.create({
 
       renderToc();
 
-      // Re-render on document changes
-      const onUpdate = () => renderToc();
+      // Re-render on document changes, but coalesce via rAF so we don't run a
+      // full `doc.descendants` scan on every keystroke. On long docs this saved
+      // ~tens of ms per keystroke when a TOC block was visible.
+      let rafHandle: number | null = null;
+      const onUpdate = () => {
+        if (rafHandle !== null) return;
+        rafHandle = requestAnimationFrame(() => {
+          rafHandle = null;
+          renderToc();
+        });
+      };
       editor.on('update', onUpdate);
 
       return {
@@ -101,6 +144,10 @@ export const TableOfContents = Node.create({
         ignoreMutation: () => true,
         destroy() {
           editor.off('update', onUpdate);
+          if (rafHandle !== null) {
+            cancelAnimationFrame(rafHandle);
+            rafHandle = null;
+          }
         },
       };
     };
