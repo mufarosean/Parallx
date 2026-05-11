@@ -344,7 +344,7 @@ describe('PropertyDataService', () => {
   // ══════════════════════════════════════════════════════════════════════════
 
   describe('ensureDefaultProperties', () => {
-    it('inserts tags and created definitions when they do not exist', async () => {
+    it('inserts tags, created, and modified definitions when they do not exist', async () => {
       // getDefinition('tags') → null
       mockDb.get.mockResolvedValueOnce({ error: null, row: null });
       // INSERT tags
@@ -353,10 +353,14 @@ describe('PropertyDataService', () => {
       mockDb.get.mockResolvedValueOnce({ error: null, row: null });
       // INSERT created
       mockDb.run.mockResolvedValueOnce({ error: null, changes: 1 });
+      // getDefinition('modified') → null
+      mockDb.get.mockResolvedValueOnce({ error: null, row: null });
+      // INSERT modified
+      mockDb.run.mockResolvedValueOnce({ error: null, changes: 1 });
 
       await service.ensureDefaultProperties();
 
-      expect(mockDb.run).toHaveBeenCalledTimes(2);
+      expect(mockDb.run).toHaveBeenCalledTimes(3);
       expect(mockDb.run).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO property_definitions'),
         ['tags', 'tags', '{}', 1],
@@ -365,6 +369,10 @@ describe('PropertyDataService', () => {
         expect.stringContaining('INSERT INTO property_definitions'),
         ['created', 'datetime', '{}', 2],
       );
+      expect(mockDb.run).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO property_definitions'),
+        ['modified', 'datetime', '{}', 3],
+      );
     });
 
     it('skips insertion when defaults already exist', async () => {
@@ -372,6 +380,8 @@ describe('PropertyDataService', () => {
       mockDb.get.mockResolvedValueOnce({ error: null, row: defRow('tags', 'tags') });
       // getDefinition('created') → exists
       mockDb.get.mockResolvedValueOnce({ error: null, row: defRow('created', 'datetime') });
+      // getDefinition('modified') → exists
+      mockDb.get.mockResolvedValueOnce({ error: null, row: defRow('modified', 'datetime') });
 
       await service.ensureDefaultProperties();
 

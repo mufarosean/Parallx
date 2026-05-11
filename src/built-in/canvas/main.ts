@@ -202,6 +202,38 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   _propertyService = new PropertyDataService();
   context.subscriptions.push(_propertyService);
   await _propertyService.ensureDefaultProperties();
+  // Backfill auto-managed `created`/`modified` values for any page that
+  // pre-dates this feature so they appear in the property bar immediately
+  // instead of only after the next save.
+  await _propertyService.backfillTimestampProperties();
+
+  // 2c. Auto-populate `created` / `modified` datetime properties so every
+  //     page surfaces creation + last-modified timestamps in its property bar
+  //     by default. We mirror the same data the `pages` table already tracks
+  //     via its `created_at` / `updated_at` columns, exposed through the
+  //     property system so it appears in the UI and is queryable by dataview.
+  const propertyService = _propertyService;
+  const dataServiceRef = _dataService;
+  context.subscriptions.push(
+    dataServiceRef.onDidChangePage((event) => {
+      if (event.kind !== PageChangeKind.Created) return;
+      const nowIso = new Date().toISOString();
+      void propertyService.setProperty(event.pageId, 'created', nowIso).catch((err) => {
+        console.warn('[Canvas] Failed to seed `created` property for', event.pageId, err);
+      });
+      void propertyService.setProperty(event.pageId, 'modified', nowIso).catch((err) => {
+        console.warn('[Canvas] Failed to seed `modified` property for', event.pageId, err);
+      });
+    }),
+  );
+  context.subscriptions.push(
+    dataServiceRef.onDidSavePage((pageId) => {
+      const nowIso = new Date().toISOString();
+      void propertyService.setProperty(pageId, 'modified', nowIso).catch((err) => {
+        console.warn('[Canvas] Failed to update `modified` property for', pageId, err);
+      });
+    }),
+  );
 
   // 2a. parentId is the source of truth for hierarchy — no content reconciliation needed.
 

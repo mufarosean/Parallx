@@ -327,6 +327,7 @@ export class PropertyDataService extends Disposable implements IPropertyDataServ
     const defaults: { name: string; type: PropertyType; config: Record<string, unknown>; sortOrder: number }[] = [
       { name: 'tags', type: 'tags', config: {}, sortOrder: 1 },
       { name: 'created', type: 'datetime', config: {}, sortOrder: 2 },
+      { name: 'modified', type: 'datetime', config: {}, sortOrder: 3 },
     ];
 
     for (const def of defaults) {
@@ -338,5 +339,43 @@ export class PropertyDataService extends Disposable implements IPropertyDataServ
         );
       }
     }
+  }
+
+  /**
+   * Backfill the auto-managed `created` / `modified` datetime properties from
+   * the `pages` table for any page that doesn't already have an explicit
+   * value set. Cheap one-shot scan; safe to call on every activation since
+   * it only inserts rows that don't already exist.
+   *
+   * Stores the datetime as a JSON-encoded ISO string to match
+   * `setProperty()`'s `JSON.stringify(value)` encoding so the property bar
+   * and dataview consumers see consistent data regardless of which path
+   * wrote the value.
+   */
+  async backfillTimestampProperties(): Promise<void> {
+    // `pages.created_at` / `updated_at` come back as `YYYY-MM-DD HH:MM:SS`
+    // from SQLite's `datetime('now')` default. Convert to ISO 8601 with `Z`
+    // suffix and JSON-encode it (so the stored shape is `"2026-05-11T..."`)
+    // to match the format produced by `setProperty('created', toISOString())`.
+    const sqlIso = `'"' || strftime('%Y-%m-%dT%H:%M:%SZ', {col}) || '"'`;
+    const buildInsert = (key: string, col: 'created_at' | 'updated_at') => `
+      INSERT INTO page_properties (id, page_id, key, value_type, value)
+      SELECT
+        lower(hex(randomblob(16))),
+        p.id,
+        '${key}',
+        'datetime',
+        ${sqlIso.replace('{col}', `p.${col}`)}
+      FROM pages p
+      WHERE NOT EXISTS (
+        SELECT 1 FROM page_properties pp WHERE pp.page_id = p.id AND pp.key = '${key}'
+      )
+    `;
+
+    const createdResult = await this._db.run(buildInsert('created', 'created_at'), []);
+    if (createdResult.error) throw new Error(createdResult.error.message);
+
+    const modifiedResult = await this._db.run(buildInsert('modified', 'updated_at'), []);
+    if (modifiedResult.error) throw new Error(modifiedResult.error.message);
   }
 }

@@ -99,4 +99,5 @@ export interface IPropertyDataService {
   // ── Initialization ──
 
   ensureDefaultProperties(): Promise<void>;
+  backfillTimestampProperties(): Promise<void>;
 }
