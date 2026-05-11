@@ -24,7 +24,7 @@ import type {
   ICancellationToken,
   ToolPermissionLevel,
 } from '../../../services/chatTypes.js';
-import type { IBuiltInToolDatabase } from '../chatTypes.js';
+import type { IBuiltInToolDatabase, PageMutationNotifier } from '../chatTypes.js';
 import {
   decodeDocContent,
   encodeDocContent,
@@ -59,6 +59,7 @@ async function persistDoc(
   db: IBuiltInToolDatabase,
   pageId: string,
   doc: NonNullable<ReturnType<typeof decodeDocContent>>,
+  notifyPageMutated?: PageMutationNotifier,
 ): Promise<void> {
   const stored = encodeDocContent(doc);
   const now = new Date().toISOString();
@@ -66,6 +67,9 @@ async function persistDoc(
     'UPDATE pages SET content = ?, updated_at = ?, revision = revision + 1 WHERE id = ?',
     [stored, now, pageId],
   );
+  // Notify the canvas data service so the sidebar refreshes and any open
+  // editor reloads its content. Never block the SQL write on notifier errors.
+  try { notifyPageMutated?.(pageId, 'updated'); } catch { /* swallow */ }
 }
 
 // ─── C3.a: pages.read_block ─────────────────────────────────────────────
@@ -115,7 +119,10 @@ export function createReadBlockTool(db: IBuiltInToolDatabase | undefined): IChat
 
 // ─── C3.b: pages.edit_block ─────────────────────────────────────────────
 
-export function createEditBlockTool(db: IBuiltInToolDatabase | undefined): IChatTool {
+export function createEditBlockTool(
+  db: IBuiltInToolDatabase | undefined,
+  notifyPageMutated?: PageMutationNotifier,
+): IChatTool {
   return {
     name: 'edit_block',
     displaySummary: 'Replace a block\'s content (approval).',
@@ -154,7 +161,7 @@ export function createEditBlockTool(db: IBuiltInToolDatabase | undefined): IChat
       const before = nodeToPlainText(hit.node);
       const replacement = paragraphFromText(newContent, blockId);
       const newDoc = replaceAt(page.doc, hit.path, replacement);
-      await persistDoc(db!, pageId, newDoc);
+      await persistDoc(db!, pageId, newDoc, notifyPageMutated);
 
       const keyNote = idempotencyKey ? `\n\n_idempotencyKey: ${idempotencyKey}_` : '';
       return {
@@ -170,7 +177,10 @@ export function createEditBlockTool(db: IBuiltInToolDatabase | undefined): IChat
 
 // ─── C3.c: pages.insert_block_after ─────────────────────────────────────
 
-export function createInsertBlockAfterTool(db: IBuiltInToolDatabase | undefined): IChatTool {
+export function createInsertBlockAfterTool(
+  db: IBuiltInToolDatabase | undefined,
+  notifyPageMutated?: PageMutationNotifier,
+): IChatTool {
   return {
     name: 'insert_block_after',
     displaySummary: 'Insert a new block after an anchor (approval).',
@@ -210,7 +220,7 @@ export function createInsertBlockAfterTool(db: IBuiltInToolDatabase | undefined)
       const newBlockId = generateBlockId();
       const newNode = paragraphFromText(content, newBlockId);
       const newDoc = insertAfter(page.doc, hit.path, newNode);
-      await persistDoc(db!, pageId, newDoc);
+      await persistDoc(db!, pageId, newDoc, notifyPageMutated);
 
       const keyNote = idempotencyKey ? `\n\n_idempotencyKey: ${idempotencyKey}_` : '';
       return {
@@ -226,7 +236,10 @@ export function createInsertBlockAfterTool(db: IBuiltInToolDatabase | undefined)
 
 // ─── C3.d: pages.link_block ─────────────────────────────────────────────
 
-export function createLinkBlockTool(db: IBuiltInToolDatabase | undefined): IChatTool {
+export function createLinkBlockTool(
+  db: IBuiltInToolDatabase | undefined,
+  notifyPageMutated?: PageMutationNotifier,
+): IChatTool {
   return {
     name: 'link_block',
     displaySummary: 'Cross-link two blocks (approval).',
@@ -285,7 +298,7 @@ export function createLinkBlockTool(db: IBuiltInToolDatabase | undefined): IChat
       const linkText = `→ [${label}](page://${toPageId}#${toBlockId})`;
       const linkNode = paragraphFromText(linkText, linkBlockId);
       const newDoc = insertAfter(fromPage.doc, fromHit.path, linkNode);
-      await persistDoc(db!, fromPageId, newDoc);
+      await persistDoc(db!, fromPageId, newDoc, notifyPageMutated);
 
       return {
         content:
@@ -299,12 +312,15 @@ export function createLinkBlockTool(db: IBuiltInToolDatabase | undefined): IChat
 
 // ─── Aggregate factory ──────────────────────────────────────────────────
 
-export function createBlockTools(db: IBuiltInToolDatabase | undefined): IChatTool[] {
+export function createBlockTools(
+  db: IBuiltInToolDatabase | undefined,
+  notifyPageMutated?: PageMutationNotifier,
+): IChatTool[] {
   return [
     createReadBlockTool(db),
-    createEditBlockTool(db),
-    createInsertBlockAfterTool(db),
-    createLinkBlockTool(db),
+    createEditBlockTool(db, notifyPageMutated),
+    createInsertBlockAfterTool(db, notifyPageMutated),
+    createLinkBlockTool(db, notifyPageMutated),
   ];
 }
 

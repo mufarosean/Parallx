@@ -116,10 +116,10 @@ export function registerBuiltInTools(
     createReadPageTool(db, getCurrentPageId ?? (() => undefined)),
     createGetPageTool(db),
     createCreatePageTool(db, pageMutationNotifier),
-    createComposePageTool(db),
+    createComposePageTool(db, pageMutationNotifier),
     createListPropertyDefinitionsTool(db),
     createSetPagePropertyTool(db),
-    createSetPageStyleTool(db),
+    createSetPageStyleTool(db, pageMutationNotifier),
     // ── File system tools ──
     createListFilesTool(fs),
     createReadFileTool(fs),
@@ -142,7 +142,7 @@ export function registerBuiltInTools(
     createSurfaceSendTool(surfaceRouter),
     createSurfaceListTool(surfaceRouter),
     // ── Canvas block-level + property-query tools (M60 §6.2 / Phase δ) ──
-    ...createBlockTools(db),
+    ...createBlockTools(db, pageMutationNotifier),
     // ── Cron scheduling tools (M58 W4) ──
     ...createCronTools(cronHost),
     // ── Subagent spawn tool (M58 W5) ──

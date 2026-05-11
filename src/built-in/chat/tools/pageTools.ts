@@ -600,12 +600,16 @@ export function createCreatePageTool(
  *   - `append`: insert blocks at the end
  *   - `prepend`: insert blocks at the start
  *
- * NOTE: This writes directly via SQL, matching the existing `create_page`
- * pattern. If the target page is open in a live editor, the editor will not
- * reflect the change until reload. Reconciling that is a separate concern
- * for a later iteration.
+ * If a `notifyPageMutated` callback is wired, fires `'updated'` after the
+ * write so the canvas data service re-reads the page, fires `onDidChangePage`
+ * (sidebar refresh), and signals `onRequestContentReload` so any open editor
+ * reloads the new content. Local unsaved edits in the open editor will be
+ * blown away by the reload — acceptable trade for AI/user co-authoring.
  */
-export function createComposePageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
+export function createComposePageTool(
+  db: IBuiltInToolDatabase | undefined,
+  notifyPageMutated?: PageMutationNotifier,
+): IChatTool {
   return {
     name: 'compose_page',
     displaySummary: 'Compose a page from markdown.',
@@ -679,6 +683,10 @@ export function createComposePageTool(db: IBuiltInToolDatabase | undefined): ICh
         [encoded.storedContent, encoded.schemaVersion, now, pageId],
       );
 
+      // Notify the canvas data service so the sidebar refreshes and any
+      // open editor for this page reloads its content.
+      try { notifyPageMutated?.(pageId, 'updated'); } catch { /* never block the tool result on notifier errors */ }
+
       const blockCount = finalDoc.content.length;
       const verb = mode === 'replace' ? 'Replaced' : mode === 'append' ? 'Appended to' : 'Prepended to';
       return {
@@ -696,7 +704,10 @@ export function createComposePageTool(db: IBuiltInToolDatabase | undefined): ICh
  * full_width, small_text). Requires approval since it mutates user-visible
  * presentation.
  */
-export function createSetPageStyleTool(db: IBuiltInToolDatabase | undefined): IChatTool {
+export function createSetPageStyleTool(
+  db: IBuiltInToolDatabase | undefined,
+  notifyPageMutated?: PageMutationNotifier,
+): IChatTool {
   return {
     name: 'set_page_style',
     displaySummary: 'Update a page\'s style (icon, cover, font, width).',
@@ -790,6 +801,10 @@ export function createSetPageStyleTool(db: IBuiltInToolDatabase | undefined): IC
         `UPDATE pages SET ${sets.join(', ')} WHERE id = ?`,
         params,
       );
+
+      // Notify the canvas data service so the sidebar reflects icon/cover
+      // changes immediately and any open editor refreshes its chrome.
+      try { notifyPageMutated?.(pageId, 'updated'); } catch { /* never block the tool result on notifier errors */ }
 
       return { content: `Updated page "${page.title}" style: ${changed.join(', ')}.` };
     },
