@@ -1906,6 +1906,10 @@
   color: rgba(255, 200, 50, 0.85);
 }
 
+.canvas-top-ribbon-favorite--active svg {
+  fill: currentColor;
+}
+
 .canvas-top-ribbon-favorite--active:hover {
   color: rgba(255, 200, 50, 1);
 }
