@@ -240,7 +240,12 @@
   height: 2px;
   background-color: var(--vscode-focusBorder);
   position: relative;
-  margin: 0 8px;
+  /* Negative vertical margins keep the indicator from displacing sibling rows.
+     A 2px-tall indicator with -1px top/bottom margins contributes 0 to layout,
+     overlaying the row boundary instead of pushing rows down. Otherwise the
+     cursor would land on a different row than expected at row edges, causing
+     drop-target oscillation and "drag sometimes fails" symptoms. */
+  margin: -1px 8px;
   pointer-events: none;
 }
 
@@ -3844,7 +3849,7 @@
 }
 
 
-/* -- M66 Iter B — parallx:// deep-link block highlight ------------------- */
+/* -- M66 Iter B ï¿½ parallx:// deep-link block highlight ------------------- */
 /* Applied transiently by the canvas editor pane when a parallx://canvas/page/<id>?block=<blockId> link is opened. Auto-removed after ~2s. */
 .canvas-tiptap-editor .parallx-link-highlight,
 .canvas-editor-wrapper .parallx-link-highlight {

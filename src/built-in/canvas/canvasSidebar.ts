@@ -72,6 +72,8 @@ export class CanvasSidebar {
   private _dropIndicator: HTMLElement | null = null;
   private _dropTarget: { parentId: string | null; afterSiblingId: string | undefined } | null = null;
   private _dragOverElement: HTMLElement | null = null;
+  /** True while a refresh was requested but suppressed because a drag is in flight. */
+  private _refreshDeferredByDrag = false;
 
   // ── Sidebar page options popup ──
   private _pageOptionsPopup: HTMLElement | null = null;
@@ -158,6 +160,12 @@ export class CanvasSidebar {
   }
 
   private _requestRefreshTree(): void {
+    // Never rebuild the tree DOM mid-drag — `_renderTree` wipes `treeList.innerHTML`,
+    // which would destroy the dragged row and cause the browser to cancel the drag.
+    if (this._draggedPageId !== null) {
+      this._refreshDeferredByDrag = true;
+      return;
+    }
     if (this._refreshScheduled) return;
     this._refreshScheduled = true;
     queueMicrotask(() => {
@@ -978,20 +986,22 @@ export class CanvasSidebar {
         icon: createdPage.icon || undefined,
         instanceId: createdPage.id,
       });
-      // After tree refreshes, focus the new page title in the page options popup
-      requestAnimationFrame(() => {
-        const el = this._treeList?.querySelector(`[data-page-id="${createdPage.id}"]`);
-        if (el) {
-          const node = this._findNode(this._tree, createdPage.id);
-          const pageRef = node ?? this._favoritedPages.find(page => page.id === createdPage.id) ?? null;
-          if (pageRef) {
-            this._showPageOptionsPopup(pageRef, (el as HTMLElement).getBoundingClientRect(), {
-              focusTitle: true,
-              selectTitle: true,
-            });
-          }
+      // Force-await the tree refresh so the new row is actually in the DOM before we
+      // open the rename popup. The previous `requestAnimationFrame` raced the async
+      // `_refreshTree` DB roundtrips, so `querySelector` returned null and the popup
+      // (with auto-focused title) never opened.
+      await this._refreshTree();
+      const el = this._treeList?.querySelector(`[data-page-id="${createdPage.id}"]`);
+      if (el) {
+        const node = this._findNode(this._tree, createdPage.id);
+        const pageRef = node ?? this._favoritedPages.find(page => page.id === createdPage.id) ?? null;
+        if (pageRef) {
+          this._showPageOptionsPopup(pageRef, (el as HTMLElement).getBoundingClientRect(), {
+            focusTitle: true,
+            selectTitle: true,
+          });
         }
-      });
+      }
     } catch (err) {
       if (page) {
         try { await this._dataService.deletePage(page.id); } catch { /* best-effort rollback */ }
@@ -1161,6 +1171,11 @@ export class CanvasSidebar {
     this._draggedPageId = null;
     this._dropTarget = null;
     this._clearDropIndicators();
+    // Flush any refresh that was suppressed while the drag was active.
+    if (this._refreshDeferredByDrag) {
+      this._refreshDeferredByDrag = false;
+      this._requestRefreshTree();
+    }
   }
 
   private _showDropLine(row: HTMLElement, position: 'before' | 'after'): void {
