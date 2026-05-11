@@ -24,6 +24,16 @@
             "type": "boolean",
             "default": false,
             "description": "Allow the agent to autonomously invoke web tools without an explicit user ask. Off by default to bound free-tier query spend."
+          },
+          "webResearch.hubPageId": {
+            "type": "string",
+            "default": "",
+            "description": "Canvas page id of the Research Hub. Lazy-created on first use; the research-topic skill reads this via getResearchHub and writes it via setResearchHub. Renameable through the canvas UI."
+          },
+          "webResearch.hubPageTitle": {
+            "type": "string",
+            "default": "Research Hub",
+            "description": "Display title of the Research Hub page. Default \"Research Hub\"; renameable through the canvas UI."
           }
         }
       }

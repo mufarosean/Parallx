@@ -1,4 +1,4 @@
-// ext/web-research/main.js — Web Research extension (M65 Iter 1).
+// ext/web-research/main.js — Web Research extension (M65 Iter 1–3).
 //
 // SECURITY MODEL (full detail in docs/Parallx_Milestone_65.md):
 //   Layer 1 — Egress allowlist        : enforced in electron/webFetchBridge.cjs
@@ -13,6 +13,8 @@
 // .webSearch (the bridge). DO NOT add fetch(), require('http'), or
 // require('https') to this file — there is a grep regression test for it
 // (C14, tests/unit/webResearchNoDirectFetch.test.ts).
+
+import { Readability } from './readability.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SECTION 1 — Constants & module state
@@ -30,6 +32,26 @@ const MAX_SANITIZED_BYTES = 50 * 1024;    // 50 KB (C8 — AFTER sanitization)
 const KEY_DAILY_BUDGET     = 'webResearch.dailyBudget';
 const KEY_AMBIENT_ENABLED  = 'webResearch.ambientEnabled';
 const KEY_DAILY_COUNTER    = 'webResearch.dailyCounter'; // JSON {date,count}
+// Iter 3 — Research Hub storage keys (see M65 §"Correction to earlier sketch").
+const KEY_HUB_PAGE_ID      = 'webResearch.hubPageId';
+const KEY_HUB_PAGE_TITLE   = 'webResearch.hubPageTitle';
+
+// Iter 3 — research history ndjson location (workspace-scoped, daily-rotated).
+// Source Analyst Iter 3 §History ndjson: extensions can only write inside the
+// workspace via api.workspace.fs; app-root data/ is inaccessible from the
+// extension surface, so we place it under .parallx/data/.
+const HISTORY_DIR_RELATIVE = '.parallx/data';
+const HISTORY_FILE_PREFIX  = 'web-research-history';
+
+// Whitelist of fields that may appear in a research history ndjson record
+// (C7 of the Iter 3 pre-audit). The record is REBUILT from these keys; any
+// extra fields supplied by the caller are silently dropped. This is the
+// no-API-key, no-response-body guarantee.
+const HISTORY_ALLOWED_KINDS = new Set([
+  'search', 'fetch', 'hub-create', 'draft-create',
+]);
+const HISTORY_MAX_QUERY_LEN = 256;
+const HISTORY_MAX_URL_LEN   = 2048;
 
 // Lazy-bound at activate()
 let _api = null;
@@ -416,13 +438,199 @@ async function webFetchTool(args, turnId) {
   const body = (res.result && typeof res.result.body === 'string') ? res.result.body : '';
   let sanitized;
   try {
-    sanitized = sanitizeHtml(body);
+    sanitized = sanitizeWithReadability(body);
   } catch (err) {
     // Per audit: hard fail, do NOT proceed with raw HTML.
     return softError('SANITIZE_FAILED', err && err.message ? err.message : 'sanitization failed');
   }
   const framed = wrapUntrusted(finalUrl, sanitized);
   return { isError: false, content: framed };
+}
+
+/**
+ * Iter 3 — Layer-3 sanitization pipeline:
+ *   raw HTML → Readability.parse() → result.content (cleaned article HTML)
+ *            → sanitizeHtml() (strip hidden styles, scripts, comments, zero-width)
+ *            → text
+ *
+ * ORDER MATTERS (Iter 3 pre-audit C1):
+ *   - Readability runs FIRST. It extracts the main article and strips
+ *     boilerplate (nav, footer, ads) but preserves inline styles, comments,
+ *     and many tag types our sanitizer needs to kill.
+ *   - sanitizeHtml runs AFTER on Readability's output. This is the layer
+ *     that removes display:none / visibility:hidden / opacity:0 / aria-hidden
+ *     / Unicode tag-channel, etc.
+ *   - If Readability throws or returns null (non-article page, parse error),
+ *     we fall back to sanitizing the raw HTML directly. NEVER emit raw HTML.
+ */
+function sanitizeWithReadability(html) {
+  if (typeof html !== 'string') throw new Error('[web-research] sanitizeWithReadability: input must be a string');
+
+  const Parser = _defaultDOMParser;
+  if (!Parser) {
+    // No DOMParser available — fall back to direct sanitization (which will
+    // also throw, but at least it gives the canonical error path).
+    return sanitizeHtml(html);
+  }
+
+  let readableHtml = null;
+  try {
+    const doc = new Parser().parseFromString(html, 'text/html');
+    if (doc && doc.documentElement) {
+      const article = new Readability(doc, { keepClasses: false }).parse();
+      if (article && typeof article.content === 'string' && article.content.length > 0) {
+        readableHtml = article.content;
+      }
+    }
+  } catch {
+    // Fall through to raw-HTML sanitization. Readability is best-effort
+    // boilerplate-strip; the deterministic security layer is sanitizeHtml.
+    readableHtml = null;
+  }
+
+  return sanitizeHtml(readableHtml ?? html);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECTION 7b — Research Hub state + history ndjson (Iter 3)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// These tools are GREEN per Iter 3 Layer-5 audit:
+//   - getResearchHub:    read-only read of two global-storage keys.
+//   - setResearchHub:    write of those two keys after strict validation.
+//   - logResearchEvent:  append-only ndjson, whitelist serialization, no
+//                        api key, no response bodies. Pure observability.
+// None read untrusted web content; none mutate canvas pages directly.
+
+const HUB_ID_RE     = /^[A-Za-z0-9_\-:.]{1,256}$/;          // canvas page id shape
+const HUB_TITLE_MAX = 200;
+// Strip control chars (Unicode tag-channel + zero-width handled at sanitize layer too).
+const CONTROL_CHARS = /[\u0000-\u001F\u007F\u0080-\u009F]/g;
+
+async function getResearchHubTool() {
+  if (!_globalStorage) return softError('NO_STORAGE', 'global storage unavailable');
+  const pageId = await _globalStorage.get(KEY_HUB_PAGE_ID);
+  const title  = await _globalStorage.get(KEY_HUB_PAGE_TITLE);
+  if (!pageId || typeof pageId !== 'string') {
+    return { isError: false, content: JSON.stringify(null) };
+  }
+  return {
+    isError: false,
+    content: JSON.stringify({
+      pageId,
+      title: (typeof title === 'string' && title.length > 0) ? title : 'Research Hub',
+    }),
+  };
+}
+
+async function setResearchHubTool(args) {
+  if (!_globalStorage) return softError('NO_STORAGE', 'global storage unavailable');
+  const pageId = args && typeof args.pageId === 'string' ? args.pageId.trim() : '';
+  let title    = args && typeof args.title  === 'string' ? args.title.trim()  : '';
+  if (!HUB_ID_RE.test(pageId)) {
+    return softError('BAD_PAGE_ID', 'pageId must match canvas-page id shape (1–256 chars [A-Za-z0-9_-:.])');
+  }
+  if (title.length === 0) title = 'Research Hub';
+  title = title.replace(CONTROL_CHARS, '').slice(0, HUB_TITLE_MAX);
+  if (title.length === 0) {
+    return softError('BAD_TITLE', 'title must be a non-empty string after control-char strip');
+  }
+  await _globalStorage.set(KEY_HUB_PAGE_ID, pageId);
+  await _globalStorage.set(KEY_HUB_PAGE_TITLE, title);
+  return { isError: false, content: JSON.stringify({ pageId, title }) };
+}
+
+/**
+ * Whitelist-serialize a history record. Returns the JSON-stringified line
+ * (without trailing newline) or null if the record is unusable.
+ * Iter 3 pre-audit C7: rebuild from known keys, do NOT pass-through the
+ * caller's object. This is how we guarantee no apiKey / body / content
+ * leaks into the on-disk log.
+ */
+function _buildHistoryLine(record) {
+  if (!record || typeof record !== 'object') return null;
+  const kind = typeof record.kind === 'string' ? record.kind : '';
+  if (!HISTORY_ALLOWED_KINDS.has(kind)) return null;
+
+  const out = {
+    ts: new Date().toISOString(),
+    kind,
+  };
+  if (typeof record.query === 'string' && record.query.length > 0) {
+    out.query = record.query.replace(CONTROL_CHARS, '').slice(0, HISTORY_MAX_QUERY_LEN);
+  }
+  if (typeof record.url === 'string' && record.url.length > 0) {
+    out.url = record.url.replace(CONTROL_CHARS, '').slice(0, HISTORY_MAX_URL_LEN);
+  }
+  if (typeof record.hubPageId === 'string' && HUB_ID_RE.test(record.hubPageId)) {
+    out.hubPageId = record.hubPageId;
+  }
+  if (typeof record.draftPageId === 'string' && HUB_ID_RE.test(record.draftPageId)) {
+    out.draftPageId = record.draftPageId;
+  }
+  if (Number.isFinite(record.urlCount) && record.urlCount >= 0) {
+    out.urlCount = Math.floor(record.urlCount);
+  }
+  return JSON.stringify(out);
+}
+
+function _historyFileName(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${HISTORY_FILE_PREFIX}.${y}-${m}-${d}.ndjson`;
+}
+
+function _joinUri(base, ...parts) {
+  let out = String(base || '');
+  for (const p of parts) {
+    if (!p) continue;
+    if (out.endsWith('/')) out = out + p;
+    else out = out + '/' + p;
+  }
+  return out;
+}
+
+async function _appendHistoryLine(api, line) {
+  const fs = api && api.workspace && api.workspace.fs;
+  const folders = api && api.workspace && api.workspace.workspaceFolders;
+  if (!fs || !folders || folders.length === 0) {
+    // No workspace open — silently skip. History is observability, never
+    // a security control; we never block a search/fetch on history-write
+    // failure (Iter 3 pre-audit C8).
+    return false;
+  }
+  const root = folders[0].uri;
+  const dirUri  = _joinUri(root, HISTORY_DIR_RELATIVE);
+  const fileUri = _joinUri(dirUri, _historyFileName());
+  try {
+    if (typeof fs.mkdir === 'function') {
+      try { await fs.mkdir(dirUri); } catch { /* may already exist */ }
+    }
+    let existing = '';
+    if (typeof fs.exists === 'function' && typeof fs.readFile === 'function') {
+      try {
+        const present = await fs.exists(fileUri);
+        if (present) {
+          const raw = await fs.readFile(fileUri);
+          existing = (typeof raw === 'string') ? raw : new TextDecoder().decode(raw);
+        }
+      } catch { /* treat as empty */ }
+    }
+    const next = existing + (existing.length > 0 && !existing.endsWith('\n') ? '\n' : '') + line + '\n';
+    await fs.writeFile(fileUri, next);
+    return true;
+  } catch (err) {
+    console.warn('[web-research] history append failed:', err && err.message);
+    return false;
+  }
+}
+
+async function logResearchEventTool(args) {
+  const line = _buildHistoryLine(args || {});
+  if (!line) return softError('BAD_RECORD', 'record must include a valid kind in: ' + [...HISTORY_ALLOWED_KINDS].join(', '));
+  const ok = await _appendHistoryLine(_api, line);
+  return { isError: false, content: JSON.stringify({ ok, file: _historyFileName() }) };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -469,7 +677,49 @@ function _registerTools(api) {
     requiresConfirmation: false,
   }));
 
-  console.log('[web-research] Registered webSearch + webFetch tools');
+  // Iter 3 — Research Hub state. Green tools (no untrusted-content read,
+  // no consequential write to existing canvas pages). The research-topic
+  // skill uses these to lazy-create the Hub page on first use.
+  _commandDisposables.push(api.chat.registerTool('getResearchHub', {
+    description: 'Return the current Research Hub page id and title as JSON, or null if the Hub has not been created yet. Call this BEFORE drafting a research summary — if it returns null, ask the user for a Hub title, call create_page (parent_id null), then call setResearchHub with the new page id.',
+    parameters: { type: 'object', properties: {} },
+    handler: async () => getResearchHubTool(),
+    requiresConfirmation: false,
+  }));
+
+  _commandDisposables.push(api.chat.registerTool('setResearchHub', {
+    description: 'Persist the Research Hub page id and title to extension storage so future research turns reuse the same Hub. Call this once, immediately after create_page returns the Hub page id.',
+    parameters: {
+      type: 'object',
+      properties: {
+        pageId: { type: 'string', description: 'Canvas page id returned by create_page.' },
+        title:  { type: 'string', description: 'Hub title. Defaults to "Research Hub" if omitted.' },
+      },
+      required: ['pageId'],
+    },
+    handler: async (args) => setResearchHubTool(args || {}),
+    requiresConfirmation: false,
+  }));
+
+  _commandDisposables.push(api.chat.registerTool('logResearchEvent', {
+    description: 'Append one line to the workspace research history ndjson (.parallx/data/web-research-history.<date>.ndjson). Use after each webSearch/webFetch and after creating a Hub child draft. Allowed kinds: search, fetch, hub-create, draft-create. NEVER include response bodies, page content, or secrets — only topic/query/url/page-id metadata.',
+    parameters: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ['search', 'fetch', 'hub-create', 'draft-create'] },
+        query:       { type: 'string' },
+        url:         { type: 'string' },
+        hubPageId:   { type: 'string' },
+        draftPageId: { type: 'string' },
+        urlCount:    { type: 'number' },
+      },
+      required: ['kind'],
+    },
+    handler: async (args) => logResearchEventTool(args || {}),
+    requiresConfirmation: false,
+  }));
+
+  console.log('[web-research] Registered webSearch + webFetch + Research Hub tools');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -527,12 +777,19 @@ export const __test__ = Object.freeze({
   seedTurnFromUserMessage,
   resetTurn,
   sanitizeHtml,
+  sanitizeWithReadability,
   wrapUntrusted,
   webSearchTool,
   webFetchTool,
+  getResearchHubTool,
+  setResearchHubTool,
+  logResearchEventTool,
+  _buildHistoryLine,
+  _historyFileName,
   _setGlobalStorage(stub) { _globalStorage = stub; },
   _setBridge(stub) { globalThis.parallxElectron = stub; },
   _setDOMParser(ctor) { _defaultDOMParser = ctor; },
+  _setApi(stub) { _api = stub; },
   _isUrlAllowedThisTurn,
   _ensureTurn,
   PER_TURN_SEARCH_CAP,
@@ -541,4 +798,8 @@ export const __test__ = Object.freeze({
   MAX_SANITIZED_BYTES,
   KEY_DAILY_BUDGET,
   KEY_DAILY_COUNTER,
+  KEY_HUB_PAGE_ID,
+  KEY_HUB_PAGE_TITLE,
+  HISTORY_DIR_RELATIVE,
+  HISTORY_FILE_PREFIX,
 });

@@ -99,6 +99,17 @@ const OPENCLAW_COMMANDS: Record<string, IChatSlashCommand> = {
     promptTemplate: '{input}',
     isBuiltIn: true,
   },
+  // M65 Iter 3: /research forwards a templated prompt that directs the
+  // agent to use the research-topic skill. The slash command itself does
+  // NOT touch the turn-scoped URL provenance set; URL seeding still flows
+  // exclusively through seedTurnFromUserMessage in the web-research
+  // extension. {input} is the user's topic verbatim.
+  research: {
+    name: 'research',
+    description: 'Research a topic on the public web (search → fetch → write summary to Research Hub)',
+    promptTemplate: 'Use the research-topic skill to investigate the following topic and write a summary page under the Research Hub: {input}',
+    isBuiltIn: true,
+  },
 };
 
 export function createOpenclawCommandRegistry(): IOpenclawCommandRegistryFacade {
