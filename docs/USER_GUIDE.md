@@ -270,6 +270,6 @@ app but isn't in the overlay, that's a bug — file it against the
 
 - `docs/PARALLX_WORKSPACE_SCHEMA.md` — full schema of the workspace
   state file.
-- `docs/Parallx_Milestone_61.md` — design notes behind the unified
-  settings system.
+- `docs/archive/milestones/Parallx_Milestone_61.md` — design notes behind
+  the unified settings system.
 - `docs/ai/AI_USER_GUIDE.md` — deeper dive into the AI subsystem.
