@@ -1576,7 +1576,16 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       // the canvas extension is not loaded.
       void import('../canvas/main.js').then((mod) => {
         const ds = mod.getDataService?.();
-        if (ds) { void ds.notifyExternalPageMutation(pageId, kind); }
+        if (!ds) return;
+        // (1) Refresh sidebar tree + reload any already-open editor.
+        void ds.notifyExternalPageMutation(pageId, kind);
+        // (2) End-to-end UX: surface the new/edited page in the editor
+        // so the user immediately sees what the AI did. Same instanceId
+        // semantics — focuses existing tab if open, opens a new tab if
+        // not. Skipped for deletes (no page to show).
+        if (kind !== 'deleted') {
+          void mod.openPageInEditor?.(pageId);
+        }
       }).catch(() => { /* canvas not present — no-op */ });
     });
     for (const d of toolDisposables) {

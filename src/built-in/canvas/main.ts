@@ -561,3 +561,37 @@ export function getDataService(): ICanvasDataService | null {
 export function getApi(): ParallxApi {
   return _api;
 }
+
+/**
+ * Open (or focus, if already open) a page in the canvas editor by id.
+ * Used by external writers — primarily the chat extension's page tools —
+ * to surface the page they just created or edited into the user's view.
+ *
+ * Same `instanceId` semantics as `api.editors.openEditor`: if a canvas
+ * editor tab with this pageId is already open, it gets focused (no
+ * duplicate tab). If not, a new tab opens.
+ *
+ * Silently no-ops if the canvas extension hasn't activated yet, the API
+ * isn't bound, or the page doesn't exist.
+ */
+export async function openPageInEditor(pageId: string): Promise<void> {
+  if (!_api || !_dataService) return;
+  let page;
+  try {
+    page = await _dataService.getPage(pageId);
+  } catch (err) {
+    console.warn('[Canvas] openPageInEditor: getPage failed for', pageId, err);
+    return;
+  }
+  if (!page) return;
+  try {
+    await _api.editors.openEditor({
+      typeId: 'canvas',
+      title: page.title,
+      icon: page.icon ?? undefined,
+      instanceId: pageId,
+    });
+  } catch (err) {
+    console.warn('[Canvas] openPageInEditor: openEditor failed for', pageId, err);
+  }
+}
