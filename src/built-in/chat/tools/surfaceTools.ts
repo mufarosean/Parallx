@@ -41,6 +41,7 @@ export function createSurfaceSendTool(
 ): IChatTool {
   return {
     name: 'surface_send',
+    displaySummary: 'Send content to an output surface (approval).',
     description:
       'Send content to a named output surface (chat, canvas, filesystem, ' +
       'notifications, status). Writes to filesystem or canvas require user ' +
@@ -115,6 +116,7 @@ export function createSurfaceListTool(
 ): IChatTool {
   return {
     name: 'surface_list',
+    displaySummary: 'List output surfaces.',
     description: 'List all registered output surfaces and their capabilities. Read-only.',
     parameters: {
       type: 'object',

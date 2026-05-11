@@ -29,6 +29,7 @@ function formatSearchResults(results: Array<{ sourceId: string; contextPrefix: s
 export function createTranscriptGetTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
     name: 'transcript_get',
+    displaySummary: 'Read a session transcript.',
     description:
       'Read a canonical session transcript from `.parallx/sessions/<session-id>.jsonl`. ' +
       'Use this only when the user explicitly asks about prior session history or wants a transcript-backed recap.',
@@ -70,6 +71,7 @@ export function createTranscriptGetTool(fs: IBuiltInToolFileSystem | undefined):
 export function createTranscriptSearchTool(transcriptSearch: IBuiltInToolTranscriptSearch | undefined): IChatTool {
   return {
     name: 'transcript_search',
+    displaySummary: 'Semantic search over prior transcripts.',
     description:
       'Semantic search over canonical session transcripts in `.parallx/sessions/`. ' +
       'Use this only for explicit prior-session history questions. This is separate from workspace memory and is disabled unless transcript indexing is turned on.',

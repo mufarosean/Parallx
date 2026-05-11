@@ -72,38 +72,44 @@ function createBaseParams(overrides?: Partial<IOpenclawSystemPromptParams>): IOp
 describe('buildOpenclawSystemPrompt', () => {
   it('starts with skills section (identity now in SOUL.md bootstrap)', () => {
     const prompt = buildOpenclawSystemPrompt(createBaseParams());
-    expect(prompt.startsWith('## Skills (mandatory)')).toBe(true);
+    // M65b parity: heading is `## Skills` (upstream agents/system-prompt.ts buildSkillsSection),
+    // not `## Skills (mandatory)`.
+    expect(prompt.startsWith('## Skills\n')).toBe(true);
   });
 
   it('includes skills section with scan instruction', () => {
     const prompt = buildOpenclawSystemPrompt(createBaseParams());
-    expect(prompt).toContain('## Skills (mandatory)');
-    expect(prompt).toContain('scan <available_skills>');
+    expect(prompt).toContain('## Skills');
+    expect(prompt).toContain('Scan <available_skills>');
     expect(prompt).toContain('<available_skills>');
   });
 
-  it('includes skill constraint instructions', () => {
+  it('includes upstream-parity skill discipline lines', () => {
     const prompt = buildOpenclawSystemPrompt(createBaseParams());
-    expect(prompt).toContain('never read more than one skill up front');
-    expect(prompt).toContain('rate limits');
+    // Mirrors upstream agents/system-prompt.ts buildSkillsSection preamble.
+    expect(prompt).toContain('One skill up front max');
+    expect(prompt).toContain('Never guess/fabricate skill paths');
+    expect(prompt).toContain('External API writes: batch when safe');
   });
 
   it('omits skills section when no skills provided', () => {
     const prompt = buildOpenclawSystemPrompt(createBaseParams({ skills: [] }));
-    expect(prompt).not.toContain('## Skills');
     expect(prompt).not.toContain('<available_skills>');
+    // No skills section emitted at all when list is empty.
+    expect(prompt).not.toMatch(/^## Skills\n/m);
   });
 
   it('includes tool summaries with correct heading', () => {
     const prompt = buildOpenclawSystemPrompt(createBaseParams());
-    expect(prompt).toContain('Tool availability (filtered by policy):');
-    // Should NOT have old heading
+    expect(prompt).toContain('## Tooling');
+    // Should NOT have old headings
     expect(prompt).not.toContain('## Available Tools');
+    expect(prompt).not.toContain('Tool availability (filtered by policy)');
   });
 
   it('omits tools section when no tools provided', () => {
     const prompt = buildOpenclawSystemPrompt(createBaseParams({ tools: [] }));
-    expect(prompt).not.toContain('Tool availability');
+    expect(prompt).not.toContain('## Tooling');
   });
 
   it('includes workspace context section', () => {
@@ -222,8 +228,8 @@ describe('buildOpenclawSystemPrompt', () => {
   it('section order: Skills → Tools → Workspace → Runtime', () => {
     const prompt = buildOpenclawSystemPrompt(createBaseParams());
     const order = [
-      prompt.indexOf('## Skills (mandatory)'),
-      prompt.indexOf('Tool availability'),
+      prompt.indexOf('## Skills\n'),
+      prompt.indexOf('## Tooling'),
       prompt.indexOf('## Workspace Context'),
       prompt.indexOf('## Runtime'),
     ];
@@ -238,42 +244,48 @@ describe('buildOpenclawSystemPrompt', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildSkillsSection', () => {
-  it('wraps entries in XML tags', () => {
+  it('emits upstream-parity heading and preamble', () => {
+    // Mirrors upstream agents/system-prompt.ts buildSkillsSection.
     const section = buildSkillsSection(createSkills());
-    expect(section).toContain('<skill>');
+    expect(section.startsWith('## Skills\n')).toBe(true);
+    expect(section).toContain('Scan <available_skills>. If one clearly applies, read its SKILL.md at exact <location>');
+    expect(section).toContain('If several apply, choose the most specific. If none clearly apply, read none.');
+    expect(section).toContain('One skill up front max. Never guess/fabricate skill paths.');
+    expect(section).toContain('External API writes: batch when safe, avoid tight loops, respect 429/Retry-After.');
+  });
+
+  it('pretty-prints <skill> entries (upstream formatSkillsForPrompt parity)', () => {
+    const section = buildSkillsSection(createSkills());
+    expect(section).toContain('  <skill>\n    <name>search-workspace</name>');
+    expect(section).toContain('    <description>Search workspace files</description>');
+    expect(section).toContain('    <location>/skills/search.md</location>');
+    expect(section).toContain('  </skill>');
+  });
+
+  it('parameterizes the read tool name (default read_file)', () => {
+    const defaultSection = buildSkillsSection(createSkills());
+    expect(defaultSection).toContain('with `read_file`');
+    const custom = buildSkillsSection(createSkills(), { readToolName: 'cat' });
+    expect(custom).toContain('with `cat`');
+    expect(custom).not.toContain('with `read_file`');
+  });
+
+  it('compact mode drops <description> (upstream formatSkillsCompact parity)', () => {
+    const section = buildSkillsSection(createSkills(), { compact: true });
     expect(section).toContain('<name>search-workspace</name>');
-    expect(section).toContain('<description>Search workspace files</description>');
     expect(section).toContain('<location>/skills/search.md</location>');
-    expect(section).toContain('</skill>');
+    expect(section).not.toContain('<description>');
   });
 
-  it('includes mandatory scan instruction', () => {
-    const section = buildSkillsSection(createSkills());
-    expect(section).toContain('Before replying: scan <available_skills> <description> entries.');
-  });
-
-  it('includes constraint and rate-limit lines', () => {
-    const section = buildSkillsSection(createSkills());
-    expect(section).toContain('Constraints: never read more than one skill up front');
-    expect(section).toContain('rate limits');
-    expect(section).toContain('prefer fewer larger writes');
-  });
-
-  it('names read_file tool explicitly', () => {
-    const section = buildSkillsSection(createSkills());
-    expect(section).toContain('using read_file');
-  });
-
-  it('includes fabrication guard', () => {
-    const section = buildSkillsSection(createSkills());
-    expect(section).toContain('NEVER describe a skill');
-    expect(section).toContain('always read the actual SKILL.md file first');
-  });
-
-  it('includes explicit user naming case', () => {
-    const section = buildSkillsSection(createSkills());
-    expect(section).toContain('user explicitly names a skill');
-    expect(section).toContain('using read_file');
+  it('prepends truncation note when provided', () => {
+    const note = '⚠️ Skills truncated: included 2 of 99.';
+    const section = buildSkillsSection(createSkills(), { truncationNote: note });
+    // Note appears after heading, before the scan instruction line.
+    const headingIdx = section.indexOf('## Skills');
+    const noteIdx = section.indexOf(note);
+    const scanIdx = section.indexOf('Scan <available_skills>');
+    expect(noteIdx).toBeGreaterThan(headingIdx);
+    expect(scanIdx).toBeGreaterThan(noteIdx);
   });
 
   it('escapes XML special characters', () => {
@@ -291,9 +303,11 @@ describe('buildSkillsSection', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildToolSummariesSection', () => {
-  it('uses correct heading format', () => {
+  it('uses flat `## Tooling` heading (upstream parity)', () => {
+    // M65 parity fix (divergence 2): single flat heading, no per-domain
+    // subheadings. Mirrors upstream src/agents/system-prompt.ts.
     const section = buildToolSummariesSection(createTools());
-    expect(section).toMatch(/^Tool availability \(filtered by policy\):/);
+    expect(section).toMatch(/^## Tooling/);
   });
 
   it('lists tools without bold formatting', () => {
@@ -309,7 +323,11 @@ describe('buildToolSummariesSection', () => {
     expect(toolLines.length).toBe(tools.length);
   });
 
-  it('groups known tools under domain headings', () => {
+  it('emits a single flat list (no per-domain subheadings)', () => {
+    // M65 parity fix (divergence 2): upstream system-prompt.ts emits one
+    // flat list under `## Tooling` — no `### Canvas Pages`, `### Workspace
+    // Files`, etc. The old groupings were a Parallx-only invention that
+    // bloated the prompt and confused small models.
     const tools: IToolSummary[] = [
       { name: 'read_page', description: 'Read a canvas page' },
       { name: 'list_files', description: 'List workspace files' },
@@ -318,29 +336,50 @@ describe('buildToolSummariesSection', () => {
     ];
     const section = buildToolSummariesSection(tools);
 
-    // Domain headings present
-    expect(section).toContain('### Canvas Pages');
-    expect(section).toContain('### Workspace Files');
-    expect(section).toContain('### Memory');
+    expect(section).not.toContain('### Canvas Pages');
+    expect(section).not.toContain('### Workspace Files');
+    expect(section).not.toContain('### Memory');
+    expect(section).not.toContain('### Other');
 
-    // Ungrouped MCP tool under "Other"
-    expect(section).toContain('### Other');
-    expect(section).toContain('- mcp__github__create_issue:');
-
-    // Each tool listed exactly once
+    // Each tool listed exactly once, all under the single `## Tooling`.
+    const headingMatches = section.match(/^## Tooling$/gm) ?? [];
+    expect(headingMatches.length).toBe(1);
     const toolLines = section.split('\n').filter(l => l.startsWith('- '));
     expect(toolLines.length).toBe(4);
   });
 
-  it('omits group headings when no tools match', () => {
+  it('prefers displaySummary over description', () => {
+    // M65 parity fix (divergence 4): per-tool `displaySummary` (short,
+    // prompt-only) is the source of the catalog bullet, falling back to
+    // a summarized version of `description`. Mirrors upstream
+    // tool-description-presets.ts coreToolSummaries map.
     const tools: IToolSummary[] = [
-      { name: 'read_page', description: 'Read a canvas page' },
+      {
+        name: 'run_command',
+        description: 'A very long description that goes on and on with all the details that should not be in the prompt catalog because it would bloat the system prompt.',
+        displaySummary: 'Run a shell command.',
+      },
     ];
     const section = buildToolSummariesSection(tools);
+    expect(section).toContain('- run_command: Run a shell command.');
+    expect(section).not.toContain('A very long description');
+  });
 
-    expect(section).toContain('### Canvas Pages');
-    expect(section).not.toContain('### Workspace Files');
-    expect(section).not.toContain('### Other');
+  it('summarizes long descriptions when displaySummary is absent', () => {
+    // M65 parity fix (divergence 3): when displaySummary is absent the
+    // builder calls summarizeToolDescriptionText (port of upstream
+    // tool-description-summary.ts) to trim to 120 chars at a sentence
+    // boundary and strip structured doc blocks (JSON/ACTIONS:/etc.).
+    const longDesc =
+      'Execute a shell command in the workspace directory and return the output. ' +
+      'Commands run with a 30-second timeout. Dangerous commands are blocked.\n\n' +
+      'ACTIONS:\n- run\n- list';
+    const section = buildToolSummariesSection([
+      { name: 'run_command', description: longDesc },
+    ]);
+    // First sentence is included; ACTIONS: block is stripped.
+    expect(section).toContain('Execute a shell command in the workspace directory');
+    expect(section).not.toContain('ACTIONS:');
   });
 });
 
@@ -459,7 +498,7 @@ describe('budget-aware truncation', () => {
     const params = createBaseParams({ systemBudgetTokens: 100 });
     const prompt = buildOpenclawSystemPrompt(params);
     // Skills section should survive truncation (only workspace and tools are truncated)
-    expect(prompt).toContain('## Skills (mandatory)');
+    expect(prompt).toMatch(/^## Skills\n/m);
   });
 });
 
@@ -620,6 +659,54 @@ describe('buildOpenclawRuntimeSkillState', () => {
     expect(state.totalCount).toBe(0);
     expect(state.visibleCount).toBe(0);
     expect(state.hiddenCount).toBe(0);
+    expect(state.compact).toBe(false);
+    expect(state.truncated).toBe(false);
+    expect(state.truncationNote).toBe('');
+  });
+
+  // M65b parity: upstream agents/skills/workspace.ts applySkillsPromptLimits
+  it('caps prompt entries at maxSkillsInPrompt (upstream DEFAULT_MAX_SKILLS_IN_PROMPT parity)', () => {
+    const catalog = Array.from({ length: 5 }, (_, i) => ({
+      name: `s${i}`,
+      kind: 'workflow' as const,
+      description: 'd',
+      location: `/skills/s${i}.md`,
+    }));
+    const state = buildOpenclawRuntimeSkillState(catalog as any, { maxSkillsInPrompt: 3 });
+    expect(state.promptEntries.length).toBe(3);
+    expect(state.visibleCount).toBe(5);
+    expect(state.truncated).toBe(true);
+    expect(state.truncationNote).toContain('included 3 of 5');
+  });
+
+  it('falls back to compact format when full exceeds maxSkillsPromptChars', () => {
+    const catalog = Array.from({ length: 3 }, (_, i) => ({
+      name: `skill-${i}`,
+      kind: 'workflow' as const,
+      description: 'X'.repeat(200), // long description forces compact fallback
+      location: `/skills/skill-${i}.md`,
+    }));
+    const state = buildOpenclawRuntimeSkillState(catalog as any, { maxSkillsPromptChars: 800 });
+    expect(state.compact).toBe(true);
+    // All 3 skills fit in compact form (name + location only).
+    expect(state.promptEntries.length).toBe(3);
+    expect(state.truncationNote).toContain('compact format');
+  });
+
+  it('binary-searches largest fitting prefix when compact still too large', () => {
+    const catalog = Array.from({ length: 20 }, (_, i) => ({
+      name: `skill-${i}`,
+      kind: 'workflow' as const,
+      description: 'd',
+      location: `/skills/skill-${i}.md`,
+    }));
+    // Budget that allows a few entries in compact form but cannot fit all 20.
+    const state = buildOpenclawRuntimeSkillState(catalog as any, { maxSkillsPromptChars: 700 });
+    expect(state.compact).toBe(true);
+    expect(state.truncated).toBe(true);
+    expect(state.promptEntries.length).toBeGreaterThan(0);
+    expect(state.promptEntries.length).toBeLessThan(20);
+    expect(state.truncationNote).toContain('compact format, descriptions omitted');
   });
 });
 

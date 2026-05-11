@@ -42,23 +42,78 @@ export type IToolPermissions = Record<string, ToolPermissionLevel>;
 /**
  * Profile-based tool policy.
  *
- * Upstream: resolveToolProfilePolicy from tool-policy-shared.ts
+ * Upstream evidence (raw.githubusercontent.com/openclaw/openclaw/main):
+ *   - src/agents/tool-policy-shared.ts — resolveToolProfilePolicy:
+ *       Profiles `minimal`, `coding`, `messaging`, `full`. Only `full` is
+ *       `allow: ["*"]`. The others are explicit allowlists of specific tool
+ *       ids — tools default to EXCLUDED unless they appear in the profile
+ *       allowlist (or their CoreToolDefinition.profiles[] includes the
+ *       profile name).
+ *   - src/agents/tool-catalog.ts — CoreToolDefinition.profiles[]:
+ *       Per-tool profile membership tags. Tools default to `profiles: []`
+ *       (excluded from all profiles except `full`).
  *
- * - deny list is checked first (deny-first pattern from tool-policy-match.ts)
- * - allow list with '*' means "allow everything not denied"
+ * Parallx implementation (M65 parity fix):
+ *   - `readonly`  → upstream `minimal` analogue (read-only browsing).
+ *   - `standard`  → upstream `coding` analogue (read + safe writes, no shell).
+ *   - `full`      → upstream `full` (allow everything).
+ *
+ *   Tools may declare `IToolDefinition.profiles` to opt in. Built-in tools
+ *   that omit `profiles` are matched against the static allowlist below —
+ *   this is the centralised equivalent of upstream's per-tool tags.
+ *
+ *   For MCP / extension tools without `profiles`, the default is EXCLUDED
+ *   from non-`full` profiles (matches upstream `profiles: []` default).
+ *
+ *   `deny` is preserved as a deny-first override (upstream parity:
+ *   tool-policy-match.ts deny-first, allow-second).
  */
 const TOOL_PROFILES: Record<OpenclawToolProfile, {
   readonly allow: readonly string[];
   readonly deny: readonly string[];
 }> = {
+  // Read-only browsing. Mirrors upstream `minimal` profile shape — explicit
+  // allowlist of safe, side-effect-free tools. No writes, no shell, no
+  // schedule mutation, no subagent spawn.
   readonly: {
-    allow: ['*'],
-    deny: ['write_file', 'edit_file', 'delete_file', 'run_command', 'create_page'],
+    allow: [
+      // Workspace files (read-only)
+      'list_files', 'read_file', 'search_files', 'grep_search',
+      // Canvas pages (read-only)
+      'search_workspace', 'read_page', 'read_current_page', 'list_pages',
+      'get_page_properties', 'list_property_definitions', 'find_pages_by_property',
+      'query_pages_by_property', 'read_block',
+      // Knowledge & memory & transcripts (read-only)
+      'search_knowledge', 'memory_get', 'memory_search',
+      'transcript_get', 'transcript_search',
+      // Cron & surface (read-only introspection)
+      'cron_status', 'cron_list', 'cron_runs', 'surface_list',
+      // Autonomy log (read-only)
+      'autonomy_log',
+    ],
+    deny: [],
   },
+  // Read + safe writes (no shell, no destructive deletes, no schedule writes,
+  // no subagent spawn). Mirrors upstream `coding` profile shape.
   standard: {
-    allow: ['*'],
-    deny: ['run_command'],
+    allow: [
+      // All of readonly:
+      'list_files', 'read_file', 'search_files', 'grep_search',
+      'search_workspace', 'read_page', 'read_current_page', 'list_pages',
+      'get_page_properties', 'list_property_definitions', 'find_pages_by_property',
+      'query_pages_by_property', 'read_block',
+      'search_knowledge', 'memory_get', 'memory_search',
+      'transcript_get', 'transcript_search',
+      'cron_status', 'cron_list', 'cron_runs', 'surface_list',
+      'autonomy_log',
+      // Safe writes:
+      'write_file', 'edit_file',
+      'create_page', 'set_page_property',
+      'edit_block', 'insert_block_after', 'link_block',
+    ],
+    deny: [],
   },
+  // Allow everything (matches upstream `full` profile).
   full: {
     allow: ['*'],
     deny: [],
@@ -70,10 +125,57 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
 // ---------------------------------------------------------------------------
 
 /**
- * Check whether a tool name appears on the deny list for a given profile.
+ * Whether a tool name is EXCLUDED by the given profile.
+ *
+ * Replaces the prior deny-list semantics with allowlist semantics:
+ *   - `full` profile never excludes.
+ *   - Other profiles exclude when the tool is not on the allow list.
+ *
+ * Note: this is a name-only check; tools that declare their own
+ * `profiles` membership are out of scope here — use `isToolAllowedByProfile`
+ * when an `IToolDefinition` is available.
+ *
+ * Upstream parity: tool-policy-shared.ts — exclusion is the default when
+ * a profile is not `full`.
  */
 export function isToolDeniedByProfile(toolName: string, mode: OpenclawToolProfile): boolean {
-  return TOOL_PROFILES[mode].deny.includes(toolName);
+  const profile = TOOL_PROFILES[mode];
+  if (profile.deny.includes(toolName)) {
+    return true;
+  }
+  if (profile.allow.includes('*')) {
+    return false;
+  }
+  return !profile.allow.includes(toolName);
+}
+
+/**
+ * Check tool membership in a profile, including the tool's own
+ * `profiles` declaration (upstream parity:
+ * tool-catalog.ts CoreToolDefinition.profiles[]).
+ *
+ * Allow-precedence:
+ *   1. Deny list (always excludes).
+ *   2. Profile is `full` or static allowlist is `*` → allow.
+ *   3. Tool name in static allow list → allow.
+ *   4. Tool's own `profiles` array includes the active profile → allow.
+ *   5. Otherwise exclude.
+ */
+function isToolAllowedByProfile(tool: IToolDefinition, mode: OpenclawToolProfile): boolean {
+  const profile = TOOL_PROFILES[mode];
+  if (profile.deny.includes(tool.name)) {
+    return false;
+  }
+  if (profile.allow.includes('*')) {
+    return true;
+  }
+  if (profile.allow.includes(tool.name)) {
+    return true;
+  }
+  if (tool.profiles && tool.profiles.includes(mode)) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -82,8 +184,9 @@ export function isToolDeniedByProfile(toolName: string, mode: OpenclawToolProfil
  * Upstream pattern: applyToolPolicyPipeline (tool-policy-pipeline.ts:44-154)
  * applies a sequence of ToolPolicyPipelineStep functions.
  *
- * Parallx simplified pipeline:
- *   Step 1: Profile filter (deny-first, then allow)
+ * Parallx pipeline:
+ *   Step 1: Profile filter (allowlist + per-tool `profiles[]` + deny-first)
+ *   Step 1b: D8 agent tool policy (per-agent allow/deny)
  *   Step 2: Permission filter (M11 3-tier: never-allowed tools removed)
  *
  * Tools that require approval are NOT removed — the approval gate is
@@ -96,39 +199,54 @@ export function applyOpenclawToolPolicy(params: {
   permissions?: IToolPermissions;
   agentTools?: IAgentToolsConfig;
 }): IToolDefinition[] {
-  const profile = TOOL_PROFILES[params.mode];
-
   return params.tools.filter(tool => {
-    // Step 1: Profile filter (upstream: resolveToolProfilePolicy)
-    // Deny-first: if tool is on deny list, exclude it
-    if (profile.deny.includes(tool.name)) {
-      return false;
-    }
-    // Allow: if not wildcard, tool must be on allow list
-    if (!profile.allow.includes('*') && !profile.allow.includes(tool.name)) {
+    // Step 1: Profile filter
+    if (!isToolAllowedByProfile(tool, params.mode)) {
       return false;
     }
 
     // Step 1b: D8 Agent tool policy (per-agent allow/deny)
     if (params.agentTools) {
-      // Deny-first for agent tools
       if (params.agentTools.deny?.includes(tool.name)) {
         return false;
       }
-      // If agent has an explicit allow list, tool must be on it
       if (params.agentTools.allow && params.agentTools.allow.length > 0 && !params.agentTools.allow.includes(tool.name)) {
         return false;
       }
     }
 
     // Step 2: Permission filter (Parallx M11: 3-tier)
-    // Never-allowed tools are always excluded
     if (params.permissions?.[tool.name] === 'never-allowed') {
       return false;
     }
 
     return true;
   });
+}
+
+/**
+ * Tier→profile coupling (M65 parity fix, divergence 5).
+ *
+ * Small models choke on large tool catalogs. Upstream addresses this by
+ * letting deployments select a tighter profile (e.g. `coding` instead of
+ * `full`). Parallx couples this to the detected model tier so the user
+ * does not have to configure it manually.
+ *
+ * - `small`  → never expose `full`; downgrade to `standard`.
+ * - `medium` → pass-through.
+ * - `large`  → pass-through.
+ *
+ * `readonly` is never upgraded — if the caller asked for read-only access,
+ * a larger model does not change that intent.
+ */
+export function applyTierToProfile(
+  profile: OpenclawToolProfile,
+  tier: 'small' | 'medium' | 'large' | undefined,
+): OpenclawToolProfile {
+  if (tier === 'small' && profile === 'full') {
+    return 'standard';
+  }
+  return profile;
 }
 
 // ---------------------------------------------------------------------------

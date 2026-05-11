@@ -3,7 +3,8 @@
 
 import type { IChatResponseStream, ToolPermissionLevel } from '../../services/chatTypes.js';
 import type { IDefaultParticipantServices } from '../openclawTypes.js';
-import { resolveToolProfile } from '../openclawToolPolicy.js';
+import { applyTierToProfile, resolveToolProfile } from '../openclawToolPolicy.js';
+import { resolveModelTier } from '../openclawModelTier.js';
 
 export async function tryHandleOpenclawToolsCommand(
   services: IDefaultParticipantServices,
@@ -17,7 +18,9 @@ export async function tryHandleOpenclawToolsCommand(
   const toolDefs = services.getToolDefinitions();
   const readOnlyDefs = services.getReadOnlyToolDefinitions();
   const permissions = services.getToolPermissions?.() ?? {};
-  const profile = resolveToolProfile(effectiveMode);
+  const activeModel = services.getActiveModel?.() ?? 'unknown';
+  const tier = resolveModelTier(activeModel);
+  const profile = applyTierToProfile(resolveToolProfile(effectiveMode), tier);
 
   const lines: string[] = ['## Available Tools\n'];
   lines.push(`**Mode:** ${effectiveMode} | **Profile:** ${profile}\n`);

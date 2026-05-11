@@ -51,6 +51,7 @@ export function createQueryByPropertyTool(db: IBuiltInToolDatabase | undefined):
     // spec literal `pages.query_by_property` is documented in
     // CANVAS_BLOCK_API.md.
     name: 'query_pages_by_property',
+    displaySummary: 'Multi-criteria page query by properties.',
     description:
       'Query pages by one or more property filters (AND), with optional sort and group. ' +
       'Filter ops: equals, not_equals, contains, is_empty, is_not_empty, greater_than, less_than. ' +
@@ -226,6 +227,7 @@ async function persistDoc(
 export function createReadBlockTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
     name: 'read_block',
+    displaySummary: 'Read a single block by id.',
     description:
       'Read a single block within a page by its stable blockId. ' +
       'Returns the block JSON and its plaintext rendering. ' +
@@ -270,6 +272,7 @@ export function createReadBlockTool(db: IBuiltInToolDatabase | undefined): IChat
 export function createEditBlockTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
     name: 'edit_block',
+    displaySummary: 'Replace a block\'s content (approval).',
     description:
       'Replace the content of a block within a page by its stable blockId. ' +
       'newContent is treated as plain text and replaces the block with a paragraph node ' +
@@ -324,6 +327,7 @@ export function createEditBlockTool(db: IBuiltInToolDatabase | undefined): IChat
 export function createInsertBlockAfterTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
     name: 'insert_block_after',
+    displaySummary: 'Insert a new block after an anchor (approval).',
     description:
       'Insert a new paragraph block immediately after the block identified by anchorBlockId. ' +
       'Returns the newly minted blockId. Bumps the page revision.',
@@ -379,6 +383,7 @@ export function createInsertBlockAfterTool(db: IBuiltInToolDatabase | undefined)
 export function createLinkBlockTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
     name: 'link_block',
+    displaySummary: 'Cross-link two blocks (approval).',
     description:
       'Append a markdown-style link inside the source block pointing to a target block on another (or the same) page. ' +
       'Useful for AI-driven cross-references. Bumps the source page revision.',

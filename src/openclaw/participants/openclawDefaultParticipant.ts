@@ -28,7 +28,8 @@ import { buildOpenclawBootstrapContext, loadOpenclawBootstrapEntries } from './o
 import type { IOpenclawTurnContext } from '../openclawAttempt.js';
 import { runOpenclawTurn } from '../openclawTurnRunner.js';
 import { OpenclawContextEngine } from '../openclawContextEngine.js';
-import { resolveToolProfile } from '../openclawToolPolicy.js';
+import { applyTierToProfile, resolveToolProfile } from '../openclawToolPolicy.js';
+import { resolveModelTier } from '../openclawModelTier.js';
 import { computeTokenBudget } from '../openclawTokenBudget.js';
 import { resolveMentions, resolveVariables } from '../openclawTurnPreprocessing.js';
 import type { IBootstrapFile, IOpenclawRuntimeInfo } from '../openclawSystemPrompt.js';
@@ -517,7 +518,11 @@ async function buildOpenclawTurnContext(
   const toolState = buildOpenclawRuntimeToolState({
     platformTools,
     skillCatalog,
-    mode: resolveToolProfile(request.mode),
+    // M65 parity fix (divergence 5): downgrade `full` to `standard` for
+    // small models so the prompt's tool catalog stays compact. Upstream
+    // achieves the same effect by selecting a tighter profile per
+    // deployment; Parallx couples this to detected tier automatically.
+    mode: applyTierToProfile(resolveToolProfile(request.mode), resolveModelTier(runtimeInfo.model)),
     permissions: services.getToolPermissions?.(),
     agentTools: resolvedAgentConfig?.tools,
   });

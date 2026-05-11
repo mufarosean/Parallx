@@ -29,6 +29,7 @@ function generateId(): string {
 export function createSearchWorkspaceTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
     name: 'search_workspace',
+    displaySummary: 'Search workspace pages by text.',
     description: 'Search pages and blocks by text query. Returns matching page titles and content snippets.',
     parameters: {
       type: 'object',
@@ -72,6 +73,7 @@ export function createSearchWorkspaceTool(db: IBuiltInToolDatabase | undefined):
 export function createReadPageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
     name: 'read_page',
+    displaySummary: 'Read a page by id or title.',
     description: 'Read the full content of a page by its ID or title. Accepts a page UUID or a page title (case-insensitive match). Returns the page title and text content.',
     parameters: {
       type: 'object',
@@ -124,6 +126,7 @@ export function createReadPageTool(db: IBuiltInToolDatabase | undefined): IChatT
 export function createReadCurrentPageTool(db: IBuiltInToolDatabase | undefined, getCurrentPageId: CurrentPageIdGetter): IChatTool {
   return {
     name: 'read_current_page',
+    displaySummary: 'Read the page the user has open.',
     description: 'Read the content of the page the user currently has open. No parameters needed — reads whatever page is active in the editor.',
     parameters: {
       type: 'object',
@@ -156,6 +159,7 @@ export function createReadCurrentPageTool(db: IBuiltInToolDatabase | undefined, 
 export function createListPagesTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
     name: 'list_pages',
+    displaySummary: 'List workspace pages.',
     description: 'List all pages in the workspace with their titles and IDs.',
     parameters: {
       type: 'object',
@@ -191,6 +195,7 @@ export function createListPagesTool(db: IBuiltInToolDatabase | undefined): IChat
 export function createGetPagePropertiesTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
     name: 'get_page_properties',
+    displaySummary: 'Get a page\'s metadata and properties.',
     description: 'Get metadata and custom properties of a page including title, icon, creation date, block count, and all custom property values.',
     parameters: {
       type: 'object',
@@ -282,6 +287,7 @@ function formatPropertyValue(raw: string, _type: string): string {
 export function createListPropertyDefinitionsTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
     name: 'list_property_definitions',
+    displaySummary: 'List workspace property definitions.',
     description: 'List all property definitions in the workspace. Shows available property names, types, and configuration.',
     parameters: {
       type: 'object',
@@ -326,6 +332,7 @@ export function createListPropertyDefinitionsTool(db: IBuiltInToolDatabase | und
 export function createSetPagePropertyTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
     name: 'set_page_property',
+    displaySummary: 'Set a property on a page.',
     description: 'Set a property value on a canvas page. Creates the property definition automatically if it doesn\'t exist.',
     parameters: {
       type: 'object',
@@ -399,6 +406,7 @@ function inferPropertyType(value: unknown): string {
 export function createFindPagesByPropertyTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
     name: 'find_pages_by_property',
+    displaySummary: 'Find pages by property value.',
     description: 'Find canvas pages by property value. Supports operators: equals, contains, is_empty, is_not_empty, greater_than, less_than.',
     parameters: {
       type: 'object',
@@ -477,6 +485,7 @@ export function createFindPagesByPropertyTool(db: IBuiltInToolDatabase | undefin
 export function createCreatePageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
     name: 'create_page',
+    displaySummary: 'Create a new workspace page.',
     description: 'Create a new page in the workspace with a title and optional content.',
     parameters: {
       type: 'object',

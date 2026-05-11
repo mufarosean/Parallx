@@ -48,14 +48,19 @@ describe('applyOpenclawToolPolicy', () => {
     expect(result.map(t => t.name)).toEqual(['read_file', 'write_file']);
   });
 
-  it('readonly profile denies write/edit/delete/run/create', () => {
+  it('readonly profile excludes write/edit/delete/run/create (allowlist semantics)', () => {
+    // M65 parity fix: profiles are now allowlists, not deny-lists.
+    // `read_file` is on the readonly allow list; `write_file`, `edit_file`,
+    // `delete_file`, `run_command`, `create_page` are not — they are excluded
+    // by absence from the allowlist (mirrors upstream tool-policy-shared.ts).
+    // A bare `search` name is also excluded (not on the allowlist).
     const tools = [
       tool('read_file'), tool('write_file'), tool('edit_file'),
       tool('delete_file'), tool('run_command'), tool('create_page'),
-      tool('search'),
+      tool('search_workspace'),
     ];
     const result = applyOpenclawToolPolicy({ tools, mode: 'readonly' });
-    expect(result.map(t => t.name)).toEqual(['read_file', 'search']);
+    expect(result.map(t => t.name)).toEqual(['read_file', 'search_workspace']);
   });
 
   it('returns empty array for empty input', () => {
@@ -185,9 +190,16 @@ describe('isToolDeniedByProfile', () => {
     expect(isToolDeniedByProfile('create_page', 'readonly')).toBe(true);
   });
 
-  it('returns false for non-denied tools in readonly', () => {
+  it('returns false for tools on the readonly allowlist', () => {
+    // M65 parity fix: readonly is now an allowlist. Tools on the list pass.
     expect(isToolDeniedByProfile('read_file', 'readonly')).toBe(false);
-    expect(isToolDeniedByProfile('search', 'readonly')).toBe(false);
+    expect(isToolDeniedByProfile('search_workspace', 'readonly')).toBe(false);
+  });
+
+  it('excludes tools not on the readonly allowlist', () => {
+    // Unknown tool names (e.g. MCP tools without `profiles` membership)
+    // are excluded from non-`full` profiles by default.
+    expect(isToolDeniedByProfile('some_random_mcp_tool', 'readonly')).toBe(true);
   });
 
   it('returns true for run_command in standard', () => {
