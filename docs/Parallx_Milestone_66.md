@@ -96,10 +96,31 @@ API surface (new file `src/api/bridges/linksBridge.ts`):
 
 ```ts
 parallx.links: {
+  /** Resolve a parallx:// URI by dispatching to the registered handler. */
   open(uri: string): Promise<boolean>;
-  register(segment: string, handler: LinkHandler): IDisposable;
+
+  /** Register a full LinkContract (see §6). One call per extension. */
+  register(contract: LinkContract): IDisposable;
+
+  /** Pure helper to build a properly-encoded URI. */
   mint(segment: string, path: string, params?: Record<string, string>): string;
+
+  /** Pure helper to parse a parallx:// URI; null on invalid scheme/syntax. */
   parse(uri: string): ParsedLink | null;
+
+  /**
+   * Snapshot of every contract registered in this workspace.
+   * The prompt builder, the canvas link block, and the `parallx_link`
+   * tool ALL consume this. Adding a new extension contract makes the
+   * extension citable everywhere automatically.
+   */
+  allContracts(): readonly LinkContract[];
+
+  /** Fired when contracts are added/removed (extension load/unload). */
+  onDidChangeContracts: Event<void>;
+
+  /** Lazy metadata fetch for a single URI; routed to kind.resolveMetadata. */
+  resolveMetadata(uri: string): Promise<{ title: string; icon?: string } | null>;
 }
 ```
 
@@ -156,40 +177,11 @@ its next `compose_page` / `insert_block` call.
 **b. System-context block injected into every chat turn:**
 
 A small generator in `src/built-in/chat/promptBuilder.ts` that emits, before
-the tool list:
-
-```
-## About Parallx
-
-Parallx is a local-first knowledge workbench. It bundles multiple tools that
-share one workspace. The user is talking to you inside the Chat tool.
-
-## Linking
-
-You can cite anything in Parallx via parallx:// links. Use the `parallx_link`
-tool to mint a link, then include the returned block in your page edits.
-
-URI templates:
-  parallx://explorer/file?path=<fsPath>&line=<n>
-  parallx://canvas/page/<pageId>
-  parallx://pdf?path=<fsPath>&page=<n>&quote=<text>
-  parallx://media-organizer/photo/<id>
-  ... (full list)
-
-## Active extensions
-
-- canvas (built-in)         — pages, blocks, properties
-- explorer (built-in)       — files on disk
-- chat (built-in)           — this chat
-- pdf-viewer (built-in)     — PDF reading
-- media-organizer (ext)     — photos + videos library
-- budget (ext)              — transactions + accounts
-- workspace-graph (ext)     — graph of pages and references
-- web-research (ext)        — web search + fetch
-```
-
-The extension list is generated from `ExtensionRegistry.list()` at turn time.
-Cheap; ~30 lines of prompt.
+the tool list, a section auto-generated from `api.links.allContracts()` and
+`extensionRegistry.list()`. **No hardcoded extension list, no hardcoded URI
+templates.** See §6 for the contract-driven generator and a sample of the
+emitted prompt. Cost: ~30–50 lines of prompt depending on how many
+extensions are loaded.
 
 ### 5. PDF deep-linking with quote (hardest piece)
 
@@ -208,20 +200,189 @@ Implementation steps:
 4. Fallback: if no match on page N, search page N±1; if still none, just leave
    user at page N with a non-fatal toast "couldn't find quoted text on this page."
 
-### 6. Per-tool resolver registration
+### 6. Per-tool resolver registration — the extension contract
 
-| Extension | Registers | Implementation |
+This is the single most important design constraint of M66: **adding link
+support to a new extension must be one `activate()` call, with zero changes
+to core, chat, prompt builder, settings panel, or anywhere else.** Future
+extensions (notes-app, task-tracker, email-importer, anything) get full
+AI-citation support for free the moment they publish their contract.
+
+#### The `LinkContract` shape
+
+Every extension that wants to be cite-able publishes one contract through
+`api.links.register(...)`. The contract is **fully self-describing** —
+the prompt builder, the chat markdown renderer, the link-block resolver,
+and `parallx_link`'s parameter schema all read from these registrations.
+Nothing about a new extension is hardcoded anywhere else in the app.
+
+```ts
+interface LinkContract {
+  /** Segment owned by this extension, e.g. "media-organizer", "budget". */
+  segment: string;
+
+  /** Per-resource-kind handlers. */
+  kinds: {
+    [kind: string]: {
+      /** URI template shown to the AI in the system prompt. */
+      uriTemplate: string;             // e.g. "parallx://budget/transaction/<id>"
+
+      /** Short human-readable description shown to the AI. */
+      description: string;             // e.g. "Cite a single budget transaction by id"
+
+      /** Examples for the AI (1–2 max). */
+      examples?: string[];
+
+      /** Open the resource. Returns false if the target is missing/invalid. */
+      open(parsed: ParsedLink, ctx: { source?: string }): Promise<boolean>;
+
+      /** Lazy metadata fetch for the canvas link chip (title + icon). */
+      resolveMetadata?(parsed: ParsedLink): Promise<{ title: string; icon?: string } | null>;
+
+      /**
+       * OPTIONAL: lets an extension expose a "mint a link to the currently
+       * focused thing" command so the user can copy a link via UI.
+       * The chat tool `parallx_link` also calls this when the AI asks
+       * "give me a link to the currently selected media-organizer photo."
+       */
+      mintFromContext?(ctx: ExtensionContextSnapshot): string | null;
+    }
+  };
+}
+```
+
+#### Registration example (any future extension)
+
+```ts
+// ext/notes-app/main.js   (hypothetical future extension)
+export function activate(api) {
+  api.links.register({
+    segment: 'notes-app',
+    kinds: {
+      note: {
+        uriTemplate: 'parallx://notes-app/note/<id>',
+        description: 'Cite a specific note in the Notes app',
+        examples: ['parallx://notes-app/note/abc-123'],
+        async open(parsed) {
+          const id = parsed.pathSegments[1];
+          await api.editors.openEditor({
+            typeId: 'notes-app-editor',
+            title: getNoteTitle(id),
+            instanceId: id,
+          });
+          return true;
+        },
+        async resolveMetadata(parsed) {
+          const id = parsed.pathSegments[1];
+          const note = await getNote(id);
+          return note ? { title: note.title, icon: '📝' } : null;
+        },
+      },
+    },
+  });
+}
+```
+
+That's it. The extension is now fully citable:
+
+- The system prompt automatically includes `parallx://notes-app/note/<id>`
+  in its URI-template list.
+- The chat renderer automatically intercepts `parallx://notes-app/...`
+  clicks and calls the registered `open()`.
+- The canvas `link` block automatically renders notes-app citations with
+  the title/icon returned by `resolveMetadata()`.
+- The tools settings panel automatically shows it in the notes-app
+  section (already grouped by `extensionId`).
+- `parallx_link` automatically accepts notes-app URIs since the chat tool
+  validates against the union of all registered segments.
+
+#### The contracts at launch (built-ins + bundled extensions)
+
+| Extension | Segment | Kinds |
 |---|---|---|
-| canvas | `page` | already has `openPageInEditor(pageId)`; add `?block=` scroll |
-| explorer | `file` | wraps `openFileEditor` + adds `revealLine` post-open |
-| pdf-viewer | `pdf` (built-in) | new options on viewer open |
-| media-organizer | `photo`, `video` | new `openItem` command (selects + scrolls to item in grid; for video also seeks) |
-| budget | `transaction`, `account` | new + existing commands |
-| workspace-graph | `node` | new `focusNode` command |
-| web-research | `result` | shell-open via existing egress wrapper |
+| canvas | `canvas` | `page` (`?block=` optional) |
+| explorer | `explorer` | `file` (`?line=&col=` optional) |
+| pdf-viewer | `pdf` | `pdf` (`?path=&page=&quote=`) |
+| media-organizer | `media-organizer` | `photo`, `video` (`?t=` optional for video) |
+| budget | `budget` | `transaction`, `account` |
+| workspace-graph | `workspace-graph` | `node` |
+| web-research | `web-research` | `result` (`?url=`) |
+| chat | `chat` | `session` (cite a past chat session by id) |
 
-Each registration is **inside the extension's own `activate()`** — no core
-changes to wire them. The `links` API is the only shared surface.
+`chat` is included intentionally — the AI can cite "as we discussed in
+session X" and the click jumps back to that session.
+
+#### Why the contract is the only integration point
+
+The contract is read by exactly four consumers:
+
+1. **`LinkResolverService.open(uri)`** — routes the URI to the right
+   `kinds[kind].open` based on parsed segment + kind.
+2. **Prompt builder** — iterates `api.links.allContracts()` to generate
+   the "URI templates" + "Active extensions" sections of the system
+   prompt. No hardcoded extension list anywhere.
+3. **Canvas `link` block renderer** — calls `kinds[kind].resolveMetadata`
+   on first paint.
+4. **`parallx_link` chat tool** — uses `allContracts()` to build its
+   `target` parameter description (so the AI sees an up-to-date list of
+   what's mintable in the current workspace) and to validate input.
+
+This means: **adding a new extension never requires editing core, chat,
+canvas, settings, or any other file outside the new extension itself.**
+We will not regress into a world where the prompt builder has a hardcoded
+`if (segment === 'budget')` branch. Reviewers should reject any PR that
+adds a per-extension branch in core code; everything goes through the
+contract.
+
+#### What the prompt actually emits (auto-generated)
+
+Instead of the hardcoded sample shown in §4b, the prompt builder iterates
+contracts:
+
+```ts
+function buildLinkingPromptSection() {
+  const contracts = api.links.allContracts();
+  const exts = extensionRegistry.list().filter(e => e.enabled);
+
+  return [
+    '## Linking',
+    'You can cite anything in Parallx via parallx:// links. ' +
+    'Use the `parallx_link` tool to mint a link.',
+    '',
+    'URI templates available in this workspace:',
+    ...contracts.flatMap(c =>
+      Object.entries(c.kinds).map(([_, k]) =>
+        `  ${k.uriTemplate}  — ${k.description}`
+      )
+    ),
+    '',
+    '## Active extensions',
+    ...exts.map(e =>
+      `  ${e.displayName} (${e.builtIn ? 'built-in' : 'ext'}) — ${e.summary}`
+    ),
+  ].join('\n');
+}
+```
+
+Every new contract automatically appears. Removing an extension removes
+its lines automatically. No prompt drift, no stale documentation.
+
+#### `extension.json` `summary` field
+
+To make the "Active extensions" list useful, extensions must publish a
+one-line `summary` in their manifest:
+
+```json
+{
+  "id": "media-organizer",
+  "displayName": "Media Organizer",
+  "summary": "Photo and video library with EXIF, faces, and AI tagging.",
+  ...
+}
+```
+
+Built-ins get the same field in their built-in registration record.
+Lint check: any extension without `summary` fails packaging.
 
 ### 7. Tools settings: group by extension
 
@@ -275,6 +436,15 @@ testable on its own.
 
 **Verification:**
 - Unit tests for `LinkResolverService.parse/mint/open`.
+- Unit test `tests/unit/linkContractAutoWire.test.ts`: register a synthetic
+  `fake-ext` contract with one kind, assert that:
+    - `api.links.allContracts()` includes it.
+    - `promptBuilder.buildLinkingPromptSection()` output contains its
+      `uriTemplate` and `description`.
+    - `api.links.open(<fake-ext URI>)` invokes the contract's `open()`.
+    - Unregister it and re-run: it disappears from all three.
+  This test is the **guardrail** that prevents anyone from ever adding a
+  hardcoded extension branch in core.
 - Manual: paste a `parallx://canvas/page/<existing-id>` into a canvas page,
   click → opens.
 - Manual: same for explorer/file with line, media-organizer photo, budget
