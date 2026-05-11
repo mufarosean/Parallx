@@ -57,10 +57,10 @@ describe('applyOpenclawToolPolicy', () => {
     const tools = [
       tool('read_file'), tool('write_file'), tool('edit_file'),
       tool('delete_file'), tool('run_command'), tool('create_page'),
-      tool('search_workspace'),
+      tool('find_pages'),
     ];
     const result = applyOpenclawToolPolicy({ tools, mode: 'readonly' });
-    expect(result.map(t => t.name)).toEqual(['read_file', 'search_workspace']);
+    expect(result.map(t => t.name)).toEqual(['read_file', 'find_pages']);
   });
 
   it('returns empty array for empty input', () => {
@@ -193,7 +193,7 @@ describe('isToolDeniedByProfile', () => {
   it('returns false for tools on the readonly allowlist', () => {
     // M65 parity fix: readonly is now an allowlist. Tools on the list pass.
     expect(isToolDeniedByProfile('read_file', 'readonly')).toBe(false);
-    expect(isToolDeniedByProfile('search_workspace', 'readonly')).toBe(false);
+    expect(isToolDeniedByProfile('find_pages', 'readonly')).toBe(false);
   });
 
   it('excludes tools not on the readonly allowlist', () => {

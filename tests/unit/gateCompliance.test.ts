@@ -53,6 +53,7 @@ const EXEMPT_FILES = new Set([
   'canvasIcons.ts',                // Raw icon data (consumed only by IconRegistry)
   'contentSchema.ts',              // Schema constants
   'markdownExport.ts',             // Export utility
+  'markdownImport.ts',             // Import utility (M64 Iter 1)
   'main.ts',                       // Activation entry point
   'canvas.css',                    // Stylesheet
   'database/databaseTypes.ts',     // Database type definitions (M8)

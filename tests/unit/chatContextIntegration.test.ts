@@ -2,7 +2,7 @@
 //
 // Tests the full pipeline with fake page content stored in mock databases:
 //   1. extractCanvasPageId — editor ID → bare page UUID
-//   2. read_current_page — tool uses getCurrentPageId getter, queries DB with UUID
+//   2. read_page with 'current' — tool uses getCurrentPageId getter, queries DB with UUID
 //   3. read_page — UUID lookup, title lookup, fuzzy title lookup
 //   4. Implicit context injection — getCurrentPageContent → user message prepend
 //   5. Canvas page attachments — parallx-page:// URI → SQLite content resolution
@@ -228,10 +228,10 @@ describe('buildFileSystemAccessor hidden path handling', () => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 2. read_current_page — with realistic getCurrentPageId wiring
+// 2. read_page (pageId: 'current') — with realistic getCurrentPageId wiring
 // ──────────────────────────────────────────────────────────────────────────────
 
-describe('read_current_page tool (end-to-end with fake data)', () => {
+describe('read_page tool with pageId=current (end-to-end with fake data)', () => {
   it('reads the active page when getCurrentPageId returns a bare UUID', async () => {
     const db = createRealisticDb();
     const toolsService = createMockToolsService();
@@ -239,8 +239,8 @@ describe('read_current_page tool (end-to-end with fake data)', () => {
     const getCurrentPageId = () => 'uuid-page-1';
     registerBuiltInTools(toolsService, db, undefined, getCurrentPageId);
 
-    const tool = getTool('read_current_page', toolsService);
-    const result = await tool.handler({}, createToken());
+    const tool = getTool('read_page', toolsService);
+    const result = await tool.handler({ pageId: 'current' }, createToken());
 
     expect(result.isError).toBeFalsy();
     expect(result.content).toContain('Random Paragraph');
@@ -255,8 +255,8 @@ describe('read_current_page tool (end-to-end with fake data)', () => {
     const getCurrentPageId = () => 'parallx.canvas:canvas:uuid-page-1';
     registerBuiltInTools(toolsService, db, undefined, getCurrentPageId);
 
-    const tool = getTool('read_current_page', toolsService);
-    const result = await tool.handler({}, createToken());
+    const tool = getTool('read_page', toolsService);
+    const result = await tool.handler({ pageId: 'current' }, createToken());
 
     // The full editor ID does NOT match pages.id — query returns nothing
     expect(result.isError).toBe(true);
@@ -269,8 +269,8 @@ describe('read_current_page tool (end-to-end with fake data)', () => {
     const getCurrentPageId = () => undefined;
     registerBuiltInTools(toolsService, db, undefined, getCurrentPageId);
 
-    const tool = getTool('read_current_page', toolsService);
-    const result = await tool.handler({}, createToken());
+    const tool = getTool('read_page', toolsService);
+    const result = await tool.handler({ pageId: 'current' }, createToken());
 
     expect(result.isError).toBe(true);
     expect(result.content).toContain('No page is currently open');
@@ -282,8 +282,8 @@ describe('read_current_page tool (end-to-end with fake data)', () => {
     const getCurrentPageId = () => 'uuid-page-3';
     registerBuiltInTools(toolsService, db, undefined, getCurrentPageId);
 
-    const tool = getTool('read_current_page', toolsService);
-    const result = await tool.handler({}, createToken());
+    const tool = getTool('read_page', toolsService);
+    const result = await tool.handler({ pageId: 'current' }, createToken());
 
     expect(result.isError).toBeFalsy();
     expect(result.content).toContain('Empty Page');
@@ -338,7 +338,7 @@ describe('read_page tool (3-level fallback with fake data)', () => {
 
     expect(result.isError).toBe(true);
     expect(result.content).toContain('not found');
-    expect(result.content).toContain('list_pages');
+    expect(result.content).toContain('find_pages');
   });
 
   it('prefers UUID match over title match', async () => {

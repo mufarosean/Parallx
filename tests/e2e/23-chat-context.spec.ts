@@ -302,9 +302,8 @@ test.describe('Chat Context Integration', () => {
     expect(Array.isArray(lastReq.tools)).toBe(true);
     const toolNames = lastReq.tools.map((t: any) => t.function?.name);
     expect(toolNames).toContain('read_page');
-    expect(toolNames).toContain('read_current_page');
-    expect(toolNames).toContain('search_workspace');
-    expect(toolNames).toContain('list_pages');
+    expect(toolNames).toContain('find_pages');
+    expect(toolNames).toContain('get_page');
   });
 
   test('system prompt mentions implicit context behavior', async ({ window }) => {

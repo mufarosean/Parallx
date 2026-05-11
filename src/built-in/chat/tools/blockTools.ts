@@ -34,164 +34,10 @@ import {
   insertAfter,
   paragraphFromText,
   generateBlockId,
-  filterToSubquery,
-  type IPropertyFilter,
-  type IPropertySort,
 } from './blockApi.js';
 
 function requireDb(db: IBuiltInToolDatabase | undefined): asserts db is IBuiltInToolDatabase {
   if (!db || !db.isOpen) throw new Error('Database is not available');
-}
-
-// ─── C1: pages.query_by_property ────────────────────────────────────────
-
-export function createQueryByPropertyTool(db: IBuiltInToolDatabase | undefined): IChatTool {
-  return {
-    // Snake_case to match existing chat-tool registry style; M60 §6.2
-    // spec literal `pages.query_by_property` is documented in
-    // CANVAS_BLOCK_API.md.
-    name: 'query_pages_by_property',
-    displaySummary: 'Multi-criteria page query by properties.',
-    description:
-      'Query pages by one or more property filters (AND), with optional sort and group. ' +
-      'Filter ops: equals, not_equals, contains, is_empty, is_not_empty, greater_than, less_than. ' +
-      'Use this for multi-criteria queries like "pages where status=Draft AND tag=research".',
-    parameters: {
-      type: 'object',
-      required: ['filter'],
-      properties: {
-        filter: {
-          type: 'array',
-          description: 'Array of {prop, op, value} filters; combined with AND.',
-          items: {
-            type: 'object',
-            required: ['prop', 'op'],
-            properties: {
-              prop: { type: 'string' },
-              op: { type: 'string' },
-              value: {},
-            },
-          },
-        },
-        sort: {
-          type: 'object',
-          description: 'Optional sort: {by: propertyName | "title" | "updated_at", dir: "asc"|"desc"}.',
-          properties: {
-            by: { type: 'string' },
-            dir: { type: 'string', enum: ['asc', 'desc'] },
-          },
-        },
-        group: {
-          type: 'string',
-          description: 'Optional property name to group results by.',
-        },
-        limit: { type: 'number', description: 'Max pages (default 50, cap 200)' },
-      },
-    },
-    requiresConfirmation: false,
-    permissionLevel: 'always-allowed' as ToolPermissionLevel,
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
-      requireDb(db);
-
-      const rawFilter = args['filter'];
-      if (!Array.isArray(rawFilter) || rawFilter.length === 0) {
-        return { content: 'filter must be a non-empty array of {prop, op, value}', isError: true };
-      }
-      const filters: IPropertyFilter[] = [];
-      for (const f of rawFilter) {
-        if (!f || typeof f !== 'object') {
-          return { content: 'each filter must be an object {prop, op, value}', isError: true };
-        }
-        const fo = f as Record<string, unknown>;
-        const prop = String(fo['prop'] || '').trim();
-        const op = String(fo['op'] || '').trim();
-        if (!prop || !op) {
-          return { content: 'each filter requires prop and op', isError: true };
-        }
-        filters.push({ prop, op: op as IPropertyFilter['op'], value: fo['value'] });
-      }
-
-      const sort = args['sort'] as IPropertySort | undefined;
-      const group = typeof args['group'] === 'string' ? (args['group'] as string).trim() : '';
-      const limit = Math.min(Math.max(Number(args['limit']) || 50, 1), 200);
-
-      // Build INTERSECT chain: page must match every filter.
-      const subqueries: string[] = [];
-      const params: unknown[] = [];
-      try {
-        for (const f of filters) {
-          const sub = filterToSubquery(f);
-          subqueries.push(sub.subquery);
-          params.push(...sub.params);
-        }
-      } catch (err) {
-        return { content: (err as Error).message, isError: true };
-      }
-      const intersectSql = subqueries.join(' INTERSECT ');
-
-      // Sort: by built-in column or by joined property value.
-      let sortClause = 'p.updated_at DESC';
-      const dir = sort?.dir === 'asc' ? 'ASC' : 'DESC';
-      if (sort?.by) {
-        if (sort.by === 'title') sortClause = `p.title ${dir}`;
-        else if (sort.by === 'updated_at') sortClause = `p.updated_at ${dir}`;
-        else if (sort.by === 'created_at') sortClause = `p.created_at ${dir}`;
-        else sortClause = `(SELECT value FROM page_properties WHERE page_id = p.id AND key = ${escapeLiteral(sort.by)}) ${dir}`;
-      }
-
-      const sql =
-        `SELECT p.id, p.title, p.updated_at FROM pages p ` +
-        `WHERE p.is_archived = 0 AND p.id IN (${intersectSql}) ` +
-        `ORDER BY ${sortClause} LIMIT ?`;
-      params.push(limit);
-
-      const rows = await db!.all<{ id: string; title: string; updated_at: string }>(sql, params);
-      if (rows.length === 0) {
-        return { content: `No pages matched ${filters.length} filter(s).` };
-      }
-
-      // Hydrate group property if requested.
-      let groupValues: Map<string, string> | null = null;
-      if (group) {
-        groupValues = new Map();
-        const ids = rows.map((r) => r.id);
-        const placeholders = ids.map(() => '?').join(',');
-        const propRows = await db!.all<{ page_id: string; value: string }>(
-          `SELECT page_id, value FROM page_properties WHERE key = ? AND page_id IN (${placeholders})`,
-          [group, ...ids],
-        );
-        for (const pr of propRows) groupValues.set(pr.page_id, pr.value);
-      }
-
-      // Format output.
-      if (group && groupValues) {
-        const grouped = new Map<string, typeof rows>();
-        for (const r of rows) {
-          const raw = groupValues.get(r.id) ?? 'null';
-          let label = raw;
-          try { label = String(JSON.parse(raw)); } catch { /* keep raw */ }
-          if (!grouped.has(label)) grouped.set(label, []);
-          grouped.get(label)!.push(r);
-        }
-        const sections = [...grouped.entries()].map(([label, items]) => {
-          const lines = items.map((p) => `  - **${p.title}** (id: ${p.id})`).join('\n');
-          return `### ${group} = ${label}\n${lines}`;
-        });
-        return { content: `Found ${rows.length} page(s) grouped by ${group}:\n\n${sections.join('\n\n')}` };
-      }
-
-      const lines = rows.map((p) => `- **${p.title}** (id: ${p.id}, updated: ${p.updated_at})`);
-      return { content: `Found ${rows.length} page(s):\n\n${lines.join('\n')}` };
-    },
-  };
-}
-
-/** Escape a SQL string literal for use in an inline ORDER BY subquery.
- * Only used here because SQLite parameter binding inside a subquery's
- * WHERE clause cannot be parameterized when the subquery is part of
- * ORDER BY. The value is sanitized by quoting + doubling single quotes. */
-function escapeLiteral(s: string): string {
-  return `'${s.replace(/'/g, "''")}'`;
 }
 
 // ─── C3 helpers: persist a mutated doc + bump revision ──────────────────
@@ -455,7 +301,6 @@ export function createLinkBlockTool(db: IBuiltInToolDatabase | undefined): IChat
 
 export function createBlockTools(db: IBuiltInToolDatabase | undefined): IChatTool[] {
   return [
-    createQueryByPropertyTool(db),
     createReadBlockTool(db),
     createEditBlockTool(db),
     createInsertBlockAfterTool(db),
@@ -466,7 +311,6 @@ export function createBlockTools(db: IBuiltInToolDatabase | undefined): IChatToo
 /** Stable list of tool names registered by createBlockTools — used by
  * tests and documentation to detect drift. */
 export const BLOCK_TOOL_NAMES = [
-  'query_pages_by_property',
   'read_block',
   'edit_block',
   'insert_block_after',

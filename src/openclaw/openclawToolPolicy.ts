@@ -80,9 +80,8 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
       // Workspace files (read-only)
       'list_files', 'read_file', 'search_files', 'grep_search',
       // Canvas pages (read-only)
-      'search_workspace', 'read_page', 'read_current_page', 'list_pages',
-      'get_page_properties', 'list_property_definitions', 'find_pages_by_property',
-      'query_pages_by_property', 'read_block',
+      'find_pages', 'read_page', 'get_page',
+      'list_property_definitions', 'read_block',
       // Knowledge & memory & transcripts (read-only)
       'search_knowledge', 'memory_get', 'memory_search',
       'transcript_get', 'transcript_search',
@@ -99,16 +98,15 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
     allow: [
       // All of readonly:
       'list_files', 'read_file', 'search_files', 'grep_search',
-      'search_workspace', 'read_page', 'read_current_page', 'list_pages',
-      'get_page_properties', 'list_property_definitions', 'find_pages_by_property',
-      'query_pages_by_property', 'read_block',
+      'find_pages', 'read_page', 'get_page',
+      'list_property_definitions', 'read_block',
       'search_knowledge', 'memory_get', 'memory_search',
       'transcript_get', 'transcript_search',
       'cron_status', 'cron_list', 'cron_runs', 'surface_list',
       'autonomy_log',
       // Safe writes:
       'write_file', 'edit_file',
-      'create_page', 'set_page_property',
+      'create_page', 'compose_page', 'set_page_property', 'set_page_style',
       'edit_block', 'insert_block_after', 'link_block',
     ],
     deny: [],
