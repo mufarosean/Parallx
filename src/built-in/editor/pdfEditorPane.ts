@@ -373,6 +373,54 @@ export class PdfEditorPane extends EditorPane {
 
     container.tabIndex = 0;
     container.addEventListener('keydown', (e) => this._onKeyDown(e));
+
+    // M66 Iter B — Listen for `parallx:pdf-reveal` deep-link requests. The
+    // explorer link contract dispatches `{filePath, page?, quote?}` after
+    // openFileEditor() resolves; this pane reacts only when the filePath
+    // matches its currently loaded input. Best-effort, non-fatal.
+    const revealController = new AbortController();
+    this._register(toDisposable(() => revealController.abort()));
+    window.addEventListener('parallx:pdf-reveal', (ev: Event) => {
+      const detail = (ev as CustomEvent<{ filePath?: string; page?: number; quote?: string }>).detail;
+      if (!detail) return;
+      const ownPath = this._currentInput?.uri.fsPath;
+      if (!ownPath || !detail.filePath) return;
+      // Normalize slashes for cross-platform compare.
+      const a = ownPath.replace(/\\/g, '/').toLowerCase();
+      const b = detail.filePath.replace(/\\/g, '/').toLowerCase();
+      if (a !== b) return;
+      this._applyLinkReveal(detail.page, detail.quote);
+    }, { signal: revealController.signal });
+  }
+
+  /**
+   * M66 Iter B — Apply a `parallx://` link's `?page=` / `?quote=` anchors to
+   * the live viewer. Page goes first (it's authoritative); quote is then
+   * dispatched as a find request so pdf.js highlights matching text.
+   * Both are clamped/no-op on invalid input — the link contract never wants
+   * to crash the editor.
+   */
+  private _applyLinkReveal(page: number | undefined, quote: string | undefined): void {
+    if (!this._pdfViewer) return;
+    if (typeof page === 'number' && page > 0 && page <= (this._pdfDoc?.numPages ?? 0)) {
+      this._pdfViewer.currentPageNumber = page;
+      if (this._pageInput) this._pageInput.value = String(page);
+    }
+    if (typeof quote === 'string' && quote.length > 0 && this._eventBus) {
+      // Normalize whitespace so URI-encoded quotes still match the text
+      // layer. pdf.js's find controller treats `\s+` as a single space
+      // internally, so passing collapsed text is friendlier.
+      const normalized = quote.replace(/\s+/g, ' ').trim();
+      this._eventBus.dispatch('find', {
+        source: this,
+        type: 'find',
+        query: normalized,
+        caseSensitive: false,
+        entireWord: false,
+        highlightAll: true,
+        findPrevious: false,
+      });
+    }
   }
 
   private _wireSelectionOverlay(): void {

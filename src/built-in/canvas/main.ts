@@ -309,6 +309,18 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
               return false;
             }
             await openPageInEditor(pageId);
+            // M66 Iter B — Optional `?block=<blockId>` deep-link anchor.
+            // The editor pane is already initialized after openPageInEditor
+            // resolves, but the DOM may still be laying out — yield once
+            // before dispatching so the wrapper has its blocks mounted.
+            const blockId = parsed.params['block'];
+            if (blockId) {
+              window.setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('parallx:canvas-reveal-block', {
+                  detail: { pageId, blockId },
+                }));
+              }, 50);
+            }
             return true;
           },
           async resolveMetadata(parsed) {

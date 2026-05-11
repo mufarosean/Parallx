@@ -3842,3 +3842,15 @@
 .canvas-ai-chat-send:hover {
   background: rgba(139, 92, 246, 0.25);
 }
+
+
+/* -- M66 Iter B — parallx:// deep-link block highlight ------------------- */
+/* Applied transiently by the canvas editor pane when a parallx://canvas/page/<id>?block=<blockId> link is opened. Auto-removed after ~2s. */
+.canvas-tiptap-editor .parallx-link-highlight,
+.canvas-editor-wrapper .parallx-link-highlight {
+  background-color: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33));
+  outline: 2px solid var(--vscode-editor-findMatchHighlightBorder, rgba(234, 92, 0, 0.66));
+  outline-offset: 2px;
+  border-radius: 2px;
+  transition: background-color 0.4s ease-out, outline-color 0.4s ease-out;
+}

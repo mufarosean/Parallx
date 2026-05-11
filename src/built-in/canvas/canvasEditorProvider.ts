@@ -487,6 +487,27 @@ class CanvasEditorPane implements IDisposable {
     );
 
     this._initComplete = true;
+
+    // M66 Iter B — Listen for `parallx:canvas-reveal-block` events emitted
+    // by the canvas link contract's open() handler. The contract dispatches
+    // the event after openPageInEditor(); the pane filters by pageId so
+    // only the right tab scrolls. Best-effort, non-fatal: a missing block
+    // simply no-ops.
+    const revealHandler = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ pageId?: string; blockId?: string }>).detail;
+      if (!detail || detail.pageId !== this._pageId || !detail.blockId) return;
+      const wrapper = this._editorContainer;
+      if (!wrapper) return;
+      const el = wrapper.querySelector<HTMLElement>(`[data-id="${CSS.escape(detail.blockId)}"]`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('parallx-link-highlight');
+      window.setTimeout(() => el.classList.remove('parallx-link-highlight'), 2000);
+    };
+    window.addEventListener('parallx:canvas-reveal-block', revealHandler);
+    this._saveDisposables.add({
+      dispose: () => window.removeEventListener('parallx:canvas-reveal-block', revealHandler),
+    });
   }
 
   // ══════════════════════════════════════════════════════════════════════════  // Content Loading

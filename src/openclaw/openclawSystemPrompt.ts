@@ -47,6 +47,25 @@ export interface IToolSummary {
   readonly displaySummary?: string;
 }
 
+/**
+ * M66 — One descriptor per registered LinkContract kind. Flattened from
+ * `LinkResolverService.allContracts()` so the prompt builder doesn't need to
+ * know about the link service's internal types.
+ */
+export interface IOpenclawLinkContractKindDescriptor {
+  readonly kind: string;
+  readonly uriTemplate: string;
+  readonly description: string;
+  readonly examples?: readonly string[];
+}
+
+export interface IOpenclawLinkContractDescriptor {
+  readonly segment: string;
+  readonly displayName: string;
+  readonly extensionId: string;
+  readonly kinds: readonly IOpenclawLinkContractKindDescriptor[];
+}
+
 export interface IOpenclawRuntimeInfo {
   readonly model: string;
   readonly provider: string;
@@ -93,6 +112,13 @@ export interface IOpenclawSystemPromptParams {
   readonly agentIdentity?: IAgentIdentityConfig;
   /** D8: Per-agent system prompt overlay text. */
   readonly agentSystemPromptOverlay?: string;
+  /**
+   * M66 — Registered `parallx://` link contracts. When present, a `## Linking`
+   * section is auto-generated from this list so the AI knows every URI
+   * template it can mint via `parallx_link`. The whole point is that adding
+   * a new extension contract makes the AI aware of it with zero core changes.
+   */
+  readonly linkContracts?: readonly IOpenclawLinkContractDescriptor[];
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +153,13 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
   // 3. Tool summaries (upstream: buildToolSummaryMap in pi-embedded-runner/system-prompt.ts)
   if (params.tools.length > 0) {
     sections.push(buildToolSummariesSection(params.tools));
+  }
+
+  // 3b. M66 — Linking templates. Auto-generated from registered LinkContracts;
+  //     adding a new extension contract surfaces its URI templates here with
+  //     zero core changes.
+  if (params.linkContracts && params.linkContracts.length > 0) {
+    sections.push(buildLinkingSection(params.linkContracts));
   }
 
   // 4. Workspace context (upstream: bootstrap files + context files)
@@ -290,6 +323,44 @@ export function buildToolSummariesSection(tools: readonly IToolSummary[]): strin
       || summarizeToolDescriptionText(tool.description)
       || tool.name;
     lines.push(`- ${tool.name}: ${summary}`);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * M66 — Linking section. Auto-generated from registered LinkContracts.
+ *
+ * Tells the AI:
+ *   - That Parallx resources are citable via `parallx://` URIs.
+ *   - The exact URI templates that are live in this workspace right now.
+ *   - To prefer `parallx_link` over hand-constructing URIs.
+ *
+ * Adding a new extension contract surfaces its templates here automatically.
+ * Reviewers should reject any PR that adds a hardcoded segment branch in
+ * this function — every URI template comes from a registered contract.
+ */
+export function buildLinkingSection(
+  contracts: readonly IOpenclawLinkContractDescriptor[],
+): string {
+  const lines: string[] = [
+    '## Linking',
+    'Every cite-able Parallx resource (canvas pages, files, PDFs, media,',
+    'budget items, graph nodes, web research results, past chat sessions)',
+    'has a stable `parallx://` URI. When you reference one of these in your',
+    'reply, emit a markdown link with the `parallx://` URI so the user can',
+    'click through. Prefer the `parallx_link` tool to mint URIs — it',
+    'validates the target against the templates below before returning a',
+    'link.',
+    '',
+    'URI templates available in this workspace:',
+  ];
+  for (const c of contracts) {
+    for (const k of c.kinds) {
+      const example = k.examples && k.examples.length > 0
+        ? ` (e.g. ${k.examples[0]})`
+        : '';
+      lines.push(`- ${c.displayName} / ${k.kind} — \`${k.uriTemplate}\`: ${k.description}${example}`);
+    }
   }
   return lines.join('\n');
 }

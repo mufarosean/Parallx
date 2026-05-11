@@ -17,6 +17,7 @@ import type { AgentApprovalResolution } from '../agent/agentTypes.js';
 import type { IUnifiedAIConfigService } from '../aiSettings/unifiedConfigTypes.js';
 import type { ISessionManager } from '../services/serviceTypes.js';
 import type { IAgentRegistry } from './agents/openclawAgentRegistry.js';
+import type { IOpenclawLinkContractDescriptor } from './openclawSystemPrompt.js';
 
 // ── Shared runtime types (canonical source: services/chatRuntimeTypes.ts) ──
 export type {
@@ -256,6 +257,13 @@ export interface IDefaultParticipantServices {
   compactSession?(sessionId: string, summaryText: string): void;
   getExcludedContextIds?(): ReadonlySet<string>;
   getWorkspaceDigest?(): Promise<string | undefined>;
+  /**
+   * M66 — Snapshot of registered `parallx://` link contracts for prompt
+   * auto-injection. Returning `undefined` (or an empty array) suppresses
+   * the `## Linking` section. Implementations should call
+   * `LinkResolverService.allContracts()` and flatten to descriptor shape.
+   */
+  getLinkContractDescriptors?(): readonly IOpenclawLinkContractDescriptor[] | undefined;
   getLastSystemPromptReport?(): IOpenclawSystemPromptReport | undefined;
   sessionManager?: ISessionManager;
   unifiedConfigService?: IUnifiedAIConfigService;

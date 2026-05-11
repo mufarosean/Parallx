@@ -9,6 +9,7 @@ import {
   buildWorkspaceSection,
   type IBootstrapFile,
   type IOpenclawRuntimeInfo,
+  type IOpenclawLinkContractDescriptor,
 } from './openclawSystemPrompt.js';
 import type { IOpenclawRuntimeSkillState } from './openclawSkillState.js';
 import type { IOpenclawRuntimeToolState } from './openclawToolState.js';
@@ -41,6 +42,8 @@ export interface IOpenclawPromptArtifactInput {
   readonly agentSystemPromptOverlay?: string;
   /** Whether this turn includes explicit file or selection attachments. */
   readonly hasExplicitAttachments?: boolean;
+  /** M66 — Registered `parallx://` link contracts for prompt auto-injection. */
+  readonly linkContracts?: readonly IOpenclawLinkContractDescriptor[];
 }
 
 export function buildOpenclawPromptArtifacts(
@@ -70,6 +73,7 @@ export function buildOpenclawPromptArtifacts(
     systemBudgetTokens: input.systemBudgetTokens,
     agentIdentity: input.agentIdentity,
     agentSystemPromptOverlay: input.agentSystemPromptOverlay,
+    linkContracts: input.linkContracts,
   });
 
   const workspaceSection = buildWorkspaceSection(input.bootstrapFiles, input.workspaceDigest);

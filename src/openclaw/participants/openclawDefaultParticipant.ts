@@ -546,6 +546,7 @@ async function buildOpenclawTurnContext(
     skillState,
     runtimeInfo,
     preferencesPrompt: await services.getPreferencesForPrompt?.(),
+    linkContracts: services.getLinkContractDescriptors?.(),
     temperature: resolvedAgentConfig?.temperature ?? effectiveConfig?.model?.temperature,
     maxTokens: resolvedAgentConfig?.maxTokens ?? effectiveConfig?.model?.maxTokens,
     autoRag: resolvedAgentConfig?.autoRag ?? effectiveConfig?.retrieval?.autoRag,

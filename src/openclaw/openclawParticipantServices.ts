@@ -81,6 +81,8 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly runtimeHookRegistry?: IDefaultParticipantServices['runtimeHookRegistry'];
   // D5: Vision model capability detection
   readonly getActiveModelCapabilities?: IDefaultParticipantServices['getActiveModelCapabilities'];
+  // M66 Iter C: link contract descriptors for the system-prompt Linking section.
+  readonly getLinkContractDescriptors?: IDefaultParticipantServices['getLinkContractDescriptors'];
 }
 
 export interface IOpenclawWorkspaceParticipantAdapterDeps {
@@ -204,6 +206,8 @@ export function buildOpenclawDefaultParticipantServices(
     runtimeHookRegistry: deps.runtimeHookRegistry,
     // D5: Vision model capability detection
     getActiveModelCapabilities: deps.getActiveModelCapabilities,
+    // M66 Iter C
+    getLinkContractDescriptors: deps.getLinkContractDescriptors,
   };
 }
 

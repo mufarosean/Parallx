@@ -195,28 +195,60 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       kinds: {
         file: {
           uriTemplate: 'parallx://explorer/file?path=<absolutePath>',
-          description: 'Open a file from the workspace in its registered editor. Use `?path=<absPath>` or `?uri=<file:///...>`. `?line=<n>` reserved for future line-reveal.',
-          examples: ['parallx://explorer/file?path=D%3A%2FAI%2FParallx%2FREADME.md'],
+          description: 'Open a file from the workspace in its registered editor. Use `?path=<absPath>` or `?uri=<file:///...>`. PDF-only deep-link anchors: `?page=<n>` and `?quote=<text>` (jumps to page and search-highlights the quote). `?line=<n>` reserved for text-editor reveal.',
+          examples: [
+            'parallx://explorer/file?path=D%3A%2FAI%2FParallx%2FREADME.md',
+            'parallx://explorer/file?path=D%3A%2Fdocs%2Fpaper.pdf&page=3&quote=unified%20linking',
+          ],
           async open(parsed) {
             const explicitUri = parsed.params['uri'];
             const fsPath = parsed.params['path'];
             let fileUri: string | undefined;
+            let resolvedFsPath: string | undefined;
             if (explicitUri && explicitUri.startsWith('file:')) {
               fileUri = explicitUri;
+              // Derive fsPath from file:// URI for the pdf-reveal event.
+              try {
+                const u = new URL(explicitUri);
+                resolvedFsPath = decodeURIComponent(u.pathname.replace(/^\//, ''));
+              } catch {
+                // Best-effort — leave undefined.
+              }
             } else if (fsPath) {
               // Convert absolute path → file:// URI without depending on Node `path`.
               const normalized = fsPath.replace(/\\/g, '/');
               fileUri = normalized.startsWith('/')
                 ? `file://${encodeURI(normalized)}`
                 : `file:///${encodeURI(normalized)}`;
+              resolvedFsPath = fsPath;
             }
             if (!fileUri) return false;
             try {
               await api.editors.openFileEditor(fileUri);
-              return true;
             } catch {
               return false;
             }
+            // M66 Iter B — PDF deep-link anchors. The PdfEditorPane listens
+            // for `parallx:pdf-reveal` events and filters by filePath, so a
+            // dispatch is safe even if the resolver picked a non-PDF
+            // editor — non-PDF panes ignore the event.
+            const pageParam = parsed.params['page'];
+            const quoteParam = parsed.params['quote'];
+            if (resolvedFsPath && (pageParam || quoteParam)) {
+              const page = pageParam ? parseInt(pageParam, 10) : undefined;
+              // Defer one frame so the pane's renderInput() finishes wiring
+              // _currentInput before our handler reads it.
+              window.setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('parallx:pdf-reveal', {
+                  detail: {
+                    filePath: resolvedFsPath,
+                    page: Number.isFinite(page) ? page : undefined,
+                    quote: quoteParam,
+                  },
+                }));
+              }, 100);
+            }
+            return true;
           },
           async resolveMetadata(parsed) {
             const fsPath = parsed.params['path'] ?? parsed.params['uri'];

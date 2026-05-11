@@ -955,6 +955,21 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getSessionMemoryMessageCount: memoryService ? (s) => dataService.getSessionMemoryMessageCount(s) : undefined,
     extractPreferences: (memoryService || workspaceMemoryService) ? (t) => dataService.extractPreferences(t) : undefined,
     getPreferencesForPrompt: (memoryService || workspaceMemoryService) ? () => dataService.getPreferencesForPrompt() : undefined,
+    // M66 — Snapshot every registered `parallx://` link contract for the
+    // system prompt builder. Flattened to the descriptor shape that the
+    // openclaw layer expects, so adding a new extension contract surfaces
+    // its templates to the AI with zero core changes.
+    getLinkContractDescriptors: () => api.links.allContracts().map(c => ({
+      segment: c.segment,
+      displayName: c.displayName,
+      extensionId: c.extensionId,
+      kinds: Object.entries(c.kinds).map(([kind, h]) => ({
+        kind,
+        uriTemplate: h.uriTemplate,
+        description: h.description,
+        examples: h.examples,
+      })),
+    })),
     getPromptOverlay: _promptFileService ? (a) => dataService.getPromptOverlay(a) : undefined,
     listFilesRelative: fsAccessor ? (r) => dataService.listFilesRelative(r) : undefined,
     readFileRelative: fsAccessor ? (r) => dataService.readFileRelative(r) : undefined,
@@ -1593,6 +1608,20 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }
+
+    // M66 §4a — `parallx_link` chat tool. Registered separately so it can
+    // close over the `api.links` snapshot without threading it through the
+    // big `registerBuiltInTools(...)` signature. The tool's prompt
+    // visibility is gated by the `## Linking` section in the system prompt,
+    // which only renders when at least one contract is registered.
+    void import('./tools/parallxLinkTool.js').then((mod) => {
+      const parallxLinkTool = mod.createParallxLinkTool(() => api.links.allContracts().map(c => ({
+        segment: c.segment,
+        displayName: c.displayName,
+        kinds: Object.entries(c.kinds).map(([kind, h]) => ({ kind, uriTemplate: h.uriTemplate })),
+      })));
+      context.subscriptions.push(languageModelToolsService.registerTool(parallxLinkTool));
+    }).catch(() => { /* tool module load failed — chat continues without it */ });
   }
 
   // ── 3b. Register chat-owned surface plugins (M58 W6) ──

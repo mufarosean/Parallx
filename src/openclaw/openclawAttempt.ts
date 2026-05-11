@@ -24,7 +24,7 @@ import type {
   IToolResult,
 } from '../services/chatTypes.js';
 import type { IOpenclawAssembleResult, IOpenclawContextEngine } from './openclawContextEngine.js';
-import type { IBootstrapFile, IOpenclawRuntimeInfo } from './openclawSystemPrompt.js';
+import type { IBootstrapFile, IOpenclawRuntimeInfo, IOpenclawLinkContractDescriptor } from './openclawSystemPrompt.js';
 import type { IChatRuntimeToolInvocationObserver } from './openclawTypes.js';
 import type { IOpenclawBootstrapDebugReport, IOpenclawSystemPromptReport } from '../services/chatRuntimeTypes.js';
 import { ChatToolLoopSafety } from '../services/chatToolLoopSafety.js';
@@ -108,7 +108,6 @@ export interface IOpenclawTurnContext {
   // Tool inputs
   readonly toolState: IOpenclawRuntimeToolState;
   readonly maxToolIterations: number;
-
   // Model execution
   readonly sendChatRequest: (
     messages: readonly IChatMessage[],
@@ -130,6 +129,8 @@ export interface IOpenclawTurnContext {
   readonly toolObserver?: IChatRuntimeToolInvocationObserver;
   /** D4: Optional message lifecycle observer for runtime hooks. */
   readonly messageObserver?: import('../services/serviceTypes.js').IChatRuntimeMessageObserver;
+  /** M66 — Registered `parallx://` link contracts for prompt auto-injection. */
+  readonly linkContracts?: readonly IOpenclawLinkContractDescriptor[];
 }
 
 /**
@@ -191,6 +192,7 @@ export async function executeOpenclawAttempt(
     supportsVision: context.supportsVision,
     hasExplicitAttachments: (context.mentionContextBlocks?.length ?? 0) > 0
       && request.attachments?.some(a => a.kind === 'file' || a.kind === 'selection'),
+    linkContracts: context.linkContracts,
     promptProvenance: {
       rawUserInput: request.text,
       parsedUserText: request.text,
