@@ -133,7 +133,6 @@ export class IconPicker extends Disposable {
     this._el.appendChild(contentArea);
 
     // Render icon grid
-    const SEARCH_RESULT_CAP = 300;
     const renderGrid = (filter?: string) => {
       contentArea.innerHTML = '';
 
@@ -141,20 +140,10 @@ export class IconPicker extends Disposable {
       grid.classList.add('ui-icon-picker-grid');
 
       const normalized = filter?.toLowerCase();
-      let ids: readonly string[];
-      if (normalized) {
-        const pool = _options.searchPool ?? _options.icons;
-        const matched: string[] = [];
-        for (const id of pool) {
-          if (id.includes(normalized)) {
-            matched.push(id);
-            if (matched.length >= SEARCH_RESULT_CAP) break;
-          }
-        }
-        ids = matched;
-      } else {
-        ids = _options.icons;
-      }
+      const pool = _options.searchPool ?? _options.icons;
+      const ids: readonly string[] = normalized
+        ? pool.filter(id => id.includes(normalized))
+        : _options.icons;
 
       for (const id of ids) {
         const btn = document.createElement('button');

@@ -20,7 +20,7 @@ import { $, layoutPopup, attachPopupDismiss } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
 import { IconPicker } from '../../ui/iconPicker.js';
 import { ContextMenu } from '../../ui/contextMenu.js';
-import { createIconElement, PAGE_SELECTABLE_ICONS, ALL_PAGE_SELECTABLE_ICONS, resolvePageIcon, svgIcon } from './config/blockRegistry.js';
+import { createIconElement, ALL_PAGE_SELECTABLE_ICONS, resolvePageIcon, svgIcon } from './config/blockRegistry.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -709,8 +709,7 @@ export class CanvasSidebar {
       this._pageOptionsIconPicker?.dismiss();
       this._pageOptionsIconPicker = new IconPicker(document.body, {
         anchor: iconButton,
-        icons: PAGE_SELECTABLE_ICONS,
-        searchPool: ALL_PAGE_SELECTABLE_ICONS,
+        icons: ALL_PAGE_SELECTABLE_ICONS,
         renderIcon: (iconId) => svgIcon(iconId),
         showSearch: true,
         showRemove: !!currentIcon,

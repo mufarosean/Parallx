@@ -82,6 +82,9 @@
   justify-content: center;
   color: var(--vscode-icon-foreground);
   transition: background-color 0.08s ease, color 0.1s ease;
+  /* Skip rendering offscreen buttons so a large catalog (~2k icons) stays cheap. */
+  content-visibility: auto;
+  contain-intrinsic-size: 32px 32px;
 }
 
 .ui-icon-picker-btn:hover {
