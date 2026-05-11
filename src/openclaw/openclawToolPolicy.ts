@@ -373,3 +373,152 @@ export function resolveToolProfile(mode: string | undefined): OpenclawToolProfil
       return 'full';     // Ask + Agent: full tools with approval gates
   }
 }
+
+// ---------------------------------------------------------------------------
+// M65 Iter 2 — Tool color gating (Kellogg "MCP Colors" / Layer 5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Tool color classification.
+ *
+ *   red   = sources of untrusted content (web fetch/search). Their output
+ *           may carry attacker-controlled instructions.
+ *   blue  = consequential writes / external side effects. Real-world action.
+ *   green = uncolored / read-only on trusted in-system data. No gate.
+ *
+ * Rule (deterministic, enforced outside the LLM):
+ *   Once a turn has executed ANY red tool, every subsequent BLUE tool call
+ *   in that turn requires explicit user approval — regardless of any
+ *   persisted "always-allow" override. RED tools keep their own permission
+ *   posture (they are already gated by the M11 permission table).
+ *
+ * Color is a STATIC property of the tool name. It cannot be inferred at
+ * runtime and cannot be configured per call. The LLM cannot influence it.
+ */
+export type ToolColor = 'red' | 'blue' | 'green';
+
+/**
+ * Red tools — sources of untrusted external content (M65 Iter 2).
+ * Future M66 image fetch (`webFetchImages`) joins here.
+ */
+const RED_TOOLS: ReadonlySet<string> = new Set<string>([
+  'webSearch',
+  'webFetch',
+]);
+
+/**
+ * Blue tools — consequential writes / mutations that must NOT fire silently
+ * after a turn has ingested untrusted content. Per M65 §Layer 5: "writes to
+ * existing canvas pages, file ops, and external MCP calls require explicit
+ * user approval" while web tools have been used this turn.
+ *
+ * MCP-source detection (any tool whose `source === 'mcp'`) is a planned
+ * follow-up (F4) — for Iter 2 the explicit name list below is the contract.
+ */
+const BLUE_TOOLS: ReadonlySet<string> = new Set<string>([
+  // File ops
+  'write_file',
+  'edit_file',
+  // Canvas page writes
+  'create_page',
+  'compose_page',
+  'set_page_property',
+  'set_page_style',
+  'edit_block',
+  'insert_block_after',
+  'link_block',
+  // Surface send (filesystem / canvas already approval-gated at surface
+  // policy; listed here so post-red the gate fires even for surfaces that
+  // are otherwise auto-allowed).
+  'surface_send',
+]);
+
+/**
+ * Return the color of a tool by name. Unknown names are `green` (uncolored).
+ */
+export function getToolColor(toolName: string): ToolColor {
+  if (RED_TOOLS.has(toolName)) return 'red';
+  if (BLUE_TOOLS.has(toolName)) return 'blue';
+  return 'green';
+}
+
+// ── Tainted-turn registry (in-memory, per-session) ─────────────────────────
+
+/**
+ * Sessions currently "tainted" — meaning a red tool has executed
+ * successfully in the active turn. Bounded LRU; oldest entry evicted past
+ * `MAX_TAINTED_SESSIONS`. The registry is in-process only; no IPC, no
+ * persistence. It is wiped on app restart and on `beginNewTurn`.
+ */
+const _taintedSessions: Set<string> = new Set();
+const MAX_TAINTED_SESSIONS = 64;
+
+/**
+ * Mark the active turn for the given session as tainted (red tool ran).
+ * No-ops if `sessionId` is falsy — the gate is a no-op outside session
+ * context (tests, internal callers).
+ */
+export function markTurnTainted(sessionId: string | undefined): void {
+  if (!sessionId) return;
+  // Re-insert to make it the most recent (LRU).
+  _taintedSessions.delete(sessionId);
+  _taintedSessions.add(sessionId);
+  if (_taintedSessions.size > MAX_TAINTED_SESSIONS) {
+    const oldest = _taintedSessions.values().next().value;
+    if (oldest !== undefined) _taintedSessions.delete(oldest);
+  }
+}
+
+/**
+ * Whether the active turn for the given session is tainted.
+ */
+export function isTurnTainted(sessionId: string | undefined): boolean {
+  if (!sessionId) return false;
+  return _taintedSessions.has(sessionId);
+}
+
+/**
+ * Clear the taint flag for the given session — called at the start of every
+ * new turn (`runOpenclawTurn`). Per-turn semantics, per spec §Layer 5.
+ */
+export function beginNewTurn(sessionId: string | undefined): void {
+  if (!sessionId) return;
+  _taintedSessions.delete(sessionId);
+}
+
+/**
+ * Remove a session from the registry — call on session delete for hygiene.
+ * Bounded leak is anyway capped by `MAX_TAINTED_SESSIONS`.
+ */
+export function resetSession(sessionId: string | undefined): void {
+  if (!sessionId) return;
+  _taintedSessions.delete(sessionId);
+}
+
+/**
+ * Resolve whether the color gate should force approval for the given
+ * tool/session pair.
+ *
+ * Returns `'requires-approval'` iff the tool is BLUE AND the session is
+ * tainted. Returns `null` otherwise — the caller's normal permission flow
+ * applies unchanged.
+ *
+ * This gate is NOT bypassable by a prior `always-allowed` user override:
+ * the runtime must override the resolved permission level when this
+ * function returns `'requires-approval'`. (See `languageModelToolsService.
+ * invokeToolWithRuntimeControl`.)
+ */
+export function resolveColorGate(
+  toolName: string,
+  sessionId: string | undefined,
+): ToolPermissionLevel | null {
+  if (getToolColor(toolName) !== 'blue') return null;
+  if (!isTurnTainted(sessionId)) return null;
+  return 'requires-approval';
+}
+
+// Testing hook — clears the entire registry. Not exported via index; tests
+// import directly.
+export function _resetColorGateRegistryForTests(): void {
+  _taintedSessions.clear();
+}

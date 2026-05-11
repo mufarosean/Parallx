@@ -25,6 +25,11 @@ import type {
   ToolPermissionLevel,
 } from './chatTypes.js';
 import type { PermissionService } from './permissionService.js';
+import {
+  getToolColor,
+  markTurnTainted,
+  resolveColorGate,
+} from '../openclaw/openclawToolPolicy.js';
 
 export interface ILanguageModelToolsRuntimeMetadata {
   readonly name: string;
@@ -277,13 +282,26 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     }
 
     const defaultLevel = getEffectivePermission(tool);
-    const permissionCheck = this._permissionService
+    let permissionCheck = this._permissionService
       ? this._permissionService.checkPermission(name, defaultLevel)
       : {
         level: defaultLevel,
         autoApproved: defaultLevel === 'always-allowed',
         source: 'missing-permission-service' as const,
       };
+
+    // M65 Iter 2 — Layer 5 color gate. If the resolved color gate demands
+    // approval (blue tool in a turn already tainted by a red tool), it
+    // OVERRIDES any persisted "always-allow" override. The trifecta cut
+    // is not negotiable; an LLM-arranged prior approval cannot lower the
+    // bar mid-turn. See openclawToolPolicy.resolveColorGate.
+    if (resolveColorGate(name, sessionId) === 'requires-approval') {
+      permissionCheck = {
+        level: 'requires-approval',
+        autoApproved: false,
+        source: permissionCheck.source,
+      };
+    }
 
     const metadata: ILanguageModelToolsRuntimeMetadata = {
       name,
@@ -351,6 +369,12 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
 
     try {
       const result = await tool.handler(args, token);
+      // M65 Iter 2 — Layer 5: taint the session if a red tool succeeded.
+      // Taint is set ONLY by runtime here, ONLY on success, ONLY when a
+      // sessionId is in scope. The LLM cannot set or clear this flag.
+      if (!result.isError && sessionId && getToolColor(name) === 'red') {
+        markTurnTainted(sessionId);
+      }
       observer?.onExecuted?.(metadata, result);
       return result;
     } catch (err) {

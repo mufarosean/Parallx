@@ -201,6 +201,48 @@ function _resolveAndGuard(host) {
   });
 }
 
+/**
+ * Build a `lookup`-compatible callback that returns ONLY addresses we have
+ * already vetted in `_resolveAndGuard`. Closes the TOCTOU window between
+ * the preflight `dns.lookup` and Node's own `dns.lookup` at connect time
+ * (F3 — M65 Iter 2). The callback never invokes DNS itself; it is a pure
+ * data-return function over the closure-captured prevalidated set.
+ *
+ * Signature matches Node's `dns.lookup(hostname, options, cb)`:
+ *   options.family  — 0 | 4 | 6
+ *   options.all     — boolean
+ *   cb(err, address, family)         when !options.all
+ *   cb(err, addresses)               when  options.all
+ */
+function _makePinnedLookup(prevalidated) {
+  // Snapshot once — never mutate.
+  const snapshot = prevalidated.map((a) => ({ address: a.address, family: a.family }));
+  return function pinnedLookup(_host, options, callback) {
+    // Node accepts (host, family, cb) and (host, options, cb).
+    let opts;
+    let cb;
+    if (typeof options === 'function') { cb = options; opts = {}; }
+    else { opts = options || {}; cb = callback; }
+    const wantFamily = typeof opts === 'number' ? opts : (opts.family || 0);
+    const wantAll = !!opts.all;
+
+    let candidates = snapshot;
+    if (wantFamily === 4 || wantFamily === 6) {
+      candidates = snapshot.filter((a) => a.family === wantFamily);
+    }
+    if (candidates.length === 0) {
+      // Should be unreachable since we vetted at least one address. If the
+      // socket happens to demand an unavailable family, refuse defensively
+      // rather than fall through to a fresh DNS lookup.
+      return cb(_err('PRIVATE_IP', `No prevalidated address available for requested family ${wantFamily}`));
+    }
+    if (wantAll) {
+      return cb(null, candidates.map((a) => ({ address: a.address, family: a.family })));
+    }
+    return cb(null, candidates[0].address, candidates[0].family);
+  };
+}
+
 function _err(code, message) {
   const e = new Error(message);
   e.code = code;
@@ -265,12 +307,16 @@ function _doSingleHopRequest({ urlStr, signal, headers, method = 'GET' }) {
     }
 
     // C1 / C2 — DNS preflight (re-run on every hop)
-    _resolveAndGuard(parsed.hostname).then(() => {
+    _resolveAndGuard(parsed.hostname).then((prevalidated) => {
       const requestOpts = {
         method,
         host: parsed.hostname,
         port: parsed.port || 443,
         path: parsed.pathname + (parsed.search || ''),
+        // F3 (M65 Iter 2) — pin the connect-time DNS lookup to the same
+        // address set we just validated. Closes the TOCTOU between
+        // _resolveAndGuard and Node's internal dns.lookup at socket.connect.
+        lookup: _makePinnedLookup(prevalidated),
         // C10 — fixed UA, no cookies, no auth, no referer
         headers: Object.assign({
           'User-Agent': FIXED_USER_AGENT,
@@ -572,5 +618,6 @@ module.exports = {
     _resetTurnFetchCount,
     _doSingleHopRequest,
     _preflight,
+    _makePinnedLookup,
   },
 };

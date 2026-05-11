@@ -297,3 +297,107 @@ describe('doWebFetch â€” per-turn backstop', () => {
     })).rejects.toMatchObject({ code: 'TURN_BACKSTOP' });
   });
 });
+
+// --- F3: connect-time IP pin via custom https.request({ lookup }) ------------
+
+const { _makePinnedLookup } = bridge._internals;
+
+describe('_makePinnedLookup (F3 — M65 Iter 2)', () => {
+  it('returns prevalidated address(es); never invokes DNS', () => {
+    const prevalidated = [{ address: '8.8.8.8', family: 4 }];
+    const lookup = _makePinnedLookup(prevalidated);
+    let result: any = null;
+    lookup('example.com', { family: 0, all: false }, (err: any, address: any, family: any) => {
+      result = { err, address, family };
+    });
+    expect(result.err).toBeNull();
+    expect(result.address).toBe('8.8.8.8');
+    expect(result.family).toBe(4);
+  });
+
+  it('honors options.all === true (returns the full set)', () => {
+    const prevalidated = [
+      { address: '8.8.8.8', family: 4 },
+      { address: '8.8.4.4', family: 4 },
+    ];
+    const lookup = _makePinnedLookup(prevalidated);
+    let result: any = null;
+    lookup('example.com', { all: true }, (err: any, addresses: any) => {
+      result = { err, addresses };
+    });
+    expect(result.err).toBeNull();
+    expect(result.addresses).toEqual([
+      { address: '8.8.8.8', family: 4 },
+      { address: '8.8.4.4', family: 4 },
+    ]);
+  });
+
+  it('respects options.family (IPv4 only filter)', () => {
+    const prevalidated = [
+      { address: '8.8.8.8', family: 4 },
+      { address: '2001:4860:4860::8888', family: 6 },
+    ];
+    const lookup = _makePinnedLookup(prevalidated);
+    let result: any = null;
+    lookup('example.com', { family: 4, all: false }, (err: any, address: any, family: any) => {
+      result = { err, address, family };
+    });
+    expect(result.err).toBeNull();
+    expect(result.address).toBe('8.8.8.8');
+    expect(result.family).toBe(4);
+  });
+
+  it('respects options.family (IPv6 only filter)', () => {
+    const prevalidated = [
+      { address: '8.8.8.8', family: 4 },
+      { address: '2001:4860:4860::8888', family: 6 },
+    ];
+    const lookup = _makePinnedLookup(prevalidated);
+    let result: any = null;
+    lookup('example.com', { family: 6, all: false }, (err: any, address: any, family: any) => {
+      result = { err, address, family };
+    });
+    expect(result.err).toBeNull();
+    expect(result.address).toBe('2001:4860:4860::8888');
+    expect(result.family).toBe(6);
+  });
+
+  it('rejects with PRIVATE_IP when no prevalidated address matches family', () => {
+    // Defense-in-depth — should be unreachable since preflight guards.
+    const prevalidated = [{ address: '8.8.8.8', family: 4 }];
+    const lookup = _makePinnedLookup(prevalidated);
+    let result: any = null;
+    lookup('example.com', { family: 6, all: false }, (err: any) => {
+      result = err;
+    });
+    expect(result).toBeTruthy();
+    expect(result.code).toBe('PRIVATE_IP');
+  });
+
+  it('snapshot is closure-captured; mutating the source array does not affect lookup', () => {
+    const prevalidated = [{ address: '8.8.8.8', family: 4 }];
+    const lookup = _makePinnedLookup(prevalidated);
+    // Attacker mutates the array post-creation.
+    prevalidated.push({ address: '127.0.0.1', family: 4 });
+    let result: any = null;
+    lookup('example.com', { all: true }, (err: any, addresses: any) => {
+      result = { err, addresses };
+    });
+    expect(result.err).toBeNull();
+    expect(result.addresses).toHaveLength(1);
+    expect(result.addresses[0].address).toBe('8.8.8.8');
+  });
+
+  it('legacy (host, family, cb) calling convention is supported', () => {
+    const prevalidated = [{ address: '8.8.8.8', family: 4 }];
+    const lookup = _makePinnedLookup(prevalidated);
+    let result: any = null;
+    // Node sometimes calls lookup(host, family, cb) when options is a number.
+    lookup('example.com', 4 as any, (err: any, address: any, family: any) => {
+      result = { err, address, family };
+    });
+    expect(result.err).toBeNull();
+    expect(result.address).toBe('8.8.8.8');
+    expect(result.family).toBe(4);
+  });
+});

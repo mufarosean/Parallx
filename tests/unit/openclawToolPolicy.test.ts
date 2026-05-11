@@ -1,9 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   applyOpenclawToolPolicy,
   isToolDeniedByProfile,
   resolveToolProfile,
+  getToolColor,
+  markTurnTainted,
+  isTurnTainted,
+  beginNewTurn,
+  resetSession,
+  resolveColorGate,
+  _resetColorGateRegistryForTests,
 } from '../../src/openclaw/openclawToolPolicy';
 import {
   buildOpenclawRuntimeToolState,
@@ -359,5 +366,125 @@ describe('buildToolDefinitionFromSkillCatalogEntry', () => {
     const params = def.parameters as { type: string; properties: Record<string, any> };
     expect(params.type).toBe('object');
     expect(Object.keys(params.properties)).toHaveLength(0);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// M65 Iter 2 � Tool color gating (Layer 5)
+// ---------------------------------------------------------------------------
+
+describe('getToolColor (M65 Iter 2)', () => {
+  it('classifies web tools as red', () => {
+    expect(getToolColor('webSearch')).toBe('red');
+    expect(getToolColor('webFetch')).toBe('red');
+  });
+
+  it('classifies consequential writes as blue', () => {
+    expect(getToolColor('write_file')).toBe('blue');
+    expect(getToolColor('edit_file')).toBe('blue');
+    expect(getToolColor('create_page')).toBe('blue');
+    expect(getToolColor('compose_page')).toBe('blue');
+    expect(getToolColor('set_page_property')).toBe('blue');
+    expect(getToolColor('set_page_style')).toBe('blue');
+    expect(getToolColor('edit_block')).toBe('blue');
+    expect(getToolColor('insert_block_after')).toBe('blue');
+    expect(getToolColor('link_block')).toBe('blue');
+    expect(getToolColor('surface_send')).toBe('blue');
+  });
+
+  it('classifies read-only tools as green (uncolored)', () => {
+    expect(getToolColor('read_file')).toBe('green');
+    expect(getToolColor('find_pages')).toBe('green');
+    expect(getToolColor('search_knowledge')).toBe('green');
+  });
+
+  it('classifies unknown tool names as green', () => {
+    expect(getToolColor('totally_unknown_tool')).toBe('green');
+  });
+});
+
+describe('tainted-turn registry (M65 Iter 2)', () => {
+  beforeEach(() => _resetColorGateRegistryForTests());
+
+  it('isTurnTainted returns false for fresh session', () => {
+    expect(isTurnTainted('session-a')).toBe(false);
+  });
+
+  it('markTurnTainted flips isTurnTainted to true', () => {
+    markTurnTainted('session-a');
+    expect(isTurnTainted('session-a')).toBe(true);
+  });
+
+  it('beginNewTurn clears taint for that session', () => {
+    markTurnTainted('session-a');
+    markTurnTainted('session-b');
+    beginNewTurn('session-a');
+    expect(isTurnTainted('session-a')).toBe(false);
+    expect(isTurnTainted('session-b')).toBe(true);
+  });
+
+  it('resetSession removes session from registry', () => {
+    markTurnTainted('session-a');
+    resetSession('session-a');
+    expect(isTurnTainted('session-a')).toBe(false);
+  });
+
+  it('falsy sessionId is a no-op (no global taint)', () => {
+    markTurnTainted(undefined);
+    markTurnTainted('');
+    expect(isTurnTainted(undefined)).toBe(false);
+    expect(isTurnTainted('')).toBe(false);
+    expect(isTurnTainted('session-a')).toBe(false);
+  });
+
+  it('registry is bounded (LRU cap 64)', () => {
+    for (let i = 0; i < 70; i++) {
+      markTurnTainted(`s-${i}`);
+    }
+    // Oldest entries evicted; most recent survive.
+    expect(isTurnTainted('s-0')).toBe(false);
+    expect(isTurnTainted('s-69')).toBe(true);
+  });
+});
+
+describe('resolveColorGate (M65 Iter 2)', () => {
+  beforeEach(() => _resetColorGateRegistryForTests());
+
+  it('blue tool in untainted turn ? no gate (null)', () => {
+    expect(resolveColorGate('write_file', 'session-a')).toBeNull();
+  });
+
+  it('blue tool in tainted turn ? requires-approval', () => {
+    markTurnTainted('session-a');
+    expect(resolveColorGate('write_file', 'session-a')).toBe('requires-approval');
+  });
+
+  it('red tool returns null (its own permission posture applies)', () => {
+    markTurnTainted('session-a');
+    expect(resolveColorGate('webFetch', 'session-a')).toBeNull();
+    expect(resolveColorGate('webSearch', 'session-a')).toBeNull();
+  });
+
+  it('green tool returns null even in tainted turn', () => {
+    markTurnTainted('session-a');
+    expect(resolveColorGate('read_file', 'session-a')).toBeNull();
+  });
+
+  it('blue tool with no sessionId returns null (no gate)', () => {
+    markTurnTainted('session-a');
+    expect(resolveColorGate('write_file', undefined)).toBeNull();
+  });
+
+  it('beginNewTurn re-opens blue tools (taint resets per turn)', () => {
+    markTurnTainted('session-a');
+    expect(resolveColorGate('write_file', 'session-a')).toBe('requires-approval');
+    beginNewTurn('session-a');
+    expect(resolveColorGate('write_file', 'session-a')).toBeNull();
+  });
+
+  it('taint of session-a does not affect session-b', () => {
+    markTurnTainted('session-a');
+    expect(resolveColorGate('write_file', 'session-b')).toBeNull();
   });
 });

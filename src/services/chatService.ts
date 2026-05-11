@@ -14,6 +14,7 @@ import { URI } from '../platform/uri.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { Event } from '../platform/events.js';
 import { ChatContentPartKind } from './chatTypes.js';
+import { isTurnTainted } from '../openclaw/openclawToolPolicy.js';
 import { parseChatRequest } from '../built-in/chat/input/chatRequestParser.js';
 import { analyzeChatTurnSemantics } from '../built-in/chat/utilities/chatTurnSemantics.js';
 import { determineChatTurnRoute } from '../built-in/chat/utilities/chatTurnRouter.js';
@@ -1233,6 +1234,19 @@ export class ChatService extends Disposable implements IChatService {
     stream.close();
     if (!result.errorDetails?.responseIsIncomplete) {
       assistantResponse.isComplete = true;
+    }
+
+    // M65 Iter 2 (Layer 6) — stamp every markdown part with `usedWebTools`
+    // when the producing turn was tainted by a red web tool. The chat
+    // renderer reads this flag to strip <img>/<picture>/<source>/srcset/
+    // background-image, closing the markdown-image exfil channel.
+    // The flag is set by runtime only; it is never inferred from LLM output.
+    if (isTurnTainted(sessionId)) {
+      for (const part of assistantResponse.parts) {
+        if (part.kind === ChatContentPartKind.Markdown) {
+          (part as IChatMarkdownContent).usedWebTools = true;
+        }
+      }
     }
 
     // 11b. Provide followup suggestions

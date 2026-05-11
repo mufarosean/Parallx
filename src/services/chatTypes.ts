@@ -427,6 +427,15 @@ export interface IChatMarkdownContent {
   content: string;
   /** Citation map: source index → { uri, label } for rendering [N] badges. */
   citations?: Array<{ index: number; uri: string; label: string }>;
+  /**
+   * M65 Iter 2 (Layer 6 — renderer image-exfil hardening). Set to `true` by
+   * `ChatService` at finalize when the producing turn touched any red web
+   * tool. The renderer strips `<img>`, `<picture>`, `<source>`, `srcset`,
+   * and inline `background-image` styles for parts where this is `true`.
+   *
+   * Set by runtime only — never derived from LLM output.
+   */
+  usedWebTools?: boolean;
 }
 
 export interface IChatCodeBlockContent {
