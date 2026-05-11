@@ -1082,6 +1082,7 @@ import {
   resolvePageIcon as _ir_resolvePageIcon,
   createIconElement as _ir_createIconElement,
   PAGE_SELECTABLE_ICONS as _ir_PAGE_SELECTABLE_ICONS,
+  ALL_PAGE_SELECTABLE_ICONS as _ir_ALL_PAGE_SELECTABLE_ICONS,
 } from './iconRegistry.js';
 
 /** @see {@link import('./iconRegistry.js').svgIcon} — original source */
@@ -1095,6 +1096,9 @@ export const createIconElement: (id: string, size?: number) => HTMLElement = _ir
 
 /** @see {@link import('./iconRegistry.js').PAGE_SELECTABLE_ICONS} — original source */
 export const PAGE_SELECTABLE_ICONS: readonly string[] = _ir_PAGE_SELECTABLE_ICONS;
+
+/** @see {@link import('./iconRegistry.js').ALL_PAGE_SELECTABLE_ICONS} — full Lucide catalog for search */
+export const ALL_PAGE_SELECTABLE_ICONS: readonly string[] = _ir_ALL_PAGE_SELECTABLE_ICONS;
 
 // ── Block State Access (registry gate) ───────────────────────────────────────
 // Block extensions (columnNodes, pageBlockNode) get state helpers through

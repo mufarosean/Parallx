@@ -19,6 +19,13 @@ export interface IIconPickerOptions {
   /** Icon IDs to show in the grid. */
   readonly icons: readonly string[];
   /**
+   * Optional, larger pool of icon IDs used when the user types into the
+   * search box.  If omitted, search filters from `icons`.  Set this to a
+   * full catalog (e.g. all Lucide icons) when you want the default grid to
+   * stay small for performance but searching to reach a wider set.
+   */
+  readonly searchPool?: readonly string[];
+  /**
    * Renders an icon into an HTML string (e.g. returning an SVG string).
    * Called for each icon button in the grid.
    */
@@ -126,15 +133,28 @@ export class IconPicker extends Disposable {
     this._el.appendChild(contentArea);
 
     // Render icon grid
+    const SEARCH_RESULT_CAP = 300;
     const renderGrid = (filter?: string) => {
       contentArea.innerHTML = '';
 
       const grid = document.createElement('div');
       grid.classList.add('ui-icon-picker-grid');
 
-      const ids = filter
-        ? _options.icons.filter(id => id.includes(filter.toLowerCase()))
-        : _options.icons;
+      const normalized = filter?.toLowerCase();
+      let ids: readonly string[];
+      if (normalized) {
+        const pool = _options.searchPool ?? _options.icons;
+        const matched: string[] = [];
+        for (const id of pool) {
+          if (id.includes(normalized)) {
+            matched.push(id);
+            if (matched.length >= SEARCH_RESULT_CAP) break;
+          }
+        }
+        ids = matched;
+      } else {
+        ids = _options.icons;
+      }
 
       for (const id of ids) {
         const btn = document.createElement('button');

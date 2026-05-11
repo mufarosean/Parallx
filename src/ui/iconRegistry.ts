@@ -52,6 +52,15 @@ export function hasIcon(id: string): boolean {
   return _icons.has(id);
 }
 
+/**
+ * Get every Lucide icon ID known to the registry.
+ * Excludes synthetic icons like file-type (colored) and avatar-* aliases —
+ * these are surfaced via dedicated helpers.
+ */
+export function getAllLucideIconIds(): readonly string[] {
+  return Object.keys(LUCIDE_ICONS);
+}
+
 // ── File-Type Icons ───────────────────────────────────────────────────────────
 // Colored file-type icons are defined in fileTypeIcons.ts and pre-registered
 // in the icon map above. FILE_TYPE_MAP maps extensions → filetype icon IDs.

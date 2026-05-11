@@ -22,6 +22,7 @@ import {
   createIconElement as _createIconElement,
   resolvePageIcon as _resolvePageIcon,
   PAGE_ICON_IDS as _PAGE_ICON_IDS,
+  ALL_PAGE_ICON_IDS as _ALL_PAGE_ICON_IDS,
 } from '../canvasIcons.js';
 
 // ── Icon Rendering ──────────────────────────────────────────────────────────
@@ -64,3 +65,10 @@ export function resolvePageIcon(icon: string | null | undefined): string {
  * This is the single source of truth for the picker grid contents.
  */
 export const PAGE_SELECTABLE_ICONS: readonly string[] = _PAGE_ICON_IDS;
+
+/**
+ * Full searchable Lucide catalog for the page icon picker.
+ * The picker renders `PAGE_SELECTABLE_ICONS` by default and searches across
+ * this larger pool when the user types in the search box.
+ */
+export const ALL_PAGE_SELECTABLE_ICONS: readonly string[] = _ALL_PAGE_ICON_IDS;

@@ -10,7 +10,7 @@
 //
 // See docs/ICON_REGISTRY.md for the three-registry architecture.
 
-import { getIcon, hasIcon } from '../../ui/iconRegistry.js';
+import { getIcon, hasIcon, getAllLucideIconIds } from '../../ui/iconRegistry.js';
 
 // ─── Canvas icon IDs ─────────────────────────────────────────────────────────
 // These are the icon keys the canvas surface uses, all backed by the central
@@ -52,6 +52,14 @@ export const PAGE_ICON_IDS: string[] = [
   'coffee', 'diamond', 'key', 'image', 'link',
   'smile', 'search',
 ];
+
+/**
+ * Full Lucide catalog for page-icon search.
+ * The picker shows the curated `PAGE_ICON_IDS` set in the default grid for
+ * fast initial render, but searches across this broader pool so users can
+ * find any Lucide icon by name.
+ */
+export const ALL_PAGE_ICON_IDS: readonly string[] = getAllLucideIconIds();
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 

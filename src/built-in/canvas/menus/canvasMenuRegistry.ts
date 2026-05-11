@@ -49,6 +49,7 @@ export type InsertActionBaseContext = _InsertActionBaseContext;
 import {
   svgIcon as _ir_svgIcon,
   PAGE_SELECTABLE_ICONS as _ir_PAGE_SELECTABLE_ICONS,
+  ALL_PAGE_SELECTABLE_ICONS as _ir_ALL_PAGE_SELECTABLE_ICONS,
 } from '../config/iconRegistry.js';
 
 /** @see {@link import('../config/iconRegistry.js').svgIcon} — original source (IconRegistry → here) */
@@ -73,6 +74,9 @@ export {
 
 /** @see {@link import('../config/iconRegistry.js').PAGE_SELECTABLE_ICONS} — original source (IconRegistry → here) */
 export const PAGE_SELECTABLE_ICONS: readonly string[] = _ir_PAGE_SELECTABLE_ICONS;
+
+/** @see {@link import('../config/iconRegistry.js').ALL_PAGE_SELECTABLE_ICONS} — full Lucide catalog for search */
+export const ALL_PAGE_SELECTABLE_ICONS: readonly string[] = _ir_ALL_PAGE_SELECTABLE_ICONS;
 
 // ── Slash Menu Data (registry-to-child gate) ─────────────────────────────────
 // slashMenuItems.ts is a pure data file.  Re-export its types and builder so

@@ -10,7 +10,7 @@
 
 import type { IDisposable } from '../../../platform/lifecycle.js';
 import { IconPicker } from '../../../ui/iconPicker.js';
-import { PAGE_SELECTABLE_ICONS, svgIcon } from './canvasMenuRegistry.js';
+import { PAGE_SELECTABLE_ICONS, ALL_PAGE_SELECTABLE_ICONS, svgIcon } from './canvasMenuRegistry.js';
 import type { ICanvasMenu, CanvasMenuRegistry } from './canvasMenuRegistry.js';
 
 // ── Options ─────────────────────────────────────────────────────────────────
@@ -95,6 +95,7 @@ export class IconMenuController implements ICanvasMenu {
     this._picker = new IconPicker(this._host.container, {
       anchor: options.anchor,
       icons: PAGE_SELECTABLE_ICONS as string[],
+      searchPool: ALL_PAGE_SELECTABLE_ICONS,
       renderIcon: (id, _size) => svgIcon(id),
       showSearch: options.showSearch ?? true,
       showRemove: options.showRemove ?? false,
