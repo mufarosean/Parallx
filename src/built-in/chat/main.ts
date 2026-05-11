@@ -506,17 +506,44 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // Rail is a read-only viewmodel merging in-memory live entries
   // (AutonomyLogService) with persisted ndjson history (AutonomyEventLog).
   // Pattern memory persists "remember this approval" decisions for sub-agent
-  // spawns to <APP_ROOT>/data/autonomy-patterns.json.
+  // spawns to `<workspace>/.parallx/autonomy-patterns.json` (per-workspace —
+  // approvals granted in workspace A must not auto-apply in workspace B).
+  // Legacy global file at `<APP_ROOT>/data/autonomy-patterns.json` is
+  // migrated into the current workspace on first launch.
   const autonomyTaskRail = new AutonomyTaskRailService(autonomyLog, autonomyEventLog);
   context.subscriptions.push(autonomyTaskRail);
   if (!api.services.has(IAutonomyTaskRailService)) {
     api.services.registerInstance(IAutonomyTaskRailService, autonomyTaskRail);
   }
 
+  const _patternMemoryDir = _autonomyWsFolder
+    ? `${_autonomyWsFolder}/.parallx`
+    : (_appPath ? `${_appPath}/data` : undefined);
+
+  // One-shot migration: move legacy global autonomy-patterns.json into the
+  // workspace's `.parallx/` dir. Best-effort; skipped silently on failure.
+  if (_autonomyWsFolder && _appPath && _fsBridge?.exists && _fsBridge.rename && _fsBridge.mkdir) {
+    void (async () => {
+      try {
+        const legacyFile = `${_appPath}/data/autonomy-patterns.json`;
+        const targetFile = `${_autonomyWsFolder}/.parallx/autonomy-patterns.json`;
+        const legacyExists = await _fsBridge.exists(legacyFile);
+        if (!legacyExists.ok || !legacyExists.exists) return;
+        const targetExists = await _fsBridge.exists(targetFile);
+        if (targetExists.ok && targetExists.exists) return;
+        await _fsBridge.mkdir(`${_autonomyWsFolder}/.parallx`);
+        await _fsBridge.rename!(legacyFile, targetFile);
+        console.log(`[AutonomyPatternMemory] Migrated legacy global approvals to ${targetFile}`);
+      } catch (err) {
+        console.warn('[AutonomyPatternMemory] Legacy approvals migration skipped:', err);
+      }
+    })();
+  }
+
   let autonomyPatternMemory: AutonomyPatternMemoryService | undefined;
-  if (_appPath) {
+  if (_patternMemoryDir) {
     autonomyPatternMemory = new AutonomyPatternMemoryService({
-      dataDir: `${_appPath}/data`,
+      dataDir: _patternMemoryDir,
       fs: _fsBridge as IAutonomyPatternMemoryFs | undefined,
     });
     void autonomyPatternMemory.initialize().catch(() => { /* defaults apply */ });
