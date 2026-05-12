@@ -1187,23 +1187,48 @@ function createGraphSidebar(container, api) {
   btnBar.append(refreshBtn, expandBtn);
   container.appendChild(btnBar);
 
-  // Interaction
+  // Interaction — same model as the full editor: click a node to drag it,
+  // click empty space to pan. Shift+click pins/unpins a node.
+  let dragNode = null;
   let panning = false;
   let panStart = null;
 
   cvs.addEventListener('pointerdown', (ev) => {
-    panning = true;
-    panStart = { x: ev.clientX, y: ev.clientY, vx: view.x, vy: view.y };
-    cvs.setPointerCapture(ev.pointerId);
+    const rect = cvs.getBoundingClientRect();
+    const sx = ev.clientX - rect.left;
+    const sy = ev.clientY - rect.top;
+    const node = hitTest(m.nodes, sx, sy, view);
+
+    if (node) {
+      if (ev.shiftKey) { node.pinned = !node.pinned; return; }
+      dragNode = node;
+      dragNode.pinned = true;
+      resetSimulation();
+      cvs.setPointerCapture(ev.pointerId);
+      cvs.style.cursor = 'grabbing';
+    } else {
+      panning = true;
+      panStart = { x: ev.clientX, y: ev.clientY, vx: view.x, vy: view.y };
+      cvs.setPointerCapture(ev.pointerId);
+      cvs.style.cursor = 'grabbing';
+    }
   });
 
   cvs.addEventListener('pointermove', (ev) => {
-    if (panning && panStart) {
+    const rect = cvs.getBoundingClientRect();
+    const sx = ev.clientX - rect.left;
+    const sy = ev.clientY - rect.top;
+
+    if (dragNode) {
+      dragNode.x = (sx - view.x) / view.s;
+      dragNode.y = (sy - view.y) / view.s;
+      dragNode.vx = 0; dragNode.vy = 0;
+      resetSimulation();
+    } else if (panning && panStart) {
       view.x = panStart.vx + (ev.clientX - panStart.x);
       view.y = panStart.vy + (ev.clientY - panStart.y);
     } else {
-      const rect = cvs.getBoundingClientRect();
-      const node = hitTest(m.nodes, ev.clientX - rect.left, ev.clientY - rect.top, view);
+      const node = hitTest(m.nodes, sx, sy, view);
       if (node !== hovered) {
         hovered = node;
         cvs.style.cursor = node ? 'pointer' : 'grab';
@@ -1212,6 +1237,7 @@ function createGraphSidebar(container, api) {
   });
 
   cvs.addEventListener('pointerup', () => {
+    if (dragNode) { dragNode = null; }
     panning = false; panStart = null;
     cvs.style.cursor = 'grab';
   });
