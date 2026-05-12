@@ -7029,6 +7029,66 @@ function _registerBudgetLinkContract(api) {
       },
     },
   }));
+
+  // ── Workspace graph provider ──────────────────────────────────────────
+  // Contributes accounts, categories, and a budget root to the workspace
+  // graph. Categories edge back to the budget root; accounts edge to the
+  // root too — making budget data a single coherent cluster.
+  if (api.workspaceGraph && typeof api.workspaceGraph.registerProvider === 'function') {
+    _disposables.push(api.workspaceGraph.registerProvider({
+      id: 'budget',
+      displayName: 'Budget',
+      async snapshot() {
+        try {
+          const rootId = 'budget:root';
+          const nodes = [{
+            id: rootId,
+            label: 'Budget',
+            domain: 'budget',
+            icon: '💰',
+            weight: 6,
+            meta: { type: 'budget-root' },
+          }];
+          const edges = [];
+
+          let accounts = [];
+          try { accounts = await db.all('SELECT id, last_four, kind, display_name FROM accounts WHERE archived=0'); } catch { accounts = []; }
+          for (const a of accounts) {
+            const id = 'budget:account:' + a.id;
+            nodes.push({
+              id,
+              label: a.display_name || (a.kind + ' ••' + (a.last_four || '----')),
+              domain: 'budget',
+              icon: a.kind === 'credit' ? '💳' : '🏦',
+              weight: 4,
+              meta: { type: 'budget-account', accountId: a.id, kind: a.kind },
+            });
+            edges.push({ source: rootId, target: id, kind: 'contains' });
+          }
+
+          let categories = [];
+          try { categories = await db.all('SELECT id, name, color, kind FROM categories WHERE archived=0'); } catch { categories = []; }
+          for (const c of categories) {
+            const id = 'budget:category:' + c.id;
+            nodes.push({
+              id,
+              label: c.name,
+              domain: 'budget',
+              color: c.color || undefined,
+              weight: 3,
+              meta: { type: 'budget-category', categoryId: c.id, kind: c.kind },
+            });
+            edges.push({ source: rootId, target: id, kind: 'contains' });
+          }
+
+          return { nodes, edges };
+        } catch (err) {
+          console.warn('[Budget] graph snapshot failed:', err);
+          return { nodes: [], edges: [] };
+        }
+      },
+    }));
+  }
 }
 
 // ─── deactivate() ──────────────────────────────────────────────────────────

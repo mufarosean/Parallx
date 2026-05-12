@@ -6841,6 +6841,73 @@ export function activate(parallx, context) {
     });
   }
 
+  // ── Workspace graph provider ────────────────────────────────────────
+  // Contributes a text-generator root, characters, and chat threads.
+  // Chat threads edge to the characters that participate in them.
+  if (parallx.workspaceGraph && typeof parallx.workspaceGraph.registerProvider === 'function') {
+    context.subscriptions.push(parallx.workspaceGraph.registerProvider({
+      id: 'text-generator',
+      displayName: 'Text Generator',
+      async snapshot() {
+        if (!fs || !workspaceUri) return { nodes: [], edges: [] };
+        try {
+          const rootId = 'tg:root';
+          const nodes = [{
+            id: rootId,
+            label: 'Text Generator',
+            domain: 'chat',
+            icon: '💬',
+            weight: 6,
+            meta: { type: 'tg-root' },
+          }];
+          const edges = [];
+
+          let chars = [];
+          try { chars = await scanCharacters(fs, workspaceUri); } catch { chars = []; }
+          const charByFile = new Map();
+          for (const c of chars) {
+            const id = 'tg:character:' + (c.fileName || c.frontmatter?.name);
+            const label = c.frontmatter?.name || c.fileName?.replace(/\.(md|json)$/, '') || 'Character';
+            nodes.push({
+              id, label,
+              domain: 'character',
+              icon: '🧑‍🎤',
+              weight: 4,
+              meta: { type: 'tg-character', fileName: c.fileName },
+            });
+            edges.push({ source: rootId, target: id, kind: 'contains' });
+            charByFile.set(c.fileName, id);
+          }
+
+          let threads = [];
+          try { threads = await listThreads(fs, workspaceUri); } catch { threads = []; }
+          for (const t of threads) {
+            const id = 'tg:thread:' + t.id;
+            nodes.push({
+              id,
+              label: t.title || 'Untitled chat',
+              domain: 'chat',
+              weight: 3,
+              meta: { type: 'tg-thread', threadId: t.id },
+            });
+            edges.push({ source: rootId, target: id, kind: 'contains' });
+            // Edge from thread to each participating character.
+            const refs = Array.isArray(t.characters) ? t.characters : [];
+            for (const ref of refs) {
+              const cid = charByFile.get(ref?.file || ref);
+              if (cid) edges.push({ source: id, target: cid, kind: 'mention' });
+            }
+          }
+
+          return { nodes, edges };
+        } catch (err) {
+          console.warn('[TextGenerator] graph snapshot failed:', err);
+          return { nodes: [], edges: [] };
+        }
+      },
+    }));
+  }
+
   console.log('[TextGenerator] All providers registered');
 }
 

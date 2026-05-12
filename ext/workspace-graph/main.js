@@ -149,6 +149,19 @@ const _model = {
   async refresh() {
     if (!this._api) return;
     const data = await buildGraphData(this._api);
+    // Carry over positions of nodes that still exist, and mark
+    // newly-introduced nodes for a brief "pulse" glow.
+    const prev = this.byId;
+    const now = performance.now();
+    for (const n of data.nodes) {
+      const old = prev.get(n.id);
+      if (old) {
+        n.x = old.x; n.y = old.y; n.vx = old.vx; n.vy = old.vy;
+        n.pinned = old.pinned; n.visible = old.visible;
+      } else {
+        n._pulseStart = now;  // pulse for ~1.5s after first appearance
+      }
+    }
     this.nodes = data.nodes;
     this.edges = data.edges;
     this.byId.clear();
@@ -452,7 +465,16 @@ async function buildGraphData(api) {
     _collectFiles(api, nodes, edges),
     _collectCanvasPages(api, nodes, edges),
     _collectSessions(api, nodes, edges),
+    _collectProviders(api, nodes, edges),
   ]);
+
+  // Drop edges that reference unknown nodes (provider may reference a
+  // file/page node id that wasn't included, e.g. a session referencing
+  // a deleted page).
+  const ids = new Set(nodes.map(n => n.id));
+  for (let i = edges.length - 1; i >= 0; i--) {
+    if (!ids.has(edges[i].source) || !ids.has(edges[i].target)) edges.splice(i, 1);
+  }
 
   _computeNodeSizes(nodes, edges);
 
@@ -539,6 +561,64 @@ async function _collectSessions(api, nodes, edges) {
     const nodeId = 'session:' + entry.name;
     const label = entry.name.replace('.json', '');
     nodes.push(_makeNode(nodeId, label, 'session', DOMAIN_COLORS.session, 3, { type: 'session', fileName: entry.name }));
+  }
+}
+
+// ── Contributor providers (parallx.workspaceGraph.registerProvider) ──
+// Each extension can contribute its own nodes/edges. Provider results are
+// merged on every refresh. Duplicate ids (e.g. two providers contributing
+// the same file:... node) are deduped: first registration wins.
+const PROVIDER_DOMAIN_COLORS = {
+  budget:    '#f0c674',
+  media:     '#7ec4f4',
+  character: '#e29bd6',
+  chat:      '#d4925a',
+};
+
+function _domainColor(domain) {
+  if (DOMAIN_COLORS[domain]) return DOMAIN_COLORS[domain];
+  if (PROVIDER_DOMAIN_COLORS[domain]) return PROVIDER_DOMAIN_COLORS[domain];
+  // Deterministic fallback color from domain string.
+  let h = 0;
+  for (let i = 0; i < domain.length; i++) h = (h * 31 + domain.charCodeAt(i)) | 0;
+  const hue = ((h >>> 0) % 360);
+  return `hsl(${hue}, 55%, 65%)`;
+}
+
+async function _collectProviders(api, nodes, edges) {
+  if (!api.workspaceGraph || typeof api.workspaceGraph.getAll !== 'function') return;
+  const list = api.workspaceGraph.getAll();
+  if (!list || list.length === 0) return;
+  const seen = new Set(nodes.map(n => n.id));
+  for (const provider of list) {
+    let snap;
+    try {
+      snap = await provider.snapshot();
+    } catch (err) {
+      console.warn(`[WorkspaceGraph] Provider "${provider.id}" snapshot failed:`, err);
+      continue;
+    }
+    if (!snap) continue;
+    if (Array.isArray(snap.nodes)) {
+      for (const pn of snap.nodes) {
+        if (!pn || !pn.id || seen.has(pn.id)) continue;
+        seen.add(pn.id);
+        const label = (pn.icon ? pn.icon + ' ' : '') + (pn.label || pn.id);
+        const color = pn.color || _domainColor(pn.domain || provider.id);
+        const radius = pn.weight ? Math.max(2, Math.min(8, pn.weight)) : 3;
+        const node = _makeNode(pn.id, label, pn.domain || provider.id, color, radius, {
+          ...(pn.meta || {}),
+          providerId: provider.id,
+        });
+        nodes.push(node);
+      }
+    }
+    if (Array.isArray(snap.edges)) {
+      for (const pe of snap.edges) {
+        if (!pe || !pe.source || !pe.target) continue;
+        edges.push({ source: pe.source, target: pe.target, kind: pe.kind });
+      }
+    }
   }
 }
 
@@ -640,12 +720,32 @@ function drawGraph(ctx, cvs, nodes, edges, byId, view, selected, hovered, showEd
   }
 
   // ── Nodes: filled circles, no borders (Obsidian style) ──
+  const nowMs = performance.now();
   for (const n of nodes) {
     if (!n.visible) continue;
     const isHov = hovered && n.id === hovered.id;
     const isConn = hasHov && hovConn.has(n.id);
     const dim = hasHov && !isHov && !isConn;
     const r = n.radius * (isHov ? 1.15 : 1);
+
+    // Pulse glow for nodes that just appeared (provider contributions,
+    // new files, etc.). Decays linearly over 1500 ms.
+    let pulse = 0;
+    if (n._pulseStart) {
+      const age = nowMs - n._pulseStart;
+      if (age >= 0 && age < 1500) {
+        pulse = 1 - age / 1500;
+      } else {
+        n._pulseStart = 0;
+      }
+    }
+
+    if (pulse > 0) {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r + 4 + pulse * 8, 0, Math.PI * 2);
+      ctx.fillStyle = _rgba(n.color, 0.25 * pulse);
+      ctx.fill();
+    }
 
     ctx.beginPath();
     ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
@@ -1334,6 +1434,43 @@ export async function activate(api, context) {
     api.editors.openEditor({ typeId: 'workspace-graph', title: 'Workspace Graph', icon: 'codicon-graph', instanceId: 'main' });
   });
   context.subscriptions.push(refreshCmd);
+
+  // ── Live event subscriptions ──
+  // Drive `_model.refresh()` whenever something we care about changes.
+  // Debounced to coalesce bursts (e.g. editor open + tab change at once).
+  // The model is shared, so both the sidebar and the editor pick up the
+  // new data on the next animation frame.
+  let _refreshTimer = null;
+  const _scheduleRefresh = (delay = 400) => {
+    if (_refreshTimer) return;
+    _refreshTimer = setTimeout(() => {
+      _refreshTimer = null;
+      if (_model._api) _model.refresh().catch(err => console.warn('[WorkspaceGraph] refresh failed:', err));
+    }, delay);
+  };
+
+  // Provider contributions (extensions register/unregister/notifyChange).
+  if (api.workspaceGraph && typeof api.workspaceGraph.onDidChange === 'function') {
+    context.subscriptions.push(api.workspaceGraph.onDidChange(() => _scheduleRefresh(200)));
+  }
+  // Editor lifecycle — opening/closing a tab often correlates with new
+  // file or session activity.
+  if (api.editors && typeof api.editors.onDidChangeOpenEditors === 'function') {
+    context.subscriptions.push(api.editors.onDidChangeOpenEditors(() => _scheduleRefresh(800)));
+  }
+  // Workspace folder changes.
+  if (api.workspace && typeof api.workspace.onDidChangeWorkspaceFolders === 'function') {
+    context.subscriptions.push(api.workspace.onDidChangeWorkspaceFolders(() => _scheduleRefresh(200)));
+  }
+  // Link contract changes (new extension links → new cross-domain edges
+  // when providers consume them).
+  if (api.links && typeof api.links.onDidChangeContracts === 'function') {
+    context.subscriptions.push(api.links.onDidChangeContracts(() => _scheduleRefresh(800)));
+  }
+  // Periodic re-scan for file/session changes that don't fire events.
+  // Cheap — _collectFiles walks 3 levels deep with hidden-dir filtering.
+  const _periodicTimer = setInterval(() => _scheduleRefresh(0), 30_000);
+  context.subscriptions.push({ dispose: () => clearInterval(_periodicTimer) });
 
   // M66 link contract — `parallx://workspace-graph/node/<nodeId>` opens the
   // graph editor focused on the given node. Iter A opens the graph; per-node

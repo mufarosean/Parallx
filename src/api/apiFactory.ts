@@ -41,6 +41,10 @@ import { McpBridge, type IMcpInvokeToken, type IMcpInvokeResult, type IMcpToolIn
 import { CronBridge, type IExtensionCronJob } from './bridges/cronBridge.js';
 import { ICronService } from '../openclaw/openclawCronService.js';
 import { LinksBridge, type LinkContractInput } from './bridges/linksBridge.js';
+import {
+  WorkspaceGraphBridge,
+  type GraphProvider,
+} from './bridges/workspaceGraphBridge.js';
 import { ILinkResolverService, type LinkContract, type LinkMetadata } from '../links/linkResolverService.js';
 import type { ParsedLink } from '../links/parallxUri.js';
 import type { IThemeService } from '../services/serviceTypes.js';
@@ -177,6 +181,16 @@ export interface ParallxApiObject {
     allContracts(): readonly LinkContract[];
     resolveMetadata(uri: string): Promise<LinkMetadata | null>;
     onDidChangeContracts(listener: () => void): IDisposable;
+  };
+  readonly workspaceGraph: {
+    /** Register a data provider that contributes nodes/edges to the workspace graph. */
+    registerProvider(provider: GraphProvider): IDisposable;
+    /** Signal that one of this tool's providers has updated data. */
+    notifyChange(): void;
+    /** Subscribe to global graph-data changes (any provider added/removed/changed). */
+    onDidChange(listener: () => void): IDisposable;
+    /** Return all currently-registered providers across every tool. */
+    getAll(): readonly GraphProvider[];
   };
   readonly tools: {
     getAll(): { id: string; name: string; version: string; publisher: string; description: string; isBuiltin: boolean; toolPath: string; state: string; activationEvents: readonly string[]; contributes: Record<string, unknown> }[];
@@ -391,6 +405,10 @@ export function createToolApi(
     : undefined;
   const linksBridge = new LinksBridge(toolId, linkResolverService, subscriptions);
 
+  // M66+ — Workspace graph contributor API. Pure registry; no service needed.
+  const workspaceGraphBridge = new WorkspaceGraphBridge(toolId, subscriptions);
+  subscriptions.push(workspaceGraphBridge);
+
   // ── Build API object ──
   const api: ParallxApiObject = {
     views: Object.freeze({
@@ -591,6 +609,13 @@ export function createToolApi(
       allContracts: () => linksBridge.allContracts(),
       resolveMetadata: (uri: string) => linksBridge.resolveMetadata(uri),
       onDidChangeContracts: (listener: () => void) => linksBridge.onDidChangeContracts(listener),
+    }),
+
+    workspaceGraph: Object.freeze({
+      registerProvider: (provider: GraphProvider) => workspaceGraphBridge.registerProvider(provider),
+      notifyChange: () => workspaceGraphBridge.notifyChange(),
+      onDidChange: (listener: () => void) => workspaceGraphBridge.onDidChange(listener),
+      getAll: () => workspaceGraphBridge.getAll(),
     }),
 
     tools: Object.freeze({

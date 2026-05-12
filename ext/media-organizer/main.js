@@ -20958,6 +20958,61 @@ export async function activate(api, context) {
 
   console.log('[MediaOrganizer] Activated — D1-D8 ready (data, scan, thumbnails, tags, grid, filter, detail, albums)');
 
+  // ── Workspace graph provider ────────────────────────────────────────
+  // Contributes a media root, albums, and tags. Photos/videos themselves
+  // are NOT contributed individually (a library can easily exceed 10k
+  // items — the graph would melt). Albums and tags are the right
+  // abstraction for visualization.
+  if (api.workspaceGraph && typeof api.workspaceGraph.registerProvider === 'function') {
+    _disposables.push(api.workspaceGraph.registerProvider({
+      id: 'media-organizer',
+      displayName: 'Media',
+      async snapshot() {
+        try {
+          const rootId = 'media:root';
+          const nodes = [{
+            id: rootId,
+            label: 'Media',
+            domain: 'media',
+            icon: '🖼️',
+            weight: 6,
+            meta: { type: 'media-root' },
+          }];
+          const edges = [];
+
+          let albums = [];
+          try { albums = await db.all('SELECT id, title FROM mo_albums LIMIT 200'); } catch { albums = []; }
+          for (const a of albums) {
+            const id = 'media:album:' + a.id;
+            nodes.push({
+              id, label: a.title || 'Untitled album',
+              domain: 'media', icon: '📁', weight: 4,
+              meta: { type: 'media-album', albumId: a.id },
+            });
+            edges.push({ source: rootId, target: id, kind: 'contains' });
+          }
+
+          let tags = [];
+          try { tags = await db.all('SELECT id, name FROM mo_tags LIMIT 200'); } catch { tags = []; }
+          for (const t of tags) {
+            const id = 'media:tag:' + t.id;
+            nodes.push({
+              id, label: '#' + t.name,
+              domain: 'media', weight: 2,
+              meta: { type: 'media-tag', tagId: t.id },
+            });
+            edges.push({ source: rootId, target: id, kind: 'tag' });
+          }
+
+          return { nodes, edges };
+        } catch (err) {
+          console.warn('[MediaOrganizer] graph snapshot failed:', err);
+          return { nodes: [], edges: [] };
+        }
+      },
+    }));
+  }
+
   // Resume file watchers for previously scanned directories + run delta scan
   resumeWatchersAndDeltaScan(api);
 }
