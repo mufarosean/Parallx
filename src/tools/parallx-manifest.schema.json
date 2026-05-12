@@ -148,6 +148,17 @@
               "when": { "type": "string" }
             }
           }
+        },
+        "editors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["typeId"],
+            "properties": {
+              "typeId": { "type": "string", "minLength": 1 },
+              "displayName": { "type": "string" }
+            }
+          }
         }
       },
       "additionalProperties": true

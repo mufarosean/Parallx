@@ -60,6 +60,10 @@
       {
         "typeId": "text-generator-chat-settings",
         "displayName": "Chat Settings"
+      },
+      {
+        "typeId": "text-generator-character-editor",
+        "displayName": "Character Editor"
       }
     ],
     "viewContainers": [
