@@ -56,7 +56,7 @@ import {
 } from '../workspace/workspaceTypes.js';
 import type { SerializedEditorSnapshot, SerializedEditorInputSnapshot } from '../workspace/workspaceTypes.js';
 import { createDefaultLayoutState } from '../layout/layoutModel.js';
-import { registerBuiltinEditorDeserializers, deserializeEditorInput } from '../editor/editorInputDeserializer.js';
+import { registerBuiltinEditorDeserializers, deserializeEditorInput, hasEditorInputDeserializer } from '../editor/editorInputDeserializer.js';
 
 // Commands
 import { CommandService } from '../commands/commandRegistry.js';
@@ -1163,10 +1163,14 @@ export class Workbench extends Layout {
     // PlaceholderEditorPane and render as plain text.
     this._initFileEditorResolver();
 
-    // Restore editor tabs from saved state (async, errors swallowed per-editor)
+    // Register built-in editor deserializers (File, PDF, Image, Markdown
+    // preview, Settings, Keybindings). Tool-backed editors register their
+    // own deserializers during activation via EditorsBridge.
+    // The actual editor restore is deferred to Phase 5 (after tools have
+    // activated) so canvas/budget/media-organizer/workspace-graph/etc.
+    // tabs can be reconstructed too.
     if (this._restoredState?.editors) {
       this._registerEditorDeserializers();
-      await this._restoreEditors(this._restoredState.editors);
     }
 
     // Persist the initial state so there is always a storage entry for the
@@ -1482,6 +1486,13 @@ export class Workbench extends Layout {
    * Reopen editors from a serialized snapshot.
    * Creates additional editor groups as needed.
    * Errors for individual editors are swallowed — partial restore is acceptable.
+   *
+   * Called in Phase 5 (after tool activation) so tool-backed editors
+   * (canvas, budget, workspace-graph, media-organizer, text-generator) can be
+   * restored alongside built-in editors (files, PDFs, images, etc.). For
+   * editors whose owning tool has not yet activated (e.g. an external tool
+   * with `onCommand` activation), the owning tool is activated on demand from
+   * its manifest's `contributes.editors[].typeId` mapping.
    */
   private async _restoreEditors(snapshot: SerializedEditorSnapshot): Promise<void> {
     const editorPart = this._editor as EditorPart;
@@ -1489,6 +1500,11 @@ export class Workbench extends Layout {
     // Filter out groups with no restorable editors
     const nonEmptyGroups = snapshot.groups.filter(g => g.editors.length > 0);
     if (nonEmptyGroups.length === 0) return;
+
+    // Build typeId → toolId map from all registered tools' manifests so we can
+    // proactively activate the owning tool for a tool-backed editor whose
+    // deserializer isn't registered yet (lazy-activated tools).
+    const editorTypeOwners = this._collectEditorTypeOwners();
 
     for (let gi = 0; gi < nonEmptyGroups.length; gi++) {
       const groupSnap = nonEmptyGroups[gi];
@@ -1504,6 +1520,26 @@ export class Workbench extends Layout {
       for (let ei = 0; ei < groupSnap.editors.length; ei++) {
         const editorSnap = groupSnap.editors[ei];
         try {
+          // If no deserializer is registered for this typeId yet, try to
+          // activate the owning tool (lazy activation). After activation, the
+          // tool's EditorsBridge will have registered the deserializer.
+          if (!hasEditorInputDeserializer(editorSnap.typeId)) {
+            const ownerToolId =
+              (typeof editorSnap.data?.ownerToolId === 'string'
+                ? (editorSnap.data.ownerToolId as string)
+                : undefined)
+              ?? editorTypeOwners.get(editorSnap.typeId);
+            if (ownerToolId && this._toolActivator) {
+              try {
+                if (!this._toolActivator.isActivated(ownerToolId)) {
+                  await this._toolActivator.activate(ownerToolId);
+                }
+              } catch (err) {
+                console.warn('[Workbench] Failed to activate tool "%s" for restored editor "%s":', ownerToolId, editorSnap.typeId, err);
+              }
+            }
+          }
+
           const input = deserializeEditorInput(editorSnap.typeId, editorSnap.data);
           if (!input) continue;
 
@@ -1533,6 +1569,27 @@ export class Workbench extends Layout {
     }
 
     console.log('[Workbench] Restored %d editor group(s)', nonEmptyGroups.length);
+  }
+
+  /**
+   * Scan the tool registry for `contributes.editors[].typeId` and build a
+   * `typeId → toolId` map. Used during editor restore to look up the owning
+   * tool for an editor that needs lazy activation.
+   */
+  private _collectEditorTypeOwners(): Map<string, string> {
+    const map = new Map<string, string>();
+    if (!this._services.has(IToolRegistryService)) return map;
+    const registry = this._services.get(IToolRegistryService) as unknown as ToolRegistry;
+    for (const entry of registry.getAll()) {
+      const editors = entry.description.manifest.contributes?.editors;
+      if (!editors) continue;
+      for (const ed of editors) {
+        if (ed.typeId && !map.has(ed.typeId)) {
+          map.set(ed.typeId, entry.description.manifest.id);
+        }
+      }
+    }
+    return map;
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -2439,6 +2496,16 @@ export class Workbench extends Layout {
     // layout pass. Re-layout all view containers so contributed views like
     // the chat aux bar panel render at correct dimensions immediately.
     this._layoutViewContainers();
+
+    // ── Restore editor tabs (deferred from Phase 4) ──
+    // We delay editor restore until after tool activation so that tool-backed
+    // editors (canvas pages, budget, workspace-graph, media-organizer,
+    // text-generator) can be reconstructed. _restoreEditors itself will
+    // activate any owning tool that hasn't activated yet so editors backed by
+    // lazy-activated tools also survive a relaunch.
+    if (this._restoredState?.editors) {
+      await this._restoreEditors(this._restoredState.editors);
+    }
 
     // ── Wire tool install/uninstall callbacks for the API (M6 Package Install) ──
     // These callbacks are invoked by api.tools.installFromFile() and api.tools.uninstall()

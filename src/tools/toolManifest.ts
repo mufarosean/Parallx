@@ -175,6 +175,26 @@ export interface IManifestContributions {
    * VS Code reference: `statusBarExtensionPoint.ts` — `contributes.statusBar`.
    */
   readonly statusBar?: readonly IManifestStatusBarEntry[];
+  /**
+   * Editor type IDs contributed by this tool. Used at workspace restore time
+   * to map a serialized editor's typeId back to its owning tool so the tool
+   * can be activated before deserialization. The provider itself is wired in
+   * `activate()` via `api.editors.registerEditorProvider(typeId, ...)`.
+   */
+  readonly editors?: readonly IManifestEditorDescriptor[];
+}
+
+/**
+ * An editor type contributed by a tool. The tool must call
+ * `api.editors.registerEditorProvider(typeId, ...)` during activation
+ * to wire the actual provider; this descriptor only declares the typeId
+ * up-front so the workbench can map restored editors back to their tool.
+ */
+export interface IManifestEditorDescriptor {
+  /** Unique editor type identifier (e.g. 'canvas', 'budget.editor'). */
+  readonly typeId: string;
+  /** Human-readable name (shown in editor type pickers). */
+  readonly displayName?: string;
 }
 
 /**

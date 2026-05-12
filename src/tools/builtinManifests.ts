@@ -113,6 +113,7 @@ export const WELCOME_MANIFEST: IToolManifest = {
   activationEvents: ['onStartupFinished'],
   contributes: {
     commands: [{ id: 'welcome.openWelcome', title: 'Welcome: Show Welcome Page' }],
+    editors: [{ typeId: 'parallx.welcome.editor', displayName: 'Welcome' }],
   },
 };
 
@@ -217,6 +218,7 @@ export const TOOL_GALLERY_MANIFEST: IToolManifest = {
       { id: 'tools-container', title: 'Tools', icon: 'puzzle', location: 'sidebar' as const },
     ],
     views: [{ id: 'view.tools', name: 'Installed Tools', defaultContainerId: 'tools-container' }],
+    editors: [{ typeId: 'tool-detail', displayName: 'Tool Details' }],
   },
 };
 
@@ -311,6 +313,7 @@ export const CANVAS_MANIFEST: IToolManifest = {
     views: [
       { id: 'view.canvas', name: 'Pages', defaultContainerId: 'canvas-container' },
     ],
+    editors: [{ typeId: 'canvas', displayName: 'Canvas Page' }],
   },
 };
 
@@ -333,6 +336,7 @@ export const THEME_EDITOR_MANIFEST: IToolManifest = {
     keybindings: [
       { command: 'theme-editor.open', key: 'Ctrl+Shift+T' },
     ],
+    editors: [{ typeId: 'parallx.theme-editor', displayName: 'Theme Editor' }],
   },
 };
 

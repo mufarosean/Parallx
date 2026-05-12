@@ -9,6 +9,10 @@ import { IDisposable, toDisposable } from '../../platform/lifecycle.js';
 import { EditorInput, type IEditorInput } from '../../editor/editorInput.js';
 import type { SerializedEditorEntry } from '../../editor/editorTypes.js';
 import type { IEditorService, OpenEditorDescriptor } from '../../services/serviceTypes.js';
+import {
+  registerEditorInputDeserializer,
+  hasEditorInputDeserializer,
+} from '../../editor/editorInputDeserializer.js';
 
 // ─── File Editor Resolver ────────────────────────────────────────────────────
 
@@ -30,6 +34,30 @@ let _fileEditorResolver: FileEditorResolverFn | undefined;
  */
 export function setFileEditorResolver(resolver: FileEditorResolverFn): void {
   _fileEditorResolver = resolver;
+}
+
+// ─── Tool Editor Provider Registry (module-global) ───────────────────────────
+//
+// Tool-backed editors share a single editor input class (`ToolEditorInput`) but
+// each has its own `typeId` (e.g. 'canvas', 'budget.editor'). On workspace
+// restore, the workbench needs to (a) know which tool owns a given typeId so it
+// can activate that tool, and (b) look up the live provider to reconstruct the
+// input. Both pieces live here so they survive across bridge instances and are
+// reachable from the static deserializer.
+
+interface ToolEditorProviderEntry {
+  readonly toolId: string;
+  readonly provider: ToolEditorProvider;
+}
+
+const _toolEditorProviders = new Map<string, ToolEditorProviderEntry>();
+
+/**
+ * Look up the owning tool id for a registered editor typeId.
+ * Returns undefined if no provider is currently registered.
+ */
+export function getToolEditorOwner(typeId: string): string | undefined {
+  return _toolEditorProviders.get(typeId)?.toolId;
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -86,10 +114,34 @@ export class EditorsBridge {
     }
 
     this._providers.set(typeId, provider);
+    _toolEditorProviders.set(typeId, { toolId: this._toolId, provider });
+
+    // Register a workspace-restore deserializer for this typeId. The factory
+    // reads the live provider entry so it picks up the current registration
+    // even if the tool is deactivated+reactivated. Registration is idempotent
+    // across reloads (registerEditorInputDeserializer warns + overwrites).
+    if (!hasEditorInputDeserializer(typeId)) {
+      registerEditorInputDeserializer(typeId, (data) => {
+        const entry = _toolEditorProviders.get(typeId);
+        if (!entry) return null;
+        const inputId = typeof data?.inputId === 'string'
+          ? (data.inputId as string)
+          : `${entry.toolId}:${typeId}:${Date.now()}`;
+        const name = typeof data?.name === 'string' ? (data.name as string) : typeId;
+        const icon = typeof data?.icon === 'string' ? (data.icon as string) : undefined;
+        return new ToolEditorInput(typeId, name, icon, entry.provider, inputId, entry.toolId);
+      });
+    }
+
     console.log(`[EditorsBridge] Tool "${this._toolId}" registered editor provider: ${typeId}`);
 
     const disposable = toDisposable(() => {
       this._providers.delete(typeId);
+      // Only clear the global entry if it still points at this bridge's provider.
+      const current = _toolEditorProviders.get(typeId);
+      if (current && current.provider === provider) {
+        _toolEditorProviders.delete(typeId);
+      }
     });
 
     this._registrations.push(disposable);
@@ -284,7 +336,14 @@ class ToolEditorInput extends EditorInput {
       name: this._name,
       pinned: true,
       sticky: false,
-      data: { icon: this._icon },
+      // Mirror inputId/name/ownerToolId into `data` so the deserializer (which
+      // only receives `data`) can fully reconstruct the input on restore.
+      data: {
+        inputId: this.id,
+        name: this._name,
+        icon: this._icon,
+        ownerToolId: this.ownerToolId,
+      },
     };
   }
 }
