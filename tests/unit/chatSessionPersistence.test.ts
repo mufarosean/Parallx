@@ -47,13 +47,11 @@ function createMockDb(): IChatPersistenceDatabase & {
       return [];
     },
 
-    async runTransaction(fn: (tx: { run: (sql: string, params?: unknown[]) => Promise<void> }) => Promise<void>): Promise<void> {
-      const tx = {
-        async run(sql: string, params?: unknown[]): Promise<void> {
-          db._runCalls.push({ sql, params });
-        },
-      };
-      await fn(tx);
+    async runTransaction(operations: Array<{ type: string; sql: string; params?: unknown[] }>): Promise<unknown[]> {
+      for (const op of operations) {
+        db._runCalls.push({ sql: op.sql, params: op.params });
+      }
+      return operations.map(() => ({ changes: 0 }));
     },
 
     isOpen: true,

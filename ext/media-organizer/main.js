@@ -20964,7 +20964,7 @@ export async function activate(api, context) {
   // items — the graph would melt). Albums and tags are the right
   // abstraction for visualization.
   if (api.workspaceGraph && typeof api.workspaceGraph.registerProvider === 'function') {
-    _disposables.push(api.workspaceGraph.registerProvider({
+    _commandDisposables.push(api.workspaceGraph.registerProvider({
       id: 'media-organizer',
       displayName: 'Media',
       async snapshot() {

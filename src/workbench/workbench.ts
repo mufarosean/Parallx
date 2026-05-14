@@ -2210,6 +2210,25 @@ export class Workbench extends Layout {
       ? this._services.get(INotificationService)
       : undefined;
 
+    // ── Surface activation / module-load errors to the user ──
+    // A throw inside an extension's activate() is caught by the tool
+    // activator, which disposes everything the extension had registered
+    // up to that point. Without a visible signal the extension appears
+    // half-alive (sidebar painted, but every API call no-ops). Surface
+    // these as error notifications so a single typo can't silently break
+    // an extension for days. Non-activation errors (command handlers,
+    // view callbacks, etc.) stay in the console to avoid notification
+    // noise during normal use.
+    if (notificationService) {
+      this._register(errorService.onDidRecordError((evt) => {
+        if (evt.context !== 'activation' && evt.context !== 'module-load') return;
+        const label = evt.context === 'module-load' ? 'failed to load' : 'failed to activate';
+        void notificationService.error(
+          `Extension "${evt.toolId}" ${label}: ${evt.message}`,
+        );
+      }));
+    }
+
     // ── Surface Router (M58 W6) ──
     // Instantiate the workbench-owned SurfaceRouter + register the plugins
     // whose dependencies (status bar, notification service) are already

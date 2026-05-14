@@ -24,13 +24,31 @@ import { ChatMode } from './chatTypes.js';
 // ── Database interface (subset of IDatabaseService) ──
 
 /**
+ * A single operation executed inside a `runTransaction` batch.
+ * Matches the shape consumed by the main-process IPC handler.
+ */
+export interface IChatPersistenceTxnOp {
+  type: 'run' | 'get' | 'all';
+  sql: string;
+  params?: unknown[];
+}
+
+/**
  * Minimal database interface required by the persistence layer.
  * Decoupled from the full IDatabaseService to keep the module testable.
+ *
+ * `runTransaction` is OPTIONAL — when present, `saveSession` uses it to
+ * collapse the per-message INSERT loop into a single IPC round-trip.
+ * This is critical for renderer responsiveness: each individual `run()`
+ * is a separate Electron IPC + synchronous better-sqlite3 call on the
+ * main process. A session with N message pairs would otherwise issue
+ * 2N+3 IPCs per save, each serialized on the main-process JS thread.
  */
 export interface IChatPersistenceDatabase {
   run(sql: string, params?: unknown[]): Promise<{ changes: number }>;
   get<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T | null>;
   all<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>;
+  runTransaction?(operations: IChatPersistenceTxnOp[]): Promise<unknown[]>;
   readonly isOpen: boolean;
 }
 
@@ -146,27 +164,30 @@ export async function saveSession(db: IChatPersistenceDatabase, session: IChatSe
   // W5-A: ephemeral sessions never touch SQLite. Isolation invariant.
   if (isEphemeralSessionId(session.id)) { return; }
 
-  await db.run('BEGIN IMMEDIATE');
-  try {
-    // Upsert session row
-    await db.run(
-      `INSERT OR REPLACE INTO chat_sessions (id, workspace_id, title, mode, model_id, context_window_override, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [session.id, workspaceId, session.title, session.mode, session.modelId, session.contextWindowOverride ?? null, session.createdAt, Date.now()],
-    );
+  const sessionInsertSql = `INSERT OR REPLACE INTO chat_sessions (id, workspace_id, title, mode, model_id, context_window_override, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+  const sessionInsertParams = [
+    session.id,
+    workspaceId,
+    session.title,
+    session.mode,
+    session.modelId,
+    session.contextWindowOverride ?? null,
+    session.createdAt,
+    Date.now(),
+  ];
+  const deleteMessagesSql = `DELETE FROM chat_messages WHERE session_id = ?`;
+  const messageInsertSql = `INSERT INTO chat_messages (session_id, role, content, parts_json, model_id, is_complete, timestamp, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
 
-    // Delete existing messages for this session (full replace)
-    await db.run(`DELETE FROM chat_messages WHERE session_id = ?`, [session.id]);
-
-    // Insert all message pairs
+  const buildMessageOps = (): IChatPersistenceTxnOp[] => {
+    const ops: IChatPersistenceTxnOp[] = [];
     for (let i = 0; i < session.messages.length; i++) {
       const pair = session.messages[i];
-
-      // User message
-      await db.run(
-        `INSERT INTO chat_messages (session_id, role, content, parts_json, model_id, is_complete, timestamp, sort_order)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
+      ops.push({
+        type: 'run',
+        sql: messageInsertSql,
+        params: [
           session.id,
           'user',
           pair.request.text,
@@ -176,13 +197,11 @@ export async function saveSession(db: IChatPersistenceDatabase, session: IChatSe
           pair.request.timestamp,
           i * 2,
         ],
-      );
-
-      // Assistant response
-      await db.run(
-        `INSERT INTO chat_messages (session_id, role, content, parts_json, model_id, is_complete, timestamp, sort_order)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
+      });
+      ops.push({
+        type: 'run',
+        sql: messageInsertSql,
+        params: [
           session.id,
           'assistant',
           _extractTextContent(pair.response.parts),
@@ -192,9 +211,35 @@ export async function saveSession(db: IChatPersistenceDatabase, session: IChatSe
           pair.response.timestamp,
           i * 2 + 1,
         ],
-      );
+      });
     }
+    return ops;
+  };
 
+  // Fast path — one IPC round-trip. The main-process handler wraps every
+  // op in a single IMMEDIATE transaction. This avoids issuing 2N+3 awaited
+  // IPCs per save, which (for sessions with hundreds of messages) blocks
+  // the main-process JS thread for seconds and starves every other
+  // ipcMain handler on the same loop (extension DB calls, file watcher
+  // events, etc.).
+  if (typeof db.runTransaction === 'function') {
+    const ops: IChatPersistenceTxnOp[] = [
+      { type: 'run', sql: sessionInsertSql, params: sessionInsertParams },
+      { type: 'run', sql: deleteMessagesSql, params: [session.id] },
+      ...buildMessageOps(),
+    ];
+    await db.runTransaction(ops);
+    return;
+  }
+
+  // Fallback path — used by test mocks that don't implement runTransaction.
+  await db.run('BEGIN IMMEDIATE');
+  try {
+    await db.run(sessionInsertSql, sessionInsertParams);
+    await db.run(deleteMessagesSql, [session.id]);
+    for (const op of buildMessageOps()) {
+      await db.run(op.sql, op.params);
+    }
     await db.run('COMMIT');
   } catch (err) {
     await db.run('ROLLBACK').catch(() => { /* rollback best-effort */ });
