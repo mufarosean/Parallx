@@ -86,33 +86,42 @@ This milestone has a stricter performance contract than a normal feature:
    - Opening the graph must not call `IEmbeddingService.embedQuery`,
      `embedDocument`, `embedDocumentBatch`, or any Ollama endpoint.
 
-2. **No all-pairs comparison.**
+2. **Core AI approval gate.**
+   - Any change to core embedding behavior, Ollama transport/configuration,
+     local model loading, chat model routing, or AI system prompts is out of
+     scope unless the user explicitly approves it first.
+   - M68 implementation should prefer additive helpers around stored vector
+     data. Do not modify the embedding model, embedding prefixes, Ollama
+     endpoints, chat model lifecycle, or AI settings defaults as an incidental
+     part of this work.
+
+3. **No all-pairs comparison.**
    - Do not compare every source to every other source.
    - For a changed source, compute one source centroid from stored vectors,
      run vector KNN, then collapse candidates into source-level edges.
 
-3. **Incremental first.**
+4. **Incremental first.**
    - Recompute only sources whose indexed content hash changed.
    - Full rebuild is allowed only as an explicit maintenance operation or first
      cache build after M68 lands.
 
-4. **Single low-priority worker loop.**
+5. **Single low-priority worker loop.**
    - Concurrency: 1.
    - Debounced after indexing updates.
    - Use idle/yield slices so renderer work stays responsive.
    - Pause or defer while indexing is actively running.
 
-5. **Aggressive caps.**
+6. **Aggressive caps.**
    - Default top semantic links per source: 3.
    - Default minimum similarity threshold: TBD, initial target 0.72.
    - Default max semantic edges contributed to graph: 500.
    - Overfetch candidates from vector search, then collapse/dedupe.
 
-6. **Cheap graph snapshot.**
+7. **Cheap graph snapshot.**
    - Provider snapshot should be a DB/cache read plus object mapping.
    - No text parsing, no embedding, no vector KNN, no file walking.
 
-7. **User control.**
+8. **User control.**
    - Workspace Graph gets a `Conceptual Links` toggle.
    - If cache is empty or stale, the graph still opens normally.
 
@@ -342,12 +351,14 @@ M68 is complete when:
 2. Semantic links are optional and visually distinct from structural links.
 3. The graph provider reads cached semantic edges only.
 4. No Workspace Graph path calls `IEmbeddingService` or Ollama.
-5. Recompute is debounced, incremental, and concurrency-limited.
-6. Semantic edges are capped by threshold, per-node top-N, and max total graph
+5. No core embedding, Ollama, chat model, or AI system behavior is changed
+   without explicit user approval.
+6. Recompute is debounced, incremental, and concurrency-limited.
+7. Semantic edges are capped by threshold, per-node top-N, and max total graph
    edges.
-7. Files and pages use stable node ids compatible with existing Workspace Graph
+8. Files and pages use stable node ids compatible with existing Workspace Graph
    nodes.
-8. Tests prove self-links, duplicates, stale edges, and embedding-service calls
+9. Tests prove self-links, duplicates, stale edges, and embedding-service calls
    are handled correctly.
 
 ## Risk register
@@ -401,4 +412,3 @@ M68 is complete when:
 | B - Incremental builder | pending | - | - |
 | C - Workspace Graph integration | pending | - | - |
 | D - Bake and tune | pending | - | - |
-
