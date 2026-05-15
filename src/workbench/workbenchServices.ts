@@ -3,7 +3,7 @@
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager } from '../services/serviceTypes.js';
 import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
-import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService, IUnifiedAIConfigService, IDocumentExtractionService, IDiagnosticsService, IObservabilityService, IRuntimeHookRegistry, IMcpClientService, IAutonomyLogService } from '../services/serviceTypes.js';
+import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService, IUnifiedAIConfigService, IDocumentExtractionService, IDiagnosticsService, IObservabilityService, IRuntimeHookRegistry, IMcpClientService, IAutonomyLogService, ISemanticGraphService } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
@@ -38,6 +38,7 @@ import { MemoryService } from '../services/memoryService.js';
 import { RelatedContentService } from '../services/relatedContentService.js';
 import { AutoTaggingService } from '../services/autoTaggingService.js';
 import { ProactiveSuggestionsService } from '../services/proactiveSuggestionsService.js';
+import { SemanticGraphService } from '../services/semanticGraphService.js';
 import { DocumentExtractionService } from '../services/documentExtractionService.js';
 import { UnifiedAIConfigService } from '../aiSettings/unifiedAIConfigService.js';
 import { DiagnosticsService } from '../services/diagnosticsService.js';
@@ -242,6 +243,7 @@ export function registerIndexingServices(
   relatedContentService: RelatedContentService;
   autoTaggingService: AutoTaggingService;
   proactiveSuggestionsService: ProactiveSuggestionsService;
+  semanticGraphService: SemanticGraphService;
 } {
   const databaseService = services.get(IDatabaseService);
   const fileService = services.get(IFileService);
@@ -283,6 +285,7 @@ export function registerIndexingServices(
 
   const relatedContentService = new RelatedContentService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
   const autoTaggingService = new AutoTaggingService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
+  const semanticGraphService = new SemanticGraphService(databaseService, vectorStoreService, indexingPipeline, workspaceService);
 
   // M40 Phase 6: Proactive suggestions read thresholds from unified effective config.
   const unifiedConfigService = services.has(IUnifiedAIConfigService) ? services.get(IUnifiedAIConfigService) : undefined;
@@ -291,6 +294,7 @@ export function registerIndexingServices(
   services.registerInstance(IRelatedContentService, relatedContentService);
   services.registerInstance(IAutoTaggingService, autoTaggingService);
   services.registerInstance(IProactiveSuggestionsService, proactiveSuggestionsService);
+  services.registerInstance(ISemanticGraphService, semanticGraphService);
 
   // ── D3: Diagnostics Service ──
   const diagnosticsService = new DiagnosticsService(
@@ -352,7 +356,7 @@ export function registerIndexingServices(
     getObservabilityMetrics: () => observabilityService.getSessionMetrics(),
   });
 
-  return { embeddingService, chunkingService, vectorStoreService, indexingPipeline, retrievalService, memoryService, relatedContentService, autoTaggingService, proactiveSuggestionsService };
+  return { embeddingService, chunkingService, vectorStoreService, indexingPipeline, retrievalService, memoryService, relatedContentService, autoTaggingService, proactiveSuggestionsService, semanticGraphService };
 }
 
 /**

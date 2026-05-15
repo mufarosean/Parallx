@@ -1492,6 +1492,9 @@ export interface IVectorStoreService extends IDisposable {
   /** Batch-fetch stored embeddings by rowid. Returns Map<rowid, float[]>. */
   getEmbeddings(rowids: number[]): Promise<Map<number, number[]>>;
 
+  /** Compute a centroid from stored vectors for one indexed source. Does not embed. */
+  getSourceCentroid(sourceType: string, sourceId: string): Promise<import('./vectorStoreService.js').SourceCentroid | undefined>;
+
   /**
    * Fetch nearby section/page companion chunks for a retrieved anchor.
    * Used by retrieval-time structure-aware expansion on hard documents.
@@ -1595,6 +1598,39 @@ export interface ICanvasPageQueryService {
 export const ICanvasPageQueryService = createServiceIdentifier<ICanvasPageQueryService>('ICanvasPageQueryService');
 
 export const IIndexingPipelineService = createServiceIdentifier<IIndexingPipelineService>('IIndexingPipelineService');
+
+// ─── ISemanticGraphService (M68) ───────────────────────────────────────────
+
+/**
+ * Builds and serves cached semantic edges for Workspace Graph from stored
+ * vector data. This service must not call embedding/model/Ollama paths.
+ */
+export interface ISemanticGraphService extends IDisposable {
+  /** Fires when cached semantic graph edges change. */
+  readonly onDidChangeEdges: Event<void>;
+
+  /** Start low-priority cache initialization. Safe to call multiple times. */
+  ensureCacheStarted(): void;
+
+  /** Queue one indexed source for semantic-edge recompute. */
+  scheduleSource(
+    sourceType: import('./semanticGraphService.js').SemanticGraphSourceType,
+    sourceId: string,
+  ): void;
+
+  /** Queue all indexed page/file sources whose cache may be stale. */
+  rebuildChangedSources(): Promise<void>;
+
+  /** Read cached semantic graph edges. Does not perform vector search. */
+  getCachedEdges(
+    options?: import('./semanticGraphService.js').SemanticGraphEdgeOptions,
+  ): Promise<import('./semanticGraphService.js').SemanticGraphEdge[]>;
+
+  /** Lightweight diagnostics for settings/logging surfaces. */
+  getStats(): Promise<import('./semanticGraphService.js').SemanticGraphStats>;
+}
+
+export const ISemanticGraphService = createServiceIdentifier<ISemanticGraphService>('ISemanticGraphService');
 
 // ─── IRetrievalService (M10 Task 3.1) ─────────────────────────────────────
 

@@ -158,6 +158,13 @@ export interface IndexingMeta {
   classificationReason?: string;
 }
 
+export interface SourceCentroid {
+  sourceType: string;
+  sourceId: string;
+  vector: number[];
+  chunkCount: number;
+}
+
 /** Statistics about the vector store. */
 export interface VectorStoreStats {
   totalChunks: number;
@@ -767,6 +774,55 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     return result;
   }
 
+  /**
+   * Compute a source-level centroid from embeddings already stored in sqlite-vec.
+   * This intentionally does not call the embedding service or Ollama; it is a
+   * read/average over the existing vector index.
+   */
+  async getSourceCentroid(sourceType: string, sourceId: string): Promise<SourceCentroid | undefined> {
+    const rows = await this._db.all<{ embedding: Uint8Array }>(
+      `SELECT embedding
+         FROM vec_embeddings
+        WHERE source_type = ? AND source_id = ?
+        ORDER BY CAST(chunk_index AS INTEGER) ASC`,
+      [sourceType, sourceId],
+    );
+    if (rows.length === 0) {
+      return undefined;
+    }
+
+    let centroid: number[] | undefined;
+    let chunkCount = 0;
+    for (const row of rows) {
+      const f32 = new Float32Array(
+        row.embedding.buffer,
+        row.embedding.byteOffset,
+        row.embedding.byteLength / 4,
+      );
+      if (!centroid) {
+        centroid = new Array(f32.length).fill(0);
+      }
+      if (f32.length !== centroid.length) {
+        continue;
+      }
+      for (let i = 0; i < f32.length; i++) {
+        centroid[i] += f32[i];
+      }
+      chunkCount++;
+    }
+
+    if (!centroid || chunkCount === 0) {
+      return undefined;
+    }
+
+    for (let i = 0; i < centroid.length; i++) {
+      centroid[i] /= chunkCount;
+    }
+    normalizeVectorInPlace(centroid);
+
+    return { sourceType, sourceId, vector: centroid, chunkCount };
+  }
+
   // ── Internal: Vector Search ──
 
   private async _vectorSearch(
@@ -1002,6 +1058,20 @@ function float32ArrayToBuffer(embedding: number[]): Uint8Array {
   const bytes = new Uint8Array(f32.byteLength);
   bytes.set(new Uint8Array(f32.buffer));
   return bytes;
+}
+
+function normalizeVectorInPlace(vector: number[]): void {
+  let sumSq = 0;
+  for (const value of vector) {
+    sumSq += value * value;
+  }
+  if (sumSq <= 0) {
+    return;
+  }
+  const invNorm = 1 / Math.sqrt(sumSq);
+  for (let i = 0; i < vector.length; i++) {
+    vector[i] *= invNorm;
+  }
 }
 
 /**

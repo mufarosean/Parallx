@@ -737,4 +737,31 @@ describe('VectorStoreService', () => {
       expect(result.size).toBe(0);
     });
   });
+
+  describe('getSourceCentroid()', () => {
+    it('returns undefined when the source has no stored vectors', async () => {
+      db.all.mockResolvedValueOnce([]);
+
+      const result = await service.getSourceCentroid('page_block', 'missing');
+
+      expect(result).toBeUndefined();
+    });
+
+    it('averages and normalizes stored chunk embeddings without embedding calls', async () => {
+      const a = new Uint8Array(new Float32Array([1, 0]).buffer);
+      const b = new Uint8Array(new Float32Array([0, 1]).buffer);
+      db.all.mockResolvedValueOnce([
+        { embedding: a },
+        { embedding: b },
+      ]);
+
+      const result = await service.getSourceCentroid('page_block', 'page-1');
+
+      expect(result?.sourceType).toBe('page_block');
+      expect(result?.sourceId).toBe('page-1');
+      expect(result?.chunkCount).toBe(2);
+      expect(result?.vector[0]).toBeCloseTo(0.7071, 3);
+      expect(result?.vector[1]).toBeCloseTo(0.7071, 3);
+    });
+  });
 });

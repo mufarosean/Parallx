@@ -39,6 +39,10 @@ export interface GraphProviderEdge {
   readonly target: string;
   /** Optional kind (e.g. 'mention', 'parent', 'reference'). For future styling. */
   readonly kind?: string;
+  /** Optional strength/weight hint for consumers that style or lay out edges. */
+  readonly weight?: number;
+  /** Optional normalized score (0-1) for semantic or confidence-ranked edges. */
+  readonly score?: number;
 }
 
 export interface GraphSnapshot {

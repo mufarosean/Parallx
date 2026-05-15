@@ -38,7 +38,7 @@ const _PERSIST_KEYS = [
   'nodeRadiusMin', 'nodeRadiusMax', 'nodeOpacity',
   'edgeColor', 'edgeWidth', 'edgeHoverWidth',
   'labelZoomStart', 'labelZoomFull',
-  'showFiles', 'showCanvasPages', 'showSessions',
+  'showFiles', 'showCanvasPages', 'showSessions', 'showConceptualLinks',
 ];
 
 async function _loadSettings(api) {
@@ -119,6 +119,7 @@ const GS = {
   showFiles:       true,
   showCanvasPages: true,
   showSessions:    true,
+  showConceptualLinks: false,
 };
 const ALPHA_DECAY = 1 - Math.pow(0.001, 1 / 300); // ≈0.0228 → ~300 ticks
 const ALPHA_MIN = 0.001;
@@ -209,9 +210,16 @@ function computeLinkParams(nodes, edges, byId) {
     const e = edges[i];
     const cs = count.get(e.source) || 1;
     const ct = count.get(e.target) || 1;
-    _linkStrengths[i] = Math.max(GS.linkStrengthMin, 1 / Math.min(cs, ct));
+    const baseStrength = Math.max(GS.linkStrengthMin, 1 / Math.min(cs, ct));
+    if (e.kind === 'semantic') {
+      const weight = Number.isFinite(e.weight) ? e.weight : Number.isFinite(e.score) ? e.score : 1;
+      _linkStrengths[i] = Math.max(0.01, baseStrength * 0.25 * Math.max(0.2, Math.min(1, weight)));
+      _linkDistances[i] = GS.linkDistance * 1.4;
+    } else {
+      _linkStrengths[i] = baseStrength;
+      _linkDistances[i] = GS.linkDistance;
+    }
     _linkBiases[i] = cs / (cs + ct);
-    _linkDistances[i] = GS.linkDistance;
   }
 }
 
@@ -616,7 +624,7 @@ async function _collectProviders(api, nodes, edges) {
     if (Array.isArray(snap.edges)) {
       for (const pe of snap.edges) {
         if (!pe || !pe.source || !pe.target) continue;
-        edges.push({ source: pe.source, target: pe.target, kind: pe.kind });
+        edges.push({ source: pe.source, target: pe.target, kind: pe.kind, score: pe.score, weight: pe.weight });
       }
     }
   }
@@ -624,6 +632,92 @@ async function _collectProviders(api, nodes, edges) {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
+const SEMANTIC_GRAPH_SERVICE_ID = { id: 'ISemanticGraphService' };
+
+function _getSemanticGraphService(api) {
+  try {
+    if (!api.services || typeof api.services.has !== 'function' || typeof api.services.get !== 'function') return null;
+    if (!api.services.has(SEMANTIC_GRAPH_SERVICE_ID)) return null;
+    return api.services.get(SEMANTIC_GRAPH_SERVICE_ID);
+  } catch {
+    return null;
+  }
+}
+
+function _fileLabelFromNodeId(nodeId) {
+  const uri = nodeId.startsWith('file:') ? nodeId.slice(5) : nodeId;
+  const clean = uri.split('?')[0].replace(/\\/g, '/');
+  const parts = clean.split('/').filter(Boolean);
+  const label = parts[parts.length - 1] || uri;
+  try { return decodeURIComponent(label); } catch { return label; }
+}
+
+function _makeSemanticEndpointNode(nodeId) {
+  if (!nodeId.startsWith('file:')) return null;
+  const uri = nodeId.slice(5);
+  const label = _fileLabelFromNodeId(nodeId);
+  const ext = label.includes('.') ? '.' + label.split('.').pop() : '';
+  const color = EXT_COLORS[ext] || DOMAIN_COLORS.file;
+  return {
+    id: nodeId,
+    label,
+    domain: 'file',
+    color,
+    weight: 3,
+    meta: { type: 'file', uri, ext, semanticPlaceholder: true },
+  };
+}
+
+function _registerSemanticGraphProvider(api, context) {
+  const service = _getSemanticGraphService(api);
+  if (!service || !api.workspaceGraph || typeof api.workspaceGraph.registerProvider !== 'function') {
+    return;
+  }
+  if (GS.showConceptualLinks && typeof service.ensureCacheStarted === 'function') {
+    service.ensureCacheStarted();
+  }
+
+  const provider = {
+    id: 'parallx.semantic-links',
+    displayName: 'Conceptual Links',
+    async snapshot() {
+      if (!GS.showConceptualLinks || !service.getCachedEdges) {
+        return { nodes: [], edges: [] };
+      }
+      if (typeof service.ensureCacheStarted === 'function') {
+        service.ensureCacheStarted();
+      }
+      const cached = await service.getCachedEdges({ maxEdges: 500, minScore: 0.72 });
+      const nodes = [];
+      const seenNodes = new Set();
+      const edges = [];
+      for (const edge of cached) {
+        for (const nodeId of [edge.sourceNodeId, edge.targetNodeId]) {
+          if (seenNodes.has(nodeId)) continue;
+          const node = _makeSemanticEndpointNode(nodeId);
+          if (node) {
+            seenNodes.add(nodeId);
+            nodes.push(node);
+          }
+        }
+        edges.push({
+          source: edge.sourceNodeId,
+          target: edge.targetNodeId,
+          kind: 'semantic',
+          score: edge.score,
+          weight: edge.score,
+        });
+      }
+      return { nodes, edges };
+    },
+  };
+
+  context.subscriptions.push(api.workspaceGraph.registerProvider(provider));
+  if (typeof service.onDidChangeEdges === 'function' && typeof api.workspaceGraph.notifyChange === 'function') {
+    context.subscriptions.push(service.onDidChangeEdges(() => api.workspaceGraph.notifyChange()));
+  }
+}
+
 // SECTION 3: RENDERER
 // Obsidian-style: straight lines, filled circles, text fade threshold.
 // No cluster halos, no curved edges, no arrowheads.
@@ -700,22 +794,27 @@ function drawGraph(ctx, cvs, nodes, edges, byId, view, selected, hovered, showEd
       const isSelEdge = false;
       const isHovEdge = hasHov && (e.source === hovered.id || e.target === hovered.id);
       const dim = (hasSel || hasHov) && !isSelEdge && !isHovEdge;
+      const isSemantic = e.kind === 'semantic';
 
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
+      ctx.setLineDash(isSemantic ? [4, 4] : []);
 
       if (isSelEdge) {
         ctx.strokeStyle = _rgba(selected.color, 0.55);
         ctx.lineWidth = 1.5;
       } else if (isHovEdge) {
-        ctx.strokeStyle = _rgba(hovered.color, 0.4);
-        ctx.lineWidth = GS.edgeHoverWidth;
+        ctx.strokeStyle = isSemantic ? 'rgba(126,196,244,0.48)' : _rgba(hovered.color, 0.4);
+        ctx.lineWidth = isSemantic ? Math.max(GS.edgeHoverWidth, 1.0) : GS.edgeHoverWidth;
       } else {
-        ctx.strokeStyle = dim ? 'rgba(255,255,255,0.04)' : GS.edgeColor;
-        ctx.lineWidth = GS.edgeWidth;
+        ctx.strokeStyle = isSemantic
+          ? (dim ? 'rgba(126,196,244,0.04)' : 'rgba(126,196,244,0.22)')
+          : (dim ? 'rgba(255,255,255,0.04)' : GS.edgeColor);
+        ctx.lineWidth = isSemantic ? Math.max(0.25, GS.edgeWidth * 0.8) : GS.edgeWidth;
       }
       ctx.stroke();
+      if (isSemantic) ctx.setLineDash([]);
     }
   }
 
@@ -940,6 +1039,9 @@ function createGraphEditor(container, api) {
       <label style="display:flex;align-items:center;gap:6px;color:var(--vscode-editor-foreground,#ccc);margin:4px 0;cursor:pointer;">
         <input type="checkbox" id="__gs_sessions" ${GS.showSessions ? 'checked' : ''}> Sessions
       </label>
+      <label style="display:flex;align-items:center;gap:6px;color:var(--vscode-editor-foreground,#ccc);margin:4px 0;cursor:pointer;">
+        <input type="checkbox" id="__gs_conceptual" ${GS.showConceptualLinks ? 'checked' : ''}> Conceptual Links
+      </label>
     `;
 
     // Wire close button
@@ -974,18 +1076,26 @@ function createGraphEditor(container, api) {
     _wire('lzf', 'labelZoomFull', null, null, false);
 
     // Wire checkboxes (filter visibility)
-    const _wireCheck = (id, key) => {
+    const _wireCheck = (id, key, afterFn) => {
       const el = settingsInner.querySelector('#__gs_' + id);
       if (!el) return;
       el.addEventListener('change', () => {
         GS[key] = el.checked;
-        m.applyVisibility();
+        if (afterFn) afterFn();
+        else m.applyVisibility();
         _saveSettings(api);
       });
     };
     _wireCheck('files', 'showFiles');
     _wireCheck('pages', 'showCanvasPages');
     _wireCheck('sessions', 'showSessions');
+    _wireCheck('conceptual', 'showConceptualLinks', () => {
+      if (GS.showConceptualLinks) {
+        const service = _getSemanticGraphService(api);
+        if (service && typeof service.ensureCacheStarted === 'function') service.ensureCacheStarted();
+      }
+      m.refresh().catch(err => console.warn('[WorkspaceGraph] conceptual toggle refresh failed:', err));
+    });
   }
 
   function _toggleSettings() {
@@ -1405,6 +1515,7 @@ export async function activate(api, context) {
 
   // Load persisted settings before views render
   await _loadSettings(api);
+  _registerSemanticGraphProvider(api, context);
 
   // Sidebar view
   const viewDisposable = api.views.registerViewProvider('view.workspaceGraph', {
@@ -1434,6 +1545,17 @@ export async function activate(api, context) {
     api.editors.openEditor({ typeId: 'workspace-graph', title: 'Workspace Graph', icon: 'codicon-graph', instanceId: 'main' });
   });
   context.subscriptions.push(refreshCmd);
+
+  const rebuildConceptualCmd = api.commands.registerCommand('workspaceGraph.rebuildConceptualLinks', async () => {
+    const service = _getSemanticGraphService(api);
+    if (!service || typeof service.rebuildChangedSources !== 'function') return;
+    if (typeof service.ensureCacheStarted === 'function') service.ensureCacheStarted();
+    await service.rebuildChangedSources();
+    if (api.workspaceGraph && typeof api.workspaceGraph.notifyChange === 'function') {
+      api.workspaceGraph.notifyChange();
+    }
+  });
+  context.subscriptions.push(rebuildConceptualCmd);
 
   // ── Live event subscriptions ──
   // Drive `_model.refresh()` whenever something we care about changes.

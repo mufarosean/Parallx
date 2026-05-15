@@ -408,7 +408,7 @@ M68 is complete when:
 
 | Iteration | Status | Verification | Notes |
 |---|---|---|---|
-| A - Cache foundation | pending | - | - |
-| B - Incremental builder | pending | - | - |
-| C - Workspace Graph integration | pending | - | - |
+| A - Cache foundation | complete (2026-05-15) | `npx.cmd tsc --noEmit`; `npx.cmd vitest run tests/unit/semanticGraphService.test.ts tests/unit/vectorStoreService.test.ts` | Added `SemanticGraphService`, cache schema, source/node mapper, vector-store stored-centroid helper. No embedding/Ollama dependency. |
+| B - Incremental builder | complete (2026-05-15) | Same targeted unit run; semantic service test covers one-source recompute from stored centroid + vector search | Builder is opt-in/low-priority: starts when Conceptual Links is enabled or rebuild command runs, debounces source updates, waits while indexing is active, concurrency 1. |
+| C - Workspace Graph integration | complete (2026-05-15) | `node --check ext/workspace-graph/main.js`; `npx.cmd tsc --noEmit` | Added `Conceptual Links` toggle, semantic provider, faint dashed semantic edges, weak semantic force, and rebuild command. Provider reads cached edges only. |
 | D - Bake and tune | pending | - | - |
