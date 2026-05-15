@@ -236,6 +236,15 @@
   margin-top: 6px;
 }
 
+.ai-settings-row__control .ui-input-box {
+  width: 100%;
+  max-width: 320px;
+}
+
+.ai-settings-row__control .ai-settings-number-input {
+  max-width: 120px;
+}
+
 /* ── Select dropdown (model picker, etc.) ── */
 
 .ai-settings-select {
