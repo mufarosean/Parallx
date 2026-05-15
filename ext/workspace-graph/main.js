@@ -424,6 +424,16 @@ const EXT_COLORS = {
 };
 
 const DEFAULT_COLOR = '#6bd385';
+const IDEA_CLUSTER_COLORS = [
+  '#6baad3',
+  '#c98aaa',
+  '#d3b66b',
+  '#7bc4a4',
+  '#d38b6b',
+  '#8fb3ff',
+  '#b4a7d6',
+  '#a8c97a',
+];
 // Node radius constants now in GS.nodeRadiusMin / GS.nodeRadiusMax
 
 // d3 phyllotaxis: golden-angle spiral for initial positions.
@@ -464,6 +474,52 @@ function _computeNodeSizes(nodes, edges) {
   }
 }
 
+function _applySemanticClusterColors(nodes, edges) {
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  const adjacency = new Map();
+
+  for (const e of edges) {
+    if (e.kind !== 'semantic') continue;
+    if (!byId.has(e.source) || !byId.has(e.target)) continue;
+    if (!adjacency.has(e.source)) adjacency.set(e.source, new Set());
+    if (!adjacency.has(e.target)) adjacency.set(e.target, new Set());
+    adjacency.get(e.source).add(e.target);
+    adjacency.get(e.target).add(e.source);
+  }
+
+  if (!adjacency.size) return;
+
+  const visited = new Set();
+  const clusters = [];
+  for (const id of adjacency.keys()) {
+    if (visited.has(id)) continue;
+    const stack = [id];
+    const cluster = [];
+    visited.add(id);
+    while (stack.length) {
+      const current = stack.pop();
+      cluster.push(current);
+      for (const next of adjacency.get(current) || []) {
+        if (visited.has(next)) continue;
+        visited.add(next);
+        stack.push(next);
+      }
+    }
+    if (cluster.length >= 3) clusters.push(cluster);
+  }
+
+  clusters.sort((a, b) => b.length - a.length);
+  clusters.forEach((cluster, index) => {
+    const color = IDEA_CLUSTER_COLORS[index % IDEA_CLUSTER_COLORS.length];
+    for (const id of cluster) {
+      const node = byId.get(id);
+      if (!node) continue;
+      node.color = color;
+      node.meta.ideaCluster = { rank: index + 1, size: cluster.length, color };
+    }
+  });
+}
+
 async function buildGraphData(api) {
   const nodes = [];
   const edges = [];
@@ -484,6 +540,7 @@ async function buildGraphData(api) {
     if (!ids.has(edges[i].source) || !ids.has(edges[i].target)) edges.splice(i, 1);
   }
 
+  _applySemanticClusterColors(nodes, edges);
   _computeNodeSizes(nodes, edges);
 
   // Pre-compute d3-force link parameters (strengths, biases, distances)
@@ -778,11 +835,11 @@ function drawGraph(ctx, cvs, nodes, edges, byId, view, selected, hovered, showEd
   ctx.translate(view.x, view.y);
   ctx.scale(view.s, view.s);
 
-  // Obsidian: no sticky selection. Hover highlights node + neighbors.
+  // Hover is transient; selection stays until another node or a clear action.
+  const selConn = selected ? _getConnected(edges, selected.id) : new Set();
   const hovConn = hovered ? _getConnected(edges, hovered.id) : new Set();
   const hasHov = !!hovered;
-  const hasSel = false;
-  const conn = new Set();
+  const hasSel = !!selected;
 
   // ── Edges: straight lines, Obsidian-style ──
   if (showEdges) {
@@ -791,7 +848,7 @@ function drawGraph(ctx, cvs, nodes, edges, byId, view, selected, hovered, showEd
       const b = byId.get(e.target);
       if (!a || !b || !a.visible || !b.visible) continue;
 
-      const isSelEdge = false;
+      const isSelEdge = hasSel && (e.source === selected.id || e.target === selected.id);
       const isHovEdge = hasHov && (e.source === hovered.id || e.target === hovered.id);
       const dim = (hasSel || hasHov) && !isSelEdge && !isHovEdge;
       const isSemantic = e.kind === 'semantic';
@@ -801,12 +858,12 @@ function drawGraph(ctx, cvs, nodes, edges, byId, view, selected, hovered, showEd
       ctx.lineTo(b.x, b.y);
       ctx.setLineDash(isSemantic ? [4, 4] : []);
 
-      if (isSelEdge) {
-        ctx.strokeStyle = _rgba(selected.color, 0.55);
-        ctx.lineWidth = 1.5;
-      } else if (isHovEdge) {
+      if (isHovEdge) {
         ctx.strokeStyle = isSemantic ? 'rgba(126,196,244,0.48)' : _rgba(hovered.color, 0.4);
         ctx.lineWidth = isSemantic ? Math.max(GS.edgeHoverWidth, 1.0) : GS.edgeHoverWidth;
+      } else if (isSelEdge) {
+        ctx.strokeStyle = isSemantic ? 'rgba(126,196,244,0.38)' : _rgba(selected.color, 0.5);
+        ctx.lineWidth = isSemantic ? Math.max(GS.edgeHoverWidth, 0.9) : 1.35;
       } else {
         ctx.strokeStyle = isSemantic
           ? (dim ? 'rgba(126,196,244,0.04)' : 'rgba(126,196,244,0.22)')
@@ -822,10 +879,12 @@ function drawGraph(ctx, cvs, nodes, edges, byId, view, selected, hovered, showEd
   const nowMs = performance.now();
   for (const n of nodes) {
     if (!n.visible) continue;
+    const isSel = selected && n.id === selected.id;
+    const isSelConn = hasSel && selConn.has(n.id);
     const isHov = hovered && n.id === hovered.id;
-    const isConn = hasHov && hovConn.has(n.id);
-    const dim = hasHov && !isHov && !isConn;
-    const r = n.radius * (isHov ? 1.15 : 1);
+    const isHovConn = hasHov && hovConn.has(n.id);
+    const dim = (hasSel || hasHov) && !isSel && !isSelConn && !isHov && !isHovConn;
+    const r = n.radius * ((isHov || isSel) ? 1.18 : 1);
 
     // Pulse glow for nodes that just appeared (provider contributions,
     // new files, etc.). Decays linearly over 1500 ms.
@@ -849,14 +908,24 @@ function drawGraph(ctx, cvs, nodes, edges, byId, view, selected, hovered, showEd
     ctx.beginPath();
     ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
 
-    if (isHov) {
+    if (isHov || isSel) {
       ctx.fillStyle = '#ffffff';
-    } else if (isConn) {
+    } else if (isHovConn) {
       ctx.fillStyle = _rgba(n.color, 0.9);
+    } else if (isSelConn) {
+      ctx.fillStyle = _rgba(n.color, 0.82);
     } else {
       ctx.fillStyle = _rgba(n.color, dim ? 0.06 : GS.nodeOpacity);
     }
     ctx.fill();
+
+    if (isSel) {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r + 2.2, 0, Math.PI * 2);
+      ctx.strokeStyle = _rgba(n.color, 0.85);
+      ctx.lineWidth = Math.max(0.7, 1.2 / view.s);
+      ctx.stroke();
+    }
 
     // Pin indicator
     if (n.pinned && !dim) {
@@ -876,12 +945,14 @@ function drawGraph(ctx, cvs, nodes, edges, byId, view, selected, hovered, showEd
 
   for (const n of nodes) {
     if (!n.visible) continue;
+    const isSel = selected && n.id === selected.id;
+    const isSelConn = hasSel && selConn.has(n.id);
     const isHov = hovered && n.id === hovered.id;
-    const isConn = (hasHov && hovConn.has(n.id));
 
-    // Show label if: hovered node only (not neighbors), or zoomed in close enough
+    // Show label if: hovered/selected node, selected neighbors, or zoomed in.
     let alpha = 0;
-    if (isHov) alpha = 0.92;
+    if (isHov || isSel) alpha = 0.92;
+    else if (isSelConn) alpha = Math.max(0.52, zoomLabelAlpha);
     else alpha = zoomLabelAlpha;
 
     if (alpha < 0.02) continue;
@@ -921,6 +992,14 @@ function _btn(text) {
 
 function _esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function _formatConnectionMeta(edge) {
+  if (edge.kind === 'semantic') {
+    const score = Number.isFinite(edge.score) ? edge.score : Number.isFinite(edge.weight) ? edge.weight : null;
+    return score === null ? 'Conceptual' : `Conceptual ${Math.round(score * 100)}%`;
+  }
+  return edge.kind ? String(edge.kind) : 'Structural';
 }
 
 function createGraphEditor(container, api) {
@@ -1159,8 +1238,11 @@ function createGraphEditor(container, api) {
 
   // Canvas interaction
   let dragNode = null;
+  let dragStart = null;
+  let didDragNode = false;
   let panning = false;
   let panStart = null;
+  let didPan = false;
 
   cvs.addEventListener('pointerdown', (ev) => {
     const rect = cvs.getBoundingClientRect();
@@ -1171,13 +1253,15 @@ function createGraphEditor(container, api) {
     if (node) {
       if (ev.shiftKey) { node.pinned = !node.pinned; _redraw(); return; }
       dragNode = node;
-      dragNode.pinned = true;
+      dragStart = { x: ev.clientX, y: ev.clientY };
+      didDragNode = false;
       resetSimulation();
       cvs.setPointerCapture(ev.pointerId);
       cvs.style.cursor = 'grabbing';
     } else {
       panning = true;
       panStart = { x: ev.clientX, y: ev.clientY, vx: view.x, vy: view.y };
+      didPan = false;
       cvs.setPointerCapture(ev.pointerId);
       cvs.style.cursor = 'grabbing';
     }
@@ -1189,11 +1273,17 @@ function createGraphEditor(container, api) {
     const sy = ev.clientY - rect.top;
 
     if (dragNode) {
-      dragNode.x = (sx - view.x) / view.s;
-      dragNode.y = (sy - view.y) / view.s;
-      dragNode.vx = 0; dragNode.vy = 0;
-      resetSimulation();
+      const moved = dragStart ? Math.hypot(ev.clientX - dragStart.x, ev.clientY - dragStart.y) : 0;
+      if (didDragNode || moved > 3) {
+        didDragNode = true;
+        dragNode.pinned = true;
+        dragNode.x = (sx - view.x) / view.s;
+        dragNode.y = (sy - view.y) / view.s;
+        dragNode.vx = 0; dragNode.vy = 0;
+        resetSimulation();
+      }
     } else if (panning && panStart) {
+      didPan = didPan || Math.hypot(ev.clientX - panStart.x, ev.clientY - panStart.y) > 3;
       view.x = panStart.vx + (ev.clientX - panStart.x);
       view.y = panStart.vy + (ev.clientY - panStart.y);
     } else {
@@ -1207,11 +1297,21 @@ function createGraphEditor(container, api) {
 
   cvs.addEventListener('pointerup', (ev) => {
     if (dragNode) {
-      // Just release the drag — don't open inspector on click.
-      // Obsidian: clicking a node just highlights it briefly (hover does that).
+      const clickedNode = dragNode;
+      const wasDrag = didDragNode;
       dragNode = null;
+      dragStart = null;
+      didDragNode = false;
+      if (!wasDrag) {
+        hovered = clickedNode;
+        _openInspector(clickedNode);
+      }
+    } else if (panning && !didPan) {
+      _closeInspector();
+      hovered = null;
+      _redraw();
     }
-    panning = false; panStart = null;
+    panning = false; panStart = null; didPan = false;
     cvs.style.cursor = 'grab';
   });
 
@@ -1242,8 +1342,20 @@ function createGraphEditor(container, api) {
   }
 
   function _renderInspector(node) {
-    const deps = m.edges.filter(e => e.source === node.id).map(e => m.byId.get(e.target)).filter(Boolean);
-    const usedBy = m.edges.filter(e => e.target === node.id).map(e => m.byId.get(e.source)).filter(Boolean);
+    const connections = m.edges
+      .filter(e => e.source === node.id || e.target === node.id)
+      .map(e => {
+        const otherId = e.source === node.id ? e.target : e.source;
+        return { edge: e, node: m.byId.get(otherId) };
+      })
+      .filter(item => item.node)
+      .sort((a, b) => {
+        if (a.edge.kind === 'semantic' && b.edge.kind !== 'semantic') return -1;
+        if (a.edge.kind !== 'semantic' && b.edge.kind === 'semantic') return 1;
+        const aScore = Number.isFinite(a.edge.score) ? a.edge.score : 0;
+        const bScore = Number.isFinite(b.edge.score) ? b.edge.score : 0;
+        return bScore - aScore || a.node.label.localeCompare(b.node.label);
+      });
 
     let html = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -1257,15 +1369,19 @@ function createGraphEditor(container, api) {
       html += `<div style="color:#555;font-size:10px;word-break:break-all;margin-bottom:8px">${_esc(node.meta.uri)}</div>`;
     }
 
-    html += `<div style="margin-top:8px"><strong style="color:var(--vscode-descriptionForeground,#888);font-size:11px">Connects To (${deps.length})</strong>`;
-    html += deps.length
-      ? deps.map(d => `<div class="__wg_inspLink" data-id="${d.id}" style="padding:3px 0;cursor:pointer;color:#9ab;font-size:11px">&bull; ${_esc(d.label)}</div>`).join('')
-      : '<div style="color:#555;font-size:11px">None</div>';
-    html += '</div>';
+    if (node.meta.ideaCluster) {
+      html += `<div style="display:flex;align-items:center;gap:6px;color:var(--vscode-descriptionForeground,#888);font-size:11px;margin-bottom:8px">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${_esc(node.meta.ideaCluster.color)}"></span>
+        Idea cluster ${_esc(node.meta.ideaCluster.rank)} · ${_esc(node.meta.ideaCluster.size)} nodes
+      </div>`;
+    }
 
-    html += `<div style="margin-top:8px"><strong style="color:var(--vscode-descriptionForeground,#888);font-size:11px">Connected From (${usedBy.length})</strong>`;
-    html += usedBy.length
-      ? usedBy.map(d => `<div class="__wg_inspLink" data-id="${d.id}" style="padding:3px 0;cursor:pointer;color:#9ab;font-size:11px">&bull; ${_esc(d.label)}</div>`).join('')
+    html += `<div style="margin-top:8px"><strong style="color:var(--vscode-descriptionForeground,#888);font-size:11px">Connections (${connections.length})</strong>`;
+    html += connections.length
+      ? connections.map(({ edge, node: other }) => `<div class="__wg_inspLink" data-id="${other.id}" style="padding:5px 0;cursor:pointer;color:#9ab;font-size:11px;border-bottom:1px solid rgba(127,127,127,.12)">
+          <div>${_esc(other.label)}</div>
+          <div style="color:var(--vscode-descriptionForeground,#777);font-size:10px">${_esc(_formatConnectionMeta(edge))}</div>
+        </div>`).join('')
       : '<div style="color:#555;font-size:11px">None</div>';
     html += '</div>';
 

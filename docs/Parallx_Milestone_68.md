@@ -1,8 +1,8 @@
 # Milestone 68 - Semantic Workspace Graph
 
-> **Status:** Planning - MVP scoped. This milestone is reserved for cached
-> semantic links in Workspace Graph. M67 remains the separate security/data
-> leakage hardening plan.
+> **Status:** MVP implemented; bake/tune ongoing. This milestone is reserved
+> for cached semantic links in Workspace Graph. M67 remains the separate
+> security/data leakage hardening plan.
 
 ## Why
 
@@ -387,6 +387,40 @@ M68 is complete when:
    MVP? Lean: constants first, diagnostics before knobs.
 5. Should edge labels/reasons exist in MVP? Lean: no. Scores are enough.
 
+## Post-MVP interaction notes
+
+The first useful step beyond visual links is persistent inspection:
+
+- Clicking a node should keep that node and its first-hop connections
+  highlighted until another node is selected or the selection is cleared.
+- The inspector should show whether each edge is structural or conceptual.
+- Conceptual edge rows should include the cached similarity score.
+- Rich "why are these similar?" explanations should start with cheap evidence
+  from the existing index: nearest chunks, shared keywords/entities, and source
+  snippets. LLM-written explanations are out of scope unless the user approves
+  AI-system changes explicitly.
+
+## Conceptual node design note
+
+Conceptual nodes are not part of the M68 MVP. If added later, they should be
+virtual topic hubs derived from cached semantic topology, not new content nodes.
+A conservative rule would be:
+
+- Build candidate clusters from semantic edges only.
+- Require at least 4 source nodes.
+- Require an average semantic edge score above an initial threshold, such as
+  0.76.
+- Prefer clusters that bridge separate folders, journals, or Canvas branches
+  rather than a single existing structural neighborhood.
+- Cap virtual conceptual nodes aggressively, for example 12 total.
+- Label them with cheap extracted keywords from indexed chunks first. Any
+  LLM-generated concept label would require explicit approval because it touches
+  AI/model behavior.
+
+The conceptual node should answer "this idea ties these sources together", while
+the semantic edge should answer "these two sources are similar". Keeping those
+separate prevents the graph from inventing noisy hub nodes too eagerly.
+
 ## Files to create / modify
 
 | File | Action |
@@ -411,4 +445,4 @@ M68 is complete when:
 | A - Cache foundation | complete (2026-05-15) | `npx.cmd tsc --noEmit`; `npx.cmd vitest run tests/unit/semanticGraphService.test.ts tests/unit/vectorStoreService.test.ts` | Added `SemanticGraphService`, cache schema, source/node mapper, vector-store stored-centroid helper. No embedding/Ollama dependency. |
 | B - Incremental builder | complete (2026-05-15) | Same targeted unit run; semantic service test covers one-source recompute from stored centroid + vector search | Builder is opt-in/low-priority: starts when Conceptual Links is enabled or rebuild command runs, debounces source updates, waits while indexing is active, concurrency 1. |
 | C - Workspace Graph integration | complete (2026-05-15) | `node --check ext/workspace-graph/main.js`; `npx.cmd tsc --noEmit` | Added `Conceptual Links` toggle, semantic provider, faint dashed semantic edges, weak semantic force, and rebuild command. Provider reads cached edges only. |
-| D - Bake and tune | pending | - | - |
+| D - Bake and tune | in progress (2026-05-15) | - | Added sticky node selection, connection inspector metadata, and semantic-cluster coloring for conceptual-link neighborhoods. |
