@@ -3222,73 +3222,29 @@ async function resumeWatchersAndDeltaScan(api) {
   }
 
   // Run delta scan in background (non-blocking)
-  runDeltaScan(api).catch(err => {
-    console.warn('[MediaOrganizer] Background delta scan failed:', err);
-  });
-
-  // Arm the auto-recovery loop so we self-heal from dropped fs.watch
-  // events. Windows recursive fs.watch silently coalesces/drops events
-  // under load, on network drives, and on USB volumes. Without this
-  // safety net the only recovery is a full app relaunch.
-  startAutoRecovery();
-}
-
-// ── Auto-recovery: focus + periodic delta scans ──
-//
-// fs.watch is best-effort, especially on Windows with recursive:true.
-// To bound the worst-case "I added a file and Parallx didn't notice"
-// window we additionally:
-//   1. Run a delta scan on window focus (debounced) — typically within
-//      ~1.5s of the user returning to the app.
-//   2. Run a periodic delta scan every 5 minutes while visible.
-// Both reuse runDeltaScan(), which already walks each scan root once
-// and reconciles against the DB (creates, updates, deletes).
-
-let _deltaScanRunning = false;
-let _focusDeltaScanTimer = null;
-let _periodicDeltaScanTimer = null;
-const FOCUS_DELTA_SCAN_DEBOUNCE_MS = 1500;
-const PERIODIC_DELTA_SCAN_MS = 5 * 60 * 1000;
-
-async function _runDeltaScanSafe() {
-  // Bail if any other scanner is active. _watcherProcessing is the drain
-  // loop — racing it would re-process every file the watcher is currently
-  // ingesting, doubling ffprobe work and competing for IO.
-  if (_deltaScanRunning || _scanRunning || _watcherProcessing || !_api) return;
-  _deltaScanRunning = true;
-  try {
-    await runDeltaScan(_api);
-  } catch (err) {
-    console.warn('[MediaOrganizer] Auto-delta scan failed:', err);
-  } finally {
-    _deltaScanRunning = false;
+  // Run delta scan in background \u2014 deferred until after first paint so
+  // it never competes with initial grid render for the SQLite write lock.
+  // runDeltaScan() walks every scan root + reconciles against the DB; doing
+  // that synchronously with activate() noticeably slows the first frame on
+  // large libraries.
+  const _kickoffDeltaScan = () => {
+    runDeltaScan(api).catch(err => {
+      console.warn('[MediaOrganizer] Background delta scan failed:', err);
+    });
+  };
+  if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(_kickoffDeltaScan, { timeout: 5000 });
+  } else {
+    setTimeout(_kickoffDeltaScan, 2000);
   }
-}
 
-function _onWindowFocusOrVisible() {
-  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-  if (_focusDeltaScanTimer) clearTimeout(_focusDeltaScanTimer);
-  _focusDeltaScanTimer = setTimeout(() => {
-    _focusDeltaScanTimer = null;
-    _runDeltaScanSafe();
-  }, FOCUS_DELTA_SCAN_DEBOUNCE_MS);
-}
-
-function startAutoRecovery() {
-  if (_periodicDeltaScanTimer) return; // already armed
-  window.addEventListener('focus', _onWindowFocusOrVisible);
-  document.addEventListener('visibilitychange', _onWindowFocusOrVisible);
-  _periodicDeltaScanTimer = setInterval(() => {
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-    _runDeltaScanSafe();
-  }, PERIODIC_DELTA_SCAN_MS);
-}
-
-function stopAutoRecovery() {
-  try { window.removeEventListener('focus', _onWindowFocusOrVisible); } catch { /* ignore */ }
-  try { document.removeEventListener('visibilitychange', _onWindowFocusOrVisible); } catch { /* ignore */ }
-  if (_focusDeltaScanTimer) { clearTimeout(_focusDeltaScanTimer); _focusDeltaScanTimer = null; }
-  if (_periodicDeltaScanTimer) { clearInterval(_periodicDeltaScanTimer); _periodicDeltaScanTimer = null; }
+  // NOTE: a focus-triggered + 5-minute periodic delta-scan loop used to live
+  // here ("auto-recovery"). It caused 60+ second save-pickup lag on large
+  // libraries because every drain DB call queued behind the auto-scan's
+  // SQLite traffic. fs.watch + the relaunch-time delta scan above are
+  // sufficient; on platforms where fs.watch drops events under load the
+  // user can rescan manually. Do NOT re-add a periodic scanner here without
+  // first solving the SQLite write-lock contention.
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -5186,6 +5142,18 @@ const MO_CSS = `
   margin-top: 0;
   flex-shrink: 0;
 }
+.mo-card-size {
+  font-size: var(--parallx-fontSize-xs, 10px);
+  color: var(--vscode-descriptionForeground, #888);
+  white-space: nowrap;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.mo-card-size::before {
+  content: '\\00b7';
+  margin-right: 4px;
+  opacity: 0.6;
+}
 .mo-card-tags {
   display: flex;
   flex-wrap: nowrap;
@@ -5241,6 +5209,15 @@ const MO_CSS = `
 .mo-page-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
 .mo-page-btn:disabled { opacity: 0.4; cursor: default; }
 .mo-page-info { color: var(--vscode-descriptionForeground, #888); }
+/* Center the bare-number label in the per-page dropdown; the chevron stays
+   on the right (its own flex item keeps space-between balanced). */
+.mo-pagination .mo-dropdown__button { justify-content: center; }
+.mo-pagination .mo-dropdown__text {
+  flex: 1;
+  text-align: center;
+  /* Cancel the chevron's right-side offset so the number is visually centered. */
+  margin-left: 12px;
+}
 
 /* ═══ Sidebar ═══ */
 .mo-sidebar {
@@ -7480,7 +7457,7 @@ const MO_ZOOM_MIN = 150;
 const MO_ZOOM_MAX = 800;
 const MO_ZOOM_DEFAULT = 280;
 const MO_CARD_GAP = 8;
-const MO_DEFAULT_PER_PAGE = 40;
+const MO_DEFAULT_PER_PAGE = 120;
 
 /**
  * Pure helper — compute the next selection state for a click on a media card.
@@ -7812,14 +7789,16 @@ function renderMediaCard(item, options) {
   const title = item.title || (item.filePath ? item.filePath.split(/[/\\]/).pop() : `${item.type} #${item.id}`);
   info.appendChild(moEl('div', 'mo-card-title', { textContent: title, title: title }));
   const detail = item.takenAt ? formatShortDate(item.takenAt) : formatShortDate(item.createdAt);
-  // Date + tags share one row so tags sit "next to the date" as requested.
-  // The row only renders if either piece exists. Tags are also gated on the
+  const sizeText = (typeof item.size === 'number' && item.size > 0) ? formatFileSize(item.size) : '';
+  // Date + size + tags share one row so secondary info clusters under the
+  // title. Each piece is optional. Tags are gated on the
   // `mediaOrganizer.showCardTags` setting so users can declutter the grid;
-  // the date still renders when tags are hidden.
+  // date and size still render when tags are hidden.
   const tagsVisible = _showCardTags && Array.isArray(item.tags) && item.tags.length > 0;
-  if (detail || tagsVisible) {
+  if (detail || sizeText || tagsVisible) {
     const metaRow = moEl('div', 'mo-card-meta');
     if (detail) metaRow.appendChild(moEl('span', 'mo-card-detail', { textContent: detail }));
+    if (sizeText) metaRow.appendChild(moEl('span', 'mo-card-size', { textContent: sizeText, title: `${item.size} bytes` }));
     if (tagsVisible) {
       const tagsWrap = moEl('span', 'mo-card-tags');
       // Tooltip lists every tag, even when the visible row truncates.
@@ -7888,14 +7867,18 @@ function renderMediaCard(item, options) {
           // Multi-select: include every selected item that has a resolved path.
           // We always include the dragged item even if not selected.
           let paths = [filePath];
-          const sel = options.selectedIds;
-          const reg = options.cardByKey;
+          // Live DOM read \u2014 .mo-selected is kept in sync by setSelection().
+          // options.selectedIds is a closure snapshot, stale once the user
+          // grows the selection after the card was rendered.
+          const liveSelected = Array.from(
+            document.querySelectorAll('.mo-card.mo-selected[data-key], .mo-list-row.mo-selected[data-key]')
+          );
           const myKey = `${item.type}:${item.id}`;
-          if (isSelected && sel && sel.size > 1 && reg) {
+          const dragInSelection = liveSelected.some((el) => el.dataset.key === myKey);
+          if (dragInSelection && liveSelected.length > 1) {
             const collected = [];
-            for (const k of sel) {
-              const el = reg.get(k);
-              const p = el?._filePath;
+            for (const el of liveSelected) {
+              const p = el._filePath;
               if (p && !collected.includes(p)) collected.push(p);
             }
             // Ensure the dragged item is first (used as the drag-image source)
@@ -7915,10 +7898,14 @@ function renderMediaCard(item, options) {
       }
       return;
     }
-    // Standard HTML5 drag — used for in-app drops (albums, chat, canvas).
+    // Standard HTML5 drag \u2014 used for in-app drops (albums, chat, canvas).
     const key = `${item.type}:${item.id}`;
-    const keys = (isSelected && options.selectedIds && options.selectedIds.size > 1)
-      ? [...options.selectedIds]
+    const liveSelectedKeys = Array.from(
+      document.querySelectorAll('.mo-card.mo-selected[data-key], .mo-list-row.mo-selected[data-key]'),
+      (el) => el.dataset.key
+    ).filter(Boolean);
+    const keys = (liveSelectedKeys.includes(key) && liveSelectedKeys.length > 1)
+      ? liveSelectedKeys
       : [key];
     e.dataTransfer.setData('application/x-mo-items', JSON.stringify(keys));
     if (filePath) {
@@ -7948,8 +7935,21 @@ function renderMediaCard(item, options) {
       const tagId = parseInt(e.dataTransfer.getData('application/x-mo-tag'), 10);
       if (!Number.isFinite(tagId)) return;
       const myKey = `${item.type}:${item.id}`;
-      const sel = options.selectedIds;
-      const targetKeys = (sel && sel.has(myKey) && sel.size > 1) ? [...sel] : [myKey];
+      // Source of truth for the live selection is the DOM \u2014 the .mo-selected
+      // class is kept in sync by cardGrid.setSelection() on every selection
+      // change (Shift+click, Ctrl+click, rubber-band, checkbox). options.selectedIds
+      // is a snapshot captured at card-render time; after the selection grows,
+      // state.selectedIds is reassigned to a NEW Set so the old closure ref is
+      // stale and would silently fall back to single-target drop.
+      const selectedKeys = Array.from(
+        document.querySelectorAll('.mo-card.mo-selected[data-key], .mo-list-row.mo-selected[data-key]'),
+        (el) => el.dataset.key
+      ).filter(Boolean);
+      const selSet = new Set(selectedKeys);
+      // Rule: if there is an active multi-selection (2+), apply to the whole
+      // selection regardless of which card the user dropped on. When the
+      // selection has 0\u20131 items, fall back to single-target drop.
+      const targetKeys = (selSet.size > 1) ? [...selSet] : [myKey];
       const n = await moApplyTagToKeys(tagId, targetKeys);
       const apiRef = options.api || _api;
       if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied tag to ${n} item${n === 1 ? '' : 's'}`, 2000);
@@ -8042,13 +8042,15 @@ function renderMediaListRow(item, options) {
         const apiRef = options.api || _api;
         if (apiRef?.window?.startDrag) {
           let paths = [filePath];
-          const sel = options.selectedIds;
-          const reg = options.cardByKey;
-          if (isSelected && sel && sel.size > 1 && reg) {
+          const liveSelected = Array.from(
+            document.querySelectorAll('.mo-card.mo-selected[data-key], .mo-list-row.mo-selected[data-key]')
+          );
+          const myKey = `${item.type}:${item.id}`;
+          const dragInSelection = liveSelected.some((el) => el.dataset.key === myKey);
+          if (dragInSelection && liveSelected.length > 1) {
             const collected = [];
-            for (const k of sel) {
-              const el = reg.get(k);
-              const p = el?._filePath;
+            for (const el of liveSelected) {
+              const p = el._filePath;
               if (p && !collected.includes(p)) collected.push(p);
             }
             if (collected.length > 0) {
@@ -8067,10 +8069,14 @@ function renderMediaListRow(item, options) {
       }
       return;
     }
-    // Standard HTML5 drag — used for in-app drops (albums, chat, canvas).
+    // Standard HTML5 drag \u2014 used for in-app drops (albums, chat, canvas).
     const key = `${item.type}:${item.id}`;
-    const keys = (isSelected && options.selectedIds && options.selectedIds.size > 1)
-      ? [...options.selectedIds]
+    const liveSelectedKeys = Array.from(
+      document.querySelectorAll('.mo-card.mo-selected[data-key], .mo-list-row.mo-selected[data-key]'),
+      (el) => el.dataset.key
+    ).filter(Boolean);
+    const keys = (liveSelectedKeys.includes(key) && liveSelectedKeys.length > 1)
+      ? liveSelectedKeys
       : [key];
     e.dataTransfer.setData('application/x-mo-items', JSON.stringify(keys));
     if (filePath) {
@@ -8099,8 +8105,14 @@ function renderMediaListRow(item, options) {
       const tagId = parseInt(e.dataTransfer.getData('application/x-mo-tag'), 10);
       if (!Number.isFinite(tagId)) return;
       const myKey = `${item.type}:${item.id}`;
-      const sel = options.selectedIds;
-      const targetKeys = (sel && sel.has(myKey) && sel.size > 1) ? [...sel] : [myKey];
+      // Read the live selection from the DOM (see card-variant comment).
+      const selectedKeys = Array.from(
+        document.querySelectorAll('.mo-card.mo-selected[data-key], .mo-list-row.mo-selected[data-key]'),
+        (el) => el.dataset.key
+      ).filter(Boolean);
+      const selSet = new Set(selectedKeys);
+      // Same rule as the card variant: active multi-selection always wins.
+      const targetKeys = (selSet.size > 1) ? [...selSet] : [myKey];
       const n = await moApplyTagToKeys(tagId, targetKeys);
       const apiRef = options.api || _api;
       if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied tag to ${n} item${n === 1 ? '' : 's'}`, 2000);
@@ -8129,7 +8141,13 @@ function renderCardGrid(container, items, options) {
   const _cardByKey = new Map();
   let _currentItems = items || [];
   let _currentFocusedIndex = options.focusedIndex ?? null;
-  let _currentSelectedIds = options.selectedIds || new Set();
+  // Clone the Set: callers (e.g. selection toolbar) hold a reference to
+  // state.selectedIds and mutate it in place before calling setSelection().
+  // If we stored the same reference here, the diff in setSelection() would
+  // compare a Set to itself and never detect changes. Bug: Deselect All
+  // appeared to do nothing because state.selectedIds.clear() also emptied
+  // our prevSet, so the diff loop had zero entries to remove.
+  let _currentSelectedIds = new Set(options.selectedIds || []);
   let _currentSelecting = !!options.selecting;
 
   // M59 P4: lazy thumbnail resolution — only kick off DB queries for cards
@@ -8167,21 +8185,33 @@ function renderCardGrid(container, items, options) {
   }
 
   function renderAll(itemList, opts) {
-    grid.innerHTML = '';
+    // Build the new children in an off-DOM array first, then swap them in
+    // with replaceChildren() — a single atomic mutation. The prior approach
+    // (grid.innerHTML = ''; then appendChild() N times) momentarily collapsed
+    // the grid's height to 0, which made the browser clamp the scroll
+    // container's scrollTop to 0 (since maxScrollTop = scrollHeight -
+    // clientHeight). The user saw a one-frame jump to the top of the
+    // gallery on every refresh. replaceChildren avoids that gap entirely:
+    // old children are removed and new ones appended in one DOM operation,
+    // so scrollTop is only ever clamped against the FINAL height.
+    const newChildren = [];
     _cardByKey.clear();
     _currentItems = itemList || [];
     _currentFocusedIndex = opts.focusedIndex ?? null;
-    _currentSelectedIds = opts.selectedIds || new Set();
+    // Clone so external mutations of state.selectedIds don't alias our
+    // internal Set (see setSelection comment above).
+    _currentSelectedIds = new Set(opts.selectedIds || []);
     _currentSelecting = !!opts.selecting;
     if (_thumbObserver) _thumbObserver.disconnect();
     const listMode = opts.displayMode === 'list';
     grid.classList.toggle('mo-list-mode', listMode);
     if (!itemList || itemList.length === 0) {
-      grid.appendChild(moEl('div', 'mo-empty', { textContent: 'No media items found' }));
+      grid.replaceChildren(moEl('div', 'mo-empty', { textContent: 'No media items found' }));
       return;
     }
 
     const focIdx = opts.focusedIndex ?? null;
+    let focusedNode = null;
     if (listMode) {
       for (let idx = 0; idx < itemList.length; idx++) {
         const item = itemList[idx];
@@ -8195,8 +8225,8 @@ function renderCardGrid(container, items, options) {
           onClick: opts.onClick ?? onClick,
           onDblClick: opts.onDblClick ?? onDblClick,
         });
-        grid.appendChild(row);
-        if (focIdx === idx) row.scrollIntoView({ block: 'nearest' });
+        newChildren.push(row);
+        if (focIdx === idx) focusedNode = row;
         // List rows: lazy-load via observer too (treat row as card)
         _attachLazyThumb(row, item);
         _cardByKey.set(`${item.type}:${item.id}`, row);
@@ -8216,14 +8246,16 @@ function renderCardGrid(container, items, options) {
           onClick: opts.onClick ?? onClick,
           onDblClick: opts.onDblClick ?? onDblClick,
         });
-        grid.appendChild(card);
-        if (focIdx === idx) card.scrollIntoView({ block: 'nearest' });
+        newChildren.push(card);
+        if (focIdx === idx) focusedNode = card;
 
         // M59 P4: defer thumbnail resolution until card scrolls near viewport
         _attachLazyThumb(card, item);
         _cardByKey.set(`${item.type}:${item.id}`, card);
       }
     }
+    grid.replaceChildren(...newChildren);
+    if (focusedNode) focusedNode.scrollIntoView({ block: 'nearest' });
   }
 
   async function resolveThumbnailForCard(card, item) {
@@ -8290,6 +8322,35 @@ function renderCardGrid(container, items, options) {
     refresh(newItems, newOptions) {
       renderAll(newItems, { ...options, ...newOptions });
     },
+    // Surgical per-card re-render. Replaces just one card's DOM node in
+    // place \u2014 the rest of the grid is untouched, so the viewport never
+    // shifts and the scroll position is preserved without any restore trick.
+    // Used by tag-apply / tag-rename / tag-delete handlers.
+    refreshCard(item) {
+      if (!item || !item.type || item.id == null) return;
+      const key = `${item.type}:${item.id}`;
+      const oldNode = _cardByKey.get(key);
+      if (!oldNode || !oldNode.parentNode) return;
+      const idx = _currentItems.findIndex((i) => `${i.type}:${i.id}` === key);
+      if (idx >= 0) _currentItems[idx] = item;
+      const isListRow = oldNode.classList.contains('mo-list-row');
+      const isSelected = _currentSelectedIds.has(key);
+      const isFocused = idx === _currentFocusedIndex;
+      const renderer = isListRow ? renderMediaListRow : renderMediaCard;
+      const newNode = renderer(item, {
+        selecting: _currentSelecting,
+        isSelected,
+        isFocused,
+        selectedIds: _currentSelectedIds,
+        cardByKey: _cardByKey,
+        onSelect: options.onSelect,
+        onClick: options.onClick,
+        onDblClick: options.onDblClick,
+      });
+      oldNode.replaceWith(newNode);
+      _cardByKey.set(key, newNode);
+      _attachLazyThumb(newNode, item);
+    },
     setFocus(newFocusedIndex) {
       const prevIdx = _currentFocusedIndex;
       if (prevIdx === newFocusedIndex) return;
@@ -8302,23 +8363,21 @@ function renderCardGrid(container, items, options) {
       _currentFocusedIndex = newFocusedIndex;
     },
     setSelection(newSelectedIds, newSelecting) {
-      const prevSet = _currentSelectedIds || new Set();
-      const nextSet = newSelectedIds || new Set();
-      // Diff: only touch cards whose membership flipped.
-      for (const key of prevSet) {
-        if (!nextSet.has(key)) {
-          const [type, idStr] = key.split(':');
-          const id = Number(idStr);
-          const item = _currentItems.find(i => i.type === type && i.id === id);
-          if (item) _toggleSelectionOnCard(item, false);
-        }
-      }
-      for (const key of nextSet) {
-        if (!prevSet.has(key)) {
-          const [type, idStr] = key.split(':');
-          const id = Number(idStr);
-          const item = _currentItems.find(i => i.type === type && i.id === id);
-          if (item) _toggleSelectionOnCard(item, true);
+      // Reconcile every mounted card against the incoming set. We do NOT
+      // diff against a cached prevSet — that cache has caused Deselect All
+      // to no-op when state.selectedIds was mutated in place, or when a
+      // prior refreshCard / renderAll re-seeded the cache. The source of
+      // truth is what's mounted in the DOM (via _cardByKey). Cloning the
+      // incoming set is still important: callers commonly pass
+      // state.selectedIds by reference and may mutate it afterwards.
+      const nextSet = new Set(newSelectedIds || []);
+      for (const [key, card] of _cardByKey) {
+        const shouldBeSelected = nextSet.has(key);
+        const isCurrentlySelected = card.classList.contains('mo-selected');
+        if (shouldBeSelected !== isCurrentlySelected) {
+          card.classList.toggle('mo-selected', shouldBeSelected);
+          const cb = card.querySelector('input[type="checkbox"]');
+          if (cb) cb.checked = shouldBeSelected;
         }
       }
       _currentSelectedIds = nextSet;
@@ -8581,12 +8640,14 @@ function renderBrowserSidebar(container, api) {
     return b;
   };
 
+  const tagNewBtn = mkHeaderBtn('plus', 'New tag\u2026');
   const tagSearchBtn = mkHeaderBtn('search', 'Filter tags ( / to focus )');
   const tagSortBtn = mkHeaderBtn(tagSortModes[0].icon, tagSortModes[0].tooltip);
   // Group both buttons in a flush-right wrapper. Avoids fragile margin-auto
   // interactions with the chevron (which has its own margin-left:auto in CSS).
   const tagBtnGroup = moEl('div', 'mo-tag-header-btns');
   tagBtnGroup.style.cssText = 'display:flex;align-items:center;margin-left:auto;gap:2px;';
+  tagBtnGroup.appendChild(tagNewBtn);
   tagBtnGroup.appendChild(tagSearchBtn);
   tagBtnGroup.appendChild(tagSortBtn);
   if (tagChevron) {
@@ -8595,6 +8656,16 @@ function renderBrowserSidebar(container, api) {
   } else {
     tagHeader.appendChild(tagBtnGroup);
   }
+  tagNewBtn.addEventListener('click', () => {
+    // Tag-library entry point: lets users build their taxonomy up front
+    // without first selecting media. Reuses the dedicated dialog so the
+    // create flow is identical whether triggered here or from the Bulk Tag
+    // composer\u2019s inline-create input. NOTE: creating a tag never
+    // changes any visible card (no item has the new tag yet), so we do
+    // NOT dispatch mo:refresh-grid here \u2014 doing so would reload the
+    // grid and reset the user\u2019s scroll position for no reason.
+    showCreateTagDialog(api, () => { loadTags(); });
+  });
   tagSortBtn.addEventListener('click', () => {
     tagSortIdx = (tagSortIdx + 1) % tagSortModes.length;
     tagSortBtn.title = tagSortModes[tagSortIdx].tooltip;
@@ -8817,7 +8888,11 @@ function renderBrowserSidebar(container, api) {
         await TagQueries.update(tag.id, { name: next });
         api.statusBar?.setMessage?.(`Renamed tag to "${next}"`, 3000);
         _notifySidebarRefresh();
-        document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+        // Surgical update: only the chip label changes on affected cards.
+        // Do NOT dispatch mo:refresh-grid (which would reload + reset scroll).
+        document.dispatchEvent(new CustomEvent('mo:tag-meta-changed', {
+          detail: { op: 'rename', tagId: tag.id, newName: next },
+        }));
       } catch (err) {
         api.window.showErrorMessage('Rename failed: ' + (err && err.message ? err.message : String(err)));
       }
@@ -8844,7 +8919,10 @@ function renderBrowserSidebar(container, api) {
       await TagQueries.destroy(tag.id);
       api.statusBar?.setMessage?.(`Deleted tag "${tag.name}"`, 3000);
       _notifySidebarRefresh();
-      document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+      // Surgical update: drop the chip from affected cards without reloading.
+      document.dispatchEvent(new CustomEvent('mo:tag-meta-changed', {
+        detail: { op: 'delete', tagId: tag.id },
+      }));
     } catch (err) {
       api.window.showErrorMessage('Delete failed: ' + (err && err.message ? err.message : String(err)));
     }
@@ -8938,7 +9016,9 @@ function renderBrowserSidebar(container, api) {
           await TagQueries.update(tag.id, { name: trimmed });
           api.statusBar?.setMessage?.(`Renamed tag to "${trimmed}"`, 3000);
           _notifySidebarRefresh();
-          document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+          document.dispatchEvent(new CustomEvent('mo:tag-meta-changed', {
+            detail: { op: 'rename', tagId: tag.id, newName: trimmed },
+          }));
         } catch (err) {
           api.window.showErrorMessage('Rename failed: ' + (err && err.message ? err.message : String(err)));
         }
@@ -8971,7 +9051,9 @@ function renderBrowserSidebar(container, api) {
           await TagQueries.merge([tag.id], destId);
           api.statusBar?.setMessage?.(`Merged into "${picked.label}"`, 3000);
           _notifySidebarRefresh();
-          document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+          document.dispatchEvent(new CustomEvent('mo:tag-meta-changed', {
+            detail: { op: 'merge', sourceIds: [tag.id], destId, destName: picked.label },
+          }));
         } catch (err) {
           api.window.showErrorMessage('Merge failed: ' + (err && err.message ? err.message : String(err)));
         }
@@ -8987,7 +9069,9 @@ function renderBrowserSidebar(container, api) {
           await TagQueries.destroy(tag.id);
           api.statusBar?.setMessage?.(`Deleted tag "${tag.name}"`, 3000);
           _notifySidebarRefresh();
-          document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+          document.dispatchEvent(new CustomEvent('mo:tag-meta-changed', {
+            detail: { op: 'delete', tagId: tag.id },
+          }));
         } catch (err) {
           api.window.showErrorMessage('Delete failed: ' + (err && err.message ? err.message : String(err)));
         }
@@ -9329,14 +9413,6 @@ function renderGridBrowser(container, api, input) {
   // Save state snapshot on every loadPage
   let _lastLoadKey = null;          // serialized filter/sort/page snapshot — used to detect actual state changes (vs. cosmetic re-loads) so scroll position is only reset when the user changes something
   let _lastScrollTop = cached?.scrollTop ?? 0; // live-tracked scroll position
-  // Key (type:id) of the card the user most recently opened as a detail
-  // editor from this grid. When they navigate back, we anchor scroll to
-  // that card instead of trusting the raw scrollTop — quick-filter grids
-  // like Untagged shrink as items get tagged, so cached scrollTop can
-  // exceed the new max scroll and the grid snaps to the bottom/top. The
-  // anchor key is consumed (cleared) after the first restore so subsequent
-  // refreshes (tag drops, watcher events) keep the user where they are.
-  let _lastOpenedKey = cached?.lastOpenedKey ?? null;
   function saveSessionState() {
     _sessionGridState.set(instanceId, {
       currentPage: state.currentPage,
@@ -9346,7 +9422,6 @@ function renderGridBrowser(container, api, input) {
       mediaType: state.mediaType,
       displayMode: state.displayMode,
       scrollTop: _lastScrollTop,
-      lastOpenedKey: _lastOpenedKey,
       filters: {
         tagIds: [...state.filters.tagIds],
         excludeTagIds: [...state.filters.excludeTagIds],
@@ -9381,8 +9456,8 @@ function renderGridBrowser(container, api, input) {
 
   const searchInput = moEl('input', 'mo-toolbar-search', {
     type: 'text',
-    placeholder: 'Search… (try: cat tag:beach rating:>=4 taken:2024)',
-    title: 'Free text searches title/details/tags/folder.\nOperators: tag:NAME, -tag:NAME, rating:>=4 (or 3..5), folder:TERM, taken:2024 (or 2024-06), type:photo/video',
+    placeholder: 'Search title, tags, folder, filename… (try: cat tag:beach rating:>=4)',
+    title: 'Free text searches title, details, tags, folder, and filename.\nOperators: tag:NAME, -tag:NAME, rating:>=4 (or 3..5), folder:TERM, taken:2024 (or 2024-06), type:photo/video',
   });
   toolbar.appendChild(searchInput);
 
@@ -9464,10 +9539,12 @@ function renderGridBrowser(container, api, input) {
       if (cfg && typeof cfg.update === 'function') {
         await cfg.update('showCardTags', !_showCardTags);
       } else {
-        // Fallback: flip in-process and refresh; persists via the existing
-        // change handler on next reload if cfg.update is unavailable.
+        // Fallback: flip in-process and re-render existing cards (no DB
+        // reload) so the chips appear/disappear without a scroll shift.
+        // Persists via the change handler on next reload if cfg.update
+        // is unavailable.
         _showCardTags = !_showCardTags;
-        document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+        if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
       }
       refreshShowTagsBtn();
     } catch (err) {
@@ -9475,8 +9552,13 @@ function renderGridBrowser(container, api, input) {
     }
   });
   toolbar.appendChild(showTagsBtn);
-  // Re-read button state when the config changes elsewhere.
-  const showTagsCfgListener = () => { refreshShowTagsBtn(); };
+  // Re-read button state and re-render cards when the config changes
+  // elsewhere. We refresh against the already-loaded state.items — no DB
+  // hit, no scroll snap.
+  const showTagsCfgListener = () => {
+    refreshShowTagsBtn();
+    if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+  };
   document.addEventListener('mo:show-card-tags-changed', showTagsCfgListener);
 
   function updateFilterBadge() {
@@ -9568,14 +9650,22 @@ function renderGridBrowser(container, api, input) {
   const countLabel = moEl('span', 'mo-toolbar-count', { textContent: '' });
   toolbar.appendChild(countLabel);
 
-  // ── Selection Toolbar (D8/F34) ──
+  // \u2500\u2500 Selection Toolbar (D8/F34) \u2500\u2500
   let selectionBar = null;
 
   function refreshGrid() {
     if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
   }
+  // Surgical selection apply \u2014 toggles .mo-selected on changed cards only,
+  // no innerHTML rebuild = no scroll shift. Used by Select All / Deselect
+  // All / Invert, which mutate selection state but not item data.
+  function applySelectionToGrid() {
+    if (cardGrid && typeof cardGrid.setSelection === 'function') {
+      cardGrid.setSelection(state.selectedIds, state.selecting);
+    }
+  }
 
-  selectionBar = buildSelectionToolbar(root, state, api, refreshGrid);
+  selectionBar = buildSelectionToolbar(root, state, api, refreshGrid, applySelectionToGrid);
 
   // ── Filter Panel ──
   const filterPanel = moEl('div', 'mo-filter-panel');
@@ -9861,16 +9951,18 @@ function renderGridBrowser(container, api, input) {
   const pageLast = moEl('button', 'mo-page-btn', { textContent: '\u00BB', title: 'Last page' });
   const perPageDropdown = moDropdown({
     items: [
-      { value: '20', label: '20/page' },
-      { value: '40', label: '40/page' },
-      { value: '80', label: '80/page' },
-      { value: '120', label: '120/page' },
-      { value: '500', label: '500/page' },
-      { value: '2000', label: 'Auto (large)' },
+      { value: '20', label: '20' },
+      { value: '40', label: '40' },
+      { value: '80', label: '80' },
+      { value: '120', label: '120' },
+      { value: '500', label: '500' },
+      { value: '2000', label: 'Auto' },
     ],
     selected: String(state.perPage),
     ariaLabel: 'Items per page',
   });
+  // Native tooltip explains the bare number labels (e.g. "20", "Auto").
+  try { perPageDropdown.el.title = 'Items per page'; } catch { /* ignore */ }
   paginationBar.append(pageFirst, pagePrev, pageInfo, pageNext, pageLast, perPageDropdown.el);
   root.appendChild(paginationBar);
 
@@ -10013,12 +10105,19 @@ function renderGridBrowser(container, api, input) {
     const videoModTime = needsFileSort ? `, ${videoFileAlias}.mod_time AS file_mod_time` : '';
     const effectiveSort = safeColumn === 'file_mod_time' ? 'file_mod_time' : safeColumn;
 
+    // Correlated size subquery — pulls the primary file's bytes WITHOUT a
+    // JOIN (a LEFT JOIN here would risk row multiplication when the WHERE
+    // already contains file joins, and a GROUP BY would force aggregation on
+    // every column in the SELECT). Returns NULL when no primary file is set.
+    const photoSizeExpr = `(SELECT mf.size FROM mo_photos_files pfx JOIN mo_files mf ON mf.id = pfx.file_id WHERE pfx.photo_id = p.id AND pfx.is_primary = 1 LIMIT 1)`;
+    const videoSizeExpr = `(SELECT mf.size FROM mo_videos_files vfx JOIN mo_files mf ON mf.id = vfx.file_id WHERE vfx.video_id = v.id AND vfx.is_primary = 1 LIMIT 1)`;
+
     const dataQuery = `
       SELECT * FROM (
-        SELECT 'photo' AS media_type, p.id, p.title, p.rating, p.color_label, p.created_at, p.taken_at, NULL AS duration${photoModTime}
+        SELECT 'photo' AS media_type, p.id, p.title, p.rating, p.color_label, p.created_at, p.taken_at, NULL AS duration, ${photoSizeExpr} AS file_size${photoModTime}
         FROM mo_photos p${photoJoin}${pw}
         UNION ALL
-        SELECT 'video' AS media_type, v.id, v.title, v.rating, v.color_label, v.created_at, NULL AS taken_at, v.duration${videoModTime}
+        SELECT 'video' AS media_type, v.id, v.title, v.rating, v.color_label, v.created_at, NULL AS taken_at, v.duration, ${videoSizeExpr} AS file_size${videoModTime}
         FROM mo_videos v${videoJoin}${vw}
       ) combined
       ORDER BY ${effectiveSort} ${safeDir}, COALESCE(title, '') COLLATE NOCASE ASC, id ASC
@@ -10105,7 +10204,11 @@ function renderGridBrowser(container, api, input) {
 
     const join = joinParts.join('');
     const w = where.length > 0 ? ` WHERE ${where.join(' AND ')}` : '';
-    const dataQuery = `SELECT ${alias}.* FROM ${table} ${alias}${join}${w} ORDER BY ${orderExpr} ${safeDir}, COALESCE(${alias}.title, '') COLLATE NOCASE ASC, ${alias}.id ASC LIMIT ? OFFSET ?`;
+    // Primary-file size subquery, same approach as the unified query.
+    const sizeJoinTable = type === 'photo' ? 'mo_photos_files' : 'mo_videos_files';
+    const sizeFkCol = type === 'photo' ? 'photo_id' : 'video_id';
+    const sizeExpr = `(SELECT mf.size FROM ${sizeJoinTable} sfx JOIN mo_files mf ON mf.id = sfx.file_id WHERE sfx.${sizeFkCol} = ${alias}.id AND sfx.is_primary = 1 LIMIT 1)`;
+    const dataQuery = `SELECT ${alias}.*, ${sizeExpr} AS file_size FROM ${table} ${alias}${join}${w} ORDER BY ${orderExpr} ${safeDir}, COALESCE(${alias}.title, '') COLLATE NOCASE ASC, ${alias}.id ASC LIMIT ? OFFSET ?`;
     const dataParams = [...params, limit, offset];
     const countQuery = `SELECT COUNT(*) AS count FROM ${table} ${alias}${join}${w}`;
     const countParams = [...params];
@@ -10135,6 +10238,12 @@ function renderGridBrowser(container, api, input) {
         thumbnailPath: null,
         thumbnailStatus: 'pending',
       };
+    }
+    // file_size comes from the size subquery added to build*Query — present
+    // for grid rows, absent for items hydrated from other code paths.
+    if (row && row.file_size != null) {
+      const n = Number(row.file_size);
+      if (Number.isFinite(n) && n >= 0) item.size = n;
     }
     // Hydrate from the resolved-thumb cache so re-entering the grid after
     // opening an item doesn't blank thumbnails that we already resolved
@@ -10401,35 +10510,22 @@ function renderGridBrowser(container, api, input) {
     const stateChanged = _lastLoadKey !== null && _lastLoadKey !== loadKey;
     if (scrollEl) {
       if (stateChanged) {
+        // Filter / sort / page / mediaType actually changed — the user
+        // requested a different view, so resetting to the top is the
+        // expected behavior.
         scrollEl.scrollTop = 0;
         _lastScrollTop = 0;
-        _lastOpenedKey = null; // filter changed — anchor is no longer relevant
-      } else if (_lastOpenedKey || _scrollBeforeLoad > 0) {
-        // Defer restore to next frame so the grid has its full height.
-        // Prefer scrolling the last-opened card into view (robust against
-        // totalCount changes from tag/trash ops); fall back to raw scrollTop
-        // only when no anchor card is present. Consume the anchor so a
-        // later refresh-grid event doesn't re-anchor.
+      } else if (_scrollBeforeLoad > 0) {
+        // Deterministic restore: always put the viewport back at the exact
+        // pixel offset it was at before this load. No "scroll-into-center"
+        // anchor — that visually shifts the user's position to wherever
+        // the last-opened card happens to land, which the user (correctly)
+        // perceives as the grid jumping around on tab switch. The raw
+        // scrollTop is the only thing that's truly "where they were".
         const restoreTo = _scrollBeforeLoad;
-        const anchorKey = _lastOpenedKey;
-        _lastOpenedKey = null;
         requestAnimationFrame(() => {
-          if (anchorKey) {
-            // Escape the colon for CSS attribute matching by quoting.
-            const card = gridArea && gridArea.querySelector(
-              `.mo-card[data-key="${anchorKey}"], .mo-list-row[data-key="${anchorKey}"]`
-            );
-            if (card) {
-              card.scrollIntoView({ block: 'center' });
-              _lastScrollTop = scrollEl.scrollTop;
-              saveSessionState();
-              return;
-            }
-          }
-          if (restoreTo > 0) {
-            scrollEl.scrollTop = restoreTo;
-            _lastScrollTop = restoreTo;
-          }
+          scrollEl.scrollTop = restoreTo;
+          _lastScrollTop = restoreTo;
         });
       }
     }
@@ -10464,6 +10560,24 @@ function renderGridBrowser(container, api, input) {
   }
 
   function handleCardClick(item) {
+    // Plain click (no modifier): standard file-manager semantics. Any
+    // pre-existing selection (from drag-select, Ctrl-click, Shift-range,
+    // or checkbox) is cleared. The clicked card becomes the focus anchor
+    // but is NOT itself added to the selection — that role belongs to the
+    // checkbox / Ctrl-click / Shift-range, which run on pointerdown before
+    // this click event fires. A modifier-free click that lands on a card
+    // already in the selected group also clears the group; otherwise the
+    // user has no way to "exit" a selection except by clicking empty grid
+    // background.
+    if (state.selectedIds && state.selectedIds.size > 0) {
+      state.selectedIds = new Set();
+      state.selecting = false;
+      // lastClickedKey is updated below; selection bar reflects the clear.
+      if (selectionBar) selectionBar.update();
+      if (cardGrid && cardGrid.setSelection) {
+        cardGrid.setSelection(state.selectedIds, false);
+      }
+    }
     // Single click: focus the card (keyboard shortcuts act on it) and seed
     // the shift-click anchor so a follow-up Shift+Click range-selects from
     // here without requiring a checkbox click first.
@@ -10483,11 +10597,6 @@ function renderGridBrowser(container, api, input) {
 
   // Double-click / Enter: open detail editor
   function handleCardOpen(item) {
-    // Remember which card we left from so the grid can scroll back to it
-    // when the user navigates back. Survives totalCount changes from tag
-    // or trash operations performed in the detail view.
-    _lastOpenedKey = `${item.type}:${item.id}`;
-    saveSessionState();
     api.editors.openEditor({
       typeId: 'media-organizer-grid',
       title: item.title || `${item.type} #${item.id}`,
@@ -10579,13 +10688,16 @@ function renderGridBrowser(container, api, input) {
           );
         }
       }
-      // Preserve scroll across the rebuild — cardGrid.refresh() wipes
-      // grid.innerHTML which momentarily drops content height to 0 and
-      // the scroll container resets to the top. Same trick loadPage uses.
-      const savedScroll = gridArea ? gridArea.scrollTop : 0;
-      if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
-      if (gridArea && savedScroll > 0) {
-        requestAnimationFrame(() => { gridArea.scrollTop = savedScroll; });
+      // Surgical per-card update: re-render ONLY the affected cards in place.
+      // This avoids the grid-wide cardGrid.refresh() that wipes grid.innerHTML
+      // and produces a one-frame scroll shift (browser clamps scrollTop to 0
+      // when content height momentarily drops to 0). The rest of the grid is
+      // untouched, so the viewport stays exactly where the user left it.
+      if (cardGrid && typeof cardGrid.refreshCard === 'function') {
+        for (const key of keys) {
+          const it = state.items.find((x) => `${x.type}:${x.id}` === key);
+          if (it) cardGrid.refreshCard(it);
+        }
       }
     } else {
       // Fallback: full reload, no debounce.
@@ -10593,6 +10705,139 @@ function renderGridBrowser(container, api, input) {
     }
   };
   document.addEventListener('mo:tag-applied', _tagAppliedHandler);
+
+  // Surgical handler for tag *metadata* changes (rename / delete / merge)
+  // dispatched from the sidebar. These mutations affect chip labels on
+  // cards but never change which items are visible, so we patch
+  // state.items[*].tags in place and re-render with the same scroll-
+  // preserve trick as _tagAppliedHandler. Critically, we do NOT call
+  // loadPage() \u2014 a sidebar tag-rename must never reset grid scroll.
+  const _tagMetaChangedHandler = (e) => {
+    const detail = e.detail || {};
+    const op = String(detail.op || '');
+    const mutatedKeys = [];
+    if (op === 'rename') {
+      const tagId = Number(detail.tagId);
+      const newName = String(detail.newName || '').trim();
+      if (!Number.isFinite(tagId) || !newName) return;
+      for (const it of state.items) {
+        if (!Array.isArray(it.tags)) continue;
+        const tg = it.tags.find((t) => t.id === tagId);
+        if (tg && tg.name !== newName) {
+          tg.name = newName;
+          it.tags = [...it.tags].sort((a, b) =>
+            String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' })
+          );
+          mutatedKeys.push(`${it.type}:${it.id}`);
+        }
+      }
+    } else if (op === 'delete') {
+      const tagId = Number(detail.tagId);
+      if (!Number.isFinite(tagId)) return;
+      for (const it of state.items) {
+        if (!Array.isArray(it.tags) || it.tags.length === 0) continue;
+        const next = it.tags.filter((t) => t.id !== tagId);
+        if (next.length !== it.tags.length) {
+          it.tags = next;
+          mutatedKeys.push(`${it.type}:${it.id}`);
+        }
+      }
+    } else if (op === 'merge') {
+      const sourceIds = Array.isArray(detail.sourceIds) ? detail.sourceIds.map(Number).filter(Number.isFinite) : [];
+      const destId = Number(detail.destId);
+      const destName = String(detail.destName || '').trim();
+      if (sourceIds.length === 0 || !Number.isFinite(destId)) return;
+      const sourceSet = new Set(sourceIds);
+      for (const it of state.items) {
+        if (!Array.isArray(it.tags) || it.tags.length === 0) continue;
+        let changed = false;
+        const seen = new Set();
+        const next = [];
+        for (const t of it.tags) {
+          const id = sourceSet.has(t.id) ? destId : t.id;
+          if (seen.has(id)) { changed = true; continue; }
+          seen.add(id);
+          if (id === destId) {
+            next.push({ id: destId, name: destName || t.name });
+            if (id !== t.id) changed = true;
+          } else {
+            next.push(t);
+          }
+        }
+        if (changed) {
+          it.tags = next.sort((a, b) =>
+            String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' })
+          );
+          mutatedKeys.push(`${it.type}:${it.id}`);
+        }
+      }
+    } else {
+      return;
+    }
+    if (mutatedKeys.length === 0) return;
+    // Surgical per-card update: rebuild only the affected cards in place.
+    // No grid-wide refresh, so the viewport never shifts and unaffected
+    // cards keep their loaded thumbnails.
+    if (cardGrid && typeof cardGrid.refreshCard === 'function') {
+      for (const key of mutatedKeys) {
+        const it = state.items.find((x) => `${x.type}:${x.id}` === key);
+        if (it) cardGrid.refreshCard(it);
+      }
+    }
+  };
+  document.addEventListener('mo:tag-meta-changed', _tagMetaChangedHandler);
+
+  // Surgical handler for bulk tag changes (Bulk Tag dialog: ADD / REMOVE
+  // / REPLACE). Patches state.items[*].tags in place for each affected key
+  // then re-renders ONLY those cards via cardGrid.refreshCard. This
+  // intentionally replaces the old `mo:refresh-grid` dispatch that called
+  // loadPage() — a full DB reload that wiped grid.innerHTML and snapped
+  // scroll position. Scroll preservation: a deterministic invariant — the
+  // viewport never shifts as a side-effect of mutating tag data.
+  const _tagsBulkChangedHandler = async (e) => {
+    const detail = e.detail || {};
+    const op = String(detail.op || '');
+    const tagIds = Array.isArray(detail.tagIds) ? detail.tagIds.map(Number).filter(Number.isFinite) : [];
+    const keys = Array.isArray(detail.keys) ? detail.keys : [];
+    if (!op || keys.length === 0) return;
+    // Resolve tag names once.
+    const idToName = new Map();
+    for (const tid of tagIds) {
+      try {
+        const t = await TagQueries.findById(tid);
+        if (t && t.name) idToName.set(tid, t.name);
+      } catch { /* skip — patch will use id as fallback */ }
+    }
+    const tagIdSet = new Set(tagIds);
+    const sortTags = (arr) => arr.sort((a, b) =>
+      String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' })
+    );
+    for (const key of keys) {
+      const it = state.items.find((x) => `${x.type}:${x.id}` === key);
+      if (!it) continue;
+      if (!Array.isArray(it.tags)) it.tags = [];
+      if (op === 'ADD') {
+        const existing = new Set(it.tags.map((t) => t.id));
+        let changed = false;
+        for (const tid of tagIds) {
+          if (!existing.has(tid)) {
+            it.tags.push({ id: tid, name: idToName.get(tid) || String(tid) });
+            changed = true;
+          }
+        }
+        if (changed) it.tags = sortTags([...it.tags]);
+      } else if (op === 'REMOVE') {
+        const next = it.tags.filter((t) => !tagIdSet.has(t.id));
+        if (next.length !== it.tags.length) it.tags = next;
+      } else if (op === 'REPLACE') {
+        it.tags = sortTags(tagIds.map((tid) => ({ id: tid, name: idToName.get(tid) || String(tid) })));
+      }
+      if (cardGrid && typeof cardGrid.refreshCard === 'function') {
+        cardGrid.refreshCard(it);
+      }
+    }
+  };
+  document.addEventListener('mo:tags-bulk-changed', _tagsBulkChangedHandler);
 
   // Event handlers
   let searchTimer = null;
@@ -10680,11 +10925,27 @@ function renderGridBrowser(container, api, input) {
     return cols ? cols.split(' ').length : 1;
   }
 
-  // Helper: refresh grid + selection bar after state change
-  function refreshAfterStateChange() {
+  // Helper: refresh grid + selection bar after state change.
+  //
+  // applySelectionChange()     — selection-only diff (Escape, Ctrl+A,
+  //                              Ctrl+I, Space, Shift+Arrow). No innerHTML
+  //                              rebuild = no scroll shift.
+  // refreshAffectedCards(keys) — surgical per-card re-render for ops that
+  //                              changed item DATA (rating, color label).
+  function applySelectionChange() {
     state.selecting = state.selectedIds.size > 0;
     if (selectionBar) selectionBar.update();
-    if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+    if (cardGrid && typeof cardGrid.setSelection === 'function') {
+      cardGrid.setSelection(state.selectedIds, state.selecting);
+    }
+  }
+  function refreshAffectedCards(keys) {
+    if (selectionBar) selectionBar.update();
+    if (!cardGrid || typeof cardGrid.refreshCard !== 'function' || !keys || keys.length === 0) return;
+    for (const k of keys) {
+      const it = state.items.find((x) => `${x.type}:${x.id}` === k);
+      if (it) cardGrid.refreshCard(it);
+    }
   }
 
   // F3: Bulk rate items by key (0-5)
@@ -10726,7 +10987,7 @@ function renderGridBrowser(container, api, input) {
       _statusBarItem.text = `Rated ${targetKeys.length} item${targetKeys.length > 1 ? 's' : ''} ${stars}`;
       _statusBarItem.show();
     }
-    refreshAfterStateChange();
+    refreshAffectedCards(targetKeys);
   }
 
   // M59 P9 / F12 — Set color label on selected/focused items.
@@ -10769,7 +11030,7 @@ function renderGridBrowser(container, api, input) {
       _statusBarItem.text = `Set ${targetKeys.length} item${targetKeys.length > 1 ? 's' : ''} \u2192 ${desc}`;
       _statusBarItem.show();
     }
-    refreshAfterStateChange();
+    refreshAffectedCards(targetKeys);
   }
 
   // Keyboard shortcuts for grid — adapted from stash: useListSelect + KeyboardShortcuts.md
@@ -10778,30 +11039,37 @@ function renderGridBrowser(container, api, input) {
     const tag = e.target.tagName;
     const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 
-    // Escape — deselect all (or clear focus)
+    // Escape \u2014 deselect all (or clear focus)
     if (e.key === 'Escape') {
       if (state.selectedIds.size > 0) {
         state.selectedIds.clear();
-        refreshAfterStateChange();
+        applySelectionChange();
         e.preventDefault();
         return;
       }
       if (state.focusedIndex !== null) {
+        const prevIdx = state.focusedIndex;
         state.focusedIndex = null;
-        if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+        if (cardGrid && typeof cardGrid.setFocus === 'function') {
+          cardGrid.setFocus(null);
+        } else if (cardGrid) {
+          cardGrid.refresh(state.items, refreshOpts());
+        }
+        // Silence the unused-var lint if the closure doesn't reference it.
+        void prevIdx;
         e.preventDefault();
         return;
       }
       return;
     }
 
-    // Ctrl+A — select all on current page
+    // Ctrl+A \u2014 select all on current page
     if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
       e.preventDefault();
       for (const item of state.items) {
         state.selectedIds.add(`${item.type}:${item.id}`);
       }
-      refreshAfterStateChange();
+      applySelectionChange();
       return;
     }
 
@@ -10816,7 +11084,7 @@ function renderGridBrowser(container, api, input) {
       return;
     }
 
-    // Ctrl+I — invert selection
+    // Ctrl+I \u2014 invert selection
     if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
       e.preventDefault();
       const newSel = new Set();
@@ -10825,7 +11093,7 @@ function renderGridBrowser(container, api, input) {
         if (!state.selectedIds.has(key)) newSel.add(key);
       }
       state.selectedIds = newSel;
-      refreshAfterStateChange();
+      applySelectionChange();
       return;
     }
 
@@ -10853,14 +11121,21 @@ function renderGridBrowser(container, api, input) {
         state.selectedIds.add(key);
         state.selecting = true;
         if (selectionBar) selectionBar.update();
+        if (cardGrid && typeof cardGrid.setSelection === 'function') {
+          cardGrid.setSelection(state.selectedIds, state.selecting);
+        }
       }
 
       state.focusedIndex = idx;
-      if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+      if (cardGrid && typeof cardGrid.setFocus === 'function') {
+        cardGrid.setFocus(idx);
+      } else if (cardGrid) {
+        cardGrid.refresh(state.items, refreshOpts());
+      }
       return;
     }
 
-    // F2: Space — toggle selection on focused item
+    // F2: Space \u2014 toggle selection on focused item
     if (e.key === ' ' && !inInput && state.focusedIndex !== null) {
       e.preventDefault();
       const item = state.items[state.focusedIndex];
@@ -10868,7 +11143,7 @@ function renderGridBrowser(container, api, input) {
       const key = `${item.type}:${item.id}`;
       if (state.selectedIds.has(key)) state.selectedIds.delete(key);
       else state.selectedIds.add(key);
-      refreshAfterStateChange();
+      applySelectionChange();
       return;
     }
 
@@ -10934,7 +11209,8 @@ function renderGridBrowser(container, api, input) {
         e.preventDefault();
         showBulkTagDialog(target, api, () => {
           if (selectionBar) selectionBar.update();
-          document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+          // No grid refresh — the dialog dispatches mo:tags-bulk-changed
+          // for surgical in-place updates that don't shift scroll.
         });
       }
       return;
@@ -10989,6 +11265,41 @@ function renderGridBrowser(container, api, input) {
     return null;
   }
 
+  // Attach a media item to the chat input as a file attachment. Mirrors what
+  // moToolViewImage does for AI-driven views — same command, same payload
+  // shape — so right-click and AI-attached items show up identically in the
+  // chat composer.
+  async function attachItemToChat(item) {
+    const type = item && item.type;
+    if (type !== 'photo' && type !== 'video') return false;
+    const Q = type === 'photo' ? PhotoQueries : VideoQueries;
+    try {
+      const files = await Q.loadFiles(item.id);
+      const primary = (files || []).find(f => f.isPrimary) || (files || [])[0] || null;
+      if (!primary) return false;
+      const fullPath = await moResolveFilePath(primary);
+      if (!fullPath) return false;
+      await api.commands.executeCommand('chat.addFileAttachment', {
+        file: { name: primary.basename, fullPath },
+      });
+      // Mirror moToolViewImage so a follow-up "tag this" via AI resolves to
+      // whatever the user attached most recently, regardless of whether the
+      // image was attached by AI or by right-click.
+      try {
+        _lastViewedMedia = {
+          type,
+          id: item.id,
+          basename: primary.basename,
+          viewedAt: Date.now(),
+        };
+      } catch { /* _lastViewedMedia is module-scoped; ignore if unavailable */ }
+      return true;
+    } catch (err) {
+      console.warn('[mo] attachItemToChat failed', err);
+      return false;
+    }
+  }
+
   function buildContextMenuActions(item, isMulti) {
     const actions = [];
     if (!isMulti) {
@@ -10999,7 +11310,7 @@ function renderGridBrowser(container, api, input) {
       actions.push({ label: 'Tag\u2026', handler: () => {
         const tmpState = { selectedIds: new Set([`${item.type}:${item.id}`]) };
         showBulkTagDialog(tmpState, api, () => {
-          document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+          // No grid refresh — dialog dispatches mo:tags-bulk-changed.
         });
       }});
       actions.push({ label: 'Rate', submenu: [
@@ -11021,6 +11332,11 @@ function renderGridBrowser(container, api, input) {
       actions.push({ label: 'Add to Album\u2026', handler: () => {
         const tmpState = { selectedIds: new Set([`${item.type}:${item.id}`]) };
         showAddToAlbumDialog(tmpState, api, () => loadPage());
+      }});
+      actions.push({ label: 'Add to Chat', handler: async () => {
+        const ok = await attachItemToChat(item);
+        if (ok && api.statusBar) api.statusBar.setMessage('Attached to chat', 2000);
+        else if (!ok) api.window.showInformationMessage('Could not attach this item to chat (no primary file).');
       }});
       // Optimize GIF — only show for .gif source files
       if (item.type === 'photo') {
@@ -11058,7 +11374,7 @@ function renderGridBrowser(container, api, input) {
       actions.push({ label: 'Tag\u2026', handler: () => {
         showBulkTagDialog(state, api, () => {
           if (selectionBar) selectionBar.update();
-          document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+          // No grid refresh — dialog dispatches mo:tags-bulk-changed.
         });
       }});
       actions.push({ label: 'Rate', submenu: [
@@ -11079,6 +11395,26 @@ function renderGridBrowser(container, api, input) {
       ]});
       actions.push({ label: 'Add to Album\u2026', handler: () => {
         showAddToAlbumDialog(state, api, () => { if (selectionBar) selectionBar.update(); loadPage(); });
+      }});
+      actions.push({ label: 'Add to Chat', handler: async () => {
+        const selectedItems = state.items.filter((it) => state.selectedIds.has(`${it.type}:${it.id}`));
+        // Cap at 20 to protect the chat composer from extreme right-click
+        // selections (e.g. "select all" on a 5k library + Add to Chat).
+        // The cap is generous; legitimate workflows stay below it.
+        const MAX = 20;
+        const overflow = selectedItems.length - MAX;
+        const slice = selectedItems.slice(0, MAX);
+        let ok = 0;
+        for (const it of slice) {
+          // Sequential to preserve order in the composer attachment list.
+          if (await attachItemToChat(it)) ok++;
+        }
+        if (api.statusBar) {
+          const msg = overflow > 0
+            ? `Attached ${ok} to chat (${overflow} skipped \u2014 cap is ${MAX})`
+            : `Attached ${ok} to chat`;
+          api.statusBar.setMessage(msg, 2500);
+        }
       }});
       // Optimize GIF — resolves selected items, filters to .gif files only
       actions.push({ label: 'Optimize GIFs\u2026', handler: async () => {
@@ -11182,9 +11518,19 @@ function renderGridBrowser(container, api, input) {
     const newSelection = new Set(_drag.priorSelection);
     const grid = gridArea.querySelector('.mo-grid');
     if (grid) {
-      const cards = grid.querySelectorAll('.mo-card, .mo-list-row');
-      for (let i = 0; i < cards.length && i < state.items.length; i++) {
-        const cardEl = cards[i];
+      // Use the card's own data-key as the source of truth, NOT a
+      // positional state.items[i] lookup. The state.items array can be
+      // replaced mid-drag by a watcher event, refresh, or re-sort; when
+      // that happens index i no longer matches the mounted card at DOM
+      // position i, and selectedIds ends up populated with keys that
+      // don't correspond to any rendered card — setSelection then can't
+      // find the DOM node and the user sees missing checkmarks (most
+      // visibly on the first card, since that's the one whose
+      // misalignment is closest to the drag origin).
+      const cards = grid.querySelectorAll('.mo-card[data-key], .mo-list-row[data-key]');
+      for (const cardEl of cards) {
+        const key = cardEl.dataset.key;
+        if (!key) continue;
         const cr = cardEl.getBoundingClientRect();
         // Convert card rect to gridArea-relative coords
         const cardRelRect = {
@@ -11193,8 +11539,6 @@ function renderGridBrowser(container, api, input) {
           right: cr.right - rect.left + gridArea.scrollLeft,
           bottom: cr.bottom - rect.top + gridArea.scrollTop,
         };
-        const item = state.items[i];
-        const key = `${item.type}:${item.id}`;
         if (rectsOverlap(bandRect, cardRelRect)) {
           newSelection.add(key);
         } else if (!_drag.priorSelection.has(key)) {
@@ -11205,7 +11549,17 @@ function renderGridBrowser(container, api, input) {
     state.selectedIds = newSelection;
     state.selecting = newSelection.size > 0;
     if (selectionBar) selectionBar.update();
-    if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+    // Hot path: marquee fires on every pointermove. cardGrid.refresh() would
+    // tear down and re-render every card DOM node on each frame, which is
+    // why the rubber band felt janky. setSelection() does a Set diff and
+    // only touches the .mo-selected class + checkbox on the cards whose
+    // membership actually flipped this frame — no DOM teardown, no thumbnail
+    // re-resolution, no IntersectionObserver re-attach.
+    if (cardGrid && typeof cardGrid.setSelection === 'function') {
+      cardGrid.setSelection(newSelection, state.selecting);
+    } else if (cardGrid) {
+      cardGrid.refresh(state.items, refreshOpts());
+    }
   });
 
   function endDrag() {
@@ -11231,7 +11585,23 @@ function renderGridBrowser(container, api, input) {
         zoomSlider._persistTimer = null;
         moSetSetting('grid_zoom_width', String(state.zoomWidth)).catch(() => {});
       }
+      if (_gridRefreshTimer) {
+        clearTimeout(_gridRefreshTimer);
+        _gridRefreshTimer = null;
+      }
       document.removeEventListener('keydown', docKeyHandler, true);
+      // Panel-scoped custom-event listeners — these were registered while the
+      // pane was alive and would otherwise leak on close, accumulating one
+      // copy per open/close cycle and re-running stale closures against a
+      // detached grid.
+      document.removeEventListener('mo:show-card-tags-changed', showTagsCfgListener);
+      document.removeEventListener('mo:request-search-state', _smartAlbumReplyHandler);
+      document.removeEventListener('mo:apply-search-state', _smartAlbumApplyHandler);
+      document.removeEventListener('mo:request-selection', _selectionReplyHandler);
+      document.removeEventListener('mo:refresh-grid', _gridRefreshHandler);
+      document.removeEventListener('mo:tag-applied', _tagAppliedHandler);
+      document.removeEventListener('mo:tag-meta-changed', _tagMetaChangedHandler);
+      document.removeEventListener('mo:tags-bulk-changed', _tagsBulkChangedHandler);
       if (cardGrid) cardGrid.dispose();
       container.innerHTML = '';
     }
@@ -13827,8 +14197,14 @@ async function exportSelectedItems(state, api) {
   api.statusBar?.setMessage?.(msg, 5000);
 }
 
-function buildSelectionToolbar(container, state, api, refreshFn) {
-  // Adapted from stash: FilteredListToolbar — selection mode toolbar
+function buildSelectionToolbar(container, state, api, refreshFn, applySelectionFn) {
+  // Adapted from stash: FilteredListToolbar \u2014 selection mode toolbar
+  // refreshFn:        heavy rebuild for ops that mutate item DATA (tag,
+  //                   rate, album, trash).
+  // applySelectionFn: surgical selection-class diff for ops that change
+  //                   ONLY selection state (Select All, Deselect All,
+  //                   Invert). Falls back to refreshFn if not supplied.
+  const _applySelection = (typeof applySelectionFn === 'function') ? applySelectionFn : refreshFn;
   const bar = moEl('div', 'mo-selection-bar');
 
   const countEl = moEl('span', 'mo-sel-count');
@@ -13841,7 +14217,7 @@ function buildSelectionToolbar(container, state, api, refreshFn) {
     }
     state.selecting = true;
     updateBar();
-    refreshFn();
+    _applySelection();
   });
   bar.appendChild(selectAllBtn);
 
@@ -13850,7 +14226,7 @@ function buildSelectionToolbar(container, state, api, refreshFn) {
     state.selectedIds.clear();
     state.selecting = false;
     updateBar();
-    refreshFn();
+    _applySelection();
   });
   bar.appendChild(deselectBtn);
 
@@ -13865,7 +14241,7 @@ function buildSelectionToolbar(container, state, api, refreshFn) {
     for (const k of newSelection) state.selectedIds.add(k);
     state.selecting = state.selectedIds.size > 0;
     updateBar();
-    refreshFn();
+    _applySelection();
   });
   bar.appendChild(invertBtn);
 
@@ -13874,7 +14250,9 @@ function buildSelectionToolbar(container, state, api, refreshFn) {
   // Bulk Tag button
   const bulkTagBtn = moEl('button', null, { textContent: 'Tag...' });
   bulkTagBtn.addEventListener('click', () => {
-    showBulkTagDialog(state, api, () => { updateBar(); refreshFn(); });
+    // No refreshFn — the dialog dispatches mo:tags-bulk-changed for a
+    // surgical, scroll-preserving update.
+    showBulkTagDialog(state, api, () => { updateBar(); });
   });
   bar.appendChild(bulkTagBtn);
 
@@ -14420,13 +14798,15 @@ function showBulkTagDialog(state, api, onComplete) {
       api.window.showInformationMessage(summary);
       overlay.remove();
       _notifySidebarRefresh();
-      // The selection-bar caller's onComplete only re-renders cards from the
-      // already-loaded state.items, which still hold the pre-apply tag arrays.
-      // Dispatch a grid refresh so loadPage re-runs the per-page tag batch
-      // query and the cards show the new tag set immediately. Other callers
-      // (which already invoke loadPage themselves) simply get one extra
-      // debounced reload — harmless, the listener coalesces.
-      document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+      // Surgical, scroll-stable refresh: dispatch a bulk-tags-changed event
+      // that patches state.items[*].tags in place and re-renders ONLY the
+      // affected cards. Replaces the old `mo:refresh-grid` dispatch which
+      // ran loadPage() — a full DB reload that snapped grid scroll. Tag
+      // mutations never shift the viewport.
+      const targetKeys = [...state.selectedIds];
+      document.dispatchEvent(new CustomEvent('mo:tags-bulk-changed', {
+        detail: { op: mode, tagIds, keys: targetKeys },
+      }));
       onComplete();
     } catch (err) {
       applyBtn.disabled = false;
@@ -14671,6 +15051,136 @@ function showBulkDeleteDialog(state, api, onComplete) {
   document.body.appendChild(overlay);
   overlay.setAttribute('tabindex', '-1');
   overlay.focus();
+}
+
+/**
+ * Create-tag dialog. Minimal modal: tag name input + Create button.
+ * Exists so users can build their tag library *without* first selecting
+ * media. Wired to the "+" button in the Tags sidebar section header.
+ *
+ * Validation:
+ *   • Name must be non-empty after trim
+ *   • Name must not collide with an existing tag name or alias
+ *     (TagQueries.create enforces this and throws DuplicateError on collision)
+ *
+ * On success, calls onComplete() so the sidebar can reload.
+ */
+function showCreateTagDialog(api, onComplete) {
+  const overlay = moEl('div', 'mo-bulk-dialog-overlay');
+  const dialog = moEl('div', 'mo-bulk-dialog');
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-label', 'New tags');
+  overlay.appendChild(dialog);
+
+  dialog.appendChild(moEl('h3', null, { textContent: 'New tag(s)' }));
+
+  const section = moEl('div', 'mo-bulk-dialog-section');
+  section.appendChild(moEl('label', null, { textContent: 'Names' }));
+  const input = moEl('textarea', 'mo-bulk-tag-search', {
+    rows: 4,
+    placeholder: 'One tag per line, or comma-separated\u2026',
+  });
+  input.setAttribute('aria-label', 'Tag names');
+  // Textarea-friendly sizing alongside the bulk-tag input styling
+  input.style.minHeight = '5.5em';
+  input.style.resize = 'vertical';
+  section.appendChild(input);
+
+  const hint = moEl('div', 'mo-bulk-mode-hint', {
+    textContent: 'Enter to create. Shift+Enter for a new line.',
+  });
+  section.appendChild(hint);
+
+  const statusLine = moEl('div', 'mo-bulk-mode-hint');
+  statusLine.style.minHeight = '1.2em';
+  section.appendChild(statusLine);
+  dialog.appendChild(section);
+
+  const footer = moEl('div', 'mo-bulk-dialog-footer');
+  const cancelBtn = moEl('button', null, { textContent: 'Cancel', type: 'button' });
+  const createBtn = moEl('button', 'primary', { textContent: 'Create', type: 'button' });
+  createBtn.disabled = true;
+  footer.append(cancelBtn, createBtn);
+  dialog.appendChild(footer);
+
+  function parseNames() {
+    const raw = String(input.value || '');
+    const out = [];
+    const seen = new Set();
+    for (const part of raw.split(/[\n,]/)) {
+      const t = part.trim();
+      if (!t) continue;
+      const key = t.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(t);
+    }
+    return out;
+  }
+
+  input.addEventListener('input', () => {
+    createBtn.disabled = parseNames().length === 0;
+    statusLine.textContent = '';
+    statusLine.style.color = '';
+    statusLine.style.fontStyle = '';
+  });
+
+  async function submit() {
+    const names = parseNames();
+    if (names.length === 0) return;
+    createBtn.disabled = true;
+    cancelBtn.disabled = true;
+    const created = [];
+    const skipped = [];
+    const failed = [];
+    for (const name of names) {
+      try {
+        await TagQueries.create({ name });
+        created.push(name);
+      } catch (err) {
+        const msg = err?.message || String(err);
+        if (/duplicate|unique|already/i.test(msg)) skipped.push(name);
+        else failed.push({ name, msg });
+      }
+    }
+    if (failed.length === 0) {
+      // Status bar summary
+      const parts = [];
+      if (created.length > 0) parts.push(`Created ${created.length} tag${created.length === 1 ? '' : 's'}`);
+      if (skipped.length > 0) parts.push(`${skipped.length} already existed`);
+      api.statusBar?.setMessage?.(parts.join(' \u00b7 ') || 'No tags created', 3000);
+      overlay.remove();
+      try { onComplete?.(); } catch {}
+      return;
+    }
+    // Show errors inline; keep dialog open so the user can retry / edit
+    createBtn.disabled = false;
+    cancelBtn.disabled = false;
+    const lines = [];
+    if (created.length > 0) lines.push(`Created ${created.length}.`);
+    if (skipped.length > 0) lines.push(`${skipped.length} already existed.`);
+    lines.push(`Failed: ${failed.map((f) => `"${f.name}"`).join(', ')}`);
+    statusLine.textContent = lines.join(' ');
+    statusLine.style.color = 'var(--vscode-errorForeground, #f48771)';
+    statusLine.style.fontStyle = 'normal';
+    // If any tags were created, the sidebar should reflect that even if we
+    // keep the dialog open for the failures.
+    if (created.length > 0) {
+      try { onComplete?.(); } catch {}
+    }
+  }
+
+  createBtn.addEventListener('click', submit);
+  cancelBtn.addEventListener('click', () => overlay.remove());
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); overlay.remove(); }
+  });
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  setTimeout(() => input.focus(), 0);
 }
 
 /**
@@ -17907,6 +18417,41 @@ async function moSetSetting(key, value) {
 // rely on `await moRebuildSearchIndex()` meaning "FTS reflects DB at this
 // point in time".
 let _ftsRebuildInFlight = null;
+// Chunk size for FTS rebuild. With per-chunk transactions and a setTimeout(0)
+// yield between chunks, watcher INSERTs interleave between chunks rather than
+// queueing behind the entire rebuild. Empirically 500 rows/chunk is a good
+// balance: large enough to amortize IPC round-trips, small enough that the
+// SQLite write lock is held for <50ms per chunk on commodity hardware. See
+// user memory note "M64 FTS cold-start rebuild" — a single batched
+// transaction caused multi-second save lag because hot-path INSERTs queued
+// behind the whole rebuild's write lock.
+const _FTS_REBUILD_CHUNK = 500;
+
+function _moBuildFtsOps(rows, sql, idField) {
+  const ops = [];
+  for (const r of rows) {
+    ops.push({
+      type: 'run',
+      sql,
+      params: [r[idField], r.title || '', r.details || '', r.tags_text || '', r.folder_text || '', r.filename_text || ''],
+    });
+  }
+  return ops;
+}
+
+async function _moRebuildFtsTable(tableName, rows, insertSql, idField) {
+  await db.run(`DELETE FROM ${tableName}`);
+  for (let i = 0; i < rows.length; i += _FTS_REBUILD_CHUNK) {
+    const slice = rows.slice(i, i + _FTS_REBUILD_CHUNK);
+    const ops = _moBuildFtsOps(slice, insertSql, idField);
+    if (ops.length > 0) await db.transaction(ops);
+    // Yield to the event loop so watcher's per-file INSERTs (and any other
+    // IPC-bound work) can interleave between chunks. Without this, even
+    // chunked transactions back-to-back starve the hot path.
+    await new Promise((r) => setTimeout(r, 0));
+  }
+}
+
 function moRebuildSearchIndex() {
   if (_ftsRebuildInFlight) return _ftsRebuildInFlight;
   _ftsRebuildInFlight = (async () => {
@@ -17915,7 +18460,8 @@ function moRebuildSearchIndex() {
     const photos = await db.all(
       `SELECT p.id AS pid, p.title AS title, p.details AS details,
               GROUP_CONCAT(DISTINCT t.name) AS tags_text,
-              GROUP_CONCAT(DISTINCT fl.path) AS folder_text
+              GROUP_CONCAT(DISTINCT fl.path) AS folder_text,
+              GROUP_CONCAT(DISTINCT f.basename) AS filename_text
          FROM mo_photos p
     LEFT JOIN mo_photos_tags pt ON pt.photo_id = p.id
     LEFT JOIN mo_tags t ON t.id = pt.tag_id
@@ -17924,18 +18470,18 @@ function moRebuildSearchIndex() {
     LEFT JOIN mo_folders fl ON fl.id = f.folder_id
         GROUP BY p.id`
     );
-    await db.run('DELETE FROM mo_photos_fts');
-    for (const r of photos || []) {
-      await db.run(
-        `INSERT INTO mo_photos_fts (rowid, title, details, tags_text, folder_text) VALUES (?, ?, ?, ?, ?)`,
-        [r.pid, r.title || '', r.details || '', r.tags_text || '', r.folder_text || '']
-      );
-    }
+    await _moRebuildFtsTable(
+      'mo_photos_fts',
+      photos || [],
+      'INSERT INTO mo_photos_fts (rowid, title, details, tags_text, folder_text, filename_text) VALUES (?, ?, ?, ?, ?, ?)',
+      'pid'
+    );
     // Videos
     const videos = await db.all(
       `SELECT v.id AS vid, v.title AS title, v.details AS details,
               GROUP_CONCAT(DISTINCT t.name) AS tags_text,
-              GROUP_CONCAT(DISTINCT fl.path) AS folder_text
+              GROUP_CONCAT(DISTINCT fl.path) AS folder_text,
+              GROUP_CONCAT(DISTINCT f.basename) AS filename_text
          FROM mo_videos v
     LEFT JOIN mo_videos_tags vt ON vt.video_id = v.id
     LEFT JOIN mo_tags t ON t.id = vt.tag_id
@@ -17944,13 +18490,12 @@ function moRebuildSearchIndex() {
     LEFT JOIN mo_folders fl ON fl.id = f.folder_id
         GROUP BY v.id`
     );
-    await db.run('DELETE FROM mo_videos_fts');
-    for (const r of videos || []) {
-      await db.run(
-        `INSERT INTO mo_videos_fts (rowid, title, details, tags_text, folder_text) VALUES (?, ?, ?, ?, ?)`,
-        [r.vid, r.title || '', r.details || '', r.tags_text || '', r.folder_text || '']
-      );
-    }
+    await _moRebuildFtsTable(
+      'mo_videos_fts',
+      videos || [],
+      'INSERT INTO mo_videos_fts (rowid, title, details, tags_text, folder_text, filename_text) VALUES (?, ?, ?, ?, ?, ?)',
+      'vid'
+    );
     } catch (err) {
       console.warn('[MediaOrganizer] FTS rebuild failed:', err);
     }
@@ -19176,7 +19721,12 @@ async function moPurgeMissingFiles() {
       for (const id of purgedPhotoIds) _moResolvedThumbs.delete(`photo:${id}`);
       for (const id of purgedVideoIds) _moResolvedThumbs.delete(`video:${id}`);
       await moPruneOrphanFolderAlbums();
-      moRebuildSearchIndex().catch(() => {});
+      // Surgical FTS cleanup: drop only the rows for the photos/videos we
+      // just purged. Calling moRebuildSearchIndex() here would re-scan the
+      // entire library (O(N) IPC round-trips) every time a single missing
+      // file was detected — empirically the biggest contributor to the
+      // "save lag after delete" report. _refreshFtsForIds is two DELETEs.
+      await _refreshFtsForIds(purgedPhotoIds, purgedVideoIds);
       _notifySidebarRefresh();
     }
   } catch (err) {
@@ -20109,6 +20659,49 @@ async function moToolTagItems(args) {
   });
 }
 
+// Deictic-anchor tagger. The single biggest source of AI hallucination in
+// the media-organizer chat is the model picking some unrelated id from a
+// prior search result and tagging THAT when the user said "tag this one".
+// Defensive prompts on tagItems don't eliminate it. The structural fix is
+// to expose a tool that does not accept an id at all — the target is locked
+// to whatever was last attached (viewImage or right-click → Add to Chat).
+async function moToolTagCurrentImage(args) {
+  const anchor = _lastViewedMedia;
+  if (!anchor || !anchor.type || !anchor.id) {
+    return moToolError(
+      'No current image. Call mediaOrganizer.viewImage first, or ask the user to right-click the item and choose "Add to Chat". This tool deliberately does not accept an id to prevent tagging the wrong item.'
+    );
+  }
+  // Stale guard: if the user attached an image more than 15 minutes ago and
+  // hasn't done it again, treat the anchor as expired. They've probably moved
+  // on to a different conversation thread.
+  const ageMs = Date.now() - (anchor.viewedAt || 0);
+  if (ageMs > 15 * 60 * 1000) {
+    return moToolError(
+      `The last-attached image is ${Math.round(ageMs / 60000)} minutes old — too stale to use as "this one". Ask the user to re-attach the image or call mediaOrganizer.tagItems with explicit ids.`
+    );
+  }
+  const mode = args && args.mode === 'remove' ? 'REMOVE' : 'ADD';
+  const resolved = await moResolveTagIds({
+    tagIds: args && args.tagIds,
+    tagNames: args && args.tagNames,
+    createMissing: !!(args && args.createMissing) && mode === 'ADD',
+  });
+  if (resolved.ids.length === 0) {
+    return moToolError(`No tags resolved. Not found: ${resolved.notFound.join(', ') || '(none provided)'}`);
+  }
+  const Q = anchor.type === 'photo' ? PhotoQueries : VideoQueries;
+  await Q.updateTags(anchor.id, { mode, ids: resolved.ids });
+  _notifySidebarRefresh();
+  return moToolOk({
+    mode: mode.toLowerCase(),
+    target: { type: anchor.type, id: anchor.id, basename: anchor.basename || null },
+    tagIds: resolved.ids,
+    tagsCreated: resolved.created,
+    tagsNotFound: resolved.notFound,
+  });
+}
+
 async function moToolUpdateTag(args) {
   const action = String(args.action || '').toLowerCase();
   if (action === 'create') {
@@ -20410,6 +21003,21 @@ function moRegisterAITools(api) {
       handler: async (args) => moToolTagItems(args),
       requiresConfirmation: true,
     });
+    reg('mediaOrganizer.tagCurrentImage', {
+      description:
+        'Tag the image the user is currently looking at (the last item attached to chat via viewImage or right-click → Add to Chat). Use this ONLY when the user employs deictic language: "this one", "that image", "this photo", "the one shown". This tool does NOT accept an item id — the target is locked to the last-attached anchor, which eliminates the hallucination risk of picking an unrelated id from a prior search result. Prefer this over tagItems whenever the user did not name an explicit subject.',
+      parameters: {
+        type: 'object',
+        properties: {
+          mode:          { type: 'string', enum: ['add', 'remove'], description: 'add (default) | remove' },
+          tagNames:      { type: 'array', items: { type: 'string' } },
+          tagIds:        { type: 'array', items: { type: 'integer' } },
+          createMissing: { type: 'boolean', description: 'If true and mode=add, create tags that do not exist.' },
+        },
+      },
+      handler: async (args) => moToolTagCurrentImage(args),
+      requiresConfirmation: true,
+    });
     reg('mediaOrganizer.updateTag', {
       description: 'Create, rename, delete, or toggle-favorite a single tag.',
       parameters: {
@@ -20502,7 +21110,7 @@ function moRegisterAITools(api) {
       requiresConfirmation: true,
     });
 
-    console.log('[MediaOrganizer] Registered 17 AI chat tools');
+    console.log('[MediaOrganizer] Registered 18 AI chat tools');
   } catch (err) {
     console.warn('[MediaOrganizer] AI tool registration failed:', err);
   }
@@ -20619,7 +21227,6 @@ export async function activate(api, context) {
         _showCardTags = cfg.get('showCardTags', true) !== false;
       } catch { /* ignore */ }
       document.dispatchEvent(new CustomEvent('mo:show-card-tags-changed'));
-      document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
     });
     if (sub && typeof sub.dispose === 'function') _commandDisposables.push(sub);
   }
@@ -21020,7 +21627,6 @@ export async function activate(api, context) {
 export function deactivate() {
   cancelScan();
   stopAllWatchers();
-  stopAutoRecovery();
   for (const d of _commandDisposables) {
     if (d && typeof d.dispose === 'function') d.dispose();
   }
