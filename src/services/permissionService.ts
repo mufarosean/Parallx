@@ -415,17 +415,25 @@ export class PermissionService extends Disposable {
     toolName: string,
     defaultLevel: ToolPermissionLevel,
   ): IPermissionCheckResult {
-    // 1. Global auto-approve overrides everything
-    if (this._autoApprove) {
+    // Shell / destructive tools must always show a confirmation dialog — the
+    // auto-approve and streamlined fast-paths are bypassed for them.
+    const forceConfirmation = ALWAYS_REQUIRE_CONFIRMATION.has(toolName);
+
+    // 1. Global auto-approve overrides everything (except force-confirmation tools)
+    if (this._autoApprove && !forceConfirmation) {
       return { level: 'always-allowed', autoApproved: true, source: 'global-auto' };
     }
 
     // 2. Persistent override from permissions.json
     const persistent = this._persistentOverrides.get(toolName);
     if (persistent) {
+      // never-allowed is always honoured (stricter than force-confirmation)
+      if (persistent === 'never-allowed') {
+        return { level: 'never-allowed', autoApproved: false, source: 'persistent' };
+      }
       return {
-        level: persistent,
-        autoApproved: persistent === 'always-allowed',
+        level: forceConfirmation ? 'requires-approval' : persistent,
+        autoApproved: !forceConfirmation && persistent === 'always-allowed',
         source: 'persistent',
       };
     }
@@ -434,8 +442,8 @@ export class PermissionService extends Disposable {
     const sessionGrant = this._sessionGrants.get(toolName);
     if (sessionGrant) {
       return {
-        level: sessionGrant,
-        autoApproved: sessionGrant === 'always-allowed',
+        level: forceConfirmation ? 'requires-approval' : sessionGrant,
+        autoApproved: !forceConfirmation && sessionGrant === 'always-allowed',
         source: 'session',
       };
     }
@@ -445,15 +453,15 @@ export class PermissionService extends Disposable {
       // Strict: require approval for all tools regardless of default
       return { level: 'requires-approval', autoApproved: false, source: 'strictness' };
     }
-    if (this._approvalStrictness === 'streamlined' && defaultLevel === 'requires-approval') {
-      // Streamlined: auto-allow tools that default to requires-approval
+    if (this._approvalStrictness === 'streamlined' && defaultLevel === 'requires-approval' && !forceConfirmation) {
+      // Streamlined: auto-allow tools that default to requires-approval (not shell/delete)
       return { level: 'always-allowed', autoApproved: true, source: 'strictness' };
     }
 
     // 5. Tool's default
     return {
       level: defaultLevel,
-      autoApproved: defaultLevel === 'always-allowed',
+      autoApproved: defaultLevel === 'always-allowed' && !forceConfirmation,
       source: 'default',
     };
   }
@@ -576,6 +584,20 @@ export class PermissionService extends Disposable {
 }
 
 // ── Helpers ──
+
+/**
+ * Tools that must always present a user confirmation dialog regardless of the
+ * global auto-approve flag or the streamlined strictness mode. Shell execution
+ * and destructive file deletes have irreversible consequences that cannot be
+ * silently committed by YOLO / streamlined mode.
+ *
+ * Note: persistent `never-allowed` overrides still block these tools outright
+ * (that is stricter, not looser).
+ */
+const ALWAYS_REQUIRE_CONFIRMATION: ReadonlySet<string> = new Set([
+  'run_command',
+  'delete_file',
+]);
 
 function isValidPermissionLevel(value: unknown): value is ToolPermissionLevel {
   return value === 'always-allowed' || value === 'requires-approval' || value === 'never-allowed';
