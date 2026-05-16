@@ -31,6 +31,10 @@ export interface StoredCredentials {
 }
 
 export function defaultCredPath(): string {
+  // When spawned by Parallx, PARALLX_GMAIL_CRED_PATH points to the
+  // app-data directory so credentials stay within the portable install root.
+  const envPath = process.env['PARALLX_GMAIL_CRED_PATH'];
+  if (envPath && typeof envPath === 'string') return envPath;
   return join(homedir(), '.parallx', 'gmail-mcp', 'credentials.json');
 }
 

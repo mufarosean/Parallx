@@ -2,12 +2,59 @@
 // Spawns MCP server processes and bridges JSON-RPC over IPC.
 
 const { spawn } = require('child_process');
+const { promises: nodeFs } = require('node:fs');
+const nodePath = require('node:path');
+const nodeOs = require('node:os');
 const { shell } = require('electron');
 
 /** @type {Map<string, import('child_process').ChildProcess>} */
 const processes = new Map();
 
-function setupMcpBridge(ipcMain, getMainWindow) {
+/**
+ * True when the args list belongs to the bundled Gmail MCP server.
+ * @param {string[]} args
+ */
+function _isGmailServer(args) {
+  return Array.isArray(args) && args.some((a) => String(a).includes('gmail-mcp-server'));
+}
+
+/**
+ * Migrate credentials from the legacy home-dir path to APP_ROOT/data.
+ * Runs once — if the destination already exists the function is a no-op.
+ * @param {string} appRoot
+ */
+async function _migrateGmailCreds(appRoot) {
+  const oldPath = nodePath.join(nodeOs.homedir(), '.parallx', 'gmail-mcp', 'credentials.json');
+  const newPath = nodePath.join(appRoot, 'data', 'gmail-mcp', 'credentials.json');
+  try {
+    const oldExists = await nodeFs.access(oldPath).then(() => true).catch(() => false);
+    const newExists = await nodeFs.access(newPath).then(() => true).catch(() => false);
+    if (oldExists && !newExists) {
+      await nodeFs.mkdir(nodePath.dirname(newPath), { recursive: true });
+      await nodeFs.copyFile(oldPath, newPath);
+      try { await nodeFs.chmod(newPath, 0o600); } catch { /* tolerate Windows */ }
+      console.log('[MCP:gmail] migrated credentials', oldPath, '->', newPath);
+    }
+  } catch (err) {
+    console.warn('[MCP:gmail] credential migration failed:', err && err.message);
+  }
+}
+
+/**
+ * Inject PARALLX_GMAIL_CRED_PATH into the env when spawning the Gmail server.
+ * @param {string[]} args
+ * @param {Record<string, string>} env
+ * @param {string | undefined} appRoot
+ */
+function _injectGmailEnv(args, env, appRoot) {
+  if (!appRoot || !_isGmailServer(args)) return env;
+  return {
+    ...env,
+    PARALLX_GMAIL_CRED_PATH: nodePath.join(appRoot, 'data', 'gmail-mcp', 'credentials.json'),
+  };
+}
+
+function setupMcpBridge(ipcMain, getMainWindow, appRoot) {
   ipcMain.handle('mcp:spawn', async (_event, serverId, command, args, env) => {
     if (typeof serverId !== 'string' || !serverId) {
       return { error: 'Invalid serverId' };
@@ -24,6 +71,9 @@ function setupMcpBridge(ipcMain, getMainWindow) {
         ? args.filter((a) => typeof a === 'string')
         : [];
 
+      // M67 P1-3: migrate Gmail creds before the server starts.
+      if (_isGmailServer(safeArgs)) await _migrateGmailCreds(appRoot);
+
       // Security: Use spawn (not exec), explicit args array.
       // On Windows, shell: true is needed to resolve .cmd/.bat wrappers (e.g. npx.cmd).
       // This is safe because args are an explicit array, not concatenated into a string.
@@ -31,7 +81,7 @@ function setupMcpBridge(ipcMain, getMainWindow) {
       const child = spawn(command, safeArgs, {
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: isWin,
-        env: { ...filterEnv(env) },
+        env: { ..._injectGmailEnv(safeArgs, filterEnv(env), appRoot) },
         windowsHide: true,
       });
 
@@ -122,6 +172,8 @@ function setupMcpBridge(ipcMain, getMainWindow) {
       ? args.filter((a) => typeof a === 'string')
       : [];
 
+    const gmailEnv = _injectGmailEnv(safeArgs, filterEnv(env), appRoot);
+
     return new Promise((resolve) => {
       let child;
       try {
@@ -129,7 +181,7 @@ function setupMcpBridge(ipcMain, getMainWindow) {
         child = spawn(command, [...safeArgs, '--auth'], {
           stdio: ['ignore', 'pipe', 'pipe'],
           shell: isWin,
-          env: { ...filterEnv(env) },
+          env: { ...gmailEnv },
           windowsHide: true,
         });
       } catch (err) {

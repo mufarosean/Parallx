@@ -305,6 +305,8 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 function defaultCredPath() {
+  const envPath = process.env["PARALLX_GMAIL_CRED_PATH"];
+  if (envPath && typeof envPath === "string") return envPath;
   return join(homedir(), ".parallx", "gmail-mcp", "credentials.json");
 }
 async function readCredentials(path = defaultCredPath()) {

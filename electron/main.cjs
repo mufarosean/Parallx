@@ -498,7 +498,7 @@ async function createWindow() {
   }
 
   // ── D1: MCP Bridge ──
-  setupMcpBridge(ipcMain, () => mainWindow);
+  setupMcpBridge(ipcMain, () => mainWindow, APP_ROOT);
 
   // Track normal (non-maximized) bounds so we can save them even when
   // the window is maximized at quit time.
