@@ -43,11 +43,43 @@ map.
 > graph rendering wakes Ollama or competes with the main chat model, the
 > feature has failed.
 
-M76 inherits this constraint and extends it: **LLM-based edge construction
-(lineage classification, concept labelling) must be deliberate and scheduled,
-never autonomous, never on the graph render path.** Free-signal edges
-(references, co-occurrence, metadata) compute at indexing time alongside
-existing M68 work and add no new render-path cost.
+M76 inherits this constraint and refines it: **LLM-based edge construction
+(lineage classification, concept labelling) only runs when the user clicks
+the "Refresh mind map" button.** Never autonomous, never on a cron schedule,
+never on the graph render path. The user pressing the button is consent that
+the operation will use the chat model and take time.
+
+Free-signal edges (references, co-occurrence, metadata) compute at indexing
+time alongside existing M68 work and add no new render-path cost.
+
+## LLM strategy: chat model, not a dedicated small model
+
+LLM-based passes (lineage classification, concept labelling) use the **active
+chat model**, not a separate small classifier. Rationale:
+
+- **Quality.** Three-way classification of dense technical text
+  (`extends | refutes | none`) is exactly the kind of task where small models
+  hallucinate. Concept labelling quality also drops sharply with small
+  models — they tend to produce generic labels like "Documents" or "Various
+  Topics" while chat-class models pick specific, useful ones.
+- **One model.** No separate classifier to ship, configure, or maintain.
+- **Already warm.** If the user has had a chat session in the workspace, the
+  model is loaded.
+- **The constraint was about the render path.** "Don't make chat worse" means
+  don't fire LLM calls when the user opens the graph. A button press is
+  consent — the user has chosen to spend the compute.
+
+Honest tradeoffs:
+
+- **First refresh of a session pays a model-load cost** if the chat model
+  isn't already loaded. Subsequent refreshes are fast.
+- **If the user has configured a remote chat provider (Claude API, OpenAI),
+  the mind-map refresh inherits that.** For some users this means cloud
+  calls on workspace content. The refresh UI must surface this clearly so
+  the user is not surprised. Local-only users get local-only refreshes;
+  remote-configured users get whatever they configured.
+- **A 5–10 minute refresh needs progress feedback and a cancel button.**
+  M68's silent background work pattern does not apply.
 
 ## Scope
 
@@ -81,13 +113,19 @@ existing M68 work and add no new render-path cost.
 | `references` | Explicit links/citations/footnotes extracted from text that resolve to workspace items | Directed (A → B = A references B) | Cheap text scan | Indexing time |
 | `co-occurrence` | Distinctive named entities or technical terms shared across docs (TF-IDF style: terms common to both but rare in workspace) | Undirected | Cheap; uses existing chunks | Indexing time |
 | `same-author`, `same-folder`, `same-date-range` | Metadata | Undirected | Free | Indexing time |
-| `extends` | LLM determines B builds on A's framework or results | Directed (A → B) | Bounded local-LLM pass | Scheduled / on-demand only |
-| `refutes` | LLM determines B argues against A | Directed (A → B) | Same as extends | Same as extends |
+| `extends` | Active chat model determines B builds on A's framework or results | Directed (A → B) | Chat-model call per candidate pair | Only when user clicks "Refresh mind map" |
+| `refutes` | Active chat model determines B argues against A | Directed (A → B) | Same as extends | Same as extends |
 
 **Critical bound on LLM-based edges:** the lineage classifier runs *only* on
 pairs that have already been surfaced by at least one free signal (similarity,
-references, or co-occurrence). It never operates on all pairs. Default cap:
-50 candidate pairs evaluated per workspace per scheduled run.
+references, or co-occurrence). It never operates on all pairs. Combined with
+incremental refresh (only sources whose content hash changed since the last
+refresh are reprocessed), a typical refresh touches a small handful of pairs
+per changed source — minutes of work, not hours.
+
+The user can cancel an in-progress refresh at any time. Cancellation is
+clean: edges classified so far are persisted; the rest stay marked as
+"pending" so the next refresh picks up where the cancel happened.
 
 ### Concept nodes
 
@@ -115,9 +153,17 @@ Construction pipeline:
    have `similar-to` edges to other concept nodes, computed from cluster
    centroid similarity.
 
-Construction trigger: a deliberate "Rebuild concept map" command (in the
-Workspace Graph settings panel) plus an optional cron schedule (default
-daily, configurable, off by default). Never autonomous on indexing changes.
+Construction trigger: the "Refresh mind map" button in the Workspace Graph
+settings panel. No cron. No autonomy on indexing changes. The same button
+also drives the lineage classifier pass — one user action covers both.
+
+Incremental refresh is the default and the only mode. The refresh button
+identifies what's changed since the last refresh (new sources, deleted
+sources, sources whose content hash changed) and only processes the delta.
+Concept clustering is incremental too: existing clusters keep their IDs
+unless their membership shifts past the carry-over threshold; new sources
+are assigned to existing clusters if they fit, and new clusters are formed
+only when several new sources don't fit anywhere existing.
 
 ### Schema changes
 
@@ -243,60 +289,108 @@ settings panel):
   edge for docs sharing only common words
 - No new model calls introduced
 
-### Phase 3 — Lineage classifier (~1 week)
+### Phase 3 — Refresh infrastructure (~1 week)
+
+The user-initiated "Refresh mind map" workflow that Phases 4 and 5 plug into.
+
+- Track per-source `last_processed_content_hash` so the system can identify
+  what's new, changed, or deleted since the last refresh.
+- "Refresh mind map" button in the Workspace Graph settings panel.
+- Refresh UI: progress bar showing current step ("Classifying lineage:
+  pair 12 of 38"), a cancel button, and an "estimated time remaining" hint
+  based on candidate count + observed chat-model throughput.
+- Surface the active chat model and its provider (local vs remote) on the
+  refresh confirmation so users with remote providers see clearly that the
+  refresh will use that provider on workspace content.
+- Cancellation is clean: edges/clusters processed so far are persisted; the
+  delta the next refresh picks up reflects the cancel point.
+- Refresh history: a small log of recent refreshes (timestamp, source delta
+  counts, edges added/changed, cancelled or completed) accessible from the
+  same panel.
+
+**Verification:**
+- Refresh button identifies new and changed sources correctly via content
+  hashes
+- Cancel mid-refresh leaves the cache in a consistent state
+- Progress bar updates per candidate pair, not per phase
+- No refresh runs without a button press
+
+### Phase 4 — Chat-model lineage classifier (~1 week)
 
 - `lineageClassifierService`: takes a candidate pair surfaced by similarity,
-  references, or co-occurrence. Composes a small prompt for a local LLM (not
-  the chat model — a dedicated small classifier instance) asking three-way:
-  `extends | refutes | none`.
-- Bounded batch: default 50 candidate pairs per workspace per scheduled run
-- Triggered by a "Refresh lineage" command and an optional cron (default off)
-- Caches results in `semantic_graph_edges` with `kind = 'extends'` or
-  `kind = 'refutes'` and `direction = 'forward'`
-- Skip pairs already classified within a content-hash window
+  references, or co-occurrence. Composes a focused prompt for the **active
+  chat model** asking three-way: `extends | refutes | none` with an optional
+  confidence score.
+- Driven by the Phase 3 refresh button. Only candidates involving new or
+  changed sources are reclassified — previously-classified pairs whose
+  source content hashes are unchanged are skipped.
+- Results cached in `semantic_graph_edges` with `kind = 'extends'` or
+  `kind = 'refutes'` and `direction = 'forward'`.
+- The classifier honours the refresh cancellation signal and stops at the
+  next pair boundary.
+- Uses the same provider plumbing the chat surface uses, so a user configured
+  for remote chat gets remote classification with no extra setup.
 
 **Verification:**
 - Lineage pass never runs on the render path
-- Lineage pass never runs unprompted on indexing events
-- Two papers where one explicitly extends the other (per test fixture)
-  produce a `kind: 'extends'` directed edge
-- Throughput cap respected: 51st candidate is deferred, not classified
+- Lineage pass never runs without an explicit refresh button press
+- Two papers where one extends the other (per test fixture) produce a
+  `kind: 'extends'` directed edge
+- A refresh that touches 3 changed sources runs lineage only on candidate
+  pairs involving those 3, not the entire workspace
+- Cancelling mid-classification leaves already-classified pairs persisted
 
-### Phase 4 — Concept nodes (~1-2 weeks)
+### Phase 5 — Concept nodes with incremental clustering (~1–2 weeks)
 
-- `conceptNodeService`: HDBSCAN clustering over stored source centroids
-- Cluster-set hashing with the 70% carry-over rule
-- LLM labelling pass for new / changed clusters (small local model, batched)
-- Persist concept nodes and member lists
-- Emit `member-of` edges from members to concept nodes
-- Compute `similar-to` edges between concept node centroids
-- Concept nodes contribute as graph nodes via the workspace graph provider
-- Distinct visual treatment (larger, different shape/colour)
+- `conceptNodeService`: HDBSCAN clustering over stored source centroids on
+  first run; subsequent refreshes use an incremental strategy:
+  - For each new source, assign to the nearest existing cluster if the
+    centroid distance is below threshold; otherwise mark as unclustered
+  - When N unclustered sources accumulate, run a small clustering pass over
+    just those to spawn new clusters
+  - For changed sources, recheck their cluster assignment; reassign if the
+    centroid moved enough to be closer to a different cluster
+  - Apply the 70% carry-over rule on existing clusters: if ≥70% of an
+    existing cluster's members are still grouped, the cluster keeps its ID
+    and label; otherwise the cluster fractures and the pieces get fresh IDs
+- Concept labelling uses the **active chat model**, the same one used for
+  lineage. Only new clusters and clusters that lost their stable identity get
+  relabelled — most refreshes will relabel zero clusters.
+- Persist concept nodes and member lists; emit `member-of` edges; compute
+  cross-concept `similar-to` edges from cluster centroid similarity.
+- Concept nodes contribute as graph nodes via the workspace graph provider.
+- Distinct visual treatment (larger, different shape/colour).
 
 **Verification:**
-- Re-running clustering on the same content produces the same concept IDs
-- Adding one document to a cluster of 10 keeps the cluster ID and label
-- Replacing 5 of 10 cluster members triggers a fresh cluster ID
-- Concept node renders as a hub with edges to its members
-- Clustering pass never runs on the render path
+- First refresh on a fresh workspace produces clusters with stable IDs
+- Subsequent refresh with one added document either places the document in
+  an existing cluster (no relabelling) or leaves it unclustered until N
+  unclustered docs accumulate
+- Replacing 5 of 10 cluster members triggers carry-over rule fracture
+- No clustering pass runs without an explicit refresh button press
+- Cluster labelling never fires for clusters whose membership didn't change
+  past threshold
 
-### Phase 5 — Concept node curation UI (~3-5 days)
+### Phase 6 — Concept node curation UI (~3-5 days)
 
 - Concept nodes panel in the Workspace Graph settings (or as its own view)
 - Rename concept: sets `user_renamed = 1`; future LLM labelling respects this
 - Merge concepts: pick two, combine members, choose surviving label
 - Delete concept: sets `user_deleted = 1`; the member set is remembered as
   "do not re-cluster these together" so the deletion is sticky
-- "Rebuild concept map" button: triggers fresh clustering
-- "Last rebuilt" timestamp display
+- "Force full re-cluster" action (separate from the normal refresh button)
+  for cases where incremental drift has accumulated enough that the user
+  wants a clean restart of the clustering — confirmation dialog warns this
+  is expensive
+- "Last refreshed" timestamp display
 
 **Verification:**
-- Renaming persists across rebuilds
+- Renaming persists across refreshes
 - Deletion prevents the same cluster from reappearing
 - Merging combines edges correctly
-- The rebuild button does not block the UI
+- The curation UI does not block the graph render thread
 
-### Phase 6 — Bake and tune (~1 week)
+### Phase 7 — Bake and tune (~1 week)
 
 - Tune HDBSCAN parameters on real workspaces
 - Tune LLM labelling prompt (cluster size sensitivity)
@@ -314,9 +408,10 @@ settings panel):
 
 ## Total scope
 
-~6 weeks of focused work across the six phases. Phases ship independently —
+~6–7 weeks of focused work across the seven phases. Phases ship independently:
 Phase 1 is a non-breaking schema migration; Phase 2 is additive edge kinds;
-Phases 3–5 each add a real feature on top.
+Phase 3 builds the refresh UI; Phases 4–6 each add a real feature on top of
+the refresh infrastructure.
 
 ## Existing pieces to build on
 
@@ -328,7 +423,8 @@ Phases 3–5 each add a real feature on top.
 | Workspace graph provider API | `parallx.workspaceGraph.registerProvider()` |
 | Edge styling and toggle UI | `ext/workspace-graph/main.js` settings panel |
 | Indexing event hook | `IIndexingPipelineService.onDidIndexSource` |
-| Cron infrastructure | `ICronService` (for scheduled lineage / concept rebuilds) |
+| Chat model invocation | Existing chat surface — same path used by conversation summarisation |
+| Active chat model selection | Current AI settings (used as-is, no new config) |
 | Canvas page metadata | Existing canvas service (for author / folder / date) |
 
 ## Success criteria
@@ -337,32 +433,53 @@ Phases 3–5 each add a real feature on top.
   edge — even when their cosine similarity is below the M68 threshold
 - A workspace containing five existentialism books shows an `Existentialism`
   concept node connecting all five, regardless of author vocabulary variance
-- Renaming a concept node persists across rebuilds
+- Renaming a concept node persists across refreshes
 - Deleting a concept node prevents the same cluster from re-emerging
 - Edge-kind filter checkboxes work independently and cumulatively
 - Graph open / pan / zoom latency unchanged from M68
 - No LLM calls fired from the graph render path
-- Lineage and concept passes are user-triggered or scheduled, never
-  autonomous on indexing
+- All LLM-based work runs only when the user clicks "Refresh mind map" —
+  never on indexing events, never on a schedule, never autonomously
+- The second refresh on an unchanged workspace completes in seconds (no LLM
+  work, only delta detection finds nothing to do)
+- Adding 3 documents and clicking refresh processes only the candidates
+  involving those 3 documents, not the whole workspace
 
 ## Risks
 
-- **LLM labelling quality on small clusters.** A 2-document cluster may be
-  hard for any model to name well. Mitigation: minimum cluster size of 3 by
-  default; smaller clusters get `null` label and render as "Unlabelled
-  cluster" until the user names them.
+- **Refresh duration on large workspaces.** A first-ever refresh on a
+  workspace with hundreds of sources can hit thousands of candidate pairs.
+  Mitigation: incremental is the only mode after the first refresh; the
+  first refresh shows an honest time estimate before the user commits;
+  cancellation is always available; the user can refresh selectively (e.g.
+  "refresh just this folder") if we expose that affordance.
+- **First refresh of a session pays a model-load cost.** If the user just
+  opened the app and hasn't used chat yet, clicking refresh triggers a
+  model load. Mitigation: the progress UI shows "Loading model…" as a
+  distinct first step so the user knows what they're waiting for.
+- **Remote chat providers send workspace content to the cloud.** A user
+  who has configured Claude API or OpenAI as their chat model gets the
+  same provider for mind-map refresh. Mitigation: the refresh confirmation
+  dialog states the active provider explicitly. Users who don't want this
+  can switch to a local model before refreshing.
 - **Cluster jitter despite the carry-over rule.** Edge cases where cluster
   composition swings around the 70% threshold could still cause label churn.
   Mitigation: bias toward stability — once a cluster is named, it takes
-  meaningful turnover to relabel.
-- **Local LLM quality varies by model.** A 3B-class local model may struggle
-  with the `extends | refutes | none` classification. Mitigation: surface
-  confidence in the edge metadata; let the user filter low-confidence
-  lineage edges out of the graph view.
+  meaningful turnover to relabel; user can manually rename to lock the label.
+- **LLM labelling quality on small clusters.** A 2-document cluster may be
+  hard for any model to name well even at chat-model quality. Mitigation:
+  minimum cluster size of 3 by default; smaller clusters get `null` label
+  and render as "Unlabelled cluster" until the user names them.
 - **Reference extraction false positives.** Citation regex may match strings
   that aren't actually references. Mitigation: only emit an edge when the
   matched ID resolves to a real workspace item.
 - **HDBSCAN parameter sensitivity.** Bad min-cluster-size leads to too many
-  tiny clusters or one giant cluster. Mitigation: Phase 6 bake on real
+  tiny clusters or one giant cluster. Mitigation: Phase 7 bake on real
   workspaces; expose `minClusterSize` as a setting if defaults can't be
   found.
+- **Incremental drift over time.** Incremental clustering can accumulate
+  assignment errors over many refreshes — a source that drifted into a
+  poor-fit cluster early stays there. Mitigation: the curation UI's
+  "Force full re-cluster" action provides an explicit reset; suggest it in
+  the UI when the count of unclustered sources or single-member clusters
+  crosses a heuristic threshold.
