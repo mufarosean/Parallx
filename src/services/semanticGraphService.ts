@@ -14,6 +14,7 @@ import type {
 } from './serviceTypes.js';
 import type { SearchResult } from './vectorStoreService.js';
 import { extractWorkspaceReferences } from './referenceExtractor.js';
+import { extractDistinctiveTerms } from './distinctiveTermExtractor.js';
 
 export type SemanticGraphSourceType = 'page_block' | 'file_chunk';
 
@@ -456,12 +457,25 @@ export class SemanticGraphService extends Disposable {
       )
     `);
 
+    // M76 Phase 2 — per-source distinctive term storage drives co-occurrence
+    // edges. Each row is one (source, term) pair; the per-term index makes
+    // "find sources sharing term T" a fast lookup.
+    await this._db.run(`
+      CREATE TABLE IF NOT EXISTS source_distinctive_terms (
+        source_type TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        term TEXT NOT NULL,
+        PRIMARY KEY (source_type, source_id, term)
+      )
+    `);
+
     // Indexes are last so the PK rebuild migration doesn't leave them
     // dangling. CREATE INDEX IF NOT EXISTS is safe on both fresh installs
     // and post-migration tables.
     await this._db.run('CREATE INDEX IF NOT EXISTS idx_semantic_graph_edges_origin ON semantic_graph_edges(origin_type, origin_id)');
     await this._db.run('CREATE INDEX IF NOT EXISTS idx_semantic_graph_edges_score ON semantic_graph_edges(score DESC)');
     await this._db.run('CREATE INDEX IF NOT EXISTS idx_semantic_graph_edges_kind ON semantic_graph_edges(kind)');
+    await this._db.run('CREATE INDEX IF NOT EXISTS idx_source_distinctive_terms_term ON source_distinctive_terms(term)');
 
     this._schemaReady = true;
   }
@@ -555,6 +569,7 @@ export class SemanticGraphService extends Disposable {
       await this._replaceSourceEdges(sourceType, sourceId, 'similar-to', 'undirected', contentHash, []);
       await this._recomputeReferenceEdges(sourceType, sourceId, sourceNodeId);
       await this._recomputeSameFolderEdges(sourceType, sourceId, sourceNodeId);
+      await this._recomputeCooccurrenceEdges(sourceType, sourceId, sourceNodeId);
       return true;
     }
 
@@ -617,6 +632,7 @@ export class SemanticGraphService extends Disposable {
     // _replaceSourceEdges so its edges don't interfere with similarity.
     await this._recomputeReferenceEdges(sourceType, sourceId, sourceNodeId);
     await this._recomputeSameFolderEdges(sourceType, sourceId, sourceNodeId);
+    await this._recomputeCooccurrenceEdges(sourceType, sourceId, sourceNodeId);
 
     return true;
   }
@@ -763,6 +779,105 @@ export class SemanticGraphService extends Disposable {
     });
 
     await this._replaceSourceEdges(sourceType, sourceId, 'same-folder', 'undirected', null, edges);
+  }
+
+  /**
+   * M76 Phase 2 — emit `co-occurrence` edges between sources that share
+   * distinctive terms (multi-word capitalised phrases, acronyms). The
+   * intuition: two documents that mention "Bayesian Inference", "CAPM",
+   * and "Black-Scholes" are likely conceptually related even if their
+   * surface vocabularies differ in everything else.
+   *
+   * Implementation:
+   * 1. Extract distinctive terms from this source's chunk text.
+   * 2. Upsert (source, term) rows in source_distinctive_terms.
+   * 3. Query for other sources that share 2+ terms with this source.
+   * 4. Emit one undirected edge per qualifying co-occurrence partner,
+   *    score = log2(1 + shared_count) so the scale stays bounded.
+   *
+   * Threshold is intentionally conservative — single shared terms produce
+   * noisy "every doc that mentions GPT" connections. Requiring 2+ shared
+   * distinctive terms catches real conceptual overlap and filters most
+   * false positives.
+   *
+   * Cap at 25 co-occurrence edges per source to match same-folder.
+   */
+  private async _recomputeCooccurrenceEdges(
+    sourceType: SemanticGraphSourceType,
+    sourceId: string,
+    sourceNodeId: string,
+  ): Promise<void> {
+    // Always wipe this source's term rows up-front so deleted/changed
+    // sources don't leak stale terms into the global IDF view.
+    const replaceTermOps: { type: 'run'; sql: string; params?: unknown[] }[] = [
+      {
+        type: 'run',
+        sql: 'DELETE FROM source_distinctive_terms WHERE source_type = ? AND source_id = ?',
+        params: [sourceType, sourceId],
+      },
+    ];
+
+    const chunks = await this._vectorStore.getSourceChunks(sourceType, sourceId, 200);
+    const text = chunks.map((c) => c.text).join('\n');
+    const terms = extractDistinctiveTerms(text);
+
+    for (const term of terms) {
+      replaceTermOps.push({
+        type: 'run',
+        sql: 'INSERT OR REPLACE INTO source_distinctive_terms (source_type, source_id, term) VALUES (?, ?, ?)',
+        params: [sourceType, sourceId, term],
+      });
+    }
+    await this._db.runTransaction(replaceTermOps);
+
+    if (terms.length === 0) {
+      await this._replaceSourceEdges(sourceType, sourceId, 'co-occurrence', 'undirected', null, []);
+      return;
+    }
+
+    // Find other sources sharing 2+ of this source's distinctive terms.
+    const placeholders = terms.map(() => '?').join(',');
+    const partners = await this._db.all<{
+      partnerType: SemanticGraphSourceType;
+      partnerId: string;
+      sharedCount: number;
+    }>(
+      `SELECT source_type as partnerType, source_id as partnerId, COUNT(*) as sharedCount
+         FROM source_distinctive_terms
+        WHERE term IN (${placeholders})
+          AND NOT (source_type = ? AND source_id = ?)
+        GROUP BY source_type, source_id
+       HAVING sharedCount >= 2
+        ORDER BY sharedCount DESC
+        LIMIT 25`,
+      [...terms, sourceType, sourceId],
+    );
+
+    const edges = partners
+      .map((partner) => {
+        if (!isSemanticGraphSourceType(partner.partnerType)) return null;
+        const partnerNodeId = this._sourceToNodeId(partner.partnerType, partner.partnerId);
+        if (!partnerNodeId) return null;
+        const pair = canonicalizeSemanticEdgePair(
+          { nodeId: sourceNodeId, sourceType, sourceId },
+          { nodeId: partnerNodeId, sourceType: partner.partnerType, sourceId: partner.partnerId },
+        );
+        return {
+          sourceNodeId: pair.source.nodeId,
+          targetNodeId: pair.target.nodeId,
+          sourceType: pair.source.sourceType,
+          sourceId: pair.source.sourceId,
+          targetType: pair.target.sourceType,
+          targetId: pair.target.sourceId,
+          // Bounded score: log2(1 + sharedCount). Two shared terms → 1.585,
+          // ten shared terms → 3.459. Scaled into the [0, 1] band by
+          // dividing by log2(11) so the renderer treats it like similarity.
+          score: Math.log2(1 + partner.sharedCount) / Math.log2(11),
+        };
+      })
+      .filter((e): e is NonNullable<typeof e> => e !== null);
+
+    await this._replaceSourceEdges(sourceType, sourceId, 'co-occurrence', 'undirected', null, edges);
   }
 
   private _groupCandidates(

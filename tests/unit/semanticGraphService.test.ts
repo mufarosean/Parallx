@@ -213,12 +213,17 @@ describe('SemanticGraphService', () => {
     expect(vectorStore.getSourceCentroid).toHaveBeenCalledWith('page_block', 'a');
     expect(vectorStore.vectorSearch).toHaveBeenCalledWith([1, 0], 10);
     // M76 Phase 2 — the producer pipeline now runs similarity + references
-    // + same-folder in sequence, so three transactions fire (one per kind).
+    // + same-folder + co-occurrence. Co-occurrence emits TWO transactions
+    // per run (one for the source_distinctive_terms upsert and one for the
+    // semantic_graph_edges upsert), so the total is 5.
+    //
     // The page_block source under test:
     //   1. similarity transaction writes the page:b edge
     //   2. references transaction is a no-op (mock returns no chunks)
     //   3. same-folder is a no-op (only applies to file_chunk sources)
-    expect(db.runTransaction).toHaveBeenCalledTimes(3);
+    //   4. co-occurrence terms transaction (wipe — no chunks so no terms)
+    //   5. co-occurrence edges transaction (empty wipe)
+    expect(db.runTransaction).toHaveBeenCalledTimes(5);
     const similarityOps = db.runTransaction.mock.calls[0][0];
     expect(similarityOps.some((op: any) => String(op.sql).includes('INSERT OR REPLACE INTO semantic_graph_edges'))).toBe(true);
     expect(JSON.stringify(similarityOps)).toContain('page:b');
@@ -229,6 +234,12 @@ describe('SemanticGraphService', () => {
     const sameFolderOps = db.runTransaction.mock.calls[2][0];
     expect(sameFolderOps.length).toBe(1); // just the DELETE for the same-folder no-op on a page source
     expect(String(sameFolderOps[0].sql)).toContain('DELETE FROM semantic_graph_edges');
+    const cooccurrenceTermsOps = db.runTransaction.mock.calls[3][0];
+    expect(cooccurrenceTermsOps.length).toBe(1); // just the DELETE for terms (no chunks → no terms)
+    expect(String(cooccurrenceTermsOps[0].sql)).toContain('DELETE FROM source_distinctive_terms');
+    const cooccurrenceEdgesOps = db.runTransaction.mock.calls[4][0];
+    expect(cooccurrenceEdgesOps.length).toBe(1); // just the DELETE for co-occurrence edges
+    expect(String(cooccurrenceEdgesOps[0].sql)).toContain('DELETE FROM semantic_graph_edges');
   });
 
   it('emits same-folder edges between files sharing a parent directory', async () => {
@@ -273,8 +284,9 @@ describe('SemanticGraphService', () => {
     await service.rebuildChangedSources();
     await vi.runOnlyPendingTimersAsync();
 
-    // Three transactions: similarity, references, same-folder.
-    expect(db.runTransaction).toHaveBeenCalledTimes(3);
+    // Five transactions: similarity, references, same-folder, co-occurrence
+    // terms wipe, co-occurrence edges wipe. Same-folder is index 2.
+    expect(db.runTransaction).toHaveBeenCalledTimes(5);
     const sameFolderOps = db.runTransaction.mock.calls[2][0];
     const stringified = JSON.stringify(sameFolderOps);
     // Two sibling edges expected (b.md and c.md); d.md is in another folder.
@@ -283,6 +295,61 @@ describe('SemanticGraphService', () => {
     expect(stringified).not.toContain('other/d.md');
     // The 'same-folder' kind appears in the INSERT params.
     expect(stringified).toContain('same-folder');
+  });
+
+  it('emits co-occurrence edges between sources sharing distinctive terms', async () => {
+    const db = createMockDb();
+    const vectorStore = createMockVectorStore();
+    const service = new SemanticGraphService(
+      db as any,
+      vectorStore as any,
+      createMockPipeline() as any,
+      createMockWorkspace() as any,
+      { debounceMs: 0, processYieldMs: 0, minScore: 0.7, topLinksPerSource: 3, candidateK: 10 },
+    );
+    db.all.mockResolvedValueOnce(_migratedPragma());
+    vectorStore.getIndexedSources.mockResolvedValueOnce([
+      { sourceType: 'page_block', sourceId: 'a', contentHash: 'h-a', chunkCount: 1, indexedAt: 'now' },
+    ]);
+    vectorStore.getContentHash.mockImplementation(async (sourceType: string, sourceId: string) => {
+      if (sourceType === 'page_block' && sourceId === 'a') return 'hash-a';
+      return null;
+    });
+    vectorStore.getSourceCentroid.mockResolvedValueOnce({
+      sourceType: 'page_block',
+      sourceId: 'a',
+      vector: [1, 0],
+      chunkCount: 1,
+    });
+    vectorStore.vectorSearch.mockResolvedValueOnce([]);
+    // Source A's chunks contain distinctive terms. mockResolvedValue (not
+    // mockResolvedValueOnce) because getSourceChunks is called twice per
+    // recompute — once by the references producer and once by co-occurrence.
+    vectorStore.getSourceChunks.mockResolvedValue([
+      { text: 'Bayesian Inference and CAPM are central concepts here.', contextPrefix: '' },
+    ]);
+    db.get.mockResolvedValueOnce({ content_hash: 'old-hash' });
+    // The co-occurrence producer queries source_distinctive_terms for
+    // partners sharing terms. Mock the response — source B shares 2 terms.
+    db.all.mockResolvedValueOnce([
+      { partnerType: 'page_block', partnerId: 'b', sharedCount: 2 },
+    ]);
+
+    await service.rebuildChangedSources();
+    await vi.runOnlyPendingTimersAsync();
+
+    // The co-occurrence terms transaction is index 3 (terms wipe + inserts).
+    const termOps = db.runTransaction.mock.calls[3][0];
+    expect(termOps.length).toBeGreaterThan(1); // wipe + at least one insert
+    const termsStringified = JSON.stringify(termOps);
+    expect(termsStringified).toContain('Bayesian Inference');
+    expect(termsStringified).toContain('CAPM');
+
+    // The co-occurrence edges transaction is index 4.
+    const edgeOps = db.runTransaction.mock.calls[4][0];
+    const edgesStringified = JSON.stringify(edgeOps);
+    expect(edgesStringified).toContain('co-occurrence');
+    expect(edgesStringified).toContain('page:b');
   });
 });
 
