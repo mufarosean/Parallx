@@ -352,23 +352,41 @@ settings panel):
 
 ### Phase 2 — Free-signal edges (~1 week)
 
-- `referenceExtractor`: new module (no existing pipeline parsing to reuse).
-  Regex-extract markdown links, `parallx://` URIs, and footnote-style
-  references from canvas page block text and file chunk text. Resolve each
-  match to a workspace item ID; emit `references` edges only when the match
-  resolves to a real item. Runs at indexing time, hooked into
-  `IIndexingPipelineService.onDidIndexSource`.
-- `entityCooccurrenceService`: regex-extract distinctive n-grams from chunk
-  text (no NLP library needed — capitalised multi-word phrases plus
-  acronyms). Compute inverse document frequency over the workspace; emit
-  `co-occurrence` edges for pairs that share terms which are rare across the
-  workspace (low IDF below the workspace's median).
-- Metadata edges: same-folder from file paths; same-author from canvas
-  `page_properties` (line 740-754 in indexingPipeline.ts already reads
-  these); same-date-range from canvas `created_at` or file `mtime`.
-- All three signals integrate with the existing M68 incremental rebuild path
-  via `_replaceSourceEdges()`. New `kind` values: `'references'`,
-  `'co-occurrence'`, `'same-folder'`, `'same-author'`, `'same-date'`.
+**Shipped:**
+
+- `referenceExtractor`: pure helper module. Regex-extracts `parallx://`
+  URIs from canvas page block text and file chunk text; resolves each
+  match to a workspace item ID via the shared URI parser. Emits directed
+  `references` edges only when the match resolves to a real item.
+  Integrated into `_recomputeSource` so references flow through the same
+  incremental rebuild path as similarity.
+- `same-folder` edges: undirected edges between files in the same parent
+  directory. File-scoped only (page sources don't have folders). Capped at
+  25 siblings per source to keep dense folders renderable.
+- `co-occurrence` edges: undirected edges between sources sharing 2+
+  distinctive terms. `distinctiveTermExtractor` extracts multi-word
+  capitalised phrases and 2–7 char acronyms (no NLP library needed);
+  terms are stored per source in a new `source_distinctive_terms` table
+  with a per-term index for fast partner lookup. Score is
+  `log2(1+sharedCount) / log2(11)` so two shared terms → 0.46, ten → 1.0.
+
+**Deferred to Phase 7 (Bake and tune) with reasoning:**
+
+- `same-author`: requires plumbing access to the canvas `page_properties`
+  table (where author metadata lives) from `SemanticGraphService`, plus
+  file-level author extraction that doesn't exist anywhere today.
+  Marginal value is low — most Parallx workspaces are single-author, in
+  which case a same-author signal would connect every page to every other
+  page, producing a fully-connected metadata mesh that obscures the
+  actual conceptual structure rather than illuminating it. If shared
+  workspaces become common this signal can be revisited.
+- `same-date`: file mtime isn't stored in either the vector store or the
+  semantic graph tables; canvas pages have `created_at` / `updated_at`
+  but only via a service the semantic graph doesn't depend on. Marginal
+  value is low — same-day creation is usually coincidence rather than
+  conceptual connection. Cost is high (cross-service data plumbing) and
+  the signal is noisy. If user feedback identifies date-proximity as
+  meaningful for their workspace, this can be revisited.
 
 **Verification:**
 - A canvas page with an explicit `parallx://page/<id>` link emits a
