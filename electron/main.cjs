@@ -993,6 +993,52 @@ function isBinary(buffer, filePath) {
   return false;
 }
 
+// ── M67 Phase 2.4 — IPC write-path validation ────────────────────────────────
+//
+// Track the workspace root path registered by the renderer. Write operations
+// (writeFile, delete, rename, mkdir, copy) are constrained to paths within the
+// workspace root or APP_ROOT/data. This is defense-in-depth: the tool layer
+// (sanitizeRelativePath) is the primary guard; this IPC-layer check prevents
+// any future renderer code that constructs an absolute path from bypassing it.
+//
+// If no root is registered yet (early init or test mode), writes are allowed
+// anywhere — backward compatible. Once a root is set, escaping it is blocked.
+
+/** Currently-open workspace root path (absolute, normalized). Null = unrestricted. */
+let _fsWorkspaceRoot = null;
+
+/**
+ * Return true when filePath is within an allowed write zone:
+ *   - the registered workspace root (any depth inside it), or
+ *   - APP_ROOT/data (our own portable data directory).
+ *
+ * When no workspace root is registered, always returns true.
+ */
+function _isAllowedWritePath(filePath) {
+  if (!_fsWorkspaceRoot) return true;       // no workspace registered yet
+  const normalized = path.resolve(filePath);
+  const wsRoot = path.resolve(_fsWorkspaceRoot);
+  const dataDir = path.resolve(path.join(APP_ROOT, 'data'));
+  return (
+    normalized === wsRoot ||
+    normalized.startsWith(wsRoot + path.sep) ||
+    normalized === dataDir ||
+    normalized.startsWith(dataDir + path.sep)
+  );
+}
+
+// ── fs:setWorkspaceRoot ──
+// Called by the renderer when a workspace is opened or switched. Registers the
+// workspace root so write-path validation can enforce containment.
+ipcMain.handle('fs:setWorkspaceRoot', (_event, rootPath) => {
+  if (typeof rootPath === 'string' && rootPath.length > 0) {
+    _fsWorkspaceRoot = path.resolve(rootPath);
+  } else {
+    _fsWorkspaceRoot = null;
+  }
+  return { ok: true };
+});
+
 // ── fs:readFile ──
 ipcMain.handle('fs:readFile', async (_event, filePath, encoding) => {
   try {
@@ -1018,6 +1064,9 @@ ipcMain.handle('fs:readFile', async (_event, filePath, encoding) => {
 
 // ── fs:writeFile ──
 ipcMain.handle('fs:writeFile', async (_event, filePath, content, encoding) => {
+  if (!_isAllowedWritePath(filePath)) {
+    return { error: { code: 'EACCES', message: 'Write path is outside the workspace root', path: filePath } };
+  }
   try {
     // Ensure parent directory exists
     await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -1110,6 +1159,9 @@ ipcMain.handle('fs:exists', async (_event, filePath) => {
 
 // ── fs:rename ──
 ipcMain.handle('fs:rename', async (_event, oldPath, newPath) => {
+  if (!_isAllowedWritePath(oldPath) || !_isAllowedWritePath(newPath)) {
+    return { error: { code: 'EACCES', message: 'Rename path is outside the workspace root', path: oldPath } };
+  }
   try {
     await fs.rename(oldPath, newPath);
     return { error: null };
@@ -1134,6 +1186,9 @@ ipcMain.handle('fs:rename', async (_event, oldPath, newPath) => {
 //                      drives).
 //   false            — permanent delete (no recycle bin).
 ipcMain.handle('fs:delete', async (_event, filePath, options) => {
+  if (!_isAllowedWritePath(filePath)) {
+    return { error: { code: 'EACCES', message: 'Delete path is outside the workspace root', path: filePath } };
+  }
   try {
     const opt = options?.useTrash === undefined ? 'auto' : options.useTrash;
     let useTrash = opt !== false; // default: true (then refined below)
@@ -1321,6 +1376,9 @@ ipcMain.handle('secret:delete', async (_event, key) => {
 
 // ── fs:mkdir ──
 ipcMain.handle('fs:mkdir', async (_event, dirPath) => {
+  if (!_isAllowedWritePath(dirPath)) {
+    return { error: { code: 'EACCES', message: 'mkdir path is outside the workspace root', path: dirPath } };
+  }
   try {
     await fs.mkdir(dirPath, { recursive: true });
     return { error: null };
@@ -1331,6 +1389,9 @@ ipcMain.handle('fs:mkdir', async (_event, dirPath) => {
 
 // ── fs:copy ──
 ipcMain.handle('fs:copy', async (_event, source, destination) => {
+  if (!_isAllowedWritePath(destination)) {
+    return { error: { code: 'EACCES', message: 'Copy destination is outside the workspace root', path: destination } };
+  }
   try {
     const stat = await fs.stat(source);
     if (stat.isDirectory()) {

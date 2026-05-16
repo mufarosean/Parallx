@@ -43,6 +43,7 @@ import type {
 import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, IGlobalStorageService, ISurfaceRouterService, IAutonomyLogService, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService } from '../../services/serviceTypes.js';
 import { SettingsRegistryService, setGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import { createSecretStorageService } from '../../services/secretStorageService.js';
+import { PolicyDecisionPoint as _PolicyDecisionPoint } from '../../services/policyDecisionPoint.js';
 import {
   registerAutonomyFlagSettings,
   registerAutonomySubstrateSettings,} from '../../services/autonomySettingsSchemas.js';
@@ -575,6 +576,22 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const workspaceService = api.services.has(IWorkspaceService)
     ? api.services.get<import('../../services/serviceTypes.js').IWorkspaceService>(IWorkspaceService)
     : undefined;
+
+  // M67 Phase 2.4 — register workspace root with main process for IPC write-path validation.
+  const _fsBridgeAny = _fsBridge as unknown as Record<string, unknown> | undefined;
+  if (_fsBridgeAny && typeof _fsBridgeAny['setWorkspaceRoot'] === 'function') {
+    const _setWsRoot = _fsBridgeAny['setWorkspaceRoot'] as (p: string | null) => unknown;
+    const _regWsRoot = (fsPath: string | undefined) => void _setWsRoot(fsPath ?? null);
+    _regWsRoot(workspaceService?.folders[0]?.uri.fsPath);
+    if (workspaceService) {
+      context.subscriptions.push(
+        workspaceService.onDidChangeWorkspace(
+          (ws) => _regWsRoot(ws?.folders[0]?.uri.fsPath),
+        ),
+      );
+    }
+  }
+
   const editorService = api.services.has(IEditorService)
     ? api.services.get<import('../../services/serviceTypes.js').IEditorService>(IEditorService)
     : undefined;
@@ -1304,7 +1321,15 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     );
 
     // Bind to tools service
-    (languageModelToolsService as import('../../services/languageModelToolsService.js').LanguageModelToolsService).setPermissionService(_permissionService);
+    const _lmts = languageModelToolsService as import('../../services/languageModelToolsService.js').LanguageModelToolsService;
+    _lmts.setPermissionService(_permissionService);
+
+    // M67 Phase 2 — wire Policy Decision Point
+    {
+      const pdp = new _PolicyDecisionPoint();
+      pdp.setPermissionService(_permissionService);
+      _lmts.setPolicyDecisionPoint(pdp);
+    }
 
     // Build retrieval accessor for the search_knowledge tool (M10 Phase 3)
     const retrievalAccessor = retrievalService && indexingPipelineService

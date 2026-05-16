@@ -480,8 +480,18 @@ export class PermissionService extends Disposable {
     args: Record<string, unknown>,
     defaultLevel: ToolPermissionLevel,
     sessionId?: string,
+    opts?: {
+      /**
+       * When true, bypass the auto-approve shortcut in the confirmation flow.
+       * Used by invokeToolWithRuntimeControl when the PDP returned
+       * require-approval via the color gate (Rule 5) so that a persistent
+       * "always-allow" override cannot silently skip the dialog mid-tainted-turn.
+       */
+      forceApproval?: boolean;
+    },
   ): Promise<boolean> {
     const check = this.checkPermission(toolName, defaultLevel);
+    const forceApproval = opts?.forceApproval === true;
 
     // Heartbeat / subagent autonomy gate — runs BEFORE auto-approve so
     // `manual` can veto even read-only tools. Upstream parallel: agent-level
@@ -513,8 +523,8 @@ export class PermissionService extends Disposable {
       }
     }
 
-    // Auto-approved — proceed immediately
-    if (check.autoApproved) {
+    // Auto-approved — proceed immediately (unless the PDP color gate forced approval)
+    if (check.autoApproved && !forceApproval) {
       this._audit({ tool: toolName, decision: 'approved', source: check.source, timestamp: Date.now() });
       return true;
     }
@@ -591,10 +601,13 @@ export class PermissionService extends Disposable {
  * and destructive file deletes have irreversible consequences that cannot be
  * silently committed by YOLO / streamlined mode.
  *
+ * Canonical definition is here; `policyDecisionPoint.ts` imports this constant
+ * rather than duplicating it, to avoid circular imports.
+ *
  * Note: persistent `never-allowed` overrides still block these tools outright
  * (that is stricter, not looser).
  */
-const ALWAYS_REQUIRE_CONFIRMATION: ReadonlySet<string> = new Set([
+export const ALWAYS_REQUIRE_CONFIRMATION: ReadonlySet<string> = new Set([
   'run_command',
   'delete_file',
 ]);

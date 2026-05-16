@@ -98,6 +98,13 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     unwatch: (watchId) => ipcRenderer.invoke('fs:unwatch', watchId),
 
     /**
+     * Register the current workspace root with the main process for write-path
+     * validation (M67 Phase 2.4). Call this when a workspace is opened or
+     * switched. Pass null to clear the root (unrestricted mode).
+     */
+    setWorkspaceRoot: (rootPath) => ipcRenderer.invoke('fs:setWorkspaceRoot', rootPath),
+
+    /**
      * Subscribe to file change events.
      * Callback receives { watchId, events: [{ type: 'created'|'changed'|'deleted', path }] }
      * or { watchId, error }.

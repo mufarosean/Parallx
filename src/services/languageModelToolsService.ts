@@ -25,6 +25,7 @@ import type {
   ToolPermissionLevel,
 } from './chatTypes.js';
 import type { PermissionService } from './permissionService.js';
+import type { PolicyDecisionPoint } from './policyDecisionPoint.js';
 import {
   getToolColor,
   markTurnTainted,
@@ -92,9 +93,10 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   private readonly _onDidChangeTools = this._register(new Emitter<void>());
   readonly onDidChangeTools: Event<void> = this._onDidChangeTools.event;
 
-  // ── Permission service (M11 Task 2.1) ──
+  // ── Permission service (M11 Task 2.1) + Policy Decision Point (M67 Phase 2) ──
 
   private _permissionService: PermissionService | undefined;
+  private _pdp: PolicyDecisionPoint | undefined;
 
   constructor() {
     super();
@@ -138,6 +140,11 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   /** Get the bound permission service (if any). */
   getPermissionService(): PermissionService | undefined {
     return this._permissionService;
+  }
+
+  /** Set the Policy Decision Point (M67 Phase 2). */
+  setPolicyDecisionPoint(pdp: PolicyDecisionPoint): void {
+    this._pdp = pdp;
   }
 
   // ── Tool-enablement binding (M62 follow-up) ──
@@ -282,35 +289,30 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     }
 
     const defaultLevel = getEffectivePermission(tool);
-    let permissionCheck = this._permissionService
-      ? this._permissionService.checkPermission(name, defaultLevel)
-      : {
-        level: defaultLevel,
-        autoApproved: defaultLevel === 'always-allowed',
-        source: 'missing-permission-service' as const,
-      };
 
-    // M65 Iter 2 — Layer 5 color gate. If the resolved color gate demands
-    // approval (blue tool in a turn already tainted by a red tool), it
-    // OVERRIDES any persisted "always-allow" override. The trifecta cut
-    // is not negotiable; an LLM-arranged prior approval cannot lower the
-    // bar mid-turn. See openclawToolPolicy.resolveColorGate.
-    if (resolveColorGate(name, sessionId) === 'requires-approval') {
-      permissionCheck = {
-        level: 'requires-approval',
-        autoApproved: false,
-        source: permissionCheck.source,
-      };
-    }
+    // M67 Phase 2 — every invocation goes through the Policy Decision Point.
+    // The PDP consolidates: command blocklist + heartbeat-manual gate +
+    // never-allowed check + ALWAYS_REQUIRE_CONFIRMATION belt + M65 color gate +
+    // checkPermission. When the PDP is not yet wired (test or early init path),
+    // fall back to the legacy inline logic.
+    const decision = this._pdp
+      ? this._pdp.decide({ caller: { kind: 'built-in', id: 'chat' }, tool: { name, defaultLevel }, args, sessionId })
+      : this._legacyDecide(name, defaultLevel, sessionId);
+
+    // Derive the permission-level for the observer from the PDP outcome.
+    const permLevel: ToolPermissionLevel =
+      decision.outcome === 'deny'
+        ? (decision.reasons.includes('never-allowed') ? 'never-allowed' : 'requires-approval')
+        : decision.outcome === 'require-approval' ? 'requires-approval' : 'always-allowed';
 
     const metadata: ILanguageModelToolsRuntimeMetadata = {
       name,
       description: tool.description,
-      permissionLevel: permissionCheck.level,
+      permissionLevel: permLevel,
       enabled: this.isToolEnabled(name),
-      requiresApproval: permissionCheck.level === 'requires-approval' && !permissionCheck.autoApproved,
-      autoApproved: permissionCheck.autoApproved,
-      approvalSource: permissionCheck.source,
+      requiresApproval: decision.outcome === 'require-approval',
+      autoApproved: decision.autoApproved,
+      approvalSource: decision.permSource,
       source: tool.source,
       ownerToolId: tool.ownerToolId,
     };
@@ -320,25 +322,26 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
       return { content: `Tool "${name}" is disabled`, isError: true };
     }
 
-    // Heartbeat autonomy=manual: block every tool, including always-allowed
-    // reads, before the fast-path. See PermissionService.isHeartbeatSessionBlocked.
-    if (
-      sessionId !== undefined &&
-      this._permissionService &&
-      typeof (this._permissionService as PermissionService).isHeartbeatSessionBlocked === 'function' &&
-      (this._permissionService as PermissionService).isHeartbeatSessionBlocked(sessionId)
-    ) {
-      (this._permissionService as PermissionService).recordHeartbeatAutonomyBlock(sessionId, name);
-      observer?.onApprovalResolved?.(metadata, false);
-      return { content: `Tool "${name}" blocked: agent autonomy is manual`, isError: true };
-    }
+    // ── Handle deny outcomes ─────────────────────────────────────────────────
 
-    if (permissionCheck.level === 'never-allowed') {
+    if (decision.outcome === 'deny') {
+      // autonomy-manual: side-effect — emit to autonomy log
+      if (decision.reasons.includes('autonomy-manual') && sessionId && this._permissionService) {
+        this._permissionService.recordManagedAutonomyBlock(sessionId, name);
+      }
       observer?.onApprovalResolved?.(metadata, false);
+      if (decision.reasons.includes('command-blocklist')) {
+        return { content: `Tool "${name}": command is blocked`, isError: true };
+      }
+      if (decision.reasons.includes('autonomy-manual')) {
+        return { content: `Tool "${name}" blocked: agent autonomy is manual`, isError: true };
+      }
       return { content: `Tool "${name}" is not allowed`, isError: true };
     }
 
-    if (metadata.requiresApproval) {
+    // ── Handle require-approval outcome ─────────────────────────────────────
+
+    if (decision.outcome === 'require-approval') {
       observer?.onApprovalRequested?.(metadata);
       if (!this._permissionService) {
         observer?.onApprovalResolved?.(metadata, false);
@@ -347,19 +350,24 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
           isError: true,
         };
       }
-
+      // Pass forceApproval=true when the color gate triggered the require-approval
+      // so that a persistent "always-allow" override cannot silently bypass the
+      // mid-turn taint check inside confirmToolInvocation.
+      const colorGateForced = decision.reasons.includes('color-gate-blue-post-red');
       const approved = await this._permissionService.confirmToolInvocation(
         name,
         tool.description,
         args,
         defaultLevel,
         sessionId,
+        { forceApproval: colorGateForced },
       );
       observer?.onApprovalResolved?.(metadata, approved);
       if (!approved) {
         return { content: 'Tool execution rejected by user', isError: true };
       }
-    } else if (metadata.autoApproved) {
+    } else {
+      // allow — auto-approved
       observer?.onApprovalResolved?.(metadata, true);
     }
 
@@ -369,10 +377,9 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
 
     try {
       const result = await tool.handler(args, token);
-      // M65 Iter 2 — Layer 5: taint the session if a red tool succeeded.
-      // Taint is set ONLY by runtime here, ONLY on success, ONLY when a
-      // sessionId is in scope. The LLM cannot set or clear this flag.
-      if (!result.isError && sessionId && getToolColor(name) === 'red') {
+      // Taint the session turn if a red tool succeeded (M65 Layer 5).
+      // Taint is set ONLY here, ONLY on success, ONLY when sessionId is in scope.
+      if (!result.isError && sessionId && decision.willTaintOnSuccess) {
         markTurnTainted(sessionId);
       }
       observer?.onExecuted?.(metadata, result);
@@ -383,6 +390,42 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
       observer?.onExecuted?.(metadata, result);
       return result;
     }
+  }
+
+  /**
+   * Legacy decision path used when the PDP has not been wired yet (e.g. in
+   * unit tests that construct LanguageModelToolsService in isolation).
+   * Mirrors the pre-M67 inline logic: checkPermission + color gate only.
+   */
+  private _legacyDecide(
+    name: string,
+    defaultLevel: ToolPermissionLevel,
+    sessionId: string | undefined,
+  ): import('./policyDecisionPoint.js').PolicyDecision {
+    const permCheck = this._permissionService
+      ? this._permissionService.checkPermission(name, defaultLevel)
+      : { level: defaultLevel, autoApproved: defaultLevel === 'always-allowed', source: 'missing-permission-service' as const };
+
+    // Heartbeat autonomy=manual
+    if (sessionId && this._permissionService?.isManagedSessionBlocked(sessionId)) {
+      return { outcome: 'deny', reasons: ['autonomy-manual'], autoApproved: false, permSource: permCheck.source, willTaintOnSuccess: false };
+    }
+
+    if (permCheck.level === 'never-allowed') {
+      return { outcome: 'deny', reasons: ['never-allowed'], autoApproved: false, permSource: permCheck.source, willTaintOnSuccess: false };
+    }
+
+    const willTaint = getToolColor(name) === 'red';
+
+    if (resolveColorGate(name, sessionId) === 'requires-approval') {
+      return { outcome: 'require-approval', reasons: ['color-gate-blue-post-red'], autoApproved: false, permSource: permCheck.source, willTaintOnSuccess: willTaint };
+    }
+
+    if (permCheck.level === 'requires-approval' && !permCheck.autoApproved) {
+      return { outcome: 'require-approval', reasons: [`requires-approval:${permCheck.source}`], autoApproved: false, permSource: permCheck.source, willTaintOnSuccess: willTaint };
+    }
+
+    return { outcome: 'allow', reasons: [`allow:${permCheck.source}`], autoApproved: permCheck.autoApproved, permSource: permCheck.source, willTaintOnSuccess: willTaint };
   }
 
   // ── Tool enablement ──
