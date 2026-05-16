@@ -929,6 +929,10 @@ describe('RICH_DOCUMENT_EXTENSIONS', () => {
     expect(RICH_DOCUMENT_EXTENSIONS.has('.docx')).toBe(true);
   });
 
+  it('includes EPUB', () => {
+    expect(RICH_DOCUMENT_EXTENSIONS.has('.epub')).toBe(true);
+  });
+
   it('does not include text extensions', () => {
     expect(RICH_DOCUMENT_EXTENSIONS.has('.md')).toBe(false);
     expect(RICH_DOCUMENT_EXTENSIONS.has('.ts')).toBe(false);
@@ -1061,6 +1065,26 @@ describe('IndexingPipelineService — rich document indexing', () => {
 
     expect(fileService.readDocumentText).toHaveBeenCalledWith(
       expect.objectContaining({ fsPath: expect.stringContaining('report.docx') }),
+    );
+  });
+
+  it('uses readDocumentText for .epub files', async () => {
+    fileService.readdir.mockResolvedValueOnce([
+      { name: 'novel.epub', type: FileType.File, size: 80_000, mtime: 1000, uri: URI.file('/workspace/novel.epub') },
+    ]);
+
+    db.all.mockResolvedValueOnce([]);
+
+    fileService.readDocumentText.mockResolvedValueOnce({
+      text: 'EPUB chapter content here',
+      format: 'epub',
+      metadata: { chapterCount: 1 },
+    });
+
+    await pipeline.start();
+
+    expect(fileService.readDocumentText).toHaveBeenCalledWith(
+      expect.objectContaining({ fsPath: expect.stringContaining('novel.epub') }),
     );
   });
 

@@ -1583,7 +1583,7 @@ ipcMain.handle('dialog:showMessageBox', async (_event, options) => {
 // Document Extraction IPC Handlers
 // ════════════════════════════════════════════════════════════════════════════════
 //
-// Extracts plain text from rich document formats (PDF, Excel, Word) for the
+// Extracts plain text from rich document formats (PDF, Excel, Word, EPUB) for the
 // indexing pipeline. Heavy extraction runs in the main process which has full
 // Node.js access to the parsing libraries.
 

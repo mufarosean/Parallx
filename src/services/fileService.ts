@@ -365,6 +365,7 @@ export class FileService extends Disposable implements IFileService {
         '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers',
         '.csv', '.tsv',
         '.docx',
+        '.epub',
       ]);
     }
     return this._richDocExtensions;

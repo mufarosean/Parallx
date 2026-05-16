@@ -154,6 +154,7 @@ describe('registerBuiltinEditorDeserializers', () => {
     // Verify all expected types are registered
     expect(hasEditorInputDeserializer('parallx.editor.file')).toBe(true);
     expect(hasEditorInputDeserializer('parallx.editor.pdf')).toBe(true);
+    expect(hasEditorInputDeserializer('parallx.editor.epub')).toBe(true);
     expect(hasEditorInputDeserializer('parallx.editor.image')).toBe(true);
     expect(hasEditorInputDeserializer('parallx.editor.markdownPreview')).toBe(true);
     expect(hasEditorInputDeserializer('parallx.editor.settings')).toBe(true);

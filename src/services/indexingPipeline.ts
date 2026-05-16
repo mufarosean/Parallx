@@ -1057,7 +1057,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
   /**
    * Index a single workspace file. Returns true if actually indexed.
-   * Handles both plain text files and rich documents (PDF, Excel, Word).
+   * Handles both plain text files and rich documents (PDF, Excel, Word, EPUB).
    *
    * @param absolutePath — full filesystem path (for file I/O)
    * @param relativePath — workspace-relative path (for sourceId, contextPrefix, DB storage).

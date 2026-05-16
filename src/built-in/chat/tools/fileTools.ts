@@ -126,7 +126,7 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
   return {
     name: 'read_file',
     displaySummary: 'Read a workspace file.',
-    description: 'Read a workspace file. Supports text and rich documents (PDF, DOCX, XLSX). Use start_line/end_line for a range.',
+    description: 'Read a workspace file. Supports text and rich documents (PDF, DOCX, EPUB, XLSX). Use start_line/end_line for a range.',
     parameters: {
       type: 'object',
       required: ['path'],
@@ -334,7 +334,7 @@ const BINARY_EXTS = new Set([
   '.woff', '.woff2', '.ttf', '.otf', '.eot',
   '.sqlite', '.db', '.sqlite3',
   // Rich documents — extracting text is too slow for line-by-line grep
-  '.pdf', '.docx', '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers',
+  '.pdf', '.docx', '.epub', '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers',
 ]);
 
 async function grepRecursive(
@@ -461,7 +461,7 @@ export function createSearchKnowledgeTool(retrieval: IBuiltInToolRetrieval | und
   return {
     name: 'search_knowledge',
     displaySummary: 'Semantic search across indexed content.',
-    description: 'Semantic search across indexed pages, files, and documents (PDF, DOCX, XLSX).',
+    description: 'Semantic search across indexed pages, files, and documents (PDF, DOCX, EPUB, XLSX).',
     parameters: {
       type: 'object',
       required: ['query'],

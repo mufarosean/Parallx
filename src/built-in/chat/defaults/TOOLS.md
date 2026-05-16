@@ -3,8 +3,8 @@
 ## Workspace Skills
 - **grep_search** — Exact-string / regex search across workspace files
 - **search_files** — Find files by name pattern
-- **search_knowledge** — Semantic (RAG) search using embeddings. Covers all indexed content including PDFs, DOCX, XLSX, and other rich documents. Best tool for searching large documents.
-- **read_file** — Read file contents (supports text files and rich documents like PDF, DOCX, XLSX)
+- **search_knowledge** — Semantic (RAG) search using embeddings. Covers all indexed content including PDFs, DOCX, EPUB, XLSX, and other rich documents. Best tool for searching large documents.
+- **read_file** — Read file contents (supports text files and rich documents like PDF, DOCX, EPUB, XLSX)
 - **list_files** — List directory contents
 
 ## Canvas Skills

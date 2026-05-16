@@ -9,6 +9,7 @@ import type { IEditorInput } from './editorInput.js';
 import { URI } from '../platform/uri.js';
 import { FileEditorInput } from '../built-in/editor/fileEditorInput.js';
 import { PdfEditorInput } from '../built-in/editor/pdfEditorInput.js';
+import { EpubEditorInput } from '../built-in/editor/epubEditorInput.js';
 import { ImageEditorInput } from '../built-in/editor/imageEditorInput.js';
 import { MarkdownPreviewInput } from '../built-in/editor/markdownPreviewInput.js';
 import { SettingsEditorInput } from '../built-in/editor/settingsEditorInput.js';
@@ -93,6 +94,15 @@ export function registerBuiltinEditorDeserializers(ctx: EditorDeserializerContex
     const page = typeof data?.page === 'number' ? (data.page as number) : 1;
     const scaleValue = typeof data?.scaleValue === 'string' ? (data.scaleValue as string) : undefined;
     return PdfEditorInput.create(URI.parse(uri), page, scaleValue);
+  });
+
+  // EPUB editor - needs URI, optionally restores scroll and text size
+  registerEditorInputDeserializer(EpubEditorInput.TYPE_ID, (data) => {
+    const uri = data?.uri;
+    if (typeof uri !== 'string') return null;
+    const scrollTop = typeof data?.scrollTop === 'number' ? (data.scrollTop as number) : 0;
+    const fontScale = typeof data?.fontScale === 'number' ? (data.fontScale as number) : 1;
+    return EpubEditorInput.create(URI.parse(uri), scrollTop, fontScale);
   });
 
   // Image editor — needs URI

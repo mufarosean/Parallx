@@ -8,6 +8,7 @@
 //   Excel (.xlsx, .xls, .xlsm, .xlsb, .ods, .numbers) — via xlsx (SheetJS)
 //   CSV   (.csv, .tsv) — via xlsx (SheetJS)
 //   Word  (.docx)    — via mammoth
+//   EPUB  (.epub)    - via adm-zip + spine-aware XHTML text extraction
 //
 // Design:
 //   - Runs in Electron main process (full Node.js access)
@@ -33,6 +34,8 @@ const RICH_DOCUMENT_EXTENSIONS = new Set([
   '.csv', '.tsv',
   // Word
   '.docx',
+  // E-books
+  '.epub',
 ]);
 
 /**
@@ -51,6 +54,8 @@ let _pdfParse = null;
 let _xlsx = null;
 /** @type {typeof import('mammoth') | null} */
 let _mammoth = null;
+/** @type {typeof import('adm-zip') | null} */
+let _AdmZip = null;
 
 function getPdfParse() {
   if (!_pdfParse) {
@@ -71,6 +76,13 @@ function getMammoth() {
     _mammoth = require('mammoth');
   }
   return _mammoth;
+}
+
+function getAdmZip() {
+  if (!_AdmZip) {
+    _AdmZip = require('adm-zip');
+  }
+  return _AdmZip;
 }
 
 // ─── Extractors ─────────────────────────────────────────────────────────────
@@ -155,6 +167,225 @@ async function extractDocx(buffer, filePath) {
   };
 }
 
+/**
+ * Extract text from an EPUB file.
+ * EPUB is a ZIP archive with an OPF package document that defines the
+ * manifest and reading order. We follow the spine instead of scanning every
+ * XHTML file so indexes and the reader match the book's intended order.
+ * @param {Buffer} buffer
+ * @param {string} filePath
+ * @returns {{ text: string; chapterCount: number }}
+ */
+function extractEpub(buffer, filePath) {
+  const AdmZip = getAdmZip();
+  const zip = new AdmZip(buffer);
+  const containerXml = readZipEntryText(zip, 'META-INF/container.xml');
+
+  if (!containerXml) {
+    throw new Error(`Invalid EPUB: missing META-INF/container.xml in ${path.basename(filePath)}`);
+  }
+
+  const rootfileMatch = containerXml.match(/<rootfile\b[^>]*\bfull-path=(["'])(.*?)\1/i);
+  if (!rootfileMatch) {
+    throw new Error(`Invalid EPUB: missing OPF rootfile in ${path.basename(filePath)}`);
+  }
+
+  const opfPath = normalizeZipPath(decodeHtmlEntities(rootfileMatch[2] ?? ''));
+  const opfXml = readZipEntryText(zip, opfPath);
+  if (!opfXml) {
+    throw new Error(`Invalid EPUB: OPF package not found (${opfPath})`);
+  }
+
+  const opfDir = zipDirname(opfPath);
+  const manifest = parseEpubManifest(opfXml, opfDir);
+  const spineIds = parseEpubSpine(opfXml);
+  const orderedItems = spineIds
+    .map((idref) => manifest.get(idref))
+    .filter((item) => item && isEpubHtmlItem(item));
+
+  const contentItems = orderedItems.length > 0
+    ? orderedItems
+    : [...manifest.values()].filter(isEpubHtmlItem);
+
+  const sections = [];
+  for (const item of contentItems) {
+    const html = readZipEntryText(zip, item.path);
+    if (!html) continue;
+
+    const title = extractHtmlTitle(html);
+    const bodyText = htmlToPlainText(html);
+    if (!bodyText) continue;
+
+    if (title && !bodyText.toLowerCase().startsWith(title.toLowerCase())) {
+      sections.push(`# ${title}\n\n${bodyText}`);
+    } else {
+      sections.push(bodyText);
+    }
+  }
+
+  return {
+    text: sections.join('\n\n').trim(),
+    chapterCount: sections.length,
+  };
+}
+
+function readZipEntryText(zip, entryPath) {
+  const normalized = normalizeZipPath(entryPath);
+  const entry = zip.getEntry(normalized);
+  if (!entry) return '';
+  const data = entry.getData();
+  return data.toString('utf8');
+}
+
+function normalizeZipPath(entryPath) {
+  return String(entryPath || '')
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '');
+}
+
+function zipDirname(entryPath) {
+  const normalized = normalizeZipPath(entryPath);
+  const lastSlash = normalized.lastIndexOf('/');
+  return lastSlash >= 0 ? normalized.slice(0, lastSlash) : '';
+}
+
+function resolveEpubPath(baseDir, href) {
+  const cleanHref = safeDecodeUri(String(href || '').split('#')[0].split('?')[0]);
+  const joined = baseDir ? `${baseDir}/${cleanHref}` : cleanHref;
+  return normalizeZipPath(path.posix.normalize(joined));
+}
+
+function safeDecodeUri(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function parseEpubManifest(opfXml, opfDir) {
+  const manifest = new Map();
+  const itemRe = /<item\b[^>]*\/?>/gi;
+  let match;
+  while ((match = itemRe.exec(opfXml)) !== null) {
+    const attrs = parseXmlAttributes(match[0]);
+    if (!attrs.id || !attrs.href) continue;
+    manifest.set(attrs.id, {
+      id: attrs.id,
+      href: attrs.href,
+      mediaType: attrs['media-type'] || '',
+      properties: attrs.properties || '',
+      path: resolveEpubPath(opfDir, attrs.href),
+    });
+  }
+  return manifest;
+}
+
+function parseEpubSpine(opfXml) {
+  const ids = [];
+  const itemrefRe = /<itemref\b[^>]*\/?>/gi;
+  let match;
+  while ((match = itemrefRe.exec(opfXml)) !== null) {
+    const attrs = parseXmlAttributes(match[0]);
+    if (attrs.idref) ids.push(attrs.idref);
+  }
+  return ids;
+}
+
+function parseXmlAttributes(tag) {
+  const attrs = {};
+  const attrRe = /([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  let match;
+  while ((match = attrRe.exec(tag)) !== null) {
+    const key = match[1];
+    const value = match[2] ?? match[3] ?? '';
+    attrs[key] = decodeHtmlEntities(value);
+  }
+  return attrs;
+}
+
+function isEpubHtmlItem(item) {
+  const mediaType = String(item.mediaType || '').toLowerCase();
+  const href = String(item.href || '').toLowerCase();
+  if (String(item.properties || '').toLowerCase().split(/\s+/).includes('nav')) return false;
+  return mediaType.includes('xhtml') ||
+    mediaType.includes('html') ||
+    href.endsWith('.xhtml') ||
+    href.endsWith('.html') ||
+    href.endsWith('.htm');
+}
+
+function extractHtmlTitle(html) {
+  const titleMatch = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i) ||
+    html.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i) ||
+    html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+  if (!titleMatch) return '';
+  return normalizeExtractedText(stripHtmlTags(titleMatch[1] ?? '')).trim();
+}
+
+function htmlToPlainText(html) {
+  const withoutNoise = String(html || '')
+    .replace(/<\?xml[\s\S]*?\?>/gi, '')
+    .replace(/<!doctype[\s\S]*?>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, '')
+    .replace(/<svg\b[\s\S]*?<\/svg>/gi, '')
+    .replace(/<head\b[\s\S]*?<\/head>/gi, '')
+    .replace(/<nav\b[\s\S]*?<\/nav>/gi, '');
+
+  const withBreaks = withoutNoise
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|section|article|blockquote|li|h[1-6]|tr)>/gi, '\n')
+    .replace(/<li\b[^>]*>/gi, '- ');
+
+  return normalizeExtractedText(stripHtmlTags(withBreaks)).trim();
+}
+
+function stripHtmlTags(value) {
+  return String(value || '').replace(/<[^>]+>/g, ' ');
+}
+
+function normalizeExtractedText(value) {
+  return decodeHtmlEntities(value)
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t\f\v]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function decodeHtmlEntities(value) {
+  const named = {
+    amp: '&',
+    lt: '<',
+    gt: '>',
+    quot: '"',
+    apos: "'",
+    nbsp: ' ',
+    ndash: '-',
+    mdash: '--',
+    hellip: '...',
+    lsquo: "'",
+    rsquo: "'",
+    ldquo: '"',
+    rdquo: '"',
+  };
+
+  return String(value || '').replace(/&(#x?[0-9a-f]+|[a-z][a-z0-9]+);/gi, (entity, body) => {
+    const lower = String(body).toLowerCase();
+    if (lower.startsWith('#x')) {
+      const codePoint = Number.parseInt(lower.slice(2), 16);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : entity;
+    }
+    if (lower.startsWith('#')) {
+      const codePoint = Number.parseInt(lower.slice(1), 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : entity;
+    }
+    return Object.prototype.hasOwnProperty.call(named, lower) ? named[lower] : entity;
+  });
+}
+
 // ─── Main entry point ───────────────────────────────────────────────────────
 
 /**
@@ -209,6 +440,11 @@ async function extractText(filePath) {
     case '.docx': {
       const result = await extractDocx(buffer, filePath);
       return { text: result.text, format: 'docx', metadata: {} };
+    }
+
+    case '.epub': {
+      const result = extractEpub(buffer, filePath);
+      return { text: result.text, format: 'epub', metadata: { chapterCount: result.chapterCount } };
     }
 
     default:

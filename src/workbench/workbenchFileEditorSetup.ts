@@ -5,7 +5,7 @@
 // startup sequence; this module encapsulates that wiring.
 //
 // Responsibilities:
-//   - Register built-in format readers (Markdown, Image, PDF, Text)
+//   - Register built-in format readers (Markdown, Image, PDF, EPUB, Text)
 //   - Register the pane factory (input → pane routing)
 //   - Wire the URI resolver so EditorsBridge.openFileEditor() works
 //   - Wire the Quick Access file picker delegate
@@ -35,6 +35,7 @@ import { MarkdownPreviewInput } from '../built-in/editor/markdownPreviewInput.js
 import { ReadonlyMarkdownInput } from '../built-in/editor/readonlyMarkdownInput.js';
 import { ImageEditorInput } from '../built-in/editor/imageEditorInput.js';
 import { PdfEditorInput } from '../built-in/editor/pdfEditorInput.js';
+import { EpubEditorInput } from '../built-in/editor/epubEditorInput.js';
 import { KeybindingsEditorInput } from '../built-in/editor/keybindingsEditorInput.js';
 import { SettingsEditorInput } from '../built-in/editor/settingsEditorInput.js';
 
@@ -43,6 +44,7 @@ import { TextEditorPane } from '../built-in/editor/textEditorPane.js';
 import { MarkdownEditorPane } from '../built-in/editor/markdownEditorPane.js';
 import { ImageEditorPane } from '../built-in/editor/imageEditorPane.js';
 import { PdfEditorPane } from '../built-in/editor/pdfEditorPane.js';
+import { EpubEditorPane } from '../built-in/editor/epubEditorPane.js';
 import { KeybindingsEditorPane } from '../built-in/editor/keybindingsEditorPane.js';
 import { SettingsEditorPane } from '../built-in/editor/settingsEditorPane.js';
 
@@ -71,8 +73,8 @@ export interface FileEditorSetupDeps {
  */
 export function initFileEditorSetup(deps: FileEditorSetupDeps): DisposableStore {
   const disposables = new DisposableStore();
-  _initFileEditorResolver(deps, disposables);
-  _initQuickAccessFilePicker(deps, disposables);
+  const resolver = _initFileEditorResolver(deps, disposables);
+  _initQuickAccessFilePicker(deps, disposables, resolver);
   return disposables;
 }
 
@@ -81,7 +83,7 @@ export function initFileEditorSetup(deps: FileEditorSetupDeps): DisposableStore 
 function _initFileEditorResolver(
   { services, editorPart }: FileEditorSetupDeps,
   disposables: DisposableStore,
-): void {
+): EditorResolverService {
   // 1. EditorResolverService
   const resolver = new EditorResolverService();
   disposables.add(resolver);
@@ -137,6 +139,16 @@ function _initFileEditorResolver(
     createPane: () => createPdfPane(),
   }));
 
+  // EPUB reader
+  disposables.add(resolver.registerEditor({
+    id: EpubEditorInput.TYPE_ID,
+    name: 'EPUB Reader',
+    extensions: ['.epub'],
+    priority: EditorResolverPriority.Default,
+    createInput: (uri) => EpubEditorInput.create(uri),
+    createPane: () => new EpubEditorPane(),
+  }));
+
   // Text editor (fallback — matches everything)
   disposables.add(resolver.registerEditor({
     id: FileEditorInput.TYPE_ID,
@@ -153,6 +165,7 @@ function _initFileEditorResolver(
     if (input instanceof ReadonlyMarkdownInput) return new MarkdownEditorPane();
     if (input instanceof ImageEditorInput) return new ImageEditorPane();
     if (input instanceof PdfEditorInput) return createPdfPane();
+    if (input instanceof EpubEditorInput) return new EpubEditorPane();
 
     if (input instanceof KeybindingsEditorInput) {
       const kbService = services.has(IKeybindingService)
@@ -216,6 +229,8 @@ function _initFileEditorResolver(
     const cmdService = services.get(ICommandService) as CommandService;
     cmdService?.executeCommand('explorer.revealInExplorer', uri.toString());
   }));
+
+  return resolver;
 }
 
 // ─── Find Open Editor ────────────────────────────────────────────────────────
@@ -230,6 +245,7 @@ export function findOpenEditorInput(editorPart: EditorPart, uri: URI): IEditorIn
       if (editor instanceof FileEditorInput && editor.uri.equals(uri)) return editor;
       if (editor instanceof ImageEditorInput && editor.uri.equals(uri)) return editor;
       if (editor instanceof PdfEditorInput && editor.uri.equals(uri)) return editor;
+      if (editor instanceof EpubEditorInput && editor.uri.equals(uri)) return editor;
     }
   }
   return undefined;
@@ -240,6 +256,7 @@ export function findOpenEditorInput(editorPart: EditorPart, uri: URI): IEditorIn
 function _initQuickAccessFilePicker(
   { services, editorPart, commandPalette }: FileEditorSetupDeps,
   _disposables: DisposableStore,
+  resolver: EditorResolverService,
 ): void {
   if (!commandPalette) return;
 
@@ -279,7 +296,9 @@ function _initQuickAccessFilePicker(
       try {
         const uri = URI.parse(uriString);
         const existing = findOpenEditorInput(editorPart, uri);
-        const input = existing ?? FileEditorInput.create(uri, textFileModelManager, fileService, undefined);
+        const input = existing ??
+          resolver.resolve(uri)?.input ??
+          FileEditorInput.create(uri, textFileModelManager, fileService, undefined);
         if (editorService) {
           await editorService.openEditor(input, { pinned: true });
         }

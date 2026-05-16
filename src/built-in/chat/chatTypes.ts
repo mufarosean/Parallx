@@ -593,7 +593,7 @@ export type PageMutationNotifier = (pageId: string, kind: 'created' | 'updated' 
 export interface IFileReadResult {
   /** Extracted text content. */
   readonly content: string;
-  /** Whether this was a text file or a rich document (PDF, DOCX, XLSX, etc.). */
+  /** Whether this was a text file or a rich document (PDF, DOCX, EPUB, XLSX, etc.). */
   readonly type: 'text' | 'rich-document';
   /** Total character count of the content. */
   readonly totalChars: number;
@@ -602,7 +602,7 @@ export interface IFileReadResult {
 /** File system accessor for built-in tools. */
 export interface IBuiltInToolFileSystem {
   readdir(relativePath: string): Promise<readonly { name: string; type: 'file' | 'directory'; size: number }[]>;
-  /** Read any file — auto-detects rich documents (PDF, DOCX, XLSX) and extracts text. */
+  /** Read any file — auto-detects rich documents (PDF, DOCX, EPUB, XLSX) and extracts text. */
   readFileContent(relativePath: string): Promise<IFileReadResult>;
   exists(relativePath: string): Promise<boolean>;
   readonly workspaceRootName: string;
