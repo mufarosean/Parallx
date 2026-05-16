@@ -43,7 +43,7 @@ const _PERSIST_KEYS = [
 
 async function _loadSettings(api) {
   try {
-    const fs = api.workspace?.fs;
+    const fs = api.requestCapability ? api.requestCapability('fs', { scope: 'workspace-files', modes: ['read', 'write'] }) : null;
     const root = api.workspace?.workspaceFolders?.[0]?.uri;
     if (!fs || !root) return;
     const path = _resolveUri(root, `${EXT_ROOT}/${SETTINGS_FILE}`);
@@ -65,7 +65,7 @@ async function _saveSettings(api) {
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(async () => {
     try {
-      const fs = api.workspace?.fs;
+      const fs = api.requestCapability ? api.requestCapability('fs', { scope: 'workspace-files', modes: ['read', 'write'] }) : null;
       const root = api.workspace?.workspaceFolders?.[0]?.uri;
       if (!fs || !root) return;
       await _ensureNestedDirs(fs, root, ['.parallx', 'extensions', 'workspace-graph']);

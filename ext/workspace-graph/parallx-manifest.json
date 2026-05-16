@@ -11,7 +11,7 @@
     "parallx": "^0.1.0"
   },
   "capabilities": {
-    "fs": { "scope": "workspace-read", "modes": ["read"] }
+    "fs": { "scope": "workspace-files", "modes": ["read", "write"] }
   },
   "contributes": {
     "commands": [
