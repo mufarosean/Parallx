@@ -555,7 +555,8 @@ async function buildGraphData(api) {
 
 async function _collectFiles(api, nodes, edges) {
   const folders = api.workspace.workspaceFolders;
-  if (!folders || folders.length === 0 || !api.workspace.fs) return;
+  if (!folders || folders.length === 0 || !api.requestCapability) return;
+  const wfs = api.requestCapability('fs', { scope: 'workspace-read', modes: ['read'] });
 
   const rootUri = folders[0].uri;
   const MAX_DEPTH = 3;
@@ -566,7 +567,7 @@ async function _collectFiles(api, nodes, edges) {
     if (depth > MAX_DEPTH) continue;
 
     let entries;
-    try { entries = await api.workspace.fs.readdir(uri); } catch { continue; }
+    try { entries = await wfs.readdir(uri); } catch { continue; }
 
     for (const entry of entries) {
       const childUri = uri.endsWith('/') ? uri + entry.name : uri + '/' + entry.name;
@@ -611,17 +612,18 @@ function _walkPageTree(pages, parentNodeId, nodes, edges) {
 
 async function _collectSessions(api, nodes, edges) {
   const folders = api.workspace.workspaceFolders;
-  if (!folders || folders.length === 0 || !api.workspace.fs) return;
+  if (!folders || folders.length === 0 || !api.requestCapability) return;
+  const wfs = api.requestCapability('fs', { scope: 'workspace-read', modes: ['read'] });
 
   const rootUri = folders[0].uri;
   const sessionsUri = rootUri.endsWith('/') ? rootUri + '.parallx/sessions' : rootUri + '/.parallx/sessions';
 
   let exists;
-  try { exists = await api.workspace.fs.exists(sessionsUri); } catch { return; }
+  try { exists = await wfs.exists(sessionsUri); } catch { return; }
   if (!exists) return;
 
   let entries;
-  try { entries = await api.workspace.fs.readdir(sessionsUri); } catch { return; }
+  try { entries = await wfs.readdir(sessionsUri); } catch { return; }
 
   for (const entry of entries) {
     if (entry.type !== 1 || !entry.name.endsWith('.json')) continue;

@@ -4931,7 +4931,7 @@ async function runCsvExport(api) {
   const { csv, count } = await buildExportCsv();
   const fname = `budget-export-${todayYmd()}.csv`;
   const folders = api.workspace && api.workspace.workspaceFolders;
-  const fs = api.workspace && api.workspace.fs;
+  const fs = api.requestCapability ? api.requestCapability('fs', { scope: 'workspace-files', modes: ['read', 'write'] }) : null;
   if (folders && folders.length > 0 && fs && typeof fs.writeFile === 'function') {
     const folderUri = folders[0].uri;
     // Build child URI by string concatenation — workspaceBoundary verifies it.

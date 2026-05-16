@@ -596,7 +596,7 @@ function _joinUri(base, ...parts) {
 }
 
 async function _appendHistoryLine(api, line) {
-  const fs = api && api.workspace && api.workspace.fs;
+  const fs = api && api.requestCapability ? api.requestCapability('fs', { scope: 'workspace-files', modes: ['read', 'write'] }) : null;
   const folders = api && api.workspace && api.workspace.workspaceFolders;
   if (!fs || !folders || folders.length === 0) {
     // No workspace open — silently skip. History is observability, never

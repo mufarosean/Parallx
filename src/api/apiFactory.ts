@@ -33,6 +33,7 @@ import { WindowBridge } from './bridges/windowBridge.js';
 import { ContextBridge } from './bridges/contextBridge.js';
 import { WorkspaceBridge } from './bridges/workspaceBridge.js';
 import { FileSystemBridge } from './bridges/fileSystemBridge.js';
+import { CapabilityFsBridge, type FsCapabilityMode } from './bridges/capabilityFsBridge.js';
 import { EditorsBridge } from './bridges/editorsBridge.js';
 import { LanguageModelBridge } from './bridges/languageModelBridge.js';
 import { ChatBridge } from './bridges/chatBridge.js';
@@ -271,6 +272,30 @@ export interface ParallxApiObject {
     upsertJob(job: IExtensionCronJob): void;
     removeJob(id: string): boolean;
   } | undefined;
+
+  /**
+   * Request a scoped capability handle (M67 Phase 3).
+   * Extensions must declare the capability in their manifest under `capabilities`.
+   *
+   * Currently only `'fs'` is supported.
+   *
+   * @param capability  The capability to request (currently only `'fs'`).
+   * @param opts        Scope/mode options (must match or be a subset of manifest declaration).
+   * @returns A scoped handle with the same interface as `api.workspace.fs`.
+   */
+  requestCapability(
+    capability: 'fs',
+    opts?: { scope?: 'extension-data' | 'workspace-read' | 'workspace-files'; modes?: readonly ('read' | 'write')[] },
+  ): {
+    readFile(uri: string): Promise<{ content: string; encoding: string }>;
+    writeFile(uri: string, content: string): Promise<void>;
+    stat(uri: string): Promise<{ type: number; size: number; mtime: number }>;
+    readdir(uri: string): Promise<{ name: string; type: number }[]>;
+    exists(uri: string): Promise<boolean>;
+    rename(source: string, target: string): Promise<void>;
+    delete(uri: string): Promise<void>;
+    mkdir(uri: string): Promise<void>;
+  };
 }
 
 // ─── Global Tool Lifecycle Emitters ──────────────────────────────────────────
@@ -561,6 +586,17 @@ export function createToolApi(
       onDidChangeCanvasPages: workspaceBridge.onDidChangeCanvasPages,
       get fs() {
         if (!fileSystemBridge) return undefined;
+        const manifest = toolDescription.manifest;
+        // Extensions declaring capabilities.fs get a scoped handle via requestCapability().
+        // Withdraw the workspace-wide fs surface to enforce the capability boundary.
+        if (manifest.capabilities?.fs) return undefined;
+        // Log a deprecation warning for extensions that use api.workspace.fs without
+        // declaring it in their manifest or opting in to legacy mode.
+        if (!manifest.legacy && !toolDescription.isBuiltin) {
+          console.warn(
+            `[M67] Tool "${toolId}" uses api.workspace.fs without declaring capabilities.fs or legacy:true in its manifest.`,
+          );
+        }
         return {
           readFile: async (uriStr: string) => {
             const content = await fileSystemBridge.readFile(URI.parse(uriStr));
@@ -797,6 +833,31 @@ export function createToolApi(
           removeJob: (id: string) => cronBridge.removeJob(id),
         })
       : undefined,
+
+    // M67 Phase 3 — Capability IPC.
+    requestCapability(
+      capability: 'fs',
+      opts?: { scope?: 'extension-data' | 'workspace-read' | 'workspace-files'; modes?: readonly FsCapabilityMode[] },
+    ) {
+      if (capability !== 'fs') {
+        throw new Error(`[M67] Unknown capability: "${capability as string}"`);
+      }
+      if (!fileService || !workspaceService) {
+        throw new Error(`[M67] FileService or WorkspaceService not available`);
+      }
+      const manifestFsCap = toolDescription.manifest.capabilities?.fs;
+      if (!manifestFsCap) {
+        throw new Error(
+          `[M67] Tool "${toolId}" must declare capabilities.fs in its manifest before calling api.requestCapability('fs', ...)`,
+        );
+      }
+      const scope = opts?.scope ?? manifestFsCap.scope ?? 'workspace-read';
+      const modes: readonly FsCapabilityMode[] = opts?.modes ?? manifestFsCap.modes ?? ['read'];
+      const getWsFolderUris = () =>
+        (workspaceService as any).folders.map((f: { uri: URI }) => f.uri) as URI[];
+
+      return new CapabilityFsBridge(toolId, scope, modes, fileService as any, getWsFolderUris);
+    },
   };
 
   // Freeze the top-level API object

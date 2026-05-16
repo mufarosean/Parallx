@@ -10,6 +10,9 @@
   "engines": {
     "parallx": "^0.1.0"
   },
+  "capabilities": {
+    "fs": { "scope": "workspace-files", "modes": ["read", "write"] }
+  },
   "contributes": {
     "viewContainers": [
       {

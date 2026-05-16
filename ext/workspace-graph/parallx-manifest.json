@@ -10,6 +10,9 @@
   "engines": {
     "parallx": "^0.1.0"
   },
+  "capabilities": {
+    "fs": { "scope": "workspace-read", "modes": ["read"] }
+  },
   "contributes": {
     "commands": [
       { "id": "workspaceGraph.open", "title": "Workspace Graph: Open Full Graph" },

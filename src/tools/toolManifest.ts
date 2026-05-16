@@ -207,6 +207,34 @@ export interface IManifestEngines {
 
 // ─── Tool Manifest ───────────────────────────────────────────────────────────
 
+// ─── Capability declarations (M67 Phase 3) ──────────────────────────────────
+
+/** Filesystem capability declaration in a tool manifest. */
+export interface IManifestFsCapability {
+  /**
+   * Scope of access:
+   *   'extension-data'   — only the extension's own data dir
+   *                        (<workspace>/.parallx/extensions/<id>/)
+   *   'workspace-read'   — whole workspace, read-only
+   *   'workspace-files'  — whole workspace, read + write
+   */
+  readonly scope?: 'extension-data' | 'workspace-read' | 'workspace-files';
+  /** Required modes. Default: ['read']. */
+  readonly modes?: readonly ('read' | 'write')[];
+}
+
+/** Capabilities block in a tool manifest. */
+export interface IManifestCapabilities {
+  /**
+   * Filesystem capability. If present, api.requestCapability('fs', ...) is
+   * available and api.workspace.fs is withdrawn (the extension must use the
+   * capability handle instead).
+   */
+  readonly fs?: IManifestFsCapability;
+}
+
+// ─── Tool Manifest ───────────────────────────────────────────────────────────
+
 /**
  * The complete tool manifest — the contents of `parallx-manifest.json`.
  */
@@ -261,6 +289,22 @@ export interface IToolManifest {
    * Engine compatibility requirements.
    */
   readonly engines: IManifestEngines;
+
+  // ── Capabilities ──
+
+  /**
+   * Capability declarations. Extensions that declare capabilities receive
+   * scoped handles via `api.requestCapability(...)` and lose access to the
+   * corresponding top-level API surface (e.g. `api.workspace.fs`).
+   */
+  readonly capabilities?: IManifestCapabilities;
+
+  /**
+   * Opt-in legacy mode. If true, `api.workspace.fs` remains available even
+   * for extensions that have not declared `capabilities.fs`. A deprecation
+   * warning is still logged at activation time.
+   */
+  readonly legacy?: boolean;
 }
 
 /**
