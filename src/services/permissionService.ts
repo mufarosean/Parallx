@@ -46,8 +46,8 @@ export interface IPermissionCheckResult {
   readonly level: ToolPermissionLevel;
   /** Whether the tool can proceed without asking the user. */
   readonly autoApproved: boolean;
-  /** Source of the decision: 'default' | 'session' | 'persistent' | 'global-auto' | 'strictness'. */
-  readonly source: 'default' | 'session' | 'persistent' | 'global-auto' | 'strictness';
+  /** Source of the decision: 'default' | 'session' | 'persistent' | 'autonomy-allow-policy' | 'strictness'. */
+  readonly source: 'default' | 'session' | 'persistent' | 'autonomy-allow-policy' | 'strictness';
 }
 
 /** A single entry in the approval audit log. */
@@ -419,7 +419,7 @@ export class PermissionService extends Disposable {
       };
     }
 
-    // 3. Session-level grant
+    // 2. Session-level grant
     const sessionGrant = this._sessionGrants.get(toolName);
     if (sessionGrant) {
       return {
@@ -429,7 +429,7 @@ export class PermissionService extends Disposable {
       };
     }
 
-    // 4. Approval strictness override from agent config
+    // 3. Approval strictness override from agent config
     if (this._approvalStrictness === 'strict' && defaultLevel !== 'never-allowed') {
       // Strict: require approval for all tools regardless of default
       return { level: 'requires-approval', autoApproved: false, source: 'strictness' };
@@ -439,7 +439,7 @@ export class PermissionService extends Disposable {
       return { level: 'always-allowed', autoApproved: true, source: 'strictness' };
     }
 
-    // 5. Tool's default
+    // 4. Tool's default
     return {
       level: defaultLevel,
       autoApproved: defaultLevel === 'always-allowed' && !forceConfirmation,
@@ -499,7 +499,7 @@ export class PermissionService extends Disposable {
       }
       if (autonomy === 'allow-policy-actions' && check.level === 'requires-approval' && !check.autoApproved) {
         // User has dialed up to fully-autonomous; auto-approve managed tool.
-        this._audit({ tool: toolName, decision: 'approved', source: 'global-auto', timestamp: Date.now() });
+        this._audit({ tool: toolName, decision: 'approved', source: 'autonomy-allow-policy', timestamp: Date.now() });
         return true;
       }
     }

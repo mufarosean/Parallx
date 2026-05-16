@@ -165,7 +165,7 @@ export interface IChatRuntimeToolMetadata {
   readonly enabled: boolean;
   readonly requiresApproval: boolean;
   readonly autoApproved: boolean;
-  readonly approvalSource: 'default' | 'session' | 'persistent' | 'global-auto' | 'strictness' | 'missing-permission-service';
+  readonly approvalSource: 'default' | 'session' | 'persistent' | 'autonomy-allow-policy' | 'strictness' | 'missing-permission-service';
   readonly source?: 'built-in' | 'bridge' | 'mcp';
   readonly ownerToolId?: string;
   readonly description?: string;
