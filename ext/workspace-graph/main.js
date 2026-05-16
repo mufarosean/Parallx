@@ -537,6 +537,13 @@ async function buildGraphData(api) {
   // Drop edges that reference unknown nodes (provider may reference a
   // file/page node id that wasn't included, e.g. a session referencing
   // a deleted page).
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i];
+    if (_isIgnoredWorkspaceInternalPath(n.id) || _isIgnoredWorkspaceInternalPath(n.meta?.uri)) {
+      nodes.splice(i, 1);
+    }
+  }
+
   const ids = new Set(nodes.map(n => n.id));
   for (let i = edges.length - 1; i >= 0; i--) {
     if (!ids.has(edges[i].source) || !ids.has(edges[i].target)) edges.splice(i, 1);
@@ -573,6 +580,7 @@ async function _collectFiles(api, nodes, edges) {
       const childUri = uri.endsWith('/') ? uri + entry.name : uri + '/' + entry.name;
       const nodeId = 'file:' + childUri;
 
+      if (_isIgnoredWorkspaceInternalPath(childUri)) continue;
       if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') continue;
 
       if (entry.type === 2) {
@@ -643,6 +651,12 @@ const IGNORED_PROVIDER_IDS = new Set([
   'media-organizer',
 ]);
 
+const IGNORED_WORKSPACE_INTERNAL_DIRS = [
+  '/.parallx/extensions/budget',
+  '/.parallx/extensions/text-generator',
+  '/.parallx/extensions/media-organizer',
+];
+
 const PROVIDER_DOMAIN_COLORS = {
   budget:    '#f0c674',
   media:     '#7ec4f4',
@@ -658,6 +672,25 @@ function _domainColor(domain) {
   for (let i = 0; i < domain.length; i++) h = (h * 31 + domain.charCodeAt(i)) | 0;
   const hue = ((h >>> 0) % 360);
   return `hsl(${hue}, 55%, 65%)`;
+}
+
+function _normalizeGraphPath(value) {
+  let path = String(value || '');
+  if (path.startsWith('file:')) path = path.slice(5);
+  try { path = decodeURIComponent(path); } catch { /* keep original */ }
+  path = path.replace(/\\/g, '/').toLowerCase();
+  return '/' + path.replace(/^\/+/, '').replace(/\/+$/, '');
+}
+
+function _isIgnoredWorkspaceInternalPath(value) {
+  const path = _normalizeGraphPath(value);
+  for (const dir of IGNORED_WORKSPACE_INTERNAL_DIRS) {
+    const index = path.indexOf(dir);
+    if (index < 0) continue;
+    const next = path[index + dir.length];
+    if (next === undefined || next === '/') return true;
+  }
+  return false;
 }
 
 async function _collectProviders(api, nodes, edges) {
@@ -723,6 +756,7 @@ function _fileLabelFromNodeId(nodeId) {
 
 function _makeSemanticEndpointNode(nodeId) {
   if (!nodeId.startsWith('file:')) return null;
+  if (_isIgnoredWorkspaceInternalPath(nodeId)) return null;
   const uri = nodeId.slice(5);
   const label = _fileLabelFromNodeId(nodeId);
   const ext = label.includes('.') ? '.' + label.split('.').pop() : '';
@@ -761,6 +795,12 @@ function _registerSemanticGraphProvider(api, context) {
       const seenNodes = new Set();
       const edges = [];
       for (const edge of cached) {
+        if (
+          _isIgnoredWorkspaceInternalPath(edge.sourceNodeId) ||
+          _isIgnoredWorkspaceInternalPath(edge.targetNodeId)
+        ) {
+          continue;
+        }
         for (const nodeId of [edge.sourceNodeId, edge.targetNodeId]) {
           if (seenNodes.has(nodeId)) continue;
           const node = _makeSemanticEndpointNode(nodeId);

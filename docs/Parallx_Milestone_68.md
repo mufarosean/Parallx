@@ -56,6 +56,11 @@ Out of scope for MVP:
 - Replacing structural edges; conceptual edges are an overlay.
 - Non-text/productivity tool graph clusters from Budget, Text Generator, and
   Media Organizer.
+- Files under `.parallx/extensions/budget`,
+  `.parallx/extensions/text-generator`, and
+  `.parallx/extensions/media-organizer`. Other `.parallx` data, such as
+  sessions and Workspace Graph settings, remains eligible for purpose-built
+  collectors.
 
 ## Existing pieces we can build on
 
@@ -378,6 +383,7 @@ M68 is complete when:
 | Renderer jank during rebuild | Single queue, idle/yield slices, debounce, pause while indexing |
 | Duplicate undirected edges | Canonical pair key before insert |
 | Tool-surface provider noise | Workspace Graph ignores Budget, Text Generator, and Media Organizer providers |
+| Internal extension files appearing as file nodes | Targeted path filter excludes Budget, Text Generator, and Media Organizer data folders without hiding all `.parallx` data |
 
 ## Open decisions
 
@@ -452,3 +458,4 @@ separate prevents the graph from inventing noisy hub nodes too eagerly.
 | C - Workspace Graph integration | complete (2026-05-15) | `node --check ext/workspace-graph/main.js`; `npx.cmd tsc --noEmit` | Added `Conceptual Links` toggle, semantic provider, faint dashed semantic edges, weak semantic force, and rebuild command. Provider reads cached edges only. |
 | D - Bake and tune | in progress (2026-05-15) | - | Added sticky node selection, connection inspector metadata, and semantic-cluster coloring for conceptual-link neighborhoods. |
 | D - Provider scope tune | complete (2026-05-16) | `node --check ext/workspace-graph/main.js`; `npx.cmd tsc --noEmit` | Workspace Graph now ignores registered providers from Budget, Text Generator, and Media Organizer to keep the graph focused on files, Canvas pages, sessions, and conceptual content links. |
+| D - Internal file scope tune | complete (2026-05-16) | `node --check ext/workspace-graph/main.js`; `npx.cmd tsc --noEmit` | Workspace Graph filters file nodes and semantic endpoints under Budget, Text Generator, and Media Organizer workspace data folders. |
