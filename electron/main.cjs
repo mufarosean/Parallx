@@ -707,6 +707,15 @@ const _ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
  * If `parallx-integrity.json` is absent, this function returns null and the
  * install proceeds without integrity verification (backward-compatible).
  *
+ * SECURITY LIMITATION — Ed25519 signature trust anchor:
+ *   The publicKey is embedded in the same file as the signature it verifies.
+ *   This means the signature provides tamper-evidence (any modification to a
+ *   listed file changes its SHA-256 and breaks the signature) but it does NOT
+ *   provide publisher authentication — an attacker who fully rebuilds the
+ *   package can substitute their own publicKey + signature and the check still
+ *   passes. A publisher key registry or pinned trust anchor is required for
+ *   real authentication; M67 ships tamper-evidence only.
+ *
  * @returns {string|null} null on success, error message string on failure.
  */
 function _verifyPackageIntegrity(zip) {
@@ -734,6 +743,21 @@ function _verifyPackageIntegrity(zip) {
     const actualHash = crypto.createHash('sha256').update(fileEntry.getData()).digest('hex');
     if (actualHash !== expectedHash) {
       return `Integrity check failed: SHA-256 mismatch for "${filename}"`;
+    }
+  }
+
+  // Enumerate every ZIP entry and require it to be covered by `integrity.files`
+  // (other than the integrity file itself and pure directory entries).
+  // Without this check, an attacker could append a malicious file to a
+  // legitimately-signed package; the SHA-256 loop above would not detect it
+  // because it only iterates the declared files.
+  const allEntries = zip.getEntries();
+  for (const ze of allEntries) {
+    if (ze.isDirectory) continue;
+    const name = ze.entryName;
+    if (name === _PLX_INTEGRITY_FILENAME) continue;
+    if (!Object.prototype.hasOwnProperty.call(integrity.files, name)) {
+      return `Integrity check failed: package contains undeclared file "${name}"`;
     }
   }
 

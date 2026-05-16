@@ -421,7 +421,24 @@ regression.
 - 4.2 `setWindowOpenHandler` returning `{ action: 'deny' }` + open via
   `shell.openExternal` instead.
 - 4.3 `.plx` package SHA-256 manifest + optional Ed25519 signature check.
-- 4.4 Add taint propagation for `read_file` and MCP outputs (M65 §F4 follow-up).
+  - **Shipped scope:** per-file SHA-256 verification with ZIP-entry enumeration
+    (rejects undeclared files smuggled into a signed package).
+  - **Shipped scope:** Ed25519 signature over the sorted canonical JSON of the
+    files map.
+  - **Limitation:** the public key is embedded alongside the signature in the
+    same `parallx-integrity.json`. This provides *tamper-evidence* (any change
+    to a listed file breaks the signature) but **not publisher authentication**
+    — an attacker who fully rebuilds the package can substitute their own
+    key+signature and the check still passes. A publisher key registry or
+    pinned trust anchor is required for true author authentication and is
+    deferred to a later milestone.
+- 4.4 ~~Add taint propagation for `read_file` and MCP outputs~~ (M65 §F4
+  follow-up). **Partially shipped — read_file reverted, MCP outputs kept.**
+  Tainting all `read_file` calls red made every read-then-edit workflow
+  require explicit approval on the edit step, which broke routine work.
+  Workspace files are owned by the user; treating them as untrusted by
+  default does not match the trust model. MCP-prefixed tools (`mcp__*`) are
+  classified red dynamically since they're genuinely external server output.
 - 4.5 Remove `_autoApprove` test-only setter entirely; replace with test-only
   PDP injection so the production codebase carries no global bypass.
 
