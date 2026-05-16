@@ -67,6 +67,7 @@ function createMockVectorStore() {
     getDocumentSummaries: vi.fn(),
     getEmbeddings: vi.fn(),
     getSourceCentroid: vi.fn(),
+    getSourceChunks: vi.fn().mockResolvedValue([]),
     getStructuralCompanions: vi.fn(),
     purgeAll: vi.fn(),
     dispose: vi.fn(),
@@ -211,10 +212,18 @@ describe('SemanticGraphService', () => {
 
     expect(vectorStore.getSourceCentroid).toHaveBeenCalledWith('page_block', 'a');
     expect(vectorStore.vectorSearch).toHaveBeenCalledWith([1, 0], 10);
-    expect(db.runTransaction).toHaveBeenCalledOnce();
-    const ops = db.runTransaction.mock.calls[0][0];
-    expect(ops.some((op: any) => String(op.sql).includes('INSERT OR REPLACE INTO semantic_graph_edges'))).toBe(true);
-    expect(JSON.stringify(ops)).toContain('page:b');
+    // M76 Phase 2 — the producer pipeline now runs similarity + references
+    // in sequence, so two transactions are expected (one per kind). The
+    // first is similarity (writes the page:b edge), the second is
+    // references (empty edge set since the mock returns no chunks).
+    expect(db.runTransaction).toHaveBeenCalledTimes(2);
+    const similarityOps = db.runTransaction.mock.calls[0][0];
+    expect(similarityOps.some((op: any) => String(op.sql).includes('INSERT OR REPLACE INTO semantic_graph_edges'))).toBe(true);
+    expect(JSON.stringify(similarityOps)).toContain('page:b');
+    expect(JSON.stringify(similarityOps)).toContain('similar-to');
+    const referenceOps = db.runTransaction.mock.calls[1][0];
+    expect(referenceOps.length).toBe(1); // just the DELETE for empty references
+    expect(String(referenceOps[0].sql)).toContain('DELETE FROM semantic_graph_edges');
   });
 });
 

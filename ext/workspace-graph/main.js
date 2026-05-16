@@ -1301,11 +1301,13 @@ function createGraphEditor(container, api) {
       <label style="display:flex;align-items:center;gap:6px;color:var(--vscode-editor-foreground,#ccc);margin:4px 0;cursor:pointer;">
         <input type="checkbox" id="__gs_kind_similar" ${GS.edgeKindVisibility['similar-to'] ? 'checked' : ''}> ${EDGE_KIND_LABEL['similar-to']}
       </label>
-      <!-- Phase 1 ships only the Similarity checkbox. Phases 2/4/5 will add
-           the remaining edge-kind checkboxes (references, co-occurrence,
-           metadata, lineage, concept membership) as those producers come
-           online. The visibility map already contains entries for all
-           kinds so each future phase only has to render its checkbox. -->
+      <label style="display:flex;align-items:center;gap:6px;color:var(--vscode-editor-foreground,#ccc);margin:4px 0;cursor:pointer;">
+        <input type="checkbox" id="__gs_kind_references" ${GS.edgeKindVisibility['references'] ? 'checked' : ''}> ${EDGE_KIND_LABEL['references']}
+      </label>
+      <!-- Phases 2 (metadata + co-occurrence), 4 (lineage), and 5 (concept
+           membership) will add their checkboxes here as those producers come
+           online. The visibility map already contains entries for every
+           kind so each future phase only has to render its checkbox. -->
     `;
 
     // Wire close button
@@ -1371,6 +1373,7 @@ function createGraphEditor(container, api) {
       });
     };
     _wireKindCheck('similar', 'similar-to');
+    _wireKindCheck('references', 'references');
   }
 
   function _toggleSettings() {

@@ -13,6 +13,7 @@ import type {
   IWorkspaceService,
 } from './serviceTypes.js';
 import type { SearchResult } from './vectorStoreService.js';
+import { extractWorkspaceReferences } from './referenceExtractor.js';
 
 export type SemanticGraphSourceType = 'page_block' | 'file_chunk';
 
@@ -528,15 +529,19 @@ export class SemanticGraphService extends Disposable {
       return false;
     }
 
-    const centroid = await this._vectorStore.getSourceCentroid(sourceType, sourceId);
-    if (!centroid) {
-      await this._replaceSourceEdges(sourceType, sourceId, 'similar-to', 'undirected', contentHash, []);
-      return true;
-    }
-
     const sourceNodeId = this._sourceToNodeId(sourceType, sourceId);
     if (!sourceNodeId) {
       return false;
+    }
+
+    const centroid = await this._vectorStore.getSourceCentroid(sourceType, sourceId);
+    if (!centroid) {
+      // No centroid → no chunks → wipe both similarity and references for
+      // this source. Reference wipe is necessary so a now-empty source
+      // doesn't keep stale references in the cache.
+      await this._replaceSourceEdges(sourceType, sourceId, 'similar-to', 'undirected', contentHash, []);
+      await this._recomputeReferenceEdges(sourceType, sourceId, sourceNodeId);
+      return true;
     }
 
     const candidates = await this._vectorStore.vectorSearch(centroid.vector, this._candidateK);
@@ -592,7 +597,88 @@ export class SemanticGraphService extends Disposable {
         score: edge.score,
       };
     }));
+
+    // M76 Phase 2 — additional edge kinds derived from the same source. Each
+    // producer is independent and shares the per-kind upsert in
+    // _replaceSourceEdges so its edges don't interfere with similarity.
+    await this._recomputeReferenceEdges(sourceType, sourceId, sourceNodeId);
+
     return true;
+  }
+
+  /**
+   * M76 Phase 2 — extract `references` edges from a source's text. Scans the
+   * source's stored chunks for `parallx://` URIs that resolve to indexed
+   * workspace items and emits a directed edge per resolved reference.
+   *
+   * Skip cost is low — getSourceChunks is a DB read of already-indexed text;
+   * the regex extraction is pure; target validity is verified via the
+   * already-cached content hash.
+   */
+  private async _recomputeReferenceEdges(
+    sourceType: SemanticGraphSourceType,
+    sourceId: string,
+    sourceNodeId: string,
+  ): Promise<void> {
+    // Pull a generous chunk window — references typically live in the head
+    // and tail of a document, but for safety we read up to 200 chunks. For
+    // workspaces with documents in the multi-thousand-chunk range, tail
+    // references may be missed; the user can fix this with explicit links.
+    const chunks = await this._vectorStore.getSourceChunks(sourceType, sourceId, 200);
+    if (chunks.length === 0) {
+      await this._replaceSourceEdges(sourceType, sourceId, 'references', 'forward', null, []);
+      return;
+    }
+
+    const text = chunks.map((c) => c.text).join('\n');
+    const refs = extractWorkspaceReferences(text);
+    if (refs.length === 0) {
+      await this._replaceSourceEdges(sourceType, sourceId, 'references', 'forward', null, []);
+      return;
+    }
+
+    const edges: Array<{
+      sourceNodeId: string;
+      targetNodeId: string;
+      sourceType: SemanticGraphSourceType;
+      sourceId: string;
+      targetType: SemanticGraphSourceType;
+      targetId: string;
+      sourceContentHash?: string;
+      targetContentHash?: string;
+      score: number;
+    }> = [];
+
+    for (const ref of refs) {
+      // Skip self-references — a page that mentions its own parallx URI
+      // (e.g. a "share this link" block) shouldn't produce a self-edge.
+      if (ref.targetType === sourceType && ref.targetId === sourceId) continue;
+
+      // Verify the target is actually indexed. getContentHash returning a
+      // value means the source exists in the vector index.
+      const targetContentHash = await this._vectorStore.getContentHash(ref.targetType, ref.targetId);
+      if (!targetContentHash) continue;
+
+      const targetNodeId = this._sourceToNodeId(ref.targetType, ref.targetId);
+      if (!targetNodeId) continue;
+
+      edges.push({
+        sourceNodeId,
+        targetNodeId,
+        sourceType,
+        sourceId,
+        targetType: ref.targetType,
+        targetId: ref.targetId,
+        targetContentHash,
+        // References are explicit so they get a score of 1.0 — distinct from
+        // similarity's continuous score. The renderer can use this to draw
+        // references at full opacity vs similarity edges at score-scaled
+        // opacity. Producers that emit fuzzier signals can use < 1.0 here.
+        score: 1.0,
+      });
+    }
+
+    await this._replaceSourceEdges(sourceType, sourceId, 'references', 'forward', null, edges);
   }
 
   private _groupCandidates(
