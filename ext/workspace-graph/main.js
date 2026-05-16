@@ -31,6 +31,61 @@ async function _ensureNestedDirs(fs, baseUri, segments) {
   return current;
 }
 
+// M76 edge-kind taxonomy. Phase 1 only writes 'similar-to'; Phases 2/4/5
+// add the others. Defining them up-front keeps the rendering and settings
+// code shape-stable as kinds come online.
+const EDGE_KINDS = [
+  'similar-to', 'references', 'co-occurrence',
+  'same-folder', 'same-author', 'same-date',
+  'extends', 'refutes', 'member-of',
+];
+
+const EDGE_KIND_LABEL = {
+  'similar-to':    'Similarity',
+  'references':    'References',
+  'co-occurrence': 'Co-occurrence',
+  'same-folder':   'Same folder',
+  'same-author':   'Same author',
+  'same-date':     'Same date',
+  'extends':       'Extends',
+  'refutes':       'Refutes',
+  'member-of':     'Concept membership',
+};
+
+// Per-kind visual treatment. All values keyed by edge.kind. Phase 1 only
+// uses 'similar-to'; the others are placeholders ready for Phases 2/4/5.
+const EDGE_KIND_RGB = {
+  'similar-to':    '126,196,244',
+  'references':    '167,230,168',
+  'co-occurrence': '240,198,116',
+  'same-folder':   '180,180,180',
+  'same-author':   '180,180,180',
+  'same-date':     '180,180,180',
+  'extends':       '200,130,230',
+  'refutes':       '230,130,130',
+  'member-of':     '255,192,100',
+};
+
+const EDGE_KIND_DASH = {
+  'similar-to':    [4, 4],
+  'references':    [],
+  'co-occurrence': [2, 3],
+  'same-folder':   [1, 6],
+  'same-author':   [1, 6],
+  'same-date':     [1, 6],
+  'extends':       [],
+  'refutes':       [6, 3],
+  'member-of':     [],
+};
+
+// True if the edge kind is a "concept edge" — anything from the semantic
+// graph service, as opposed to structural workspace edges (file tree,
+// canvas page hierarchy). Used in places that need to distinguish concept
+// edges from structural ones for force-strength and rendering decisions.
+function isConceptEdge(kind) {
+  return typeof kind === 'string' && EDGE_KINDS.indexOf(kind) >= 0;
+}
+
 // Keys in GS that we persist (skip computed/non-serializable values)
 const _PERSIST_KEYS = [
   'chargeStrength', 'linkDistance', 'linkStrengthMin', 'centerStrength',
@@ -38,7 +93,7 @@ const _PERSIST_KEYS = [
   'nodeRadiusMin', 'nodeRadiusMax', 'nodeOpacity',
   'edgeColor', 'edgeWidth', 'edgeHoverWidth',
   'labelZoomStart', 'labelZoomFull',
-  'showFiles', 'showCanvasPages', 'showSessions', 'showConceptualLinks',
+  'showFiles', 'showCanvasPages', 'showSessions', 'edgeKindVisibility',
 ];
 
 async function _loadSettings(api) {
@@ -52,6 +107,17 @@ async function _loadSettings(api) {
     const saved = JSON.parse(content);
     for (const k of _PERSIST_KEYS) {
       if (saved[k] !== undefined) GS[k] = saved[k];
+    }
+    // M76 migration: a workspace saved before M76 has `showConceptualLinks`
+    // but no `edgeKindVisibility`. Map the old boolean onto the new
+    // per-kind map so the user's preference is preserved.
+    if (saved.showConceptualLinks !== undefined && saved.edgeKindVisibility === undefined) {
+      GS.edgeKindVisibility = { ...GS.edgeKindVisibility, 'similar-to': !!saved.showConceptualLinks };
+    }
+    // Defensive: ensure every kind has an entry (in case a saved file is
+    // older than the current EDGE_KINDS list).
+    for (const k of EDGE_KINDS) {
+      if (GS.edgeKindVisibility[k] === undefined) GS.edgeKindVisibility[k] = false;
     }
     console.log('[WorkspaceGraph] Settings loaded from workspace');
   } catch (err) {
@@ -119,7 +185,21 @@ const GS = {
   showFiles:       true,
   showCanvasPages: true,
   showSessions:    true,
-  showConceptualLinks: false,
+  // M76: per-edge-kind visibility. Default: all off. Legacy
+  // `showConceptualLinks: true` settings migrate to `similar-to: true` in
+  // `_loadSettings`. Phase 1 only renders 'similar-to' since the other kinds
+  // have no producers yet, but the UI surfaces just the one checkbox.
+  edgeKindVisibility: {
+    'similar-to':    false,
+    'references':    false,
+    'co-occurrence': false,
+    'same-folder':   false,
+    'same-author':   false,
+    'same-date':     false,
+    'extends':       false,
+    'refutes':       false,
+    'member-of':     false,
+  },
 };
 const ALPHA_DECAY = 1 - Math.pow(0.001, 1 / 300); // ≈0.0228 → ~300 ticks
 const ALPHA_MIN = 0.001;
@@ -211,7 +291,7 @@ function computeLinkParams(nodes, edges, byId) {
     const cs = count.get(e.source) || 1;
     const ct = count.get(e.target) || 1;
     const baseStrength = Math.max(GS.linkStrengthMin, 1 / Math.min(cs, ct));
-    if (e.kind === 'semantic') {
+    if (isConceptEdge(e.kind)) {
       const weight = Number.isFinite(e.weight) ? e.weight : Number.isFinite(e.score) ? e.score : 1;
       _linkStrengths[i] = Math.max(0.01, baseStrength * 0.25 * Math.max(0.2, Math.min(1, weight)));
       _linkDistances[i] = GS.linkDistance * 1.4;
@@ -479,7 +559,7 @@ function _applySemanticClusterColors(nodes, edges) {
   const adjacency = new Map();
 
   for (const e of edges) {
-    if (e.kind !== 'semantic') continue;
+    if (!isConceptEdge(e.kind)) continue;
     if (!byId.has(e.source) || !byId.has(e.target)) continue;
     if (!adjacency.has(e.source)) adjacency.set(e.source, new Set());
     if (!adjacency.has(e.target)) adjacency.set(e.target, new Set());
@@ -771,12 +851,23 @@ function _makeSemanticEndpointNode(nodeId) {
   };
 }
 
+function _anyConceptKindVisible() {
+  for (const k of EDGE_KINDS) {
+    if (GS.edgeKindVisibility[k]) return true;
+  }
+  return false;
+}
+
+function _visibleEdgeKinds() {
+  return EDGE_KINDS.filter((k) => GS.edgeKindVisibility[k]);
+}
+
 function _registerSemanticGraphProvider(api, context) {
   const service = _getSemanticGraphService(api);
   if (!service || !api.workspaceGraph || typeof api.workspaceGraph.registerProvider !== 'function') {
     return;
   }
-  if (GS.showConceptualLinks && typeof service.ensureCacheStarted === 'function') {
+  if (_anyConceptKindVisible() && typeof service.ensureCacheStarted === 'function') {
     service.ensureCacheStarted();
   }
 
@@ -784,13 +875,14 @@ function _registerSemanticGraphProvider(api, context) {
     id: 'parallx.semantic-links',
     displayName: 'Conceptual Links',
     async snapshot() {
-      if (!GS.showConceptualLinks || !service.getCachedEdges) {
+      const visible = _visibleEdgeKinds();
+      if (visible.length === 0 || !service.getCachedEdges) {
         return { nodes: [], edges: [] };
       }
       if (typeof service.ensureCacheStarted === 'function') {
         service.ensureCacheStarted();
       }
-      const cached = await service.getCachedEdges({ maxEdges: 500, minScore: 0.72 });
+      const cached = await service.getCachedEdges({ maxEdges: 500, minScore: 0.72, kinds: visible });
       const nodes = [];
       const seenNodes = new Set();
       const edges = [];
@@ -812,7 +904,8 @@ function _registerSemanticGraphProvider(api, context) {
         edges.push({
           source: edge.sourceNodeId,
           target: edge.targetNodeId,
-          kind: 'semantic',
+          kind: edge.kind,
+          direction: edge.direction,
           score: edge.score,
           weight: edge.score,
         });
@@ -903,27 +996,59 @@ function drawGraph(ctx, cvs, nodes, edges, byId, view, selected, hovered, showEd
       const isSelEdge = hasSel && (e.source === selected.id || e.target === selected.id);
       const isHovEdge = hasHov && (e.source === hovered.id || e.target === hovered.id);
       const dim = (hasSel || hasHov) && !isSelEdge && !isHovEdge;
-      const isSemantic = e.kind === 'semantic';
+      const concept = isConceptEdge(e.kind);
+      const rgb = concept ? (EDGE_KIND_RGB[e.kind] || '126,196,244') : null;
+      const dash = concept ? (EDGE_KIND_DASH[e.kind] || []) : [];
 
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
-      ctx.setLineDash(isSemantic ? [4, 4] : []);
+      ctx.setLineDash(dash);
 
       if (isHovEdge) {
-        ctx.strokeStyle = isSemantic ? 'rgba(126,196,244,0.48)' : _rgba(hovered.color, 0.4);
-        ctx.lineWidth = isSemantic ? Math.max(GS.edgeHoverWidth, 1.0) : GS.edgeHoverWidth;
+        ctx.strokeStyle = concept ? `rgba(${rgb},0.48)` : _rgba(hovered.color, 0.4);
+        ctx.lineWidth = concept ? Math.max(GS.edgeHoverWidth, 1.0) : GS.edgeHoverWidth;
       } else if (isSelEdge) {
-        ctx.strokeStyle = isSemantic ? 'rgba(126,196,244,0.38)' : _rgba(selected.color, 0.5);
-        ctx.lineWidth = isSemantic ? Math.max(GS.edgeHoverWidth, 0.9) : 1.35;
+        ctx.strokeStyle = concept ? `rgba(${rgb},0.38)` : _rgba(selected.color, 0.5);
+        ctx.lineWidth = concept ? Math.max(GS.edgeHoverWidth, 0.9) : 1.35;
       } else {
-        ctx.strokeStyle = isSemantic
-          ? (dim ? 'rgba(126,196,244,0.04)' : 'rgba(126,196,244,0.22)')
+        ctx.strokeStyle = concept
+          ? (dim ? `rgba(${rgb},0.04)` : `rgba(${rgb},0.22)`)
           : (dim ? 'rgba(255,255,255,0.04)' : GS.edgeColor);
-        ctx.lineWidth = isSemantic ? Math.max(0.25, GS.edgeWidth * 0.8) : GS.edgeWidth;
+        ctx.lineWidth = concept ? Math.max(0.25, GS.edgeWidth * 0.8) : GS.edgeWidth;
       }
       ctx.stroke();
-      if (isSemantic) ctx.setLineDash([]);
+      if (dash.length > 0) ctx.setLineDash([]);
+
+      // Arrowhead for directed concept edges (M76). Phase 1 has no producers
+      // for directed edges yet, but the rendering is in place so Phase 4
+      // (lineage) and Phase 5 (member-of) plug in without further work.
+      if (concept && e.direction === 'forward') {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len = Math.hypot(dx, dy);
+        if (len > 0.001) {
+          const angle = Math.atan2(dy, dx);
+          // Place the arrowhead a few pixels before the target node so it
+          // doesn't overlap the node circle. Size scales with line width.
+          const head = Math.max(4, ctx.lineWidth * 4);
+          const tipX = b.x - Math.cos(angle) * (b.radius || 3);
+          const tipY = b.y - Math.sin(angle) * (b.radius || 3);
+          ctx.beginPath();
+          ctx.moveTo(tipX, tipY);
+          ctx.lineTo(
+            tipX - head * Math.cos(angle - Math.PI / 6),
+            tipY - head * Math.sin(angle - Math.PI / 6),
+          );
+          ctx.lineTo(
+            tipX - head * Math.cos(angle + Math.PI / 6),
+            tipY - head * Math.sin(angle + Math.PI / 6),
+          );
+          ctx.closePath();
+          ctx.fillStyle = ctx.strokeStyle;
+          ctx.fill();
+        }
+      }
     }
   }
 
@@ -1047,9 +1172,10 @@ function _esc(s) {
 }
 
 function _formatConnectionMeta(edge) {
-  if (edge.kind === 'semantic') {
+  if (isConceptEdge(edge.kind)) {
+    const label = EDGE_KIND_LABEL[edge.kind] || edge.kind;
     const score = Number.isFinite(edge.score) ? edge.score : Number.isFinite(edge.weight) ? edge.weight : null;
-    return score === null ? 'Conceptual' : `Conceptual ${Math.round(score * 100)}%`;
+    return score === null ? label : `${label} ${Math.round(score * 100)}%`;
   }
   return edge.kind ? String(edge.kind) : 'Structural';
 }
@@ -1170,9 +1296,16 @@ function createGraphEditor(container, api) {
       <label style="display:flex;align-items:center;gap:6px;color:var(--vscode-editor-foreground,#ccc);margin:4px 0;cursor:pointer;">
         <input type="checkbox" id="__gs_sessions" ${GS.showSessions ? 'checked' : ''}> Sessions
       </label>
+
+      <div ${H}>Concept edges</div>
       <label style="display:flex;align-items:center;gap:6px;color:var(--vscode-editor-foreground,#ccc);margin:4px 0;cursor:pointer;">
-        <input type="checkbox" id="__gs_conceptual" ${GS.showConceptualLinks ? 'checked' : ''}> Conceptual Links
+        <input type="checkbox" id="__gs_kind_similar" ${GS.edgeKindVisibility['similar-to'] ? 'checked' : ''}> ${EDGE_KIND_LABEL['similar-to']}
       </label>
+      <!-- Phase 1 ships only the Similarity checkbox. Phases 2/4/5 will add
+           the remaining edge-kind checkboxes (references, co-occurrence,
+           metadata, lineage, concept membership) as those producers come
+           online. The visibility map already contains entries for all
+           kinds so each future phase only has to render its checkbox. -->
     `;
 
     // Wire close button
@@ -1220,13 +1353,24 @@ function createGraphEditor(container, api) {
     _wireCheck('files', 'showFiles');
     _wireCheck('pages', 'showCanvasPages');
     _wireCheck('sessions', 'showSessions');
-    _wireCheck('conceptual', 'showConceptualLinks', () => {
-      if (GS.showConceptualLinks) {
-        const service = _getSemanticGraphService(api);
-        if (service && typeof service.ensureCacheStarted === 'function') service.ensureCacheStarted();
-      }
-      m.refresh().catch(err => console.warn('[WorkspaceGraph] conceptual toggle refresh failed:', err));
-    });
+
+    // M76 — per-edge-kind checkboxes. Each binds GS.edgeKindVisibility[kind].
+    // Phase 1 only renders the Similarity checkbox; this helper is shared
+    // with future phases.
+    const _wireKindCheck = (id, kind) => {
+      const el = settingsInner.querySelector('#__gs_kind_' + id);
+      if (!el) return;
+      el.addEventListener('change', () => {
+        GS.edgeKindVisibility = { ...GS.edgeKindVisibility, [kind]: el.checked };
+        if (el.checked) {
+          const service = _getSemanticGraphService(api);
+          if (service && typeof service.ensureCacheStarted === 'function') service.ensureCacheStarted();
+        }
+        _saveSettings(api);
+        m.refresh().catch(err => console.warn('[WorkspaceGraph] concept-edge toggle refresh failed:', err));
+      });
+    };
+    _wireKindCheck('similar', 'similar-to');
   }
 
   function _toggleSettings() {
@@ -1404,14 +1548,16 @@ function createGraphEditor(container, api) {
       })
       .filter(item => item.node)
       .sort((a, b) => {
-        if (a.edge.kind === 'semantic' && b.edge.kind !== 'semantic') return -1;
-        if (a.edge.kind !== 'semantic' && b.edge.kind === 'semantic') return 1;
+        const aConcept = isConceptEdge(a.edge.kind);
+        const bConcept = isConceptEdge(b.edge.kind);
+        if (aConcept && !bConcept) return -1;
+        if (!aConcept && bConcept) return 1;
         const aScore = Number.isFinite(a.edge.score) ? a.edge.score : 0;
         const bScore = Number.isFinite(b.edge.score) ? b.edge.score : 0;
         return bScore - aScore || a.node.label.localeCompare(b.node.label);
       });
 
-    const semanticConns = connections.filter(c => c.edge.kind === 'semantic');
+    const semanticConns = connections.filter(c => isConceptEdge(c.edge.kind));
     const isContentNode = node.domain === 'canvas-page' || node.domain === 'file';
 
     const openBtnStyle = 'background:none;border:none;color:var(--vscode-descriptionForeground,#555);cursor:pointer;font-size:13px;padding:0 2px;flex-shrink:0;line-height:1;';

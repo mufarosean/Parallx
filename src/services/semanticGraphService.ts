@@ -16,6 +16,32 @@ import type { SearchResult } from './vectorStoreService.js';
 
 export type SemanticGraphSourceType = 'page_block' | 'file_chunk';
 
+/**
+ * Edge kinds in the semantic / mind-map graph (M76).
+ *
+ * `similar-to` (M68 baseline) is the only kind written today; M76 phases 2
+ * and 4 add the others. The kind taxonomy is fixed up-front so the schema
+ * and rendering can be in place before the producers are wired.
+ */
+export type SemanticGraphEdgeKind =
+  | 'similar-to'
+  | 'references'
+  | 'co-occurrence'
+  | 'same-folder'
+  | 'same-author'
+  | 'same-date'
+  | 'extends'
+  | 'refutes'
+  | 'member-of';
+
+/**
+ * Edge directionality. `undirected` edges have no semantic direction —
+ * `(A, B)` and `(B, A)` mean the same thing and are canonicalised to one
+ * row at write time. `forward` edges mean source → target and must not be
+ * canonicalised.
+ */
+export type SemanticGraphEdgeDirection = 'undirected' | 'forward';
+
 export interface NodeChunk {
   text: string;
   contextPrefix: string;
@@ -29,7 +55,8 @@ export interface SemanticGraphEdge {
   targetType: SemanticGraphSourceType;
   targetId: string;
   score: number;
-  kind: 'semantic';
+  kind: SemanticGraphEdgeKind;
+  direction: SemanticGraphEdgeDirection;
   sourceContentHash?: string;
   targetContentHash?: string;
   updatedAt: string;
@@ -38,6 +65,7 @@ export interface SemanticGraphEdge {
 export interface SemanticGraphEdgeOptions {
   maxEdges?: number;
   minScore?: number;
+  kinds?: readonly SemanticGraphEdgeKind[];
 }
 
 export interface SemanticGraphStats {
@@ -204,6 +232,16 @@ export class SemanticGraphService extends Disposable {
       return [];
     }
     const minScore = options.minScore ?? this._minScore;
+    const kindFilter = options.kinds && options.kinds.length > 0 ? options.kinds : undefined;
+
+    const params: unknown[] = [minScore];
+    let kindClause = '';
+    if (kindFilter) {
+      kindClause = ` AND kind IN (${kindFilter.map(() => '?').join(',')})`;
+      params.push(...kindFilter);
+    }
+    params.push(maxEdges);
+
     const rows = await this._db.all<{
       sourceNodeId: string;
       targetNodeId: string;
@@ -212,7 +250,8 @@ export class SemanticGraphService extends Disposable {
       targetType: SemanticGraphSourceType;
       targetId: string;
       score: number;
-      kind: 'semantic';
+      kind: SemanticGraphEdgeKind;
+      direction: SemanticGraphEdgeDirection;
       sourceContentHash?: string | null;
       targetContentHash?: string | null;
       updatedAt: string;
@@ -225,14 +264,15 @@ export class SemanticGraphService extends Disposable {
               target_id as targetId,
               score,
               kind,
+              direction,
               source_content_hash as sourceContentHash,
               target_content_hash as targetContentHash,
               updated_at as updatedAt
          FROM semantic_graph_edges
-        WHERE score >= ?
+        WHERE score >= ?${kindClause}
         ORDER BY score DESC
         LIMIT ?`,
-      [minScore, maxEdges],
+      params,
     );
     return rows.map((row) => ({
       ...row,
@@ -281,6 +321,8 @@ export class SemanticGraphService extends Disposable {
     if (this._schemaReady || !this._db.isOpen) {
       return;
     }
+    // Base M68 schema. New installs get `direction` + the new kind taxonomy
+    // baked in; existing installs run the M76 migration block below.
     await this._db.run(`
       CREATE TABLE IF NOT EXISTS semantic_graph_edges (
         source_node_id TEXT NOT NULL,
@@ -292,13 +334,19 @@ export class SemanticGraphService extends Disposable {
         origin_type TEXT NOT NULL,
         origin_id TEXT NOT NULL,
         score REAL NOT NULL,
-        kind TEXT NOT NULL DEFAULT 'semantic',
+        kind TEXT NOT NULL DEFAULT 'similar-to',
+        direction TEXT NOT NULL DEFAULT 'undirected',
         source_content_hash TEXT,
         target_content_hash TEXT,
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         PRIMARY KEY (source_node_id, target_node_id)
       )
     `);
+    // Note: PRIMARY KEY remains (source_node_id, target_node_id) for Phase 1.
+    // Phase 2 will widen it to include `kind` (so e.g. an A↔B pair can be
+    // BOTH similar-to AND references). That migration requires a full table
+    // rebuild in SQLite (ALTER TABLE can't change a PK) and is deferred until
+    // we actually have multi-kind producers.
     await this._db.run(`
       CREATE TABLE IF NOT EXISTS semantic_graph_sources (
         source_type TEXT NOT NULL,
@@ -311,6 +359,45 @@ export class SemanticGraphService extends Disposable {
     `);
     await this._db.run('CREATE INDEX IF NOT EXISTS idx_semantic_graph_edges_origin ON semantic_graph_edges(origin_type, origin_id)');
     await this._db.run('CREATE INDEX IF NOT EXISTS idx_semantic_graph_edges_score ON semantic_graph_edges(score DESC)');
+    await this._db.run('CREATE INDEX IF NOT EXISTS idx_semantic_graph_edges_kind ON semantic_graph_edges(kind)');
+
+    // M76 migration: existing installs may have the M68 schema without the
+    // `direction` column and with `kind = 'semantic'`. Add the column if
+    // missing and rename the kind so the rest of M76 sees a consistent
+    // taxonomy. PRAGMA is cheap; running on every start is fine.
+    const cols = await this._db.all<{ name: string }>("PRAGMA table_info(semantic_graph_edges)");
+    const hasDirection = cols.some((c) => c.name === 'direction');
+    if (!hasDirection) {
+      await this._db.run(
+        "ALTER TABLE semantic_graph_edges ADD COLUMN direction TEXT NOT NULL DEFAULT 'undirected'",
+      );
+    }
+    await this._db.run("UPDATE semantic_graph_edges SET kind = 'similar-to' WHERE kind = 'semantic'");
+
+    // M76 concept node tables. Empty until Phase 5 wires the clusterer; the
+    // tables exist now so Phase 1 schema is the final shape and downstream
+    // code can read them without conditional existence checks.
+    await this._db.run(`
+      CREATE TABLE IF NOT EXISTS concept_nodes (
+        stable_id TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        member_count INTEGER NOT NULL,
+        member_hash TEXT NOT NULL,
+        user_renamed INTEGER NOT NULL DEFAULT 0,
+        user_deleted INTEGER NOT NULL DEFAULT 0,
+        last_clustered_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    await this._db.run(`
+      CREATE TABLE IF NOT EXISTS concept_node_members (
+        concept_id TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        PRIMARY KEY (concept_id, source_type, source_id),
+        FOREIGN KEY (concept_id) REFERENCES concept_nodes(stable_id) ON DELETE CASCADE
+      )
+    `);
+
     this._schemaReady = true;
   }
 
@@ -531,10 +618,11 @@ export class SemanticGraphService extends Disposable {
                 origin_id,
                 score,
                 kind,
+                direction,
                 source_content_hash,
                 target_content_hash,
                 updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'semantic', ?, ?, datetime('now'))`,
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'similar-to', 'undirected', ?, ?, datetime('now'))`,
         params: [
           edge.sourceNodeId,
           edge.targetNodeId,

@@ -117,21 +117,27 @@ describe('SemanticGraphService', () => {
       createMockPipeline() as any,
       createMockWorkspace() as any,
     );
-    db.all.mockResolvedValueOnce([
-      {
-        sourceNodeId: 'page:a',
-        targetNodeId: 'page:b',
-        sourceType: 'page_block',
-        sourceId: 'a',
-        targetType: 'page_block',
-        targetId: 'b',
-        score: 0.88,
-        kind: 'semantic',
-        sourceContentHash: 'hash-a',
-        targetContentHash: 'hash-b',
-        updatedAt: '2026-05-15 00:00:00',
-      },
-    ]);
+    // M76 schema migration runs PRAGMA table_info on _ensureSchema(); return
+    // a row indicating `direction` already exists so the ALTER TABLE migration
+    // is a no-op. Subsequent mockResolvedValueOnce queues drive real queries.
+    db.all
+      .mockResolvedValueOnce([{ name: 'direction' }])
+      .mockResolvedValueOnce([
+        {
+          sourceNodeId: 'page:a',
+          targetNodeId: 'page:b',
+          sourceType: 'page_block',
+          sourceId: 'a',
+          targetType: 'page_block',
+          targetId: 'b',
+          score: 0.88,
+          kind: 'similar-to',
+          direction: 'undirected',
+          sourceContentHash: 'hash-a',
+          targetContentHash: 'hash-b',
+          updatedAt: '2026-05-15 00:00:00',
+        },
+      ]);
 
     const edges = await service.getCachedEdges();
 
