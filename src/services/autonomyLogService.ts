@@ -73,6 +73,32 @@ export const AUTONOMY_LOG_MAX_ENTRIES = 200;
 export const AUTONOMY_LOG_DEFAULT_LIMIT = 50;
 
 // ---------------------------------------------------------------------------
+// Secret redaction
+// ---------------------------------------------------------------------------
+
+const REDACT_PATTERNS: ReadonlyArray<[RegExp, string]> = [
+  // Anthropic API keys: sk-ant-api03-<payload>
+  [/sk-ant-api\d{2}-[A-Za-z0-9_-]{10,}/g, 'sk-ant-api**-[REDACTED]'],
+  // Generic short-lived API keys (OpenAI, Anthropic legacy, etc.): sk-<20+ chars>
+  [/\bsk-[A-Za-z0-9_-]{20,}/g, 'sk-[REDACTED]'],
+  // GitHub personal access tokens: ghp_<payload>
+  [/\bghp_[A-Za-z0-9]{20,}/g, 'ghp_[REDACTED]'],
+  // GitHub app tokens and installation tokens
+  [/\bghs_[A-Za-z0-9]{20,}/g, 'ghs_[REDACTED]'],
+  // Authorization header values (Bearer / Basic / Token)
+  [/\bAuthorization:\s*[^\r\n]+/gi, 'Authorization: [REDACTED]'],
+];
+
+/** Scrub known secret patterns from a string before it enters the log. */
+function _redact(text: string): string {
+  let out = text;
+  for (const [pattern, replacement] of REDACT_PATTERNS) {
+    out = out.replace(pattern, replacement);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 
 export class AutonomyLogService implements IAutonomyLogAppender, IAutonomyLogReader {
   private readonly _entries: IAutonomyLogEntry[] = [];
@@ -91,8 +117,8 @@ export class AutonomyLogService implements IAutonomyLogAppender, IAutonomyLogRea
       id: `al-${Date.now().toString(36)}-${(this._seq++).toString(36)}`,
       timestamp: Date.now(),
       origin: input.origin,
-      requestText: input.requestText,
-      content: input.content,
+      requestText: _redact(input.requestText),
+      content: _redact(input.content),
       metadata: input.metadata,
       sessionId: input.sessionId,
       read: false,
