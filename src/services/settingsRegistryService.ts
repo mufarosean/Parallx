@@ -34,6 +34,7 @@ import { Disposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
 import type { Event } from '../platform/events.js';
 import type { IStorage } from '../platform/storage.js';
+import type { ISecretStorageService } from './secretStorageService.js';
 
 // ─── Schema types ──────────────────────────────────────────────────────────
 
@@ -133,6 +134,16 @@ export interface ISettingsRegistryService {
   /** Reset a key to its schema default. */
   reset(key: string): Promise<void>;
 
+  /**
+   * Read a secret setting asynchronously.
+   * Only valid for schemas with `secret: true`; returns `null` when the
+   * safeStorage bridge is unavailable or the key has no stored value.
+   */
+  getSecretValue(key: string): Promise<string | null>;
+
+  /** Wire the safeStorage service for `secret: true` settings. */
+  setSecretStorage(storage: ISecretStorageService): void;
+
   /** Subscribe to all changes. Filter client-side by `change.key`. */
   readonly onDidChange: Event<ISettingChange>;
 }
@@ -152,6 +163,7 @@ export class SettingsRegistryService extends Disposable implements ISettingsRegi
   private _workspaceLoaded = false;
   private _userWriteQueue: Promise<void> = Promise.resolve();
   private _workspaceWriteQueue: Promise<void> = Promise.resolve();
+  private _secretStorage: ISecretStorageService | undefined;
 
   private readonly _onDidChange = this._register(new Emitter<ISettingChange>());
   readonly onDidChange: Event<ISettingChange> = this._onDidChange.event;
@@ -200,6 +212,11 @@ export class SettingsRegistryService extends Disposable implements ISettingsRegi
     }
   }
 
+  /** Wire the safeStorage backend. Must be called before any secret values are written. */
+  setSecretStorage(storage: ISecretStorageService): void {
+    this._secretStorage = storage;
+  }
+
   // ── Schema introspection ────────────────────────────────────────────────
 
   getSchema(key: string): ISettingSchema | undefined {
@@ -221,11 +238,26 @@ export class SettingsRegistryService extends Disposable implements ISettingsRegi
     if (binding) {
       return binding.getValue() as T;
     }
+    // Secret values are stored in safeStorage, not in the JSON overrides.
+    // Synchronous callers must use getSecretValue() for the real value.
+    if (schema.secret) {
+      return schema.default as T;
+    }
     const overrides = schema.scope === 'workspace' ? this._workspaceOverrides : this._userOverrides;
     if (Object.prototype.hasOwnProperty.call(overrides, key)) {
       return overrides[key] as T;
     }
     return schema.default as T;
+  }
+
+  async getSecretValue(key: string): Promise<string | null> {
+    const schema = this._schemas.get(key);
+    if (!schema || !schema.secret) {
+      throw new Error(`[SettingsRegistry] getSecretValue called for non-secret key: ${key}`);
+    }
+    if (!this._secretStorage) return null;
+    const r = await this._secretStorage.getString(key);
+    return r.ok && typeof r.value === 'string' ? r.value : null;
   }
 
   // ── Write ───────────────────────────────────────────────────────────────
@@ -246,6 +278,18 @@ export class SettingsRegistryService extends Disposable implements ISettingsRegi
     if (binding) {
       await binding.setValue(value);
       console.info(`[settings] write key=${key} scope=${schema.scope} (binding)`);
+      this._onDidChange.fire({ key, value, scope: schema.scope });
+      return;
+    }
+
+    // Secret values go to safeStorage; they must never land in the JSON file.
+    if (schema.secret) {
+      if (!this._secretStorage) {
+        console.warn(`[SettingsRegistry] secret storage unavailable — key=${key} not persisted`);
+      } else {
+        await this._secretStorage.setString(key, typeof value === 'string' ? value : String(value));
+      }
+      console.info(`[settings] write key=${key} scope=${schema.scope} (secret)`);
       this._onDidChange.fire({ key, value, scope: schema.scope });
       return;
     }
@@ -324,9 +368,18 @@ export class SettingsRegistryService extends Disposable implements ISettingsRegi
     this._workspaceLoaded = true;
   }
 
+  /** Strip secret-schema keys from an overrides map before JSON serialization. */
+  private _stripSecrets(overrides: Record<string, unknown>): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(overrides)) {
+      if (!this._schemas.get(k)?.secret) out[k] = v;
+    }
+    return out;
+  }
+
   private _persistUser(): Promise<void> {
     if (!this._userStorage) return Promise.resolve();
-    const snapshot = this._userOverrides;
+    const snapshot = this._stripSecrets(this._userOverrides);
     const storage = this._userStorage;
     this._userWriteQueue = this._userWriteQueue.then(async () => {
       try {
@@ -340,7 +393,7 @@ export class SettingsRegistryService extends Disposable implements ISettingsRegi
 
   private _persistWorkspace(): Promise<void> {
     if (!this._workspaceStorage) return Promise.resolve();
-    const snapshot = this._workspaceOverrides;
+    const snapshot = this._stripSecrets(this._workspaceOverrides);
     const storage = this._workspaceStorage;
     this._workspaceWriteQueue = this._workspaceWriteQueue.then(async () => {
       try {
@@ -350,6 +403,38 @@ export class SettingsRegistryService extends Disposable implements ISettingsRegi
       }
     });
     return this._workspaceWriteQueue;
+  }
+
+  /**
+   * After schemas are registered, scan the loaded JSON overrides for any key
+   * that is now known to be secret. Migrate its value to safeStorage and
+   * scrub the plaintext from the in-memory map so the next persist won't
+   * write it back to JSON.
+   */
+  async migrateSecretsFromJson(): Promise<void> {
+    const migrate = async (overrides: Record<string, unknown>, persistFn: () => Promise<void>): Promise<boolean> => {
+      let changed = false;
+      for (const key of Object.keys(overrides)) {
+        const schema = this._schemas.get(key);
+        if (!schema?.secret) continue;
+        const value = overrides[key];
+        if (typeof value !== 'string' || value === '') continue;
+        if (this._secretStorage) {
+          await this._secretStorage.setString(key, value);
+          console.info(`[SettingsRegistry] migrated secret to safeStorage: ${key}`);
+        } else {
+          console.warn(`[SettingsRegistry] secret found in JSON but safeStorage unavailable: ${key}`);
+        }
+        delete overrides[key];
+        changed = true;
+      }
+      if (changed) await persistFn();
+      return changed;
+    };
+    await Promise.all([
+      migrate(this._userOverrides, () => this._persistUser()),
+      migrate(this._workspaceOverrides, () => this._persistWorkspace()),
+    ]);
   }
 }
 

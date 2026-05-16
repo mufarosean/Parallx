@@ -41,8 +41,8 @@ import type {
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
 import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, IGlobalStorageService, ISurfaceRouterService, IAutonomyLogService, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService } from '../../services/serviceTypes.js';
-import { SettingsRegistryService } from '../../services/settingsRegistryService.js';
-import { setGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
+import { SettingsRegistryService, setGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
+import { createSecretStorageService } from '../../services/secretStorageService.js';
 import {
   registerAutonomyFlagSettings,
   registerAutonomySubstrateSettings,} from '../../services/autonomySettingsSchemas.js';
@@ -336,6 +336,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       ? api.services.get<import('../../platform/storage.js').IStorage>(IWorkspaceStorageService)
       : undefined;
     const settingsRegistry = new SettingsRegistryService(_userStorage, _wsStorageForRegistry);
+    settingsRegistry.setSecretStorage(createSecretStorageService());
     void settingsRegistry.initialize().catch(() => { /* defaults apply */ });
     context.subscriptions.push(settingsRegistry);
 
@@ -434,6 +435,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     api.services.registerInstance(ISettingsRegistryService, settingsRegistry);
     setGlobalSettingsRegistry(settingsRegistry);
     context.subscriptions.push({ dispose: () => setGlobalSettingsRegistry(undefined) });
+    // Migrate any secret values that were previously stored plaintext in
+    // settings.overrides JSON (e.g. mcp.gmail.clientSecret).
+    void settingsRegistry.migrateSecretsFromJson().catch(() => { /* best-effort */ });
   }
 
   // §3.10 event log — writes ndjson to per-workspace
