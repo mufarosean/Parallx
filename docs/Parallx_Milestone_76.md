@@ -46,40 +46,84 @@ map.
 M76 inherits this constraint and refines it: **LLM-based edge construction
 (lineage classification, concept labelling) only runs when the user clicks
 the "Refresh mind map" button.** Never autonomous, never on a cron schedule,
-never on the graph render path. The user pressing the button is consent that
-the operation will use the chat model and take time.
+never on the graph render path.
 
 Free-signal edges (references, co-occurrence, metadata) compute at indexing
 time alongside existing M68 work and add no new render-path cost.
 
-## LLM strategy: chat model, not a dedicated small model
+## AI architecture facts M76 builds against
+
+Parallx is **local-only on Ollama** (`src/built-in/chat/providers/ollamaProvider.ts`).
+There is one provider implementation. There are no remote provider hooks,
+no multi-provider abstractions to plumb through, no Claude API or OpenAI
+code paths to consider. The `ILanguageModelProvider` interface exists in
+type form but only Ollama is registered.
+
+Key invariants M76 must respect:
+
+- **Backend LLM calls use `sendChatRequestForModel(modelId, …)`**
+  (`src/services/languageModelsService.ts:349`). This is the established
+  pattern that heartbeat, cron, and subagent runners already use. It does
+  not mutate the user's active-model selection and does not fire UI events,
+  so backend work stays invisible to the chat surface.
+
+- **Chat input is never disabled while the model is busy.** When a chat
+  response is streaming, the textarea stays enabled and user messages
+  queue (`session.pendingRequests`). The only state that disables input
+  is Ollama being offline entirely. M76 must follow this convention —
+  refresh does not block chat.
+
+- **The chat model and embedding model share one Ollama instance.** Chat
+  uses the user-configured model (e.g. `qwen2.5:32b`); indexing uses
+  `nomic-embed-text` (hard-coded in `src/services/embeddingService.ts`).
+  Both share the GPU. Indexing and chat already coexist concurrently
+  today; M76 refresh just adds another concurrent caller of the same
+  shape as heartbeat.
+
+- **Model lifecycle is lazy + warm.** The provider preloads the chat model
+  on first availability detection. Each chat call sends `keep_alive: '30m'`
+  so the model stays in VRAM. By the time the user clicks refresh, the
+  model is almost always already warm.
+
+## LLM strategy: chat model via the heartbeat pattern
 
 LLM-based passes (lineage classification, concept labelling) use the **active
-chat model**, not a separate small classifier. Rationale:
+chat model**, called via the same `sendChatRequestForModel()` path that
+heartbeat and cron already use. Rationale:
 
 - **Quality.** Three-way classification of dense technical text
-  (`extends | refutes | none`) is exactly the kind of task where small models
+  (`extends | refutes | none`) is exactly the task where small models
   hallucinate. Concept labelling quality also drops sharply with small
-  models — they tend to produce generic labels like "Documents" or "Various
-  Topics" while chat-class models pick specific, useful ones.
+  models — they produce generic labels ("Documents", "Various Topics")
+  while chat-class models pick specific, useful ones.
 - **One model.** No separate classifier to ship, configure, or maintain.
-- **Already warm.** If the user has had a chat session in the workspace, the
-  model is loaded.
-- **The constraint was about the render path.** "Don't make chat worse" means
-  don't fire LLM calls when the user opens the graph. A button press is
-  consent — the user has chosen to spend the compute.
+- **Established pattern.** `sendChatRequestForModel()` is built for exactly
+  this — backend, isolated, doesn't touch chat UI state. Heartbeat does
+  this today; refresh is the same shape of operation.
 
-Honest tradeoffs:
+## Interaction with chat during a refresh
 
-- **First refresh of a session pays a model-load cost** if the chat model
-  isn't already loaded. Subsequent refreshes are fast.
-- **If the user has configured a remote chat provider (Claude API, OpenAI),
-  the mind-map refresh inherits that.** For some users this means cloud
-  calls on workspace content. The refresh UI must surface this clearly so
-  the user is not surprised. Local-only users get local-only refreshes;
-  remote-configured users get whatever they configured.
-- **A 5–10 minute refresh needs progress feedback and a cancel button.**
-  M68's silent background work pattern does not apply.
+A refresh fires LLM requests through `sendChatRequestForModel()`, the same
+isolated path heartbeat uses. The user-facing impact is therefore the same
+as having heartbeat run during a chat session:
+
+- **Chat keeps working.** Input stays enabled, messages can be submitted
+  and queue normally. The chat UI is never blocked.
+- **Both share the GPU at the Ollama layer.** Ollama interleaves
+  inference for concurrent requests on one GPU, so chat token streaming
+  may feel slightly slower during a refresh. This is the same dynamic
+  as chatting while indexing runs.
+- **Status surface, not a modal.** Refresh progress lives in a non-blocking
+  status indicator (spinner + "Refreshing mind map: pair 12 of 38") in
+  the Workspace Graph view or the existing context bar. No banner blocks
+  the chat surface. A cancel button is exposed in the same status surface.
+- **First refresh after app launch may briefly wait for model preload.**
+  The provider preloads on availability; if the user clicks refresh
+  before preload completes (rare), the first LLM call waits a few seconds.
+  Subsequent calls hit warm VRAM.
+
+The honest user-facing tradeoff: chat feels slightly slower while refresh
+is running, same as it does while indexing is running. Nothing breaks.
 
 ## Scope
 
@@ -296,23 +340,32 @@ The user-initiated "Refresh mind map" workflow that Phases 4 and 5 plug into.
 - Track per-source `last_processed_content_hash` so the system can identify
   what's new, changed, or deleted since the last refresh.
 - "Refresh mind map" button in the Workspace Graph settings panel.
-- Refresh UI: progress bar showing current step ("Classifying lineage:
-  pair 12 of 38"), a cancel button, and an "estimated time remaining" hint
-  based on candidate count + observed chat-model throughput.
-- Surface the active chat model and its provider (local vs remote) on the
-  refresh confirmation so users with remote providers see clearly that the
-  refresh will use that provider on workspace content.
+- Non-blocking status surface: progress indicator in the Workspace Graph
+  view (or the existing context bar) showing current step
+  ("Refreshing mind map: pair 12 of 38") and a cancel button. **No modal,
+  no banner over chat, no input disabling** — chat continues to work
+  throughout, matching how indexing surfaces its state today.
+- Refresh confirmation when the user clicks the button: a small inline
+  prompt stating what will be processed (e.g. "3 new sources, 2 changed —
+  estimated ~4 minutes") and the active chat model that will be used.
+  Confirm with one click.
 - Cancellation is clean: edges/clusters processed so far are persisted; the
   delta the next refresh picks up reflects the cancel point.
 - Refresh history: a small log of recent refreshes (timestamp, source delta
   counts, edges added/changed, cancelled or completed) accessible from the
   same panel.
+- LLM calls go through `sendChatRequestForModel()`
+  (`src/services/languageModelsService.ts:349`) — the same isolated path
+  heartbeat uses. No mutation of active-model state, no chat UI events.
 
 **Verification:**
 - Refresh button identifies new and changed sources correctly via content
   hashes
+- Chat input stays enabled during a refresh; submitting a chat message
+  while refresh runs produces a normal chat response (with possibly
+  slower token streaming due to GPU contention)
 - Cancel mid-refresh leaves the cache in a consistent state
-- Progress bar updates per candidate pair, not per phase
+- Progress indicator updates per candidate pair, not per phase
 - No refresh runs without a button press
 
 ### Phase 4 — Chat-model lineage classifier (~1 week)
@@ -321,6 +374,9 @@ The user-initiated "Refresh mind map" workflow that Phases 4 and 5 plug into.
   references, or co-occurrence. Composes a focused prompt for the **active
   chat model** asking three-way: `extends | refutes | none` with an optional
   confidence score.
+- LLM calls go through `LanguageModelsService.sendChatRequestForModel()`
+  with the workspace's currently-selected chat model. This is the same path
+  heartbeat and cron use today — fully isolated from the chat UI state.
 - Driven by the Phase 3 refresh button. Only candidates involving new or
   changed sources are reclassified — previously-classified pairs whose
   source content hashes are unchanged are skipped.
@@ -328,8 +384,6 @@ The user-initiated "Refresh mind map" workflow that Phases 4 and 5 plug into.
   `kind = 'refutes'` and `direction = 'forward'`.
 - The classifier honours the refresh cancellation signal and stops at the
   next pair boundary.
-- Uses the same provider plumbing the chat surface uses, so a user configured
-  for remote chat gets remote classification with no extra setup.
 
 **Verification:**
 - Lineage pass never runs on the render path
@@ -353,9 +407,10 @@ The user-initiated "Refresh mind map" workflow that Phases 4 and 5 plug into.
   - Apply the 70% carry-over rule on existing clusters: if ≥70% of an
     existing cluster's members are still grouped, the cluster keeps its ID
     and label; otherwise the cluster fractures and the pieces get fresh IDs
-- Concept labelling uses the **active chat model**, the same one used for
-  lineage. Only new clusters and clusters that lost their stable identity get
-  relabelled — most refreshes will relabel zero clusters.
+- Concept labelling uses the **active chat model** via
+  `sendChatRequestForModel()`, the same path Phase 4 uses. Only new
+  clusters and clusters that lost their stable identity get relabelled —
+  most refreshes will relabel zero clusters.
 - Persist concept nodes and member lists; emit `member-of` edges; compute
   cross-concept `similar-to` edges from cluster centroid similarity.
 - Concept nodes contribute as graph nodes via the workspace graph provider.
@@ -423,8 +478,10 @@ the refresh infrastructure.
 | Workspace graph provider API | `parallx.workspaceGraph.registerProvider()` |
 | Edge styling and toggle UI | `ext/workspace-graph/main.js` settings panel |
 | Indexing event hook | `IIndexingPipelineService.onDidIndexSource` |
-| Chat model invocation | Existing chat surface — same path used by conversation summarisation |
+| Backend chat-model invocation | `LanguageModelsService.sendChatRequestForModel()` (`src/services/languageModelsService.ts:349`) — same isolated path used by heartbeat, cron, subagent runners |
+| Reference pattern for backend LLM use | `src/openclaw/openclawHeartbeatExecutor.ts` — minimal example of one-shot LLM call from non-chat code |
 | Active chat model selection | Current AI settings (used as-is, no new config) |
+| Status indicator UI pattern | Existing indexing status / token bar in the chat surface — non-blocking, non-modal |
 | Canvas page metadata | Existing canvas service (for author / folder / date) |
 
 ## Success criteria
@@ -453,15 +510,13 @@ the refresh infrastructure.
   first refresh shows an honest time estimate before the user commits;
   cancellation is always available; the user can refresh selectively (e.g.
   "refresh just this folder") if we expose that affordance.
-- **First refresh of a session pays a model-load cost.** If the user just
-  opened the app and hasn't used chat yet, clicking refresh triggers a
-  model load. Mitigation: the progress UI shows "Loading model…" as a
-  distinct first step so the user knows what they're waiting for.
-- **Remote chat providers send workspace content to the cloud.** A user
-  who has configured Claude API or OpenAI as their chat model gets the
-  same provider for mind-map refresh. Mitigation: the refresh confirmation
-  dialog states the active provider explicitly. Users who don't want this
-  can switch to a local model before refreshing.
+- **GPU contention during refresh.** Refresh and chat both use the same
+  Ollama instance; while a refresh is running, chat token streaming will
+  feel slower because the GPU is shared. Mitigation: this is the same
+  dynamic that already exists between chat and background indexing, and
+  is acceptable per the user's stated tolerance. The status indicator
+  makes the contention visible so the user understands why chat feels
+  slower. Refresh can be cancelled at any time.
 - **Cluster jitter despite the carry-over rule.** Edge cases where cluster
   composition swings around the 70% threshold could still cause label churn.
   Mitigation: bias toward stability — once a cluster is named, it takes
