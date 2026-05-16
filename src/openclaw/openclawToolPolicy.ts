@@ -419,6 +419,9 @@ const BLUE_TOOLS: ReadonlySet<string> = new Set<string>([
   // File ops
   'write_file',
   'edit_file',
+  'delete_file',
+  // Shell execution — destructive, irreversible side effects
+  'run_command',
   // Canvas page writes
   'create_page',
   'compose_page',
