@@ -911,50 +911,45 @@ function _renderProgress(part: IChatProgressContent): HTMLElement {
 
 function _renderThinking(part: IChatThinkingContent): HTMLElement {
   const root = $('div.parallx-chat-thinking');
-  if (part.isCollapsed) {
-    root.classList.add('parallx-chat-thinking--collapsed');
-  }
+  root.classList.toggle('parallx-chat-thinking--collapsed', part.isCollapsed);
   const sourceEntries = part.provenance ?? [];
 
   // ── Toggle header ──
-  // Builds:  ▶ Thinking · Searching 4 sources · 3 sources
   const toggle = $('div.parallx-chat-thinking-toggle');
 
   function _rebuildToggle(): void {
     toggle.textContent = '';
 
-    // Arrow (CSS rotates it based on collapsed state)
-    const arrowEl = $('span.parallx-chat-thinking-arrow', '\u25B6');
-    toggle.appendChild(arrowEl);
-
-    // Label: "Thinking" if we have reasoning text, "Context" if just refs/progress
-    const hasContent = !!part.content;
     const hasRefs = sourceEntries.length > 0;
     const hasProgress = !!part.progressMessage;
-    const baseLabel = hasContent ? 'Thinking' : (hasRefs || hasProgress ? 'Context' : 'Thinking');
 
-    const labelEl = $('span.parallx-chat-thinking-label', baseLabel);
-    toggle.appendChild(labelEl);
+    // Arrow (CSS rotates when expanded)
+    const arrowEl = $('span.parallx-chat-thinking-arrow', '▶');
+    toggle.appendChild(arrowEl);
 
-    // Progress message (ephemeral, shown during streaming)
     if (hasProgress) {
-      const sep = $('span.parallx-chat-thinking-sep', '\u00B7');
-      toggle.appendChild(sep);
-      const progressEl = $('span.parallx-chat-thinking-progress-label');
-      const spinner = $('span.parallx-chat-thinking-spinner');
-      progressEl.appendChild(spinner);
-      const msgEl = $('span', ` ${part.progressMessage}`);
-      progressEl.appendChild(msgEl);
-      toggle.appendChild(progressEl);
-    }
+      // Streaming: pulse the left border, show "Thinking…"
+      root.classList.add('parallx-chat-thinking--streaming');
+      const labelEl = $('span.parallx-chat-thinking-label', 'Thinking…');
+      toggle.appendChild(labelEl);
+    } else {
+      root.classList.remove('parallx-chat-thinking--streaming');
+      // Done: "Thought for Xs"
+      let doneLabel = 'Thought';
+      if (part.startTime) {
+        const elapsed = Math.round((Date.now() - part.startTime) / 1000);
+        doneLabel = elapsed > 0 ? `Thought for ${elapsed}s` : 'Thought';
+      }
+      const labelEl = $('span.parallx-chat-thinking-label', doneLabel);
+      toggle.appendChild(labelEl);
 
-    // Source count summary
-    if (hasRefs) {
-      const count = sourceEntries.length;
-      const sep = $('span.parallx-chat-thinking-sep', '\u00B7');
-      toggle.appendChild(sep);
-      const countEl = $('span.parallx-chat-thinking-source-count', `${count} source${count !== 1 ? 's' : ''}`);
-      toggle.appendChild(countEl);
+      if (hasRefs) {
+        const count = sourceEntries.length;
+        const sep = $('span.parallx-chat-thinking-sep', '·');
+        toggle.appendChild(sep);
+        const countEl = $('span.parallx-chat-thinking-source-count', `${count} source${count !== 1 ? 's' : ''}`);
+        toggle.appendChild(countEl);
+      }
     }
   }
 

@@ -52,7 +52,6 @@ export class ChatInputPart extends Disposable {
 
   // ── State ──
 
-  private _streaming = false;
   private _enabled = true;
 
   // ── Events ──
@@ -286,18 +285,21 @@ export class ChatInputPart extends Disposable {
   /** Show stop button during streaming, submit button otherwise.
    * Input stays enabled so user can type queued messages. */
   setStreaming(streaming: boolean): void {
-    this._streaming = streaming;
-    // During streaming, show both send (for queuing) and stop buttons
     this._submitBtn.style.display = '';
     this._stopBtn.style.display = streaming ? '' : 'none';
-    // Keep textarea enabled during streaming so user can queue messages
     this._textarea.disabled = false;
+    if (!this._commandPill.textContent) {
+      this._textarea.placeholder = streaming
+        ? 'Type to queue a message…'
+        : 'Ask a question…';
+    }
+    this._submitBtn.title = streaming ? 'Queue message' : 'Send message';
   }
 
   /** Enable or disable the entire input (e.g. when Ollama is offline). */
   setEnabled(enabled: boolean): void {
     this._enabled = enabled;
-    this._textarea.disabled = !enabled || this._streaming;
+    this._textarea.disabled = !enabled;
     this._submitBtn.disabled = !enabled;
   }
 
@@ -331,7 +333,20 @@ export class ChatInputPart extends Disposable {
    * M41 Phase 9: All modes now have tools — always show the button.
    */
   updateToolsButtonForMode(_mode: ChatMode): void {
-    this._toolsBtn.style.display = '';
+    // Only show wrench if no token meter has taken its slot.
+    if (!this._tokenMeterMounted) {
+      this._toolsBtn.style.display = '';
+    }
+  }
+
+  private _tokenMeterMounted = false;
+
+  /** Replace the Configure AI wrench with the token meter element. */
+  mountTokenMeter(el: HTMLElement): void {
+    this._tokenMeterMounted = true;
+    this._toolsBtn.style.display = 'none';
+    el.classList.add('parallx-token-statusbar--toolbar');
+    this._pickerSlot.appendChild(el);
   }
 
   /** Get current explicit attachments (to include in the request). */

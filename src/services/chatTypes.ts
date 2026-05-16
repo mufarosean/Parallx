@@ -473,6 +473,8 @@ export interface IChatThinkingContent {
   progressMessage?: string;
   /** Provenance entries visible in the thinking/source surface. */
   provenance?: IChatProvenanceEntry[];
+  /** Unix ms when thinking started — used to compute "Thought for Xs" label. */
+  startTime?: number;
 }
 
 export interface IChatReferenceContent {

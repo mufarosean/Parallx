@@ -17,6 +17,12 @@
   color: var(--vscode-foreground);
 }
 
+/* Toolbar-mounted variant — strip the below-input padding, align inline */
+.parallx-token-statusbar--toolbar {
+  padding: 0 4px;
+  gap: 3px;
+}
+
 .parallx-token-statusbar-label {
   white-space: nowrap;
   color: inherit;

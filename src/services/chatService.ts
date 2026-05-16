@@ -448,8 +448,9 @@ class ChatResponseStream implements IChatResponseStream {
       parts.unshift({
         kind: ChatContentPartKind.Thinking,
         content: '',
-        isCollapsed: false,
+        isCollapsed: true,
         progressMessage: message,
+        startTime: Date.now(),
       });
     }
     this._scheduleUpdate();
@@ -474,8 +475,9 @@ class ChatResponseStream implements IChatResponseStream {
       parts.unshift({
         kind: ChatContentPartKind.Thinking,
         content: '',
-        isCollapsed: false,
+        isCollapsed: true,
         provenance: [entry],
+        startTime: Date.now(),
       });
     }
     this._scheduleUpdate();
@@ -510,7 +512,8 @@ class ChatResponseStream implements IChatResponseStream {
       parts.unshift({
         kind: ChatContentPartKind.Thinking,
         content,
-        isCollapsed: false,
+        isCollapsed: true,
+        startTime: Date.now(),
       });
     }
 

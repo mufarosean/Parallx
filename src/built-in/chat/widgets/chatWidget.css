@@ -1078,39 +1078,46 @@
   color: var(--vscode-testing-iconFailed, #f14c4c);
 }
 
-/* Thinking block — unified context/thinking section */
+/* Thinking block */
+@keyframes parallx-thinking-pulse {
+  0%, 100% { border-left-color: var(--vscode-progressBar-background, #0e70c0); }
+  50% { border-left-color: color-mix(in srgb, var(--vscode-progressBar-background, #0e70c0) 35%, transparent); }
+}
+
 .parallx-chat-thinking {
-  margin: 4px 0 8px;
-  border-radius: var(--parallx-radius-md);
-  background: color-mix(in srgb, var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.08)) 72%, transparent);
-  border: 1px solid color-mix(in srgb, var(--vscode-widget-border, rgba(127, 127, 127, 0.2)) 78%, transparent);
-  overflow: hidden;
+  margin: 2px 0 6px;
+  border-left: 2px solid color-mix(in srgb, var(--vscode-widget-border, rgba(127,127,127,0.3)) 60%, transparent);
+  padding-left: 10px;
+}
+
+.parallx-chat-thinking--streaming {
+  animation: parallx-thinking-pulse 1.4s ease-in-out infinite;
 }
 
 .parallx-chat-thinking-toggle {
   cursor: pointer;
-  font-size: var(--parallx-fontSize-base);
-  color: var(--vscode-descriptionForeground, #989898);
+  font-size: var(--parallx-fontSize-sm);
+  color: var(--vscode-descriptionForeground, #868686);
   user-select: none;
-  padding: 5px 10px;
+  padding: 2px 0;
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: nowrap;
+  gap: 5px;
+  font-style: italic;
 }
 
 .parallx-chat-thinking-toggle:hover {
   color: var(--vscode-foreground, #cccccc);
-  background: var(--vscode-list-hoverBackground, rgba(127, 127, 127, 0.1));
 }
 
 .parallx-chat-thinking-arrow {
   display: inline-block;
-  font-size: 8px;
+  font-size: 7px;
   flex-shrink: 0;
-  opacity: 0.7;
+  opacity: 0.6;
   transition: transform 150ms ease;
   transform: rotate(90deg);
+  font-style: normal;
 }
 
 .parallx-chat-thinking--collapsed .parallx-chat-thinking-arrow {
@@ -1118,31 +1125,14 @@
 }
 
 .parallx-chat-thinking-label {
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .parallx-chat-thinking-sep {
   color: var(--vscode-descriptionForeground, #666);
   font-size: var(--parallx-fontSize-xs);
   opacity: 0.5;
-}
-
-.parallx-chat-thinking-progress-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--parallx-fontSize-sm);
-  color: var(--vscode-descriptionForeground, #989898);
-}
-
-.parallx-chat-thinking-spinner {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border: 1.5px solid var(--vscode-widget-border, #454545);
-  border-top-color: var(--vscode-progressBar-background, #0e70c0);
-  border-radius: 50%;
-  animation: parallx-chat-spin 0.8s linear infinite;
+  font-style: normal;
 }
 
 .parallx-chat-thinking-source-count {
@@ -1151,19 +1141,17 @@
 }
 
 .parallx-chat-thinking-content {
-  padding: 0 10px 6px;
-  font-size: var(--parallx-fontSize-base);
-  color: var(--vscode-descriptionForeground, #989898);
+  padding: 4px 0 2px;
+  font-size: var(--parallx-fontSize-sm);
+  color: var(--vscode-descriptionForeground, #868686);
   line-height: 1.5;
-  border-top: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.15));
 }
 
 .parallx-chat-thinking-text {
   white-space: pre-wrap;
-  padding: 6px 0 2px;
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--parallx-fontSize-sm);
   line-height: 1.5;
-  color: var(--vscode-descriptionForeground, #b0b0b0);
+  font-style: italic;
 }
 
 .parallx-chat-thinking--collapsed .parallx-chat-thinking-content {
@@ -1361,115 +1349,114 @@
   text-decoration-style: solid;
 }
 
-/* ── Tool Invocation Card (Cap 6 Task 6.4) ── */
+/* ── Tool Invocation Card ── */
 
 .parallx-chat-tool-invocation {
-  margin: 6px 0;
-  padding: 8px 12px;
-  border-radius: var(--parallx-radius-md);
-  background: var(--vscode-editorWidget-background, #252526);
-  border: 1px solid var(--vscode-editorWidget-border, #454545);
-  transition: border-color 120ms ease;
+  margin: 3px 0;
+  border-left: 2px solid color-mix(in srgb, var(--vscode-widget-border, rgba(127,127,127,0.3)) 60%, transparent);
+  padding-left: 10px;
+  transition: border-left-color 150ms ease;
 }
 
 .parallx-chat-tool-invocation:hover {
-  border-color: var(--vscode-focusBorder, #007fd4);
+  border-left-color: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 60%, transparent);
 }
 
 .parallx-chat-tool-invocation-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+  padding: 1px 0;
 }
 
 .parallx-chat-tool-invocation-icon {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
+  opacity: 0.65;
 }
 
 .parallx-chat-tool-invocation-icon svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
 
 .parallx-chat-tool-invocation-name {
-  font-weight: 600;
-  font-size: var(--parallx-fontSize-md);
-  color: var(--vscode-foreground, #cccccc);
+  font-weight: 400;
+  font-size: var(--parallx-fontSize-sm);
+  color: var(--vscode-descriptionForeground, #868686);
+  font-family: var(--vscode-editor-font-family, monospace);
 }
 
 /* ── Status Badge ── */
 
 .parallx-chat-tool-status-badge {
   margin-left: auto;
-  padding: 1px 8px;
-  border-radius: 10px;
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--parallx-fontSize-xs);
   font-weight: 500;
+  padding: 0 4px;
+  border-radius: 4px;
 }
 
 .parallx-chat-tool-status-badge--pending {
-  background: var(--vscode-badge-background, #4d4d4d);
-  color: var(--vscode-badge-foreground, #cccccc);
+  color: var(--vscode-descriptionForeground, #868686);
 }
 
 .parallx-chat-tool-status-badge--running {
-  background: var(--vscode-progressBar-background, #0e70c0);
-  color: var(--vscode-button-foreground, #ffffff);
+  color: var(--vscode-progressBar-background, #0e70c0);
 }
 
 .parallx-chat-tool-status-badge--completed {
-  background: var(--vscode-testing-iconPassed, #388a34);
-  color: var(--vscode-button-foreground, #ffffff);
+  color: var(--vscode-testing-iconPassed, #4ec994);
 }
 
-.parallx-chat-tool-status-badge--rejected {
-  background: var(--vscode-testing-iconFailed, #f14c4c);
-  color: var(--vscode-button-foreground, #ffffff);
+.parallx-chat-tool-status-badge--rejected,
+.parallx-chat-tool-status-badge--error {
+  color: var(--vscode-testing-iconFailed, #f14c4c);
 }
 
 /* ── Tool Arguments ── */
 
 .parallx-chat-tool-invocation-args {
-  font-size: var(--parallx-fontSize-sm);
-  color: var(--vscode-descriptionForeground, #8b8b8b);
+  font-size: var(--parallx-fontSize-xs);
+  color: var(--vscode-descriptionForeground, #686868);
+  font-family: var(--vscode-editor-font-family, monospace);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-bottom: 4px;
+  padding: 1px 0 3px;
 }
 
-/* ── Tool Result ── */
+/* ── Tool Result (hidden until expanded) ── */
 
 .parallx-chat-tool-invocation-result {
-  margin-top: 6px;
-  padding: 6px 8px;
-  border-radius: 4px;
-  font-size: var(--parallx-fontSize-base);
-  background: var(--vscode-textBlockQuote-background, #2a2a2a);
-  border-left: 3px solid var(--vscode-testing-iconPassed, #388a34);
+  margin-top: 4px;
+  padding: 5px 8px;
+  font-size: var(--parallx-fontSize-sm);
+  background: color-mix(in srgb, var(--vscode-textBlockQuote-background, rgba(127,127,127,0.08)) 60%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--vscode-testing-iconPassed, #388a34) 50%, transparent);
   color: var(--vscode-foreground, #cccccc);
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .parallx-chat-tool-invocation-result--error {
-  border-left-color: var(--vscode-testing-iconFailed, #f14c4c);
+  border-left-color: color-mix(in srgb, var(--vscode-testing-iconFailed, #f14c4c) 50%, transparent);
 }
 
 .parallx-chat-tool-invocation-result-toggle {
   background: none;
   border: none;
-  color: var(--vscode-textLink-foreground, #3794ff);
+  color: var(--vscode-descriptionForeground, #686868);
   cursor: pointer;
-  font-size: var(--parallx-fontSize-sm);
-  padding: 2px 0;
+  font-size: var(--parallx-fontSize-xs);
+  padding: 1px 0;
 }
 
 .parallx-chat-tool-invocation-result-toggle:hover {
-  text-decoration: underline;
+  color: var(--vscode-textLink-foreground, #3794ff);
 }
 
 /* ── Confirmation Card (Cap 6 Task 6.4, M11 Task 2.1) ── */

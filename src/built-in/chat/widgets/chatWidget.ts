@@ -174,21 +174,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._inputAreaContainer = $('div.parallx-chat-input-area');
     this._mainArea.appendChild(this._inputAreaContainer);
 
-    // Token usage indicator (below input)
-    if (services.tokenBarServices) {
-      const tokenBar = this._register(new ChatTokenStatusBar(services.tokenBarServices));
-      this._mainArea.appendChild(tokenBar.element);
-      tokenBar.update().catch(() => {});
-      // React to session/model/mode changes
-      this._register(services.onDidChangeSession(() => { tokenBar.update().catch(() => {}); }));
-      if (services.modePicker) {
-        this._register(services.modePicker.onDidChangeMode(() => { tokenBar.update().catch(() => {}); }));
-      }
-      if (services.modelPicker) {
-        this._register(services.modelPicker.onDidChangeModels(() => { tokenBar.update().catch(() => {}); }));
-      }
-    }
-
     // ── Sash (resize handle between main area and sidebar) ──
     this._sash = $('div.parallx-chat-sidebar-sash');
     this._root.appendChild(this._sash);
@@ -349,6 +334,20 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       this._register(services.modePicker.onDidChangeMode((mode) => {
         this._inputPart.updateToolsButtonForMode(mode);
       }));
+    }
+
+    // Token usage indicator — mounted in the input toolbar (replaces Configure AI wrench)
+    if (services.tokenBarServices) {
+      const tokenBar = this._register(new ChatTokenStatusBar(services.tokenBarServices));
+      this._inputPart.mountTokenMeter(tokenBar.element);
+      tokenBar.update().catch(() => {});
+      this._register(services.onDidChangeSession(() => { tokenBar.update().catch(() => {}); }));
+      if (services.modePicker) {
+        this._register(services.modePicker.onDidChangeMode(() => { tokenBar.update().catch(() => {}); }));
+      }
+      if (services.modelPicker) {
+        this._register(services.modelPicker.onDidChangeModels(() => { tokenBar.update().catch(() => {}); }));
+      }
     }
 
     // ── Scroll tracking ──
