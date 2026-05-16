@@ -115,6 +115,7 @@ const APP_ROOT = app.isPackaged
 
 fsSync.mkdirSync(path.join(APP_ROOT, 'data', 'chromium-cache'), { recursive: true });
 fsSync.mkdirSync(path.join(APP_ROOT, 'data', 'extensions'), { recursive: true });
+fsSync.mkdirSync(path.join(APP_ROOT, 'data', 'tmp'), { recursive: true });
 
 // Redirect every Electron-managed write location into APP_ROOT/data so the
 // install folder is fully self-contained. `userData` is the big one (Chromium
@@ -137,6 +138,7 @@ try { app.setPath('logs', path.join(APP_ROOT, 'data', 'logs')); } catch { /* ign
 
 setupStorageHandlers(ipcMain, APP_ROOT);
 setupWebFetchBridge(ipcMain, APP_ROOT, _readSecretString);
+doclingBridge.setAppRoot(APP_ROOT);
 
 const USER_EXTENSIONS_DIR = path.join(APP_ROOT, 'data', 'extensions');
 

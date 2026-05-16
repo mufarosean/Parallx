@@ -76,6 +76,9 @@ let _onStatusChange = null;
 /** @type {boolean} */
 let _shutdownRequested = false;
 
+/** @type {string | null} App root passed from main.cjs; used to pin TMPDIR. */
+let _appRoot = null;
+
 /** @type {number} */
 let _restartCount = 0;
 
@@ -275,9 +278,16 @@ async function startService() {
 
     _shutdownRequested = false;
 
+    // Pin TMPDIR to APP_ROOT/data/tmp so Python's tempfile writes stay inside
+    // the app tree and never touch a world-readable system temp dir.
+    const appTmpDir = _appRoot ? path.join(_appRoot, 'data', 'tmp') : undefined;
+    const spawnEnv = appTmpDir
+      ? { ...process.env, TMPDIR: appTmpDir, TEMP: appTmpDir, TMP: appTmpDir }
+      : process.env;
     _process = spawn(python, [serverModule, '--port', String(_port)], {
       cwd: bridgePath,
       stdio: ['pipe', 'pipe', 'pipe'],
+      env: spawnEnv,
       windowsHide: true,
     });
 
@@ -583,6 +593,11 @@ function stopServiceSync() {
   _setStatus('unavailable');
 }
 
+/** Set the app root so docling's temp files land in APP_ROOT/data/tmp. */
+function setAppRoot(appRoot) {
+  _appRoot = appRoot;
+}
+
 module.exports = {
   detectPython,
   checkDoclingInstalled,
@@ -595,4 +610,5 @@ module.exports = {
   onStatusChange,
   isAvailable,
   installDocling,
+  setAppRoot,
 };

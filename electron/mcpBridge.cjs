@@ -81,7 +81,7 @@ function setupMcpBridge(ipcMain, getMainWindow, appRoot) {
       const child = spawn(command, safeArgs, {
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: isWin,
-        env: { ..._injectGmailEnv(safeArgs, filterEnv(env), appRoot) },
+        env: { ..._injectGmailEnv(safeArgs, filterEnv(env, appRoot), appRoot) },
         windowsHide: true,
       });
 
@@ -172,7 +172,7 @@ function setupMcpBridge(ipcMain, getMainWindow, appRoot) {
       ? args.filter((a) => typeof a === 'string')
       : [];
 
-    const gmailEnv = _injectGmailEnv(safeArgs, filterEnv(env), appRoot);
+    const gmailEnv = _injectGmailEnv(safeArgs, filterEnv(env, appRoot), appRoot);
 
     return new Promise((resolve) => {
       let child;
@@ -233,18 +233,25 @@ function setupMcpBridge(ipcMain, getMainWindow, appRoot) {
 }
 
 // Security: Only pass explicitly declared env vars, never inherit full process.env
-function filterEnv(env) {
+function filterEnv(env, appRoot) {
+  // Point TMPDIR/TEMP/TMP to the app-controlled tmp dir so spawned servers
+  // never write temp files to a world-readable system location. Falls back to
+  // the system default when appRoot is not yet known.
+  const appTmpDir = appRoot
+    ? nodePath.join(appRoot, 'data', 'tmp')
+    : (process.env.TMPDIR || process.env.TEMP || process.env.TMP || '');
   const base = {
     PATH: process.env.PATH || '',
     HOME: process.env.HOME || process.env.USERPROFILE || '',
     LANG: process.env.LANG || '',
+    TMPDIR: appTmpDir,
+    TEMP: appTmpDir,
+    TMP: appTmpDir,
   };
   // R-04: Windows needs additional critical env vars
   if (process.platform === 'win32') {
     base.SYSTEMROOT = process.env.SYSTEMROOT || 'C:\\Windows';
     base.SYSTEMDRIVE = process.env.SYSTEMDRIVE || 'C:';
-    base.TEMP = process.env.TEMP || '';
-    base.TMP = process.env.TMP || '';
     base.COMSPEC = process.env.COMSPEC || '';
     base.PATHEXT = process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD';
     base.USERPROFILE = process.env.USERPROFILE || '';
