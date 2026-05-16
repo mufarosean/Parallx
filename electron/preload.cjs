@@ -323,8 +323,11 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   // ══════════════════════════════════════════════════════════════════════════
 
   document: {
-    /** Extract plain text from a rich document (PDF, Excel, Word). Returns { text, format, metadata } or { error }. */
+    /** Extract plain text from a rich document (PDF, Excel, Word, EPUB). Returns { text, format, metadata } or { error }. */
     extractText: (filePath) => ipcRenderer.invoke('document:extractText', filePath),
+
+    /** Extract sanitized EPUB reader chapters. Returns { title, chapters, metadata } or { error }. */
+    readEpub: (filePath) => ipcRenderer.invoke('document:readEpub', filePath),
 
     /** Check if a file extension is a supported rich document format. Returns boolean. */
     isRichDocument: (ext) => ipcRenderer.invoke('document:isRichDocument', ext),

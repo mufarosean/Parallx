@@ -10,7 +10,7 @@ const os = require('os');
 const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 const { databaseManager, extensionDatabaseManager } = require('./database.cjs');
-const { extractText, isRichDocument, RICH_DOCUMENT_EXTENSIONS } = require('./documentExtractor.cjs');
+const { extractText, extractEpubReadingData, isRichDocument, RICH_DOCUMENT_EXTENSIONS } = require('./documentExtractor.cjs');
 const doclingBridge = require('./doclingBridge.cjs');
 const { setupMcpBridge, killAllMcpProcesses } = require('./mcpBridge.cjs');
 const { setupStorageHandlers } = require('./storageHandlers.cjs');
@@ -1598,6 +1598,15 @@ ipcMain.handle('document:extractText', async (_event, filePath) => {
 });
 
 // ── document:isRichDocument ──
+ipcMain.handle('document:readEpub', async (_event, filePath) => {
+  try {
+    const result = await extractEpubReadingData(filePath);
+    return result;
+  } catch (err) {
+    return { error: { code: 'EPUB_READ_FAILED', message: err.message || String(err), path: filePath } };
+  }
+});
+
 ipcMain.handle('document:isRichDocument', (_event, ext) => {
   return isRichDocument(ext);
 });

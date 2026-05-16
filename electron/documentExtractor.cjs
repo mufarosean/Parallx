@@ -177,6 +177,31 @@ async function extractDocx(buffer, filePath) {
  * @returns {{ text: string; chapterCount: number }}
  */
 function extractEpub(buffer, filePath) {
+  const epub = loadEpubPackage(buffer, filePath);
+
+  const sections = [];
+  for (const item of epub.contentItems) {
+    const html = readZipEntryText(epub.zip, item.path);
+    if (!html) continue;
+
+    const title = extractHtmlTitle(html);
+    const bodyText = htmlToPlainText(html);
+    if (!bodyText) continue;
+
+    if (title && !bodyText.toLowerCase().startsWith(title.toLowerCase())) {
+      sections.push(`# ${title}\n\n${bodyText}`);
+    } else {
+      sections.push(bodyText);
+    }
+  }
+
+  return {
+    text: sections.join('\n\n').trim(),
+    chapterCount: sections.length,
+  };
+}
+
+function loadEpubPackage(buffer, filePath) {
   const AdmZip = getAdmZip();
   const zip = new AdmZip(buffer);
   const containerXml = readZipEntryText(zip, 'META-INF/container.xml');
@@ -207,25 +232,14 @@ function extractEpub(buffer, filePath) {
     ? orderedItems
     : [...manifest.values()].filter(isEpubHtmlItem);
 
-  const sections = [];
-  for (const item of contentItems) {
-    const html = readZipEntryText(zip, item.path);
-    if (!html) continue;
-
-    const title = extractHtmlTitle(html);
-    const bodyText = htmlToPlainText(html);
-    if (!bodyText) continue;
-
-    if (title && !bodyText.toLowerCase().startsWith(title.toLowerCase())) {
-      sections.push(`# ${title}\n\n${bodyText}`);
-    } else {
-      sections.push(bodyText);
-    }
-  }
-
   return {
-    text: sections.join('\n\n').trim(),
-    chapterCount: sections.length,
+    zip,
+    opfPath,
+    opfDir,
+    opfXml,
+    title: extractEpubPackageTitle(opfXml),
+    manifest,
+    contentItems,
   };
 }
 
@@ -290,6 +304,13 @@ function parseEpubSpine(opfXml) {
     if (attrs.idref) ids.push(attrs.idref);
   }
   return ids;
+}
+
+function extractEpubPackageTitle(opfXml) {
+  const titleMatch = opfXml.match(/<dc:title\b[^>]*>([\s\S]*?)<\/dc:title>/i) ||
+    opfXml.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+  if (!titleMatch) return '';
+  return normalizeExtractedText(stripHtmlTags(titleMatch[1] ?? ''));
 }
 
 function parseXmlAttributes(tag) {
@@ -388,9 +409,206 @@ function decodeHtmlEntities(value) {
 
 // ─── Main entry point ───────────────────────────────────────────────────────
 
+// Safe structural XHTML subset used by the built-in EPUB reader.
+const EPUB_RENDER_ALLOWED_TAGS = new Set([
+  'a', 'abbr', 'aside', 'b', 'blockquote', 'br', 'caption', 'cite', 'code',
+  'dd', 'del', 'div', 'dl', 'dt', 'em', 'figcaption', 'figure', 'h1', 'h2',
+  'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'img', 'li', 'mark', 'ol', 'p', 'pre',
+  'q', 'rp', 'rt', 'ruby', 's', 'section', 'small', 'span', 'strong', 'sub',
+  'sup', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'u', 'ul',
+]);
+
+const EPUB_RENDER_VOID_TAGS = new Set(['br', 'hr', 'img']);
+const MAX_EPUB_INLINE_RESOURCE_SIZE = 2 * 1024 * 1024;
+
+const EPUB_IMAGE_MIME_BY_EXT = {
+  '.apng': 'image/apng',
+  '.avif': 'image/avif',
+  '.gif': 'image/gif',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+};
+
+/**
+ * Extract sanitized rendered EPUB chapters for the editor reader.
+ *
+ * This intentionally stays separate from extractText(): the indexing pipeline
+ * wants compact plain text, while the editor wants safe semantic XHTML.
+ * @param {string} filePath
+ * @returns {Promise<{ format: 'epub'; title: string; chapters: Array<{ id: string; title: string; path: string; html: string; text: string }>; metadata: Record<string, unknown> }>}
+ */
+async function extractEpubReadingData(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext !== '.epub') {
+    throw new Error(`Unsupported EPUB reader format: ${ext}`);
+  }
+
+  const stat = await fs.stat(filePath);
+  if (stat.size > MAX_RICH_DOC_SIZE) {
+    throw new Error(`File exceeds ${MAX_RICH_DOC_SIZE} byte limit (${stat.size} bytes)`);
+  }
+
+  const buffer = await fs.readFile(filePath);
+  const epub = loadEpubPackage(buffer, filePath);
+  const chapters = [];
+
+  for (const item of epub.contentItems) {
+    const rawHtml = readZipEntryText(epub.zip, item.path);
+    if (!rawHtml) continue;
+
+    const fragment = extractHtmlBody(rawHtml);
+    const html = sanitizeEpubHtmlFragment(fragment, item.path, epub.zip, epub.manifest);
+    const text = htmlToPlainText(rawHtml);
+    if (!html.trim() && !text.trim()) continue;
+
+    chapters.push({
+      id: sanitizeDomToken(item.id || `chapter-${chapters.length + 1}`),
+      title: extractHtmlTitle(rawHtml) || `Chapter ${chapters.length + 1}`,
+      path: item.path,
+      html,
+      text,
+    });
+  }
+
+  return {
+    format: 'epub',
+    title: epub.title || path.basename(filePath, path.extname(filePath)),
+    chapters,
+    metadata: {
+      chapterCount: chapters.length,
+      sourcePath: filePath,
+    },
+  };
+}
+
+function extractHtmlBody(html) {
+  const bodyMatch = String(html || '').match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
+  return bodyMatch ? bodyMatch[1] : String(html || '');
+}
+
+function sanitizeEpubHtmlFragment(fragment, chapterPath, zip, manifest) {
+  const chapterDir = zipDirname(chapterPath);
+  const withoutNoise = String(fragment || '')
+    .replace(/<\?xml[\s\S]*?\?>/gi, '')
+    .replace(/<!doctype[\s\S]*?>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, '')
+    .replace(/<svg\b[\s\S]*?<\/svg>/gi, '')
+    .replace(/<head\b[\s\S]*?<\/head>/gi, '')
+    .replace(/<nav\b[\s\S]*?<\/nav>/gi, '');
+
+  return withoutNoise.replace(/<\/?([a-zA-Z][\w:.-]*)([^>]*)>/g, (full, rawTag) => {
+    const tag = normalizeHtmlTagName(rawTag);
+    if (!EPUB_RENDER_ALLOWED_TAGS.has(tag)) return '';
+    if (/^<\s*\//.test(full)) return `</${tag}>`;
+
+    const attrs = parseXmlAttributes(full);
+    const attrText = sanitizeEpubAttributes(tag, attrs, chapterDir, zip, manifest);
+    const closing = EPUB_RENDER_VOID_TAGS.has(tag) ? '' : '';
+    return `<${tag}${attrText}${closing}>`;
+  }).trim();
+}
+
+function normalizeHtmlTagName(tag) {
+  const clean = String(tag || '').toLowerCase();
+  const colon = clean.lastIndexOf(':');
+  return colon >= 0 ? clean.slice(colon + 1) : clean;
+}
+
+function sanitizeEpubAttributes(tag, attrs, chapterDir, zip, manifest) {
+  const safe = [];
+  const id = sanitizeDomToken(attrs.id || '');
+  const className = sanitizeClassList(attrs.class || '');
+  const title = attrs.title ? escapeHtmlAttr(attrs.title) : '';
+
+  if (id) safe.push(`id="${id}"`);
+  if (className) safe.push(`class="${className}"`);
+  if (title) safe.push(`title="${title}"`);
+
+  if (tag === 'a') {
+    const href = sanitizeEpubHref(attrs.href || '');
+    if (href) safe.push(`href="${href}"`);
+  }
+
+  if (tag === 'img') {
+    const src = inlineEpubImageSrc(zip, chapterDir, attrs.src || attrs['xlink:href'] || '', manifest);
+    if (src) safe.push(`src="${src}"`);
+    if (attrs.alt) safe.push(`alt="${escapeHtmlAttr(attrs.alt)}"`);
+    safe.push('loading="lazy"');
+    safe.push('decoding="async"');
+  }
+
+  return safe.length > 0 ? ` ${safe.join(' ')}` : '';
+}
+
+function sanitizeEpubHref(href) {
+  const value = String(href || '').trim();
+  if (!value || /^(?:javascript|data|file|http|https):/i.test(value)) return '';
+  if (value.startsWith('#')) return escapeHtmlAttr(value);
+  const hashIdx = value.indexOf('#');
+  if (hashIdx >= 0 && hashIdx < value.length - 1) {
+    return escapeHtmlAttr(`#${value.slice(hashIdx + 1)}`);
+  }
+  return '';
+}
+
+function inlineEpubImageSrc(zip, chapterDir, src, manifest) {
+  const value = String(src || '').trim();
+  if (!value) return '';
+  if (/^data:image\/(?:png|jpeg|gif|webp|svg\+xml|avif|apng);base64,/i.test(value)) return value;
+  if (/^(?:javascript|data|file|http|https):/i.test(value)) return '';
+
+  const imagePath = resolveEpubPath(chapterDir, value);
+  const entry = zip.getEntry(imagePath);
+  if (!entry) return '';
+
+  const mime = getEpubImageMime(imagePath, manifest);
+  if (!mime) return '';
+
+  const data = entry.getData();
+  if (!data || data.length > MAX_EPUB_INLINE_RESOURCE_SIZE) return '';
+  return `data:${mime};base64,${data.toString('base64')}`;
+}
+
+function getEpubImageMime(entryPath, manifest) {
+  const manifestItem = [...manifest.values()].find((item) => item.path === entryPath);
+  const mediaType = String(manifestItem?.mediaType || '').toLowerCase();
+  if (mediaType.startsWith('image/')) return mediaType;
+  const ext = path.extname(entryPath).toLowerCase();
+  return EPUB_IMAGE_MIME_BY_EXT[ext] || '';
+}
+
+function sanitizeDomToken(value) {
+  return String(value || '')
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
+
+function sanitizeClassList(value) {
+  return String(value || '')
+    .split(/\s+/)
+    .map(sanitizeDomToken)
+    .filter(Boolean)
+    .slice(0, 12)
+    .join(' ');
+}
+
+function escapeHtmlAttr(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 /**
  * Check if a file extension is a supported rich document format.
- * @param {string} ext — lowercase extension including dot (e.g. '.pdf')
+ * @param {string} ext - lowercase extension including dot (e.g. '.pdf')
  * @returns {boolean}
  */
 function isRichDocument(ext) {
@@ -454,6 +672,7 @@ async function extractText(filePath) {
 
 module.exports = {
   extractText,
+  extractEpubReadingData,
   isRichDocument,
   RICH_DOCUMENT_EXTENSIONS,
   MAX_RICH_DOC_SIZE,
