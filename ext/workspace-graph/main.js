@@ -637,6 +637,12 @@ async function _collectSessions(api, nodes, edges) {
 // Each extension can contribute its own nodes/edges. Provider results are
 // merged on every refresh. Duplicate ids (e.g. two providers contributing
 // the same file:... node) are deduped: first registration wins.
+const IGNORED_PROVIDER_IDS = new Set([
+  'budget',
+  'text-generator',
+  'media-organizer',
+]);
+
 const PROVIDER_DOMAIN_COLORS = {
   budget:    '#f0c674',
   media:     '#7ec4f4',
@@ -660,6 +666,8 @@ async function _collectProviders(api, nodes, edges) {
   if (!list || list.length === 0) return;
   const seen = new Set(nodes.map(n => n.id));
   for (const provider of list) {
+    if (IGNORED_PROVIDER_IDS.has(provider?.id)) continue;
+
     let snap;
     try {
       snap = await provider.snapshot();

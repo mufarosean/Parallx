@@ -42,6 +42,8 @@ In scope for MVP:
   edges.
 - Incremental recompute after indexing updates.
 - Aggressive caps to keep graph density and CPU work small.
+- Workspace Graph provider contributions that represent file/Canvas conceptual
+  content.
 
 Out of scope for MVP:
 
@@ -52,6 +54,8 @@ Out of scope for MVP:
 - Live semantic recompute when the graph opens.
 - Semantic links for chat sessions, budget, media, or arbitrary extension nodes.
 - Replacing structural edges; conceptual edges are an overlay.
+- Non-text/productivity tool graph clusters from Budget, Text Generator, and
+  Media Organizer.
 
 ## Existing pieces we can build on
 
@@ -373,6 +377,7 @@ M68 is complete when:
 | Stale semantic links | Store source/target content hashes and recompute/delete after index updates |
 | Renderer jank during rebuild | Single queue, idle/yield slices, debounce, pause while indexing |
 | Duplicate undirected edges | Canonical pair key before insert |
+| Tool-surface provider noise | Workspace Graph ignores Budget, Text Generator, and Media Organizer providers |
 
 ## Open decisions
 
@@ -446,3 +451,4 @@ separate prevents the graph from inventing noisy hub nodes too eagerly.
 | B - Incremental builder | complete (2026-05-15) | Same targeted unit run; semantic service test covers one-source recompute from stored centroid + vector search | Builder is opt-in/low-priority: starts when Conceptual Links is enabled or rebuild command runs, debounces source updates, waits while indexing is active, concurrency 1. |
 | C - Workspace Graph integration | complete (2026-05-15) | `node --check ext/workspace-graph/main.js`; `npx.cmd tsc --noEmit` | Added `Conceptual Links` toggle, semantic provider, faint dashed semantic edges, weak semantic force, and rebuild command. Provider reads cached edges only. |
 | D - Bake and tune | in progress (2026-05-15) | - | Added sticky node selection, connection inspector metadata, and semantic-cluster coloring for conceptual-link neighborhoods. |
+| D - Provider scope tune | complete (2026-05-16) | `node --check ext/workspace-graph/main.js`; `npx.cmd tsc --noEmit` | Workspace Graph now ignores registered providers from Budget, Text Generator, and Media Organizer to keep the graph focused on files, Canvas pages, sessions, and conceptual content links. |
