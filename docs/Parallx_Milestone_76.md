@@ -51,6 +51,41 @@ never on the graph render path.
 Free-signal edges (references, co-occurrence, metadata) compute at indexing
 time alongside existing M68 work and add no new render-path cost.
 
+## Verified codebase facts
+
+Confirmed before Phase 1 by reading the actual code. Use these as the contract.
+
+**Semantic graph (M68) infrastructure ready to extend:**
+
+- Edge upsert is at `src/services/semanticGraphService.ts:523` in `_replaceSourceEdges()`. Current `kind` is hardcoded `'semantic'`. Migration renames to `'similar-to'`.
+- Per-source recompute is `_recomputeSource()` at line 374. Already uses content-hash skip (lines 386-392) — Phase 3 incremental refresh has a working foundation here.
+- Deletion pruning at `_deleteSourceCache()` line 569 already removes edges on source disappearance.
+- Recompute is triggered by `indexingPipeline.onDidIndexSource` (line 136).
+- Extension reads via the public `getCachedEdges()` API at line 197; no SQL leakage to extensions.
+- Edge canonicalisation via `canonicalizeSemanticEdgePair()` line 89. **Important for Phase 1:** only canonicalise undirected edges. Directed edges (`forward`) must preserve their (source, target) ordering.
+
+**Clustering library decision (Phase 5):**
+
+- No clustering library in `package.json` today.
+- HDBSCAN has no usable pure-JS implementation in the npm ecosystem. M76 will use **DBSCAN** via the `density-clustering` package (~50KB, pure JS, no native bindings). DBSCAN handles variable-density clusters reasonably well; the loss vs HDBSCAN is automatic noise classification, which we get by treating un-clustered sources as "unassigned" anyway.
+
+**Text parsing (Phase 2):**
+
+- Indexing pipeline does **not** currently extract markdown links, `parallx://` URIs, or footnotes. Phase 2 adds extraction in a new module, not by reusing existing extraction.
+- No NLP libraries are in `package.json`. Noun-phrase extraction for co-occurrence will be regex-based (capitalised n-grams + workspace-distinctive terms via inverse document frequency over chunk text). No new dependencies required.
+- Content chunks already carry `contextPrefix` metadata (e.g. `[Page: Title | Section: Heading]`) at `chunkingService.ts` lines 62-67. Phase 4 lineage prompts can use this for compact context without re-fetching full documents.
+
+**UI surfaces (Phase 3):**
+
+- The existing indexing progress indicator lives in `src/built-in/indexing-log/main.ts` and listens to `IIndexingPipelineService.onDidChangeProgress`. The pattern is: service emits → built-in tool listens → status updates throttled at 250ms.
+- For M76, the simplest approach is for the workspace-graph extension to register its own listener against `SemanticGraphService.onDidChangeEdges` (line 101) and emit a refresh-progress event the workspace-graph view can subscribe to. No modification to the indexing-log built-in needed.
+
+**Rendering (Phase 1 + Phase 4 visual):**
+
+- The workspace-graph extension renders via **Canvas 2D**, not d3-force-3d. The edge drawing loop is in `drawGraph()` at `ext/workspace-graph/main.js:876-1022`.
+- Current visual distinction is dashed lines for semantic edges, solid for structural. M76 will extend this with per-kind colour + style.
+- Directed edges (arrowheads) are not currently supported but the cost is ~50 lines of canvas geometry at the end of the per-edge draw — no library change required.
+
 ## AI architecture facts M76 builds against
 
 Parallx is **local-only on Ollama** (`src/built-in/chat/providers/ollamaProvider.ts`).
@@ -179,10 +214,12 @@ in the visualisation, they can be hovered, clicked, renamed, and deleted.
 
 Construction pipeline:
 
-1. **Cluster** the stored source centroids using HDBSCAN. HDBSCAN handles
-   variable-density clusters and does not require K up front; documents that
-   don't belong to any cluster are correctly left out rather than forced into
-   a poor fit.
+1. **Cluster** the stored source centroids using DBSCAN (via the
+   `density-clustering` npm package — pure JS, no native bindings; HDBSCAN
+   has no usable pure-JS implementation). DBSCAN handles variable-density
+   clusters and does not require K up front; documents that don't belong to
+   any cluster are correctly left out (DBSCAN's "noise" class) rather than
+   forced into a poor fit.
 2. **Label** each cluster: pass the cluster members' titles plus a few
    distinctive keywords to a small local LLM (not the chat model). One task:
    "name this group of documents in 1-3 words." Receive `"Existentialism"`,
@@ -315,15 +352,23 @@ settings panel):
 
 ### Phase 2 — Free-signal edges (~1 week)
 
-- `referenceExtractor`: scan canvas page block text and file chunk text for
-  explicit citations / links / footnotes that resolve to known workspace
-  item IDs. Emit `references` edges at indexing time.
-- `entityCooccurrenceService`: TF-IDF over distinctive noun phrases /
-  technical terms. Emit `co-occurrence` edges for pairs that share
-  workspace-rare terms.
-- Metadata edges: same-folder, same-author (from canvas page metadata),
-  same-date-range (within a configurable window). Computed at indexing time.
-- All three signals integrate with the existing M68 incremental rebuild path.
+- `referenceExtractor`: new module (no existing pipeline parsing to reuse).
+  Regex-extract markdown links, `parallx://` URIs, and footnote-style
+  references from canvas page block text and file chunk text. Resolve each
+  match to a workspace item ID; emit `references` edges only when the match
+  resolves to a real item. Runs at indexing time, hooked into
+  `IIndexingPipelineService.onDidIndexSource`.
+- `entityCooccurrenceService`: regex-extract distinctive n-grams from chunk
+  text (no NLP library needed — capitalised multi-word phrases plus
+  acronyms). Compute inverse document frequency over the workspace; emit
+  `co-occurrence` edges for pairs that share terms which are rare across the
+  workspace (low IDF below the workspace's median).
+- Metadata edges: same-folder from file paths; same-author from canvas
+  `page_properties` (line 740-754 in indexingPipeline.ts already reads
+  these); same-date-range from canvas `created_at` or file `mtime`.
+- All three signals integrate with the existing M68 incremental rebuild path
+  via `_replaceSourceEdges()`. New `kind` values: `'references'`,
+  `'co-occurrence'`, `'same-folder'`, `'same-author'`, `'same-date'`.
 
 **Verification:**
 - A canvas page with an explicit `parallx://page/<id>` link emits a
@@ -396,8 +441,9 @@ The user-initiated "Refresh mind map" workflow that Phases 4 and 5 plug into.
 
 ### Phase 5 — Concept nodes with incremental clustering (~1–2 weeks)
 
-- `conceptNodeService`: HDBSCAN clustering over stored source centroids on
-  first run; subsequent refreshes use an incremental strategy:
+- `conceptNodeService`: **DBSCAN** clustering (via the `density-clustering`
+  npm package — pure JS, no native bindings) over stored source centroids
+  on first run; subsequent refreshes use an incremental strategy:
   - For each new source, assign to the nearest existing cluster if the
     centroid distance is below threshold; otherwise mark as unclustered
   - When N unclustered sources accumulate, run a small clustering pass over
@@ -528,10 +574,12 @@ the refresh infrastructure.
 - **Reference extraction false positives.** Citation regex may match strings
   that aren't actually references. Mitigation: only emit an edge when the
   matched ID resolves to a real workspace item.
-- **HDBSCAN parameter sensitivity.** Bad min-cluster-size leads to too many
-  tiny clusters or one giant cluster. Mitigation: Phase 7 bake on real
-  workspaces; expose `minClusterSize` as a setting if defaults can't be
-  found.
+- **DBSCAN parameter sensitivity.** Bad `epsilon` (neighborhood radius) or
+  `minPoints` (cluster minimum size) parameters lead to too many tiny
+  clusters or one giant cluster. DBSCAN is more sensitive to these than
+  HDBSCAN would have been, but HDBSCAN has no usable pure-JS
+  implementation. Mitigation: Phase 7 bake on real workspaces; expose
+  `epsilon` and `minPoints` as settings if defaults can't be found.
 - **Incremental drift over time.** Incremental clustering can accumulate
   assignment errors over many refreshes — a source that drifted into a
   poor-fit cluster early stays there. Mitigation: the curation UI's
