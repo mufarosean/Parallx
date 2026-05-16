@@ -115,6 +115,20 @@ export function semanticSourceToNodeId(
   return `file:${root}/${rel}`;
 }
 
+/**
+ * Return the parent folder of a workspace-relative file path, or null for a
+ * top-level file. Path separators are normalized to forward slashes. Empty
+ * input and unparseable paths return null. Used by the same-folder edge
+ * producer (M76 Phase 2).
+ */
+function _parentFolder(filePath: string): string | null {
+  if (typeof filePath !== 'string' || filePath.length === 0) return null;
+  const normalized = filePath.replace(/\\/g, '/').replace(/^\/+/, '');
+  const idx = normalized.lastIndexOf('/');
+  if (idx <= 0) return null;
+  return normalized.slice(0, idx);
+}
+
 export function canonicalizeSemanticEdgePair<T extends {
   nodeId: string;
   sourceType: SemanticGraphSourceType;
@@ -536,11 +550,11 @@ export class SemanticGraphService extends Disposable {
 
     const centroid = await this._vectorStore.getSourceCentroid(sourceType, sourceId);
     if (!centroid) {
-      // No centroid → no chunks → wipe both similarity and references for
-      // this source. Reference wipe is necessary so a now-empty source
-      // doesn't keep stale references in the cache.
+      // No centroid → no chunks → wipe all kinds for this source so stale
+      // edges don't linger after the source disappears from the index.
       await this._replaceSourceEdges(sourceType, sourceId, 'similar-to', 'undirected', contentHash, []);
       await this._recomputeReferenceEdges(sourceType, sourceId, sourceNodeId);
+      await this._recomputeSameFolderEdges(sourceType, sourceId, sourceNodeId);
       return true;
     }
 
@@ -602,6 +616,7 @@ export class SemanticGraphService extends Disposable {
     // producer is independent and shares the per-kind upsert in
     // _replaceSourceEdges so its edges don't interfere with similarity.
     await this._recomputeReferenceEdges(sourceType, sourceId, sourceNodeId);
+    await this._recomputeSameFolderEdges(sourceType, sourceId, sourceNodeId);
 
     return true;
   }
@@ -679,6 +694,75 @@ export class SemanticGraphService extends Disposable {
     }
 
     await this._replaceSourceEdges(sourceType, sourceId, 'references', 'forward', null, edges);
+  }
+
+  /**
+   * M76 Phase 2 — emit `same-folder` edges between files that live in the
+   * same parent directory. Pages don't have folders (they have parent
+   * pages, which Phase 4+ may treat similarly), so this producer is a
+   * no-op for page sources.
+   *
+   * Edges are undirected (canonicalised by node id) and capped per source
+   * to avoid runaway density in folders containing hundreds of files. The
+   * cap is symmetric: pathological folders silently lose edges past the
+   * cap but the graph stays renderable.
+   *
+   * Limitation: adding a new sibling B does not trigger A to recompute
+   * its same-folder edges — only A's own content change does. The new
+   * sibling's recompute will write the canonical (A, B) row from B's
+   * origin, so the edge still appears, but A's origin remains unaware.
+   * This is acceptable for Phase 2; a full sibling-aware reactor is a
+   * future polish.
+   */
+  private async _recomputeSameFolderEdges(
+    sourceType: SemanticGraphSourceType,
+    sourceId: string,
+    sourceNodeId: string,
+  ): Promise<void> {
+    // Same-folder is file-scoped only. Page sources get an empty wipe so
+    // any previously-mis-classified rows clear cleanly.
+    if (sourceType !== 'file_chunk') {
+      await this._replaceSourceEdges(sourceType, sourceId, 'same-folder', 'undirected', null, []);
+      return;
+    }
+
+    const folder = _parentFolder(sourceId);
+    if (folder === null) {
+      // Top-level file — no folder to share with anyone.
+      await this._replaceSourceEdges(sourceType, sourceId, 'same-folder', 'undirected', null, []);
+      return;
+    }
+
+    const allSources = await this._vectorStore.getIndexedSources();
+    const siblings: { sourceId: string; nodeId: string }[] = [];
+    for (const s of allSources) {
+      if (s.sourceType !== 'file_chunk') continue;
+      if (s.sourceId === sourceId) continue;
+      if (_parentFolder(s.sourceId) !== folder) continue;
+      const nodeId = this._sourceToNodeId('file_chunk', s.sourceId);
+      if (!nodeId) continue;
+      siblings.push({ sourceId: s.sourceId, nodeId });
+      // Cap per source to keep dense folders renderable.
+      if (siblings.length >= 25) break;
+    }
+
+    const edges = siblings.map((sib) => {
+      const pair = canonicalizeSemanticEdgePair(
+        { nodeId: sourceNodeId, sourceType: 'file_chunk', sourceId },
+        { nodeId: sib.nodeId, sourceType: 'file_chunk', sourceId: sib.sourceId },
+      );
+      return {
+        sourceNodeId: pair.source.nodeId,
+        targetNodeId: pair.target.nodeId,
+        sourceType: pair.source.sourceType,
+        sourceId: pair.source.sourceId,
+        targetType: pair.target.sourceType,
+        targetId: pair.target.sourceId,
+        score: 1.0,
+      };
+    });
+
+    await this._replaceSourceEdges(sourceType, sourceId, 'same-folder', 'undirected', null, edges);
   }
 
   private _groupCandidates(

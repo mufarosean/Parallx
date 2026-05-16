@@ -1304,8 +1304,11 @@ function createGraphEditor(container, api) {
       <label style="display:flex;align-items:center;gap:6px;color:var(--vscode-editor-foreground,#ccc);margin:4px 0;cursor:pointer;">
         <input type="checkbox" id="__gs_kind_references" ${GS.edgeKindVisibility['references'] ? 'checked' : ''}> ${EDGE_KIND_LABEL['references']}
       </label>
-      <!-- Phases 2 (metadata + co-occurrence), 4 (lineage), and 5 (concept
-           membership) will add their checkboxes here as those producers come
+      <label style="display:flex;align-items:center;gap:6px;color:var(--vscode-editor-foreground,#ccc);margin:4px 0;cursor:pointer;">
+        <input type="checkbox" id="__gs_kind_samefolder" ${GS.edgeKindVisibility['same-folder'] ? 'checked' : ''}> ${EDGE_KIND_LABEL['same-folder']}
+      </label>
+      <!-- Phase 2 co-occurrence, Phase 4 lineage, and Phase 5 concept
+           membership will add their checkboxes here as those producers come
            online. The visibility map already contains entries for every
            kind so each future phase only has to render its checkbox. -->
     `;
@@ -1374,6 +1377,7 @@ function createGraphEditor(container, api) {
     };
     _wireKindCheck('similar', 'similar-to');
     _wireKindCheck('references', 'references');
+    _wireKindCheck('samefolder', 'same-folder');
   }
 
   function _toggleSettings() {

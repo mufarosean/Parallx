@@ -213,10 +213,12 @@ describe('SemanticGraphService', () => {
     expect(vectorStore.getSourceCentroid).toHaveBeenCalledWith('page_block', 'a');
     expect(vectorStore.vectorSearch).toHaveBeenCalledWith([1, 0], 10);
     // M76 Phase 2 — the producer pipeline now runs similarity + references
-    // in sequence, so two transactions are expected (one per kind). The
-    // first is similarity (writes the page:b edge), the second is
-    // references (empty edge set since the mock returns no chunks).
-    expect(db.runTransaction).toHaveBeenCalledTimes(2);
+    // + same-folder in sequence, so three transactions fire (one per kind).
+    // The page_block source under test:
+    //   1. similarity transaction writes the page:b edge
+    //   2. references transaction is a no-op (mock returns no chunks)
+    //   3. same-folder is a no-op (only applies to file_chunk sources)
+    expect(db.runTransaction).toHaveBeenCalledTimes(3);
     const similarityOps = db.runTransaction.mock.calls[0][0];
     expect(similarityOps.some((op: any) => String(op.sql).includes('INSERT OR REPLACE INTO semantic_graph_edges'))).toBe(true);
     expect(JSON.stringify(similarityOps)).toContain('page:b');
@@ -224,6 +226,63 @@ describe('SemanticGraphService', () => {
     const referenceOps = db.runTransaction.mock.calls[1][0];
     expect(referenceOps.length).toBe(1); // just the DELETE for empty references
     expect(String(referenceOps[0].sql)).toContain('DELETE FROM semantic_graph_edges');
+    const sameFolderOps = db.runTransaction.mock.calls[2][0];
+    expect(sameFolderOps.length).toBe(1); // just the DELETE for the same-folder no-op on a page source
+    expect(String(sameFolderOps[0].sql)).toContain('DELETE FROM semantic_graph_edges');
+  });
+
+  it('emits same-folder edges between files sharing a parent directory', async () => {
+    const db = createMockDb();
+    const vectorStore = createMockVectorStore();
+    const service = new SemanticGraphService(
+      db as any,
+      vectorStore as any,
+      createMockPipeline() as any,
+      createMockWorkspace() as any,
+      { debounceMs: 0, processYieldMs: 0, minScore: 0.7, topLinksPerSource: 3, candidateK: 10 },
+    );
+    db.all.mockResolvedValueOnce(_migratedPragma());
+    // Source under test: notes/a.md (file_chunk). Workspace contains
+    // notes/a.md, notes/b.md (sibling), notes/c.md (sibling), other/d.md
+    // (different folder, should be excluded), notes/a.md (self, excluded).
+    vectorStore.getIndexedSources.mockResolvedValueOnce([
+      { sourceType: 'file_chunk', sourceId: 'notes/a.md', contentHash: 'h-a', chunkCount: 1, indexedAt: 'now' },
+    ]);
+    vectorStore.getContentHash.mockImplementation(async (sourceType: string, sourceId: string) => {
+      if (sourceType === 'file_chunk' && ['notes/a.md', 'notes/b.md', 'notes/c.md', 'other/d.md'].includes(sourceId)) {
+        return `hash-${sourceId}`;
+      }
+      return null;
+    });
+    vectorStore.getSourceCentroid.mockResolvedValueOnce({
+      sourceType: 'file_chunk',
+      sourceId: 'notes/a.md',
+      vector: [1, 0],
+      chunkCount: 1,
+    });
+    vectorStore.vectorSearch.mockResolvedValueOnce([]); // no similarity hits
+    // Same-folder producer asks getIndexedSources a second time to find siblings.
+    vectorStore.getIndexedSources.mockResolvedValueOnce([
+      { sourceType: 'file_chunk', sourceId: 'notes/a.md', contentHash: 'h-a', chunkCount: 1, indexedAt: 'now' },
+      { sourceType: 'file_chunk', sourceId: 'notes/b.md', contentHash: 'h-b', chunkCount: 1, indexedAt: 'now' },
+      { sourceType: 'file_chunk', sourceId: 'notes/c.md', contentHash: 'h-c', chunkCount: 1, indexedAt: 'now' },
+      { sourceType: 'file_chunk', sourceId: 'other/d.md', contentHash: 'h-d', chunkCount: 1, indexedAt: 'now' },
+    ]);
+    db.get.mockResolvedValueOnce({ content_hash: 'old-hash' });
+
+    await service.rebuildChangedSources();
+    await vi.runOnlyPendingTimersAsync();
+
+    // Three transactions: similarity, references, same-folder.
+    expect(db.runTransaction).toHaveBeenCalledTimes(3);
+    const sameFolderOps = db.runTransaction.mock.calls[2][0];
+    const stringified = JSON.stringify(sameFolderOps);
+    // Two sibling edges expected (b.md and c.md); d.md is in another folder.
+    expect(stringified).toContain('notes/b.md');
+    expect(stringified).toContain('notes/c.md');
+    expect(stringified).not.toContain('other/d.md');
+    // The 'same-folder' kind appears in the INSERT params.
+    expect(stringified).toContain('same-folder');
   });
 });
 
