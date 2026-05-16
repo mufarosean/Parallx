@@ -90,7 +90,8 @@ const REDACT_PATTERNS: ReadonlyArray<[RegExp, string]> = [
 ];
 
 /** Scrub known secret patterns from a string before it enters the log. */
-function _redact(text: string): string {
+function _redact(text: string | undefined | null): string {
+  if (typeof text !== 'string') return '';
   let out = text;
   for (const [pattern, replacement] of REDACT_PATTERNS) {
     out = out.replace(pattern, replacement);

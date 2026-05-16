@@ -11,23 +11,28 @@ let fsCalls: { mkdir: string[]; reads: string[]; writes: Array<{ uri: string; co
 function makeApi() {
   fsStore = new Map();
   fsCalls = { mkdir: [], reads: [], writes: [] };
+  const fsHandle = {
+    mkdir: async (uri: string) => {
+      fsCalls.mkdir.push(uri);
+    },
+    exists: async (uri: string) => fsStore.has(uri),
+    readFile: async (uri: string) => {
+      fsCalls.reads.push(uri);
+      return fsStore.get(uri) ?? '';
+    },
+    writeFile: async (uri: string, content: string) => {
+      fsCalls.writes.push({ uri, content });
+      fsStore.set(uri, content);
+    },
+  };
   return {
     workspace: {
       workspaceFolders: [{ uri: 'file:///tmp/ws' }],
-      fs: {
-        mkdir: async (uri: string) => {
-          fsCalls.mkdir.push(uri);
-        },
-        exists: async (uri: string) => fsStore.has(uri),
-        readFile: async (uri: string) => {
-          fsCalls.reads.push(uri);
-          return fsStore.get(uri) ?? '';
-        },
-        writeFile: async (uri: string, content: string) => {
-          fsCalls.writes.push({ uri, content });
-          fsStore.set(uri, content);
-        },
-      },
+    },
+    // M67 Phase 3 — web-research uses api.requestCapability('fs', ...) for fs access.
+    requestCapability: (capability: string) => {
+      if (capability !== 'fs') throw new Error(`Unknown capability: ${capability}`);
+      return fsHandle;
     },
   };
 }
