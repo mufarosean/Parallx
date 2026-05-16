@@ -6,6 +6,33 @@ import {
   semanticSourceToNodeId,
 } from '../../src/services/semanticGraphService.js';
 
+/**
+ * Returns a PRAGMA table_info shape representing a semantic_graph_edges
+ * table that is already fully M76-migrated: includes the `direction` column
+ * and has the wide PRIMARY KEY (source_node_id, target_node_id, kind).
+ * The schema-migration code in SemanticGraphService inspects this result
+ * to decide whether to ALTER or rebuild; returning a migrated shape makes
+ * both decisions no-ops.
+ */
+function _migratedPragma() {
+  return [
+    { name: 'source_node_id', pk: 1 },
+    { name: 'target_node_id', pk: 2 },
+    { name: 'kind', pk: 3 },
+    { name: 'source_type', pk: 0 },
+    { name: 'source_id', pk: 0 },
+    { name: 'target_type', pk: 0 },
+    { name: 'target_id', pk: 0 },
+    { name: 'origin_type', pk: 0 },
+    { name: 'origin_id', pk: 0 },
+    { name: 'score', pk: 0 },
+    { name: 'direction', pk: 0 },
+    { name: 'source_content_hash', pk: 0 },
+    { name: 'target_content_hash', pk: 0 },
+    { name: 'updated_at', pk: 0 },
+  ];
+}
+
 function createMockDb() {
   const onDidOpen = new Emitter<string>();
   const onDidClose = new Emitter<void>();
@@ -117,11 +144,12 @@ describe('SemanticGraphService', () => {
       createMockPipeline() as any,
       createMockWorkspace() as any,
     );
-    // M76 schema migration runs PRAGMA table_info on _ensureSchema(); return
-    // a row indicating `direction` already exists so the ALTER TABLE migration
-    // is a no-op. Subsequent mockResolvedValueOnce queues drive real queries.
+    // M76 schema migration runs `PRAGMA table_info(...)` on _ensureSchema()
+    // and uses it for both the column-existence check and the PK shape check.
+    // Return a fully-migrated shape so neither migration fires; the next
+    // mockResolvedValueOnce drives the real SELECT.
     db.all
-      .mockResolvedValueOnce([{ name: 'direction' }])
+      .mockResolvedValueOnce(_migratedPragma())
       .mockResolvedValueOnce([
         {
           sourceNodeId: 'page:a',
@@ -156,6 +184,8 @@ describe('SemanticGraphService', () => {
       createMockWorkspace() as any,
       { debounceMs: 0, processYieldMs: 0, minScore: 0.7, topLinksPerSource: 3, candidateK: 10 },
     );
+    // Pre-seed PRAGMA so the schema migration is a no-op (see _migratedPragma comment).
+    db.all.mockResolvedValueOnce(_migratedPragma());
     vectorStore.getIndexedSources.mockResolvedValueOnce([
       { sourceType: 'page_block', sourceId: 'a', contentHash: 'hash-a', chunkCount: 1, indexedAt: 'now' },
     ]);

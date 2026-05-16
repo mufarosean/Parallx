@@ -321,8 +321,10 @@ export class SemanticGraphService extends Disposable {
     if (this._schemaReady || !this._db.isOpen) {
       return;
     }
-    // Base M68 schema. New installs get `direction` + the new kind taxonomy
-    // baked in; existing installs run the M76 migration block below.
+    // Base M76 schema. PRIMARY KEY is (source_node_id, target_node_id, kind)
+    // so a single A↔B pair can carry multiple edge kinds (e.g. both
+    // similar-to AND references). New installs get this shape directly;
+    // existing installs run the PK widening migration below.
     await this._db.run(`
       CREATE TABLE IF NOT EXISTS semantic_graph_edges (
         source_node_id TEXT NOT NULL,
@@ -339,14 +341,9 @@ export class SemanticGraphService extends Disposable {
         source_content_hash TEXT,
         target_content_hash TEXT,
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-        PRIMARY KEY (source_node_id, target_node_id)
+        PRIMARY KEY (source_node_id, target_node_id, kind)
       )
     `);
-    // Note: PRIMARY KEY remains (source_node_id, target_node_id) for Phase 1.
-    // Phase 2 will widen it to include `kind` (so e.g. an A↔B pair can be
-    // BOTH similar-to AND references). That migration requires a full table
-    // rebuild in SQLite (ALTER TABLE can't change a PK) and is deferred until
-    // we actually have multi-kind producers.
     await this._db.run(`
       CREATE TABLE IF NOT EXISTS semantic_graph_sources (
         source_type TEXT NOT NULL,
@@ -357,15 +354,13 @@ export class SemanticGraphService extends Disposable {
         PRIMARY KEY (source_type, source_id)
       )
     `);
-    await this._db.run('CREATE INDEX IF NOT EXISTS idx_semantic_graph_edges_origin ON semantic_graph_edges(origin_type, origin_id)');
-    await this._db.run('CREATE INDEX IF NOT EXISTS idx_semantic_graph_edges_score ON semantic_graph_edges(score DESC)');
-    await this._db.run('CREATE INDEX IF NOT EXISTS idx_semantic_graph_edges_kind ON semantic_graph_edges(kind)');
-
-    // M76 migration: existing installs may have the M68 schema without the
-    // `direction` column and with `kind = 'semantic'`. Add the column if
-    // missing and rename the kind so the rest of M76 sees a consistent
-    // taxonomy. PRAGMA is cheap; running on every start is fine.
-    const cols = await this._db.all<{ name: string }>("PRAGMA table_info(semantic_graph_edges)");
+    // M76 migration: existing installs may have an older shape. One PRAGMA
+    // read drives both the column-existence check and the PK shape check.
+    // Indexes are created AFTER the migrations so that the PK rebuild (which
+    // drops and recreates the table) doesn't leave dangling index references.
+    const cols = await this._db.all<{ name: string; pk: number }>(
+      "PRAGMA table_info(semantic_graph_edges)",
+    );
     const hasDirection = cols.some((c) => c.name === 'direction');
     if (!hasDirection) {
       await this._db.run(
@@ -373,6 +368,54 @@ export class SemanticGraphService extends Disposable {
       );
     }
     await this._db.run("UPDATE semantic_graph_edges SET kind = 'similar-to' WHERE kind = 'semantic'");
+
+    // PK widening migration: M68/M76-Phase-1 used PK (source_node_id, target_node_id);
+    // Phase 2 requires (source_node_id, target_node_id, kind) so a pair can
+    // carry multiple kinds. SQLite has no ALTER PRIMARY KEY, so this is a
+    // standard "rebuild and rename" migration: create new table, copy rows,
+    // drop old, rename new. Idempotent — detects current PK via PRAGMA.
+    // SQLite reports pk > 0 for primary key columns (ordinal); 0 for non-PK.
+    const pkColumnNames = cols.filter((c) => (c.pk ?? 0) > 0).map((c) => c.name).sort();
+    const expectedPk = ['kind', 'source_node_id', 'target_node_id'];
+    const pkAlreadyWide = JSON.stringify(pkColumnNames) === JSON.stringify(expectedPk);
+    if (!pkAlreadyWide) {
+      await this._db.runTransaction([
+        {
+          type: 'run',
+          sql: `CREATE TABLE semantic_graph_edges_new (
+            source_node_id TEXT NOT NULL,
+            target_node_id TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            target_type TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            origin_type TEXT NOT NULL,
+            origin_id TEXT NOT NULL,
+            score REAL NOT NULL,
+            kind TEXT NOT NULL DEFAULT 'similar-to',
+            direction TEXT NOT NULL DEFAULT 'undirected',
+            source_content_hash TEXT,
+            target_content_hash TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (source_node_id, target_node_id, kind)
+          )`,
+        },
+        {
+          type: 'run',
+          sql: `INSERT INTO semantic_graph_edges_new (
+            source_node_id, target_node_id, source_type, source_id,
+            target_type, target_id, origin_type, origin_id, score,
+            kind, direction, source_content_hash, target_content_hash, updated_at
+          ) SELECT
+            source_node_id, target_node_id, source_type, source_id,
+            target_type, target_id, origin_type, origin_id, score,
+            kind, direction, source_content_hash, target_content_hash, updated_at
+          FROM semantic_graph_edges`,
+        },
+        { type: 'run', sql: 'DROP TABLE semantic_graph_edges' },
+        { type: 'run', sql: 'ALTER TABLE semantic_graph_edges_new RENAME TO semantic_graph_edges' },
+      ]);
+    }
 
     // M76 concept node tables. Empty until Phase 5 wires the clusterer; the
     // tables exist now so Phase 1 schema is the final shape and downstream
@@ -397,6 +440,13 @@ export class SemanticGraphService extends Disposable {
         FOREIGN KEY (concept_id) REFERENCES concept_nodes(stable_id) ON DELETE CASCADE
       )
     `);
+
+    // Indexes are last so the PK rebuild migration doesn't leave them
+    // dangling. CREATE INDEX IF NOT EXISTS is safe on both fresh installs
+    // and post-migration tables.
+    await this._db.run('CREATE INDEX IF NOT EXISTS idx_semantic_graph_edges_origin ON semantic_graph_edges(origin_type, origin_id)');
+    await this._db.run('CREATE INDEX IF NOT EXISTS idx_semantic_graph_edges_score ON semantic_graph_edges(score DESC)');
+    await this._db.run('CREATE INDEX IF NOT EXISTS idx_semantic_graph_edges_kind ON semantic_graph_edges(kind)');
 
     this._schemaReady = true;
   }
@@ -480,7 +530,7 @@ export class SemanticGraphService extends Disposable {
 
     const centroid = await this._vectorStore.getSourceCentroid(sourceType, sourceId);
     if (!centroid) {
-      await this._replaceSourceEdges(sourceType, sourceId, contentHash, []);
+      await this._replaceSourceEdges(sourceType, sourceId, 'similar-to', 'undirected', contentHash, []);
       return true;
     }
 
@@ -520,7 +570,7 @@ export class SemanticGraphService extends Disposable {
       });
     }
 
-    await this._replaceSourceEdges(sourceType, sourceId, contentHash, edges.map((edge) => {
+    await this._replaceSourceEdges(sourceType, sourceId, 'similar-to', 'undirected', contentHash, edges.map((edge) => {
       const pair = canonicalizeSemanticEdgePair(
         { nodeId: sourceNodeId, sourceType, sourceId, contentHash },
         {
@@ -580,10 +630,23 @@ export class SemanticGraphService extends Disposable {
       .slice(0, this._topLinksPerSource);
   }
 
+  /**
+   * Per-kind upsert. Deletes existing edges with this (origin, kind) tuple
+   * and writes the new set. Multi-kind producers call this once per kind
+   * for the same source — each call is independent so a source can
+   * simultaneously produce 'similar-to' edges, 'references' edges, and
+   * metadata edges without interfering.
+   *
+   * `contentHash` is recorded on `semantic_graph_sources` so the similarity
+   * recompute can skip unchanged sources. Other kinds may pass `null` if
+   * they don't gate on content hash.
+   */
   private async _replaceSourceEdges(
     sourceType: SemanticGraphSourceType,
     sourceId: string,
-    contentHash: string,
+    kind: SemanticGraphEdgeKind,
+    direction: SemanticGraphEdgeDirection,
+    contentHash: string | null,
     edges: Array<{
       sourceNodeId: string;
       targetNodeId: string;
@@ -599,8 +662,8 @@ export class SemanticGraphService extends Disposable {
     const ops: { type: 'run'; sql: string; params?: unknown[] }[] = [
       {
         type: 'run',
-        sql: 'DELETE FROM semantic_graph_edges WHERE origin_type = ? AND origin_id = ?',
-        params: [sourceType, sourceId],
+        sql: 'DELETE FROM semantic_graph_edges WHERE origin_type = ? AND origin_id = ? AND kind = ?',
+        params: [sourceType, sourceId, kind],
       },
     ];
 
@@ -622,7 +685,7 @@ export class SemanticGraphService extends Disposable {
                 source_content_hash,
                 target_content_hash,
                 updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'similar-to', 'undirected', ?, ?, datetime('now'))`,
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
         params: [
           edge.sourceNodeId,
           edge.targetNodeId,
@@ -633,23 +696,27 @@ export class SemanticGraphService extends Disposable {
           sourceType,
           sourceId,
           edge.score,
+          kind,
+          direction,
           edge.sourceContentHash ?? null,
           edge.targetContentHash ?? null,
         ],
       });
     }
 
-    ops.push({
-      type: 'run',
-      sql: `INSERT OR REPLACE INTO semantic_graph_sources(
-              source_type,
-              source_id,
-              content_hash,
-              edge_count,
-              updated_at
-            ) VALUES (?, ?, ?, ?, datetime('now'))`,
-      params: [sourceType, sourceId, contentHash, edges.length],
-    });
+    if (contentHash !== null) {
+      ops.push({
+        type: 'run',
+        sql: `INSERT OR REPLACE INTO semantic_graph_sources(
+                source_type,
+                source_id,
+                content_hash,
+                edge_count,
+                updated_at
+              ) VALUES (?, ?, ?, ?, datetime('now'))`,
+        params: [sourceType, sourceId, contentHash, edges.length],
+      });
+    }
 
     await this._db.runTransaction(ops);
   }
