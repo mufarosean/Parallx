@@ -556,7 +556,7 @@ async function buildGraphData(api) {
 async function _collectFiles(api, nodes, edges) {
   const folders = api.workspace.workspaceFolders;
   if (!folders || folders.length === 0 || !api.requestCapability) return;
-  const wfs = api.requestCapability('fs', { scope: 'workspace-read', modes: ['read'] });
+  const wfs = api.requestCapability('fs', { scope: 'workspace-files', modes: ['read'] });
 
   const rootUri = folders[0].uri;
   const MAX_DEPTH = 3;
@@ -613,7 +613,7 @@ function _walkPageTree(pages, parentNodeId, nodes, edges) {
 async function _collectSessions(api, nodes, edges) {
   const folders = api.workspace.workspaceFolders;
   if (!folders || folders.length === 0 || !api.requestCapability) return;
-  const wfs = api.requestCapability('fs', { scope: 'workspace-read', modes: ['read'] });
+  const wfs = api.requestCapability('fs', { scope: 'workspace-files', modes: ['read'] });
 
   const rootUri = folders[0].uri;
   const sessionsUri = rootUri.endsWith('/') ? rootUri + '.parallx/sessions' : rootUri + '/.parallx/sessions';
