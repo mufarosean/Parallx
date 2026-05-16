@@ -140,6 +140,20 @@ export class CapabilityFsBridge {
       throw new Error(`[CapabilityFsBridge] Only file:// URIs are supported (got ${uri.scheme}://)`);
     }
 
+    // M67 path-traversal defence: reject any path containing a '..' segment.
+    // URI.parse and URI.file do not normalize paths, so a containment check
+    // by string prefix would otherwise be bypassable by `/workspace/../etc/passwd`.
+    // There is no legitimate reason for a capability caller to use '..' segments;
+    // outright rejection is safer than attempting normalization.
+    const pathSegments = uri.path.split('/');
+    for (const seg of pathSegments) {
+      if (seg === '..') {
+        throw new Error(
+          `[CapabilityFsBridge] "${this._extensionId}" attempted path with '..' segments: ${uri.path}`,
+        );
+      }
+    }
+
     if (this._scope === 'extension-data') {
       const folders = this._getWorkspaceFolderUris();
       if (folders.length === 0) return;

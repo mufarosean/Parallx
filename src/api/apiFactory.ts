@@ -851,8 +851,29 @@ export function createToolApi(
           `[M67] Tool "${toolId}" must declare capabilities.fs in its manifest before calling api.requestCapability('fs', ...)`,
         );
       }
-      const scope = opts?.scope ?? manifestFsCap.scope ?? 'workspace-read';
-      const modes: readonly FsCapabilityMode[] = opts?.modes ?? manifestFsCap.modes ?? ['read'];
+
+      // M67: clamp opts against the manifest declaration. The manifest is the
+      // security contract; runtime opts may only narrow it, never expand.
+      const manifestScope = manifestFsCap.scope ?? 'workspace-read';
+      const manifestModes: readonly FsCapabilityMode[] = manifestFsCap.modes ?? ['read'];
+
+      if (opts?.scope !== undefined && opts.scope !== manifestScope) {
+        throw new Error(
+          `[M67] Tool "${toolId}" requested fs scope "${opts.scope}" but manifest declares "${manifestScope}". Scope must match the manifest declaration.`,
+        );
+      }
+      if (opts?.modes !== undefined) {
+        for (const m of opts.modes) {
+          if (!manifestModes.includes(m)) {
+            throw new Error(
+              `[M67] Tool "${toolId}" requested fs mode "${m}" but manifest declares only [${manifestModes.join(', ')}]. Modes may only narrow the manifest declaration.`,
+            );
+          }
+        }
+      }
+
+      const scope = opts?.scope ?? manifestScope;
+      const modes: readonly FsCapabilityMode[] = opts?.modes ?? manifestModes;
       const getWsFolderUris = () =>
         (workspaceService as any).folders.map((f: { uri: URI }) => f.uri) as URI[];
 
