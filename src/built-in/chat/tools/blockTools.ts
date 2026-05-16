@@ -78,16 +78,13 @@ export function createReadBlockTool(db: IBuiltInToolDatabase | undefined): IChat
   return {
     name: 'read_block',
     displaySummary: 'Read a single block by id.',
-    description:
-      'Read a single block within a page by its stable blockId. ' +
-      'Returns the block JSON and its plaintext rendering. ' +
-      'Use list_pages → read_page to discover block IDs.',
+    description: 'Read a block by blockId. Returns block JSON and plaintext.',
     parameters: {
       type: 'object',
       required: ['pageId', 'blockId'],
       properties: {
-        pageId: { type: 'string', description: 'The page UUID' },
-        blockId: { type: 'string', description: 'The stable block id (TipTap unique-id attribute)' },
+        pageId: { type: 'string' },
+        blockId: { type: 'string' },
       },
     },
     requiresConfirmation: false,
@@ -126,19 +123,15 @@ export function createEditBlockTool(
   return {
     name: 'edit_block',
     displaySummary: 'Replace a block\'s content (approval).',
-    description:
-      'Replace the content of a block within a page by its stable blockId. ' +
-      'newContent is treated as plain text and replaces the block with a paragraph node ' +
-      '(preserving the original blockId). Bumps the page revision. ' +
-      'Idempotency: callers may pass idempotencyKey; the autonomy log captures it for replay-safety.',
+    description: 'Replace a block\'s plain text content.',
     parameters: {
       type: 'object',
       required: ['pageId', 'blockId', 'newContent'],
       properties: {
         pageId: { type: 'string' },
         blockId: { type: 'string' },
-        newContent: { type: 'string', description: 'Plain text replacement for the block' },
-        idempotencyKey: { type: 'string', description: 'Optional key to dedupe duplicate calls (M60 §3.7)' },
+        newContent: { type: 'string', description: 'Replacement text.' },
+        idempotencyKey: { type: 'string', description: 'Dedup key.' },
       },
     },
     requiresConfirmation: true,
@@ -184,17 +177,15 @@ export function createInsertBlockAfterTool(
   return {
     name: 'insert_block_after',
     displaySummary: 'Insert a new block after an anchor (approval).',
-    description:
-      'Insert a new paragraph block immediately after the block identified by anchorBlockId. ' +
-      'Returns the newly minted blockId. Bumps the page revision.',
+    description: 'Insert a paragraph block after anchorBlockId. Returns the new blockId.',
     parameters: {
       type: 'object',
       required: ['pageId', 'anchorBlockId', 'content'],
       properties: {
         pageId: { type: 'string' },
         anchorBlockId: { type: 'string' },
-        content: { type: 'string', description: 'Plain text content for the new block' },
-        idempotencyKey: { type: 'string', description: 'Optional dedupe key (M60 §3.7)' },
+        content: { type: 'string', description: 'Block text.' },
+        idempotencyKey: { type: 'string', description: 'Dedup key.' },
       },
     },
     requiresConfirmation: true,
@@ -243,9 +234,7 @@ export function createLinkBlockTool(
   return {
     name: 'link_block',
     displaySummary: 'Cross-link two blocks (approval).',
-    description:
-      'Append a markdown-style link inside the source block pointing to a target block on another (or the same) page. ' +
-      'Useful for AI-driven cross-references. Bumps the source page revision.',
+    description: 'Append a cross-reference link inside a block.',
     parameters: {
       type: 'object',
       required: ['fromPageId', 'fromBlockId', 'toPageId', 'toBlockId'],
@@ -254,7 +243,7 @@ export function createLinkBlockTool(
         fromBlockId: { type: 'string' },
         toPageId: { type: 'string' },
         toBlockId: { type: 'string' },
-        label: { type: 'string', description: 'Optional link text; defaults to target page title.' },
+        label: { type: 'string', description: 'Link text; defaults to target page title.' },
       },
     },
     requiresConfirmation: true,

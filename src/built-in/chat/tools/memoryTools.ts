@@ -56,16 +56,12 @@ export function createMemoryGetTool(fs: IBuiltInToolFileSystem | undefined): ICh
   return {
     name: 'memory_get',
     displaySummary: 'Read canonical workspace memory.',
-    description:
-      'Read canonical workspace memory from `.parallx/memory/`. ' +
-      'Use `layer="durable"` for long-term memory in `.parallx/memory/MEMORY.md`, ' +
-      'or `layer="daily"` with an optional `date` (YYYY-MM-DD) for a daily log. ' +
-      'Use this instead of guessing hidden paths.',
+    description: 'Read workspace memory. layer=durable for MEMORY.md; layer=daily for a date-stamped log.',
     parameters: {
       type: 'object',
       properties: {
-        layer: { type: 'string', enum: ['durable', 'daily'], description: 'Which canonical memory layer to read. Defaults to durable.' },
-        date: { type: 'string', description: 'For daily memory only: date in YYYY-MM-DD format. Defaults to today.' },
+        layer: { type: 'string', enum: ['durable', 'daily'], description: 'durable (default) or daily.' },
+        date: { type: 'string', description: 'YYYY-MM-DD, defaults to today. Only for daily layer.' },
       },
     },
     requiresConfirmation: false,
@@ -101,17 +97,14 @@ export function createMemorySearchTool(memorySearch: IBuiltInToolCanonicalMemory
   return {
     name: 'memory_search',
     displaySummary: 'Semantic search over workspace memory.',
-    description:
-      'Semantic search over canonical workspace memory in `.parallx/memory/`. ' +
-      'Use this when answering questions about remembered decisions, preferences, and recent notes. ' +
-      'Filter by `layer="durable"` or `layer="daily"` when you already know which memory layer should answer the question.',
+    description: 'Semantic search over workspace memory in `.parallx/memory/`.',
     parameters: {
       type: 'object',
       required: ['query'],
       properties: {
-        query: { type: 'string', description: 'Natural language query for canonical workspace memory.' },
-        layer: { type: 'string', enum: ['all', 'durable', 'daily'], description: 'Optional memory layer filter. Defaults to all.' },
-        date: { type: 'string', description: 'Optional YYYY-MM-DD filter for daily memory results.' },
+        query: { type: 'string', description: 'Search query.' },
+        layer: { type: 'string', enum: ['all', 'durable', 'daily'], description: 'Filter: all (default), durable, or daily.' },
+        date: { type: 'string', description: 'YYYY-MM-DD filter for daily layer.' },
       },
     },
     requiresConfirmation: false,

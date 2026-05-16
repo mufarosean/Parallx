@@ -67,15 +67,13 @@ export function createWriteFileTool(
   return {
     name: 'write_file',
     displaySummary: 'Create or overwrite a file (approval).',
-    description:
-      'Write (create or overwrite) a file in the workspace. Path is relative to the workspace root. ' +
-      'Validates path against .parallxignore sandbox rules. Requires user approval.',
+    description: 'Create or overwrite a workspace file. Path relative to workspace root.',
     parameters: {
       type: 'object',
       required: ['path', 'content'],
       properties: {
-        path: { type: 'string', description: 'Relative file path from workspace root' },
-        content: { type: 'string', description: 'The full file content to write' },
+        path: { type: 'string', description: 'Relative path.' },
+        content: { type: 'string', description: 'File content.' },
       },
     },
     requiresConfirmation: true,
@@ -119,18 +117,14 @@ export function createEditFileTool(
   return {
     name: 'edit_file',
     displaySummary: 'Edit a file by find-and-replace (approval).',
-    description:
-      'Edit an existing file by replacing a specific substring. ' +
-      'Provide the exact old content to replace and the new content. ' +
-      'The old content must match exactly (whitespace-sensitive). ' +
-      'Use read_file first to get the current content. Requires user approval.',
+    description: 'Edit a file by exact find-and-replace. old_content must match exactly (whitespace-sensitive).',
     parameters: {
       type: 'object',
       required: ['path', 'old_content', 'new_content'],
       properties: {
-        path: { type: 'string', description: 'Relative file path from workspace root' },
-        old_content: { type: 'string', description: 'The exact existing content to find and replace (must match exactly)' },
-        new_content: { type: 'string', description: 'The new content to replace it with' },
+        path: { type: 'string', description: 'Relative path.' },
+        old_content: { type: 'string', description: 'Exact text to replace.' },
+        new_content: { type: 'string', description: 'Replacement text.' },
       },
     },
     requiresConfirmation: true,
@@ -206,14 +200,12 @@ export function createDeleteFileTool(
   return {
     name: 'delete_file',
     displaySummary: 'Delete a workspace file (approval).',
-    description:
-      'Delete a file from the workspace. Path is relative to the workspace root. ' +
-      'The file is moved to the OS trash/recycle bin when possible. Requires user approval.',
+    description: 'Delete a workspace file (moves to trash when possible).',
     parameters: {
       type: 'object',
       required: ['path'],
       properties: {
-        path: { type: 'string', description: 'Relative file path from workspace root to delete' },
+        path: { type: 'string', description: 'Relative path.' },
       },
     },
     requiresConfirmation: true,

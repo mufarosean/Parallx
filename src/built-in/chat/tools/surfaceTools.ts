@@ -42,17 +42,14 @@ export function createSurfaceSendTool(
   return {
     name: 'surface_send',
     displaySummary: 'Send content to an output surface (approval).',
-    description:
-      'Send content to a named output surface (chat, canvas, filesystem, ' +
-      'notifications, status). Writes to filesystem or canvas require user ' +
-      'approval.',
+    description: 'Send content to a named output surface.',
     parameters: {
       type: 'object',
       required: ['surfaceId', 'content'],
       properties: {
         surfaceId: {
           type: 'string',
-          description: 'Target surface id (e.g. "notifications", "status").',
+          description: 'Target surface id.',
         },
         contentType: {
           type: 'string',
@@ -60,11 +57,11 @@ export function createSurfaceSendTool(
           description: 'Content type (default: "text").',
         },
         content: {
-          description: 'The content to deliver. Strings for "text", any JSON value for "structured".',
+          description: 'Content to deliver.',
         },
         metadata: {
           type: 'object',
-          description: 'Optional surface-specific metadata (e.g. path for filesystem, severity for notifications).',
+          description: 'Surface-specific metadata.',
         },
       },
     },
@@ -117,7 +114,7 @@ export function createSurfaceListTool(
   return {
     name: 'surface_list',
     displaySummary: 'List output surfaces.',
-    description: 'List all registered output surfaces and their capabilities. Read-only.',
+    description: 'List registered output surfaces.',
     parameters: {
       type: 'object',
       properties: {},

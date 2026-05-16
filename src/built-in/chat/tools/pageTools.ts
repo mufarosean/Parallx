@@ -48,17 +48,15 @@ export function createFindPagesTool(db: IBuiltInToolDatabase | undefined): IChat
     name: 'find_pages',
     displaySummary: 'Find or list workspace pages.',
     description:
-      'Find pages by text query, property filters, or both. With no args, lists recent pages. ' +
-      '`query` does full-text LIKE matching on title/content. ' +
-      '`filter` is an array of {prop, op, value} (ops: equals, not_equals, contains, is_empty, is_not_empty, greater_than, less_than) combined with AND. ' +
-      'Optional `sort: {by, dir}` (`by` may be "title", "updated_at", "created_at", or any property name) and `group: <propertyName>`.',
+      'Find pages by text query, property filters, or both. No args lists recent pages. ' +
+      'filter ops: equals, not_equals, contains, is_empty, is_not_empty, greater_than, less_than.',
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Text to match against page titles and content.' },
+        query: { type: 'string', description: 'Search text (title and content).' },
         filter: {
           type: 'array',
-          description: 'Property filters combined with AND.',
+          description: 'Property filters (AND).',
           items: {
             type: 'object',
             required: ['prop', 'op'],
@@ -298,8 +296,7 @@ export function createGetPageTool(db: IBuiltInToolDatabase | undefined): IChatTo
   return {
     name: 'get_page',
     displaySummary: 'Get page metadata, properties, and applicable definitions.',
-    description:
-      'Get a page\'s metadata (title, icon, dates, block count), its custom property values, and the workspace property definitions available for the page.',
+    description: 'Get page metadata, properties, and applicable property definitions.',
     parameters: {
       type: 'object',
       required: ['pageId'],
@@ -402,7 +399,7 @@ export function createListPropertyDefinitionsTool(db: IBuiltInToolDatabase | und
   return {
     name: 'list_property_definitions',
     displaySummary: 'List workspace property definitions.',
-    description: 'List all property definitions in the workspace. Shows available property names, types, and configuration.',
+    description: 'List workspace property definitions.',
     parameters: {
       type: 'object',
       properties: {},
@@ -524,16 +521,15 @@ export function createCreatePageTool(
   return {
     name: 'create_page',
     displaySummary: 'Create a new workspace page.',
-    description:
-      'Create a new canvas page with a title, optional icon, and optional markdown body. The page is created with a proper canvas content envelope so it opens correctly in the editor. Use the `markdown` field for any structured body (headings, lists, code, tables, etc.). The deprecated `content` field is treated as a plain-text fallback wrapped in a single paragraph.',
+    description: 'Create a canvas page. Use markdown for structured body.',
     parameters: {
       type: 'object',
       required: ['title'],
       properties: {
-        title: { type: 'string', description: 'Page title' },
-        markdown: { type: 'string', description: 'Initial body as markdown (supports headings, lists, code, tables, math, callouts, images)' },
-        content: { type: 'string', description: 'DEPRECATED: plain text used as a single paragraph if markdown is not provided' },
-        icon: { type: 'string', description: 'Page icon emoji' },
+        title: { type: 'string', description: 'Page title.' },
+        markdown: { type: 'string', description: 'Markdown body.' },
+        content: { type: 'string', description: 'Deprecated: plain text body (use markdown instead).' },
+        icon: { type: 'string', description: 'Icon emoji.' },
       },
     },
     requiresConfirmation: true,
@@ -613,22 +609,17 @@ export function createComposePageTool(
   return {
     name: 'compose_page',
     displaySummary: 'Compose a page from markdown.',
-    description:
-      'Author or update a canvas page from markdown. Supports headings, lists, tables, callouts, code blocks, math, images, and inline marks. Use mode "replace" to overwrite, "append" or "prepend" to add to existing content.',
+    description: 'Write or update a canvas page from markdown. mode: replace (default), append, or prepend.',
     parameters: {
       type: 'object',
       required: ['pageId', 'markdown'],
       properties: {
-        pageId: { type: 'string', description: 'The page UUID to update' },
-        markdown: {
-          type: 'string',
-          description:
-            'Markdown body to render into the page. Supports # headings, lists, - [ ] tasks, > [!type] callouts, ```code fences, pipe tables, $$math$$, ![images](src), and inline **bold** / *italic* / `code` / [links](url).',
-        },
+        pageId: { type: 'string', description: 'Page UUID.' },
+        markdown: { type: 'string', description: 'Markdown body.' },
         mode: {
           type: 'string',
           enum: ['replace', 'append', 'prepend'],
-          description: 'How to combine with existing content. Default: replace.',
+          description: 'Combine mode (default: replace).',
         },
       },
     },
@@ -711,8 +702,7 @@ export function createSetPageStyleTool(
   return {
     name: 'set_page_style',
     displaySummary: 'Update a page\'s style (icon, cover, font, width).',
-    description:
-      'Update a page\'s display settings. Provide only the fields you want to change. fontFamily must be "default" | "serif" | "mono". fullWidth and smallText are booleans. icon is an emoji string (pass empty string to clear). coverUrl is a URL string (pass empty string to clear).',
+    description: 'Update page display settings (icon, cover, font, width, text size). Omit unchanged fields.',
     parameters: {
       type: 'object',
       required: ['pageId', 'style'],

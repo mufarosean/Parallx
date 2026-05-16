@@ -68,35 +68,30 @@ export function createSessionsSpawnTool(
   const name = 'sessions_spawn';
   return {
     name,
-    description:
-      'Spawn an isolated subagent to handle a delegated task. The subagent ' +
-      'runs in an ephemeral session with full tool access and returns its ' +
-      'final assistant response. Requires user approval. Subagents cannot ' +
-      'spawn further subagents (max depth 1).',
+    description: 'Spawn a subagent for a delegated task. Returns its final response. Max depth 1.',
     parameters: {
       type: 'object',
       required: ['task'],
       properties: {
         task: {
           type: 'string',
-          description: 'The task / prompt for the subagent to work on.',
+          description: 'Task prompt.',
         },
         label: {
           type: 'string',
-          description: 'Human-readable short label for the sub-task.',
+          description: 'Short label.',
         },
         model: {
           type: 'string',
-          description: 'Optional model override (e.g. "gpt-oss:20b"). Defaults to the parent session model.',
+          description: 'Model override (defaults to parent model).',
         },
         tools: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Optional tool allowlist. Currently informational (captured for M59).',
         },
         timeoutMs: {
           type: 'number',
-          description: 'Subagent run timeout in milliseconds (applied via runTimeoutSeconds).',
+          description: 'Timeout in ms.',
         },
       },
     },

@@ -30,14 +30,12 @@ export function createTranscriptGetTool(fs: IBuiltInToolFileSystem | undefined):
   return {
     name: 'transcript_get',
     displaySummary: 'Read a session transcript.',
-    description:
-      'Read a canonical session transcript from `.parallx/sessions/<session-id>.jsonl`. ' +
-      'Use this only when the user explicitly asks about prior session history or wants a transcript-backed recap.',
+    description: 'Read a session transcript from `.parallx/sessions/`.',
     parameters: {
       type: 'object',
       required: ['sessionId'],
       properties: {
-        sessionId: { type: 'string', description: 'Exact session ID whose transcript should be read.' },
+        sessionId: { type: 'string', description: 'Session ID.' },
       },
     },
     requiresConfirmation: false,
@@ -72,15 +70,13 @@ export function createTranscriptSearchTool(transcriptSearch: IBuiltInToolTranscr
   return {
     name: 'transcript_search',
     displaySummary: 'Semantic search over prior transcripts.',
-    description:
-      'Semantic search over canonical session transcripts in `.parallx/sessions/`. ' +
-      'Use this only for explicit prior-session history questions. This is separate from workspace memory and is disabled unless transcript indexing is turned on.',
+    description: 'Semantic search over session transcripts. Disabled unless transcript indexing is on.',
     parameters: {
       type: 'object',
       required: ['query'],
       properties: {
-        query: { type: 'string', description: 'Natural language query for prior session transcript history.' },
-        sessionId: { type: 'string', description: 'Optional exact session ID filter.' },
+        query: { type: 'string', description: 'Search query.' },
+        sessionId: { type: 'string', description: 'Filter to one session.' },
       },
     },
     requiresConfirmation: false,

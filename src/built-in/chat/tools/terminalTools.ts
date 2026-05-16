@@ -37,17 +37,13 @@ export function createRunCommandTool(terminal: IBuiltInToolTerminal | undefined,
   return {
     name: 'run_command',
     displaySummary: 'Run a shell command (approval).',
-    description:
-      'Execute a shell command in the workspace directory and return the output. ' +
-      'Use for installing dependencies, running builds, executing tests, or gathering system info. ' +
-      'Commands run with a 30-second timeout by default. ' +
-      'Dangerous commands (rm -rf /, shutdown, etc.) are blocked. Requires user approval.',
+    description: 'Run a shell command in the workspace directory. Dangerous commands are blocked.',
     parameters: {
       type: 'object',
       required: ['command'],
       properties: {
-        command: { type: 'string', description: 'The shell command to execute' },
-        timeout: { type: 'number', description: 'Timeout in milliseconds (default: 30000)' },
+        command: { type: 'string', description: 'Shell command.' },
+        timeout: { type: 'number', description: 'Timeout ms (default 30000).' },
       },
     },
     requiresConfirmation: true,

@@ -68,26 +68,25 @@ export function createAutonomyLogTool(log: IAutonomyLogReader | undefined): ICha
   return {
     name: 'autonomy_log',
     displaySummary: 'Read background autonomy events.',
-    description:
-      'Read the autonomy log — results from heartbeat, cron, and subagent runs that happened while you were not on turn. Use this at the start of a turn if the user references background activity, or to catch up on events. Optional filters: origin ("heartbeat"|"cron"|"subagent"|"agent"), limit (default 50, max 200), onlyUnread. Pass markRead: true to mark returned entries as seen.',
+    description: 'Read background autonomy events from heartbeat, cron, and subagent runs.',
     parameters: {
       type: 'object',
       properties: {
         origin: {
           type: 'string',
-          description: 'Filter to a single origin ("heartbeat" | "cron" | "subagent" | "agent").',
+          description: 'Filter by origin: heartbeat, cron, subagent, or agent.',
         },
         limit: {
           type: 'number',
-          description: 'Max entries to return (default 50, capped at 200).',
+          description: 'Max entries (default 50).',
         },
         onlyUnread: {
           type: 'boolean',
-          description: 'Return only entries not yet marked read.',
+          description: 'Return only unread entries.',
         },
         markRead: {
           type: 'boolean',
-          description: 'Mark the returned entries as read after fetching them.',
+          description: 'Mark returned entries as read.',
         },
       },
     },

@@ -57,26 +57,18 @@ export function createParallxLinkTool(getContracts: LinkContractSnapshot): IChat
     name: 'parallx_link',
     displaySummary: 'Mint a validated parallx:// citation URI.',
     description:
-      'Mint a `parallx://` URI for a Parallx resource (canvas page, file, ' +
-      'pdf, media, budget item, graph node, web research result, chat ' +
-      'session). The `target` argument must already be a parallx:// URI ' +
-      'built from one of the templates in the ## Linking section of the ' +
-      'system prompt — this tool validates it but does not construct one ' +
-      'from scratch. Use the optional `anchor` argument to deep-link into ' +
-      'the target (e.g. "page=3&quote=foo" for a pdf, "line=42" for a ' +
-      'file, "block=<blockId>" for a canvas page, "t=42" for a video). ' +
-      'Returns the validated URI plus the contract segment that owns it.',
+      'Validate and mint a parallx:// citation URI. target must follow a template from the ## Linking section. Use anchor for deep-linking.',
     parameters: {
       type: 'object',
       required: ['target'],
       properties: {
         target: {
           type: 'string',
-          description: 'A `parallx://<segment>/<kind>/<id>` URI matching one of the templates in the ## Linking section.',
+          description: 'parallx:// URI from a ## Linking template.',
         },
         anchor: {
           type: 'string',
-          description: 'Optional deep-link query string appended to the URI (without leading `?`). Example: "page=3&quote=foo".',
+          description: 'Deep-link query string (no leading ?).',
         },
         note: {
           type: 'string',

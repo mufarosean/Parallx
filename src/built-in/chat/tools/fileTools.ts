@@ -88,7 +88,7 @@ export function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): ICh
   return {
     name: 'list_files',
     displaySummary: 'List files at a workspace path.',
-    description: 'List files and directories at a workspace path. Returns name, type (file/directory), and size. Path is relative to the workspace root. IMPORTANT: This only lists names — to see file contents, you must follow up with read_file for each file you need.',
+    description: 'List files and directories at a workspace path.',
     parameters: {
       type: 'object',
       properties: {
@@ -126,19 +126,14 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
   return {
     name: 'read_file',
     displaySummary: 'Read a workspace file.',
-    description:
-      'Read the content of a workspace file. Returns the file content along with a workspace directory tree for navigation. ' +
-      'Path is relative to the workspace root. ' +
-      'Supports text files and rich documents (PDF, DOCX, XLSX — text is extracted automatically). ' +
-      'Optionally specify start_line and end_line to read a specific range (1-indexed, text files only). ' +
-      'For large documents like books, prefer search_knowledge which searches across all indexed chunks.',
+    description: 'Read a workspace file. Supports text and rich documents (PDF, DOCX, XLSX). Use start_line/end_line for a range.',
     parameters: {
       type: 'object',
       required: ['path'],
       properties: {
-        path: { type: 'string', description: 'Relative file path from workspace root' },
-        start_line: { type: 'number', description: 'First line to return (1-indexed, inclusive). Omit to read from start.' },
-        end_line: { type: 'number', description: 'Last line to return (1-indexed, inclusive). Omit to read to end.' },
+        path: { type: 'string', description: 'Relative file path from workspace root.' },
+        start_line: { type: 'number', description: 'Start line (1-indexed, inclusive).' },
+        end_line: { type: 'number', description: 'End line (1-indexed, inclusive).' },
       },
     },
     requiresConfirmation: false,
@@ -209,13 +204,13 @@ export function createSearchFilesTool(fs: IBuiltInToolFileSystem | undefined): I
   return {
     name: 'search_files',
     displaySummary: 'Find files by name pattern.',
-    description: 'Find files in the workspace matching a name pattern (case-insensitive substring match). Returns relative paths. Max depth 5, max 50 results.',
+    description: 'Find files by name pattern (case-insensitive substring).',
     parameters: {
       type: 'object',
       required: ['pattern'],
       properties: {
-        pattern: { type: 'string', description: 'Substring to match against file/directory names (case-insensitive)' },
-        path: { type: 'string', description: 'Relative directory to search within (default: workspace root ".")' },
+        pattern: { type: 'string', description: 'Name pattern.' },
+        path: { type: 'string', description: 'Directory to search (default: workspace root).' },
       },
     },
     requiresConfirmation: false,
@@ -254,18 +249,15 @@ export function createGrepSearchTool(fs: IBuiltInToolFileSystem | undefined): IC
   return {
     name: 'grep_search',
     displaySummary: 'Search file contents by pattern.',
-    description:
-      'Search for text content inside workspace files. Finds lines matching a pattern (plain text or regex) ' +
-      'and returns matching lines with surrounding context. Use this to find specific code, strings, or patterns ' +
-      'across the workspace. For filename search, use search_files instead.',
+    description: 'Search file contents by text or regex pattern.',
     parameters: {
       type: 'object',
       required: ['pattern'],
       properties: {
-        pattern: { type: 'string', description: 'Text or regex pattern to search for (case-insensitive by default)' },
-        path: { type: 'string', description: 'Relative directory or file to search within (default: workspace root ".")' },
-        is_regex: { type: 'boolean', description: 'Whether the pattern is a regular expression (default: false)' },
-        case_sensitive: { type: 'boolean', description: 'Whether the search is case-sensitive (default: false)' },
+        pattern: { type: 'string', description: 'Search pattern (plain text or regex).' },
+        path: { type: 'string', description: 'Directory or file to search (default: workspace root).' },
+        is_regex: { type: 'boolean', description: 'Treat pattern as regex.' },
+        case_sensitive: { type: 'boolean', description: 'Case-sensitive match.' },
       },
     },
     requiresConfirmation: false,
@@ -469,24 +461,20 @@ export function createSearchKnowledgeTool(retrieval: IBuiltInToolRetrieval | und
   return {
     name: 'search_knowledge',
     displaySummary: 'Semantic search across indexed content.',
-    description:
-      'Semantic search across all indexed knowledge (canvas pages, workspace files, and rich documents like PDFs, DOCX, and XLSX). ' +
-      'Use this when you need to find information beyond what is already provided in the context. ' +
-      'This is the best tool for searching large documents — content is chunked and indexed for efficient retrieval. ' +
-      'Returns the most relevant chunks with source attribution.',
+    description: 'Semantic search across indexed pages, files, and documents (PDF, DOCX, XLSX).',
     parameters: {
       type: 'object',
       required: ['query'],
       properties: {
-        query: { type: 'string', description: 'Natural language search query' },
+        query: { type: 'string', description: 'Natural language search query.' },
         source_filter: {
           type: 'string',
-          description: 'Optional filter: "page_block" for canvas pages only, "file_chunk" for workspace files only',
+          description: 'page_block (canvas only) or file_chunk (files only).',
           enum: ['page_block', 'file_chunk'],
         },
         folder_path: {
           type: 'string',
-          description: 'Optional folder path to restrict search scope (e.g. "RF Guides/")',
+          description: 'Folder path to restrict scope (e.g. "RF Guides/").',
         },
       },
     },

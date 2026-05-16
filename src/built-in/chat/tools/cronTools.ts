@@ -119,19 +119,18 @@ function missingHost(): IToolResult {
 
 const SCHEDULE_SCHEMA = {
   type: 'object',
-  description: 'Schedule spec — exactly one of at / every / cron must be set.',
+  description: 'Exactly one of at / every / cron must be set.',
   properties: {
-    at: { type: 'string', description: 'ISO-8601 datetime for a one-shot job.' },
-    every: { type: 'string', description: 'Duration string for repeating jobs (e.g. "5m", "1h").' },
-    cron: { type: 'string', description: 'Standard 5-field cron expression.' },
+    at: { type: 'string', description: 'ISO-8601 datetime (one-shot).' },
+    every: { type: 'string', description: 'Repeat interval (e.g. "5m", "1h").' },
+    cron: { type: 'string', description: '5-field cron expression.' },
   },
 };
 
 const PAYLOAD_SCHEMA = {
   type: 'object',
-  description: 'Payload delivered when the job fires.',
   properties: {
-    agentTurn: { type: 'string', description: 'Message to inject as an agent turn (executed by M59 substrate; captured-only in M58).' },
+    agentTurn: { type: 'string', description: 'Agent turn message to run on fire.' },
     systemEvent: { type: 'object', description: 'Structured system event to emit.' },
   },
 };
@@ -144,7 +143,7 @@ export function createCronStatusTool(host: ICronToolHost | undefined): IChatTool
   const name = 'cron_status';
   return {
     name,
-    description: 'Report cron scheduler status: active timer, total jobs, running jobs, total runs.',
+    description: 'Cron scheduler status.',
     parameters: { type: 'object', properties: {} },
     requiresConfirmation: false,
     permissionLevel: cronToolPermissionLevel(name),
@@ -164,7 +163,7 @@ export function createCronListTool(host: ICronToolHost | undefined): IChatTool {
   const name = 'cron_list';
   return {
     name,
-    description: 'List all scheduled cron jobs (read-only).',
+    description: 'List scheduled cron jobs.',
     parameters: { type: 'object', properties: {} },
     requiresConfirmation: false,
     permissionLevel: cronToolPermissionLevel(name),
@@ -184,19 +183,19 @@ export function createCronAddTool(host: ICronToolHost | undefined): IChatTool {
   const name = 'cron_add';
   return {
     name,
-    description: 'Schedule a new cron job. Requires user approval. Exactly one of schedule.at / schedule.every / schedule.cron.',
+    description: 'Schedule a cron job. Exactly one of schedule.at/every/cron.',
     parameters: {
       type: 'object',
       required: ['name', 'schedule', 'payload'],
       properties: {
-        name: { type: 'string', description: 'Human-readable job name.' },
+        name: { type: 'string', description: 'Job name.' },
         schedule: SCHEDULE_SCHEMA,
         payload: PAYLOAD_SCHEMA,
-        wakeMode: { type: 'string', enum: ['now', 'next-heartbeat'], description: 'When to fire (default: "now").' },
-        contextMessages: { type: 'number', description: 'Number of recent chat messages to include when firing (0-10).' },
-        enabled: { type: 'boolean', description: 'Whether the job starts enabled (default: true).' },
-        description: { type: 'string', description: 'Optional human description.' },
-        deleteAfterRun: { type: 'boolean', description: 'Auto-remove after one successful fire.' },
+        wakeMode: { type: 'string', enum: ['now', 'next-heartbeat'] },
+        contextMessages: { type: 'number', description: 'Recent messages to include on fire (0–10).' },
+        enabled: { type: 'boolean' },
+        description: { type: 'string' },
+        deleteAfterRun: { type: 'boolean', description: 'Auto-remove after first successful run.' },
       },
     },
     requiresConfirmation: true,
@@ -237,12 +236,12 @@ export function createCronUpdateTool(host: ICronToolHost | undefined): IChatTool
   const name = 'cron_update';
   return {
     name,
-    description: 'Update an existing cron job. Requires user approval.',
+    description: 'Update a cron job.',
     parameters: {
       type: 'object',
       required: ['id'],
       properties: {
-        id: { type: 'string', description: 'Job id (returned by cron_add / cron_list).' },
+        id: { type: 'string', description: 'Job id.' },
         name: { type: 'string' },
         schedule: SCHEDULE_SCHEMA,
         payload: PAYLOAD_SCHEMA,
@@ -288,12 +287,12 @@ export function createCronRemoveTool(host: ICronToolHost | undefined): IChatTool
   const name = 'cron_remove';
   return {
     name,
-    description: 'Remove a scheduled cron job. Requires user approval.',
+    description: 'Remove a cron job.',
     parameters: {
       type: 'object',
       required: ['id'],
       properties: {
-        id: { type: 'string', description: 'Job id to remove.' },
+        id: { type: 'string', description: 'Job id.' },
       },
     },
     requiresConfirmation: true,
@@ -317,12 +316,12 @@ export function createCronRunTool(host: ICronToolHost | undefined): IChatTool {
   const name = 'cron_run';
   return {
     name,
-    description: 'Manually fire a cron job by id (user-initiated).',
+    description: 'Fire a cron job immediately.',
     parameters: {
       type: 'object',
       required: ['id'],
       properties: {
-        id: { type: 'string', description: 'Job id to fire now.' },
+        id: { type: 'string', description: 'Job id.' },
       },
     },
     requiresConfirmation: false,
@@ -350,11 +349,11 @@ export function createCronRunsTool(host: ICronToolHost | undefined): IChatTool {
   const name = 'cron_runs';
   return {
     name,
-    description: 'List recent cron fire history. Optional `jobId` filters to a single job.',
+    description: 'List cron fire history.',
     parameters: {
       type: 'object',
       properties: {
-        jobId: { type: 'string', description: 'Optional — restrict history to this job.' },
+        jobId: { type: 'string', description: 'Filter to one job.' },
       },
     },
     requiresConfirmation: false,
@@ -377,7 +376,7 @@ export function createCronWakeTool(host: ICronToolHost | undefined): IChatTool {
   const name = 'cron_wake';
   return {
     name,
-    description: 'Trigger an immediate check for due cron jobs (user-initiated; does not create work).',
+    description: 'Check for due cron jobs now.',
     parameters: { type: 'object', properties: {} },
     requiresConfirmation: false,
     permissionLevel: cronToolPermissionLevel(name),
