@@ -143,15 +143,19 @@
   min-width: 0;
   overflow: auto;
   background: var(--vscode-editor-background, #1e1e1e);
+  padding: 24px;
 }
 
 .epub-reader-content {
   box-sizing: border-box;
-  width: min(100%, 860px);
-  min-height: 100%;
+  width: min(calc(100% - 2px), var(--epub-page-width, 860px));
+  min-height: calc(100% - 2px);
   margin: 0 auto;
   padding: 44px 42px 76px;
   color: var(--vscode-editor-foreground, #d4d4d4);
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.22);
   font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
   line-height: 1.72;
   overflow-wrap: anywhere;
@@ -301,5 +305,9 @@
 
   .epub-reader-content {
     padding: 30px 22px 58px;
+  }
+
+  .epub-reader-scroll {
+    padding: 14px;
   }
 }

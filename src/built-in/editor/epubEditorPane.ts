@@ -14,6 +14,7 @@ const PANE_ID = 'epub-editor-pane';
 const MIN_FONT_SCALE = 0.8;
 const MAX_FONT_SCALE = 1.6;
 const FONT_SCALE_STEP = 0.1;
+const BASE_PAGE_WIDTH = 860;
 
 const ICON = {
   book: getIcon('book-open-text'),
@@ -309,6 +310,7 @@ export class EpubEditorPane extends EditorPane {
   private _applyFontScale(): void {
     if (this._contentEl) {
       this._contentEl.style.fontSize = `${16 * this._fontScale}px`;
+      this._contentEl.style.setProperty('--epub-page-width', `${Math.round(BASE_PAGE_WIDTH * this._fontScale)}px`);
     }
     if (this._zoomLabelEl) {
       this._zoomLabelEl.textContent = `${Math.round(this._fontScale * 100)}%`;
