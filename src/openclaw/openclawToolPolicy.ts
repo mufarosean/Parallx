@@ -398,12 +398,17 @@ export function resolveToolProfile(mode: string | undefined): OpenclawToolProfil
 export type ToolColor = 'red' | 'blue' | 'green';
 
 /**
- * Red tools — sources of untrusted content (M65 Iter 2, extended M67 Phase 4.4).
+ * Red tools — sources of untrusted external content (M65 Iter 2).
  * Their output may carry attacker-controlled instructions; any turn that executes
  * one is "tainted" and subsequent blue tool calls require explicit user approval.
  *
- * - webSearch / webFetch: external web content
- * - read_file: workspace files may embed injected instructions (prompt injection via files)
+ * Scope is deliberately narrow: web fetch/search are external by definition.
+ * `read_file` was considered for inclusion (workspace files could in theory
+ * embed injected instructions) but rejected — the user owns the workspace, and
+ * tainting every read-then-edit workflow would make routine work require an
+ * approval on every write. The threat is real but the mitigation cost is too
+ * high; users who need stricter file taint can configure it explicitly per
+ * workspace via persistent permission overrides.
  *
  * MCP-prefixed tools (`mcp__*`) are handled dynamically in `getToolColor()` —
  * MCP servers are external and their outputs are untrusted.
@@ -411,7 +416,6 @@ export type ToolColor = 'red' | 'blue' | 'green';
 const RED_TOOLS: ReadonlySet<string> = new Set<string>([
   'webSearch',
   'webFetch',
-  'read_file',
 ]);
 
 /**
