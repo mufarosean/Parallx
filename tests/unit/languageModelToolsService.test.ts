@@ -203,13 +203,12 @@ describe('LanguageModelToolsService', () => {
       expect(result.isError).toBe(true);
     });
 
-    it('bypasses confirmation when autoApprove is enabled on permission service', async () => {
+    it('bypasses confirmation when approval strictness is streamlined', async () => {
       const handler = vi.fn(async () => ({ content: 'auto-ok' }));
       service.registerTool(createTool({ requiresConfirmation: true, handler }));
 
       const permissionService = new PermissionService();
-      permissionService.setAutoApprove(true);
-      expect(permissionService.autoApprove).toBe(true);
+      permissionService.setApprovalStrictness('streamlined');
       service.setPermissionService(permissionService);
 
       const result = await service.invokeTool('test_tool', {}, createToken());

@@ -79,9 +79,6 @@ export class PermissionService extends Disposable {
   /** Persistent overrides (from .parallx/permissions.json). */
   private readonly _persistentOverrides = new Map<string, ToolPermissionLevel>();
 
-  /** Global auto-approve mode (YOLO). */
-  private _autoApprove = false;
-
   /** Approval strictness from agent config. */
   private _approvalStrictness: AgentApprovalStrictness = 'balanced';
 
@@ -291,17 +288,6 @@ export class PermissionService extends Disposable {
     return tools;
   }
 
-  /** Set global auto-approve mode (bypasses all confirmation). */
-  setAutoApprove(enabled: boolean): void {
-    this._autoApprove = enabled;
-    this._onDidChange.fire();
-  }
-
-  /** Whether auto-approve is currently enabled. */
-  get autoApprove(): boolean {
-    return this._autoApprove;
-  }
-
   /** Set the approval strictness from agent config. */
   setApprovalStrictness(strictness: AgentApprovalStrictness): void {
     this._approvalStrictness = strictness;
@@ -419,12 +405,7 @@ export class PermissionService extends Disposable {
     // auto-approve and streamlined fast-paths are bypassed for them.
     const forceConfirmation = ALWAYS_REQUIRE_CONFIRMATION.has(toolName);
 
-    // 1. Global auto-approve overrides everything (except force-confirmation tools)
-    if (this._autoApprove && !forceConfirmation) {
-      return { level: 'always-allowed', autoApproved: true, source: 'global-auto' };
-    }
-
-    // 2. Persistent override from permissions.json
+    // 1. Persistent override from permissions.json
     const persistent = this._persistentOverrides.get(toolName);
     if (persistent) {
       // never-allowed is always honoured (stricter than force-confirmation)

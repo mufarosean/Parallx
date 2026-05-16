@@ -495,6 +495,11 @@ async function createWindow() {
     lastEditableContextMenu = null;
   });
 
+  // M67 Phase 4.2 — Block renderer-initiated window.open() calls. Extensions
+  // must use api.window.startDrag() or shell.openExternal() via IPC; they must
+  // NOT be able to spawn new BrowserWindows that bypass CSP/preload.
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
   if (saved?.isMaximized) {
     mainWindow.maximize();
   }
@@ -679,6 +684,87 @@ ipcMain.handle('tools:get-directories', async () => {
   return { builtinDir, userDir, devDir };
 });
 
+// ── .plx package integrity verification (M67 Phase 4.3) ─────────────────────
+
+const _PLX_INTEGRITY_FILENAME = 'parallx-integrity.json';
+
+// SubjectPublicKeyInfo DER prefix for Ed25519 (OID 1.3.101.112). Prepend to
+// a raw 32-byte public key to produce the DER-SPKI format Node.js expects.
+const _ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+
+/**
+ * Verify the SHA-256 hash manifest inside a .plx zip, and optionally verify
+ * the manifest's Ed25519 signature.
+ *
+ * The file `parallx-integrity.json` in the archive must have the shape:
+ *   {
+ *     "version": 1,
+ *     "files": { "<filename>": "<sha256-hex>", ... },
+ *     "publicKey": "<base64 raw 32-byte Ed25519 key>",   // optional
+ *     "signature": "<base64 Ed25519 signature>"           // optional, requires publicKey
+ *   }
+ *
+ * If `parallx-integrity.json` is absent, this function returns null and the
+ * install proceeds without integrity verification (backward-compatible).
+ *
+ * @returns {string|null} null on success, error message string on failure.
+ */
+function _verifyPackageIntegrity(zip) {
+  const entry = zip.getEntry(_PLX_INTEGRITY_FILENAME);
+  if (!entry) return null; // integrity file optional
+
+  let integrity;
+  try {
+    integrity = JSON.parse(entry.getData().toString('utf8'));
+  } catch {
+    return 'parallx-integrity.json is not valid JSON';
+  }
+
+  if (!integrity || typeof integrity.files !== 'object' || integrity.files === null) {
+    return 'parallx-integrity.json is missing the "files" hash map';
+  }
+
+  // Verify SHA-256 of every declared file.
+  for (const [filename, expectedHash] of Object.entries(integrity.files)) {
+    if (filename === _PLX_INTEGRITY_FILENAME) continue; // skip self
+    const fileEntry = zip.getEntry(filename);
+    if (!fileEntry) {
+      return `Integrity check failed: declared file "${filename}" not found in package`;
+    }
+    const actualHash = crypto.createHash('sha256').update(fileEntry.getData()).digest('hex');
+    if (actualHash !== expectedHash) {
+      return `Integrity check failed: SHA-256 mismatch for "${filename}"`;
+    }
+  }
+
+  // Optional Ed25519 signature over the sorted canonical JSON of the files map.
+  if (integrity.signature && integrity.publicKey) {
+    const filesCanonical = JSON.stringify(
+      Object.fromEntries(Object.entries(integrity.files).sort(([a], [b]) => a.localeCompare(b))),
+    );
+    try {
+      const rawKey = Buffer.from(integrity.publicKey, 'base64');
+      if (rawKey.length !== 32) {
+        return 'Package publicKey must be a base64-encoded 32-byte Ed25519 key';
+      }
+      const spkiKey = Buffer.concat([_ED25519_SPKI_PREFIX, rawKey]);
+      const isValid = crypto.verify(
+        null,
+        Buffer.from(filesCanonical, 'utf8'),
+        { key: spkiKey, format: 'der', type: 'spki' },
+        Buffer.from(integrity.signature, 'base64'),
+      );
+      if (!isValid) {
+        return 'Package Ed25519 signature is invalid — package may have been tampered with';
+      }
+    } catch (err) {
+      return `Package signature verification error: ${err.message}`;
+    }
+  }
+
+  return null; // all checks passed
+}
+
 // ── IPC handlers for tool package installation/uninstallation ──
 
 /**
@@ -751,6 +837,12 @@ ipcMain.handle('tools:install-from-file', async (_event) => {
     }
     if (!manifest.version || typeof manifest.version !== 'string') {
       return { error: 'Invalid manifest: missing or invalid "version" field' };
+    }
+
+    // 4b. Verify SHA-256 hash manifest + optional Ed25519 signature (M67 Phase 4.3).
+    const integrityError = _verifyPackageIntegrity(zip);
+    if (integrityError) {
+      return { error: integrityError };
     }
 
     // 5. Extract to data/extensions/<tool-id>/

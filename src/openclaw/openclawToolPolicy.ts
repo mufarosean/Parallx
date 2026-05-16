@@ -398,12 +398,20 @@ export function resolveToolProfile(mode: string | undefined): OpenclawToolProfil
 export type ToolColor = 'red' | 'blue' | 'green';
 
 /**
- * Red tools — sources of untrusted external content (M65 Iter 2).
- * Future M66 image fetch (`webFetchImages`) joins here.
+ * Red tools — sources of untrusted content (M65 Iter 2, extended M67 Phase 4.4).
+ * Their output may carry attacker-controlled instructions; any turn that executes
+ * one is "tainted" and subsequent blue tool calls require explicit user approval.
+ *
+ * - webSearch / webFetch: external web content
+ * - read_file: workspace files may embed injected instructions (prompt injection via files)
+ *
+ * MCP-prefixed tools (`mcp__*`) are handled dynamically in `getToolColor()` —
+ * MCP servers are external and their outputs are untrusted.
  */
 const RED_TOOLS: ReadonlySet<string> = new Set<string>([
   'webSearch',
   'webFetch',
+  'read_file',
 ]);
 
 /**
@@ -438,9 +446,13 @@ const BLUE_TOOLS: ReadonlySet<string> = new Set<string>([
 
 /**
  * Return the color of a tool by name. Unknown names are `green` (uncolored).
+ *
+ * MCP-sourced tools (`mcp__<server>__<name>`) are always red — their outputs
+ * come from external servers whose responses may carry attacker-controlled content.
  */
 export function getToolColor(toolName: string): ToolColor {
   if (RED_TOOLS.has(toolName)) return 'red';
+  if (toolName.startsWith('mcp__')) return 'red';
   if (BLUE_TOOLS.has(toolName)) return 'blue';
   return 'green';
 }

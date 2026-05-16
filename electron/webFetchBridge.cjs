@@ -41,7 +41,7 @@ const dns = require('dns');
 const https = require('https');
 const net = require('net');
 const os = require('os');
-const { URL } = require('url');
+const { URL, domainToASCII } = require('url');
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -154,7 +154,11 @@ function isPrivateIp(ip) {
  */
 function isBlocklistedHost(host, pathname) {
   if (typeof host !== 'string') return true;
-  const h = host.toLowerCase();
+  // Normalize to punycode ASCII before matching so IDN homoglyphs are caught
+  // even if the caller passes a non-normalized hostname (defense-in-depth;
+  // `new URL().hostname` already does this, but callers can bypass that path).
+  const ascii = domainToASCII(host);
+  const h = (ascii && ascii.length > 0 ? ascii : host).toLowerCase();
   for (const entry of DOMAIN_BLOCKLIST) {
     if (h === entry) return true;
     if (h.endsWith('.' + entry)) return true;
