@@ -617,7 +617,10 @@ async function _appendHistoryLine(api, line) {
         const present = await fs.exists(fileUri);
         if (present) {
           const raw = await fs.readFile(fileUri);
-          existing = (typeof raw === 'string') ? raw : new TextDecoder().decode(raw);
+          // readFile returns { content: string, encoding: string } — extract content.
+          existing = raw && typeof raw === 'object' && typeof raw.content === 'string'
+            ? raw.content
+            : typeof raw === 'string' ? raw : '';
         }
       } catch { /* treat as empty */ }
     }
