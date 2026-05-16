@@ -16,6 +16,11 @@ import type { SearchResult } from './vectorStoreService.js';
 
 export type SemanticGraphSourceType = 'page_block' | 'file_chunk';
 
+export interface NodeChunk {
+  text: string;
+  contextPrefix: string;
+}
+
 export interface SemanticGraphEdge {
   sourceNodeId: string;
   targetNodeId: string;
@@ -249,6 +254,17 @@ export class SemanticGraphService extends Disposable {
       queuedSources: this._queue.size,
       isProcessing: this._processing,
     };
+  }
+
+  async getNodeChunks(nodeId: string, maxChunks: number = 20): Promise<NodeChunk[]> {
+    if (!this._db.isOpen) {
+      return [];
+    }
+    const source = this._nodeIdToSource(nodeId);
+    if (!source) {
+      return [];
+    }
+    return this._vectorStore.getSourceChunks(source.sourceType, source.sourceId, maxChunks);
   }
 
   override dispose(): void {
@@ -571,6 +587,22 @@ export class SemanticGraphService extends Disposable {
 
   private _sourceToNodeId(sourceType: SemanticGraphSourceType, sourceId: string): string | undefined {
     return semanticSourceToNodeId(sourceType, sourceId, this._workspaceRootUri());
+  }
+
+  private _nodeIdToSource(nodeId: string): { sourceType: SemanticGraphSourceType; sourceId: string } | undefined {
+    if (nodeId.startsWith('page:')) {
+      return { sourceType: 'page_block', sourceId: nodeId.slice(5) };
+    }
+    if (nodeId.startsWith('file:')) {
+      const root = this._workspaceRootUri();
+      if (!root) return undefined;
+      const normalizedRoot = root.endsWith('/') ? root.slice(0, -1) : root;
+      const uri = nodeId.slice(5);
+      if (!uri.startsWith(normalizedRoot)) return undefined;
+      const rel = uri.slice(normalizedRoot.length).replace(/^\/+/, '');
+      return { sourceType: 'file_chunk', sourceId: rel };
+    }
+    return undefined;
   }
 
   private _workspaceRootUri(): string | undefined {

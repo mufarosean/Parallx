@@ -823,6 +823,30 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     return { sourceType, sourceId, vector: centroid, chunkCount };
   }
 
+  async getSourceChunks(
+    sourceType: string,
+    sourceId: string,
+    limit: number = 20,
+  ): Promise<Array<{ text: string; contextPrefix: string; chunkIndex: number }>> {
+    const rows = await this._db.all<{
+      chunk_text: string;
+      context_prefix: string;
+      chunk_index: string;
+    }>(
+      `SELECT chunk_text, context_prefix, chunk_index
+         FROM vec_embeddings
+        WHERE source_type = ? AND source_id = ?
+        ORDER BY CAST(chunk_index AS INTEGER) ASC
+        LIMIT ?`,
+      [sourceType, sourceId, limit],
+    );
+    return rows.map((r) => ({
+      text: r.chunk_text,
+      contextPrefix: r.context_prefix,
+      chunkIndex: Number(r.chunk_index),
+    }));
+  }
+
   // ── Internal: Vector Search ──
 
   private async _vectorSearch(

@@ -1512,6 +1512,13 @@ export interface IVectorStoreService extends IDisposable {
 
   /** Fires when a source is indexed/re-indexed. */
   readonly onDidUpdateIndex: Event<{ sourceId: string; chunkCount: number }>;
+
+  /** Fetch stored chunk texts for one indexed source, ordered by chunk index. */
+  getSourceChunks(
+    sourceType: string,
+    sourceId: string,
+    limit?: number,
+  ): Promise<Array<{ text: string; contextPrefix: string; chunkIndex: number }>>;
 }
 
 export const IVectorStoreService = createServiceIdentifier<IVectorStoreService>('IVectorStoreService');
@@ -1628,6 +1635,15 @@ export interface ISemanticGraphService extends IDisposable {
 
   /** Lightweight diagnostics for settings/logging surfaces. */
   getStats(): Promise<import('./semanticGraphService.js').SemanticGraphStats>;
+
+  /**
+   * Fetch stored chunk texts for a graph node id (e.g. `page:<id>` or `file:<uri>`).
+   * Returns an empty array if the node has no indexed content. Never calls a model.
+   */
+  getNodeChunks(
+    nodeId: string,
+    maxChunks?: number,
+  ): Promise<import('./semanticGraphService.js').NodeChunk[]>;
 }
 
 export const ISemanticGraphService = createServiceIdentifier<ISemanticGraphService>('ISemanticGraphService');

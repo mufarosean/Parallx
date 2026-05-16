@@ -529,8 +529,10 @@ async function buildGraphData(api) {
     _collectFiles(api, nodes, edges),
     _collectCanvasPages(api, nodes, edges),
     _collectSessions(api, nodes, edges),
-    _collectProviders(api, nodes, edges),
   ]);
+  // Run providers after core collectors so the dedup `seen` set in
+  // _collectProviders captures all file/page/session nodes first.
+  await _collectProviders(api, nodes, edges);
 
   // Drop edges that reference unknown nodes (provider may reference a
   // file/page node id that wasn't included, e.g. a session referencing
@@ -1330,6 +1332,7 @@ function createGraphEditor(container, api) {
   // ── Inspector ──
   function _openInspector(node) {
     selected = node;
+    _model._lastSelectedId = node.id;
     inspector.style.width = '280px';
     _renderInspector(node);
     _redraw();
@@ -1337,6 +1340,7 @@ function createGraphEditor(container, api) {
 
   function _closeInspector() {
     selected = null;
+    _model._lastSelectedId = null;
     inspector.style.width = '0';
     _redraw();
   }
@@ -1357,10 +1361,15 @@ function createGraphEditor(container, api) {
         return bScore - aScore || a.node.label.localeCompare(b.node.label);
       });
 
+    const semanticConns = connections.filter(c => c.edge.kind === 'semantic');
+    const isContentNode = node.domain === 'canvas-page' || node.domain === 'file';
+
+    const openBtnStyle = 'background:none;border:none;color:var(--vscode-descriptionForeground,#555);cursor:pointer;font-size:13px;padding:0 2px;flex-shrink:0;line-height:1;';
     let html = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <strong style="color:var(--vscode-editor-foreground,#fff);font-size:13px">${_esc(node.label)}</strong>
-        <button style="background:none;border:none;color:var(--vscode-descriptionForeground,#666);cursor:pointer;font-size:16px" id="__wg_closeInsp">&times;</button>
+      <div style="display:flex;align-items:center;gap:2px;margin-bottom:8px">
+        <strong style="color:var(--vscode-editor-foreground,#fff);font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc(node.label)}</strong>
+        ${isContentNode ? `<button id="__wg_openNode" title="Open" style="${openBtnStyle}">↗</button>` : ''}
+        <button style="background:none;border:none;color:var(--vscode-descriptionForeground,#666);cursor:pointer;font-size:16px;flex-shrink:0;" id="__wg_closeInsp">&times;</button>
       </div>
       <div style="color:var(--vscode-descriptionForeground,#666);font-size:11px;margin-bottom:8px">${_esc(node.domain)} &middot; ${_esc(node.meta.type || '')}</div>
     `;
@@ -1376,12 +1385,28 @@ function createGraphEditor(container, api) {
       </div>`;
     }
 
+    // AI inspector section — enabled for any node with semantic connections,
+    // even if it has no indexed content itself (concept/structural nodes).
+    const askBtnStyle = 'background:var(--vscode-button-secondaryBackground,#1a1a2e);color:var(--vscode-button-secondaryForeground,#aaa);border:1px solid var(--vscode-panel-border,#2a2a4a);border-radius:4px;padding:3px 9px;font-size:11px;cursor:pointer;font-family:var(--parallx-fontFamily-ui);';
+    if (semanticConns.length > 0) {
+      html += `<div id="__wg_ai" style="margin:0 0 10px;"><button id="__wg_askAi" style="${askBtnStyle}">✦ Ask AI</button></div>`;
+    } else {
+      html += `<div id="__wg_ai" style="margin:0 0 10px;"><span style="color:#555;font-size:11px" title="No semantic connections to analyze">✦ Ask AI</span></div>`;
+    }
+
     html += `<div style="margin-top:8px"><strong style="color:var(--vscode-descriptionForeground,#888);font-size:11px">Connections (${connections.length})</strong>`;
+    const rowOpenBtnStyle = 'background:none;border:none;color:var(--vscode-descriptionForeground,#555);cursor:pointer;font-size:11px;padding:0 2px;flex-shrink:0;line-height:1;';
     html += connections.length
-      ? connections.map(({ edge, node: other }) => `<div class="__wg_inspLink" data-id="${other.id}" style="padding:5px 0;cursor:pointer;color:#9ab;font-size:11px;border-bottom:1px solid rgba(127,127,127,.12)">
-          <div>${_esc(other.label)}</div>
-          <div style="color:var(--vscode-descriptionForeground,#777);font-size:10px">${_esc(_formatConnectionMeta(edge))}</div>
-        </div>`).join('')
+      ? connections.map(({ edge, node: other }) => {
+          const canOpen = other.domain === 'canvas-page' || other.domain === 'file';
+          return `<div class="__wg_inspLink" data-id="${other.id}" style="padding:5px 0;cursor:pointer;color:#9ab;font-size:11px;border-bottom:1px solid rgba(127,127,127,.12)">
+            <div style="display:flex;align-items:center;gap:2px">
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc(other.label)}</span>
+              ${canOpen ? `<button class="__wg_openLink" data-node-id="${other.id}" title="Open" style="${rowOpenBtnStyle}">↗</button>` : ''}
+            </div>
+            <div style="color:var(--vscode-descriptionForeground,#777);font-size:10px">${_esc(_formatConnectionMeta(edge))}</div>
+          </div>`;
+        }).join('')
       : '<div style="color:#555;font-size:11px">None</div>';
     html += '</div>';
 
@@ -1389,6 +1414,12 @@ function createGraphEditor(container, api) {
 
     const closeBtn = inspInner.querySelector('#__wg_closeInsp');
     if (closeBtn) closeBtn.addEventListener('click', _closeInspector);
+
+    const openNodeBtn = inspInner.querySelector('#__wg_openNode');
+    if (openNodeBtn) openNodeBtn.addEventListener('click', (e) => { e.stopPropagation(); _openNodeExternally(node); });
+
+    const askBtn = inspInner.querySelector('#__wg_askAi');
+    if (askBtn) askBtn.addEventListener('click', () => _askAi(node, semanticConns));
 
     for (const link of inspInner.querySelectorAll('.__wg_inspLink')) {
       link.addEventListener('click', () => {
@@ -1400,6 +1431,259 @@ function createGraphEditor(container, api) {
         }
       });
     }
+
+    for (const openBtn of inspInner.querySelectorAll('.__wg_openLink')) {
+      openBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const target = m.byId.get(openBtn.dataset.nodeId);
+        if (target) _openNodeExternally(target);
+      });
+    }
+  }
+
+  function _openNodeExternally(node) {
+    if (node.domain === 'file' && node.meta.uri) {
+      api.editors.openFileEditor(node.meta.uri).catch(err => console.warn('[WorkspaceGraph] openFileEditor failed:', err));
+    } else if (node.domain === 'canvas-page') {
+      const instanceId = node.meta.pageId || node.id.slice('page:'.length);
+      api.editors.openEditor({ typeId: 'canvas', title: node.meta.title || node.label, icon: node.meta.icon, instanceId })
+        .catch(err => console.warn('[WorkspaceGraph] openEditor failed:', err));
+    }
+  }
+
+  function _addToChat(node, parsed, semanticConns) {
+    // Build a self-describing block so the chat AI has full framing context —
+    // it won't know this came from the workspace graph inspector otherwise.
+    const domainLabel = node.domain === 'canvas-page' ? 'Canvas page' : node.domain === 'file' ? 'File' : node.domain;
+    let text =
+      `The following is an AI-generated analysis from the Parallx Workspace Graph inspector.\n` +
+      `It was produced by examining the indexed content of a node and its semantic neighbors.\n\n` +
+      `Node: "${node.label}" (${domainLabel})\n\n` +
+      `Summary:\n${parsed.summary}`;
+
+    if (Array.isArray(parsed.connections) && semanticConns.length > 0) {
+      text += '\n\nSemantic connections (conceptually related nodes in the workspace):';
+      semanticConns.forEach((conn, i) => {
+        const explanation = parsed.connections[i];
+        if (explanation) {
+          const connDomain = conn.node.domain === 'canvas-page' ? 'canvas page' : conn.node.domain === 'file' ? 'file' : conn.node.domain;
+          text += `\n- "${conn.node.label}" (${connDomain}): ${explanation}`;
+        }
+      });
+    }
+
+    text += '\n\nYou can ask follow-up questions about this node, explore any of its connections, or request deeper analysis of the concepts described above.';
+
+    document.dispatchEvent(new CustomEvent('parallx-selection-action', {
+      bubbles: true,
+      detail: {
+        actionId: 'add-to-chat',
+        selectedText: text,
+        surface: 'workspace-graph',
+        source: {
+          fileName: `Workspace Graph — ${node.label}`,
+          filePath: node.meta.uri || node.id,
+        },
+      },
+    }));
+  }
+
+  async function _askAi(node, semanticConns) {
+    const requestNodeId = node.id;
+    const aiDiv = inspInner.querySelector('#__wg_ai');
+    if (!aiDiv) return;
+
+    const service = _getSemanticGraphService(api);
+    if (!service || typeof service.getNodeChunks !== 'function') {
+      aiDiv.innerHTML = '<span style="color:#666;font-size:11px">AI summary not available.</span>';
+      return;
+    }
+
+    // Loading state
+    aiDiv.innerHTML = '<span style="color:#777;font-size:11px">✦ Thinking…</span>';
+
+    // Fetch chunks for node and all semantic neighbors in parallel
+    let nodeChunks, neighborChunkSets;
+    try {
+      [nodeChunks, ...neighborChunkSets] = await Promise.all([
+        service.getNodeChunks(node.id),
+        ...semanticConns.map(c => service.getNodeChunks(c.node.id)),
+      ]);
+    } catch (err) {
+      console.warn('[WorkspaceGraph] getNodeChunks failed:', err);
+      if (selected?.id === requestNodeId) {
+        aiDiv.innerHTML = '<span style="color:#a55;font-size:11px">Failed to read content.</span>';
+      }
+      return;
+    }
+
+    if (selected?.id !== requestNodeId) return;
+
+    // Build prompt — two modes depending on whether the node has its own content.
+    const hasOwnContent = nodeChunks && nodeChunks.length > 0;
+    let userMsg;
+
+    if (hasOwnContent) {
+      // ── Standard mode: node has indexed content ──────────────────────────────
+      const nodeText = nodeChunks.map(c => c.text).join('\n\n');
+      userMsg = `## Source to Analyze\nTitle: ${node.label}\n\n${nodeText}`;
+
+      if (semanticConns.length > 0) {
+        userMsg += '\n\n## Related Sources\n';
+        semanticConns.forEach((c, i) => {
+          const chunks = neighborChunkSets[i] || [];
+          const text = chunks.map(ch => ch.text).join('\n\n') || '(no indexed content)';
+          userMsg += `\n### [${i + 1}] ${c.node.label}\n${text}`;
+        });
+        userMsg += `
+
+## Your Task
+
+**Step 1 — Summary**
+Write 3–4 sentences describing what the main source is about. Name the specific concepts, arguments, formulas, or information it contains. Explain what makes it significant and how it fits into the broader subject area.
+
+**Step 2 — Connections**
+For each related source above, write 1–2 sentences describing the precise intellectual relationship to the main source. Focus on how the knowledge in one source depends on, extends, applies, or contrasts with the knowledge in the other. Name the specific concepts, definitions, or ideas that form the bridge.
+
+Weak example (too vague — do not write like this): "Both sources discuss mortality."
+Strong example (specific and precise): "The force of mortality defined in the main source is the continuous foundation that the related source applies directly in its net single premium derivations — grasping the integral form here is a prerequisite for following the formulas there."
+
+The connections array must have exactly ${semanticConns.length} entries, one per related source in the order listed above ([1], [2], ...).
+
+Respond using this exact JSON with no other text before or after it:
+{"summary":"...","connections":["explanation for [1]","explanation for [2]"]}`;
+      } else {
+        userMsg += `
+
+## Your Task
+
+Write 3–4 sentences describing what this source is about. Name the specific concepts, arguments, formulas, or information it contains. Explain what makes it significant and how it fits into the broader subject area.
+
+Respond using this exact JSON with no other text before or after it:
+{"summary":"...","connections":[]}`;
+      }
+    } else {
+      // ── Concept-node mode: no indexed content — infer from neighbors ─────────
+      // The node itself has no text, but its semantic connections do. Ask the AI
+      // to infer what concept or theme the node label represents based purely on
+      // the content of its connected sources.
+      userMsg = `## Concept Node\nLabel: "${node.label}"\n\nThis node has no direct content of its own. It is a connecting concept in a knowledge graph, semantically linked to the following sources.\n\n## Connected Sources\n`;
+      semanticConns.forEach((c, i) => {
+        const chunks = neighborChunkSets[i] || [];
+        const text = chunks.map(ch => ch.text).join('\n\n') || '(no indexed content)';
+        userMsg += `\n### [${i + 1}] ${c.node.label}\n${text}`;
+      });
+      userMsg += `
+
+## Your Task
+
+This node is labeled "${node.label}" and acts as a shared concept or theme connecting the sources above.
+
+**Step 1 — Concept summary**
+Write 3–4 sentences explaining what concept, idea, or theme this node label represents, inferred entirely from the connected sources. Be specific: name the exact theories, formulas, principles, or arguments that appear across the connected sources and explain why they cohere under the label "${node.label}".
+
+**Step 2 — Connections**
+For each connected source above, write 1–2 sentences explaining how that source instantiates, applies, or contributes to the central concept. Name specific ideas, formulas, or arguments from that source.
+
+The connections array must have exactly ${semanticConns.length} entries, one per connected source in the order listed above ([1], [2], ...).
+
+Respond using this exact JSON with no other text before or after it:
+{"summary":"...","connections":["explanation for [1]","explanation for [2]"]}`;
+    }
+
+    const messages = [
+      {
+        role: 'system',
+        content: 'You are a knowledge assistant helping a user build a mind map of their study material and personal notes. Your job is to surface precise meaning: explain what a source is truly about and identify the exact intellectual relationships between connected sources — dependencies, applications, extensions, contrasts, or shared foundations. Be specific and technical. Name concepts, formulas, and ideas explicitly. Avoid vague statements like "both discuss X." Do not invent information not present in the provided content.',
+      },
+      { role: 'user', content: userMsg },
+    ];
+
+    // Resolve model — prefer active chat session, fall back to first available
+    let stream;
+    try {
+      const provider = await api.commands.executeCommand('chat.getInlineAIProvider').catch(() => null);
+      if (provider?.sendChatRequest) {
+        stream = provider.sendChatRequest(messages);
+      } else {
+        const models = await api.lm.getModels();
+        if (!models || !models.length) {
+          if (selected?.id === requestNodeId) {
+            aiDiv.innerHTML = '<span style="color:#a55;font-size:11px">No language model available. Open a chat session or configure a model in AI Settings.</span>';
+          }
+          return;
+        }
+        stream = api.lm.sendChatRequest(models[0].id, messages);
+      }
+    } catch (err) {
+      console.warn('[WorkspaceGraph] AI model error:', err);
+      if (selected?.id === requestNodeId) {
+        aiDiv.innerHTML = '<span style="color:#a55;font-size:11px">AI request failed.</span>';
+      }
+      return;
+    }
+
+    // Show thinking indicator while stream runs — do NOT render raw JSON tokens
+    let _thinkDots = 0;
+    const _thinkTimer = setInterval(() => {
+      _thinkDots = (_thinkDots + 1) % 4;
+      if (selected?.id === requestNodeId) {
+        aiDiv.innerHTML = `<span style="color:#777;font-size:11px">✦ Thinking${'.'.repeat(_thinkDots)}</span>`;
+      }
+    }, 400);
+
+    // Stream and accumulate (silently)
+    let fullText = '';
+    try {
+      for await (const chunk of stream) {
+        if (selected?.id !== requestNodeId) { clearInterval(_thinkTimer); return; }
+        fullText += chunk.content || '';
+      }
+    } catch (err) {
+      console.warn('[WorkspaceGraph] AI stream error:', err);
+    } finally {
+      clearInterval(_thinkTimer);
+    }
+
+    if (selected?.id !== requestNodeId) return;
+
+    // Parse structured JSON response — greedy match to tolerate preamble/postamble
+    let parsed = null;
+    try {
+      const match = fullText.match(/\{[\s\S]*\}/);
+      if (match) parsed = JSON.parse(match[0]);
+    } catch { /* fall through to raw render */ }
+
+    const askBtnStyle = 'background:none;border:none;color:var(--vscode-descriptionForeground,#555);cursor:pointer;font-size:11px;padding:4px 0 0;font-family:var(--parallx-fontFamily-ui);';
+    const actionRowHtml = `<div style="display:flex;gap:12px;margin-top:4px"><button id="__wg_reaskAi" style="${askBtnStyle}">↺ Re-ask AI</button><button id="__wg_addToChat" style="${askBtnStyle}">→ Add to Chat</button></div>`;
+    if (parsed?.summary) {
+      aiDiv.innerHTML = `<div style="color:var(--vscode-editor-foreground,#ddd);font-size:12px;line-height:1.6;margin-bottom:6px">${_esc(parsed.summary)}</div>${actionRowHtml}`;
+      // Attach connection explanations by index — the model returns an ordered
+      // array matching semanticConns order, so we never rely on it reproducing
+      // node IDs (which fail with long URL-encoded paths).
+      if (Array.isArray(parsed.connections)) {
+        semanticConns.forEach((conn, i) => {
+          const explanation = parsed.connections[i];
+          if (!explanation || typeof explanation !== 'string') return;
+          const linkEl = Array.from(inspInner.querySelectorAll('.__wg_inspLink'))
+            .find(el => el.dataset.id === conn.node.id);
+          if (!linkEl) return;
+          const expDiv = document.createElement('div');
+          expDiv.style.cssText = 'color:#8899aa;font-size:10px;margin-top:3px;font-style:italic;line-height:1.4;';
+          expDiv.textContent = explanation;
+          linkEl.appendChild(expDiv);
+        });
+      }
+    } else {
+      // Fallback: raw model text so the user always sees something
+      aiDiv.innerHTML = `<div style="color:#aaa;font-size:11px;line-height:1.5;white-space:pre-wrap">${_esc(fullText || 'No response.')}</div>${actionRowHtml}`;
+    }
+
+    const reaskBtn = aiDiv.querySelector('#__wg_reaskAi');
+    if (reaskBtn) reaskBtn.addEventListener('click', () => _askAi(node, semanticConns));
+
+    const addToChatBtn = aiDiv.querySelector('#__wg_addToChat');
+    if (addToChatBtn && parsed?.summary) addToChatBtn.addEventListener('click', () => _addToChat(node, parsed, semanticConns));
   }
 
   // ── Animation Loop ──
@@ -1424,9 +1708,13 @@ function createGraphEditor(container, api) {
 
   // ── Data Loading ──
   async function _refresh() {
+    // Preserve whichever node was selected — across both same-instance refreshes
+    // (e.g. canvas page change event) and cross-instance recreations where
+    // _model._lastSelectedId survives because _model is module-level.
+    const prevSelectedId = selected?.id ?? _model._lastSelectedId ?? null;
     await m.refresh();
-    selected = null; hovered = null;
-    inspector.style.width = '0';
+
+    hovered = null;
     nodeCount.textContent = `${m.nodes.length} nodes \xb7 ${m.edges.length} edges`;
 
     const q = searchInput.value.toLowerCase().trim();
@@ -1434,6 +1722,17 @@ function createGraphEditor(container, api) {
       for (const n of m.nodes) {
         n.visible = n.label.toLowerCase().includes(q) || n.domain.toLowerCase().includes(q);
       }
+    }
+
+    // Restore inspector if the previously selected node still exists in the
+    // refreshed graph, otherwise close it.
+    if (prevSelectedId && m.byId.has(prevSelectedId)) {
+      selected = m.byId.get(prevSelectedId);
+      inspector.style.width = '280px';
+      _renderInspector(selected);
+    } else {
+      selected = null;
+      inspector.style.width = '0';
     }
 
     setTimeout(() => _fitAndDraw(), 500);
