@@ -40,6 +40,7 @@ import { AutoTaggingService } from '../services/autoTaggingService.js';
 import { ProactiveSuggestionsService } from '../services/proactiveSuggestionsService.js';
 import { SemanticGraphService } from '../services/semanticGraphService.js';
 import { MindMapRefreshOrchestrator } from '../services/mindMapRefreshOrchestrator.js';
+import { LineageClassifierService } from '../services/lineageClassifierService.js';
 import { DocumentExtractionService } from '../services/documentExtractionService.js';
 import { UnifiedAIConfigService } from '../aiSettings/unifiedAIConfigService.js';
 import { DiagnosticsService } from '../services/diagnosticsService.js';
@@ -288,10 +289,32 @@ export function registerIndexingServices(
   const relatedContentService = new RelatedContentService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
   const autoTaggingService = new AutoTaggingService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
   const semanticGraphService = new SemanticGraphService(databaseService, vectorStoreService, indexingPipeline, workspaceService);
-  // M76 Phase 3 — user-initiated mind-map refresh. No producers registered
-  // here yet; Phase 4 (lineage) and Phase 5 (concept clustering) will call
-  // orchestrator.registerPass() during their own service setup.
+  // M76 Phase 3 — user-initiated mind-map refresh. Phase 4 (lineage) and
+  // Phase 5 (concept clustering) register their RefreshPass with this
+  // orchestrator during their own service construction below.
   const mindMapRefreshOrchestrator = new MindMapRefreshOrchestrator(databaseService);
+
+  // M76 Phase 4 — lineage classifier. Self-registers a RefreshPass with the
+  // orchestrator. Requires ILanguageModelsService, which registerChatServices
+  // has already added to the DI container by the time this runs.
+  const languageModelsService = services.has(ILanguageModelsService)
+    ? services.get(ILanguageModelsService)
+    : undefined;
+  if (languageModelsService) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _lineageClassifier = new LineageClassifierService(
+      databaseService,
+      vectorStoreService,
+      languageModelsService,
+      workspaceService,
+      mindMapRefreshOrchestrator,
+    );
+    // The classifier registers its pass in its constructor and is otherwise
+    // stateless from the outside — no separate DI registration needed.
+    // Suppress the unused-variable warning above; the constructor side
+    // effect (pass registration) is the point of the assignment.
+    void _lineageClassifier;
+  }
 
   // M40 Phase 6: Proactive suggestions read thresholds from unified effective config.
   const unifiedConfigService = services.has(IUnifiedAIConfigService) ? services.get(IUnifiedAIConfigService) : undefined;

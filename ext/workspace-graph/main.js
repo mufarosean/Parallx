@@ -1375,10 +1375,15 @@ function createGraphEditor(container, api) {
       <label style="display:flex;align-items:center;gap:6px;color:var(--vscode-editor-foreground,#ccc);margin:4px 0;cursor:pointer;">
         <input type="checkbox" id="__gs_kind_cooccurrence" ${GS.edgeKindVisibility['co-occurrence'] ? 'checked' : ''}> ${EDGE_KIND_LABEL['co-occurrence']}
       </label>
-      <!-- Phase 4 lineage and Phase 5 concept membership will add their
-           checkboxes here as those producers come online. The visibility
-           map already contains entries for every kind so each future
-           phase only has to render its checkbox. -->
+      <label style="display:flex;align-items:center;gap:6px;color:var(--vscode-editor-foreground,#ccc);margin:4px 0;cursor:pointer;">
+        <input type="checkbox" id="__gs_kind_extends" ${GS.edgeKindVisibility['extends'] ? 'checked' : ''}> ${EDGE_KIND_LABEL['extends']}
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;color:var(--vscode-editor-foreground,#ccc);margin:4px 0;cursor:pointer;">
+        <input type="checkbox" id="__gs_kind_refutes" ${GS.edgeKindVisibility['refutes'] ? 'checked' : ''}> ${EDGE_KIND_LABEL['refutes']}
+      </label>
+      <!-- Phase 5 concept membership will add its checkbox here. The
+           visibility map already contains entries for every kind so
+           each future phase only has to render its checkbox. -->
     `;
 
     // Wire close button
@@ -1447,6 +1452,8 @@ function createGraphEditor(container, api) {
     _wireKindCheck('references', 'references');
     _wireKindCheck('samefolder', 'same-folder');
     _wireKindCheck('cooccurrence', 'co-occurrence');
+    _wireKindCheck('extends', 'extends');
+    _wireKindCheck('refutes', 'refutes');
 
     // M76 Phase 3 — wire the refresh section. Status line + history are
     // populated async; button + history toggle attach handlers now.
