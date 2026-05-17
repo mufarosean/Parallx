@@ -1648,6 +1648,34 @@ export interface ISemanticGraphService extends IDisposable {
 
 export const ISemanticGraphService = createServiceIdentifier<ISemanticGraphService>('ISemanticGraphService');
 
+// ─── IMindMapRefreshOrchestrator (M76 Phase 3) ────────────────────────────
+
+/**
+ * Owns the user-initiated, incremental refresh of LLM-driven mind-map
+ * producers. Phase 4 (lineage) and Phase 5 (concept clustering) register
+ * themselves here. Workspace-graph UI subscribes to status events.
+ *
+ * Never runs autonomously — only when something calls startRefresh().
+ */
+export interface IMindMapRefreshOrchestrator extends IDisposable {
+  readonly onDidChangeStatus: Event<import('./mindMapRefreshOrchestrator.js').RefreshStatus>;
+  readonly onDidComplete: Event<import('./mindMapRefreshOrchestrator.js').RefreshResult>;
+
+  getStatus(): import('./mindMapRefreshOrchestrator.js').RefreshStatus;
+  registerPass(pass: import('./mindMapRefreshOrchestrator.js').RefreshPass): IDisposable;
+  getRegisteredPasses(): readonly { id: string; displayName: string }[];
+  preview(): Promise<import('./mindMapRefreshOrchestrator.js').RefreshPreview>;
+  startRefresh(): Promise<import('./mindMapRefreshOrchestrator.js').RefreshResult>;
+  cancelRefresh(): void;
+  getRefreshHistory(
+    limit?: number,
+  ): Promise<import('./mindMapRefreshOrchestrator.js').RefreshHistoryEntry[]>;
+}
+
+export const IMindMapRefreshOrchestrator = createServiceIdentifier<IMindMapRefreshOrchestrator>(
+  'IMindMapRefreshOrchestrator',
+);
+
 // ─── IRetrievalService (M10 Task 3.1) ─────────────────────────────────────
 
 /**
