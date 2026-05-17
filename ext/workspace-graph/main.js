@@ -869,7 +869,26 @@ function _fileLabelFromNodeId(nodeId) {
   try { return decodeURIComponent(label); } catch { return label; }
 }
 
-function _makeSemanticEndpointNode(nodeId) {
+function _makeSemanticEndpointNode(nodeId, conceptMetaById) {
+  // M76 Phase 5 — concept node endpoints (member-of edges point at these).
+  if (nodeId.startsWith('concept:')) {
+    const stableId = nodeId.slice(8);
+    const meta = conceptMetaById ? conceptMetaById.get(stableId) : null;
+    return {
+      id: nodeId,
+      label: meta ? meta.label : 'Concept',
+      domain: 'concept',
+      // Bright orange — distinct from file/page/session colors so concept
+      // nodes are visually obvious as hubs in the graph.
+      color: '#ffb74d',
+      weight: meta ? Math.max(5, Math.min(12, 4 + Math.log2(1 + meta.memberCount) * 2)) : 6,
+      meta: {
+        type: 'concept',
+        stableId,
+        memberCount: meta ? meta.memberCount : 0,
+      },
+    };
+  }
   if (!nodeId.startsWith('file:')) return null;
   if (_isIgnoredWorkspaceInternalPath(nodeId)) return null;
   const uri = nodeId.slice(5);
@@ -918,6 +937,23 @@ function _registerSemanticGraphProvider(api, context) {
         service.ensureCacheStarted();
       }
       const cached = await service.getCachedEdges({ maxEdges: 500, minScore: 0.72, kinds: visible });
+
+      // M76 Phase 5 — concept-node metadata (labels + member counts) lives
+      // in a separate table from the edges. Fetch it whenever the user has
+      // member-of edges visible so concept nodes render with real labels.
+      let conceptMetaById = null;
+      if (GS.edgeKindVisibility['member-of'] && typeof service.getConceptNodes === 'function') {
+        try {
+          const conceptRows = await service.getConceptNodes();
+          conceptMetaById = new Map();
+          for (const c of conceptRows) {
+            conceptMetaById.set(c.stableId, { label: c.label, memberCount: c.memberCount });
+          }
+        } catch (err) {
+          console.warn('[WorkspaceGraph] getConceptNodes failed:', err);
+        }
+      }
+
       const nodes = [];
       const seenNodes = new Set();
       const edges = [];
@@ -930,7 +966,7 @@ function _registerSemanticGraphProvider(api, context) {
         }
         for (const nodeId of [edge.sourceNodeId, edge.targetNodeId]) {
           if (seenNodes.has(nodeId)) continue;
-          const node = _makeSemanticEndpointNode(nodeId);
+          const node = _makeSemanticEndpointNode(nodeId, conceptMetaById);
           if (node) {
             seenNodes.add(nodeId);
             nodes.push(node);
@@ -1381,9 +1417,9 @@ function createGraphEditor(container, api) {
       <label style="display:flex;align-items:center;gap:6px;color:var(--vscode-editor-foreground,#ccc);margin:4px 0;cursor:pointer;">
         <input type="checkbox" id="__gs_kind_refutes" ${GS.edgeKindVisibility['refutes'] ? 'checked' : ''}> ${EDGE_KIND_LABEL['refutes']}
       </label>
-      <!-- Phase 5 concept membership will add its checkbox here. The
-           visibility map already contains entries for every kind so
-           each future phase only has to render its checkbox. -->
+      <label style="display:flex;align-items:center;gap:6px;color:var(--vscode-editor-foreground,#ccc);margin:4px 0;cursor:pointer;">
+        <input type="checkbox" id="__gs_kind_memberof" ${GS.edgeKindVisibility['member-of'] ? 'checked' : ''}> ${EDGE_KIND_LABEL['member-of']}
+      </label>
     `;
 
     // Wire close button
@@ -1454,6 +1490,7 @@ function createGraphEditor(container, api) {
     _wireKindCheck('cooccurrence', 'co-occurrence');
     _wireKindCheck('extends', 'extends');
     _wireKindCheck('refutes', 'refutes');
+    _wireKindCheck('memberof', 'member-of');
 
     // M76 Phase 3 — wire the refresh section. Status line + history are
     // populated async; button + history toggle attach handlers now.

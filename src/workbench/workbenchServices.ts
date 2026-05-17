@@ -41,6 +41,7 @@ import { ProactiveSuggestionsService } from '../services/proactiveSuggestionsSer
 import { SemanticGraphService } from '../services/semanticGraphService.js';
 import { MindMapRefreshOrchestrator } from '../services/mindMapRefreshOrchestrator.js';
 import { LineageClassifierService } from '../services/lineageClassifierService.js';
+import { ConceptNodeService } from '../services/conceptNodeService.js';
 import { DocumentExtractionService } from '../services/documentExtractionService.js';
 import { UnifiedAIConfigService } from '../aiSettings/unifiedAIConfigService.js';
 import { DiagnosticsService } from '../services/diagnosticsService.js';
@@ -314,6 +315,17 @@ export function registerIndexingServices(
     // Suppress the unused-variable warning above; the constructor side
     // effect (pass registration) is the point of the assignment.
     void _lineageClassifier;
+
+    // M76 Phase 5 — concept clustering. Same self-registration pattern.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _conceptNodeService = new ConceptNodeService(
+      databaseService,
+      vectorStoreService,
+      languageModelsService,
+      workspaceService,
+      mindMapRefreshOrchestrator,
+    );
+    void _conceptNodeService;
   }
 
   // M40 Phase 6: Proactive suggestions read thresholds from unified effective config.

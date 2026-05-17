@@ -64,6 +64,23 @@ export interface SemanticGraphEdge {
   updatedAt: string;
 }
 
+/**
+ * Concept node read by the workspace-graph UI (M76 Phase 5). One row per
+ * cluster currently materialised in concept_nodes. The graph extension
+ * uses these to render concept nodes as first-class graph nodes (label,
+ * member count) and to filter the user-deleted tombstones out of the
+ * visualisation while preserving them in the DB so re-clustering keeps
+ * the deletion sticky.
+ */
+export interface ConceptNodeRow {
+  readonly stableId: string;
+  readonly label: string;
+  readonly memberCount: number;
+  readonly userRenamed: boolean;
+  readonly userDeleted: boolean;
+  readonly lastClusteredAt: string;
+}
+
 export interface SemanticGraphEdgeOptions {
   maxEdges?: number;
   minScore?: number;
@@ -321,6 +338,38 @@ export class SemanticGraphService extends Disposable {
       return [];
     }
     return this._vectorStore.getSourceChunks(source.sourceType, source.sourceId, maxChunks);
+  }
+
+  /**
+   * Concept nodes materialised by the M76 Phase 5 clustering pass.
+   * Returns only non-user-deleted clusters by default; user-deleted rows
+   * remain in the DB as tombstones for the carry-over rule but should
+   * NOT appear in the graph.
+   */
+  async getConceptNodes(): Promise<ConceptNodeRow[]> {
+    if (!this._db.isOpen) return [];
+    await this._ensureSchema();
+    const rows = await this._db.all<{
+      stable_id: string;
+      label: string;
+      member_count: number;
+      user_renamed: number;
+      user_deleted: number;
+      last_clustered_at: string;
+    }>(
+      `SELECT stable_id, label, member_count, user_renamed, user_deleted, last_clustered_at
+         FROM concept_nodes
+        WHERE user_deleted = 0
+        ORDER BY member_count DESC, label ASC`,
+    );
+    return rows.map((r) => ({
+      stableId: r.stable_id,
+      label: r.label,
+      memberCount: r.member_count,
+      userRenamed: r.user_renamed === 1,
+      userDeleted: r.user_deleted === 1,
+      lastClusteredAt: r.last_clustered_at,
+    }));
   }
 
   override dispose(): void {

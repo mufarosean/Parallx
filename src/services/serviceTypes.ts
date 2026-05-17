@@ -1644,6 +1644,13 @@ export interface ISemanticGraphService extends IDisposable {
     nodeId: string,
     maxChunks?: number,
   ): Promise<import('./semanticGraphService.js').NodeChunk[]>;
+
+  /**
+   * Concept nodes materialised by the M76 Phase 5 clustering pass. Used
+   * by the workspace-graph extension to render concept nodes with their
+   * labels. Excludes user-deleted tombstone rows.
+   */
+  getConceptNodes(): Promise<import('./semanticGraphService.js').ConceptNodeRow[]>;
 }
 
 export const ISemanticGraphService = createServiceIdentifier<ISemanticGraphService>('ISemanticGraphService');
