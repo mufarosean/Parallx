@@ -53,6 +53,16 @@ declare global {
         saveFile(options?: { filters?: { name: string; extensions: string[] }[]; defaultPath?: string; defaultName?: string }): Promise<string | null>;
         showMessageBox(options: { type?: string; title?: string; message: string; detail?: string; buttons?: string[]; defaultId?: number; cancelId?: number; checkboxLabel?: string; checkboxChecked?: boolean }): Promise<{ response: number; checkboxChecked: boolean }>;
       };
+      shell?: {
+        showItemInFolder(filePath: string): Promise<unknown>;
+        openPath(filePath: string): Promise<string>;
+        openExternal(url: string): Promise<{ ok: boolean; error?: string }>;
+      };
+      clipboard?: {
+        readText(): string;
+        readHTML(): string;
+        writeText(text: string): void;
+      };
       editableMenu?: {
         onOpen: (cb: (payload: {
           x: number;

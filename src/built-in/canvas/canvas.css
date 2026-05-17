@@ -995,6 +995,8 @@
 }
 
 .canvas-bubble-link-apply,
+.canvas-bubble-link-copy,
+.canvas-bubble-link-open,
 .canvas-bubble-link-remove {
   background: none;
   border: none;
@@ -1013,6 +1015,12 @@
 .canvas-bubble-link-apply:hover {
   background: rgba(255, 255, 255, 0.08);
   color: var(--vscode-testing-iconPassed);
+}
+
+.canvas-bubble-link-copy:hover,
+.canvas-bubble-link-open:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--vscode-textLink-foreground);
 }
 
 .canvas-bubble-link-remove:hover {

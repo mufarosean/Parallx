@@ -127,9 +127,9 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     /** Open file with the system default application. Returns error string or ''. */
     openPath: (filePath) => ipcRenderer.invoke('shell:openPath', filePath),
     /**
-     * Open an external https:// URL in the user's default browser.
-     * Main-process validation: only `https://` is accepted; any other
-     * scheme (`file://`, `javascript:`, `http://`, etc.) is rejected.
+     * Open an external http(s) URL in the user's default browser.
+     * Main-process validation: only `http://` and `https://` are accepted;
+     * any other scheme (`file://`, `javascript:`, custom protocols, etc.) is rejected.
      * Returns { ok: true } on success or { ok: false, error } on rejection.
      * (M60 §T6.F2 — Gmail OAuth desktop flow.)
      */

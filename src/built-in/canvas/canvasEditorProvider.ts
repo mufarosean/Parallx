@@ -45,6 +45,60 @@ const lowlight = createLowlight(common);
 
 export type OpenEditorFn = (options: { typeId: string; title: string; icon?: string; instanceId?: string }) => Promise<void>;
 
+interface CanvasWindowApi {
+  showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
+  showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
+  showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
+}
+
+interface ElectronLinkBridge {
+  shell?: {
+    openExternal?: (url: string) => Promise<{ ok?: boolean; error?: string } | void>;
+  };
+  clipboard?: {
+    writeText?: (text: string) => void;
+  };
+}
+
+function getElectronLinkBridge(): ElectronLinkBridge | undefined {
+  return (globalThis as unknown as { parallxElectron?: ElectronLinkBridge }).parallxElectron;
+}
+
+function normalizeExternalWebLink(rawHref: string): string | null {
+  const trimmed = rawHref.trim();
+  if (!trimmed) return null;
+
+  const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(trimmed);
+  const candidate = hasScheme ? trimmed : `https://${trimmed}`;
+
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+async function writeClipboardText(text: string): Promise<boolean> {
+  const bridge = getElectronLinkBridge();
+  if (bridge?.clipboard?.writeText) {
+    try {
+      bridge.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall through to the browser clipboard API.
+    }
+  }
+
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export class CanvasEditorProvider {
   private _openEditor: OpenEditorFn | undefined;
 
@@ -69,6 +123,7 @@ export class CanvasEditorProvider {
 
   constructor(
     private readonly _dataService: ICanvasDataService,
+    private readonly _window: CanvasWindowApi | undefined,
   ) {}
 
   /**
@@ -158,6 +213,10 @@ export class CanvasEditorProvider {
     return this._pageMenuHandlers.get(pageId);
   }
 
+  get window(): CanvasWindowApi | undefined {
+    return this._window;
+  }
+
 }
 
 // ─── Canvas Editor Pane ─────────────────────────────────────────────────────
@@ -209,6 +268,23 @@ class CanvasEditorPane implements IDisposable {
   // ── Property bar ──
   private _propertyBar: PropertyBar | null = null;
 
+  private readonly _handleEditorLinkClick = (event: MouseEvent): void => {
+    if (event.defaultPrevented || event.button !== 0) return;
+
+    const target = event.target as HTMLElement | null;
+    if (!target?.closest('.canvas-tiptap-editor')) return;
+
+    const link = target.closest<HTMLAnchorElement>('a[href]');
+    if (!link || !this._editorContainer?.contains(link)) return;
+
+    const href = link.getAttribute('href') ?? '';
+    if (!href.trim()) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    void this.openLinkInExternalBrowser(href);
+  };
+
   constructor(
     private readonly _container: HTMLElement,
     private readonly _pageId: string,
@@ -229,6 +305,49 @@ class CanvasEditorPane implements IDisposable {
   get input(): IEditorInput | undefined { return this._input; }
   get openEditor(): OpenEditorFn | undefined { return this._openEditor; }
   get blockSelection(): BlockSelectionController { return this._blockSelection; }
+
+  async copyLinkToClipboard(href: string): Promise<void> {
+    const text = href.trim();
+    if (!text) return;
+
+    const copied = await writeClipboardText(text);
+    if (copied) {
+      await this._provider.window?.showInformationMessage('Link copied.');
+    } else {
+      await this._provider.window?.showWarningMessage('Could not copy link.');
+    }
+  }
+
+  async openLinkInExternalBrowser(href: string): Promise<void> {
+    const url = normalizeExternalWebLink(href);
+    if (!url) {
+      await this._provider.window?.showWarningMessage('Only http:// and https:// links can be opened.');
+      return;
+    }
+
+    const confirmation = await this._provider.window?.showWarningMessage(
+      'Open link in external browser?',
+      { title: 'Open' },
+      { title: 'Cancel' },
+    );
+    if (confirmation?.title !== 'Open') return;
+
+    try {
+      const shell = getElectronLinkBridge()?.shell;
+      if (shell?.openExternal) {
+        const result = await shell.openExternal(url);
+        if (result && typeof result === 'object' && result.ok === false) {
+          throw new Error(result.error || 'openExternal failed');
+        }
+        return;
+      }
+
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      console.error('[CanvasEditorPane] Failed to open external link:', err);
+      await this._provider.window?.showErrorMessage('Failed to open link.');
+    }
+  }
 
   /** Registry-managed icon picker delegate — lazy because registry is created after pageChrome. */
   get showIconPicker(): (opts: {
@@ -439,6 +558,13 @@ class CanvasEditorPane implements IDisposable {
     }
 
     // ── Click handler for inline math nodes (click-to-edit) ──
+    // Link clicks prompt before leaving Parallx for the external browser.
+    this._editorContainer.addEventListener('click', this._handleEditorLinkClick);
+    this._saveDisposables.add({
+      dispose: () => this._editorContainer?.removeEventListener('click', this._handleEditorLinkClick),
+    });
+
+    // Inline math nodes open their in-place editor on click.
     this._editorContainer.addEventListener('click', (e) => {
       const target = (e.target as HTMLElement).closest('.tiptap-math.latex');
       if (!target || !this._editor) return;

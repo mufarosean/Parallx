@@ -1357,17 +1357,22 @@ ipcMain.handle('shell:openPath', async (_event, filePath) => {
 // shell.openExternal directly (contextIsolation: true), so it goes
 // through this IPC.
 //
-// Validation: the URL MUST start with `https://`. Any other scheme
-// (`http://`, `file://`, `javascript:`, `data:`, custom protocols) is
-// rejected. This blocks both classical XSS-via-IPC vectors and any
-// loopback scheme; the OAuth flow uses the Google-hosted
-// `accounts.google.com` URL which is always https.
+// Validation: the URL MUST be a normal web URL (`http://` or `https://`).
+// Any other scheme (`file://`, `javascript:`, `data:`, custom protocols) is
+// rejected. This keeps renderer-triggered shell launches scoped to browser
+// navigation while allowing regular links from editor content.
 ipcMain.handle('shell:openExternal', async (_event, url) => {
-  if (typeof url !== 'string' || !url.startsWith('https://')) {
-    return { ok: false, error: 'invalid-url-scheme: only https:// is allowed' };
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    return { ok: false, error: 'invalid-url' };
+  }
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    return { ok: false, error: 'invalid-url-scheme: only http:// and https:// are allowed' };
   }
   try {
-    await shell.openExternal(url);
+    await shell.openExternal(parsedUrl.toString());
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err && err.message ? err.message : String(err) };

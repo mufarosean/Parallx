@@ -20,6 +20,8 @@ export interface BubbleMenuHost {
   readonly editor: Editor | null;
   readonly container: HTMLElement;
   readonly editorContainer: HTMLElement | null;
+  copyLinkToClipboard(href: string): Promise<void>;
+  openLinkInExternalBrowser(href: string): Promise<void>;
 }
 
 // ── Controller ──────────────────────────────────────────────────────────────
@@ -173,20 +175,39 @@ export class BubbleMenuController implements ICanvasMenu {
     const linkApply = $('button.canvas-bubble-link-apply');
     linkApply.textContent = '✓';
     linkApply.title = 'Apply link';
+    const linkCopy = $('button.canvas-bubble-link-copy');
+    linkCopy.innerHTML = svgIcon('copy');
+    linkCopy.title = 'Copy link';
+    const linkOpen = $('button.canvas-bubble-link-open');
+    linkOpen.innerHTML = svgIcon('external-link');
+    linkOpen.title = 'Open link';
     const linkRemove = $('button.canvas-bubble-link-remove');
     linkRemove.innerHTML = svgIcon('close');
-    const lrSvg = linkRemove.querySelector('svg');
-    if (lrSvg) { lrSvg.setAttribute('width', '12'); lrSvg.setAttribute('height', '12'); }
+    for (const iconButton of [linkCopy, linkOpen, linkRemove]) {
+      const svg = iconButton.querySelector('svg');
+      if (svg) { svg.setAttribute('width', '12'); svg.setAttribute('height', '12'); }
+    }
     linkRemove.title = 'Remove link';
 
-    linkApply.addEventListener('mousedown', (ev) => {
-      ev.preventDefault();
+    const getCurrentLinkHref = (): string => {
+      const fieldValue = linkField.value.trim();
+      if (fieldValue) return fieldValue;
+      const attrs = this._host.editor?.getAttributes('link');
+      return typeof attrs?.href === 'string' ? attrs.href.trim() : '';
+    };
+
+    const applyLinkValue = (): void => {
       const url = linkField.value.trim();
       const editor = this._host.editor;
       if (url && editor) {
         editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
       }
       this._linkInput!.style.display = 'none';
+    };
+
+    linkApply.addEventListener('mousedown', (ev) => {
+      ev.preventDefault();
+      applyLinkValue();
     });
 
     linkRemove.addEventListener('mousedown', (ev) => {
@@ -199,10 +220,22 @@ export class BubbleMenuController implements ICanvasMenu {
       linkField.value = '';
     });
 
+    linkCopy.addEventListener('mousedown', (ev) => {
+      ev.preventDefault();
+      const href = getCurrentLinkHref();
+      if (href) void this._host.copyLinkToClipboard(href);
+    });
+
+    linkOpen.addEventListener('mousedown', (ev) => {
+      ev.preventDefault();
+      const href = getCurrentLinkHref();
+      if (href) void this._host.openLinkInExternalBrowser(href);
+    });
+
     linkField.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter') {
         ev.preventDefault();
-        linkApply.click();
+        applyLinkValue();
       } else if (ev.key === 'Escape') {
         ev.preventDefault();
         this._linkInput!.style.display = 'none';
@@ -211,6 +244,8 @@ export class BubbleMenuController implements ICanvasMenu {
 
     this._linkInput.appendChild(linkField);
     this._linkInput.appendChild(linkApply);
+    this._linkInput.appendChild(linkCopy);
+    this._linkInput.appendChild(linkOpen);
     this._linkInput.appendChild(linkRemove);
     this._menu.appendChild(this._linkInput);
 
