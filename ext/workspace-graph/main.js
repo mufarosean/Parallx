@@ -815,6 +815,41 @@ async function _collectProviders(api, nodes, edges) {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 const SEMANTIC_GRAPH_SERVICE_ID = { id: 'ISemanticGraphService' };
+const REFRESH_ORCHESTRATOR_SERVICE_ID = { id: 'IMindMapRefreshOrchestrator' };
+
+function _getRefreshOrchestrator(api) {
+  try {
+    if (!api.services || typeof api.services.has !== 'function' || typeof api.services.get !== 'function') return null;
+    if (!api.services.has(REFRESH_ORCHESTRATOR_SERVICE_ID)) return null;
+    return api.services.get(REFRESH_ORCHESTRATOR_SERVICE_ID);
+  } catch { return null; }
+}
+
+// M76 Phase 3 — relative-time formatter for the "Last refreshed" line.
+// Buckets: just now, X min ago, X hr ago, X day ago, then absolute date.
+function _formatRelativeTime(isoTs) {
+  if (!isoTs) return 'never';
+  const then = new Date(isoTs).getTime();
+  if (Number.isNaN(then)) return 'never';
+  const diffMs = Date.now() - then;
+  if (diffMs < 0) return 'just now';
+  const secs = Math.floor(diffMs / 1000);
+  if (secs < 60) return 'just now';
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hr ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
+  return new Date(then).toLocaleDateString();
+}
+
+function _formatEstimatedSeconds(secs) {
+  if (typeof secs !== 'number' || secs <= 0) return null;
+  if (secs < 60) return `~${Math.ceil(secs)} sec`;
+  const mins = Math.ceil(secs / 60);
+  return `~${mins} min`;
+}
 
 function _getSemanticGraphService(api) {
   try {
@@ -1242,11 +1277,41 @@ function createGraphEditor(container, api) {
     const L = 'style="display:flex;justify-content:space-between;color:var(--vscode-editor-foreground,#ccc);margin-top:6px;"';
     const H = 'style="color:var(--vscode-editor-foreground,#ddd);font-size:12px;font-weight:600;margin:12px 0 6px;border-bottom:1px solid var(--vscode-panel-border,#333);padding-bottom:4px;"';
 
+    // M76 Phase 3 — synchronous status snapshot so the section renders
+    // immediately. preview() + getRefreshHistory() are async and populate
+    // the dynamic spans after first paint via _updateRefreshSectionAsync.
+    const _orch = _getRefreshOrchestrator(api);
+    const _orchStatus = _orch ? _orch.getStatus() : null;
+    const _isRefreshing = !!(_orchStatus && _orchStatus.isRefreshing);
+    const _refreshLabel = _orchStatus && _orchStatus.label ? _esc(_orchStatus.label) : '';
+    const _refreshProgress = _orchStatus && _orchStatus.progress
+      ? `(${_orchStatus.progress.current} of ${_orchStatus.progress.total})`
+      : '';
+
     settingsInner.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <strong style="color:var(--vscode-editor-foreground,#fff);font-size:13px">Graph Settings</strong>
         <button id="__gs_close" style="background:none;border:none;color:var(--vscode-descriptionForeground,#666);cursor:pointer;font-size:16px">&times;</button>
       </div>
+
+      ${_orch ? `
+      <div ${H}>Mind map refresh</div>
+      <div id="__gs_refresh_status" style="color:var(--vscode-descriptionForeground,#999);margin:4px 0;">
+        Loading…
+      </div>
+      <div id="__gs_refresh_progress" style="color:var(--vscode-editor-foreground,#ccc);margin:4px 0;font-size:11px;${_isRefreshing ? '' : 'display:none;'}">
+        ${_refreshLabel} ${_refreshProgress}
+      </div>
+      <button id="__gs_refresh_action" style="width:100%;padding:6px 8px;margin:4px 0 6px;background:var(--vscode-button-background,#0e639c);color:var(--vscode-button-foreground,#fff);border:none;border-radius:2px;cursor:pointer;font-size:11px;">
+        ${_isRefreshing ? 'Cancel refresh' : 'Refresh mind map'}
+      </button>
+      <div style="margin:6px 0">
+        <button id="__gs_refresh_history_toggle" style="background:none;border:none;color:var(--vscode-textLink-foreground,#3794ff);cursor:pointer;font-size:11px;padding:0;">
+          History ▸
+        </button>
+      </div>
+      <div id="__gs_refresh_history" style="display:none;margin:4px 0 12px;font-size:11px;color:var(--vscode-descriptionForeground,#999);"></div>
+      ` : ''}
 
       <div ${H}>Forces</div>
       <div ${L}><span>Center Force</span><span id="__gs_v_center">${GS.centerStrength}</span></div>
@@ -1382,6 +1447,107 @@ function createGraphEditor(container, api) {
     _wireKindCheck('references', 'references');
     _wireKindCheck('samefolder', 'same-folder');
     _wireKindCheck('cooccurrence', 'co-occurrence');
+
+    // M76 Phase 3 — wire the refresh section. Status line + history are
+    // populated async; button + history toggle attach handlers now.
+    if (_orch) {
+      _updateRefreshSectionAsync(_orch);
+
+      const actionBtn = settingsInner.querySelector('#__gs_refresh_action');
+      if (actionBtn) {
+        actionBtn.addEventListener('click', async () => {
+          const cur = _orch.getStatus();
+          if (cur.isRefreshing) {
+            _orch.cancelRefresh();
+            return;
+          }
+          // No passes registered yet (Phase 3 ships infrastructure only).
+          // Phase 4/5 will register lineage + concept clustering.
+          const registered = _orch.getRegisteredPasses();
+          if (registered.length === 0) {
+            actionBtn.disabled = true;
+            actionBtn.textContent = 'No refresh passes registered';
+            setTimeout(() => {
+              actionBtn.disabled = false;
+              actionBtn.textContent = 'Refresh mind map';
+            }, 2000);
+            return;
+          }
+          try {
+            await _orch.startRefresh();
+          } catch (err) {
+            console.warn('[WorkspaceGraph] startRefresh failed:', err && err.message);
+          }
+        });
+      }
+
+      const historyToggle = settingsInner.querySelector('#__gs_refresh_history_toggle');
+      const historyEl = settingsInner.querySelector('#__gs_refresh_history');
+      if (historyToggle && historyEl) {
+        historyToggle.addEventListener('click', async () => {
+          const isHidden = historyEl.style.display === 'none';
+          if (!isHidden) {
+            historyEl.style.display = 'none';
+            historyToggle.textContent = 'History ▸';
+            return;
+          }
+          historyEl.style.display = 'block';
+          historyToggle.textContent = 'History ▾';
+          historyEl.innerHTML = 'Loading…';
+          try {
+            const rows = await _orch.getRefreshHistory(10);
+            if (rows.length === 0) {
+              historyEl.innerHTML = '<em>No refreshes yet.</em>';
+              return;
+            }
+            historyEl.innerHTML = rows.map((r) => {
+              const dot = r.status === 'completed' ? '✓'
+                       : r.status === 'cancelled' ? '⊘'
+                       : r.status === 'error' ? '✕'
+                       : '…';
+              const when = _formatRelativeTime(r.startedAt);
+              const sources = r.sourcesProcessed > 0 ? ` · ${r.sourcesProcessed} source${r.sourcesProcessed === 1 ? '' : 's'}` : '';
+              const err = r.errorMessage ? ` <span style="color:#e08080">(${_esc(r.errorMessage)})</span>` : '';
+              return `<div style="padding:2px 0;border-bottom:1px solid var(--vscode-panel-border,#2a2a2a)">${dot} ${_esc(r.status)} · ${when}${sources}${err}</div>`;
+            }).join('');
+          } catch (err) {
+            historyEl.innerHTML = `<em>Failed to load history: ${_esc(String(err && err.message || err))}</em>`;
+          }
+        });
+      }
+    }
+  }
+
+  // M76 Phase 3 — populate the dynamic parts of the refresh section
+  // (idle status line uses preview() data). Called after _buildSettingsPanel
+  // and again when orchestrator events fire.
+  async function _updateRefreshSectionAsync(orch) {
+    const statusEl = settingsInner.querySelector('#__gs_refresh_status');
+    if (!statusEl) return;
+    const status = orch.getStatus();
+    try {
+      if (status.isRefreshing) {
+        statusEl.textContent = 'Refreshing…';
+        return;
+      }
+      const preview = await orch.preview();
+      const history = await orch.getRefreshHistory(1);
+      const lastLine = history.length > 0
+        ? `Last refresh: ${_formatRelativeTime(history[0].startedAt)} (${_esc(history[0].status)})`
+        : 'No prior refresh';
+      let workLine;
+      if (preview.sourcesChanged === 0) {
+        workLine = orch.getRegisteredPasses().length === 0
+          ? 'No refresh passes registered'
+          : 'Up to date';
+      } else {
+        const est = _formatEstimatedSeconds(preview.estimatedSeconds);
+        workLine = `${preview.sourcesChanged} source${preview.sourcesChanged === 1 ? '' : 's'} changed${est ? ` · ${est}` : ''}`;
+      }
+      statusEl.innerHTML = `<div>${_esc(workLine)}</div><div style="opacity:0.7;font-size:10px;margin-top:2px">${_esc(lastLine)}</div>`;
+    } catch (err) {
+      statusEl.textContent = `Refresh status unavailable: ${(err && err.message) || err}`;
+    }
   }
 
   function _toggleSettings() {
@@ -1955,12 +2121,29 @@ Respond using this exact JSON with no other text before or after it:
     changePageSub = api.workspace.onDidChangeCanvasPages(() => _refresh());
   }
 
+  // M76 Phase 3 — subscribe to mind-map refresh status events so the
+  // settings panel stays in sync with refresh progress. Only meaningful
+  // while the panel is open; if closed, the rebuild is a cheap no-op.
+  let refreshStatusSub;
+  let refreshCompleteSub;
+  const refreshOrch = _getRefreshOrchestrator(api);
+  if (refreshOrch) {
+    refreshStatusSub = refreshOrch.onDidChangeStatus(() => {
+      if (settingsOpen) _buildSettingsPanel();
+    });
+    refreshCompleteSub = refreshOrch.onDidComplete(() => {
+      if (settingsOpen) _buildSettingsPanel();
+    });
+  }
+
   return {
     dispose() {
       disposed = true;
       _editorActive = false;
       if (animFrameId) cancelAnimationFrame(animFrameId);
       if (changePageSub) changePageSub.dispose();
+      if (refreshStatusSub) refreshStatusSub.dispose();
+      if (refreshCompleteSub) refreshCompleteSub.dispose();
       container.innerHTML = '';
     },
   };
