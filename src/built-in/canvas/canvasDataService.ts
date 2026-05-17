@@ -479,13 +479,18 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * persisted content directly.
    */
   async ensurePageBlockOnParent(parentPageId: string, childPageId: string): Promise<void> {
-    const [parent, child] = await Promise.all([
-      this.getPage(parentPageId),
-      this.getPage(childPageId),
-    ]);
-    if (!parent) throw new Error(`[CanvasDataService] Parent page "${parentPageId}" not found`);
-    if (!child) throw new Error(`[CanvasDataService] Child page "${childPageId}" not found`);
-    await this._ensureLinkedBlockOnParent(parent, child);
+    // M77 Phase 6 — retry on revision conflict. Legacy API kept for
+    // external callers; internal sidebar/editor flows use the atomic
+    // movePageWithBlocks / createChildPageWithBlock helpers.
+    await this._retryOnRevisionConflict(async () => {
+      const [parent, child] = await Promise.all([
+        this.getPage(parentPageId),
+        this.getPage(childPageId),
+      ]);
+      if (!parent) throw new Error(`[CanvasDataService] Parent page "${parentPageId}" not found`);
+      if (!child) throw new Error(`[CanvasDataService] Child page "${childPageId}" not found`);
+      await this._ensureLinkedBlockOnParent(parent, child);
+    }, 'ensurePageBlockOnParent');
   }
 
   /**
@@ -494,15 +499,21 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * callouts, details, etc.) so embedded cards never get stranded.
    */
   async removePageBlockFromParent(parentPageId: string, childPageId: string): Promise<void> {
-    const parent = await this.getPage(parentPageId);
-    if (!parent) return;
+    // M77 Phase 6 — retry on revision conflict. If the parent is being
+    // auto-saved while we're computing the pruned content, our flush
+    // hits a revision conflict; re-read and re-prune from the new
+    // revision instead of failing the operation.
+    await this._retryOnRevisionConflict(async () => {
+      const parent = await this.getPage(parentPageId);
+      if (!parent) return;
 
-    const decoded = decodeCanvasContent(parent.content);
-    const pruned = this._pruneLinkedBlocks(decoded.doc, childPageId);
-    if (!pruned.changed) return;
+      const decoded = decodeCanvasContent(parent.content);
+      const pruned = this._pruneLinkedBlocks(decoded.doc, childPageId);
+      if (!pruned.changed) return;
 
-    await this.flushContentSave(parentPageId, pruned.node);
-    this._onRequestContentReload.fire(parentPageId);
+      await this.flushContentSave(parentPageId, pruned.node);
+      this._onRequestContentReload.fire(parentPageId);
+    }, 'removePageBlockFromParent');
   }
 
   /**
@@ -753,6 +764,23 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     newParentId: string | null;
     afterSiblingId?: string;
   }): Promise<void> {
+    // M77 Phase 6 — retry on transient revision conflicts. A revision
+    // conflict means another writer committed between our read and our
+    // transaction; the right response is to re-read and try again.
+    // Cap at 3 attempts so a genuinely-stuck contention doesn't loop
+    // forever — pathological contention will surface as a thrown error
+    // the sidebar's _surfaceError handler reports.
+    return this._retryOnRevisionConflict(
+      () => this._movePageWithBlocksOnce(opts),
+      'movePageWithBlocks',
+    );
+  }
+
+  private async _movePageWithBlocksOnce(opts: {
+    pageId: string;
+    newParentId: string | null;
+    afterSiblingId?: string;
+  }): Promise<void> {
     const { pageId, newParentId, afterSiblingId } = opts;
 
     // Cycle prevention (same as movePage).
@@ -968,6 +996,21 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * content if `parentId` is non-null.
    */
   async createChildPageWithBlock(opts: {
+    parentId: string | null;
+    title?: string;
+  }): Promise<IPage> {
+    // M77 Phase 6 — retry on revision conflict so a burst of auto-saves
+    // on the parent can't make page creation fail spuriously. Mints a
+    // fresh UUID inside each attempt so a partially-applied attempt
+    // (which can't actually happen with runTransaction, but defensive)
+    // never leaks an id.
+    return this._retryOnRevisionConflict(
+      () => this._createChildPageWithBlockOnce(opts),
+      'createChildPageWithBlock',
+    );
+  }
+
+  private async _createChildPageWithBlockOnce(opts: {
     parentId: string | null;
     title?: string;
   }): Promise<IPage> {
@@ -1563,6 +1606,45 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   }
 
   // ── Internal ──
+
+  /**
+   * M77 Phase 6 — retry a transactional operation on revision conflict.
+   *
+   * Atomic helpers (movePageWithBlocks, createChildPageWithBlock) include
+   * `revision = ?` guards in their UPDATE clauses so a write that races
+   * with our read fails as 0 changes. The helper throws a revision-
+   * conflict error which we catch here, re-read, and retry. Three
+   * attempts cover the realistic contention window; beyond that, the
+   * conflict is structural and should surface to the user.
+   *
+   * Errors that don't match the revision-conflict pattern propagate
+   * immediately — no retrying e.g. cycle-prevention rejections.
+   */
+  private async _retryOnRevisionConflict<T>(
+    operation: () => Promise<T>,
+    label: string,
+    maxAttempts: number = 3,
+  ): Promise<T> {
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await operation();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/revision conflict/i.test(msg)) {
+          throw err;
+        }
+        lastErr = err;
+        if (attempt < maxAttempts) {
+          // Tiny back-off so a save burst can clear before we retry.
+          await new Promise((resolve) => setTimeout(resolve, 10 * attempt));
+        }
+      }
+    }
+    throw lastErr instanceof Error
+      ? new Error(`[CanvasDataService] ${label} failed after ${maxAttempts} attempts: ${lastErr.message}`)
+      : new Error(`[CanvasDataService] ${label} failed after ${maxAttempts} attempts`);
+  }
 
   private _cancelPendingSave(pageId: string): void {
     const pending = this._pendingSaves.get(pageId);
