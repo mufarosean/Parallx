@@ -407,10 +407,7 @@ export class PageChromeController {
       addCoverBtn.appendChild(lbl2);
       addCoverBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addCoverBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        // Notion-like: immediately apply a random gradient cover
-        const gradient = DEFAULT_COVER_GRADIENTS[Math.floor(Math.random() * DEFAULT_COVER_GRADIENTS.length)];
-        this._host.dataService.updatePage(this._host.pageId, { coverUrl: gradient });
+        this._handleAddCoverClick(e, addCoverBtn as HTMLButtonElement);
       });
       this._hoverAffordances.appendChild(addCoverBtn);
     }
@@ -607,13 +604,43 @@ export class PageChromeController {
       addCoverBtn.appendChild(lbl2);
       addCoverBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addCoverBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        // Notion-like: immediately apply a random gradient cover
-        const gradient = DEFAULT_COVER_GRADIENTS[Math.floor(Math.random() * DEFAULT_COVER_GRADIENTS.length)];
-        this._host.dataService.updatePage(this._host.pageId, { coverUrl: gradient });
+        this._handleAddCoverClick(e, addCoverBtn as HTMLButtonElement);
       });
       this._hoverAffordances.appendChild(addCoverBtn);
     }
+  }
+
+  /**
+   * M77 Phase 5 — single click handler for Add Cover. Solves the
+   * "needs two clicks" symptom: the first click fired updatePage but
+   * didn't disable the button, so a rapid second click queued a second
+   * updatePage (with a different random gradient). The user perceived
+   * "had to click twice"; in reality they were triggering the operation
+   * twice and the second won.
+   *
+   * Now: button is disabled synchronously, click handler awaits the
+   * updatePage Promise, and on error re-enables for retry. The
+   * syncPageChange handler will re-render the affordances when the
+   * update event fires — the disabled state is just a stopgap to
+   * prevent rapid double-clicks during the in-flight window.
+   */
+  private _handleAddCoverClick(e: Event, btn: HTMLButtonElement): void {
+    e.stopPropagation();
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+    const gradient = DEFAULT_COVER_GRADIENTS[Math.floor(Math.random() * DEFAULT_COVER_GRADIENTS.length)];
+    void this._host.dataService.updatePage(this._host.pageId, { coverUrl: gradient })
+      .catch((err) => {
+        // If update fails, re-enable the button so the user can retry.
+        // The button may already be detached if syncPageChange ran for an
+        // unrelated reason — guard against that.
+        if (btn.isConnected) {
+          btn.disabled = false;
+          btn.style.opacity = '';
+        }
+        console.warn('[PageChrome] Add cover failed:', err);
+      });
   }
 
   private _startCoverReposition(): void {
