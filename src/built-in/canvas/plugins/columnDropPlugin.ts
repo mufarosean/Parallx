@@ -319,19 +319,72 @@ export function columnDropPlugin(): Plugin {
     }
   }
 
+  function isGuideElement(el: HTMLElement): boolean {
+    return (
+      el.classList?.contains('column-drop-indicator') ||
+      el.classList?.contains('canvas-drop-guide')
+    );
+  }
+
+  function resolveNearestBlockInPageContainer(
+    view: EditorView,
+    containerEl: HTMLElement,
+    y: number,
+  ): Omit<DropTarget, 'zone'> | null {
+    const candidates = (Array.from(containerEl.children) as HTMLElement[])
+      .filter((child) => !isGuideElement(child));
+    if (candidates.length === 0) return null;
+
+    let nearestEl: HTMLElement | null = null;
+    let bestDist = Infinity;
+    for (const child of candidates) {
+      const r = child.getBoundingClientRect();
+      const dist = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+      if (dist < bestDist) {
+        bestDist = dist;
+        nearestEl = child;
+      }
+    }
+
+    if (!nearestEl) return null;
+    const refinedTarget = resolveNearestListItemElement(nearestEl, y) ?? nearestEl;
+    return resolveBlockTarget(view, refinedTarget);
+  }
+
+  function findContainingCalloutContent(
+    el: HTMLElement,
+    proseMirrorRoot: HTMLElement,
+  ): HTMLElement | null {
+    const directContent = el.closest('.canvas-callout-content') as HTMLElement | null;
+    if (directContent && proseMirrorRoot.contains(directContent)) {
+      return directContent;
+    }
+
+    const callout = el.closest('.canvas-callout') as HTMLElement | null;
+    if (!callout || !proseMirrorRoot.contains(callout)) return null;
+
+    return (Array.from(callout.children) as HTMLElement[])
+      .find((child) => child.classList.contains('canvas-callout-content')) ?? null;
+  }
+
   function findTarget(view: EditorView, x: number, y: number): Omit<DropTarget, 'zone'> | null {
     const elements = document.elementsFromPoint(x, y);
     const proseMirror = view.dom;
 
     for (const el of elements) {
       const htmlEl = el as HTMLElement;
-      if (htmlEl.classList?.contains('column-drop-indicator') ||
-          htmlEl.classList?.contains('canvas-drop-guide')) continue;
+      if (isGuideElement(htmlEl)) continue;
 
       const containingColumn = htmlEl.closest('.canvas-column') as HTMLElement | null;
       if (containingColumn && proseMirror.contains(containingColumn)) {
         const resolvedInColumn = resolveNearestBlockInColumn(view, containingColumn, y);
         if (resolvedInColumn) return resolvedInColumn;
+      }
+
+      const containingCalloutContent = findContainingCalloutContent(htmlEl, proseMirror as HTMLElement);
+      if (containingCalloutContent) {
+        const resolvedInCallout = resolveNearestBlockInPageContainer(view, containingCalloutContent, y);
+        if (resolvedInCallout) return resolvedInCallout;
       }
 
       const listItemEl = htmlEl.closest('li') as HTMLElement | null;
@@ -348,20 +401,8 @@ export function columnDropPlugin(): Plugin {
         if (!parent) break;
 
         if (isPageContainerDom(cur, proseMirror)) {
-          const children = Array.from(cur.children) as HTMLElement[];
-          let nearest: HTMLElement | null = null;
-          let bestDist = Infinity;
-          for (const child of children) {
-            if (child.classList?.contains('column-drop-indicator') ||
-                child.classList?.contains('canvas-drop-guide')) continue;
-            const r = child.getBoundingClientRect();
-            const dist = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
-            if (dist < bestDist) { bestDist = dist; nearest = child; }
-          }
-          if (nearest) {
-            const resolved = resolveBlockTarget(view, resolveNearestListItemElement(nearest, y) ?? nearest);
-            if (resolved) return resolved;
-          }
+          const resolvedInContainer = resolveNearestBlockInPageContainer(view, cur, y);
+          if (resolvedInContainer) return resolvedInContainer;
           const resolvedSelf = resolveBlockTarget(view, cur);
           if (resolvedSelf) return resolvedSelf;
         }

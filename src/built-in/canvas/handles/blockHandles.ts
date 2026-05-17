@@ -212,14 +212,18 @@ export class BlockHandlesController {
   private readonly _onEditorMouseMove = (event: MouseEvent): void => {
     const editor = this._host.editor;
     if (!editor) return;
+    const view = editor.view;
     this._lastPointerClient = { x: event.clientX, y: event.clientY };
     const target = event.target as HTMLElement | null;
     if (!target) return;
-    if (!editor.view.dom.contains(target)) return;
+    if (!view.dom.contains(target)) return;
     if (this._isIgnoredOverlayElement(target)) return;
     if (!editor.isEditable) return;
 
-    if (this._isPointerWithinStickyHandleZone(event.clientX, event.clientY)) {
+    if (
+      this._isPointerWithinStickyHandleZone(event.clientX, event.clientY) &&
+      !this._shouldRefreshStickyContainerTarget(view, event.clientX, event.clientY)
+    ) {
       return;
     }
 
@@ -230,7 +234,6 @@ export class BlockHandlesController {
     }
 
     // ── Resolve block at mouse position ──
-    const view = editor.view;
     const resolved = this._resolveBlockAtCoords(view, event.clientX, event.clientY);
     if (!resolved) {
       this._hideHandle();
@@ -611,6 +614,38 @@ export class BlockHandlesController {
     const bottom = Math.max(...rects.map((rect) => rect.bottom));
 
     return clientX >= left && clientX <= right && clientY >= top && clientY <= bottom;
+  }
+
+  /**
+   * Sticky handles keep the +/drag affordances clickable while the pointer
+   * moves toward them.  For page-container blocks (callout/details/quote),
+   * the full container rectangle can cover nested child blocks, so a resolved
+   * callout handle would otherwise mask the paragraph handles inside it.
+   */
+  private _shouldRefreshStickyContainerTarget(
+    view: any,
+    clientX: number,
+    clientY: number,
+  ): boolean {
+    if (this._resolvedBlockPos == null || !this._resolvedBlockDom) {
+      return false;
+    }
+
+    const currentNode = view.state.doc.nodeAt(this._resolvedBlockPos);
+    if (!currentNode || !isContainerBlockType(currentNode.type?.name)) {
+      return false;
+    }
+
+    const hit = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+    if (!hit || !this._resolvedBlockDom.contains(hit)) {
+      return false;
+    }
+    if (hit === this._resolvedBlockDom || this._isIgnoredOverlayElement(hit)) {
+      return false;
+    }
+
+    const nested = this._resolveBlockFromDomElement(view, hit);
+    return !!nested && nested.pos !== this._resolvedBlockPos;
   }
 
 
