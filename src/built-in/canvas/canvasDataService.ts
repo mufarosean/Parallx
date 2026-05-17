@@ -724,6 +724,418 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   }
 
   /**
+   * Atomic move that keeps the embedded pageBlock cards in sync with the
+   * hierarchy in a single transaction (M77 Phase 1).
+   *
+   * The legacy combination of `movePage` + `removePageBlockFromParent` +
+   * `ensurePageBlockOnParent` was three separate transactions with no
+   * cross-cutting guarantee, so any partial failure left one parent's
+   * content out of sync with the DB hierarchy — the "page blocks
+   * disappear" bug. This method bundles the page row update and both
+   * parent content updates into one `runTransaction` call so either every
+   * write lands or none of them do.
+   *
+   * Behaviour:
+   *   - Computes the new sort_order using the same logic as `movePage`.
+   *   - Reads both affected parents (with revision checks) before the
+   *     transaction so we know the content base state.
+   *   - In the transaction: page row UPDATE, old parent content UPDATE
+   *     (block removed), new parent content UPDATE (block appended).
+   *   - Fires `Moved` for the page + `Updated` for both parents +
+   *     `onRequestContentReload` for both parents so open editors refresh.
+   *
+   * Reorder-within-same-parent: the old/new parent are the same, so we
+   * skip the content rewrites entirely (the page block doesn't need to
+   * move within the parent for a sort_order change).
+   */
+  async movePageWithBlocks(opts: {
+    pageId: string;
+    newParentId: string | null;
+    afterSiblingId?: string;
+  }): Promise<void> {
+    const { pageId, newParentId, afterSiblingId } = opts;
+
+    // Cycle prevention (same as movePage).
+    if (newParentId !== null) {
+      if (newParentId === pageId) {
+        throw new Error(`[CanvasDataService] Cannot move page "${pageId}" into itself`);
+      }
+      const subtreeIds = new Set(await this._getPageSubtreeIds(pageId));
+      if (subtreeIds.has(newParentId)) {
+        throw new Error(`[CanvasDataService] Cannot move page "${pageId}" into its own descendant "${newParentId}"`);
+      }
+    }
+
+    // Snapshot the moved page so we know its old parent id BEFORE the
+    // transaction. We can't trust the caller's `oldParentId` because the
+    // sidebar tree may be stale.
+    const pageBefore = await this.getPage(pageId);
+    if (!pageBefore) throw new Error(`[CanvasDataService] Page "${pageId}" not found`);
+    const oldParentId = pageBefore.parentId ?? null;
+
+    // Compute new sort_order using sibling list (same logic as movePage).
+    const siblings = newParentId === null
+      ? await this.getRootPages()
+      : await this.getChildren(newParentId);
+    let newSortOrder: number;
+    if (!afterSiblingId) {
+      const maxSort = siblings.length > 0 ? Math.max(...siblings.map(s => s.sortOrder)) : 0;
+      newSortOrder = maxSort + 1;
+    } else {
+      const afterIdx = siblings.findIndex(s => s.id === afterSiblingId);
+      if (afterIdx === -1) {
+        newSortOrder = (siblings.length > 0 ? Math.max(...siblings.map(s => s.sortOrder)) : 0) + 1;
+      } else if (afterIdx === siblings.length - 1) {
+        newSortOrder = siblings[afterIdx].sortOrder + 1;
+      } else {
+        newSortOrder = (siblings[afterIdx].sortOrder + siblings[afterIdx + 1].sortOrder) / 2;
+      }
+    }
+
+    // Reorder-only (same parent): defer to the simpler movePage path and
+    // skip content rewrites entirely.
+    if (oldParentId === newParentId) {
+      const result = await this._db.run(
+        `UPDATE pages SET sort_order = ?, updated_at = datetime('now') WHERE id = ?`,
+        [newSortOrder, pageId],
+      );
+      if (result.error) throw new Error(result.error.message);
+      const refreshed = await this.getPage(pageId);
+      this._onDidChangePage.fire({ kind: PageChangeKind.Moved, pageId, page: refreshed ?? undefined });
+      return;
+    }
+
+    // Cancel pending saves on both parents (and the moved page) so we
+    // don't race with a debounced auto-save that would clobber our
+    // content update.
+    if (oldParentId) this._cancelPendingSave(oldParentId);
+    if (newParentId) this._cancelPendingSave(newParentId);
+    this._cancelPendingSave(pageId);
+
+    // Read both parents in parallel with their current revisions. Either
+    // can be null (root-level moves).
+    const [oldParent, newParent] = await Promise.all([
+      oldParentId ? this.getPage(oldParentId) : Promise.resolve(null),
+      newParentId ? this.getPage(newParentId) : Promise.resolve(null),
+    ]);
+
+    // Compute content for old parent (block removed) and new parent
+    // (block appended). Both branches gate on whether anything actually
+    // changes so we don't issue redundant updates.
+    let oldParentUpdate: { storedContent: string; schemaVersion: number; revision: number } | null = null;
+    if (oldParent && oldParentId) {
+      const decoded = decodeCanvasContent(oldParent.content);
+      const pruned = this._pruneLinkedBlocks(decoded.doc, pageId);
+      if (pruned.changed) {
+        const encoded = encodeCanvasContentFromDoc(pruned.node);
+        oldParentUpdate = {
+          storedContent: encoded.storedContent,
+          schemaVersion: encoded.schemaVersion,
+          revision: oldParent.revision,
+        };
+      }
+    }
+
+    let newParentUpdate: { storedContent: string; schemaVersion: number; revision: number } | null = null;
+    if (newParent && newParentId) {
+      const decoded = decodeCanvasContent(newParent.content);
+      if (!this._docContainsPageBlock(decoded.doc, pageId)) {
+        const content = Array.isArray(decoded.doc?.content) ? decoded.doc.content : [];
+        const nextDoc = {
+          type: 'doc',
+          content: [
+            ...content,
+            {
+              type: 'pageBlock',
+              attrs: { pageId, title: pageBefore.title, icon: pageBefore.icon },
+            },
+          ],
+        };
+        const encoded = encodeCanvasContentFromDoc(nextDoc);
+        newParentUpdate = {
+          storedContent: encoded.storedContent,
+          schemaVersion: encoded.schemaVersion,
+          revision: newParent.revision,
+        };
+      }
+    }
+
+    // Build the transaction: page row update, then any parent content
+    // updates. Each parent update has a revision check so a concurrent
+    // save during our read-compute window will surface as 0 changes
+    // and abort the transaction.
+    const ops: { type: 'run'; sql: string; params?: unknown[] }[] = [
+      {
+        type: 'run',
+        sql: `UPDATE pages SET parent_id = ?, sort_order = ?, updated_at = datetime('now') WHERE id = ?`,
+        params: [newParentId, newSortOrder, pageId],
+      },
+    ];
+    if (oldParentUpdate && oldParentId) {
+      ops.push({
+        type: 'run',
+        sql: `UPDATE pages
+                SET content = ?, content_schema_version = ?, revision = revision + 1, updated_at = datetime('now')
+              WHERE id = ? AND revision = ?`,
+        params: [oldParentUpdate.storedContent, oldParentUpdate.schemaVersion, oldParentId, oldParentUpdate.revision],
+      });
+    }
+    if (newParentUpdate && newParentId) {
+      ops.push({
+        type: 'run',
+        sql: `UPDATE pages
+                SET content = ?, content_schema_version = ?, revision = revision + 1, updated_at = datetime('now')
+              WHERE id = ? AND revision = ?`,
+        params: [newParentUpdate.storedContent, newParentUpdate.schemaVersion, newParentId, newParentUpdate.revision],
+      });
+    }
+
+    const txn = await this._db.runTransaction(ops);
+    if (txn.error) {
+      throw new Error(`[CanvasDataService] movePageWithBlocks transaction failed: ${txn.error.message}`);
+    }
+
+    // Verify the parent updates landed (revision conflict shows as 0
+    // changes). The page row update doesn't have a revision check so
+    // it's checked separately.
+    const results = txn.results ?? [];
+    let resultIndex = 0;
+    const pageUpdateRes = results[resultIndex++] as { changes: number };
+    if ((pageUpdateRes?.changes ?? 0) === 0) {
+      throw new Error(`[CanvasDataService] movePageWithBlocks: page "${pageId}" row update affected 0 rows`);
+    }
+    if (oldParentUpdate) {
+      const r = results[resultIndex++] as { changes: number };
+      if ((r?.changes ?? 0) === 0) {
+        throw new Error(`[CanvasDataService] movePageWithBlocks: revision conflict on old parent "${oldParentId}"`);
+      }
+    }
+    if (newParentUpdate) {
+      const r = results[resultIndex++] as { changes: number };
+      if ((r?.changes ?? 0) === 0) {
+        throw new Error(`[CanvasDataService] movePageWithBlocks: revision conflict on new parent "${newParentId}"`);
+      }
+    }
+
+    // Update known revisions and fire all events. Fire AFTER the
+    // transaction succeeds so listeners never see a half-applied state.
+    if (oldParentUpdate) this._knownRevisions.set(oldParentId!, oldParentUpdate.revision + 1);
+    if (newParentUpdate) this._knownRevisions.set(newParentId!, newParentUpdate.revision + 1);
+
+    const movedPage = await this.getPage(pageId);
+    this._onDidChangePage.fire({
+      kind: PageChangeKind.Moved,
+      pageId,
+      page: movedPage ?? undefined,
+    });
+    if (oldParentUpdate && oldParentId) {
+      const refreshed = await this.getPage(oldParentId);
+      if (refreshed) {
+        this._onDidChangePage.fire({
+          kind: PageChangeKind.Updated,
+          pageId: oldParentId,
+          page: refreshed,
+          changedFields: ['content', 'contentSchemaVersion'],
+        });
+        this._onRequestContentReload.fire(oldParentId);
+      }
+    }
+    if (newParentUpdate && newParentId) {
+      const refreshed = await this.getPage(newParentId);
+      if (refreshed) {
+        this._onDidChangePage.fire({
+          kind: PageChangeKind.Updated,
+          pageId: newParentId,
+          page: refreshed,
+          changedFields: ['content', 'contentSchemaVersion'],
+        });
+        this._onRequestContentReload.fire(newParentId);
+      }
+    }
+  }
+
+  /**
+   * Atomic page creation with optional parent page block (M77 Phase 1).
+   *
+   * Replaces the unsafe combination of `createPage` + `ensurePageBlockOnParent`
+   * in the sidebar's create flow. The page INSERT and the parent's
+   * content UPDATE go in a single transaction so a failure on either
+   * side rolls back cleanly — no orphan pages, no parent saying it has
+   * a child it doesn't.
+   *
+   * Behaviour matches `createPage` (UUID, sort_order = max + 1, initial
+   * paragraph) plus appends a pageBlock attribute to the parent's
+   * content if `parentId` is non-null.
+   */
+  async createChildPageWithBlock(opts: {
+    parentId: string | null;
+    title?: string;
+  }): Promise<IPage> {
+    const { parentId, title } = opts;
+    const id = crypto.randomUUID();
+    const pageTitle = title || 'Untitled';
+
+    // Sort order — same as createPage.
+    const maxResult = await this._db.get(
+      parentId === null
+        ? 'SELECT MAX(sort_order) as max_sort FROM pages WHERE parent_id IS NULL'
+        : 'SELECT MAX(sort_order) as max_sort FROM pages WHERE parent_id = ?',
+      parentId === null ? [] : [parentId],
+    );
+    if (maxResult.error) throw new Error(maxResult.error.message);
+    const sortOrder = ((maxResult.row?.max_sort as number) ?? 0) + 1;
+
+    const initialContent = encodeCanvasContentFromDoc({ type: 'doc', content: [{ type: 'paragraph' }] });
+
+    // Read parent (if any) so we can compute the updated content with
+    // the new page block appended. Cancel its pending save so a
+    // debounced auto-save can't race with our update.
+    let parentUpdate: { storedContent: string; schemaVersion: number; revision: number } | null = null;
+    if (parentId !== null) {
+      this._cancelPendingSave(parentId);
+      const parent = await this.getPage(parentId);
+      if (!parent) {
+        throw new Error(`[CanvasDataService] Parent page "${parentId}" not found`);
+      }
+      const decoded = decodeCanvasContent(parent.content);
+      if (!this._docContainsPageBlock(decoded.doc, id)) {
+        const content = Array.isArray(decoded.doc?.content) ? decoded.doc.content : [];
+        const nextDoc = {
+          type: 'doc',
+          content: [
+            ...content,
+            { type: 'pageBlock', attrs: { pageId: id, title: pageTitle, icon: null } },
+          ],
+        };
+        const encoded = encodeCanvasContentFromDoc(nextDoc);
+        parentUpdate = {
+          storedContent: encoded.storedContent,
+          schemaVersion: encoded.schemaVersion,
+          revision: parent.revision,
+        };
+      }
+    }
+
+    const ops: { type: 'run'; sql: string; params?: unknown[] }[] = [
+      {
+        type: 'run',
+        sql: `INSERT INTO pages (id, parent_id, title, content, content_schema_version, sort_order) VALUES (?, ?, ?, ?, ?, ?)`,
+        params: [id, parentId, pageTitle, initialContent.storedContent, initialContent.schemaVersion, sortOrder],
+      },
+    ];
+    if (parentUpdate && parentId !== null) {
+      ops.push({
+        type: 'run',
+        sql: `UPDATE pages
+                SET content = ?, content_schema_version = ?, revision = revision + 1, updated_at = datetime('now')
+              WHERE id = ? AND revision = ?`,
+        params: [parentUpdate.storedContent, parentUpdate.schemaVersion, parentId, parentUpdate.revision],
+      });
+    }
+
+    const txn = await this._db.runTransaction(ops);
+    if (txn.error) {
+      throw new Error(`[CanvasDataService] createChildPageWithBlock transaction failed: ${txn.error.message}`);
+    }
+    const results = txn.results ?? [];
+    if (parentUpdate) {
+      const r = results[1] as { changes: number };
+      if ((r?.changes ?? 0) === 0) {
+        throw new Error(`[CanvasDataService] createChildPageWithBlock: revision conflict on parent "${parentId}"`);
+      }
+      this._knownRevisions.set(parentId!, parentUpdate.revision + 1);
+    }
+
+    const page = await this.getPage(id);
+    if (!page) {
+      throw new Error(`[CanvasDataService] Created page "${id}" not found after insert`);
+    }
+
+    this._onDidChangePage.fire({ kind: PageChangeKind.Created, pageId: id, page });
+    if (parentUpdate && parentId !== null) {
+      const refreshed = await this.getPage(parentId);
+      if (refreshed) {
+        this._onDidChangePage.fire({
+          kind: PageChangeKind.Updated,
+          pageId: parentId,
+          page: refreshed,
+          changedFields: ['content', 'contentSchemaVersion'],
+        });
+        this._onRequestContentReload.fire(parentId);
+      }
+    }
+    return page;
+  }
+
+  /**
+   * Repair drift between DB parent_id and embedded pageBlock nodes in a
+   * parent's content (M77 Phase 1).
+   *
+   * Walks the page's content looking for pageBlock nodes; for each, checks
+   * the referenced child page exists AND has this page as its parent. If
+   * the reference is broken (child deleted, child moved away, etc.) the
+   * pageBlock is removed. Returns the number of removed orphan blocks so
+   * callers can log/surface repair activity.
+   *
+   * NOTE: We deliberately do NOT auto-add pageBlock for every direct child.
+   * A page can legitimately have children without an embedded block (the
+   * sidebar shows the children regardless). We only remove orphans —
+   * blocks pointing at pages that aren't actually our children.
+   */
+  async reconcileParentBlockState(parentPageId: string): Promise<number> {
+    const parent = await this.getPage(parentPageId);
+    if (!parent) return 0;
+
+    const decoded = decodeCanvasContent(parent.content);
+    const orphanIds = await this._findOrphanPageBlocks(decoded.doc, parentPageId);
+    if (orphanIds.length === 0) return 0;
+
+    let nextDoc: any = decoded.doc;
+    for (const orphanId of orphanIds) {
+      const pruned = this._pruneLinkedBlocks(nextDoc, orphanId);
+      if (pruned.changed) nextDoc = pruned.node;
+    }
+
+    await this.flushContentSave(parentPageId, nextDoc);
+    // Deliberately NOT firing onRequestContentReload here — the caller
+    // (typically _loadContent at editor load time) is about to read the
+    // updated page itself. Firing reload would re-enter the load path.
+    // Callers that want the reload event can fire it themselves via
+    // fireContentReload(parentPageId).
+    return orphanIds.length;
+  }
+
+  /**
+   * Recursively collect pageIds of pageBlock nodes whose referenced page
+   * either doesn't exist or no longer has `parentPageId` as its parent.
+   */
+  private async _findOrphanPageBlocks(node: any, parentPageId: string): Promise<string[]> {
+    const referencedIds = new Set<string>();
+    this._collectPageBlockIds(node, referencedIds);
+    if (referencedIds.size === 0) return [];
+
+    const orphans: string[] = [];
+    for (const childId of referencedIds) {
+      const child = await this.getPage(childId);
+      if (!child || (child.parentId ?? null) !== parentPageId) {
+        orphans.push(childId);
+      }
+    }
+    return orphans;
+  }
+
+  private _collectPageBlockIds(node: any, into: Set<string>): void {
+    if (!node || typeof node !== 'object') return;
+    const t = typeof node.type === 'string' ? node.type : '';
+    const attrs = node.attrs as Record<string, unknown> | undefined;
+    if (t === 'pageBlock' && typeof attrs?.pageId === 'string') {
+      into.add(attrs.pageId as string);
+    }
+    const content = Array.isArray(node.content) ? node.content : null;
+    if (content) for (const c of content) this._collectPageBlockIds(c, into);
+  }
+
+  /**
    * Reorder pages within a parent by assigning sequential sort_order values.
    *
    * @param parentId — parent page ID (null for root level)

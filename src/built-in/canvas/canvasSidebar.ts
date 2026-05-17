@@ -969,11 +969,12 @@ export class CanvasSidebar {
   private async _createPage(parentId?: string | null): Promise<void> {
     let page: IPage | null = null;
     try {
-      page = await this._dataService.createPage(parentId);
-
-      if (parentId) {
-        await this._dataService.ensurePageBlockOnParent(parentId, page.id);
-      }
+      // M77 Phase 1 — atomic page create + parent-block append. Replaces
+      // the prior two-step `createPage` + `ensurePageBlockOnParent` flow
+      // that left an orphan page on partial failure.
+      page = await this._dataService.createChildPageWithBlock({
+        parentId: parentId ?? null,
+      });
 
       const createdPage = page;
 
@@ -1135,36 +1136,25 @@ export class CanvasSidebar {
   }
 
   /**
-   * Perform the drop: move the page in the DB, then sync pageBlock content
-   * so the old parent loses the block and the new parent gains it.
+   * Perform the drop: atomically move the page and sync pageBlock content
+   * so old/new parents stay in sync with the DB hierarchy in one
+   * transaction (M77 Phase 1).
+   *
+   * The `oldParentId` parameter is accepted only for legacy callsites;
+   * `movePageWithBlocks` reads the actual previous parent from the DB so
+   * a stale sidebar tree can't cause a removal on the wrong parent.
    */
   private async _performDrop(
     pageId: string,
-    oldParentId: string | null,
+    _oldParentId: string | null,
     newParentId: string | null,
     afterSiblingId: string | undefined,
   ): Promise<void> {
-    await this._dataService.movePage(pageId, newParentId, afterSiblingId);
-
-    const page = await this._dataService.getPage(pageId);
-    if (!page) return;
-
-    // If the parent actually changed, sync pageBlock content
-    if (oldParentId !== newParentId) {
-      // Remove pageBlock from the old parent's content (if it had one)
-      if (oldParentId) {
-        await this._dataService.removePageBlockFromParent(oldParentId, pageId).catch((err) => {
-          console.error('[CanvasSidebar] Failed to remove pageBlock from old parent:', err);
-        });
-      }
-
-      // Append pageBlock to the new parent's content
-      if (newParentId) {
-        await this._dataService.ensurePageBlockOnParent(newParentId, page.id).catch((err) => {
-          console.error('[CanvasSidebar] Failed to append pageBlock to new parent:', err);
-        });
-      }
-    }
+    await this._dataService.movePageWithBlocks({
+      pageId,
+      newParentId,
+      afterSiblingId,
+    });
   }
 
   private _onDragEnd(): void {

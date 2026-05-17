@@ -215,6 +215,32 @@ export interface ICanvasDataService {
    */
   removePageBlockFromParent(parentPageId: string, childPageId: string): Promise<void>;
 
+  /**
+   * M77 Phase 1 — atomic page-hierarchy operations. Bundle the page row
+   * update and the affected parents' content updates in one transaction
+   * so partial failures can't leave embedded pageBlock cards out of
+   * sync with the DB hierarchy.
+   */
+  movePageWithBlocks(opts: {
+    pageId: string;
+    newParentId: string | null;
+    afterSiblingId?: string;
+  }): Promise<void>;
+
+  createChildPageWithBlock(opts: {
+    parentId: string | null;
+    title?: string;
+  }): Promise<IPage>;
+
+  /**
+   * Repair drift between DB parent_id and embedded pageBlock nodes.
+   * Removes pageBlock entries whose referenced child no longer has this
+   * page as parent. Returns the count of orphans removed. Does NOT fire
+   * `onRequestContentReload` — callers that need that should fire it
+   * themselves via `fireContentReload`.
+   */
+  reconcileParentBlockState(parentPageId: string): Promise<number>;
+
   // ── Tree / hierarchy ──
 
   movePage(pageId: string, newParentId: string | null, afterSiblingId?: string): Promise<void>;

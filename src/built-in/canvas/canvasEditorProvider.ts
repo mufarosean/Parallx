@@ -572,6 +572,20 @@ class CanvasEditorPane implements IDisposable {
   private async _loadContent(): Promise<void> {
     if (!this._editor || !this._pageId) return;
 
+    // M77 Phase 1 — repair any pageBlock drift before loading content.
+    // No-op when no orphan blocks exist (just one DB read + content scan).
+    // Reconciliation does NOT fire its own reload event so we don't
+    // re-enter this method; we're about to read the (now-repaired) page
+    // below.
+    try {
+      const repaired = await this._dataService.reconcileParentBlockState(this._pageId);
+      if (repaired > 0) {
+        console.log(`[CanvasEditorPane] Reconciled ${repaired} orphan pageBlock(s) on page "${this._pageId}"`);
+      }
+    } catch (err) {
+      console.warn('[CanvasEditorPane] reconcileParentBlockState failed:', err);
+    }
+
     try {
       const page = await this._dataService.getPage(this._pageId);
       if (page && page.content) {
