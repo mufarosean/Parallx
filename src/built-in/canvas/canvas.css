@@ -2038,6 +2038,7 @@
 }
 
 .canvas-page-header--inline-title .canvas-page-affordances {
+  position: static;
   margin-bottom: 8px;
   min-height: 0;
 }
@@ -2139,8 +2140,11 @@
   gap: 8px;
   opacity: 0;
   transition: opacity 0.15s ease;
+  position: absolute;
+  top: 8px;
+  right: var(--canvas-content-gutter);
   margin-bottom: 0;
-  min-height: 18px;
+  min-height: 0;
 }
 
 .canvas-page-header:hover .canvas-page-affordances {

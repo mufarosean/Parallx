@@ -11,7 +11,7 @@
   max-width: var(--canvas-content-max-width, 760px);
   width: 100%;
   margin: 0 auto;
-  padding: 16px var(--canvas-content-gutter, 64px) 32px;
+  padding: 0 var(--canvas-content-gutter, 64px) 12px;
   box-sizing: border-box;
   font-size: var(--parallx-fontSize-xl, 16px);
   color: var(--vscode-editor-foreground, #cdd6f4);
