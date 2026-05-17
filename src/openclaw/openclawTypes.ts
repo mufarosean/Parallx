@@ -258,6 +258,21 @@ export interface IDefaultParticipantServices {
   getExcludedContextIds?(): ReadonlySet<string>;
   getWorkspaceDigest?(): Promise<string | undefined>;
   /**
+   * M76 Phase 7 — mind-map diagnostics for the /context report (edge
+   * counts by kind, concept node counts, last refresh). Returning
+   * undefined skips the section cleanly.
+   */
+  getMindMapDiagnostics?(): Promise<{
+    readonly edgeCountsByKind: ReadonlyArray<{ kind: string; count: number }>;
+    readonly totalEdges: number;
+    readonly conceptCount: number;
+    readonly conceptDeletedCount: number;
+    readonly conceptRenamedCount: number;
+    readonly sourcesWithDistinctiveTerms: number;
+    readonly lastRefreshAt: string | null;
+    readonly lastRefreshStatus: string | null;
+  } | undefined>;
+  /**
    * M66 — Snapshot of registered `parallx://` link contracts for prompt
    * auto-injection. Returning `undefined` (or an empty array) suppresses
    * the `## Linking` section. Implementations should call

@@ -95,6 +95,7 @@ export async function tryHandleOpenclawContextCommand(
     | 'getLastSystemPromptReport'
     | 'reportSystemPromptReport'
     | 'getWorkspaceDigest'
+    | 'getMindMapDiagnostics'
   >,
   request: Pick<IChatParticipantRequest, 'command' | 'text' | 'mode'>,
   response: IChatResponseStream,
@@ -141,7 +142,49 @@ export async function tryHandleOpenclawContextCommand(
   }
 
   response.markdown(formatContextReport(report, sub === 'detail' || sub === 'deep', services.getModelContextLength?.()));
+
+  // M76 Phase 7 — append a Mind Map section if diagnostics are available.
+  // Optional and silent on services that don't provide it; failures swallow
+  // cleanly so a stale or empty workspace can't break /context.
+  if (services.getMindMapDiagnostics) {
+    try {
+      const diag = await services.getMindMapDiagnostics();
+      if (diag) response.markdown(formatMindMapSection(diag));
+    } catch {
+      /* don't break /context if the diagnostics call fails */
+    }
+  }
+
   return { handled: true, report };
+}
+
+function formatMindMapSection(diag: {
+  readonly edgeCountsByKind: ReadonlyArray<{ kind: string; count: number }>;
+  readonly totalEdges: number;
+  readonly conceptCount: number;
+  readonly conceptDeletedCount: number;
+  readonly conceptRenamedCount: number;
+  readonly sourcesWithDistinctiveTerms: number;
+  readonly lastRefreshAt: string | null;
+  readonly lastRefreshStatus: string | null;
+}): string {
+  const lines: string[] = ['', '🕸️ Mind map (M76)'];
+  if (diag.totalEdges === 0 && diag.conceptCount === 0) {
+    lines.push('No cached edges or concept nodes yet. Run a refresh from Workspace Graph → Graph Settings.');
+    return lines.join('\n');
+  }
+  lines.push(`Edges total: ${diag.totalEdges}`);
+  if (diag.edgeCountsByKind.length > 0) {
+    for (const r of diag.edgeCountsByKind) lines.push(`- ${r.kind}: ${r.count}`);
+  }
+  lines.push(`Concepts: ${diag.conceptCount} active, ${diag.conceptDeletedCount} user-deleted, ${diag.conceptRenamedCount} user-renamed`);
+  lines.push(`Sources with distinctive terms: ${diag.sourcesWithDistinctiveTerms}`);
+  if (diag.lastRefreshAt) {
+    lines.push(`Last refresh: ${diag.lastRefreshAt} (${diag.lastRefreshStatus ?? 'unknown'})`);
+  } else {
+    lines.push('Last refresh: never');
+  }
+  return lines.join('\n');
 }
 
 function formatContextReport(

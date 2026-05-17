@@ -54,6 +54,7 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly userCommandFileSystem?: IDefaultParticipantServices['userCommandFileSystem'];
   readonly compactSession?: IDefaultParticipantServices['compactSession'];
   readonly getWorkspaceDigest?: IDefaultParticipantServices['getWorkspaceDigest'];
+  readonly getMindMapDiagnostics?: IDefaultParticipantServices['getMindMapDiagnostics'];
   readonly getLastSystemPromptReport?: IDefaultParticipantServices['getLastSystemPromptReport'];
   readonly sessionManager?: IDefaultParticipantServices['sessionManager'];
   readonly unifiedConfigService?: IDefaultParticipantServices['unifiedConfigService'];
@@ -179,6 +180,7 @@ export function buildOpenclawDefaultParticipantServices(
     userCommandFileSystem: deps.userCommandFileSystem,
     compactSession: deps.compactSession,
     getWorkspaceDigest: deps.getWorkspaceDigest,
+    getMindMapDiagnostics: deps.getMindMapDiagnostics,
     getLastSystemPromptReport: deps.getLastSystemPromptReport,
     sessionManager: deps.sessionManager,
     unifiedConfigService: deps.unifiedConfigService,

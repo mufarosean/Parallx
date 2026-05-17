@@ -1347,6 +1347,12 @@ function createGraphEditor(container, api) {
         </button>
       </div>
       <div id="__gs_refresh_history" style="display:none;margin:4px 0 12px;font-size:11px;color:var(--vscode-descriptionForeground,#999);"></div>
+
+      <div ${H}>Concept nodes</div>
+      <div id="__gs_concept_list" style="font-size:11px;">Loading…</div>
+      <button id="__gs_concept_rebuild" style="width:100%;padding:6px 8px;margin:6px 0;background:var(--vscode-button-secondaryBackground,#3a3a3a);color:var(--vscode-button-secondaryForeground,#ccc);border:none;border-radius:2px;cursor:pointer;font-size:11px;">
+        Force full re-cluster
+      </button>
       ` : ''}
 
       <div ${H}>Forces</div>
@@ -1559,7 +1565,168 @@ function createGraphEditor(container, api) {
           }
         });
       }
+
+      // M76 Phase 6 — wire the concept-curation section.
+      _populateConceptList(api);
+
+      const rebuildBtn = settingsInner.querySelector('#__gs_concept_rebuild');
+      if (rebuildBtn) {
+        rebuildBtn.addEventListener('click', async () => {
+          if (!window.confirm(
+            'Force full re-cluster will DELETE all your concept renames, merges, and deletions. ' +
+            'The next refresh will rebuild every cluster from scratch using only DBSCAN output. ' +
+            'Continue?',
+          )) return;
+          const svc = _getSemanticGraphService(api);
+          if (!svc || typeof svc.forceFullReCluster !== 'function') return;
+          rebuildBtn.disabled = true;
+          rebuildBtn.textContent = 'Wiping cluster state…';
+          try {
+            await svc.forceFullReCluster();
+            rebuildBtn.textContent = 'Done — click Refresh mind map';
+            setTimeout(() => {
+              if (rebuildBtn) {
+                rebuildBtn.disabled = false;
+                rebuildBtn.textContent = 'Force full re-cluster';
+              }
+            }, 2500);
+            _populateConceptList(api);
+          } catch (err) {
+            rebuildBtn.disabled = false;
+            rebuildBtn.textContent = 'Force full re-cluster';
+            console.warn('[WorkspaceGraph] forceFullReCluster failed:', err && err.message);
+          }
+        });
+      }
     }
+  }
+
+  // M76 Phase 6 — render the concept list inside the settings panel and
+  // attach rename / delete / merge handlers. Called on panel build, after
+  // every curation action, and after refresh completion (the orchestrator
+  // already triggers _buildSettingsPanel via onDidComplete).
+  async function _populateConceptList(api) {
+    const listEl = settingsInner.querySelector('#__gs_concept_list');
+    if (!listEl) return;
+    const svc = _getSemanticGraphService(api);
+    if (!svc || typeof svc.getConceptNodes !== 'function') {
+      listEl.innerHTML = '<em style="color:var(--vscode-descriptionForeground,#888)">Concept clustering not available.</em>';
+      return;
+    }
+    let concepts;
+    try {
+      concepts = await svc.getConceptNodes();
+    } catch (err) {
+      listEl.innerHTML = `<em>Failed to load: ${_esc(String((err && err.message) || err))}</em>`;
+      return;
+    }
+    if (!concepts || concepts.length === 0) {
+      listEl.innerHTML = '<em style="color:var(--vscode-descriptionForeground,#888)">No concepts yet. Run a refresh.</em>';
+      return;
+    }
+
+    // Sort by member count desc, then label.
+    concepts = concepts.slice().sort((a, b) => b.memberCount - a.memberCount || a.label.localeCompare(b.label));
+
+    // Build the list rows. Each row has a header (label + count) and a
+    // hidden actions panel that expands when the header is clicked.
+    const otherIdsFor = (skipId) => concepts.filter((c) => c.stableId !== skipId);
+
+    listEl.innerHTML = concepts.map((c) => {
+      const renameMark = c.userRenamed ? ' <span title="Renamed by user" style="opacity:0.7">✎</span>' : '';
+      const otherOptions = otherIdsFor(c.stableId)
+        .map((other) => `<option value="${_esc(other.stableId)}">${_esc(other.label)}</option>`)
+        .join('');
+      return `
+        <div data-concept-id="${_esc(c.stableId)}" style="margin:2px 0;border-bottom:1px solid var(--vscode-panel-border,#2a2a2a);padding-bottom:4px;">
+          <div data-role="header" style="display:flex;align-items:center;gap:6px;padding:4px 2px;cursor:pointer;">
+            <span style="flex:1;color:var(--vscode-editor-foreground,#ccc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+              ${_esc(c.label)}${renameMark}
+            </span>
+            <span style="color:var(--vscode-descriptionForeground,#888);font-size:10px;">${c.memberCount}</span>
+            <span data-role="chevron" style="color:var(--vscode-descriptionForeground,#666);font-size:10px;">▸</span>
+          </div>
+          <div data-role="actions" style="display:none;padding:4px 4px 6px;background:var(--vscode-input-background,#1c1c1c);border-radius:2px;margin-top:2px;">
+            <div style="display:flex;gap:4px;margin-bottom:4px;">
+              <input data-role="rename-input" type="text" value="${_esc(c.label)}" maxlength="100" style="flex:1;padding:3px 5px;background:var(--vscode-input-background,#252525);color:var(--vscode-input-foreground,#ccc);border:1px solid var(--vscode-input-border,#444);border-radius:2px;font-size:11px;">
+              <button data-role="rename-save" style="padding:3px 8px;background:var(--vscode-button-background,#0e639c);color:var(--vscode-button-foreground,#fff);border:none;border-radius:2px;cursor:pointer;font-size:11px;">Save</button>
+            </div>
+            <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;">
+              <span style="color:var(--vscode-descriptionForeground,#888);font-size:10px;">Merge into:</span>
+              <select data-role="merge-target" style="flex:1;padding:3px;background:var(--vscode-input-background,#252525);color:var(--vscode-input-foreground,#ccc);border:1px solid var(--vscode-input-border,#444);border-radius:2px;font-size:11px;">
+                <option value="">— pick concept —</option>
+                ${otherOptions}
+              </select>
+              <button data-role="merge-go" style="padding:3px 8px;background:var(--vscode-button-secondaryBackground,#3a3a3a);color:var(--vscode-button-secondaryForeground,#ccc);border:none;border-radius:2px;cursor:pointer;font-size:11px;">Merge</button>
+            </div>
+            <button data-role="delete" style="width:100%;padding:3px 8px;background:transparent;color:#e08080;border:1px solid #5a3a3a;border-radius:2px;cursor:pointer;font-size:11px;">
+              Delete (sticky)
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Wire each row.
+    const rows = listEl.querySelectorAll('[data-concept-id]');
+    rows.forEach((row) => {
+      const stableId = row.getAttribute('data-concept-id');
+      const header = row.querySelector('[data-role="header"]');
+      const actions = row.querySelector('[data-role="actions"]');
+      const chevron = row.querySelector('[data-role="chevron"]');
+      header.addEventListener('click', () => {
+        const open = actions.style.display !== 'none';
+        actions.style.display = open ? 'none' : 'block';
+        chevron.textContent = open ? '▸' : '▾';
+      });
+
+      const renameInput = row.querySelector('[data-role="rename-input"]');
+      const renameSave = row.querySelector('[data-role="rename-save"]');
+      renameSave.addEventListener('click', async () => {
+        const newLabel = String(renameInput.value || '').trim();
+        if (!newLabel) return;
+        try {
+          await svc.renameConceptNode(stableId, newLabel);
+          await _populateConceptList(api);
+          m.refresh().catch(() => {});
+        } catch (err) {
+          console.warn('[WorkspaceGraph] renameConceptNode failed:', err && err.message);
+        }
+      });
+      renameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); renameSave.click(); }
+      });
+
+      const mergeTarget = row.querySelector('[data-role="merge-target"]');
+      const mergeGo = row.querySelector('[data-role="merge-go"]');
+      mergeGo.addEventListener('click', async () => {
+        const targetId = mergeTarget.value;
+        if (!targetId) return;
+        if (!window.confirm('Merge this concept into the selected one? Members will move; this concept will be deleted.')) return;
+        try {
+          await svc.mergeConceptNodes(targetId, stableId);
+          await _populateConceptList(api);
+          m.refresh().catch(() => {});
+        } catch (err) {
+          console.warn('[WorkspaceGraph] mergeConceptNodes failed:', err && err.message);
+        }
+      });
+
+      const deleteBtn = row.querySelector('[data-role="delete"]');
+      deleteBtn.addEventListener('click', async () => {
+        if (!window.confirm(
+          'Delete this concept? The deletion is sticky — re-clustering will not re-form this group. ' +
+          'Use Force full re-cluster to undo.',
+        )) return;
+        try {
+          await svc.deleteConceptNode(stableId);
+          await _populateConceptList(api);
+          m.refresh().catch(() => {});
+        } catch (err) {
+          console.warn('[WorkspaceGraph] deleteConceptNode failed:', err && err.message);
+        }
+      });
+    });
   }
 
   // M76 Phase 3 — populate the dynamic parts of the refresh section

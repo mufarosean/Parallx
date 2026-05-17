@@ -40,7 +40,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, IGlobalStorageService, ISurfaceRouterService, IAutonomyLogService, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, IGlobalStorageService, ISurfaceRouterService, IAutonomyLogService, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator } from '../../services/serviceTypes.js';
 import { SettingsRegistryService, setGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import { createSecretStorageService } from '../../services/secretStorageService.js';
 import { PolicyDecisionPoint as _PolicyDecisionPoint } from '../../services/policyDecisionPoint.js';
@@ -1086,6 +1086,27 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     userCommandFileSystem: dataService.getUserCommandFileSystem(),
     compactSession: (s, t) => dataService.compactSession(s, t),
     getWorkspaceDigest: () => dataService.getWorkspaceDigest(),
+    // M76 Phase 7 — surface mind-map diagnostics through /context.
+    getMindMapDiagnostics: async () => {
+      const sg = api.services.has(ISemanticGraphService)
+        ? api.services.get<import('../../services/serviceTypes.js').ISemanticGraphService>(ISemanticGraphService)
+        : null;
+      if (!sg) return undefined;
+      const stats = await sg.getMindMapDiagnostics();
+      const orch = api.services.has(IMindMapRefreshOrchestrator)
+        ? api.services.get<import('../../services/serviceTypes.js').IMindMapRefreshOrchestrator>(IMindMapRefreshOrchestrator)
+        : null;
+      let lastRefreshAt: string | null = null;
+      let lastRefreshStatus: string | null = null;
+      if (orch) {
+        const hist = await orch.getRefreshHistory(1);
+        if (hist.length > 0) {
+          lastRefreshAt = hist[0].startedAt;
+          lastRefreshStatus = hist[0].status;
+        }
+      }
+      return { ...stats, lastRefreshAt, lastRefreshStatus };
+    },
     getLastSystemPromptReport: () => dataService.getLastSystemPromptReport(),
     sessionManager,
     unifiedConfigService,

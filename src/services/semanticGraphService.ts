@@ -65,6 +65,26 @@ export interface SemanticGraphEdge {
 }
 
 /**
+ * Diagnostics surfaced through `/context` to help bake-and-tune the
+ * mind map (M76 Phase 7). Counts only — no semantic content — so the
+ * report stays compact and privacy-clean.
+ */
+export interface IMindMapDiagnostics {
+  /** Edge counts grouped by kind. Includes only kinds with count > 0. */
+  readonly edgeCountsByKind: ReadonlyArray<{ kind: SemanticGraphEdgeKind; count: number }>;
+  /** Total cached edges across all kinds. */
+  readonly totalEdges: number;
+  /** Materialised concept nodes (excluding user-deleted tombstones). */
+  readonly conceptCount: number;
+  /** User-deleted concept tombstones (sticky deletions). */
+  readonly conceptDeletedCount: number;
+  /** Concept nodes whose label was set by the user. */
+  readonly conceptRenamedCount: number;
+  /** Sources currently in source_distinctive_terms (drives co-occurrence). */
+  readonly sourcesWithDistinctiveTerms: number;
+}
+
+/**
  * Concept node read by the workspace-graph UI (M76 Phase 5). One row per
  * cluster currently materialised in concept_nodes. The graph extension
  * uses these to render concept nodes as first-class graph nodes (label,
@@ -338,6 +358,229 @@ export class SemanticGraphService extends Disposable {
       return [];
     }
     return this._vectorStore.getSourceChunks(source.sourceType, source.sourceId, maxChunks);
+  }
+
+  /**
+   * Rename a concept node (M76 Phase 6). Sets user_renamed=1 so future
+   * LLM labelling passes preserve the user's choice. No-op if the
+   * concept doesn't exist.
+   */
+  async renameConceptNode(stableId: string, newLabel: string): Promise<void> {
+    if (!this._db.isOpen) return;
+    await this._ensureSchema();
+    const trimmed = (newLabel ?? '').trim();
+    if (trimmed.length === 0) return;
+    await this._db.run(
+      `UPDATE concept_nodes SET label = ?, user_renamed = 1 WHERE stable_id = ?`,
+      [trimmed.slice(0, 100), stableId],
+    );
+    this._onDidChangeEdges.fire();
+  }
+
+  /**
+   * Soft-delete a concept node (M76 Phase 6). Sets user_deleted=1 so the
+   * carry-over rule keeps skipping this cluster on future refreshes —
+   * the deletion is sticky. Also wipes its member-of edges and member
+   * rows so the deleted concept stops appearing in the graph.
+   */
+  async deleteConceptNode(stableId: string): Promise<void> {
+    if (!this._db.isOpen) return;
+    await this._ensureSchema();
+    await this._db.runTransaction([
+      {
+        type: 'run',
+        sql: `UPDATE concept_nodes SET user_deleted = 1, last_clustered_at = datetime('now') WHERE stable_id = ?`,
+        params: [stableId],
+      },
+      {
+        type: 'run',
+        sql: `DELETE FROM concept_node_members WHERE concept_id = ?`,
+        params: [stableId],
+      },
+      {
+        type: 'run',
+        sql: `DELETE FROM semantic_graph_edges
+               WHERE kind = 'member-of'
+                 AND origin_type = 'concept-node'
+                 AND origin_id = ?`,
+        params: [stableId],
+      },
+    ]);
+    this._onDidChangeEdges.fire();
+  }
+
+  /**
+   * Merge `mergedId` INTO `survivorId` (M76 Phase 6). The survivor keeps
+   * its label, stable_id, and user_renamed flag. The merged concept's
+   * members are moved over and the merged concept node is removed
+   * entirely (not tombstoned — a fresh re-cluster could re-form it
+   * legitimately).
+   *
+   * No-op when either id is missing or when survivor == merged.
+   */
+  async mergeConceptNodes(survivorId: string, mergedId: string): Promise<void> {
+    if (!this._db.isOpen) return;
+    if (survivorId === mergedId) return;
+    await this._ensureSchema();
+
+    // Verify both concepts exist before touching anything. A missing id
+    // means the UI is stale; better to no-op than to corrupt state.
+    const survivor = await this._db.get<{ stable_id: string }>(
+      `SELECT stable_id FROM concept_nodes WHERE stable_id = ?`,
+      [survivorId],
+    );
+    const merged = await this._db.get<{ stable_id: string }>(
+      `SELECT stable_id FROM concept_nodes WHERE stable_id = ?`,
+      [mergedId],
+    );
+    if (!survivor || !merged) return;
+
+    const ops: { type: 'run'; sql: string; params?: unknown[] }[] = [
+      // Move members. Use INSERT OR IGNORE so a duplicate (already-member)
+      // doesn't blow up the transaction — we want the union of memberships.
+      {
+        type: 'run',
+        sql: `INSERT OR IGNORE INTO concept_node_members (concept_id, source_type, source_id)
+                SELECT ?, source_type, source_id
+                  FROM concept_node_members
+                 WHERE concept_id = ?`,
+        params: [survivorId, mergedId],
+      },
+      {
+        type: 'run',
+        sql: `DELETE FROM concept_node_members WHERE concept_id = ?`,
+        params: [mergedId],
+      },
+      // Move member-of edges: re-point any edge whose target was the
+      // merged concept at the survivor instead. INSERT OR REPLACE on the
+      // (source_node_id, target_node_id, kind) PK handles duplicates.
+      {
+        type: 'run',
+        sql: `INSERT OR REPLACE INTO semantic_graph_edges (
+                source_node_id, target_node_id, source_type, source_id,
+                target_type, target_id, origin_type, origin_id, score, kind,
+                direction, source_content_hash, target_content_hash, updated_at
+              )
+              SELECT source_node_id, ?, source_type, source_id,
+                     target_type, ?, origin_type, ?, score, kind,
+                     direction, source_content_hash, target_content_hash, datetime('now')
+                FROM semantic_graph_edges
+               WHERE kind = 'member-of'
+                 AND origin_type = 'concept-node'
+                 AND origin_id = ?`,
+        params: [`concept:${survivorId}`, survivorId, survivorId, mergedId],
+      },
+      {
+        type: 'run',
+        sql: `DELETE FROM semantic_graph_edges
+               WHERE kind = 'member-of'
+                 AND origin_type = 'concept-node'
+                 AND origin_id = ?`,
+        params: [mergedId],
+      },
+      // Update survivor's member_count to the new union size.
+      {
+        type: 'run',
+        sql: `UPDATE concept_nodes
+                 SET member_count = (SELECT COUNT(*) FROM concept_node_members WHERE concept_id = ?),
+                     last_clustered_at = datetime('now')
+               WHERE stable_id = ?`,
+        params: [survivorId, survivorId],
+      },
+      // Finally, drop the merged concept row entirely.
+      {
+        type: 'run',
+        sql: `DELETE FROM concept_nodes WHERE stable_id = ?`,
+        params: [mergedId],
+      },
+    ];
+    await this._db.runTransaction(ops);
+    this._onDidChangeEdges.fire();
+  }
+
+  /**
+   * Force a full concept-clustering rebuild (M76 Phase 6). Wipes:
+   *   - the refresh_pass_state rows for 'concept-clustering' so every
+   *     source appears changed on next refresh
+   *   - every concept_nodes row INCLUDING user-deleted tombstones
+   *   - every member-of edge
+   *   - every concept_node_members row
+   *
+   * After this, the next refresh starts from a blank slate. The user's
+   * rename/delete/merge customisations are LOST — this is the escape
+   * hatch when the incremental clustering has drifted into garbage and
+   * the user wants a clean restart. The UI gates this behind explicit
+   * confirmation.
+   */
+  async forceFullReCluster(): Promise<void> {
+    if (!this._db.isOpen) return;
+    await this._ensureSchema();
+    await this._db.runTransaction([
+      {
+        type: 'run',
+        sql: `DELETE FROM refresh_pass_state WHERE pass_id = 'concept-clustering'`,
+      },
+      {
+        type: 'run',
+        sql: `DELETE FROM semantic_graph_edges WHERE kind = 'member-of'`,
+      },
+      { type: 'run', sql: `DELETE FROM concept_node_members` },
+      { type: 'run', sql: `DELETE FROM concept_nodes` },
+    ]);
+    this._onDidChangeEdges.fire();
+  }
+
+  /**
+   * Compact diagnostics for the /context report and the workspace-graph
+   * settings panel (M76 Phase 7). Counts only — no source content or
+   * cluster member ids — so the report stays privacy-clean and short.
+   */
+  async getMindMapDiagnostics(): Promise<IMindMapDiagnostics> {
+    if (!this._db.isOpen) {
+      return {
+        edgeCountsByKind: [],
+        totalEdges: 0,
+        conceptCount: 0,
+        conceptDeletedCount: 0,
+        conceptRenamedCount: 0,
+        sourcesWithDistinctiveTerms: 0,
+      };
+    }
+    await this._ensureSchema();
+
+    const edgeRows = await this._db.all<{ kind: SemanticGraphEdgeKind; count: number }>(
+      `SELECT kind, COUNT(*) as count
+         FROM semantic_graph_edges
+        GROUP BY kind
+        ORDER BY count DESC`,
+    );
+    const totalEdges = edgeRows.reduce((acc, r) => acc + r.count, 0);
+
+    const conceptStats = await this._db.get<{
+      total: number;
+      deleted: number;
+      renamed: number;
+    }>(
+      `SELECT
+         SUM(CASE WHEN user_deleted = 0 THEN 1 ELSE 0 END) as total,
+         SUM(CASE WHEN user_deleted = 1 THEN 1 ELSE 0 END) as deleted,
+         SUM(CASE WHEN user_renamed = 1 AND user_deleted = 0 THEN 1 ELSE 0 END) as renamed
+       FROM concept_nodes`,
+    );
+
+    const termSources = await this._db.get<{ count: number }>(
+      `SELECT COUNT(DISTINCT source_type || ':' || source_id) as count
+         FROM source_distinctive_terms`,
+    );
+
+    return {
+      edgeCountsByKind: edgeRows,
+      totalEdges,
+      conceptCount: conceptStats?.total ?? 0,
+      conceptDeletedCount: conceptStats?.deleted ?? 0,
+      conceptRenamedCount: conceptStats?.renamed ?? 0,
+      sourcesWithDistinctiveTerms: termSources?.count ?? 0,
+    };
   }
 
   /**

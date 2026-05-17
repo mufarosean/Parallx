@@ -1651,6 +1651,21 @@ export interface ISemanticGraphService extends IDisposable {
    * labels. Excludes user-deleted tombstone rows.
    */
   getConceptNodes(): Promise<import('./semanticGraphService.js').ConceptNodeRow[]>;
+
+  /** Rename a concept node and mark it user_renamed (M76 Phase 6). */
+  renameConceptNode(stableId: string, newLabel: string): Promise<void>;
+
+  /** Soft-delete a concept node — sticky across refreshes (M76 Phase 6). */
+  deleteConceptNode(stableId: string): Promise<void>;
+
+  /** Merge `mergedId` into `survivorId`; survivor keeps label/id (M76 Phase 6). */
+  mergeConceptNodes(survivorId: string, mergedId: string): Promise<void>;
+
+  /** Wipe all concept-clustering state for a clean restart (M76 Phase 6). */
+  forceFullReCluster(): Promise<void>;
+
+  /** Compact diagnostics for /context and the settings panel (M76 Phase 7). */
+  getMindMapDiagnostics(): Promise<import('./semanticGraphService.js').IMindMapDiagnostics>;
 }
 
 export const ISemanticGraphService = createServiceIdentifier<ISemanticGraphService>('ISemanticGraphService');
