@@ -66,6 +66,7 @@ const EXEMPT_FILES = new Set([
   'properties/propertyEditors.ts', // Type-specific editors (M55 D3)
   'properties/propertyPicker.ts',  // Add-property picker (M55 D3)
   'surfaces/canvasSurface.ts',     // M58 W6 — CanvasSurfacePlugin (read-only stub; no canvas-internal imports)
+  'canvasSidebarDragState.ts',     // M77 Phase 7 — pure DnD state machine (no canvas-internal imports)
 ]);
 
 // ── Child → allowed gate path fragments ─────────────────────────────────────
@@ -89,7 +90,7 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/bookmarkNode.ts':            ['config/blockRegistry'],
   'extensions/pageBlockNode.ts':           ['config/blockRegistry'],
   'header/pageChrome.ts':                  ['config/blockRegistry'],
-  'canvasSidebar.ts':                      ['config/blockRegistry', 'database/databaseRegistry'],
+  'canvasSidebar.ts':                      ['config/blockRegistry', 'database/databaseRegistry', 'canvasSidebarDragState'],
 
   // tiptapExtensions.ts — assembler role: imports from blockRegistry +
   // infrastructure extensions that have zero canvas-internal imports.
