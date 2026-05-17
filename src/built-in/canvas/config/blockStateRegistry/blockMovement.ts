@@ -41,6 +41,42 @@ function _wrapListFragment(schema: any, listType: 'bulletList' | 'orderedList' |
   return listNodeType.create(null, items);
 }
 
+/**
+ * Safely dispatch a Tiptap transaction and report success (M77 Phase 4).
+ *
+ * Dispatch can throw if a plugin's appendTransaction / filter throws, or
+ * if positions in the tr are invalid for the current doc. Previously
+ * every movement primitive called `editor.view.dispatch(tr)` raw and
+ * unconditionally returned `moved: true` — any failure was invisible to
+ * the caller and the user saw a silently-no-op keyboard shortcut.
+ *
+ * This wrapper catches dispatch errors, logs them, and returns false so
+ * callers can surface a failure or fall back to a different strategy.
+ */
+function _safeDispatch(editor: Editor, tr: any, opLabel: string): boolean {
+  try {
+    editor.view.dispatch(tr);
+    return true;
+  } catch (err) {
+    console.warn(`[blockMovement] ${opLabel} dispatch failed:`, err);
+    return false;
+  }
+}
+
+/**
+ * Bounds-check positions before they're used in a transaction (M77 Phase 4).
+ * Returns true when both positions are non-negative and within the doc
+ * size. Catches stale-position bugs where the caller's resolved positions
+ * predate intermediate plugin transactions.
+ */
+function _validPositions(tr: any, ...positions: number[]): boolean {
+  const docSize = tr.doc.content.size;
+  for (const p of positions) {
+    if (!Number.isFinite(p) || p < 0 || p > docSize) return false;
+  }
+  return true;
+}
+
 function _moveNodeWithinParent(editor: Editor, params: {
   nodePos: number;
   node: any;
@@ -64,10 +100,17 @@ function _moveNodeWithinParent(editor: Editor, params: {
     const targetPos = parentPos + (parentDepth === 0 ? 0 : 1) + offset;
 
     const tr = state.tr;
+    if (!_validPositions(tr, nodePos, nodePos + node.nodeSize, targetPos)) {
+      return { handled: true, moved: false };
+    }
     tr.delete(nodePos, nodePos + node.nodeSize);
+    // After delete, targetPos < nodePos so it stays valid. tr.mapping
+    // would map it to the same value (delete after pos doesn't shift earlier positions).
     tr.insert(targetPos, state.schema.nodeFromJSON(node.toJSON()));
     tr.setSelection(TextSelection.near(tr.doc.resolve(_selectionAnchorForNode(targetPos, node))));
-    editor.view.dispatch(tr);
+    if (!_safeDispatch(editor, tr, 'moveNodeWithinParent/up')) {
+      return { handled: true, moved: false };
+    }
     return { handled: true, moved: true };
   }
 
@@ -77,12 +120,22 @@ function _moveNodeWithinParent(editor: Editor, params: {
   const afterNextPos = nodePos + node.nodeSize + nextSibling.nodeSize;
 
   const tr = state.tr;
+  if (!_validPositions(tr, nodePos, nodePos + node.nodeSize, afterNextPos)) {
+    return { handled: true, moved: false };
+  }
   tr.insert(afterNextPos, state.schema.nodeFromJSON(node.toJSON()));
+  // After insert, the original nodePos and nodeSize are still valid for
+  // the delete because insert happened AFTER our node. M77 Phase 4: use
+  // tr.mapping to compute the new selection position from the inserted
+  // copy's location rather than hand-math, in case future plugin
+  // transactions reshape positions on insert.
   tr.delete(nodePos, nodePos + node.nodeSize);
 
-  const newNodePos = nodePos + nextSibling.nodeSize;
+  const newNodePos = tr.mapping.map(afterNextPos);
   tr.setSelection(TextSelection.near(tr.doc.resolve(_selectionAnchorForNode(newNodePos, node))));
-  editor.view.dispatch(tr);
+  if (!_safeDispatch(editor, tr, 'moveNodeWithinParent/down')) {
+    return { handled: true, moved: false };
+  }
   return { handled: true, moved: true };
 }
 
@@ -132,10 +185,14 @@ function _moveListItemWithinPageFlow(editor: Editor, direction: 'up' | 'down'): 
   );
 
   const tr = state.tr;
+  if (!_validPositions(tr, unit.pos, unit.pos + unit.node.nodeSize, unit.listPos)) {
+    return { handled: true, moved: false };
+  }
   tr.delete(unit.pos, unit.pos + unit.node.nodeSize);
 
   if (direction === 'up') {
     const mappedListPos = tr.mapping.map(unit.listPos, -1);
+    if (!_validPositions(tr, mappedListPos)) return { handled: true, moved: false };
     tr.insert(mappedListPos, wrappedList);
     tr.setSelection(TextSelection.near(tr.doc.resolve(_selectionAnchorForNode(mappedListPos, wrappedList))));
   } else {
@@ -143,11 +200,14 @@ function _moveListItemWithinPageFlow(editor: Editor, direction: 'up' | 'down'): 
     const mappedListNode = tr.doc.nodeAt(mappedListPos);
     if (!mappedListNode) return { handled: false, moved: false };
     const insertPos = mappedListPos + mappedListNode.nodeSize;
+    if (!_validPositions(tr, insertPos)) return { handled: true, moved: false };
     tr.insert(insertPos, wrappedList);
     tr.setSelection(TextSelection.near(tr.doc.resolve(_selectionAnchorForNode(insertPos, wrappedList))));
   }
 
-  editor.view.dispatch(tr);
+  if (!_safeDispatch(editor, tr, 'moveListItemWithinPageFlow')) {
+    return { handled: true, moved: false };
+  }
   return { handled: true, moved: true };
 }
 
@@ -261,11 +321,16 @@ export function moveBlockAcrossColumnBoundary(
         nodes.push(blockNode);
       }
       tr.replaceWith(clPos, clPos + clNode.nodeSize, nodes);
-      editor.view.dispatch(tr);
+      if (!_safeDispatch(editor, tr, 'moveBlockAcrossColumnBoundary/replaceWith')) {
+        return false;
+      }
       return true;
     }
   }
 
+  if (!_validPositions(tr, blockPos, blockPos + blockNode.nodeSize)) {
+    return false;
+  }
   tr.delete(blockPos, blockPos + blockNode.nodeSize);
 
   // Clean up any empty column left behind after the block removal.
@@ -273,9 +338,14 @@ export function moveBlockAcrossColumnBoundary(
   cleanupEmptyColumn(tr, mappedColPos, clPos);
 
   const mapped = tr.mapping.map(direction === 'up' ? clPos : clEnd);
+  if (!_validPositions(tr, mapped)) {
+    return false;
+  }
   tr.insert(mapped, blockNode);
   normalizeAllColumnLists(tr);
-  editor.view.dispatch(tr);
+  if (!_safeDispatch(editor, tr, 'moveBlockAcrossColumnBoundary')) {
+    return false;
+  }
   return true;
 }
 
