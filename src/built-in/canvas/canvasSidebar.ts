@@ -39,6 +39,7 @@ interface CanvasSidebarApi {
   };
   window: {
     showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
+    showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
   };
 }
 
@@ -157,6 +158,23 @@ export class CanvasSidebar {
   /** Public entry point to re-fetch all data and re-render the sidebar tree. */
   refresh(): void {
     this._requestRefreshTree();
+  }
+
+  /**
+   * M77 Phase 2 — convert previously-silent failure paths into visible
+   * errors. Logs the full error to console (for debugging) and surfaces
+   * a brief message to the user via `api.window.showErrorMessage`. The
+   * notification is fire-and-forget; if it itself fails we already have
+   * the console log.
+   */
+  private _surfaceError(operation: string, err: unknown): void {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error(`[CanvasSidebar] ${operation} failed:`, err);
+    try {
+      void this._api.window.showErrorMessage(`${operation} failed: ${detail}`);
+    } catch {
+      /* notification API itself failed — nothing more we can do */
+    }
   }
 
   private _requestRefreshTree(): void {
@@ -784,7 +802,7 @@ export class CanvasSidebar {
         const node = this._findNode(this._tree, pageId) ?? this._favoritedPages.find(page => page.id === pageId) ?? null;
         if (node && nextTitle !== node.title) {
           void this._dataService.updatePage(pageId, { title: nextTitle }).catch((err) => {
-            console.error('[CanvasSidebar] Rename failed:', err);
+            this._surfaceError('Rename', err);
           });
         }
       }
@@ -1004,10 +1022,14 @@ export class CanvasSidebar {
         }
       }
     } catch (err) {
+      // The atomic createChildPageWithBlock means we don't usually need
+      // a rollback — if the transaction failed, neither the page nor
+      // the parent block was written. But for any post-create failure
+      // (editor open, tree refresh, popup) we still delete the orphan.
       if (page) {
         try { await this._dataService.deletePage(page.id); } catch { /* best-effort rollback */ }
       }
-      console.error('[CanvasSidebar] Failed to create page:', err);
+      this._surfaceError('Create page', err);
     }
   }
 
@@ -1131,7 +1153,10 @@ export class CanvasSidebar {
     this._dropTarget = null;
 
     this._performDrop(pageId, oldParentId, newParentId, afterSiblingId).catch((err) => {
-      console.error('[CanvasSidebar] Move failed:', err);
+      this._surfaceError('Move', err);
+      // Force a tree refresh so the sidebar drops back to the real DB
+      // state rather than showing the user's failed drop position.
+      this._requestRefreshTree();
     });
   }
 

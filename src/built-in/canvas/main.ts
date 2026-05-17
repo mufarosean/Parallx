@@ -297,7 +297,28 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     });
   });
 
-  // 5b. Auto-close editor tabs when their page is deleted or archived.
+  // 5b. M77 Phase 2 — surface auto-save failures. Without this listener the
+  // SaveStateKind.Failed event fired by canvasDataService.flushContentSave
+  // and the debounce path went nowhere; users lost work silently if the
+  // DB write failed (full disk, schema drift, etc.). Throttle to one
+  // notification per page per second so a stuck save loop doesn't spam
+  // notifications.
+  {
+    const lastNotifiedAt = new Map<string, number>();
+    context.subscriptions.push(
+      _dataService.onDidChangeSaveState((e) => {
+        if (e.kind !== 'Failed') return;
+        const now = Date.now();
+        const last = lastNotifiedAt.get(e.pageId) ?? 0;
+        if (now - last < 1000) return;
+        lastNotifiedAt.set(e.pageId, now);
+        const detail = e.error ? `: ${e.error}` : '';
+        void api.window.showErrorMessage(`Canvas save failed${detail}`);
+      }),
+    );
+  }
+
+  // 5c. Auto-close editor tabs when their page is deleted or archived.
   // Canvas opens page editors with `instanceId: pageId`, and EditorsBridge
   // uses the supplied instanceId verbatim as the editor input id — so the
   // descriptor id is the pageId itself (NOT "parallx.canvas:canvas:<pageId>"
