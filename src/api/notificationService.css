@@ -1,6 +1,6 @@
 /* ── Notification Service ─────────────────────────────────────────────────── */
 
-/* Toast container (fixed bottom-right) */
+/* Passive toast container (fixed bottom-right) */
 .parallx-notifications-container {
   position: fixed;
   bottom: 40px; /* above status bar */
@@ -11,6 +11,19 @@
   gap: 8px;
   max-width: 420px;
   pointer-events: none; /* container is transparent to clicks */
+}
+
+.parallx-notification-prompts-container {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  pointer-events: none;
 }
 
 /* ── Individual notification toast ────────────────────────────────────── */
@@ -30,6 +43,10 @@
   transition: opacity 0.2s ease, transform 0.2s ease;
   pointer-events: auto;
   min-width: 280px;
+}
+
+.parallx-notification--prompt {
+  width: min(420px, calc(100vw - 32px));
 }
 
 /* Severity border colours */

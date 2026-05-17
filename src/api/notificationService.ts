@@ -2,7 +2,7 @@
 //
 // Provides the shell's notification overlay UI, backing
 // `parallx.window.showInformationMessage()` and friends.
-// Renders brief toast messages in the bottom-right corner of the workbench
+// Renders brief toast messages in the corner and action prompts at screen center.
 
 import './notificationService.css';
 // with support for severity levels, action buttons, and auto-dismiss.
@@ -55,6 +55,7 @@ const DEFAULT_TIMEOUT_MS = 5000;
 export class NotificationService extends Disposable {
 
   private _container: HTMLElement | undefined;
+  private _promptContainer: HTMLElement | undefined;
   private readonly _activeNotifications = new Map<string, {
     element: HTMLElement;
     timer: ReturnType<typeof setTimeout> | undefined;
@@ -100,6 +101,10 @@ export class NotificationService extends Disposable {
     this._container = $('div');
     this._container.className = 'parallx-notifications-container';
     parent.appendChild(this._container);
+
+    this._promptContainer = $('div');
+    this._promptContainer.className = 'parallx-notification-prompts-container';
+    parent.appendChild(this._promptContainer);
   }
 
   /**
@@ -134,9 +139,10 @@ export class NotificationService extends Disposable {
         this._history.length = NotificationService.MAX_HISTORY;
       }
 
-      if (this._container) {
+      const targetContainer = actions.length > 0 ? this._promptContainer : this._container;
+      if (targetContainer) {
         // Insert at top (newest first)
-        this._container.prepend(element);
+        targetContainer.prepend(element);
       } else if (timeoutMs === 0) {
         // No container and no auto-dismiss timeout: the notification would be
         // invisible and uninteractable, so resolve immediately to prevent a
@@ -199,7 +205,9 @@ export class NotificationService extends Disposable {
 
     // Animate out
     entry.element.style.opacity = '0';
-    entry.element.style.transform = 'translateX(20px)';
+    entry.element.style.transform = entry.element.classList.contains('parallx-notification--prompt')
+      ? 'translateY(8px)'
+      : 'translateX(20px)';
 
     setTimeout(() => {
       entry.element.remove();
@@ -216,6 +224,9 @@ export class NotificationService extends Disposable {
   ): HTMLElement {
     const el = $('div');
     el.className = `parallx-notification parallx-notification-${notification.severity}`;
+    if (notification.actions.length > 0) {
+      el.classList.add('parallx-notification--prompt');
+    }
     el.dataset.notificationId = notification.id;
 
     // Content row
@@ -265,10 +276,10 @@ export class NotificationService extends Disposable {
 
     // Entrance animation
     el.style.opacity = '0';
-    el.style.transform = 'translateX(20px)';
+    el.style.transform = notification.actions.length > 0 ? 'translateY(8px)' : 'translateX(20px)';
     requestAnimationFrame(() => {
       el.style.opacity = '1';
-      el.style.transform = 'translateX(0)';
+      el.style.transform = notification.actions.length > 0 ? 'translateY(0)' : 'translateX(0)';
     });
 
     return el;
@@ -288,6 +299,8 @@ export class NotificationService extends Disposable {
     this.dismissAll();
     this._container?.remove();
     this._container = undefined;
+    this._promptContainer?.remove();
+    this._promptContainer = undefined;
     super.dispose();
   }
 }
