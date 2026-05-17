@@ -68,13 +68,34 @@ export class CanvasSidebar {
   // ── Callbacks ──
   private _onExpandStateChanged: ((expandedIds: ReadonlySet<string>) => void) | null = null;
 
-  // ── Drag-and-drop state ──
+  // ── Drag-and-drop state (M77 Phase 3) ──
   private _draggedPageId: string | null = null;
   private _dropIndicator: HTMLElement | null = null;
   private _dropTarget: { parentId: string | null; afterSiblingId: string | undefined } | null = null;
   private _dragOverElement: HTMLElement | null = null;
-  /** True while a refresh was requested but suppressed because a drag is in flight. */
-  private _refreshDeferredByDrag = false;
+  /**
+   * Frozen view of the tree captured at dragstart. Used for ancestry checks
+   * and drop-target validation so they can't be invalidated by concurrent
+   * DB events. Map: pageId -> parentId (null = root).
+   */
+  private _dragSnapshot: Map<string, string | null> | null = null;
+  /**
+   * True while the drop's async `_performDrop` is in flight. Combined with
+   * `_draggedPageId`, defines the full "unsafe to rebuild the tree DOM"
+   * window. The previous design suppressed only during _draggedPageId, but
+   * the drop's atomic-txn work outlives drag (dragend fires synchronously
+   * after drop, before the txn resolves) — so refreshes triggered during
+   * that window used to slip through.
+   */
+  private _dropInFlight = false;
+  /**
+   * Count of refresh requests received while drag/drop was in flight.
+   * Replaces the prior boolean flag which lost requests beyond the first.
+   * Any value > 0 at drag/drop completion triggers exactly one refresh
+   * (refreshes coalesce — all that matters is "did something change while
+   * we were busy").
+   */
+  private _refreshDeferredCount = 0;
 
   // ── Sidebar page options popup ──
   private _pageOptionsPopup: HTMLElement | null = null;
@@ -178,10 +199,12 @@ export class CanvasSidebar {
   }
 
   private _requestRefreshTree(): void {
-    // Never rebuild the tree DOM mid-drag — `_renderTree` wipes `treeList.innerHTML`,
-    // which would destroy the dragged row and cause the browser to cancel the drag.
-    if (this._draggedPageId !== null) {
-      this._refreshDeferredByDrag = true;
+    // Never rebuild the tree DOM mid-drag or mid-drop async work —
+    // `_renderTree` wipes `treeList.innerHTML`, destroying the dragged
+    // row and cancelling the browser drag, OR replacing the tree the
+    // drop's compensating refresh-on-failure handler is about to read.
+    if (this._draggedPageId !== null || this._dropInFlight) {
+      this._refreshDeferredCount += 1;
       return;
     }
     if (this._refreshScheduled) return;
@@ -190,6 +213,19 @@ export class CanvasSidebar {
       this._refreshScheduled = false;
       void this._refreshTree();
     });
+  }
+
+  /**
+   * M77 Phase 3 — process any refreshes that arrived while drag/drop
+   * suppressed the tree DOM rebuild. Called from drop's finally and
+   * from _onDragEnd as a belt-and-suspenders fallback. Coalesces — a
+   * single refresh covers any number of suppressed requests.
+   */
+  private _drainDeferredRefreshes(): void {
+    if (this._draggedPageId !== null || this._dropInFlight) return;
+    if (this._refreshDeferredCount === 0) return;
+    this._refreshDeferredCount = 0;
+    this._requestRefreshTree();
   }
 
   private async _refreshTree(): Promise<void> {
@@ -1084,17 +1120,53 @@ export class CanvasSidebar {
 
   private _onDragStart(e: DragEvent, node: IPageTreeNode): void {
     this._draggedPageId = node.id;
+    // M77 Phase 3 — snapshot the tree's parent-child shape so ancestry
+    // checks and drop-target validation can't be invalidated by a
+    // concurrent DB event firing mid-drag. We only need (id -> parentId)
+    // — drop validation doesn't care about titles or sort orders.
+    this._dragSnapshot = this._captureTreeSnapshot(this._tree);
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', node.id);
     }
   }
 
+  private _captureTreeSnapshot(tree: IPageTreeNode[]): Map<string, string | null> {
+    const snap = new Map<string, string | null>();
+    const walk = (nodes: IPageTreeNode[], parentId: string | null): void => {
+      for (const n of nodes) {
+        snap.set(n.id, parentId);
+        if (n.children && n.children.length > 0) walk(n.children, n.id);
+      }
+    };
+    walk(tree, null);
+    return snap;
+  }
+
+  /**
+   * Ancestry check against the drag-time snapshot. The live tree may have
+   * changed during drag but we always validate against the state the user
+   * was looking at when they started dragging.
+   */
+  private _isDescendantInSnapshot(rootId: string, candidateId: string): boolean {
+    if (!this._dragSnapshot) return false;
+    let cur: string | null | undefined = candidateId;
+    const seen = new Set<string>();
+    while (cur !== null && cur !== undefined) {
+      if (seen.has(cur)) return false; // cycle defence
+      seen.add(cur);
+      if (cur === rootId) return true;
+      cur = this._dragSnapshot.get(cur) ?? null;
+    }
+    return false;
+  }
+
   private _onDragOver(e: DragEvent, row: HTMLElement, node: IPageTreeNode, _depth: number): void {
     if (!this._draggedPageId || this._draggedPageId === node.id) return;
 
-    // Prevent dropping onto own descendants
-    if (this._isDescendant(this._tree, this._draggedPageId, node.id)) return;
+    // Prevent dropping onto own descendants. Uses the drag-time snapshot
+    // (M77 Phase 3) so concurrent DB changes can't invalidate the check.
+    if (this._isDescendantInSnapshot(this._draggedPageId, node.id)) return;
 
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
@@ -1145,19 +1217,30 @@ export class CanvasSidebar {
     const pageId = this._draggedPageId;
     const { parentId: newParentId, afterSiblingId } = this._dropTarget;
 
-    // Capture the old parentId from the tree before it refreshes
-    const draggedNode = this._findNode(this._tree, pageId);
-    const oldParentId = draggedNode?.parentId ?? null;
+    // M77 Phase 3 — read the old parent from the drag-time snapshot so
+    // a concurrent DB event can't shift our view of where the page used
+    // to be. The data service will read the canonical previous parent
+    // from the DB anyway, but having a snapshot-consistent old parent
+    // matters for any UI logic that wants to know.
+    const oldParentId = this._dragSnapshot?.get(pageId) ?? null;
 
     this._draggedPageId = null;
     this._dropTarget = null;
+    // Mark drop-in-flight so refreshes fired by the move's own DB events
+    // are deferred until the async work completes.
+    this._dropInFlight = true;
 
-    this._performDrop(pageId, oldParentId, newParentId, afterSiblingId).catch((err) => {
-      this._surfaceError('Move', err);
-      // Force a tree refresh so the sidebar drops back to the real DB
-      // state rather than showing the user's failed drop position.
-      this._requestRefreshTree();
-    });
+    this._performDrop(pageId, oldParentId, newParentId, afterSiblingId)
+      .catch((err) => {
+        this._surfaceError('Move', err);
+        // Force a tree refresh so the sidebar drops back to the real DB
+        // state rather than showing the user's failed drop position.
+        this._refreshDeferredCount += 1;
+      })
+      .finally(() => {
+        this._dropInFlight = false;
+        this._drainDeferredRefreshes();
+      });
   }
 
   /**
@@ -1185,12 +1268,13 @@ export class CanvasSidebar {
   private _onDragEnd(): void {
     this._draggedPageId = null;
     this._dropTarget = null;
+    this._dragSnapshot = null;
     this._clearDropIndicators();
-    // Flush any refresh that was suppressed while the drag was active.
-    if (this._refreshDeferredByDrag) {
-      this._refreshDeferredByDrag = false;
-      this._requestRefreshTree();
-    }
+    // Belt-and-suspenders: if dragend fires without a drop (e.g. ESC,
+    // drop outside the sidebar), _dropInFlight stays false and the
+    // deferred refresh fires here. If a drop is in flight, its .finally
+    // will drain refreshes when it completes.
+    this._drainDeferredRefreshes();
   }
 
   private _showDropLine(row: HTMLElement, position: 'before' | 'after'): void {
@@ -1255,15 +1339,6 @@ export class CanvasSidebar {
       if (found) return found;
     }
     return null;
-  }
-
-  /**
-   * Check if `potentialDescendantId` is a descendant of `ancestorId`.
-   */
-  private _isDescendant(tree: IPageTreeNode[], ancestorId: string, potentialDescendantId: string): boolean {
-    const ancestor = this._findNode(tree, ancestorId);
-    if (!ancestor) return false;
-    return this._findNode(ancestor.children as IPageTreeNode[], potentialDescendantId) !== null;
   }
 
   /**
