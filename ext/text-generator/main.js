@@ -2921,12 +2921,19 @@ function assembleContext(params) {
         + ']';
     }
     messages.push({ role: 'user', content });
-  } else if (!messages.some(m => m.role === 'user')) {
-    // No prior user turn — common when the user pressed a shortcut
-    // button, regenerated, or selected a character with no message.
-    // The directive becomes the sole user-role payload, so it must
-    // carry both the active-turn signal AND any ephemeral directive,
-    // in the same emphatic format used for the with-user-message path.
+  } else {
+    // userMessage is empty — happens for `/ai <instruction>` typed as
+    // the whole message, shortcut buttons, regenerate, and any other
+    // path where the active turn is requested without new user text.
+    //
+    // The prior gate (`!messages.some(m => m.role === 'user')`) only
+    // fired when history was devoid of user-role messages, which was
+    // wrong: as soon as ANY past user message existed, the directive
+    // never reached the user-role position, and got buried in the
+    // system block where small models drop it. Fire unconditionally
+    // now — the model needs a fresh user-role payload carrying the
+    // active-turn signal + any director's note before every
+    // generation, no matter what history looks like.
     let directive = '[Stage direction — not part of the story.';
     if (bannerName) {
       directive += ` Now write the next reply as ${bannerName}, and only ${bannerName}. Stay strictly in ${bannerName}'s voice. Do not write, narrate, or quote any other character. Do not begin with a \`<<${bannerName}>>\` tag or any speaker prefix.`;
