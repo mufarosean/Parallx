@@ -503,13 +503,12 @@ export class PageChromeController {
       this._hoverAffordances.appendChild(addCoverBtn);
     }
 
-    if (this._options.titleLayout === 'inline') {
-      this._pageHeader.appendChild(this._hoverAffordances);
-      this._pageHeader.appendChild(titleRow);
-    } else {
-      this._pageHeader.appendChild(titleRow);
-      this._pageHeader.appendChild(this._hoverAffordances);
-    }
+    // Affordances always render ABOVE the title row (Notion-canonical
+    // placement). The prior absolute-positioned variant landed in dead
+    // space at the top-right of the header after the title/properties
+    // gap was removed.
+    this._pageHeader.appendChild(this._hoverAffordances);
+    this._pageHeader.appendChild(titleRow);
 
     // ── Title (contenteditable) ──
     this._titleEl = $('div.canvas-page-title');
@@ -611,8 +610,16 @@ export class PageChromeController {
     this._coverEl = $('div.canvas-page-cover');
     this._coverControls = $('div.canvas-cover-controls');
 
+    // All three cover-control buttons preventDefault on mousedown so the
+    // browser does NOT shift focus to the button. Without this, the
+    // editor's `onBlur` handler fires 150ms later, sees that the focused
+    // element (the button) isn't inside any visible menu's DOM, and
+    // calls `_menuRegistry.hideAll()` — closing the very cover picker
+    // we just opened. Mirrors the pattern the Add-icon / Add-cover
+    // affordance buttons at the top of the header already use.
     const repositionBtn = $('button.canvas-cover-btn.canvas-cover-reposition-btn');
     repositionBtn.textContent = 'Reposition';
+    repositionBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
     repositionBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this._startCoverReposition();
@@ -620,6 +627,7 @@ export class PageChromeController {
 
     const changeBtn = $('button.canvas-cover-btn');
     changeBtn.textContent = 'Change cover';
+    changeBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
     changeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this._showCoverPicker(e.currentTarget as HTMLElement);
@@ -627,6 +635,7 @@ export class PageChromeController {
 
     const removeBtn = $('button.canvas-cover-btn');
     removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this._host.dataService.updatePage(this._host.pageId, { coverUrl: null });

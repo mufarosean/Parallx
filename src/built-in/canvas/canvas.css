@@ -2577,17 +2577,20 @@
 }
 
 /* ── Hover Affordances ── */
+/* Notion-canonical placement: a horizontal row of buttons that sits
+ * ABOVE the title in normal flow, left-aligned with the title's gutter.
+ * Hover-visible. The container reserves its space so hover doesn't
+ * shift the title down. */
 
 .canvas-page-affordances {
   display: flex;
   gap: 8px;
   opacity: 0;
   transition: opacity 0.15s ease;
-  position: absolute;
-  top: 8px;
-  right: var(--canvas-content-gutter);
-  margin-bottom: 0;
-  min-height: 0;
+  margin-bottom: 6px;
+  /* Reserve vertical room so hover-visible buttons don't reflow the
+   * title row. Matches the button's actual height (icon + small text). */
+  min-height: 22px;
 }
 
 .canvas-page-header:hover .canvas-page-affordances {
