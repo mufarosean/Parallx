@@ -238,6 +238,17 @@ class CanvasEditorPane implements IDisposable {
   private _pageBlockIds = new Set<string>();
 
   /**
+   * Monotonic generation counter for `_loadContent` calls (M77 Phase 8.3).
+   * Each call increments and captures the new value; before applying its
+   * result it checks the captured value still matches `_loadGeneration`.
+   * A later call invalidates earlier in-flight loads so a slow reload
+   * can't overwrite a newer one (the bug: open editor receives two
+   * onRequestContentReload events; the older's `setContent` lands after
+   * the newer's, reverting the editor to stale content).
+   */
+  private _loadGeneration = 0;
+
+  /**
    * Set true after the first `_loadContent()` finishes seeding `_pageBlockIds`
    * from the freshly loaded doc.  Until then any `docChanged` transaction
    * (e.g. UniqueID's `appendTransaction` adding ids to legacy nodes, or any
@@ -698,6 +709,14 @@ class CanvasEditorPane implements IDisposable {
   private async _loadContent(): Promise<void> {
     if (!this._editor || !this._pageId) return;
 
+    // M77 Phase 8.3 — capture this call's generation. Each async await
+    // below re-checks against `_loadGeneration` and bails if a newer
+    // call has started, preventing a slow load from clobbering a fast
+    // subsequent one.
+    const generation = ++this._loadGeneration;
+    const isCurrent = (): boolean =>
+      !this._disposed && this._loadGeneration === generation && !!this._editor;
+
     // M77 Phase 1 — repair any pageBlock drift before loading content.
     // No-op when no orphan blocks exist (just one DB read + content scan).
     // Reconciliation does NOT fire its own reload event so we don't
@@ -705,26 +724,32 @@ class CanvasEditorPane implements IDisposable {
     // below.
     try {
       const repaired = await this._dataService.reconcileParentBlockState(this._pageId);
+      if (!isCurrent()) return;
       if (repaired > 0) {
         console.log(`[CanvasEditorPane] Reconciled ${repaired} orphan pageBlock(s) on page "${this._pageId}"`);
       }
     } catch (err) {
       console.warn('[CanvasEditorPane] reconcileParentBlockState failed:', err);
+      if (!isCurrent()) return;
     }
 
     try {
       const page = await this._dataService.getPage(this._pageId);
+      if (!isCurrent()) return;
       if (page && page.content) {
         this._suppressUpdate = true;
         try {
           const decoded = await this._dataService.decodePageContentForEditor(page);
-          this._editor.commands.setContent(decoded.doc);
+          if (!isCurrent()) return;
+          this._editor!.commands.setContent(decoded.doc);
           if (decoded.recovered) {
             console.warn(`[CanvasEditorPane] Recovered and normalized content for page "${this._pageId}"`);
           }
           // Seed the pageBlock snapshot so onTransaction diffs against the
-          // freshly loaded doc, not whatever was there before.
-          this._pageBlockIds = this._collectPageBlockIds(this._editor);
+          // freshly loaded doc, not whatever was there before. M77 Phase
+          // 8.4 — assigned together with the load completion so no
+          // transaction observes an empty snapshot.
+          this._pageBlockIds = this._collectPageBlockIds(this._editor!);
         } finally {
           this._suppressUpdate = false;
         }
@@ -739,6 +764,7 @@ class CanvasEditorPane implements IDisposable {
       this._initialContentLoaded = true;
     } catch (err) {
       this._suppressUpdate = false;
+      if (!isCurrent()) return;
       console.error(`[CanvasEditorPane] Failed to load page "${this._pageId}":`, err);
     }
   }
@@ -756,6 +782,18 @@ class CanvasEditorPane implements IDisposable {
     this._blockHandles?.hide();
     this._blockSelection?.clear();
     this._pageChrome?.dismissPopups();
+
+    // M77 Phase 8.1 — flush any pending debounced save BEFORE we destroy
+    // the editor. The debounce timer can hold the user's last keystrokes
+    // for up to `_autoSaveMs`; if the pane is disposed (tab closed, app
+    // shutdown) inside that window, those bytes are otherwise dropped.
+    // Best-effort: a flush failure here can't be surfaced (the pane is
+    // going away), but the data service has its own retry queue.
+    if (this._pageId && this._dataService.hasPendingSave(this._pageId)) {
+      void this._dataService.flushPendingSaves().catch((err) => {
+        console.warn(`[CanvasEditorPane] Failed to flush pending saves on dispose for "${this._pageId}":`, err);
+      });
+    }
 
     this._blockHandles?.dispose();
     this._blockSelection?.dispose();

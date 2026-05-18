@@ -259,13 +259,17 @@ export class SlashMenuController implements ICanvasMenu {
   };
 
   private async _execute(item: SlashMenuItem, editor: Editor): Promise<void> {
-    // Suppress onUpdate to prevent onTransaction from firing mid-execution
-    this._host.suppressUpdate = true;
-
     // Track for recents-hoisting on next open. Done before insertion so a
     // failure in the insert path still records the user's intent.
+    // M77 Phase 8.2 — record BEFORE we flip the suppress flag so a throw
+    // here (e.g. localStorage quota) can't leave the flag stuck on, which
+    // would silently swallow every subsequent user edit.
     _slashRecents.record(item.blockId);
 
+    // Suppress onUpdate to prevent onTransaction from firing mid-execution.
+    // The try/finally below guarantees the flag is restored even if the
+    // insert path throws.
+    this._host.suppressUpdate = true;
     try {
       const { $from } = editor.state.selection;
       if ($from.depth < 1) return;

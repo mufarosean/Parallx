@@ -669,8 +669,14 @@ export function createComposePageTool(
 
       const encoded = encodeCanvasContentFromDoc(finalDoc);
       const now = new Date().toISOString();
+      // M77 Phase 10.1 — bump `revision` so the canvas data service's
+      // optimistic-concurrency tracking sees this external write. Without
+      // the bump a user's pending auto-save (captured with the pre-AI
+      // revision) would silently succeed and overwrite the AI's content.
+      // With the bump it conflicts and surfaces, which is the correct
+      // behaviour for co-authoring.
       await db!.run(
-        'UPDATE pages SET content = ?, content_schema_version = ?, updated_at = ? WHERE id = ?',
+        'UPDATE pages SET content = ?, content_schema_version = ?, updated_at = ?, revision = revision + 1 WHERE id = ?',
         [encoded.storedContent, encoded.schemaVersion, now, pageId],
       );
 
@@ -784,6 +790,10 @@ export function createSetPageStyleTool(
 
       const now = new Date().toISOString();
       sets.push('updated_at = ?');
+      // M77 Phase 10.1 — bump `revision` so the canvas data service's
+      // optimistic-concurrency tracking treats this as a real write and
+      // a concurrent user save can't silently overwrite the style change.
+      sets.push('revision = revision + 1');
       params.push(now);
       params.push(pageId);
 

@@ -138,8 +138,11 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
 
   // ── Auto-save debounce state ──
 
-  /** Per-page debounce timers for content auto-save. */
-  private readonly _pendingSaves = new Map<string, { timer: ReturnType<typeof setTimeout>; content: string; expectedRevision?: number }>();
+  /** Per-page debounce timers for content auto-save.
+   * `schemaVersion` is captured alongside the content so the coalesce-by-equality
+   * check (scheduleContentSave) doesn't drop a schedule that differs only in
+   * schema version (M77 Phase 9.3). */
+  private readonly _pendingSaves = new Map<string, { timer: ReturnType<typeof setTimeout>; content: string; schemaVersion: number; expectedRevision?: number }>();
 
   /** Per-page retry state for failed auto-saves (exponential backoff). */
   private readonly _retryQueue = new Map<string, { timer: ReturnType<typeof setTimeout>; content: string; retries: number; expectedRevision?: number }>();
@@ -1220,12 +1223,17 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    */
   scheduleContentSave(pageId: string, content: string): void {
     const normalized = normalizeCanvasContentForStorage(content);
-    const expectedRevision = this._knownRevisions.get(pageId);
     const knownContent = this._knownStoredContent.get(pageId);
     const pendingSave = this._pendingSaves.get(pageId);
     const retrySave = this._retryQueue.get(pageId);
 
-    if (pendingSave?.content === normalized.storedContent) {
+    // M77 Phase 9.3 — equality must compare BOTH stored content and schema
+    // version. Content equal but schemaVersion changed = the schema-migrate
+    // hot-path; coalescing it away would silently drop the version bump.
+    if (
+      pendingSave?.content === normalized.storedContent &&
+      pendingSave.schemaVersion === normalized.schemaVersion
+    ) {
       return;
     }
 
@@ -1244,6 +1252,14 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
 
     const timer = setTimeout(async () => {
       this._pendingSaves.delete(pageId);
+      // M77 Phase 9.1 — capture `expectedRevision` at FIRE TIME, not at
+      // schedule time. Between schedule and fire (up to `_autoSaveMs`),
+      // another writer (title/icon reconciler, AI page tool, etc.) may
+      // have bumped the revision; using the stale capture forces a
+      // spurious revision-conflict error. Reading from `_knownRevisions`
+      // here picks up the latest committed revision the service knows
+      // about.
+      const expectedRevision = this._knownRevisions.get(pageId);
       this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Flushing, source: 'debounce' });
       try {
         const page = await this.updatePage(pageId, {
@@ -1277,7 +1293,12 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       }
     }, this._autoSaveMs);
 
-    this._pendingSaves.set(pageId, { timer, content: normalized.storedContent, expectedRevision });
+    this._pendingSaves.set(pageId, {
+      timer,
+      content: normalized.storedContent,
+      schemaVersion: normalized.schemaVersion,
+      expectedRevision: this._knownRevisions.get(pageId),
+    });
     this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Pending, source: 'debounce' });
   }
 
@@ -1289,8 +1310,12 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     const pending = [...this._pendingSaves.entries()];
     this._pendingSaves.clear();
 
-    for (const [pageId, { timer, content, expectedRevision }] of pending) {
+    for (const [pageId, { timer, content }] of pending) {
       clearTimeout(timer);
+      // M77 Phase 9.1 — refresh expectedRevision at flush time instead of
+      // trusting the value captured at schedule time. The pending entry's
+      // captured revision could be stale by the time flush runs.
+      const expectedRevision = this._knownRevisions.get(pageId);
       this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Flushing, source: 'flush' });
       try {
         const normalized = normalizeCanvasContentForStorage(content);
@@ -1425,9 +1450,48 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     );
     if (restoreResult.error) throw new Error(restoreResult.error.message);
 
+    // M77 Phase 9.2 — fetch the entire restored subtree + every parent we
+    // might re-attach a pageBlock card to in TWO queries instead of N
+    // sequential getPage() round-trips. For a subtree of K pages the old
+    // path issued ~3K IPC calls (Updated emit, child fetch, parent
+    // fetch); this issues 2 (subtree + parents).
+    const subtreeRowsResult = await this._db.all(
+      `SELECT * FROM pages WHERE id IN (${subtreeIds.map(() => '?').join(',')})`,
+      subtreeIds,
+    );
+    if (subtreeRowsResult.error) throw new Error(subtreeRowsResult.error.message);
+    const subtreePages = (subtreeRowsResult.rows ?? []).map(rowToPage);
+    const subtreeById = new Map(subtreePages.map((p) => [p.id, p] as const));
+
+    // Collect distinct parent ids that aren't already inside the subtree
+    // (a parent inside the subtree was also restored; its archival state
+    // is already known).
+    const subtreeIdSet = new Set(subtreeIds);
+    const externalParentIds = new Set<string>();
+    for (const p of subtreePages) {
+      if (p.parentId && !subtreeIdSet.has(p.parentId)) {
+        externalParentIds.add(p.parentId);
+      }
+    }
+
+    const parentById = new Map<string, IPage>();
+    for (const p of subtreePages) parentById.set(p.id, p); // self can be a parent of children
+    if (externalParentIds.size > 0) {
+      const externalIds = [...externalParentIds];
+      const parentRows = await this._db.all(
+        `SELECT * FROM pages WHERE id IN (${externalIds.map(() => '?').join(',')})`,
+        externalIds,
+      );
+      if (parentRows.error) throw new Error(parentRows.error.message);
+      for (const row of parentRows.rows ?? []) {
+        const parent = rowToPage(row);
+        parentById.set(parent.id, parent);
+      }
+    }
+
     // Fire Updated events for the whole subtree so the sidebar refreshes.
     for (const id of subtreeIds) {
-      const page = await this.getPage(id);
+      const page = subtreeById.get(id);
       if (page) {
         this._onDidChangePage.fire({
           kind: PageChangeKind.Updated,
@@ -1438,17 +1502,38 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       }
     }
 
-    // Re-append pageBlock cards to non-archived parents (idempotent).
+    // M77 Phase 9.4 — Re-append pageBlock cards to non-archived parents.
+    // Collect per-child failures instead of throwing on the first one so
+    // a single bad child can't strand the rest of the cascade. The first
+    // failure is rethrown at the end carrying all failed ids so the
+    // caller can surface them.
+    const restoreFailures: { childId: string; error: Error }[] = [];
     for (const id of subtreeIds) {
-      const child = await this.getPage(id);
+      const child = subtreeById.get(id);
       if (!child || !child.parentId) continue;
-      const parent = await this.getPage(child.parentId);
+      const parent = parentById.get(child.parentId);
       if (!parent || parent.isArchived) continue;
-      await this._ensureLinkedBlockOnParent(parent, child);
+      try {
+        await this._ensureLinkedBlockOnParent(parent, child);
+      } catch (err) {
+        restoreFailures.push({
+          childId: id,
+          error: err instanceof Error ? err : new Error(String(err)),
+        });
+      }
     }
 
-    const root = await this.getPage(pageId);
+    const root = subtreeById.get(pageId) ?? await this.getPage(pageId);
     if (!root) throw new Error(`[CanvasDataService] Page "${pageId}" not found after restore`);
+
+    if (restoreFailures.length > 0) {
+      const ids = restoreFailures.map((f) => f.childId).join(', ');
+      const first = restoreFailures[0].error.message;
+      throw new Error(
+        `[CanvasDataService] restorePage("${pageId}") partial failure — ${restoreFailures.length} child(ren) failed to re-attach: ${ids}. First error: ${first}`,
+      );
+    }
+
     return root;
   }
 
