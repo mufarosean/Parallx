@@ -653,8 +653,51 @@ function injectStyles() {
   opacity: 0.45;
   border-left: 2px solid var(--vscode-editorWarning-foreground, #cca700);
 }
+/* M79 Phase 4a — OOC ("Backstage") messages. Distinct from generic
+ * hidden so the user can tell their own notes from system-hidden
+ * entries. Muted but legible; dashed accent rail to read as a
+ * margin annotation rather than a real beat. */
+.tg-msg--ooc {
+  opacity: 0.7;
+  border-left: 2px dashed var(--vscode-descriptionForeground, #888);
+  font-style: italic;
+}
+.tg-msg--ooc .tg-msg-name {
+  color: var(--vscode-descriptionForeground, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-size: var(--parallx-fontSize-sm, 11px);
+}
 .tg-msg-body em { font-style: italic; }
 .tg-msg-body strong { font-weight: 700; }
+
+/* M79 Phase 4a — input bar OOC toggle button. Same shape as the
+ * Options/Send buttons; visually toggled when active. */
+.tg-input-ooc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--parallx-radius-sm, 3px);
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
+}
+.tg-input-ooc-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.06));
+  color: var(--vscode-foreground);
+}
+.tg-input-ooc-btn--active {
+  color: var(--vscode-editorWarning-foreground, #cca700);
+  border-color: var(--vscode-editorWarning-foreground, #cca700);
+  background: color-mix(in srgb, var(--vscode-editorWarning-foreground, #cca700) 10%, transparent);
+}
+.tg-input-card--ooc {
+  border-color: var(--vscode-editorWarning-foreground, #cca700);
+}
 
 /* ═══ Options Menu ═══ */
 .tg-options-menu {
@@ -1650,6 +1693,63 @@ function estimateTokens(text) {
   return Math.ceil(narrow / 4 + wide / 1.2);
 }
 
+/**
+ * M79 Phase 3c — extract repeated phrases from a set of recent
+ * outputs by the same speaker. Returns a deduped list of n-gram
+ * strings that occur at least `minOccurrences` times across the
+ * inputs. Used to feed the variation-avoidance system message so the
+ * model gets concrete "stop saying X" guidance.
+ *
+ * Limitations by design:
+ *   - Stop-word-free filtering would be more accurate but adds noise
+ *     in fictional prose ("the village", "her eyes" SHOULD register).
+ *   - We normalize whitespace + lowercase but don't lemmatize, so
+ *     "walked away" and "walks away" count separately. Good enough
+ *     for prose freshness signaling.
+ */
+function _extractRepeatedPhrases(outputs, { n = [3, 4, 5], minOccurrences = 2, max = 8 } = {}) {
+  if (!Array.isArray(outputs) || outputs.length < 2) return [];
+  const sizes = Array.isArray(n) ? n : [n];
+  const counts = new Map(); // phrase -> { count, originalCase }
+  for (const text of outputs) {
+    if (typeof text !== 'string' || !text.trim()) continue;
+    // Tokenize on whitespace + strip punctuation tails. Keep
+    // dialogue-friendly words intact ("don't", "it's").
+    const words = text.toLowerCase().match(/[a-z0-9']+/g);
+    if (!words || words.length === 0) continue;
+    for (const size of sizes) {
+      for (let i = 0; i + size <= words.length; i++) {
+        const phrase = words.slice(i, i + size).join(' ');
+        // Skip mostly-pronoun phrases that match by accident in long
+        // outputs ("he was the" etc.) — they're true positives but
+        // produce noisy instructions.
+        if (/^(the |a |an |of |and |to |for |that |this |with |is |was |it |he |she |they |you |i )/.test(phrase + ' ')) {
+          // Allow if it contains a content noun later in the phrase
+          if (!/[a-z]{4,}/.test(phrase.split(' ').slice(-1)[0])) continue;
+        }
+        const existing = counts.get(phrase);
+        if (existing) existing.count += 1;
+        else counts.set(phrase, { count: 1 });
+      }
+    }
+  }
+  // Collect candidates that meet the threshold; prefer longer phrases
+  // since they encode more specific repetition.
+  const candidates = [];
+  for (const [phrase, info] of counts) {
+    if (info.count >= minOccurrences) candidates.push({ phrase, count: info.count, len: phrase.split(' ').length });
+  }
+  candidates.sort((a, b) => (b.len - a.len) || (b.count - a.count));
+  // Suppress shorter phrases fully contained in a longer one already chosen.
+  const chosen = [];
+  for (const c of candidates) {
+    if (chosen.length >= max) break;
+    if (chosen.some((x) => x.phrase.includes(c.phrase))) continue;
+    chosen.push(c);
+  }
+  return chosen.map((c) => c.phrase);
+}
+
 function trimTextToBudget(text, budgetTokens) {
   if (!text) return '';
   if (budgetTokens <= 0) return '';
@@ -2048,52 +2148,169 @@ function parseLoreEntries(lorebookContent) {
     const lines = trimmed.split('\n');
     const heading = lines[0].trim();
     let triggers = null;
+    // M79 Phase 2 — additional metadata fields. Defaults preserve the
+    // legacy behavior so users with old lorebooks see no change.
+    let scope = 'triggered';        // always | triggered | scene:X | character:X
+    let priority = 5;                // 0..10; higher = preserved under budget pressure
+    let antiTriggers = null;         // suppress entry when any anti-keyword fires
     let bodyStart = 1;
-    // Check if the first non-empty body line defines triggers
+    // Walk leading lines for any of the recognised metadata keys. Stop
+    // at the first non-metadata content line.
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
-      if (line.toLowerCase().startsWith('triggers:')) {
+      const lower = line.toLowerCase();
+      if (lower.startsWith('triggers:')) {
         triggers = line.slice(9).split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
         bodyStart = i + 1;
+        continue;
+      }
+      if (lower.startsWith('scope:')) {
+        scope = line.slice(6).trim().toLowerCase();
+        bodyStart = i + 1;
+        continue;
+      }
+      if (lower.startsWith('priority:')) {
+        const n = parseInt(line.slice(9).trim(), 10);
+        if (Number.isFinite(n)) priority = Math.max(0, Math.min(10, n));
+        bodyStart = i + 1;
+        continue;
+      }
+      if (lower.startsWith('anti:') || lower.startsWith('anti-triggers:')) {
+        const after = lower.startsWith('anti-triggers:') ? line.slice(14) : line.slice(5);
+        antiTriggers = after.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+        bodyStart = i + 1;
+        continue;
       }
       break;
     }
     const body = lines.slice(bodyStart).join('\n').trim();
     if (body || heading) {
-      entries.push({ heading, body: body ? `## ${heading}\n${body}` : `## ${heading}`, triggers });
+      entries.push({
+        heading,
+        body: body ? `## ${heading}\n${body}` : `## ${heading}`,
+        triggers,
+        scope,
+        priority,
+        antiTriggers,
+      });
     }
   }
   return entries;
 }
 
 /**
- * Assemble lore content from lorebooks, applying keyword-based activation.
- * Entries with `triggers:` keywords are only included if a keyword matches
- * the recent message context. Entries without triggers are always included.
+ * Decide whether a single entry should fire, given the activation
+ * context (recent text, scene state, present characters). Returns the
+ * match strength (>0 means fire). Higher strength = more recent / more
+ * specific trigger.
+ *
+ * Match strength model (used to break ties when sorting under budget
+ * pressure — higher priority always wins first):
+ *   - always-scope or character/scene match with no trigger: 0.5
+ *   - triggered match with a keyword: 1.0 + how-recent bonus
+ *   - anti-trigger fired: 0 (suppress)
  */
-function assembleLoreContent(lorebooks, budgetTokens, recentContext = '') {
-  const contextLower = recentContext.toLowerCase();
-  let combined = '';
-  let used = 0;
+function _scoreLoreEntry(entry, ctx) {
+  const { contextLower = '', sceneTags = [], presentCharNames = [] } = ctx;
+
+  // 1. Anti-triggers always win — suppress entry entirely.
+  if (entry.antiTriggers && entry.antiTriggers.length > 0) {
+    if (entry.antiTriggers.some((kw) => contextLower.includes(kw))) return 0;
+  }
+
+  // 2. Scope filter.
+  const scope = String(entry.scope || 'triggered').toLowerCase();
+  if (scope.startsWith('scene:')) {
+    const wanted = scope.slice(6).trim();
+    if (!wanted) return 0;
+    if (!sceneTags.some((tag) => String(tag).toLowerCase() === wanted)) return 0;
+  } else if (scope.startsWith('character:')) {
+    const wanted = scope.slice(10).trim().toLowerCase();
+    if (!wanted) return 0;
+    if (!presentCharNames.some((n) => String(n).toLowerCase() === wanted)) return 0;
+  } else if (scope !== 'always' && scope !== 'triggered') {
+    // Unknown scope — be conservative: default to triggered.
+  }
+
+  // 3. Keyword trigger evaluation.
+  const hasTriggers = entry.triggers && entry.triggers.length > 0;
+  if (scope === 'always') {
+    // Always-scope ignores triggers; emit at base score.
+    return 0.5;
+  }
+  if (scope.startsWith('scene:') || scope.startsWith('character:')) {
+    // Scope-gated entries fire when the scope matches; triggers (if
+    // present) further refine. If triggers exist and don't match, skip.
+    if (hasTriggers) {
+      if (!entry.triggers.some((kw) => contextLower.includes(kw))) return 0.5;
+      return 1.0;
+    }
+    return 0.6;
+  }
+  // Default scope = triggered.
+  if (!hasTriggers) return 0; // legacy "## heading" entries with no triggers — treat as skip
+  if (!entry.triggers.some((kw) => contextLower.includes(kw))) return 0;
+  return 1.0;
+}
+
+/**
+ * Assemble lore content with M79 Phase 2 scope/priority/anti-trigger
+ * support. Returns the trimmed lore string ready for injection.
+ *
+ * Selection order:
+ *   1. Score every entry (anti-triggers suppress to 0; scope filters
+ *      gate; trigger match boosts).
+ *   2. Sort by priority DESC, then score DESC.
+ *   3. Pack greedily into the budget; partial inclusion only for the
+ *      first overflow entry (current behavior preserved).
+ *
+ * The activation context is back-compatible: pass `recentContext` and
+ * everything works as before. `sceneState` and `presentCharNames` are
+ * optional and unlock the new scope: forms.
+ */
+function assembleLoreContent(lorebooks, budgetTokens, recentContext = '', activation = {}) {
+  const { sceneState = null, presentCharNames = [] } = activation;
+  const contextLower = (recentContext || '').toLowerCase();
+  // Build scene tag list from the structured scene state, lower-cased
+  // for case-insensitive comparison against `scope: scene:X` entries.
+  const sceneTags = [];
+  if (sceneState && typeof sceneState === 'object') {
+    for (const key of ['location', 'time', 'mood']) {
+      if (sceneState[key]) sceneTags.push(String(sceneState[key]).toLowerCase());
+    }
+  }
+
+  // Collect & score every entry across all lorebooks.
+  const candidates = [];
   for (const lb of lorebooks) {
     const entries = parseLoreEntries(lb.content);
     for (const entry of entries) {
-      // Skip triggered entries whose keywords don't appear in recent context
-      if (entry.triggers && entry.triggers.length > 0) {
-        if (!contextLower || !entry.triggers.some(kw => contextLower.includes(kw))) continue;
-      }
-      const t = estimateTokens(entry.body);
-      if (used + t > budgetTokens) {
-        const rem = budgetTokens - used;
-        if (rem > 50) combined += '\n\n' + trimTextToBudget(entry.body, rem);
-        used = budgetTokens;
-        break;
-      }
-      combined += (combined ? '\n\n' : '') + entry.body;
-      used += t;
+      const score = _scoreLoreEntry(entry, { contextLower, sceneTags, presentCharNames });
+      if (score <= 0) continue;
+      candidates.push({ entry, score, book: lb });
     }
-    if (used >= budgetTokens) break;
+  }
+
+  // Sort by priority DESC, then score DESC.
+  candidates.sort((a, b) => {
+    if (b.entry.priority !== a.entry.priority) return b.entry.priority - a.entry.priority;
+    return b.score - a.score;
+  });
+
+  // Pack greedily into the budget.
+  let combined = '';
+  let used = 0;
+  for (const { entry } of candidates) {
+    const t = estimateTokens(entry.body);
+    if (used + t > budgetTokens) {
+      const rem = budgetTokens - used;
+      if (rem > 50) combined += '\n\n' + trimTextToBudget(entry.body, rem);
+      used = budgetTokens;
+      break;
+    }
+    combined += (combined ? '\n\n' : '') + entry.body;
+    used += t;
   }
   return combined.trim();
 }
@@ -2144,6 +2361,7 @@ function buildSystemPrompt(params = {}) {
     userDescription = '',
     responseLength = null,
     customStyleContent = '',
+    sceneState = null, // M79 Phase 3a — auto-derived scene context
   } = params;
 
   const parts = [];
@@ -2178,6 +2396,28 @@ function buildSystemPrompt(params = {}) {
   // 1b. User identity — description/role if provided by character config.
   if (userDescription) {
     parts.push(['## User Identity', `The user (${userName}) is described as: ${userDescription}`].join('\n'));
+  }
+
+  // 1c. Scene state — auto-derived structured channel (M79 Phase 3a).
+  // ~50–100 tokens that orient the model on every turn: where, when,
+  // what mood, who's present. Carries over from the previous turn
+  // unless the model emitted a <scene-update/> tag.
+  const sceneBlock = renderSceneStateBlock(sceneState);
+  if (sceneBlock) {
+    parts.push(['## Current Scene', sceneBlock].join('\n'));
+  }
+
+  // 1d. Scene-update emission instruction — tells the model how to
+  // signal a scene change. Conditional on having at least an empty
+  // scene-state object so we don't pollute the prompt for users who
+  // disabled the feature.
+  if (sceneState !== null) {
+    parts.push([
+      '## Scene Updates',
+      'If the location, time of day, mood, or set of present characters changes in your next reply, emit ONE self-closing tag at the very end of your reply, on its own line:',
+      '`<scene-update location="..." time="..." mood="..." present="Name1, Name2"/>`',
+      'Only include attributes that actually changed. Omit the tag entirely if nothing changed. Never describe the tag in prose — it is a control signal and is stripped before display.',
+    ].join('\n'));
   }
 
   // 2. Cast definitions — each character's full roleInstruction block.
@@ -2369,6 +2609,7 @@ function assembleContext(params) {
     settings = null,
     ephemeralInstruction = null,
     historySummary = '',
+    sceneState = null, // M79 Phase 3a
   } = params;
 
   // Support both old (single character) and new (characters array) signatures
@@ -2424,6 +2665,7 @@ function assembleContext(params) {
     userDescription: charUserDesc,
     responseLength: effectiveResponseLength,
     customStyleContent: settings?.customWritingStyle || '',
+    sceneState, // M79 Phase 3a
   });
   const systemPrompt = buildResult.prompt;
   const characterReminders = buildResult.reminders || [];
@@ -2490,24 +2732,49 @@ function assembleContext(params) {
     );
     if (respondChar) {
       const rName = respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, '');
-      const desc = (respondChar.sections?.description || respondChar.frontmatter?.description || '')
-        .split('\n').map(s => s.trim()).find(Boolean) || '';
-      const personaLine = desc ? ` Persona recap: ${desc.slice(0, 220)}` : '';
+      // M79 Phase 3b — authored voice anchor wins over the legacy
+      // 220-char description slice. If the character defines a
+      // `voiceAnchor` (3–5 lines covering voice / signature phrases /
+      // no-go phrases), use it directly. Otherwise fall back to up to
+      // three description lines so we still ship a real anchor even
+      // for legacy characters without the field.
+      const authoredAnchor = (respondChar.frontmatter?.voiceAnchor || respondChar.sections?.voiceAnchor || '').trim();
+      let anchorBody = '';
+      if (authoredAnchor) {
+        anchorBody = authoredAnchor;
+      } else {
+        const descLines = (respondChar.sections?.description || respondChar.frontmatter?.description || '')
+          .split('\n').map(s => s.trim()).filter(Boolean).slice(0, 3);
+        anchorBody = descLines.join(' ');
+      }
+      const personaLine = anchorBody ? ` Voice anchor: ${anchorBody.slice(0, 400)}` : '';
       speakerLateAnchor = `[You are ${rName}. Stay strictly in ${rName}'s voice. Do not write, quote, or describe internal thoughts for any other character. Do not write the user's words or actions.${personaLine}]`;
 
+      // M79 Phase 3c — variation avoidance v2. Pull the last 5 outputs
+      // by this speaker (was: 2), extract 3–5 word phrases, find the
+      // ones that repeat across messages, and ask the model to avoid
+      // them. Also keeps the prior opening-line guard since the
+      // model's first sentence is the most-likely repetition target.
       const recentSelfOutputs = filteredHistory
         .filter(m => m.author === 'ai' && m.characterFile === respondChar.fileName)
-        .slice(-2)
+        .slice(-5)
         .map(m => (m.content || '').trim())
         .filter(Boolean);
+
       if (recentSelfOutputs.length > 0) {
-        const openings = recentSelfOutputs.map((text) => {
+        const openings = recentSelfOutputs.slice(-2).map((text) => {
           const mm = text.match(/^[^.!?\n]{1,100}[.!?]?/);
           const opener = (mm ? mm[0] : text.slice(0, 100)).trim();
           return `— "${opener}"`;
         }).join('\n');
+
+        const repeatedPhrases = _extractRepeatedPhrases(recentSelfOutputs, { n: [3, 4, 5], minOccurrences: 2, max: 8 });
+        const phraseBlock = repeatedPhrases.length > 0
+          ? '\nRecurring phrases to avoid this turn: ' + repeatedPhrases.map((p) => `"${p}"`).join('; ')
+          : '';
+
         speakerAvoidRepeat =
-          `[Vary your prose this turn. Do NOT echo the openings, phrasings, sentence shapes, or beats from your recent replies as ${rName}:\n${openings}\nUse fresh openings, different sentence rhythms, and unique imagery.]`;
+          `[Vary your prose this turn. Do NOT echo the openings, phrasings, sentence shapes, or beats from your recent replies as ${rName}:\n${openings}${phraseBlock}\nUse fresh openings, different sentence rhythms, and unique imagery.]`;
       }
     }
   }
@@ -2561,10 +2828,16 @@ function assembleContext(params) {
     varyBlock = speakerAvoidRepeat.replace(/^\[/, '').replace(/\]$/, '');
   }
 
-  // 5) Ephemeral directive
+  // 5) Ephemeral directive — kept LAST in the system block (closest to
+  // the user turn = strongest attention). Strengthened phrasing so the
+  // model treats it as mandatory rather than advisory. The user-side
+  // duplicate below is the actual delivery vehicle; this is the
+  // contextual hint.
   let directiveBlock = null;
   if (ephemeralInstruction) {
-    directiveBlock = `User directive for THIS response only — apply it directly to the next message you write: ${ephemeralInstruction}`;
+    directiveBlock =
+      'DIRECTOR\'S NOTE FOR THIS TURN (mandatory — override defaults if needed): '
+      + ephemeralInstruction;
   }
 
   const consolidatedSections = [activeTurnLine, personaLine, reminderBlock, varyBlock, directiveBlock].filter(Boolean);
@@ -2582,7 +2855,21 @@ function assembleContext(params) {
   // we put the active-turn intent directly on the user turn where it lands
   // hardest.
   if (userMessage) {
-    messages.push({ role: 'user', content: userMessage });
+    // M79 instruction-following fix — the prior pipeline buried the
+    // ephemeral directive in a system message BEFORE the user message,
+    // and the user message tokens drowned it out. Append the directive
+    // as an in-line stage direction at the END of the user turn so it
+    // is the literal last text the model reads before generating. This
+    // turned out to be the single biggest determinant of whether the
+    // model follows /ai-style guidance.
+    let content = userMessage;
+    if (ephemeralInstruction) {
+      content +=
+        '\n\n[Director\'s note for this turn (apply directly to the very next reply — NOT the response after, NOT a future scene): '
+        + ephemeralInstruction
+        + ']';
+    }
+    messages.push({ role: 'user', content });
   } else if (!messages.some(m => m.role === 'user')) {
     let directive = '[Stage direction — not part of the story. Now write the next message according to the active-turn instructions above.';
     if (respondAs && respondAs !== SELF_SPEAKER && respondAs !== NARRATOR_SPEAKER) {
@@ -2595,7 +2882,9 @@ function assembleContext(params) {
       directive = '[Stage direction — not part of the story. Write the next narrative beat in prose. Do not write any character\'s dialogue. Match the writing style above.';
     }
     if (ephemeralInstruction) {
-      directive += ` User directive for this turn: ${ephemeralInstruction}`;
+      // Same fix applies to the no-user-message fallback: make the
+      // directive the most prominent thing in the stage direction.
+      directive += ` DIRECTOR'S NOTE (mandatory, apply to this very turn): ${ephemeralInstruction}`;
     }
     directive += ']';
     messages.push({ role: 'user', content: directive });
@@ -2673,6 +2962,77 @@ async function createThread(fs, workspaceUri, characterFile, modelId) {
   await fs.writeFile(resolveUri(threadDir, 'thread.json'), JSON.stringify(meta, null, 2));
   await fs.writeFile(resolveUri(threadDir, 'messages.jsonl'), '');
   return meta;
+}
+
+/**
+ * M79 Phase 4b — fork a thread at a specific message index. Creates a
+ * new thread that is a verbatim copy of the source up to (and
+ * including) the message at `forkAtIndex`. The new thread inherits
+ * all metadata (characters, writingPreset, model, scene state, etc.)
+ * and gets `forkedFrom: { threadId, atIndex }` plus a title suffix so
+ * it's obvious in the sidebar. Both threads remain independent
+ * thereafter — there is no merge path.
+ *
+ * Returns the new thread metadata. Throws if the source thread is
+ * missing or the fork index is out of range.
+ */
+async function forkThread(fs, workspaceUri, sourceThreadId, forkAtIndex) {
+  if (!Number.isInteger(forkAtIndex) || forkAtIndex < 0) {
+    throw new Error('forkThread: invalid fork index');
+  }
+  const sourceMeta = await loadThread(fs, workspaceUri, sourceThreadId);
+  const sourceMessages = await readMessages(fs, workspaceUri, sourceThreadId);
+  if (sourceMessages.length === 0) {
+    throw new Error('forkThread: source thread has no messages to fork from');
+  }
+  // Inclusive slice: keep the fork point itself as the last message
+  // in the new branch. Re-generation from the fork point produces a
+  // genuinely alternative continuation.
+  const upTo = Math.min(forkAtIndex + 1, sourceMessages.length);
+  const copiedMessages = sourceMessages.slice(0, upTo);
+
+  const newId = generateId();
+  const newDir = await ensureNestedDirs(fs, workspaceUri, [
+    '.parallx', 'extensions', 'text-generator', 'threads', newId,
+  ]);
+
+  // Build the forked thread metadata. We copy every field that
+  // shapes generation so the fork behaves identically to the source
+  // up to the divergence point — except `id`, `title`, timestamps,
+  // and the new provenance pointer.
+  const newMeta = {
+    ...sourceMeta,
+    id: newId,
+    title: (sourceMeta.title || 'Chat') + ' (fork)',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    forkedFrom: { threadId: sourceThreadId, atIndex: forkAtIndex },
+  };
+  // Cached summary is keyed by message-hash; the fork has different
+  // dropped-message content so the cached summary is stale. Clear it
+  // so the next generation rebuilds the summary if needed.
+  delete newMeta.cachedSummary;
+
+  await fs.writeFile(resolveUri(newDir, 'thread.json'), JSON.stringify(newMeta, null, 2));
+  // Replay messages.jsonl one per line so the on-disk format matches
+  // an organically-grown thread (one append per message).
+  const jsonl = copiedMessages.map((m) => JSON.stringify(m)).join('\n') + (copiedMessages.length > 0 ? '\n' : '');
+  await fs.writeFile(resolveUri(newDir, 'messages.jsonl'), jsonl);
+
+  // Copy structured memory files if present so the fork inherits the
+  // same long-term context. New beats / facts accumulate independently
+  // thereafter.
+  for (const file of [MEMORY_SEMANTIC_FILE, MEMORY_EPISODIC_FILE, 'memories.md']) {
+    try {
+      const sourceUri = resolveUri(workspaceUri, `${EXT_ROOT}/threads/${sourceThreadId}/${file}`);
+      const { content } = await fs.readFile(sourceUri);
+      if (content !== undefined && content !== null) {
+        await fs.writeFile(resolveUri(newDir, file), content || '');
+      }
+    } catch { /* file may not exist — that's fine */ }
+  }
+
+  return newMeta;
 }
 
 async function loadThread(fs, workspaceUri, threadId) {
@@ -2788,6 +3148,357 @@ async function readMemories(fs, workspaceUri, threadId) {
     return content || '';
   } catch {
     return '';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 7A: SCENE STATE (M79 Phase 3a)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// The scene state is a small structured channel stored on the thread:
+//
+//   thread.sceneState = {
+//     location: string,  // e.g. "cafe", "park bench", "moon base"
+//     time: string,      // e.g. "morning", "late evening", "winter night"
+//     mood: string,      // e.g. "tense", "playful", "melancholy"
+//     present: string[], // character names currently in-scene
+//     updatedAt: number,
+//   }
+//
+// The model auto-derives state by emitting a single tag at the end of
+// its response:
+//
+//   <scene-update location="cafe" time="evening" mood="tense" present="Ada"/>
+//
+// `extractAndApplySceneUpdate` parses this tag (permissive — any attr
+// order, single/double quotes, optional self-closer), strips it from
+// the displayed message, and merges the parsed attrs into the prior
+// state (so a partial update only changes named fields). If the AI
+// forgets to emit the tag, state carries over unchanged.
+
+const SCENE_TAG_REGEX = /<scene-update\b([^>]*?)\/?>/i;
+
+function renderSceneStateBlock(sceneState) {
+  if (!sceneState || typeof sceneState !== 'object') return '';
+  const fields = [];
+  if (sceneState.location) fields.push(`Location: ${sceneState.location}`);
+  if (sceneState.time) fields.push(`Time: ${sceneState.time}`);
+  if (sceneState.mood) fields.push(`Mood: ${sceneState.mood}`);
+  if (Array.isArray(sceneState.present) && sceneState.present.length > 0) {
+    fields.push(`Present: ${sceneState.present.join(', ')}`);
+  }
+  return fields.length > 0 ? fields.join('\n') : '';
+}
+
+function _parseSceneAttrs(attrText) {
+  const out = {};
+  // Permissive attribute parser: name=value or name="value" or name='value'.
+  const attrRegex = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g;
+  let m;
+  while ((m = attrRegex.exec(attrText)) !== null) {
+    const key = m[1].toLowerCase();
+    const value = (m[2] ?? m[3] ?? m[4] ?? '').trim();
+    if (!value) continue;
+    if (key === 'location' || key === 'time' || key === 'mood') {
+      out[key] = value;
+    } else if (key === 'present' || key === 'characters') {
+      out.present = value.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+    }
+  }
+  return out;
+}
+
+/**
+ * Strip the `<scene-update .../>` tag from `text` and return the
+ * cleaned text plus the parsed update. If no tag is present, the
+ * cleaned text equals the input and the update is null.
+ */
+function extractSceneUpdate(text) {
+  if (!text || typeof text !== 'string') return { cleaned: text || '', update: null };
+  const m = text.match(SCENE_TAG_REGEX);
+  if (!m) return { cleaned: text, update: null };
+  const update = _parseSceneAttrs(m[1] || '');
+  // Strip the tag (and at most one surrounding newline/space) so the
+  // visible message doesn't carry stray whitespace where the tag was.
+  const cleaned = text.replace(SCENE_TAG_REGEX, '').replace(/\n{3,}/g, '\n\n').trim();
+  return { cleaned, update };
+}
+
+/**
+ * Merge `update` into `prior` state. Only fields present in `update`
+ * overwrite; missing fields carry over from `prior`. Empty-string
+ * values are treated as "no change" (not a clear).
+ */
+function mergeSceneState(prior, update) {
+  const next = { ...(prior && typeof prior === 'object' ? prior : {}) };
+  if (!update || typeof update !== 'object') return next;
+  for (const key of ['location', 'time', 'mood']) {
+    if (typeof update[key] === 'string' && update[key].trim()) {
+      next[key] = update[key].trim();
+    }
+  }
+  if (Array.isArray(update.present) && update.present.length > 0) {
+    next.present = update.present;
+  }
+  next.updatedAt = Date.now();
+  return next;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 7B: STRUCTURED MEMORY (M79 Phase 1)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Two files complement the legacy `memories.md`:
+//
+//   memory.semantic.jsonl  — durable facts ("what's true")
+//     { id, text, category, confidence, createdAt, source }
+//     category: relationship | trait | event | place | preference | other
+//     source:   auto | user
+//
+//   memory.episodic.jsonl  — narrative beats ("what happened")
+//     { id, summary, importance, messageRange, createdAt }
+//     importance: 0..1 (drives recency-weighted retrieval)
+//
+// Auto-extract runs in the background after every N user-to-AI exchanges
+// (see _maybeAutoExtractMemory in generateTurn's post-flow). The call is
+// fire-and-forget and never blocks the user. Existing `memories.md` files
+// are preserved verbatim and treated as additional semantic content.
+
+const MEMORY_AUTOEXTRACT_EVERY_N_EXCHANGES = 10;
+const MEMORY_SEMANTIC_FILE = 'memory.semantic.jsonl';
+const MEMORY_EPISODIC_FILE = 'memory.episodic.jsonl';
+const MEMORY_CATEGORY_ORDER = ['relationship', 'trait', 'event', 'place', 'preference', 'other'];
+
+function _memoryFileUri(workspaceUri, threadId, fileName) {
+  return resolveUri(workspaceUri, `${EXT_ROOT}/threads/${threadId}/${fileName}`);
+}
+
+async function _readJsonl(fs, uri) {
+  try {
+    const { content } = await fs.readFile(uri);
+    if (!content) return [];
+    const out = [];
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try { out.push(JSON.parse(trimmed)); }
+      catch { /* skip corrupt lines but keep the rest readable */ }
+    }
+    return out;
+  } catch { return []; }
+}
+
+async function _appendJsonl(fs, uri, records) {
+  if (!Array.isArray(records) || records.length === 0) return;
+  let existing = '';
+  try { existing = (await fs.readFile(uri)).content || ''; } catch { existing = ''; }
+  const separator = existing.length === 0 || existing.endsWith('\n') ? '' : '\n';
+  const appended = records.map((r) => JSON.stringify(r)).join('\n') + '\n';
+  try { await fs.writeFile(uri, existing + separator + appended); } catch (err) {
+    console.warn('[TextGenerator] Failed to append memory record:', err);
+  }
+}
+
+async function readSemanticMemory(fs, workspaceUri, threadId) {
+  return _readJsonl(fs, _memoryFileUri(workspaceUri, threadId, MEMORY_SEMANTIC_FILE));
+}
+
+async function readEpisodicMemory(fs, workspaceUri, threadId) {
+  return _readJsonl(fs, _memoryFileUri(workspaceUri, threadId, MEMORY_EPISODIC_FILE));
+}
+
+async function appendSemanticMemory(fs, workspaceUri, threadId, records) {
+  return _appendJsonl(fs, _memoryFileUri(workspaceUri, threadId, MEMORY_SEMANTIC_FILE), records);
+}
+
+async function appendEpisodicMemory(fs, workspaceUri, threadId, records) {
+  return _appendJsonl(fs, _memoryFileUri(workspaceUri, threadId, MEMORY_EPISODIC_FILE), records);
+}
+
+/**
+ * Render the combined memory channel for injection. Returns a markdown
+ * string with the legacy `memories.md`, then auto-extracted semantic
+ * facts grouped by category, then episodic beats sorted by
+ * `recency × importance` and trimmed to budget.
+ */
+function renderMemoryChannel({ legacyMemory = '', semantic = [], episodic = [], budgetTokens = Infinity }) {
+  const parts = [];
+  if (legacyMemory.trim()) parts.push(legacyMemory.trim());
+
+  // Semantic — always-on facts grouped by category, deduped by exact text.
+  if (semantic.length > 0) {
+    const seen = new Set();
+    const byCat = new Map();
+    for (const entry of semantic) {
+      if (!entry || typeof entry.text !== 'string') continue;
+      const text = entry.text.trim();
+      if (!text || seen.has(text)) continue;
+      seen.add(text);
+      const cat = MEMORY_CATEGORY_ORDER.includes(entry.category) ? entry.category : 'other';
+      if (!byCat.has(cat)) byCat.set(cat, []);
+      byCat.get(cat).push(text);
+    }
+    const semBlocks = [];
+    for (const cat of MEMORY_CATEGORY_ORDER) {
+      const items = byCat.get(cat);
+      if (!items || items.length === 0) continue;
+      const label = cat.charAt(0).toUpperCase() + cat.slice(1);
+      semBlocks.push(`**${label}:**\n` + items.map((t) => `- ${t}`).join('\n'));
+    }
+    if (semBlocks.length > 0) parts.push(semBlocks.join('\n\n'));
+  }
+
+  // Episodic — beat list sorted by recency × importance. Newer + more
+  // important beats sit first. Trim to remaining budget greedily.
+  if (episodic.length > 0) {
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const ranked = episodic
+      .filter((e) => e && typeof e.summary === 'string' && e.summary.trim())
+      .map((e) => {
+        const ageDays = Math.max(0, (now - (e.createdAt || now)) / dayMs);
+        const recency = 1 / (1 + ageDays * 0.1);
+        const importance = typeof e.importance === 'number' ? e.importance : 0.5;
+        return { ...e, _score: recency * importance };
+      })
+      .sort((a, b) => b._score - a._score);
+
+    if (ranked.length > 0) {
+      const beats = ranked.map((e) => `- ${e.summary.trim()}`);
+      parts.push('**Earlier beats:**\n' + beats.join('\n'));
+    }
+  }
+
+  const combined = parts.join('\n\n');
+  return trimTextToBudget(combined, budgetTokens);
+}
+
+/**
+ * Run the auto-extract LLM call against the most recent N exchanges.
+ * Background, fire-and-forget. Writes any extracted facts/beats to the
+ * two JSONL memory files. Caller controls *when* to fire (see the
+ * MEMORY_AUTOEXTRACT_EVERY_N_EXCHANGES check in generateTurn).
+ *
+ * The model is asked to return structured JSON. Parse failure is
+ * non-fatal — better to skip an extraction than to surface noise.
+ */
+async function autoExtractMemoryBackground({
+  parallx, fs, workspaceUri, threadId, modelId,
+  recentMessages = [], existingSemantic = [],
+}) {
+  if (!parallx?.lm?.sendChatRequest || !modelId) return;
+  if (!Array.isArray(recentMessages) || recentMessages.length === 0) return;
+
+  // Render the recent chunk for the extractor with explicit speaker
+  // names so it can attribute facts correctly.
+  const transcript = recentMessages
+    .filter((m) => m && m.content && m.hiddenFrom !== 'ai')
+    .map((m) => {
+      const name = m.name || (m.author === 'user' ? 'User' : m.author === 'ai' ? 'AI' : 'System');
+      return `${name}: ${m.content}`;
+    })
+    .join('\n\n');
+  if (!transcript.trim()) return;
+
+  // Build a compact list of existing facts so the model doesn't re-emit
+  // duplicates on every run. Capped at the most recent 30 entries.
+  const existingList = existingSemantic
+    .slice(-30)
+    .map((e) => `- ${e.text}`)
+    .join('\n');
+
+  const sysPrompt = [
+    'You extract durable memory from roleplay chat.',
+    'Return STRICT JSON with two arrays: `facts` and `beats`.',
+    '',
+    '`facts` — objects { text, category, confidence }.',
+    `  category: one of ${MEMORY_CATEGORY_ORDER.join(', ')}.`,
+    '  confidence: 0..1 (0.5 default; only raise it for explicitly stated facts).',
+    '  Emit ONLY new facts not already in "Existing facts" below.',
+    '  Examples of good facts:',
+    '   • "Ada is left-handed and writes with her right when nervous."',
+    '   • "The user goes by Alex and lives in Berlin."',
+    '   • "Ada and the user agreed to meet at the café on Tuesday."',
+    '',
+    '`beats` — objects { summary, importance }.',
+    '  importance: 0..1 (0.3 mundane chitchat, 0.7 decision/revelation, 0.9 turning point).',
+    '  Emit at most 3 beats covering only what materially happened.',
+    '  Examples of good beats:',
+    '   • { summary: "User confessed they had been lying about their name.", importance: 0.9 }',
+    '   • { summary: "Ada and the user fled the burning library together.", importance: 0.8 }',
+    '',
+    'Output JSON only — no prose, no fences, no commentary.',
+    'If nothing new happened, return: { "facts": [], "beats": [] }',
+  ].join('\n');
+
+  const userPrompt = [
+    existingList ? `Existing facts:\n${existingList}\n\n` : '',
+    'Recent exchange:',
+    transcript,
+  ].join('');
+
+  try {
+    const stream = parallx.lm.sendChatRequest(modelId, [
+      { role: 'system', content: sysPrompt },
+      { role: 'user', content: userPrompt },
+    ], { temperature: 0.2, maxTokens: 600, think: false });
+    let raw = '';
+    for await (const chunk of stream) {
+      if (chunk?.content) raw += chunk.content;
+    }
+
+    // Strip any code fences the model added despite instructions.
+    let cleaned = raw.trim();
+    if (cleaned.startsWith('```')) {
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    }
+    let parsed;
+    try { parsed = JSON.parse(cleaned); }
+    catch { return; }
+    if (!parsed || typeof parsed !== 'object') return;
+
+    const facts = Array.isArray(parsed.facts) ? parsed.facts : [];
+    const beats = Array.isArray(parsed.beats) ? parsed.beats : [];
+
+    const now = Date.now();
+    const factRecords = facts
+      .map((f) => {
+        if (!f || typeof f.text !== 'string' || !f.text.trim()) return null;
+        return {
+          id: generateId(),
+          text: f.text.trim(),
+          category: MEMORY_CATEGORY_ORDER.includes(f.category) ? f.category : 'other',
+          confidence: typeof f.confidence === 'number'
+            ? Math.max(0, Math.min(1, f.confidence))
+            : 0.5,
+          createdAt: now,
+          source: 'auto',
+        };
+      })
+      .filter(Boolean);
+
+    const beatRecords = beats
+      .map((b) => {
+        if (!b || typeof b.summary !== 'string' || !b.summary.trim()) return null;
+        return {
+          id: generateId(),
+          summary: b.summary.trim(),
+          importance: typeof b.importance === 'number'
+            ? Math.max(0, Math.min(1, b.importance))
+            : 0.5,
+          createdAt: now,
+        };
+      })
+      .filter(Boolean);
+
+    if (factRecords.length > 0) {
+      await appendSemanticMemory(fs, workspaceUri, threadId, factRecords);
+    }
+    if (beatRecords.length > 0) {
+      await appendEpisodicMemory(fs, workspaceUri, threadId, beatRecords);
+    }
+  } catch (err) {
+    console.warn('[TextGenerator] Memory auto-extract failed:', err);
   }
 }
 
@@ -3055,9 +3766,27 @@ function renderChatEditor(container, parallx, input) {
   const inputToolbar = el('div', 'tg-input-toolbar');
   const optionsBtn = el('button', 'tg-input-options-btn', { html: icon('sliders', 16) });
   optionsBtn.title = 'Chat info';
+
+  // M79 Phase 4a — OOC toggle. When active, the next message is logged
+  // but the AI never sees it (hiddenFrom: 'ai', kind: 'ooc'). Visually
+  // styled as a muted "Backstage" entry so the user can scan their
+  // notes alongside the in-character conversation.
+  let oocMode = false;
+  const oocBtn = el('button', 'tg-input-ooc-btn', { html: icon('eye-off', 16) });
+  oocBtn.title = 'OOC (the AI will not see this message)';
+  function setOocMode(next) {
+    oocMode = !!next;
+    oocBtn.classList.toggle('tg-input-ooc-btn--active', oocMode);
+    inputCard.classList.toggle('tg-input-card--ooc', oocMode);
+    textarea.placeholder = oocMode
+      ? 'Backstage note — the AI will not see this…'
+      : 'Type your message… (use /ai, /nar, /sys for commands)';
+  }
+  oocBtn.addEventListener('click', () => setOocMode(!oocMode));
+
   const sendBtn = el('button', 'tg-input-send', { html: icon('send', 16) });
   sendBtn.title = 'Send (Enter)';
-  inputToolbar.append(optionsBtn, sendBtn);
+  inputToolbar.append(optionsBtn, oocBtn, sendBtn);
 
   const textareaWrap = el('div', 'tg-textarea-wrap');
   textareaWrap.append(textarea, inputToolbar);
@@ -3093,11 +3822,57 @@ function renderChatEditor(container, parallx, input) {
   let transientMessage = null;
   let renderQueued = false;
   let fileWatcher = null;
+  // M79 Phase 1 — track how many AI replies have happened since the
+  // last auto-extract. We only count completed AI turns so a chatty
+  // session with hidden OOC notes doesn't fire premature extractions.
+  let _aiTurnsSinceExtract = 0;
+  let _extractInFlight = false;
 
   function getCharacterByFile(fileName) {
     // Normalize .md/.json extensions for backward compatibility after migration
     const baseName = fileName.replace(/\.(md|json)$/, '');
     return characters.find((char) => char.fileName.replace(/\.(md|json)$/, '') === baseName) || null;
+  }
+
+  /**
+   * M79 Phase 1 — fire-and-forget memory extraction.
+   *
+   * Called from generateTurn's post-flow when an AI message has been
+   * successfully persisted. Counts AI replies; every Nth call kicks
+   * off a background extraction over the recent chat slice. The call
+   * does its own LLM round-trip and writes to the semantic +
+   * episodic JSONL files. Re-entrancy guarded so a slow extraction
+   * can't pile up.
+   */
+  function _maybeAutoExtractMemory() {
+    _aiTurnsSinceExtract += 1;
+    if (_aiTurnsSinceExtract < MEMORY_AUTOEXTRACT_EVERY_N_EXCHANGES) return;
+    if (_extractInFlight) return;
+    _aiTurnsSinceExtract = 0;
+    _extractInFlight = true;
+
+    const sliceSize = Math.max(MEMORY_AUTOEXTRACT_EVERY_N_EXCHANGES * 2, 12);
+    const recentSlice = messageHistory.slice(-sliceSize);
+    const rawId = selectedModelId || thread?.modelId || null;
+    const modelId = (rawId && models.some(m => m.id === rawId)) ? rawId : models[0]?.id;
+    if (!modelId) { _extractInFlight = false; return; }
+
+    void (async () => {
+      try {
+        const existing = await readSemanticMemory(fs, workspaceUri, threadId);
+        await autoExtractMemoryBackground({
+          parallx,
+          fs,
+          workspaceUri,
+          threadId,
+          modelId,
+          recentMessages: recentSlice,
+          existingSemantic: existing,
+        });
+      } finally {
+        _extractInFlight = false;
+      }
+    })();
   }
 
   function getCharacterName(fileOrChar) {
@@ -3866,9 +4641,16 @@ function renderChatEditor(container, parallx, input) {
 
   function renderMessageRow(msg, index = null, isTransient = false) {
     const hiddenClass = msg.hiddenFrom ? ` tg-msg--dim` : '';
-    const messageEl = el('div', `tg-msg tg-msg--${msg.author || 'system'}${isTransient ? ' tg-msg--streaming' : ''}${hiddenClass}`);
+    // M79 Phase 4a — OOC entries get a distinct "Backstage" treatment
+    // so the user can scan them at a glance without confusing them
+    // for in-character beats.
+    const oocClass = msg.kind === 'ooc' ? ' tg-msg--ooc' : '';
+    const messageEl = el('div', `tg-msg tg-msg--${msg.author || 'system'}${isTransient ? ' tg-msg--streaming' : ''}${hiddenClass}${oocClass}`);
     const nameRow = el('div', 'tg-msg-name-row');
-    nameRow.appendChild(el('span', `tg-msg-name ${getNameColorClass(msg)}`, { text: getVisibleName(msg) }));
+    const displayName = msg.kind === 'ooc'
+      ? `${getVisibleName(msg)} · Backstage`
+      : getVisibleName(msg);
+    nameRow.appendChild(el('span', `tg-msg-name ${getNameColorClass(msg)}`, { text: displayName }));
 
     let actions = null;
     if (!isTransient && index !== null) {
@@ -3883,7 +4665,83 @@ function renderChatEditor(container, parallx, input) {
       });
       actions.appendChild(editBtn);
 
+      // M79 Phase 5 — Remember this (user-promoted semantic memory).
+      // Writes the message content as a semantic fact with source:user
+      // and confidence:1.0. The fact is always-on for future generations
+      // until the user removes it manually from memory.semantic.jsonl.
+      // Auto-extracted facts ride the same pipeline; this is just the
+      // explicit user channel.
+      const rememberBtn = el('button', 'tg-msg-action-btn', { html: icon('pin', 13) });
+      rememberBtn.title = 'Remember this (pin to memory)';
+      rememberBtn.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        if (!messageHistory[index]) return;
+        const target = messageHistory[index];
+        const text = (target.content || '').trim();
+        if (!text) return;
+        // Truncate very long messages — a fact entry of >500 chars is
+        // unwieldy in injection. Tail-truncate with an ellipsis.
+        const factText = text.length > 500 ? text.slice(0, 500).trim() + '…' : text;
+        try {
+          await appendSemanticMemory(fs, workspaceUri, threadId, [{
+            id: generateId(),
+            text: factText,
+            category: 'event',
+            confidence: 1.0,
+            createdAt: Date.now(),
+            source: 'user',
+          }]);
+          showToast('Pinned to memory');
+        } catch (err) {
+          console.warn('[TextGenerator] Failed to pin memory:', err);
+          showToast('Could not pin: ' + (err?.message || String(err)));
+        }
+      });
+      actions.appendChild(rememberBtn);
+
       if (msg.author === 'ai') {
+        // M79 Phase 4b — fork-from-here. Creates a sibling thread that
+        // contains everything up to (and including) this message, with
+        // a `forkedFrom` pointer. The new thread opens automatically;
+        // the original is preserved untouched. This lets users explore
+        // alternative narrative paths without losing the original
+        // timeline.
+        const forkBtn = el('button', 'tg-msg-action-btn', { html: icon('git-branch', 13) });
+        forkBtn.title = 'Fork chat from here';
+        forkBtn.addEventListener('click', async (event) => {
+          event.stopPropagation();
+          if (isGenerating || index === null || !messageHistory[index]) return;
+          try {
+            const newMeta = await forkThread(fs, workspaceUri, threadId, index);
+            showToast('Forked into "' + newMeta.title + '"', 'Open', async () => {
+              try {
+                await parallx.editors.openEditor({
+                  typeId: 'text-generator-chat',
+                  title: newMeta.title,
+                  icon: 'book-open',
+                  instanceId: newMeta.id,
+                });
+              } catch (err) { console.warn('[TextGenerator] Failed to open forked thread:', err); }
+            });
+            _refreshSidebar?.();
+            // Also auto-open the fork — the user clicked the fork
+            // button expecting to land in the new branch. The toast
+            // "Open" action stays for parity / re-open after dismiss.
+            try {
+              await parallx.editors.openEditor({
+                typeId: 'text-generator-chat',
+                title: newMeta.title,
+                icon: 'book-open',
+                instanceId: newMeta.id,
+              });
+            } catch (err) { console.warn('[TextGenerator] Failed to auto-open forked thread:', err); }
+          } catch (err) {
+            console.warn('[TextGenerator] Fork failed:', err);
+            showToast('Could not fork chat: ' + (err?.message || String(err)));
+          }
+        });
+        actions.appendChild(forkBtn);
+
         const regenBtn = el('button', 'tg-msg-action-btn', { html: icon('refresh-cw', 13) });
         regenBtn.title = 'Regenerate this turn';
         regenBtn.addEventListener('click', async (event) => {
@@ -4278,9 +5136,37 @@ function renderChatEditor(container, parallx, input) {
       .filter((m) => m.hiddenFrom !== 'ai')
       .map((m) => m.content || '')
       .join('\n') + (userText ? '\n' + userText : '');
-    const loreContent = assembleLoreContent(lorebooks, budget.lore, recentForTriggers);
+    // M79 Phase 2 — lorebook activation now also considers structured
+    // scene state and the present-character roster, enabling
+    // `scope: scene:X` / `scope: character:X` entries.
+    const presentCharNames = characters
+      .map((c) => c?.frontmatter?.name || c?.fileName?.replace(/\.(md|json)$/, ''))
+      .filter(Boolean);
+    const loreActivation = {
+      sceneState: thread?.sceneState || null,
+      presentCharNames,
+    };
+    const loreContent = assembleLoreContent(lorebooks, budget.lore, recentForTriggers, loreActivation);
     const loreDebug = debugLorebookTriggers(lorebooks, recentForTriggers);
-    const memoryContent = await readMemories(fs, workspaceUri, threadId);
+    // M79 Phase 1 — combine legacy memories.md with auto-extracted
+    // semantic facts (always-on, grouped by category) and episodic
+    // beats (recency × importance, trimmed to lane budget). The
+    // existing memories.md file is preserved verbatim and surfaces
+    // ahead of structured memory so users who edited it directly
+    // still see their notes used.
+    const [legacyMemoryRaw, semanticMemory, episodicMemory] = await Promise.all([
+      readMemories(fs, workspaceUri, threadId),
+      readSemanticMemory(fs, workspaceUri, threadId),
+      readEpisodicMemory(fs, workspaceUri, threadId),
+    ]);
+    const memoryContent = renderMemoryChannel({
+      legacyMemory: legacyMemoryRaw,
+      semantic: semanticMemory,
+      episodic: episodicMemory,
+      // Hand assembleContext the rendered combined string; budget
+      // splitting between lore and memory still happens there.
+      budgetTokens: Infinity,
+    });
     // When userText is provided, exclude the last history entry (the same message)
     // so it routes through the dedicated user budget lane instead of competing with history.
     const effectiveHistory = userText ? baseHistory.slice(0, -1) : baseHistory;
@@ -4385,6 +5271,7 @@ function renderChatEditor(container, parallx, input) {
       settings: currentSettings,
       ephemeralInstruction: instruction,
       historySummary,
+      sceneState: thread?.sceneState || null, // M79 Phase 3a
     });
     // Annotate with diagnostic info the inspect modal + token chip surface.
     assembled.loreDebug = loreDebug;
@@ -4497,6 +5384,11 @@ function renderChatEditor(container, parallx, input) {
   }
 
   function buildHumanMessage(text) {
+    // M79 Phase 4a — OOC mode: message is logged but never reaches the AI.
+    // The kind:'ooc' flag drives the muted "Backstage" styling in
+    // renderMessageRow.
+    const hiddenFrom = oocMode ? 'ai' : null;
+    const kind = oocMode ? 'ooc' : undefined;
     if (!selectedComposeSpeaker || selectedComposeSpeaker === SELF_SPEAKER) {
       return {
         author: 'user',
@@ -4505,7 +5397,8 @@ function renderChatEditor(container, parallx, input) {
         content: text,
         timestamp: Date.now(),
         generatedBy: 'human',
-        hiddenFrom: null,
+        hiddenFrom,
+        ...(kind ? { kind } : {}),
       };
     }
     return {
@@ -4515,7 +5408,8 @@ function renderChatEditor(container, parallx, input) {
       content: text,
       timestamp: Date.now(),
       generatedBy: 'human',
-      hiddenFrom: null,
+      hiddenFrom,
+      ...(kind ? { kind } : {}),
     };
   }
 
@@ -4597,9 +5491,16 @@ function renderChatEditor(container, parallx, input) {
         if (chunk.content) {
           isThinking = false;
           fullResponse += chunk.content;
-          // Strip leading speaker label during streaming
+          // Strip leading speaker label during streaming + hide any
+          // partially-streamed <scene-update/> tag so the user never
+          // sees the control signal flash in the message.
           const speakerName = transientMessage?.name || '';
-          transientMessage.content = stripSpeakerLabel(fullResponse.trimStart(), speakerName);
+          const visible = stripSpeakerLabel(fullResponse.trimStart(), speakerName)
+            .replace(SCENE_TAG_REGEX, '')
+            // Suppress an in-flight partial tag (model just started
+            // emitting `<scene-` but hasn't closed the bracket yet).
+            .replace(/<scene-update\b[^>]*$/i, '');
+          transientMessage.content = visible;
           queueRender();
         }
       }
@@ -4607,10 +5508,45 @@ function renderChatEditor(container, parallx, input) {
       if (fullResponse.trim()) {
         // Strip leading speaker label the model may echo (e.g. "Ada Lovelace: ...")
         const speakerName = transientMessage?.name || '';
-        const cleaned = stripSpeakerLabel(fullResponse.trim(), speakerName);
+        let cleaned = stripSpeakerLabel(fullResponse.trim(), speakerName);
+
+        // M79 Phase 3a — parse and strip any <scene-update/> tag the
+        // model emitted. The tag is a control signal and never reaches
+        // the user-facing message. The parsed update is merged into
+        // thread.sceneState so the next generation sees the new
+        // context.
+        const sceneParse = extractSceneUpdate(cleaned);
+        cleaned = sceneParse.cleaned;
+        if (sceneParse.update) {
+          thread.sceneState = mergeSceneState(thread?.sceneState || {}, sceneParse.update);
+          void updateThreadMeta(fs, workspaceUri, threadId, { sceneState: thread.sceneState })
+            .catch((err) => console.warn('[TextGenerator] Failed to save scene state:', err));
+        }
+
         const finalMessage = buildGeneratedTurnMessage(cleaned, effectiveSpeaker, instruction, asUser);
         messageHistory.push(finalMessage);
         await appendMessage(fs, workspaceUri, threadId, finalMessage);
+
+        // M79 Phase 5 — auto-title also fires after the FIRST AI
+        // reply so AI-led / template-seeded chats (no user message
+        // yet) don't stay "New Chat" forever in the sidebar.
+        if (thread.title === 'New Chat'
+            && messageHistory.filter((m) => m.author === 'user' && m.kind !== 'ooc').length === 0
+            && finalMessage.content) {
+          const autoTitle = finalMessage.content.length > 48
+            ? finalMessage.content.slice(0, 48) + '…'
+            : finalMessage.content;
+          thread.title = autoTitle;
+          void updateThreadMeta(fs, workspaceUri, threadId, { title: autoTitle })
+            .catch((err) => console.warn('[TextGenerator] Failed to auto-title from AI reply:', err));
+          _refreshSidebar?.();
+        }
+
+        // M79 Phase 1 — fire-and-forget memory extraction every N
+        // user/AI exchanges. Counts only AI-visible message pairs so
+        // hidden/OOC entries don't trigger early extractions. The call
+        // runs in the background; failure is logged and ignored.
+        void _maybeAutoExtractMemory();
       }
     } catch (err) {
       const errorMessage = {
@@ -4817,7 +5753,12 @@ function renderChatEditor(container, parallx, input) {
     messageHistory.push(userMessage);
     await appendMessage(fs, workspaceUri, threadId, userMessage);
 
-    if (thread.title === 'New Chat' && messageHistory.filter((msg) => msg.hiddenFrom !== 'user').length <= 1) {
+    // M79 Phase 4a — OOC messages don't count toward auto-title (they
+    // shouldn't name the chat after a backstage note) and don't
+    // trigger the auto-reply path.
+    const wasOocMessage = userMessage.kind === 'ooc';
+
+    if (!wasOocMessage && thread.title === 'New Chat' && messageHistory.filter((msg) => msg.hiddenFrom !== 'user' && msg.kind !== 'ooc').length <= 1) {
       const autoTitle = messageText.length > 48 ? messageText.slice(0, 48) + '…' : messageText;
       thread.title = autoTitle;
       await updateThreadMeta(fs, workspaceUri, threadId, { title: autoTitle });
@@ -4827,8 +5768,15 @@ function renderChatEditor(container, parallx, input) {
     renderMessages();
     updateChrome();
 
-    // Honor autoReply toggle and expectsReply on the last message
-    if (thread?.autoReply !== false) {
+    // OOC is a one-shot toggle: switch off after the message lands so
+    // the user has to opt back in for the next note. Matches how
+    // single-key affordances feel in chat surfaces.
+    if (wasOocMessage) setOocMode(false);
+
+    // Honor autoReply toggle and expectsReply on the last message.
+    // OOC messages never trigger generation — the whole point is that
+    // the AI doesn't see them.
+    if (!wasOocMessage && thread?.autoReply !== false) {
       const lastMsg = messageHistory[messageHistory.length - 1];
       if (lastMsg?.expectsReply !== false) {
         await generateTurn({ speaker: await resolveReplySpeaker(selectedReplySpeaker), instruction: inlineInstruction || null, userText: messageText });
@@ -6767,9 +7715,17 @@ export function activate(parallx, context) {
 
     const characters = await scanCharacters(fs, workspaceUri);
     if (characters.length === 0) {
-      parallx.window?.showErrorMessage(
-        'No character files found. Create one in the Characters page first.',
+      // M79 Phase 5 — replace the dead-end error toast with an actionable
+      // information message: let the user jump straight to the Characters
+      // page instead of having to find it themselves.
+      const choice = await parallx.window?.showInformationMessage(
+        'You don\'t have any characters yet. Chats need at least one character to start.',
+        { title: 'Open Characters' },
+        { title: 'Cancel' },
       );
+      if (choice?.title === 'Open Characters') {
+        try { await parallx.commands.executeCommand('textGenerator.openCharacters'); } catch { /* fallback handled in editor */ }
+      }
       return;
     }
 
