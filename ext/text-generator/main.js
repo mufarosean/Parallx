@@ -2368,6 +2368,29 @@ function buildSystemPrompt(params = {}) {
   const castEntries = [];
   const characterReminders = [];
 
+  // 0. Selected-speaker banner — the explicit user selection is the
+  // source of truth for whose turn this is, and it gets stated at the
+  // TOP of the prompt and reinforced near the BOTTOM (Active Turn
+  // section). Redundant by design: small models drop signals when
+  // they're stated only once. Trust the click; never derive turn
+  // order from history.
+  let bannerName = null;
+  if (respondAs === SELF_SPEAKER) {
+    bannerName = 'the user';
+  } else if (respondAs === NARRATOR_SPEAKER) {
+    bannerName = 'the Narrator';
+  } else if (respondAs) {
+    const respondChar = characters.find((c) =>
+      c.fileName === respondAs || (c.frontmatter.name || '').toLowerCase() === String(respondAs).toLowerCase()
+    );
+    bannerName = respondChar
+      ? (respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, ''))
+      : String(respondAs).replace(/\.(md|json)$/, '');
+  }
+  if (bannerName) {
+    parts.push(`# YOU ARE WRITING THE NEXT TURN AS: ${bannerName}\nWrite a single reply in this character\'s voice only. Do not write for any other character.`);
+  }
+
   // 1. Writing preset at the TOP — sets the shared writing framework.
   const presetContent = getPresetContent(writingPreset, customStyleContent);
   if (presetContent) {
@@ -2453,10 +2476,10 @@ function buildSystemPrompt(params = {}) {
   // 3. Conversation contract.
   parts.push([
     '## Turn Contract',
-    '- Speaker labels in history are authoritative.',
-    '- Write exactly one new turn.',
-    '- Never write the user\'s next turn or any unseen follow-up turns.',
-    '- Never prepend a speaker label; the interface already displays it.',
+    '- History is rendered with `<<Name>>` tags identifying each speaker. They are authoritative.',
+    '- Write exactly one new turn, for the character named in the banner above and the Active Turn block below — and ONLY that character.',
+    '- Never write, narrate, quote, or describe internal thoughts for any other character. If you find yourself starting to write a different `<<Name>>` block, STOP.',
+    '- Never prepend a speaker tag (no `<<Name>>`, no `Name:`); the interface adds the label automatically.',
     '- Character-specific instructions override the writing style preset when they conflict.',
   ].join('\n'));
 
@@ -2700,7 +2723,15 @@ function assembleContext(params) {
 
   const messages = [{ role: 'system', content: systemPrompt }];
 
-  // History — filter out hiddenFrom:"ai" messages, map author→role
+  // History — filter out hiddenFrom:"ai" messages, map author→role.
+  //
+  // Speaker encoding: small local models often miss the `Name: text`
+  // convention (they treat the colon as decorative punctuation), which
+  // is the root cause of "the AI writes for the wrong character" bugs.
+  // We use `<<Name>>\ntext` instead — a delimiter the model can't
+  // confuse with content. Strip-on-generation handles both the new
+  // chevron form and the legacy colon form so existing chats keep
+  // working without migration.
   const filteredHistory = history.filter(m => m.hiddenFrom !== 'ai');
   const mappedHistory = filteredHistory.map(m => {
     const role = mapAuthorToRole(m.author || m.role, m);
@@ -2713,7 +2744,7 @@ function assembleContext(params) {
     const displayName = (m.author === 'user' && !m.characterFile) ? userName : m.name;
     return {
       role,
-      content: displayName ? `${displayName}: ${m.content}` : m.content,
+      content: displayName ? `<<${displayName}>>\n${m.content}` : m.content,
     };
   });
 
@@ -2791,18 +2822,30 @@ function assembleContext(params) {
   // Empty sections are omitted. The result is one tight block that lands
   // right before generation — single high-attention spot, no competing noise.
 
-  // 1) Active turn
+  // 1) Active turn — selected character is the source of truth. Do NOT
+  // try to derive the next speaker from history; trust the explicit
+  // selection. The instruction is phrased to be unmistakable and
+  // references the `<<Name>>` history delimiter the model has been
+  // seeing on every prior turn.
+  //
+  // Computes `bannerName` (the friendly label for whoever is speaking)
+  // for reuse below in the appended user-turn directive — same
+  // expression as buildSystemPrompt's banner so the two stay in sync.
   let activeTurnLine = null;
+  let bannerName = null;
   if (respondAs === SELF_SPEAKER) {
-    activeTurnLine = 'Active turn: user. Draft only the next user-authored message with no speaker prefix.';
+    bannerName = 'the user';
+    activeTurnLine = 'Active turn: user. Draft only the next user-authored message. Do not begin with a `<<Name>>` tag or any speaker prefix — the interface adds the speaker label.';
   } else if (respondAs === NARRATOR_SPEAKER) {
-    activeTurnLine = 'Active turn: Narrator. Write only the next narrative beat in prose. Do not write any character\'s spoken dialogue. Do not use "CharacterName:" prefixes.';
+    bannerName = 'the Narrator';
+    activeTurnLine = 'Active turn: Narrator. Write only the next narrative beat in prose. Do not write any character\'s spoken dialogue. Do not begin with a `<<Name>>` tag or any speaker prefix.';
   } else if (respondAs) {
     const respondChar = chars.find(c =>
       c.fileName === respondAs || (c.frontmatter.name || '').toLowerCase() === String(respondAs).toLowerCase()
     );
     const rName = respondChar ? (respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, '')) : String(respondAs).replace(/\.(md|json)$/, '');
-    activeTurnLine = `Active turn: ${rName}. Write ONLY ${rName}'s next turn. Do not write for, narrate, or quote any other character. Do not include the "${rName}:" prefix — just the message body.`;
+    bannerName = rName;
+    activeTurnLine = `Active turn: ${rName}. Write ONLY ${rName}'s next turn. Do not write, narrate, quote, or describe internal thoughts for any other character. Do not begin your reply with \`<<${rName}>>\` or any speaker prefix — the interface adds the label automatically. If you start to write for any other character, STOP immediately.`;
   }
 
   // 2) Persona re-anchor (only when speaker is a real character)
@@ -2862,7 +2905,15 @@ function assembleContext(params) {
     // is the literal last text the model reads before generating. This
     // turned out to be the single biggest determinant of whether the
     // model follows /ai-style guidance.
+    //
+    // The same fix now applies to the active-turn signal — when the
+    // user picks a character with no instructions, the active-turn
+    // line is what we want the model to land on. Putting it inside
+    // the user-turn text gives it the strongest position attention-wise.
     let content = userMessage;
+    if (bannerName) {
+      content += '\n\n[Now write the next reply as ' + bannerName + ', and only ' + bannerName + '.]';
+    }
     if (ephemeralInstruction) {
       content +=
         '\n\n[Director\'s note for this turn (apply directly to the very next reply — NOT the response after, NOT a future scene): '
@@ -2871,19 +2922,18 @@ function assembleContext(params) {
     }
     messages.push({ role: 'user', content });
   } else if (!messages.some(m => m.role === 'user')) {
-    let directive = '[Stage direction — not part of the story. Now write the next message according to the active-turn instructions above.';
-    if (respondAs && respondAs !== SELF_SPEAKER && respondAs !== NARRATOR_SPEAKER) {
-      const respondChar = chars.find(c =>
-        c.fileName === respondAs || (c.frontmatter.name || '').toLowerCase() === String(respondAs).toLowerCase()
-      );
-      const rName = respondChar ? (respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, '')) : String(respondAs);
-      directive = `[Stage direction — not part of the story. Write ${rName}'s next reply now. Stay strictly in ${rName}'s voice. Do not write for any other character. Do not include the "${rName}:" prefix. Match the writing style and POV defined above.`;
-    } else if (respondAs === NARRATOR_SPEAKER) {
-      directive = '[Stage direction — not part of the story. Write the next narrative beat in prose. Do not write any character\'s dialogue. Match the writing style above.';
+    // No prior user turn — common when the user pressed a shortcut
+    // button, regenerated, or selected a character with no message.
+    // The directive becomes the sole user-role payload, so it must
+    // carry both the active-turn signal AND any ephemeral directive,
+    // in the same emphatic format used for the with-user-message path.
+    let directive = '[Stage direction — not part of the story.';
+    if (bannerName) {
+      directive += ` Now write the next reply as ${bannerName}, and only ${bannerName}. Stay strictly in ${bannerName}'s voice. Do not write, narrate, or quote any other character. Do not begin with a \`<<${bannerName}>>\` tag or any speaker prefix.`;
+    } else {
+      directive += ' Now write the next message according to the active-turn instructions above.';
     }
     if (ephemeralInstruction) {
-      // Same fix applies to the no-user-message fallback: make the
-      // directive the most prominent thing in the stage direction.
       directive += ` DIRECTOR'S NOTE (mandatory, apply to this very turn): ${ephemeralInstruction}`;
     }
     directive += ']';
@@ -5253,7 +5303,18 @@ function renderChatEditor(container, parallx, input) {
           content: '[Continue the following text seamlessly from exactly where it ends. Write ONLY the new continuation — do not repeat any of the existing text. Match the tone, style, and voice perfectly.]',
         });
         messagesForApi.push({ role: 'user', content: textSoFar });
-        const stream = parallx.lm.sendChatRequest(modelId, messagesForApi, getGenerationOptions(continueSpeaker));
+        // Speaker-leak guard rails are the same in the autocomplete
+        // path: compute the wrong-speaker name list so stop-tokens +
+        // post-strip truncate can defend against the model writing
+        // for the wrong character mid-completion.
+        const activeName = (target.name || '').toLowerCase();
+        const _otherNames = characters
+          .map((c) => c.frontmatter?.name || c.fileName.replace(/\.(md|json)$/, ''))
+          .filter((n) => n && n.toLowerCase() !== activeName);
+        const _userDispName = getUserName();
+        if (_userDispName && _userDispName.toLowerCase() !== activeName) _otherNames.push(_userDispName);
+        if (activeName !== 'narrator') _otherNames.push('Narrator');
+        const stream = parallx.lm.sendChatRequest(modelId, messagesForApi, getGenerationOptions(continueSpeaker, false, _otherNames));
         let fullResponse = '';
         let isThinking = false;
         for await (const chunk of stream) {
@@ -5270,7 +5331,7 @@ function renderChatEditor(container, parallx, input) {
             isThinking = false;
             fullResponse += chunk.content;
             const speakerName = target.name || '';
-            const stripped = stripSpeakerLabel(fullResponse.trimStart(), speakerName);
+            const stripped = stripSpeakerLabel(fullResponse.trimStart(), speakerName, _otherNames);
             const spacer = textSoFar && !textSoFar.endsWith(' ') && stripped && !stripped.startsWith(' ') ? ' ' : '';
             transientMessage.content = textSoFar + spacer + stripped;
             queueRender();
@@ -5278,7 +5339,7 @@ function renderChatEditor(container, parallx, input) {
         }
         if (fullResponse.trim()) {
           const speakerName = target.name || '';
-          const stripped = stripSpeakerLabel(fullResponse.trim(), speakerName);
+          const stripped = stripSpeakerLabel(fullResponse.trim(), speakerName, _otherNames);
           const spacer = textSoFar && !textSoFar.endsWith(' ') && stripped && !stripped.startsWith(' ') ? ' ' : '';
           messageHistory[msgIndex].content = textSoFar + spacer + stripped;
           await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
@@ -5520,13 +5581,27 @@ function renderChatEditor(container, parallx, input) {
     return { assembled, modelId };
   }
 
-  function getGenerationOptions(speaker, asUser = false) {
+  function getGenerationOptions(speaker, asUser = false, knownOtherNames = []) {
     const character = !asUser && speaker && speaker !== NARRATOR_SPEAKER ? getCharacterByFile(speaker) : null;
     const maxTokens = character?.frontmatter.maxTokensPerMessage ?? currentSettings?.defaultMaxTokens ?? undefined;
+
+    // M-fix-5 — defensive stop tokens. If the model starts emitting a
+    // tag for a different character (`<<Other>>` or `\nOther:`), halt
+    // generation at that boundary. Ollama treats `stop` as exact
+    // substrings; we ship a small canonical set per other-character
+    // name plus the legacy colon shape. Empty list → no stop tokens.
+    const stop = [];
+    for (const otherName of (knownOtherNames || [])) {
+      if (!otherName || typeof otherName !== 'string') continue;
+      stop.push(`<<${otherName}>>`);
+      stop.push(`\n${otherName}:`);
+    }
+
     return {
       think: true,
       temperature: character?.frontmatter.temperature ?? currentSettings?.defaultTemperature ?? 0.8,
       ...(maxTokens ? { maxTokens } : {}),
+      ...(stop.length > 0 ? { stop } : {}),
       numCtx: currentSettings?.defaultContextWindow || undefined,
     };
   }
@@ -5659,13 +5734,78 @@ function renderChatEditor(container, parallx, input) {
 
   /** Strip a leading speaker label (e.g. "Ada Lovelace: ...") from model output.
    *  Handles variable whitespace, bold formatting, and regex-special characters. */
-  function stripSpeakerLabel(text, speakerName) {
-    if (!speakerName || !text) return text;
-    // Escape regex-special characters in the name
-    const escaped = speakerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Match: optional bold markers, name, optional bold markers, colon, optional whitespace
-    const pattern = new RegExp(`^\\**${escaped}\\**\\s*:\\s*`, 'i');
-    return text.replace(pattern, '');
+  /**
+   * Strip speaker labels from a generated reply.
+   *
+   * Three classes of leakage to handle:
+   *   1. Leading `Name:` or `<<Name>>` echoes the active speaker.
+   *      Strip them — the interface adds the label.
+   *   2. Mid-message `<<OtherName>>` / `OtherName:` lines: the model
+   *      started writing for someone else. Truncate the response at
+   *      that boundary so the wrong-character content never gets
+   *      stored. Standard production-RP guard.
+   *   3. Stray `<<Name>>` for the ACTIVE speaker mid-message (an
+   *      internal echo): just strip those tags, don't truncate.
+   *
+   * Takes `knownOtherNames` so we know which mid-message labels are
+   * "wrong" (someone else) vs "internal echo of self" — caller passes
+   * the list of all characters in the thread minus the active speaker.
+   */
+  function stripSpeakerLabel(text, speakerName, knownOtherNames = []) {
+    if (!text) return text;
+
+    const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // 1. Strip leading active-speaker labels in both formats.
+    if (speakerName) {
+      const escaped = escape(speakerName);
+      // Match: optional **bold**, the chevron form or colon form, optional whitespace
+      const leadingChevron = new RegExp(`^\\s*<<${escaped}>>\\s*\\n?`, 'i');
+      const leadingColon = new RegExp(`^\\**${escaped}\\**\\s*:\\s*`, 'i');
+      text = text.replace(leadingChevron, '').replace(leadingColon, '');
+    }
+
+    // 2. Truncate at the first mid-message tag belonging to someone
+    //    else. We look for `<<OtherName>>` (the new format) and the
+    //    legacy `OtherName:` at line start. Truncating (not stripping)
+    //    matters: anything the model wrote AFTER the wrong tag is
+    //    almost certainly content authored as that other character.
+    if (Array.isArray(knownOtherNames) && knownOtherNames.length > 0) {
+      let earliestCut = -1;
+      for (const other of knownOtherNames) {
+        if (!other) continue;
+        const escOther = escape(other);
+        // <<Other>> anywhere from a line start (or after a newline).
+        const chevRe = new RegExp(`(^|\\n)\\s*<<${escOther}>>`, 'i');
+        const m1 = text.match(chevRe);
+        if (m1) {
+          const idx = m1.index + (m1[1] ? m1[1].length : 0);
+          if (earliestCut === -1 || idx < earliestCut) earliestCut = idx;
+        }
+        // Other: at line start. Only accept when there's at least one
+        // word character of dialogue/narration before the colon to
+        // avoid eating common in-prose patterns like "Note: ..." or
+        // a character self-quoting "He said, 'Friend: '...".
+        const colonRe = new RegExp(`\\n\\s*\\**${escOther}\\**\\s*:\\s*`, 'i');
+        const m2 = text.match(colonRe);
+        if (m2 && typeof m2.index === 'number') {
+          const idx = m2.index;
+          if (earliestCut === -1 || idx < earliestCut) earliestCut = idx;
+        }
+      }
+      if (earliestCut > 0) {
+        text = text.slice(0, earliestCut).trimEnd();
+      }
+    }
+
+    // 3. Strip stray mid-message tags for the active speaker (just an
+    //    internal echo — not a wrong-character signal).
+    if (speakerName) {
+      const escaped = escape(speakerName);
+      text = text.replace(new RegExp(`(^|\\n)\\s*<<${escaped}>>\\s*\\n?`, 'gi'), '$1');
+    }
+
+    return text;
   }
 
   async function generateTurn({ speaker = null, instruction = null, asUser = false, userText = '' } = {}) {
@@ -5692,7 +5832,24 @@ function renderChatEditor(container, parallx, input) {
           content: `[Draft the next user-authored message as ${getComposeSelectionLabel(effectiveSpeaker)}. Return only the message content.]`,
         });
       }
-      const _genOpts = getGenerationOptions(effectiveSpeaker, asUser);
+      // Compute the wrong-speaker name list ONCE per generation. Used
+      // by stripSpeakerLabel to truncate the response at any line
+      // that starts speaking as someone other than the active turn.
+      // We include all OTHER characters in the thread + the user's
+      // current display name + the Narrator special speaker — these
+      // are every label the model could legitimately emit but isn't
+      // allowed to write a turn for right now.
+      const activeName = (transientMessage?.name || '').toLowerCase();
+      const _knownOtherNames = characters
+        .map((c) => c.frontmatter?.name || c.fileName.replace(/\.(md|json)$/, ''))
+        .filter((n) => n && n.toLowerCase() !== activeName);
+      const _userDisplayName = getUserName();
+      if (_userDisplayName && _userDisplayName.toLowerCase() !== activeName) {
+        _knownOtherNames.push(_userDisplayName);
+      }
+      if (activeName !== 'narrator') _knownOtherNames.push('Narrator');
+
+      const _genOpts = getGenerationOptions(effectiveSpeaker, asUser, _knownOtherNames);
       const stream = parallx.lm.sendChatRequest(modelId, messagesForApi, _genOpts);
       let fullResponse = '';
       let isThinking = false;
@@ -5714,7 +5871,7 @@ function renderChatEditor(container, parallx, input) {
           // partially-streamed <scene-update/> tag so the user never
           // sees the control signal flash in the message.
           const speakerName = transientMessage?.name || '';
-          const visible = stripSpeakerLabel(fullResponse.trimStart(), speakerName)
+          const visible = stripSpeakerLabel(fullResponse.trimStart(), speakerName, _knownOtherNames)
             .replace(SCENE_TAG_REGEX, '')
             // Suppress an in-flight partial tag (model just started
             // emitting `<scene-` but hasn't closed the bracket yet).
@@ -5726,8 +5883,9 @@ function renderChatEditor(container, parallx, input) {
 
       if (fullResponse.trim()) {
         // Strip leading speaker label the model may echo (e.g. "Ada Lovelace: ...")
+        // and truncate at any wrong-speaker label that snuck in.
         const speakerName = transientMessage?.name || '';
-        let cleaned = stripSpeakerLabel(fullResponse.trim(), speakerName);
+        let cleaned = stripSpeakerLabel(fullResponse.trim(), speakerName, _knownOtherNames);
 
         // M79 Phase 3a — parse and strip any <scene-update/> tag the
         // model emitted. The tag is a control signal and never reaches
@@ -5831,7 +5989,18 @@ function renderChatEditor(container, parallx, input) {
             content: '[Continue the following text seamlessly from exactly where it ends. Write ONLY the new continuation — do not repeat any of the existing text. Match the tone, style, and voice perfectly.]',
           });
           messagesForApi.push({ role: 'user', content: lastAiMsg.content });
-          const stream = parallx.lm.sendChatRequest(modelId, messagesForApi, getGenerationOptions(continueSpeaker));
+          // Speaker-leak guard rails in the /continue path too: build
+          // the wrong-speaker list so stop-tokens halt at any tag for
+          // a different character and post-strip can truncate if the
+          // model slips through.
+          const _activeName = (lastAiMsg.name || '').toLowerCase();
+          const _otherNames = characters
+            .map((c) => c.frontmatter?.name || c.fileName.replace(/\.(md|json)$/, ''))
+            .filter((n) => n && n.toLowerCase() !== _activeName);
+          const _userDispName = getUserName();
+          if (_userDispName && _userDispName.toLowerCase() !== _activeName) _otherNames.push(_userDispName);
+          if (_activeName !== 'narrator') _otherNames.push('Narrator');
+          const stream = parallx.lm.sendChatRequest(modelId, messagesForApi, getGenerationOptions(continueSpeaker, false, _otherNames));
           let fullResponse = '';
           let isThinking = false;
           for await (const chunk of stream) {
@@ -5848,7 +6017,7 @@ function renderChatEditor(container, parallx, input) {
               isThinking = false;
               fullResponse += chunk.content;
               const speakerName = lastAiMsg.name || '';
-              const stripped = stripSpeakerLabel(fullResponse.trimStart(), speakerName);
+              const stripped = stripSpeakerLabel(fullResponse.trimStart(), speakerName, _otherNames);
               const spacer = lastAiMsg.content && !lastAiMsg.content.endsWith(' ') && stripped && !stripped.startsWith(' ') ? ' ' : '';
               transientMessage.content = lastAiMsg.content + spacer + stripped;
               queueRender();
@@ -5856,7 +6025,7 @@ function renderChatEditor(container, parallx, input) {
           }
           if (fullResponse.trim()) {
             const speakerName = lastAiMsg.name || '';
-            const stripped = stripSpeakerLabel(fullResponse.trim(), speakerName);
+            const stripped = stripSpeakerLabel(fullResponse.trim(), speakerName, _otherNames);
             const spacer = lastAiMsg.content && !lastAiMsg.content.endsWith(' ') && stripped && !stripped.startsWith(' ') ? ' ' : '';
             messageHistory[lastAiIndex].content = lastAiMsg.content + spacer + stripped;
             await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
