@@ -226,14 +226,15 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       });
     }),
   );
-  context.subscriptions.push(
-    dataServiceRef.onDidSavePage((pageId) => {
-      const nowIso = new Date().toISOString();
-      void propertyService.setProperty(pageId, 'modified', nowIso).catch((err) => {
-        console.warn('[Canvas] Failed to update `modified` property for', pageId, err);
-      });
-    }),
-  );
+  // M78 Phase 4 — the on-save write to the `modified` property was a
+  // denormalised copy of `pages.updated_at`, costing 2 extra IPC per
+  // autosave (INSERT/REPLACE + readback) on top of the page UPDATE
+  // itself. PropertyDataService.getPropertiesForPage now synthesises
+  // the value from `pages.updated_at` at read time, so this write is
+  // pure overhead and is removed. The on-Create `created` seed below
+  // is also redundant for the same reason (handled via read-time
+  // override) but is retained for compatibility with any consumer
+  // that queries `page_properties` directly via raw SQL.
 
   // 2a. parentId is the source of truth for hierarchy — no content reconciliation needed.
 
@@ -415,12 +416,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // 5c. Keep the knowledge index in sync with page lifecycle changes.
   context.subscriptions.push(
-    _dataService.onDidSavePage((pageId) => {
-      void _dataService?.getPage(pageId).then((page) => {
-        schedulePageReindexForPayload(page ?? undefined);
-      }).catch((err) => {
-        console.warn('[Canvas] Failed to load saved page for re-index scheduling:', pageId, err);
-      });
+    _dataService.onDidSavePage((event) => {
+      // M78 Phase 8 — onDidSavePage now carries the saved page object,
+      // so we skip the redundant getPage IPC that previously fired on
+      // every autosave. The reindex scheduler reads only id/title/
+      // content from the page, which the carried IPage already provides.
+      schedulePageReindexForPayload(event.page);
     }),
   );
 

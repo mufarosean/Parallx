@@ -101,7 +101,11 @@ export const AUTONOMY_FLAG_DEFAULTS: Readonly<Record<AutonomyFlagId, boolean>> =
   [FLAG_RAIL_ENABLED]: true,
   [FLAG_PATTERN_MEMORY_ENABLED]: true,
   [FLAG_INDEXING_LAZY_MTIME_ENABLED]: true,
-  [FLAG_INDEXING_WORKER_ENABLED]: false,
+  // M78 Phase 3 — embedding worker is now on by default. The worker
+  // moves Ollama /api/embed calls off the renderer thread so indexing
+  // doesn't stutter the UI. Users with the flag explicitly set keep
+  // their preference (the flag system reads stored values first).
+  [FLAG_INDEXING_WORKER_ENABLED]: true,
 });
 
 /** Surface plugin id → flag id. Used by SurfaceRouterService gating. */

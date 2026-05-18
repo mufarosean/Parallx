@@ -406,6 +406,21 @@ export class FileService extends Disposable implements IFileService {
 
   // ── Event Handling ─────────────────────────────────────────────────────
 
+  // M78 Phase 6 — file watcher event coalescing.
+  //
+  // OS file-change events arrive one IPC callback at a time with no
+  // deduplication: a build tool that writes 50 files produces 50
+  // callbacks, each of which fans out to indexing pipeline + semantic
+  // graph + tree refresh. We buffer events for a short coalescing
+  // window (50 ms — well below the perception threshold) and emit
+  // ONE deduplicated event per (path, changeType). The window slides
+  // if more events arrive for the same path so a tool that takes
+  // 200 ms to write doesn't fire an event halfway through.
+  private static readonly _COALESCE_WINDOW_MS = 50;
+  /** Pending events keyed by `${type}:${pathKey}` so duplicates merge. */
+  private readonly _pendingChanges = new Map<string, FileChangeEvent>();
+  private _coalesceTimer: ReturnType<typeof setTimeout> | null = null;
+
   private _handleChangePayload(payload: any): void {
     if (payload.error) {
       // Watcher error — auto-cleanup is handled by main process
@@ -415,7 +430,6 @@ export class FileService extends Disposable implements IFileService {
 
     if (!payload.events || !Array.isArray(payload.events)) return;
 
-    const changes: FileChangeEvent[] = [];
     for (const evt of payload.events) {
       let changeType: FileChangeType;
       switch (evt.type) {
@@ -426,15 +440,32 @@ export class FileService extends Disposable implements IFileService {
       }
 
       const uri = URI.file(evt.path);
-      changes.push({ type: changeType, uri });
 
-      // Invalidate cache for changed files
+      // Invalidate cache for changed files (eager — keeps reads
+      // consistent even before the coalesced emission fires).
       this._contentCache.delete(uri.toKey());
+
+      // Coalesce by (type, path). A later event for the same key
+      // overwrites the earlier one — the most recent classification
+      // wins (a created-then-changed sequence collapses to "changed",
+      // which is what consumers expect).
+      const key = `${changeType}:${uri.toKey()}`;
+      this._pendingChanges.set(key, { type: changeType, uri });
     }
 
-    if (changes.length > 0) {
-      this._onDidFileChange.fire(changes);
-    }
+    if (this._pendingChanges.size === 0) return;
+
+    // Slide the window: clear any pending timer so a steady stream
+    // of events doesn't fire a half-drained batch.
+    if (this._coalesceTimer) clearTimeout(this._coalesceTimer);
+    this._coalesceTimer = setTimeout(() => {
+      this._coalesceTimer = null;
+      const batch = Array.from(this._pendingChanges.values());
+      this._pendingChanges.clear();
+      if (batch.length > 0) {
+        this._onDidFileChange.fire(batch);
+      }
+    }, FileService._COALESCE_WINDOW_MS);
   }
 
   // ── Cleanup ────────────────────────────────────────────────────────────
@@ -460,6 +491,14 @@ export class FileService extends Disposable implements IFileService {
     // Clear cache
     this._contentCache.clear();
     this._cacheGeneration.clear();
+
+    // M78 Phase 6 — clear any pending coalesced events so a teardown
+    // doesn't drop a fire() into the void on a disposed emitter.
+    if (this._coalesceTimer) {
+      clearTimeout(this._coalesceTimer);
+      this._coalesceTimer = null;
+    }
+    this._pendingChanges.clear();
 
     super.dispose();
   }

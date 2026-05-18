@@ -591,8 +591,8 @@ class CanvasEditorPane implements IDisposable {
 
     // Subscribe to save completion (Task 6.1)
     this._saveDisposables.add(
-      this._dataService.onDidSavePage((savedPageId) => {
-        if (savedPageId === this._pageId) {
+      this._dataService.onDidSavePage((event) => {
+        if (event.pageId === this._pageId) {
           // Auto-save completed — no dirty tracking needed for canvas
         }
       }),

@@ -1737,6 +1737,33 @@ ipcMain.handle('database:close', async () => {
   }
 });
 
+// ── M78 Phase 1 — IPC timing instrumentation (dev mode only) ──
+//
+// Wraps a database IPC handler with a duration timer that logs anything
+// slower than IPC_SLOW_LOG_MS. The wrapper is a no-op in packaged
+// builds — `app.isPackaged` is true in production, false in dev — so
+// users never pay the (tiny) instrumentation cost. The goal is to give
+// a baseline for the rest of M78's perf phases and to surface
+// regressions caught in development before they reach users.
+const IPC_SLOW_LOG_MS = 50;
+function timedDbHandler(channelName, handler) {
+  if (app.isPackaged) return handler;
+  return async (event, ...args) => {
+    const start = Date.now();
+    try {
+      return await handler(event, ...args);
+    } finally {
+      const elapsed = Date.now() - start;
+      if (elapsed >= IPC_SLOW_LOG_MS) {
+        // Log only the SQL prefix to keep output readable; full SQL is
+        // available via console history if needed.
+        const sql = typeof args[0] === 'string' ? args[0].replace(/\s+/g, ' ').slice(0, 80) : '';
+        console.warn(`[IPC slow] ${channelName} ${elapsed}ms${sql ? ` "${sql}"` : ''}`);
+      }
+    }
+  };
+}
+
 /**
  * Normalize IPC-transported params for better-sqlite3.
  *
@@ -1767,7 +1794,7 @@ function normalizeDbParams(params) {
 
 // ── database:run ──
 // Execute SQL (INSERT, UPDATE, DELETE, CREATE, etc.)
-ipcMain.handle('database:run', async (_event, sql, params) => {
+ipcMain.handle('database:run', timedDbHandler('database:run', async (_event, sql, params) => {
   try {
     const result = databaseManager.run(sql, normalizeDbParams(params));
     return {
@@ -1780,29 +1807,29 @@ ipcMain.handle('database:run', async (_event, sql, params) => {
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
   }
-});
+}));
 
 // ── database:get ──
 // Fetch a single row. Returns null if no match.
-ipcMain.handle('database:get', async (_event, sql, params) => {
+ipcMain.handle('database:get', timedDbHandler('database:get', async (_event, sql, params) => {
   try {
     const row = databaseManager.get(sql, normalizeDbParams(params));
     return { error: null, row: row || null };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
   }
-});
+}));
 
 // ── database:all ──
 // Fetch all matching rows.
-ipcMain.handle('database:all', async (_event, sql, params) => {
+ipcMain.handle('database:all', timedDbHandler('database:all', async (_event, sql, params) => {
   try {
     const rows = databaseManager.all(sql, normalizeDbParams(params));
     return { error: null, rows };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
   }
-});
+}));
 
 // ── database:isOpen ──
 // Check if a database is currently open.
@@ -1826,7 +1853,7 @@ ipcMain.handle('database:dropToolData', async (_event, migrationPrefix, tablePre
 
 // ── database:runTransaction ──
 // Execute multiple operations inside a single IMMEDIATE transaction.
-ipcMain.handle('database:runTransaction', async (_event, operations) => {
+ipcMain.handle('database:runTransaction', timedDbHandler('database:runTransaction', async (_event, operations) => {
   try {
     // Normalize blob params before passing to better-sqlite3
     const normalizedOps = operations.map(op => ({
@@ -1855,7 +1882,7 @@ ipcMain.handle('database:runTransaction', async (_event, operations) => {
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
   }
-});
+}));
 
 // ════════════════════════════════════════════════════════════════════════════════
 // Extension Database IPC — per-extension isolated SQLite databases

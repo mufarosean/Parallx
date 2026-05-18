@@ -87,8 +87,10 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   readonly onDidChangePage: Event<PageChangeEvent> = this._onDidChangePage.event;
 
   /** Fires after an auto-save flush completes for a specific page. */
-  private readonly _onDidSavePage = this._register(new Emitter<string>());
-  readonly onDidSavePage: Event<string> = this._onDidSavePage.event;
+  // M78 Phase 8 — onDidSavePage now carries the saved page object so
+  // listeners (indexing scheduler etc.) don't need to redo a getPage.
+  private readonly _onDidSavePage = this._register(new Emitter<import('./canvasTypes.js').PageSaveEvent>());
+  readonly onDidSavePage: Event<import('./canvasTypes.js').PageSaveEvent> = this._onDidSavePage.event;
 
   /** Fires when save lifecycle state changes (pending/flushing/saved/failed). */
   private readonly _onDidChangeSaveState = this._register(new Emitter<SaveStateEvent>());
@@ -426,7 +428,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
         expectedRevision,
       });
       this._knownRevisions.set(pageId, page.revision);
-      this._onDidSavePage.fire(pageId);
+      this._onDidSavePage.fire({ pageId, page });
       this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'flush' });
     } catch (err) {
       this._onDidChangeSaveState.fire({
@@ -1262,7 +1264,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
           expectedRevision,
         });
         this._knownRevisions.set(pageId, page.revision);
-        this._onDidSavePage.fire(pageId);
+        this._onDidSavePage.fire({ pageId, page });
         this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'debounce' });
       } catch (err) {
         console.error(`[CanvasDataService] Auto-save failed for page "${pageId}":`, err);
@@ -1319,7 +1321,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
           expectedRevision,
         });
         this._knownRevisions.set(pageId, page.revision);
-        this._onDidSavePage.fire(pageId);
+        this._onDidSavePage.fire({ pageId, page });
         this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'flush' });
       } catch (err) {
         console.error(`[CanvasDataService] Flush failed for page "${pageId}":`, err);
@@ -1796,7 +1798,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
           expectedRevision: freshRevision,
         });
         this._knownRevisions.set(pageId, page.revision);
-        this._onDidSavePage.fire(pageId);
+        this._onDidSavePage.fire({ pageId, page });
         this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'debounce' });
       } catch (retryErr) {
         console.error(`[CanvasDataService] Retry ${attempt + 1}/${CanvasDataService.MAX_RETRIES} failed for page "${pageId}":`, retryErr);

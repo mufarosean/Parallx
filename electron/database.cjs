@@ -47,8 +47,21 @@ class DatabaseManager {
     this._db = new Database(dbPath);
     this._dbPath = dbPath;
 
-    // WAL mode for better concurrent read performance
+    // M78 Phase 2 — performance PRAGMAs.
+    //
+    // journal_mode = WAL: writers don't block readers; fsync only on
+    //   checkpoint (not per commit). Big win on slow disks (USB).
+    // synchronous = NORMAL: safe with WAL. Cuts fsync count by trading
+    //   a tiny durability window (an OS crash within ~ms of commit
+    //   could lose the most recent transactions — already accepted by
+    //   the autosave debounce model).
+    // wal_autocheckpoint = 1000: keep WAL bounded on long sessions.
+    // temp_store = MEMORY: keep intermediate sort/group/CTE data in
+    //   RAM rather than spilling to the workspace volume.
     this._db.pragma('journal_mode = WAL');
+    this._db.pragma('synchronous = NORMAL');
+    this._db.pragma('wal_autocheckpoint = 1000');
+    this._db.pragma('temp_store = MEMORY');
 
     // Enforce foreign key constraints
     this._db.pragma('foreign_keys = ON');
@@ -353,7 +366,11 @@ class ExtensionDatabaseManager {
 
     const dbPath = path.join(extDir, 'data.db');
     const db = new Database(dbPath);
+    // M78 Phase 2 — same performance PRAGMAs as the workspace DB.
     db.pragma('journal_mode = WAL');
+    db.pragma('synchronous = NORMAL');
+    db.pragma('wal_autocheckpoint = 1000');
+    db.pragma('temp_store = MEMORY');
     db.pragma('foreign_keys = ON');
     sqliteVec.load(db);
 

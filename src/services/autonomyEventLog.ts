@@ -203,6 +203,26 @@ export class AutonomyEventLog extends Disposable implements IAutonomyEventLog {
   /** Last day for which retention was pruned. Avoids spamming pruning on every emit. */
   private _lastPrunedDay: string | undefined;
 
+  // M78 Phase 5 — buffered append.
+  //
+  // The pre-M78 path did a full read-modify-write of the whole day's
+  // log on every event. Over a day the file grew, so each event cost
+  // O(file size). On a heavy agent turn (10+ tool calls) this pinned
+  // the main process through several MB-rewrite IPC round-trips.
+  //
+  // New behaviour: events are buffered in memory and flushed on a
+  // short timer (200 ms) or whenever the buffer reaches 16 entries.
+  // The day's existing file content is read once on first emit for
+  // that day, then cached so subsequent flushes only need ONE write
+  // each. Dispose flushes synchronously so a normal app exit never
+  // loses buffered events.
+  private static readonly _FLUSH_INTERVAL_MS = 200;
+  private static readonly _FLUSH_BATCH_SIZE = 16;
+  private readonly _buffer: { record: IAutonomyEventRecord; now: number }[] = [];
+  private _flushTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Per-day content cache so we only read the file once per day. */
+  private _dayContentCache: Map<string, string> = new Map();
+
   constructor(fs: IAutonomyEventLogFs, options: IAutonomyEventLogOptions) {
     super();
     this._fs = fs;
@@ -227,15 +247,55 @@ export class AutonomyEventLog extends Disposable implements IAutonomyEventLog {
       tokensOut: input.tokensOut,
       note: input.note,
     };
-    // Fire-and-chain the disk write so emit() stays sync from caller's POV.
-    this._writeChain = this._writeChain.then(() => this._appendRecord(record, now));
     this._onDidEmit.fire(record);
+
+    // Buffer instead of writing immediately. Flush on timer or batch
+    // threshold so emit() stays sync from caller's POV and disk
+    // writes amortise across many events.
+    this._buffer.push({ record, now });
+    if (this._buffer.length >= AutonomyEventLog._FLUSH_BATCH_SIZE) {
+      this._scheduleFlush(0);
+    } else {
+      this._scheduleFlush(AutonomyEventLog._FLUSH_INTERVAL_MS);
+    }
     return record;
+  }
+
+  /**
+   * Drain the in-memory buffer to disk synchronously. Called by the
+   * flush timer, when emit() reaches the batch threshold, by readDay
+   * / findById to satisfy consistency, and at dispose so an app exit
+   * never loses buffered events.
+   */
+  private _scheduleFlush(delayMs: number): void {
+    if (this._flushTimer) return;
+    this._flushTimer = setTimeout(() => {
+      this._flushTimer = null;
+      this._writeChain = this._writeChain.then(() => this._drainBuffer());
+    }, delayMs);
+  }
+
+  private async _drainBuffer(): Promise<void> {
+    if (this._buffer.length === 0) return;
+    // Group buffered events by day file so events that crossed
+    // midnight write to the correct file.
+    const byDay = new Map<string, { lines: string[]; latestNow: number }>();
+    while (this._buffer.length > 0) {
+      const item = this._buffer.shift()!;
+      const day = dayKey(item.now);
+      const bucket = byDay.get(day) ?? { lines: [], latestNow: 0 };
+      bucket.lines.push(JSON.stringify(item.record));
+      bucket.latestNow = Math.max(bucket.latestNow, item.now);
+      byDay.set(day, bucket);
+    }
+    for (const [day, bucket] of byDay) {
+      await this._appendBuffered(day, bucket.lines, bucket.latestNow);
+    }
   }
 
   async readDay(yyyymmdd: string): Promise<readonly IAutonomyEventRecord[]> {
     // Make sure pending writes are flushed first.
-    await this._writeChain;
+    await this.flush();
     const file = this._fileFor(yyyymmdd);
     const exists = await this._fs.exists(file);
     if (!exists.ok || !exists.exists) return [];
@@ -256,7 +316,7 @@ export class AutonomyEventLog extends Disposable implements IAutonomyEventLog {
 
   async findById(id: string): Promise<IAutonomyEventRecord | undefined> {
     // Walk back from today through the retention window — most lookups are recent.
-    await this._writeChain;
+    await this.flush();
     const today = this._now();
     const dayMs = 24 * 60 * 60 * 1000;
     for (let i = 0; i < this._retentionDays; i++) {
@@ -268,8 +328,17 @@ export class AutonomyEventLog extends Disposable implements IAutonomyEventLog {
     return undefined;
   }
 
-  /** Test seam — wait for outstanding writes to flush. */
+  /** Wait for outstanding writes — and any buffered events — to flush. */
   async flush(): Promise<void> {
+    // If there are buffered events not yet drained (timer hasn't
+    // fired), force a drain now so readers see the latest state.
+    if (this._flushTimer) {
+      clearTimeout(this._flushTimer);
+      this._flushTimer = null;
+    }
+    if (this._buffer.length > 0) {
+      this._writeChain = this._writeChain.then(() => this._drainBuffer());
+    }
     await this._writeChain;
   }
 
@@ -277,38 +346,74 @@ export class AutonomyEventLog extends Disposable implements IAutonomyEventLog {
     return joinPath(this._dataDir, `${FILE_PREFIX}${yyyymmdd}${FILE_SUFFIX}`);
   }
 
-  private async _appendRecord(record: IAutonomyEventRecord, now: number): Promise<void> {
-    const day = dayKey(now);
+  /**
+   * Append a buffered batch of JSON lines to the given day's file.
+   * Reads the file's existing content from the in-memory cache when
+   * available, falling back to a single disk read on first touch of
+   * a new day. Only ONE writeFile per call regardless of batch size.
+   */
+  private async _appendBuffered(day: string, lines: string[], now: number): Promise<void> {
     const file = this._fileFor(day);
     try {
       await this._fs.mkdir(this._dataDir);
     } catch {
       // mkdir may already exist; ignore.
     }
-    let existing = '';
-    try {
-      const e = await this._fs.exists(file);
-      if (e.ok && e.exists) {
-        const r = await this._fs.readFile(file, 'utf-8');
-        if (r.ok && typeof r.data === 'string') existing = r.data;
+
+    let existing = this._dayContentCache.get(day);
+    if (existing === undefined) {
+      // First touch of this day in this session — read from disk
+      // once to recover any prior content (yesterday's tail, restart
+      // mid-day, etc.) and seed the cache.
+      try {
+        const e = await this._fs.exists(file);
+        if (e.ok && e.exists) {
+          const r = await this._fs.readFile(file, 'utf-8');
+          if (r.ok && typeof r.data === 'string') existing = r.data;
+        }
+      } catch {
+        // Treat read failure as empty; the next write will create the file.
       }
-    } catch {
-      existing = '';
+      if (existing === undefined) existing = '';
     }
-    const line = JSON.stringify(record);
-    const next = existing.length === 0 || existing.endsWith('\n')
-      ? existing + line + '\n'
-      : existing + '\n' + line + '\n';
+
+    const separator = existing.length === 0 || existing.endsWith('\n') ? '' : '\n';
+    const appended = lines.join('\n') + '\n';
+    const next = existing + separator + appended;
+
     try {
       await this._fs.writeFile(file, next, 'utf-8');
+      // Only commit to the cache on successful write; otherwise the
+      // next emit re-reads from disk and tries again.
+      this._dayContentCache.set(day, next);
     } catch {
-      // Write failure is non-fatal — autonomy continues.
+      // Write failure is non-fatal — autonomy continues. The buffered
+      // lines are already drained; we don't retry to keep the model
+      // simple. A subsequent emit's write may catch up if the cache
+      // is still populated.
     }
+
     // Best-effort retention prune (once per day).
     if (this._lastPrunedDay !== day) {
       this._lastPrunedDay = day;
       void this._pruneOldFiles(now);
     }
+  }
+
+  override dispose(): void {
+    // Ensure buffered events land on disk before the host process tears
+    // down. Cancel any pending timer and force a final drain.
+    if (this._flushTimer) {
+      clearTimeout(this._flushTimer);
+      this._flushTimer = null;
+    }
+    // Chain a final drain on top of the write chain. Callers (including
+    // dispose) can `await this.flush()` to be sure pending bytes hit
+    // disk; super.dispose() runs first so we still tidy emitters.
+    if (this._buffer.length > 0) {
+      this._writeChain = this._writeChain.then(() => this._drainBuffer());
+    }
+    super.dispose();
   }
 
   private async _pruneOldFiles(now: number): Promise<void> {

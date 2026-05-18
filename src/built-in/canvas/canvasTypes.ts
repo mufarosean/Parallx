@@ -128,6 +128,17 @@ export function doesPageChangeAffectSidebar(event: PageChangeEvent): boolean {
   return event.changedFields.some((field) => SIDEBAR_RELEVANT_PAGE_FIELDS.has(field));
 }
 
+// ─── Page Save Event ────────────────────────────────────────────────────────
+//
+// Payload for `onDidSavePage`. M78 Phase 8 — carries the saved page so
+// listeners don't have to issue a redundant `getPage` IPC just to know
+// what was saved.
+
+export interface PageSaveEvent {
+  readonly pageId: string;
+  readonly page: IPage;
+}
+
 // ─── Save State Events ──────────────────────────────────────────────────────
 //
 // Lifecycle states fired by the auto-save pipeline. M77 Phase 11.1 — moved
@@ -179,8 +190,13 @@ export interface ICanvasDataService {
   /** Fires when a page is created, updated, deleted, moved, or reordered. */
   readonly onDidChangePage: Event<PageChangeEvent>;
 
-  /** Fires after an auto-save flush completes for a specific page. */
-  readonly onDidSavePage: Event<string>;
+  /** Fires after an auto-save flush completes for a specific page.
+   *  M78 Phase 8 — the event payload now carries the saved IPage so
+   *  listeners that need it (indexing scheduler, etc.) don't have to
+   *  re-fetch via getPage, saving one IPC round-trip per save.
+   *  Legacy listeners can still ignore the second argument; the event
+   *  emitter passes only the first positional value to handlers. */
+  readonly onDidSavePage: Event<PageSaveEvent>;
 
   /** Fires every time the save pipeline transitions state for a page
    *  (Pending → Flushing → Saved, or Retrying / Failed). M77 Phase 11.1 —

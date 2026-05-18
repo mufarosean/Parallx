@@ -188,17 +188,35 @@ export class PropertyDataService extends Disposable implements IPropertyDataServ
   // ══════════════════════════════════════════════════════════════════════════
 
   async getPropertiesForPage(pageId: string): Promise<(IPageProperty & { definition: IPropertyDefinition })[]> {
+    // M78 Phase 4 — join `pages` so the system properties `created` and
+    // `modified` can be sourced authoritatively from `pages.created_at`
+    // / `pages.updated_at`. Removing the on-save denormalised write
+    // (one fewer IPC + fewer fsync per autosave) requires read-time
+    // resolution to keep the property bar accurate.
     const result = await this._db.all(
       `SELECT pp.*, pd.type AS def_type, pd.config AS def_config,
               pd.sort_order AS def_sort_order, pd.created_at AS def_created_at,
-              pd.updated_at AS def_updated_at
+              pd.updated_at AS def_updated_at,
+              p.created_at AS _page_created_at,
+              p.updated_at AS _page_updated_at
        FROM page_properties pp
        LEFT JOIN property_definitions pd ON pp.key = pd.name
+       LEFT JOIN pages p ON pp.page_id = p.id
        WHERE pp.page_id = ?
        ORDER BY pd.sort_order`,
       [pageId],
     );
     if (result.error) throw new Error(result.error.message);
+
+    const toIsoFromSqliteDatetime = (sqlValue: unknown): string | null => {
+      if (typeof sqlValue !== 'string' || sqlValue.length === 0) return null;
+      // SQLite datetime('now') yields "YYYY-MM-DD HH:MM:SS" (UTC).
+      // Convert to ISO 8601 with `Z` so it matches the format the
+      // property bar already renders (and the JSON-encoded ISO shape
+      // backfillTimestampProperties produced).
+      const isoLike = sqlValue.includes('T') ? sqlValue : sqlValue.replace(' ', 'T') + 'Z';
+      return JSON.stringify(isoLike);
+    };
 
     return (result.rows ?? []).map((row) => {
       const prop = rowToPageProperty(row);
@@ -216,7 +234,19 @@ export class PropertyDataService extends Disposable implements IPropertyDataServ
         createdAt: (row.def_created_at as string) ?? '',
         updatedAt: (row.def_updated_at as string) ?? '',
       };
-      return { ...prop, definition };
+      // Override the stored value for the auto-managed system
+      // properties so the user always sees the current pages-table
+      // timestamps. Falls back to the stored value if the page lookup
+      // didn't return columns (deleted-but-not-yet-cleaned-up row).
+      let value = prop.value;
+      if (prop.key === 'created') {
+        const fresh = toIsoFromSqliteDatetime(row._page_created_at);
+        if (fresh !== null) value = fresh;
+      } else if (prop.key === 'modified') {
+        const fresh = toIsoFromSqliteDatetime(row._page_updated_at);
+        if (fresh !== null) value = fresh;
+      }
+      return { ...prop, value, definition };
     });
   }
 

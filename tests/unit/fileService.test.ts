@@ -171,7 +171,7 @@ describe('FileService', () => {
   // ── Event ──
 
   describe('onDidFileChange', () => {
-    it('fires when change is received from bridge', () => {
+    it('fires when change is received from bridge', async () => {
       // Capture the callback registered with the bridge
       const changeCallback = mockFs.onDidChange.mock.calls[0]?.[0];
       expect(changeCallback).toBeDefined();
@@ -182,7 +182,45 @@ describe('FileService', () => {
       // Simulate a file change event from Electron
       // _handleChangePayload expects { events: [{ path, type }] } with type 'changed'
       changeCallback({ events: [{ path: '/test/a.txt', type: 'changed' }] });
+      // M78 Phase 6 — file change events are now coalesced inside a 50 ms
+      // window so a build that writes many files emits one batch instead
+      // of N. Wait past the window before asserting.
+      await new Promise(resolve => setTimeout(resolve, 80));
       expect(events.length).toBe(1);
+    });
+
+    it('coalesces a burst of events for distinct paths into one batch', async () => {
+      const changeCallback = mockFs.onDidChange.mock.calls[0]?.[0];
+      expect(changeCallback).toBeDefined();
+
+      let fireCount = 0;
+      let lastBatch: any[] = [];
+      fileService.onDidFileChange(e => { fireCount++; lastBatch = e; });
+
+      // 5 separate file changes in rapid succession.
+      for (let i = 0; i < 5; i++) {
+        changeCallback({ events: [{ path: `/test/f${i}.txt`, type: 'changed' }] });
+      }
+      await new Promise(resolve => setTimeout(resolve, 80));
+      expect(fireCount).toBe(1);
+      expect(lastBatch.length).toBe(5);
+    });
+
+    it('deduplicates repeated events for the same path within the window', async () => {
+      const changeCallback = mockFs.onDidChange.mock.calls[0]?.[0];
+      expect(changeCallback).toBeDefined();
+
+      let fireCount = 0;
+      let lastBatch: any[] = [];
+      fileService.onDidFileChange(e => { fireCount++; lastBatch = e; });
+
+      // Same path written 4 times — should collapse to one entry.
+      for (let i = 0; i < 4; i++) {
+        changeCallback({ events: [{ path: '/test/busy.txt', type: 'changed' }] });
+      }
+      await new Promise(resolve => setTimeout(resolve, 80));
+      expect(fireCount).toBe(1);
+      expect(lastBatch.length).toBe(1);
     });
   });
 });

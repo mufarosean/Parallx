@@ -148,12 +148,45 @@ export class ProactiveSuggestionsService extends Disposable {
       clearTimeout(this._analysisTimer);
     }
     const elapsed = Date.now() - this._lastAnalysisTime;
-    const delay = Math.max(0, ANALYSIS_COOLDOWN_MS - elapsed);
-    this._analysisTimer = setTimeout(() => {
+    const cooldownDelay = Math.max(0, ANALYSIS_COOLDOWN_MS - elapsed);
+
+    // M78 Phase 7 — the very first analysis after workspace open used
+    // to run immediately (cooldown delay = 0 because _lastAnalysisTime
+    // starts at 0), which fired clustering on every indexed page right
+    // when the user was trying to start working. Defer the first run
+    // behind an idle gate so the app stays responsive after initial
+    // indexing. Subsequent analyses still respect the 5-minute cooldown.
+    const isFirstRun = this._lastAnalysisTime === 0;
+    const runNow = (): void => {
       this._runAnalysis().catch(err => {
         console.error('[ProactiveSuggestions] Analysis failed:', err);
       });
-    }, delay);
+    };
+
+    if (isFirstRun && cooldownDelay === 0) {
+      this._scheduleWhenIdle(runNow);
+      return;
+    }
+
+    this._analysisTimer = setTimeout(runNow, cooldownDelay);
+  }
+
+  /**
+   * Run the callback when the renderer is idle, with a 3-second
+   * fallback so the analysis never gets starved on a busy machine.
+   * Falls back to a plain setTimeout when requestIdleCallback isn't
+   * available (Electron pre-renderer-bridge, tests).
+   */
+  private _scheduleWhenIdle(fn: () => void): void {
+    type IdleCb = (deadline: { didTimeout: boolean; timeRemaining(): number }) => void;
+    const ric = (globalThis as { requestIdleCallback?: (cb: IdleCb, opts?: { timeout: number }) => number }).requestIdleCallback;
+    if (typeof ric === 'function') {
+      ric(() => fn(), { timeout: 3000 });
+      return;
+    }
+    // No idle scheduler available — use a small setTimeout so the app
+    // still finishes any synchronous startup work before clustering.
+    this._analysisTimer = setTimeout(fn, 500);
   }
 
   private async _runAnalysis(): Promise<ProactiveSuggestion[]> {
