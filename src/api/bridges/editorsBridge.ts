@@ -84,6 +84,14 @@ export interface OpenEditorOptions {
   readonly typeId: string;
   readonly title: string;
   readonly icon?: string;
+  /**
+   * Pre-rendered SVG/HTML markup for the editor's icon. When provided,
+   * Open Editors / other resource-listing surfaces use this instead of
+   * deriving an icon from the filename extension. Use this for editors
+   * whose icon is user-chosen (canvas pages) or resource-specific
+   * (databases, embeds).
+   */
+  readonly iconHtml?: string;
   readonly instanceId?: string;
 }
 
@@ -129,7 +137,10 @@ export class EditorsBridge {
           : `${entry.toolId}:${typeId}:${Date.now()}`;
         const name = typeof data?.name === 'string' ? (data.name as string) : typeId;
         const icon = typeof data?.icon === 'string' ? (data.icon as string) : undefined;
-        return new ToolEditorInput(typeId, name, icon, entry.provider, inputId, entry.toolId);
+        // iconHtml is intentionally NOT persisted — it's a pre-rendered
+        // view-layer artefact. After restore, the tool's own provider
+        // re-resolves the current icon and calls setIconHtml(...).
+        return new ToolEditorInput(typeId, name, icon, undefined, entry.provider, inputId, entry.toolId);
       });
     }
 
@@ -170,6 +181,7 @@ export class EditorsBridge {
       options.typeId,
       options.title,
       options.icon,
+      options.iconHtml,
       provider,
       inputId,
       this._toolId,
@@ -289,6 +301,7 @@ class ToolEditorInput extends EditorInput {
   readonly typeId: string;
   private _name: string;
   private readonly _icon: string | undefined;
+  private _iconHtml: string | undefined;
   readonly provider: ToolEditorProvider;
   /** The tool ID that created this editor input (for cleanup on deactivation). */
   readonly ownerToolId: string;
@@ -297,6 +310,7 @@ class ToolEditorInput extends EditorInput {
     typeId: string,
     name: string,
     icon: string | undefined,
+    iconHtml: string | undefined,
     provider: ToolEditorProvider,
     id: string,
     ownerToolId: string,
@@ -305,6 +319,7 @@ class ToolEditorInput extends EditorInput {
     this.typeId = typeId;
     this._name = name;
     this._icon = icon;
+    this._iconHtml = iconHtml;
     this.provider = provider;
     this.ownerToolId = ownerToolId;
   }
@@ -320,6 +335,19 @@ class ToolEditorInput extends EditorInput {
     this.fireLabelChange();
   }
   get description(): string { return `Tool editor: ${this.typeId}`; }
+
+  get iconHtml(): string | undefined { return this._iconHtml; }
+
+  /**
+   * Update the editor's pre-rendered icon HTML and notify listeners
+   * (tab bar, Open Editors view). Use when the underlying resource's
+   * icon changes — e.g. a canvas page's icon edited via the picker.
+   */
+  setIconHtml(iconHtml: string | undefined): void {
+    if (this._iconHtml === iconHtml) return;
+    this._iconHtml = iconHtml;
+    this.fireLabelChange();
+  }
 
   /**
    * Widen access from protected → public so tool providers can control

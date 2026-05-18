@@ -133,6 +133,416 @@
   color: var(--vscode-textLink-activeForeground);
 }
 
+/* M77 Phase 11.8 — sidebar undo toast */
+.canvas-sidebar-toast {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 44px;
+  background: rgba(40, 40, 40, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--parallx-radius-md, 6px);
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.92));
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  z-index: 100;
+  animation: canvas-toast-rise 0.18s ease;
+}
+@keyframes canvas-toast-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.canvas-sidebar-toast-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.canvas-sidebar-toast-undo {
+  background: none;
+  border: 1px solid rgba(120, 170, 230, 0.5);
+  color: rgba(150, 190, 250, 0.95);
+  padding: 3px 9px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+.canvas-sidebar-toast-undo:hover {
+  background: rgba(80, 140, 220, 0.16);
+}
+.canvas-sidebar-toast-close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 3px;
+}
+.canvas-sidebar-toast-close:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+.canvas-tree {
+  position: relative;
+}
+
+/* M77 Phase 11.3 — Recents section */
+.canvas-sidebar-recents {
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.canvas-sidebar-recents-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--parallx-radius-sm);
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+.canvas-sidebar-recents-header:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.85));
+}
+.canvas-sidebar-recents-chevron {
+  display: inline-flex;
+  align-items: center;
+  transition: transform 0.12s ease;
+  color: inherit;
+}
+.canvas-sidebar-recents-chevron--open {
+  transform: rotate(90deg);
+}
+.canvas-recent-node {
+  cursor: pointer;
+}
+
+/* M77 Phase 11.2 — pinned sidebar quick-find search */
+.canvas-sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.1);
+}
+.canvas-sidebar-search-icon {
+  flex: 0 0 auto;
+  color: rgba(255, 255, 255, 0.4);
+  display: inline-flex;
+  align-items: center;
+}
+.canvas-sidebar-search-input {
+  flex: 1 1 auto;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.9));
+  font-family: inherit;
+  font-size: 12px;
+  padding: 2px 0;
+  min-width: 0;
+}
+.canvas-sidebar-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+.canvas-empty-search {
+  padding: 16px;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.55));
+  font-size: 12px;
+  font-style: italic;
+  text-align: center;
+}
+
+/* M77 Phase 11.7 — richer empty state */
+.canvas-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.9));
+  margin-bottom: 6px;
+}
+.canvas-empty-subtitle {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.55));
+  margin-bottom: 14px;
+}
+.canvas-empty-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+.canvas-empty-action {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--parallx-radius-sm);
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.85));
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+}
+.canvas-empty-action:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.canvas-empty-action--primary {
+  background: rgba(80, 140, 220, 0.18);
+  border-color: rgba(120, 170, 230, 0.4);
+}
+.canvas-empty-action--primary:hover {
+  background: rgba(80, 140, 220, 0.28);
+}
+.canvas-empty-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.canvas-empty-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
+}
+.canvas-empty-hint-kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 5px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  font-family: var(--parallx-fontFamily-mono, monospace);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* M77 Phase 11.4 — template picker modal */
+.canvas-template-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+  animation: canvas-template-fade-in 0.12s ease;
+}
+@keyframes canvas-template-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.canvas-template-picker {
+  width: min(540px, 90vw);
+  max-height: 80vh;
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--parallx-radius-lg, 8px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  padding: 22px 22px 16px;
+  overflow-y: auto;
+  font-family: var(--parallx-fontFamily-ui);
+}
+.canvas-template-picker-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.95));
+  margin-bottom: 4px;
+}
+.canvas-template-picker-subtitle {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.6));
+  margin-bottom: 18px;
+}
+.canvas-template-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.canvas-template-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--parallx-radius-md, 6px);
+  padding: 14px 12px;
+  text-align: left;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  transition: background-color 0.1s ease, border-color 0.1s ease, transform 0.05s ease;
+  font-family: inherit;
+}
+.canvas-template-card:hover,
+.canvas-template-card:focus-visible {
+  background: rgba(80, 140, 220, 0.16);
+  border-color: rgba(120, 170, 230, 0.5);
+  outline: none;
+}
+.canvas-template-card:active {
+  transform: scale(0.985);
+}
+.canvas-template-card-icon {
+  font-size: 22px;
+  margin-bottom: 8px;
+}
+.canvas-template-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.95));
+  margin-bottom: 4px;
+}
+.canvas-template-card-desc {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.55));
+}
+.canvas-template-picker-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 4px;
+  padding-top: 12px;
+}
+.canvas-template-picker-blank,
+.canvas-template-picker-cancel {
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.55));
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: var(--parallx-radius-sm);
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+.canvas-template-picker-blank:hover,
+.canvas-template-picker-cancel:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--vscode-foreground);
+}
+
+/* M77 Phase 11.6 — keyboard shortcuts overlay */
+.canvas-shortcuts-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+  animation: canvas-template-fade-in 0.12s ease;
+}
+.canvas-shortcuts-modal {
+  width: min(620px, 92vw);
+  max-height: 84vh;
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--parallx-radius-lg, 8px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: var(--parallx-fontFamily-ui);
+}
+.canvas-shortcuts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.canvas-shortcuts-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.95));
+}
+.canvas-shortcuts-close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: var(--parallx-radius-sm);
+}
+.canvas-shortcuts-close:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--vscode-foreground);
+}
+.canvas-shortcuts-body {
+  padding: 14px 20px 18px;
+  overflow-y: auto;
+}
+.canvas-shortcuts-section {
+  margin-bottom: 18px;
+}
+.canvas-shortcuts-section:last-child {
+  margin-bottom: 0;
+}
+.canvas-shortcuts-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.55));
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+.canvas-shortcuts-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 4px 0;
+  font-size: 12.5px;
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.88));
+}
+.canvas-shortcuts-label {
+  flex: 1;
+}
+.canvas-shortcuts-keys {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.canvas-shortcuts-kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 2px 7px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  font-family: var(--parallx-fontFamily-mono, monospace);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
 /* ── Tree node ── */
 
 .canvas-node {
@@ -1887,6 +2297,39 @@
   white-space: nowrap;
   padding: 0 4px;
   user-select: none;
+}
+
+/* M77 Phase 11.1 — save-state indicator (subtle, ribbon-right). */
+.canvas-top-ribbon-save {
+  font-size: var(--parallx-fontSize-base);
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+  padding: 0 6px;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: opacity 0.18s ease, color 0.18s ease;
+}
+.canvas-top-ribbon-save::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.canvas-top-ribbon-save--flushing {
+  color: rgba(150, 180, 255, 0.85);
+}
+.canvas-top-ribbon-save--saved {
+  color: rgba(120, 200, 140, 0.8);
+}
+.canvas-top-ribbon-save--retrying {
+  color: rgba(220, 180, 90, 0.9);
+}
+.canvas-top-ribbon-save--failed {
+  color: rgba(240, 120, 110, 0.95);
 }
 
 .canvas-top-ribbon-btn {

@@ -22,7 +22,7 @@ import { PageChangeKind } from './canvasTypes.js';
 import type { PageChangeEvent, PageMutationField } from './canvasTypes.js';
 import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
-import { setOnLinkedPageBlockDeleted } from './config/blockRegistry.js';
+import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockRegistry.js';
 import { PropertyDataService } from './properties/propertyDataService.js';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -54,7 +54,7 @@ interface ParallxApi {
   };
   editors: {
     registerEditorProvider(typeId: string, provider: { createEditorPane(container: HTMLElement): IDisposable }): IDisposable;
-    openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
+    openEditor(options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string }): Promise<void>;
     closeEditor(editorId: string): Promise<boolean>;
     readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
     onDidChangeOpenEditors(listener: () => void): IDisposable;
@@ -297,12 +297,17 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     });
   });
 
-  // 5b. M77 Phase 2 — surface auto-save failures. Without this listener the
-  // SaveStateKind.Failed event fired by canvasDataService.flushContentSave
-  // and the debounce path went nowhere; users lost work silently if the
-  // DB write failed (full disk, schema drift, etc.). Throttle to one
-  // notification per page per second so a stuck save loop doesn't spam
-  // notifications.
+  // 5b. M77 Phase 2 + Phase 11.5 — surface auto-save failures. Without
+  // this listener the SaveStateKind.Failed event fired by the data service
+  // went nowhere; users lost work silently if the DB write failed (full
+  // disk, schema drift, etc.). Throttle to one notification per page per
+  // second so a stuck save loop doesn't spam notifications.
+  //
+  // Phase 11.5 — replace the raw error message with a user-friendly
+  // translation and an actionable Reload button for the common "Revision
+  // conflict" case (someone else / another writer modified the page
+  // while we were typing). Other failures get a generic message plus
+  // the raw error in parens for debugability.
   {
     const lastNotifiedAt = new Map<string, number>();
     context.subscriptions.push(
@@ -312,8 +317,24 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         const last = lastNotifiedAt.get(e.pageId) ?? 0;
         if (now - last < 1000) return;
         lastNotifiedAt.set(e.pageId, now);
-        const detail = e.error ? `: ${e.error}` : '';
-        void api.window.showErrorMessage(`Canvas save failed${detail}`);
+
+        const isConflict = !!e.error && /revision conflict/i.test(e.error);
+        if (isConflict) {
+          void api.window.showWarningMessage(
+            'This page was changed elsewhere. Reload to see the latest version (your unsaved local edits will be replaced).',
+            { title: 'Reload page' },
+            { title: 'Ignore' },
+          ).then((choice) => {
+            if (choice?.title === 'Reload page') {
+              _dataService?.fireContentReload(e.pageId);
+            }
+          });
+        } else {
+          const detail = e.error ? ` (${e.error})` : '';
+          void api.window.showErrorMessage(
+            `Couldn't save this page${detail}. Check your disk space and try editing again.`,
+          );
+        }
       }),
     );
   }
@@ -544,6 +565,7 @@ async function _restoreLastOpenedPage(api: ParallxApi, context: ToolContext, dat
       typeId: 'canvas',
       title: page.title,
       icon: page.icon ?? undefined,
+      iconHtml: renderPageIconHtml(page.icon),
       instanceId: page.id,
     });
   } catch (err) {
@@ -566,11 +588,54 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
           typeId: 'canvas',
           title: page.title,
           icon: page.icon ?? undefined,
+          iconHtml: renderPageIconHtml(page.icon),
           instanceId: page.id,
         });
       } catch (err) {
         console.error('[Canvas] Failed to create page:', err);
         await api.window.showErrorMessage('Failed to create page.');
+      }
+    }),
+  );
+
+  // canvas.showKeyboardShortcuts — Open the keyboard shortcut cheatsheet
+  // (M77 Phase 11.6). Bound from the editor via Mod+/ and from the empty
+  // state hint.
+  context.subscriptions.push(
+    api.commands.registerCommand('canvas.showKeyboardShortcuts', async () => {
+      try {
+        const mod = await import('./canvasShortcutsOverlay.js');
+        await mod.showCanvasShortcutsOverlay();
+      } catch (err) {
+        console.error('[Canvas] Failed to open shortcuts overlay:', err);
+      }
+    }),
+  );
+
+  // canvas.showTemplatePicker — Open the template picker modal (M77 Phase 11.4).
+  // Creates a new root-level page seeded with the chosen template, or a
+  // blank page if the user picks the escape hatch / cancels.
+  context.subscriptions.push(
+    api.commands.registerCommand('canvas.showTemplatePicker', async () => {
+      if (!_dataService) return;
+      try {
+        const mod = await import('./canvasTemplatePicker.js');
+        const { template } = await mod.showCanvasTemplatePicker();
+
+        const page = await _dataService.createPage(null, template?.defaultTitle);
+        if (template) {
+          await _dataService.flushContentSave(page.id, template.buildDoc());
+        }
+        await api.editors.openEditor({
+          typeId: 'canvas',
+          title: page.title,
+          icon: page.icon ?? undefined,
+          iconHtml: renderPageIconHtml(page.icon),
+          instanceId: page.id,
+        });
+      } catch (err) {
+        console.error('[Canvas] Failed to open template picker:', err);
+        await api.window.showErrorMessage('Failed to open the template picker.');
       }
     }),
   );
@@ -650,6 +715,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
           typeId: 'canvas',
           title: copy.title,
           icon: copy.icon ?? undefined,
+          iconHtml: renderPageIconHtml(copy.icon),
           instanceId: copy.id,
         });
       } catch (err) {
@@ -699,6 +765,7 @@ export async function openPageInEditor(pageId: string): Promise<void> {
       typeId: 'canvas',
       title: page.title,
       icon: page.icon ?? undefined,
+      iconHtml: renderPageIconHtml(page.icon),
       instanceId: pageId,
     });
   } catch (err) {

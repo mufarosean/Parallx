@@ -18,7 +18,9 @@ import {
   type PageMutationField,
   type PageUpdateData,
   type CrossPageMoveParams,
+  type SaveStateEvent,
   PageChangeKind,
+  SaveStateKind,
 } from './canvasTypes.js';
 import {
   CURRENT_CANVAS_CONTENT_SCHEMA_VERSION,
@@ -27,20 +29,12 @@ import {
   normalizeCanvasContentForStorage,
 } from './contentSchema.js';
 
-export const enum SaveStateKind {
-  Pending = 'Pending',
-  Flushing = 'Flushing',
-  Saved = 'Saved',
-  Failed = 'Failed',
-  Retrying = 'Retrying',
-}
-
-export interface SaveStateEvent {
-  readonly pageId: string;
-  readonly kind: SaveStateKind;
-  readonly source: 'debounce' | 'flush' | 'repair';
-  readonly error?: string;
-}
+// SaveStateKind / SaveStateEvent moved to canvasTypes.ts (M77 Phase 11.1)
+// so consumers can subscribe via ICanvasDataService without coupling to
+// this concrete class. Re-exported for backwards compatibility with
+// existing imports (main.ts, tests).
+export { SaveStateKind } from './canvasTypes.js';
+export type { SaveStateEvent } from './canvasTypes.js';
 
 // ─── Database Bridge Type ────────────────────────────────────────────────────
 
@@ -1395,6 +1389,21 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     const page = await this.getPage(pageId);
     if (!page) throw new Error(`[CanvasDataService] Page "${pageId}" not found`);
     return this.updatePage(pageId, { isFavorited: !page.isFavorited });
+  }
+
+  /**
+   * Get the most-recently-updated non-archived pages. M77 Phase 11.3 —
+   * powers the sidebar Recents section. Defaults to 5 entries; sidebar
+   * tunes the limit.
+   */
+  async getRecentPages(limit: number = 5): Promise<IPage[]> {
+    const safeLimit = Math.max(1, Math.min(50, Math.floor(limit)));
+    const result = await this._db.all(
+      'SELECT * FROM pages WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT ?',
+      [safeLimit],
+    );
+    if (result.error) throw new Error(result.error.message);
+    return (result.rows ?? []).map(rowToPage);
   }
 
   /**

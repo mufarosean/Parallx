@@ -25,6 +25,24 @@ export class EditorService extends Disposable implements IEditorService {
   /** Per-group model listener disposables (tracked for cleanup). */
   private readonly _groupListeners = this._register(new DisposableStore());
 
+  /** Per-editor label-change listener disposables, keyed by editor id. */
+  private readonly _editorLabelListeners = this._register(new DisposableStore());
+  private readonly _editorLabelListenerIds = new Map<string, import('../platform/lifecycle.js').IDisposable>();
+
+  private _attachLabelListener(editor: IEditorInput): void {
+    if (this._editorLabelListenerIds.has(editor.id)) return;
+    const sub = editor.onDidChangeLabel(() => this._onDidChangeOpenEditors.fire());
+    this._editorLabelListeners.add(sub);
+    this._editorLabelListenerIds.set(editor.id, sub);
+  }
+
+  private _detachLabelListener(editor: IEditorInput): void {
+    const sub = this._editorLabelListenerIds.get(editor.id);
+    if (!sub) return;
+    sub.dispose();
+    this._editorLabelListenerIds.delete(editor.id);
+  }
+
   constructor(private readonly _editorPart: EditorPart) {
     super();
 
@@ -60,6 +78,17 @@ export class EditorService extends Disposable implements IEditorService {
             }
           }
 
+          // Attach / detach per-editor label-change listeners so renames
+          // and icon updates propagate to consumers of
+          // onDidChangeOpenEditors (e.g. the explorer's Open Editors
+          // view). Without this, label changes only refresh tab bars
+          // (which subscribe directly), not the listing surfaces.
+          if (e.kind === EditorGroupChangeKind.EditorOpen && e.editor) {
+            this._attachLabelListener(e.editor);
+          } else if (e.kind === EditorGroupChangeKind.EditorClose && e.editor) {
+            this._detachLabelListener(e.editor);
+          }
+
           // Fire open-editors change for any structural/state change
           if (
             e.kind === EditorGroupChangeKind.EditorOpen ||
@@ -74,6 +103,12 @@ export class EditorService extends Disposable implements IEditorService {
           }
         }),
       );
+
+      // Attach label listeners to editors that already exist when this
+      // group joined (model.onDidChange only emits future events).
+      for (const editor of group.model.editors) {
+        this._attachLabelListener(editor);
+      }
     }
   }
 
@@ -93,6 +128,7 @@ export class EditorService extends Disposable implements IEditorService {
           isDirty: editor.isDirty,
           isActive: editor === activeGroupEditor && group === this._editorPart.activeGroup,
           groupId: group.model.id,
+          iconHtml: editor.iconHtml,
         });
       }
     }

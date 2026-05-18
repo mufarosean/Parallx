@@ -644,6 +644,13 @@ export interface OpenEditorDescriptor {
   readonly isDirty: boolean;
   readonly isActive: boolean;
   readonly groupId: string;
+  /**
+   * Pre-rendered SVG/HTML for the editor's icon when the input opted to
+   * provide one. Empty / undefined means consumers should fall back to
+   * deriving an icon from the filename extension (the default path for
+   * file-backed editors).
+   */
+  readonly iconHtml?: string;
 }
 
 /**

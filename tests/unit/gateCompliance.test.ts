@@ -67,6 +67,9 @@ const EXEMPT_FILES = new Set([
   'properties/propertyPicker.ts',  // Add-property picker (M55 D3)
   'surfaces/canvasSurface.ts',     // M58 W6 — CanvasSurfacePlugin (read-only stub; no canvas-internal imports)
   'canvasSidebarDragState.ts',     // M77 Phase 7 — pure DnD state machine (no canvas-internal imports)
+  'canvasTemplates.ts',            // M77 Phase 11.4 — pure data, no canvas imports
+  'canvasTemplatePicker.ts',       // M77 Phase 11.4 — standalone modal, only imports its own template data
+  'canvasShortcutsOverlay.ts',     // M77 Phase 11.6 — standalone modal, no canvas-internal imports
 ]);
 
 // ── Child → allowed gate path fragments ─────────────────────────────────────
@@ -137,7 +140,9 @@ const GATE_RULES: Record<string, string[]> = {
   // These have zero canvas-internal relative imports (only @tiptap).
   // If they ever add canvas imports they MUST go through a gate.
   'extensions/blockBackground.ts':         [],
-  'extensions/blockKeyboardShortcuts.ts':  [],
+  // M77 Phase 11.6 — Mod-/ shortcut lazy-loads the canvasShortcutsOverlay
+  // module to keep the extension light at import time.
+  'extensions/blockKeyboardShortcuts.ts':  ['canvasShortcutsOverlay'],
   'extensions/detailsEnterHandler.ts':     [],
   'extensions/mathBlockNode.ts':           [],
   'extensions/tableOfContentsNode.ts':     [],

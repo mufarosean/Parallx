@@ -20,7 +20,7 @@ import { $, layoutPopup, attachPopupDismiss } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
 import { IconPicker } from '../../ui/iconPicker.js';
 import { ContextMenu } from '../../ui/contextMenu.js';
-import { createIconElement, ALL_PAGE_SELECTABLE_ICONS, resolvePageIcon, svgIcon } from './config/blockRegistry.js';
+import { createIconElement, ALL_PAGE_SELECTABLE_ICONS, resolvePageIcon, svgIcon, renderPageIconHtml } from './config/blockRegistry.js';
 import { CanvasSidebarDragState } from './canvasSidebarDragState.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ const INDENT_PX = 20;
 
 interface CanvasSidebarApi {
   editors: {
-    openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
+    openEditor(options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string }): Promise<void>;
     readonly openEditors: readonly { id: string; name: string; isActive: boolean }[];
     onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
@@ -57,6 +57,9 @@ export class CanvasSidebar {
   // ── Favorites / Trash state ──
   private _favoritedPages: IPage[] = [];
   private _archivedPages: IPage[] = [];
+  // ── Recents (M77 Phase 11.3) ──
+  private _recentPages: IPage[] = [];
+  private _recentsExpanded = true;
 
   // ── Trash panel ──
   private _trashPanel: HTMLElement | null = null;
@@ -85,6 +88,28 @@ export class CanvasSidebar {
   private _refreshSeq = 0;
   private _refreshScheduled = false;
 
+  // ── Type-to-find buffer (M77 Phase 11.9) ──
+  // Tracks the last few characters the user typed while the tree had
+  // focus. Used to jump-focus to the first page whose title starts with
+  // the buffer. Reset after 1 second of inactivity.
+  private _typeAheadBuffer = '';
+  private _typeAheadTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // ── Quick-find search (M77 Phase 11.2) ──
+  // Lower-cased filter query bound to the pinned search input at the top
+  // of the sidebar. Empty string means "no filter" (the default tree).
+  // When non-empty, _renderTree restricts both Favorites and the main
+  // tree to pages whose title contains the query, expanded along their
+  // ancestor chain so deep matches stay in context.
+  private _filterQuery = '';
+
+  // ── Undo toast (M77 Phase 11.8) ──
+  // Active toast element + timer used to dismiss the previous toast when
+  // a new operation surfaces another one. Single-toast-at-a-time policy
+  // avoids stacked toasts on rapid sequential moves.
+  private _undoToastEl: HTMLElement | null = null;
+  private _undoToastTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(
     private readonly _dataService: ICanvasDataService,
     private readonly _api: CanvasSidebarApi,
@@ -96,6 +121,45 @@ export class CanvasSidebar {
 
   createView(container: HTMLElement): IDisposable {
     container.classList.add('canvas-tree');
+
+    // M77 Phase 11.2 — quick-find search input pinned to the top of the
+    // sidebar. Filters the tree as the user types; matching pages are
+    // shown along with their ancestor chain (so a deep match is still
+    // discoverable in context). Esc clears.
+    const searchBox = $('div.canvas-sidebar-search');
+    const searchIcon = createIconElement('search', 12);
+    searchIcon.classList.add('canvas-sidebar-search-icon');
+    searchBox.appendChild(searchIcon);
+    const searchInput = $('input.canvas-sidebar-search-input') as HTMLInputElement;
+    searchInput.type = 'search';
+    searchInput.placeholder = 'Find a page…';
+    searchInput.spellcheck = false;
+    searchInput.autocomplete = 'off';
+    searchInput.addEventListener('input', () => {
+      this._filterQuery = searchInput.value.trim().toLowerCase();
+      this._renderTree();
+    });
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        searchInput.value = '';
+        this._filterQuery = '';
+        this._renderTree();
+        searchInput.blur();
+      } else if (e.key === 'Enter') {
+        // Open the first visible match
+        e.preventDefault();
+        const first = this._treeList?.querySelector<HTMLElement>('.canvas-node[data-page-id]');
+        const pageId = first?.getAttribute('data-page-id');
+        if (pageId) {
+          const node = this._findNode(this._tree, pageId)
+            ?? this._favoritedPages.find(p => p.id === pageId);
+          if (node) void this._selectAndOpenPage(node);
+        }
+      }
+    });
+    searchBox.appendChild(searchInput);
+    container.appendChild(searchBox);
 
     // Tree list container (toolbar is integrated into section headers)
     this._treeList = $('div.canvas-tree-list');
@@ -143,6 +207,8 @@ export class CanvasSidebar {
         this._dismissContextMenuCleanup();
         this._dismissPageOptionsPopup({ commitTitle: false });
         this._dismissTrashPanel();
+        this._dismissUndoToast();
+        if (this._typeAheadTimer) clearTimeout(this._typeAheadTimer);
         this._treeList = null;
         for (const d of this._disposables) d.dispose();
         this._disposables.length = 0;
@@ -215,16 +281,18 @@ export class CanvasSidebar {
     };
 
     try {
-      const [tree, favorites, archived] = await Promise.all([
+      const [tree, favorites, archived, recents] = await Promise.all([
         this._dataService.getPageTree(),
         this._dataService.getFavoritedPages(),
         this._dataService.getArchivedPages(),
+        this._dataService.getRecentPages(5),
       ]);
 
       applyIfLatest(() => {
         this._tree = tree;
         this._favoritedPages = favorites;
         this._archivedPages = archived;
+        this._recentPages = recents;
       });
     } catch (err) {
       if (refreshSeq !== this._refreshSeq) return;
@@ -238,6 +306,62 @@ export class CanvasSidebar {
   private _renderTree(): void {
     if (!this._treeList) return;
     this._treeList.innerHTML = '';
+
+    // ── Recents section (M77 Phase 11.3) ──
+    // Hidden when the user is actively filtering (the filter result is
+    // the primary surface in that mode) and when there are no pages at
+    // all (the empty state covers the introduction). Otherwise: a
+    // collapsible row of up to 5 most-recently-edited pages so users
+    // can jump back to what they were working on without scrolling
+    // the full tree.
+    if (!this._filterQuery && this._recentPages.length > 0 && this._tree.length > 0) {
+      const recentSection = $('div.canvas-sidebar-section.canvas-sidebar-recents');
+
+      const header = $('button.canvas-sidebar-recents-header') as HTMLButtonElement;
+      header.type = 'button';
+      const chev = $('span.canvas-sidebar-recents-chevron');
+      chev.innerHTML = svgIcon('chevron-right');
+      const chevSvg = chev.querySelector('svg');
+      if (chevSvg) { chevSvg.setAttribute('width', '10'); chevSvg.setAttribute('height', '10'); }
+      if (this._recentsExpanded) chev.classList.add('canvas-sidebar-recents-chevron--open');
+      const recentsLabel = $('span.canvas-sidebar-section-label');
+      recentsLabel.textContent = 'RECENT';
+      header.appendChild(chev);
+      header.appendChild(recentsLabel);
+      header.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._recentsExpanded = !this._recentsExpanded;
+        this._renderTree();
+      });
+      recentSection.appendChild(header);
+
+      if (this._recentsExpanded) {
+        for (const page of this._recentPages) {
+          const row = $('div.canvas-node.canvas-recent-node');
+          row.setAttribute('data-page-id', page.id);
+          row.style.paddingLeft = '12px';
+          if (this._selectedPageId === page.id) row.classList.add('canvas-node--selected');
+
+          const iconArea = $('span.canvas-node-icon-area');
+          const iconEl = createIconElement(resolvePageIcon(page.icon), 14);
+          iconEl.classList.add('canvas-node-icon');
+          iconArea.appendChild(iconEl);
+          row.appendChild(iconArea);
+
+          const title = $('span.canvas-node-title');
+          title.textContent = page.title || 'Untitled';
+          row.appendChild(title);
+
+          row.addEventListener('click', (e) => {
+            e.stopPropagation();
+            void this._selectAndOpenPage(page);
+          });
+          recentSection.appendChild(row);
+        }
+      }
+
+      this._treeList.appendChild(recentSection);
+    }
 
     // ── Favorites section ──
     if (this._favoritedPages.length > 0) {
@@ -284,17 +408,83 @@ export class CanvasSidebar {
 
     // ── Main tree ──
     if (this._tree.length === 0) {
+      // M77 Phase 11.7 — richer empty state. Replaces the bare "No pages
+      // yet." with a hero + two primary actions + a short hint set so a
+      // first-time user has guidance on what canvas is and how to start.
       const empty = $('div.canvas-empty');
-      empty.textContent = 'No pages yet.';
-      const btn = $('button.canvas-empty-btn');
-      btn.textContent = 'Click + to create one';
-      btn.addEventListener('click', () => this._createPage());
-      empty.appendChild($('br'));
-      empty.appendChild(btn);
+
+      const title = $('div.canvas-empty-title');
+      title.textContent = 'Start your knowledge base';
+      empty.appendChild(title);
+
+      const subtitle = $('div.canvas-empty-subtitle');
+      subtitle.textContent = 'Pages are blocks of text, lists, headings, images, and more. Nest pages to build a tree of notes.';
+      empty.appendChild(subtitle);
+
+      const actions = $('div.canvas-empty-actions');
+
+      const blankBtn = $('button.canvas-empty-action.canvas-empty-action--primary');
+      blankBtn.textContent = '+ Blank page';
+      blankBtn.addEventListener('click', () => this._createPage());
+      actions.appendChild(blankBtn);
+
+      // M77 Phase 11.4 ties templates in; the button is wired up here
+      // and the modal opens via a command exposed by canvas main.ts.
+      const templateBtn = $('button.canvas-empty-action');
+      templateBtn.textContent = 'Use a template…';
+      templateBtn.addEventListener('click', () => {
+        void this._api.commands.executeCommand('canvas.showTemplatePicker');
+      });
+      actions.appendChild(templateBtn);
+
+      empty.appendChild(actions);
+
+      const hints = $('div.canvas-empty-hints');
+      const hintList: { kbd: string; text: string }[] = [
+        { kbd: '/', text: 'inside a page for the block menu' },
+        { kbd: 'Ctrl+/', text: 'anywhere for keyboard shortcuts' },
+        { kbd: 'Drag', text: 'pages in the sidebar to reorder' },
+      ];
+      for (const h of hintList) {
+        const row = $('div.canvas-empty-hint');
+        const kbd = $('kbd.canvas-empty-hint-kbd');
+        kbd.textContent = h.kbd;
+        const text = $('span.canvas-empty-hint-text');
+        text.textContent = h.text;
+        row.appendChild(kbd);
+        row.appendChild(text);
+        hints.appendChild(row);
+      }
+      empty.appendChild(hints);
+
       this._treeList.appendChild(empty);
     } else {
-      for (const node of this._tree) {
-        this._renderNode(this._treeList, node, 0);
+      // M77 Phase 11.2 — filter the tree if a search query is active.
+      // Filtering produces a pruned tree containing only nodes whose
+      // title matches OR whose subtree contains a match. Matched-by-
+      // descendant nodes are auto-expanded so the user sees the path
+      // to the hit (the user's saved expand state is preserved when
+      // the filter clears).
+      if (this._filterQuery) {
+        const { tree: visibleTree, forceExpand } = this._filterTreeByQuery(this._tree, this._filterQuery);
+        if (visibleTree.length === 0) {
+          const empty = $('div.canvas-empty-search');
+          empty.textContent = `No pages match "${this._filterQuery}"`;
+          this._treeList.appendChild(empty);
+        } else {
+          // Merge user expand state with force-expand so the filter
+          // doesn't collapse anything the user intentionally opened,
+          // and adds the path to each match on top.
+          const merged = new Set<string>(this._expandedIds);
+          for (const id of forceExpand) merged.add(id);
+          for (const node of visibleTree) {
+            this._renderNode(this._treeList, node, 0, merged);
+          }
+        }
+      } else {
+        for (const node of this._tree) {
+          this._renderNode(this._treeList, node, 0);
+        }
       }
     }
 
@@ -641,9 +831,14 @@ export class CanvasSidebar {
     const commitTitleChange = async (): Promise<void> => {
       const nextTitle = titleInput.value.trim() || 'Untitled';
       if (nextTitle === lastCommittedTitle) return;
+      // M77 Phase 11.8 — capture the prior title for the Undo toast.
+      const priorTitle = lastCommittedTitle;
       try {
         await this._dataService.updatePage(page.id, { title: nextTitle });
         lastCommittedTitle = nextTitle;
+        this._showUndoToast(`Renamed to "${nextTitle}"`, async () => {
+          await this._dataService.updatePage(page.id, { title: priorTitle });
+        });
       } catch (err) {
         console.error('[CanvasSidebar] Rename failed:', err);
       }
@@ -962,6 +1157,7 @@ export class CanvasSidebar {
         typeId: 'canvas',
         title: page.title,
         icon: page.icon || undefined,
+        iconHtml: renderPageIconHtml(page.icon),
         instanceId: page.id,
       });
     } catch (err) {
@@ -1017,6 +1213,7 @@ export class CanvasSidebar {
         typeId: 'canvas',
         title: createdPage.title,
         icon: createdPage.icon || undefined,
+        iconHtml: renderPageIconHtml(createdPage.icon),
         instanceId: createdPage.id,
       });
       // Force-await the tree refresh so the new row is actually in the DOM before we
@@ -1178,7 +1375,32 @@ export class CanvasSidebar {
     // are deferred until the async work completes.
     this._dragState.beginDrop();
 
+    // M77 Phase 11.8 — capture the pre-move siblings so Undo can restore
+    // the page to its exact prior position (parent + after-sibling).
+    // Read from the live tree BEFORE the drop fires.
+    const oldNode = this._findNode(this._tree, pageId);
+    const oldSiblings: IPageTreeNode[] = oldNode
+      ? (oldParentId
+          ? (this._findNode(this._tree, oldParentId)?.children as IPageTreeNode[] ?? [])
+          : this._tree)
+      : [];
+    const oldIdx = oldSiblings.findIndex((s) => s.id === pageId);
+    const oldAfterSiblingId: string | undefined = oldIdx > 0 ? oldSiblings[oldIdx - 1].id : undefined;
+
     this._performDrop(pageId, oldParentId, newParentId, afterSiblingId)
+      .then(() => {
+        // Only show the toast for moves that actually changed the parent.
+        // Reorder-within-same-parent is too noisy to surface.
+        if (oldParentId !== newParentId) {
+          this._showUndoToast('Page moved', async () => {
+            await this._dataService.movePageWithBlocks({
+              pageId,
+              newParentId: oldParentId,
+              afterSiblingId: oldAfterSiblingId,
+            });
+          });
+        }
+      })
       .catch((err) => {
         this._surfaceError('Move', err);
         // Force a tree refresh so the sidebar drops back to the real DB
@@ -1271,8 +1493,144 @@ export class CanvasSidebar {
           });
         }
       }
+    } else if (
+      // M77 Phase 11.9 — type-to-find. Single printable keys (letters /
+      // digits / punctuation) accumulate into a short buffer and jump to
+      // the first page whose title starts with that buffer. The buffer
+      // resets after 1s of inactivity or Escape. Skipped when any
+      // modifier is held so it doesn't intercept shortcuts.
+      e.key.length === 1 &&
+      !e.ctrlKey && !e.metaKey && !e.altKey &&
+      /[\p{L}\p{N}\p{P}\p{S} ]/u.test(e.key)
+    ) {
+      this._typeAheadBuffer += e.key.toLowerCase();
+      if (this._typeAheadTimer) clearTimeout(this._typeAheadTimer);
+      this._typeAheadTimer = setTimeout(() => {
+        this._typeAheadBuffer = '';
+        this._typeAheadTimer = null;
+      }, 1000);
+      const hit = this._findFirstMatching(this._typeAheadBuffer);
+      if (hit) {
+        e.preventDefault();
+        this._selectedPageId = hit.id;
+        const el = this._treeList?.querySelector<HTMLElement>(`[data-page-id="${hit.id}"]`);
+        if (el) {
+          el.scrollIntoView({ block: 'nearest' });
+        }
+        this._renderTree();
+      }
+    } else if (e.key === 'Escape') {
+      this._typeAheadBuffer = '';
+      if (this._typeAheadTimer) {
+        clearTimeout(this._typeAheadTimer);
+        this._typeAheadTimer = null;
+      }
     }
   };
+
+  /**
+   * Show an undo toast (M77 Phase 11.8). The toast is a non-modal
+   * affordance near the bottom of the sidebar; clicking Undo invokes
+   * the supplied callback. Replaces any active toast and auto-dismisses
+   * after 5 seconds.
+   */
+  private _showUndoToast(label: string, undo: () => Promise<void>): void {
+    this._dismissUndoToast();
+    if (!this._treeList) return;
+    const container = this._treeList.parentElement;
+    if (!container) return;
+
+    const toast = $('div.canvas-sidebar-toast');
+    const text = $('span.canvas-sidebar-toast-text');
+    text.textContent = label;
+    toast.appendChild(text);
+    const btn = $('button.canvas-sidebar-toast-undo') as HTMLButtonElement;
+    btn.type = 'button';
+    btn.textContent = 'Undo';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._dismissUndoToast();
+      void undo().catch((err) => this._surfaceError('Undo', err));
+    });
+    toast.appendChild(btn);
+    const closeBtn = $('button.canvas-sidebar-toast-close') as HTMLButtonElement;
+    closeBtn.type = 'button';
+    closeBtn.textContent = '×';
+    closeBtn.setAttribute('aria-label', 'Dismiss');
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._dismissUndoToast();
+    });
+    toast.appendChild(closeBtn);
+
+    container.appendChild(toast);
+    this._undoToastEl = toast;
+    this._undoToastTimer = setTimeout(() => this._dismissUndoToast(), 5000);
+  }
+
+  private _dismissUndoToast(): void {
+    if (this._undoToastTimer) {
+      clearTimeout(this._undoToastTimer);
+      this._undoToastTimer = null;
+    }
+    if (this._undoToastEl) {
+      this._undoToastEl.remove();
+      this._undoToastEl = null;
+    }
+  }
+
+  /**
+   * Quick-find filter (M77 Phase 11.2). Returns a pruned copy of the
+   * tree containing only nodes whose title matches `query` (case-
+   * insensitive contains) OR whose subtree contains a match. Along with
+   * the tree, returns a Set of node ids that should be auto-expanded
+   * to keep the path to each match visible.
+   */
+  private _filterTreeByQuery(
+    nodes: IPageTreeNode[],
+    query: string,
+  ): { tree: IPageTreeNode[]; forceExpand: Set<string> } {
+    const forceExpand = new Set<string>();
+    const walk = (list: IPageTreeNode[]): IPageTreeNode[] => {
+      const out: IPageTreeNode[] = [];
+      for (const node of list) {
+        const titleLower = (node.title || '').toLowerCase();
+        const selfMatch = titleLower.includes(query);
+        const filteredChildren = walk(node.children as IPageTreeNode[]);
+        if (selfMatch || filteredChildren.length > 0) {
+          // Keep this node. If we kept it because a descendant matched,
+          // record it as force-expanded so the user sees the path.
+          if (filteredChildren.length > 0) forceExpand.add(node.id);
+          const cloned: IPageTreeNode = { ...node, children: filteredChildren };
+          out.push(cloned);
+        }
+      }
+      return out;
+    };
+    return { tree: walk(nodes), forceExpand };
+  }
+
+  /**
+   * Type-ahead search helper (M77 Phase 11.9). Walks the full tree
+   * (depth-first, sibling order) and returns the first page whose
+   * lower-cased title starts with `prefix`. Falls back to a contains
+   * match if no prefix match exists so the buffer is forgiving.
+   */
+  private _findFirstMatching(prefix: string): IPageTreeNode | null {
+    if (!prefix) return null;
+    let containsMatch: IPageTreeNode | null = null;
+    const walk = (nodes: IPageTreeNode[]): IPageTreeNode | null => {
+      for (const node of nodes) {
+        const t = (node.title || '').toLowerCase();
+        if (t.startsWith(prefix)) return node;
+        if (!containsMatch && t.includes(prefix)) containsMatch = node;
+        const childHit = walk(node.children as IPageTreeNode[]);
+        if (childHit) return childHit;
+      }
+      return null;
+    };
+    return walk(this._tree) ?? containsMatch;
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // Tree Helpers

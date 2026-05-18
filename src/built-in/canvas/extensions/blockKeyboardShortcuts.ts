@@ -122,6 +122,15 @@ export const BlockKeyboardShortcuts = Extension.create({
           .run();
         return true;
       },
+
+      // ── Mod-/ — Open the canvas keyboard shortcut cheatsheet (M77 Phase 11.6) ──
+      // Loaded lazily so the extension doesn't depend on the overlay
+      // module at import time (avoids tightening the canvas extension
+      // dependency graph).
+      'Mod-/': () => {
+        void import('../canvasShortcutsOverlay.js').then((m) => m.showCanvasShortcutsOverlay()).catch(() => { /* swallow */ });
+        return true;
+      },
     };
   },
 });

@@ -31,6 +31,15 @@ export interface IEditorInput extends IDisposable {
   /** Optional description (e.g. file path) shown in tooltip. */
   readonly description: string;
 
+  /**
+   * Optional pre-rendered SVG/HTML markup for the editor's icon. Surfaces
+   * (e.g. the Open Editors view) use this when present to display a
+   * resource-specific icon instead of falling back to extension-derived
+   * defaults. Set by inputs whose icon doesn't map to a filename extension
+   * (canvas pages with user-chosen icons, databases, etc.).
+   */
+  readonly iconHtml?: string;
+
   /** Whether this input has unsaved changes. */
   readonly isDirty: boolean;
 

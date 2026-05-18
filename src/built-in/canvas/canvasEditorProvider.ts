@@ -43,7 +43,7 @@ import { PropertyBar } from './properties/propertyBar.js';
 const lowlight = createLowlight(common);
 // ─── Canvas Editor Provider ─────────────────────────────────────────────────
 
-export type OpenEditorFn = (options: { typeId: string; title: string; icon?: string; instanceId?: string }) => Promise<void>;
+export type OpenEditorFn = (options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string }) => Promise<void>;
 
 interface CanvasWindowApi {
   showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;

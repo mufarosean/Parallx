@@ -128,6 +128,27 @@ export function doesPageChangeAffectSidebar(event: PageChangeEvent): boolean {
   return event.changedFields.some((field) => SIDEBAR_RELEVANT_PAGE_FIELDS.has(field));
 }
 
+// ─── Save State Events ──────────────────────────────────────────────────────
+//
+// Lifecycle states fired by the auto-save pipeline. M77 Phase 11.1 — moved
+// here from canvasDataService.ts so the page chrome can subscribe through
+// the interface instead of importing the concrete class.
+
+export const enum SaveStateKind {
+  Pending = 'Pending',
+  Flushing = 'Flushing',
+  Saved = 'Saved',
+  Failed = 'Failed',
+  Retrying = 'Retrying',
+}
+
+export interface SaveStateEvent {
+  readonly pageId: string;
+  readonly kind: SaveStateKind;
+  readonly source: 'debounce' | 'flush' | 'repair';
+  readonly error?: string;
+}
+
 // ─── Cross-Page Move Params ─────────────────────────────────────────────────
 
 /**
@@ -160,6 +181,11 @@ export interface ICanvasDataService {
 
   /** Fires after an auto-save flush completes for a specific page. */
   readonly onDidSavePage: Event<string>;
+
+  /** Fires every time the save pipeline transitions state for a page
+   *  (Pending → Flushing → Saved, or Retrying / Failed). M77 Phase 11.1 —
+   *  added so the page chrome can render a save indicator. */
+  readonly onDidChangeSaveState: Event<SaveStateEvent>;
 
   /** Fires when an external consumer (e.g. sidebar) changed a page's content and open editors should reload. */
   readonly onRequestContentReload: Event<string>;
@@ -258,6 +284,12 @@ export interface ICanvasDataService {
 
   toggleFavorite(pageId: string): Promise<IPage>;
   getFavoritedPages(): Promise<IPage[]>;
+  /**
+   * Most-recently-updated non-archived pages, ordered newest first.
+   * Bounded by `limit` (defaults to 5). M77 Phase 11.3 — surfaces a
+   * "Recents" section in the sidebar.
+   */
+  getRecentPages(limit?: number): Promise<IPage[]>;
   archivePage(pageId: string): Promise<void>;
   restorePage(pageId: string): Promise<IPage>;
   permanentlyDeletePage(pageId: string): Promise<void>;

@@ -59,10 +59,10 @@ interface ParallxApi {
     createContextKey<T extends string | number | boolean | undefined>(name: string, defaultValue: T): { key: string; get(): T; set(value: T): void; reset(): void };
   };
   editors: {
-    openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
+    openEditor(options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string }): Promise<void>;
     openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
     closeEditor(editorId: string): Promise<boolean>;
-    readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
+    readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string; iconHtml?: string }[];
     onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
   links: LinksApi;
@@ -1689,7 +1689,7 @@ function renderOpenEditors(): void {
 
 /** Create a single row element for an open editor entry. */
 function createOpenEditorRow(
-  editor: { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string },
+  editor: { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string; iconHtml?: string },
   indented: boolean
 ): HTMLElement {
   const row = $('div');
@@ -1711,11 +1711,17 @@ function createOpenEditorRow(
     row.appendChild(dot);
   }
 
-  // File icon (derive from name extension — colored SVG)
+  // Icon: prefer the editor's own pre-rendered icon (canvas pages,
+  // databases, etc.); otherwise derive from filename extension (PDFs,
+  // text files, …) and fall through to the generic file icon.
   const icon = $('span');
   icon.className = 'open-editors-icon';
-  const extMatch = editor.name.match(/\.([a-zA-Z0-9]+)$/);
-  icon.innerHTML = getFileTypeIcon(extMatch ? extMatch[1] : '');
+  if (editor.iconHtml) {
+    icon.innerHTML = editor.iconHtml;
+  } else {
+    const extMatch = editor.name.match(/\.([a-zA-Z0-9]+)$/);
+    icon.innerHTML = getFileTypeIcon(extMatch ? extMatch[1] : '');
+  }
   row.appendChild(icon);
 
   // Label

@@ -772,6 +772,7 @@ const definitions: BlockDefinition[] = [
             typeId: 'canvas',
             title: childPage.title,
             icon: childPage.icon ?? undefined,
+            iconHtml: renderPageIconHtml(childPage.icon),
             instanceId: childPage.id,
           });
         }
@@ -1096,6 +1097,21 @@ export const createIconElement: (id: string, size?: number) => HTMLElement = _ir
 
 /** @see {@link import('./iconRegistry.js').PAGE_SELECTABLE_ICONS} — original source */
 export const PAGE_SELECTABLE_ICONS: readonly string[] = _ir_PAGE_SELECTABLE_ICONS;
+
+/**
+ * Render a page's icon as SVG markup suitable for passing to
+ * `editors.openEditor({ iconHtml })`. Resolves the page's icon string
+ * (Lucide id or null) through the canvas icon registry and returns the
+ * raw SVG — the consuming view sizes it via its container element.
+ *
+ * Returns an empty string when no icon could be resolved (caller will
+ * fall back to extension-derived defaults).
+ */
+export function renderPageIconHtml(icon: string | null | undefined): string {
+  const id = _ir_resolvePageIcon(icon);
+  if (!id) return '';
+  return _ir_svgIcon(id) || '';
+}
 
 /** @see {@link import('./iconRegistry.js').ALL_PAGE_SELECTABLE_ICONS} — full Lucide catalog for search */
 export const ALL_PAGE_SELECTABLE_ICONS: readonly string[] = _ir_ALL_PAGE_SELECTABLE_ICONS;

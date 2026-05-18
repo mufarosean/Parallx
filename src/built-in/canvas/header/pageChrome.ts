@@ -5,12 +5,14 @@
 // cover image, cover picker, icon picker, page menu, and popup lifecycle.
 
 import type { Editor } from '@tiptap/core';
+import type { IDisposable } from '../../../platform/lifecycle.js';
 import type { IEditorInput } from '../../../editor/editorInput.js';
-import type { IPage, ICanvasDataService } from '../canvasTypes.js';
+import type { IPage, ICanvasDataService, SaveStateEvent } from '../canvasTypes.js';
+import { SaveStateKind } from '../canvasTypes.js';
 import type { OpenEditorFn } from '../canvasEditorProvider.js';
 import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 import { tiptapJsonToMarkdown } from '../markdownExport.js';
-import { createIconElement, resolvePageIcon, svgIcon } from '../config/blockRegistry.js';
+import { createIconElement, resolvePageIcon, svgIcon, renderPageIconHtml } from '../config/blockRegistry.js';
 
 // Default gradient presets for "Add cover" — same set as the cover picker gallery.
 const DEFAULT_COVER_GRADIENTS = [
@@ -68,6 +70,9 @@ export class PageChromeController {
   private _topRibbon: HTMLElement | null = null;
   private _ribbonFavoriteBtn: HTMLElement | null = null;
   private _ribbonEditedLabel: HTMLElement | null = null;
+  private _ribbonSaveIndicator: HTMLElement | null = null;
+  private _saveStateSub: IDisposable | null = null;
+  private _saveStateClearTimer: ReturnType<typeof setTimeout> | null = null;
   private _pageHeader: HTMLElement | null = null;
   private _coverEl: HTMLElement | null = null;
   private _coverControls: HTMLElement | null = null;
@@ -130,9 +135,15 @@ export class PageChromeController {
     if (this._titleEl && !titleHasFocus && page.title !== this._titleEl.textContent) {
       this._titleEl.textContent = (page.title && page.title !== 'Untitled') ? page.title : '';
     }
-    // Sync tab label
+    // Sync tab label + icon
     if (this._host.input && typeof (this._host.input as any).setName === 'function') {
       (this._host.input as any).setName(page.title || 'Untitled');
+    }
+    // Sync the editor input's pre-rendered icon so the Open Editors view
+    // (and any other surface listening for label changes) updates when
+    // the user edits the page's icon via the picker.
+    if (this._host.input && typeof (this._host.input as any).setIconHtml === 'function') {
+      (this._host.input as any).setIconHtml(renderPageIconHtml(page.icon));
     }
     // Sync breadcrumb current-page text
     if (this._breadcrumbCurrentText) {
@@ -232,9 +243,13 @@ export class PageChromeController {
   dispose(): void {
     this.dismissPopups();
     if (this._titleSaveTimer) clearTimeout(this._titleSaveTimer);
+    if (this._saveStateClearTimer) clearTimeout(this._saveStateClearTimer);
+    this._saveStateSub?.dispose();
+    this._saveStateSub = null;
     this._topRibbon = null;
     this._ribbonFavoriteBtn = null;
     this._ribbonEditedLabel = null;
+    this._ribbonSaveIndicator = null;
     this._pageHeader = null;
     this._coverEl = null;
     this._coverControls = null;
@@ -245,6 +260,74 @@ export class PageChromeController {
     this._hoverAffordances = null;
     this._pageMenuBtn = null;
     this._currentPage = null;
+  }
+
+  // ── Save indicator (M77 Phase 11.1) ─────────────────────────────────────
+  //
+  // Subtle persistence-trust signal in the top ribbon. The data service
+  // already emits SaveStateKind transitions; before this phase nothing in
+  // the UI rendered them (only main.ts surfaced Failed via a toast). Users
+  // had no feedback that their work persisted.
+
+  private _wireSaveIndicator(): void {
+    const ds = this._host.dataService;
+    if (!ds || !ds.onDidChangeSaveState) return;
+    this._saveStateSub?.dispose();
+    this._saveStateSub = ds.onDidChangeSaveState((e: SaveStateEvent) => {
+      if (e.pageId !== this._host.pageId) return;
+      this._renderSaveState(e.kind);
+    });
+  }
+
+  private _renderSaveState(kind: SaveStateKind): void {
+    const el = this._ribbonSaveIndicator;
+    if (!el) return;
+    if (this._saveStateClearTimer) {
+      clearTimeout(this._saveStateClearTimer);
+      this._saveStateClearTimer = null;
+    }
+    el.classList.remove(
+      'canvas-top-ribbon-save--pending',
+      'canvas-top-ribbon-save--flushing',
+      'canvas-top-ribbon-save--saved',
+      'canvas-top-ribbon-save--retrying',
+      'canvas-top-ribbon-save--failed',
+    );
+    switch (kind) {
+      case SaveStateKind.Pending:
+        // Don't surface the short debounce window — it would render
+        // every keystroke. The Flushing state is what matters.
+        el.style.display = 'none';
+        return;
+      case SaveStateKind.Flushing:
+        el.textContent = 'Saving…';
+        el.classList.add('canvas-top-ribbon-save--flushing');
+        el.style.display = '';
+        return;
+      case SaveStateKind.Saved:
+        el.textContent = 'Saved';
+        el.classList.add('canvas-top-ribbon-save--saved');
+        el.style.display = '';
+        // Fade away after a short delay so the ribbon doesn't carry
+        // a permanent "Saved" label when nothing's happening.
+        this._saveStateClearTimer = setTimeout(() => {
+          if (this._ribbonSaveIndicator) {
+            this._ribbonSaveIndicator.style.display = 'none';
+          }
+          this._saveStateClearTimer = null;
+        }, 1500);
+        return;
+      case SaveStateKind.Retrying:
+        el.textContent = 'Retrying…';
+        el.classList.add('canvas-top-ribbon-save--retrying');
+        el.style.display = '';
+        return;
+      case SaveStateKind.Failed:
+        el.textContent = 'Unsaved';
+        el.classList.add('canvas-top-ribbon-save--failed');
+        el.style.display = '';
+        return;
+    }
   }
 
   // ── Top Ribbon ──────────────────────────────────────────────────────────
@@ -268,8 +351,16 @@ export class PageChromeController {
     this._loadBreadcrumbs();
     this._topRibbon.appendChild(ribbonLeft);
 
-    // ── Right: edited timestamp, favorite star, ⋯ menu ──
+    // ── Right: save indicator, edited timestamp, favorite star, ⋯ menu ──
     const ribbonRight = $('div.canvas-top-ribbon-right');
+
+    // M77 Phase 11.1 — save indicator. Subtle text + dot that reflects
+    // the auto-save pipeline state ("Saving…", "Saved", "Retrying…").
+    // Idle is invisible to keep the chrome quiet when nothing's happening.
+    this._ribbonSaveIndicator = $('span.canvas-top-ribbon-save');
+    this._ribbonSaveIndicator.style.display = 'none';
+    ribbonRight.appendChild(this._ribbonSaveIndicator);
+    this._wireSaveIndicator();
 
     // Edited timestamp
     this._ribbonEditedLabel = $('span.canvas-top-ribbon-edited');
@@ -916,6 +1007,7 @@ export class PageChromeController {
                 typeId: 'canvas',
                 title: newPage.title,
                 icon: newPage.icon ?? undefined,
+                iconHtml: renderPageIconHtml(newPage.icon),
                 instanceId: newPage.id,
               });
             }

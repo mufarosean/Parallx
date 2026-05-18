@@ -8,6 +8,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import {
   resolvePageIcon,
   svgIcon,
+  renderPageIconHtml,
   getActiveCanvasDragSession,
   classifyPageBlockDropZone,
   moveBlockToLinkedPage,
@@ -52,7 +53,7 @@ export interface IPageBlockDataAccess {
 export interface PageBlockOptions {
   readonly dataService?: IPageBlockDataAccess;
   readonly currentPageId?: string;
-  readonly openEditor?: (options: { typeId: string; title: string; icon?: string; instanceId?: string }) => Promise<void>;
+  readonly openEditor?: (options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string }) => Promise<void>;
   readonly showIconPicker?: (options: {
     anchor: HTMLElement;
     showSearch?: boolean;
@@ -231,6 +232,7 @@ export const PageBlock = Node.create<PageBlockOptions>({
           typeId: 'canvas',
           title: resolvedTitle || 'Untitled',
           icon: resolvedIcon ?? undefined,
+          iconHtml: renderPageIconHtml(resolvedIcon),
           instanceId: pageId,
         });
       };
