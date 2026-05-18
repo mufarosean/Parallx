@@ -3086,6 +3086,11 @@ async function listThreads(fs, workspaceUri) {
 
 async function appendMessage(fs, workspaceUri, threadId, message) {
   const file = resolveUri(workspaceUri, `${EXT_ROOT}/threads/${threadId}/messages.jsonl`);
+  // M79 message-IDs — every message gets a stable `id` on append so
+  // memory provenance can later reference it. Mutates the caller's
+  // object so the in-memory array used by the chat editor carries
+  // the same id the file does.
+  if (!message.id) message.id = generateId();
   const line = JSON.stringify(message);
   let existing = '';
   try { existing = (await fs.readFile(file)).content || ''; } catch { /* first msg */ }
@@ -3096,20 +3101,37 @@ async function appendMessage(fs, workspaceUri, threadId, message) {
 
 async function rewriteMessages(fs, workspaceUri, threadId, messages) {
   const file = resolveUri(workspaceUri, `${EXT_ROOT}/threads/${threadId}/messages.jsonl`);
+  // Persist EVERY field on the message rather than hand-picking a
+  // subset. The prior hand-picked serialiser silently dropped any
+  // newer field (notably `kind: 'ooc'` from M79 Phase 4a) every time
+  // a single message was deleted or regenerated — silently
+  // un-marking every OOC entry in the thread.
+  //
+  // We still normalise the bare-minimum compatibility fields so legacy
+  // and post-migration loads converge on the same shape, but
+  // everything else passes through verbatim.
   const serialized = messages
-    .map((message) => JSON.stringify({
-      author: message.author || (message.role === 'assistant' ? 'ai' : message.role) || 'user',
-      name: message.name || null,
-      characterFile: message.characterFile || null,
-      content: message.content || '',
-      timestamp: message.timestamp || Date.now(),
-      instruction: message.instruction || null,
-      generatedBy: message.generatedBy || ((message.author || message.role) === 'user' ? 'human' : 'model'),
-      hiddenFrom: message.hiddenFrom || null,
-      expectsReply: message.expectsReply !== undefined ? message.expectsReply : true,
-      variants: message.variants || null,
-      variantIndex: message.variantIndex ?? null,
-    }))
+    .map((message) => {
+      const normalised = {
+        // Spread first so explicit fields below win on conflict.
+        ...message,
+        author: message.author || (message.role === 'assistant' ? 'ai' : message.role) || 'user',
+        name: message.name ?? null,
+        characterFile: message.characterFile ?? null,
+        content: message.content || '',
+        timestamp: message.timestamp || Date.now(),
+        instruction: message.instruction ?? null,
+        generatedBy: message.generatedBy || ((message.author || message.role) === 'user' ? 'human' : 'model'),
+        hiddenFrom: message.hiddenFrom ?? null,
+        expectsReply: message.expectsReply !== undefined ? message.expectsReply : true,
+        variants: message.variants ?? null,
+        variantIndex: message.variantIndex ?? null,
+      };
+      // Drop the legacy `role` alias if we just promoted it to author —
+      // keeping both would re-confuse the loader's migration path.
+      delete normalised.role;
+      return JSON.stringify(normalised);
+    })
     .join('\n');
   await fs.writeFile(file, serialized);
 }
@@ -3119,7 +3141,8 @@ async function readMessages(fs, workspaceUri, threadId) {
   try {
     const { content } = await fs.readFile(file);
     if (!content.trim()) return [];
-    return content.trim().split('\n').map((l) => {
+    let needsRewrite = false;
+    const out = content.trim().split('\n').map((l) => {
       const msg = JSON.parse(l);
       // Migration: role → author
       if (msg.role && !msg.author) {
@@ -3133,8 +3156,25 @@ async function readMessages(fs, workspaceUri, threadId) {
         else if (msg.author === 'ai' && msg.characterFile) msg.name = msg.characterFile.replace(/\.(md|json)$/, '').replace(/-/g, ' ');
         else if (msg.author === 'system') msg.name = 'System';
       }
+      // M79 — backfill stable IDs for any message that predates the
+      // ID column. We persist the upgraded JSONL once so the next
+      // load doesn't re-mutate the in-memory array. Memory provenance
+      // (and therefore reliable delete-pruning) depends on these IDs.
+      if (!msg.id) {
+        msg.id = generateId();
+        needsRewrite = true;
+      }
       return msg;
     });
+    if (needsRewrite) {
+      // Fire-and-forget the persistence upgrade; the in-memory array
+      // already carries the new IDs so the active session is correct
+      // even if the rewrite races a concurrent edit (rewriteMessages
+      // is idempotent on the full array we just produced).
+      void rewriteMessages(fs, workspaceUri, threadId, out)
+        .catch((err) => console.warn('[TextGenerator] Failed to backfill message IDs:', err));
+    }
+    return out;
   } catch {
     return [];
   }
@@ -3315,6 +3355,125 @@ async function appendEpisodicMemory(fs, workspaceUri, threadId, records) {
   return _appendJsonl(fs, _memoryFileUri(workspaceUri, threadId, MEMORY_EPISODIC_FILE), records);
 }
 
+async function _rewriteJsonl(fs, uri, records) {
+  // Rewrite a JSONL file from a (possibly filtered) array of records.
+  // Empty array results in an empty file — readers treat that the
+  // same as a missing file. Distinct from delete because the file
+  // existing means "we already initialised structured memory for
+  // this thread; new entries should append here."
+  const serialized = records.map((r) => JSON.stringify(r)).join('\n');
+  await fs.writeFile(uri, serialized);
+}
+
+/**
+ * M79 hard-delete: prune any memory entries whose source IDs include
+ * one of `deletedMessageIds`. Touches both semantic and episodic
+ * files. Idempotent — repeated calls with the same IDs are a no-op.
+ *
+ * Rationale: when a user hard-deletes a message, anything derived
+ * from it must also disappear. Auto-extracted facts are attributed
+ * to their full extraction slice (see autoExtractMemoryBackground),
+ * so deleting any message in a slice prunes all facts from that
+ * slice — surviving content gets re-extracted on the next
+ * extraction cycle. User-pinned entries are scoped to their single
+ * source message and pruned the same way.
+ *
+ * Also clears `thread.cachedSummary` because the summary text was
+ * synthesized from a now-incorrect message window and would
+ * otherwise reintroduce the deleted content via the summarised-
+ * history channel.
+ */
+/**
+ * M79 consistency prune: read all current message IDs in the thread,
+ * find any memory entries whose `sources` reference an ID that isn't
+ * in the current history, and remove them. Catches the race where an
+ * in-flight auto-extract finished writing facts with sources pointing
+ * at a message the user just deleted.
+ *
+ * Cheap: two disk reads + an optional rewrite per call. Run after
+ * every auto-extract completion as a self-healing guard.
+ */
+async function pruneOrphanMemory(fs, workspaceUri, threadId) {
+  try {
+    const messages = await readMessages(fs, workspaceUri, threadId);
+    const liveIds = new Set(messages.map((m) => m.id).filter(Boolean));
+
+    const orphanFilter = (entry) => {
+      if (!entry || !Array.isArray(entry.sources) || entry.sources.length === 0) return true;
+      // Keep if ANY listed source is still alive. Entries whose entire
+      // source set is dead are orphans.
+      return entry.sources.some((src) => liveIds.has(src));
+    };
+
+    const semantic = await readSemanticMemory(fs, workspaceUri, threadId);
+    if (semantic.length > 0) {
+      const kept = semantic.filter(orphanFilter);
+      if (kept.length !== semantic.length) {
+        await _rewriteJsonl(fs, _memoryFileUri(workspaceUri, threadId, MEMORY_SEMANTIC_FILE), kept);
+      }
+    }
+    const episodic = await readEpisodicMemory(fs, workspaceUri, threadId);
+    if (episodic.length > 0) {
+      const kept = episodic.filter(orphanFilter);
+      if (kept.length !== episodic.length) {
+        await _rewriteJsonl(fs, _memoryFileUri(workspaceUri, threadId, MEMORY_EPISODIC_FILE), kept);
+      }
+    }
+  } catch (err) {
+    console.warn('[TextGenerator] Orphan memory prune failed:', err);
+  }
+}
+
+async function pruneMemoryForDeletedMessages(fs, workspaceUri, threadId, deletedMessageIds) {
+  if (!Array.isArray(deletedMessageIds) || deletedMessageIds.length === 0) return;
+  const deletedSet = new Set(deletedMessageIds.filter(Boolean));
+  if (deletedSet.size === 0) return;
+
+  const intersects = (entry) => {
+    if (!entry || !Array.isArray(entry.sources)) return false;
+    for (const src of entry.sources) {
+      if (deletedSet.has(src)) return true;
+    }
+    return false;
+  };
+
+  // Semantic — drop any entry whose sources includes a deleted id.
+  try {
+    const semantic = await readSemanticMemory(fs, workspaceUri, threadId);
+    if (semantic.length > 0) {
+      const kept = semantic.filter((e) => !intersects(e));
+      if (kept.length !== semantic.length) {
+        await _rewriteJsonl(fs, _memoryFileUri(workspaceUri, threadId, MEMORY_SEMANTIC_FILE), kept);
+      }
+    }
+  } catch (err) {
+    console.warn('[TextGenerator] Semantic memory prune failed:', err);
+  }
+
+  // Episodic — same rule.
+  try {
+    const episodic = await readEpisodicMemory(fs, workspaceUri, threadId);
+    if (episodic.length > 0) {
+      const kept = episodic.filter((e) => !intersects(e));
+      if (kept.length !== episodic.length) {
+        await _rewriteJsonl(fs, _memoryFileUri(workspaceUri, threadId, MEMORY_EPISODIC_FILE), kept);
+      }
+    }
+  } catch (err) {
+    console.warn('[TextGenerator] Episodic memory prune failed:', err);
+  }
+
+  // Invalidate the cached history summary — it was synthesized over a
+  // message window that included the deleted content. Letting it
+  // survive would smuggle the deleted text back into the model's
+  // context via the summarised-history lane.
+  try {
+    await updateThreadMeta(fs, workspaceUri, threadId, { cachedSummary: null });
+  } catch (err) {
+    console.warn('[TextGenerator] Failed to clear cached summary on delete:', err);
+  }
+}
+
 /**
  * Render the combined memory channel for injection. Returns a markdown
  * string with the legacy `memories.md`, then auto-extracted semantic
@@ -3460,6 +3619,20 @@ async function autoExtractMemoryBackground({
     const facts = Array.isArray(parsed.facts) ? parsed.facts : [];
     const beats = Array.isArray(parsed.beats) ? parsed.beats : [];
 
+    // M79 memory provenance — every emitted fact/beat records the
+    // message IDs of the slice it was extracted from. The autoextractor
+    // is a black box (we can't tell which fact came from which exact
+    // message), so we conservatively attribute every emitted entry to
+    // the FULL source slice. On delete, pruning a fact whose sources
+    // include the deleted message is the user-correct behaviour:
+    // "delete means the AI forgets, even if it forgets things derived
+    // from neighbouring messages too." Occasional false-positive
+    // pruning is acceptable; the next auto-extract re-emits surviving
+    // facts from the surviving messages.
+    const sliceSourceIds = recentMessages
+      .map((m) => m?.id)
+      .filter((id) => typeof id === 'string' && id.length > 0);
+
     const now = Date.now();
     const factRecords = facts
       .map((f) => {
@@ -3473,6 +3646,7 @@ async function autoExtractMemoryBackground({
             : 0.5,
           createdAt: now,
           source: 'auto',
+          sources: sliceSourceIds, // M79 provenance for delete-pruning
         };
       })
       .filter(Boolean);
@@ -3487,6 +3661,7 @@ async function autoExtractMemoryBackground({
             ? Math.max(0, Math.min(1, b.importance))
             : 0.5,
           createdAt: now,
+          sources: sliceSourceIds, // M79 provenance for delete-pruning
         };
       })
       .filter(Boolean);
@@ -3497,6 +3672,11 @@ async function autoExtractMemoryBackground({
     if (beatRecords.length > 0) {
       await appendEpisodicMemory(fs, workspaceUri, threadId, beatRecords);
     }
+    // M79 race-guard — an in-flight extract may have written facts
+    // with sources pointing at a message the user deleted while we
+    // were busy. Self-heal by pruning any entry whose entire source
+    // set is now orphaned. Cheap; runs once per extract completion.
+    await pruneOrphanMemory(fs, workspaceUri, threadId);
   } catch (err) {
     console.warn('[TextGenerator] Memory auto-extract failed:', err);
   }
@@ -4690,6 +4870,10 @@ function renderChatEditor(container, parallx, input) {
             confidence: 1.0,
             createdAt: Date.now(),
             source: 'user',
+            // M79 — record the pinned message's ID so delete-pruning
+            // also removes user pins when the source is hard-deleted.
+            // Matches user intent: "delete means the AI forgets."
+            sources: target.id ? [target.id] : [],
           }]);
           showToast('Pinned to memory');
         } catch (err) {
@@ -4763,10 +4947,22 @@ function renderChatEditor(container, parallx, input) {
             ? [...existingVariants]
             : (existingVariants.length ? [...existingVariants, target.content] : [target.content]);
           const targetSnapshot = { ...target, variants: previousVariants, variantIndex: previousVariants.indexOf(target.content) };
+          // M79 hard-delete: collect the IDs of everything spliced off
+          // BEFORE the splice happens, so memory pruning has the full
+          // list. We include the target itself — its content is
+          // preserved as a variant on the new message, but
+          // semantic/episodic facts derived from the original turn
+          // would otherwise survive a regenerate that genuinely
+          // changed the narrative.
+          const regenRemovedIds = messageHistory.slice(index).map((m) => m.id).filter(Boolean);
           // Remove this message and everything after it, then regenerate
           messageHistory = messageHistory.slice(0, index);
           await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
           renderMessages();
+          if (regenRemovedIds.length > 0) {
+            void pruneMemoryForDeletedMessages(fs, workspaceUri, threadId, regenRemovedIds)
+              .catch((err) => console.warn('[TextGenerator] Memory prune failed on regenerate:', err));
+          }
           await generateTurn({ speaker, instruction: target.instruction || null });
           // Locate the freshly generated AI message (skip past any error system msgs).
           const newIdx = messageHistory.findIndex((m, i) => i >= index && m.author === 'ai' && m.generatedBy === 'model');
@@ -4811,10 +5007,17 @@ function renderChatEditor(container, parallx, input) {
             ? [...existingVariants]
             : (existingVariants.length ? [...existingVariants, target.content] : [target.content]);
           const targetSnapshot = { ...target, variants: previousVariants, variantIndex: previousVariants.indexOf(target.content) };
+          // M79 hard-delete: same as the AI regen path — collect IDs
+          // before the splice and prune any memory derived from them.
+          const userRegenRemovedIds = messageHistory.slice(index).map((m) => m.id).filter(Boolean);
           // Remove this message and everything after it, then regenerate as user.
           messageHistory = messageHistory.slice(0, index);
           await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
           renderMessages();
+          if (userRegenRemovedIds.length > 0) {
+            void pruneMemoryForDeletedMessages(fs, workspaceUri, threadId, userRegenRemovedIds)
+              .catch((err) => console.warn('[TextGenerator] Memory prune failed on user-regenerate:', err));
+          }
           await generateTurn({ speaker, instruction: target.instruction || null, asUser: true });
           // Locate the freshly generated user message (skip past any error system msgs).
           const newIdx = messageHistory.findIndex((m, i) => i >= index && m.author === 'user' && m.generatedBy === 'model');
@@ -4864,7 +5067,7 @@ function renderChatEditor(container, parallx, input) {
       actions.appendChild(visBtn);
 
       const deleteBtn = el('button', 'tg-msg-action-btn tg-msg-action-btn--danger', { html: icon('trash', 13) });
-      deleteBtn.title = 'Delete message';
+      deleteBtn.title = 'Delete message (the AI will forget this exchange)';
       deleteBtn.addEventListener('click', async (event) => {
         event.stopPropagation();
         const removed = messageHistory[index];
@@ -4873,8 +5076,24 @@ function renderChatEditor(container, parallx, input) {
         await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
         renderMessages();
         updateChrome();
+
+        // M79 hard-delete: prune any auto-extracted facts/beats and
+        // user-pinned entries whose source includes the removed
+        // message, and clear the cached history summary so the
+        // deleted content can't sneak back via the summarised lane.
+        // Fire-and-forget — the file write was already durable above.
+        if (removed?.id) {
+          void pruneMemoryForDeletedMessages(fs, workspaceUri, threadId, [removed.id])
+            .catch((err) => console.warn('[TextGenerator] Memory prune failed on delete:', err));
+        }
+
         showToast('Message deleted.', 'Undo', async () => {
           // Restore at original index (clamped if list shrank further).
+          // Note: the memory pruning above is NOT un-done here — by the
+          // time the user clicks Undo, the AI has likely already seen
+          // the pruned state on at least one generation. Re-emitting
+          // the same facts would happen organically on the next
+          // auto-extract cycle anyway, so we leave it.
           const ix = Math.min(removedIndex, messageHistory.length);
           messageHistory.splice(ix, 0, removed);
           await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
