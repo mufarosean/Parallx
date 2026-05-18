@@ -2528,13 +2528,19 @@ function buildSystemPrompt(params = {}) {
     ].join('\n'));
   }
 
-  // 7. Response length instruction.
+  // 7. Response length instruction. Phrasing strengthened — "Keep your
+  // response to X" was being treated as a soft suggestion by small
+  // models. The directive language below is mandatory ("Reply with
+  // exactly", "Stop after"). Length is also restated in the
+  // consolidated late-stage system message + user-role stage
+  // direction (see assembleContext) so it lands close to generation,
+  // not just at the top of a long system prompt.
   if (responseLength === 'short') {
-    parts.push('## Response Length\nKeep your response to one paragraph.');
+    parts.push('## Response Length\nReply with EXACTLY ONE paragraph. Do not write a second paragraph. Stop after the first paragraph break.');
   } else if (responseLength === 'medium') {
-    parts.push('## Response Length\nKeep your response to two or three paragraphs.');
+    parts.push('## Response Length\nReply with two or three paragraphs — no more, no fewer. Stop after the third paragraph break.');
   } else if (responseLength === 'long') {
-    parts.push('## Response Length\nWrite a detailed response of four or more paragraphs.');
+    parts.push('## Response Length\nWrite a detailed response of four or more paragraphs. Lean into rich description and beat-by-beat pacing.');
   }
 
   // Reminders are returned separately for high-recency injection in assembleContext
@@ -2871,7 +2877,23 @@ function assembleContext(params) {
     varyBlock = speakerAvoidRepeat.replace(/^\[/, '').replace(/\]$/, '');
   }
 
-  // 5) Ephemeral directive — kept LAST in the system block (closest to
+  // 5) Style & length reminder — compact restatement of the writing
+  // preset summary + response-length directive, placed near the
+  // generation point so small models don't lose track of the format
+  // by the time they reply. The FULL preset still lives at the top
+  // of the system prompt for orientation; this is the late-recency
+  // anchor that actually shapes the next token.
+  const styleHint = getStyleHint(writingPreset);
+  const lengthHint = getLengthHint(effectiveResponseLength);
+  let styleLengthBlock = null;
+  if (styleHint || lengthHint) {
+    const pieces = [];
+    if (styleHint) pieces.push(`Style: ${styleHint}`);
+    if (lengthHint) pieces.push(lengthHint);
+    styleLengthBlock = pieces.join('\n');
+  }
+
+  // 6) Ephemeral directive — kept LAST in the system block (closest to
   // the user turn = strongest attention). Strengthened phrasing so the
   // model treats it as mandatory rather than advisory. The user-side
   // duplicate below is the actual delivery vehicle; this is the
@@ -2883,7 +2905,7 @@ function assembleContext(params) {
       + ephemeralInstruction;
   }
 
-  const consolidatedSections = [activeTurnLine, personaLine, reminderBlock, varyBlock, directiveBlock].filter(Boolean);
+  const consolidatedSections = [activeTurnLine, personaLine, reminderBlock, styleLengthBlock, varyBlock, directiveBlock].filter(Boolean);
   if (consolidatedSections.length > 0) {
     messages.push({
       role: 'system',
@@ -2911,8 +2933,20 @@ function assembleContext(params) {
     // line is what we want the model to land on. Putting it inside
     // the user-turn text gives it the strongest position attention-wise.
     let content = userMessage;
-    if (bannerName) {
-      content += '\n\n[Now write the next reply as ' + bannerName + ', and only ' + bannerName + '.]';
+    if (bannerName || lengthHint) {
+      const turnDirParts = [];
+      if (bannerName) {
+        turnDirParts.push('Now write the next reply as ' + bannerName + ', and only ' + bannerName + '.');
+      }
+      if (lengthHint) {
+        // Length lives in the same bracketed stage-direction as the
+        // active-turn cue so the model can't separate "who speaks"
+        // from "how long the reply is". Repeating it here (already
+        // stated in the style-length block above) is intentional —
+        // small models respond to redundancy in the final tokens.
+        turnDirParts.push(lengthHint);
+      }
+      content += '\n\n[' + turnDirParts.join(' ') + ']';
     }
     if (ephemeralInstruction) {
       content +=
@@ -2939,6 +2973,9 @@ function assembleContext(params) {
       directive += ` Now write the next reply as ${bannerName}, and only ${bannerName}. Stay strictly in ${bannerName}'s voice. Do not write, narrate, or quote any other character. Do not begin with a \`<<${bannerName}>>\` tag or any speaker prefix.`;
     } else {
       directive += ' Now write the next message according to the active-turn instructions above.';
+    }
+    if (lengthHint) {
+      directive += ` ${lengthHint}`;
     }
     if (ephemeralInstruction) {
       directive += ` DIRECTOR'S NOTE (mandatory, apply to this very turn): ${ephemeralInstruction}`;
@@ -7918,6 +7955,43 @@ function getPresetContent(presetKey, customText = '') {
   const preset = WRITING_PRESETS[presetKey];
   if (preset && 'content' in preset) return preset.content;
   return WRITING_PRESETS['immersive-rp'].content;
+}
+
+/**
+ * Compact one-line style summaries used for late-stage reinforcement.
+ *
+ * The full preset blob sits at the TOP of the system prompt (good for
+ * orientation) but is often 300–500 tokens away from the actual
+ * generation point. Small local models forget specifics by then. The
+ * late-stage block re-injects a 15–25 token distillation right before
+ * the user turn so the style signal is present at the most-attended
+ * position. Pairs with the same-block response-length reminder.
+ *
+ * Keys must match WRITING_PRESETS keys exactly. `custom` and `none`
+ * have no compact form — the user-defined / empty preset can't be
+ * summarised reliably.
+ */
+const STYLE_HINTS = {
+  'immersive-rp': 'Immersive prose: vivid sensory detail, dialogue in "double quotes", thoughts in *italics*, varied cadence. Show emotion through actions.',
+  'casual-rp': 'Casual chat: short paragraphs, dialogue in "double quotes", action beats in *italics*, conversational tone.',
+  'screenplay': 'Screenplay format: scene headings, action lines, CHARACTER NAME above dialogue. Minimal prose.',
+  'none': '',
+  'custom': '',
+};
+
+function getStyleHint(presetKey) {
+  if (!presetKey) return '';
+  return STYLE_HINTS[presetKey] || '';
+}
+
+/** Short directive used in the late-stage block + user-role stage
+ *  direction. Returns empty string for `null`/unset so callers can
+ *  cleanly skip emitting the reminder. */
+function getLengthHint(length) {
+  if (length === 'short') return 'Length: exactly one paragraph. Stop after the first paragraph break.';
+  if (length === 'medium') return 'Length: two or three paragraphs.';
+  if (length === 'long') return 'Length: four or more paragraphs with rich detail.';
+  return '';
 }
 
 /**
