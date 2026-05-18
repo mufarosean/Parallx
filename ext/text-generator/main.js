@@ -2374,11 +2374,18 @@ function buildSystemPrompt(params = {}) {
   // section). Redundant by design: small models drop signals when
   // they're stated only once. Trust the click; never derive turn
   // order from history.
+  //
+  // Speaker-unification (user-is-just-another-character): the
+  // human orchestrating the chat sits OUTSIDE the fiction. Every
+  // speaker in the message log — Anon, Ada, Narrator, anything —
+  // is a character to the model. The banner therefore uses the
+  // user's display name ("Anon") not the abstract role "the user",
+  // and the same emphatic phrasing as every other speaker.
   let bannerName = null;
   if (respondAs === SELF_SPEAKER) {
-    bannerName = 'the user';
+    bannerName = userName || 'Anon';
   } else if (respondAs === NARRATOR_SPEAKER) {
-    bannerName = 'the Narrator';
+    bannerName = 'Narrator';
   } else if (respondAs) {
     const respondChar = characters.find((c) =>
       c.fileName === respondAs || (c.frontmatter.name || '').toLowerCase() === String(respondAs).toLowerCase()
@@ -2388,7 +2395,7 @@ function buildSystemPrompt(params = {}) {
       : String(respondAs).replace(/\.(md|json)$/, '');
   }
   if (bannerName) {
-    parts.push(`# YOU ARE WRITING THE NEXT TURN AS: ${bannerName}\nWrite a single reply in this character\'s voice only. Do not write for any other character.`);
+    parts.push(`# YOU ARE WRITING THE NEXT TURN AS: ${bannerName}\nWrite a single reply in this character's voice only. Do not write for any other character.`);
   }
 
   // 1. Writing preset at the TOP — sets the shared writing framework.
@@ -2495,35 +2502,25 @@ function buildSystemPrompt(params = {}) {
     parts.push('## Conversation Memories\n' + substituteVars(memoryContent, primaryName, userName));
   }
 
-  // 6. Active turn.
-  if (respondAs === SELF_SPEAKER) {
-    parts.push([
-      '## Active Turn',
-      'It is the user\'s turn.',
-      'Draft only the next user-authored message.',
-      'Do not write a second follow-up turn after it.',
-    ].join('\n'));
-  } else if (respondAs === NARRATOR_SPEAKER) {
+  // 6. Active turn. Same shape for every speaker — the user-persona,
+  // narrator, and named characters all get a "write the next turn as
+  // X" instruction. Narrator keeps its prose-narration constraint
+  // because that's a format difference, not a speaker-class
+  // difference.
+  if (respondAs === NARRATOR_SPEAKER) {
     parts.push([
       '## Active Turn',
       'It is the Narrator\'s turn.',
       'Write a third-person narrative continuation that advances the scene.',
       'Use pure prose narration — never prefix lines with character names followed by colons.',
       'Weave character actions, speech, and thoughts into natural flowing paragraphs.',
-      'Do not write the user\'s next dialogue or make choices on the user\'s behalf.',
+      'Do not write any character\'s next dialogue or make choices on their behalf.',
     ].join('\n'));
-  } else {
-    const fallbackChar = characters[0] || null;
-    const respondChar = characters.find((c) =>
-      c.fileName === respondAs || (c.frontmatter.name || '').toLowerCase() === String(respondAs || '').toLowerCase()
-    ) || fallbackChar;
-    const respondName = respondChar
-      ? (respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, ''))
-      : 'the selected character';
+  } else if (bannerName) {
     parts.push([
       '## Active Turn',
-      `It is ${respondName}'s turn.`,
-      `Write only ${respondName}'s next turn.`,
+      `It is ${bannerName}'s turn.`,
+      `Write only ${bannerName}'s next turn.`,
       'Stay grounded in the current scene and react to the latest visible message.',
     ].join('\n'));
   }
@@ -2647,6 +2644,34 @@ function assembleContext(params) {
   const budget = computeTokenBudget(contextWindow, settings);
   const extendedMemoryEnabled = primaryChar?.frontmatter?.extendedMemory === true;
 
+  // Resolve the ACTIVE speaker character. Every speaker-specific
+  // setting (writing preset, POV, length, fit method, voice anchor)
+  // is sourced from this character — NOT from `primaryChar`. The
+  // previous code used primaryChar for everything, which meant if a
+  // thread had [Ada, Ben] and Ada was at index 0, asking Ben to
+  // speak still used Ada's settings. Whatever the user explicitly
+  // selected to speak is the source of truth.
+  //
+  // Returns null for SELF_SPEAKER (no persona configured), the
+  // NARRATOR sentinel, or any speaker that doesn't match a known
+  // character. Callers fall back to thread/global defaults in that
+  // case — matching the legacy behaviour for those sentinels.
+  let speakerChar = null;
+  if (respondAs && respondAs !== SELF_SPEAKER && respondAs !== NARRATOR_SPEAKER) {
+    speakerChar = chars.find((c) =>
+      c.fileName === respondAs
+      || (c.frontmatter?.name || '').toLowerCase() === String(respondAs).toLowerCase()
+    ) || null;
+  }
+
+  // Per-speaker resolution: every override comes from speakerChar
+  // first, with fallback to the value passed into assembleContext
+  // (which already encodes thread / global defaults). Treating
+  // these as four independent lookups instead of one merged blob
+  // keeps the fallback chain visible at each callsite.
+  const effectiveWritingPreset = speakerChar?.frontmatter?.writingPreset || writingPreset;
+  const effectivePov = speakerChar?.frontmatter?.pov || pov;
+
   // Split lore lane between lorebooks and thread memory proportional to content size.
   // If one is empty, the other gets the full allocation.
   // When extendedMemory is enabled, guarantee memory gets at least 40% of the lore budget.
@@ -2679,14 +2704,16 @@ function assembleContext(params) {
     .map(c => c?.userReminder || c?.sections?.userReminder || '')
     .filter(Boolean);
   const charUserReminder = userReminderParts.join('\n');
-  const charMsgLenLimit = primaryChar?.frontmatter?.messageLengthLimit || '';
-  // Character messageLengthLimit overrides thread responseLength when set
+  // Active speaker's own message-length cap wins. Falls back to the
+  // thread-level responseLength then global default. (Was previously
+  // primaryChar's cap regardless of who was speaking.)
+  const charMsgLenLimit = speakerChar?.frontmatter?.messageLengthLimit || '';
   const effectiveResponseLength = charMsgLenLimit || responseLength;
 
   const buildResult = buildSystemPrompt({
     characters: chars,
-    writingPreset,
-    pov,
+    writingPreset: effectiveWritingPreset,
+    pov: effectivePov,
     loreContent: loreTrimmed,
     memoryContent: memTrimmed,
     respondAs,
@@ -2754,7 +2781,11 @@ function assembleContext(params) {
     };
   });
 
-  const fitMethod = primaryChar?.frontmatter?.fitMessagesInContextMethod
+  // History-fit method follows the active speaker too. A character
+  // who prefers summarised history can keep that preference even when
+  // a different character is also in the thread.
+  const fitMethod = speakerChar?.frontmatter?.fitMessagesInContextMethod
+    || primaryChar?.frontmatter?.fitMessagesInContextMethod
     || settings?.defaultFitMethod
     || 'dropOld';
   messages.push(...trimHistoryToBudget(mappedHistory, historyBudget, fitMethod, { summary: historySummary }));
@@ -2834,24 +2865,35 @@ function assembleContext(params) {
   // references the `<<Name>>` history delimiter the model has been
   // seeing on every prior turn.
   //
-  // Computes `bannerName` (the friendly label for whoever is speaking)
-  // for reuse below in the appended user-turn directive — same
-  // expression as buildSystemPrompt's banner so the two stay in sync.
+  // Speaker-unification (user-is-just-another-character): the human
+  // typing is OUTSIDE the fiction. Every active turn — Anon, Ada,
+  // Narrator — is "write a turn as <Name>", same shape every time.
+  // No special "user-authored message" wording: the user persona
+  // gets the same emphatic instruction as any character. The model
+  // never needs to know whether the speaker is "the user" or "a
+  // character"; both are just names.
   let activeTurnLine = null;
   let bannerName = null;
   if (respondAs === SELF_SPEAKER) {
-    bannerName = 'the user';
-    activeTurnLine = 'Active turn: user. Draft only the next user-authored message. Do not begin with a `<<Name>>` tag or any speaker prefix — the interface adds the speaker label.';
+    bannerName = userName || 'Anon';
   } else if (respondAs === NARRATOR_SPEAKER) {
-    bannerName = 'the Narrator';
-    activeTurnLine = 'Active turn: Narrator. Write only the next narrative beat in prose. Do not write any character\'s spoken dialogue. Do not begin with a `<<Name>>` tag or any speaker prefix.';
+    bannerName = 'Narrator';
   } else if (respondAs) {
     const respondChar = chars.find(c =>
       c.fileName === respondAs || (c.frontmatter.name || '').toLowerCase() === String(respondAs).toLowerCase()
     );
-    const rName = respondChar ? (respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, '')) : String(respondAs).replace(/\.(md|json)$/, '');
-    bannerName = rName;
-    activeTurnLine = `Active turn: ${rName}. Write ONLY ${rName}'s next turn. Do not write, narrate, quote, or describe internal thoughts for any other character. Do not begin your reply with \`<<${rName}>>\` or any speaker prefix — the interface adds the label automatically. If you start to write for any other character, STOP immediately.`;
+    bannerName = respondChar
+      ? (respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, ''))
+      : String(respondAs).replace(/\.(md|json)$/, '');
+  }
+
+  if (bannerName) {
+    const isNarrator = respondAs === NARRATOR_SPEAKER;
+    if (isNarrator) {
+      activeTurnLine = 'Active turn: Narrator. Write only the next narrative beat in prose. Do not write any character\'s spoken dialogue. Do not begin with a `<<Name>>` tag or any speaker prefix.';
+    } else {
+      activeTurnLine = `Active turn: ${bannerName}. Write ONLY ${bannerName}'s next turn. Do not write, narrate, quote, or describe internal thoughts for any other character. Do not begin your reply with \`<<${bannerName}>>\` or any speaker prefix — the interface adds the label automatically. If you start to write for any other character, STOP immediately.`;
+    }
   }
 
   // 2) Persona re-anchor (only when speaker is a real character)
@@ -5580,10 +5622,29 @@ function renderChatEditor(container, parallx, input) {
       }
     }
 
+    // Resolve every speaker-specific setting from whoever was clicked
+    // to speak. Falls back through: speakerChar → thread settings (NYI
+    // — currently inherited from primary) → global defaults. The
+    // earlier code passed primaryChar's writingPreset / pov / length
+    // here, so every speaker in a multi-character thread inherited
+    // the first character's prompt regardless of their own card.
+    const speakerCharLocal = (speaker && speaker !== SELF_SPEAKER && speaker !== NARRATOR_SPEAKER)
+      ? characters.find((c) =>
+          c.fileName === speaker
+          || (c.frontmatter?.name || '').toLowerCase() === String(speaker).toLowerCase())
+      : null;
+
+    const resolvedWritingPreset = speakerCharLocal?.frontmatter?.writingPreset
+      || currentSettings?.defaultWritingPreset
+      || 'immersive-rp';
+    const resolvedPov = speakerCharLocal?.frontmatter?.pov
+      || currentSettings?.defaultPov
+      || '';
+
     const assembled = assembleContext({
       characters,
-      writingPreset: primaryChar?.frontmatter?.writingPreset || currentSettings?.defaultWritingPreset || 'immersive-rp',
-      pov: primaryChar?.frontmatter?.pov || currentSettings?.defaultPov || '',
+      writingPreset: resolvedWritingPreset,
+      pov: resolvedPov,
       loreContent,
       memoryContent,
       history: effectiveHistory,
@@ -5598,27 +5659,38 @@ function renderChatEditor(container, parallx, input) {
       sceneState: thread?.sceneState || null, // M79 Phase 3a
     });
     // Annotate with diagnostic info the inspect modal + token chip surface.
+    // All `*Source` labels reference the SPEAKER character (or
+    // global default fallback), matching the speaker-aware resolution
+    // above. Previously these reported primaryChar regardless of who
+    // was actually speaking, which obscured the bug.
     assembled.loreDebug = loreDebug;
-    const charLenLimit = primaryChar?.frontmatter?.messageLengthLimit;
+    const charLenLimit = speakerCharLocal?.frontmatter?.messageLengthLimit;
     if (charLenLimit) {
-      assembled.responseLengthSource = `character (${primaryChar.frontmatter.name || 'character'}: ${charLenLimit})`;
+      assembled.responseLengthSource = `character (${speakerCharLocal.frontmatter.name || 'character'}: ${charLenLimit})`;
     } else if (currentSettings?.defaultResponseLength) {
       assembled.responseLengthSource = `global default (${currentSettings.defaultResponseLength})`;
     } else {
       assembled.responseLengthSource = 'unset';
     }
-    assembled.fitMethodSource = primaryChar?.frontmatter?.fitMessagesInContextMethod
-      ? `character (${primaryChar.frontmatter.name || 'character'})`
-      : (currentSettings?.defaultFitMethod ? 'global default' : 'fallback');
+    assembled.fitMethodSource = speakerCharLocal?.frontmatter?.fitMessagesInContextMethod
+      ? `character (${speakerCharLocal.frontmatter.name || 'character'})`
+      : (primaryChar?.frontmatter?.fitMessagesInContextMethod
+          ? `primary (${primaryChar.frontmatter.name || 'character'})`
+          : (currentSettings?.defaultFitMethod ? 'global default' : 'fallback'));
     assembled.activeFitMethod = fitMethod;
-    // POV cascade: character → global default → inherit-from-preset.
-    if (primaryChar?.frontmatter?.pov) {
-      assembled.povSource = `character (${POV_OPTIONS[primaryChar.frontmatter.pov]?.label || primaryChar.frontmatter.pov})`;
+    // POV cascade now mirrors the speaker-aware resolution.
+    if (speakerCharLocal?.frontmatter?.pov) {
+      assembled.povSource = `character (${POV_OPTIONS[speakerCharLocal.frontmatter.pov]?.label || speakerCharLocal.frontmatter.pov})`;
     } else if (currentSettings?.defaultPov) {
       assembled.povSource = `global default (${POV_OPTIONS[currentSettings.defaultPov]?.label || currentSettings.defaultPov})`;
     } else {
       assembled.povSource = 'inherit (preset decides)';
     }
+    assembled.writingPresetSource = speakerCharLocal?.frontmatter?.writingPreset
+      ? `character (${speakerCharLocal.frontmatter.name || 'character'}: ${speakerCharLocal.frontmatter.writingPreset})`
+      : (currentSettings?.defaultWritingPreset
+          ? `global default (${currentSettings.defaultWritingPreset})`
+          : 'fallback (immersive-rp)');
     lastAssembledContext = assembled;
     selectedModelId = modelId;
     updateChrome();
