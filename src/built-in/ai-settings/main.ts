@@ -115,16 +115,19 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     ? api.services.get<import('../../platform/storage.js').IStorage>(IGlobalStorageService)
     : undefined;
 
-  // Cron service — drives the live job list in the Scheduled jobs section.
-  // Section degrades gracefully (header text only, no list) when absent.
-  const cronService = api.services.has(ICronService)
-    ? api.services.get<import('../../openclaw/openclawCronService.js').CronService>(ICronService)
-    : undefined;
-
-  // Register view provider
+  // Register view provider. CronService is resolved INSIDE createView (not
+  // at activation time) because chat-extension activation may not have
+  // registered `ICronService` in DI yet when ai-settings activates. The
+  // view is constructed lazily on first reveal, by which point chat is
+  // guaranteed to have run (both share `onStartupFinished`), so the lookup
+  // succeeds. Capturing the service at activation time would silently lock
+  // the panel into the no-service degraded path for the whole session.
   context.subscriptions.push(
     api.views.registerViewProvider('view.aiSettings', {
       createView(container: HTMLElement): IDisposable {
+        const cronService = api.services.has(ICronService)
+          ? api.services.get<import('../../openclaw/openclawCronService.js').CronService>(ICronService)
+          : undefined;
         _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService, toolPickerServices, mcpClientService, autonomyFlagsService, globalStorage, cronService);
         return _panel;
       },
