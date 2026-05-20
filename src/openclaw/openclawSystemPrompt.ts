@@ -401,8 +401,19 @@ export function buildWorkspaceSection(
  * Upstream: runtimeInfo section in buildAgentSystemPrompt
  */
 export function buildRuntimeSection(runtimeInfo: IOpenclawRuntimeInfo): string {
+  // Current date/time + timezone are injected on every prompt build so the
+  // model never has to guess "what day is it" from training-data cutoff or
+  // hallucinate. Local models in particular have no other source of truth
+  // for the wall clock; without this, asking "what's today's date?" returns
+  // a stale or fabricated answer. Cost is ~2 lines (~30 tokens).
+  const now = new Date();
+  let tz: string;
+  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown'; }
+  catch { tz = 'unknown'; }
   const lines = [
     '## Runtime',
+    `- Current date/time: ${now.toISOString()} (${now.toString()})`,
+    `- Timezone: ${tz}`,
     `- Model: ${runtimeInfo.model}`,
     `- Provider: ${runtimeInfo.provider}`,
     `- Host: ${runtimeInfo.host}`,
