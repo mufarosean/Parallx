@@ -6044,10 +6044,24 @@ async function pickModelId(api) {
   if (!models || models.length === 0) {
     throw new Error('No language models available — install/start Ollama first.');
   }
+  // When the user has named a model (or the manifest default has, which is
+  // the common case), require it to be installed. Silent fallback to the
+  // first available model usually picks the chat model, defeating the
+  // purpose of having a separate small model for cron classification —
+  // budget and chat then fight for the same Ollama slot. Fail loudly with
+  // the install command instead.
   if (preferred) {
     const hit = models.find(m => m.id === preferred);
     if (hit) return hit.id;
+    throw new Error(
+      `Budget is configured to use '${preferred}' but it is not installed. ` +
+      `Run \`ollama pull ${preferred}\` from a terminal, or change ` +
+      `budget.preferredModelId in Settings to a model you have installed.`,
+    );
   }
+  // Empty preferredModelId is the legacy escape hatch — use Ollama's first
+  // available model. Not recommended because it tends to pick the chat
+  // model and creates the contention the explicit setting avoids.
   return models[0].id;
 }
 

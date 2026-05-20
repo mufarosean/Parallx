@@ -90,8 +90,8 @@
           },
           "budget.preferredModelId": {
             "type": "string",
-            "default": "",
-            "description": "Model id to use for classification/extraction/categorization. Empty = first model returned by api.lm.getModels()."
+            "default": "qwen3.5:4b",
+            "description": "Model id used for transaction classification. Defaults to qwen3.5:4b — a small, fast model so the budget cron does not contend with chat for the same Ollama slot. If this model is not installed, sync fails with a clear error rather than silently falling back to the active chat model. Install with `ollama pull qwen3.5:4b`. Empty = first model returned by api.lm.getModels() (legacy behaviour, not recommended)."
           },
           "budget.syncIntervalMinutes": {
             "type": "number",
