@@ -119,7 +119,7 @@ export function registerBuiltInTools(
     createComposePageTool(db, pageMutationNotifier),
     createListPropertyDefinitionsTool(db),
     createSetPagePropertyTool(db),
-    createSetPageStyleTool(db, pageMutationNotifier),
+    createSetPageStyleTool(db, pageMutationNotifier, workspaceRoot),
     // ── File system tools ──
     createListFilesTool(fs),
     createReadFileTool(fs),

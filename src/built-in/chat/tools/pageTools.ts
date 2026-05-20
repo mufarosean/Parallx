@@ -736,14 +736,153 @@ export function createComposePageTool(
  * full_width, small_text). Requires approval since it mutates user-visible
  * presentation.
  */
+// ── Cover-image path resolution (for canvas_set_page_style) ──
+//
+// The canvas pane renders `pages.cover_url` via `background-image: url(...)`,
+// which means the CSP forbids `file://` and relative paths don't resolve
+// the way a model would expect. To make `coverUrl` ergonomic for both AI
+// and user input, the tool accepts THREE shapes and normalises to one of
+// two storable forms:
+//
+//   pass-through (stored verbatim):
+//     - http://… / https://…           → web URL
+//     - data:image/…                    → already a data URL
+//     - linear-gradient(…) / radial-…   → gradient
+//
+//   resolved to a data: URL before storing:
+//     - workspace-relative path (e.g. "Skills/CoverImages/foo.png")
+//     - absolute filesystem path / `file://` URL
+//
+// The data-URL conversion uses the renderer-side `window.parallxElectron.fs.readFile`
+// IPC. Workspace-relative paths are joined against the workspace root that
+// `registerBuiltInTools` already threads through the tool factory.
+
+const _COVER_IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']);
+const _COVER_MAX_BASE64 = Math.floor(5 * 1024 * 1024 * 1.37); // ~5 MB raw image
+
+function _coverExtToMime(ext: string): string {
+  const e = ext.toLowerCase();
+  if (e === 'jpg' || e === 'jpeg') return 'image/jpeg';
+  if (e === 'svg') return 'image/svg+xml';
+  return `image/${e}`;
+}
+
+function _coverIsPassthrough(v: string): boolean {
+  return /^(?:https?:|data:|linear-gradient|radial-gradient)/i.test(v);
+}
+
+function _coverAbsoluteCandidate(v: string): string | null {
+  // file:// URL — strip prefix, decode percent-escapes.
+  if (v.startsWith('file:///')) {
+    try {
+      let p = decodeURIComponent(v.slice(8));
+      if (!/^[a-zA-Z]:/.test(p) && !p.startsWith('/')) p = '/' + p;
+      return p;
+    } catch {
+      return null;
+    }
+  }
+  if (v.startsWith('file://')) {
+    try { return decodeURIComponent(v.slice(7)); } catch { return null; }
+  }
+  // Drive letter (Windows) or POSIX absolute.
+  if (/^[a-zA-Z]:[\\/]/.test(v) || v.startsWith('/') || v.startsWith('\\')) {
+    return v;
+  }
+  return null;
+}
+
+function _joinWorkspacePath(workspaceRoot: string, relative: string): string {
+  const sep = workspaceRoot.includes('\\') && !workspaceRoot.includes('/') ? '\\' : '/';
+  const trimmedRoot = workspaceRoot.replace(/[\\/]+$/, '');
+  const cleanedRel = relative.replace(/^\.\/+/, '').replace(/^[\\/]+/, '');
+  return `${trimmedRoot}${sep}${cleanedRel.replace(/\\/g, sep).replace(/\//g, sep)}`;
+}
+
+/**
+ * Resolve `rawCoverUrl` into a value safe to store in `pages.cover_url`.
+ * Returns either the original string (for http/data/gradient values) or
+ * a `data:image/...;base64,...` URL (for local paths). Surfaces errors
+ * with messages aimed at the model so it can retry with a better path.
+ */
+async function _resolveCoverUrlForStorage(
+  rawCoverUrl: string,
+  workspaceRoot: string | undefined,
+): Promise<{ value: string | null; error?: string }> {
+  const v = rawCoverUrl.trim();
+  if (v === '') return { value: null }; // empty → clear cover
+
+  // Pass-through forms.
+  if (_coverIsPassthrough(v)) return { value: v };
+
+  // Determine absolute path to read.
+  const absoluteCandidate = _coverAbsoluteCandidate(v);
+  let absolutePath: string;
+  if (absoluteCandidate !== null) {
+    absolutePath = absoluteCandidate;
+  } else if (workspaceRoot) {
+    absolutePath = _joinWorkspacePath(workspaceRoot, v);
+  } else {
+    return { value: null, error: `Cannot resolve "${v}" — no workspace root available. Provide an http(s):// URL, a data: URL, or open a workspace first.` };
+  }
+
+  // Validate extension before reading so an obviously-wrong path fails fast.
+  const ext = absolutePath.split('.').pop()?.toLowerCase() || '';
+  if (!_COVER_IMAGE_EXTS.has(ext)) {
+    return { value: null, error: `"${v}" does not look like an image (need ${[..._COVER_IMAGE_EXTS].join('/')}).` };
+  }
+
+  // Read via the renderer-side electron IPC. This is the same path the
+  // canvas pane's drag-drop / upload menus use; centralised in
+  // src/built-in/canvas/menus/imagePathResolver.ts but re-implemented
+  // here to keep the chat tool from importing across extensions.
+  const electron = (globalThis as { window?: { parallxElectron?: { fs?: { readFile?: (p: string, encoding: string) => Promise<{ encoding?: string; content?: string; error?: { message?: string; code?: string } }> } } } })
+    .window?.parallxElectron;
+  const readFile = electron?.fs?.readFile;
+  if (!readFile) {
+    return { value: null, error: 'Local file reads unavailable in this build — use an http(s):// or data: URL instead.' };
+  }
+
+  try {
+    const result = await readFile(absolutePath, 'base64');
+    if (result?.error) {
+      const msg = typeof result.error === 'string'
+        ? result.error
+        : (result.error?.message || result.error?.code || 'unknown error');
+      return { value: null, error: `Could not read "${v}" (resolved to ${absolutePath}): ${msg}` };
+    }
+    if (!result?.content) {
+      return { value: null, error: `"${v}" is empty or unreadable.` };
+    }
+    if (result.encoding !== 'base64') {
+      return { value: null, error: `"${v}" did not return as a binary image.` };
+    }
+    if (result.content.length > _COVER_MAX_BASE64) {
+      return { value: null, error: `"${v}" is too large to inline as a cover (max 5 MB).` };
+    }
+    return { value: `data:${_coverExtToMime(ext)};base64,${result.content}` };
+  } catch (err) {
+    return { value: null, error: `Cover read failed: ${(err as Error)?.message ?? 'unknown error'}` };
+  }
+}
+
 export function createSetPageStyleTool(
   db: IBuiltInToolDatabase | undefined,
   notifyPageMutated?: PageMutationNotifier,
+  workspaceRoot?: string,
 ): IChatTool {
   return {
     name: 'canvas_set_page_style',
     displaySummary: 'Update a canvas page\'s style (icon, cover, font, width).',
-    description: 'Update a CANVAS PAGE\'s display settings (icon, cover image, font family, full-width, small-text). Operates on the canvas page DB. Omit unchanged fields. The `coverUrl` field accepts http(s) URLs, data: URLs, or a workspace-relative path (e.g. "Skills/CoverImages/foo.png") — local paths are read into the page automatically.',
+    description:
+      'Update a CANVAS PAGE\'s display settings (icon, cover image, font family, full-width, small-text). ' +
+      'Operates on the canvas page DB. Omit unchanged fields.\n\n' +
+      'coverUrl accepts:\n' +
+      '  • An http(s):// URL (stored as-is)\n' +
+      '  • A data:image/… URL (stored as-is)\n' +
+      '  • A workspace-relative path with forward slashes, no leading "./" or "..", e.g. "Skills/CoverImages/foo.png" — read off disk into a data URL\n' +
+      '  • An empty string to clear the existing cover\n\n' +
+      'Supported image extensions: png, jpg, jpeg, gif, webp, svg, bmp, avif. Max 5 MB.',
     parameters: {
       type: 'object',
       required: ['pageId', 'style'],
@@ -754,7 +893,10 @@ export function createSetPageStyleTool(
           description: 'Style fields to update (omit fields you do not want to change)',
           properties: {
             icon: { type: 'string', description: 'Emoji icon (empty string to clear)' },
-            coverUrl: { type: 'string', description: 'Cover image URL (empty string to clear)' },
+            coverUrl: {
+              type: 'string',
+              description: 'Cover: http(s):// URL, data: URL, workspace-relative path (e.g. "Skills/CoverImages/foo.png"), or empty string to clear.',
+            },
             fontFamily: { type: 'string', enum: ['default', 'serif', 'mono'], description: 'Body font family' },
             fullWidth: { type: 'boolean', description: 'Use the full canvas width' },
             smallText: { type: 'boolean', description: 'Render the page in a smaller text size' },
@@ -794,9 +936,13 @@ export function createSetPageStyleTool(
         changed.push('icon');
       }
       if ('coverUrl' in style) {
-        const v = String(style['coverUrl'] ?? '');
+        const raw = String(style['coverUrl'] ?? '');
+        const resolved = await _resolveCoverUrlForStorage(raw, workspaceRoot);
+        if (resolved.error) {
+          return { content: resolved.error, isError: true };
+        }
         sets.push('cover_url = ?');
-        params.push(v === '' ? null : v);
+        params.push(resolved.value);
         changed.push('coverUrl');
       }
       if ('fontFamily' in style) {
