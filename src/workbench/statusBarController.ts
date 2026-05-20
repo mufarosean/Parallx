@@ -228,6 +228,8 @@ export class StatusBarController extends Disposable {
       commandService.registerCommand({
         id: 'workbench.action.toggleNotificationCenter',
         title: 'Toggle Notification Center',
+        aiInvocable: true,
+        aiDescription: 'Show or hide the notification center.',
         handler: () => showCenter(),
       });
     }

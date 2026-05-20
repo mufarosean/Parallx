@@ -95,7 +95,16 @@
               "category": { "type": "string" },
               "icon": { "type": "string" },
               "keybinding": { "type": "string" },
-              "when": { "type": "string" }
+              "when": { "type": "string" },
+              "aiInvocable": {
+                "type": "boolean",
+                "description": "M70 — set true to opt this command in for AI invocation through app__run_command. Requires aiDescription."
+              },
+              "aiDescription": {
+                "type": "string",
+                "minLength": 1,
+                "description": "M70 — capability-phrased description shown to the AI. Required when aiInvocable is true."
+              }
             }
           }
         },

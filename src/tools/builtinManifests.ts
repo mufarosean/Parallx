@@ -22,14 +22,20 @@ export const EXPLORER_MANIFEST: IToolManifest = {
   activationEvents: ['onStartupFinished'],
   contributes: {
     commands: [
+      // M70: newFile / newFolder / rename are DUPLICATE (existing file tools).
+      // delete is EXCLUDED (destructive, irreversible from headless agent context).
+      // revealInExplorer is DUPLICATE (not actionable in headless agent context).
       { id: 'explorer.newFile', title: 'Explorer: New File...' },
       { id: 'explorer.newFolder', title: 'Explorer: New Folder...' },
       { id: 'explorer.rename', title: 'Explorer: Rename...' },
       { id: 'explorer.delete', title: 'Explorer: Delete' },
-      { id: 'explorer.refresh', title: 'Explorer: Refresh' },
-      { id: 'explorer.collapse', title: 'Explorer: Collapse All' },
+      { id: 'explorer.refresh', title: 'Explorer: Refresh',
+        aiInvocable: true, aiDescription: 'Refresh the file explorer view.' },
+      { id: 'explorer.collapse', title: 'Explorer: Collapse All',
+        aiInvocable: true, aiDescription: 'Collapse all folders in the file explorer.' },
       { id: 'explorer.revealInExplorer', title: 'Explorer: Reveal in Explorer' },
-      { id: 'explorer.toggleHiddenFiles', title: 'Explorer: Toggle Hidden Files' },
+      { id: 'explorer.toggleHiddenFiles', title: 'Explorer: Toggle Hidden Files',
+        aiInvocable: true, aiDescription: 'Show or hide dotfiles and hidden files in the explorer.' },
     ],
     keybindings: [
       { command: 'explorer.rename', key: 'F2', when: "focusedView == 'view.explorer'" },
@@ -59,10 +65,14 @@ export const SEARCH_MANIFEST: IToolManifest = {
   activationEvents: ['onStartupFinished'],
   contributes: {
     commands: [
-      { id: 'search.findInFiles', title: 'Search: Find in Files' },
-      { id: 'search.clearResults', title: 'Search: Clear Results' },
-      { id: 'search.collapseAll', title: 'Search: Collapse All Results' },
-      { id: 'search.expandAll', title: 'Search: Expand All Results' },
+      { id: 'search.findInFiles', title: 'Search: Find in Files',
+        aiInvocable: true, aiDescription: 'Open the search view to find text across workspace files.' },
+      { id: 'search.clearResults', title: 'Search: Clear Results',
+        aiInvocable: true, aiDescription: 'Clear the current search results.' },
+      { id: 'search.collapseAll', title: 'Search: Collapse All Results',
+        aiInvocable: true, aiDescription: 'Collapse every group in the search results.' },
+      { id: 'search.expandAll', title: 'Search: Expand All Results',
+        aiInvocable: true, aiDescription: 'Expand every group in the search results.' },
     ],
     keybindings: [
       { command: 'search.findInFiles', key: 'Ctrl+Shift+F' },
@@ -90,8 +100,10 @@ export const TEXT_EDITOR_MANIFEST: IToolManifest = {
   activationEvents: ['*'],
   contributes: {
     commands: [
-      { id: 'editor.toggleWordWrap', title: 'View: Toggle Word Wrap' },
-      { id: 'editor.changeEncoding', title: 'Change File Encoding' },
+      { id: 'editor.toggleWordWrap', title: 'View: Toggle Word Wrap',
+        aiInvocable: true, aiDescription: 'Toggle word-wrap in the active editor.' },
+      { id: 'editor.changeEncoding', title: 'Change File Encoding',
+        aiInvocable: true, aiDescription: 'Open the file encoding picker for the active editor.' },
     ],
     keybindings: [
       { command: 'editor.toggleWordWrap', key: 'Alt+Z' },
@@ -112,7 +124,8 @@ export const WELCOME_MANIFEST: IToolManifest = {
   engines: { parallx: '^0.1.0' },
   activationEvents: ['onStartupFinished'],
   contributes: {
-    commands: [{ id: 'welcome.openWelcome', title: 'Welcome: Show Welcome Page' }],
+    commands: [{ id: 'welcome.openWelcome', title: 'Welcome: Show Welcome Page',
+      aiInvocable: true, aiDescription: 'Open the welcome page.' }],
     editors: [{ typeId: 'parallx.welcome.editor', displayName: 'Welcome' }],
   },
 };
@@ -131,8 +144,10 @@ export const OUTPUT_MANIFEST: IToolManifest = {
   activationEvents: ['onStartupFinished'],
   contributes: {
     commands: [
-      { id: 'output.clear', title: 'Output: Clear Log' },
-      { id: 'output.toggleTimestamps', title: 'Output: Toggle Timestamps' },
+      { id: 'output.clear', title: 'Output: Clear Log',
+        aiInvocable: true, aiDescription: 'Clear the current output channel.' },
+      { id: 'output.toggleTimestamps', title: 'Output: Toggle Timestamps',
+        aiInvocable: true, aiDescription: 'Toggle timestamp display in the output panel.' },
     ],
     views: [{ id: 'view.output', name: 'Output', defaultContainerId: 'panel' }],
   },
@@ -152,8 +167,10 @@ export const INDEXING_LOG_MANIFEST: IToolManifest = {
   activationEvents: ['onStartupFinished'],
   contributes: {
     commands: [
-      { id: 'indexingLog.clear', title: 'Indexing: Clear Log' },
-      { id: 'indexingLog.toggleErrorFilter', title: 'Indexing: Toggle Error Filter' },
+      { id: 'indexingLog.clear', title: 'Indexing: Clear Log',
+        aiInvocable: true, aiDescription: 'Clear the indexing log entries.' },
+      { id: 'indexingLog.toggleErrorFilter', title: 'Indexing: Toggle Error Filter',
+        aiInvocable: true, aiDescription: 'Toggle the error-only filter in the indexing log.' },
     ],
     views: [{ id: 'view.indexingLog', name: 'Indexing', defaultContainerId: 'panel' }],
   },
@@ -173,7 +190,8 @@ export const DIAGNOSTICS_MANIFEST: IToolManifest = {
   activationEvents: ['onStartupFinished'],
   contributes: {
     commands: [
-      { id: 'diagnostics.runChecks', title: 'Diagnostics: Run Health Checks' },
+      { id: 'diagnostics.runChecks', title: 'Diagnostics: Run Health Checks',
+        aiInvocable: true, aiDescription: 'Run the diagnostics health checks and show results.' },
     ],
     views: [{ id: 'view.diagnostics', name: 'AI Diagnostics', defaultContainerId: 'panel' }],
   },
@@ -193,8 +211,10 @@ export const AUTONOMY_LOG_MANIFEST: IToolManifest = {
   activationEvents: ['onStartupFinished'],
   contributes: {
     commands: [
-      { id: 'autonomyLog.markAllRead', title: 'Autonomy Log: Mark All Read' },
-      { id: 'autonomyLog.clear',       title: 'Autonomy Log: Clear' },
+      { id: 'autonomyLog.markAllRead', title: 'Autonomy Log: Mark All Read',
+        aiInvocable: true, aiDescription: 'Mark every autonomy log entry as read.' },
+      { id: 'autonomyLog.clear',       title: 'Autonomy Log: Clear',
+        aiInvocable: true, aiDescription: 'Clear all autonomy log entries.' },
     ],
     views: [{ id: 'view.autonomyLog', name: 'Autonomy Log', defaultContainerId: 'panel' }],
   },
@@ -213,7 +233,8 @@ export const TOOL_GALLERY_MANIFEST: IToolManifest = {
   engines: { parallx: '^0.1.0' },
   activationEvents: ['onStartupFinished'],
   contributes: {
-    commands: [{ id: 'tools.showInstalled', title: 'Tools: Show Installed Tools' }],
+    commands: [{ id: 'tools.showInstalled', title: 'Tools: Show Installed Tools',
+      aiInvocable: true, aiDescription: 'Show the list of installed tools and extensions.' }],
     viewContainers: [
       { id: 'tools-container', title: 'Tools', icon: 'puzzle', location: 'sidebar' as const },
     ],
@@ -236,11 +257,22 @@ export const CHAT_MANIFEST: IToolManifest = {
   activationEvents: ['onStartupFinished'],
   contributes: {
     commands: [
-      { id: 'chat.toggle', title: 'Chat: Toggle Chat Panel' },
-      { id: 'chat.newSession', title: 'Chat: New Session' },
-      { id: 'chat.clearSession', title: 'Chat: Clear Session' },
-      { id: 'chat.stop', title: 'Chat: Stop Response' },
-      { id: 'chat.focus', title: 'Chat: Focus Input' },
+      // M70: chat.switchMode and chat.selectModel are EXCLUDED (AI-settings
+      // mutation policy — the AI must not steer its own invocation policy).
+      // chat.show is NOT in the manifest; it's registered at runtime by
+      // main.ts. Annotated there via the bridge if/when needed.
+      { id: 'chat.toggle', title: 'Chat: Toggle Chat Panel',
+        aiInvocable: true, aiDescription: 'Show or hide the chat view.' },
+      { id: 'chat.show', title: 'Chat: Show',
+        aiInvocable: true, aiDescription: 'Reveal the chat view (showing it first if hidden).' },
+      { id: 'chat.newSession', title: 'Chat: New Session',
+        aiInvocable: true, aiDescription: 'Start a new chat session.' },
+      { id: 'chat.clearSession', title: 'Chat: Clear Session',
+        aiInvocable: true, aiDescription: 'Clear the current chat session messages.' },
+      { id: 'chat.stop', title: 'Chat: Stop Response',
+        aiInvocable: true, aiDescription: 'Stop the current AI generation.' },
+      { id: 'chat.focus', title: 'Chat: Focus Input',
+        aiInvocable: true, aiDescription: 'Move focus into the chat input.' },
     ],
     keybindings: [
       { command: 'chat.toggle', key: 'Ctrl+Shift+I' },
@@ -299,10 +331,20 @@ export const CANVAS_MANIFEST: IToolManifest = {
   activationEvents: ['onStartupFinished'],
   contributes: {
     commands: [
+      // M70 audit decisions:
+      // - canvas.newPage: DUPLICATE (covered by `create_page` AI tool).
+      // - canvas.deletePage: EXCLUDED (destructive, irreversible).
+      // - canvas.rename/duplicate: OUT_OF_MVP (need pageId arg).
+      // showKeyboardShortcuts / showTemplatePicker registered at runtime in
+      // main.ts; declared here so manifest pipeline picks up aiInvocable.
       { id: 'canvas.newPage', title: 'Canvas: New Page' },
       { id: 'canvas.deletePage', title: 'Canvas: Delete Page' },
       { id: 'canvas.renamePage', title: 'Canvas: Rename Page' },
       { id: 'canvas.duplicatePage', title: 'Canvas: Duplicate Page' },
+      { id: 'canvas.showKeyboardShortcuts', title: 'Canvas: Show Keyboard Shortcuts',
+        aiInvocable: true, aiDescription: 'Show the canvas keyboard shortcuts overlay.' },
+      { id: 'canvas.showTemplatePicker', title: 'Canvas: Show Template Picker',
+        aiInvocable: true, aiDescription: 'Open the canvas template picker.' },
     ],
     keybindings: [
       { command: 'canvas.newPage', key: 'Ctrl+N', when: "focusedView == 'view.canvas'" },
@@ -331,7 +373,8 @@ export const THEME_EDITOR_MANIFEST: IToolManifest = {
   activationEvents: ['onStartupFinished'],
   contributes: {
     commands: [
-      { id: 'theme-editor.open', title: 'Parallx: Open Theme Editor' },
+      { id: 'theme-editor.open', title: 'Parallx: Open Theme Editor',
+        aiInvocable: true, aiDescription: 'Open the theme editor.' },
     ],
     keybindings: [
       { command: 'theme-editor.open', key: 'Ctrl+Shift+T' },
@@ -354,7 +397,15 @@ export const SETTINGS_MANIFEST: IToolManifest = {
   activationEvents: ['onStartupFinished'],
   contributes: {
     commands: [
-      { id: 'settings.open', title: 'Parallx: Open Settings' },
+      { id: 'settings.open', title: 'Parallx: Open Settings',
+        aiInvocable: true, aiDescription: 'Open the workspace settings editor.' },
+      // workspace.importConfig and workspace.resetConfig are EXCLUDED by the
+      // M70 denylist (config mutation / destructive). Only the read-only
+      // export path is opt-in.
+      { id: 'workspace.exportConfig', title: 'Workspace: Export Configuration',
+        aiInvocable: true, aiDescription: 'Export the workspace configuration to a file for backup (user picks the destination via a save-file dialog).' },
+      { id: 'workspace.importConfig', title: 'Workspace: Import Configuration' },
+      { id: 'workspace.resetConfig', title: 'Workspace: Reset Configuration' },
     ],
     keybindings: [
       { command: 'settings.open', key: 'Ctrl+Alt+S' },

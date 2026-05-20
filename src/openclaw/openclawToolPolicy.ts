@@ -446,6 +446,11 @@ const BLUE_TOOLS: ReadonlySet<string> = new Set<string>([
   // policy; listed here so post-red the gate fires even for surfaces that
   // are otherwise auto-allowed).
   'surface_send',
+  // M70 — App command control. Executing a workbench command mutates app
+  // state (theme, layout, view visibility, etc). Blue so it post-red gates
+  // the same way file writes do. `app__find_commands` stays green (read-only
+  // search over a curated registry).
+  'app__run_command',
 ]);
 
 /**

@@ -22,22 +22,30 @@
       {
         "id": "textGenerator.newChat",
         "title": "Text Generator: New Chat",
-        "category": "Text Generator"
+        "category": "Text Generator",
+        "aiInvocable": true,
+        "aiDescription": "Start a new Text Generator roleplay chat."
       },
       {
         "id": "textGenerator.openHome",
         "title": "Text Generator: Home",
-        "category": "Text Generator"
+        "category": "Text Generator",
+        "aiInvocable": true,
+        "aiDescription": "Open the Text Generator home page."
       },
       {
         "id": "textGenerator.openCharacters",
         "title": "Text Generator: Characters",
-        "category": "Text Generator"
+        "category": "Text Generator",
+        "aiInvocable": true,
+        "aiDescription": "Open the Text Generator character roster."
       },
       {
         "id": "textGenerator.openSettings",
         "title": "Text Generator: Settings",
-        "category": "Text Generator"
+        "category": "Text Generator",
+        "aiInvocable": true,
+        "aiDescription": "Open the Text Generator settings page."
       }
     ],
     "editors": [

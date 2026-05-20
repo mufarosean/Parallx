@@ -58,6 +58,28 @@ export interface CommandDescriptor {
    */
   readonly when?: string;
 
+  /**
+   * M70 — Opt-in for AI invocation through `app__run_command`.
+   * When true, this command is surfaced in `app__find_commands` search
+   * results and is callable by the AI. Requires `aiDescription` to be
+   * present. Commands without this flag are invisible to the AI even
+   * when the `ai.workbenchControl` workspace toggle is on.
+   *
+   * The Gate 2 denylist (in m70CommandPolicy.ts) is enforced regardless:
+   * a command on the denylist is refused even if it sets this flag.
+   */
+  readonly aiInvocable?: boolean;
+
+  /**
+   * Capability-phrased description shown to the AI when this command
+   * appears in `app__find_commands` results. Required when
+   * `aiInvocable` is true. Title is for humans scanning the palette
+   * ("Workspace Graph: Refresh"); aiDescription is the verb phrase the
+   * model uses to decide whether to call it ("Refresh the workspace
+   * graph visualization").
+   */
+  readonly aiDescription?: string;
+
   /** The handler function invoked when the command is executed. */
   readonly handler: CommandHandler;
 }

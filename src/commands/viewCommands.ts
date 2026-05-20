@@ -13,6 +13,8 @@ export const showCommands: CommandDescriptor = {
   title: 'Show All Commands',
   category: 'View',
   keybinding: 'Ctrl+Shift+P',
+  aiInvocable: true,
+  aiDescription: 'Open the command palette listing every available command.',
   handler(ctx) {
     wb(ctx).toggleCommandPalette();
   },
@@ -23,6 +25,8 @@ export const quickOpen: CommandDescriptor = {
   title: 'Go to File…',
   category: 'View',
   keybinding: 'Ctrl+P',
+  aiInvocable: true,
+  aiDescription: 'Open the quick file picker to navigate to a file by name.',
   handler(ctx) {
     wb(ctx).showQuickOpen();
   },
@@ -43,6 +47,8 @@ export const toggleSidebar: CommandDescriptor = {
   title: 'Toggle Primary Sidebar',
   category: 'View',
   keybinding: 'Ctrl+B',
+  aiInvocable: true,
+  aiDescription: 'Show or hide the primary sidebar (explorer, search, etc.).',
   handler(ctx) {
     wb(ctx).toggleSidebar();
   },
@@ -53,6 +59,8 @@ export const togglePanel: CommandDescriptor = {
   title: 'Toggle Panel',
   category: 'View',
   keybinding: 'Ctrl+J',
+  aiInvocable: true,
+  aiDescription: 'Show or hide the bottom panel (terminal, output, diagnostics).',
   handler(ctx) {
     wb(ctx).togglePanel();
   },
@@ -62,6 +70,8 @@ export const toggleMaximizedPanel: CommandDescriptor = {
   id: 'workbench.action.toggleMaximizedPanel',
   title: 'Toggle Maximized Panel',
   category: 'View',
+  aiInvocable: true,
+  aiDescription: 'Maximize or restore the bottom panel.',
   handler(ctx) {
     wb(ctx).toggleMaximizedPanel();
   },
@@ -71,6 +81,8 @@ export const toggleAuxiliaryBar: CommandDescriptor = {
   id: 'workbench.action.toggleAuxiliaryBar',
   title: 'Toggle Secondary Sidebar',
   category: 'View',
+  aiInvocable: true,
+  aiDescription: 'Show or hide the secondary side bar.',
   handler(ctx) {
     wb(ctx).toggleAuxiliaryBar();
   },
@@ -80,6 +92,8 @@ export const toggleStatusBar: CommandDescriptor = {
   id: 'workbench.action.toggleStatusbarVisibility',
   title: 'Toggle Status Bar Visibility',
   category: 'View',
+  aiInvocable: true,
+  aiDescription: 'Show or hide the status bar at the bottom of the window.',
   handler(ctx) {
     const w = wb(ctx);
     w.toggleStatusBar();
@@ -91,6 +105,8 @@ export const toggleZenMode: CommandDescriptor = {
   title: 'Toggle Zen Mode',
   category: 'View',
   keybinding: 'Ctrl+K Z',
+  aiInvocable: true,
+  aiDescription: 'Enter or exit distraction-free Zen mode.',
   handler(ctx) {
     wb(ctx).toggleZenMode();
   },
@@ -102,6 +118,8 @@ export const viewMoveToSidebar: CommandDescriptor = {
   id: 'view.moveToSidebar',
   title: 'Move View to Sidebar',
   category: 'View',
+  aiInvocable: true,
+  aiDescription: 'Move the active view container to the sidebar.',
   handler(ctx, viewId?: unknown) {
     if (typeof viewId !== 'string') {
       console.warn('[Command] view.moveToSidebar requires a string viewId argument');
@@ -131,6 +149,8 @@ export const viewMoveToPanel: CommandDescriptor = {
   id: 'view.moveToPanel',
   title: 'Move View to Panel',
   category: 'View',
+  aiInvocable: true,
+  aiDescription: 'Move the active view container to the bottom panel.',
   handler(ctx, viewId?: unknown) {
     if (typeof viewId !== 'string') {
       console.warn('[Command] view.moveToPanel requires a string viewId argument');
@@ -202,6 +222,8 @@ export const showSearchView: CommandDescriptor = {
   id: 'workbench.view.search',
   title: 'Search: Show Search',
   category: 'View',
+  aiInvocable: true,
+  aiDescription: 'Reveal the search view in the sidebar.',
   handler(ctx) {
     wb(ctx).showSidebarView('view.search');
   },
@@ -211,6 +233,8 @@ export const showExplorerView: CommandDescriptor = {
   id: 'workbench.view.explorer',
   title: 'Explorer: Show Explorer',
   category: 'View',
+  aiInvocable: true,
+  aiDescription: 'Reveal the file explorer view in the sidebar.',
   handler(ctx) {
     wb(ctx).showSidebarView('view.explorer');
   },

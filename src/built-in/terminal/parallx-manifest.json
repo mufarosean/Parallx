@@ -12,11 +12,15 @@
     "commands": [
       {
         "id": "terminal.clear",
-        "title": "Terminal: Clear"
+        "title": "Terminal: Clear",
+        "aiInvocable": true,
+        "aiDescription": "Clear the active terminal."
       },
       {
         "id": "terminal.restart",
-        "title": "Terminal: Restart Shell"
+        "title": "Terminal: Restart Shell",
+        "aiInvocable": true,
+        "aiDescription": "Restart the active terminal session."
       }
     ],
     "views": [

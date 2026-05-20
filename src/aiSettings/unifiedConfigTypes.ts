@@ -214,6 +214,13 @@ export interface IUnifiedIndexingConfig {
 export interface IUnifiedToolsConfig {
   /** Tool enablement overrides: { toolName: enabled } */
   readonly enabledOverrides: Readonly<Record<string, boolean>>;
+  /**
+   * M70 App Command Control — opt-in for the `app__find_commands` and
+   * `app__run_command` tools that let the AI act on the workbench command
+   * palette. Defaults to `false`; when off, the two tool schemas are NOT
+   * injected into the chat context (zero context window footprint).
+   */
+  readonly workbenchControlEnabled: boolean;
 }
 
 // ─── Heartbeat (M58 W2) ──────────────────────────────────────────────────────
@@ -528,6 +535,7 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
   },
   tools: {
     enabledOverrides: {},
+    workbenchControlEnabled: false, // M70: ships OFF; user opts in explicitly
   },
   heartbeat: {
     enabled: false, // M58 W2: non-negotiable default — user opts in explicitly

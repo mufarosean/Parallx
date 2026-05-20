@@ -1748,6 +1748,32 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       })));
       context.subscriptions.push(languageModelToolsService.registerTool(parallxLinkTool));
     }).catch(() => { /* tool module load failed — chat continues without it */ });
+
+    // M70 — App Command Control tools. Gated on
+    // tools.workbenchControlEnabled (default false). When the toggle is
+    // off the two tool schemas are NOT injected into the chat context, so
+    // there is zero context window footprint for users who don't opt in.
+    const _aiCfg = api.services.has(IUnifiedAIConfigService)
+      ? api.services.get<import('../../aiSettings/unifiedConfigTypes.js').IUnifiedAIConfigService>(IUnifiedAIConfigService)
+      : undefined;
+    const _workbenchControlEnabled = _aiCfg?.getEffectiveConfig().tools?.workbenchControlEnabled === true;
+    if (_workbenchControlEnabled) {
+      void Promise.all([
+        import('../../services/serviceTypes.js'),
+        import('./tools/appCommandTools.js'),
+      ]).then(([svcMod, toolMod]) => {
+        const _cmdSvc = api.services.has(svcMod.ICommandService)
+          ? api.services.get<import('../../services/serviceTypes.js').ICommandService>(svcMod.ICommandService)
+          : undefined;
+        if (!_cmdSvc) return;
+        context.subscriptions.push(
+          languageModelToolsService.registerTool(toolMod.createAppFindCommandsTool(_cmdSvc)),
+        );
+        context.subscriptions.push(
+          languageModelToolsService.registerTool(toolMod.createAppRunCommandTool(_cmdSvc)),
+        );
+      }).catch(() => { /* tool module load failed — chat continues without it */ });
+    }
   }
 
   // ── 3b. Register chat-owned surface plugins (M58 W6) ──

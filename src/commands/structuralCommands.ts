@@ -81,6 +81,8 @@ const layoutReset: CommandDescriptor = {
   id: 'layout.reset',
   title: 'Reset Layout to Defaults',
   category: 'Layout',
+  aiInvocable: true,
+  aiDescription: 'Restore the workbench layout to its default arrangement.',
   handler(ctx) {
     const w = wb(ctx);
     // Ensure sidebar, panel, aux bar are in default state
@@ -181,6 +183,8 @@ const selectColorTheme: CommandDescriptor = {
   title: 'Color Theme',
   category: 'Preferences',
   keybinding: 'Ctrl+T',
+  aiInvocable: true,
+  aiDescription: 'Open the color theme picker so the user can choose a theme.',
   handler(ctx) {
     wb(ctx).selectColorTheme();
   },
@@ -190,6 +194,8 @@ const openSettings: CommandDescriptor = {
   id: 'workbench.action.openSettings',
   title: 'Open Settings',
   category: 'Preferences',
+  aiInvocable: true,
+  aiDescription: 'Open the workspace settings editor.',
   // Keybinding is owned by the `parallx.settings` manifest binding `settings.open`
   // to `Ctrl+,`. This legacy id is kept as an alias so menus, the welcome card,
   // and any external command-palette muscle memory all route to the single,
@@ -207,6 +213,8 @@ const openKeybindings: CommandDescriptor = {
   title: 'Open Keyboard Shortcuts',
   category: 'Preferences',
   keybinding: 'Ctrl+K Ctrl+S',
+  aiInvocable: true,
+  aiDescription: 'Open the keyboard shortcuts editor.',
   async handler(ctx) {
     const editorService = ctx.getService<IEditorService>('IEditorService');
     if (!editorService) return;

@@ -54,6 +54,8 @@ export const focusNextPart: CommandDescriptor = {
   title: 'Focus Next Part',
   category: 'View',
   keybinding: 'F6',
+  aiInvocable: true,
+  aiDescription: 'Move keyboard focus to the next workbench part.',
   handler(ctx) {
     const w = wb(ctx);
     const current = getCurrentlyFocusedPart(w) ?? PartId.Editor;
@@ -67,6 +69,8 @@ export const focusPreviousPart: CommandDescriptor = {
   title: 'Focus Previous Part',
   category: 'View',
   keybinding: 'Shift+F6',
+  aiInvocable: true,
+  aiDescription: 'Move keyboard focus to the previous workbench part.',
   handler(ctx) {
     const w = wb(ctx);
     const current = getCurrentlyFocusedPart(w) ?? PartId.Editor;
@@ -80,6 +84,8 @@ export const focusFirstEditorGroup: CommandDescriptor = {
   title: 'Focus First Editor Group',
   category: 'View',
   keybinding: 'Ctrl+1',
+  aiInvocable: true,
+  aiDescription: 'Move focus to the first editor group.',
   handler(ctx) {
     wb(ctx).focusPart(PartId.Editor);
   },
@@ -90,6 +96,8 @@ export const focusSecondEditorGroup: CommandDescriptor = {
   title: 'Focus Second Editor Group',
   category: 'View',
   keybinding: 'Ctrl+2',
+  aiInvocable: true,
+  aiDescription: 'Move focus to the second editor group.',
   handler(ctx) {
     // When multi-group is implemented, this should focus group 2.
     // For now, focus the editor part.
@@ -102,6 +110,8 @@ export const focusThirdEditorGroup: CommandDescriptor = {
   title: 'Focus Third Editor Group',
   category: 'View',
   keybinding: 'Ctrl+3',
+  aiInvocable: true,
+  aiDescription: 'Move focus to the third editor group.',
   handler(ctx) {
     wb(ctx).focusPart(PartId.Editor);
   },
@@ -112,6 +122,8 @@ export const focusSideBar: CommandDescriptor = {
   title: 'Focus into Primary Side Bar',
   category: 'View',
   keybinding: 'Ctrl+0',
+  aiInvocable: true,
+  aiDescription: 'Move focus to the primary sidebar (showing it first if hidden).',
   handler(ctx) {
     const w = wb(ctx);
     // Show sidebar if hidden, then focus
@@ -127,6 +139,8 @@ export const focusPanel: CommandDescriptor = {
   title: 'Focus into Panel',
   category: 'View',
   keybinding: 'Ctrl+`',
+  aiInvocable: true,
+  aiDescription: 'Move focus to the bottom panel (showing it first if hidden).',
   handler(ctx) {
     const w = wb(ctx);
     // Show panel if hidden, then focus
@@ -141,6 +155,8 @@ export const focusActivityBar: CommandDescriptor = {
   id: 'workbench.action.focusActivityBar',
   title: 'Focus Activity Bar',
   category: 'View',
+  aiInvocable: true,
+  aiDescription: 'Move focus to the activity bar.',
   handler(ctx) {
     wb(ctx).focusPart(PartId.ActivityBar);
   },
@@ -150,6 +166,8 @@ export const focusStatusBar: CommandDescriptor = {
   id: 'workbench.action.focusStatusBar',
   title: 'Focus Status Bar',
   category: 'View',
+  aiInvocable: true,
+  aiDescription: 'Move focus to the status bar.',
   handler(ctx) {
     const w = wb(ctx);
     if (!w.isPartVisible(PartId.StatusBar)) return; // no-op if hidden

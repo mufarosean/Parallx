@@ -126,7 +126,11 @@ export class CommandContributionProcessor extends Disposable implements IContrib
       // Create a proxy handler that activates the tool on first invocation
       const proxyHandler = this._createProxyHandler(cmd.id, toolId);
 
-      // Build the full CommandDescriptor
+      // Build the full CommandDescriptor — pass through M70 AI annotations
+      // verbatim. The opt-in policy refuses commands without aiDescription,
+      // so an extension that sets aiInvocable without it will silently fail
+      // (logged in the policy layer). Belt-and-braces: the manifest schema
+      // already enforces presence in builtinManifests.ts validation.
       const descriptor: CommandDescriptor = {
         id: cmd.id,
         title: cmd.title,
@@ -134,6 +138,8 @@ export class CommandContributionProcessor extends Disposable implements IContrib
         icon: cmd.icon,
         keybinding: cmd.keybinding,
         when: cmd.when,
+        aiInvocable: cmd.aiInvocable,
+        aiDescription: cmd.aiDescription,
         handler: proxyHandler,
       };
 

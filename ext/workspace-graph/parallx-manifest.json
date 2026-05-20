@@ -15,9 +15,12 @@
   },
   "contributes": {
     "commands": [
-      { "id": "workspaceGraph.open", "title": "Workspace Graph: Open Full Graph" },
-      { "id": "workspaceGraph.refresh", "title": "Workspace Graph: Refresh" },
-      { "id": "workspaceGraph.rebuildConceptualLinks", "title": "Workspace Graph: Rebuild Conceptual Links" }
+      { "id": "workspaceGraph.open", "title": "Workspace Graph: Open Full Graph",
+        "aiInvocable": true, "aiDescription": "Open the workspace graph visualization." },
+      { "id": "workspaceGraph.refresh", "title": "Workspace Graph: Refresh",
+        "aiInvocable": true, "aiDescription": "Refresh the workspace graph data." },
+      { "id": "workspaceGraph.rebuildConceptualLinks", "title": "Workspace Graph: Rebuild Conceptual Links",
+        "aiInvocable": true, "aiDescription": "Recompute the semantic edges in the workspace graph." }
     ],
     "views": [
       {

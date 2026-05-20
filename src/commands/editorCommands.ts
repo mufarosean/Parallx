@@ -13,6 +13,8 @@ export const splitEditor: CommandDescriptor = {
   title: 'Split Editor Right',
   category: 'Editor',
   keybinding: 'Ctrl+\\',
+  aiInvocable: true,
+  aiDescription: 'Split the active editor into a second editor group beside it.',
   handler(ctx) {
     const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
     if (!editorGroupService) {
@@ -32,6 +34,8 @@ export const splitEditorOrthogonal: CommandDescriptor = {
   id: 'workbench.action.splitEditorOrthogonal',
   title: 'Split Editor Down',
   category: 'Editor',
+  aiInvocable: true,
+  aiDescription: 'Split the active editor in the perpendicular direction.',
   handler(ctx) {
     const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
     if (!editorGroupService) {
@@ -52,6 +56,8 @@ export const closeActiveEditor: CommandDescriptor = {
   title: 'Close Editor',
   category: 'Editor',
   keybinding: 'Ctrl+W',
+  aiInvocable: true,
+  aiDescription: 'Close the currently active editor tab.',
   async handler(ctx) {
     const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
     if (!editorGroupService) return;
@@ -69,6 +75,8 @@ export const nextEditor: CommandDescriptor = {
   title: 'Open Next Editor',
   category: 'Editor',
   keybinding: 'Ctrl+PageDown',
+  aiInvocable: true,
+  aiDescription: 'Switch focus to the next editor tab.',
   handler(ctx) {
     const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
     if (!editorGroupService) return;
@@ -84,6 +92,8 @@ export const previousEditor: CommandDescriptor = {
   title: 'Open Previous Editor',
   category: 'Editor',
   keybinding: 'Ctrl+PageUp',
+  aiInvocable: true,
+  aiDescription: 'Switch focus to the previous editor tab.',
   handler(ctx) {
     const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
     if (!editorGroupService) return;
@@ -108,6 +118,8 @@ export const markdownOpenPreviewToSide: CommandDescriptor = {
   title: 'Markdown: Open Preview to the Side',
   category: 'Markdown',
   keybinding: 'Ctrl+K V',
+  aiInvocable: true,
+  aiDescription: 'Open a rendered markdown preview alongside the source file.',
   async handler(ctx) {
     const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
     if (!editorGroupService) return;
@@ -139,6 +151,8 @@ export const markdownOpenPreview: CommandDescriptor = {
   id: 'markdown.showPreview',
   title: 'Markdown: Open Preview',
   category: 'Markdown',
+  aiInvocable: true,
+  aiDescription: 'Open a rendered preview of the active markdown file in place.',
   async handler(ctx) {
     const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
     if (!editorGroupService) return;
