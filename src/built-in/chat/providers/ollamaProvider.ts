@@ -194,13 +194,15 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
   private _modelFamilyCache = new Map<string, string>();
 
   /**
-   * Families whose `think:true` output loops on long contexts even when
-   * Ollama reports thinking capability. Gemma3 is the documented offender:
-   * the model has built-in chain-of-thought prompting that double-emits
-   * when Ollama's separate `think` channel is also enabled, and the
-   * repeat-detection logic doesn't catch it. Add new families here only
-   * after a reproducible regression report. Comparison is lowercase
-   * substring against `details.family`.
+   * Model families whose `think:true` output loops on long contexts even
+   * when Ollama reports thinking capability. Reproduced on Gemma4:24b
+   * (per user report); applies family-wide because the underlying CoT
+   * prompt is shared across Gemma releases — the model has built-in
+   * chain-of-thought prompting that double-emits when Ollama's separate
+   * `think` channel is also enabled, and the repeat-detection logic
+   * doesn't catch the duplication. Add new families here only after a
+   * reproducible regression report. Comparison is lowercase substring
+   * against the model id AND `details.family` — see `_isBuggyThinkModel`.
    */
   private static readonly _BUGGY_THINK_FAMILIES: readonly string[] = ['gemma'];
 
@@ -397,9 +399,9 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     // directly). Family-string sniffing is kept only as a fallback for
     // models whose Ollama version doesn't yet report it, and is restricted
     // to families known to have a stable thinking implementation —
-    // deepseek-r1 and QwQ. Models like Gemma3 in newer Ollama builds
-    // started honoring `think:true` but produce thought-loops in long
-    // contexts, so we no longer infer thinking from arbitrary families.
+    // deepseek-r1 and QwQ. The Gemma family in newer Ollama builds started
+    // honoring `think:true` but produces thought-loops in long contexts,
+    // so we no longer infer thinking from arbitrary families.
     const familyLower = response.details.family.toLowerCase();
     if (
       response.capabilities?.includes('thinking') ||
