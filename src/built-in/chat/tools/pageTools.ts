@@ -444,14 +444,29 @@ export function createSetPagePropertyTool(db: IBuiltInToolDatabase | undefined):
   return {
     name: 'set_page_property',
     displaySummary: 'Set a property on a page.',
-    description: 'Set a property value on a canvas page. Creates the property definition automatically if it doesn\'t exist.',
+    description:
+      'Set a property value on a canvas page. Creates the property definition automatically if it doesn\'t exist. ' +
+      'Value shape by property kind: text → string, number → number, checkbox → boolean, ' +
+      'tags / multi-select → JSON array of strings (e.g. ["Journal","Daily"]). ' +
+      'For tags pass a real JSON array, NOT a stringified array like "[\\"a\\",\\"b\\"]".',
     parameters: {
       type: 'object',
       required: ['pageId', 'propertyName', 'value'],
       properties: {
-        pageId: { type: 'string', description: 'The page UUID' },
-        propertyName: { type: 'string', description: 'The property name' },
-        value: { description: 'The property value (string, number, boolean, or array)' },
+        pageId: { type: 'string', description: 'The page UUID.' },
+        propertyName: { type: 'string', description: 'The property name (e.g. "tags", "status", "priority").' },
+        value: {
+          description:
+            'The property value. Pass the native JSON type matching the property kind: ' +
+            'string for text, number for number, boolean for checkbox, ' +
+            'array of strings for tags / multi-select (e.g. ["Journal","Daily"] — not "[\\"Journal\\",\\"Daily\\"]").',
+          oneOf: [
+            { type: 'string' },
+            { type: 'number' },
+            { type: 'boolean' },
+            { type: 'array', items: { type: 'string' } },
+          ],
+        },
       },
     },
     requiresConfirmation: true,
@@ -460,11 +475,24 @@ export function createSetPagePropertyTool(db: IBuiltInToolDatabase | undefined):
       requireDb(db);
       const pageId = String(args['pageId'] || '');
       const propertyName = String(args['propertyName'] || '').trim();
-      const value = args['value'];
+      let value = args['value'];
 
       if (!pageId) { return { content: 'pageId is required', isError: true }; }
       if (!propertyName) { return { content: 'propertyName is required', isError: true }; }
       if (value === undefined) { return { content: 'value is required', isError: true }; }
+
+      // Safety net for small local models that stringify a JSON array instead of
+      // passing it natively. A string that fully parses to a JSON array is never
+      // a legitimate text value — recover it as the array the model meant.
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (Array.isArray(parsed)) { value = parsed; }
+          } catch { /* keep original string */ }
+        }
+      }
 
       // Check page exists
       const page = await db!.get<{ id: string; title: string }>(

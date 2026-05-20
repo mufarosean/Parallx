@@ -912,6 +912,41 @@ describe('set_page_property tool', () => {
     expect(defCall[1]).toEqual(expect.arrayContaining(['labels', 'tags']));
   });
 
+  it('recovers a stringified JSON array as tags (small-model safety net)', async () => {
+    (db.get as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ id: 'p1', title: 'My Page' })
+      .mockResolvedValueOnce(undefined);
+
+    await tool.handler(
+      { pageId: 'p1', propertyName: 'tags', value: '["Journal", "Daily", "San Antonio"]' },
+      createToken(),
+    );
+
+    const defCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(defCall[1]).toEqual(expect.arrayContaining(['tags', 'tags']));
+
+    const propCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[1];
+    expect(propCall[0]).toContain('INSERT INTO page_properties');
+    // Stored value must be the JSON array, not a JSON-encoded string of the array.
+    expect(propCall[1]).toEqual(
+      expect.arrayContaining(['p1', 'tags', 'tags', '["Journal","Daily","San Antonio"]']),
+    );
+  });
+
+  it('keeps a literal "[...]" string when contents are not valid JSON', async () => {
+    (db.get as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ id: 'p1', title: 'My Page' })
+      .mockResolvedValueOnce(undefined);
+
+    await tool.handler(
+      { pageId: 'p1', propertyName: 'note', value: '[wip]' },
+      createToken(),
+    );
+
+    const defCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(defCall[1]).toEqual(expect.arrayContaining(['note', 'text']));
+  });
+
   it('returns error for missing pageId', async () => {
     const result = await tool.handler({ propertyName: 'x', value: 1 }, createToken());
     expect(result.isError).toBe(true);
