@@ -309,6 +309,20 @@ const SCHEMAS: readonly IBoundSchema[] = ([
     write: (v) => ({ agent: { maxIterations: v as number } }),
   } as IBoundSchema<number>,
 
+  // ── Tools (M70 App Command Control) ──
+  {
+    schema: {
+      key: 'tools.workbenchControl',
+      type: 'boolean',
+      default: false,
+      scope: 'workspace',
+      description: 'Let the AI run Parallx app commands — switching themes, toggling views, opening panels, etc. When off, the underlying tools aren’t injected into the chat context at all.',
+      category: 'Tools',
+    },
+    read: (c) => c.tools.workbenchControlEnabled,
+    write: (v) => ({ tools: { workbenchControlEnabled: v as boolean } }),
+  } as IBoundSchema<boolean>,
+
   // ── Heartbeat (extra knobs beyond intervalMs already registered) ──
   {
     schema: {
