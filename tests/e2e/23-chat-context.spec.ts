@@ -301,9 +301,9 @@ test.describe('Chat Context Integration', () => {
     // Tool definitions are carried on the request payload itself, not in the system prompt.
     expect(Array.isArray(lastReq.tools)).toBe(true);
     const toolNames = lastReq.tools.map((t: any) => t.function?.name);
-    expect(toolNames).toContain('read_page');
-    expect(toolNames).toContain('find_pages');
-    expect(toolNames).toContain('get_page');
+    expect(toolNames).toContain('canvas_read_page');
+    expect(toolNames).toContain('canvas_find_pages');
+    expect(toolNames).toContain('canvas_get_page');
   });
 
   test('system prompt mentions implicit context behavior', async ({ window }) => {

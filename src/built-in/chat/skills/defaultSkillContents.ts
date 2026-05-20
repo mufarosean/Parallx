@@ -517,7 +517,7 @@ Before writing any draft, ensure the Research Hub page exists:
    - Ask the user: *"I'll create a Research Hub page to collect your
      research drafts. Use the default title 'Research Hub', or pick a
      different one?"*
-   - Call \`create_page\` with the chosen title and \`parent_id: null\`.
+   - Call \`canvas_create_page\` with the chosen title and \`parent_id: null\`.
    - Call \`setResearchHub\` with the returned page id and title.
    - Call \`logResearchEvent\` with \`{kind: "hub-create", hubPageId, ...}\`.
 3. If non-null, reuse the existing Hub page id for the draft's parent.
@@ -581,7 +581,7 @@ Flag contradictions prominently.>
 <Bullets the sources did NOT answer.>
 \`\`\`
 
-Then call \`create_page\` with:
+Then call \`canvas_create_page\` with:
 - \`title\`: the topic restated.
 - \`parent_id\`: the Hub page id from Step 2.
 - \`markdown\`: the body above.

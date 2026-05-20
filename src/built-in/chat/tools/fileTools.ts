@@ -87,8 +87,8 @@ async function buildWorkspaceTree(fs: IBuiltInToolFileSystem): Promise<string> {
 export function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
     name: 'list_files',
-    displaySummary: 'List files at a workspace path.',
-    description: 'List files and directories at a workspace path.',
+    displaySummary: 'List files / directories on disk.',
+    description: 'List files and directories on disk at a workspace path. Operates on the filesystem only — for canvas pages use `canvas_find_pages` instead.',
     parameters: {
       type: 'object',
       properties: {
@@ -125,8 +125,8 @@ export function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): ICh
 export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
     name: 'read_file',
-    displaySummary: 'Read a workspace file.',
-    description: 'Read a workspace file. Supports text and rich documents (PDF, DOCX, EPUB, XLSX). Use start_line/end_line for a range.',
+    displaySummary: 'Read a workspace file on disk.',
+    description: 'Read a workspace FILE on disk (.md, .txt, code, PDF, DOCX, EPUB, XLSX). Use start_line/end_line for a range. For canvas pages (the canvas page DB) use `canvas_read_page` instead — paths and page titles are distinct.',
     parameters: {
       type: 'object',
       required: ['path'],
@@ -203,8 +203,8 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
 export function createSearchFilesTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
     name: 'search_files',
-    displaySummary: 'Find files by name pattern.',
-    description: 'Find files by name pattern (case-insensitive substring).',
+    displaySummary: 'Find files on disk by name pattern.',
+    description: 'Find files on disk by name pattern (case-insensitive substring). Operates on the filesystem only — for canvas pages use `canvas_find_pages` instead.',
     parameters: {
       type: 'object',
       required: ['pattern'],
@@ -248,8 +248,8 @@ export function createSearchFilesTool(fs: IBuiltInToolFileSystem | undefined): I
 export function createGrepSearchTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
     name: 'grep_search',
-    displaySummary: 'Search file contents by pattern.',
-    description: 'Search file contents by text or regex pattern.',
+    displaySummary: 'Search file contents on disk by pattern.',
+    description: 'Search file contents on disk by text or regex pattern. Operates on the filesystem only — for canvas page contents use `canvas_find_pages` (it matches both titles and body text).',
     parameters: {
       type: 'object',
       required: ['pattern'],
@@ -460,8 +460,8 @@ function formatSize(bytes: number): string {
 export function createSearchKnowledgeTool(retrieval: IBuiltInToolRetrieval | undefined): IChatTool {
   return {
     name: 'search_knowledge',
-    displaySummary: 'Semantic search across indexed content.',
-    description: 'Semantic search across indexed pages, files, and documents (PDF, DOCX, EPUB, XLSX).',
+    displaySummary: 'Semantic search across pages AND files.',
+    description: 'Semantic (vector) search across BOTH canvas pages and workspace files — including rich documents (PDF, DOCX, EPUB, XLSX). Use `source_filter` to scope to one surface: `page_block` for canvas-only, `file_chunk` for filesystem-only, omit for both.',
     parameters: {
       type: 'object',
       required: ['query'],

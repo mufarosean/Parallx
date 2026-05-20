@@ -39,7 +39,7 @@
   "expected": {
     "toolCalls": [
       { "name": "gmail.list_unread", "atLeast": 1 },
-      { "name": "create_page",       "atLeast": 1 }
+      { "name": "canvas_create_page", "atLeast": 1 }
     ],
     "surfaceRoutes": [
       { "kind": "notification" },

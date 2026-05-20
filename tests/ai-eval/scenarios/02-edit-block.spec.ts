@@ -40,10 +40,10 @@ test('edits a single block by id without clobbering siblings', async ({ window, 
   await autoApprovePending(window);
 
   const calls = recorder.getToolCalls();
-  const editBlockCalls = calls.filter(c => c.name === 'edit_block' || c.name === 'pages.edit_block');
+  const editBlockCalls = calls.filter(c => c.name === 'canvas_edit_block' || c.name === 'edit_block' || c.name === 'pages.edit_block');
   const writePageCalls = calls.filter(c => c.name === 'write_page' || c.name === 'pages.write_page');
-  const readPageBefore = calls.findIndex(c => c.name === 'read_page' || c.name === 'pages.read_page');
-  const firstEditAt = calls.findIndex(c => c.name === 'edit_block' || c.name === 'pages.edit_block');
+  const readPageBefore = calls.findIndex(c => c.name === 'canvas_read_page' || c.name === 'read_page' || c.name === 'pages.read_page');
+  const firstEditAt = calls.findIndex(c => c.name === 'canvas_edit_block' || c.name === 'edit_block' || c.name === 'pages.edit_block');
   const readBeforeEdit = readPageBefore >= 0 && (firstEditAt < 0 || readPageBefore < firstEditAt);
 
   const finalBlocks = await getCurrentPageBlocks(window);

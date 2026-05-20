@@ -76,9 +76,9 @@ async function persistDoc(
 
 export function createReadBlockTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
-    name: 'read_block',
-    displaySummary: 'Read a single block by id.',
-    description: 'Read a block by blockId. Returns block JSON and plaintext.',
+    name: 'canvas_read_block',
+    displaySummary: 'Read a single block from a canvas page.',
+    description: 'Read a single block from a CANVAS PAGE by blockId. Returns block JSON and plaintext. Operates on the canvas page DB only.',
     parameters: {
       type: 'object',
       required: ['pageId', 'blockId'],
@@ -121,9 +121,9 @@ export function createEditBlockTool(
   notifyPageMutated?: PageMutationNotifier,
 ): IChatTool {
   return {
-    name: 'edit_block',
-    displaySummary: 'Replace a block\'s content (approval).',
-    description: 'Replace a block\'s plain text content.',
+    name: 'canvas_edit_block',
+    displaySummary: 'Replace a block on a canvas page (approval).',
+    description: 'Replace the plain-text content of a single block inside a CANVAS PAGE. Operates on the canvas page DB. For file edits use `edit_file`.',
     parameters: {
       type: 'object',
       required: ['pageId', 'blockId', 'newContent'],
@@ -175,9 +175,9 @@ export function createInsertBlockAfterTool(
   notifyPageMutated?: PageMutationNotifier,
 ): IChatTool {
   return {
-    name: 'insert_block_after',
-    displaySummary: 'Insert a new block after an anchor (approval).',
-    description: 'Insert a paragraph block after anchorBlockId. Returns the new blockId.',
+    name: 'canvas_insert_block_after',
+    displaySummary: 'Insert a block into a canvas page (approval).',
+    description: 'Insert a new paragraph block into a CANVAS PAGE, immediately after anchorBlockId. Returns the new blockId. Operates on the canvas page DB.',
     parameters: {
       type: 'object',
       required: ['pageId', 'anchorBlockId', 'content'],
@@ -232,9 +232,9 @@ export function createLinkBlockTool(
   notifyPageMutated?: PageMutationNotifier,
 ): IChatTool {
   return {
-    name: 'link_block',
-    displaySummary: 'Cross-link two blocks (approval).',
-    description: 'Append a cross-reference link inside a block.',
+    name: 'canvas_link_block',
+    displaySummary: 'Cross-link two canvas blocks (approval).',
+    description: 'Append a cross-reference link from one CANVAS PAGE block to another. Operates on the canvas page DB.',
     parameters: {
       type: 'object',
       required: ['fromPageId', 'fromBlockId', 'toPageId', 'toBlockId'],
@@ -316,8 +316,8 @@ export function createBlockTools(
 /** Stable list of tool names registered by createBlockTools — used by
  * tests and documentation to detect drift. */
 export const BLOCK_TOOL_NAMES = [
-  'read_block',
-  'edit_block',
-  'insert_block_after',
-  'link_block',
+  'canvas_read_block',
+  'canvas_edit_block',
+  'canvas_insert_block_after',
+  'canvas_link_block',
 ] as const;

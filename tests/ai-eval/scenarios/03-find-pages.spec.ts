@@ -61,7 +61,7 @@ test('finds the right page among several candidates', async ({ window, electronA
   const calls = recorder.getToolCalls();
   const searchCalls = calls.filter(c => c.name === 'search_workspace' || c.name === 'pages.search_workspace');
   const listCalls = calls.filter(c => c.name === 'list_pages' || c.name === 'pages.list_pages');
-  const readCalls = calls.filter(c => c.name === 'read_page' || c.name === 'pages.read_page');
+  const readCalls = calls.filter(c => c.name === 'canvas_read_page' || c.name === 'read_page' || c.name === 'pages.read_page');
   const readEspresso = readCalls.some(c => {
     const pid = (c.arguments as any).pageId ?? (c.arguments as any).page_id ?? (c.arguments as any).id;
     return typeof pid === 'string' && /espresso/i.test(pid);

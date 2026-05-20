@@ -239,7 +239,7 @@ describe('read_page tool with pageId=current (end-to-end with fake data)', () =>
     const getCurrentPageId = () => 'uuid-page-1';
     registerBuiltInTools(toolsService, db, undefined, getCurrentPageId);
 
-    const tool = getTool('read_page', toolsService);
+    const tool = getTool('canvas_read_page', toolsService);
     const result = await tool.handler({ pageId: 'current' }, createToken());
 
     expect(result.isError).toBeFalsy();
@@ -255,7 +255,7 @@ describe('read_page tool with pageId=current (end-to-end with fake data)', () =>
     const getCurrentPageId = () => 'parallx.canvas:canvas:uuid-page-1';
     registerBuiltInTools(toolsService, db, undefined, getCurrentPageId);
 
-    const tool = getTool('read_page', toolsService);
+    const tool = getTool('canvas_read_page', toolsService);
     const result = await tool.handler({ pageId: 'current' }, createToken());
 
     // The full editor ID does NOT match pages.id — query returns nothing
@@ -269,7 +269,7 @@ describe('read_page tool with pageId=current (end-to-end with fake data)', () =>
     const getCurrentPageId = () => undefined;
     registerBuiltInTools(toolsService, db, undefined, getCurrentPageId);
 
-    const tool = getTool('read_page', toolsService);
+    const tool = getTool('canvas_read_page', toolsService);
     const result = await tool.handler({ pageId: 'current' }, createToken());
 
     expect(result.isError).toBe(true);
@@ -282,7 +282,7 @@ describe('read_page tool with pageId=current (end-to-end with fake data)', () =>
     const getCurrentPageId = () => 'uuid-page-3';
     registerBuiltInTools(toolsService, db, undefined, getCurrentPageId);
 
-    const tool = getTool('read_page', toolsService);
+    const tool = getTool('canvas_read_page', toolsService);
     const result = await tool.handler({ pageId: 'current' }, createToken());
 
     expect(result.isError).toBeFalsy();
@@ -302,7 +302,7 @@ describe('read_page tool (3-level fallback with fake data)', () => {
     const db = createRealisticDb();
     const toolsService = createMockToolsService();
     registerBuiltInTools(toolsService, db);
-    return getTool('read_page', toolsService);
+    return getTool('canvas_read_page', toolsService);
   }
 
   it('reads page by exact UUID', async () => {
@@ -338,7 +338,7 @@ describe('read_page tool (3-level fallback with fake data)', () => {
 
     expect(result.isError).toBe(true);
     expect(result.content).toContain('not found');
-    expect(result.content).toContain('find_pages');
+    expect(result.content).toContain('canvas_find_pages');
   });
 
   it('prefers UUID match over title match', async () => {

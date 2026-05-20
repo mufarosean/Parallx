@@ -329,7 +329,7 @@ describe('buildToolSummariesSection', () => {
     // Files`, etc. The old groupings were a Parallx-only invention that
     // bloated the prompt and confused small models.
     const tools: IToolSummary[] = [
-      { name: 'read_page', description: 'Read a canvas page' },
+      { name: 'canvas_read_page', description: 'Read a canvas page' },
       { name: 'list_files', description: 'List workspace files' },
       { name: 'memory_get', description: 'Read memory' },
       { name: 'mcp__github__create_issue', description: 'Create a GitHub issue' },

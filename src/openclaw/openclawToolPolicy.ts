@@ -79,9 +79,11 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
     allow: [
       // Workspace files (read-only)
       'list_files', 'read_file', 'search_files', 'grep_search',
-      // Canvas pages (read-only)
-      'find_pages', 'read_page', 'get_page',
-      'list_property_definitions', 'read_block',
+      // Canvas pages (read-only) — canvas_* prefix per Parallx tool-namespace
+      // convention so filesystem and canvas tools never collide in the model's
+      // attention.
+      'canvas_find_pages', 'canvas_read_page', 'canvas_get_page',
+      'canvas_list_property_definitions', 'canvas_read_block',
       // Knowledge & memory & transcripts (read-only)
       'search_knowledge', 'memory_get', 'memory_search',
       'transcript_get', 'transcript_search',
@@ -98,16 +100,16 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
     allow: [
       // All of readonly:
       'list_files', 'read_file', 'search_files', 'grep_search',
-      'find_pages', 'read_page', 'get_page',
-      'list_property_definitions', 'read_block',
+      'canvas_find_pages', 'canvas_read_page', 'canvas_get_page',
+      'canvas_list_property_definitions', 'canvas_read_block',
       'search_knowledge', 'memory_get', 'memory_search',
       'transcript_get', 'transcript_search',
       'cron_status', 'cron_list', 'cron_runs', 'surface_list',
       'autonomy_log',
       // Safe writes:
       'write_file', 'edit_file',
-      'create_page', 'compose_page', 'set_page_property', 'set_page_style',
-      'edit_block', 'insert_block_after', 'link_block',
+      'canvas_create_page', 'canvas_compose_page', 'canvas_set_page_property', 'canvas_set_page_style',
+      'canvas_edit_block', 'canvas_insert_block_after', 'canvas_link_block',
     ],
     deny: [],
   },
@@ -434,14 +436,14 @@ const BLUE_TOOLS: ReadonlySet<string> = new Set<string>([
   'delete_file',
   // Shell execution — destructive, irreversible side effects
   'run_command',
-  // Canvas page writes
-  'create_page',
-  'compose_page',
-  'set_page_property',
-  'set_page_style',
-  'edit_block',
-  'insert_block_after',
-  'link_block',
+  // Canvas page writes (canvas_* prefix per Parallx tool-namespace convention)
+  'canvas_create_page',
+  'canvas_compose_page',
+  'canvas_set_page_property',
+  'canvas_set_page_style',
+  'canvas_edit_block',
+  'canvas_insert_block_after',
+  'canvas_link_block',
   // Surface send (filesystem / canvas already approval-gated at surface
   // policy; listed here so post-red the gate fires even for surfaces that
   // are otherwise auto-allowed).

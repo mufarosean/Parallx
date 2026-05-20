@@ -52,8 +52,8 @@ describe('research-topic default skill (M65 Iter 3)', () => {
     expect(body!).toContain('logResearchEvent');
   });
 
-  it('references create_page for Hub + draft creation', () => {
-    expect(body!).toContain('create_page');
+  it('references canvas_create_page for Hub + draft creation', () => {
+    expect(body!).toContain('canvas_create_page');
   });
 
   it('states the per-turn budget caps so the LLM plans accordingly', () => {

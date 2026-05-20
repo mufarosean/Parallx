@@ -130,7 +130,7 @@ describe('read_block / edit_block / insert_block_after / link_block', () => {
   });
 
   it('read_block returns the block JSON and plaintext', async () => {
-    const tool = tools.find(t => t.name === 'read_block')!;
+    const tool = tools.find(t => t.name === 'canvas_read_block')!;
     const result = await tool.handler({ pageId: 'p1', blockId: 'a2' }, token());
     expect(result.isError).toBeFalsy();
     expect(result.content).toContain('a2');
@@ -139,13 +139,13 @@ describe('read_block / edit_block / insert_block_after / link_block', () => {
   });
 
   it('read_block errors when block missing', async () => {
-    const tool = tools.find(t => t.name === 'read_block')!;
+    const tool = tools.find(t => t.name === 'canvas_read_block')!;
     const result = await tool.handler({ pageId: 'p1', blockId: 'nope' }, token());
     expect(result.isError).toBe(true);
   });
 
   it('edit_block replaces content, bumps revision, preserves blockId', async () => {
-    const tool = tools.find(t => t.name === 'edit_block')!;
+    const tool = tools.find(t => t.name === 'canvas_edit_block')!;
     const before = pages[0]!.revision;
     const result = await tool.handler(
       { pageId: 'p1', blockId: 'a2', newContent: 'rewritten', idempotencyKey: 'k1' },
@@ -164,7 +164,7 @@ describe('read_block / edit_block / insert_block_after / link_block', () => {
   });
 
   it('insert_block_after inserts a new block with a fresh id', async () => {
-    const tool = tools.find(t => t.name === 'insert_block_after')!;
+    const tool = tools.find(t => t.name === 'canvas_insert_block_after')!;
     const result = await tool.handler(
       { pageId: 'p1', anchorBlockId: 'a1', content: 'inserted' },
       token(),
@@ -181,7 +181,7 @@ describe('read_block / edit_block / insert_block_after / link_block', () => {
   });
 
   it('link_block creates a link paragraph after the source block', async () => {
-    const tool = tools.find(t => t.name === 'link_block')!;
+    const tool = tools.find(t => t.name === 'canvas_link_block')!;
     const result = await tool.handler(
       { fromPageId: 'p1', fromBlockId: 'a1', toPageId: 'p2', toBlockId: 't1', label: 'See target' },
       token(),
@@ -195,7 +195,7 @@ describe('read_block / edit_block / insert_block_after / link_block', () => {
   });
 
   it('link_block errors when target block missing', async () => {
-    const tool = tools.find(t => t.name === 'link_block')!;
+    const tool = tools.find(t => t.name === 'canvas_link_block')!;
     const result = await tool.handler(
       { fromPageId: 'p1', fromBlockId: 'a1', toPageId: 'p2', toBlockId: 'nope' },
       token(),

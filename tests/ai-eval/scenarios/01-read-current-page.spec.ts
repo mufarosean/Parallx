@@ -41,7 +41,7 @@ test('reads the current page when asked about "this page"', async ({ window, ele
   // ── Grade ──
   const calls = recorder.getToolCalls();
   const firstCall = calls[0];
-  const readPageCalls = calls.filter(c => c.name === 'read_page' || c.name === 'pages.read_page');
+  const readPageCalls = calls.filter(c => c.name === 'canvas_read_page' || c.name === 'read_page' || c.name === 'pages.read_page');
   const usedCurrent = readPageCalls.some(c => {
     const pid = (c.arguments as any).pageId ?? (c.arguments as any).page_id ?? (c.arguments as any).id;
     return typeof pid === 'string' && pid.toLowerCase() === 'current';
@@ -56,7 +56,7 @@ test('reads the current page when asked about "this page"', async ({ window, ele
     {
       id: 'tool.selected',
       max: 2,
-      score: firstCall?.name === 'read_page' ? 2 : (firstCall?.name === 'pages.read_page' ? 2 : 0),
+      score: (firstCall?.name === 'canvas_read_page' || firstCall?.name === 'read_page' || firstCall?.name === 'pages.read_page') ? 2 : 0,
       note: firstCall ? `first tool = ${firstCall.name}` : 'no tool calls emitted',
     },
     {
@@ -84,7 +84,7 @@ test('reads the current page when asked about "this page"', async ({ window, ele
 
   const confusion: string[] = [];
   if (!firstCall) confusion.push('Model answered with NO tool call — likely hallucinated. Either tool descriptions are unclear, or model lacks tool-use training for this task.');
-  if (firstCall && firstCall.name !== 'read_page' && firstCall.name !== 'pages.read_page') confusion.push(`Wrong first tool: ${firstCall.name}. Expected read_page. Check TOOLS.md §1 phrasing.`);
+  if (firstCall && firstCall.name !== 'canvas_read_page' && firstCall.name !== 'read_page' && firstCall.name !== 'pages.read_page') confusion.push(`Wrong first tool: ${firstCall.name}. Expected canvas_read_page. Check TOOLS.md §Canvas Skills phrasing.`);
   if (firstCall && !usedCurrent && usedTitleLookup) confusion.push('Model looked up the page by title instead of using pageId="current". The "this page" → current mapping in TOOLS.md may not be salient.');
   if (calls.length > 2) confusion.push(`Used ${calls.length} tool calls for a one-shot read. Likely a confusion between read_page / list_pages / search_workspace.`);
 

@@ -45,11 +45,14 @@ function generateId(): string {
  */
 export function createFindPagesTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
-    name: 'find_pages',
-    displaySummary: 'Find or list workspace pages.',
+    name: 'canvas_find_pages',
+    displaySummary: 'Find or list canvas pages.',
     description:
-      'Find pages by text query, property filters, or both. No args lists recent pages. ' +
-      'filter ops: equals, not_equals, contains, is_empty, is_not_empty, greater_than, less_than.',
+      'Find pages in the canvas page DB by text query, property filters, or both. ' +
+      'No args lists recent pages. filter ops: equals, not_equals, contains, is_empty, ' +
+      'is_not_empty, greater_than, less_than. NOTE: this searches CANVAS PAGES only, not ' +
+      'files on disk — use `search_files` or `grep_search` to find files in the workspace ' +
+      'filesystem.',
     parameters: {
       type: 'object',
       properties: {
@@ -215,10 +218,13 @@ export function createReadPageTool(
   getCurrentPageId?: CurrentPageIdGetter,
 ): IChatTool {
   return {
-    name: 'read_page',
-    displaySummary: 'Read a page by id, title, or "current".',
+    name: 'canvas_read_page',
+    displaySummary: 'Read a canvas page by id, title, or "current".',
     description:
-      'Read the full content of a page. `pageId` accepts a UUID, a page title (case-insensitive match), or the literal "current" to read the page the user has open in the editor.',
+      'Read the full content of a CANVAS PAGE (page DB, not the filesystem). `pageId` ' +
+      'accepts a UUID, a page title (case-insensitive match), or the literal "current" to ' +
+      'read the page the user has open in the editor. NOTE: this reads canvas pages only — ' +
+      'use `read_file` for files on disk.',
     parameters: {
       type: 'object',
       required: ['pageId'],
@@ -275,7 +281,7 @@ export function createReadPageTool(
       }
 
       if (!page) {
-        return { content: `Page "${identifier}" not found. Use find_pages to see available pages.`, isError: true };
+        return { content: `Page "${identifier}" not found. Use canvas_find_pages to see available pages.`, isError: true };
       }
 
       const text = extractTextContent(page.content);
@@ -294,9 +300,9 @@ export function createReadPageTool(
  */
 export function createGetPageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
-    name: 'get_page',
-    displaySummary: 'Get page metadata, properties, and applicable definitions.',
-    description: 'Get page metadata, properties, and applicable property definitions.',
+    name: 'canvas_get_page',
+    displaySummary: 'Get canvas page metadata, properties, and definitions.',
+    description: 'Get a CANVAS PAGE\'s metadata, properties, and applicable property definitions. Operates on the canvas page DB; for files on disk see `read_file`.',
     parameters: {
       type: 'object',
       required: ['pageId'],
@@ -397,9 +403,9 @@ function formatPropertyValue(raw: string, _type: string): string {
 
 export function createListPropertyDefinitionsTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
-    name: 'list_property_definitions',
-    displaySummary: 'List workspace property definitions.',
-    description: 'List workspace property definitions.',
+    name: 'canvas_list_property_definitions',
+    displaySummary: 'List canvas property definitions.',
+    description: 'List the property definitions registered for CANVAS PAGES in this workspace (page properties like tags, status, dates). Operates on the canvas page DB only.',
     parameters: {
       type: 'object',
       properties: {},
@@ -442,10 +448,11 @@ export function createListPropertyDefinitionsTool(db: IBuiltInToolDatabase | und
 
 export function createSetPagePropertyTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
-    name: 'set_page_property',
-    displaySummary: 'Set a property on a page.',
+    name: 'canvas_set_page_property',
+    displaySummary: 'Set a property on a canvas page.',
     description:
-      'Set a property value on a canvas page. Creates the property definition automatically if it doesn\'t exist. ' +
+      'Set a property value on a CANVAS PAGE. Creates the property definition automatically if it doesn\'t exist. ' +
+      'Operates on the canvas page DB only — this is NOT for editing filesystem files. ' +
       'Value shape by property kind: text → string, number → number, checkbox → boolean, ' +
       'tags / multi-select → JSON array of strings (e.g. ["Journal","Daily"]). ' +
       'For tags pass a real JSON array, NOT a stringified array like "[\\"a\\",\\"b\\"]".',
@@ -547,9 +554,9 @@ export function createCreatePageTool(
   notifyPageMutated?: PageMutationNotifier,
 ): IChatTool {
   return {
-    name: 'create_page',
-    displaySummary: 'Create a new workspace page.',
-    description: 'Create a canvas page. Use markdown for structured body.',
+    name: 'canvas_create_page',
+    displaySummary: 'Create a new canvas page.',
+    description: 'Create a CANVAS PAGE (in the canvas page DB). Use markdown for structured body. For files on disk (.md, .txt, code, etc.) use `write_file` instead.',
     parameters: {
       type: 'object',
       required: ['title'],
@@ -635,9 +642,9 @@ export function createComposePageTool(
   notifyPageMutated?: PageMutationNotifier,
 ): IChatTool {
   return {
-    name: 'compose_page',
-    displaySummary: 'Compose a page from markdown.',
-    description: 'Write or update a canvas page from markdown. mode: replace (default), append, or prepend.',
+    name: 'canvas_compose_page',
+    displaySummary: 'Write or update a canvas page from markdown.',
+    description: 'Write or update a CANVAS PAGE (in the canvas page DB) from markdown. mode: replace (default), append, or prepend. For files on disk use `write_file` or `edit_file` instead.',
     parameters: {
       type: 'object',
       required: ['pageId', 'markdown'],
@@ -734,9 +741,9 @@ export function createSetPageStyleTool(
   notifyPageMutated?: PageMutationNotifier,
 ): IChatTool {
   return {
-    name: 'set_page_style',
-    displaySummary: 'Update a page\'s style (icon, cover, font, width).',
-    description: 'Update page display settings (icon, cover, font, width, text size). Omit unchanged fields.',
+    name: 'canvas_set_page_style',
+    displaySummary: 'Update a canvas page\'s style (icon, cover, font, width).',
+    description: 'Update a CANVAS PAGE\'s display settings (icon, cover image, font family, full-width, small-text). Operates on the canvas page DB. Omit unchanged fields. The `coverUrl` field accepts http(s) URLs, data: URLs, or a workspace-relative path (e.g. "Skills/CoverImages/foo.png") — local paths are read into the page automatically.',
     parameters: {
       type: 'object',
       required: ['pageId', 'style'],

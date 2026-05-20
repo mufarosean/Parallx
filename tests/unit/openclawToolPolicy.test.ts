@@ -58,16 +58,16 @@ describe('applyOpenclawToolPolicy', () => {
   it('readonly profile excludes write/edit/delete/run/create (allowlist semantics)', () => {
     // M65 parity fix: profiles are now allowlists, not deny-lists.
     // `read_file` is on the readonly allow list; `write_file`, `edit_file`,
-    // `delete_file`, `run_command`, `create_page` are not — they are excluded
-    // by absence from the allowlist (mirrors upstream tool-policy-shared.ts).
-    // A bare `search` name is also excluded (not on the allowlist).
+    // `delete_file`, `run_command`, `canvas_create_page` are not — they are
+    // excluded by absence from the allowlist (mirrors upstream
+    // tool-policy-shared.ts). A bare `search` name is also excluded.
     const tools = [
       tool('read_file'), tool('write_file'), tool('edit_file'),
-      tool('delete_file'), tool('run_command'), tool('create_page'),
-      tool('find_pages'),
+      tool('delete_file'), tool('run_command'), tool('canvas_create_page'),
+      tool('canvas_find_pages'),
     ];
     const result = applyOpenclawToolPolicy({ tools, mode: 'readonly' });
-    expect(result.map(t => t.name)).toEqual(['read_file', 'find_pages']);
+    expect(result.map(t => t.name)).toEqual(['read_file', 'canvas_find_pages']);
   });
 
   it('returns empty array for empty input', () => {
@@ -194,13 +194,13 @@ describe('isToolDeniedByProfile', () => {
     expect(isToolDeniedByProfile('edit_file', 'readonly')).toBe(true);
     expect(isToolDeniedByProfile('delete_file', 'readonly')).toBe(true);
     expect(isToolDeniedByProfile('run_command', 'readonly')).toBe(true);
-    expect(isToolDeniedByProfile('create_page', 'readonly')).toBe(true);
+    expect(isToolDeniedByProfile('canvas_create_page', 'readonly')).toBe(true);
   });
 
   it('returns false for tools on the readonly allowlist', () => {
     // M65 parity fix: readonly is now an allowlist. Tools on the list pass.
     expect(isToolDeniedByProfile('read_file', 'readonly')).toBe(false);
-    expect(isToolDeniedByProfile('find_pages', 'readonly')).toBe(false);
+    expect(isToolDeniedByProfile('canvas_find_pages', 'readonly')).toBe(false);
   });
 
   it('excludes tools not on the readonly allowlist', () => {
@@ -383,19 +383,19 @@ describe('getToolColor (M65 Iter 2)', () => {
   it('classifies consequential writes as blue', () => {
     expect(getToolColor('write_file')).toBe('blue');
     expect(getToolColor('edit_file')).toBe('blue');
-    expect(getToolColor('create_page')).toBe('blue');
-    expect(getToolColor('compose_page')).toBe('blue');
-    expect(getToolColor('set_page_property')).toBe('blue');
-    expect(getToolColor('set_page_style')).toBe('blue');
-    expect(getToolColor('edit_block')).toBe('blue');
-    expect(getToolColor('insert_block_after')).toBe('blue');
-    expect(getToolColor('link_block')).toBe('blue');
+    expect(getToolColor('canvas_create_page')).toBe('blue');
+    expect(getToolColor('canvas_compose_page')).toBe('blue');
+    expect(getToolColor('canvas_set_page_property')).toBe('blue');
+    expect(getToolColor('canvas_set_page_style')).toBe('blue');
+    expect(getToolColor('canvas_edit_block')).toBe('blue');
+    expect(getToolColor('canvas_insert_block_after')).toBe('blue');
+    expect(getToolColor('canvas_link_block')).toBe('blue');
     expect(getToolColor('surface_send')).toBe('blue');
   });
 
   it('classifies read-only tools as green (uncolored)', () => {
     expect(getToolColor('read_file')).toBe('green');
-    expect(getToolColor('find_pages')).toBe('green');
+    expect(getToolColor('canvas_find_pages')).toBe('green');
     expect(getToolColor('search_knowledge')).toBe('green');
   });
 

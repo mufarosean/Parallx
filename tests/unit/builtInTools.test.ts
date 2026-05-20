@@ -109,8 +109,18 @@ describe('registerBuiltInTools', () => {
     const names = toolsService.registeredTools.map(t => t.name).sort();
     expect(names).toEqual([
       'autonomy_log',
-      'compose_page',
-      'create_page',
+      'canvas_compose_page',
+      'canvas_create_page',
+      'canvas_edit_block',
+      'canvas_find_pages',
+      'canvas_get_page',
+      'canvas_insert_block_after',
+      'canvas_link_block',
+      'canvas_list_property_definitions',
+      'canvas_read_block',
+      'canvas_read_page',
+      'canvas_set_page_property',
+      'canvas_set_page_style',
       'cron_add',
       'cron_list',
       'cron_remove',
@@ -120,26 +130,16 @@ describe('registerBuiltInTools', () => {
       'cron_update',
       'cron_wake',
       'delete_file',
-      'edit_block',
       'edit_file',
-      'find_pages',
-      'get_page',
       'grep_search',
-      'insert_block_after',
-      'link_block',
       'list_files',
-      'list_property_definitions',
       'memory_get',
       'memory_search',
-      'read_block',
       'read_file',
-      'read_page',
       'run_command',
       'search_files',
       'search_knowledge',
       'sessions_spawn',
-      'set_page_property',
-      'set_page_style',
       'surface_list',
       'surface_send',
       'transcript_get',
@@ -158,7 +158,7 @@ describe('registerBuiltInTools', () => {
 
     registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
-    const readOnly = ['find_pages', 'read_page', 'get_page', 'list_files', 'read_file', 'search_files', 'grep_search', 'search_knowledge', 'memory_get', 'memory_search', 'transcript_get', 'transcript_search', 'list_property_definitions', 'read_block'];
+    const readOnly = ['canvas_find_pages', 'canvas_read_page', 'canvas_get_page', 'list_files', 'read_file', 'search_files', 'grep_search', 'search_knowledge', 'memory_get', 'memory_search', 'transcript_get', 'transcript_search', 'canvas_list_property_definitions', 'canvas_read_block'];
     for (const name of readOnly) {
       const tool = toolsService.registeredTools.find(t => t.name === name);
       expect(tool?.requiresConfirmation, `${name} should not require confirmation`).toBe(false);
@@ -169,7 +169,7 @@ describe('registerBuiltInTools', () => {
     const toolsService = createMockToolsService();
     registerBuiltInTools(toolsService, createMockDb());
 
-    const tool = toolsService.registeredTools.find(t => t.name === 'create_page');
+    const tool = toolsService.registeredTools.find(t => t.name === 'canvas_create_page');
     expect(tool?.requiresConfirmation).toBe(true);
   });
 
@@ -177,7 +177,7 @@ describe('registerBuiltInTools', () => {
     const toolsService = createMockToolsService();
     registerBuiltInTools(toolsService, createMockDb());
 
-    const tool = toolsService.registeredTools.find(t => t.name === 'compose_page');
+    const tool = toolsService.registeredTools.find(t => t.name === 'canvas_compose_page');
     expect(tool?.requiresConfirmation).toBe(true);
     expect(tool?.permissionLevel).toBe('requires-approval');
   });
@@ -186,7 +186,7 @@ describe('registerBuiltInTools', () => {
     const toolsService = createMockToolsService();
     registerBuiltInTools(toolsService, createMockDb());
 
-    const tool = toolsService.registeredTools.find(t => t.name === 'set_page_property');
+    const tool = toolsService.registeredTools.find(t => t.name === 'canvas_set_page_property');
     expect(tool?.requiresConfirmation).toBe(true);
   });
 
@@ -194,7 +194,7 @@ describe('registerBuiltInTools', () => {
     const toolsService = createMockToolsService();
     registerBuiltInTools(toolsService, createMockDb());
 
-    const tool = toolsService.registeredTools.find(t => t.name === 'set_page_style');
+    const tool = toolsService.registeredTools.find(t => t.name === 'canvas_set_page_style');
     expect(tool?.requiresConfirmation).toBe(true);
     expect(tool?.permissionLevel).toBe('requires-approval');
   });
@@ -208,7 +208,7 @@ describe('set_page_style tool', () => {
     db = createMockDb();
     const toolsService = createMockToolsService();
     registerBuiltInTools(toolsService, db);
-    tool = toolsService.registeredTools.find(t => t.name === 'set_page_style')!;
+    tool = toolsService.registeredTools.find(t => t.name === 'canvas_set_page_style')!;
   });
 
   it('updates icon, fontFamily, fullWidth, smallText, and coverUrl', async () => {
@@ -278,7 +278,7 @@ describe('find_pages tool', () => {
     db = createMockDb();
     const toolsService = createMockToolsService();
     registerBuiltInTools(toolsService, db);
-    tool = toolsService.registeredTools.find(t => t.name === 'find_pages')!;
+    tool = toolsService.registeredTools.find(t => t.name === 'canvas_find_pages')!;
   });
 
   it('searches pages by query', async () => {
@@ -346,7 +346,7 @@ describe('read_page tool', () => {
     db = createMockDb();
     const toolsService = createMockToolsService();
     registerBuiltInTools(toolsService, db);
-    tool = toolsService.registeredTools.find(t => t.name === 'read_page')!;
+    tool = toolsService.registeredTools.find(t => t.name === 'canvas_read_page')!;
   });
 
   it('reads page content by ID', async () => {
@@ -438,7 +438,7 @@ describe('get_page tool', () => {
     db = createMockDb();
     const toolsService = createMockToolsService();
     registerBuiltInTools(toolsService, db);
-    tool = toolsService.registeredTools.find(t => t.name === 'get_page')!;
+    tool = toolsService.registeredTools.find(t => t.name === 'canvas_get_page')!;
   });
 
   it('returns page metadata', async () => {
@@ -470,7 +470,7 @@ describe('create_page tool', () => {
     db = createMockDb();
     const toolsService = createMockToolsService();
     registerBuiltInTools(toolsService, db);
-    tool = toolsService.registeredTools.find(t => t.name === 'create_page')!;
+    tool = toolsService.registeredTools.find(t => t.name === 'canvas_create_page')!;
   });
 
   it('creates a page with title and a proper canvas envelope', async () => {
@@ -525,7 +525,7 @@ describe('compose_page tool', () => {
     db = createMockDb();
     const toolsService = createMockToolsService();
     registerBuiltInTools(toolsService, db);
-    tool = toolsService.registeredTools.find(t => t.name === 'compose_page')!;
+    tool = toolsService.registeredTools.find(t => t.name === 'canvas_compose_page')!;
   });
 
   it('returns error for missing pageId', async () => {
@@ -611,19 +611,19 @@ describe('built-in tools with no database', () => {
     registerBuiltInTools(toolsService, undefined);
 
     const dbBackedToolNames = new Set([
-      'find_pages',
-      'read_page',
-      'get_page',
-      'create_page',
-      'compose_page',
-      'list_property_definitions',
-      'set_page_property',
-      'set_page_style',
+      'canvas_find_pages',
+      'canvas_read_page',
+      'canvas_get_page',
+      'canvas_create_page',
+      'canvas_compose_page',
+      'canvas_list_property_definitions',
+      'canvas_set_page_property',
+      'canvas_set_page_style',
       // M60 Phase δ — block-level tools.
-      'read_block',
-      'edit_block',
-      'insert_block_after',
-      'link_block',
+      'canvas_read_block',
+      'canvas_edit_block',
+      'canvas_insert_block_after',
+      'canvas_link_block',
     ]);
 
     for (const tool of toolsService.registeredTools) {
@@ -754,7 +754,7 @@ describe('get_page tool (enhanced with custom properties)', () => {
     db = createMockDb();
     const toolsService = createMockToolsService();
     registerBuiltInTools(toolsService, db);
-    tool = toolsService.registeredTools.find(t => t.name === 'get_page')!;
+    tool = toolsService.registeredTools.find(t => t.name === 'canvas_get_page')!;
   });
 
   it('includes custom properties in output', async () => {
@@ -823,7 +823,7 @@ describe('list_property_definitions tool', () => {
     db = createMockDb();
     const toolsService = createMockToolsService();
     registerBuiltInTools(toolsService, db);
-    tool = toolsService.registeredTools.find(t => t.name === 'list_property_definitions')!;
+    tool = toolsService.registeredTools.find(t => t.name === 'canvas_list_property_definitions')!;
   });
 
   it('lists all property definitions', async () => {
@@ -854,7 +854,7 @@ describe('set_page_property tool', () => {
     db = createMockDb();
     const toolsService = createMockToolsService();
     registerBuiltInTools(toolsService, db);
-    tool = toolsService.registeredTools.find(t => t.name === 'set_page_property')!;
+    tool = toolsService.registeredTools.find(t => t.name === 'canvas_set_page_property')!;
   });
 
   it('sets a property on an existing page with existing definition', async () => {

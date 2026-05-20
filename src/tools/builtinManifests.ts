@@ -332,7 +332,7 @@ export const CANVAS_MANIFEST: IToolManifest = {
   contributes: {
     commands: [
       // M70 audit decisions:
-      // - canvas.newPage: DUPLICATE (covered by `create_page` AI tool).
+      // - canvas.newPage: DUPLICATE (covered by `canvas_create_page` AI tool).
       // - canvas.deletePage: EXCLUDED (destructive, irreversible).
       // - canvas.rename/duplicate: OUT_OF_MVP (need pageId arg).
       // showKeyboardShortcuts / showTemplatePicker registered at runtime in
