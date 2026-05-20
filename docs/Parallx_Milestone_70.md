@@ -1,6 +1,8 @@
 # Milestone 70 — App Command Control
 
-> **Status:** Planning. Design gates must pass before any code is written.
+> **Status:** Implemented (commits `e71615e`, `31c43ca`). Both tools shipped
+> with the AI Hub toggle, denylist, and ~89 opted-in commands. See verification
+> at the bottom of this doc.
 
 ## Why
 

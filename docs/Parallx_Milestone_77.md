@@ -1,6 +1,9 @@
 # Milestone 77 — Canvas Reliability Hardening
 
-> **Status:** Planning + execution underway.
+> **Status:** Implemented. All 11 phases shipped, including round-2 / round-3
+> audit follow-ups. Phase 10.1 (AI page-write revision bump) verified at
+> `pageTools.ts:712`; Phase 11.5 (friendly save-error toast) at
+> `canvas/main.ts:325`.
 
 ## Why
 

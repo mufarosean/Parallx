@@ -1,6 +1,12 @@
 # Milestone 78 — Performance Hardening
 
-> **Status:** Planning + execution underway.
+> **Status:** Implemented. All 8 implementation phases (1–8) shipped.
+> Verified: `timedDbHandler` at `main.cjs:1762`, SQLite PRAGMAs at
+> `database.cjs:62-64`, embedding worker flag in `embeddingService.ts`,
+> autonomy log buffering in `autonomyEventLog.ts`, file-watcher coalescing
+> in `fileService.ts`, suggestion idle-defer in `proactiveSuggestionsService.ts`,
+> `PageSaveEvent` payload in `canvasTypes.ts`. Phase 9 was a docs-only
+> verification matrix; superseded by these in-code verifications.
 
 ## Why
 
