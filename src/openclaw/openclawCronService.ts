@@ -101,6 +101,19 @@ export interface ICronJob {
   readonly deleteAfterRun?: boolean;
   /** Timestamp of last update. Upstream: CronJobBase.updatedAtMs */
   readonly updatedAt?: number;
+  /**
+   * Schedule anchor (upstream: schedule.anchorMs in cron/schedule.ts).
+   * For `every: <duration>` schedules, the next fire is computed as the
+   * next interval boundary from this anchor — NOT `now + interval`. This
+   * is what makes upsert-on-restart idempotent: the bridge can re-register
+   * the same job on every app start without resetting the firing window.
+   * Set once at job creation; updated only when the schedule itself
+   * changes. Unused for `at` and `cron` schedule kinds.
+   *
+   * Legacy jobs (created before this field existed) get backfilled from
+   * `createdAt` on first load — see `loadFromPersistence`.
+   */
+  readonly anchorMs?: number;
 }
 
 /**
@@ -292,11 +305,22 @@ export class CronService implements IDisposable {
       const now = Date.now();
       for (const job of snapshot.jobs) {
         if (!job || typeof job.id !== 'string') continue;
+        // Anchor backfill — jobs persisted before the anchorMs field existed
+        // need one populated so future updateJob/computeNextRun calls have
+        // a consistent firing grid. Default to `createdAt` (best
+        // approximation of "when did the user pick this cadence"); fall
+        // back to `now` if `createdAt` is also missing/corrupt.
+        const anchorMs = (typeof job.anchorMs === 'number' && Number.isFinite(job.anchorMs))
+          ? job.anchorMs
+          : (typeof job.createdAt === 'number' && Number.isFinite(job.createdAt)
+              ? job.createdAt
+              : now);
         // Recompute nextRunAt at load time to coalesce sleep/wake firings:
         // multiple missed firings of the same job collapse into a single
         // catch-up at start() time (M60 §3.7).
         const restored: ICronJob = {
           ...job,
+          anchorMs,
           nextRunAt: job.enabled
             ? (job.nextRunAt !== null && job.nextRunAt <= now
                 ? now // single coalesced catch-up; ≤ now triggers on next tick
@@ -389,6 +413,12 @@ export class CronService implements IDisposable {
     const now = Date.now();
     const contextMessages = clampContextMessages(params.contextMessages ?? 0);
 
+    // Anchor for `every` schedules — see ICronJob.anchorMs. Set at creation
+    // and preserved across updateJob calls that don't change the schedule
+    // (which is what makes upsert-on-restart idempotent). Unused for `at`
+    // and `cron` schedule kinds but harmless to set.
+    const anchorMs = now;
+
     const job: ICronJob = {
       id,
       name: params.name,
@@ -399,11 +429,12 @@ export class CronService implements IDisposable {
       enabled: params.enabled ?? true,
       createdAt: now,
       lastRunAt: null,
-      nextRunAt: computeNextRun(params.schedule, now),
+      nextRunAt: computeNextRun(params.schedule, now, anchorMs),
       runCount: 0,
       description: params.description,
       deleteAfterRun: params.deleteAfterRun,
       updatedAt: now,
+      anchorMs,
     };
 
     this._jobs.set(id, job);
@@ -423,6 +454,33 @@ export class CronService implements IDisposable {
 
     if (params.schedule) validateSchedule(params.schedule);
 
+    // Determine whether the schedule actually changed. Extensions that
+    // upsert the same job on every activation must NOT reset the firing
+    // window — without this guard, every app restart pushes nextRunAt
+    // forward by the full interval and a user who closes the app within
+    // the interval never sees the job fire.
+    const scheduleChanged = params.schedule !== undefined
+      && !_schedulesEqual(params.schedule, existing.schedule);
+
+    // Anchor handling (openclaw parity):
+    //   - schedule unchanged → keep the original anchor → nextRunAt
+    //     stays where it was (no reset)
+    //   - schedule changed   → reset the anchor to now so the new
+    //     cadence starts from this moment
+    const now = Date.now();
+    const anchorMs = scheduleChanged
+      ? now
+      : (existing.anchorMs ?? existing.createdAt);
+
+    // nextRunAt recomputation:
+    //   - schedule changed: recompute from the new anchor (now)
+    //   - schedule unchanged but caller passed schedule anyway (the
+    //     upsert-on-restart case): KEEP existing nextRunAt
+    //   - schedule omitted entirely: keep existing nextRunAt
+    const nextRunAt = scheduleChanged
+      ? computeNextRun(params.schedule!, now, anchorMs)
+      : existing.nextRunAt;
+
     const updated: ICronJob = {
       ...existing,
       name: params.name ?? existing.name,
@@ -433,12 +491,11 @@ export class CronService implements IDisposable {
         ? clampContextMessages(params.contextMessages)
         : existing.contextMessages,
       enabled: params.enabled ?? existing.enabled,
-      nextRunAt: params.schedule
-        ? computeNextRun(params.schedule, Date.now())
-        : existing.nextRunAt,
+      nextRunAt,
       description: params.description !== undefined ? params.description : existing.description,
       deleteAfterRun: params.deleteAfterRun !== undefined ? params.deleteAfterRun : existing.deleteAfterRun,
-      updatedAt: Date.now(),
+      updatedAt: now,
+      anchorMs,
     };
 
     this._jobs.set(id, updated);
@@ -648,7 +705,7 @@ export class CronService implements IDisposable {
       // Bump nextRunAt so we don't loop on the same firing every check.
       const updated: ICronJob = {
         ...job,
-        nextRunAt: computeNextRun(job.schedule, now),
+        nextRunAt: computeNextRun(job.schedule, now, job.anchorMs),
       };
       this._jobs.set(job.id, updated);
       void this._save();
@@ -685,7 +742,7 @@ export class CronService implements IDisposable {
       const updated: ICronJob = {
         ...job,
         lastRunAt: now,
-        nextRunAt: computeNextRun(job.schedule, now),
+        nextRunAt: computeNextRun(job.schedule, now, job.anchorMs),
         runCount: job.runCount + 1,
       };
       this._jobs.set(job.id, updated);
@@ -739,7 +796,7 @@ export class CronService implements IDisposable {
       const updated: ICronJob = {
         ...job,
         lastRunAt: now,
-        nextRunAt: computeNextRun(job.schedule, now),
+        nextRunAt: computeNextRun(job.schedule, now, job.anchorMs),
         runCount: job.runCount + 1,
       };
       this._jobs.set(job.id, updated);
@@ -849,7 +906,34 @@ function validateSchedule(schedule: ICronSchedule): void {
 /**
  * Compute the next run time for a schedule.
  */
-function computeNextRun(schedule: ICronSchedule, fromMs: number): number | null {
+/**
+ * Structural equality on two schedules. Two schedules count as "equal"
+ * iff they specify the same kind with the same literal value. Used by
+ * `updateJob` to detect that an upsert is re-applying the same schedule
+ * (so the anchor + nextRunAt should be preserved, not reset).
+ */
+function _schedulesEqual(a: ICronSchedule, b: ICronSchedule): boolean {
+  return a.at === b.at && a.every === b.every && a.cron === b.cron;
+}
+
+/**
+ * Compute the next fire time for a schedule.
+ *
+ * For `every: <duration>` schedules an optional `anchorMs` lets the
+ * caller compute the next tick on the original anchor grid (upstream
+ * parity with openclaw's `schedule.anchorMs` semantics). Without an
+ * anchor, falls back to `fromMs + intervalMs` — same legacy behaviour
+ * as before this change.
+ *
+ * For `at` (one-shot) and `cron` (5-field expression) schedules,
+ * `anchorMs` is ignored — those kinds derive their next-run from
+ * absolute time, not from an anchor offset.
+ */
+function computeNextRun(
+  schedule: ICronSchedule,
+  fromMs: number,
+  anchorMs?: number,
+): number | null {
   if (schedule.at) {
     const target = Date.parse(schedule.at);
     // One-shot: if already past, return null (will not fire again)
@@ -858,6 +942,20 @@ function computeNextRun(schedule: ICronSchedule, fromMs: number): number | null 
 
   if (schedule.every) {
     const intervalMs = parseDuration(schedule.every);
+    // Anchor-relative: openclaw's `schedule.kind === 'every'` formula.
+    // `steps` is at least 1, so a brand-new job (anchor === now) fires
+    // at `now + intervalMs`, matching upstream's first-fire semantics.
+    // An app restart that re-upserts the same job preserves the anchor
+    // → the existing nextRunAt is unchanged, no reset, no missed
+    // window. If the anchor is missing (legacy job, no anchor passed),
+    // fall back to the old `fromMs + intervalMs` formula.
+    if (anchorMs !== undefined && Number.isFinite(anchorMs)) {
+      const anchor = Math.max(0, Math.floor(anchorMs));
+      if (fromMs < anchor) return anchor;
+      const elapsed = fromMs - anchor;
+      const steps = Math.max(1, Math.floor((elapsed + intervalMs - 1) / intervalMs));
+      return anchor + steps * intervalMs;
+    }
     return fromMs + intervalMs;
   }
 

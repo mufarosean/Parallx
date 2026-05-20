@@ -8,10 +8,15 @@
 import type {
   CronService,
   ICronJob,
+  ICronJobUpdateParams,
   ICronSchedule,
   ICronPayload,
   CronWakeMode,
 } from '../../openclaw/openclawCronService.js';
+
+function _scheduleEqual(a: ICronSchedule, b: ICronSchedule): boolean {
+  return a.at === b.at && a.every === b.every && a.cron === b.cron;
+}
 
 /**
  * Public payload accepted by parallx.cron.upsertJob.
@@ -47,15 +52,25 @@ export class CronBridge {
   upsertJob(job: IExtensionCronJob): void {
     const existing = this._findByName(job.id);
     if (existing) {
-      this._service.updateJob(existing.id, {
-        schedule: job.schedule,
+      // Only forward `schedule` when it actually differs from the
+      // currently-stored value. The user's complaint with budget
+      // upserting on every app start: every restart was calling
+      // updateJob with the same `every: 30m`, and updateJob recomputed
+      // nextRunAt forward by 30m, so a user who closed the app within
+      // any 30-min window would never see the cron fire. Defence-in-
+      // depth — CronService.updateJob also short-circuits via
+      // _schedulesEqual, but skipping the field here means schedule
+      // changes are an opt-in event, not an accident.
+      const scheduleChanged = !_scheduleEqual(job.schedule, existing.schedule);
+      const update: ICronJobUpdateParams = {
         payload: job.payload,
         description: job.description,
-        // Only override these if the caller explicitly set them.
+        ...(scheduleChanged ? { schedule: job.schedule } : {}),
         ...(job.wakeMode !== undefined ? { wakeMode: job.wakeMode } : {}),
         ...(job.contextMessages !== undefined ? { contextMessages: job.contextMessages } : {}),
         ...(job.enabled !== undefined ? { enabled: job.enabled } : {}),
-      });
+      };
+      this._service.updateJob(existing.id, update);
       return;
     }
     this._service.addJob({
