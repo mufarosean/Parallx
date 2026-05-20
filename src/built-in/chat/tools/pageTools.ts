@@ -56,28 +56,33 @@ export function createFindPagesTool(db: IBuiltInToolDatabase | undefined): IChat
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Search text (title and content).' },
+        query: { type: 'string', description: 'Full-text search across page title and body (case-insensitive). Omit for a recency-sorted listing.' },
         filter: {
           type: 'array',
-          description: 'Property filters (AND).',
+          description: 'Property filters combined with AND. Each entry checks one page property.',
           items: {
             type: 'object',
             required: ['prop', 'op'],
             properties: {
-              prop: { type: 'string' },
-              op: { type: 'string' },
-              value: {},
+              prop: { type: 'string', description: 'Property name (e.g. "tags", "status").' },
+              op: {
+                type: 'string',
+                enum: ['equals', 'not_equals', 'contains', 'is_empty', 'is_not_empty', 'greater_than', 'less_than'],
+                description: 'Comparison operator. `is_empty`/`is_not_empty` ignore `value`.',
+              },
+              value: { description: 'Right-hand side of the comparison. Type must match the property (string, number, boolean, or array). Omit for is_empty/is_not_empty.' },
             },
           },
         },
         sort: {
           type: 'object',
+          description: 'Result ordering. Defaults to `updated_at desc` when omitted.',
           properties: {
-            by: { type: 'string' },
-            dir: { type: 'string', enum: ['asc', 'desc'] },
+            by: { type: 'string', description: 'Column or property name to sort by (e.g. "updated_at", "title", or any property name).' },
+            dir: { type: 'string', enum: ['asc', 'desc'], description: 'Sort direction.' },
           },
         },
-        group: { type: 'string', description: 'Property name to group results by.' },
+        group: { type: 'string', description: 'Property name to group results by (e.g. "status"). Results come back as a nested list per group.' },
         limit: { type: 'number', description: 'Maximum results (default 50, cap 200).' },
       },
     },
@@ -229,7 +234,7 @@ export function createReadPageTool(
       type: 'object',
       required: ['pageId'],
       properties: {
-        pageId: { type: 'string', description: 'Page UUID, page title, or "current" for the active page.' },
+        pageId: { type: 'string', description: 'Page UUID, page title (case-insensitive, falls back to partial match), or the literal "current" for the page open in the editor. canvas_read_page is the ONLY canvas tool that accepts a title — every other canvas_* tool needs a UUID. Resolve titles to UUIDs here first, then use the returned id.' },
       },
     },
     requiresConfirmation: false,
@@ -307,7 +312,7 @@ export function createGetPageTool(db: IBuiltInToolDatabase | undefined): IChatTo
       type: 'object',
       required: ['pageId'],
       properties: {
-        pageId: { type: 'string', description: 'The page UUID' },
+        pageId: { type: 'string', description: 'Page UUID (not a title). If you only have a title, call canvas_read_page or canvas_find_pages first to resolve.' },
       },
     },
     requiresConfirmation: false,
@@ -460,7 +465,7 @@ export function createSetPagePropertyTool(db: IBuiltInToolDatabase | undefined):
       type: 'object',
       required: ['pageId', 'propertyName', 'value'],
       properties: {
-        pageId: { type: 'string', description: 'The page UUID.' },
+        pageId: { type: 'string', description: 'Page UUID (not a title). If you only have a title, call canvas_read_page or canvas_find_pages first to resolve.' },
         propertyName: { type: 'string', description: 'The property name (e.g. "tags", "status", "priority").' },
         value: {
           description:
@@ -649,12 +654,12 @@ export function createComposePageTool(
       type: 'object',
       required: ['pageId', 'markdown'],
       properties: {
-        pageId: { type: 'string', description: 'Page UUID.' },
-        markdown: { type: 'string', description: 'Markdown body.' },
+        pageId: { type: 'string', description: 'Page UUID (not a title). If you only have a title, call canvas_read_page or canvas_find_pages first to resolve.' },
+        markdown: { type: 'string', description: 'Markdown body. Standard CommonMark — headings, lists, code blocks, links. Rendered into Tiptap blocks on save.' },
         mode: {
           type: 'string',
           enum: ['replace', 'append', 'prepend'],
-          description: 'Combine mode (default: replace).',
+          description: 'How to combine `markdown` with existing content. `replace` (default) wipes existing body; `append` adds after; `prepend` adds before.',
         },
       },
     },
@@ -887,7 +892,7 @@ export function createSetPageStyleTool(
       type: 'object',
       required: ['pageId', 'style'],
       properties: {
-        pageId: { type: 'string', description: 'ID of the page to update' },
+        pageId: { type: 'string', description: 'Page UUID (not a title). If you only have a title, call canvas_read_page or canvas_find_pages first to resolve.' },
         style: {
           type: 'object',
           description: 'Style fields to update (omit fields you do not want to change)',

@@ -78,13 +78,13 @@ export function createReadBlockTool(db: IBuiltInToolDatabase | undefined): IChat
   return {
     name: 'canvas_read_block',
     displaySummary: 'Read a single block from a canvas page.',
-    description: 'Read a single block from a CANVAS PAGE by blockId. Returns block JSON and plaintext. Operates on the canvas page DB only.',
+    description: 'Read a single block from a CANVAS PAGE by blockId. Returns block JSON and plaintext. Operates on the canvas page DB only. Block IDs come from a prior canvas_read_page call (each block has an `id` attribute).',
     parameters: {
       type: 'object',
       required: ['pageId', 'blockId'],
       properties: {
-        pageId: { type: 'string' },
-        blockId: { type: 'string' },
+        pageId: { type: 'string', description: 'Page UUID (not a title). Resolve titles with canvas_find_pages first.' },
+        blockId: { type: 'string', description: 'Block ID as it appears in the page\'s Tiptap doc (obtained from canvas_read_page).' },
       },
     },
     requiresConfirmation: false,
@@ -123,15 +123,15 @@ export function createEditBlockTool(
   return {
     name: 'canvas_edit_block',
     displaySummary: 'Replace a block on a canvas page (approval).',
-    description: 'Replace the plain-text content of a single block inside a CANVAS PAGE. Operates on the canvas page DB. For file edits use `edit_file`.',
+    description: 'Replace the plain-text content of a single block inside a CANVAS PAGE. Operates on the canvas page DB. For file edits use `edit_file`. The block becomes a paragraph; markdown formatting is NOT parsed — pass plain text. For richer edits use canvas_compose_page (which accepts markdown).',
     parameters: {
       type: 'object',
       required: ['pageId', 'blockId', 'newContent'],
       properties: {
-        pageId: { type: 'string' },
-        blockId: { type: 'string' },
-        newContent: { type: 'string', description: 'Replacement text.' },
-        idempotencyKey: { type: 'string', description: 'Dedup key.' },
+        pageId: { type: 'string', description: 'Page UUID (not a title). Resolve titles with canvas_find_pages first.' },
+        blockId: { type: 'string', description: 'Block ID to replace (from canvas_read_page).' },
+        newContent: { type: 'string', description: 'Plain replacement text. The block keeps its blockId; markdown is NOT parsed.' },
+        idempotencyKey: { type: 'string', description: 'Optional dedup key so retried calls don\'t double-edit on transient failures.' },
       },
     },
     requiresConfirmation: true,
@@ -177,15 +177,15 @@ export function createInsertBlockAfterTool(
   return {
     name: 'canvas_insert_block_after',
     displaySummary: 'Insert a block into a canvas page (approval).',
-    description: 'Insert a new paragraph block into a CANVAS PAGE, immediately after anchorBlockId. Returns the new blockId. Operates on the canvas page DB.',
+    description: 'Insert a new paragraph block into a CANVAS PAGE, immediately after anchorBlockId. Returns the new blockId. Operates on the canvas page DB. The inserted block is a plain paragraph; markdown is NOT parsed (use canvas_compose_page for multi-block markdown).',
     parameters: {
       type: 'object',
       required: ['pageId', 'anchorBlockId', 'content'],
       properties: {
-        pageId: { type: 'string' },
-        anchorBlockId: { type: 'string' },
-        content: { type: 'string', description: 'Block text.' },
-        idempotencyKey: { type: 'string', description: 'Dedup key.' },
+        pageId: { type: 'string', description: 'Page UUID (not a title). Resolve titles with canvas_find_pages first.' },
+        anchorBlockId: { type: 'string', description: 'Block ID after which the new block is inserted (from canvas_read_page).' },
+        content: { type: 'string', description: 'Plain text for the new paragraph block. Markdown is NOT parsed.' },
+        idempotencyKey: { type: 'string', description: 'Optional dedup key so retried calls don\'t double-insert.' },
       },
     },
     requiresConfirmation: true,
@@ -234,16 +234,16 @@ export function createLinkBlockTool(
   return {
     name: 'canvas_link_block',
     displaySummary: 'Cross-link two canvas blocks (approval).',
-    description: 'Append a cross-reference link from one CANVAS PAGE block to another. Operates on the canvas page DB.',
+    description: 'Insert a new paragraph BELOW `fromBlockId` (on the source page) that contains a clickable link pointing at `toBlockId` on the target page. Operates on the canvas page DB. Use this when the user asks "link the part about X to the page on Y" — two existing blocks on two existing pages.',
     parameters: {
       type: 'object',
       required: ['fromPageId', 'fromBlockId', 'toPageId', 'toBlockId'],
       properties: {
-        fromPageId: { type: 'string' },
-        fromBlockId: { type: 'string' },
-        toPageId: { type: 'string' },
-        toBlockId: { type: 'string' },
-        label: { type: 'string', description: 'Link text; defaults to target page title.' },
+        fromPageId: { type: 'string', description: 'Source page UUID (where the link appears). Resolve titles with canvas_find_pages first.' },
+        fromBlockId: { type: 'string', description: 'Anchor block on the source page; the link is inserted immediately after this block.' },
+        toPageId: { type: 'string', description: 'Target page UUID (what the link points to).' },
+        toBlockId: { type: 'string', description: 'Target block on the target page (the link\'s destination anchor).' },
+        label: { type: 'string', description: 'Display text shown for the link. Defaults to the target page title when omitted.' },
       },
     },
     requiresConfirmation: true,
