@@ -729,6 +729,22 @@ export class CronService implements IDisposable {
         success: false,
         error: err instanceof Error ? err.message : String(err),
       };
+      // A throw from the executor doesn't unwind the firing — the job DID
+      // fire at `now`, even if the agent turn that followed errored out
+      // (e.g., the LLM threw mid-stream AFTER the underlying tool already
+      // ran and persisted data). lastRunAt/runCount track the firing, not
+      // the agent turn outcome; otherwise a successful budget.sync that
+      // fails to summarize in chat presents as "Never run" forever and
+      // the user has no signal that cron is actually working.
+      const updated: ICronJob = {
+        ...job,
+        lastRunAt: now,
+        nextRunAt: computeNextRun(job.schedule, now),
+        runCount: job.runCount + 1,
+      };
+      this._jobs.set(job.id, updated);
+      void this._save();
+      this._onDidChangeJobs.fire({ kind: 'ran', jobId: job.id });
       this._runHistory.push(result);
       this._trimRunHistory();
       this._emitFireEvent({
