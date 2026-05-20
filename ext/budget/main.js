@@ -2273,12 +2273,30 @@ function renderDashboardSection(body, api) {
     syncBanner.innerHTML = html;
     syncBanner.style.display = '';
   }
-  if (_lastSyncEvent && _lastSyncEvent.kind === 'start') {
-    setBanner('running', '<b>Syncing Gmail…</b> The AI is fetching new transaction emails and categorizing them. This page will refresh when it finishes.');
+  // Helper: render a progress banner showing real per-message counters so
+  // the user sees actual work, not just an opaque "Syncing…" spinner.
+  function _runningBanner(detail) {
+    const d = detail || {};
+    const processed = typeof d.processed === 'number' ? d.processed : 0;
+    const total = typeof d.total === 'number' ? d.total : 0;
+    const confirmed = d.confirmed || 0;
+    const review = d.review || 0;
+    const skipped = d.skipped || 0;
+    if (total > 0) {
+      return `<b>Syncing Gmail…</b> ${processed} of ${total} emails processed` +
+        ` (${confirmed} confirmed, ${review} for review` +
+        (skipped ? `, ${skipped} already imported` : '') + ').';
+    }
+    return '<b>Syncing Gmail…</b> The AI is fetching new transaction emails and categorizing them.';
+  }
+  if (_lastSyncEvent && (_lastSyncEvent.kind === 'start' || _lastSyncEvent.kind === 'progress')) {
+    setBanner('running', _runningBanner(_lastSyncEvent.detail));
   }
   const offBus = onSyncEvent((evt) => {
     if (evt.kind === 'start') {
-      setBanner('running', '<b>Syncing Gmail…</b> The AI is fetching new transaction emails and categorizing them. This page will refresh when it finishes.');
+      setBanner('running', _runningBanner());
+    } else if (evt.kind === 'progress') {
+      setBanner('running', _runningBanner(evt.detail));
     } else if (evt.kind === 'complete') {
       const c = evt.counts || {};
       setBanner('success',
@@ -6128,6 +6146,16 @@ async function budgetSync(api) {
       ? parsed
       : (Array.isArray(parsed?.messages) ? parsed.messages : []);
 
+    // Fetched signal — the long part starts here. The dashboard banner can
+    // now switch from "starting…" to "classifying N emails…" so the user
+    // knows what's actually happening during the LLM phase.
+    _emitSync({
+      kind: 'progress',
+      runId,
+      stage: 'fetched',
+      detail: { totalMessages: messages.length },
+    });
+
     // Cache active expense category names for Stage 3
     const categoryRows = await db.all(
       `SELECT id, name FROM categories WHERE archived=0 AND kind='expense' ORDER BY sort_order`,
@@ -6141,10 +6169,32 @@ async function budgetSync(api) {
     let newestSeenIso = sinceIso;
     let newestSeenId = null;
 
+    let processedCount = 0;
+    const totalMessages = messages.length;
+
     for (const msg of messages) {
+      processedCount++;
       if (!msg || !msg.id) { counts.skipped++; continue; }
       const already = await db.get('SELECT 1 AS x FROM email_imports WHERE gmail_message_id=?', [msg.id]);
-      if (already) { counts.skipped++; continue; }
+      if (already) {
+        counts.skipped++;
+        // Cheap skip — still emit progress so the banner can show "23/30"
+        // moving even when most messages are already imported.
+        _emitSync({
+          kind: 'progress',
+          runId,
+          stage: 'skip',
+          detail: { processed: processedCount, total: totalMessages, ...counts },
+        });
+        continue;
+      }
+      // About to spend an LLM call on this one — let the banner say so.
+      _emitSync({
+        kind: 'progress',
+        runId,
+        stage: 'classify',
+        detail: { processed: processedCount, total: totalMessages, ...counts },
+      });
 
       // Stage 1 — classify
       let cls;
