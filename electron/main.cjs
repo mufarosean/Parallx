@@ -498,7 +498,20 @@ async function createWindow() {
   // M67 Phase 4.2 — Block renderer-initiated window.open() calls. Extensions
   // must use api.window.startDrag() or shell.openExternal() via IPC; they must
   // NOT be able to spawn new BrowserWindows that bypass CSP/preload.
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  //
+  // Carve-out: when the URL is an http(s) or mailto link, hand it to the
+  // OS browser via shell.openExternal. The new BrowserWindow is still
+  // denied — we never let the renderer spawn anything. Without this carve-
+  // out, anchor clicks inside the PDF viewer (and any embedded content)
+  // are silently swallowed.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (typeof url === 'string' && /^(https?:|mailto:)/i.test(url)) {
+      shell.openExternal(url).catch((err) => {
+        console.warn('[main] openExternal failed for', url, err?.message);
+      });
+    }
+    return { action: 'deny' };
+  });
 
   if (saved?.isMaximized) {
     mainWindow.maximize();

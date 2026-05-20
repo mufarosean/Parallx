@@ -1112,6 +1112,13 @@ export class PdfEditorPane extends EditorPane {
 
       this._linkService = new PDFLinkService({
         eventBus: this._eventBus,
+        // External anchors (http/https/mailto) render with target="_blank"
+        // so the click hits window.open → caught by Electron's
+        // setWindowOpenHandler in main.cjs, which forwards http(s)/mailto
+        // to shell.openExternal (the user's OS browser).
+        // LinkTarget enum: 0 NONE, 1 SELF, 2 BLANK, 3 PARENT, 4 TOP.
+        externalLinkTarget: 2,
+        externalLinkRel: 'noopener noreferrer',
       });
 
       this._findController = new PDFFindController({
