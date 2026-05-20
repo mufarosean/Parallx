@@ -112,6 +112,12 @@ export interface SemanticGraphStats {
   cachedSources: number;
   queuedSources: number;
   isProcessing: boolean;
+  /** Unix-ms timestamp when the last drain completed. `null` if never run. */
+  lastBuildAt: number | null;
+  /** Sources processed during the most recent drain. */
+  lastBuildProcessedCount: number;
+  /** Sources skipped during the most recent drain (no content hash, deleted, etc.). */
+  lastBuildSkippedCount: number;
 }
 
 export interface SemanticGraphServiceOptions {
@@ -194,6 +200,12 @@ export class SemanticGraphService extends Disposable {
   private _started = false;
   private _disposed = false;
   private _processing = false;
+  // M68 Iteration D — diagnostics tracked across drains so the workspace-
+  // graph editor's "Graph status" panel can show real numbers without
+  // probing the DB on every render.
+  private _lastBuildAt: number | null = null;
+  private _lastBuildProcessedCount = 0;
+  private _lastBuildSkippedCount = 0;
   private _initialBackfillQueued = false;
   private _timer: ReturnType<typeof setTimeout> | null = null;
   private readonly _queue = new Map<string, { sourceType: SemanticGraphSourceType; sourceId: string }>();
@@ -336,7 +348,15 @@ export class SemanticGraphService extends Disposable {
 
   async getStats(): Promise<SemanticGraphStats> {
     if (!this._db.isOpen) {
-      return { cachedEdges: 0, cachedSources: 0, queuedSources: this._queue.size, isProcessing: this._processing };
+      return {
+        cachedEdges: 0,
+        cachedSources: 0,
+        queuedSources: this._queue.size,
+        isProcessing: this._processing,
+        lastBuildAt: this._lastBuildAt,
+        lastBuildProcessedCount: this._lastBuildProcessedCount,
+        lastBuildSkippedCount: this._lastBuildSkippedCount,
+      };
     }
     await this._ensureSchema();
     const edges = await this._db.get<{ count: number }>('SELECT COUNT(*) as count FROM semantic_graph_edges');
@@ -346,6 +366,9 @@ export class SemanticGraphService extends Disposable {
       cachedSources: sources?.count ?? 0,
       queuedSources: this._queue.size,
       isProcessing: this._processing,
+      lastBuildAt: this._lastBuildAt,
+      lastBuildProcessedCount: this._lastBuildProcessedCount,
+      lastBuildSkippedCount: this._lastBuildSkippedCount,
     };
   }
 
@@ -801,6 +824,11 @@ export class SemanticGraphService extends Disposable {
 
     this._processing = true;
     let changed = false;
+    // Track per-drain counters so getStats() can show real diagnostics
+    // (M68 Iteration D). Skipped = sources where _recomputeSource returned
+    // false without producing edges (deleted, no content hash, etc).
+    let drainProcessed = 0;
+    let drainSkipped = 0;
     try {
       while (!this._disposed && this._queue.size > 0) {
         if (this._indexingPipeline.isIndexing) {
@@ -814,12 +842,17 @@ export class SemanticGraphService extends Disposable {
         this._queue.delete(`${next.sourceType}:${next.sourceId}`);
         const didChange = await this._recomputeSource(next.sourceType, next.sourceId);
         changed = changed || didChange;
+        if (didChange) drainProcessed++;
+        else drainSkipped++;
         if (this._processYieldMs > 0) {
           await new Promise<void>((resolve) => setTimeout(resolve, this._processYieldMs));
         }
       }
     } finally {
       this._processing = false;
+      this._lastBuildAt = Date.now();
+      this._lastBuildProcessedCount = drainProcessed;
+      this._lastBuildSkippedCount = drainSkipped;
       if (changed) {
         this._onDidChangeEdges.fire();
       }

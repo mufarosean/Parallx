@@ -1332,6 +1332,14 @@ function createGraphEditor(container, api) {
 
       ${_orch ? `
       <div ${H}>Mind map refresh</div>
+      <!-- M68 Iteration D — semantic-graph cache diagnostics. Surfaces
+           the real numbers so the user (and any future bake-and-tune)
+           can see whether the cache is healthy, drained, or stuck. -->
+      <div ${H} style="margin-top:8px">Graph cache</div>
+      <div id="__gs_cache_diag" style="color:var(--vscode-descriptionForeground,#999);font-size:11px;line-height:1.5;margin:4px 0 6px;">
+        Loading…
+      </div>
+
       <div id="__gs_refresh_status" style="color:var(--vscode-descriptionForeground,#999);margin:4px 0;">
         Loading…
       </div>
@@ -1497,6 +1505,12 @@ function createGraphEditor(container, api) {
     _wireKindCheck('extends', 'extends');
     _wireKindCheck('refutes', 'refutes');
     _wireKindCheck('memberof', 'member-of');
+
+    // M68 Iteration D — populate the cache diagnostics. Fire and forget;
+    // the panel renders "Loading…" until the async stats arrive. Refreshed
+    // whenever the user re-opens the settings panel (cheap query, no
+    // polling needed because edge counts only change after a drain).
+    _updateCacheDiagnosticsAsync();
 
     // M76 Phase 3 — wire the refresh section. Status line + history are
     // populated async; button + history toggle attach handlers now.
@@ -1727,6 +1741,41 @@ function createGraphEditor(container, api) {
         }
       });
     });
+  }
+
+  // M68 Iteration D — populate the cache diagnostics block. Counters
+  // are cheap (one COUNT per table + in-memory state) so we just query
+  // SemanticGraphService.getStats() each time the user opens the panel
+  // and any time onDidChangeEdges fires (handled by the existing
+  // notifyChange flow).
+  async function _updateCacheDiagnosticsAsync() {
+    const el = settingsInner.querySelector('#__gs_cache_diag');
+    if (!el) return;
+    const service = _getSemanticGraphService(api);
+    if (!service || typeof service.getStats !== 'function') {
+      el.textContent = 'Cache service unavailable.';
+      return;
+    }
+    try {
+      const stats = await service.getStats();
+      const cached = stats.cachedEdges ?? 0;
+      const sources = stats.cachedSources ?? 0;
+      const queued = stats.queuedSources ?? 0;
+      const lastBuild = stats.lastBuildAt
+        ? new Date(stats.lastBuildAt).toLocaleString()
+        : 'never';
+      const processed = stats.lastBuildProcessedCount ?? 0;
+      const skipped = stats.lastBuildSkippedCount ?? 0;
+      const state = stats.isProcessing ? '⏳ building…' : (queued > 0 ? '⏸ waiting' : '✓ idle');
+      el.innerHTML = [
+        `<div><strong>${state}</strong></div>`,
+        `<div>Cached edges: ${cached.toLocaleString()} &nbsp;·&nbsp; sources: ${sources.toLocaleString()}</div>`,
+        `<div>Queue: ${queued.toLocaleString()} source${queued === 1 ? '' : 's'}</div>`,
+        `<div>Last build: ${_esc(lastBuild)} &nbsp;·&nbsp; processed ${processed}, skipped ${skipped}</div>`,
+      ].join('');
+    } catch (err) {
+      el.textContent = `Diagnostics unavailable: ${err && err.message ? err.message : 'unknown error'}`;
+    }
   }
 
   // M76 Phase 3 — populate the dynamic parts of the refresh section
