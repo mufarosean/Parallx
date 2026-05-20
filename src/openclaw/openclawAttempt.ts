@@ -47,6 +47,54 @@ import { validateCitations } from './openclawResponseValidation.js';
  */
 const MAX_TOOL_RESULT_CHARS = 20_000;
 
+/**
+ * Escape a string for safe inclusion in a `RegExp` body. Used by
+ * `_detectHallucinatedToolCall` so user-defined tool names that happen
+ * to contain regex metacharacters can't blow up the matcher.
+ */
+function _escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * M67 follow-up — detect model text that narrates a tool call without
+ * the corresponding `tool_calls` structure being emitted. Two patterns
+ * cover the dominant failure mode for OSS models:
+ *
+ *   Pattern A: "I (just )?(called|ran|invoked|executed) <tool_name>"
+ *   Pattern B: "(used|using|with) (the )?<tool_name> tool"
+ *
+ * Matching is name-aware — the regex is built from the actually-
+ * available tool catalog so it can't false-positive on natural-language
+ * past tense like "I read the docs" or "I used the search bar."
+ *
+ * Returns the matched tool name (verbatim from the model's text) or
+ * null when no hallucination is detected. Caller is responsible for
+ * surfacing the warning to the user; this function is pure.
+ *
+ * Exported for unit testing only.
+ */
+export function _detectHallucinatedToolCall(
+  markdown: string,
+  availableToolNames: readonly string[],
+): string | null {
+  if (!markdown || availableToolNames.length === 0) return null;
+  const namesAlt = availableToolNames.map(_escapeRegExp).join('|');
+  // `\\b` word boundaries on both ends keep `read_file` from matching
+  // inside `pre_read_filefoo`; the alternation captures the tool name.
+  const verbsPast = '(?:called|ran|just\\s+ran|invoked|executed|just\\s+used|queried|queries)';
+  const patternA = new RegExp(
+    `\\bI\\s+(?:just\\s+)?${verbsPast}\\s+\`?(${namesAlt})\\b`,
+    'i',
+  );
+  const patternB = new RegExp(
+    `\\b(?:used|using|with)\\s+(?:the\\s+)?\`?(${namesAlt})\`?\\s+tool\\b`,
+    'i',
+  );
+  const m = patternA.exec(markdown) || patternB.exec(markdown);
+  return m ? m[1] : null;
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -298,6 +346,40 @@ export async function executeOpenclawAttempt(
 
     // No tool calls → done
     if (turnResult.toolCalls.length === 0) {
+      // ── Hallucinated-tool-call guard (M67 follow-up — tool-error reliability) ──
+      //
+      // Local models with weak tool-use training sometimes narrate a tool
+      // call in their text response WITHOUT actually emitting a tool_call
+      // structure. The runner sees zero tool_calls and exits; the user
+      // reads "I called read_file and got…" and believes a tool actually
+      // ran. Claude almost never does this (strong native tool-use
+      // training); smaller/quantized OSS models do. The system-prompt
+      // rule in SOUL.md tells the model not to do this, but the rule is
+      // soft — we add a visible warning when we detect the pattern so
+      // the user can see the lie even if the model still produces it.
+      //
+      // The detector is name-aware (uses the actually-available tool
+      // catalog) so it can't false-positive on natural-language past
+      // tense like "I read the docs" — only matches tool names that
+      // exist in this turn's tool surface.
+      const hallucinatedToolName = _detectHallucinatedToolCall(
+        markdown,
+        context.toolState.availableDefinitions.map((t) => t.name),
+      );
+      if (hallucinatedToolName) {
+        try {
+          response.warning(
+            `It looks like the model narrated a call to \`${hallucinatedToolName}\` `
+            + `but no tool was actually invoked this turn. Treat the claims above with caution `
+            + `— the action probably did not run.`,
+          );
+        } catch { /* warning emission shouldn't break the loop */ }
+        console.warn(
+          `[openclawAttempt] Hallucinated tool call detected: model claimed to call "${hallucinatedToolName}" with zero tool_calls emitted. `
+          + `Model: ${context.runtimeInfo.model}.`,
+        );
+      }
+
       lastHadToolCalls = false;
       break;
     }
@@ -352,16 +434,55 @@ export async function executeOpenclawAttempt(
         result: toolResult,
       });
 
-      // Truncate oversized results to stay within token budget
+      // ── Tool result formatting (M67 follow-up — tool-error reliability) ──
+      //
+      // The Claude API has a typed `is_error: true` on every tool_result
+      // block; the model reads that flag directly and can't gloss over
+      // failures. Ollama's `/api/chat` does NOT carry a typed error flag
+      // on tool messages — they're plain `role: 'tool'` + content — so
+      // the model has nothing to read except prose. Result: when a tool
+      // returned `{ content: "File not found", isError: true }`, we kept
+      // the flag locally (UI badge / taint gate) and sent the model only
+      // "File not found", which small/quantized models routinely
+      // misinterpret as success and narrate accordingly.
+      //
+      // Fix: bake the error signal INTO the content with a marker no
+      // tool-result content can legitimately produce on its own. The
+      // marker is what Claude's typed flag would be if Ollama supported
+      // it, plus an instruction the model can act on directly. This is
+      // the documented workaround for backends that lack a typed
+      // is_error: https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls
+      //
+      // Truncation: long success outputs keep the head (typical case —
+      // a stack trace lives near the bottom anyway, and head-truncating
+      // a 100kB file dump still gives the model useful surface area).
+      // For errors, the diagnostic info lives at the END (stack frames,
+      // root cause), so truncate from the head and keep the tail when
+      // isError is set.
       let resultContent = toolResult.content;
       if (resultContent.length > MAX_TOOL_RESULT_CHARS) {
-        resultContent = resultContent.slice(0, MAX_TOOL_RESULT_CHARS)
-          + `\n\n... (truncated, ${resultContent.length} chars total)`;
+        if (toolResult.isError) {
+          // Tail-keep: preserve the last MAX_TOOL_RESULT_CHARS so the
+          // error message + stack frames survive.
+          resultContent =
+            `(truncated head, ${resultContent.length - MAX_TOOL_RESULT_CHARS} chars omitted)\n\n`
+            + resultContent.slice(resultContent.length - MAX_TOOL_RESULT_CHARS);
+        } else {
+          resultContent = resultContent.slice(0, MAX_TOOL_RESULT_CHARS)
+            + `\n\n... (truncated, ${resultContent.length} chars total)`;
+        }
       }
+
+      const formattedContent = toolResult.isError
+        ? `[TOOL ERROR] The "${toolCall.function.name}" tool FAILED. `
+          + `Do not claim this action succeeded. State to the user that the call failed and `
+          + `(when reasonable) what went wrong.\n\n`
+          + `Failure detail:\n${resultContent}`
+        : resultContent;
 
       toolResultMessages.push({
         role: 'tool',
-        content: resultContent,
+        content: formattedContent,
         toolName: toolCall.function.name,
       });
     }
