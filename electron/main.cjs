@@ -1156,6 +1156,44 @@ function _isAllowedWritePath(filePath) {
   );
 }
 
+/**
+ * M67 finding #3 — read-path IPC validation. Reads were previously
+ * unconstrained: a renderer-side caller (extension or any future code
+ * that constructs an absolute path) could read any file on the user's
+ * disk. The tool layer guarded its own callers but the IPC was a single
+ * layer wide open. This function closes that.
+ *
+ * Read scope is intentionally wider than write scope because legitimate
+ * reads happen outside the workspace:
+ *   - APP_ROOT             — bundled resources, icons, fonts
+ *   - APP_ROOT/data        — portable Parallx data
+ *   - workspace root       — user content (any depth)
+ *   - ~/.parallx           — user-level Parallx config (LLM keys, etc.)
+ *   - os.tmpdir() subtree  — indexing pipelines (Docling, image conversion)
+ *     write to system tmp then read back; we ourselves point children at
+ *     APP_ROOT/data/tmp but some upstream code still uses the OS default.
+ *
+ * Anything outside that list is rejected. The same "no workspace yet →
+ * allow" early-init pass-through that the write check uses applies.
+ */
+function _isAllowedReadPath(filePath) {
+  if (!_fsWorkspaceRoot) return true;
+  const normalized = path.resolve(filePath);
+  const roots = [
+    path.resolve(APP_ROOT),
+    path.resolve(path.join(APP_ROOT, 'data')),
+    path.resolve(_fsWorkspaceRoot),
+    path.resolve(path.join(os.homedir(), '.parallx')),
+    path.resolve(os.tmpdir()),
+  ];
+  for (const root of roots) {
+    if (normalized === root || normalized.startsWith(root + path.sep)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // ── fs:setWorkspaceRoot ──
 // Called by the renderer when a workspace is opened or switched. Registers the
 // workspace root so write-path validation can enforce containment.
@@ -1170,6 +1208,9 @@ ipcMain.handle('fs:setWorkspaceRoot', (_event, rootPath) => {
 
 // ── fs:readFile ──
 ipcMain.handle('fs:readFile', async (_event, filePath, encoding) => {
+  if (!_isAllowedReadPath(filePath)) {
+    return { error: { code: 'EACCES', message: 'Read path is outside the allowed roots', path: filePath } };
+  }
   try {
     const stat = await fs.stat(filePath);
     if (stat.isDirectory()) {
@@ -1212,6 +1253,9 @@ ipcMain.handle('fs:writeFile', async (_event, filePath, content, encoding) => {
 
 // ── fs:stat ──
 ipcMain.handle('fs:stat', async (_event, filePath) => {
+  if (!_isAllowedReadPath(filePath)) {
+    return { error: { code: 'EACCES', message: 'Path is outside the allowed roots', path: filePath } };
+  }
   try {
     const stat = await fs.stat(filePath);
     let type = 'file';
@@ -1241,6 +1285,9 @@ ipcMain.handle('fs:stat', async (_event, filePath) => {
 
 // ── fs:readdir ──
 ipcMain.handle('fs:readdir', async (_event, dirPath) => {
+  if (!_isAllowedReadPath(dirPath)) {
+    return { error: { code: 'EACCES', message: 'Directory is outside the allowed roots', path: dirPath } };
+  }
   try {
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
     const results = [];
@@ -1278,6 +1325,9 @@ ipcMain.handle('fs:readdir', async (_event, dirPath) => {
 
 // ── fs:exists ──
 ipcMain.handle('fs:exists', async (_event, filePath) => {
+  if (!_isAllowedReadPath(filePath)) {
+    return false;
+  }
   try {
     await fs.access(filePath);
     return true;
