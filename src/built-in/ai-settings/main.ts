@@ -9,6 +9,7 @@ import { IAISettingsService, IUnifiedAIConfigService, INotificationService, IWor
 import { ILanguageModelsService, ILanguageModelToolsService } from '../../services/chatTypes.js';
 import type { IToolPickerServices } from '../../services/chatTypes.js';
 import { AISettingsPanel } from '../../aiSettings/ui/aiSettingsPanel.js';
+import { ICronService } from '../../openclaw/openclawCronService.js';
 
 // ─── Local API type ──────────────────────────────────────────────────────────
 
@@ -114,11 +115,17 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     ? api.services.get<import('../../platform/storage.js').IStorage>(IGlobalStorageService)
     : undefined;
 
+  // Cron service — drives the live job list in the Scheduled jobs section.
+  // Section degrades gracefully (header text only, no list) when absent.
+  const cronService = api.services.has(ICronService)
+    ? api.services.get<import('../../openclaw/openclawCronService.js').CronService>(ICronService)
+    : undefined;
+
   // Register view provider
   context.subscriptions.push(
     api.views.registerViewProvider('view.aiSettings', {
       createView(container: HTMLElement): IDisposable {
-        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService, toolPickerServices, mcpClientService, autonomyFlagsService, globalStorage);
+        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService, toolPickerServices, mcpClientService, autonomyFlagsService, globalStorage, cronService);
         return _panel;
       },
     }),

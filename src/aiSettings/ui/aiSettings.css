@@ -1588,3 +1588,199 @@ input[type="number"].ai-settings-agent-card__field-input {
   background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
   border-color: var(--vscode-textLink-foreground, #3794ff);
 }
+
+/* ── Cron / Scheduled Jobs Section ────────────────────────────────────── */
+
+.ai-settings-cron-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.ai-settings-cron-job {
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--parallx-radius-md, 6px);
+  background: var(--vscode-editorWidget-background, rgba(255, 255, 255, 0.02));
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ai-settings-cron-job--disabled {
+  opacity: 0.65;
+}
+
+.ai-settings-cron-job__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ai-settings-cron-job__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ai-settings-cron-job__name {
+  font-weight: 600;
+  font-size: var(--parallx-fontSize-base);
+  color: var(--vscode-foreground, #ddd);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-settings-cron-job__source {
+  font-size: var(--parallx-fontSize-xs, 11px);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: var(--vscode-badge-background, rgba(255, 255, 255, 0.08));
+  color: var(--vscode-badge-foreground, #ccc);
+}
+
+.ai-settings-cron-job__source--extension {
+  background: rgba(85, 153, 255, 0.18);
+  color: var(--vscode-textLink-foreground, #5599ff);
+}
+
+.ai-settings-cron-job__source--ai {
+  background: rgba(170, 110, 255, 0.18);
+  color: #c79dff;
+}
+
+.ai-settings-cron-job__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--parallx-fontSize-sm);
+  color: var(--vscode-descriptionForeground, #aaa);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ai-settings-cron-job__toggle input[type='checkbox'] {
+  cursor: pointer;
+}
+
+.ai-settings-cron-job__description {
+  font-size: var(--parallx-fontSize-sm);
+  color: var(--vscode-descriptionForeground, #aaa);
+  line-height: 1.4;
+}
+
+.ai-settings-cron-job__meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px 16px;
+  padding: 8px 0;
+  border-top: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.08));
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.08));
+}
+
+.ai-settings-cron-job__meta-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ai-settings-cron-job__meta-label {
+  font-size: var(--parallx-fontSize-xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-cron-job__meta-value {
+  font-size: var(--parallx-fontSize-sm);
+  color: var(--vscode-foreground, #ddd);
+}
+
+.ai-settings-cron-job__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-settings-cron-job__btn {
+  background: var(--vscode-button-secondaryBackground, rgba(255, 255, 255, 0.06));
+  color: var(--vscode-button-secondaryForeground, #ddd);
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  padding: 4px 12px;
+  border-radius: var(--parallx-radius-sm, 4px);
+  font-size: var(--parallx-fontSize-sm);
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.ai-settings-cron-job__btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, rgba(255, 255, 255, 0.1));
+}
+
+.ai-settings-cron-job__btn--primary {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  border-color: transparent;
+}
+
+.ai-settings-cron-job__btn--primary:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.ai-settings-cron-job__btn--danger {
+  color: var(--vscode-errorForeground, #f48771);
+  border-color: rgba(244, 135, 113, 0.4);
+}
+
+.ai-settings-cron-job__btn--danger:hover {
+  background: rgba(244, 135, 113, 0.1);
+}
+
+.ai-settings-cron-job__edit {
+  border-top: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.08));
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-settings-cron-job__edit-label {
+  font-size: var(--parallx-fontSize-sm);
+  font-weight: 500;
+}
+
+.ai-settings-cron-job__edit-input {
+  background: var(--vscode-input-background, #1e1e1e);
+  color: var(--vscode-input-foreground, #ddd);
+  border: 1px solid var(--vscode-input-border, rgba(255, 255, 255, 0.15));
+  padding: 6px 10px;
+  border-radius: var(--parallx-radius-sm, 4px);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--parallx-fontSize-sm);
+}
+
+.ai-settings-cron-job__edit-input:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.ai-settings-cron-job__edit-help {
+  font-size: var(--parallx-fontSize-xs, 11px);
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-cron-job__edit-error {
+  font-size: var(--parallx-fontSize-sm);
+  color: var(--vscode-errorForeground, #f48771);
+}
+
+.ai-settings-cron-job__edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}

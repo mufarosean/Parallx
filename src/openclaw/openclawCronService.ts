@@ -20,6 +20,7 @@
  */
 
 import type { IDisposable } from '../platform/lifecycle.js';
+import { Emitter, type Event } from '../platform/events.js';
 import { createServiceIdentifier } from '../platform/types.js';
 
 // ---------------------------------------------------------------------------
@@ -198,6 +199,20 @@ export interface ICronPersistence {
   save(snapshot: ICronPersistedSnapshot): Promise<void>;
 }
 
+/**
+ * Notification fired by `CronService.onDidChangeJobs` when the job set
+ * mutates. `kind` distinguishes the mutation so listeners can pick the
+ * cheapest update path:
+ *   - `added` / `updated` / `removed`: single-job change; `jobId` is the
+ *     internal `cron-N` id.
+ *   - `ran`: post-firing update (lastRunAt/nextRunAt/runCount).
+ *   - `bulk`: persistence load or other multi-job change; `jobId` is undefined.
+ */
+export interface ICronJobChangeEvent {
+  readonly kind: 'added' | 'updated' | 'removed' | 'ran' | 'bulk';
+  readonly jobId?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Cron Service
 // ---------------------------------------------------------------------------
@@ -228,6 +243,17 @@ export class CronService implements IDisposable {
   private _observers: ICronObservers = {};
   /** M60 Phase γ — optional persistence (load on `loadFromPersistence()`, save after every mutation). */
   private _persistence: ICronPersistence | undefined;
+
+  /**
+   * Fires whenever the job set changes — additions, updates (including
+   * post-run timestamp/runCount mutation), and removals. The AI Hub
+   * "Scheduled jobs" section subscribes to this so the visible list and
+   * its next-run timestamps stay in lock-step with the live service
+   * without polling. Bulk-load events (`loadFromPersistence`) emit a
+   * single `bulk` kind so listeners can rerender once.
+   */
+  private readonly _onDidChangeJobs = new Emitter<ICronJobChangeEvent>();
+  readonly onDidChangeJobs: Event<ICronJobChangeEvent> = this._onDidChangeJobs.event;
 
   constructor(
     private readonly _executor: CronTurnExecutor,
@@ -282,6 +308,7 @@ export class CronService implements IDisposable {
         if (m) maxId = Math.max(maxId, parseInt(m[1], 10));
       }
       this._nextJobId = maxId + 1;
+      this._onDidChangeJobs.fire({ kind: 'bulk' });
     } catch {
       /* corrupt persistence — fall back to empty job set */
     }
@@ -381,6 +408,7 @@ export class CronService implements IDisposable {
 
     this._jobs.set(id, job);
     void this._save();
+    this._onDidChangeJobs.fire({ kind: 'added', jobId: id });
     return { ...job };
   }
 
@@ -415,6 +443,7 @@ export class CronService implements IDisposable {
 
     this._jobs.set(id, updated);
     void this._save();
+    this._onDidChangeJobs.fire({ kind: 'updated', jobId: id });
     return { ...updated };
   }
 
@@ -424,7 +453,10 @@ export class CronService implements IDisposable {
    */
   removeJob(id: string): boolean {
     const removed = this._jobs.delete(id);
-    if (removed) void this._save();
+    if (removed) {
+      void this._save();
+      this._onDidChangeJobs.fire({ kind: 'removed', jobId: id });
+    }
     return removed;
   }
 
@@ -620,6 +652,7 @@ export class CronService implements IDisposable {
       };
       this._jobs.set(job.id, updated);
       void this._save();
+      this._onDidChangeJobs.fire({ kind: 'ran', jobId: job.id });
       this._runHistory.push(result);
       this._trimRunHistory();
       this._emitFireEvent({
@@ -668,10 +701,15 @@ export class CronService implements IDisposable {
       this._trimRunHistory();
 
       // Upstream: deleteAfterRun — auto-remove after successful one-shot
-      if (job.deleteAfterRun) {
+      const deleted = job.deleteAfterRun === true;
+      if (deleted) {
         this._jobs.delete(job.id);
       }
       void this._save();
+      this._onDidChangeJobs.fire({
+        kind: deleted ? 'removed' : 'ran',
+        jobId: job.id,
+      });
       this._emitFireEvent({
         outcome: 'completed',
         jobId: job.id,
@@ -743,6 +781,7 @@ export class CronService implements IDisposable {
     this.stop();
     this._jobs.clear();
     this._runHistory.length = 0;
+    this._onDidChangeJobs.dispose();
   }
 }
 
