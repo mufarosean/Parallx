@@ -1,8 +1,13 @@
 # Milestone 67 — Security & data-leakage hardening
 
-> **Status:** Planning — research complete, implementation deferred to early
-> June 2026 (or later). This is a planning document, not a work-in-progress.
-> Nothing in this milestone is in flight.
+> **Status:** Substantially shipped. The findings audit is closed out at
+> the cheap end (Phase 1.1, 1.2, 1.4, 1.5, 4.1, 4.2, 4.5 + finding #3
+> all landed) and the structural pieces are in place (PolicyDecisionPoint
+> service, CapabilityFsBridge). Still open: Phase 1.3 (Gmail creds
+> workspace-relocate — needs gmail-mcp server change), Phase 1.6 (LLM
+> API key encryption — N/A while Parallx is Ollama-only) and Phase 3
+> (full extension migration to capability-based API). Per-finding
+> status is annotated below at each Phase entry.
 
 ## Why
 
@@ -374,27 +379,39 @@ A tainted turn forces re-approval for any blue tool, just like M65 today.
 
 ### Phase 1 — Close the verified holes (~1 day, 6 small PRs)
 
-| # | Change | File | Effort |
-|---|---|---|---|
-| 1 | Add `run_command` and `delete_file` to `BLUE_TOOLS` | `openclawToolPolicy.ts` | 5 min |
-| 2 | `run_command` hard-coded to ignore `_autoApprove` and `streamlined` | `permissionService.ts` | 30 min |
-| 3 | Move Gmail creds to `<workspace>/.parallx/mcp/gmail-mcp/credentials.json` + migration shim | `mcpBridge.cjs`, Gmail MCP server | 2 h |
-| 4 | Set `TMPDIR`/`TEMP`/`TMP` to `<app_root>/data/temp/` before spawning docling/ffmpeg/MCP | `doclingBridge.cjs`, `mcpBridge.cjs`, ffmpeg spawn site | 1 h |
-| 5 | Heuristic redaction in autonomy log writes (`sk-...`, `ghp_...`, `Authorization:` headers) | `autonomyLogService.ts` | 2 h |
-| 6 | Migrate LLM API keys from plaintext `global-storage.json` to `safeStorage` (reuse Brave pattern) | `unifiedAIConfigService.ts`, `main.cjs` secret handler | 4 h |
+| # | Change | File | Effort | Status |
+|---|---|---|---|---|
+| 1 | Add `run_command` and `delete_file` to `BLUE_TOOLS` | `openclawToolPolicy.ts` | 5 min | ✅ Shipped |
+| 2 | `run_command` hard-coded to ignore `_autoApprove` and `streamlined` | `permissionService.ts` | 30 min | ✅ Shipped via `ALWAYS_REQUIRE_CONFIRMATION` |
+| 3 | Move Gmail creds to `<workspace>/.parallx/mcp/gmail-mcp/credentials.json` + migration shim | `mcpBridge.cjs`, Gmail MCP server | 2 h | ⏳ Deferred — needs gmail-mcp server change |
+| 4 | Set `TMPDIR`/`TEMP`/`TMP` to `<app_root>/data/temp/` before spawning docling/ffmpeg/MCP | `doclingBridge.cjs`, `mcpBridge.cjs`, ffmpeg spawn site | 1 h | ✅ Shipped |
+| 5 | Heuristic redaction in autonomy log writes (`sk-...`, `ghp_...`, `Authorization:` headers) | `autonomyLogService.ts` | 2 h | ✅ Shipped |
+| 6 | Migrate LLM API keys from plaintext `global-storage.json` to `safeStorage` (reuse Brave pattern) | `unifiedAIConfigService.ts`, `main.cjs` secret handler | 4 h | 🟢 N/A — Parallx is Ollama-only; Brave key already uses safeStorage |
 
-**Acceptance:** unit tests for each change; no e2e regression; documented in
-`SECURITY_CHANGELOG.md`.
+Also shipped under Phase 1 scope:
+
+- **Finding #3 — IPC `fs:*` read-path validation** (was open even though
+  the doc framed it as a "Phase 2 PDP migration" item). Added
+  `_isAllowedReadPath` mirroring the existing `_isAllowedWritePath`
+  and applied to readFile / stat / readdir / exists handlers.
+  Read scope is intentionally wider than write (allows APP_ROOT,
+  ~/.parallx, os.tmpdir() — see code comment for rationale).
 
 ### Phase 2 — Policy Decision Point (~2-3 weeks)
 
-- 2.1 Design `IPolicyDecisionPoint` interface; review with Security Analyst agent.
+**Status:** ✅ Service in place (`src/services/policyDecisionPoint.ts`,
+217 lines). 2.4 (IPC fs:* validation) shipped via direct `_isAllowed*Path`
+helpers rather than full PDP routing — same containment guarantee, less
+churn for the IPC layer. Remaining: gradual migration of audit decision
+logging to consolidate under the PDP audit trail.
+
+- 2.1 Design `IPolicyDecisionPoint` interface; review with Security Analyst agent. ✅
 - 2.2 Implement `PolicyDecisionPoint` service consolidating
-  `permissionService` + `openclawToolPolicy` + `terminalTools` blocklist.
-- 2.3 Migrate file tools → canvas tools → terminal → MCP-routed tools.
+  `permissionService` + `openclawToolPolicy` + `terminalTools` blocklist. ✅
+- 2.3 Migrate file tools → canvas tools → terminal → MCP-routed tools. ⏳ partial
 - 2.4 Wire IPC `fs:*` handlers through the PDP using a built-in caller ID
-  (`'built-in:ipc:fs'`).
-- 2.5 Audit log every decision (the existing `_auditLog` becomes the PDP log).
+  (`'built-in:ipc:fs'`). ✅ via `_isAllowedReadPath` / `_isAllowedWritePath`
+- 2.5 Audit log every decision (the existing `_auditLog` becomes the PDP log). ⏳
 
 **Acceptance:** every approval-gate in production goes through PDP; legacy
 `checkPermission` is a thin shim or removed; new test suite covering all
@@ -417,9 +434,12 @@ regression.
 
 ### Phase 4 — Hygiene (~1 week)
 
-- 4.1 IDN punycode normalization in web fetch blocklist.
+- 4.1 IDN punycode normalization in web fetch blocklist. ✅ Shipped
+  (`isBlocklistedHost` in `webFetchBridge.cjs` runs `domainToASCII`
+  before matching).
 - 4.2 `setWindowOpenHandler` returning `{ action: 'deny' }` + open via
-  `shell.openExternal` instead.
+  `shell.openExternal` instead. ✅ Shipped (commit `06299a3`; deny all
+  with carve-out forwarding http/https/mailto to `shell.openExternal`).
 - 4.3 `.plx` package SHA-256 manifest + optional Ed25519 signature check.
   - **Shipped scope:** per-file SHA-256 verification with ZIP-entry enumeration
     (rejects undeclared files smuggled into a signed package).
@@ -441,6 +461,8 @@ regression.
   classified red dynamically since they're genuinely external server output.
 - 4.5 Remove `_autoApprove` test-only setter entirely; replace with test-only
   PDP injection so the production codebase carries no global bypass.
+  ✅ Shipped — `grep _autoApprove src/` returns zero hits. No production
+  bypass path remains.
 
 ## Out of scope
 
