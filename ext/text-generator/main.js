@@ -72,6 +72,51 @@ function injectStyles() {
 .tg-search:focus { border-color: var(--vscode-focusBorder, #007fd4); }
 .tg-search::placeholder { color: var(--vscode-input-placeholderForeground, #6e6e6e); }
 
+/* ═══ Scene state panel (M79 Phase 5) ═══ */
+.tg-scene-panel {
+  padding: 10px 14px;
+  background: var(--vscode-editorWidget-background, rgba(255,255,255,0.02));
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.08));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tg-scene-row { display: flex; align-items: center; gap: 8px; }
+.tg-scene-label {
+  font-size: var(--parallx-fontSize-sm, 11px);
+  color: var(--vscode-descriptionForeground, #888);
+  min-width: 160px;
+}
+.tg-scene-input {
+  flex: 1;
+  background: var(--vscode-input-background, #1e1e1e);
+  color: var(--vscode-input-foreground, #ddd);
+  border: 1px solid var(--vscode-input-border, rgba(255,255,255,0.1));
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: var(--parallx-fontSize-base, 12px);
+  font-family: inherit;
+  outline: none;
+}
+.tg-scene-input:focus { border-color: var(--vscode-focusBorder, #007fd4); }
+.tg-scene-clear-btn {
+  align-self: flex-end;
+  background: transparent;
+  border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.15));
+  color: var(--vscode-descriptionForeground, #aaa);
+  padding: 4px 12px;
+  border-radius: 3px;
+  font-size: var(--parallx-fontSize-sm, 11px);
+  cursor: pointer;
+}
+.tg-scene-clear-btn:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+  color: var(--vscode-foreground, #ddd);
+}
+.tg-chat-toolbar-btn--active {
+  background: var(--vscode-list-activeSelectionBackground, rgba(0,127,212,0.2));
+}
+
 /* Nav links */
 .tg-nav {
   display: flex;
@@ -1556,6 +1601,31 @@ function injectStyles() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 2: UTILITIES
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Wrap a save-shaped promise so its failure is surfaced to the user
+ * instead of being silently swallowed (M79 Phase 5).
+ *
+ * Most thread / settings writes were `.catch(() => {})` before this
+ * helper existed — failures left the user thinking their edit was saved
+ * when it wasn't. Now: log the raw error to the console (debug trail) AND
+ * show a passive warning toast naming the field that didn't persist.
+ *
+ * Pass the same `parallx` handle that's already in scope at the call site;
+ * the helper degrades gracefully if `parallx.window` is missing (tests,
+ * headless builds).
+ */
+function surfaceSaveError(promise, parallx, label) {
+  return Promise.resolve(promise).catch((err) => {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.warn(`[TextGenerator] save failed (${label}):`, detail);
+    try {
+      parallx?.window?.showWarningMessage?.(
+        `Couldn't save ${label}. Your change may not persist if you close this chat.`,
+      );
+    } catch { /* never let the toast itself throw */ }
+  });
+}
 
 function generateId() {
   // Prefer crypto.randomUUID() for proper RFC4122 v4 IDs; fall back to a
@@ -4061,8 +4131,95 @@ function renderChatEditor(container, parallx, input) {
   const tokenCountEl = el('span', 'tg-token-count');
   const viewPromptBtn = el('button', 'tg-chat-toolbar-btn', { html: icon('eye', 16) });
   viewPromptBtn.title = 'View system prompt';
-  toolbar.append(modelLabel, modelSelect, spacer, tokenCountEl, viewPromptBtn, summaryEl);
+  // M79 Phase 5 — Scene state edit panel toggle. The AI emits scene
+  // updates via the `<scene-update/>` tag (M79 Phase 3a) and they're
+  // auto-stored on `thread.sceneState`; this button lets the user view
+  // and override the current scene without having to drop into the
+  // thread JSON.
+  const sceneBtn = el('button', 'tg-chat-toolbar-btn', { html: icon('map', 16) });
+  sceneBtn.title = 'View / edit scene state';
+  toolbar.append(modelLabel, modelSelect, spacer, tokenCountEl, sceneBtn, viewPromptBtn, summaryEl);
   root.appendChild(toolbar);
+
+  // ── Scene state panel (collapsible) ──
+  // Editable inline so the user can fix a confused scene without scrolling
+  // through the AI's last response. Closed by default; saves on field
+  // blur (no explicit "save" button — same pattern as other meta edits).
+  const scenePanel = el('div', 'tg-scene-panel');
+  scenePanel.style.display = 'none';
+  const sceneRow = (labelText, key) => {
+    const row = el('div', 'tg-scene-row');
+    const lbl = el('label', 'tg-scene-label', { text: labelText });
+    const inp = el('input', 'tg-scene-input');
+    inp.type = 'text';
+    inp.dataset.sceneKey = key;
+    row.append(lbl, inp);
+    return { row, input: inp };
+  };
+  const sceneLocation = sceneRow('Location', 'location');
+  const sceneTime = sceneRow('Time', 'time');
+  const sceneMood = sceneRow('Mood', 'mood');
+  const scenePresent = sceneRow('Present (comma-separated)', 'present');
+  const sceneClearBtn = el('button', 'tg-scene-clear-btn', { text: 'Clear scene' });
+  sceneClearBtn.title = 'Reset all scene state to empty';
+  scenePanel.append(sceneLocation.row, sceneTime.row, sceneMood.row, scenePresent.row, sceneClearBtn);
+  root.appendChild(scenePanel);
+
+  function _readSceneFromThread() {
+    const s = thread?.sceneState;
+    if (!s || typeof s !== 'object') return { location: '', time: '', mood: '', present: '' };
+    return {
+      location: s.location ?? '',
+      time: s.time ?? '',
+      mood: s.mood ?? '',
+      present: Array.isArray(s.present) ? s.present.join(', ') : '',
+    };
+  }
+  function _writeSceneInputs() {
+    const v = _readSceneFromThread();
+    sceneLocation.input.value = v.location;
+    sceneTime.input.value = v.time;
+    sceneMood.input.value = v.mood;
+    scenePresent.input.value = v.present;
+  }
+  function _persistSceneFromInputs() {
+    const next = {
+      location: sceneLocation.input.value.trim() || null,
+      time: sceneTime.input.value.trim() || null,
+      mood: sceneMood.input.value.trim() || null,
+      present: scenePresent.input.value
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean),
+    };
+    // Normalize: if every field is empty/null, clear sceneState entirely.
+    const empty = !next.location && !next.time && !next.mood && next.present.length === 0;
+    const sceneStateToSave = empty ? null : next;
+    if (!thread) return;
+    thread.sceneState = sceneStateToSave;
+    void surfaceSaveError(
+      updateThreadMeta(fs, workspaceUri, threadId, { sceneState: sceneStateToSave }),
+      parallx,
+      'scene state',
+    );
+  }
+  for (const f of [sceneLocation, sceneTime, sceneMood, scenePresent]) {
+    f.input.addEventListener('change', _persistSceneFromInputs);
+    f.input.addEventListener('blur', _persistSceneFromInputs);
+  }
+  sceneClearBtn.addEventListener('click', () => {
+    sceneLocation.input.value = '';
+    sceneTime.input.value = '';
+    sceneMood.input.value = '';
+    scenePresent.input.value = '';
+    _persistSceneFromInputs();
+  });
+  sceneBtn.addEventListener('click', () => {
+    const willShow = scenePanel.style.display === 'none';
+    scenePanel.style.display = willShow ? '' : 'none';
+    sceneBtn.classList.toggle('tg-chat-toolbar-btn--active', willShow);
+    if (willShow) _writeSceneInputs();
+  });
 
   const messagesEl = el('div', 'tg-messages');
   root.appendChild(messagesEl);
@@ -4228,7 +4385,7 @@ function renderChatEditor(container, parallx, input) {
     // Update global default so new threads inherit the name
     if (currentSettings) {
       currentSettings.userName = newName;
-      await saveSettings(fs, workspaceUri, currentSettings).catch(() => {});
+      await surfaceSaveError(saveSettings(fs, workspaceUri, currentSettings), parallx, 'your name');
     }
   }
 
@@ -4404,7 +4561,7 @@ function renderChatEditor(container, parallx, input) {
           }
         }
         if (changed) {
-          updateThreadMeta(fs, workspaceUri, threadId, { shortcuts: thread.shortcuts }).catch(() => {});
+          surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { shortcuts: thread.shortcuts }), parallx, 'shortcut changes');
         }
       }
       return thread.shortcuts;
@@ -4658,7 +4815,7 @@ function renderChatEditor(container, parallx, input) {
             clearAfterSend: 'no',
           });
           thread.shortcuts = shortcuts;
-          await updateThreadMeta(fs, workspaceUri, threadId, { shortcuts }).catch(() => {});
+          await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { shortcuts }), parallx, 'shortcuts');
           overlay.remove();
           renderShortcutButtons();
         });
@@ -4779,7 +4936,7 @@ function renderChatEditor(container, parallx, input) {
         clearAfterSend: clearSelect.value,
       });
       thread.shortcuts = shortcuts;
-      await updateThreadMeta(fs, workspaceUri, threadId, { shortcuts }).catch(() => {});
+      await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { shortcuts }), parallx, 'shortcuts');
       overlay.remove();
       renderShortcutButtons();
     });
@@ -4836,7 +4993,7 @@ function renderChatEditor(container, parallx, input) {
     saveBtn.addEventListener('click', async () => {
       const parsed = parseShortcutsFromBulkText(bulkInput.value);
       thread.shortcuts = parsed;
-      await updateThreadMeta(fs, workspaceUri, threadId, { shortcuts: parsed }).catch(() => {});
+      await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { shortcuts: parsed }), parallx, 'shortcuts');
       overlay.remove();
       renderShortcutButtons();
     });
@@ -5461,9 +5618,21 @@ function renderChatEditor(container, parallx, input) {
   function renderMessages() {
     messagesEl.innerHTML = '';
     let visibleCount = 0;
+    // M79 Phase 5 — `[Active turn: X]` system messages are prompt-builder
+    // artifacts (orphans of a partial generation). They're invisible to
+    // the AI in subsequent turns but used to appear in the UI as bare
+    // bracketed strings whenever the thread had been started but the AI's
+    // reply hadn't landed. Hide them from the user transcript here so
+    // they no longer pollute the welcome / empty-thread view.
+    const isActiveTurnArtifact = (msg) =>
+      msg?.role === 'system'
+      && typeof msg.content === 'string'
+      && msg.content.startsWith('[Active turn:');
+
     for (let index = 0; index < messageHistory.length; index++) {
       const msg = messageHistory[index];
       if (msg.hiddenFrom === 'user') continue;
+      if (isActiveTurnArtifact(msg)) continue;
       visibleCount += 1;
       renderMessageRow(msg, index, false);
     }
@@ -5474,7 +5643,16 @@ function renderChatEditor(container, parallx, input) {
     if (visibleCount === 0) {
       const welcome = el('div', 'tg-welcome');
       welcome.appendChild(el('div', 'tg-welcome-name', { text: getCharacterName(characters[0]) }));
-      welcome.appendChild(el('div', 'tg-welcome-hint', { text: 'Start the scene below.' }));
+      // If the thread has an orphaned `[Active turn:]` artifact (it was
+      // mid-generation when something failed), surface that as a friendly
+      // hint instead of letting the user see an empty editor that they
+      // think is broken.
+      const orphan = messageHistory.find(isActiveTurnArtifact);
+      welcome.appendChild(el('div', 'tg-welcome-hint', {
+        text: orphan
+          ? 'A turn was set up but never completed. Send a message to continue, or use the shortcut bar to retry.'
+          : 'Start the scene below.',
+      }));
       messagesEl.appendChild(welcome);
     }
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -6341,7 +6519,7 @@ function renderChatEditor(container, parallx, input) {
     characters = loadedCharacters;
     // Persist updated thread references if any .md → .json renames happened
     if (threadNeedsUpdate) {
-      await updateThreadMeta(fs, workspaceUri, threadId, { characters: thread.characters }).catch(() => {});
+      await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { characters: thread.characters }), parallx, 'updated participant references');
     }
 
     if (includeMessages) {
@@ -6441,7 +6619,7 @@ function renderChatEditor(container, parallx, input) {
       const doSave = async () => {
         const newName = nameInput.value.trim() || 'Anon';
         thread.userName = newName;
-        await updateThreadMeta(fs, workspaceUri, threadId, { userName: newName }).catch(() => {});
+        await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { userName: newName }), parallx, 'your name');
         await propagateUserName(newName);
         overlay.remove();
         renderShortcutButtons();
@@ -6462,7 +6640,7 @@ function renderChatEditor(container, parallx, input) {
     const autoReplyEnabled = thread?.autoReply !== false;
     item('refresh-cw', autoReplyEnabled ? 'Disable Autoreply' : 'Enable Autoreply', async () => {
       thread.autoReply = !autoReplyEnabled;
-      await updateThreadMeta(fs, workspaceUri, threadId, { autoReply: thread.autoReply }).catch(() => {});
+      await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { autoReply: thread.autoReply }), parallx, 'auto-reply setting');
     });
 
     // ── Add character ──
@@ -6489,7 +6667,7 @@ function renderChatEditor(container, parallx, input) {
           btn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
           btn.addEventListener('click', async () => {
             thread.characters.push({ file: char.fileName, addedAt: Date.now() });
-            await updateThreadMeta(fs, workspaceUri, threadId, { characters: thread.characters }).catch(() => {});
+            await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { characters: thread.characters }), parallx, 'added participant');
             overlay.remove();
             await reloadThreadState();
           });
@@ -6534,7 +6712,7 @@ function renderChatEditor(container, parallx, input) {
       selfBtn.addEventListener('click', async () => {
         selectedComposeSpeaker = SELF_SPEAKER;
         thread.userPlaysAs = null;
-        await updateThreadMeta(fs, workspaceUri, threadId, { userPlaysAs: null }).catch(() => {});
+        await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { userPlaysAs: null }), parallx, 'type-as setting');
         overlay.remove();
         renderTurnControls();
       });
@@ -6548,7 +6726,7 @@ function renderChatEditor(container, parallx, input) {
         btn.addEventListener('click', async () => {
           selectedComposeSpeaker = char.fileName;
           thread.userPlaysAs = char.fileName;
-          await updateThreadMeta(fs, workspaceUri, threadId, { userPlaysAs: char.fileName }).catch(() => {});
+          await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { userPlaysAs: char.fileName }), parallx, 'type-as setting');
           overlay.remove();
           renderTurnControls();
         });
@@ -6607,7 +6785,7 @@ function renderChatEditor(container, parallx, input) {
   modelSelect.addEventListener('change', () => {
     selectedModelId = modelSelect.value || null;
     if (thread && selectedModelId) {
-      updateThreadMeta(fs, workspaceUri, threadId, { modelId: selectedModelId }).catch(() => {});
+      surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { modelId: selectedModelId }), parallx, 'model selection');
     }
   });
 
@@ -7403,19 +7581,41 @@ function renderCharacterEditor(container, parallx, input) {
   ));
 
   // ── Lorebooks (lifted out of "More") ──
+  // M79 Phase 5 — Lorebook picker filter input. The picker can grow to
+  // dozens of files in mature workspaces; a substring filter makes it
+  // workable. Case-insensitive plain-text contains check (no regex —
+  // user-typed input).
+  const loreFilterInput = el('input', 'tg-ce-input');
+  loreFilterInput.type = 'text';
+  loreFilterInput.placeholder = 'Filter lorebooks…';
+  loreFilterInput.style.cssText = 'margin-bottom: 6px;';
+
   const loreListContainer = el('div', 'tg-ce-lore-list');
   let _allLoreFiles = [];
   const _loreSelected = new Set();
+  let _loreFilter = '';
   function rebuildLoreList() {
     loreListContainer.innerHTML = '';
     const known = new Set(_allLoreFiles);
+    const q = _loreFilter.trim().toLowerCase();
+    const matches = (fname) => !q || fname.toLowerCase().includes(q);
+
     if (_allLoreFiles.length === 0 && _loreSelected.size === 0) {
       loreListContainer.appendChild(el('div', 'tg-ce-lore-empty', {
         text: 'No lorebooks in the lorebooks/ folder yet. Create one from the Home page.',
       }));
       return;
     }
-    for (const fname of _allLoreFiles) {
+    const visibleKnown = _allLoreFiles.filter(matches);
+    const visibleOrphans = [...(_loreSelected)].filter(s => !known.has(s) && matches(s));
+
+    if (q && visibleKnown.length === 0 && visibleOrphans.length === 0) {
+      loreListContainer.appendChild(el('div', 'tg-ce-lore-empty', {
+        text: `No lorebooks match "${q}".`,
+      }));
+      return;
+    }
+    for (const fname of visibleKnown) {
       const row = el('label', 'tg-ce-lore-row');
       const cb = el('input');
       cb.type = 'checkbox';
@@ -7428,8 +7628,7 @@ function renderCharacterEditor(container, parallx, input) {
       row.appendChild(el('span', null, { text: fname }));
       loreListContainer.appendChild(row);
     }
-    for (const sel of _loreSelected) {
-      if (known.has(sel)) continue;
+    for (const sel of visibleOrphans) {
       const row = el('label', 'tg-ce-lore-row');
       const cb = el('input');
       cb.type = 'checkbox';
@@ -7442,10 +7641,17 @@ function renderCharacterEditor(container, parallx, input) {
       loreListContainer.appendChild(row);
     }
   }
+  loreFilterInput.addEventListener('input', () => {
+    _loreFilter = loreFilterInput.value;
+    rebuildLoreList();
+  });
+  const loreWrap = el('div');
+  loreWrap.appendChild(loreFilterInput);
+  loreWrap.appendChild(loreListContainer);
   root.appendChild(field(
     `${icon('book-open', 14)} Lorebooks`,
-    'Tick lorebooks this character should pull world info from. Triggers fire when keywords appear in recent context.',
-    loreListContainer,
+    'Tick lorebooks this character should pull world info from. Triggers fire when keywords appear in recent context. Use the filter to narrow long lists.',
+    loreWrap,
   ));
 
   // ── Temperature + max tokens (lifted out of "More") ──
