@@ -1,30 +1,23 @@
+// chatWorkspaceDigest.test.ts — the function is deprecated and now
+// always returns undefined regardless of inputs. The full rationale lives
+// in src/built-in/chat/utilities/chatWorkspaceDigest.ts. These tests
+// freeze that contract so a future contributor doesn't accidentally
+// re-introduce the auto-listing in the system prompt.
+
 import { describe, expect, it, vi } from 'vitest';
 
 import { computeChatWorkspaceDigest } from '../../src/built-in/chat/utilities/chatWorkspaceDigest';
 
-describe('chat workspace digest', () => {
-  it('builds a digest from pages, files, and key previews', async () => {
+describe('chat workspace digest (deprecated)', () => {
+  it('returns undefined even when database and fs are fully populated', async () => {
     const databaseService = {
       isOpen: true,
-      all: vi.fn(async (sql: string) => {
-        if (sql.includes('indexing_metadata')) {
-          return [
-            { source_id: 'page-1', summary: 'Claim workflow summary' },
-            { source_id: 'Claims Guide.md', summary: 'Guide summary' },
-          ];
-        }
-        return [{ id: 'page-1', title: 'Claims Page' }];
-      }),
+      all: vi.fn(async () => [{ id: 'page-1', title: 'Claims Page' }]),
     };
     const fsAccessor = {
-      readdir: vi.fn(async (dir: string) => dir === '.'
-        ? [
-          { name: 'Claims Guide.md', type: 'file' as const },
-          { name: 'docs', type: 'directory' as const },
-        ]
-        : []),
-      exists: vi.fn(async (path: string) => path === 'README.md'),
-      readFileContent: vi.fn(async () => ({ content: 'Workspace readme' })),
+      readdir: vi.fn(async () => [{ name: 'README.md', type: 'file' as const }]),
+      exists: vi.fn(async () => true),
+      readFileContent: vi.fn(async () => ({ content: 'readme content' })),
     };
 
     const digest = await computeChatWorkspaceDigest({
@@ -33,19 +26,36 @@ describe('chat workspace digest', () => {
       getContextLength: vi.fn().mockResolvedValue(8192),
     });
 
-    expect(digest).toContain('CANVAS PAGES (1):');
-    expect(digest).toContain('Claims Page — Claim workflow summary');
-    expect(digest).toContain('WORKSPACE FILES:');
-    expect(digest).toContain('[file] Claims Guide.md — Guide summary');
-    expect(digest).toContain('KEY FILE — README.md:');
-    expect(digest).toContain('Workspace readme');
+    expect(digest).toBeUndefined();
   });
 
-  it('returns undefined when no digest sources are available', async () => {
+  it('returns undefined when no sources are available', async () => {
     const digest = await computeChatWorkspaceDigest({
       getContextLength: vi.fn().mockResolvedValue(0),
     });
-
     expect(digest).toBeUndefined();
+  });
+
+  it('does not invoke the database or filesystem (zero side effects)', async () => {
+    const databaseService = {
+      isOpen: true,
+      all: vi.fn(async () => []),
+    };
+    const fsAccessor = {
+      readdir: vi.fn(async () => []),
+      exists: vi.fn(async () => false),
+      readFileContent: vi.fn(async () => ({ content: '' })),
+    };
+
+    await computeChatWorkspaceDigest({
+      databaseService,
+      fsAccessor,
+      getContextLength: vi.fn().mockResolvedValue(8192),
+    });
+
+    expect(databaseService.all).not.toHaveBeenCalled();
+    expect(fsAccessor.readdir).not.toHaveBeenCalled();
+    expect(fsAccessor.exists).not.toHaveBeenCalled();
+    expect(fsAccessor.readFileContent).not.toHaveBeenCalled();
   });
 });

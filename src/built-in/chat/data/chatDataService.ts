@@ -708,10 +708,10 @@ export function buildFileSystemAccessor(
 
 export class ChatDataService {
 
-  // ── Digest cache ──
-  private _cachedDigest: string | undefined;
-  private _cacheTimestamp = 0;
-  private static readonly DIGEST_TTL_MS = 60_000;
+  // ── Digest cache (deprecated — workspace digest now always returns
+  // undefined; see chatWorkspaceDigest.ts for why). Fields kept removed
+  // intentionally — re-adding them implies the digest will be populated
+  // again, which we don't want. Tools are the workspace-exploration path.
 
   // ── Externally set state ──
   private _lastIndexStats: { pages: number; files: number } | undefined;
@@ -2048,19 +2048,15 @@ export class ChatDataService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   async getWorkspaceDigest(): Promise<string | undefined> {
-    const now = Date.now();
-    if (this._cachedDigest !== undefined && now - this._cacheTimestamp < ChatDataService.DIGEST_TTL_MS) {
-      return this._cachedDigest;
-    }
-
-    const result = await computeChatWorkspaceDigest({
+    // Always undefined — see chatWorkspaceDigest.ts. The function call is
+    // kept so callers don't change shape, but the workspace overview is
+    // no longer inlined into the system prompt. Tools surface this on
+    // demand instead.
+    return computeChatWorkspaceDigest({
       databaseService: this._d.databaseService,
       fsAccessor: this._d.fsAccessor,
       getContextLength: () => this.getContextLength(),
     });
-    this._cachedDigest = result;
-    this._cacheTimestamp = now;
-    return result;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
