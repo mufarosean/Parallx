@@ -279,7 +279,7 @@ let _loadWriterIgnore: (() => Promise<unknown>) | undefined;
 
 // ── Activation ──
 
-export function activate(api: ParallxApi, context: ToolContext): void {
+export async function activate(api: ParallxApi, context: ToolContext): Promise<void> {
   _api = api;
 
   // ── M58 W4 cron ↔ W2 heartbeat forward-link ──
@@ -1596,10 +1596,20 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         });
         // Hydrate before start() so missed-job catchup (M60 §3.7) sees
         // the restored job set; coalesces multiple missed firings into one.
-        // activate() is sync — chain load → start as a microtask. Cron's
-        // 60s tick means the brief deferral is invisible.
-        const _cron = cronService;
-        void _cron.loadFromPersistence().then(() => _cron.start());
+        //
+        // CRITICAL: we MUST await hydration here, not fire-and-forget.
+        // The activator awaits this `activate()` before moving to the next
+        // extension, so awaiting loadFromPersistence guarantees that any
+        // downstream extension (budget, etc.) calling `api.cron.upsertJob`
+        // sees the already-restored job set via `_findByName`. The earlier
+        // `void load.then(start)` pattern raced: budget would addJob with
+        // a fresh anchor (= now) before persistence loaded, then the
+        // hydration would restore the original in memory but the racing
+        // save had already written the fresh-anchor snapshot to disk,
+        // corrupting it for the next launch. Net effect: cron's
+        // `nextRunAt` reset on every launch. Awaiting closes the race.
+        await cronService.loadFromPersistence();
+        cronService.start();
       } else {
         cronService.start();
       }
