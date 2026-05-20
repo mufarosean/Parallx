@@ -184,6 +184,26 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
   /** Models that returned 400 for think:true — skip on subsequent calls. */
   private _noThinkModels = new Set<string>();
 
+  /**
+   * Cache of model family lowercased, keyed by modelId. Populated lazily
+   * by `getModelInfo`. Used by the streaming path to decide whether
+   * sending `think:true` is safe for a given model — without this gate,
+   * recent Ollama versions silently honor `think:true` on models whose
+   * thinking implementation loops in long contexts.
+   */
+  private _modelFamilyCache = new Map<string, string>();
+
+  /**
+   * Families whose `think:true` output loops on long contexts even when
+   * Ollama reports thinking capability. Gemma3 is the documented offender:
+   * the model has built-in chain-of-thought prompting that double-emits
+   * when Ollama's separate `think` channel is also enabled, and the
+   * repeat-detection logic doesn't catch it. Add new families here only
+   * after a reproducible regression report. Comparison is lowercase
+   * substring against `details.family`.
+   */
+  private static readonly _BUGGY_THINK_FAMILIES: readonly string[] = ['gemma'];
+
   /** Set context length override (0 = let Ollama decide). */
   setContextLengthOverride(value: number): void {
     this._contextLengthOverride = Math.max(0, Math.floor(value));
@@ -372,11 +392,26 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     if (response.capabilities?.includes('vision')) {
       capabilities.push('vision');
     }
-    // Check for thinking support (DeepSeek-R1, QwQ, etc.)
+    // Thinking capability. Source of truth is Ollama's own capabilities
+    // array when present (newer Ollama versions report 'thinking'
+    // directly). Family-string sniffing is kept only as a fallback for
+    // models whose Ollama version doesn't yet report it, and is restricted
+    // to families known to have a stable thinking implementation —
+    // deepseek-r1 and QwQ. Models like Gemma3 in newer Ollama builds
+    // started honoring `think:true` but produce thought-loops in long
+    // contexts, so we no longer infer thinking from arbitrary families.
     const familyLower = response.details.family.toLowerCase();
-    if (familyLower.includes('deepseek') || familyLower.includes('qwq')) {
+    if (
+      response.capabilities?.includes('thinking') ||
+      familyLower.includes('deepseek') ||
+      familyLower.includes('qwq')
+    ) {
       capabilities.push('thinking');
     }
+
+    // Cache the family so the streaming path can gate `think:true` without
+    // round-tripping to /api/show on every request.
+    this._modelFamilyCache.set(modelId, response.details.family.toLowerCase());
 
     return {
       id: modelId,
@@ -387,6 +422,22 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       contextLength,
       capabilities,
     };
+  }
+
+  /**
+   * True iff `think:true` is known to misbehave for this model. Consults
+   * both the cached family (populated by `getModelInfo`) and the model id
+   * itself — first-turn requests run before getModelInfo completes, so
+   * the id-prefix check is the fast path that catches Gemma3 immediately.
+   */
+  private _isBuggyThinkModel(modelId: string): boolean {
+    const idLower = modelId.toLowerCase();
+    const family = this._modelFamilyCache.get(modelId);
+    for (const buggy of OllamaProvider._BUGGY_THINK_FAMILIES) {
+      if (idLower.includes(buggy)) return true;
+      if (family && family.includes(buggy)) return true;
+    }
+    return false;
   }
 
   async *sendChatRequest(
@@ -428,7 +479,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       if (options.format) {
         body['format'] = options.format;
       }
-      if (options.think && !this._noThinkModels.has(modelId)) {
+      if (options.think && !this._noThinkModels.has(modelId) && !this._isBuggyThinkModel(modelId)) {
         body['think'] = true;
       }
     }
