@@ -160,6 +160,34 @@ describe('ChatService', () => {
       expect(session.messages[0].response.isComplete).toBe(true);
     });
 
+    it('tags each request token with the active response turn id', async () => {
+      const observed = vi.fn();
+      agentService.registerAgent({
+        id: 'parallx.chat.token-capture',
+        displayName: 'Token Capture',
+        description: 'Captures token metadata',
+        commands: [],
+        handler: async (
+          request: IChatParticipantRequest,
+          _context: IChatParticipantContext,
+          response: IChatResponseStream,
+          token: ICancellationToken,
+        ) => {
+          observed(token.turnId, request.requestId);
+          response.markdown('Captured');
+          return {};
+        },
+      });
+
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'Hello', {
+        participantId: 'parallx.chat.token-capture',
+      });
+
+      const requestId = session.messages[0].request.requestId;
+      expect(observed).toHaveBeenCalledWith(requestId, requestId);
+    });
+
     it('computes structured turn state before dispatching the request', async () => {
       const capture = vi.fn(async (
         _request: IChatParticipantRequest,

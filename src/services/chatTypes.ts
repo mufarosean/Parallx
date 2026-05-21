@@ -863,6 +863,11 @@ export interface ICancellationToken {
   /** Event that fires when cancellation is requested. */
   readonly onCancellationRequested: Event<void>;
   /**
+   * Unique id for the active assistant-response turn.
+   * Tool handlers use this to scope per-turn state such as web search/fetch caps.
+   */
+  readonly turnId?: string;
+  /**
    * Whether a yield has been requested (soft interrupt).
    * Participants should check this at natural break points (between tool
    * iterations) and wrap up early when true, allowing the next queued

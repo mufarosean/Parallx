@@ -189,7 +189,7 @@ export class CancellationTokenSource implements IDisposable {
   private _yieldRequested = false;
   readonly token: ICancellationToken;
 
-  constructor() {
+  constructor(turnId?: string) {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     this.token = {
@@ -198,6 +198,9 @@ export class CancellationTokenSource implements IDisposable {
       },
       get isYieldRequested() {
         return self._yieldRequested;
+      },
+      get turnId() {
+        return turnId;
       },
       onCancellationRequested: self._onCancellationRequested.event,
     };
@@ -1101,7 +1104,7 @@ export class ChatService extends Disposable implements IChatService {
     this._onDidChangeSession.fire(sessionId);
 
     // 6. Create cancellation token
-    const cts = new CancellationTokenSource();
+    const cts = new CancellationTokenSource(requestId);
     this._activeCancellations.set(sessionId, cts);
 
     // 7. Create response stream

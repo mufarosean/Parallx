@@ -22,6 +22,8 @@ beforeEach(async () => {
   ext = await import('../../ext/web-research/main.js');
   ext.__test__._setDOMParser(await loadDOMParser());
   ext.__test__.resetTurn('turn-a');
+  ext.__test__.resetTurn('turn-b');
+  ext.__test__.resetTurn('default-turn');
   stored = {};
   ext.__test__._setGlobalStorage({
     get: async (k: string) => stored[k] ?? null,
@@ -55,6 +57,21 @@ describe('per-turn search cap (3)', () => {
     const r4 = await ext.__test__.webSearchTool({ query: 'q4' }, 'turn-a');
     expect(r4.isError).toBe(true);
     expect(r4.errorCode).toBe('TURN_SEARCH_CAP');
+  });
+
+  it('starts a fresh cap when the next response turn uses a new turn id', async () => {
+    for (let i = 0; i < ext.__test__.PER_TURN_SEARCH_CAP; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      const r = await ext.__test__.webSearchTool({ query: `q${i}` }, 'turn-a');
+      expect(r.isError).toBe(false);
+    }
+
+    const capped = await ext.__test__.webSearchTool({ query: 'same turn' }, 'turn-a');
+    expect(capped.isError).toBe(true);
+    expect(capped.errorCode).toBe('TURN_SEARCH_CAP');
+
+    const freshTurn = await ext.__test__.webSearchTool({ query: 'next response' }, 'turn-b');
+    expect(freshTurn.isError).toBe(false);
   });
 });
 

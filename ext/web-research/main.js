@@ -700,10 +700,9 @@ function _registerTools(api) {
     console.warn('[web-research] api.chat.registerTool not available — tools skipped');
     return;
   }
-  // Turn id propagation: the chat surface passes a token whose shape includes
-  // a turn identifier. Until that is wired, we fall back to a stable id so
-  // local development still seeds provenance correctly. Tests use the
-  // exported tool handlers directly.
+  // Turn id propagation: ChatService stamps the active request id onto the
+  // cancellation token so every tool call in one assistant response shares a
+  // budget. The fallback keeps direct tests/legacy callers conservative.
   const getTurnId = (token) => {
     if (token && typeof token === 'object' && typeof token.turnId === 'string') return token.turnId;
     return 'default-turn';
