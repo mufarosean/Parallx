@@ -141,7 +141,9 @@ export class PropertyBar implements IDisposable {
       this._eventDisposables.push(
         this._dataService.onDidChangePage((e) => {
           if (e.pageId !== this._pageId) return;
-          if (e.kind === PageChangeKind.Created || e.kind === PageChangeKind.Updated) {
+          if (e.kind === PageChangeKind.Updated) {
+            this._updateModifiedRow(e.page?.updatedAt);
+          } else if (e.kind === PageChangeKind.Created) {
             this._renderProperties();
           }
         }),
@@ -224,6 +226,7 @@ export class PropertyBar implements IDisposable {
   ): HTMLElement {
     const row = document.createElement('div');
     row.className = 'canvas-property-row';
+    row.dataset.propertyKey = prop.key;
 
     // Name column
     const name = document.createElement('div');
@@ -278,6 +281,35 @@ export class PropertyBar implements IDisposable {
     }
 
     return row;
+  }
+
+  private _updateModifiedRow(updatedAt: string | undefined): void {
+    if (!this._body || this._disposed || !updatedAt) return;
+
+    const row = Array.from(this._body.querySelectorAll<HTMLElement>('.canvas-property-row'))
+      .find((candidate) => candidate.dataset.propertyKey === 'modified');
+    const valueCell = row?.querySelector<HTMLElement>('.canvas-property-row__value');
+    if (!valueCell) return;
+
+    const normalized = _toTimezoneAwareTimestamp(updatedAt);
+    const nextLabel = _formatDatetimeLabel(normalized);
+    const currentTrigger = valueCell.querySelector<HTMLElement>('.canvas-prop-date-trigger');
+    if (currentTrigger?.textContent === nextLabel) return;
+
+    const definition: IPropertyDefinition = {
+      name: 'modified',
+      type: 'datetime',
+      config: {},
+      sortOrder: 3,
+      createdAt: '',
+      updatedAt: '',
+    };
+    const editor = createPropertyEditor(definition, normalized, (newValue) => {
+      this._propertyService.setProperty(this._pageId, 'modified', newValue).catch(err => {
+        console.error('[PropertyBar] Failed to save property "modified":', err);
+      });
+    });
+    valueCell.replaceChildren(editor);
   }
 
   // ── Add Existing Property ─────────────────────────────────────────────
@@ -373,4 +405,21 @@ function _defaultValueForType(type: PropertyType): unknown {
     case 'url': return null;
     default: return null;
   }
+}
+
+function _toTimezoneAwareTimestamp(value: string): string {
+  const normalized = value.trim().replace(' ', 'T');
+  return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized) ? normalized : `${normalized}Z`;
+}
+
+function _formatDatetimeLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Empty';
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }

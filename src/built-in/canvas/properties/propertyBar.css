@@ -83,6 +83,8 @@
   justify-content: center;
   color: currentColor;
 }
+
+.canvas-property-row__label {
   overflow: hidden;
   text-overflow: ellipsis;
 }
