@@ -345,6 +345,10 @@ export const CANVAS_MANIFEST: IToolManifest = {
         aiInvocable: true, aiDescription: 'Show the canvas keyboard shortcuts overlay.' },
       { id: 'canvas.showTemplatePicker', title: 'Canvas: Show Template Picker',
         aiInvocable: true, aiDescription: 'Open the canvas template picker.' },
+      { id: 'canvas.manageTemplates', title: 'Canvas: Manage Templates',
+        aiInvocable: true, aiDescription: 'Open the user-template manager (list, delete custom canvas templates).' },
+      { id: 'canvas.saveAsTemplate', title: 'Canvas: Save Page As Template',
+        aiInvocable: true, aiDescription: 'Save the given canvas page as a reusable custom template. Argument: pageId (string, required).' },
     ],
     keybindings: [
       { command: 'canvas.newPage', key: 'Ctrl+N', when: "focusedView == 'view.canvas'" },

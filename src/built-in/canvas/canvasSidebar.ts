@@ -396,14 +396,36 @@ export class CanvasSidebar {
     pagesLabel.textContent = 'PAGES';
     pagesHeader.appendChild(pagesLabel);
 
+    // ── Split add control ─────────────────────────────────────────────
+    // Main "+" creates a blank page (fast path — preserves muscle memory).
+    // The chevron next to it opens a popover with all create options:
+    //   - Blank page (mirrors the main button, included for keyboard nav)
+    //   - From template…
+    //   - Manage templates…
+    // Without this, the only way to reach templates in an existing
+    // workspace was via the command palette. Discoverability matters.
+    const addGroup = $('div.canvas-sidebar-add-group');
+
     const addBtn = $('button.canvas-sidebar-add-btn');
-    addBtn.title = 'New Page';
+    addBtn.title = 'New page';
     addBtn.appendChild(createIconElement('plus', 14));
     addBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this._createPage();
     });
-    pagesHeader.appendChild(addBtn);
+    addGroup.appendChild(addBtn);
+
+    const addMenuBtn = $('button.canvas-sidebar-add-menu-btn');
+    addMenuBtn.title = 'New page options';
+    addMenuBtn.setAttribute('aria-label', 'Show new-page options');
+    addMenuBtn.appendChild(createIconElement('chevron-down', 12));
+    addMenuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._showAddPopover(addMenuBtn);
+    });
+    addGroup.appendChild(addMenuBtn);
+
+    pagesHeader.appendChild(addGroup);
     this._treeList.appendChild(pagesHeader);
 
     // ── Main tree ──
@@ -1193,6 +1215,81 @@ export class CanvasSidebar {
   // ══════════════════════════════════════════════════════════════════════════
   // Create / Rename / Delete (Task 4.3)
   // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Render a small popover anchored to the chevron button next to the
+   * sidebar `+`. Surfaces the full template lifecycle (use, manage)
+   * alongside the blank-page fast path. Click outside / Esc dismisses.
+   */
+  private _showAddPopover(anchor: HTMLElement): void {
+    // Single instance — close any existing popover first.
+    document.querySelectorAll('.canvas-sidebar-add-popover').forEach((el) => el.remove());
+
+    const pop = $('div.canvas-sidebar-add-popover');
+    const items: { label: string; icon: string; onClick: () => void }[] = [
+      {
+        label: 'Blank page',
+        icon: 'file',
+        onClick: () => { void this._createPage(); },
+      },
+      {
+        label: 'From template…',
+        icon: 'layout-template',
+        onClick: () => {
+          void this._api.commands.executeCommand('canvas.showTemplatePicker');
+        },
+      },
+      {
+        label: 'Manage templates…',
+        icon: 'settings',
+        onClick: () => {
+          void this._api.commands.executeCommand('canvas.manageTemplates');
+        },
+      },
+    ];
+    for (const item of items) {
+      const row = $('button.canvas-sidebar-add-popover-item') as HTMLButtonElement;
+      row.type = 'button';
+      row.appendChild(createIconElement(item.icon, 14));
+      const label = document.createElement('span');
+      label.textContent = item.label;
+      row.appendChild(label);
+      row.addEventListener('click', () => {
+        pop.remove();
+        document.removeEventListener('keydown', onKeyDown, true);
+        item.onClick();
+      });
+      pop.appendChild(row);
+    }
+
+    // Position below the chevron, aligned to its right edge.
+    document.body.appendChild(pop);
+    const rect = anchor.getBoundingClientRect();
+    const popRect = pop.getBoundingClientRect();
+    pop.style.top = `${rect.bottom + 4}px`;
+    pop.style.left = `${Math.max(8, rect.right - popRect.width)}px`;
+
+    const dismiss = (e: MouseEvent): void => {
+      if (!pop.contains(e.target as Node) && e.target !== anchor) {
+        pop.remove();
+        document.removeEventListener('mousedown', dismiss, true);
+        document.removeEventListener('keydown', onKeyDown, true);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        pop.remove();
+        document.removeEventListener('mousedown', dismiss, true);
+        document.removeEventListener('keydown', onKeyDown, true);
+      }
+    };
+    // Defer registration so the current click doesn't immediately
+    // close the popover we just opened.
+    setTimeout(() => {
+      document.addEventListener('mousedown', dismiss, true);
+      document.addEventListener('keydown', onKeyDown, true);
+    }, 0);
+  }
 
   private async _createPage(parentId?: string | null): Promise<void> {
     let page: IPage | null = null;

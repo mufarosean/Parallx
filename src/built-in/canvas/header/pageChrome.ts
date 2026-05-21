@@ -1039,6 +1039,22 @@ export class PageChromeController {
         },
       },
       {
+        label: 'Save as template',
+        iconId: 'layout-template',
+        action: async () => {
+          this.dismissPopups();
+          try {
+            const input = this._host.input as any;
+            const api = input?._api;
+            if (api?.commands?.executeCommand) {
+              await api.commands.executeCommand('canvas.saveAsTemplate', this._host.pageId);
+            }
+          } catch (err) {
+            console.error('[Canvas] Save as template failed:', err);
+          }
+        },
+      },
+      {
         label: 'Delete',
         iconId: 'trash',
         action: () => {

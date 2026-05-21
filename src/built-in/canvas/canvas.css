@@ -404,8 +404,37 @@
   transform: scale(0.985);
 }
 .canvas-template-card-icon {
-  font-size: 22px;
-  margin-bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 10px;
+  color: var(--vscode-textLink-foreground, #5599ff);
+}
+.canvas-template-card-icon svg {
+  width: 28px;
+  height: 28px;
+}
+.canvas-template-card-pill {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 1px 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 999px;
+  background: rgba(170, 110, 255, 0.18);
+  color: #c79dff;
+}
+.canvas-template-picker-section-header {
+  grid-column: 1 / -1;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
+  margin: 4px 0 -2px;
 }
 .canvas-template-card-name {
   font-size: 13px;
@@ -428,7 +457,11 @@
   padding-top: 12px;
 }
 .canvas-template-picker-blank,
+.canvas-template-picker-manage,
 .canvas-template-picker-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: none;
   border: none;
   color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.55));
@@ -440,9 +473,66 @@
   transition: background-color 0.1s ease, color 0.1s ease;
 }
 .canvas-template-picker-blank:hover,
+.canvas-template-picker-manage:hover,
 .canvas-template-picker-cancel:hover {
   background: rgba(255, 255, 255, 0.06);
   color: var(--vscode-foreground);
+}
+.canvas-template-picker-cancel { margin-left: auto; }
+
+/* Sidebar split-add control (Blank | chevron) + popover */
+.canvas-sidebar-add-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+.canvas-sidebar-add-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 22px;
+  background: transparent;
+  border: none;
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.55));
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0;
+}
+.canvas-sidebar-add-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--vscode-foreground);
+}
+.canvas-sidebar-add-popover {
+  position: fixed;
+  z-index: 9500;
+  min-width: 200px;
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background, #252526));
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--parallx-radius-md, 6px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  padding: 4px;
+  font-family: var(--parallx-fontFamily-ui);
+}
+.canvas-sidebar-add-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  color: var(--vscode-foreground, #ddd);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.canvas-sidebar-add-popover-item:hover,
+.canvas-sidebar-add-popover-item:focus-visible {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+  outline: none;
 }
 
 /* M77 Phase 11.6 — keyboard shortcuts overlay */

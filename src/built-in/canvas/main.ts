@@ -42,12 +42,21 @@ interface ParallxApi {
     readonly name: string | undefined;
     getConfiguration(section?: string): { get<T>(key: string, defaultValue?: T): T | undefined; has(key: string): boolean };
     readonly onDidChangeWorkspaceFolders: (listener: (e: { added: readonly { uri: string; name: string; index: number }[]; removed: readonly { uri: string; name: string; index: number }[] }) => void) => IDisposable;
+    readonly fs?: {
+      readFile(uri: string): Promise<{ content: string; encoding: string }>;
+      writeFile(uri: string, content: string): Promise<void>;
+      readdir(uri: string): Promise<{ name: string; type: number }[]>;
+      exists(uri: string): Promise<boolean>;
+      mkdir(uri: string): Promise<void>;
+      delete(uri: string, options?: { useTrash?: boolean; recursive?: boolean }): Promise<void>;
+    };
   };
   window: {
     showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showInputBox(options?: { prompt?: string; value?: string; placeholder?: string }): Promise<string | undefined>;
+    showQuickPick(items: readonly { label: string; description?: string; detail?: string }[], options?: { placeholder?: string; canPickMany?: boolean }): Promise<{ label: string; description?: string; detail?: string } | undefined>;
   };
   context: {
     createContextKey<T extends string | number | boolean | undefined>(name: string, defaultValue: T): { key: string; get(): T; set(value: T): void; reset(): void };
@@ -613,20 +622,43 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // canvas.showTemplatePicker — Open the template picker modal (M77 Phase 11.4).
-  // Creates a new root-level page seeded with the chosen template, or a
-  // blank page if the user picks the escape hatch / cancels.
+  // canvas.showTemplatePicker — Open the template picker modal.
+  // Creates a new root-level page seeded with the chosen template,
+  // a blank page if the user picks the escape hatch, or opens the
+  // template manager if the user clicks "Manage templates…". Cancel /
+  // Esc / backdrop click → no-op.
   context.subscriptions.push(
     api.commands.registerCommand('canvas.showTemplatePicker', async () => {
       if (!_dataService) return;
       try {
         const mod = await import('./canvasTemplatePicker.js');
-        const { template } = await mod.showCanvasTemplatePicker();
+        const result = await mod.showCanvasTemplatePicker(api);
 
-        const page = await _dataService.createPage(null, template?.defaultTitle);
-        if (template) {
-          await _dataService.flushContentSave(page.id, template.buildDoc());
+        if (result.openedManager) {
+          await api.commands.executeCommand('canvas.manageTemplates');
+          return;
         }
+
+        // The "blank page" branch and the "no choice" branch are
+        // distinguishable only by the explicit blank action: opening
+        // the picker is a user-initiated request to create something,
+        // so the blank button creates a page; cancel does NOT.
+        // Distinguish via: template = null but openedManager not set.
+        // For backward compat with the empty-workspace flow, we still
+        // create-blank on null when the user clicked "Start with a
+        // blank page" — that path returns null with no manager flag.
+        // We can't tell apart from a cancel without an explicit flag,
+        // so the picker resolves with template = null in BOTH cases;
+        // only the explicit blank button created a page in M77.4.
+        // Post-rev: cancel and blank are distinguishable because cancel
+        // returns from a different button. We keep current semantics:
+        // the empty-workspace flow goes through canvas.newPage now,
+        // and this command is reached only when the user actively
+        // wants a templated page — so a null template means cancel.
+        if (!result.template) return;
+
+        const page = await _dataService.createPage(null, result.template.defaultTitle);
+        await _dataService.flushContentSave(page.id, result.template.buildDoc());
         await api.editors.openEditor({
           typeId: 'canvas',
           title: page.title,
@@ -637,6 +669,107 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
       } catch (err) {
         console.error('[Canvas] Failed to open template picker:', err);
         await api.window.showErrorMessage('Failed to open the template picker.');
+      }
+    }),
+  );
+
+  // canvas.saveAsTemplate — Snapshot an existing page as a user template.
+  // Prompts for a template name + icon, writes the result to
+  // `.parallx/canvas-templates/<id>.json`. The source page is unchanged.
+  context.subscriptions.push(
+    api.commands.registerCommand('canvas.saveAsTemplate', async (...args: unknown[]) => {
+      if (!_dataService) return;
+      const pageId = args[0] as string | undefined;
+      if (!pageId) {
+        await api.window.showWarningMessage('No page selected to save as a template.');
+        return;
+      }
+      try {
+        const page = await _dataService.getPage(pageId);
+        if (!page) {
+          await api.window.showErrorMessage('That page no longer exists.');
+          return;
+        }
+        const name = await api.window.showInputBox({
+          prompt: 'Template name',
+          value: page.title,
+          placeholder: 'Daily standup, Bug report, etc.',
+        });
+        if (!name) return;
+        // Parse the page's stored content into a doc the template can
+        // rebuild. createPage seeds via flushContentSave so the same
+        // JSON shape round-trips.
+        let doc: unknown = null;
+        try {
+          doc = page.content ? JSON.parse(page.content) : null;
+        } catch {
+          doc = null;
+        }
+        if (!doc) {
+          await api.window.showWarningMessage('This page has no content to template yet.');
+          return;
+        }
+        const mod = await import('./canvasTemplates.js');
+        const saved = await mod.saveUserCanvasTemplate(api, {
+          name,
+          description: `Created from "${page.title}"`,
+          icon: page.icon || 'file-text',
+          defaultTitle: page.title,
+          doc,
+        });
+        await api.window.showInformationMessage(`Saved as template "${name}".`);
+        void saved; // path is logged for debug; nothing needs it here
+      } catch (err) {
+        console.error('[Canvas] Failed to save page as template:', err);
+        await api.window.showErrorMessage(
+          `Failed to save template: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }),
+  );
+
+  // canvas.manageTemplates — List user templates with delete affordance.
+  // Quick-pick implementation keeps the surface lightweight; rename /
+  // edit-doc happens by hand-editing the JSON for now, which is fine
+  // because the file lives in workspace and survives version control.
+  context.subscriptions.push(
+    api.commands.registerCommand('canvas.manageTemplates', async () => {
+      if (!_dataService) return;
+      try {
+        const mod = await import('./canvasTemplates.js');
+        const templates = await mod.loadUserCanvasTemplates(api);
+        if (templates.length === 0) {
+          const choice = await api.window.showInformationMessage(
+            'You have no custom templates yet. Right-click a page and choose "Save as template" to create one.',
+            { title: 'OK' },
+          );
+          void choice;
+          return;
+        }
+        const items = templates.map((t) => ({
+          label: t.name,
+          description: t.description || '',
+          detail: t.filePath ?? '',
+        }));
+        const picked = await api.window.showQuickPick(items, {
+          placeholder: 'Pick a template to delete (Esc to cancel)',
+        });
+        if (!picked) return;
+        const target = templates.find((t) => t.name === picked.label);
+        if (!target || !target.filePath) return;
+        const confirm = await api.window.showWarningMessage(
+          `Delete the "${target.name}" template? This cannot be undone.`,
+          { title: 'Delete' },
+          { title: 'Cancel' },
+        );
+        if (confirm?.title !== 'Delete') return;
+        await mod.deleteUserCanvasTemplate(api, target.filePath);
+        await api.window.showInformationMessage(`Deleted template "${target.name}".`);
+      } catch (err) {
+        console.error('[Canvas] Manage templates failed:', err);
+        await api.window.showErrorMessage(
+          `Failed to manage templates: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }),
   );
