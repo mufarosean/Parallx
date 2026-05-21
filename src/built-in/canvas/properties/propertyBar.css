@@ -49,7 +49,7 @@
 
 .canvas-property-row {
   display: grid;
-  grid-template-columns: 140px 1fr 24px;
+  grid-template-columns: 140px 1fr 24px 24px;
   align-items: center;
   min-height: 30px;
   padding: 2px 0;
@@ -98,7 +98,8 @@
 
 /* ── Delete button (visible on hover) ── */
 
-.canvas-property-row__delete {
+.canvas-property-row__delete,
+.canvas-property-row__delete-definition {
   opacity: 0;
   background: none;
   border: none;
@@ -119,7 +120,12 @@
   opacity: 1;
 }
 
-.canvas-property-row__delete:hover {
+.canvas-property-row:hover .canvas-property-row__delete-definition {
+  opacity: 1;
+}
+
+.canvas-property-row__delete:hover,
+.canvas-property-row__delete-definition:hover {
   color: var(--vscode-errorForeground, #f38ba8);
   background: rgba(243, 139, 168, 0.1);
 }
@@ -660,9 +666,42 @@
   user-select: none;
 }
 
+.canvas-property-picker__item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .canvas-property-picker__item:hover {
   background: var(--vscode-menu-selectionBackground);
   color: var(--vscode-menu-selectionForeground);
+}
+
+.canvas-property-picker__delete {
+  opacity: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: var(--parallx-radius-sm, 3px);
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.45));
+  cursor: pointer;
+  padding: 0;
+}
+
+.canvas-property-picker__item:hover .canvas-property-picker__delete,
+.canvas-property-picker__delete:focus-visible {
+  opacity: 1;
+}
+
+.canvas-property-picker__delete:hover {
+  color: var(--vscode-errorForeground, #f38ba8);
+  background: rgba(243, 139, 168, 0.1);
 }
 
 .canvas-property-picker__item-icon {

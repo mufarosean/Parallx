@@ -5,6 +5,12 @@
 
 import type { Event } from '../../../platform/events.js';
 
+export const SYSTEM_PROPERTY_NAMES: ReadonlySet<string> = new Set(['tags', 'created', 'modified']);
+
+export function isSystemPropertyName(name: string): boolean {
+  return SYSTEM_PROPERTY_NAMES.has(name);
+}
+
 // ─── Property Types ──────────────────────────────────────────────────────────
 
 export type PropertyType =
@@ -36,6 +42,17 @@ export interface IPageProperty {
   readonly key: string;
   readonly valueType: string;
   readonly value: unknown;
+}
+
+export interface IPropertyUsagePage {
+  readonly pageId: string;
+  readonly title: string;
+}
+
+export interface IPropertyUsage {
+  readonly totalCount: number;
+  readonly pages: readonly IPropertyUsagePage[];
+  readonly otherPages: readonly IPropertyUsagePage[];
 }
 
 // ─── Type-Specific Configs ───────────────────────────────────────────────────
@@ -88,6 +105,7 @@ export interface IPropertyDataService {
   getAllDefinitions(): Promise<IPropertyDefinition[]>;
   updateDefinition(name: string, updates: Partial<Pick<IPropertyDefinition, 'type' | 'config' | 'sortOrder'>>): Promise<IPropertyDefinition>;
   deleteDefinition(name: string): Promise<void>;
+  getPropertyUsage(name: string, excludingPageId?: string): Promise<IPropertyUsage>;
 
   // ── Page Property CRUD ──
 

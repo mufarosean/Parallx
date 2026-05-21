@@ -3,9 +3,10 @@
 // Shows workspace property definitions not already on the current page,
 // with search/filter and a "Create new property" option at the bottom.
 
-import type { IPropertyDefinition, PropertyType } from './propertyTypes.js';
+import { isSystemPropertyName, type IPropertyDefinition, type PropertyType } from './propertyTypes.js';
 import { createTypeIconElement } from './propertyEditors.js';
 import { layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
+import { createIconElement } from '../../../ui/iconRegistry.js';
 
 const ALL_TYPES: { value: PropertyType; label: string }[] = [
   { value: 'text', label: 'Text' },
@@ -27,6 +28,7 @@ export function showPropertyPicker(
   definitions: IPropertyDefinition[],
   onAdd: (name: string) => void,
   onCreateNew: (name: string, type: PropertyType) => void,
+  onDeleteDefinition?: (name: string) => void,
 ): void {
   // Dismiss any existing picker
   const existing = document.querySelector('.canvas-property-picker');
@@ -70,8 +72,24 @@ export function showPropertyPicker(
       item.appendChild(icon);
 
       const label = document.createElement('span');
+      label.className = 'canvas-property-picker__item-label';
       label.textContent = def.name;
       item.appendChild(label);
+
+      if (onDeleteDefinition && !isSystemPropertyName(def.name)) {
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'canvas-property-picker__delete';
+        deleteBtn.title = `Delete property "${def.name}" everywhere`;
+        deleteBtn.appendChild(createIconElement('trash', 13));
+        deleteBtn.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dismiss();
+          onDeleteDefinition(def.name);
+        });
+        item.appendChild(deleteBtn);
+      }
 
       item.addEventListener('mousedown', (e) => {
         e.preventDefault();

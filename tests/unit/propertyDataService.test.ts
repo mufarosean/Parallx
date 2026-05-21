@@ -184,14 +184,27 @@ describe('PropertyDataService', () => {
 
   describe('deleteDefinition', () => {
     it('deletes definition and associated page properties', async () => {
+      mockDb.all.mockResolvedValueOnce({
+        error: null,
+        rows: [
+          { page_id: 'page-1', title: 'Page One' },
+          { page_id: 'page-2', title: 'Page Two' },
+        ],
+      });
       mockDb.run.mockResolvedValueOnce({ error: null, changes: 3 }); // page_properties delete
       mockDb.run.mockResolvedValueOnce({ error: null, changes: 1 }); // definition delete
 
-      const listener = vi.fn();
-      service.onDidChangeDefinition(listener);
+      const definitionListener = vi.fn();
+      const propertyListener = vi.fn();
+      service.onDidChangeDefinition(definitionListener);
+      service.onDidChangePageProperty(propertyListener);
 
       await service.deleteDefinition('old-prop');
 
+      expect(mockDb.all).toHaveBeenCalledWith(
+        expect.stringContaining('FROM page_properties'),
+        ['old-prop'],
+      );
       expect(mockDb.run).toHaveBeenCalledTimes(2);
       expect(mockDb.run).toHaveBeenCalledWith(
         expect.stringContaining('DELETE FROM page_properties'),
@@ -201,7 +214,16 @@ describe('PropertyDataService', () => {
         expect.stringContaining('DELETE FROM property_definitions'),
         ['old-prop'],
       );
-      expect(listener).toHaveBeenCalledWith({ name: 'old-prop', kind: 'deleted' });
+      expect(definitionListener).toHaveBeenCalledWith({ name: 'old-prop', kind: 'deleted' });
+      expect(propertyListener).toHaveBeenCalledWith({ pageId: 'page-1', key: 'old-prop', kind: 'removed' });
+      expect(propertyListener).toHaveBeenCalledWith({ pageId: 'page-2', key: 'old-prop', kind: 'removed' });
+    });
+
+    it('refuses to delete system property definitions', async () => {
+      await expect(service.deleteDefinition('created')).rejects.toThrow('Cannot delete system property');
+
+      expect(mockDb.all).not.toHaveBeenCalled();
+      expect(mockDb.run).not.toHaveBeenCalled();
     });
   });
 
@@ -494,6 +516,29 @@ describe('PropertyDataService', () => {
       (globalThis as any).window = { parallxElectron: {} };
 
       await expect(service.getDefinition('x')).rejects.toThrow('not available');
+    });
+  });
+
+  describe('getPropertyUsage', () => {
+    it('returns all pages using a property and separates the current page', async () => {
+      mockDb.all.mockResolvedValueOnce({
+        error: null,
+        rows: [
+          { page_id: 'current-page', title: 'Current Page' },
+          { page_id: 'other-page', title: 'Other Page' },
+        ],
+      });
+
+      const usage = await service.getPropertyUsage('priority', 'current-page');
+
+      expect(usage.totalCount).toBe(2);
+      expect(usage.pages).toEqual([
+        { pageId: 'current-page', title: 'Current Page' },
+        { pageId: 'other-page', title: 'Other Page' },
+      ]);
+      expect(usage.otherPages).toEqual([
+        { pageId: 'other-page', title: 'Other Page' },
+      ]);
     });
   });
 });

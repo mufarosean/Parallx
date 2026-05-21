@@ -11,14 +11,23 @@ import type {
   IPropertyDataService,
   IPropertyDefinition,
   IPageProperty,
+  IPropertyUsage,
   PropertyType,
 } from './propertyTypes.js';
+import { isSystemPropertyName } from './propertyTypes.js';
 import { createPropertyEditor, createTypeIconElement } from './propertyEditors.js';
 import { showPropertyPicker } from './propertyPicker.js';
 import { getGlobalSettingsRegistry } from '../../../services/settingsRegistryService.js';
 import { PageChangeKind, type ICanvasDataService } from '../canvasTypes.js';
+import { createIconElement } from '../../../ui/iconRegistry.js';
 
 const COLLAPSED_KEY = 'canvas.propertyBar.collapsed';
+
+interface PropertyBarWindowApi {
+  showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
+  showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
+  showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
+}
 
 /**
  * Read the collapsed-state preference. Prefers the M60 §7 settings
@@ -76,6 +85,7 @@ export class PropertyBar implements IDisposable {
     private readonly _pageId: string,
     private readonly _propertyService: IPropertyDataService,
     private readonly _dataService?: ICanvasDataService,
+    private readonly _window?: PropertyBarWindowApi,
   ) {}
 
   // ── Initialise & Render ─────────────────────────────────────────────────
@@ -194,6 +204,7 @@ export class PropertyBar implements IDisposable {
         allDefinitions,
         (name) => this._addExistingProperty(name),
         (name, type) => this._createAndAddProperty(name, type),
+        (name) => this._deleteDefinition(name),
       );
     });
     this._body.appendChild(addBtn);
@@ -245,7 +256,7 @@ export class PropertyBar implements IDisposable {
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'canvas-property-row__delete';
     deleteBtn.textContent = '×';
-    deleteBtn.title = `Remove ${prop.key}`;
+    deleteBtn.title = `Remove ${prop.key} from this page`;
     deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this._propertyService.removeProperty(this._pageId, prop.key).catch(err => {
@@ -254,10 +265,58 @@ export class PropertyBar implements IDisposable {
     });
     row.appendChild(deleteBtn);
 
+    if (!isSystemPropertyName(prop.key)) {
+      const deleteDefinitionBtn = document.createElement('button');
+      deleteDefinitionBtn.className = 'canvas-property-row__delete-definition';
+      deleteDefinitionBtn.title = `Delete property "${prop.key}" everywhere`;
+      deleteDefinitionBtn.appendChild(createIconElement('trash', 14));
+      deleteDefinitionBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void this._deleteDefinition(prop.key);
+      });
+      row.appendChild(deleteDefinitionBtn);
+    }
+
     return row;
   }
 
   // ── Add Existing Property ─────────────────────────────────────────────
+
+  private async _deleteDefinition(name: string): Promise<void> {
+    if (isSystemPropertyName(name)) return;
+
+    try {
+      const usage = await this._propertyService.getPropertyUsage(name, this._pageId);
+      const confirmed = await this._confirmDeleteDefinition(name, usage);
+      if (!confirmed) return;
+
+      await this._propertyService.deleteDefinition(name);
+      await this._window?.showInformationMessage(`Deleted property "${name}".`);
+    } catch (err) {
+      console.error(`[PropertyBar] Failed to delete property definition "${name}":`, err);
+      await this._window?.showErrorMessage(`Failed to delete property "${name}".`);
+    }
+  }
+
+  private async _confirmDeleteDefinition(name: string, usage: IPropertyUsage): Promise<boolean> {
+    const otherCount = usage.otherPages.length;
+    const otherPreview = usage.otherPages.slice(0, 3).map((page) => page.title).join(', ');
+    const more = otherCount > 3 ? `, and ${otherCount - 3} more` : '';
+    const message = otherCount > 0
+      ? `Delete property "${name}" everywhere? It is used on ${otherCount} other page${otherCount === 1 ? '' : 's'}${otherPreview ? `: ${otherPreview}${more}` : ''}. This removes the property and all of its values from every page.`
+      : `Delete property "${name}" permanently? This removes it from available properties and clears its value on this page.`;
+
+    if (this._window) {
+      const result = await this._window.showWarningMessage(
+        message,
+        { title: 'Delete Property' },
+        { title: 'Cancel' },
+      );
+      return result?.title === 'Delete Property';
+    }
+
+    return globalThis.confirm?.(message) ?? false;
+  }
 
   private async _addExistingProperty(name: string): Promise<void> {
     try {

@@ -8,13 +8,15 @@
 
 import { Disposable } from '../../../platform/lifecycle.js';
 import { Emitter, Event } from '../../../platform/events.js';
-import type {
-  IPropertyDefinition,
-  IPageProperty,
-  IPropertyDataService,
-  PropertyType,
-  PropertyDefinitionChangeEvent,
-  PagePropertyChangeEvent,
+import {
+  isSystemPropertyName,
+  type IPropertyDefinition,
+  type IPageProperty,
+  type IPropertyDataService,
+  type IPropertyUsage,
+  type PropertyType,
+  type PropertyDefinitionChangeEvent,
+  type PagePropertyChangeEvent,
 } from './propertyTypes.js';
 
 // ─── Database Bridge Type ────────────────────────────────────────────────────
@@ -166,7 +168,39 @@ export class PropertyDataService extends Disposable implements IPropertyDataServ
     return updated;
   }
 
+  async getPropertyUsage(name: string, excludingPageId?: string): Promise<IPropertyUsage> {
+    const result = await this._db.all(
+      `SELECT pp.page_id, COALESCE(p.title, 'Untitled') AS title
+       FROM page_properties pp
+       LEFT JOIN pages p ON pp.page_id = p.id
+       WHERE pp.key = ?
+       ORDER BY title COLLATE NOCASE, pp.page_id`,
+      [name],
+    );
+    if (result.error) throw new Error(result.error.message);
+
+    const pages = (result.rows ?? []).map((row) => ({
+      pageId: row.page_id as string,
+      title: (row.title as string) || 'Untitled',
+    }));
+    const otherPages = excludingPageId
+      ? pages.filter((page) => page.pageId !== excludingPageId)
+      : pages;
+
+    return {
+      totalCount: pages.length,
+      pages,
+      otherPages,
+    };
+  }
+
   async deleteDefinition(name: string): Promise<void> {
+    if (isSystemPropertyName(name)) {
+      throw new Error(`[PropertyDataService] Cannot delete system property "${name}"`);
+    }
+
+    const usage = await this.getPropertyUsage(name);
+
     // Delete all page properties with this key first
     const propsResult = await this._db.run(
       'DELETE FROM page_properties WHERE key = ?',
@@ -181,6 +215,9 @@ export class PropertyDataService extends Disposable implements IPropertyDataServ
     if (result.error) throw new Error(result.error.message);
 
     this._onDidChangeDefinition.fire({ name, kind: 'deleted' });
+    for (const page of usage.pages) {
+      this._onDidChangePageProperty.fire({ pageId: page.pageId, key: name, kind: 'removed' });
+    }
   }
 
   // ══════════════════════════════════════════════════════════════════════════
