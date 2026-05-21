@@ -1484,9 +1484,13 @@ function emptyState(msg) {
 
 // ─── Month / date math ─────────────────────────────────────────────────────
 
-function todayYmd() {
-  const d = new Date();
+function localYmd(d) {
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function todayYmd() {
+  return localYmd(new Date());
 }
 
 // Returns {start, end, label, year, month0} for a YYYY-MM key.
@@ -1588,7 +1592,7 @@ function renderTransactionsSection(body, api) {
   let categoryId   = (incoming && incoming.categoryId) || null;
   let accountId    = (incoming && incoming.accountId)  || null;
   let dayYmd       = (incoming && incoming.dayYmd)     || null;
-  let search       = '';
+  let search       = (incoming && incoming.merchant) || '';
 
   const toolbar = document.createElement('div');
   toolbar.className = 'budget-toolbar';
@@ -1603,6 +1607,7 @@ function renderTransactionsSection(body, api) {
   searchInput.className = 'budget-input';
   searchInput.placeholder = 'Search merchant…';
   searchInput.style.minWidth = '160px';
+  searchInput.value = search;
   searchInput.addEventListener('input', () => { search = searchInput.value; void refresh(); });
   toolbar.appendChild(searchInput);
 
@@ -2441,7 +2446,7 @@ function renderDashboardSection(body, api) {
     let acctRows = [];
     try {
       const acctView = _state.accountIds && _state.accountIds.length > 0
-        ? `SELECT * FROM v_account_latest_balance WHERE id IN (${_state.accountIds.map(() => '?').join(',')}) ORDER BY kind, last_four`
+        ? `SELECT * FROM v_account_latest_balance WHERE account_id IN (${_state.accountIds.map(() => '?').join(',')}) ORDER BY kind, last_four`
         : 'SELECT * FROM v_account_latest_balance ORDER BY kind, last_four';
       acctRows = await db.all(acctView, _state.accountIds && _state.accountIds.length > 0 ? _state.accountIds : []);
     } catch { acctRows = []; }
@@ -3156,7 +3161,7 @@ function buildDailyHeatmap(opts) {
       grid.appendChild(blank);
     }
 
-    const todayYmd = new Date().toISOString().slice(0, 10);
+    const today = todayYmd();
     for (let d = 1; d <= lastDay; d++) {
       const ymd = `${year}-${String(month0+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
       const r = byDay.get(ymd);
@@ -3165,7 +3170,7 @@ function buildDailyHeatmap(opts) {
       const cell = document.createElement('button');
       cell.type = 'button';
       cell.className = `budget-heatmap-cell mode-${mode} bucket-${bucket(v)}`;
-      if (ymd === todayYmd) cell.classList.add('is-today');
+      if (ymd === today) cell.classList.add('is-today');
       cell.title = v > 0
         ? `${ymd} — ${fmtMoney(v)}` + (otherV > 0 ? ` (${mode === 'spend' ? 'income' : 'spend'} ${fmtMoney(otherV)})` : '')
         : `${ymd} — no activity`;
@@ -6023,15 +6028,12 @@ function truncateBody(body) {
 
 function isoLocalDate(isoTs) {
   // Convert an ISO-8601 UTC timestamp to local YYYY-MM-DD per D4.
-  if (!isoTs) return new Date().toISOString().slice(0, 10);
+  if (!isoTs) return todayYmd();
   try {
     const d = new Date(isoTs);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${dd}`;
+    return localYmd(d);
   } catch {
-    return new Date().toISOString().slice(0, 10);
+    return todayYmd();
   }
 }
 
