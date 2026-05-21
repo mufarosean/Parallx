@@ -211,12 +211,14 @@ export class PropertyDataService extends Disposable implements IPropertyDataServ
     const toIsoFromSqliteDatetime = (sqlValue: unknown): string | null => {
       if (typeof sqlValue !== 'string' || sqlValue.length === 0) return null;
       // SQLite datetime('now') yields "YYYY-MM-DD HH:MM:SS" (UTC).
-      // Convert to ISO 8601 with `Z`. Return the raw string — the property
-      // bar editor parses ISO directly via `new Date(...)`. The override
+      // Convert to ISO 8601 with `Z` unless a direct tool write already
+      // stored an explicit timezone. The property bar editor parses
+      // timezone-aware ISO directly via `new Date(...)`. The override
       // is applied AFTER rowToPageProperty, so we are already past the
       // JSON-decode step; wrapping in JSON.stringify here re-encodes it
       // (introducing literal quote characters) and breaks date parsing.
-      return sqlValue.includes('T') ? sqlValue : sqlValue.replace(' ', 'T') + 'Z';
+      const normalized = sqlValue.trim().replace(' ', 'T');
+      return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized) ? normalized : `${normalized}Z`;
     };
 
     return (result.rows ?? []).map((row) => {

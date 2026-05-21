@@ -16,6 +16,7 @@ import type {
 import { createPropertyEditor, createTypeIconElement } from './propertyEditors.js';
 import { showPropertyPicker } from './propertyPicker.js';
 import { getGlobalSettingsRegistry } from '../../../services/settingsRegistryService.js';
+import { PageChangeKind, type ICanvasDataService } from '../canvasTypes.js';
 
 const COLLAPSED_KEY = 'canvas.propertyBar.collapsed';
 
@@ -74,6 +75,7 @@ export class PropertyBar implements IDisposable {
     private readonly _insertAfter: HTMLElement,
     private readonly _pageId: string,
     private readonly _propertyService: IPropertyDataService,
+    private readonly _dataService?: ICanvasDataService,
   ) {}
 
   // ── Initialise & Render ─────────────────────────────────────────────────
@@ -125,6 +127,16 @@ export class PropertyBar implements IDisposable {
         this._renderProperties();
       }),
     );
+    if (this._dataService) {
+      this._eventDisposables.push(
+        this._dataService.onDidChangePage((e) => {
+          if (e.pageId !== this._pageId) return;
+          if (e.kind === PageChangeKind.Created || e.kind === PageChangeKind.Updated) {
+            this._renderProperties();
+          }
+        }),
+      );
+    }
   }
 
   // ── Render all property rows ──────────────────────────────────────────

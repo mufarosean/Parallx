@@ -414,7 +414,7 @@ class CanvasEditorPane implements IDisposable {
     const propService = this._provider.propertyService;
     const pageHeader = this._pageChrome.pageHeader;
     if (propService && pageHeader) {
-      this._propertyBar = new PropertyBar(this._editorContainer!, pageHeader, this._pageId, propService);
+      this._propertyBar = new PropertyBar(this._editorContainer!, pageHeader, this._pageId, propService, this._dataService);
       this._propertyBar.init().catch(err => {
         console.warn('[CanvasEditorPane] PropertyBar init failed:', err);
       });

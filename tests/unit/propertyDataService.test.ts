@@ -235,6 +235,47 @@ describe('PropertyDataService', () => {
       expect(props[0].value).toEqual(['work', 'important']);
       expect(props[0].definition.type).toBe('tags');
     });
+
+    it('sources default timestamp properties from the current page row', async () => {
+      mockDb.all.mockResolvedValueOnce({
+        error: null,
+        rows: [
+          {
+            id: 'pp-created',
+            page_id: 'page-1',
+            key: 'created',
+            value_type: 'datetime',
+            value: '"stale-created"',
+            def_type: 'datetime',
+            def_config: '{}',
+            def_sort_order: 2,
+            def_created_at: '2025-01-01',
+            def_updated_at: '2025-01-01',
+            _page_created_at: '2026-05-21 02:05:00',
+            _page_updated_at: '2026-05-21 02:10:00',
+          },
+          {
+            id: 'pp-modified',
+            page_id: 'page-1',
+            key: 'modified',
+            value_type: 'datetime',
+            value: '"stale-modified"',
+            def_type: 'datetime',
+            def_config: '{}',
+            def_sort_order: 3,
+            def_created_at: '2025-01-01',
+            def_updated_at: '2025-01-01',
+            _page_created_at: '2026-05-21 02:05:00',
+            _page_updated_at: '2026-05-21 02:10:00',
+          },
+        ],
+      });
+
+      const props = await service.getPropertiesForPage('page-1');
+
+      expect(props.find(p => p.key === 'created')?.value).toBe('2026-05-21T02:05:00Z');
+      expect(props.find(p => p.key === 'modified')?.value).toBe('2026-05-21T02:10:00Z');
+    });
   });
 
   describe('setProperty', () => {
@@ -448,11 +489,11 @@ describe('PropertyDataService', () => {
   // ══════════════════════════════════════════════════════════════════════════
 
   describe('error handling', () => {
-    it('throws when database bridge is not available', () => {
+    it('throws when database bridge is not available', async () => {
       delete (globalThis as any).window;
       (globalThis as any).window = { parallxElectron: {} };
 
-      expect(() => service.getDefinition('x')).rejects.toThrow('not available');
+      await expect(service.getDefinition('x')).rejects.toThrow('not available');
     });
   });
 });

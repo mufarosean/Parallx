@@ -160,20 +160,22 @@ function _createDateEditor(value: string | null, onChange: (v: unknown) => void)
 function _createDatetimeEditor(value: string | null, onChange: (v: unknown) => void): HTMLElement {
   const trigger = document.createElement('button');
   trigger.className = 'canvas-prop-date-trigger';
-  const dtStr = value ? value.replace(' ', 'T').substring(0, 16) : '';
-  trigger.textContent = dtStr ? _formatDatetime(dtStr) : 'Empty';
-  if (!dtStr) trigger.classList.add('canvas-prop-date-trigger--empty');
+  let selectedDate = _parseDatetime(value);
+  trigger.textContent = selectedDate ? _formatDatetime(selectedDate) : 'Empty';
+  if (!selectedDate) trigger.classList.add('canvas-prop-date-trigger--empty');
 
   let popup: HTMLElement | null = null;
   trigger.addEventListener('click', () => {
     if (popup) { popup.remove(); popup = null; return; }
     popup = _buildCalendar(
-      dtStr ? new Date(dtStr) : null,
+      selectedDate,
       true,
       (iso) => {
         onChange(iso || null);
-        trigger.textContent = iso ? _formatDatetime(iso) : 'Empty';
-        trigger.classList.toggle('canvas-prop-date-trigger--empty', !iso);
+        const nextDate = _parseDatetime(iso);
+        selectedDate = nextDate;
+        trigger.textContent = nextDate ? _formatDatetime(nextDate) : 'Empty';
+        trigger.classList.toggle('canvas-prop-date-trigger--empty', !nextDate);
         popup?.remove(); popup = null;
       },
       () => { popup = null; },
@@ -477,8 +479,13 @@ function _formatDate(iso: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function _formatDatetime(iso: string): string {
-  const d = new Date(iso);
+function _parseDatetime(value: string | null): Date | null {
+  if (!value) return null;
+  const d = new Date(value.replace(' ', 'T'));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function _formatDatetime(d: Date): string {
   return d.toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: 'numeric', minute: '2-digit',
