@@ -6064,17 +6064,49 @@ async function evalBudgetStatus(monthKey) {
 
 // ─── AI pipeline (Stage 1 / 1b / 2 / 3) ────────────────────────────────────
 //
-// Every stage is a single LLM call with `temperature:0, format:'json'`. We
-// stream chunks until done and JSON.parse the concatenation. On parse fail,
+// Every stage is a single LLM call with `temperature:0, format:'json'`.
+// Budget pins a small per-request context so the dedicated cron model cannot
+// inherit a huge global Ollama context and monopolize VRAM. On parse fail,
 // retry ONCE with a stricter follow-up turn before treating as malformed.
 // All prompts are literal templates from docs/Parallx_Milestone_63.md §AI Pipeline.
 
-async function lmRunJson(api, modelId, systemPrompt, userPrompt) {
+const BUDGET_LM_NUM_CTX = 4096;
+const BUDGET_LM_MAX_TOKENS_BY_STAGE = Object.freeze({
+  classify: 160,
+  extract: 768,
+  categorize: 120,
+  snapshot: 640,
+  default: 512,
+});
+
+function budgetLmOptions(stage) {
+  return {
+    temperature: 0,
+    format: 'json',
+    numCtx: BUDGET_LM_NUM_CTX,
+    maxTokens: BUDGET_LM_MAX_TOKENS_BY_STAGE[stage] || BUDGET_LM_MAX_TOKENS_BY_STAGE.default,
+  };
+}
+
+function tryParseModelJson(raw) {
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  try { return JSON.parse(trimmed); } catch { /* fall through */ }
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    try { return JSON.parse(trimmed.slice(start, end + 1)); } catch { /* fall through */ }
+  }
+  return undefined;
+}
+
+async function lmRunJson(api, modelId, systemPrompt, userPrompt, stage = 'default') {
   const messages = [
     { role: 'system', content: systemPrompt },
     { role: 'user',   content: userPrompt   },
   ];
-  const opts = { temperature: 0, format: 'json' };
+  const opts = budgetLmOptions(stage);
   const collect = async (msgs) => {
     let out = '';
     for await (const chunk of api.lm.sendChatRequest(modelId, msgs, opts)) {
@@ -6083,16 +6115,15 @@ async function lmRunJson(api, modelId, systemPrompt, userPrompt) {
     }
     return out;
   };
-  const tryParse = (s) => { try { return JSON.parse(s); } catch { return undefined; } };
   let raw = await collect(messages);
-  let parsed = tryParse(raw);
+  let parsed = tryParseModelJson(raw);
   if (parsed !== undefined) return parsed;
   const retryMessages = messages.concat([
     { role: 'assistant', content: raw },
     { role: 'user', content: 'Respond ONLY with the JSON object — no prose, no markdown.' },
   ]);
   raw = await collect(retryMessages);
-  parsed = tryParse(raw);
+  parsed = tryParseModelJson(raw);
   return parsed; // may still be undefined — caller treats as malformed
 }
 
@@ -6108,7 +6139,7 @@ async function aiStage1(api, modelId, msg) {
     `  • "other"           — statement-ready notice, marketing, security alerts, password resets, etc. (no money moved).\n\n` +
     `Account-kind hint should reflect which kind of account the event hits (use the body text — credit-card emails usually mention "Visa", "Mastercard", or a card name; bank emails mention "Total Checking", "Savings").\n\n` +
     `Return:\n{\n  "event_type":         <one of the strings above>,\n  "account_kind_hint":  <"checking" | "savings" | "credit_card" | "other">\n}`;
-  const r = await lmRunJson(api, modelId, sys, usr);
+  const r = await lmRunJson(api, modelId, sys, usr, 'classify');
   if (!r || typeof r !== 'object') return { event_type: 'other', account_kind_hint: 'other', malformed: true };
   let eventType = typeof r.event_type === 'string' ? r.event_type.trim().toLowerCase() : 'other';
   // Defensive normalization — if the model emits the old labels we collapse
@@ -6131,7 +6162,7 @@ async function aiStage2(api, modelId, msg) {
   const sys = 'You extract financial transaction data from emails. Respond with a single JSON object and nothing else. Money is reported in dollars; if you see cents, divide by 100. If multiple transactions are mentioned, return them in the "items" array.';
   const usr = `Subject: ${msg.subject || ''}\nSnippet: ${msg.snippet || ''}\nBody: ${truncateBody(msg.body)}\n\n` +
     `Return:\n{\n  "items": [\n    {\n      "merchant":          <string or null — the payee for purchases, or "Chase Checking" / "Chase Savings" / "Chase Visa" for transfers/payments/deposits>,\n      "amount":            <number — positive for spend/charge/transfer-out, negative for refund/credit/deposit-in>,\n      "card_last_four":    <string of 4 digits or null — the account or card last four digits this hit>,\n      "account_kind_hint": <"checking" | "savings" | "credit_card" | "other">,\n      "transaction_date":  <"YYYY-MM-DD">,\n      "confidence":        <"high" | "medium" | "low">\n    }\n  ]\n}`;
-  const r = await lmRunJson(api, modelId, sys, usr);
+  const r = await lmRunJson(api, modelId, sys, usr, 'extract');
   if (!r || !Array.isArray(r.items)) return { items: [], malformed: !r };
   const items = [];
   for (const raw of r.items) {
@@ -6158,7 +6189,7 @@ async function aiStage2(api, modelId, msg) {
 async function aiStage3(api, modelId, tx, categoryNames) {
   const sys = 'You pick the best-fitting budget category for a transaction. Respond with a single JSON object and nothing else. The category MUST be one of the listed names (case-insensitive); if none fits, pick "Other".';
   const usr = `Merchant: ${tx.merchant ?? ''}\nAmount:   ${tx.amount} USD\nCategories: ${categoryNames.join(', ')}\n\nReturn:\n{ "category": <one of the listed category names> }`;
-  const r = await lmRunJson(api, modelId, sys, usr);
+  const r = await lmRunJson(api, modelId, sys, usr, 'categorize');
   if (!r || typeof r.category !== 'string') return null;
   return r.category.trim();
 }
@@ -6167,7 +6198,7 @@ async function aiStage1bExtract(api, modelId, msg) {
   const sys = 'You extract account balance data from a Chase daily account summary email. The email may list MULTIPLE accounts (Total Checking, Savings, Credit Card, etc.). Respond with a single JSON object and nothing else.';
   const usr = `Subject: ${msg.subject || ''}\nSnippet: ${msg.snippet || ''}\nBody: ${truncateBody(msg.body)}\n\n` +
     `Return:\n{\n  "snapshot_date": <"YYYY-MM-DD">,\n  "accounts": [\n    {\n      "account_kind":      <"checking" | "savings" | "credit_card" | "other">,\n      "account_last_four": <string of 4 digits or null>,\n      "balance":           <number, in dollars — POSITIVE for cash on hand, NEGATIVE for credit card amount owed>\n    }\n  ]\n}`;
-  const r = await lmRunJson(api, modelId, sys, usr);
+  const r = await lmRunJson(api, modelId, sys, usr, 'snapshot');
   if (!r || typeof r !== 'object') return null;
   const date = typeof r.snapshot_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.snapshot_date)
     ? r.snapshot_date
@@ -6303,6 +6334,7 @@ async function budgetSync(api) {
       : isoNDaysAgo(cfg.get('syncStartDays', 90));
 
     const modelId = await pickModelId(api);
+    await syncLog(runId, 'info', 'model', `Using ${modelId} with numCtx=${BUDGET_LM_NUM_CTX}`);
 
     // Issuer query is configurable so users can plug in additional banks/cards
     // without editing the extension. Default covers the major US issuers; the
@@ -7375,4 +7407,6 @@ export const __testables = {
   inferCadence,
   parseCsvLine: _parseCsvLine,
   ruleMatchesMerchant,
+  budgetLmOptions,
+  tryParseModelJson,
 };
