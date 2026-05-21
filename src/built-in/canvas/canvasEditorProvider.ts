@@ -485,7 +485,7 @@ class CanvasEditorPane implements IDisposable {
           // (UniqueID id assignment, etc.) would diff against an empty set
           // and erroneously archive every existing pageBlock target.
           if (this._initialContentLoaded) {
-            this._reconcilePageBlockHierarchy(editor);
+            this._reconcilePageBlockHierarchy(editor, transaction);
           }
         }
       },
@@ -677,7 +677,7 @@ class CanvasEditorPane implements IDisposable {
    * the page.  Keeps the visual layer (pageBlock cards) and the authoritative
    * layer (pages.parent_id + is_archived) coherent.
    */
-  private _reconcilePageBlockHierarchy(editor: Editor): void {
+  private _reconcilePageBlockHierarchy(editor: Editor, transaction?: { getMeta(key: string): unknown }): void {
     const current = this._collectPageBlockIds(editor);
     const previous = this._pageBlockIds;
 
@@ -686,7 +686,17 @@ class CanvasEditorPane implements IDisposable {
     const added: string[] = [];
     for (const id of current) if (!previous.has(id)) added.push(id);
 
+    // ALWAYS update the snapshot so future diffs are correct, even when
+    // we skip the archive/restore side effects below. Without this, a
+    // suppressed transaction would leave the snapshot stale and the
+    // next legitimate edit would diff against a phantom baseline.
     this._pageBlockIds = current;
+
+    // Cross-page move escape hatch. crossPageMovement sets this meta on
+    // its mirror-delete dispatch so we don't archive a page that was
+    // just relocated to another canvas — without this, dragging a
+    // pageBlock between pages would silently archive the child page.
+    if (transaction?.getMeta('canvas-cross-page-move')) return;
 
     for (const id of removed) {
       void this._dataService.archivePage(id).catch((err) => {

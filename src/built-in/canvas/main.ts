@@ -302,8 +302,17 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   //     editor content, run the normal page deletion process (same as sidebar).
   setOnLinkedPageBlockDeleted((pageId) => {
     if (!_dataService) return;
+    // The block was removed from the parent's editor content; the child
+    // page must be archived to keep the two layers consistent. If the
+    // archive fails (DB error, fk conflict, etc.) we surface a visible
+    // error instead of swallowing it — silent failure here is what
+    // produced "subpage still in sidebar but no parent block" reports.
     _dataService.archivePage(pageId).catch(err => {
       console.error(`[Canvas] Failed to archive child page ${pageId} after block deletion:`, err);
+      const msg = err instanceof Error ? err.message : String(err);
+      void api.window.showErrorMessage(
+        `Failed to archive removed subpage (${msg}). The subpage may now be visible in the sidebar without a parent reference — please refresh or restore manually.`,
+      );
     });
   });
 
@@ -828,23 +837,21 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // canvas.duplicatePage â€” Duplicate a page (requires pageId argument)
+  // canvas.duplicatePage â€” Duplicate a page (requires pageId argument).
+  // Delegates to the data service's deep-recursive duplicate so the new
+  // page (a) gets a pageBlock on its parent and (b) recursively copies
+  // descendants with pageBlock pageIds remapped. The earlier shallow
+  // path called `createPage` directly and left both contracts broken:
+  // the duplicate was orphaned visually (no parent block) and any
+  // embedded pageBlocks still referenced the original's children.
   context.subscriptions.push(
     api.commands.registerCommand('canvas.duplicatePage', async (...args: unknown[]) => {
       if (!_dataService) return;
       const pageId = args[0] as string | undefined;
       if (!pageId) return;
 
-      const original = await _dataService.getPage(pageId);
-      if (!original) return;
-
       try {
-        const copy = await _dataService.createPage(original.parentId, `${original.title} (copy)`);
-        // Copy the content
-        if (original.content) {
-          await _dataService.updatePage(copy.id, { content: original.content, icon: original.icon });
-        }
-        // Open the duplicate in the editor
+        const copy = await _dataService.duplicatePage(pageId);
         await api.editors.openEditor({
           typeId: 'canvas',
           title: copy.title,

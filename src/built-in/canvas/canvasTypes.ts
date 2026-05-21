@@ -294,6 +294,13 @@ export interface ICanvasDataService {
   scheduleContentSave(pageId: string, content: string): void;
   flushPendingSaves(): Promise<void>;
   hasPendingSave(pageId: string): boolean;
+  /**
+   * Cancel any pending debounced auto-save for a page. Used by callers
+   * that are about to mutate that page's content through a non-debounced
+   * path (atomic helpers, externally-orchestrated transactions) so a
+   * stale debounced save can't clobber the fresh write.
+   */
+  cancelPendingSave(pageId: string): void;
   readonly pendingSaveCount: number;
 
   // ── Favorites / Archive ──

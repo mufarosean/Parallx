@@ -45,6 +45,12 @@ export interface IPageBlockDataAccess {
     sourceDoc: any;
     appendedNodes: any[];
   }): Promise<{ sourcePage: IPageBlockPage; targetPage: IPageBlockPage }>;
+  /**
+   * Required by crossPageMovement.moveBlockToLinkedPage when the
+   * dragged blocks are pageBlocks (it routes through atomic page
+   * reparent rather than a plain content move).
+   */
+  movePageWithBlocks(opts: { pageId: string; newParentId: string | null; afterSiblingId?: string }): Promise<void>;
   appendBlocksToPage(targetPageId: string, appendedNodes: any[]): Promise<IPageBlockPage>;
   fireContentReload(pageId: string): void;
   readonly onDidChangePage: (listener: (e: IPageBlockChangeEvent) => void) => { dispose(): void };

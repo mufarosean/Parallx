@@ -726,6 +726,16 @@ const definitions: BlockDefinition[] = [
 
       let child: { id: string; title: string; icon: string | null } | null = null;
       try {
+        // Cancel any debounced auto-save on the parent BEFORE creating
+        // the child row. The slash-menu flow runs as: createPage →
+        // editor insertContentAt → flushContentSave. If a debounced
+        // save fires between the create and the flush it can persist
+        // the parent's pre-block content, leaving the child row in the
+        // DB but no pageBlock in the parent's saved content. The
+        // atomic helpers do this themselves; this manual path has to
+        // do it explicitly.
+        context.dataService.cancelPendingSave(context.pageId);
+
         child = await context.dataService.createPage(context.pageId, 'Untitled');
         const childPage = child;
         const pageBlockAttrs = {

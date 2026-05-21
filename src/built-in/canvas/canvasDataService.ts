@@ -1626,12 +1626,33 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
 
   /**
    * Deep-copy a page and all its descendants.
-   * Returns the new root page. Child pages are recursively duplicated
-   * with new IDs while maintaining parent-child relationships.
+   *
+   * Two contracts that the original implementation violated and this
+   * version restores:
+   *   1. The duplicated root must appear as a pageBlock in its new
+   *      parent's content (when parent is non-null). Otherwise the
+   *      sidebar shows the new page but the parent's canvas doesn't.
+   *   2. Embedded pageBlock references inside the duplicated subtree
+   *      must be remapped from old child IDs to the newly-minted IDs.
+   *      Otherwise the duplicated parents' pageBlocks still point at
+   *      the original children — clicking them navigates back to the
+   *      source tree.
+   *
+   * Implementation: pre-walk the source subtree to mint every new ID
+   * upfront, then insert each duplicate with its content rewritten via
+   * the id map, then atomically append the root's pageBlock to its new
+   * parent's content.
    */
   async duplicatePage(pageId: string): Promise<IPage> {
     const source = await this.getPage(pageId);
     if (!source) throw new Error(`[CanvasDataService] Page "${pageId}" not found for duplication`);
+
+    // Pre-mint new IDs for every page in the source subtree. Doing this
+    // before any INSERT lets us remap pageBlock references inside cloned
+    // content (a parent's content references its children's old IDs;
+    // those references must point at the *new* children, not the source).
+    const idMap = new Map<string, string>();
+    await this._buildSubtreeIdMap(source.id, idMap, new Set(), 0);
 
     // Calculate sort order: place after original among its siblings
     const siblings = source.parentId === null
@@ -1641,12 +1662,102 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       ? Math.max(...siblings.map(s => s.sortOrder))
       : 0;
 
-    const rootCopy = await this._duplicateRecursive(source, source.parentId, maxSort + 1, true, new Set(), 0);
+    const rootCopy = await this._duplicateRecursive(source, source.parentId, maxSort + 1, true, new Set(), 0, idMap);
+
+    // Append the root copy's pageBlock to the new parent's content. The
+    // recursive insert handles each duplicated *parent's* internal
+    // pageBlocks (via idMap remap), but the root's *outer* parent is
+    // outside the duplicated subtree, so it needs an explicit ensure.
+    // Mirrors the contract movePageWithBlocks / createChildPageWithBlock
+    // honour for their respective hierarchy mutations.
+    if (rootCopy.parentId !== null) {
+      try {
+        await this.ensurePageBlockOnParent(rootCopy.parentId, rootCopy.id);
+      } catch (err) {
+        // The duplicate exists in the DB at this point; surfacing the
+        // failure rather than silently leaving the parent block missing
+        // is the right move. Caller will see the error and can retry.
+        console.error('[CanvasDataService] duplicatePage: failed to add pageBlock to new parent:', err);
+        throw err;
+      }
+    }
     return rootCopy;
   }
 
   /** Hard cap to keep recursion bounded even if data is corrupt. */
   private static readonly MAX_TREE_DEPTH = 64;
+
+  /**
+   * Walk the source subtree assigning a fresh UUID to every page. Used
+   * by duplicatePage to build the old→new map before any INSERTs run,
+   * so cloned content can have its pageBlock pageId references remapped
+   * in a single pass.
+   */
+  private async _buildSubtreeIdMap(
+    sourceId: string,
+    into: Map<string, string>,
+    visited: Set<string>,
+    depth: number,
+  ): Promise<void> {
+    if (depth > CanvasDataService.MAX_TREE_DEPTH) return;
+    if (visited.has(sourceId)) return;
+    visited.add(sourceId);
+    into.set(sourceId, crypto.randomUUID());
+    const children = await this.getChildren(sourceId);
+    for (const child of children) {
+      await this._buildSubtreeIdMap(child.id, into, visited, depth + 1);
+    }
+  }
+
+  /**
+   * Rewrite a stored-content string so every pageBlock pageId that
+   * appears in the id map gets replaced with the mapped value. Returns
+   * the original string unchanged if nothing in the doc references a
+   * mapped id (cheap no-op for content with no pageBlocks).
+   */
+  private _remapContentPageBlockIds(storedContent: string | null | undefined, idMap: Map<string, string>): string | null | undefined {
+    if (!storedContent || idMap.size === 0) return storedContent;
+    try {
+      const decoded = decodeCanvasContent(storedContent);
+      const remapped = this._remapPageBlockIdsInNode(decoded.doc, idMap);
+      if (!remapped.changed) return storedContent;
+      return encodeCanvasContentFromDoc(remapped.node).storedContent;
+    } catch {
+      // If decode fails the content is malformed; let the duplicate
+      // proceed with the raw bytes so we don't drop the user's data.
+      return storedContent;
+    }
+  }
+
+  private _remapPageBlockIdsInNode(node: any, idMap: Map<string, string>): { node: any; changed: boolean } {
+    if (!node || typeof node !== 'object') return { node, changed: false };
+    let changed = false;
+    let result: any = node;
+
+    if (node.type === 'pageBlock' && typeof node.attrs?.pageId === 'string') {
+      const mapped = idMap.get(node.attrs.pageId);
+      if (mapped && mapped !== node.attrs.pageId) {
+        result = { ...node, attrs: { ...node.attrs, pageId: mapped } };
+        changed = true;
+      }
+    }
+
+    if (Array.isArray(node.content)) {
+      const newContent: any[] = [];
+      let childrenChanged = false;
+      for (const child of node.content) {
+        const r = this._remapPageBlockIdsInNode(child, idMap);
+        if (r.changed) childrenChanged = true;
+        newContent.push(r.node);
+      }
+      if (childrenChanged) {
+        result = { ...result, content: newContent };
+        changed = true;
+      }
+    }
+
+    return { node: result, changed };
+  }
 
   private async _duplicateRecursive(
     source: IPage,
@@ -1655,6 +1766,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     isRoot: boolean,
     visited: Set<string>,
     depth: number,
+    idMap: Map<string, string>,
   ): Promise<IPage> {
     if (depth > CanvasDataService.MAX_TREE_DEPTH) {
       throw new Error(`[CanvasDataService] Duplicate aborted — max depth ${CanvasDataService.MAX_TREE_DEPTH} exceeded`);
@@ -1663,8 +1775,15 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       throw new Error(`[CanvasDataService] Duplicate aborted — cycle detected at "${source.id}"`);
     }
     visited.add(source.id);
-    const newId = crypto.randomUUID();
+    // Use the pre-minted ID from the subtree map so embedded pageBlocks
+    // in the duplicated content can resolve to it. Fall back to a fresh
+    // UUID if the source was created mid-walk (defensive).
+    const newId = idMap.get(source.id) ?? crypto.randomUUID();
     const title = isRoot ? `Copy of ${source.title}` : source.title;
+
+    // Remap pageBlock pageIds inside the cloned content so a duplicated
+    // parent's blocks point at the duplicated children, not the source.
+    const rewrittenContent = this._remapContentPageBlockIds(source.content, idMap);
 
     // Insert duplicated page (copy content, icon, cover, font, width, text — NOT favorite, locked)
     const result = await this._db.run(
@@ -1675,7 +1794,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
         newParentId,
         title,
         source.icon,
-        source.content,
+        rewrittenContent,
         source.contentSchemaVersion,
         sortOrder,
         source.coverUrl,
@@ -1695,7 +1814,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     // Recursively duplicate children
     const children = await this.getChildren(source.id);
     for (let i = 0; i < children.length; i++) {
-      await this._duplicateRecursive(children[i], newId, i + 1, false, visited, depth + 1);
+      await this._duplicateRecursive(children[i], newId, i + 1, false, visited, depth + 1, idMap);
     }
 
     return newPage;
@@ -1748,6 +1867,12 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       clearTimeout(pending.timer);
       this._pendingSaves.delete(pageId);
     }
+  }
+
+  /** Public passthrough for callers about to mutate a page through a
+   *  non-debounced path. See ICanvasDataService.cancelPendingSave. */
+  cancelPendingSave(pageId: string): void {
+    this._cancelPendingSave(pageId);
   }
 
   /**
