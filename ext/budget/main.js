@@ -192,6 +192,108 @@ async function seedDefaultCategoriesIfEmpty() {
 // (Plan, Settings) that render the existing per-section renderers as tabs.
 // Every existing section is still reachable via its open command and via the
 // wrapper's tabs — the data and per-section state are unchanged.
+const CATEGORY_KIND_OPTIONS = [
+  { value: 'expense', label: 'Expense' },
+  { value: 'income', label: 'Income' },
+  { value: 'transfer', label: 'Transfer' },
+];
+const ACCOUNT_KIND_LABELS = {
+  checking: 'Checking',
+  savings: 'Savings',
+  credit_card: 'Credit Card',
+  other: 'Account',
+};
+const STATUS_LABELS = {
+  confirmed: 'Confirmed',
+  review: 'Review',
+  hidden: 'Hidden',
+  deleted: 'Deleted',
+};
+const CONFIDENCE_LABELS = {
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+};
+
+function titleCaseToken(value) {
+  return String(value || '')
+    .replace(/[_-]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function txTypeLabel(txType, amountCents = 0) {
+  if (txType === 'purchase' && Number(amountCents) < 0) return 'Refund';
+  if (txType === 'purchase') return 'Expense';
+  if (txType === 'fee') return 'Fee';
+  if (txType === 'deposit') return 'Income';
+  if (txType === 'transfer') return 'Transfer';
+  return titleCaseToken(txType || 'Unknown');
+}
+
+function statusLabel(status) {
+  return STATUS_LABELS[status] || titleCaseToken(status || '');
+}
+
+function confidenceLabel(confidence) {
+  return CONFIDENCE_LABELS[confidence] || titleCaseToken(confidence || '');
+}
+
+function categoryKindForTxType(txType) {
+  if (txType === 'deposit') return 'income';
+  if (txType === 'transfer') return 'transfer';
+  return 'expense';
+}
+
+function appendCategoryOptions(select, categories, selectedId, txType = null) {
+  const targetKind = txType ? categoryKindForTxType(txType) : null;
+  let options = Array.isArray(categories) ? categories : [];
+  if (targetKind) {
+    const scoped = options.filter(c => c.kind === targetKind || c.id === selectedId);
+    if (scoped.length > 0) options = scoped;
+  }
+  for (const c of options) {
+    const o = document.createElement('option');
+    o.value = c.id;
+    o.textContent = c.name;
+    if (c.kind) o.dataset.kind = c.kind;
+    if (selectedId === c.id) o.selected = true;
+    select.appendChild(o);
+  }
+}
+
+async function learnExpenseRuleFromOverride(merchant, categoryId) {
+  if (categoryId && merchant) {
+    try {
+      const cat = await db.get('SELECT kind FROM categories WHERE id=?', [categoryId]);
+      if (!cat || cat.kind === 'expense') {
+        await learnRuleFromOverride(merchant, categoryId);
+      }
+    } catch { /* best-effort */ }
+  }
+}
+
+async function confirmReviewedTransaction(txId, categoryId, merchant) {
+  await db.run(
+    `UPDATE transactions
+        SET status='confirmed', user_overridden=1, category_id=?,
+            categorization_source='manual', matched_rule_id=NULL,
+            updated_at=?
+      WHERE id=?`,
+    [categoryId || null, new Date().toISOString(), txId],
+  );
+  await learnExpenseRuleFromOverride(merchant, categoryId);
+}
+
+async function hideReviewedTransaction(txId) {
+  await db.run(
+    `UPDATE transactions SET status='hidden', user_overridden=1, updated_at=? WHERE id=?`,
+    [new Date().toISOString(), txId],
+  );
+}
+
 const SECTIONS = [
   { id: 'dashboard',    title: 'Overview',     icon: 'layout-dashboard', commandId: 'budget.openDashboard',    blurb: 'Tracked Balances, Month-to-Date Expenses & Income, Top Categories.', nav: true },
   { id: 'transactions', title: 'Transactions', icon: 'list',             commandId: 'budget.openTransactions', blurb: 'Searchable, filterable ledger of every imported transaction.', nav: true },
@@ -432,6 +534,36 @@ function injectStyles() {
   font: inherit;
   font-size: var(--parallx-fontSize-sm, 11px);
 }
+.budget-select {
+  appearance: none;
+  color-scheme: dark;
+  min-height: 26px;
+  padding-right: 28px;
+  cursor: pointer;
+  background-color: var(--vscode-dropdown-background, var(--vscode-input-background, rgba(255,255,255,0.04)));
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 12px) 50%,
+    calc(100% - 8px) 50%;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+}
+.budget-select:hover {
+  border-color: var(--vscode-focusBorder, #9333ea);
+  background-color: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
+}
+.budget-select option,
+.budget-select optgroup {
+  background: var(--vscode-dropdown-background, var(--vscode-editor-background, #1e1e1e));
+  color: var(--vscode-dropdown-foreground, var(--vscode-foreground, #ddd));
+  font: inherit;
+}
+.budget-select option:checked {
+  background: var(--vscode-list-activeSelectionBackground, rgba(147,51,234,0.35));
+  color: var(--vscode-list-activeSelectionForeground, #fff);
+}
 .budget-input:focus, .budget-select:focus {
   outline: 1px solid var(--vscode-focusBorder, #9333ea);
   outline-offset: -1px;
@@ -468,6 +600,12 @@ function injectStyles() {
 }
 .budget-table tbody tr:hover {
   background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+}
+.budget-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 132px;
 }
 .budget-amount { font-variant-numeric: tabular-nums; text-align: right; }
 .budget-amount.negative { color: var(--vscode-charts-red, #f87171); }
@@ -743,6 +881,10 @@ function injectStyles() {
 }
 .acct-kind-select:hover { color: var(--vscode-foreground, #ddd); }
 .acct-kind-select:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); }
+.acct-kind-select option {
+  background: var(--vscode-dropdown-background, var(--vscode-editor-background, #1e1e1e));
+  color: var(--vscode-dropdown-foreground, var(--vscode-foreground, #ddd));
+}
 
 /* ═══ Section heading ═══ */
 .budget-section-h {
@@ -1795,7 +1937,7 @@ function renderTransactionsSection(body, api) {
     catch (e) { tableWrap.appendChild(emptyState('Query error: ' + (e instanceof Error ? e.message : String(e)))); return; }
 
     // Cache categories for the per-row dropdown.
-    try { categoriesList = await db.all(`SELECT id, name, color FROM categories WHERE archived=0 ORDER BY sort_order, name`); }
+    try { categoriesList = await db.all(`SELECT id, name, color, kind FROM categories WHERE archived=0 ORDER BY kind, sort_order, name`); }
     catch { categoriesList = []; }
     rebuildPills();
 
@@ -1807,7 +1949,7 @@ function renderTransactionsSection(body, api) {
       <thead><tr>
         <th>Date</th><th>Merchant</th><th>Type</th><th>Account</th><th>Category</th>
         <th style="text-align:right">Amount</th>
-        <th>Status</th><th>Conf</th>
+        <th>Status</th><th>Conf</th><th>Actions</th>
       </tr></thead>`;
     const tbody = document.createElement('tbody');
     for (const r of rows) {
@@ -1818,10 +1960,9 @@ function renderTransactionsSection(body, api) {
       const tdDate = document.createElement('td'); tdDate.textContent = fmtDate(r.transaction_date);
       const tdMerch = document.createElement('td'); tdMerch.textContent = r.merchant || '—';
       const tdType = document.createElement('td');
-      // Display label: "purchase" with a negative amount is a refund; show
-      // "refund" in the pill so users still see the distinction at a glance,
-      // even though the underlying tx_type column is just 'purchase'.
-      const displayType = r.tx_type === 'purchase' && cents < 0 ? 'refund' : r.tx_type;
+      // Display labels stay user-facing while stored tx_type values remain
+      // compact and backwards-compatible.
+      const displayType = txTypeLabel(r.tx_type, cents);
       tdType.innerHTML = displayType ? `<span class="budget-pill">${escHtml(displayType)}</span>` : '<span class="budget-pill hidden">—</span>';
       const tdAcct = document.createElement('td');
       tdAcct.textContent = r.account_name || (r.account_last_four ? '••' + r.account_last_four : (r.card_last_four ? '••' + r.card_last_four : '—'));
@@ -1832,11 +1973,7 @@ function renderTransactionsSection(body, api) {
       const sel = document.createElement('select'); sel.className = 'budget-select';
       const blank = document.createElement('option'); blank.value = ''; blank.textContent = '— Uncategorized —';
       sel.appendChild(blank);
-      for (const c of categoriesList) {
-        const o = document.createElement('option'); o.value = c.id; o.textContent = c.name;
-        if (r.category_id === c.id) o.selected = true;
-        sel.appendChild(o);
-      }
+      appendCategoryOptions(sel, categoriesList, r.category_id);
       sel.addEventListener('change', async () => {
         try {
           await db.run(
@@ -1848,9 +1985,7 @@ function renderTransactionsSection(body, api) {
             [sel.value || null, new Date().toISOString(), r.id],
           );
           // Learn from override: future imports for this merchant skip the LLM.
-          if (sel.value && r.merchant) {
-            try { await learnRuleFromOverride(r.merchant, sel.value); } catch { /* best-effort */ }
-          }
+          await learnExpenseRuleFromOverride(r.merchant, sel.value || null);
         } catch (e) {
           await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e)));
           await refresh();
@@ -1887,12 +2022,42 @@ function renderTransactionsSection(body, api) {
       tdAmt.className = 'budget-amount ' + amtCls;
       tdAmt.textContent = fmtMoney(cents);
       const tdStatus = document.createElement('td');
-      tdStatus.innerHTML = `<span class="budget-pill ${escHtml(r.status)}">${escHtml(r.status)}</span>`;
+      tdStatus.innerHTML = `<span class="budget-pill ${escHtml(r.status)}">${escHtml(statusLabel(r.status))}</span>`;
       const tdConf = document.createElement('td');
-      tdConf.innerHTML = r.ai_confidence ? `<span class="budget-pill ${escHtml(r.ai_confidence)}">${escHtml(r.ai_confidence)}</span>` : '';
+      tdConf.innerHTML = r.ai_confidence ? `<span class="budget-pill ${escHtml(r.ai_confidence)}">${escHtml(confidenceLabel(r.ai_confidence))}</span>` : '';
+      const tdActions = document.createElement('td');
+      tdActions.className = 'budget-row-actions';
+      if (r.status === 'review') {
+        const confirmBtn = makeButton('Confirm', {
+          primary: true,
+          onClick: async () => {
+            try {
+              await confirmReviewedTransaction(r.id, sel.value || null, r.merchant);
+              await refresh();
+            } catch (e) {
+              await api.window?.showErrorMessage?.('Confirm failed: ' + (e instanceof Error ? e.message : String(e)));
+            }
+          },
+        });
+        const hideBtn = makeButton('Hide', {
+          onClick: async () => {
+            try {
+              await hideReviewedTransaction(r.id);
+              await refresh();
+            } catch (e) {
+              await api.window?.showErrorMessage?.('Hide failed: ' + (e instanceof Error ? e.message : String(e)));
+            }
+          },
+        });
+        tdActions.appendChild(confirmBtn);
+        tdActions.appendChild(hideBtn);
+      } else {
+        tdActions.textContent = '-';
+        tdActions.style.color = 'var(--vscode-descriptionForeground, #888)';
+      }
 
       tr.appendChild(tdDate); tr.appendChild(tdMerch); tr.appendChild(tdType); tr.appendChild(tdAcct);
-      tr.appendChild(tdCat); tr.appendChild(tdAmt); tr.appendChild(tdStatus); tr.appendChild(tdConf);
+      tr.appendChild(tdCat); tr.appendChild(tdAmt); tr.appendChild(tdStatus); tr.appendChild(tdConf); tr.appendChild(tdActions);
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
@@ -1930,14 +2095,14 @@ function renderReviewQueueSection(body, api) {
     tableWrap.innerHTML = '';
     try {
       categories = await db.all(
-        `SELECT id, name, color FROM categories WHERE archived=0 AND kind='expense' ORDER BY sort_order`,
+        `SELECT id, name, color, kind FROM categories WHERE archived=0 ORDER BY kind, sort_order, name`,
       );
     } catch { categories = []; }
 
     let rows;
     try {
       rows = await db.all(`
-        SELECT t.id, t.merchant, t.amount_cents, t.transaction_date, t.ai_confidence, t.category_id,
+        SELECT t.id, t.merchant, t.amount_cents, t.transaction_date, t.ai_confidence, t.category_id, t.tx_type,
                t.card_last_four, e.raw_subject, e.raw_snippet
           FROM transactions t
           LEFT JOIN email_imports e ON e.gmail_message_id = t.gmail_message_id
@@ -1957,7 +2122,7 @@ function renderReviewQueueSection(body, api) {
     table.className = 'budget-table';
     table.innerHTML = `
       <thead><tr>
-        <th>Date</th><th>Merchant / Email</th>
+        <th>Date</th><th>Merchant / Email</th><th>Type</th>
         <th style="text-align:right">Amount</th>
         <th>Category</th><th>Actions</th>
       </tr></thead>`;
@@ -1975,6 +2140,9 @@ function renderReviewQueueSection(body, api) {
         tdMerch.appendChild(sub);
       }
       tr.appendChild(tdMerch);
+      const tdType = document.createElement('td');
+      tdType.innerHTML = `<span class="budget-pill">${escHtml(txTypeLabel(r.tx_type, r.amount_cents))}</span>`;
+      tr.appendChild(tdType);
       const tdAmt = document.createElement('td'); tdAmt.className = 'budget-amount';
       tdAmt.textContent = fmtMoney(r.amount_cents);
       tr.appendChild(tdAmt);
@@ -1984,32 +2152,17 @@ function renderReviewQueueSection(body, api) {
       sel.className = 'budget-select';
       const blank = document.createElement('option'); blank.value = ''; blank.textContent = '— Pick Category —';
       sel.appendChild(blank);
-      for (const c of categories) {
-        const o = document.createElement('option');
-        o.value = c.id; o.textContent = c.name;
-        if (r.category_id === c.id) o.selected = true;
-        sel.appendChild(o);
-      }
+      appendCategoryOptions(sel, categories, r.category_id, r.tx_type);
       tdCat.appendChild(sel);
       tr.appendChild(tdCat);
 
       const tdAct = document.createElement('td');
-      tdAct.style.display = 'flex'; tdAct.style.gap = '4px';
+      tdAct.className = 'budget-row-actions';
       const confirmBtn = makeButton('Confirm', {
         primary: true,
         onClick: async () => {
           try {
-            await db.run(
-              `UPDATE transactions
-                  SET status='confirmed', user_overridden=1, category_id=?,
-                      categorization_source='manual', matched_rule_id=NULL,
-                      updated_at=?
-                WHERE id=?`,
-              [sel.value || null, new Date().toISOString(), r.id],
-            );
-            if (sel.value && r.merchant) {
-              try { await learnRuleFromOverride(r.merchant, sel.value); } catch { /* best-effort */ }
-            }
+            await confirmReviewedTransaction(r.id, sel.value || null, r.merchant);
             await refresh();
           } catch (e) {
             await api.window?.showErrorMessage?.('Confirm failed: ' + (e instanceof Error ? e.message : String(e)));
@@ -2019,10 +2172,7 @@ function renderReviewQueueSection(body, api) {
       const hideBtn = makeButton('Hide', {
         onClick: async () => {
           try {
-            await db.run(
-              `UPDATE transactions SET status='hidden', user_overridden=1, updated_at=? WHERE id=?`,
-              [new Date().toISOString(), r.id],
-            );
+            await hideReviewedTransaction(r.id);
             await refresh();
           } catch (e) {
             await api.window?.showErrorMessage?.('Hide failed: ' + (e instanceof Error ? e.message : String(e)));
@@ -2185,7 +2335,7 @@ function renderCategoriesSection(body, api) {
     table.innerHTML = `
       <thead><tr>
         <th>Name</th><th>Color</th><th>Kind</th>
-        <th style="text-align:right">Monthly limit</th>
+        <th style="text-align:right">Monthly Limit</th>
         <th style="text-align:right">Tx</th><th>Status</th><th>Actions</th>
       </tr></thead>`;
     const tbody = document.createElement('tbody');
@@ -2214,9 +2364,9 @@ function renderCategoriesSection(body, api) {
       // Kind
       const tdKind = document.createElement('td');
       const kindSel = document.createElement('select'); kindSel.className = 'budget-select';
-      for (const k of ['expense','income','transfer']) {
-        const o = document.createElement('option'); o.value = k; o.textContent = k;
-        if (r.kind === k) o.selected = true;
+      for (const kind of CATEGORY_KIND_OPTIONS) {
+        const o = document.createElement('option'); o.value = kind.value; o.textContent = kind.label;
+        if (r.kind === kind.value) o.selected = true;
         kindSel.appendChild(o);
       }
       kindSel.addEventListener('change', async () => {
@@ -2250,7 +2400,7 @@ function renderCategoriesSection(body, api) {
 
       // Status pill
       const tdStat = document.createElement('td');
-      tdStat.innerHTML = r.archived ? '<span class="budget-pill hidden">archived</span>' : '<span class="budget-pill confirmed">active</span>';
+      tdStat.innerHTML = r.archived ? '<span class="budget-pill hidden">Archived</span>' : '<span class="budget-pill confirmed">Active</span>';
       tr.appendChild(tdStat);
 
       // Actions
@@ -2708,13 +2858,8 @@ function buildAccountCard(a, api, onChanged) {
   const kindHeader = document.createElement('div'); kindHeader.className = 'acct-kind-row';
   const kindSel = document.createElement('select');
   kindSel.className = 'acct-kind-select';
-  kindSel.setAttribute('aria-label', 'Account kind');
-  for (const [v, lbl] of [
-    ['checking',    'Checking'],
-    ['savings',     'Savings'],
-    ['credit_card', 'Credit card'],
-    ['other',       'Account'],
-  ]) {
+  kindSel.setAttribute('aria-label', 'Account Kind');
+  for (const [v, lbl] of Object.entries(ACCOUNT_KIND_LABELS)) {
     const o = document.createElement('option'); o.value = v; o.textContent = lbl;
     if (a.kind === v) o.selected = true;
     kindSel.appendChild(o);
@@ -3649,8 +3794,8 @@ async function buildNeedsAttention(api, scope) {
     if (r && Number(r.n) > 0) {
       items.push({
         kind: 'warn',
-        title: `${r.n} untyped transactions`,
-        sub: `${fmtMoney(r.sum_cents)} pending classification`,
+        title: `${r.n} Untyped Transactions`,
+        sub: `${fmtMoney(r.sum_cents)} Pending Classification`,
         action: 'Reclassify',
         onClick: () => api.commands.executeCommand('budget.reclassifyUntyped').catch(() => {}),
       });
@@ -3663,9 +3808,9 @@ async function buildNeedsAttention(api, scope) {
     if (r && Number(r.n) > 0) {
       items.push({
         kind: 'warn',
-        title: `${r.n} for review`,
+        title: `${r.n} For Review`,
         sub: 'AI flagged these for confirmation',
-        action: 'Open review',
+        action: 'Open Review',
         onClick: () => {
           _navState.txFilter = { monthKey: scope.monthKey, type: 'all', status: 'review' };
           api.commands.executeCommand('budget.openTransactions').catch(() => {});
@@ -3809,7 +3954,7 @@ function buildHeadlineNarrative({ totalSpend, prevSpend, totalIncome, prevIncome
     const inDelta = totalIncome - prevIncome;
     if (Math.abs(inDelta) > 1000) {
       const sign = inDelta >= 0 ? '+' : '−';
-      parts.push({ text: ` Income ${sign}${fmtMoney(Math.abs(inDelta))} MoM.`, tone: inDelta >= 0 ? 'up' : 'down' });
+      parts.push({ text: ` Income ${sign}${fmtMoney(Math.abs(inDelta))} Month over Month.`, tone: inDelta >= 0 ? 'up' : 'down' });
     }
   }
 
@@ -4002,7 +4147,7 @@ function renderAccountsSection(body, api) {
       const tdKind = document.createElement('td');
       const kindSel = document.createElement('select'); kindSel.className = 'budget-select';
       for (const k of ACCOUNT_KINDS) {
-        const o = document.createElement('option'); o.value = k; o.textContent = k;
+        const o = document.createElement('option'); o.value = k; o.textContent = ACCOUNT_KIND_LABELS[k] || titleCaseToken(k);
         if (a.kind === k) o.selected = true; kindSel.appendChild(o);
       }
       kindSel.addEventListener('change', async () => {
@@ -4378,7 +4523,7 @@ function renderBudgetsSection(body, api) {
 
       const tdStatus = document.createElement('td');
       const cls = r.status === 'over' ? 'review' : (r.status === 'near' ? 'low' : 'confirmed');
-      tdStatus.innerHTML = eff > 0 ? `<span class="budget-pill ${cls}">${escHtml(r.status)}</span>` : '<span style="color:var(--vscode-descriptionForeground,#888)">no limit</span>';
+      tdStatus.innerHTML = eff > 0 ? `<span class="budget-pill ${cls}">${escHtml(titleCaseToken(r.status))}</span>` : '<span style="color:var(--vscode-descriptionForeground,#888)">No Limit</span>';
       tr.appendChild(tdStatus);
 
       tb.appendChild(tr);
