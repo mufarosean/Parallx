@@ -193,7 +193,7 @@ async function seedDefaultCategoriesIfEmpty() {
 // Every existing section is still reachable via its open command and via the
 // wrapper's tabs — the data and per-section state are unchanged.
 const SECTIONS = [
-  { id: 'dashboard',    title: 'Overview',     icon: 'layout-dashboard', commandId: 'budget.openDashboard',    blurb: 'Net worth, month-to-date spend & income, top categories.', nav: true },
+  { id: 'dashboard',    title: 'Overview',     icon: 'layout-dashboard', commandId: 'budget.openDashboard',    blurb: 'Tracked balances, month-to-date expenses & income, top categories.', nav: true },
   { id: 'transactions', title: 'Transactions', icon: 'list',             commandId: 'budget.openTransactions', blurb: 'Searchable, filterable ledger of every imported transaction.', nav: true },
   { id: 'plan',         title: 'Plan',         icon: 'target',           commandId: 'budget.openPlan',         blurb: 'Budgets, recurring, reconcile, and trends.', nav: true },
   { id: 'settings',     title: 'Settings',     icon: 'settings',         commandId: 'budget.openSettings',     blurb: 'Accounts, categories, rules, review queue, sync log, import/export.', nav: true },
@@ -1551,18 +1551,34 @@ function defaultAccountName(kind, last4) {
   return 'Account' + tail;
 }
 
+function isDefaultAccountName(name, last4) {
+  if (!name) return true;
+  const value = String(name).trim();
+  return ACCOUNT_KINDS.some(kind => value === defaultAccountName(kind, last4));
+}
+
 // Idempotent upsert by last_four (which is UNIQUE in the schema).
 // Returns the account row { id, last_four, kind, display_name }.
-async function upsertAccount(last4, kindHint, displayHint) {
+async function upsertAccount(last4, kindHint, displayHint, opts = {}) {
   if (!last4 || !/^\d{4}$/.test(String(last4))) return null;
   const kind = normalizeAccountKind(kindHint);
   const existing = await db.get('SELECT id, last_four, kind, display_name FROM accounts WHERE last_four=?', [last4]);
   if (existing) {
-    // Promote 'other' to a known kind once we learn it; never overwrite a known kind.
-    if (existing.kind === 'other' && kind !== 'other') {
-      await db.run('UPDATE accounts SET kind=?, updated_at=? WHERE id=?',
-        [kind, new Date().toISOString(), existing.id]);
+    // Transaction emails often expose a card's last four but not the bank
+    // account kind, so only balance-summary evidence is allowed to correct
+    // a known checking/savings/credit label.
+    const trustedKind = !!(opts && opts.trustedKind);
+    const shouldApplyKind = kind !== 'other' && (
+      existing.kind === 'other' ||
+      (trustedKind && existing.kind !== kind)
+    );
+    if (shouldApplyKind) {
+      const displayWasDefault = isDefaultAccountName(existing.display_name, existing.last_four);
+      const nextName = displayWasDefault ? (displayHint || defaultAccountName(kind, last4)) : existing.display_name;
+      await db.run('UPDATE accounts SET kind=?, display_name=?, updated_at=? WHERE id=?',
+        [kind, nextName, new Date().toISOString(), existing.id]);
       existing.kind = kind;
+      existing.display_name = nextName;
     }
     return existing;
   }
@@ -1576,6 +1592,39 @@ async function upsertAccount(last4, kindHint, displayHint) {
 }
 
 // ─── Section: Transactions ─────────────────────────────────────────────────
+
+async function reconcileAccountKindsFromSnapshots() {
+  let rows = [];
+  try {
+    rows = await db.all(`
+      SELECT a.id, a.last_four, a.kind, a.display_name,
+             (SELECT bs.kind
+                FROM balance_snapshots bs
+               WHERE bs.account_id = a.id
+                 AND bs.kind IS NOT NULL
+                 AND bs.kind <> 'other'
+               ORDER BY bs.snapshot_date DESC, bs.created_at DESC
+               LIMIT 1) AS snapshot_kind
+        FROM accounts a
+       WHERE a.archived = 0`);
+  } catch { return 0; }
+
+  let changed = 0;
+  for (const a of rows || []) {
+    const kind = normalizeAccountKind(a.snapshot_kind);
+    if (kind === 'other' || kind === a.kind) continue;
+    const displayWasDefault = isDefaultAccountName(a.display_name, a.last_four);
+    const nextName = displayWasDefault ? defaultAccountName(kind, a.last_four) : a.display_name;
+    try {
+      await db.run(
+        `UPDATE accounts SET kind=?, display_name=?, updated_at=? WHERE id=?`,
+        [kind, nextName, new Date().toISOString(), a.id],
+      );
+      changed++;
+    } catch { /* best-effort repair */ }
+  }
+  return changed;
+}
 
 function renderTransactionsSection(body, api) {
   // Pop any nav-state that Dashboard may have set so this view filters
@@ -2446,8 +2495,8 @@ function renderDashboardSection(body, api) {
     let acctRows = [];
     try {
       const acctView = _state.accountIds && _state.accountIds.length > 0
-        ? `SELECT * FROM v_account_latest_balance WHERE account_id IN (${_state.accountIds.map(() => '?').join(',')}) ORDER BY kind, last_four`
-        : 'SELECT * FROM v_account_latest_balance ORDER BY kind, last_four';
+        ? `SELECT * FROM v_account_latest_balance WHERE latest_balance_cents IS NOT NULL AND account_id IN (${_state.accountIds.map(() => '?').join(',')}) ORDER BY kind, last_four`
+        : 'SELECT * FROM v_account_latest_balance WHERE latest_balance_cents IS NOT NULL ORDER BY kind, last_four';
       acctRows = await db.all(acctView, _state.accountIds && _state.accountIds.length > 0 ? _state.accountIds : []);
     } catch { acctRows = []; }
     let cash = 0, credit = 0;
@@ -2473,8 +2522,6 @@ function renderDashboardSection(body, api) {
     ) || { spend: 0, income: 0, n: 0 };
     const totalSpend = Number(sumRow.spend) || 0;
     const totalIncome = Number(sumRow.income) || 0;
-    const savings = totalIncome - totalSpend;
-    const savingsRate = totalIncome > 0 ? Math.round((savings / totalIncome) * 100) : 0;
 
     let prevSpend = 0, prevIncome = 0;
     try {
@@ -2489,10 +2536,8 @@ function renderDashboardSection(body, api) {
       prevSpend  = Number(prevRow?.spend)  || 0;
       prevIncome = Number(prevRow?.income) || 0;
     } catch { /* best effort */ }
-    const prevSavings = prevIncome - prevSpend;
-    const prevSavingsRate = prevIncome > 0 ? Math.round((prevSavings / prevIncome) * 100) : null;
 
-    // ── Net-worth 30-day delta (for KPI anchor).
+    // ── Tracked balance 30-day delta (for KPI anchor).
     let netDelta30 = 0;
     try {
       const r30 = await db.get(`
@@ -2582,9 +2627,9 @@ function renderDashboardSection(body, api) {
     const spendPct = pctDelta(totalSpend, prevSpend);
     const incomePct = pctDelta(totalIncome, prevIncome);
 
-    const netWorthCard = makeCard('Net worth', fmtMoney(netWorth),
+    const netWorthCard = makeCard('Tracked balance', fmtMoney(netWorth),
       netDelta30
-        ? `${netDelta30 >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(netDelta30))} over 30D`
+        ? `${netDelta30 >= 0 ? '+' : '-'}${fmtMoney(Math.abs(netDelta30))} over 30D`
         : (acctRows.length ? `${acctRows.length} accounts` : 'No accounts yet'),
       {
         title: 'Open accounts',
@@ -2595,7 +2640,7 @@ function renderDashboardSection(body, api) {
       });
     cards.appendChild(netWorthCard);
 
-    cards.appendChild(makeCard(`Spend (${range.label.split(' ')[0]})`, fmtMoney(totalSpend),
+    cards.appendChild(makeCard('Expenses', fmtMoney(totalSpend),
       spendPct !== null
         ? `vs ${fmtMoney(prevSpend)} last mo (${spendPct >= 0 ? '+' : ''}${spendPct}%)`
         : `${sumRow.n} transactions`,
@@ -2607,7 +2652,7 @@ function renderDashboardSection(body, api) {
         },
       }));
 
-    cards.appendChild(makeCard(`Income (${range.label.split(' ')[0]})`, fmtMoney(totalIncome),
+    cards.appendChild(makeCard('Income', fmtMoney(totalIncome),
       incomePct !== null
         ? `vs ${fmtMoney(prevIncome)} last mo (${incomePct >= 0 ? '+' : ''}${incomePct}%)`
         : (totalIncome > 0 ? 'Deposits this month' : 'No income yet'),
@@ -2616,18 +2661,6 @@ function renderDashboardSection(body, api) {
         onClick: () => {
           _navState.txFilter = { monthKey, type: 'deposit' };
           api.commands.executeCommand('budget.openTransactions').catch(() => {});
-        },
-      }));
-
-    cards.appendChild(makeCard('Savings rate', totalIncome > 0 ? `${savingsRate}%` : '—',
-      prevSavingsRate !== null
-        ? `vs ${prevSavingsRate}% last mo · ${fmtMoney(savings)} saved`
-        : (totalIncome > 0 ? `Saved ${fmtMoney(savings)}` : 'Sync to see income'),
-      {
-        title: 'Open cash flow',
-        onClick: () => {
-          _navState.planTab = 'cashflow';
-          api.commands.executeCommand('budget.openPlan').catch(() => {});
         },
       }));
 
@@ -2978,7 +3011,7 @@ function buildBalanceTrendChart(rows) {
 
     // Legend — only show series we actually drew.
     legend.innerHTML = '';
-    legend.appendChild(legendItem('Net worth', 'var(--vscode-charts-green, #22c55e)'));
+    legend.appendChild(legendItem('Tracked balance', 'var(--vscode-charts-green, #22c55e)'));
     if (showCash)  legend.appendChild(legendItem('Cash', 'var(--vscode-charts-blue, #3b82f6)'));
     if (hasCredit) legend.appendChild(legendItem('Credit owed', 'var(--vscode-charts-orange, #f97316)'));
 
@@ -3543,7 +3576,7 @@ function buildCategoryBars(catRows, prevByCatId, onClick) {
   return wrap;
 }
 
-// Single horizontal stacked bar showing how net worth is distributed across
+// Single horizontal stacked bar showing how tracked balances are distributed across
 // account kinds. A 100% stacked bar is the right chart for "what fraction of
 // X is in each bucket" — better than a pie because the eye compares lengths,
 // not angles (NN/g preattentive).
@@ -3917,7 +3950,7 @@ function renderAccountsSection(body, api) {
     summaryRow.innerHTML = ''; cardsRow.innerHTML = ''; tableWrap.innerHTML = '';
 
     let acctRows = [];
-    try { acctRows = await db.all('SELECT * FROM v_account_latest_balance ORDER BY kind, last_four'); } catch { acctRows = []; }
+    try { acctRows = await db.all('SELECT * FROM v_account_latest_balance WHERE latest_balance_cents IS NOT NULL ORDER BY kind, last_four'); } catch { acctRows = []; }
 
     if (acctRows.length === 0) {
       tableWrap.appendChild(emptyState('No accounts detected yet — run a sync to import balances from your daily account summary emails.'));
@@ -3929,9 +3962,11 @@ function renderAccountsSection(body, api) {
       const bal = Number(a.latest_balance_cents) || 0;
       if (a.kind === 'credit_card') credit += bal; else cash += bal;
     }
-    summaryRow.appendChild(makeCard('Net worth', fmtMoney(cash + credit), `${acctRows.length} accounts`));
+    summaryRow.appendChild(makeCard('Tracked balance', fmtMoney(cash + credit), `${acctRows.length} accounts`));
     summaryRow.appendChild(makeCard('Cash', fmtMoney(cash), 'Checking + savings'));
-    summaryRow.appendChild(makeCard('Credit balance', fmtMoney(credit), credit < 0 ? 'Owed' : 'No balance'));
+    if (acctRows.some(a => a.kind === 'credit_card' && a.latest_balance_cents != null)) {
+      summaryRow.appendChild(makeCard('Credit balance', fmtMoney(credit), credit < 0 ? 'Owed' : 'No balance'));
+    }
 
     for (const a of acctRows) cardsRow.appendChild(buildAccountCard(a, api));
 
@@ -6324,7 +6359,7 @@ async function budgetSync(api) {
             for (const a of snap.accounts) {
               let accountId = null;
               if (a.account_last_four) {
-                const acct = await upsertAccount(a.account_last_four, a.account_kind, null);
+                const acct = await upsertAccount(a.account_last_four, a.account_kind, null, { trustedKind: true });
                 accountId = acct ? acct.id : null;
               }
               await db.run(
@@ -6356,6 +6391,13 @@ async function budgetSync(api) {
       if (detected > 0) await syncLog(runId, 'info', 'recurring', `Detected ${detected} new recurring series`);
     } catch (e) {
       await syncLog(runId, 'warn', 'recurring', 'Recurring detection error: ' + (e instanceof Error ? e.message : String(e)));
+    }
+
+    try {
+      const repaired = await reconcileAccountKindsFromSnapshots();
+      if (repaired > 0) await syncLog(runId, 'info', 'accounts', `Corrected ${repaired} account kind(s) from balance snapshots`);
+    } catch (e) {
+      await syncLog(runId, 'warn', 'accounts', 'Account repair error: ' + (e instanceof Error ? e.message : String(e)));
     }
 
     // Cursor write — last step (no transaction wrapper needed; three KV upserts).
@@ -6721,8 +6763,9 @@ export async function activate(api, context) {
 
   try {
     await seedDefaultCategoriesIfEmpty();
+    await reconcileAccountKindsFromSnapshots();
   } catch (err) {
-    console.error('[Budget] Default category seed failed:', err);
+    console.error('[Budget] Default category seed or account repair failed:', err);
     // Non-fatal: user can create categories manually.
   }
 
@@ -6741,6 +6784,7 @@ export async function activate(api, context) {
         const ok = await ensureDatabase(api);
         if (ok) {
           await seedDefaultCategoriesIfEmpty();
+          await reconcileAccountKindsFromSnapshots();
         }
       } catch (err) {
         console.error('[Budget] Workspace switch re-init failed:', err);
@@ -7125,7 +7169,7 @@ function _registerBudgetLinkContract(api) {
               id,
               label: a.display_name || (a.kind + ' ••' + (a.last_four || '----')),
               domain: 'budget',
-              icon: a.kind === 'credit' ? '💳' : '🏦',
+              icon: a.kind === 'credit_card' ? '💳' : '🏦',
               weight: 4,
               meta: { type: 'budget-account', accountId: a.id, kind: a.kind },
             });
