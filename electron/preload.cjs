@@ -105,6 +105,15 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     setWorkspaceRoot: (rootPath) => ipcRenderer.invoke('fs:setWorkspaceRoot', rootPath),
 
     /**
+     * Register user-blessed external folders (e.g. media-organizer scan
+     * roots) that live outside the workspace but should be writable/readable
+     * by extensions. Pass the full list each call — the main process
+     * replaces the previous set. Only pass paths the user explicitly added
+     * through an extension UI.
+     */
+    registerExtraRoots: (roots) => ipcRenderer.invoke('fs:registerExtraRoots', roots),
+
+    /**
      * Subscribe to file change events.
      * Callback receives { watchId, events: [{ type: 'created'|'changed'|'deleted', path }] }
      * or { watchId, error }.

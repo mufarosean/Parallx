@@ -1137,9 +1137,29 @@ function isBinary(buffer, filePath) {
 let _fsWorkspaceRoot = null;
 
 /**
+ * Extra allow-listed roots registered by extensions via
+ * `fs:registerExtraRoots`. Used for both read and write validation. Intended
+ * for user-blessed external folders (e.g. media-organizer scan roots) that
+ * live outside the workspace. The renderer is the trust boundary — only
+ * folders the user explicitly added through an extension UI should appear
+ * here. Stored as absolute, path.resolve()-normalized strings.
+ */
+const _fsExtraRoots = new Set();
+
+function _matchesAnyRoot(normalized, roots) {
+  for (const root of roots) {
+    if (normalized === root || normalized.startsWith(root + path.sep)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Return true when filePath is within an allowed write zone:
- *   - the registered workspace root (any depth inside it), or
- *   - APP_ROOT/data (our own portable data directory).
+ *   - the registered workspace root (any depth inside it),
+ *   - APP_ROOT/data (our own portable data directory), or
+ *   - any extra root registered via fs:registerExtraRoots.
  *
  * When no workspace root is registered, always returns true.
  */
@@ -1148,12 +1168,15 @@ function _isAllowedWritePath(filePath) {
   const normalized = path.resolve(filePath);
   const wsRoot = path.resolve(_fsWorkspaceRoot);
   const dataDir = path.resolve(path.join(APP_ROOT, 'data'));
-  return (
+  if (
     normalized === wsRoot ||
     normalized.startsWith(wsRoot + path.sep) ||
     normalized === dataDir ||
     normalized.startsWith(dataDir + path.sep)
-  );
+  ) {
+    return true;
+  }
+  return _matchesAnyRoot(normalized, _fsExtraRoots);
 }
 
 /**
@@ -1191,7 +1214,7 @@ function _isAllowedReadPath(filePath) {
       return true;
     }
   }
-  return false;
+  return _matchesAnyRoot(normalized, _fsExtraRoots);
 }
 
 // ── fs:setWorkspaceRoot ──
@@ -1204,6 +1227,27 @@ ipcMain.handle('fs:setWorkspaceRoot', (_event, rootPath) => {
     _fsWorkspaceRoot = null;
   }
   return { ok: true };
+});
+
+// ── fs:registerExtraRoots ──
+// Called by extensions to register user-blessed external folders (e.g.
+// media-organizer scan roots) that the user added via an extension UI but
+// which live outside the workspace. Without this, fs:* IPC writes/reads
+// against those folders fail with EACCES once a workspace is registered.
+// The renderer is the trust boundary — only paths the user explicitly added
+// through an extension UI should be passed in. Replaces the previous set
+// each call; callers re-send the full list when the user adds or removes
+// a root.
+ipcMain.handle('fs:registerExtraRoots', (_event, roots) => {
+  _fsExtraRoots.clear();
+  if (Array.isArray(roots)) {
+    for (const r of roots) {
+      if (typeof r === 'string' && r.length > 0) {
+        _fsExtraRoots.add(path.resolve(r));
+      }
+    }
+  }
+  return { ok: true, count: _fsExtraRoots.size };
 });
 
 // ── fs:readFile ──

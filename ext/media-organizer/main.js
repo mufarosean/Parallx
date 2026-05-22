@@ -2786,6 +2786,10 @@ async function recordScanRoot(rootPath) {
        ON CONFLICT(path) DO UPDATE SET last_scan_at = datetime('now')`,
       [rootPath]
     );
+    // Refresh the main-process write/read allow-list so fs:* IPC calls
+    // (used by clip auto-optimize, thumbnail cache, etc.) succeed against
+    // this user-blessed external folder. Best-effort.
+    await syncScanRootsToFsGate();
   } catch (err) {
     console.warn('[MediaOrganizer] Failed to record scan root:', err);
   }
@@ -2796,6 +2800,25 @@ async function getScanRoots() {
     return await db.all('SELECT * FROM mo_scan_roots ORDER BY path ASC');
   } catch {
     return [];
+  }
+}
+
+/**
+ * Push the current set of scan roots into the main-process fs path gate.
+ * Without this, post-M67 fs:writeFile/rename/copy/stat IPC calls against
+ * external media folders fail with EACCES — breaking GIF auto-optimize
+ * rename, thumbnail backup copy, etc. Safe to call multiple times; the
+ * main process replaces the previous set each call.
+ */
+async function syncScanRootsToFsGate() {
+  try {
+    const fn = window.parallxElectron?.fs?.registerExtraRoots;
+    if (typeof fn !== 'function') return; // older host build — silently skip
+    const rows = await getScanRoots();
+    const paths = rows.map((r) => r.path).filter(Boolean);
+    await fn(paths);
+  } catch (err) {
+    console.warn('[MediaOrganizer] Failed to sync scan roots to fs gate:', err);
   }
 }
 
@@ -21438,6 +21461,13 @@ export async function activate(api, context) {
   } catch (err) {
     console.warn('[MediaOrganizer] Scan root backfill failed:', err);
   }
+
+  // Push every known scan root into the main-process fs path gate so
+  // fs:* IPC calls (clip auto-optimize rename, thumbnail backup copy,
+  // optimizer tmp stat/delete) succeed against external media folders.
+  // Without this, M67's _isAllowedWritePath/_isAllowedReadPath rejects
+  // any path outside the workspace + APP_ROOT/data with EACCES.
+  await syncScanRootsToFsGate();
 
   // Register scan command
   _commandDisposables.push(
