@@ -154,8 +154,9 @@ describe('AISettingsPanel', () => {
   it('renders navigation with the manager sections', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const navItems = parent.querySelectorAll('.ai-settings-nav__item');
-    expect(navItems.length).toBe(5);
+    expect(navItems.length).toBe(6);
     expect(Array.from(navItems).map((n) => n.textContent)).toEqual([
+      'Model',
       'Agent',
       'Scheduled jobs',
       'Tools',
@@ -174,9 +175,9 @@ describe('AISettingsPanel', () => {
   it('renders the manager sections in content area', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const sections = parent.querySelectorAll('.ai-settings-section');
-    expect(sections.length).toBe(5);
+    expect(sections.length).toBe(6);
     const ids = Array.from(sections).map((s) => (s as HTMLElement).dataset.sectionId);
-    expect(ids).toEqual(['agent', 'cron', 'tools', 'mcp', 'web-research']);
+    expect(ids).toEqual(['model', 'agent', 'cron', 'tools', 'mcp', 'web-research']);
     panel.dispose();
   });
 

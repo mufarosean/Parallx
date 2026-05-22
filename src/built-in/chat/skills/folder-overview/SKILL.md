@@ -1,9 +1,11 @@
 ---
 name: folder-overview
 description: >
-  Provide a structural overview of a folder's contents including file
-  count, file types, folder hierarchy, and brief descriptions of each
-  file's purpose. Focuses on organization rather than deep content.
+  Produce a structural overview of a folder — file count, file types,
+  folder hierarchy, and a one-line purpose per file. Use when the user
+  asks how a folder is organized or what's in it at a glance, without
+  needing deep content. For per-file detailed summaries use
+  exhaustive-summary; for extracting specific facts use scoped-extraction.
 version: 1.0.0
 author: parallx
 kind: workflow

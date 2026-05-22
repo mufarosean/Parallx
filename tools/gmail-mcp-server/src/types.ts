@@ -52,6 +52,13 @@ export interface ListUnreadInput {
    * the extra bandwidth + privacy surface only when needed.
    */
   include_body?: boolean;
+  /**
+   * Opaque Gmail `pageToken` for paginating results beyond `max` per call.
+   * Pass the `nextPageToken` returned by the previous call to fetch the next
+   * page. Same `since` / `query` / `read_state` must be reused — Gmail's
+   * token is only valid against an identical query.
+   */
+  page_token?: string;
 }
 
 export interface UnreadMessage {
@@ -73,6 +80,12 @@ export interface UnreadMessage {
 
 export interface ListUnreadOutput {
   messages: readonly UnreadMessage[];
+  /**
+   * Gmail's `nextPageToken` for fetching the next page. Absent when this is
+   * the final page. Pass it back as `page_token` on the next call (with the
+   * same `since`, `query`, `read_state`) to continue paginating.
+   */
+  nextPageToken?: string;
 }
 
 // ── MCP tool schema (returned by `tools/list`) ──────────────────────

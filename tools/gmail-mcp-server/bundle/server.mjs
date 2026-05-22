@@ -15,10 +15,11 @@ var GmailClient = class {
   }
   /**
    * List unread messages. Combines `is:unread` with optional caller
-   * query and `since` filter. Returns hydrated message metadata.
+   * query and `since` filter. Returns hydrated message metadata plus an
+   * optional `nextPageToken` for callers paginating beyond `max` per call.
    */
   async listUnread(opts) {
-    const max = Math.max(1, Math.min(100, Math.floor(opts.max)));
+    const max = Math.max(1, Math.min(500, Math.floor(opts.max)));
     const queryParts = [];
     const readState = opts.readState ?? "unread";
     if (readState === "unread") queryParts.push("is:unread");
@@ -32,10 +33,12 @@ var GmailClient = class {
     const listUrl = new URL(`${GMAIL_API_BASE}/users/me/messages`);
     if (q) listUrl.searchParams.set("q", q);
     listUrl.searchParams.set("maxResults", String(max));
+    if (opts.pageToken) listUrl.searchParams.set("pageToken", opts.pageToken);
     const listRes = await this.fetchAuthorized(listUrl.toString());
     const listJson = await listRes.json();
+    const nextPageToken = typeof listJson.nextPageToken === "string" && listJson.nextPageToken ? listJson.nextPageToken : void 0;
     const ids = (listJson.messages ?? []).map((m) => m.id).slice(0, max);
-    if (ids.length === 0) return [];
+    if (ids.length === 0) return { messages: [], ...nextPageToken ? { nextPageToken } : {} };
     const CONCURRENCY = 6;
     const includeBody = opts.includeBody === true;
     const hydrated = new Array(ids.length);
@@ -50,7 +53,7 @@ var GmailClient = class {
     await Promise.all(workers);
     const messages = hydrated.filter((m) => m !== null);
     messages.sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
-    return messages;
+    return { messages, ...nextPageToken ? { nextPageToken } : {} };
   }
   async getMessageMetadata(id, includeBody = false) {
     const url = new URL(`${GMAIL_API_BASE}/users/me/messages/${encodeURIComponent(id)}`);
@@ -484,9 +487,9 @@ var LIST_UNREAD_TOOL = {
       },
       max: {
         type: "number",
-        description: "Max messages to return. 1-100. Default 25.",
+        description: "Max messages to return per page. 1-500 (Gmail API max). Default 25.",
         minimum: 1,
-        maximum: 100
+        maximum: 500
       },
       query: {
         type: "string",
@@ -500,6 +503,10 @@ var LIST_UNREAD_TOOL = {
       include_body: {
         type: "boolean",
         description: "Include decoded plain-text body (truncated to 8 KB). Default false. Set true when callers (e.g. transaction-extractor pipelines) need the email body and not just the snippet preview."
+      },
+      page_token: {
+        type: "string",
+        description: "Opaque Gmail pageToken for paginating beyond `max` results per call. Pass the `nextPageToken` returned by the previous call to fetch the next page. Reuse the same since/query/read_state \u2014 tokens are only valid against an identical query."
       }
     },
     additionalProperties: false
@@ -581,18 +588,23 @@ async function handleToolsCall(id, params) {
     max: typeof args.max === "number" ? args.max : 25,
     query: typeof args.query === "string" ? args.query : void 0,
     read_state: readState,
-    include_body: args.include_body === true
+    include_body: args.include_body === true,
+    page_token: typeof args.page_token === "string" ? args.page_token : void 0
   };
   try {
     const client = new GmailClient(accessToken);
-    const messages = await client.listUnread({
+    const { messages, nextPageToken } = await client.listUnread({
       max: input.max ?? 25,
       query: input.query,
       since: input.since,
       readState,
-      includeBody: input.include_body === true
+      includeBody: input.include_body === true,
+      pageToken: input.page_token
     });
-    const output = { messages };
+    const output = {
+      messages,
+      ...nextPageToken ? { nextPageToken } : {}
+    };
     logInfo(`list_unread \u2192 ${messages.length} message(s)`);
     return {
       jsonrpc: "2.0",

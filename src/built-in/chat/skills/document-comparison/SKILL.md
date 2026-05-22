@@ -1,10 +1,12 @@
 ---
 name: document-comparison
 description: >
-  Compare two or more documents in detail. Reads each document fully,
-  analyzes them across multiple dimensions (structure, content, claims,
-  data), and produces a structured comparison highlighting similarities,
-  differences, and contradictions.
+  Compare two or more documents side-by-side across structure, content, claims,
+  and data, producing a structured diff of similarities, differences, and
+  contradictions. Use when the user asks to compare, contrast, diff, or
+  reconcile two or more named documents. Not for summarizing a single document
+  (use exhaustive-summary) or for extracting one specific field across many
+  files (use scoped-extraction).
 version: 1.0.0
 author: parallx
 kind: workflow

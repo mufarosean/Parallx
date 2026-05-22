@@ -48,9 +48,9 @@ const LIST_UNREAD_TOOL: McpToolSchema = {
       },
       max: {
         type: 'number',
-        description: 'Max messages to return. 1-100. Default 25.',
+        description: 'Max messages to return per page. 1-500 (Gmail API max). Default 25.',
         minimum: 1,
-        maximum: 100,
+        maximum: 500,
       },
       query: {
         type: 'string',
@@ -66,6 +66,11 @@ const LIST_UNREAD_TOOL: McpToolSchema = {
         type: 'boolean',
         description:
           'Include decoded plain-text body (truncated to 8 KB). Default false. Set true when callers (e.g. transaction-extractor pipelines) need the email body and not just the snippet preview.',
+      },
+      page_token: {
+        type: 'string',
+        description:
+          'Opaque Gmail pageToken for paginating beyond `max` results per call. Pass the `nextPageToken` returned by the previous call to fetch the next page. Reuse the same since/query/read_state — tokens are only valid against an identical query.',
       },
     },
     additionalProperties: false,
@@ -176,18 +181,23 @@ async function handleToolsCall(
     query: typeof args.query === 'string' ? args.query : undefined,
     read_state: readState,
     include_body: args.include_body === true,
+    page_token: typeof args.page_token === 'string' ? args.page_token : undefined,
   };
 
   try {
     const client = new GmailClient(accessToken);
-    const messages = await client.listUnread({
+    const { messages, nextPageToken } = await client.listUnread({
       max: input.max ?? 25,
       query: input.query,
       since: input.since,
       readState,
       includeBody: input.include_body === true,
+      pageToken: input.page_token,
     });
-    const output: ListUnreadOutput = { messages };
+    const output: ListUnreadOutput = {
+      messages,
+      ...(nextPageToken ? { nextPageToken } : {}),
+    };
     // We log COUNTS only — never subjects or snippets.
     logInfo(`list_unread → ${messages.length} message(s)`);
     return {

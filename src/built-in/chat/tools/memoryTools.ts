@@ -56,12 +56,17 @@ export function createMemoryGetTool(fs: IBuiltInToolFileSystem | undefined): ICh
   return {
     name: 'memory_get',
     displaySummary: 'Read canonical workspace memory.',
-    description: 'Read workspace memory. layer=durable for MEMORY.md; layer=daily for a date-stamped log.',
+    description:
+      'Reads the workspace canonical memory file at `.parallx/memory/`: ' +
+      '`durable` (MEMORY.md — long-term facts that persist across chat sessions) or ' +
+      '`daily` (YYYY-MM-DD.md — a date-stamped log). ' +
+      'Use when the user references prior context, asks what you remember, or you need to look up a stored fact by layer/date. ' +
+      'For semantic search across all memory layers by topic, use `memory_search` instead.',
     parameters: {
       type: 'object',
       properties: {
-        layer: { type: 'string', enum: ['durable', 'daily'], description: 'durable (default) or daily.' },
-        date: { type: 'string', description: 'YYYY-MM-DD, defaults to today. Only for daily layer.' },
+        layer: { type: 'string', enum: ['durable', 'daily'], description: 'durable (default) for long-term MEMORY.md, daily for a date-stamped log.' },
+        date: { type: 'string', description: 'YYYY-MM-DD, defaults to today. Only applies when layer="daily".' },
       },
     },
     requiresConfirmation: false,
@@ -97,13 +102,18 @@ export function createMemorySearchTool(memorySearch: IBuiltInToolCanonicalMemory
   return {
     name: 'memory_search',
     displaySummary: 'Semantic search over workspace memory.',
-    description: 'Semantic search over workspace memory in `.parallx/memory/`.',
+    description:
+      'Semantic (embedding) search across the workspace canonical memory in `.parallx/memory/` ' +
+      '(both the durable MEMORY.md and all daily logs). ' +
+      'Use when looking for stored facts by topic rather than by date/layer — e.g. "what do we know about X", ' +
+      '"have we discussed Y before". ' +
+      'For reading a specific memory layer directly use `memory_get`.',
     parameters: {
       type: 'object',
       required: ['query'],
       properties: {
-        query: { type: 'string', description: 'Search query.' },
-        layer: { type: 'string', enum: ['all', 'durable', 'daily'], description: 'Filter: all (default), durable, or daily.' },
+        query: { type: 'string', description: 'Natural-language query describing the topic to recall.' },
+        layer: { type: 'string', enum: ['all', 'durable', 'daily'], description: 'Restrict search to one layer. Defaults to all.' },
         date: { type: 'string', description: 'YYYY-MM-DD filter for daily layer.' },
       },
     },

@@ -6,7 +6,10 @@
   "publisher": "parallx",
   "description": "Gmail-sourced budget dashboard. Pulls transaction emails through a local AI pipeline into a per-workspace SQLite ledger.",
   "main": "main.js",
-  "activationEvents": ["*"],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:budget.nav"
+  ],
   "engines": {
     "parallx": "^0.1.0"
   },
@@ -59,8 +62,7 @@
         "aiInvocable": true, "aiDescription": "Open the Budget Gmail sync log view." },
       { "id": "budget.openImportExport",  "title": "Open Import / Export",     "category": "Budget",
         "aiInvocable": true, "aiDescription": "Open the Budget import / export view." },
-      { "id": "budget.sync",              "title": "Sync Gmail Transactions",  "category": "Budget",
-        "aiInvocable": true, "aiDescription": "Sync new transactions from Gmail into the budget ledger." },
+      { "id": "budget.sync",              "title": "Sync Gmail Transactions",  "category": "Budget" },
       { "id": "budget.reprocessHistory",  "title": "Reprocess History (apply rules to old rows)", "category": "Budget",
         "aiInvocable": true, "aiDescription": "Reapply categorization rules to the full transaction history." },
       { "id": "budget.exportCsv",         "title": "Export Transactions to CSV", "category": "Budget",
@@ -87,18 +89,6 @@
             "minimum": 1,
             "maximum": 3650,
             "description": "On the very first sync (no cursor yet), import mail received within this many days."
-          },
-          "budget.preferredModelId": {
-            "type": "string",
-            "default": "qwen3.5:4b",
-            "description": "Model id used for transaction classification. Defaults to qwen3.5:4b — a small, fast model so the budget cron does not contend with chat for the same Ollama slot. If this model is not installed, sync fails with a clear error rather than silently falling back to the active chat model. Install with `ollama pull qwen3.5:4b`. Empty = first model returned by api.lm.getModels() (legacy behaviour, not recommended)."
-          },
-          "budget.syncIntervalMinutes": {
-            "type": "number",
-            "default": 30,
-            "minimum": 5,
-            "maximum": 1440,
-            "description": "How often the scheduled cron job runs `budget.sync`. Disable from the Scheduled Jobs UI to turn off automatic sync."
           }
         }
       }

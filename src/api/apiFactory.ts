@@ -167,7 +167,7 @@ export interface ParallxApiObject {
     } | undefined;
   };
   readonly editors: {
-    registerEditorProvider(typeId: string, provider: { createEditorPane(container: HTMLElement): IDisposable }): IDisposable;
+    registerEditorProvider(typeId: string, provider: { createEditorPane(container: HTMLElement): IDisposable | { dispose(): void; saveViewState?(): unknown; restoreViewState?(state: unknown): void } }): IDisposable;
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
     closeEditor(editorId: string): Promise<boolean>;
     openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
@@ -235,6 +235,7 @@ export interface ParallxApiObject {
   };
   readonly lm: {
     getModels(): Promise<readonly { id: string; displayName: string; family: string; parameterSize: string; quantization: string; contextLength: number; capabilities: readonly string[] }[]>;
+    getActiveModel(): string | undefined;
     sendChatRequest(modelId: string, messages: readonly { role: string; content: string }[], options?: Record<string, unknown>): AsyncIterable<{ content: string; done: boolean }>;
     registerProvider(provider: { id: string; displayName: string; getModels(): Promise<unknown[]>; checkStatus(): Promise<unknown>; sendChatRequest(...args: unknown[]): AsyncIterable<unknown>; getModelInfo(id: string): Promise<unknown> }): IDisposable;
     onDidChangeModels: (listener: () => void) => IDisposable;
@@ -803,6 +804,7 @@ export function createToolApi(
     lm: languageModelBridge
       ? Object.freeze({
           getModels: () => languageModelBridge.getModels(),
+          getActiveModel: () => languageModelBridge.getActiveModel(),
           sendChatRequest: (modelId: string, messages: readonly { role: string; content: string }[], options?: Record<string, unknown>) =>
             languageModelBridge.sendChatRequest(modelId, messages as any, options as any),
           registerProvider: (provider: any) => languageModelBridge.registerProvider(provider),

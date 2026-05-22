@@ -1,6 +1,6 @@
 // sectionBase.ts — Base class and types for AI Settings panel sections
 //
-// Sections: Persona, Chat, Suggestions, Model, Retrieval, Agent, Indexing, Advanced, Preview
+// Sections (M61 Phase 5, managers-only): Model, Agent, Cron, Tools, MCP, WebResearch.
 // Each extends SettingsSection for consistent layout, reset, scope indicators, and search.
 
 import { Disposable } from '../../platform/lifecycle.js';

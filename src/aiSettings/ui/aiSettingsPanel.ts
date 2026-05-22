@@ -2,11 +2,16 @@
 //
 // M61 Phase 5: trimmed to a managers-only sidebar. The unified Settings
 // overlay (`Ctrl+Alt+S` → `settings.open`) is the canonical editor for
-// every value-shaped setting; this panel now only hosts the four
-// manager sections (Tools, MCP servers, Agent, Cron) that action rows
-// in the overlay deep-link to. Persona / Chat / Model / Retrieval /
+// every value-shaped setting; this panel now only hosts the manager
+// sections (Model, Tools, MCP servers, Agent, Cron, Web Research) that
+// action rows in the overlay deep-link to. Persona / Chat / Retrieval /
 // Indexing / Suggestions / Heartbeat / Advanced / Preview sections, the
 // PresetSwitcher, and the profiles concept have been removed.
+//
+// The Model section (workspace-scoped Default Model + Default Context
+// Length) is wired back in: chat/main.ts already reads these from the
+// unified config on startup and reacts to onDidChangeConfig, so edits
+// here become the defaults for every new chat session.
 
 import { Disposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
@@ -19,6 +24,7 @@ import { AgentSection } from './sections/agentSection.js';
 import { CronSection } from './sections/cronSection.js';
 import { ToolsSection } from './sections/toolsSection.js';
 import { McpSection } from './sections/mcpSection.js';
+import { ModelSection } from './sections/modelSection.js';
 import { WebResearchSection } from './sections/webResearchSection.js';
 import type { IToolPickerServices } from '../../services/chatTypes.js';
 import type { IMcpClientService } from '../../services/serviceTypes.js';
@@ -40,7 +46,7 @@ export class AISettingsPanel extends Disposable {
   constructor(
     container: HTMLElement,
     private readonly _service: IAISettingsService,
-    _languageModelsService?: ILanguageModelsService,
+    private readonly _languageModelsService?: ILanguageModelsService,
     private readonly _unifiedConfigService?: IUnifiedAIConfigService,
     private readonly _toolPickerServices?: IToolPickerServices,
     private readonly _mcpClientService?: IMcpClientService,
@@ -82,6 +88,7 @@ export class AISettingsPanel extends Disposable {
 
     // ── Build Sections (managers only — M61 Phase 5) ──
     this._sections = [
+      this._register(new ModelSection(this._service, this._unifiedConfigService, this._languageModelsService)),
       this._register(new AgentSection(this._service, this._unifiedConfigService)),
       this._register(new CronSection(this._service, this._cronService)),
       this._register(new ToolsSection(this._service, this._toolPickerServices, this._unifiedConfigService)),
@@ -118,6 +125,7 @@ export class AISettingsPanel extends Disposable {
 
   private _buildNav(nav: HTMLElement): void {
     const navSections = [
+      { id: 'model', label: 'Model' },
       { id: 'agent', label: 'Agent' },
       { id: 'cron', label: 'Scheduled jobs' },
       { id: 'tools', label: 'Tools' },

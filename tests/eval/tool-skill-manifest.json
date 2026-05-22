@@ -1,0 +1,553 @@
+{
+  "tools": [
+    {
+      "id": "canvas_find_pages",
+      "description": "Find or list CANVAS PAGES (canvas page DB). Full-text, property-filter, sort, group, limit. For files on disk use list_files/grep_search.",
+      "paramsSchema": { "type": "object", "properties": { "query": { "type": "string" }, "filters": { "type": "array" }, "sort": { "type": "object" }, "group": { "type": "string" }, "limit": { "type": "number" } } },
+      "source": "src/built-in/chat/tools/pageTools.ts",
+      "category": "canvas"
+    },
+    {
+      "id": "canvas_read_page",
+      "description": "Read a canvas page by UUID, title, or the literal 'current'. The ONLY canvas_* tool that accepts a title — every other canvas_* tool needs the UUID resolved here first.",
+      "paramsSchema": { "type": "object", "required": ["pageId"], "properties": { "pageId": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/pageTools.ts",
+      "category": "canvas"
+    },
+    {
+      "id": "canvas_get_page",
+      "description": "Get a canvas page's metadata, properties, and applicable property definitions. UUID only.",
+      "paramsSchema": { "type": "object", "required": ["pageId"], "properties": { "pageId": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/pageTools.ts",
+      "category": "canvas"
+    },
+    {
+      "id": "canvas_create_page",
+      "description": "Create a CANVAS PAGE (canvas page DB) from markdown. For files on disk use write_file.",
+      "paramsSchema": { "type": "object", "required": ["title"], "properties": { "title": { "type": "string" }, "markdown": { "type": "string" }, "content": { "type": "string" }, "icon": { "type": "string" }, "parent_id": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/pageTools.ts",
+      "category": "canvas"
+    },
+    {
+      "id": "canvas_compose_page",
+      "description": "Write or update a CANVAS PAGE from markdown. mode: replace (default), append, or prepend.",
+      "paramsSchema": { "type": "object", "required": ["pageId", "markdown"], "properties": { "pageId": { "type": "string" }, "markdown": { "type": "string" }, "mode": { "type": "string", "enum": ["replace", "append", "prepend"] } } },
+      "source": "src/built-in/chat/tools/pageTools.ts",
+      "category": "canvas"
+    },
+    {
+      "id": "canvas_list_property_definitions",
+      "description": "List the property definitions registered for canvas pages in this workspace.",
+      "paramsSchema": { "type": "object", "properties": {} },
+      "source": "src/built-in/chat/tools/pageTools.ts",
+      "category": "canvas"
+    },
+    {
+      "id": "canvas_set_page_property",
+      "description": "Set a property value on a canvas page (must match its property definition type).",
+      "paramsSchema": { "type": "object", "required": ["pageId", "propertyName"], "properties": { "pageId": { "type": "string" }, "propertyName": { "type": "string" }, "value": {} } },
+      "source": "src/built-in/chat/tools/pageTools.ts",
+      "category": "canvas"
+    },
+    {
+      "id": "canvas_set_page_style",
+      "description": "Update a canvas page's style (icon, cover, fontFamily, fullWidth, smallText).",
+      "paramsSchema": { "type": "object", "required": ["pageId", "style"], "properties": { "pageId": { "type": "string" }, "style": { "type": "object" } } },
+      "source": "src/built-in/chat/tools/pageTools.ts",
+      "category": "canvas"
+    },
+    {
+      "id": "canvas_read_block",
+      "description": "Read a single block from a CANVAS PAGE by blockId. Block IDs come from a prior canvas_read_page call.",
+      "paramsSchema": { "type": "object", "required": ["pageId", "blockId"], "properties": { "pageId": { "type": "string" }, "blockId": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/blockTools.ts",
+      "category": "canvas"
+    },
+    {
+      "id": "canvas_edit_block",
+      "description": "Replace the plain-text content of a single block. Markdown is NOT parsed — pass plain text. Use canvas_compose_page for richer edits.",
+      "paramsSchema": { "type": "object", "required": ["pageId", "blockId", "newContent"], "properties": { "pageId": { "type": "string" }, "blockId": { "type": "string" }, "newContent": { "type": "string" }, "idempotencyKey": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/blockTools.ts",
+      "category": "canvas"
+    },
+    {
+      "id": "canvas_insert_block_after",
+      "description": "Insert a new paragraph block immediately after anchorBlockId. Returns the new blockId. Markdown is NOT parsed.",
+      "paramsSchema": { "type": "object", "required": ["pageId", "anchorBlockId", "content"], "properties": { "pageId": { "type": "string" }, "anchorBlockId": { "type": "string" }, "content": { "type": "string" }, "idempotencyKey": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/blockTools.ts",
+      "category": "canvas"
+    },
+    {
+      "id": "canvas_link_block",
+      "description": "Insert a new paragraph below fromBlockId on the source page that links to toBlockId on the target page.",
+      "paramsSchema": { "type": "object", "required": ["fromPageId", "fromBlockId", "toPageId", "toBlockId"], "properties": { "fromPageId": { "type": "string" }, "fromBlockId": { "type": "string" }, "toPageId": { "type": "string" }, "toBlockId": { "type": "string" }, "label": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/blockTools.ts",
+      "category": "canvas"
+    },
+
+    {
+      "id": "list_files",
+      "description": "List files and directories on disk at a workspace path. Filesystem only — for canvas pages use canvas_find_pages.",
+      "paramsSchema": { "type": "object", "properties": { "path": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/fileTools.ts",
+      "category": "file"
+    },
+    {
+      "id": "read_file",
+      "description": "Read a workspace FILE on disk (.md, .txt, code, PDF, DOCX, EPUB, XLSX). Optional start_line/end_line range.",
+      "paramsSchema": { "type": "object", "required": ["path"], "properties": { "path": { "type": "string" }, "start_line": { "type": "number" }, "end_line": { "type": "number" } } },
+      "source": "src/built-in/chat/tools/fileTools.ts",
+      "category": "file"
+    },
+    {
+      "id": "write_file",
+      "description": "Create or overwrite a workspace FILE on disk. For canvas pages use canvas_create_page or canvas_compose_page.",
+      "paramsSchema": { "type": "object", "required": ["path", "content"], "properties": { "path": { "type": "string" }, "content": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/writeTools.ts",
+      "category": "file"
+    },
+    {
+      "id": "edit_file",
+      "description": "Edit a workspace FILE on disk by exact find-and-replace. old_content must match exactly (whitespace-sensitive).",
+      "paramsSchema": { "type": "object", "required": ["path", "old_content", "new_content"], "properties": { "path": { "type": "string" }, "old_content": { "type": "string" }, "new_content": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/writeTools.ts",
+      "category": "file"
+    },
+    {
+      "id": "delete_file",
+      "description": "Delete a workspace FILE on disk (moves to trash when possible). Canvas pages cannot be deleted via chat tools.",
+      "paramsSchema": { "type": "object", "required": ["path"], "properties": { "path": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/writeTools.ts",
+      "category": "file"
+    },
+
+    {
+      "id": "search_files",
+      "description": "Find files on disk by name pattern (case-insensitive substring).",
+      "paramsSchema": { "type": "object", "required": ["pattern"], "properties": { "pattern": { "type": "string" }, "path": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/fileTools.ts",
+      "category": "search"
+    },
+    {
+      "id": "grep_search",
+      "description": "Search file contents on disk by text or regex. For canvas page contents use canvas_find_pages.",
+      "paramsSchema": { "type": "object", "required": ["pattern"], "properties": { "pattern": { "type": "string" }, "path": { "type": "string" }, "is_regex": { "type": "boolean" }, "case_sensitive": { "type": "boolean" } } },
+      "source": "src/built-in/chat/tools/fileTools.ts",
+      "category": "search"
+    },
+    {
+      "id": "search_knowledge",
+      "description": "Semantic (vector) search across BOTH canvas pages and workspace files (PDF/DOCX/EPUB/XLSX). Use source_filter for one surface.",
+      "paramsSchema": { "type": "object", "required": ["query"], "properties": { "query": { "type": "string" }, "source_filter": { "type": "string", "enum": ["page_block", "file_chunk"] }, "scope": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/fileTools.ts",
+      "category": "search"
+    },
+
+    {
+      "id": "run_command",
+      "description": "Run a shell command in the workspace directory. Dangerous commands are blocked.",
+      "paramsSchema": { "type": "object", "required": ["command"], "properties": { "command": { "type": "string" }, "timeout": { "type": "number" } } },
+      "source": "src/built-in/chat/tools/terminalTools.ts",
+      "category": "terminal"
+    },
+
+    {
+      "id": "memory_get",
+      "description": "Read workspace memory. layer=durable for MEMORY.md; layer=daily for a date-stamped log.",
+      "paramsSchema": { "type": "object", "properties": { "layer": { "type": "string", "enum": ["durable", "daily"] }, "date": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/memoryTools.ts",
+      "category": "workspace"
+    },
+    {
+      "id": "memory_search",
+      "description": "Semantic search over workspace memory in .parallx/memory/.",
+      "paramsSchema": { "type": "object", "required": ["query"], "properties": { "query": { "type": "string" }, "layer": { "type": "string" }, "date": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/memoryTools.ts",
+      "category": "workspace"
+    },
+    {
+      "id": "transcript_get",
+      "description": "Read a session transcript from .parallx/sessions/.",
+      "paramsSchema": { "type": "object", "required": ["sessionId"], "properties": { "sessionId": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/transcriptTools.ts",
+      "category": "workspace"
+    },
+    {
+      "id": "transcript_search",
+      "description": "Semantic search over session transcripts. Disabled unless transcript indexing is on.",
+      "paramsSchema": { "type": "object", "required": ["query"], "properties": { "query": { "type": "string" }, "sessionId": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/transcriptTools.ts",
+      "category": "workspace"
+    },
+    {
+      "id": "surface_send",
+      "description": "Send content to a named output surface.",
+      "paramsSchema": { "type": "object", "required": ["surfaceId", "content"], "properties": { "surfaceId": { "type": "string" }, "kind": { "type": "string" }, "content": {}, "meta": { "type": "object" } } },
+      "source": "src/built-in/chat/tools/surfaceTools.ts",
+      "category": "workspace"
+    },
+    {
+      "id": "surface_list",
+      "description": "List registered output surfaces.",
+      "paramsSchema": { "type": "object", "properties": {} },
+      "source": "src/built-in/chat/tools/surfaceTools.ts",
+      "category": "workspace"
+    },
+    {
+      "id": "app__find_commands",
+      "description": "Search the Parallx workbench command registry for commands matching a natural-language query. Use ONLY to act on the Parallx app (change a setting, open a view, switch themes). NOT for file/data tasks.",
+      "paramsSchema": { "type": "object", "required": ["query"], "properties": { "query": { "type": "string" }, "limit": { "type": "number" } } },
+      "source": "src/built-in/chat/tools/appCommandTools.ts",
+      "category": "workspace"
+    },
+    {
+      "id": "app__run_command",
+      "description": "Execute a Parallx workbench command by exact ID. The ID must come from a prior app__find_commands call.",
+      "paramsSchema": { "type": "object", "required": ["commandId"], "properties": { "commandId": { "type": "string" }, "arg": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/appCommandTools.ts",
+      "category": "workspace"
+    },
+
+    {
+      "id": "cron_status",
+      "description": "Cron scheduler status.",
+      "paramsSchema": { "type": "object", "properties": {} },
+      "source": "src/built-in/chat/tools/cronTools.ts",
+      "category": "autonomy"
+    },
+    {
+      "id": "cron_list",
+      "description": "List scheduled cron jobs.",
+      "paramsSchema": { "type": "object", "properties": {} },
+      "source": "src/built-in/chat/tools/cronTools.ts",
+      "category": "autonomy"
+    },
+    {
+      "id": "cron_add",
+      "description": "Schedule a cron job. Exactly one of schedule.at/every/cron.",
+      "paramsSchema": { "type": "object", "required": ["job"], "properties": { "job": { "type": "object" } } },
+      "source": "src/built-in/chat/tools/cronTools.ts",
+      "category": "autonomy"
+    },
+    {
+      "id": "cron_update",
+      "description": "Update a cron job.",
+      "paramsSchema": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/cronTools.ts",
+      "category": "autonomy"
+    },
+    {
+      "id": "cron_remove",
+      "description": "Remove a cron job.",
+      "paramsSchema": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/cronTools.ts",
+      "category": "autonomy"
+    },
+    {
+      "id": "cron_run",
+      "description": "Fire a cron job immediately.",
+      "paramsSchema": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/cronTools.ts",
+      "category": "autonomy"
+    },
+    {
+      "id": "cron_runs",
+      "description": "List cron fire history.",
+      "paramsSchema": { "type": "object", "properties": { "jobId": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/cronTools.ts",
+      "category": "autonomy"
+    },
+    {
+      "id": "cron_wake",
+      "description": "Check for due cron jobs now.",
+      "paramsSchema": { "type": "object", "properties": {} },
+      "source": "src/built-in/chat/tools/cronTools.ts",
+      "category": "autonomy"
+    },
+    {
+      "id": "sessions_spawn",
+      "description": "Spawn a subagent for a delegated task. Returns its final response. Max depth 1.",
+      "paramsSchema": { "type": "object", "required": ["task"], "properties": { "task": { "type": "string" }, "label": { "type": "string" }, "model": { "type": "string" }, "timeoutMs": { "type": "number" } } },
+      "source": "src/built-in/chat/tools/subagentTools.ts",
+      "category": "autonomy"
+    },
+    {
+      "id": "autonomy_log",
+      "description": "Read background autonomy events from heartbeat, cron, and subagent runs.",
+      "paramsSchema": { "type": "object", "properties": { "origin": { "type": "string" }, "limit": { "type": "number" }, "unreadOnly": { "type": "boolean" }, "markRead": { "type": "boolean" } } },
+      "source": "src/built-in/chat/tools/autonomyLogTool.ts",
+      "category": "autonomy"
+    },
+
+    {
+      "id": "parallx_link",
+      "description": "Validate and mint a parallx:// citation URI. target must follow a template from the system-prompt '## Linking' section. anchor for deep-linking.",
+      "paramsSchema": { "type": "object", "required": ["target"], "properties": { "target": { "type": "string" }, "anchor": { "type": "string" }, "label": { "type": "string" } } },
+      "source": "src/built-in/chat/tools/parallxLinkTool.ts",
+      "category": "ai-meta"
+    },
+
+    {
+      "id": "webSearch",
+      "description": "Search the public web via Brave Search. Returns up to 10 results. Use BEFORE webFetch. Hard caps: 3 searches/turn, 100/day.",
+      "paramsSchema": { "type": "object", "required": ["query"], "properties": { "query": { "type": "string" } } },
+      "source": "ext/web-research/main.js",
+      "category": "web"
+    },
+    {
+      "id": "webFetch",
+      "description": "Fetch a single URL through the egress chokepoint and return sanitized <untrusted_web_content>. URL must come from the user message, a prior webSearch, or a prior webFetch's final URL. Hard cap: 5/turn. Depth-1 stop.",
+      "paramsSchema": { "type": "object", "required": ["url"], "properties": { "url": { "type": "string" } } },
+      "source": "ext/web-research/main.js",
+      "category": "web"
+    },
+    {
+      "id": "getResearchHub",
+      "description": "Return the current Research Hub page id and title as JSON, or null if not yet created.",
+      "paramsSchema": { "type": "object", "properties": {} },
+      "source": "ext/web-research/main.js",
+      "category": "web"
+    },
+    {
+      "id": "setResearchHub",
+      "description": "Persist the Research Hub page id and title to extension storage.",
+      "paramsSchema": { "type": "object", "required": ["pageId"], "properties": { "pageId": { "type": "string" }, "title": { "type": "string" } } },
+      "source": "ext/web-research/main.js",
+      "category": "web"
+    },
+    {
+      "id": "logResearchEvent",
+      "description": "Append one line to the workspace research history ndjson. Kinds: search, fetch, hub-create, draft-create. Metadata only — no response bodies/secrets.",
+      "paramsSchema": { "type": "object", "required": ["kind"], "properties": { "kind": { "type": "string" } } },
+      "source": "ext/web-research/main.js",
+      "category": "web"
+    },
+
+    {
+      "id": "budget.sync",
+      "description": "Pull new transaction emails from Gmail and run them through the Budget AI pipeline. Returns counts of confirmed/review-queue/snapshot rows.",
+      "paramsSchema": { "type": "object", "properties": {} },
+      "source": "ext/budget/main.js",
+      "category": "budget"
+    },
+    {
+      "id": "budget.summary",
+      "description": "Summarise budget totals over a date range, optionally narrowed to one category. Returns spend, refunds, net, and per-category breakdown.",
+      "paramsSchema": { "type": "object", "properties": { "from": { "type": "string" }, "to": { "type": "string" }, "category": { "type": "string" } } },
+      "source": "ext/budget/main.js",
+      "category": "budget"
+    },
+    {
+      "id": "budget.search",
+      "description": "Search confirmed transactions by merchant substring, optional category, and date range. Up to 50 rows.",
+      "paramsSchema": { "type": "object", "properties": { "query": { "type": "string" }, "category": { "type": "string" }, "from": { "type": "string" }, "to": { "type": "string" } } },
+      "source": "ext/budget/main.js",
+      "category": "budget"
+    },
+    {
+      "id": "budget.setBudget",
+      "description": "Set the monthly spending limit (dollars) for a category. Defaults to current month unless YYYY-MM month given.",
+      "paramsSchema": { "type": "object", "required": ["category", "amount"], "properties": { "category": { "type": "string" }, "amount": { "type": "number" }, "month": { "type": "string" } } },
+      "source": "ext/budget/main.js",
+      "category": "budget"
+    },
+    {
+      "id": "budget.addRule",
+      "description": "Create or update a rule that auto-assigns transactions matching a merchant pattern to a category. Applies on every future sync.",
+      "paramsSchema": { "type": "object", "required": ["merchant", "category"], "properties": { "merchant": { "type": "string" }, "category": { "type": "string" }, "matchType": { "type": "string", "enum": ["contains", "exact", "regex"] } } },
+      "source": "ext/budget/main.js",
+      "category": "budget"
+    },
+
+    {
+      "id": "mediaOrganizer.describeSchema",
+      "description": "Return a structured reference of the media-organizer database schema (tables, columns, junctions, conventions). Call FIRST.",
+      "paramsSchema": { "type": "object", "properties": {} },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.getStats",
+      "description": "Return summary statistics: photo/video counts, trash, untagged, geotag/phash coverage, totals, top 10 tags.",
+      "paramsSchema": { "type": "object", "properties": {} },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.getItem",
+      "description": "Fetch full details for a single photo/video including tags, files, album memberships, and absolute imagePath/videoPath of the primary file. Metadata only — use viewImage to actually see the image.",
+      "paramsSchema": { "type": "object", "required": ["type", "id"], "properties": { "type": { "type": "string", "enum": ["photo", "video"] }, "id": { "type": "integer" } } },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.viewImage",
+      "description": "Attach a photo/video to the chat as an image so you can visually inspect it. Image arrives on the NEXT turn; end your current turn after calling this. The tool result carries ANCHOR_ID=type:id — use that id for follow-up tagging.",
+      "paramsSchema": { "type": "object", "properties": { "type": { "type": "string", "enum": ["photo", "video"] }, "id": { "type": "integer" } } },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.getCurrentMediaItem",
+      "description": "Return the last-attached image {type,id,basename,viewedAt} or null. Call BEFORE tagging when the user says 'this one' / 'that image'. Ask user to confirm if null.",
+      "paramsSchema": { "type": "object", "properties": {} },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.search",
+      "description": "Search the library with optional free-text query, minimum rating, date range, required/excluded tag names, untagged-only. Defaults to live items.",
+      "paramsSchema": { "type": "object", "properties": { "query": { "type": "string" }, "minRating": { "type": "number" }, "from": { "type": "string" }, "to": { "type": "string" }, "requireTags": { "type": "array" }, "excludeTags": { "type": "array" }, "untaggedOnly": { "type": "boolean" } } },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.findSimilar",
+      "description": "Find photos visually similar to a given photo using perceptual hash (Hamming distance). Requires pHash indexing.",
+      "paramsSchema": { "type": "object", "required": ["id"], "properties": { "id": { "type": "integer" } } },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.suggestStacks",
+      "description": "Propose photo stacks (versions/variants) by grouping unstacked photos with similar basenames in the same folder. Does not apply.",
+      "paramsSchema": { "type": "object", "properties": {} },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.listTags",
+      "description": "List tags with usage counts. Optional name-substring or favorites-only filter.",
+      "paramsSchema": { "type": "object", "properties": { "query": { "type": "string" }, "favoritesOnly": { "type": "boolean" } } },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.listAlbums",
+      "description": "List albums with photo/video counts. Optional title-substring filter.",
+      "paramsSchema": { "type": "object", "properties": { "query": { "type": "string" } } },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.listFolders",
+      "description": "List folders with file counts. Optional path-substring filter.",
+      "paramsSchema": { "type": "object", "properties": { "query": { "type": "string" } } },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.listSmartAlbums",
+      "description": "List all saved smart albums (saved searches).",
+      "paramsSchema": { "type": "object", "properties": {} },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.tagItems",
+      "description": "Add/remove tags on a batch of items. For descriptive tags (sunset/dog/portrait), DO NOT guess from filenames — call viewImage first, end turn, then describe what you see. CRITICAL: resolve deictic 'this one' via getCurrentMediaItem; never proxy with the first untagged search result.",
+      "paramsSchema": { "type": "object", "required": ["items"], "properties": { "mode": { "type": "string", "enum": ["add", "remove"] }, "items": { "type": "array" }, "tagNames": { "type": "array" }, "tagIds": { "type": "array" }, "createMissing": { "type": "boolean" } } },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.tagCurrentImage",
+      "description": "Tag the last-attached image (anchor-locked). Use ONLY for deictic language ('this one', 'that image'). Does not accept an id.",
+      "paramsSchema": { "type": "object", "properties": { "mode": { "type": "string", "enum": ["add", "remove"] }, "tagNames": { "type": "array" }, "tagIds": { "type": "array" }, "createMissing": { "type": "boolean" } } },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.updateTag",
+      "description": "Create, rename, delete, or toggle-favorite a single tag.",
+      "paramsSchema": { "type": "object", "properties": { "op": { "type": "string" }, "id": { "type": "integer" }, "name": { "type": "string" } } },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.updateItems",
+      "description": "Update fields (rating, colorLabel, curated/favorite, title, details) on a batch of items. colorLabel:null to clear.",
+      "paramsSchema": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array" }, "fields": { "type": "object" } } },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.trashItems",
+      "description": "Move items to trash or restore from trash. Sets/clears deleted_at; does NOT permanently delete.",
+      "paramsSchema": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array" }, "mode": { "type": "string", "enum": ["trash", "restore"] } } },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.updateAlbum",
+      "description": "Create, rename, or delete an album.",
+      "paramsSchema": { "type": "object", "properties": { "op": { "type": "string" }, "id": { "type": "integer" }, "title": { "type": "string" } } },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.albumMembers",
+      "description": "Add or remove photos/videos in an album.",
+      "paramsSchema": { "type": "object", "required": ["albumId", "items"], "properties": { "albumId": { "type": "integer" }, "items": { "type": "array" }, "mode": { "type": "string", "enum": ["add", "remove"] } } },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    },
+    {
+      "id": "mediaOrganizer.updateSmartAlbum",
+      "description": "Create, save (upsert by name), or delete a smart album. The 'query' field is an arbitrary JSON object describing the saved search.",
+      "paramsSchema": { "type": "object", "properties": { "op": { "type": "string" }, "name": { "type": "string" }, "query": { "type": "object" } } },
+      "source": "ext/media-organizer/main.js",
+      "category": "media-organizer"
+    }
+  ],
+  "skills": [
+    {
+      "id": "document-comparison",
+      "description": "Compare two or more documents in detail across structure, content, claims, and data; produce a structured similarities/differences/contradictions output.",
+      "expectedToolChain": ["search_knowledge", "list_files", "read_file"],
+      "source": "src/built-in/chat/skills/document-comparison/SKILL.md"
+    },
+    {
+      "id": "exhaustive-summary",
+      "description": "Summarize every file in a folder or workspace. Per-file summaries combined into a comprehensive overview with no omissions.",
+      "expectedToolChain": ["list_files", "read_file"],
+      "source": "src/built-in/chat/skills/exhaustive-summary/SKILL.md"
+    },
+    {
+      "id": "folder-overview",
+      "description": "Structural overview of a folder: file count, types, hierarchy, brief per-file purpose. Organization, not deep content.",
+      "expectedToolChain": ["list_files", "read_file"],
+      "source": "src/built-in/chat/skills/folder-overview/SKILL.md"
+    },
+    {
+      "id": "scoped-extraction",
+      "description": "Extract specific facts/values from every file in a scope and aggregate into a structured result. Exhaustive coverage.",
+      "expectedToolChain": ["list_files", "read_file"],
+      "source": "src/built-in/chat/skills/scoped-extraction/SKILL.md"
+    },
+    {
+      "id": "research-topic",
+      "description": "Research a topic on the public web: Brave search, fetch 2+ independent sources, sanitize as untrusted content, and write a cited summary page under the Research Hub. Multi-source minimum required for 'research' intent.",
+      "expectedToolChain": ["webSearch", "webFetch", "getResearchHub", "setResearchHub", "canvas_create_page", "canvas_compose_page", "logResearchEvent"],
+      "source": "ext/web-research/skills/research-topic.md (runtime copy: src/built-in/chat/skills/defaultSkillContents.ts)"
+    }
+  ],
+  "summary": {
+    "totalTools": 60,
+    "totalSkills": 5,
+    "byCategory": {
+      "file": 5,
+      "search": 3,
+      "terminal": 1,
+      "web": 5,
+      "ai-meta": 1,
+      "autonomy": 10,
+      "workspace": 8,
+      "canvas": 12,
+      "media-organizer": 19,
+      "calendar": 0,
+      "budget": 5,
+      "other": 0
+    }
+  }
+}

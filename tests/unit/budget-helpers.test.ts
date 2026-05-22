@@ -13,8 +13,6 @@ const {
   inferCadence,
   parseCsvLine,
   ruleMatchesMerchant,
-  budgetLmOptions,
-  tryParseModelJson,
 } = __testables;
 
 describe('median', () => {
@@ -151,38 +149,3 @@ describe('ruleMatchesMerchant', () => {
   });
 });
 
-describe('budgetLmOptions', () => {
-  it('pins a small context and bounded output for cron stages', () => {
-    expect(budgetLmOptions('classify')).toMatchObject({
-      temperature: 0,
-      format: 'json',
-      numCtx: 4096,
-      maxTokens: 160,
-    });
-    expect(budgetLmOptions('extract')).toMatchObject({
-      numCtx: 4096,
-      maxTokens: 768,
-    });
-  });
-
-  it('uses a safe default token cap for unknown stages', () => {
-    expect(budgetLmOptions('unknown')).toMatchObject({
-      numCtx: 4096,
-      maxTokens: 512,
-    });
-  });
-});
-
-describe('tryParseModelJson', () => {
-  it('parses strict JSON', () => {
-    expect(tryParseModelJson('{"ok":true}')).toEqual({ ok: true });
-  });
-
-  it('extracts a JSON object when a model wraps it in prose', () => {
-    expect(tryParseModelJson('Here you go:\n{"items":[]}\nDone.')).toEqual({ items: [] });
-  });
-
-  it('returns undefined for malformed output', () => {
-    expect(tryParseModelJson('not json')).toBeUndefined();
-  });
-});

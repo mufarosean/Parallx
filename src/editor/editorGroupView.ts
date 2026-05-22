@@ -11,7 +11,7 @@
 import { Disposable, DisposableStore, type IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { EditorGroupModel, EditorModelChangeEvent } from './editorGroupModel.js';
-import { EditorPane, PlaceholderEditorPane } from './editorPane.js';
+import { EditorPane, PlaceholderEditorPane, type EditorPaneViewState } from './editorPane.js';
 import type { IEditorInput } from './editorInput.js';
 import type { IGridView } from '../layout/gridView.js';
 import { Orientation } from '../layout/layoutTypes.js';
@@ -63,6 +63,18 @@ export class EditorGroupView extends Disposable implements IGridView {
   private _activePane: EditorPane | undefined;
   /** Sequence counter for "latest-wins" active editor rendering. */
   private _showActiveEditorSeq = 0;
+
+  /**
+   * Per-input view-state cache. When a pane is swapped out (tab switch), its
+   * pane.saveViewState() result is stored here keyed by input.id. When the
+   * input is shown again, the new pane's restoreViewState() is called with
+   * the cached value before the user sees the first paint.
+   *
+   * VS-Code-aligned: each editor input owns a view state (scroll, selection,
+   * focus, etc.) that survives tab switching but is evicted when the editor
+   * is actually closed. Mirrors Monaco's IEditor.saveViewState / restoreViewState.
+   */
+  private readonly _viewStateCache = new Map<string, EditorPaneViewState>();
 
   /** The currently active editor pane (if any). */
   get activePane(): EditorPane | undefined { return this._activePane; }
@@ -453,6 +465,9 @@ export class EditorGroupView extends Disposable implements IGridView {
         this._renderTabs();
         break;
       case EditorGroupChangeKind.EditorClose:
+        // Evict the closed input's view state — only tab *switching* keeps it,
+        // an actual close should drop scroll/selection/focus.
+        if (e.editor) this._viewStateCache.delete(e.editor.id);
         this._renderTabs();
         this._updateRibbon(this.model.activeEditor); // Hide ribbon when last editor closes
         break;
@@ -676,8 +691,21 @@ export class EditorGroupView extends Disposable implements IGridView {
 
     const activeInput = this.model.activeEditor;
 
-    // Clear current pane (synchronous — safe to do even if a newer call follows)
+    // Clear current pane (synchronous — safe to do even if a newer call follows).
+    // Before tearing down, capture the outgoing pane's view state so the next
+    // mount of that same input can restore scroll/selection/focus exactly.
     if (this._activePane) {
+      const outgoingInput = this._activePane.input;
+      if (outgoingInput) {
+        try {
+          const state = this._activePane.saveViewState();
+          if (state) {
+            this._viewStateCache.set(outgoingInput.id, state);
+          }
+        } catch (err) {
+          console.warn('[EditorGroupView] saveViewState() threw:', err);
+        }
+      }
       this._activePane.clearInput();
       this._paneDisposables.clear();
       if (this._activePane.element) {
@@ -721,10 +749,23 @@ export class EditorGroupView extends Disposable implements IGridView {
     // Update ribbon for the new editor THEN layout
     this._updateRibbon(activeInput);
 
-    // Layout
+    // Layout BEFORE restore so the scroll container has its final size
+    // (otherwise scrollTop = N clamps against an empty viewport).
     const ribbonH = this._getRibbonHeight();
     const paneH = Math.max(0, this._height - TAB_HEIGHT - ribbonH);
     pane.layout(this._width, paneH);
+
+    // Restore cached view state for this input, if any. setInput has already
+    // populated the pane's DOM by this point, and layout has been applied,
+    // so scrollTop / selection restores land against a settled tree.
+    const cached = this._viewStateCache.get(activeInput.id);
+    if (cached) {
+      try {
+        pane.restoreViewState(cached);
+      } catch (err) {
+        console.warn('[EditorGroupView] restoreViewState() threw:', err);
+      }
+    }
 
     this._activePane = pane;
     this._onDidActivePaneChange.fire(pane);
@@ -745,6 +786,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     }
     this._paneDisposables.clear();
     this._activePane = undefined;
+    this._viewStateCache.clear();
     super.dispose();
   }
 }

@@ -88,7 +88,11 @@ export function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): ICh
   return {
     name: 'list_files',
     displaySummary: 'List files / directories on disk.',
-    description: 'List files and directories on disk at a workspace path. Operates on the filesystem only — for canvas pages use `canvas_find_pages` instead.',
+    description:
+      'Lists files and directories on disk at a workspace path. ' +
+      'Use when exploring filesystem structure or confirming a file exists before reading it. ' +
+      'For canvas pages (the page DB) use `canvas_find_pages`. ' +
+      'For finding files by name pattern use `search_files`; for content search use `grep_search` or `search_knowledge`.',
     parameters: {
       type: 'object',
       properties: {
@@ -126,7 +130,12 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
   return {
     name: 'read_file',
     displaySummary: 'Read a workspace file on disk.',
-    description: 'Read a workspace FILE on disk (.md, .txt, code, PDF, DOCX, EPUB, XLSX). Use start_line/end_line for a range. For canvas pages (the canvas page DB) use `canvas_read_page` instead — paths and page titles are distinct.',
+    description:
+      'Reads a workspace file on disk — text (.md, .txt, source code) or rich documents (PDF, DOCX, EPUB, XLSX, extracted to text). ' +
+      'Use `start_line`/`end_line` to read a range of a large file. ' +
+      'Use when the user references a file by path, or when you need exact source for citation/quotation. ' +
+      'For canvas pages (page DB) use `canvas_read_page`. ' +
+      'For conceptual search across many files use `search_knowledge`.',
     parameters: {
       type: 'object',
       required: ['path'],
@@ -204,7 +213,11 @@ export function createSearchFilesTool(fs: IBuiltInToolFileSystem | undefined): I
   return {
     name: 'search_files',
     displaySummary: 'Find files on disk by name pattern.',
-    description: 'Find files on disk by name pattern (case-insensitive substring). Operates on the filesystem only — for canvas pages use `canvas_find_pages` instead.',
+    description:
+      'Finds files on disk by NAME pattern (case-insensitive substring of the filename). ' +
+      'Use when locating a file by its name — e.g. "find the README", "any .csv files". ' +
+      'For file CONTENT search use `grep_search` (exact text/regex) or `search_knowledge` (semantic). ' +
+      'For canvas pages use `canvas_find_pages`.',
     parameters: {
       type: 'object',
       required: ['pattern'],
@@ -249,7 +262,11 @@ export function createGrepSearchTool(fs: IBuiltInToolFileSystem | undefined): IC
   return {
     name: 'grep_search',
     displaySummary: 'Search file contents on disk by pattern.',
-    description: 'Search file contents on disk by text or regex pattern. Operates on the filesystem only — for canvas page contents use `canvas_find_pages` (it matches both titles and body text).',
+    description:
+      'Searches file CONTENTS on disk for an EXACT text or regex pattern. ' +
+      'Use when the user wants literal matches — symbol names, exact phrases, code patterns. ' +
+      'For conceptual/semantic search ("anything about X") use `search_knowledge`. ' +
+      'For filename matching use `search_files`. For canvas page contents use `canvas_find_pages`.',
     parameters: {
       type: 'object',
       required: ['pattern'],
@@ -461,7 +478,12 @@ export function createSearchKnowledgeTool(retrieval: IBuiltInToolRetrieval | und
   return {
     name: 'search_knowledge',
     displaySummary: 'Semantic search across pages AND files.',
-    description: 'Semantic (vector) search across BOTH canvas pages and workspace files — including rich documents (PDF, DOCX, EPUB, XLSX). Use `source_filter` to scope to one surface: `page_block` for canvas-only, `file_chunk` for filesystem-only, omit for both.',
+    description:
+      'Semantic (embedding) search across BOTH canvas pages and workspace files, including rich documents (PDF, DOCX, EPUB, XLSX). ' +
+      'Use when the query is conceptual or open-ended — "what does X mean", "find anything about Y", "documents related to Z". ' +
+      'For exact literal matches use `grep_search`; for filename matches use `search_files`; ' +
+      'for canvas-only discovery use `canvas_find_pages`. ' +
+      'Set `source_filter=page_block` for canvas-only, `file_chunk` for filesystem-only.',
     parameters: {
       type: 'object',
       required: ['query'],

@@ -66,7 +66,7 @@ export function getToolEditorOwner(typeId: string): string | undefined {
  * A tool-provided editor provider that renders content into editor tabs.
  */
 export interface ToolEditorProvider {
-  createEditorPane(container: HTMLElement, input?: IEditorInput): IDisposable;
+  createEditorPane(container: HTMLElement, input?: IEditorInput): IDisposable | ToolEditorPaneHandle;
 
   /**
    * Optional: provide custom ribbon content for the editor group ribbon slot.
@@ -78,6 +78,19 @@ export interface ToolEditorProvider {
    * The returned IDisposable should clean up all DOM and subscriptions.
    */
   createRibbon?(container: HTMLElement, input?: IEditorInput): IDisposable;
+}
+
+/**
+ * Optional extended return value for {@link ToolEditorProvider.createEditorPane}.
+ * Providers that own scroll position, selection, or other transient UI state
+ * should return this shape so the workbench can preserve that state across
+ * tab switches. Plain `IDisposable` returns continue to work — they just
+ * don't get scroll/selection restored.
+ */
+export interface ToolEditorPaneHandle {
+  dispose(): void;
+  saveViewState?(): unknown;
+  restoreViewState?(state: unknown): void;
 }
 
 export interface OpenEditorOptions {

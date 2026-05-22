@@ -1,0 +1,20 @@
+-- Migration 009 — reset the over-broad malformed=1 backfill from 008.
+--
+-- 008 introduced `email_imports.malformed` and ran:
+--   UPDATE email_imports SET malformed=1 WHERE is_transaction=0 AND is_balance=0;
+-- That sweep was wrong: it marked EVERY legitimately classified `other`
+-- email (newsletters, password resets, marketing, etc.) as "malformed",
+-- which then made the sync's cursor-rollback step want to re-LLM the
+-- entire historical backlog every time the user clicked Sync. The cursor
+-- would slide back to the oldest non-tx/non-balance email and try to
+-- re-classify thousands of emails on every run.
+--
+-- We can't retroactively distinguish "stage-1 succeeded with event_type
+-- other" from "stage-1 actually failed" — both ended up with
+-- is_transaction=0 AND is_balance=0. The safest fix is to clear ALL
+-- malformed=1 rows. The sync loop's Stage-1 failure path will mark new
+-- rows malformed=1 only when classification genuinely throws or returns
+-- malformed=true, so the column becomes meaningful again going forward.
+--
+-- This effectively reverts 008's backfill while keeping the column.
+UPDATE email_imports SET malformed = 0 WHERE malformed = 1;

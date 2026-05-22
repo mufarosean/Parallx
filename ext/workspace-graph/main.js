@@ -841,7 +841,7 @@ function _formatRelativeTime(isoTs) {
   if (hrs < 24) return `${hrs} hr ago`;
   const days = Math.floor(hrs / 24);
   if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
-  return new Date(then).toLocaleDateString();
+  return new Date(then).toLocaleDateString('en-US', { timeZone: 'America/Chicago' });
 }
 
 function _formatEstimatedSeconds(secs) {

@@ -68,8 +68,26 @@ interface IOpenclawFollowupSessionState {
   depth: number;
 }
 
-export function createOpenclawDefaultParticipant(services: IDefaultParticipantServices): IChatParticipant & IDisposable {
+/** Optional per-instance overrides so the same default-participant code can
+ *  also back custom user-defined agents. When omitted, the built-in 'default'
+ *  agent + participant id are used (the original behaviour). */
+export interface IOpenclawDefaultParticipantOptions {
+  readonly participantId?: string;
+  readonly displayName?: string;
+  readonly description?: string;
+  /** Which agent in the registry to resolve (model/tools/identity). */
+  readonly agentId?: string;
+}
+
+export function createOpenclawDefaultParticipant(
+  services: IDefaultParticipantServices,
+  options?: IOpenclawDefaultParticipantOptions,
+): IChatParticipant & IDisposable {
   const commandRegistry = createOpenclawCommandRegistry();
+  const participantId = options?.participantId ?? OPENCLAW_DEFAULT_PARTICIPANT_ID;
+  const displayName = options?.displayName ?? 'Chat (OpenClaw)';
+  const description = options?.description ?? 'Separate OpenClaw-style chat runtime lane.';
+  const agentId = options?.agentId ?? 'default';
 
   // W1: per-session followup state. Runner is created lazily with a
   // session-scoped sender closure that bridges to the chat service queue.
@@ -91,13 +109,13 @@ export function createOpenclawDefaultParticipant(services: IDefaultParticipantSe
     context: IChatParticipantContext,
     response: IChatResponseStream,
     token: ICancellationToken,
-  ): Promise<IChatParticipantResult> => runOpenclawDefaultTurn(services, commandRegistry, request, context, response, token, getFollowupState);
+  ): Promise<IChatParticipantResult> => runOpenclawDefaultTurn(services, commandRegistry, request, context, response, token, getFollowupState, agentId);
 
   return {
-    id: OPENCLAW_DEFAULT_PARTICIPANT_ID,
+    id: participantId,
     surface: 'default',
-    displayName: 'Chat (OpenClaw)',
-    description: 'Separate OpenClaw-style chat runtime lane.',
+    displayName,
+    description,
     commands: [
       { name: 'context', description: 'Show the runtime context breakdown' },
       { name: 'init', description: 'Scan workspace and generate AGENTS.md' },
@@ -131,6 +149,7 @@ async function runOpenclawDefaultTurn(
   response: IChatResponseStream,
   token: ICancellationToken,
   getFollowupState?: (sessionId: string) => IOpenclawFollowupSessionState | undefined,
+  agentIdForResolve: string = 'default',
 ): Promise<IChatParticipantResult> {
   const initResult = await tryHandleOpenclawInitCommand(services, request.command, response);
   if (initResult) {
@@ -246,7 +265,7 @@ async function runOpenclawDefaultTurn(
     mentionContextBlocks: allContextBlocks.length > 0 ? allContextBlocks : undefined,
     promptOverlay: effectiveOverlay,
     isSteeringTurn: request.isSteeringTurn,
-  });
+  }, agentIdForResolve);
 
   // D2: Verbose mode — emit debug header when enabled
   const verboseEnabled = services.getSessionFlag?.(VERBOSE_SESSION_FLAG) ?? false;
@@ -457,6 +476,7 @@ async function buildOpenclawTurnContext(
   request: IChatParticipantRequest,
   context: IChatParticipantContext,
   preprocessed?: { mentionContextBlocks?: readonly string[]; promptOverlay?: string; isSteeringTurn?: boolean },
+  agentIdForResolve: string = 'default',
 ): Promise<IOpenclawTurnContext> {
   // Token budget from model context length
   const contextWindow = services.getModelContextLength?.() ?? 8192;
@@ -502,7 +522,7 @@ async function buildOpenclawTurnContext(
   const effectiveConfig = services.unifiedConfigService?.getEffectiveConfig();
 
   // D8: Resolve agent config if registry is available (before tool state, so agent tools can be applied)
-  const agentId = 'default'; // Default participant → 'default' agent
+  const agentId = agentIdForResolve;
   const resolvedAgentConfig = services.agentRegistry ? resolveAgentConfig(
     services.agentRegistry,
     agentId,

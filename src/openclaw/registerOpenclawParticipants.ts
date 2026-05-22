@@ -49,7 +49,7 @@ export function registerOpenclawParticipants(options: {
     ...options.canvasParticipantServices,
   }));
 
-  return [
+  const disposables: IDisposable[] = [
     defaultParticipant,
     options.agentService.registerAgent(defaultParticipant),
     workspaceParticipant,
@@ -57,4 +57,32 @@ export function registerOpenclawParticipants(options: {
     canvasParticipant,
     options.agentService.registerAgent(canvasParticipant),
   ];
+
+  // Register a participant for every non-built-in custom agent so users can
+  // actually invoke their custom agents from chat (@agent-id) and the agent
+  // selector. Without this, custom agent definitions persist in settings but
+  // never become live chat participants.
+  const builtinIds = new Set(DEFAULT_AGENT_CONFIGS.map((a) => a.id));
+  for (const agent of agentConfigs) {
+    if (builtinIds.has(agent.id)) continue;
+    // Custom agents currently route through the default-surface runtime; their
+    // model/tools/identity come from the agent registry via resolveAgentConfig.
+    const participantId = `parallx.chat.agent.${agent.id}`;
+    const customParticipant = createOpenclawDefaultParticipant(
+      buildOpenclawDefaultParticipantServices({
+        ...options.defaultParticipantServices,
+        agentRegistry,
+      }),
+      {
+        participantId,
+        displayName: agent.name || agent.id,
+        description: `Custom agent: ${agent.name || agent.id}`,
+        agentId: agent.id,
+      },
+    );
+    disposables.push(customParticipant);
+    disposables.push(options.agentService.registerAgent(customParticipant));
+  }
+
+  return disposables;
 }

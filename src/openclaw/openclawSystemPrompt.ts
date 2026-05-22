@@ -15,7 +15,6 @@
  */
 
 import { estimateTokens, trimTextToBudget } from './openclawTokenBudget.js';
-import { summarizeToolDescriptionText } from './openclawToolDescriptionSummary.js';
 import type { IAgentIdentityConfig } from './agents/openclawAgentConfig.js';
 
 // ---------------------------------------------------------------------------
@@ -154,6 +153,14 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
   if (params.tools.length > 0) {
     sections.push(buildToolSummariesSection(params.tools));
   }
+
+  // 3a. Memory section. The model already has `memory_get`/`memory_search`
+  //     in the tools array, but small models need to be told the memory
+  //     subsystem *exists* and when to consult it. Without this section the
+  //     model never calls memory tools unless the user explicitly says
+  //     "search memory". Self-contained — no SOUL.md or workspace file
+  //     dependency.
+  sections.push(buildMemorySection());
 
   // 3b. M66 — Linking templates. Auto-generated from registered LinkContracts;
   //     adding a new extension contract surfaces its URI templates here with
@@ -299,32 +306,34 @@ ${entries}
 }
 
 /**
- * Tool summaries section.
+ * Tooling preamble.
  *
- * Upstream parity (raw.githubusercontent.com/openclaw/openclaw/main):
- *   - src/agents/system-prompt.ts — emits a single flat `## Tooling` section
- *     with `- name: summary` bullets. No subheadings.
- *   - src/agents/tool-description-presets.ts — short `displaySummary` text
- *     (≤7 words) is the source of each bullet's right-hand side.
+ * The model already has the full tool array (name + description + parameters)
+ * injected by Ollama's chat template (e.g. Qwen2.5: `<tools>{tool|tojson}</tools>`).
+ * Listing `- name: summary` bullets here only duplicates that array and burns
+ * tokens. Instead we emit a short preamble that (a) anchors the model on the
+ * tool list it just received, (b) tells it where workspace-editable routing
+ * lives (TOOLS.md), and (c) reminds it that tool descriptions carry when-to-use
+ * guidance.
  *
- * Parallx M65 parity fix (divergence 2 + 3 + 4):
- *   - Single flat heading (`## Tooling`).
- *   - Per-tool: prefer `displaySummary`; else summarize `description` via
- *     `summarizeToolDescriptionText` (120-char sentence-boundary cut,
- *     strips JSON/schema/action blocks).
- *   - No more `### Canvas Pages` / `### Workspace Files` / etc.
- *     subheadings — those bloated the prompt and confused small models
- *     without matching upstream behaviour.
+ * Upstream parity:
+ *   - OpenClaw `src/agents/system-prompt.ts` Tooling section: short preamble
+ *     ("Names are case-sensitive; call exactly as listed. TOOLS.md is usage
+ *     guidance, not availability."), no per-tool bullets.
+ *   - Anthropic skill docs: tool descriptions are the selection signal —
+ *     don't duplicate them in prose.
+ *
+ * `tools` is accepted for backward compatibility with callers that pass it,
+ * but its content is no longer emitted as a glossary. We keep the parameter
+ * so the truncation pass and tests don't break.
  */
-export function buildToolSummariesSection(tools: readonly IToolSummary[]): string {
-  const lines: string[] = ['## Tooling'];
-  for (const tool of tools) {
-    const summary = tool.displaySummary
-      || summarizeToolDescriptionText(tool.description)
-      || tool.name;
-    lines.push(`- ${tool.name}: ${summary}`);
-  }
-  return lines.join('\n');
+export function buildToolSummariesSection(_tools: readonly IToolSummary[]): string {
+  return [
+    '## Tooling',
+    'Tool definitions (name, description, parameters) are provided in the function-calling schema for this turn. Each tool\'s description states what it does and when to use it — read it before calling.',
+    'Tool names are case-sensitive; call them exactly as listed in the schema. TOOLS.md (in the workspace, when present) carries workspace-specific usage guidance, not tool availability.',
+    'When two tools could apply, prefer the more specific one (e.g. `canvas_read_page` over `canvas_find_pages` when you already know the page title; `grep_search` over `search_knowledge` when the user wants an exact-text match).',
+  ].join('\n');
 }
 
 /**
@@ -407,13 +416,20 @@ export function buildRuntimeSection(runtimeInfo: IOpenclawRuntimeInfo): string {
   // for the wall clock; without this, asking "what's today's date?" returns
   // a stale or fabricated answer. Cost is ~2 lines (~30 tokens).
   const now = new Date();
-  let tz: string;
-  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown'; }
-  catch { tz = 'unknown'; }
+  const tz = 'America/Chicago';
+  let centralStr: string;
+  try {
+    centralStr = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      year: 'numeric', month: 'short', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false, timeZoneName: 'short',
+    }).format(now);
+  } catch { centralStr = now.toISOString(); }
   const lines = [
     '## Runtime',
-    `- Current date/time: ${now.toISOString()} (${now.toString()})`,
-    `- Timezone: ${tz}`,
+    `- Current date/time: ${centralStr} (UTC: ${now.toISOString()})`,
+    `- Timezone: ${tz} (Central Time)`,
     `- Model: ${runtimeInfo.model}`,
     `- Provider: ${runtimeInfo.provider}`,
     `- Host: ${runtimeInfo.host}`,
@@ -427,6 +443,40 @@ export function buildRuntimeSection(runtimeInfo: IOpenclawRuntimeInfo): string {
 
 // ---------------------------------------------------------------------------
 // Estimation helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Memory section — tells the model the workspace memory subsystem exists,
+ * what the two layers are for, and when to read vs. when to defer.
+ *
+ * The tools `memory_get` and `memory_search` carry their own per-tool
+ * descriptions (what + when + when-not), but those only land in the function
+ * schema. Small models routinely fail to call memory at all because nothing
+ * in the system prompt mentions the existence of `.parallx/memory/`. This
+ * block fixes that, mirroring the role of Claude Code's `## auto memory`
+ * section and OpenClaw's plugin-injected memory section.
+ *
+ * Scope is intentionally narrow: announce existence, define layers, give
+ * a short when-to-read trigger list. We do NOT prescribe when to *write*
+ * memory here — write semantics are user-driven in Parallx.
+ */
+export function buildMemorySection(): string {
+  return [
+    '## Memory',
+    'You have a persistent workspace memory at `.parallx/memory/`:',
+    '- **Durable** (`MEMORY.md`) — long-term facts about the user, the project, and decisions that should persist across chat sessions.',
+    '- **Daily** (`YYYY-MM-DD.md`) — date-stamped logs of what was discussed or done on a given day.',
+    '',
+    'Read memory **before answering** when:',
+    '- The user references prior context ("you said earlier…", "remember when…", "what did we decide about…").',
+    '- The user asks what you know or remember about a person, project, file, or topic.',
+    '- You\'re about to make a recommendation that hinges on a past decision or preference.',
+    '',
+    'Use `memory_search` for topic-based recall ("what do we know about X") and `memory_get` for direct reads of a specific layer or date. ' +
+    'If memory contains a claim that names a specific file, function, or value, verify it against the current workspace before acting on it — memory can go stale.',
+  ].join('\n');
+}
+
 // ---------------------------------------------------------------------------
 
 /**

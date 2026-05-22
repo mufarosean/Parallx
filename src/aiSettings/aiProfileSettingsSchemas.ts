@@ -104,6 +104,32 @@ const SCHEMAS: readonly IBoundSchema[] = ([
   // ── Model ──
   {
     schema: {
+      key: 'model.defaultModel',
+      type: 'string',
+      default: '',
+      scope: 'workspace',
+      description: 'Default model for new chat sessions in this workspace (e.g. `qwen2.5:7b-instruct`). When set, this wins over the last-used model on startup, so background jobs (cron, budget) can\'t hijack the chat picker. Empty = use whichever model Ollama returns first.',
+      category: 'Model',
+    },
+    read: (c) => c.model.chatModel,
+    write: (v) => ({ model: { chatModel: v as string } }),
+  } as IBoundSchema<string>,
+  {
+    schema: {
+      key: 'model.contextSize',
+      type: 'number',
+      default: 0,
+      scope: 'workspace',
+      description: 'Default context window (num_ctx) for new chat sessions in this workspace. 0 = use the model\'s reported context length. Override per-session with the context-window picker in the chat header.',
+      category: 'Model',
+      min: 0,
+      max: 1_000_000,
+    },
+    read: (c) => c.model.contextWindow,
+    write: (v) => ({ model: { contextWindow: v as number } }),
+  } as IBoundSchema<number>,
+  {
+    schema: {
       key: 'model.temperature',
       type: 'number',
       default: 0.7,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   buildOpenclawSystemPrompt,
@@ -303,83 +303,54 @@ describe('buildSkillsSection', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildToolSummariesSection', () => {
-  it('uses flat `## Tooling` heading (upstream parity)', () => {
-    // M65 parity fix (divergence 2): single flat heading, no per-domain
-    // subheadings. Mirrors upstream src/agents/system-prompt.ts.
+  // Post-M66 prompt fix: the per-tool bullet catalog was pure duplication of
+  // what the Ollama chat template already injects via `<tools>{tool|tojson}</tools>`.
+  // This section is now a short preamble that tells the model how to read the
+  // schema-provided tool list — no per-tool content.
+
+  it('emits the `## Tooling` heading', () => {
     const section = buildToolSummariesSection(createTools());
     expect(section).toMatch(/^## Tooling/);
   });
 
-  it('lists tools without bold formatting', () => {
+  it('explains tool definitions are in the function-calling schema', () => {
     const section = buildToolSummariesSection(createTools());
-    expect(section).toContain('- readFile: Read a file from disk');
-    expect(section).not.toContain('**readFile**');
+    expect(section).toContain('function-calling schema');
+    expect(section).toContain('read it before calling');
   });
 
-  it('has one line per tool', () => {
-    const tools = createTools();
-    const section = buildToolSummariesSection(tools);
-    const toolLines = section.split('\n').filter(l => l.startsWith('- '));
-    expect(toolLines.length).toBe(tools.length);
+  it('states tool names are case-sensitive and references TOOLS.md', () => {
+    const section = buildToolSummariesSection(createTools());
+    expect(section).toContain('case-sensitive');
+    expect(section).toContain('TOOLS.md');
   });
 
-  it('emits a single flat list (no per-domain subheadings)', () => {
-    // M65 parity fix (divergence 2): upstream system-prompt.ts emits one
-    // flat list under `## Tooling` — no `### Canvas Pages`, `### Workspace
-    // Files`, etc. The old groupings were a Parallx-only invention that
-    // bloated the prompt and confused small models.
+  it('instructs the model to prefer the more specific tool', () => {
+    const section = buildToolSummariesSection(createTools());
+    expect(section).toContain('prefer the more specific');
+  });
+
+  it('emits no per-tool bullets', () => {
     const tools: IToolSummary[] = [
       { name: 'canvas_read_page', description: 'Read a canvas page' },
       { name: 'list_files', description: 'List workspace files' },
       { name: 'memory_get', description: 'Read memory' },
-      { name: 'mcp__github__create_issue', description: 'Create a GitHub issue' },
     ];
     const section = buildToolSummariesSection(tools);
-
+    const toolLines = section.split('\n').filter(l => /^- [a-z_]+:/i.test(l));
+    expect(toolLines.length).toBe(0);
     expect(section).not.toContain('### Canvas Pages');
     expect(section).not.toContain('### Workspace Files');
     expect(section).not.toContain('### Memory');
-    expect(section).not.toContain('### Other');
-
-    // Each tool listed exactly once, all under the single `## Tooling`.
-    const headingMatches = section.match(/^## Tooling$/gm) ?? [];
-    expect(headingMatches.length).toBe(1);
-    const toolLines = section.split('\n').filter(l => l.startsWith('- '));
-    expect(toolLines.length).toBe(4);
   });
 
-  it('prefers displaySummary over description', () => {
-    // M65 parity fix (divergence 4): per-tool `displaySummary` (short,
-    // prompt-only) is the source of the catalog bullet, falling back to
-    // a summarized version of `description`. Mirrors upstream
-    // tool-description-presets.ts coreToolSummaries map.
-    const tools: IToolSummary[] = [
-      {
-        name: 'run_command',
-        description: 'A very long description that goes on and on with all the details that should not be in the prompt catalog because it would bloat the system prompt.',
-        displaySummary: 'Run a shell command.',
-      },
-    ];
-    const section = buildToolSummariesSection(tools);
-    expect(section).toContain('- run_command: Run a shell command.');
-    expect(section).not.toContain('A very long description');
-  });
-
-  it('summarizes long descriptions when displaySummary is absent', () => {
-    // M65 parity fix (divergence 3): when displaySummary is absent the
-    // builder calls summarizeToolDescriptionText (port of upstream
-    // tool-description-summary.ts) to trim to 120 chars at a sentence
-    // boundary and strip structured doc blocks (JSON/ACTIONS:/etc.).
-    const longDesc =
-      'Execute a shell command in the workspace directory and return the output. ' +
-      'Commands run with a 30-second timeout. Dangerous commands are blocked.\n\n' +
-      'ACTIONS:\n- run\n- list';
-    const section = buildToolSummariesSection([
-      { name: 'run_command', description: longDesc },
+  it('output is stable regardless of input tools', () => {
+    const a = buildToolSummariesSection([{ name: 'x', description: 'X' }]);
+    const b = buildToolSummariesSection([
+      { name: 'y', description: 'Y' },
+      { name: 'z', description: 'Z' },
     ]);
-    // First sentence is included; ACTIONS: block is stripped.
-    expect(section).toContain('Execute a shell command in the workspace directory');
-    expect(section).not.toContain('ACTIONS:');
+    expect(a).toBe(b);
   });
 });
 
@@ -586,10 +557,19 @@ describe('buildOpenclawPromptArtifacts', () => {
   });
 
   it('forwards systemBudgetTokens to the builder', () => {
-    const result = buildOpenclawPromptArtifacts(createArtifactInput({ systemBudgetTokens: 100000 }));
-    // Should produce the same prompt as without budget (under budget)
-    const noBudget = buildOpenclawPromptArtifacts(createArtifactInput());
-    expect(result.systemPrompt).toBe(noBudget.systemPrompt);
+    // Freeze the clock so both prompt builds embed the exact same
+    // "Current date/time" line — otherwise sub-millisecond drift between
+    // the two calls makes the strings differ by a single digit.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-22T13:00:00.000Z'));
+    try {
+      const result = buildOpenclawPromptArtifacts(createArtifactInput({ systemBudgetTokens: 100000 }));
+      // Should produce the same prompt as without budget (under budget)
+      const noBudget = buildOpenclawPromptArtifacts(createArtifactInput());
+      expect(result.systemPrompt).toBe(noBudget.systemPrompt);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('uses explicit supportsTools over tool count fallback', () => {

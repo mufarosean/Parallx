@@ -36,6 +36,17 @@ export class LanguageModelBridge {
   }
 
   /**
+   * The workspace's currently-active chat model id, or undefined if none is
+   * selected yet. Background extensions (budget sync, indexing) read this to
+   * default to the same model the user is chatting with — instead of pinning
+   * a hidden secondary model that the user never agreed to.
+   */
+  getActiveModel(): string | undefined {
+    this._throwIfDisposed();
+    return this._service.getActiveModel();
+  }
+
+  /**
    * Send a chat request to a specific model.
    *
    * Routes directly to the provider via `sendChatRequestForModel` — no

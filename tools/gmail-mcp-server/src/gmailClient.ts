@@ -18,7 +18,7 @@ const GMAIL_API_HOST = 'gmail.googleapis.com';
 const GMAIL_API_BASE = `https://${GMAIL_API_HOST}/gmail/v1`;
 
 export interface GmailListOptions {
-  /** Max results to ask Gmail for. Capped at 100. */
+  /** Max results to ask Gmail for per page. Capped at 500 (Gmail's max). */
   max: number;
   /** Optional search query. */
   query?: string;
@@ -31,6 +31,14 @@ export interface GmailListOptions {
   readState?: 'unread' | 'read' | 'all';
   /** Include decoded text/plain body (M63 P0b). Default false. */
   includeBody?: boolean;
+  /** Opaque Gmail pageToken for paginating beyond `max` results. */
+  pageToken?: string;
+}
+
+export interface GmailListResult {
+  messages: UnreadMessage[];
+  /** Gmail `nextPageToken`; absent on the final page. */
+  nextPageToken?: string;
 }
 
 export class GmailClient {
@@ -42,10 +50,13 @@ export class GmailClient {
 
   /**
    * List unread messages. Combines `is:unread` with optional caller
-   * query and `since` filter. Returns hydrated message metadata.
+   * query and `since` filter. Returns hydrated message metadata plus an
+   * optional `nextPageToken` for callers paginating beyond `max` per call.
    */
-  async listUnread(opts: GmailListOptions): Promise<UnreadMessage[]> {
-    const max = Math.max(1, Math.min(100, Math.floor(opts.max)));
+  async listUnread(opts: GmailListOptions): Promise<GmailListResult> {
+    // Gmail's users.messages.list accepts maxResults up to 500
+    // (https://developers.google.com/gmail/api/reference/rest/v1/users.messages/list).
+    const max = Math.max(1, Math.min(500, Math.floor(opts.max)));
     const queryParts: string[] = [];
     const readState = opts.readState ?? 'unread';
     if (readState === 'unread') queryParts.push('is:unread');
@@ -62,13 +73,18 @@ export class GmailClient {
     const listUrl = new URL(`${GMAIL_API_BASE}/users/me/messages`);
     if (q) listUrl.searchParams.set('q', q);
     listUrl.searchParams.set('maxResults', String(max));
+    if (opts.pageToken) listUrl.searchParams.set('pageToken', opts.pageToken);
 
     const listRes = await this.fetchAuthorized(listUrl.toString());
     const listJson = (await listRes.json()) as {
       messages?: Array<{ id: string }>;
+      nextPageToken?: string;
     };
+    const nextPageToken = typeof listJson.nextPageToken === 'string' && listJson.nextPageToken
+      ? listJson.nextPageToken
+      : undefined;
     const ids = (listJson.messages ?? []).map((m) => m.id).slice(0, max);
-    if (ids.length === 0) return [];
+    if (ids.length === 0) return { messages: [], ...(nextPageToken ? { nextPageToken } : {}) };
 
     // Hydrate each message with metadata format (headers + snippet only).
     // Bounded concurrency: firing all ids in parallel via Promise.all
@@ -89,7 +105,7 @@ export class GmailClient {
     const messages = hydrated.filter((m): m is UnreadMessage => m !== null);
     // Sort oldest-first so callers can process chronologically (M63 P0).
     messages.sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
-    return messages;
+    return { messages, ...(nextPageToken ? { nextPageToken } : {}) };
   }
 
   private async getMessageMetadata(id: string, includeBody = false): Promise<UnreadMessage | null> {

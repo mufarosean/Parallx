@@ -202,6 +202,27 @@ export class PlaceholderEditorPane extends EditorPane {
   }
 }
 
+/**
+ * Optional view-state contract that a tool editor provider may expose.
+ *
+ * Providers that previously returned a plain IDisposable continue to work —
+ * the workbench just won't restore scroll/selection/focus across tab
+ * switches. To opt in, return an object that ALSO defines saveViewState
+ * and restoreViewState (in addition to dispose). The workbench calls
+ * saveViewState() before tearing the pane down on tab switch and
+ * restoreViewState() after the new pane has been mounted, sized, and
+ * had setInput() complete.
+ *
+ * Mirrors Monaco's IEditor.saveViewState / restoreViewState. The state
+ * object is opaque — pick a shape that fits the editor (e.g. scrollTop,
+ * cursor offset, expanded-tree node ids).
+ */
+export interface IEditorPaneViewStateProvider {
+  dispose(): void;
+  saveViewState?(): unknown;
+  restoreViewState?(state: unknown): void;
+}
+
 // ─── ToolEditorPane ──────────────────────────────────────────────────────────
 
 /**
@@ -212,7 +233,7 @@ export class PlaceholderEditorPane extends EditorPane {
  */
 class ToolEditorPane extends EditorPane {
   private _contentContainer: HTMLElement | undefined;
-  private _providerDisposable: IDisposable | undefined;
+  private _providerHandle: IEditorPaneViewStateProvider | undefined;
 
   constructor() {
     super('tool-editor-pane');
@@ -233,7 +254,9 @@ class ToolEditorPane extends EditorPane {
     // Duck-type check for a tool editor provider
     const provider = (input as any).provider;
     if (provider && typeof provider.createEditorPane === 'function') {
-      this._providerDisposable = provider.createEditorPane(this._contentContainer, input);
+      const handle = provider.createEditorPane(this._contentContainer, input);
+      // Handle is either a plain IDisposable or an extended view-state handle.
+      this._providerHandle = handle as IEditorPaneViewStateProvider;
     } else {
       // Fallback: show the input name
       const label = $('div.editor-pane-fallback-label');
@@ -249,10 +272,36 @@ class ToolEditorPane extends EditorPane {
     }
   }
 
+  protected override savePaneViewState(): EditorPaneViewState {
+    const handle = this._providerHandle;
+    if (handle && typeof handle.saveViewState === 'function') {
+      try {
+        const state = handle.saveViewState();
+        // Wrap the opaque provider state so it round-trips through the
+        // workbench's typed Record<string, unknown> contract.
+        return state !== undefined ? { provider: state } : {};
+      } catch (err) {
+        console.warn('[ToolEditorPane] provider.saveViewState() threw:', err);
+      }
+    }
+    return {};
+  }
+
+  protected override restorePaneViewState(state: EditorPaneViewState): void {
+    const handle = this._providerHandle;
+    if (handle && typeof handle.restoreViewState === 'function' && state && 'provider' in state) {
+      try {
+        handle.restoreViewState(state.provider);
+      } catch (err) {
+        console.warn('[ToolEditorPane] provider.restoreViewState() threw:', err);
+      }
+    }
+  }
+
   private _disposeProviderContent(): void {
-    if (this._providerDisposable) {
-      this._providerDisposable.dispose();
-      this._providerDisposable = undefined;
+    if (this._providerHandle) {
+      this._providerHandle.dispose();
+      this._providerHandle = undefined;
     }
   }
 

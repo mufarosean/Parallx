@@ -301,9 +301,15 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // Settings renders it; the `autonomy_log` built-in tool lets the
   // agent read it back between turns. Registered globally in
   // workbenchServices.ts so AI Settings activation can see it too.
-  const autonomyLog = api.services.has(IAutonomyLogService)
-    ? api.services.get<AutonomyLogService>(IAutonomyLogService)
-    : new AutonomyLogService();
+  // The workbench registers IAutonomyLogService in workbenchServices.ts
+  // before any extension activates. Falling back to a private instance here
+  // would silently desync ChatSurfacePlugin from the autonomy-log panel,
+  // which subscribes to the workbench-registered instance — that's exactly
+  // how the "panel doesn't update" regression sneaks in. Fail loudly.
+  if (!api.services.has(IAutonomyLogService)) {
+    throw new Error('[chat] IAutonomyLogService not registered — workbench bootstrap order broken');
+  }
+  const autonomyLog = api.services.get<AutonomyLogService>(IAutonomyLogService);
 
   // ── M60 §3.8 + §3.10: Autonomy controls layer ──────────────────────────
   //
@@ -726,9 +732,14 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   const chatConfig = api.workspace.getConfiguration('chat');
   const ollamaBaseUrl = chatConfig.get<string>('ollama.baseUrl', 'http://localhost:11434');
-  const defaultModel = chatConfig.get<string>('defaultModel', '');
+  // Workspace default model + context size live in the unified AI config
+  // (workspace-scoped, surfaced in Settings → Model). Legacy chat.* keys are
+  // a fallback so existing config.json files still work.
+  const unifiedModelDefault = unifiedConfigService?.getEffectiveConfig().model.chatModel ?? '';
+  const unifiedContextLength = unifiedConfigService?.getEffectiveConfig().model.contextWindow ?? 0;
+  const defaultModel = unifiedModelDefault || chatConfig.get<string>('defaultModel', '');
   const defaultMode = chatConfig.get<string>('defaultMode', 'agent') as import('../../services/chatTypes.js').ChatMode;
-  const configuredContextLength = chatConfig.get<number>('contextLength', 0);
+  const configuredContextLength = unifiedContextLength || chatConfig.get<number>('contextLength', 0);
 
   // Apply configured default mode
   if (defaultMode && modeService.getAvailableModes().includes(defaultMode)) {
@@ -748,9 +759,29 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   const providerRegistration = languageModelsService.registerProvider(_ollamaProvider);
   context.subscriptions.push(providerRegistration);
 
-  // Set configured default model (after provider registered, so models are discoverable)
+  // Set configured default model (after provider registered, so models are discoverable).
+  // Use setDefaultModel so the workspace default wins over the persisted
+  // "last used" id — that's the whole point of having a default.
   if (defaultModel) {
-    languageModelsService.setActiveModel(defaultModel);
+    languageModelsService.setDefaultModel(defaultModel);
+  }
+
+  // Subscribe to unified-config changes so editing model.defaultModel or
+  // model.contextSize in Settings updates the running session live, without
+  // a workspace reload.
+  if (unifiedConfigService) {
+    context.subscriptions.push(
+      unifiedConfigService.onDidChangeConfig(() => {
+        const cfg = unifiedConfigService.getEffectiveConfig();
+        const nextDefault = cfg.model.chatModel || '';
+        if (nextDefault) {
+          languageModelsService.setDefaultModel(nextDefault);
+        }
+        if (_ollamaProvider) {
+          _ollamaProvider.setContextLengthOverride(cfg.model.contextWindow || 0);
+        }
+      }),
+    );
   }
 
   // ── 3. Create ChatDataService (M13 Phase 2) ──

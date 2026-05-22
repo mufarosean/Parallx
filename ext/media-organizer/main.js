@@ -3159,6 +3159,7 @@ async function runDeltaScan(api) {
           folderIds
         );
 
+        let _delDeltaYieldCounter = 0;
         for (const dbFile of dbFiles) {
           const fullPath = dbFile.folder_path + sep + dbFile.basename;
           if (!currentPathSet.has(fullPath)) {
@@ -3166,10 +3167,15 @@ async function runDeltaScan(api) {
             const result = await processIncrementalDelete(fullPath);
             if (result) totalDeleted++;
           }
+          // Yield to fs.watch so fresh INSERTs don't queue behind us.
+          if ((++_delDeltaYieldCounter % 25) === 0 || _watcherQueue.length > 0) {
+            await new Promise(r => setTimeout(r, 0));
+          }
         }
       }
 
       // Process all current entries through processFile (it handles skip/update logic)
+      let _createDeltaYieldCounter = 0;
       for (const entry of currentEntries) {
         if (_scanCancelled) break;
         try {
@@ -3178,6 +3184,13 @@ async function runDeltaScan(api) {
           else if (result.action === 'updated') totalUpdated++;
         } catch (err) {
           console.warn(`[MediaOrganizer] Delta scan error on ${entry.path}:`, err);
+        }
+        // Yield to fs.watch every 10 files (or sooner if the watcher
+        // queue already has work). Solves the SQLite-write-lock contention
+        // that caused the previous auto-recovery to be removed in 8729ef1:
+        // watcher INSERTs no longer have to wait for a full scan to finish.
+        if ((++_createDeltaYieldCounter % 10) === 0 || _watcherQueue.length > 0) {
+          await new Promise(r => setTimeout(r, 0));
         }
       }
 
@@ -3221,8 +3234,7 @@ async function resumeWatchersAndDeltaScan(api) {
     if (exists) startWatcherForRoot(root.path);
   }
 
-  // Run delta scan in background (non-blocking)
-  // Run delta scan in background \u2014 deferred until after first paint so
+  // Run delta scan in background — deferred until after first paint so
   // it never competes with initial grid render for the SQLite write lock.
   // runDeltaScan() walks every scan root + reconciles against the DB; doing
   // that synchronously with activate() noticeably slows the first frame on
@@ -3238,13 +3250,14 @@ async function resumeWatchersAndDeltaScan(api) {
     setTimeout(_kickoffDeltaScan, 2000);
   }
 
-  // NOTE: a focus-triggered + 5-minute periodic delta-scan loop used to live
-  // here ("auto-recovery"). It caused 60+ second save-pickup lag on large
-  // libraries because every drain DB call queued behind the auto-scan's
-  // SQLite traffic. fs.watch + the relaunch-time delta scan above are
-  // sufficient; on platforms where fs.watch drops events under load the
-  // user can rescan manually. Do NOT re-add a periodic scanner here without
-  // first solving the SQLite write-lock contention.
+  // NOTE: a focus-triggered + periodic delta-scan loop used to live here
+  // ("auto-recovery"). It caused two regressions: (1) grid scroll reset
+  // on window focus / lightbox close (the focus listener re-ran the scan,
+  // which refreshed the grid mid-interaction), and (2) Eraser delete
+  // races where the periodic scan re-INSERTed paths being removed. fs.watch
+  // + the relaunch-time delta scan above are the source of truth. If
+  // fs.watch drops events under burst load, fix that at the IPC layer —
+  // do NOT add a renderer-side polling loop here.
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -7546,7 +7559,7 @@ function formatShortDate(isoStr) {
   if (!isoStr) return '';
   try {
     const d = new Date(isoStr);
-    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'America/Chicago' });
   } catch { return ''; }
 }
 
@@ -9413,6 +9426,8 @@ function renderGridBrowser(container, api, input) {
   // Save state snapshot on every loadPage
   let _lastLoadKey = null;          // serialized filter/sort/page snapshot — used to detect actual state changes (vs. cosmetic re-loads) so scroll position is only reset when the user changes something
   let _lastScrollTop = cached?.scrollTop ?? 0; // live-tracked scroll position
+  let _disposing = false;           // gate so dispose-time scrollTop=0 clamp can't overwrite the cached position (cardGrid.dispose() does innerHTML='' which fires a synthetic scroll event)
+  let _viewStateApplied = false;    // set true by restoreViewState; suppresses the cold-mount cache restore so the two paths never race
   function saveSessionState() {
     _sessionGridState.set(instanceId, {
       currentPage: state.currentPage,
@@ -9924,6 +9939,11 @@ function renderGridBrowser(container, api, input) {
     // .mo-grid is just a CSS Grid layout (no overflow). Earlier this guard
     // checked for 'mo-grid', so _lastScrollTop never updated and the restore
     // path below could never run.
+    // _disposing guards against the teardown-time scroll event: cardGrid.dispose()
+    // wipes grid contents, collapses scrollHeight, browser clamps scrollTop to 0
+    // and fires a scroll event. Without this guard, that event overwrites the
+    // cached scrollTop with 0 and the next remount restores to the top.
+    if (_disposing) return;
     if (e.target === gridArea) {
       _lastScrollTop = e.target.scrollTop;
       if (_scrollSaveTimer) clearTimeout(_scrollSaveTimer);
@@ -10273,16 +10293,12 @@ function renderGridBrowser(container, api, input) {
     // to 0 — if we read _lastScrollTop after the refresh, the restore is a
     // no-op and the grid snaps to top after every tag edit.
     //
-    // First-mount case (e.g. user opened an image as a page and navigated
-    // back): gridArea is a brand-new DOM node at scrollTop 0, but the cached
-    // session state holds the real position. _lastScrollTop was seeded from
-    // cached?.scrollTop at init, so fall back to it when the live scroll is
-    // 0 AND this is the first loadPage call for this mount.
-    const _isFirstLoad = _lastLoadKey === null;
-    const _liveScroll = gridArea ? gridArea.scrollTop : 0;
-    const _scrollBeforeLoad = (_isFirstLoad && _liveScroll === 0 && _lastScrollTop > 0)
-      ? _lastScrollTop
-      : _liveScroll;
+    // We only ever use the LIVE scrollTop here. The cached _sessionGridState
+    // value (which may lag the real position by a debounce interval) is
+    // restored by restoreViewState() / the cold-mount queueMicrotask path,
+    // not by loadPage. Mixing them caused a race where loadPage's late RAF
+    // overwrote restoreViewState's exact value with a stale cache value.
+    const _scrollBeforeLoad = gridArea ? gridArea.scrollTop : 0;
 
     // Show loading spinner
     loadingOverlay.style.display = '';
@@ -10597,6 +10613,9 @@ function renderGridBrowser(container, api, input) {
 
   // Double-click / Enter: open detail editor
   function handleCardOpen(item) {
+    // No explicit state save needed here — the workbench calls our
+    // saveViewState() hook synchronously before tearing the grid pane
+    // down, which captures the live gridArea.scrollTop.
     api.editors.openEditor({
       typeId: 'media-organizer-grid',
       title: item.title || `${item.type} #${item.id}`,
@@ -11570,8 +11589,61 @@ function renderGridBrowser(container, api, input) {
   gridArea.addEventListener('pointerup', endDrag);
   gridArea.addEventListener('pointercancel', endDrag);
 
+  // ── Scroll restore helper ───────────────────────────────────────────────
+  // Used by restoreViewState() (warm-mount, tab switch) and the cold-mount
+  // microtask below (app reload — workbench has no cached view state, but
+  // _sessionGridState persists). The RAF loop waits for the grid's content
+  // height to be tall enough to honor the requested offset, since cards
+  // hydrate asynchronously after layout.
+  function _scheduleScrollRestore(target) {
+    if (target <= 0 || !gridArea) return;
+    _lastScrollTop = target;
+    // Hide the grid until the scroll lands. Without this, the user sees the
+    // grid mount at scrollTop=0 for one frame, then jump to target — a very
+    // visible flicker on every tab switch back. We restore visibility in the
+    // same frame as the scrollTop write so the user only ever sees the
+    // already-scrolled grid.
+    gridArea.style.visibility = 'hidden';
+    let attempts = 0;
+    const reveal = () => {
+      if (gridArea) gridArea.style.visibility = '';
+    };
+    const tryRestore = () => {
+      if (!gridArea || _disposing) { reveal(); return; }
+      const maxScroll = Math.max(0, gridArea.scrollHeight - gridArea.clientHeight);
+      if (maxScroll >= target) {
+        gridArea.scrollTop = target;
+        reveal();
+        return;
+      }
+      if (attempts++ < 60) {
+        requestAnimationFrame(tryRestore);
+      } else {
+        gridArea.scrollTop = Math.min(target, maxScroll);
+        reveal();
+      }
+    };
+    requestAnimationFrame(tryRestore);
+  }
+
+  // Cold-mount restore: workbench restoreViewState() fires synchronously after
+  // setInput() resolves, so it always runs before this microtask. If it ran,
+  // _viewStateApplied is true and we skip — the workbench's exact value wins.
+  // If it didn't (cold app reload), fall back to the persisted session cache.
+  queueMicrotask(() => {
+    if (_viewStateApplied) return;
+    const target = cached?.scrollTop ?? 0;
+    if (target > 0) _scheduleScrollRestore(target);
+  });
+
   return {
     dispose() {
+      // Gate the scroll listener IMMEDIATELY: cardGrid.dispose() (below) wipes
+      // grid contents, which collapses scrollHeight and makes the browser clamp
+      // scrollTop to 0 — emitting a scroll event that would otherwise overwrite
+      // _lastScrollTop and the cached _sessionGridState entry, snapping the
+      // grid to the top on the next remount.
+      _disposing = true;
       clearTimeout(searchTimer);
       // Flush pending debounced writes so closing the pane immediately after
       // scrolling or moving the zoom slider doesn't lose the final value.
@@ -11604,7 +11676,23 @@ function renderGridBrowser(container, api, input) {
       document.removeEventListener('mo:tags-bulk-changed', _tagsBulkChangedHandler);
       if (cardGrid) cardGrid.dispose();
       container.innerHTML = '';
-    }
+    },
+    // Workbench view-state hooks. The host calls saveViewState() right before
+    // tearing the pane down on tab switch and restoreViewState() after the
+    // new pane has been mounted, sized, and setInput has completed. Scroll
+    // position is the only state that genuinely needs RAF-after-mount timing
+    // — everything else (filters/sort/page/selection) restores from
+    // _sessionGridState during the synchronous setup above.
+    saveViewState() {
+      const live = gridArea ? gridArea.scrollTop : 0;
+      return { scrollTop: live > 0 ? live : _lastScrollTop };
+    },
+    restoreViewState(state) {
+      _viewStateApplied = true;
+      const target = state && typeof state.scrollTop === 'number' ? state.scrollTop : 0;
+      if (target <= 0) return;
+      _scheduleScrollRestore(target);
+    },
   };
 }
 
@@ -12561,7 +12649,7 @@ function buildDetailsTab(ctx, api, container, onRefresh) {
     const dateSection = moEl('div', 'mo-detail-section');
     const dateLabel = moEl('div', 'mo-detail-section-label', { textContent: 'Date Taken' });
     dateSection.appendChild(dateLabel);
-    const dateVal = moEl('div', null, { textContent: new Date(ctx.entity.takenAt).toLocaleString() });
+    const dateVal = moEl('div', null, { textContent: new Date(ctx.entity.takenAt).toLocaleString('en-US', { timeZone: 'America/Chicago' }) });
     dateSection.appendChild(dateVal);
     container.appendChild(dateSection);
   }
@@ -12845,7 +12933,7 @@ function buildFileInfoTab(ctx, container) {
     dlRow(dl, 'Filename', ctx.primaryFile.basename);
     dlRow(dl, 'Size', formatFileSize(ctx.primaryFile.size));
     if (ctx.fullPath) dlRow(dl, 'Path', ctx.fullPath);
-    if (ctx.primaryFile.modTime) dlRow(dl, 'Modified', new Date(ctx.primaryFile.modTime).toLocaleString());
+    if (ctx.primaryFile.modTime) dlRow(dl, 'Modified', new Date(ctx.primaryFile.modTime).toLocaleString('en-US', { timeZone: 'America/Chicago' }));
     fileSection.appendChild(dl);
     container.appendChild(fileSection);
   }
@@ -12859,7 +12947,7 @@ function buildFileInfoTab(ctx, container) {
       fileSection.appendChild(fileLbl);
       const dl = moEl('dl', 'mo-detail-dl');
       dlRow(dl, 'Size', formatFileSize(file.size));
-      if (file.modTime) dlRow(dl, 'Modified', new Date(file.modTime).toLocaleString());
+      if (file.modTime) dlRow(dl, 'Modified', new Date(file.modTime).toLocaleString('en-US', { timeZone: 'America/Chicago' }));
       fileSection.appendChild(dl);
       container.appendChild(fileSection);
     }
@@ -19168,17 +19256,21 @@ async function moAutoStackByBasename(api) {
 // Attempt to securely overwrite + delete files via Eraser (Heidi).
 // - Reads `mediaOrganizer.eraserPath` from configuration (default
 //   `C:\Program Files\Eraser\Eraser.exe`).
-// - If the executable is missing or invocation fails, returns false so the
-//   caller can fall back to the OS recycle bin and surfaces a toast so the
-//   user knows why Eraser didn't run.
+// - If invocation fails (executable missing, denied, spawn error), returns
+//   false so the caller can fall back to the OS recycle bin, and surfaces a
+//   toast so the user knows why Eraser didn't run.
 // - `addtask /schedule=now` returns within milliseconds: it queues the work
 //   in Eraser's persistent service, which performs the multi-pass overwrite
 //   asynchronously over the following seconds-to-minutes. The CLI's exit
 //   does NOT mean the files are erased — only that the task has been queued.
-// Cached availability — `fs.exists` for the same path on every delete is
-// pure noise. Cache `{path, exists}` for the session; the cache key is the
-// configured path so settings changes invalidate naturally on next call.
-const _eraserAvail = { path: null, exists: null, missingNotified: false };
+//
+// We deliberately do NOT pre-check existence via fs.exists: M67 (f0c982d)
+// restricts fs:* read IPC to workspace/APP_ROOT/~/.parallx/tmp, which
+// returns false for legitimate exe paths like C:\Program Files\Eraser. We
+// rely on the spawn itself to report ENOENT — which it does cleanly via
+// result.error / non-zero exit — and surface that as the toast instead.
+// `missingNotified` is kept to dedupe toasts across consecutive failures.
+const _eraserAvail = { lastFailedPath: null, missingNotified: false };
 
 async function _tryEraseWithEraser(api, filePaths) {
   if (!_isWindows) return false;
@@ -19187,19 +19279,9 @@ async function _tryEraseWithEraser(api, filePaths) {
     'C:\\Program Files\\Eraser\\Eraser.exe');
   if (!cfgPath) return false;
 
-  if (_eraserAvail.path !== cfgPath) {
-    _eraserAvail.path = cfgPath;
-    _eraserAvail.exists = await window.parallxElectron.fs.exists(cfgPath).catch(() => false);
+  // Reset dedupe gate when the user reconfigures the path.
+  if (_eraserAvail.lastFailedPath !== cfgPath) {
     _eraserAvail.missingNotified = false;
-  }
-  if (!_eraserAvail.exists) {
-    if (!_eraserAvail.missingNotified) {
-      _eraserAvail.missingNotified = true;
-      api.window.showInformationMessage(
-        `Eraser not found at ${cfgPath} — falling back to recycle bin. Set mediaOrganizer.eraserPath in settings to point at your install.`
-      );
-    }
-    return false;
   }
 
   // Eraser CLI: `Eraser.exe addtask /quiet /schedule=now file=<path1> ...`
@@ -19211,24 +19293,55 @@ async function _tryEraseWithEraser(api, filePaths) {
   //   exception code (0xE0434352) even though the erase still succeeds.
   const args = ['addtask', '/quiet', '/schedule=now', ...filePaths.map((p) => `file=${p}`)];
 
-  // The Eraser CLI itself only queues the task and exits in milliseconds.
-  // We use execStream because it's the existing IPC primitive for spawning
-  // an exe with argv (no shell parsing). With /quiet, Eraser produces no
-  // stdout — the renderer is not pumped with output during the erase.
-  // We do NOT await the returned promise: the queueing has happened by the
-  // time the function returns (Eraser's CLI is synchronous about that).
-  window.parallxElectron.terminal.execStream(
+  // Fire-and-forget remains (Eraser.exe's exit can take seconds-to-minutes
+  // for the multi-pass overwrite, and we MUST NOT block the renderer that
+  // long — see c92440a). But we expose the spawn promise to the caller via
+  // _pendingEraserSpawn so it can detect a failed enqueue and unwind the
+  // pending-commit batch instead of leaving the source IDs locked in
+  // _pendingEraserCommits for the 1-hour deadline. Without this, an Eraser
+  // CLI failure (wrong args, missing service, denied path, etc.) made every
+  // subsequent Delete on the same files hit the _isAnyIdPendingErase
+  // short-circuit and silently no-op.
+  const spawnPromise = window.parallxElectron.terminal.execStream(
     { command: cfgPath, args, timeout: 0 },
     {}
-  ).then((result) => {
-    if (result.error || (typeof result.exitCode === 'number' && result.exitCode !== 0)) {
-      const reason = result.error?.message || `exit ${result.exitCode}`;
-      api.window.showErrorMessage(`Eraser failed to queue task: ${reason}.`);
-    }
-  }).catch(() => { /* ignore — late failures aren't fatal */ });
+  );
+  _lastEraserSpawn = {
+    paths: filePaths.slice(),
+    promise: spawnPromise.then((result) => {
+      if (result.error || (typeof result.exitCode === 'number' && result.exitCode !== 0)) {
+        const reason = result.error?.message || `exit ${result.exitCode}`;
+        const isMissing = result.error?.code === 'ENOENT' || /ENOENT|not found|cannot find/i.test(reason);
+        if (isMissing) {
+          _eraserAvail.lastFailedPath = cfgPath;
+          if (!_eraserAvail.missingNotified) {
+            _eraserAvail.missingNotified = true;
+            api.window.showInformationMessage(
+              `Eraser not found at ${cfgPath} — falling back to recycle bin. Set mediaOrganizer.eraserPath in settings to point at your install.`
+            );
+          }
+        } else {
+          api.window.showErrorMessage(`Eraser failed to queue task: ${reason}. Falling back to recycle bin will need a manual retry.`);
+        }
+        return false;
+      }
+      // Successful queue resets dedupe gate so a future install/uninstall
+      // cycle starts fresh.
+      _eraserAvail.lastFailedPath = null;
+      _eraserAvail.missingNotified = false;
+      return true;
+    }).catch((err) => {
+      api.window.showErrorMessage(`Eraser spawn failed: ${err?.message || err}.`);
+      return false;
+    }),
+  };
 
   return true;
 }
+
+// Tracks the most recent Eraser spawn so the caller can detect failure and
+// roll back the pending-commit batch. Reset on every _tryEraseWithEraser call.
+let _lastEraserSpawn = null;
 
 // ── Deferred DB commit for Eraser-backed deletions ──────────────────────────
 //
@@ -19337,6 +19450,28 @@ function _isAnyIdPendingErase(items) {
     if (it.type === 'video' && _pendingEraserCommits.pendingVideoIds.has(Number(it.id))) return true;
   }
   return false;
+}
+
+/**
+ * Drop a batch we just enqueued because the Eraser spawn reported failure.
+ * Removes the in-flight batch from _pendingEraserCommits AND unsets the
+ * pendingPhotoIds/pendingVideoIds entries, so the next Delete attempt on
+ * the same items isn't short-circuited by _isAnyIdPendingErase. Matches the
+ * batch by fileRows identity (same array reference we passed in).
+ */
+function _unwindPendingEraseBatch(api, photoIds, videoIds, fileRows) {
+  const before = _pendingEraserCommits.batches.length;
+  _pendingEraserCommits.batches = _pendingEraserCommits.batches.filter((b) => b.fileRows !== fileRows);
+  if (_pendingEraserCommits.batches.length === before) return; // already committed or expired
+  for (const id of photoIds) _pendingEraserCommits.pendingPhotoIds.delete(id);
+  for (const id of videoIds) _pendingEraserCommits.pendingVideoIds.delete(id);
+  if (_pendingEraserCommits.batches.length === 0 && _pendingEraserCommits.timer) {
+    clearTimeout(_pendingEraserCommits.timer);
+    _pendingEraserCommits.timer = null;
+    _pendingEraserCommits.tickCount = 0;
+  }
+  _refreshErasingDecoration();
+  _persistPendingQueue(api).catch(() => {});
 }
 
 /** Walk the current grid DOM and toggle the .mo-card-erasing decoration. */
@@ -19619,6 +19754,17 @@ async function moPurgeMedia(api, items, opts = {}) {
         // Eraser is still working in the background; reconcile on next
         // startup via moPurgeMissingFiles. Nothing else to do here.
         return { purged: 0, filesTrashed: 0, filesFailed: 0, filesPermanent: 0, filesErased: 0 };
+      }
+      // Hook the late-firing spawn result: if Eraser actually refused the
+      // task, the polling loop in _scheduleEraserCommit would otherwise wait
+      // up to an hour for files-to-disappear that never will, locking the
+      // source IDs in _pendingEraserCommits and silently rejecting every
+      // subsequent Delete on the same items.
+      const spawn = _lastEraserSpawn;
+      if (spawn && spawn.promise) {
+        spawn.promise.then((ok) => {
+          if (!ok) _unwindPendingEraseBatch(api, photoIds, videoIds, fileRows);
+        }).catch(() => { /* unwind handled inline above */ });
       }
       api.window.showInformationMessage(
         `Eraser is securely erasing ${uniquePaths.length} file(s). They'll be removed from your library once erasure completes.`
@@ -19903,7 +20049,7 @@ async function moOpenTimeline(api) {
     if (key === 'Unknown') return 'Unknown date';
     const [y, m, d] = key.split('-');
     const date = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
-    return date.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'long', day: 'numeric' });
+    return date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Chicago' });
   };
 
   for (const [day, items] of buckets) {

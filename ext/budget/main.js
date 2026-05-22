@@ -60,57 +60,32 @@ function onSyncEvent(fn) {
 //   4. Surface clear errors via showErrorMessage AND broadcast on the bus so
 //      the Dashboard banner can render the red state even if the host
 //      suppresses toasts.
-let _syncInFlight = false;
-async function triggerSyncFromUI(api, opts = {}) {
-  if (_syncInFlight) {
-    await api.window?.showInformationMessage?.('A budget sync is already running — please wait for it to finish.');
-    return null;
-  }
-  _syncInFlight = true;
-  try {
-    let counts = null;
-    let errorMessage = null;
+// M80: sync is now skill-driven in chat. The UI "Sync now" button hands off
+// to the assistant by posting a one-shot agent turn that asks the agent to
+// run the budget-sync skill. No more LLM pipeline lives in this process —
+// the agent uses the budget.* chat tools to do everything.
+async function triggerSyncFromUI(api, _opts = {}) {
+  // Best-effort: ask the agent to run the skill via a one-shot cron job.
+  if (api.cron && typeof api.cron.upsertJob === 'function') {
     try {
-      counts = await budgetSync(api);
-    } catch (err) {
-      errorMessage = err instanceof Error ? err.message : String(err);
+      const stamp = Date.now();
+      await api.cron.upsertJob({
+        id: `budget.sync.userTriggered.${stamp}`,
+        description: 'User clicked "Sync now" on the Budget dashboard — run the budget-sync skill.',
+        schedule: { at: new Date(stamp).toISOString() },
+        payload: { agentTurn: 'Run the budget-sync skill now: pull new emails since the last cursor, classify each one, record transactions and balance snapshots, and update the cursor. Surface anything ambiguous for the user to confirm.' },
+        wakeMode: 'now',
+        contextMessages: 0,
+        enabled: true,
+      });
+      await api.window?.showInformationMessage?.('Budget sync handed off to the assistant — check the chat.');
+      return { redirected: true };
+    } catch (e) {
+      console.warn('[Budget] failed to dispatch sync to chat:', e);
     }
-
-    // AI write-back: schedule a one-shot turn so the assistant reports the
-    // result in chat. Best-effort — the sync itself already succeeded/failed
-    // before this point, so failures here only deprive the user of the
-    // assistant message, not the data.
-    if (opts.announceInChat !== false && api.cron && typeof api.cron.upsertJob === 'function') {
-      try {
-        const stamp = Date.now();
-        const reportPrompt = errorMessage
-          ? `A user-initiated budget sync just FAILED with error: ${errorMessage.replace(/[`]/g, "'")}. Briefly tell the user (1 sentence) and suggest checking Settings → MCP Servers if it looks like a Gmail connection issue. Do NOT call any sync tool.`
-          : `A user-initiated budget sync just completed successfully. Results: ${counts.confirmed} new transaction(s) confirmed and categorized, ${counts.review} flagged for review, ${counts.snapshot} balance snapshot(s) recorded, ${counts.skipped} message(s) skipped (already imported or unrelated), ${counts.errors} error(s). Tell the user in a single short sentence (e.g. "Sync complete — 3 new transactions categorized, 1 needs review."). Do NOT call budget.sync — it already ran.`;
-        await api.cron.upsertJob({
-          id: `budget.sync.report.${stamp}`,
-          description: 'One-shot AI write-back announcing the result of a manual budget sync.',
-          schedule: { at: new Date(stamp).toISOString() },
-          payload: { agentTurn: reportPrompt },
-          wakeMode: 'now',
-          contextMessages: 0,
-          enabled: true,
-        });
-      } catch (e) {
-        console.warn('[Budget] failed to schedule sync write-back:', e);
-      }
-    }
-
-    if (errorMessage) {
-      await api.window?.showErrorMessage?.(`Budget sync failed: ${errorMessage}`);
-      return null;
-    }
-    await api.window?.showInformationMessage?.(
-      `Budget sync complete — ${counts.confirmed} new, ${counts.review} for review, ${counts.snapshot} snapshot(s).`,
-    );
-    return counts;
-  } finally {
-    _syncInFlight = false;
   }
+  await api.window?.showInformationMessage?.('Budget sync now runs in chat. Open the assistant and ask: "sync my budget".');
+  return { redirected: true };
 }
 
 // Convenience wrapper around api.database that throws on error
@@ -1625,10 +1600,41 @@ function emptyState(msg) {
 }
 
 // ─── Month / date math ─────────────────────────────────────────────────────
+//
+// Everything user-facing in this extension is anchored to American Central
+// Time (America/Chicago). The user lives in CT; the dashboard "today,"
+// month buckets, transaction-date stamps, and "5m ago" labels must all
+// agree with their wall clock — not with whatever zone the OS reports or
+// whatever zone an email's ISO timestamp happens to be in.
+//
+// Internal storage stays ISO-UTC (received_at, processed_at, etc.); only
+// the rendering / bucketing layer reads through these helpers.
+const BUDGET_TZ = 'America/Chicago';
+
+// Extract {y, m, d} (1-indexed month) for a Date in Central Time.
+function ctParts(d) {
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) d = new Date();
+  const p = new Intl.DateTimeFormat('en-US', {
+    timeZone: BUDGET_TZ,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(d);
+  const get = (k) => Number(p.find((x) => x.type === k).value);
+  return { y: get('year'), m: get('month'), d: get('day') };
+}
+
+// Returns a Date whose LOCAL-zone Y/M/D match Central's wall clock for the
+// given instant (or "now" if omitted). All downstream month-arithmetic in
+// this file uses local-zone Date constructors + getFullYear/getMonth/getDate,
+// so we hand it a Date pre-tuned to Central so that arithmetic produces
+// the months the user expects to see.
+function ctToday(d) {
+  const p = ctParts(d || new Date());
+  return new Date(p.y, p.m - 1, p.d);
+}
 
 function localYmd(d) {
-  if (!(d instanceof Date) || Number.isNaN(d.getTime())) d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const p = ctParts(d);
+  return `${p.y}-${String(p.m).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
 }
 
 function todayYmd() {
@@ -1636,16 +1642,16 @@ function todayYmd() {
 }
 
 // Returns {start, end, label, year, month0} for a YYYY-MM key.
-// Defaults to the current local month when called with no arg.
+// Defaults to the current Central-Time month when called with no arg.
 function monthRange(yearMonth) {
   let y, m0;
   if (yearMonth && /^\d{4}-\d{2}$/.test(yearMonth)) {
     y = Number(yearMonth.slice(0, 4));
     m0 = Number(yearMonth.slice(5, 7)) - 1;
   } else {
-    const d = new Date();
-    y = d.getFullYear();
-    m0 = d.getMonth();
+    const p = ctParts(new Date());
+    y = p.y;
+    m0 = p.m - 1;
   }
   const start = `${y}-${String(m0+1).padStart(2,'0')}-01`;
   const lastDay = new Date(y, m0 + 1, 0).getDate();
@@ -1663,7 +1669,7 @@ function monthShift(yearMonth, delta) {
 // Last N months as an array of {start,end,label,key}, oldest first.
 function monthsBack(n) {
   const out = [];
-  const today = new Date();
+  const today = ctToday();
   for (let i = n - 1; i >= 0; i--) {
     const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
     out.push(monthRange(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`));
@@ -2908,7 +2914,7 @@ function fmtRelativeTime(iso) {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.round(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return new Date(iso).toLocaleDateString('en-US', { timeZone: BUDGET_TZ });
 }
 
 function buildSparkline(values, opts) {
@@ -3456,7 +3462,7 @@ function buildCashFlowChart(api, state, refresh) {
   async function render() {
     chartHost.innerHTML = '';
     const def = ranges.find(r => r.id === state.cashFlowRange) || ranges[1];
-    const today = new Date();
+    const today = ctToday();
     let firstStart;
     let monthsBackN;
     if (def.id === 'ytd') {
@@ -3565,7 +3571,7 @@ function buildCashFlowChart(api, state, refresh) {
         r.setAttribute('fill', 'var(--vscode-charts-green, #22c55e)');
         r.classList.add('budget-cashflow-bar');
         r.addEventListener('click', () => {
-          const today2 = new Date();
+          const today2 = ctToday();
           const d = new Date(today2.getFullYear(), today2.getMonth() - (groupCount - 1 - i), 1);
           const mk = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
           _navState.txFilter = { monthKey: mk, type: 'deposit' };
@@ -3587,7 +3593,7 @@ function buildCashFlowChart(api, state, refresh) {
         r.setAttribute('fill', 'var(--vscode-charts-red, #f87171)');
         r.classList.add('budget-cashflow-bar');
         r.addEventListener('click', () => {
-          const today2 = new Date();
+          const today2 = ctToday();
           const d = new Date(today2.getFullYear(), today2.getMonth() - (groupCount - 1 - i), 1);
           const mk = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
           _navState.txFilter = { monthKey: mk, type: 'spend' };
@@ -6062,181 +6068,22 @@ async function evalBudgetStatus(monthKey) {
   });
 }
 
-// ─── AI pipeline (Stage 1 / 1b / 2 / 3) ────────────────────────────────────
+// ─── M80: bespoke AI pipeline removed ─────────────────────────────────────
 //
-// Every stage is a single LLM call with `temperature:0, format:'json'`.
-// Budget pins a small per-request context so the dedicated cron model cannot
-// inherit a huge global Ollama context and monopolize VRAM. On parse fail,
-// retry ONCE with a stricter follow-up turn before treating as malformed.
-// All prompts are literal templates from docs/Parallx_Milestone_63.md §AI Pipeline.
-
-const BUDGET_LM_NUM_CTX = 4096;
-const BUDGET_LM_MAX_TOKENS_BY_STAGE = Object.freeze({
-  classify: 160,
-  extract: 768,
-  categorize: 120,
-  snapshot: 640,
-  default: 512,
-});
-
-function budgetLmOptions(stage) {
-  return {
-    temperature: 0,
-    format: 'json',
-    numCtx: BUDGET_LM_NUM_CTX,
-    maxTokens: BUDGET_LM_MAX_TOKENS_BY_STAGE[stage] || BUDGET_LM_MAX_TOKENS_BY_STAGE.default,
-  };
-}
-
-function tryParseModelJson(raw) {
-  if (typeof raw !== 'string') return undefined;
-  const trimmed = raw.trim();
-  if (!trimmed) return undefined;
-  try { return JSON.parse(trimmed); } catch { /* fall through */ }
-  const start = trimmed.indexOf('{');
-  const end = trimmed.lastIndexOf('}');
-  if (start >= 0 && end > start) {
-    try { return JSON.parse(trimmed.slice(start, end + 1)); } catch { /* fall through */ }
-  }
-  return undefined;
-}
-
-async function lmRunJson(api, modelId, systemPrompt, userPrompt, stage = 'default') {
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    { role: 'user',   content: userPrompt   },
-  ];
-  const opts = budgetLmOptions(stage);
-  const collect = async (msgs) => {
-    let out = '';
-    for await (const chunk of api.lm.sendChatRequest(modelId, msgs, opts)) {
-      if (chunk && typeof chunk.content === 'string') out += chunk.content;
-      if (chunk && chunk.done) break;
-    }
-    return out;
-  };
-  let raw = await collect(messages);
-  let parsed = tryParseModelJson(raw);
-  if (parsed !== undefined) return parsed;
-  const retryMessages = messages.concat([
-    { role: 'assistant', content: raw },
-    { role: 'user', content: 'Respond ONLY with the JSON object — no prose, no markdown.' },
-  ]);
-  raw = await collect(retryMessages);
-  parsed = tryParseModelJson(raw);
-  return parsed; // may still be undefined — caller treats as malformed
-}
-
-async function aiStage1(api, modelId, msg) {
-  const sys = 'You classify Chase bank emails. Respond with a single JSON object and nothing else.';
-  const usr = `Subject: ${msg.subject || ''}\nSnippet: ${msg.snippet || ''}\nBody: ${truncateBody(msg.body)}\n\n` +
-    `Classify the email as exactly one of these event types:\n` +
-    `  • "purchase"        — a real charge on a debit or credit card (gas, restaurant, subscription) OR a return/credit on a card. Refunds are purchases with a negative amount; do NOT use a separate refund type.\n` +
-    `  • "deposit"         — money INTO a bank account from outside (paycheck, direct deposit, external transfer-IN).\n` +
-    `  • "transfer"        — INTERNAL movement between this user's own accounts. THIS INCLUDES paying a credit card from checking.\n` +
-    `  • "fee"             — bank fee, overdraft, ATM fee, late fee.\n` +
-    `  • "balance_summary" — daily / periodic summary that lists ACCOUNT BALANCES (typical subjects: "Your daily account summary", "Account balance alert").\n` +
-    `  • "other"           — statement-ready notice, marketing, security alerts, password resets, etc. (no money moved).\n\n` +
-    `Account-kind hint should reflect which kind of account the event hits (use the body text — credit-card emails usually mention "Visa", "Mastercard", or a card name; bank emails mention "Total Checking", "Savings").\n\n` +
-    `Return:\n{\n  "event_type":         <one of the strings above>,\n  "account_kind_hint":  <"checking" | "savings" | "credit_card" | "other">\n}`;
-  const r = await lmRunJson(api, modelId, sys, usr, 'classify');
-  if (!r || typeof r !== 'object') return { event_type: 'other', account_kind_hint: 'other', malformed: true };
-  let eventType = typeof r.event_type === 'string' ? r.event_type.trim().toLowerCase() : 'other';
-  // Defensive normalization — if the model emits the old labels we collapse
-  // them to their canonical type. Refunds become purchases (negative amount
-  // tells the story). CC payments are transfers between the user's own accounts.
-  if (eventType === 'refund') eventType = 'purchase';
-  if (eventType === 'cc_payment') eventType = 'transfer';
-  const valid = new Set(['purchase','deposit','transfer','fee','balance_summary','other']);
-  return {
-    event_type: valid.has(eventType) ? eventType : 'other',
-    account_kind_hint: normalizeAccountKind(r.account_kind_hint),
-    // Backwards-compat: callers previously used these booleans.
-    is_transaction: ['purchase','deposit','transfer','fee'].includes(eventType),
-    is_balance:     eventType === 'balance_summary',
-    malformed: false,
-  };
-}
-
-async function aiStage2(api, modelId, msg) {
-  const sys = 'You extract financial transaction data from emails. Respond with a single JSON object and nothing else. Money is reported in dollars; if you see cents, divide by 100. If multiple transactions are mentioned, return them in the "items" array.';
-  const usr = `Subject: ${msg.subject || ''}\nSnippet: ${msg.snippet || ''}\nBody: ${truncateBody(msg.body)}\n\n` +
-    `Return:\n{\n  "items": [\n    {\n      "merchant":          <string or null — the payee for purchases, or "Chase Checking" / "Chase Savings" / "Chase Visa" for transfers/payments/deposits>,\n      "amount":            <number — positive for spend/charge/transfer-out, negative for refund/credit/deposit-in>,\n      "card_last_four":    <string of 4 digits or null — the account or card last four digits this hit>,\n      "account_kind_hint": <"checking" | "savings" | "credit_card" | "other">,\n      "transaction_date":  <"YYYY-MM-DD">,\n      "confidence":        <"high" | "medium" | "low">\n    }\n  ]\n}`;
-  const r = await lmRunJson(api, modelId, sys, usr, 'extract');
-  if (!r || !Array.isArray(r.items)) return { items: [], malformed: !r };
-  const items = [];
-  for (const raw of r.items) {
-    if (!raw || typeof raw !== 'object') continue;
-    const amt = typeof raw.amount === 'number' ? raw.amount : Number(raw.amount);
-    if (!Number.isFinite(amt)) continue;
-    const date = typeof raw.transaction_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.transaction_date)
-      ? raw.transaction_date
-      : isoLocalDate(msg.receivedAt);
-    const confidence = (raw.confidence === 'high' || raw.confidence === 'medium' || raw.confidence === 'low')
-      ? raw.confidence : 'low';
-    items.push({
-      merchant:          typeof raw.merchant === 'string' ? raw.merchant : null,
-      amount:            amt,
-      card_last_four:    typeof raw.card_last_four === 'string' && /^\d{4}$/.test(raw.card_last_four) ? raw.card_last_four : null,
-      account_kind_hint: normalizeAccountKind(raw.account_kind_hint),
-      transaction_date:  date,
-      confidence,
-    });
-  }
-  return { items, malformed: false };
-}
-
-async function aiStage3(api, modelId, tx, categoryNames) {
-  const sys = 'You pick the best-fitting budget category for a transaction. Respond with a single JSON object and nothing else. The category MUST be one of the listed names (case-insensitive); if none fits, pick "Other".';
-  const usr = `Merchant: ${tx.merchant ?? ''}\nAmount:   ${tx.amount} USD\nCategories: ${categoryNames.join(', ')}\n\nReturn:\n{ "category": <one of the listed category names> }`;
-  const r = await lmRunJson(api, modelId, sys, usr, 'categorize');
-  if (!r || typeof r.category !== 'string') return null;
-  return r.category.trim();
-}
-
-async function aiStage1bExtract(api, modelId, msg) {
-  const sys = 'You extract account balance data from a Chase daily account summary email. The email may list MULTIPLE accounts (Total Checking, Savings, Credit Card, etc.). Respond with a single JSON object and nothing else.';
-  const usr = `Subject: ${msg.subject || ''}\nSnippet: ${msg.snippet || ''}\nBody: ${truncateBody(msg.body)}\n\n` +
-    `Return:\n{\n  "snapshot_date": <"YYYY-MM-DD">,\n  "accounts": [\n    {\n      "account_kind":      <"checking" | "savings" | "credit_card" | "other">,\n      "account_last_four": <string of 4 digits or null>,\n      "balance":           <number, in dollars — POSITIVE for cash on hand, NEGATIVE for credit card amount owed>\n    }\n  ]\n}`;
-  const r = await lmRunJson(api, modelId, sys, usr, 'snapshot');
-  if (!r || typeof r !== 'object') return null;
-  const date = typeof r.snapshot_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.snapshot_date)
-    ? r.snapshot_date
-    : isoLocalDate(msg.receivedAt);
-  const out = [];
-  const list = Array.isArray(r.accounts) ? r.accounts : [];
-  for (const raw of list) {
-    if (!raw || typeof raw !== 'object') continue;
-    const bal = typeof raw.balance === 'number' ? raw.balance : Number(raw.balance);
-    if (!Number.isFinite(bal)) continue;
-    out.push({
-      account_kind:      normalizeAccountKind(raw.account_kind),
-      account_last_four: typeof raw.account_last_four === 'string' && /^\d{4}$/.test(raw.account_last_four) ? raw.account_last_four : null,
-      balance:           bal,
-    });
-  }
-  if (out.length === 0) return null;
-  return { snapshot_date: date, accounts: out };
-}
+// The 4-stage classify/extract/categorize/snapshot pipeline that lived here
+// has been replaced by the `budget-sync` skill + thin `budget.*` chat tools
+// (see ext/budget/skills/budget-sync.md and the tool registrations in
+// `activate()`). The AI now drives the sync from chat: it pulls emails,
+// decides what each one is, and calls `budget.recordTransaction` /
+// `budget.recordBalance` / `budget.flagForReview` per email. This file no
+// longer holds prompts, schemas, or per-email LLM calls — those concerns
+// live in the skill and are orchestrated by the model. See docs/Parallx_Milestone_80.md.
 
 // ─── Sync helpers ──────────────────────────────────────────────────────────
 
 function dollarsToCents(n) {
   // Math.round avoids 0.1+0.2 binary drift; we already store as INTEGER.
   return Math.round(Number(n) * 100);
-}
-
-function truncateBody(body) {
-  // The MCP returns up to 8 KB. We further trim and strip soft hyphens / zwnj
-  // before feeding the LLM so prompt budget stays under ~3 KB.
-  if (typeof body !== 'string' || !body) return '';
-  const cleaned = body
-    .replace(/&zwnj;|\u200c/gi, '')
-    .replace(/&nbsp;|\u00a0/gi, ' ')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-  return cleaned.length > 3000 ? cleaned.slice(0, 3000) : cleaned;
 }
 
 function isoLocalDate(isoTs) {
@@ -6270,358 +6117,555 @@ async function getSyncStateValue(key) {
   try { return JSON.parse(row.value); } catch { return undefined; }
 }
 
-async function pickModelId(api) {
-  const cfg = api.workspace.getConfiguration('budget');
-  const preferred = cfg.get('preferredModelId', '') || '';
-  const models = await api.lm.getModels();
-  if (!models || models.length === 0) {
-    throw new Error('No language models available — install/start Ollama first.');
-  }
-  // When the user has named a model (or the manifest default has, which is
-  // the common case), require it to be installed. Silent fallback to the
-  // first available model usually picks the chat model, defeating the
-  // purpose of having a separate small model for cron classification —
-  // budget and chat then fight for the same Ollama slot. Fail loudly with
-  // the install command instead.
-  if (preferred) {
-    const hit = models.find(m => m.id === preferred);
-    if (hit) return hit.id;
-    throw new Error(
-      `Budget is configured to use '${preferred}' but it is not installed. ` +
-      `Run \`ollama pull ${preferred}\` from a terminal, or change ` +
-      `budget.preferredModelId in Settings to a model you have installed.`,
-    );
-  }
-  // Empty preferredModelId is the legacy escape hatch — use Ollama's first
-  // available model. Not recommended because it tends to pick the chat
-  // model and creates the contention the explicit setting avoids.
-  return models[0].id;
+// ─── Sync engine — M80 redirect stub ───────────────────────────────────────
+//
+// In M80 the bespoke 4-stage AI pipeline was deleted in favour of a skill
+// (`budget-sync`) that drives a set of thin `budget.*` chat tools. The dash-
+// board "Sync now" button and any lingering callers of `budgetSync(api)`
+// resolve to a notice that tells the user where the real entry point now
+// lives — the chat. We deliberately do NOT route this back to the chat
+// programmatically; the user asks the assistant in chat ("sync my budget")
+// and watches it work, can pause / intervene / approve.
+function budgetSync(_api) {
+  return Promise.resolve({
+    redirected: true,
+    message:
+      'Budget sync now runs in chat. Open the assistant and say ' +
+      '"sync my budget" — the agent will pull new emails, categorize each one, ' +
+      'and let you intervene on anything ambiguous in real time.',
+  });
 }
 
-// ─── Sync engine ───────────────────────────────────────────────────────────
-
-async function budgetSync(api) {
-  const runId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
-  const startedAt = new Date().toISOString();
-  await syncLog(runId, 'info', 'fetch', 'Sync started');
-
-  // Persist the run timestamp BEFORE we start so a crash mid-sync still leaves
-  // a "we attempted at X" footprint, and the Dashboard "Last sync" card reflects
-  // the actual run — not the email-cursor — so it always advances.
+// M80: seed the bundled budget-sync skill into the workspace at .parallx/skills/.
+// Idempotent — only writes if the skill file is missing. Best-effort.
+async function _seedBudgetSyncSkill(api) {
   try {
-    await db.run(
-      `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_run_at', ?)`,
-      [JSON.stringify(startedAt)],
-    );
-  } catch { /* sync_state table missing on first ever run is fine */ }
+    const fsApi = api.requestCapability && api.requestCapability('fs', { scope: 'workspace-files', modes: ['read', 'write'] });
+    const folders = api.workspace && api.workspace.workspaceFolders;
+    if (!fsApi || !folders || folders.length === 0) return;
 
-  _emitSync({ kind: 'start', runId, startedAt });
-
-  const counts = { confirmed: 0, review: 0, snapshot: 0, skipped: 0, errors: 0 };
-  try {
-    const cfg = api.workspace.getConfiguration('budget');
-    const serverId = cfg.get('gmailMcpServerId', 'gmail');
-    const toolName = `mcp__${serverId}__list_unread`;
-
-    const available = await api.mcp.listTools();
-    if (!available || !available.some(t => t.name === toolName)) {
-      throw new Error(`Gmail MCP tool '${toolName}' is not connected. Open Settings → MCP Servers and connect '${serverId}'.`);
+    const skillRel = '.parallx/skills/budget-sync/SKILL.md';
+    if (typeof fsApi.exists === 'function') {
+      const present = await fsApi.exists(skillRel).catch(() => false);
+      if (present) return;
     }
 
-    const lastSyncedAt = await getSyncStateValue('last_synced_at');
-    const sinceIso = (typeof lastSyncedAt === 'string' && lastSyncedAt)
-      ? lastSyncedAt
-      : isoNDaysAgo(cfg.get('syncStartDays', 90));
+    const nodeFs = require('node:fs/promises');
+    const nodePath = require('node:path');
+    const bundled = nodePath.join(_toolPath, 'skills', 'budget-sync.md');
+    let content;
+    try { content = await nodeFs.readFile(bundled, 'utf8'); }
+    catch (e) { console.warn('[Budget] bundled skill missing:', e && e.message); return; }
 
-    const modelId = await pickModelId(api);
-    await syncLog(runId, 'info', 'model', `Using ${modelId} with numCtx=${BUDGET_LM_NUM_CTX}`);
+    if (typeof fsApi.mkdir === 'function') {
+      try { await fsApi.mkdir('.parallx'); } catch {}
+      try { await fsApi.mkdir('.parallx/skills'); } catch {}
+      try { await fsApi.mkdir('.parallx/skills/budget-sync'); } catch {}
+    }
+    await fsApi.writeFile(skillRel, content);
+  } catch (err) {
+    console.warn('[Budget] skill seed failed:', err && err.message);
+  }
+}
 
-    // Issuer query is configurable so users can plug in additional banks/cards
-    // without editing the extension. Default covers the major US issuers; the
-    // upstream parsers already handle most issuer email formats interchangeably.
-    const defaultGmailQuery = 'from:(chase.com OR americanexpress.com OR capitalone.com OR discover.com OR citibank.com OR wellsfargo.com OR bankofamerica.com OR usbank.com)';
-    const gmailQuery = cfg.get('gmailQuery', defaultGmailQuery);
+// ─── M80 chat-tool helpers (data primitives) ──────────────────────────────
+//
+// These are the dumb data-layer wrappers the budget-sync skill orchestrates.
+// Every helper returns a MCP-shaped `{ content: [{ type:'text', text }] }`
+// result so the chat agent can read it directly. Read tools never write;
+// write tools never read more than they need. The AI does all the
+// reasoning — these just persist its decisions.
 
-    const result = await api.mcp.invokeTool(toolName, {
-      since: sinceIso,
-      max: 100,
-      read_state: 'all',
-      query: gmailQuery,
-      include_body: true,
+function _toolOk(payload) {
+  return { content: [{ type: 'text', text: JSON.stringify(payload) }], isError: false };
+}
+function _toolErr(message) {
+  return { content: [{ type: 'text', text: String(message) }], isError: true };
+}
+
+async function budgetToolGetLastSyncCursor() {
+  const lastSyncedAt = await getSyncStateValue('last_synced_at');
+  const lastRunAt    = await getSyncStateValue('last_run_at');
+  const lastRunStatus = await getSyncStateValue('last_run_status');
+  const lastMessageId = await getSyncStateValue('last_gmail_message_id');
+  const cfg = api_ref?.workspace?.getConfiguration?.('budget');
+  const defaultDays = cfg ? cfg.get('syncStartDays', 90) : 90;
+  const fallback = isoNDaysAgo(defaultDays);
+  return _toolOk({
+    lastSyncedDate: (typeof lastSyncedAt === 'string' && lastSyncedAt) ? lastSyncedAt : fallback,
+    lastMessageId: lastMessageId || null,
+    lastRunAt: lastRunAt || null,
+    lastRunStatus: lastRunStatus || null,
+  });
+}
+
+async function budgetToolListAccounts() {
+  const rows = await db.all(
+    `SELECT id, last_four, kind, display_name, primary_owner, archived
+       FROM accounts WHERE archived=0 ORDER BY kind, last_four`,
+  );
+  return _toolOk({ accounts: rows });
+}
+
+async function budgetToolListCategories() {
+  const rows = await db.all(
+    `SELECT id, name, kind, sort_order, archived
+       FROM categories WHERE archived=0 ORDER BY kind, sort_order, name`,
+  );
+  return _toolOk({ categories: rows });
+}
+
+async function budgetToolListCategorizationRules() {
+  const rows = await db.all(
+    `SELECT r.id, r.pattern, r.match_type, r.category_id, c.name AS category_name,
+            r.priority, r.auto_created, r.active
+       FROM categorization_rules r
+       LEFT JOIN categories c ON c.id = r.category_id
+      WHERE r.active = 1
+      ORDER BY r.priority DESC, r.pattern`,
+  );
+  return _toolOk({ rules: rows });
+}
+
+async function budgetToolListRecurringSeries() {
+  const rows = await db.all(
+    `SELECT id, merchant_pattern, typical_amount_cents, period_days,
+            category_id, sample_count, last_seen, active
+       FROM recurring_series WHERE active=1 ORDER BY last_seen DESC`,
+  ).catch(() => []);
+  return _toolOk({ series: rows });
+}
+
+async function budgetToolQueryTransactions(args = {}) {
+  const where = [];
+  const params = [];
+  if (args.merchantContains) {
+    where.push('LOWER(merchant) LIKE LOWER(?)');
+    params.push('%' + String(args.merchantContains) + '%');
+  }
+  if (args.startDate && isYmd(args.startDate)) {
+    where.push('transaction_date >= ?'); params.push(args.startDate);
+  }
+  if (args.endDate && isYmd(args.endDate)) {
+    where.push('transaction_date <= ?'); params.push(args.endDate);
+  }
+  if (args.categoryId) { where.push('category_id = ?'); params.push(args.categoryId); }
+  if (args.accountId)  { where.push('account_id = ?');  params.push(args.accountId); }
+  if (args.status)     { where.push('status = ?');      params.push(args.status); }
+  if (args.txType)     { where.push('tx_type = ?');     params.push(args.txType); }
+  const limit = Math.max(1, Math.min(500, Number(args.limit) || 100));
+  const sql = `SELECT t.id, t.gmail_message_id, t.merchant, t.amount_cents, t.currency,
+                      t.card_last_four, t.transaction_date, t.category_id,
+                      c.name AS category_name, t.account_id, t.tx_type, t.status,
+                      t.ai_confidence, t.notes
+                 FROM transactions t
+                 LEFT JOIN categories c ON c.id = t.category_id
+                ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+                ORDER BY t.transaction_date DESC, t.id DESC
+                LIMIT ?`;
+  const rows = await db.all(sql, [...params, limit]);
+  return _toolOk({ transactions: rows, count: rows.length });
+}
+
+async function budgetToolGetTransaction(args = {}) {
+  const id = args.id;
+  if (!id || typeof id !== 'string') return _toolErr('id is required');
+  const row = await db.get(
+    `SELECT t.*, c.name AS category_name
+       FROM transactions t
+       LEFT JOIN categories c ON c.id = t.category_id
+      WHERE t.id = ? LIMIT 1`,
+    [id],
+  );
+  if (!row) return _toolErr('Transaction not found: ' + id);
+  return _toolOk({ transaction: row });
+}
+
+async function budgetToolListPendingReview(args = {}) {
+  const limit = Math.max(1, Math.min(200, Number(args.limit) || 50));
+  const includeResolved = Boolean(args.includeResolved);
+  const sql = includeResolved
+    ? `SELECT * FROM pending_review ORDER BY created_at DESC LIMIT ?`
+    : `SELECT * FROM pending_review WHERE resolved_at IS NULL ORDER BY created_at DESC LIMIT ?`;
+  const rows = await db.all(sql, [limit]);
+  return _toolOk({ pending: rows, count: rows.length });
+}
+
+async function budgetToolListTrash(args = {}) {
+  const limit = Math.max(1, Math.min(200, Number(args.limit) || 50));
+  const rows = await db.all(
+    `SELECT id, deleted_at, delete_reason, row_json
+       FROM transactions_trash ORDER BY deleted_at DESC LIMIT ?`,
+    [limit],
+  );
+  return _toolOk({
+    trash: rows.map(r => {
+      let row = null; try { row = JSON.parse(r.row_json); } catch {}
+      return { id: r.id, deletedAt: r.deleted_at, reason: r.delete_reason, row };
+    }),
+    count: rows.length,
+  });
+}
+
+async function budgetToolPullEmails(api, args = {}) {
+  const cfg = api.workspace.getConfiguration('budget');
+  const serverId = cfg.get('gmailMcpServerId', 'gmail');
+  const toolName = `mcp__${serverId}__list_unread`;
+  const available = await api.mcp.listTools();
+  if (!available || !available.some(t => t.name === toolName)) {
+    return _toolErr(`Gmail MCP tool '${toolName}' is not connected. Open Settings → MCP Servers.`);
+  }
+  let sinceIso = typeof args.since === 'string' ? args.since : null;
+  if (!sinceIso) {
+    const cur = await getSyncStateValue('last_synced_at');
+    sinceIso = (typeof cur === 'string' && cur) ? cur : isoNDaysAgo(cfg.get('syncStartDays', 90));
+  } else if (isYmd(sinceIso)) {
+    sinceIso = new Date(sinceIso + 'T00:00:00Z').toISOString();
+  }
+  const maxResults = Math.max(1, Math.min(500, Number(args.maxResults) || 500));
+  const defaultGmailQuery = 'from:(chase.com OR americanexpress.com OR capitalone.com OR discover.com OR citibank.com OR wellsfargo.com OR bankofamerica.com OR usbank.com)';
+  const gmailQuery = cfg.get('gmailQuery', defaultGmailQuery);
+  const result = await api.mcp.invokeTool(toolName, {
+    since: sinceIso,
+    max: maxResults,
+    read_state: 'all',
+    query: gmailQuery,
+    include_body: true,
+  });
+  if (result && result.isError) {
+    return _toolErr('Gmail MCP error: ' + (result.content?.[0]?.text ?? 'unknown'));
+  }
+  const payload = result?.content?.[0]?.text ?? '{"messages":[]}';
+  let parsed; try { parsed = JSON.parse(payload); } catch (e) {
+    return _toolErr('Gmail MCP returned non-JSON: ' + (e instanceof Error ? e.message : String(e)));
+  }
+  const batch = Array.isArray(parsed) ? parsed
+    : (Array.isArray(parsed?.messages) ? parsed.messages : []);
+  // Filter out emails we've already processed so the AI doesn't re-classify them.
+  const out = [];
+  for (const m of batch) {
+    if (!m || !m.id) continue;
+    const already = await db.get(
+      'SELECT 1 AS x FROM email_imports WHERE gmail_message_id = ?', [m.id],
+    );
+    if (already) continue;
+    out.push({
+      id: m.id,
+      subject: m.subject || '',
+      snippet: m.snippet || '',
+      body: typeof m.body === 'string' ? m.body : '',
+      receivedAt: m.receivedAt || null,
+      from: m.from || null,
     });
-    if (result && result.isError) {
-      throw new Error(`Gmail MCP error: ${result.content?.[0]?.text ?? 'unknown'}`);
-    }
-    const payload = result?.content?.[0]?.text ?? '{"messages":[]}';
-    let parsed;
-    try { parsed = JSON.parse(payload); } catch (e) {
-      throw new Error('Gmail MCP returned non-JSON payload: ' + (e instanceof Error ? e.message : String(e)));
-    }
-    // Tool envelope is { messages: [...] }; fall back to bare array for compat.
-    let messages = Array.isArray(parsed)
-      ? parsed
-      : (Array.isArray(parsed?.messages) ? parsed.messages : []);
+  }
+  return _toolOk({
+    emails: out,
+    fetched: batch.length,
+    newCount: out.length,
+    nextPageToken: parsed?.nextPageToken || null,
+    sinceUsed: sinceIso,
+  });
+}
 
-    // Fetched signal — the long part starts here. The dashboard banner can
-    // now switch from "starting…" to "classifying N emails…" so the user
-    // knows what's actually happening during the LLM phase.
-    _emitSync({
-      kind: 'progress',
-      runId,
-      stage: 'fetched',
-      detail: { totalMessages: messages.length },
-    });
+async function budgetToolRecordTransaction(args = {}) {
+  if (!args.emailId || typeof args.emailId !== 'string') return _toolErr('emailId is required');
+  const txType = String(args.txType || 'purchase').toLowerCase();
+  const validTypes = new Set(['purchase','deposit','transfer','fee','refund','other']);
+  if (!validTypes.has(txType)) return _toolErr('txType must be one of: ' + Array.from(validTypes).join(', '));
+  const amountDollars = Number(args.amount);
+  if (!Number.isFinite(amountDollars)) return _toolErr('amount must be a number (dollars)');
+  let cents = dollarsToCents(amountDollars);
+  // Refund: negative purchase. Stored as tx_type='purchase' with negative cents.
+  let storedType = txType;
+  if (txType === 'refund') { storedType = 'purchase'; cents = -Math.abs(cents); }
+  const txDate = isYmd(args.transactionDate) ? args.transactionDate
+    : isoLocalDate(args.receivedAt || new Date().toISOString());
+  const cardLastFour = (typeof args.cardLastFour === 'string' && /^\d{4}$/.test(args.cardLastFour))
+    ? args.cardLastFour : null;
 
-    // Cache active expense category names for Stage 3
-    const categoryRows = await db.all(
-      `SELECT id, name FROM categories WHERE archived=0 AND kind='expense' ORDER BY sort_order`,
-    );
-    const categoryNames = categoryRows.map(r => r.name);
-    const categoryByName = new Map(categoryRows.map(r => [String(r.name).toLowerCase(), r.id]));
+  // Account inference from card_last_four + accountKindHint.
+  let accountId = null;
+  if (cardLastFour) {
+    const kindHint = args.accountKindHint || 'other';
+    const acct = await upsertAccount(cardLastFour, kindHint, null);
+    accountId = acct ? acct.id : null;
+  }
 
-    // Cache active rules — applied BEFORE AI categorization (deterministic > probabilistic).
-    const activeRules = await loadActiveRules();
+  // Category resolution — caller may pass id directly OR name.
+  let categoryId = args.categoryId || null;
+  if (!categoryId && args.categoryName) {
+    const c = await resolveCategoryByName(args.categoryName);
+    if (!c) return _toolErr(`Unknown category: "${args.categoryName}". Call budget.listCategories first.`);
+    categoryId = c.id;
+  }
 
-    let newestSeenIso = sinceIso;
-    let newestSeenId = null;
+  // If caller supplied a ruleId, mark categorization_source as rule.
+  let categorizationSource = null;
+  let matchedRuleId = null;
+  let categorizerModel = null;
+  if (args.ruleId) {
+    matchedRuleId = args.ruleId;
+    categorizationSource = 'rule';
+    categorizerModel = 'rule:' + args.ruleId;
+  } else if (categoryId) {
+    categorizationSource = 'ai';
+    categorizerModel = api_ref?.lm?.getActiveModel?.() || 'ai';
+  }
 
-    let processedCount = 0;
-    const totalMessages = messages.length;
+  // Ensure email_imports row exists so we never reprocess this id.
+  await db.run(
+    `INSERT OR IGNORE INTO email_imports
+       (gmail_message_id, received_at, raw_subject, raw_snippet,
+        is_transaction, is_balance, classifier_model, processed_at, malformed)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
+    [
+      args.emailId, args.receivedAt || new Date().toISOString(),
+      args.emailSubject || null, args.emailSnippet || null,
+      1, 0, api_ref?.lm?.getActiveModel?.() || 'ai',
+      new Date().toISOString(), 0,
+    ],
+  );
 
-    for (const msg of messages) {
-      processedCount++;
-      if (!msg || !msg.id) { counts.skipped++; continue; }
-      const already = await db.get('SELECT 1 AS x FROM email_imports WHERE gmail_message_id=?', [msg.id]);
-      if (already) {
-        counts.skipped++;
-        // Cheap skip — still emit progress so the banner can show "23/30"
-        // moving even when most messages are already imported.
-        _emitSync({
-          kind: 'progress',
-          runId,
-          stage: 'skip',
-          detail: { processed: processedCount, total: totalMessages, ...counts },
-        });
-        continue;
-      }
-      // About to spend an LLM call on this one — let the banner say so.
-      _emitSync({
-        kind: 'progress',
-        runId,
-        stage: 'classify',
-        detail: { processed: processedCount, total: totalMessages, ...counts },
-      });
+  const id = crypto.randomUUID();
+  await db.run(
+    `INSERT INTO transactions (id, gmail_message_id, merchant, amount_cents, card_last_four,
+                               transaction_date, category_id, account_id, tx_type,
+                               ai_confidence, extractor_model, categorizer_model, status,
+                               categorization_source, matched_rule_id, notes)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [
+      id, args.emailId, args.merchant || null, cents, cardLastFour,
+      txDate, categoryId, accountId, storedType,
+      args.confidence || 'high',
+      api_ref?.lm?.getActiveModel?.() || 'ai', categorizerModel,
+      args.status || 'confirmed',
+      categorizationSource, matchedRuleId, args.notes || null,
+    ],
+  );
+  return _toolOk({ id, txType: storedType, amountCents: cents, transactionDate: txDate, categoryId, accountId });
+}
 
-      // Stage 1 — classify
-      let cls;
-      try { cls = await aiStage1(api, modelId, msg); }
-      catch (e) {
-        await syncLog(runId, 'warn', 'stage1', 'Classify error: ' + (e instanceof Error ? e.message : String(e)), msg.id);
-        cls = { is_transaction: false, is_balance: false, malformed: true };
-        counts.errors++;
-      }
+async function budgetToolRecordBalance(args = {}) {
+  if (!args.emailId || typeof args.emailId !== 'string') return _toolErr('emailId is required');
+  const balanceDollars = Number(args.balance);
+  if (!Number.isFinite(balanceDollars)) return _toolErr('balance must be a number (dollars)');
+  const cents = dollarsToCents(balanceDollars);
+  const snapDate = isYmd(args.snapshotDate) ? args.snapshotDate
+    : isoLocalDate(args.receivedAt || new Date().toISOString());
+  const lastFour = (typeof args.accountLastFour === 'string' && /^\d{4}$/.test(args.accountLastFour))
+    ? args.accountLastFour : null;
+  const kind = normalizeAccountKind(args.accountKind);
 
-      await db.run(
-        `INSERT INTO email_imports (gmail_message_id, received_at, raw_subject, raw_snippet, is_transaction, is_balance, classifier_model, processed_at)
-         VALUES (?,?,?,?,?,?,?,?)`,
-        [msg.id, msg.receivedAt || new Date().toISOString(), msg.subject || null, msg.snippet || null,
-         cls.is_transaction ? 1 : 0, cls.is_balance ? 1 : 0, modelId, new Date().toISOString()],
-      );
+  let accountId = null;
+  if (lastFour) {
+    const acct = await upsertAccount(lastFour, kind, null, { trustedKind: true });
+    accountId = acct ? acct.id : null;
+  }
 
-      // Stage 2 — extract transaction(s)
-      if (cls.is_transaction) {
-        let extracted;
-        try { extracted = await aiStage2(api, modelId, msg); }
-        catch (e) {
-          await syncLog(runId, 'warn', 'stage2', 'Extract error: ' + (e instanceof Error ? e.message : String(e)), msg.id);
-          extracted = { items: [], malformed: true };
-        }
-        // Map Stage-1 event_type → tx_type column. Refunds are stored as
-        // purchases with negative amount_cents (single source of truth: sign).
-        // Transfers (including CC payments) are EXCLUDED from spend totals
-        // downstream (filter: tx_type IN ('purchase','fee')).
-        const evt = cls.event_type;
-        const txType = (evt === 'purchase' || evt === 'deposit'
-                     || evt === 'transfer' || evt === 'fee') ? evt : 'other';
+  // Mark the source email so it isn't re-processed.
+  await db.run(
+    `INSERT OR IGNORE INTO email_imports
+       (gmail_message_id, received_at, raw_subject, raw_snippet,
+        is_transaction, is_balance, classifier_model, processed_at, malformed)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
+    [
+      args.emailId, args.receivedAt || new Date().toISOString(),
+      args.emailSubject || null, args.emailSnippet || null,
+      0, 1, api_ref?.lm?.getActiveModel?.() || 'ai',
+      new Date().toISOString(), 0,
+    ],
+  );
 
-        if (extracted.malformed || extracted.items.length === 0) {
-          // Synthetic review row so user can manually triage.
-          await db.run(
-            `INSERT INTO transactions (id, gmail_message_id, amount_cents, transaction_date, ai_confidence, status, extractor_model, tx_type)
-             VALUES (?,?,?,?,?,?,?,?)`,
-            [crypto.randomUUID(), msg.id, 0, isoLocalDate(msg.receivedAt), 'low', 'review', modelId, txType],
-          );
-          counts.review++;
-        } else {
-          for (const item of extracted.items) {
-            // Account inference: prefer item-level kind hint, fall back to message-level.
-            const kindForUpsert = item.account_kind_hint && item.account_kind_hint !== 'other'
-              ? item.account_kind_hint
-              : (cls.account_kind_hint || 'other');
-            let accountId = null;
-            if (item.card_last_four) {
-              const acct = await upsertAccount(item.card_last_four, kindForUpsert, null);
-              accountId = acct ? acct.id : null;
-            }
+  const id = crypto.randomUUID();
+  await db.run(
+    `INSERT INTO balance_snapshots
+       (id, gmail_message_id, account_id, account_last_four, kind, balance_cents, snapshot_date)
+     VALUES (?,?,?,?,?,?,?)`,
+    [id, args.emailId, accountId, lastFour, kind, cents, snapDate],
+  );
+  return _toolOk({ id, accountId, kind, balanceCents: cents, snapshotDate: snapDate });
+}
 
-            // Categorize only purchases (including their refund counterparts,
-            // which are negative-amount purchases). Transfers/deposits/fees do
-            // not consume an expense category.
-            let categoryId = null;
-            let categorizerModel = null;
-            let categorizationSource = null;
-            let matchedRuleId = null;
-            if (txType === 'purchase') {
-              // 1) Deterministic rules first.
-              const matched = await applyRules(item.merchant, activeRules);
-              if (matched) {
-                categoryId = matched.categoryId;
-                categorizerModel = 'rule:' + matched.ruleId;
-                categorizationSource = 'rule';
-                matchedRuleId = matched.ruleId;
-              } else if (item.confidence !== 'low' && categoryNames.length > 0) {
-                // 2) AI fallback.
-                try {
-                  const picked = await aiStage3(api, modelId, item, categoryNames);
-                  if (picked) {
-                    categoryId = categoryByName.get(picked.toLowerCase()) || null;
-                    categorizerModel = modelId;
-                    if (categoryId) categorizationSource = 'ai';
-                  }
-                } catch (e) {
-                  await syncLog(runId, 'warn', 'stage3', 'Categorize error: ' + (e instanceof Error ? e.message : String(e)), msg.id);
-                }
-              }
-            }
-            // ── Stage 1 ↔ Stage 2 cross-check. Catch silent contradictions
-            // before they enter the ledger. The user has zero tolerance for
-            // a paycheck shaped like a purchase or vice versa.
-            //   • deposit but positive amount  → Stage 2 likely got the sign wrong
-            //   • purchase but null merchant   → Stage 2 didn't actually extract anything
-            //   • fee/transfer but null merchant → same
-            const cents = dollarsToCents(item.amount);
-            const crossFail = (
-              (txType === 'deposit'  && cents > 0) ||
-              (txType === 'purchase' && !item.merchant) ||
-              (txType === 'fee'      && !item.merchant) ||
-              (txType === 'transfer' && !item.merchant)
-            );
-            const insertStatus = (item.confidence === 'low' || crossFail) ? 'review' : 'confirmed';
-            const crossNote = crossFail
-              ? '[cross-check: tx_type=' + txType + ', merchant=' + (item.merchant || 'NULL')
-                + ', amount=' + (cents/100).toFixed(2) + ']'
-              : null;
-            await db.run(
-              `INSERT INTO transactions (id, gmail_message_id, merchant, amount_cents, card_last_four, transaction_date,
-                                         category_id, account_id, tx_type, ai_confidence,
-                                         extractor_model, categorizer_model, status,
-                                         categorization_source, matched_rule_id, notes)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-              [
-                crypto.randomUUID(), msg.id, item.merchant, cents,
-                item.card_last_four, item.transaction_date, categoryId, accountId, txType,
-                item.confidence, modelId, categorizerModel,
-                insertStatus,
-                categorizationSource, matchedRuleId, crossNote,
-              ],
-            );
-            if (insertStatus === 'review') counts.review++; else counts.confirmed++;
-          }
-        }
-      }
+async function budgetToolFlagForReview(args = {}) {
+  if (!args.emailId || typeof args.emailId !== 'string') return _toolErr('emailId is required');
+  const reason = String(args.reason || 'ambiguous');
+  // Mark the source email so we don't re-pull it.
+  await db.run(
+    `INSERT OR IGNORE INTO email_imports
+       (gmail_message_id, received_at, raw_subject, raw_snippet,
+        is_transaction, is_balance, classifier_model, processed_at, malformed)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
+    [
+      args.emailId, args.receivedAt || new Date().toISOString(),
+      args.emailSubject || null, args.emailSnippet || null,
+      0, 0, api_ref?.lm?.getActiveModel?.() || 'ai',
+      new Date().toISOString(), 1,
+    ],
+  );
+  const partial = args.partialData ? JSON.stringify(args.partialData) : null;
+  const r = await db.run(
+    `INSERT INTO pending_review (email_id, reason, partial_data_json, created_at)
+     VALUES (?,?,?,?)`,
+    [args.emailId, reason, partial, new Date().toISOString()],
+  );
+  return _toolOk({ id: r?.lastID ?? null, emailId: args.emailId, reason });
+}
 
-      // Stage 1b — balance snapshot (may emit multiple rows from one summary email)
-      if (cls.is_balance) {
-        try {
-          const snap = await aiStage1bExtract(api, modelId, msg);
-          if (snap && Array.isArray(snap.accounts) && snap.accounts.length > 0) {
-            for (const a of snap.accounts) {
-              let accountId = null;
-              if (a.account_last_four) {
-                const acct = await upsertAccount(a.account_last_four, a.account_kind, null, { trustedKind: true });
-                accountId = acct ? acct.id : null;
-              }
-              await db.run(
-                `INSERT INTO balance_snapshots (id, gmail_message_id, account_id, account_last_four, kind, balance_cents, snapshot_date)
-                 VALUES (?,?,?,?,?,?,?)`,
-                [crypto.randomUUID(), msg.id, accountId, a.account_last_four, a.account_kind, dollarsToCents(a.balance), snap.snapshot_date],
-              );
-              counts.snapshot++;
-            }
-          } else {
-            await syncLog(runId, 'warn', 'snapshot', 'Balance parse failed', msg.id);
-            counts.errors++;
-          }
-        } catch (e) {
-          await syncLog(runId, 'warn', 'snapshot', 'Snapshot error: ' + (e instanceof Error ? e.message : String(e)), msg.id);
-          counts.errors++;
-        }
-      }
+async function budgetToolMarkEmailProcessed(args = {}) {
+  if (!args.emailId || typeof args.emailId !== 'string') return _toolErr('emailId is required');
+  await db.run(
+    `INSERT OR IGNORE INTO email_imports
+       (gmail_message_id, received_at, raw_subject, raw_snippet,
+        is_transaction, is_balance, classifier_model, processed_at, malformed)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
+    [
+      args.emailId, args.receivedAt || new Date().toISOString(),
+      args.emailSubject || null, args.emailSnippet || null,
+      0, 0, api_ref?.lm?.getActiveModel?.() || 'ai',
+      new Date().toISOString(), 0,
+    ],
+  );
+  return _toolOk({ emailId: args.emailId, reason: args.reason || 'non-financial' });
+}
 
-      if (msg.receivedAt && msg.receivedAt > newestSeenIso) {
-        newestSeenIso = msg.receivedAt;
-        newestSeenId = msg.id;
-      }
-    }
-
-    // Recurring detection — runs after every sync; cheap (no LLM).
-    try {
-      const detected = await detectRecurring(api);
-      if (detected > 0) await syncLog(runId, 'info', 'recurring', `Detected ${detected} new recurring series`);
-    } catch (e) {
-      await syncLog(runId, 'warn', 'recurring', 'Recurring detection error: ' + (e instanceof Error ? e.message : String(e)));
-    }
-
-    try {
-      const repaired = await reconcileAccountKindsFromSnapshots();
-      if (repaired > 0) await syncLog(runId, 'info', 'accounts', `Corrected ${repaired} account kind(s) from balance snapshots`);
-    } catch (e) {
-      await syncLog(runId, 'warn', 'accounts', 'Account repair error: ' + (e instanceof Error ? e.message : String(e)));
-    }
-
-    // Cursor write — last step (no transaction wrapper needed; three KV upserts).
-    await db.run(
-      `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_gmail_message_id', ?)`,
-      [JSON.stringify(newestSeenId)],
-    );
+async function budgetToolUpdateSyncCursor(args = {}) {
+  const lastSyncedDate = args.lastSyncedDate;
+  const lastMessageId = args.lastMessageId || null;
+  if (lastSyncedDate) {
     await db.run(
       `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_synced_at', ?)`,
-      [JSON.stringify(newestSeenIso)],
+      [JSON.stringify(lastSyncedDate)],
     );
+  }
+  await db.run(
+    `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_gmail_message_id', ?)`,
+    [JSON.stringify(lastMessageId)],
+  );
+  await db.run(
+    `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_run_at', ?)`,
+    [JSON.stringify(new Date().toISOString())],
+  );
+  if (args.counts) {
     await db.run(
       `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_run_status', ?)`,
-      [JSON.stringify({ ok: true, ...counts })],
+      [JSON.stringify({ ok: true, ...args.counts })],
     );
-    await db.run(
-      `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_run_at', ?)`,
-      [JSON.stringify(new Date().toISOString())],
-    );
-    await syncLog(runId, 'info', 'commit', `Sync complete: ${JSON.stringify(counts)}`);
-
-    // Auto-promote stable AI categorizations into deterministic rules.
-    // Best-effort — failures here don't fail the sync.
-    try {
-      const promoted = await promoteAiCategorizationsToRules(runId);
-      if (promoted > 0) counts.rulesLearned = promoted;
-    } catch (e) {
-      await syncLog(runId, 'warn', 'promote', 'Rule promotion failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-
-    _emitSync({ kind: 'complete', runId, counts });
-    return counts;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    await syncLog(runId, 'error', 'fetch', message);
-    try {
-      await db.run(
-        `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_run_status', ?)`,
-        [JSON.stringify({ ok: false, error: message, ...counts })],
-      );
-    } catch { /* best-effort */ }
-    _emitSync({ kind: 'error', runId, message, counts });
-    throw err;
   }
+  return _toolOk({ ok: true, lastSyncedDate: lastSyncedDate || null, lastMessageId });
 }
+
+async function budgetToolUpdateTransaction(args = {}) {
+  if (!args.id || typeof args.id !== 'string') return _toolErr('id is required');
+  const sets = [];
+  const params = [];
+  if (typeof args.merchant === 'string')        { sets.push('merchant=?');         params.push(args.merchant); }
+  if (Number.isFinite(Number(args.amount)))      { sets.push('amount_cents=?');     params.push(dollarsToCents(Number(args.amount))); }
+  if (args.categoryId !== undefined)             { sets.push('category_id=?');      params.push(args.categoryId || null); }
+  if (args.accountId !== undefined)              { sets.push('account_id=?');       params.push(args.accountId  || null); }
+  if (typeof args.transactionDate === 'string' && isYmd(args.transactionDate)) {
+    sets.push('transaction_date=?'); params.push(args.transactionDate);
+  }
+  if (typeof args.status === 'string')           { sets.push('status=?');           params.push(args.status); }
+  if (typeof args.txType === 'string')           { sets.push('tx_type=?');          params.push(args.txType); }
+  if (typeof args.notes === 'string')            { sets.push('notes=?');            params.push(args.notes); }
+  if (sets.length === 0) return _toolErr('no fields to update');
+  sets.push('user_overridden=1');
+  params.push(args.id);
+  await db.run(`UPDATE transactions SET ${sets.join(', ')} WHERE id=?`, params);
+  return _toolOk({ id: args.id, updated: sets.length - 1 });
+}
+
+async function budgetToolDeleteTransaction(args = {}) {
+  if (!args.id || typeof args.id !== 'string') return _toolErr('id is required');
+  const row = await db.get('SELECT * FROM transactions WHERE id=?', [args.id]);
+  if (!row) return _toolErr('Transaction not found: ' + args.id);
+  await db.run(
+    `INSERT OR REPLACE INTO transactions_trash (id, row_json, deleted_at, delete_reason)
+     VALUES (?,?,?,?)`,
+    [args.id, JSON.stringify(row), new Date().toISOString(), args.reason || null],
+  );
+  await db.run(`DELETE FROM transactions WHERE id=?`, [args.id]);
+  return _toolOk({ id: args.id, trashed: true });
+}
+
+async function budgetToolRestoreTransaction(args = {}) {
+  if (!args.id || typeof args.id !== 'string') return _toolErr('id is required');
+  const t = await db.get('SELECT row_json FROM transactions_trash WHERE id=?', [args.id]);
+  if (!t) return _toolErr('Not in trash: ' + args.id);
+  let row; try { row = JSON.parse(t.row_json); } catch { return _toolErr('Trash row malformed'); }
+  const cols = Object.keys(row);
+  await db.run(
+    `INSERT OR REPLACE INTO transactions (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`,
+    cols.map(k => row[k]),
+  );
+  await db.run('DELETE FROM transactions_trash WHERE id=?', [args.id]);
+  return _toolOk({ id: args.id, restored: true });
+}
+
+async function budgetToolResolveReview(args = {}) {
+  if (!args.id) return _toolErr('id is required');
+  await db.run(
+    `UPDATE pending_review SET resolved_at=?, resolution=? WHERE id=?`,
+    [new Date().toISOString(), args.resolution || 'resolved', args.id],
+  );
+  return _toolOk({ id: args.id, resolved: true });
+}
+
+async function budgetToolCreateCategory(args = {}) {
+  const name = typeof args.name === 'string' ? args.name.trim() : '';
+  if (!name) return _toolErr('name is required');
+  const kind = args.kind === 'income' ? 'income' : 'expense';
+  const existing = await resolveCategoryByName(name);
+  if (existing) return _toolOk({ id: existing.id, name: existing.name, alreadyExisted: true });
+  const id = crypto.randomUUID();
+  const maxRow = await db.get(`SELECT COALESCE(MAX(sort_order), 0) AS m FROM categories WHERE kind=?`, [kind]);
+  const sortOrder = (Number(maxRow?.m) || 0) + 1;
+  await db.run(
+    `INSERT INTO categories (id, name, kind, sort_order, archived) VALUES (?,?,?,?,0)`,
+    [id, name, kind, sortOrder],
+  );
+  return _toolOk({ id, name, kind });
+}
+
+async function budgetToolRenameCategory(args = {}) {
+  if (!args.id || typeof args.id !== 'string') return _toolErr('id is required');
+  if (!args.newName || typeof args.newName !== 'string') return _toolErr('newName is required');
+  await db.run(`UPDATE categories SET name=? WHERE id=?`, [args.newName.trim(), args.id]);
+  return _toolOk({ id: args.id, newName: args.newName.trim() });
+}
+
+async function budgetToolDeleteCategory(args = {}) {
+  if (!args.id || typeof args.id !== 'string') return _toolErr('id is required');
+  // Soft-archive — transactions referencing this category still resolve.
+  await db.run(`UPDATE categories SET archived=1 WHERE id=?`, [args.id]);
+  return _toolOk({ id: args.id, archived: true });
+}
+
+async function budgetToolCreateCategorizationRule(args = {}) {
+  if (!args.pattern || typeof args.pattern !== 'string') return _toolErr('pattern is required');
+  if (!args.categoryId || typeof args.categoryId !== 'string') return _toolErr('categoryId is required');
+  const matchType = ['exact','contains','regex'].includes(args.matchType) ? args.matchType : 'contains';
+  const priority = Math.max(0, Math.min(1000, Number(args.priority) || 100));
+  const id = crypto.randomUUID();
+  await db.run(
+    `INSERT INTO categorization_rules
+       (id, pattern, match_type, category_id, priority, auto_created, active, created_at)
+     VALUES (?,?,?,?,?,?,1,?)`,
+    [id, args.pattern, matchType, args.categoryId, priority, args.autoCreated ? 1 : 0, new Date().toISOString()],
+  );
+  return _toolOk({ id, pattern: args.pattern, matchType, categoryId: args.categoryId, priority });
+}
+
+async function budgetToolDeleteCategorizationRule(args = {}) {
+  if (!args.id || typeof args.id !== 'string') return _toolErr('id is required');
+  await db.run(`UPDATE categorization_rules SET active=0 WHERE id=?`, [args.id]);
+  return _toolOk({ id: args.id, deactivated: true });
+}
+
+// Held inside the module so the data-only tool helpers above can access
+// `api.lm.getActiveModel()` without threading `api` through every call site.
+// Set in activate(). Reads tolerate it being null until then.
+let api_ref = null;
 
 // ─── Read-only chat-tool helpers ───────────────────────────────────────────
 
@@ -6637,7 +6681,7 @@ async function resolveCategoryByName(name) {
 }
 
 async function budgetToolSummary(args) {
-  const today = new Date();
+  const today = ctToday();
   const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const from = isYmd(args.from) ? args.from : monthStart;
@@ -6926,6 +6970,7 @@ export async function activate(api, context) {
   if (_activated) return;
   _activated = true;
   _api = api;
+  api_ref = api; // M80: shared by the budget.* chat-tool helpers.
   _toolPath = api.env.toolPath;
 
   if (!api.database) {
@@ -6939,6 +6984,14 @@ export async function activate(api, context) {
     console.error('[Budget] Activation failed — database not ready.');
     return;
   }
+
+  // M80: trash purge — keep soft-deleted transactions 30 days, then drop.
+  try {
+    await db.run(`DELETE FROM transactions_trash WHERE deleted_at < datetime('now','-30 days')`);
+  } catch { /* table may not exist yet on first migration; harmless */ }
+
+  // M80: seed the budget-sync skill into this workspace (idempotent).
+  try { await _seedBudgetSyncSkill(api); } catch { /* best-effort */ }
 
   try {
     await seedDefaultCategoriesIfEmpty();
@@ -6964,6 +7017,7 @@ export async function activate(api, context) {
         if (ok) {
           await seedDefaultCategoriesIfEmpty();
           await reconcileAccountKindsFromSnapshots();
+          try { await _seedBudgetSyncSkill(api); } catch { /* best-effort */ }
         }
       } catch (err) {
         console.error('[Budget] Workspace switch re-init failed:', err);
@@ -7044,70 +7098,31 @@ export async function activate(api, context) {
     }
   }));
 
-  // 1b2) Reclassify untyped — ask the LLM to classify rows whose tx_type is
-  // still NULL after the deterministic subject-based pass. Uses Stage 1 only
-  // (the slot the model is best at — 6 well-defined event categories).
+  // 1b2) Reclassify untyped — dispatch an agent turn that uses the
+  // budget.queryTransactions + budget.updateTransaction tools to fill in
+  // missing tx_type values. Replaces the bespoke Stage-1 LLM loop deleted
+  // in M80; classification now goes through the same skill+tools path as
+  // the main sync flow.
   _disposables.push(api.commands.registerCommand('budget.reclassifyUntyped', async () => {
-    if (!api.lm) {
-      await api.window?.showWarningMessage?.('LLM capability not available.');
+    if (!api.cron || typeof api.cron.upsertJob !== 'function') {
+      await api.window?.showWarningMessage?.('Scheduler capability not available — cannot dispatch agent turn.');
       return;
     }
-    let modelId;
-    try { modelId = await pickModelId(api); } catch { modelId = null; }
-    if (!modelId) {
-      await api.window?.showWarningMessage?.('No LLM model available.');
-      return;
+    try {
+      await api.cron.upsertJob({
+        id: `budget.reclassify.oneshot.${Date.now()}`,
+        title: 'Budget: reclassify untyped transactions',
+        kind: 'agentTurn',
+        runOnce: true,
+        payload: {
+          agentTurn: 'Use budget.queryTransactions with status=confirmed to find transactions whose tx_type is missing (null). For each row, look up the originating email if needed and call budget.updateTransaction to set tx_type to purchase, deposit, transfer, fee, or other. Skip rows where you cannot determine the type with confidence and leave them untyped. Cap the run at 200 rows.',
+        },
+      });
+      await api.window?.showInformationMessage?.('Dispatched: agent will reclassify untyped transactions in the background.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await api.window?.showErrorMessage?.(`Could not dispatch reclassify: ${msg}`);
     }
-
-    const rows = await db.all(`
-      SELECT t.id, e.raw_subject, e.raw_snippet, e.received_at, e.gmail_message_id
-        FROM transactions t
-        JOIN email_imports e ON e.gmail_message_id = t.gmail_message_id
-       WHERE t.tx_type IS NULL
-         AND t.user_overridden = 0
-         AND t.status = 'confirmed'
-       LIMIT 200`);
-
-    if (rows.length === 0) {
-      await api.window?.showInformationMessage?.('No untyped rows to reclassify.');
-      return;
-    }
-
-    let classified = 0, unchanged = 0, errors = 0;
-    for (const r of rows) {
-      try {
-        const cls = await aiStage1(api, modelId, {
-          id: r.gmail_message_id,
-          subject: r.raw_subject || '',
-          snippet: r.raw_snippet || '',
-          body: '',
-        });
-        const evt = cls?.event_type;
-        if (evt === 'purchase' || evt === 'deposit' || evt === 'transfer' || evt === 'fee') {
-          await db.run(
-            `UPDATE transactions SET tx_type = ?, updated_at = ? WHERE id = ? AND user_overridden = 0`,
-            [evt, new Date().toISOString(), r.id],
-          );
-          classified++;
-        } else if (evt === 'balance_summary' || evt === 'other') {
-          // Hide rows the model now recognizes as non-transactions.
-          await db.run(
-            `UPDATE transactions
-                SET status='hidden',
-                    notes = COALESCE(notes,'') || ' [auto-hidden: AI says ' || ? || ']',
-                    updated_at = ?
-              WHERE id = ? AND user_overridden = 0`,
-            [evt, new Date().toISOString(), r.id],
-          );
-          classified++;
-        } else {
-          unchanged++;
-        }
-      } catch { errors++; }
-    }
-    await api.window?.showInformationMessage?.(
-      `Reclassified ${classified} of ${rows.length} untyped row(s). Unchanged: ${unchanged}. Errors: ${errors}.`,
-    );
   }));
 
   // 1c) CSV export — write all confirmed + review-queue transactions to a file.
@@ -7139,20 +7154,14 @@ export async function activate(api, context) {
   if (api.chat && typeof api.chat.registerTool === 'function') {
     try {
       _disposables.push(api.chat.registerTool('budget.sync', {
-        description: 'Pull new transaction emails from Gmail and run them through the Budget AI pipeline. Returns counts of confirmed, review-queue, and snapshot rows inserted.',
+        description: 'Legacy entry point. Budget sync is now driven by the budget-sync skill — just say "sync my budget" in chat and the assistant will orchestrate via the budget.* tools (pullEmails, recordTransaction, recordBalance, updateSyncCursor, etc.). Calling this tool returns a redirect notice; it does NOT run a pipeline.',
         parameters: { type: 'object', properties: {} },
         requiresConfirmation: false,
         handler: async () => {
-          if (!api.mcp || !api.lm) {
-            return { content: 'Budget sync unavailable — api.mcp or api.lm missing.', isError: true };
-          }
-          try {
-            const counts = await budgetSync(api);
-            return { content: JSON.stringify(counts) };
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            return { content: msg, isError: true };
-          }
+          return {
+            content: [{ type: 'text', text: 'Budget sync is now driven by the `budget-sync` skill. Use the budget.* tools (budget.pullEmails, budget.recordTransaction, budget.recordBalance, budget.updateSyncCursor, …) to do it yourself per the skill instructions. Do not look for a single "sync" tool — the skill IS the sync.' }],
+            isError: false,
+          };
         },
       }));
 
@@ -7247,27 +7256,285 @@ export async function activate(api, context) {
           }
         },
       }));
+
+      // ─── M80 budget.* skill tools ────────────────────────────────────
+      // Thin data primitives orchestrated by the budget-sync skill. Each
+      // handler delegates to a `budgetToolXxx` helper that already returns
+      // an MCP-shaped result (`_toolOk` / `_toolErr`).
+
+      // Read tools — no confirmation, no writes.
+      _disposables.push(api.chat.registerTool('budget.getLastSyncCursor', {
+        description: 'Return the email-cursor + last-run timestamp the next sync should start from. Read-only.',
+        parameters: { type: 'object', properties: {} },
+        requiresConfirmation: false,
+        handler: async () => budgetToolGetLastSyncCursor(),
+      }));
+      _disposables.push(api.chat.registerTool('budget.listAccounts', {
+        description: 'List known financial accounts (id, last_four, kind, current balance). Read-only.',
+        parameters: { type: 'object', properties: {} },
+        requiresConfirmation: false,
+        handler: async () => budgetToolListAccounts(),
+      }));
+      _disposables.push(api.chat.registerTool('budget.listCategories', {
+        description: 'List active expense + income categories (id, name, kind, sort_order). Read-only.',
+        parameters: { type: 'object', properties: {} },
+        requiresConfirmation: false,
+        handler: async () => budgetToolListCategories(),
+      }));
+      _disposables.push(api.chat.registerTool('budget.listCategorizationRules', {
+        description: 'List active merchant→category rules. The agent should consult these before asking the user to categorize a transaction. Read-only.',
+        parameters: { type: 'object', properties: {} },
+        requiresConfirmation: false,
+        handler: async () => budgetToolListCategorizationRules(),
+      }));
+      _disposables.push(api.chat.registerTool('budget.listRecurringSeries', {
+        description: 'List detected recurring transaction series (merchant, cadence, last seen). Read-only.',
+        parameters: { type: 'object', properties: {} },
+        requiresConfirmation: false,
+        handler: async () => budgetToolListRecurringSeries(),
+      }));
+      _disposables.push(api.chat.registerTool('budget.queryTransactions', {
+        description: 'Query the transactions ledger with optional filters: from, to (YYYY-MM-DD), merchant substring, category name, status, tx_type, limit.',
+        parameters: {
+          type: 'object',
+          properties: {
+            from:     { type: 'string' },
+            to:       { type: 'string' },
+            merchant: { type: 'string' },
+            category: { type: 'string' },
+            status:   { type: 'string', enum: ['confirmed', 'review', 'all'] },
+            txType:   { type: 'string', enum: ['purchase', 'deposit', 'transfer', 'fee', 'other'] },
+            limit:    { type: 'integer' },
+          },
+        },
+        requiresConfirmation: false,
+        handler: async (args) => budgetToolQueryTransactions(args || {}),
+      }));
+      _disposables.push(api.chat.registerTool('budget.getTransaction', {
+        description: 'Fetch one transaction by id (full row including notes, account, gmail_message_id). Read-only.',
+        parameters: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
+        requiresConfirmation: false,
+        handler: async (args) => budgetToolGetTransaction(args || {}),
+      }));
+      _disposables.push(api.chat.registerTool('budget.listPendingReview', {
+        description: 'List transactions awaiting user review (low-confidence, missing merchant, ambiguous category). Read-only.',
+        parameters: { type: 'object', properties: { limit: { type: 'integer' } } },
+        requiresConfirmation: false,
+        handler: async (args) => budgetToolListPendingReview(args || {}),
+      }));
+      _disposables.push(api.chat.registerTool('budget.listTrash', {
+        description: 'List soft-deleted transactions (recoverable for 30 days). Read-only.',
+        parameters: { type: 'object', properties: { limit: { type: 'integer' } } },
+        requiresConfirmation: false,
+        handler: async (args) => budgetToolListTrash(args || {}),
+      }));
+
+      // Email fetch — read from Gmail MCP. No DB writes.
+      _disposables.push(api.chat.registerTool('budget.pullEmails', {
+        description: 'Fetch unread/recent emails from Gmail (via the Gmail MCP server) that match the issuer query, since the last cursor. Returns an array of {id, subject, snippet, body, receivedAt} skipping any gmail_message_id already in email_imports. The agent classifies each email and calls budget.recordTransaction / budget.recordBalance / budget.markEmailProcessed.',
+        parameters: {
+          type: 'object',
+          properties: {
+            since: { type: 'string', description: 'ISO timestamp override. Defaults to the stored cursor.' },
+            max:   { type: 'integer', description: 'Hard cap on messages returned (default 100, max 500).' },
+          },
+        },
+        requiresConfirmation: false,
+        handler: async (args) => budgetToolPullEmails(api_ref, args || {}),
+      }));
+
+      // Write tools — agent records its decisions.
+      _disposables.push(api.chat.registerTool('budget.recordTransaction', {
+        description: 'Insert a transaction row the agent extracted from an email. Required: gmail_message_id, amount (dollars, positive=outflow), transaction_date (YYYY-MM-DD), tx_type (purchase/deposit/transfer/fee/other). Optional: merchant, card_last_four, category (name), status (confirmed|review), notes.',
+        parameters: {
+          type: 'object',
+          required: ['gmail_message_id', 'amount', 'transaction_date', 'tx_type'],
+          properties: {
+            gmail_message_id: { type: 'string' },
+            merchant:         { type: 'string' },
+            amount:           { type: 'number' },
+            card_last_four:   { type: 'string' },
+            transaction_date: { type: 'string' },
+            tx_type:          { type: 'string', enum: ['purchase', 'deposit', 'transfer', 'fee', 'other'] },
+            category:         { type: 'string' },
+            status:           { type: 'string', enum: ['confirmed', 'review'] },
+            notes:            { type: 'string' },
+          },
+        },
+        requiresConfirmation: false,
+        handler: async (args) => budgetToolRecordTransaction(args || {}),
+      }));
+      _disposables.push(api.chat.registerTool('budget.recordBalance', {
+        description: 'Insert a balance snapshot the agent extracted from a statement email. Required: gmail_message_id, account_last_four, account_kind, balance (dollars), snapshot_date (YYYY-MM-DD).',
+        parameters: {
+          type: 'object',
+          required: ['gmail_message_id', 'account_last_four', 'account_kind', 'balance', 'snapshot_date'],
+          properties: {
+            gmail_message_id:  { type: 'string' },
+            account_last_four: { type: 'string' },
+            account_kind:      { type: 'string' },
+            balance:           { type: 'number' },
+            snapshot_date:     { type: 'string' },
+          },
+        },
+        requiresConfirmation: false,
+        handler: async (args) => budgetToolRecordBalance(args || {}),
+      }));
+      _disposables.push(api.chat.registerTool('budget.flagForReview', {
+        description: 'Mark an email/transaction as needing user review (the agent could not parse it cleanly). Required: gmail_message_id, reason. Optional: tx_type guess.',
+        parameters: {
+          type: 'object',
+          required: ['gmail_message_id', 'reason'],
+          properties: {
+            gmail_message_id: { type: 'string' },
+            reason:           { type: 'string' },
+            tx_type:          { type: 'string' },
+          },
+        },
+        requiresConfirmation: false,
+        handler: async (args) => budgetToolFlagForReview(args || {}),
+      }));
+      _disposables.push(api.chat.registerTool('budget.markEmailProcessed', {
+        description: 'Mark a gmail message as processed (not a transaction, not a balance — but the agent looked at it and is moving on). Prevents it from being re-fetched next sync.',
+        parameters: {
+          type: 'object',
+          required: ['gmail_message_id'],
+          properties: {
+            gmail_message_id: { type: 'string' },
+            subject:          { type: 'string' },
+            snippet:          { type: 'string' },
+            received_at:      { type: 'string' },
+          },
+        },
+        requiresConfirmation: false,
+        handler: async (args) => budgetToolMarkEmailProcessed(args || {}),
+      }));
+      _disposables.push(api.chat.registerTool('budget.updateSyncCursor', {
+        description: 'Advance the sync cursor (last_synced_at + last_run_at) after the agent has processed a batch. The cursor is forward-only; older values are silently ignored.',
+        parameters: {
+          type: 'object',
+          properties: {
+            last_synced_at:        { type: 'string', description: 'ISO timestamp of the newest message processed.' },
+            last_gmail_message_id: { type: 'string' },
+            counts:                { type: 'object', description: 'Optional summary {confirmed, review, snapshot, skipped, errors}.' },
+          },
+        },
+        requiresConfirmation: false,
+        handler: async (args) => budgetToolUpdateSyncCursor(args || {}),
+      }));
+
+      // Edit / delete (write) — soft-deletes to transactions_trash, recoverable.
+      _disposables.push(api.chat.registerTool('budget.updateTransaction', {
+        description: 'Edit fields on a transaction (merchant, amount, category, status, notes, tx_type, transaction_date).',
+        parameters: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id:               { type: 'string' },
+            merchant:         { type: 'string' },
+            amount:           { type: 'number' },
+            category:         { type: 'string' },
+            status:           { type: 'string' },
+            notes:            { type: 'string' },
+            tx_type:          { type: 'string' },
+            transaction_date: { type: 'string' },
+          },
+        },
+        requiresConfirmation: false,
+        handler: async (args) => budgetToolUpdateTransaction(args || {}),
+      }));
+      _disposables.push(api.chat.registerTool('budget.deleteTransaction', {
+        description: 'Soft-delete a transaction (moves it to transactions_trash for 30 days, then auto-purges). Recoverable via budget.restoreTransaction.',
+        parameters: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
+        requiresConfirmation: true,
+        handler: async (args) => budgetToolDeleteTransaction(args || {}),
+      }));
+      _disposables.push(api.chat.registerTool('budget.restoreTransaction', {
+        description: 'Restore a soft-deleted transaction from trash back to the ledger.',
+        parameters: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
+        requiresConfirmation: true,
+        handler: async (args) => budgetToolRestoreTransaction(args || {}),
+      }));
+      _disposables.push(api.chat.registerTool('budget.resolveReview', {
+        description: 'Resolve a pending-review row: mark the original transaction confirmed (optionally with edits) and clear it from pending_review.',
+        parameters: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id:       { type: 'string' },
+            merchant: { type: 'string' },
+            amount:   { type: 'number' },
+            category: { type: 'string' },
+            tx_type:  { type: 'string' },
+            notes:    { type: 'string' },
+          },
+        },
+        requiresConfirmation: false,
+        handler: async (args) => budgetToolResolveReview(args || {}),
+      }));
+
+      // Taxonomy management — categories and categorization rules.
+      _disposables.push(api.chat.registerTool('budget.createCategory', {
+        description: 'Create a new expense or income category.',
+        parameters: {
+          type: 'object',
+          required: ['name'],
+          properties: {
+            name: { type: 'string' },
+            kind: { type: 'string', enum: ['expense', 'income'] },
+            icon: { type: 'string' },
+          },
+        },
+        requiresConfirmation: true,
+        handler: async (args) => budgetToolCreateCategory(args || {}),
+      }));
+      _disposables.push(api.chat.registerTool('budget.renameCategory', {
+        description: 'Rename a category (existing transactions keep their category_id, just the display name changes).',
+        parameters: {
+          type: 'object',
+          required: ['from', 'to'],
+          properties: { from: { type: 'string' }, to: { type: 'string' } },
+        },
+        requiresConfirmation: false,
+        handler: async (args) => budgetToolRenameCategory(args || {}),
+      }));
+      _disposables.push(api.chat.registerTool('budget.deleteCategory', {
+        description: 'Archive a category. Transactions previously assigned to it keep their category_id (the category row remains, archived=1). No data is lost.',
+        parameters: { type: 'object', required: ['name'], properties: { name: { type: 'string' } } },
+        requiresConfirmation: true,
+        handler: async (args) => budgetToolDeleteCategory(args || {}),
+      }));
+      _disposables.push(api.chat.registerTool('budget.createCategorizationRule', {
+        description: 'Create a merchant→category rule. The agent should add a rule whenever it categorizes a recurring/obvious merchant, so the next sync skips the LLM call and the user does not have to confirm again.',
+        parameters: {
+          type: 'object',
+          required: ['merchant', 'category'],
+          properties: {
+            merchant:  { type: 'string' },
+            category:  { type: 'string' },
+            matchType: { type: 'string', enum: ['contains', 'exact', 'regex'] },
+          },
+        },
+        requiresConfirmation: true,
+        handler: async (args) => budgetToolCreateCategorizationRule(args || {}),
+      }));
+      _disposables.push(api.chat.registerTool('budget.deleteCategorizationRule', {
+        description: 'Delete a categorization rule by id.',
+        parameters: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
+        requiresConfirmation: true,
+        handler: async (args) => budgetToolDeleteCategorizationRule(args || {}),
+      }));
     } catch (e) {
       console.warn('[Budget] chat tool registration failed:', e);
     }
   }
 
-  // 3) Cron job — idempotent upsert; preserves user-edited fields on rerun.
-  if (api.cron && typeof api.cron.upsertJob === 'function') {
-    try {
-      const intervalMin = api.workspace.getConfiguration('budget').get('syncIntervalMinutes', 30);
-      await api.cron.upsertJob({
-        id: 'budget.sync.scheduled',
-        description: 'Pulls new transaction emails and runs them through the Budget AI pipeline.',
-        schedule: { every: `${intervalMin}m` },
-        payload: { agentTurn: 'Run a budget sync now using the budget.sync tool. Report the count of confirmed, review-queue, and snapshot items in two short sentences.' },
-        wakeMode: 'next-heartbeat',
-        contextMessages: 0,
-        enabled: true,
-      });
-    } catch (e) {
-      console.warn('[Budget] cron upsert failed:', e);
-    }
+  // 3) Background scheduler — REMOVED in M80. Sync is now skill-driven and
+  //    must be user-initiated (the agent prompts for confirmation on writes).
+  //    We still clean up the legacy `budget.sync.scheduled` cron job from
+  //    earlier versions so nothing keeps firing in the background.
+  if (api.cron && typeof api.cron.removeJob === 'function') {
+    try { await api.cron.removeJob('budget.sync.scheduled'); } catch { /* ignore — job may not exist */ }
   }
 
   // 4) M66 link contract — makes `parallx://budget/...` clickable everywhere.
@@ -7407,6 +7674,4 @@ export const __testables = {
   inferCadence,
   parseCsvLine: _parseCsvLine,
   ruleMatchesMerchant,
-  budgetLmOptions,
-  tryParseModelJson,
 };

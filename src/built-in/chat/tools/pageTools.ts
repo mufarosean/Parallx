@@ -48,11 +48,12 @@ export function createFindPagesTool(db: IBuiltInToolDatabase | undefined): IChat
     name: 'canvas_find_pages',
     displaySummary: 'Find or list canvas pages.',
     description:
-      'Find pages in the canvas page DB by text query, property filters, or both. ' +
-      'No args lists recent pages. filter ops: equals, not_equals, contains, is_empty, ' +
-      'is_not_empty, greater_than, less_than. NOTE: this searches CANVAS PAGES only, not ' +
-      'files on disk — use `search_files` or `grep_search` to find files in the workspace ' +
-      'filesystem.',
+      'Discovers canvas pages by full-text query, property filter, or both. No args lists recent pages. ' +
+      'Use when you do NOT already know which page to read — e.g. "pages tagged X", "pages mentioning Y", ' +
+      '"all status=open pages". ' +
+      'If you already know the page title or UUID, call `canvas_read_page` directly — skip this tool. ' +
+      'For files on disk use `search_files` (name) or `grep_search` (contents). ' +
+      'Filter ops: equals, not_equals, contains, is_empty, is_not_empty, greater_than, less_than.',
     parameters: {
       type: 'object',
       properties: {
@@ -226,15 +227,15 @@ export function createReadPageTool(
     name: 'canvas_read_page',
     displaySummary: 'Read a canvas page by id, title, or "current".',
     description:
-      'Read the full content of a CANVAS PAGE (page DB, not the filesystem). `pageId` ' +
-      'accepts a UUID, a page title (case-insensitive match), or the literal "current" to ' +
-      'read the page the user has open in the editor. NOTE: this reads canvas pages only — ' +
-      'use `read_file` for files on disk.',
+      'Reads the full content of a canvas page (the workspace page database, not a file on disk). ' +
+      '`pageId` accepts a page UUID, a case-insensitive page title, or the literal "current" for the page open in the editor. ' +
+      'Use this directly when you know the page title — do NOT call `canvas_find_pages` first to resolve a known title. ' +
+      'For files on disk use `read_file`.',
     parameters: {
       type: 'object',
       required: ['pageId'],
       properties: {
-        pageId: { type: 'string', description: 'Page UUID, page title (case-insensitive, falls back to partial match), or the literal "current" for the page open in the editor. canvas_read_page is the ONLY canvas tool that accepts a title — every other canvas_* tool needs a UUID. Resolve titles to UUIDs here first, then use the returned id.' },
+        pageId: { type: 'string', description: 'Page UUID, page title (case-insensitive exact match, falls back to partial match), or "current" for the editor page. Pass the title directly — this tool resolves it. Other canvas_* tools require a UUID.' },
       },
     },
     requiresConfirmation: false,

@@ -1,10 +1,11 @@
 ---
 name: scoped-extraction
 description: >
-  Extract specific information from all files in a scope. Reads every
-  file in the target folder or workspace, extracts the requested facts
-  or values, and aggregates them into a structured result. Ensures
-  exhaustive coverage across all files.
+  Extract one specific fact, field, or value from every file in a scope
+  (folder or workspace) and aggregate the results into a structured table.
+  Use when the user asks "what is X in each of these files", "pull all the
+  Y values from folder Z". Not for summarizing files (use exhaustive-summary)
+  or for comparing a small set of named documents (use document-comparison).
 version: 1.0.0
 author: parallx
 kind: workflow

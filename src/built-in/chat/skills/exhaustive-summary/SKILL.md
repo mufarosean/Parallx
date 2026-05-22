@@ -1,9 +1,12 @@
 ---
 name: exhaustive-summary
 description: >
-  Summarize every file in a folder or the entire workspace. Reads each
-  file individually and produces a per-file summary, then combines them
-  into a comprehensive overview. Ensures no file is omitted.
+  Summarize every file in a folder or the whole workspace exhaustively —
+  reads each file individually, writes a per-file summary, then combines
+  them. Use when the user asks for a comprehensive overview that must not
+  skip files ("summarize everything in X", "what does each file in Y do").
+  Not for a structural-only overview (use folder-overview) or for comparing
+  documents (use document-comparison).
 version: 1.0.0
 author: parallx
 kind: workflow
