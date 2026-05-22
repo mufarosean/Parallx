@@ -21456,6 +21456,23 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.cancelScan', () => cancelScan())
   );
 
+  // Register manual rescan command — wired to the "Refresh" item in the
+  // sidebar's three-dot menu. Re-runs the delta scan against every known
+  // scan root (same code path as the relaunch-time scan) so users can
+  // force pickup of files that fs.watch missed under burst load without
+  // closing/reopening the tab.
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.rescan', async () => {
+      try { api.window.showInformationMessage('Media rescan started…'); } catch { /* ignore */ }
+      try {
+        await runDeltaScan(api);
+      } catch (err) {
+        console.warn('[MediaOrganizer] Manual rescan failed:', err);
+        try { api.window.showErrorMessage('Media rescan failed: ' + (err && err.message ? err.message : String(err))); } catch { /* ignore */ }
+      }
+    })
+  );
+
   // Register thumbnail generation command
   // Adapted from stash: internal/manager/task_generate.go — Generate task
   _commandDisposables.push(

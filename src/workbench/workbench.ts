@@ -1826,12 +1826,34 @@ export class Workbench extends Layout {
       moreBtn.textContent = '⋯';
       this._register(addDisposableListener(moreBtn, 'click', (_e) => {
         const rect = moreBtn.getBoundingClientRect();
-        ContextMenu.show({
+        const menu = ContextMenu.show({
           items: [
             { id: 'collapse-all', label: 'Collapse All', group: '1_actions', keybinding: this._keybindingHint('collapse-all') },
             { id: 'refresh', label: 'Refresh', group: '1_actions', keybinding: this._keybindingHint('refresh') },
           ],
           anchor: { x: rect.left, y: rect.bottom + 2 },
+        });
+        menu.onDidSelect(({ item }) => {
+          if (item.id !== 'refresh') return;
+          // Route Refresh to a per-container command based on which
+          // sidebar is currently active. Each owner registers its own
+          // command and decides what "refresh" means (e.g. media
+          // organizer = re-walk scan roots + reconcile DB).
+          const activeId = this._contributionHandler.activeSidebarContainerId;
+          const cmdService = this._services.get(ICommandService) as CommandService;
+          let commandId: string | undefined;
+          switch (activeId) {
+            case 'media-organizer-container':
+              commandId = 'media-organizer.rescan';
+              break;
+            default:
+              commandId = undefined;
+          }
+          if (commandId) {
+            cmdService.executeCommand(commandId).catch(err => {
+              console.error(`[Workbench] Sidebar refresh command "${commandId}" failed:`, err);
+            });
+          }
         });
       }));
       actionsContainer.appendChild(moreBtn);
