@@ -90,50 +90,65 @@ M81 delivers four slices, recommended by WORKBENCH_INTERACTION_MODEL_REVIEW.md �
 
 ### Slice A: Unified Primitives and Event Routing (SelectionService + Resource + Workspace canonical ownership)
 
+> **2026-05-23 rescope:** Reality audit ([M81_SLICE_A_AUDIT.md](research/M81_SLICE_A_AUDIT.md), commit `2a9daf6`) verified the original scope against the actual source. Three of four claimed pain points DO NOT EXIST in current code:
+> - Selection handlers are already registry-based (`SelectionActionDispatcher.registerHandler(handler) -> IDisposable`); built-ins register at activation, extensions can register custom handlers at any time. No hard-coded routing.
+> - `Workspace` already canonically owns folders+state with `onDidChangeFolders` and `onDidChangeState` events. `RecentWorkspaces.add(workspace)` is snapshot-only — it never mutates back. No dual update exists.
+> - A central context-key registry already exists as `WorkbenchContextManager` ([src/context/workbenchContext.ts](src/context/workbenchContext.ts)), exporting ~26 `CTX_*` constants created in its constructor and reused across the workbench.
+>
+> The audit's recommendation is reflected below: Slice A is reduced to the one genuinely missing primitive (`SelectionService` event broadcast + minimal migration of the two existing built-in handlers to subscribe to it) plus formalisation work on `WorkbenchContextManager`. `ResourceRegistry` is deferred to a later slice pending a concrete consumer (no current call-site needs URI→Resource resolution beyond what `editorResolverService` and `linkContractRegistry` already provide). The compatibility shim around `SelectionActionDispatcher` is retained so all current `registerHandler` callers keep working unchanged.
+
 **Workflow hop it serves:**
 [PARALLX_MANIFEST.md §5](docs/PARALLX_MANIFEST.md#5-core-product-workflow), specifically:
 > "User browses files in Explorer → opens documents in editors → asks AI chat about those documents."
 
-**Current pain point (Atlas §4.1, §4.2):**
-- Selection → Chat bridge: hard-coded `AddSelectionToChatHandler` at [src/services/selectionActionHandlers.ts:L35-L70](src/services/selectionActionHandlers.ts). Requires code change to add new observer.
-- Selection → Canvas bridge: hard-coded `SendSelectionToCanvasHandler` at [src/services/selectionActionHandlers.ts:L70-L120](src/services/selectionActionHandlers.ts). Same issue.
-- Workspace canonical ownership split: `RecentWorkspaces` (L20–80) and `Workspace` (L160–210) both update metadata; eventual consistency only; can cause stale reads.
+**Current pain point (audit-corrected against actual code):**
+- Selection dispatch is **action-shaped** (handler invoked for a named action: `addSelectionToChat`, `sendSelectionToCanvas`) but the redesign wants it **state-shaped** (current selection broadcast as an event other surfaces and context keys can subscribe to). There is no `selectionExists` context key today; there is no way for an extension contribution's `when:` clause to react to the user's current selection because there is no central place that emits "selection changed". Slice B (Command + Tool registry with `when:` clauses) needs this event channel to evaluate menu/keybinding availability.
+- `WorkbenchContextManager` works but its key set is hardcoded in its constructor. Slice B needs extensions to be able to read context keys without coupling to that file. The fix is to expose the existing service through a stable surface and document it as the canonical registry — no new service, no duplication.
 
 **Interaction-model section that defines the target:**
 [WORKBENCH_INTERACTION_MODEL.md §2 Unified Primitives](docs/architecture/WORKBENCH_INTERACTION_MODEL.md#2-unified-primitives):
-- §2.1 Workspace (canonical owner of folder set, durable state, events)
-- §2.2 Resource (stable identity for any content: file, Canvas page, chat session)
-- §2.5 Context (centralized context keys; enables conditional UI)
-- §2.6 Selection (part of Context; emitted as events)
-- §4 Cross-Tool Bridge Replacement (Bridges 1, 2, 6 replaced in Slice A)
-- §5 Duplicate-Contract Resolution (Workspace canonical owner resolves dual updates)
+- §2.5 Context (centralized context keys; enables conditional UI) — **already implemented as `WorkbenchContextManager`; formalise.**
+- §2.6 Selection (part of Context; emitted as events) — **add event broadcast on top of existing action dispatcher.**
 
-**Atlas anchor (what exists today):**
-- SelectionActionDispatcher: [src/services/selectionActionDispatcher.ts:L16-L60](src/services/selectionActionDispatcher.ts)
-- Handlers: [src/services/selectionActionHandlers.ts:L1-L200](src/services/selectionActionHandlers.ts)
-- Workspace model: [src/workspace/workspace.ts:L38-L100](src/workspace/workspace.ts)
-- RecentWorkspaces: [src/workspace/recentWorkspaces.ts:L20-L80](src/workspace/recentWorkspaces.ts)
-- Context keys (scattered): [src/context/contextKey.ts](src/context/contextKey.ts), [src/context/workbenchContext.ts](src/context/workbenchContext.ts)
+§2.1 (Workspace canonical ownership), §2.2 (Resource registry), §4 (bridge replacement), and §5 (duplicate-contract resolution) are addressed elsewhere:
+- §2.1 is **already shipped** in `src/workspace/workspace.ts` (M53 D4.6 enforces single-folder canonical ownership; `onDidChangeFolders`, `onDidChangeState`, `onDidRename` events fire).
+- §2.2 is **deferred** — no current consumer; revisit when Slice C (Artifact, Provenance) needs cross-surface URI resolution.
+- §4/§5 — the only live duplicate the audit found was the false-positive `RecentWorkspaces` claim. Real bridge replacement (`SelectionActionDispatcher` → `SelectionService` event) is the next-slice work, not Slice A.
 
-**Files touched** (exhaustive list — every file the Surgical Executor may modify in this slice):
-- `src/services/selectionService.ts` (NEW: SelectionService replacement)
-- `src/services/selectionActionDispatcher.ts` (MODIFY: shim added for backward compatibility until M83)
-- `src/services/selectionActionHandlers.ts` (MODIFY: route old handlers to SelectionService)
-- `src/services/resourceRegistry.ts` (NEW: centralized Resource resolver)
-- `src/workbench/workbench.ts` (MODIFY: inject SelectionService into parts)
-- `src/workspace/workspace.ts` (MODIFY: add `onDidChangeState` event, `setState`/`getState` methods; clarify canonical ownership)
-- `src/workspace/recentWorkspaces.ts` (MODIFY: consume `Workspace.onDidChangeFolders` instead of dual update)
-- `src/context/contextKeyRegistry.ts` (NEW: centralized context key definitions)
-- `src/parts/editorPart.ts` (MODIFY: emit EditorService.onDidChangeOpenEditors)
-- `src/parts/explorerPart.ts` (MODIFY: use SelectionService.onDidChangeSelection)
-- `src/built-in/chat/input/chatContextAttachments.ts` (MODIFY: subscribe to SelectionService.onDidChangeSelection)
-- `src/built-in/canvas/canvasSidebar.ts` (MODIFY: subscribe to SelectionService.onDidChangeSelection)
-- `src/api/bridges/selectionBridge.ts` (NEW: extension API bridge for SelectionService)
-- `src/api/workspaceApi.ts` (MODIFY: add new workspace state methods)
-- `tests/unit/selectionEventRouting.test.ts` (NEW: characterization test)
-- `tests/unit/workspaceFolderCanonicalOwnership.test.ts` (NEW: characterization test)
-- `tests/unit/contextKeyDiscovery.test.ts` (NEW: characterization test)
-- `src/services/index.ts` (MODIFY: register SelectionService, ResourceRegistry, ContextKeyRegistry)
+**Atlas anchor (what exists today, verified by audit):**
+- `SelectionActionDispatcher` (registry-based, `registerHandler -> IDisposable`): [src/services/selectionActionDispatcher.ts](src/services/selectionActionDispatcher.ts)
+- Built-in handler registration: [src/built-in/chat/main.ts:L2571](src/built-in/chat/main.ts) (`context.subscriptions.push(_selectionDispatcher.registerHandler(handler))`)
+- Handlers: [src/services/selectionActionHandlers.ts](src/services/selectionActionHandlers.ts) (`AddSelectionToChatHandler`, `SendSelectionToCanvasHandler`, `createBuiltInActionHandlers()` factory)
+- `Workspace` (canonical owner, single-folder enforced): [src/workspace/workspace.ts:L35-L48](src/workspace/workspace.ts)
+- `RecentWorkspaces` (snapshot-only — `add(workspace)` takes one snapshot, never re-reads): [src/workspace/recentWorkspaces.ts:L35-L70](src/workspace/recentWorkspaces.ts)
+- `WorkbenchContextManager` (central context-key holder, ~26 `CTX_*` constants): [src/context/workbenchContext.ts](src/context/workbenchContext.ts)
+- `ContextKeyService` (the underlying registry primitive): [src/context/contextKey.ts](src/context/contextKey.ts)
+
+**Files touched** (rescoped — exhaustive list, every file the Surgical Executor may modify in this slice):
+- `src/services/selectionService.ts` *(NEW)* — `SelectionService` with `setSelection(surfaceId, selection)` / `getSelection(surfaceId?)` / `onDidChangeSelection` event. Owns the current selection state per surface and broadcasts changes.
+- `src/services/selectionActionDispatcher.ts` *(MODIFY — additive only)* — accept an optional `SelectionService` in the constructor; when an action fires, also publish through the selection service so existing handler-registration callers keep working unchanged. No removals.
+- `src/context/workbenchContext.ts` *(MODIFY)* — add a `selectionExists` context key, wired to `SelectionService.onDidChangeSelection`. Re-export `WorkbenchContextManager` as the canonical `IContextKeyRegistry` for Slice B consumers (interface-only, no new file).
+- `src/workbench/workbench.ts` *(MODIFY)* — instantiate `SelectionService` in Phase 1; pass it to `SelectionActionDispatcher`; wire it to `WorkbenchContextManager` for the new context key.
+- `src/services/serviceCollection.ts` *or `src/workbench/workbenchServices.ts` *(MODIFY)* — register `SelectionService` in the DI container so future surfaces can `services.get(ISelectionService)`. Pick whichever file currently registers `SelectionActionDispatcher`.
+- `tests/unit/selectionService.test.ts` *(NEW — characterization test)* — verify event emission, per-surface query, multi-subscriber correctness, disposal.
+- `tests/unit/selectionContextKey.test.ts` *(NEW — characterization test)* — verify `selectionExists` flips on/off via the service.
+
+**Deferred to later slices (with explicit audit reasons):**
+- `src/services/resourceRegistry.ts` — **DEFERRED to Slice C.** No current consumer; `editorResolverService` and `linkContractRegistry` cover existing URI→content resolution. Build when Slice C's Artifact/Provenance primitives need it.
+- `src/api/bridges/selectionBridge.ts` — **DEFERRED to Slice B.** Extension API surface for selection events ships with the extension contribution model (when-clauses, menu contributions) so the bridge is defined alongside its consumers.
+- `src/workspace/workspace.ts` — **NO CHANGE.** Audit confirmed canonical ownership and event surface already exist.
+- `src/workspace/recentWorkspaces.ts` — **NO CHANGE.** Audit confirmed snapshot-only pattern; no dual update to fix.
+- `src/parts/editorPart.ts`, `src/parts/explorerPart.ts` — **NO CHANGE in Slice A.** Migration to `SelectionService.onDidChangeSelection` (away from direct dispatcher calls) happens when there is a real menu/keybinding contribution that needs it.
+- `src/built-in/chat/input/chatContextAttachments.ts`, `src/built-in/canvas/canvasSidebar.ts` — **NO CHANGE in Slice A.** They continue to register through `SelectionActionDispatcher`; the shim publishes to both channels so behavior is identical.
+
+**Files NOT touched** (anti-list — high-risk neighbors that must remain untouched):
+- `src/built-in/canvas/canvasDataService.ts` (Canvas persistence ownership unchanged)
+- `src/built-in/canvas/canvasEditorProvider.ts` (Canvas editing workflow unchanged)
+- `src/built-in/chat/data/chatDataService.ts` (Chat persistence ownership unchanged)
+- `src/built-in/explorer/explorerService.ts` (Explorer tree behavior unchanged; only selection dispatch changes)
+- `electron/database.cjs` (Database schema, WAL pragmas unchanged)
+- `electron/main.cjs` (IPC handler signatures unchanged; only content changes)
+- `ext/` (Extension implementations; only manifest parsing for `when` clauses added in Slice B)
 
 **Files NOT touched** (anti-list — high-risk neighbors that must remain untouched):
 - `src/built-in/canvas/canvasDataService.ts` (Canvas persistence ownership unchanged)
