@@ -1,8 +1,9 @@
 ---
-Status: Planning — pending user acceptance
+Status: Active — accepted 2026-05-23 by user; Surgical Executor authorized for Slice A
 Milestone: M81 / SR-1: Workbench Unification, Slice 1 (Primitives & Event Routing)
 Branch: systems-redesign-planning
 Created: 2026-05-23
+Activated: 2026-05-23
 Supersedes: None explicitly; carries forward planning from M66, M69, M71, M72, M76, M80
 Carries forward: See §3
 Manifest: docs/PARALLX_MANIFEST.md (§5, §11, §12, §17, §20, §22)
