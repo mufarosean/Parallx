@@ -24,6 +24,7 @@ import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockRegistry.js';
 import { PropertyDataService } from './properties/propertyDataService.js';
+import { activateCanvasLinks } from './canvasLinks.js';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -297,6 +298,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // 5. Register command handlers
   _registerCommands(api, context);
+
+  // 5c. Register the `canvas` link segment so `parallx://canvas/page/<pageId>`
+  //     URIs resolve to an open-canvas-editor call (M81 Slice D).
+  activateCanvasLinks(context, api);
 
   // 5a. When a page-linked block (pageBlock, databaseInline) is deleted from
   //     editor content, run the normal page deletion process (same as sidebar).
