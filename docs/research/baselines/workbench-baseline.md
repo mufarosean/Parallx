@@ -62,6 +62,9 @@ Searched repo for existing tests, instrumentation, and measurement sources.
 | H1 | Launch → first window (p50/p95) | 967.5 / 1127.4 ms | [tests/fitness/startup.fitness.ts](tests/fitness/startup.fitness.ts) (M84 Slice A; commit 6499cfbf) | High | 4 cold launches (5 runs, first discarded). Tolerance band p95 × 1.25 = 1409.3 ms. Reported in `data/fitness-reports/<ISO>.json` |
 | H1 | Launch → workbench-ready (titlebar selector visible) (p50/p95) | 1829.1 / 2459.4 ms | [tests/fitness/startup.fitness.ts](tests/fitness/startup.fitness.ts) (M84 Slice A) | High | Anchored on `[data-part-id="workbench.parts.titlebar"]`. Tolerance p95 × 1.25 = 3074.3 ms |
 | H1 | Launch → first editor pane visible (p50/p95) | 1887.2 / 2512.9 ms | [tests/fitness/startup.fitness.ts](tests/fitness/startup.fitness.ts) (M84 Slice A) | High | Anchored on `[data-part-id="workbench.parts.editor"]`. Tolerance p95 × 1.25 = 3141.1 ms. Workspace = empty `parallx-fitness-*` temp dir |
+| H11 | IPC total calls per cold-start workflow (p50/p95) | 278 / 278 | [tests/fitness/ipc.fitness.ts](tests/fitness/ipc.fitness.ts) (M84 Slice B) | High | 4 cold launches (5 runs, first discarded). Counter attaches via `electronApp.evaluate()` after launch; boot IPC excluded by design. Settle = 3s post workbench-ready. Tolerance p95 × 1.25 = 347.5 |
+| H11 | IPC cumulative duration per cold-start workflow (p50/p95) | 667 / 689 ms | [tests/fitness/ipc.fitness.ts](tests/fitness/ipc.fitness.ts) (M84 Slice B) | High | Sum of all handler durations across all channels. Tolerance p95 × 1.25 = 861.3 ms |
+| H11 | Distinct IPC channels per cold-start workflow (p50/p95) | 29 / 29 | [tests/fitness/ipc.fitness.ts](tests/fitness/ipc.fitness.ts) (M84 Slice B) | High | Top consumers by total time: fs:readdir (54×, 259ms total), docling:start (1×, 169ms), database:all (55×, 49ms), fs:readFile (18×, 41ms), tools:scan-directory (3×, 29ms). Tolerance p95 × 1.25 = 36.3 |
 
 ---
 
