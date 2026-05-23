@@ -195,6 +195,50 @@ export interface IManifestContributions {
    * `activate()` via `api.editors.registerEditorProvider(typeId, ...)`.
    */
   readonly editors?: readonly IManifestEditorDescriptor[];
+  /**
+   * Chat participants contributed by this tool (M82 Slice B).
+   * Declarative metadata only — the extension wires the real handler in
+   * `activate()` via `api.chat.registerParticipant(definition)`. Shape
+   * matches VS Code `contributes.chatParticipants` verbatim
+   * (`id` / `name` / `fullName` / `description` / `isSticky` / `commands[]`).
+   * `isSticky` and `commands[]` are accepted for parity but not consumed
+   * by M82 UI (deferred).
+   */
+  readonly chat?: IManifestChatContributions;
+}
+
+/**
+ * The `contributes.chat` section of a tool manifest (M82 Slice B).
+ */
+export interface IManifestChatContributions {
+  readonly participants?: readonly IManifestChatParticipant[];
+}
+
+/**
+ * One chat participant entry under `contributes.chat.participants[]`.
+ * VS Code reference: `contributes.chatParticipants` schema.
+ */
+export interface IManifestChatParticipant {
+  /** Unique participant ID (e.g. `'my-publisher.echo'`). */
+  readonly id: string;
+  /** Short name shown after `@` in the input box (e.g. `'echo'`). */
+  readonly name: string;
+  /** Human-readable display name (e.g. `'Echo'`). */
+  readonly fullName?: string;
+  /** Description shown in pickers / placeholders. */
+  readonly description?: string;
+  /** Whether the participant remains selected across messages. */
+  readonly isSticky?: boolean;
+  /** Slash commands the participant supports. Not consumed by M82 UI. */
+  readonly commands?: readonly IManifestChatParticipantCommand[];
+}
+
+/**
+ * A slash command declared by a contributed chat participant.
+ */
+export interface IManifestChatParticipantCommand {
+  readonly name: string;
+  readonly description?: string;
 }
 
 /**

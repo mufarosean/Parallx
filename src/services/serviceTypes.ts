@@ -1112,6 +1112,38 @@ export interface IViewContributionService {
 
 export const IViewContributionService = createServiceIdentifier<IViewContributionService>('IViewContributionService');
 
+// ─── Chat Participant Contribution (M82 Slice B) ─────────────────────────────
+
+/**
+ * Service for processing `contributes.chat.participants[]` from tool manifests.
+ * Owns the mapping from manifest-declared participant ids to the
+ * `IChatAgentService` stub registrations and lets the chat bridge swap in
+ * the real handler when the contributing extension activates.
+ *
+ * Optional service — only registered when `IChatAgentService` is present.
+ */
+export interface IChatParticipantContributionService {
+  processContributions(toolDescription: import('../tools/toolManifest.js').IToolDescription): void;
+  removeContributions(toolId: string): void;
+  /** Returns true if the id was declared in some manifest and the stub is registered. */
+  hasContributed(participantId: string): boolean;
+  /** Returns the owning tool id for a contributed participant. */
+  getOwnerToolId(participantId: string): string | undefined;
+  /**
+   * Wire the real handler for a contributed participant. Returns true if the
+   * id was found and the stub's handler was swapped; false otherwise (caller
+   * should fall back to the imperative `createChatParticipant` path).
+   */
+  wireRealHandler(participantId: string, handler: import('./chatTypes.js').IChatParticipantHandler): boolean;
+  /** Enumerate all contributed participant ids. Test/debugging only. */
+  getContributedIds(): readonly string[];
+  readonly onDidRegisterParticipant: import('../platform/events.js').Event<{ toolId: string; participantId: string }>;
+  readonly onDidRemoveParticipant: import('../platform/events.js').Event<{ toolId: string; participantId: string }>;
+}
+
+export const IChatParticipantContributionService =
+  createServiceIdentifier<IChatParticipantContributionService>('IChatParticipantContributionService');
+
 // ─── IKeybindingService ──────────────────────────────────────────────────────
 
 /**

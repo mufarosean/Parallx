@@ -132,6 +132,11 @@ import { ViewContributionProcessor } from '../contributions/viewContribution.js'
 // Contribution Registry (M81 Slice B — unified orchestrator)
 import { ContributionRegistry } from '../contributions/contributionRegistry.js';
 
+// Chat Participant Contribution (M82 Slice B)
+import { ChatParticipantContributionProcessor } from '../contributions/chatParticipantContribution.js';
+import { IChatAgentService } from '../services/chatTypes.js';
+import { IChatParticipantContributionService } from '../services/serviceTypes.js';
+
 // Contribution handler (D.1 extraction)
 import { WorkbenchContributionHandler } from './workbenchContributionHandler.js';
 
@@ -2306,11 +2311,26 @@ export class Workbench extends Layout {
     // Unified contribution orchestrator (M81 Slice B). The four processors
     // above remain authoritative for their respective contribution kinds;
     // the registry only composes them behind a single entry point.
+    //
+    // M82 Slice B: adds a fifth processor for `contributes.chat.participants[]`.
+    // It calls `IChatAgentService.registerAgent()` with a stub whose handler
+    // is wired later by the contributing extension via
+    // `api.chat.registerParticipant(definition)`.
+    let chatParticipantContribution: ChatParticipantContributionProcessor | undefined;
+    if (this._services.has(IChatAgentService)) {
+      chatParticipantContribution = new ChatParticipantContributionProcessor(
+        this._services.get(IChatAgentService),
+      );
+      this._services.registerInstance(IChatParticipantContributionService, chatParticipantContribution);
+      this._register(chatParticipantContribution);
+    }
+
     this._contributionRegistry = this._register(new ContributionRegistry(
       commandContribution,
       keybindingContribution,
       menuContribution,
       this._viewContribution,
+      chatParticipantContribution,
     ));
 
     // Process contributions from already-registered tools

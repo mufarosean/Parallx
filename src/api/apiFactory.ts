@@ -60,6 +60,7 @@ import {
   ILanguageModelToolsService,
 } from '../services/chatTypes.js';
 import { ICanvasPageQueryService } from '../services/serviceTypes.js';
+import { IChatParticipantContributionService } from '../services/serviceTypes.js';
 
 // ─── API Dependencies ────────────────────────────────────────────────────────
 
@@ -406,6 +407,11 @@ export function createToolApi(
     ? deps.services.get<import('../services/chatTypes.js').ILanguageModelToolsService>(ILanguageModelToolsService)
     : undefined;
 
+  // M82 Slice B — optional chat-participant contribution processor.
+  const chatParticipantContribution = deps.services.has(IChatParticipantContributionService)
+    ? deps.services.get<import('../services/serviceTypes.js').IChatParticipantContributionService>(IChatParticipantContributionService)
+    : undefined;
+
   const iconsBridge = new IconsBridge();
 
   const languageModelBridge = languageModelsService
@@ -413,7 +419,7 @@ export function createToolApi(
     : undefined;
 
   const chatBridge = chatAgentService
-    ? new ChatBridge(toolId, chatAgentService, languageModelToolsService, subscriptions)
+    ? new ChatBridge(toolId, chatAgentService, languageModelToolsService, subscriptions, chatParticipantContribution)
     : undefined;
 
   // M63 P0 — MCP & Cron bridges. Undefined when underlying services absent.
@@ -815,6 +821,7 @@ export function createToolApi(
     chat: chatBridge
       ? Object.freeze({
           createChatParticipant: (id: string, handler: any) => chatBridge.createChatParticipant(id, handler),
+          registerParticipant: (definition: any) => chatBridge.registerParticipant(definition),
           registerTool: (name: string, tool: any) => chatBridge.registerTool(name, tool),
         })
       : undefined,

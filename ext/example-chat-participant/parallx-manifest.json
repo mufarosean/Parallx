@@ -1,0 +1,28 @@
+{
+  "manifestVersion": 1,
+  "id": "parallx.example-chat-participant",
+  "name": "Example Chat Participant",
+  "version": "0.1.0",
+  "publisher": "parallx",
+  "description": "Reference extension for M82 Slice B — declares a chat participant via `contributes.chat.participants[]` and wires its handler in activate() using `api.chat.registerParticipant`.",
+  "main": "main.js",
+  "activationEvents": ["onStartupFinished"],
+  "engines": {
+    "parallx": "^0.1.0"
+  },
+  "capabilities": {},
+  "contributes": {
+    "chat": {
+      "participants": [
+        {
+          "id": "parallx.example.echo",
+          "name": "echo",
+          "fullName": "Echo",
+          "description": "Reference participant that echoes the user's prompt.",
+          "isSticky": false,
+          "commands": []
+        }
+      ]
+    }
+  }
+}

@@ -20,6 +20,7 @@ import type { CommandContributionProcessor } from './commandContribution.js';
 import type { KeybindingContributionProcessor } from './keybindingContribution.js';
 import type { MenuContributionProcessor } from './menuContribution.js';
 import type { ViewContributionProcessor } from './viewContribution.js';
+import type { ChatParticipantContributionProcessor } from './chatParticipantContribution.js';
 import type { IContributionRegistry } from './contributionTypes.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
 
@@ -29,14 +30,16 @@ export class ContributionRegistry extends Disposable implements IContributionReg
     private readonly _keybindingContribution: KeybindingContributionProcessor,
     private readonly _menuContribution: MenuContributionProcessor,
     private readonly _viewContribution: ViewContributionProcessor,
+    /** M82 Slice B — optional; passed in only on the live workbench path. */
+    private readonly _chatParticipantContribution?: ChatParticipantContributionProcessor,
   ) {
     super();
   }
 
   /**
    * Fan out a tool's contributions to every processor in registration order
-   * (command → keybinding → menu → view). Errors in one processor are logged
-   * and swallowed so the remaining processors still run.
+   * (command → keybinding → menu → view → chat-participant). Errors in one
+   * processor are logged and swallowed so the remaining processors still run.
    */
   processContributions(description: IToolDescription): void {
     if (this.isDisposed) {
@@ -63,12 +66,19 @@ export class ContributionRegistry extends Disposable implements IContributionReg
     } catch (err) {
       console.error('[ContributionRegistry] view processContributions failed for tool', toolId, err);
     }
+    if (this._chatParticipantContribution) {
+      try {
+        this._chatParticipantContribution.processContributions(description);
+      } catch (err) {
+        console.error('[ContributionRegistry] chat-participant processContributions failed for tool', toolId, err);
+      }
+    }
   }
 
   /**
    * Remove every contribution category for a tool in registration order
-   * (command → keybinding → menu → view). Same error isolation as
-   * `processContributions`.
+   * (command → keybinding → menu → view → chat-participant). Same error
+   * isolation as `processContributions`.
    */
   removeContributions(toolId: string): void {
     if (this.isDisposed) {
@@ -93,6 +103,13 @@ export class ContributionRegistry extends Disposable implements IContributionReg
       this._viewContribution.removeContributions(toolId);
     } catch (err) {
       console.error('[ContributionRegistry] view removeContributions failed for tool', toolId, err);
+    }
+    if (this._chatParticipantContribution) {
+      try {
+        this._chatParticipantContribution.removeContributions(toolId);
+      } catch (err) {
+        console.error('[ContributionRegistry] chat-participant removeContributions failed for tool', toolId, err);
+      }
     }
   }
 }
