@@ -38,7 +38,9 @@ describe('Mozilla Readability — vendored at pinned SHA (M65 F1)', () => {
     expect(raw).toMatch(/export\s*\{\s*Readability\s*\}/);
   });
 
-  it('can be imported and instantiated (smoke test)', async () => {
+  // The dynamic import + optional jsdom/happy-dom fallback can take >5s on
+  // slow disks; raise to a generous 30s so this is not a flaky baseline.
+  it('can be imported and instantiated (smoke test)', { timeout: 30_000 }, async () => {
     const mod = await import('../../ext/web-research/readability.js');
     expect(typeof mod.Readability).toBe('function');
 
