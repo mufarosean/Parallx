@@ -774,7 +774,23 @@ Rule: if a doc is canonical, it must be accurate enough to act on. If it is not 
 
 ---
 
-## 25. First Agent Required Output
+## 25. Cleanup Start Schedule
+
+Cleanup is scheduled in phases:
+
+| Phase | Starts when | What starts |
+|---|---|---|
+| C0: Planning cleanup | After the first kickoff report is accepted | In-place labels, agent cards, milestone template, README truth notes, artifact directories. |
+| C1: Documentation truth cleanup | After labels/archive rules/README shape are accepted | Archive moves, canonical/research/archive status updates, README rewrite. |
+| C2: System atlas cleanup | After C1 and repo discovery | System Atlas, ownership maps, workflow maps, duplicate-contract inventory. |
+| C3: Baseline/fitness cleanup | After target workflows are mapped | Characterization tests, missing instrumentation notes, baseline scorecards. |
+| C4: App-system cleanup | After atlas, baseline, workbench language, active milestone, and review gates pass | One accepted implementation slice at a time. |
+
+So the first cleanup to start is **planning cleanup**, not app cleanup. App-system cleanup does not start until C4.
+
+---
+
+## 26. First Agent Required Output
 
 The first agent should return a kickoff report in this shape:
 
@@ -819,7 +835,7 @@ The first agent should return a kickoff report in this shape:
 
 ## Decisions Needed From User
 
-## First Milestone Recommendation
+## Cleanup Start Phase
 
 ## Stop Rules
 
@@ -830,7 +846,7 @@ The first agent should not produce code changes as its first output.
 
 ---
 
-## 26. Near-Term Target
+## 27. Near-Term Target
 
 Before any major systems redesign starts, Parallx needs a cleanup baseline:
 
