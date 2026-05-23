@@ -286,6 +286,18 @@ Depends on Slice A (SelectionService, ContextKeyRegistry).
 
 ### Slice C: Capability, Task, Artifact, and Provenance Primitives
 
+> **2026-05-23 deferral:** Reality audit ([M81_SLICE_C_AUDIT.md](research/M81_SLICE_C_AUDIT.md), commit `a20ceae`) found that **3 of the 6 claims are REFUTED or SPECULATIVE and 1 is a manifest violation**. Slice C is deferred in full pending a concrete consumer.
+>
+> - "Capabilities are implicit; no gate on filesystem/shell/network/secrets" — **REFUTED.** A four-tier capability stack already exists: M11 `permissionService.ts` (3-level always/requires-approval/never), M65 `openclawToolPolicy.ts` (readonly/standard/full profile allowlists), M67 `policyDecisionPoint.ts` (consolidated approval gate with command blocklist + autonomy mode + color gate), and `electron/webFetchBridge.cjs` (15-condition network chokepoint including DNS preflight, HTTPS enforcement, domain blocklist, body cap, timeout). Plus autonomy feature flags as kill switches.
+> - "Background work lacks coordination; can conflict with foreground" — **PARTIALLY TRUE but no current bug.** Cooperative yielding is pervasive: `setTimeout(0)` in `indexingPipeline.ts`, queue+drain+yield in `semanticGraphService.ts`, setTimeout chaining in `CronService` and `HeartbeatRunner`, and feature flags that default OFF for heartbeat/cron/subagent. A central `TaskService` would be net-new abstraction with no current consumer.
+> - "Artifact provenance lost or scattered" — **CONFIRMED.** `IPage` at [src/built-in/canvas/canvasTypes.ts:L10-L50](src/built-in/canvas/canvasTypes.ts) has `createdAt`/`updatedAt` timestamps but no `createdBy`/`origin`/`sourceTool` field. This is the only genuinely-missing piece in the original Slice C.
+> - `TaskService` and `ArtifactRegistry` — **SPECULATIVE.** No current surface requests them. The manifest forbids services without a concrete consumer ([PARALLX_MANIFEST.md §11](docs/PARALLX_MANIFEST.md#11-non-negotiable-preservation-rules)).
+> - `electron/mcpBridge.cjs (MODIFY: check capabilities before invoking MCP)` — **MANIFEST VIOLATION.** Touching `electron/*` requires explicit user approval. The same gating already lives in `src/openclaw/openclawToolPolicy.ts` and can be extended there without touching the main process.
+>
+> **Decision:** Defer Slice C until either (a) a concrete consumer surfaces for `TaskService` (e.g., a measured foreground-stall regression that the existing yield patterns cannot solve), (b) a concrete consumer surfaces for `ArtifactRegistry` (e.g., a feature that needs to resolve cross-surface `parallx://` URIs), or (c) the Canvas-provenance micro-work is approved by the user. The Canvas-provenance work is well-scoped (~2 files, ~80 LOC, additive columns + migration) but touches `src/built-in/canvas/canvasDataService.ts` which is on the §3.3 preservation list — it requires user sign-off and a migration plan, neither of which is autonomously available. Slice D does not depend on any Slice C deliverable; the milestone proceeds straight to D.
+>
+> **Status:** DEFERRED. The original scope below is retained as historical context for the deferral decision.
+
 (Per WORKBENCH_INTERACTION_MODEL_REVIEW.md §10 recommendation.)
 
 **Workflow hop it serves:**
