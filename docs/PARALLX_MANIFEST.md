@@ -392,10 +392,14 @@ Handoff target:
 "Create an agent" means:
 
 1. Create an agent card artifact that defines the role, inputs, outputs, constraints, stop rules, and handoff target.
-2. If the available environment supports spawning subagents, use the agent card as the subagent instruction.
-3. If the environment does not support spawning subagents, run the agents sequentially as explicit roles in the same assistant session, using the same cards and handoff rules.
+2. In GitHub Copilot Chat or any environment that supports agents/subagents, instantiate or invoke the specialist agent using the agent card as its instruction.
+3. Require the specialist agent to produce its own named output artifact before the conductor moves to the next handoff.
 
-The process must work even when no external multi-agent runtime is available. Agent cards are required either way.
+The conductor must not pretend to be every specialist agent. Its job is to create agents, assign work, read their outputs, resolve conflicts, and decide the next handoff.
+
+If the environment cannot create or invoke specialist agents, the conductor must stop and report that the process cannot run as designed. The conductor may proceed in degraded single-agent mode only after explicit user approval for that mode. Degraded mode must be labeled in the kickoff report and cannot proceed to app-code implementation.
+
+Agent cards are required either way.
 
 Required first artifacts:
 
@@ -469,6 +473,34 @@ Rules:
 3. The executor receives one accepted slice, not an open-ended subsystem.
 4. The reviewer receives the final diff and evidence, not just the executor's summary.
 5. The Git and Release Steward verifies linearity after each commit and before any merge recommendation.
+6. Each handoff requires a named input artifact and a named output artifact.
+7. The conductor cannot substitute its own analysis for a required specialist artifact.
+8. If a specialist output is missing, incomplete, or self-contradictory, the conductor sends it back to that specialist or asks the user for direction.
+
+### Handoff Artifact Rules
+
+Every agent handoff must include:
+
+- Source agent.
+- Target agent.
+- Input artifact path.
+- Required output artifact path.
+- Questions to answer.
+- Stop conditions.
+- Verification expected.
+
+Minimum handoff artifacts for the first run:
+
+| Handoff | Required output artifact |
+|---|---|
+| Git Steward to Conductor | `docs/research/git/BRANCH_GOVERNANCE.md` |
+| Research Agent to Atlas | `docs/research/WORKBENCH_CURRENT_CODE_RESEARCH_BRIEF.md` |
+| Atlas to Research/Baseline | `docs/architecture/SYSTEM_ATLAS.md` |
+| Research Agent to Workbench Interaction | `docs/research/WORKBENCH_EXTERNAL_ARCHITECTURE_RESEARCH_BRIEF.md` |
+| Baseline Agent to Conductor | `docs/research/baselines/workbench-baseline.md` |
+| Workbench Interaction Agent to Review | `docs/architecture/WORKBENCH_INTERACTION_MODEL.md` |
+| Fitness and Review Agent to Conductor | `docs/research/WORKBENCH_INTERACTION_MODEL_REVIEW.md` |
+| Milestone Steward to Conductor | `docs/Parallx_Milestone_81.md` or the accepted active milestone filename |
 
 ---
 

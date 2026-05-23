@@ -62,6 +62,25 @@ Before implementation, the conductor must make the redesign process explicit:
 9. Execution: one bounded implementation, no opportunistic rewrites.
 10. Fitness review: independent keep, revise, or roll back decision.
 
+### 3.0a Delegation rule for Copilot Chat
+
+This process is intended to run through specialist agents when the environment supports agents/subagents, including GitHub Copilot Chat environments with agent creation or equivalent delegation.
+
+The Systems Redesign Conductor must not play every role itself. It coordinates the process, creates agent cards, assigns work, reads outputs, resolves conflicts, and decides handoffs.
+
+Specialist work must be done by the specialist agent assigned to it:
+
+- Git and Release Steward owns branch/commit governance.
+- Research Agent owns current-code and external research briefs.
+- System Atlas Cartographer owns atlas artifacts.
+- Baseline and Metrics Agent owns baseline/measurement artifacts.
+- Unified Workbench Interaction Agent owns the interaction model.
+- Milestone and Documentation Steward owns milestone/doc cleanup artifacts.
+- Surgical Executor Agent owns accepted implementation slices.
+- Fitness and Review Agent owns independent review.
+
+If specialist agents cannot be created or invoked, the conductor must stop and report that the process cannot run as designed. Degraded single-agent execution is allowed only after explicit user approval, must be labeled as degraded, and cannot proceed to app-code implementation.
+
 ### 3.1 Workflow-first, agents-second
 
 Use this default sequence:
@@ -670,6 +689,7 @@ Gate:
 
 - No subsystem design until the redesign operating model is accepted.
 - No app code changes until branch safety is verified.
+- No specialist phase may be marked complete by conductor-only analysis when a specialist agent output is required.
 
 ### Phase 0: Intake
 
@@ -700,6 +720,7 @@ Output:
 Gate:
 
 - No new workbench-level abstraction until external patterns and local constraints have both been considered.
+- The conductor cannot replace this phase with its own summary.
 
 ### Phase 1: Baseline
 
@@ -732,6 +753,7 @@ Gate:
 
 - No redesign if current ownership is unknown.
 - No cross-tool redesign if the shared language is unnamed.
+- No handoff to implementation without a written atlas artifact.
 
 ### Phase 3: Design Slice
 
@@ -780,6 +802,7 @@ Output:
 Gate:
 
 - Do not continue to the next slice until the previous slice proves value or is revised.
+- The executor cannot review its own implementation.
 
 ---
 
