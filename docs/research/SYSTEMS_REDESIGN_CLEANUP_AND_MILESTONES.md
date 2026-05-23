@@ -134,10 +134,16 @@ Before C4 begins:
 - Active milestone has verification and rollback plans.
 - Fitness and Review Agent has reviewed the design slice.
 
-### Keep as Canonical
+### Document Retention Matrix
 
-Keep these at root or one level deep, after verification:
+Cleanup must use this matrix before moving files. If a file is not listed here, the Milestone and Documentation Steward must classify it before C1 starts.
 
+#### Must Stay Canonical
+
+These docs stay in place. They may be edited for accuracy, but they are not archive candidates during this cleanup:
+
+- `docs/README.md`
+- `docs/PARALLX_MANIFEST.md`
 - `docs/USER_GUIDE.md`
 - `docs/MCP_SERVERS_USER_GUIDE.md`
 - `docs/ai/AI_USER_GUIDE.md`
@@ -145,24 +151,57 @@ Keep these at root or one level deep, after verification:
 - `docs/PARALLX_MCP_SERVER_AUTHORING_FOR_AI.md`
 - `docs/PARALLX_WORKSPACE_SCHEMA.md`
 - `docs/SETTINGS_REGISTRY.md`
-- `docs/PARALLX_MANIFEST.md`
+
+#### Verify Then Keep Or Repair
+
+These appear to be current reference/user workflow docs, but the steward must verify accuracy and fix labels/links before treating them as canonical:
+
+- `docs/WORKFLOWS.md`
 - `docs/canvas/CANVAS_STRUCTURAL_MODEL.md`
 - `docs/canvas/BLOCK_REGISTRY.md`
 - `docs/canvas/ICON_REGISTRY.md`
-- `docs/canvas/BLOCK_INTERACTION_RULES.md`, if still accurate after review
+- `docs/canvas/BLOCK_INTERACTION_RULES.md`
+- `docs/ai/AUTONOMY_RUNTIME_CONTRACTS.md`
+- `docs/ai/AUTONOMY_TASK_RAIL.md`
+- `docs/ai/CANVAS_BLOCK_API.md`
+- `docs/ai/GMAIL_MCP_INTEGRATION.md`
 
-### Keep as Active Planning During This Branch
+Rule: if one of these is current, keep it and link it from `docs/README.md`. If it is not current, mark it draft/research or archive it with a replacement pointer.
+
+#### Keep As Active Planning During This Branch
+
+These stay while `systems-redesign-planning` is active:
 
 - `docs/research/SYSTEMS_THINKING_FOR_PARALLX.md`
 - `docs/research/SYSTEMS_REDESIGN_AGENTS_AND_SKILLS.md`
 - `docs/research/SYSTEMS_REDESIGN_CLEANUP_AND_MILESTONES.md`
 
-### Archive Candidates
+Planned artifacts that should stay once created:
 
-- Root milestone files M64-M80 after labeling.
-- Old research docs that are not canonical to the current app.
-- Point-in-time improvement plans.
-- Completed audits and trackers.
+- `docs/research/SYSTEMS_REDESIGN_KICKOFF.md`
+- `docs/research/agents/*.md`
+- `docs/research/git/BRANCH_GOVERNANCE.md`
+- `docs/research/baselines/*.md`
+- `docs/architecture/SYSTEM_ATLAS.md`
+- `docs/architecture/WORKBENCH_INTERACTION_MODEL.md`
+
+#### Review For Archive Or Supersession
+
+These are not automatically deleted. They must be labeled, summarized if needed, and moved only during C1 after the archive destination is explicit:
+
+- Root milestone files `docs/Parallx_Milestone_64.md` through `docs/Parallx_Milestone_80.md`
+- `docs/M70_DEDUP_AUDIT.md`
+- `docs/Future_Improvements.md`, after still-relevant items are moved into the new milestone roadmap
+- `docs/research/INTERACTION_LAYER_ARCHITECTURE.md`, if superseded by `WORKBENCH_INTERACTION_MODEL.md`
+- `docs/research/Living_UI_Ideas.md`
+- `docs/research/Living_UI_Research.md`
+- Old research docs that are not canonical to the current app
+- Point-in-time improvement plans
+- Completed audits and trackers
+
+#### Archive-Only Rule
+
+Do not delete documentation during cleanup. Use `git mv` into the appropriate archive folder and preserve enough context for a future reader to understand why the document moved.
 
 ### README Replacement
 
