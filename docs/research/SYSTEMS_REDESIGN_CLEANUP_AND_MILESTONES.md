@@ -100,6 +100,8 @@ Do not delete historical docs. Move them to archive after labeling.
 
 Cleanup happens in phases. It does not all start at once.
 
+Acceptance means explicit user approval or an explicit user instruction to continue under the proposed kickoff plan. The conductor may recommend acceptance, but it does not silently approve its own plan.
+
 | Phase | When it starts | Owner | Allowed work | Blocked work |
 |---|---|---|---|---|
 | C0: Planning cleanup | Immediately after the kickoff report is accepted | Conductor + Milestone and Documentation Steward | Label docs in-place, update README truth notes, create milestone template, create agent cards, create artifact directories | Moving large sets of files, deleting files, app code changes |
@@ -108,7 +110,9 @@ Cleanup happens in phases. It does not all start at once.
 | C3: Baseline/fitness cleanup | After target workflows are mapped | Baseline and Metrics Agent | Add or document characterization tests, missing instrumentation, baseline commands | Optimizing or refactoring behavior before baseline exists |
 | C4: App-system cleanup | After atlas, baseline, workbench language, milestone, and review gates pass | Surgical Executor Agent | One accepted implementation slice at a time | Broad cleanup, opportunistic refactors, breaking compatibility |
 
-The cleanup scheduled to start first is C0: Planning cleanup. It starts after the first agent produces the kickoff report and the conductor accepts it. Physical doc moves start in C1. App code cleanup starts only in C4.
+The cleanup scheduled to start first is C0: Planning cleanup. It starts after the first agent produces the kickoff report and the user accepts it or instructs the conductor to proceed. Physical doc moves start in C1. App code cleanup starts only in C4.
+
+The first scheduled cleanup milestone is `M81 / SR-1: Checkpoint, Manifest, Redesign System, and Documentation Triage`.
 
 ### Cleanup Start Gate
 
@@ -293,7 +297,7 @@ Goal: make "better" measurable before refactoring.
 
 Deliverables:
 
-- `npm run test:system-fitness`
+- Add `npm run test:system-fitness` or an equivalent documented system-fitness command. This command is planned; it is not assumed to exist before M84.
 - Startup timing baseline.
 - IPC count/duration baseline.
 - Cross-tool workflow baseline.

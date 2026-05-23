@@ -22,6 +22,8 @@ The first agent is not being asked to redesign the app immediately. The first ag
 
 The first agent should treat this manifest as the highest-level product contract for this redesign branch.
 
+When this document says "accepted," it means explicit user approval or an explicit user instruction to continue under the plan. The conductor may recommend acceptance, but it does not silently accept its own kickoff plan.
+
 ---
 
 ## 1. First Agent Brief
@@ -97,6 +99,8 @@ A fresh agent should begin with these checks before creating plans or assigning 
 7. Produce the kickoff report and agent cards before any code or cleanup changes.
 
 If any branch, baseline, or working-tree fact contradicts this manifest, stop and report the contradiction. Do not "fix" Git state silently.
+
+The first agent's kickoff report should be written as a repository artifact at `docs/research/SYSTEMS_REDESIGN_KICKOFF.md` and summarized to the user. If the user explicitly asks for discussion only, return the kickoff report in chat and do not write files.
 
 ---
 
@@ -383,6 +387,16 @@ Stop rules:
 Handoff target:
 ```
 
+### Agent Creation Semantics
+
+"Create an agent" means:
+
+1. Create an agent card artifact that defines the role, inputs, outputs, constraints, stop rules, and handoff target.
+2. If the available environment supports spawning subagents, use the agent card as the subagent instruction.
+3. If the environment does not support spawning subagents, run the agents sequentially as explicit roles in the same assistant session, using the same cards and handoff rules.
+
+The process must work even when no external multi-agent runtime is available. Agent cards are required either way.
+
 Required first artifacts:
 
 - Branch/checkpoint verification.
@@ -412,6 +426,20 @@ Use these default locations unless the conductor accepts a better one:
 | Historical milestone archive | `docs/archive/milestones/` |
 
 If a directory does not exist yet, the first milestone should create it intentionally, not as a side effect of unrelated work.
+
+Minimum first-generation agent cards:
+
+- `docs/research/agents/systems-redesign-conductor.md`
+- `docs/research/agents/git-and-release-steward.md`
+- `docs/research/agents/research-agent.md`
+- `docs/research/agents/system-atlas-cartographer.md`
+- `docs/research/agents/baseline-and-metrics-agent.md`
+- `docs/research/agents/unified-workbench-interaction-agent.md`
+- `docs/research/agents/milestone-and-documentation-steward.md`
+- `docs/research/agents/fitness-and-review-agent.md`
+- `docs/research/agents/surgical-executor-agent.md`
+
+The Surgical Executor card may remain inactive until an implementation slice is approved.
 
 ---
 
@@ -788,6 +816,8 @@ Cleanup is scheduled in phases:
 
 So the first cleanup to start is **planning cleanup**, not app cleanup. App-system cleanup does not start until C4.
 
+The first scheduled cleanup milestone is `M81 / SR-1: Checkpoint, Manifest, Redesign System, and Documentation Triage`. It begins at C0 only after the kickoff report is accepted.
+
 ---
 
 ## 26. First Agent Required Output
@@ -843,6 +873,15 @@ The first agent should return a kickoff report in this shape:
 ```
 
 The first agent should not produce code changes as its first output.
+
+Kickoff done means:
+
+- `docs/research/SYSTEMS_REDESIGN_KICKOFF.md` exists or the user explicitly requested chat-only output.
+- Required first-generation agent cards exist or are included in the kickoff report for user approval.
+- Git boundary report is included.
+- Cleanup start phase is named.
+- Decisions needed from the user are listed.
+- No app code has changed.
 
 ---
 
