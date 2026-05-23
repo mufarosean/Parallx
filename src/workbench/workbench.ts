@@ -129,6 +129,9 @@ import type { KeybindingService } from '../services/keybindingService.js';
 // View Contribution (M2 Capability 6)
 import { ViewContributionProcessor } from '../contributions/viewContribution.js';
 
+// Contribution Registry (M81 Slice B — unified orchestrator)
+import { ContributionRegistry } from '../contributions/contributionRegistry.js';
+
 // Contribution handler (D.1 extraction)
 import { WorkbenchContributionHandler } from './workbenchContributionHandler.js';
 
@@ -273,6 +276,9 @@ export class Workbench extends Layout {
 
   // View Contribution (M2 Capability 6)
   private _viewContribution!: ViewContributionProcessor;
+
+  // Contribution Registry (M81 Slice B — wraps the four processors above)
+  private _contributionRegistry!: ContributionRegistry;
 
   // ── Events ──
 
@@ -2297,12 +2303,19 @@ export class Workbench extends Layout {
     this._contributionHandler.setViewContribution(this._viewContribution);
     this._contributionHandler.wireViewContributionEvents();
 
+    // Unified contribution orchestrator (M81 Slice B). The four processors
+    // above remain authoritative for their respective contribution kinds;
+    // the registry only composes them behind a single entry point.
+    this._contributionRegistry = this._register(new ContributionRegistry(
+      commandContribution,
+      keybindingContribution,
+      menuContribution,
+      this._viewContribution,
+    ));
+
     // Process contributions from already-registered tools
     for (const entry of registry.getAll()) {
-      commandContribution.processContributions(entry.description);
-      keybindingContribution.processContributions(entry.description);
-      menuContribution.processContributions(entry.description);
-      this._viewContribution.processContributions(entry.description);
+      this._contributionRegistry.processContributions(entry.description);
     }
 
     // Process contributions for future tool registrations.
@@ -2313,10 +2326,7 @@ export class Workbench extends Layout {
       if (!desc.isBuiltin && !this._toolEnablementService.isEnabled(desc.manifest.id)) {
         return; // skip contribution processing for disabled external tools
       }
-      commandContribution.processContributions(desc);
-      keybindingContribution.processContributions(desc);
-      menuContribution.processContributions(desc);
-      this._viewContribution.processContributions(desc);
+      this._contributionRegistry.processContributions(desc);
     }));
 
     // Build API factory dependencies (includes ConfigurationService for Cap 4,
@@ -2466,10 +2476,7 @@ export class Workbench extends Layout {
 
     // Clean up contributions when tools are deactivated
     this._register(this._toolActivator.onDidDeactivate((event) => {
-      commandContribution.removeContributions(event.toolId);
-      keybindingContribution.removeContributions(event.toolId);
-      menuContribution.removeContributions(event.toolId);
-      this._viewContribution.removeContributions(event.toolId);
+      this._contributionRegistry.removeContributions(event.toolId);
     }));
 
     // ── Tool Enable/Disable Orchestration (M6 Capability 0) ──
@@ -2481,10 +2488,7 @@ export class Workbench extends Layout {
       if (newState === 'EnabledGlobally') {
         // ── ENABLE: re-process contributions, then activate ──
         console.log(`[Workbench] Enabling tool "${toolId}" — re-processing contributions and activating`);
-        commandContribution.processContributions(entry.description);
-        keybindingContribution.processContributions(entry.description);
-        menuContribution.processContributions(entry.description);
-        this._viewContribution.processContributions(entry.description);
+        this._contributionRegistry.processContributions(entry.description);
 
         // Re-register activation events
         activationEvents.registerToolEvents(toolId, entry.description.manifest.activationEvents);

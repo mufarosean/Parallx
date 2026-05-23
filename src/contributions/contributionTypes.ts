@@ -96,3 +96,18 @@ export interface IContributionProcessor extends IDisposable {
    */
   removeContributions(toolId: string): void;
 }
+
+// ─── Contribution Registry Interface (M81 Slice B) ───────────────────────────
+
+/**
+ * Unified orchestrator that fans contribution processing out to every
+ * individual processor (command, keybinding, menu, view) so the workbench
+ * has one entry point instead of four scattered calls. See
+ * `contributionRegistry.ts` for the implementation.
+ */
+export interface IContributionRegistry extends IDisposable {
+  /** Process every contribution category for a tool. */
+  processContributions(description: IToolDescription): void;
+  /** Remove every contribution category for a tool. */
+  removeContributions(toolId: string): void;
+}
