@@ -149,4 +149,30 @@ describe('rowToPage', () => {
       expect(rowToPage(fullRow({ cover_y_offset: 0.75 })).coverYOffset).toBe(0.75);
     });
   });
+
+  // ── Provenance fields (M81 Slice C) ────────────────────────────────────
+
+  describe('provenance fields', () => {
+    it('defaults createdBy and sourceTool to null when columns are absent', () => {
+      const row = fullRow();
+      // Simulate a pre-migration row that has no provenance columns.
+      delete row.created_by;
+      delete row.source_tool;
+      const page = rowToPage(row);
+      expect(page.createdBy).toBeNull();
+      expect(page.sourceTool).toBeNull();
+    });
+
+    it('maps populated provenance columns', () => {
+      const page = rowToPage(fullRow({ created_by: 'ai-chat', source_tool: 'canvas_create_page' }));
+      expect(page.createdBy).toBe('ai-chat');
+      expect(page.sourceTool).toBe('canvas_create_page');
+    });
+
+    it('coerces explicit NULL columns to null on IPage', () => {
+      const page = rowToPage(fullRow({ created_by: null, source_tool: null }));
+      expect(page.createdBy).toBeNull();
+      expect(page.sourceTool).toBeNull();
+    });
+  });
 });

@@ -48,6 +48,33 @@ export interface IPage {
   readonly createdAt: string;
   /** ISO-8601 last-modified timestamp. */
   readonly updatedAt: string;
+  /**
+   * Provenance — actor that created the page. NULL when not recorded.
+   * Examples: 'user', 'ai-chat', 'template:<id>', extension-id.
+   * Added M81 Slice C (provenance subset).
+   */
+  readonly createdBy: string | null;
+  /**
+   * Provenance — the tool that produced the page. NULL when not recorded
+   * or when the page was created directly by the user. Examples:
+   * 'canvas_create_page', 'duplicate', 'template'.
+   */
+  readonly sourceTool: string | null;
+}
+
+// ─── Page Creation Options ───────────────────────────────────────────────────
+
+/**
+ * Optional provenance recorded at page creation time. Both fields default
+ * to NULL when omitted ("origin unknown / not recorded"). Callers that
+ * create pages programmatically (chat tools, templates, etc.) should opt
+ * in so downstream consumers can trace where a page came from.
+ *
+ * Added M81 Slice C (provenance subset).
+ */
+export interface PageProvenance {
+  readonly createdBy?: string;
+  readonly sourceTool?: string;
 }
 
 // ─── Tree Node ───────────────────────────────────────────────────────────────
@@ -219,7 +246,7 @@ export interface ICanvasDataService {
 
   // ── Page CRUD ──
 
-  createPage(parentId?: string | null, title?: string): Promise<IPage>;
+  createPage(parentId?: string | null, title?: string, provenance?: PageProvenance): Promise<IPage>;
   getPage(pageId: string): Promise<IPage | null>;
   getRootPages(): Promise<IPage[]>;
   getChildren(parentId: string): Promise<IPage[]>;

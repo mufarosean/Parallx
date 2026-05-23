@@ -68,6 +68,8 @@ export function rowToPage(row: Record<string, unknown>): IPage {
     isFavorited: !!(row.is_favorited as number),
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
+    createdBy: (row.created_by as string) ?? null,
+    sourceTool: (row.source_tool as string) ?? null,
   };
 }
 
@@ -207,10 +209,12 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * @param title — page title (defaults to 'Untitled')
    * @returns the created page
    */
-  async createPage(parentId?: string | null, title?: string): Promise<IPage> {
+  async createPage(parentId?: string | null, title?: string, provenance?: import('./canvasTypes.js').PageProvenance): Promise<IPage> {
     const id = crypto.randomUUID();
     const parent = parentId ?? null;
     const pageTitle = title || 'Untitled';
+    const createdBy = provenance?.createdBy ?? null;
+    const sourceTool = provenance?.sourceTool ?? null;
 
     // Calculate sort order: max sibling sort_order + 1
     const maxResult = await this._db.get(
@@ -225,8 +229,8 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     const initialContent = encodeCanvasContentFromDoc({ type: 'doc', content: [{ type: 'paragraph' }] });
 
     const result = await this._db.run(
-      `INSERT INTO pages (id, parent_id, title, content, content_schema_version, sort_order) VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, parent, pageTitle, initialContent.storedContent, initialContent.schemaVersion, sortOrder],
+      `INSERT INTO pages (id, parent_id, title, content, content_schema_version, sort_order, created_by, source_tool) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, parent, pageTitle, initialContent.storedContent, initialContent.schemaVersion, sortOrder, createdBy, sourceTool],
     );
     if (result.error) throw new Error(result.error.message);
 

@@ -70,6 +70,7 @@ const EXEMPT_FILES = new Set([
   'canvasTemplates.ts',            // M77 Phase 11.4 — pure data, no canvas imports
   'canvasTemplatePicker.ts',       // M77 Phase 11.4 — standalone modal, only imports its own template data
   'canvasShortcutsOverlay.ts',     // M77 Phase 11.6 — standalone modal, no canvas-internal imports
+  'canvasLinks.ts',                // M81 Slice D — link-resolver self-registration (no canvas-internal imports)
 ]);
 
 // ── Child → allowed gate path fragments ─────────────────────────────────────

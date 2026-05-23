@@ -609,9 +609,11 @@ export function createCreatePageTool(
 
       const encoded = encodeCanvasContentFromDoc(doc as Parameters<typeof encodeCanvasContentFromDoc>[0]);
 
+      // M81 Slice C \u2014 record provenance so downstream consumers can trace
+      // AI-authored pages distinctly from user-authored ones.
       await db!.run(
-        'INSERT INTO pages (id, title, icon, content, content_schema_version, is_archived, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)',
-        [id, title, icon, encoded.storedContent, encoded.schemaVersion, now, now],
+        'INSERT INTO pages (id, title, icon, content, content_schema_version, is_archived, created_at, updated_at, created_by, source_tool) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)',
+        [id, title, icon, encoded.storedContent, encoded.schemaVersion, now, now, 'ai-chat', 'canvas_create_page'],
       );
 
       // Notify the canvas data service so the sidebar (and other listeners)
