@@ -4,7 +4,7 @@ Canonical product docs live at this folder's root and one level deep.
 Anything under `docs/archive/` is historical — read for context, not as
 source-of-truth.
 
-> **Active milestone:** none. Most recent closed: [M81 / SR-1: Workbench Unification, Slice 1](./Parallx_Milestone_81.md) (`implemented-verified`, 2026-05-23). [M80: Budget Sync as a Skill+Tools Agent](./Parallx_Milestone_80.md) also `implemented-verified` (2026-05-22, commit `be12a855`).
+> **Active milestone:** [M82 / SR-2: Extension Contribution Model](./Parallx_Milestone_82.md) (`planning`, drafted 2026-05-23 — pending user acceptance + research/baseline gates per Manifest §14). Most recent closed: [M81 / SR-1: Workbench Unification, Slice 1](./Parallx_Milestone_81.md) (`implemented-verified`, 2026-05-23). [M80: Budget Sync as a Skill+Tools Agent](./Parallx_Milestone_80.md) also `implemented-verified` (2026-05-22, commit `be12a855`).
 > Branch: `systems-redesign-planning`. Frozen checkpoint: `checkpoint-pre-systems-redesign-2026-05-23` = `9b9a243`. The next milestone (M82+) must be planned by the Systems Redesign Conductor per [PARALLX_MANIFEST.md](./PARALLX_MANIFEST.md) §14 before any new implementation slice begins.
 
 ## Product
