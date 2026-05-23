@@ -303,3 +303,28 @@ This scorecard defines measurable baselines for the primary Parallx workflow and
 5. **What hot path does it preserve?** (From Â§5; verify optimization still works)
 
 Redesign work that cannot answer these questions should be stopped and redirected to research or planning, not implementation.
+
+---
+
+## 5. M82 Extension-Activation Baseline (added 2026-05-23)
+
+Per [Parallx_Milestone_82.md §8](../../Parallx_Milestone_82.md), M82 must record an H15 baseline before Slice A. The [M82 Contribution Audit §B1-B5](../M82_CONTRIBUTION_AUDIT.md) (and the parallel Baseline-Agent investigation) found:
+
+- Per-tool activation time IS already instrumented at [toolActivator.ts:L160-L242](../../../src/tools/toolActivator.ts#L160) via `performance.now()` pairs and the `onDidActivate` event `{ toolId, success, durationMs }`.
+- There is **no workbench-level aggregate** ('total time from first activate to chat-default participant ready').
+- M81 Phase 5 characterization tests (workspaceOpenCold, editorOpenCanvas, etc.) **do not exist** — they are aspirational rows in §1 above. The only working performance characterization is [mediaOrganizerFtsRebuild.test.ts](../../../tests/unit/mediaOrganizerFtsRebuild.test.ts).
+
+### Recommended approach (Option B from baseline investigation)
+
+Create `tests/unit/extensionActivationSync.test.ts` measuring the **synchronous portion only** (`ContributionRegistry.processContributions()` iteration cost). Honest proxy; does NOT measure async `tool.activate()` execution.
+
+| Metric | Pre-M82 baseline | Post-M82 budget | Source |
+|---|---|---|---|
+| H15-sync: `processContributions()` for 14 built-in tools | **TBD — measured in Slice A** | baseline × 1.05 | `tests/unit/extensionActivationSync.test.ts` (to be created in Slice A) |
+| H15-full (true wall-clock activation) | **Not measurable from vitest** | n/a | Requires Electron probe at [workbench.ts:L2899](../../../src/workbench/workbench.ts#L2899) |
+
+### Caveats locked in
+
+- The sync proxy is **not** the full H15. M82 closeout language must say 'no observable regression in synchronous contribution processing within 5%' — not 'no H15 regression'.
+- Tests for the full H15 are out of M82 scope and remain on the missing-measurements list above (rows H1, H2, H10).
+- If the synchronous proxy exceeds baseline × 1.05 during Slice A or Slice B, the Surgical Executor stops per M82 §16 escalation conditions.
