@@ -4,14 +4,15 @@ Canonical product docs live at this folder's root and one level deep.
 Anything under `docs/archive/` is historical — read for context, not as
 source-of-truth.
 
-> **Active milestone:** [M81 / SR-1: Workbench Unification, Slice 1](./Parallx_Milestone_81.md) (accepted 2026-05-23).
-> Branch: `systems-redesign-planning`. Frozen checkpoint: `checkpoint-pre-systems-redesign-2026-05-23` = `9b9a243`.
+> **Active milestone:** none. Most recent closed: [M81 / SR-1: Workbench Unification, Slice 1](./Parallx_Milestone_81.md) (`implemented-verified`, 2026-05-23). [M80: Budget Sync as a Skill+Tools Agent](./Parallx_Milestone_80.md) also `implemented-verified` (2026-05-22, commit `be12a855`).
+> Branch: `systems-redesign-planning`. Frozen checkpoint: `checkpoint-pre-systems-redesign-2026-05-23` = `9b9a243`. The next milestone (M82+) must be planned by the Systems Redesign Conductor per [PARALLX_MANIFEST.md](./PARALLX_MANIFEST.md) §14 before any new implementation slice begins.
 
 ## Product
 - [PARALLX_MANIFEST.md](./PARALLX_MANIFEST.md) — the contract for the redesign
 
-## Active milestone
-- [Parallx_Milestone_81.md](./Parallx_Milestone_81.md) — M81 / SR-1 Workbench Unification (active)
+## Most recently closed milestones
+- [Parallx_Milestone_81.md](./Parallx_Milestone_81.md) — M81 / SR-1 Workbench Unification (`implemented-verified` 2026-05-23)
+- [Parallx_Milestone_80.md](./Parallx_Milestone_80.md) — M80 Budget Sync as a Skill+Tools Agent (`implemented-verified` 2026-05-22)
 
 ## Architecture (descriptive + proposal)
 - [architecture/SYSTEM_ATLAS.md](./architecture/SYSTEM_ATLAS.md) — canonical descriptive map of the current workbench

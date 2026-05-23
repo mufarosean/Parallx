@@ -1,12 +1,8 @@
 # Milestone 80 — Budget Sync as a Skill+Tools Agent
 
-> **Triage Status (2026-05-23):** `planning` — per [docs/research/MILESTONE_DOC_TRIAGE.md](research/MILESTONE_DOC_TRIAGE.md) (commit acd1ead). Canonical labels per [docs/PARALLX_MANIFEST.md](PARALLX_MANIFEST.md) §17.
-
-> **Status:** Planning. Awaiting user sign-off.
+> **Status (2026-05-23):** `implemented-verified` — shipped in commit `be12a855` (2026-05-22). 29 chat tools registered, bespoke 4-stage pipeline (`aiStage1Classify`, `aiStage1bBalance`, `aiStage2Extract`, `aiStage3Categorize`, `lmRunJson`, `LmTransportError`, `pickModelId`) fully removed from `ext/budget/main.js` (verified: 0 matches). Skill `ext/budget/skills/budget-sync.md` ships and seeds into workspace `.parallx/skills/` on activation. Migrations `budget_008`–`budget_012` applied (malformed-row handling, clean-slate reset, trash + review tables). 31/31 `tests/unit/budget-helpers.test.ts` green; full vitest suite 208/208 file pass.
 >
-> **Active milestone.** Supersedes the bespoke budget AI pipeline that was
-> introduced in M40-era work and consolidated under M64. The README's
-> "Active milestone" line is stale (still says M64) — update on close.
+> Supersedes the bespoke budget AI pipeline introduced in M40-era work and consolidated under M64. Canonical labels per [docs/PARALLX_MANIFEST.md](PARALLX_MANIFEST.md) §17.
 
 ## Why
 
