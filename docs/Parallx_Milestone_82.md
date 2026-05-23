@@ -1,5 +1,5 @@
 ---
-Status: planning — drafted 2026-05-23 by Systems Redesign Conductor; not yet user-accepted
+Status: active — accepted by user 2026-05-23; Slice B (chat participants) first, Slice A (canvas blocks) second
 Milestone: M82 / SR-2: Extension Contribution Model (Canvas Block Types & Chat Participants)
 Branch: systems-redesign-planning
 Created: 2026-05-23
@@ -246,4 +246,5 @@ The Surgical Executor must stop and surface to the user if any of these occur:
 | Date | Status | Change | Commit |
 |---|---|---|---|
 | 2026-05-23 | `planning` | Drafted by Conductor as M81 successor. Pending user acceptance + research/baseline gates. | 5421639d |
-| 2026-05-23 | `planning` | Research + Baseline gates completed. Audit doc + baseline §5 committed. Three scope redlines applied (Slice A hook is `getBlockExtensions` not `createEditorExtensions`; Slice B participant shape locked to VS Code `chatParticipants` verbatim; Slice B enumeration via `onDidChangeAgents` event not nonexistent `getRegisteredParticipants()`). Awaiting user accept → flip to `active`. | (this commit) |
+| 2026-05-23 | `planning` | Research + Baseline gates completed. Audit doc + baseline §5 committed. Three scope redlines applied (Slice A hook is `getBlockExtensions` not `createEditorExtensions`; Slice B participant shape locked to VS Code `chatParticipants` verbatim; Slice B enumeration via `onDidChangeAgents` event not nonexistent `getRegisteredParticipants()`). Awaiting user accept → flip to `active`. | 08af9e0f |
+| 2026-05-23 | `active` | User accepted scope (Slice B first). Surgical Executor cleared. | (this commit) |

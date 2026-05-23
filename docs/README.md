@@ -4,7 +4,7 @@ Canonical product docs live at this folder's root and one level deep.
 Anything under `docs/archive/` is historical — read for context, not as
 source-of-truth.
 
-> **Active milestone:** [M82 / SR-2: Extension Contribution Model](./Parallx_Milestone_82.md) (`planning`, drafted 2026-05-23 — pending user acceptance + research/baseline gates per Manifest §14). Most recent closed: [M81 / SR-1: Workbench Unification, Slice 1](./Parallx_Milestone_81.md) (`implemented-verified`, 2026-05-23). [M80: Budget Sync as a Skill+Tools Agent](./Parallx_Milestone_80.md) also `implemented-verified` (2026-05-22, commit `be12a855`).
+> **Active milestone:** [M82 / SR-2: Extension Contribution Model](./Parallx_Milestone_82.md) (`active`, accepted 2026-05-23 — Slice B chat participants first, Slice A canvas blocks second). Most recent closed: [M81 / SR-1: Workbench Unification, Slice 1](./Parallx_Milestone_81.md) (`implemented-verified`, 2026-05-23). [M80: Budget Sync as a Skill+Tools Agent](./Parallx_Milestone_80.md) also `implemented-verified` (2026-05-22, commit `be12a855`).
 > Branch: `systems-redesign-planning`. Frozen checkpoint: `checkpoint-pre-systems-redesign-2026-05-23` = `9b9a243`. The next milestone (M82+) must be planned by the Systems Redesign Conductor per [PARALLX_MANIFEST.md](./PARALLX_MANIFEST.md) §14 before any new implementation slice begins.
 
 ## Product
@@ -65,11 +65,11 @@ Authoritative table: [research/MILESTONE_DOC_TRIAGE.md](./research/MILESTONE_DOC
 is defined in [PARALLX_MANIFEST.md](./PARALLX_MANIFEST.md) §17.
 
 Summary (17 milestones):
-- `implemented-verified` (8): M64, M65, M70, M73, M74, M75, M77, M78
+- `implemented-verified` (10): M64, M65, M70, M73, M74, M75, M77, M78, M80, M81
 - `implemented-unverified` (1): M68
 - `partial` (2): M67, M79
-- `planning` (5): M66, M69, M71, M72, M76, M80
-- `active` (1): **M81**
+- `planning` (4): M66, M69, M71, M72, M76
+- `active` (1): **M82**
 - `superseded` / `archived` (0): none in this pass
 
 ## Archive
