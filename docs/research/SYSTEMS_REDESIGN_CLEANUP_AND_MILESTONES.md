@@ -9,9 +9,9 @@
 
 ## 1. Purpose
 
-This plan exists because the systems redesign is too large to begin by editing one subsystem. The first work must make the whole app visible, clean the documentation surface, and establish milestones that are honest about what is planned, partial, implemented, superseded, or archived.
+This plan exists because the systems redesign is too large to begin by editing one subsystem. The first work must make the whole app visible, clean the documentation surface, design the redesign operating system, and establish milestones that are honest about what is planned, partial, implemented, superseded, or archived.
 
-The cleanup is not cosmetic. It is how we prevent local fixes from creating global regressions.
+The cleanup is not cosmetic. It is how we prevent local fixes from creating global regressions. The same systems-thinking rule applies to the process itself: before redesigning Parallx, define the system that will govern research, mapping, execution, checking, and rollback.
 
 ---
 
@@ -21,14 +21,16 @@ Current local setup:
 
 | Ref | Purpose |
 |---|---|
-| `checkpoint-pre-systems-redesign-2026-05-23` | Local checkpoint at commit `9b9a243`, before systems redesign planning docs were committed. |
-| `systems-redesign-planning` | Dedicated branch for planning the cleanup and systems redesign. |
+| `master` / `origin/master` | Latest current app state at commit `9b9a243`. |
+| `checkpoint-pre-systems-redesign-2026-05-23` / `origin/checkpoint-pre-systems-redesign-2026-05-23` | Named restore point at the same current app state, commit `9b9a243`. |
+| `systems-redesign-planning` / `origin/systems-redesign-planning` | Dedicated branch for planning the cleanup and systems redesign. |
 
-Recommended remote strategy:
+Completed remote strategy:
 
-1. Push the checkpoint branch to `origin` so rollback is available outside the local machine.
-2. Push `systems-redesign-planning` to `origin` as the work branch.
-3. Do not fast-forward `origin/master` until the user explicitly decides this branch is the new baseline.
+1. `origin/master` now reflects the latest current app state.
+2. The checkpoint branch is pushed to `origin` so rollback is available outside the local machine.
+3. `systems-redesign-planning` is pushed to `origin` as the isolated work branch.
+4. Future redesign work stays on `systems-redesign-planning` until it proves better and is explicitly accepted for merge.
 
 Rollback:
 
@@ -142,44 +144,71 @@ Rewrite `docs/README.md` around:
 
 These are proposed new milestones for the systems redesign branch. Numbering can use M81+ or a separate `SR-*` prefix. The important part is sequence and proof gates.
 
-### M81 / SR-1: Checkpoint, Manifest, and Documentation Triage
+### M81 / SR-1: Checkpoint, Manifest, Redesign System, and Documentation Triage
 
-Goal: create the stable baseline before changing the app.
+Goal: create the stable baseline and define the operating system for redesign before changing the app.
 
 Deliverables:
 
+- `origin/master` reflects the latest current app.
 - Remote checkpoint branch pushed.
 - `PARALLX_MANIFEST.md` accepted.
+- Agent roster accepted: conductor, research, atlas, baseline, unified interaction, executor, checker.
+- Skill list accepted.
 - Milestone docs labeled.
 - README updated to reflect true active/planning/archive state.
 - No docs deleted; archive-only moves.
 
 Proof gate:
 
+- Branch graph is verified.
 - All links in canonical docs resolve or are marked for repair.
 - User can identify what docs are current in under one minute.
+- The redesign process has named roles, artifacts, proof gates, and rollback rules.
 
-### M82 / SR-2: System Atlas and Baseline Scorecards
+### M82 / SR-2: Whole-App Atlas and Cross-Tool Workflow Map
 
-Goal: see the whole app end to end.
+Goal: see the whole app end to end before proposing subsystem changes.
 
 Deliverables:
 
 - `docs/architecture/SYSTEM_ATLAS.md`
+- Explorer to editor to AI chat to Canvas workflow map.
 - Startup flow map.
 - Workspace switch flow map.
 - Persistence ownership map.
 - IPC channel inventory.
 - Extension lifecycle map.
+- Command/context/tool contribution inventory.
 - Canvas structural flow map.
 - Background work inventory.
 
 Proof gate:
 
 - Each major flow has owner, state, failure modes, and tests.
+- Cross-tool workflows identify resources, surfaces, selections, context, commands, tools, capabilities, events, tasks, artifacts, and provenance.
 - Missing measurements are listed as first-class work.
 
-### M83 / SR-3: System Fitness Harness
+### M83 / SR-3: Unified Workbench Language and Extension Interaction Model
+
+Goal: define the central language that lets separate features behave like one workbench.
+
+Deliverables:
+
+- `docs/architecture/WORKBENCH_INTERACTION_MODEL.md`
+- External research notes for VS Code contribution points, commands, context keys, extension APIs, and at least one comparable mature plugin/workbench architecture.
+- Workbench-level concept model: workspace, resource, surface, selection, context, command, tool, contribution, capability, event, task, artifact, provenance.
+- Universal service map: command registry, contribution registry, context/selection service, resource/link resolver, tool registry, task/job service, extension API bridge, IPC contract layer, capability service, event bus, persistence ownership registry, status/notification, trace/diagnostics.
+- Compatibility plan for existing built-ins and extensions.
+- Exception policy for one-off bridges.
+
+Proof gate:
+
+- Explorer, editor, AI chat, Canvas, and extension workflows can be described using the shared model.
+- No new cross-tool interaction is approved without naming its workbench concepts and tests.
+- Existing extension behavior has a migration or compatibility path.
+
+### M84 / SR-4: System Fitness Harness
 
 Goal: make "better" measurable before refactoring.
 
@@ -188,6 +217,7 @@ Deliverables:
 - `npm run test:system-fitness`
 - Startup timing baseline.
 - IPC count/duration baseline.
+- Cross-tool workflow baseline.
 - Canvas mixed-operation baseline.
 - Extension activation failure baseline.
 - Persistence/workspace switch recovery baseline.
@@ -196,7 +226,7 @@ Proof gate:
 
 - A redesign PR cannot merge without before/after evidence or an explicit "instrumentation first" exception.
 
-### M84 / SR-4: Startup and Lifecycle Control Plane
+### M85 / SR-5: Startup and Lifecycle Control Plane
 
 Goal: reach interactive state faster and with clearer readiness.
 
@@ -212,7 +242,7 @@ Proof gate:
 
 - Time to interactive improves or debugging visibility improves without breaking restore.
 
-### M85 / SR-5: Persistence and IPC Contracts
+### M86 / SR-6: Persistence and IPC Contracts
 
 Goal: make durable state and renderer-main communication safer.
 
@@ -229,7 +259,7 @@ Proof gate:
 - Interrupted switch/save tests produce consistent recovery.
 - IPC pressure is measurable and bounded for startup/restore.
 
-### M86 / SR-6: Extension Isolation and Capability Model
+### M87 / SR-7: Extension Isolation and Capability Model
 
 Goal: make extensions powerful but contained.
 
@@ -246,13 +276,14 @@ Proof gate:
 - Broken/slow extension cannot block workbench startup.
 - Existing extensions still work during warn-only rollout.
 
-### M87 / SR-7: Canvas and Background Work Hardening
+### M88 / SR-8: Canvas, Chat Participation, and Background Work Hardening
 
-Goal: protect the editing experience while workspaces scale.
+Goal: protect the editing experience and cross-tool workflows while workspaces scale.
 
 Deliverables:
 
 - Canvas mixed-operation fitness tests.
+- AI chat participation checks for shared workbench resources/context/artifacts, without redesigning AI chat internals.
 - Background job inventory.
 - Workspace-scoped job cancellation.
 - Job coalescing/backpressure design.
@@ -261,9 +292,10 @@ Deliverables:
 Proof gate:
 
 - Canvas invariants survive repeated mixed operations.
+- AI chat can participate in shared workbench workflows through accepted contracts.
 - Background work cannot write into the wrong workspace after switch.
 
-### M88 / SR-8: Consolidation and Release Decision
+### M89 / SR-9: Consolidation and Release Decision
 
 Goal: decide whether the redesign branch is better enough to become baseline.
 
@@ -279,19 +311,22 @@ Proof gate:
 
 - Fitness suite passes.
 - User-visible workflows are preserved.
-- At least one measurable improvement is demonstrated in startup, debugging, recovery, performance, or bug prevention.
+- At least one measurable improvement is demonstrated in startup, debugging, recovery, performance, composability, or bug prevention.
 
 ---
 
 ## 7. First Execution Rule
 
-The first implementation task is not startup, persistence, IPC, or canvas. The first implementation task is documentation truth:
+The first implementation task is not startup, persistence, IPC, canvas, chat, or extensions. The first implementation task is redesign-system truth:
 
 1. Label milestone docs.
 2. Create/accept the manifest.
-3. Rewrite README.
-4. Archive stale docs without deletion.
-5. Create System Atlas skeleton.
+3. Accept the redesign operating model: conductor, research, atlas, baseline, unified interaction, executor, checker.
+4. Rewrite README.
+5. Archive stale docs without deletion.
+6. Create System Atlas skeleton.
+7. Research mature workbench/plugin systems.
+8. Define the unified workbench language skeleton.
 
 Only then should app-system implementation begin.
 

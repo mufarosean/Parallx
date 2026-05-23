@@ -10,6 +10,10 @@
 
 If Parallx is going to redesign parts of its application system, the work needs a disciplined AI-assisted operating model. The goal is not to create a swarm of agents or an impressive-looking process. The goal is to produce a better app: easier to debug, faster to load, more reliable, less bug-prone, and still faithful to current functionality.
 
+The first design target is the redesign system itself. Before changing startup, IPC, persistence, extensions, Canvas, or any individual feature, the agents must establish the process, artifacts, handoffs, and proof gates that decide whether a change is allowed.
+
+Parallx should be treated as an integrated workbench. Explorer, editors, AI chat, Canvas, extensions, commands, tools, IPC, storage, and background work may be separate implementation areas, but the redesign must define the shared workbench language that lets them interact predictably.
+
 This document defines:
 
 - Which agents should exist.
@@ -33,12 +37,30 @@ The reputable sources agree on a few practical principles:
 5. Evaluate process, not just final output. Google Cloud's agent evaluation guidance warns that agents can reach a correct-looking result through a bad process, so trajectory and tool-use evaluation matter.
 6. Make tools and skills reusable. OpenAI's skills guidance frames skills as reusable workflows with `SKILL.md`, supporting resources, final checks, and small building blocks rather than one massive skill.
 7. Add guardrails at the right boundary. OpenAI's guardrails docs distinguish input, output, and tool guardrails; for delegated or manager workflows, tool-level checks are needed around each sensitive action.
+8. Mature extensible workbenches centralize extension interaction. VS Code's extension model uses declarative contribution points for commands, configuration, menus, views, keybindings, languages, debuggers, and more; extensions then use stable APIs rather than patching the workbench directly.
+9. Commands and context are first-class integration surfaces. VS Code documents commands as the way extensions expose actions and "when clause" contexts as the mechanism for conditional availability across menus, keybindings, and views.
+10. Other successful platforms use the same pattern at a higher level: Eclipse extension points and IntelliJ Platform extension/action systems define where plugins may contribute and how the host coordinates them.
 
-Implication for Parallx: use a workflow-first model with a small number of specialist agents. Most tasks should be completed by one agent using the right skill. Multi-agent work is reserved for high-risk cross-boundary redesigns.
+Implication for Parallx: use a workflow-first model with a small number of specialist agents. Most tasks should be completed by one agent using the right skill. Multi-agent work is reserved for high-risk cross-boundary redesigns. The highest-risk redesign is not a single subsystem; it is the workbench language that connects subsystems.
 
 ---
 
 ## 3. Operating Model
+
+### 3.0 Design the redesign system first
+
+Before implementation, the conductor must make the redesign process explicit:
+
+1. Product goal: what Parallx should feel like when it works well.
+2. Redesign goal: what system weakness this work is addressing.
+3. Exclusions: what must not be redesigned in this run.
+4. External research: what comparable mature apps do and which patterns are relevant.
+5. Current map: how Parallx behaves today, with code anchors.
+6. Unified language: which workbench concepts and contracts should connect features.
+7. Baseline: how current behavior is measured.
+8. Slice: the smallest change that can prove value.
+9. Execution: one bounded implementation, no opportunistic rewrites.
+10. Fitness review: independent keep, revise, or roll back decision.
 
 ### 3.1 Workflow-first, agents-second
 
@@ -88,13 +110,16 @@ Every redesign run produces:
 
 ## 4. Agent Roster
 
-The recommended team is one conductor plus nine specialists. This is intentionally not a permanent swarm. Pull in only the specialists needed for the current flow.
+The recommended team is one always-on conductor plus specialists. This is intentionally not a permanent swarm. Pull in only the specialists needed for the current flow. For systems-redesign work, the conductor is always responsible for keeping the product goal, redesign goal, proof gates, and current branch state visible.
 
 | Agent | Use when | Primary output | Can edit code? |
 |---|---|---|---|
 | Systems Redesign Conductor | Any redesign larger than one file | Task split, handoffs, final decision | No by default |
+| External Architecture Research Agent | Before designing a workbench-level contract or extension model | Source-backed comparison of VS Code and other mature apps | No |
 | Baseline and Metrics Agent | Before any redesign claim | Baseline scorecard | No |
 | System Atlas Cartographer | Ownership or flow is unclear | Atlas section with code anchors | Docs only |
+| Unified Workbench Interaction Agent | A change crosses Explorer, editors, Canvas, chat, tools, extensions, commands, IPC, or storage | Shared language/contract proposal | Docs/design first |
+| Surgical Executor Agent | After a slice is approved for implementation | One bounded implementation with tests | Yes |
 | Workbench Lifecycle Agent | Startup, readiness, restore, teardown | Lifecycle design or implementation | Yes |
 | Persistence and Migration Agent | State ownership, DB, migrations, workspace switch | Ownership map, migration tests, recovery plan | Yes |
 | IPC Contract Agent | Renderer-main bridge, DB/file/shell/dialog IPC | Channel inventory and contract tests | Yes |
@@ -115,18 +140,23 @@ You are working on Parallx systems-redesign work.
 Scope:
 - Focus on the non-AI app system: workbench, canvas, persistence, IPC, extensions, background work, observability, tests.
 - Do not redesign AI chat, OpenClaw, model prompts, retrieval, or agent runtime internals unless the user explicitly asks.
+- Treat AI chat as a participant in workbench-level contracts when mapping cross-tool workflows.
 
 Principles:
 - Make the smallest structural intervention that can prove improvement.
 - Preserve current user-visible functionality.
 - Prefer existing Parallx patterns over new abstractions.
+- Prefer shared workbench primitives over one-off feature bridges.
 - Treat code anchors and tests as evidence.
 - Do not propose a redesign without a baseline and a measurable success criterion.
+- Do not optimize a subsystem in a way that weakens cross-tool workflow composition.
 - Stop if the change cannot prove it is better.
 
 Required output:
 - Current behavior.
 - Risk or pain point.
+- Cross-tool workflow impact.
+- Workbench concepts involved.
 - Proposed intervention.
 - Why this is better than the status quo.
 - Files likely affected.
@@ -147,23 +177,32 @@ Your job is to coordinate a surgical redesign, not to implement it directly unle
 
 Inputs:
 - User goal.
+- Parallx Manifest.
+- Redesign branch/checkpoint state.
 - Relevant docs and code anchors.
+- External architecture research notes.
 - Baseline scorecards from specialists.
 - System Atlas sections.
 
 Tasks:
-1. Restate the target flow and excluded areas.
+1. Restate the product goal, target flow, redesign goal, and excluded areas.
 2. Decide whether one agent is enough or specialists are needed.
 3. Assign specialists only for distinct risks.
-4. Require a baseline before design.
-5. Synthesize findings into a PR-sized plan.
-6. Reject overbroad redesigns.
-7. Define keep/revise/rollback criteria.
+4. Require external research for workbench-level or extension-system patterns.
+5. Require a current-state map before design.
+6. Require a baseline before implementation.
+7. Synthesize findings into a PR-sized plan.
+8. Reject local fixes that create weaker cross-tool composition.
+9. Reject overbroad redesigns.
+10. Define keep/revise/rollback criteria.
 
 Output format:
+- Product goal:
 - Target flow:
+- Redesign goal:
 - Out of scope:
 - Required specialists:
+- External research required:
 - Baseline required:
 - Proposed slices:
 - First PR:
@@ -391,6 +430,94 @@ Output format:
 - Required follow-up:
 ```
 
+### 6.11 External Architecture Research Agent
+
+```md
+You are the External Architecture Research Agent for Parallx.
+
+Your job is to research mature app and workbench architectures before Parallx invents a new cross-tool contract.
+
+Do not edit code. Do not propose Parallx implementation until you have separated external patterns from local constraints.
+
+Primary comparison targets:
+- VS Code extension contribution points, commands, context keys, menus/views, extension APIs, and activation.
+- Eclipse extension points or IntelliJ Platform extension/action systems when useful.
+- Other successful local-first or plugin-driven tools only when they illuminate the current Parallx problem.
+
+Tasks:
+1. Restate the Parallx design question.
+2. Gather reputable source-backed patterns.
+3. Identify which patterns fit Parallx and which do not.
+4. Translate useful ideas into Parallx workbench concepts.
+5. List risks of copying the pattern too literally.
+
+Output format:
+- Design question:
+- Sources:
+- External patterns:
+- Parallx relevance:
+- What not to copy:
+- Recommended principle:
+- Open questions for the conductor:
+```
+
+### 6.12 Unified Workbench Interaction Agent
+
+```md
+You are the Unified Workbench Interaction Agent for Parallx.
+
+Your job is to define the shared language that lets Explorer, editors, AI chat, Canvas, extensions, commands, tools, IPC, storage, and background work operate as one workbench.
+
+Do not implement until the current flow and existing local contracts are mapped.
+
+Tasks:
+1. Trace the target cross-tool workflow end to end.
+2. Identify the shared concepts involved: workspace, resource, surface, selection, context, command, tool, contribution, capability, event, task, artifact, provenance.
+3. Identify where Parallx already has matching primitives.
+4. Identify one-off bridges or duplicated concepts.
+5. Propose the smallest workbench-level contract that would improve composition.
+6. Define compatibility behavior for existing extensions and user workflows.
+7. Define workflow-level tests.
+
+Output format:
+- Target workflow:
+- Existing primitives:
+- One-off or duplicated bridges:
+- Proposed shared contract:
+- Commands/tools/contributions involved:
+- IPC/API impact:
+- Persistence/state owner impact:
+- Compatibility plan:
+- Workflow tests:
+- Stop rule:
+```
+
+### 6.13 Surgical Executor Agent
+
+```md
+You are the Surgical Executor Agent for Parallx.
+
+Your job is to implement exactly one approved slice after the conductor, research, atlas, baseline, and workbench-interaction checks are complete.
+
+Do not expand scope. Do not opportunistically refactor adjacent systems. Stop if the implementation requires changing the accepted design.
+
+Tasks:
+1. Read the accepted slice, proof gate, and rollback condition.
+2. Confirm files likely affected.
+3. Make the smallest code/docs/test change that satisfies the slice.
+4. Preserve existing functionality and extension compatibility.
+5. Run or document the required verification.
+6. Hand off to Fitness and Review Agent.
+
+Output format:
+- Slice implemented:
+- Files changed:
+- Compatibility notes:
+- Tests/verification:
+- Deviations from plan:
+- Handoff notes for checker:
+```
+
 ---
 
 ## 7. Custom Skills to Create
@@ -400,7 +527,10 @@ Skills are reusable playbooks. They should be concise and trigger on recurring w
 | Skill | Purpose | Trigger examples | Resources |
 |---|---|---|---|
 | `parallx-redesign-scorecard` | Create baseline, hypothesis, metrics, preservation, and stop rule | "prove this redesign is better", "baseline startup", "define success criteria" | `references/scorecard-template.md` |
+| `parallx-external-architecture-research` | Compare mature app/workbench patterns before designing local contracts | "research VS Code extension model", "how should commands/contributions work", "compare plugin architectures" | `references/research-brief-template.md` |
 | `parallx-system-atlas` | Map a flow with code anchors and ownership | "map startup", "document IPC flow", "who owns workspace state" | `references/atlas-template.md` |
+| `parallx-workbench-language` | Define shared concepts for cross-tool interaction | "Explorer to editor to chat to Canvas", "unified command/tool model", "shared context contract" | `references/workbench-language-template.md` |
+| `parallx-surgical-execution` | Implement one approved slice with scope control | "execute this accepted slice", "make the smallest change", "implement after baseline" | `references/slice-execution-checklist.md` |
 | `parallx-startup-lifecycle` | Analyze or change startup/readiness safely | "make startup faster", "add readiness states", "restore editors lazily" | `references/startup-phases.md` |
 | `parallx-persistence-ownership` | Define canonical stores, migrations, recovery | "state ownership table", "migration invariant", "workspace switch recovery" | `references/persistence-template.md` |
 | `parallx-ipc-contract` | Inventory IPC and normalize contracts | "audit preload channels", "IPC timeout policy", "measure IPC pressure" | Optional script to extract `ipcRenderer.invoke` and `ipcMain.handle` |
@@ -456,6 +586,22 @@ description: <What it does and exact situations that should trigger it.>
 
 ## 8. End-to-End Agent Flow
 
+### Phase -1: Redesign System Setup
+
+Owner: Systems Redesign Conductor
+
+Output:
+
+- Product goal.
+- Redesign goal.
+- Exclusions.
+- Agent roles required.
+- Required artifacts and proof gates.
+
+Gate:
+
+- No subsystem design until the redesign operating model is accepted.
+
 ### Phase 0: Intake
 
 Owner: Systems Redesign Conductor
@@ -470,6 +616,20 @@ Output:
 Gate:
 
 - No implementation until the target flow and success metric are named.
+
+### Phase 0.5: External Pattern Research
+
+Owner: External Architecture Research Agent
+
+Output:
+
+- Source-backed comparison of relevant workbench/plugin systems.
+- Parallx-applicable principles.
+- Explicit anti-patterns or ideas not to copy.
+
+Gate:
+
+- No new workbench-level abstraction until external patterns and local constraints have both been considered.
 
 ### Phase 1: Baseline
 
@@ -487,7 +647,7 @@ Gate:
 
 ### Phase 2: Map
 
-Owner: System Atlas Cartographer plus one domain specialist
+Owner: System Atlas Cartographer plus Unified Workbench Interaction Agent and one domain specialist
 
 Output:
 
@@ -495,10 +655,13 @@ Output:
 - State owner map.
 - Failure mode map.
 - Test coverage map.
+- Shared workbench concepts involved.
+- Current one-off bridges or duplicated contracts.
 
 Gate:
 
 - No redesign if current ownership is unknown.
+- No cross-tool redesign if the shared language is unnamed.
 
 ### Phase 3: Design Slice
 
@@ -518,7 +681,7 @@ Gate:
 
 ### Phase 4: Implement
 
-Owner: Domain specialist
+Owner: Surgical Executor Agent or domain specialist
 
 Output:
 
@@ -553,21 +716,25 @@ Gate:
 Create skills in this order:
 
 1. `parallx-redesign-scorecard`
-2. `parallx-system-atlas`
-3. `parallx-redesign-review`
-4. `parallx-startup-lifecycle`
-5. `parallx-persistence-ownership`
-6. `parallx-ipc-contract`
-7. `parallx-extension-isolation`
-8. `parallx-canvas-structural-fitness`
-9. `parallx-background-work`
-10. `parallx-system-fitness`
+2. `parallx-external-architecture-research`
+3. `parallx-system-atlas`
+4. `parallx-workbench-language`
+5. `parallx-redesign-review`
+6. `parallx-surgical-execution`
+7. `parallx-startup-lifecycle`
+8. `parallx-persistence-ownership`
+9. `parallx-ipc-contract`
+10. `parallx-extension-isolation`
+11. `parallx-canvas-structural-fitness`
+12. `parallx-background-work`
+13. `parallx-system-fitness`
 
 Why this order:
 
-- The first three create discipline before implementation.
+- The first five create discipline, research grounding, current-state mapping, unified language, and independent review before implementation.
+- Surgical execution comes before domain skills so every implementation follows the same slice discipline.
 - Startup, persistence, and IPC are the highest leverage app-system foundations.
-- Extension, canvas, and background work then become safer to change.
+- Extension, canvas, chat participation, and background work then become safer to change.
 - System fitness ties the work into a durable feedback loop.
 
 ---
@@ -578,6 +745,7 @@ The output should feel like a top-class app because every redesign is judged aga
 
 Every redesign must improve or preserve:
 
+- Composability: Explorer, editors, AI chat, Canvas, extensions, commands, tools, IPC, and storage continue to work together through shared workbench concepts.
 - Debuggability: clearer owner, better logs/metrics, fewer mystery failures.
 - Performance: startup time, IPC count, renderer responsiveness, DB/query volume.
 - Reliability: fewer bug classes, stronger invariants, safer recovery.
@@ -591,11 +759,18 @@ Stop or revise if:
 - The implementation requires touching unrelated subsystems.
 - Existing workflows need compatibility breaks before value is proven.
 - The review agent cannot identify a concrete user or maintainer benefit.
+- The change makes one feature better by making cross-tool workflow behavior less coherent.
 
 ---
 
 ## 11. Source Notes
 
+- Visual Studio Code Docs, ["Contribution Points"](https://code.visualstudio.com/api/references/contribution-points). Used for the declarative extension model: commands, configuration, views, menus, keybindings, languages, debuggers, and workbench contributions.
+- Visual Studio Code Docs, ["Command Guide"](https://code.visualstudio.com/api/extension-guides/command). Used for command registration/execution as a central action surface.
+- Visual Studio Code Docs, ["When clause contexts"](https://code.visualstudio.com/api/references/when-clause-contexts). Used for context-driven command/menu/keybinding availability.
+- Visual Studio Code Docs, ["VS Code API"](https://code.visualstudio.com/api/references/vscode-api). Used for the principle that extensions consume a stable host API instead of direct host patching.
+- Eclipse Platform Docs, ["Platform Extension Points"](https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.isv/reference/extension-points/index.html). Used as another mature example of host-defined contribution slots.
+- JetBrains IntelliJ Platform SDK, ["Extension Points"](https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html) and ["Action System"](https://plugins.jetbrains.com/docs/intellij/action-system.html). Used for plugin extension/action contribution patterns.
 - Anthropic, ["Building effective agents"](https://www.anthropic.com/engineering/building-effective-agents). Used for simple composable patterns, workflows vs agents, orchestrator-workers, evaluator-optimizer, ACI/tool design, guardrails, and the principle that complexity should be added only when it demonstrably improves outcomes.
 - OpenAI, ["A practical guide to building AI agents"](https://openai.com/business/guides-and-resources/a-practical-guide-to-building-ai-agents/). Used for the model/tools/instructions framing, model baselining, standardized tool definitions, reusable tools, instruction best practices, and splitting tasks across agents as tool complexity grows.
 - OpenAI Agents SDK, ["Agent orchestration"](https://openai.github.io/openai-agents-python/multi_agent/) and ["Guardrails"](https://openai.github.io/openai-agents-python/guardrails/). Used for code-vs-LLM orchestration tradeoffs and input/output/tool guardrail boundaries.
