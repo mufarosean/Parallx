@@ -4,20 +4,21 @@ Canonical product docs live at this folder's root and one level deep.
 Anything under `docs/archive/` is historical — read for context, not as
 source-of-truth.
 
-> **Active milestone:** none. Most recent closed: [M82 / SR-2: Extension Contribution Model](./Parallx_Milestone_82.md) (`implemented-verified`, 2026-05-23 — Slice B `3cd80b07`, Slice A `e9320875`). Prior: [M81 / SR-1: Workbench Unification, Slice 1](./Parallx_Milestone_81.md) (`implemented-verified`, 2026-05-23). [M80: Budget Sync as a Skill+Tools Agent](./Parallx_Milestone_80.md) also `implemented-verified` (2026-05-22, commit `be12a855`).
-> Branch: `systems-redesign-planning`. Frozen checkpoint: `checkpoint-pre-systems-redesign-2026-05-23` = `9b9a243`. The next milestone (M82+) must be planned by the Systems Redesign Conductor per [PARALLX_MANIFEST.md](./PARALLX_MANIFEST.md) §14 before any new implementation slice begins.
+> **Active milestone:** none. Most recent closed: [M83 / SR-3: Unified Workbench Language and Extension Interaction Model](./Parallx_Milestone_83.md) (`implemented-verified`, 2026-05-23 — ratification of pre-existing model + atlas). Prior: [M82 / SR-2: Extension Contribution Model](./Parallx_Milestone_82.md) (`implemented-verified`, 2026-05-23 — Slice B `3cd80b07`, Slice A `e9320875`). Prior: [M81 / SR-1: Workbench Unification, Slice 1](./Parallx_Milestone_81.md) (`implemented-verified`, 2026-05-23).
+> Branch: `systems-redesign-planning`. Frozen checkpoint: `checkpoint-pre-systems-redesign-2026-05-23` = `9b9a243`. The next milestone (M84 / SR-4: System Fitness Harness) must be planned by the Systems Redesign Conductor per [PARALLX_MANIFEST.md](./PARALLX_MANIFEST.md) §14 before any new implementation slice begins. Per M83 §9.6, every new milestone must cite `WORKBENCH_INTERACTION_MODEL.md` in its frontmatter and name the workbench primitives it touches.
 
 ## Product
 - [PARALLX_MANIFEST.md](./PARALLX_MANIFEST.md) — the contract for the redesign
 
 ## Most recently closed milestones
+- [Parallx_Milestone_83.md](./Parallx_Milestone_83.md) — M83 / SR-3 Unified Workbench Language and Extension Interaction Model (`implemented-verified` 2026-05-23)
 - [Parallx_Milestone_82.md](./Parallx_Milestone_82.md) — M82 / SR-2 Extension Contribution Model (`implemented-verified` 2026-05-23)
 - [Parallx_Milestone_81.md](./Parallx_Milestone_81.md) — M81 / SR-1 Workbench Unification (`implemented-verified` 2026-05-23)
 - [Parallx_Milestone_80.md](./Parallx_Milestone_80.md) — M80 Budget Sync as a Skill+Tools Agent (`implemented-verified` 2026-05-22)
 
 ## Architecture (descriptive + proposal)
 - [architecture/SYSTEM_ATLAS.md](./architecture/SYSTEM_ATLAS.md) — canonical descriptive map of the current workbench
-- [architecture/WORKBENCH_INTERACTION_MODEL.md](./architecture/WORKBENCH_INTERACTION_MODEL.md) — unified-primitive redesign proposal (approved with conditions)
+- [architecture/WORKBENCH_INTERACTION_MODEL.md](./architecture/WORKBENCH_INTERACTION_MODEL.md) — unified-primitive workbench language (**Adopted M83 / SR-3 2026-05-23**)
 
 ## Redesign research
 - [research/SYSTEMS_REDESIGN_KICKOFF.md](./research/SYSTEMS_REDESIGN_KICKOFF.md) — kickoff package + §19 decisions
@@ -66,7 +67,7 @@ Authoritative table: [research/MILESTONE_DOC_TRIAGE.md](./research/MILESTONE_DOC
 is defined in [PARALLX_MANIFEST.md](./PARALLX_MANIFEST.md) §17.
 
 Summary (17 milestones):
-- `implemented-verified` (11): M64, M65, M70, M73, M74, M75, M77, M78, M80, M81, M82
+- `implemented-verified` (12): M64, M65, M70, M73, M74, M75, M77, M78, M80, M81, M82, M83
 - `implemented-unverified` (1): M68
 - `partial` (2): M67, M79
 - `planning` (4): M66, M69, M71, M72, M76

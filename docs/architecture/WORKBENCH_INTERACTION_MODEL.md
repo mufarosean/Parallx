@@ -1,9 +1,11 @@
 ---
-Status: Draft (pending Fitness & Review)
+Status: Adopted (M83 / SR-3, 2026-05-23) — canonical workbench language for all SR-4+ milestones
 Author: Unified Workbench Interaction Agent (subagent invocation)
 Branch: systems-redesign-planning
-Commit: 01ad9c1
+Commit: 01ad9c1 (created); adopted via M83 closeout commit
 Created: 2026-05-23
+Adopted: 2026-05-23 via docs/Parallx_Milestone_83.md (M83 / SR-3)
+Review: docs/research/WORKBENCH_INTERACTION_MODEL_REVIEW.md §1 verdict APPROVE
 Atlas: docs/architecture/SYSTEM_ATLAS.md
 External brief: docs/research/WORKBENCH_EXTERNAL_ARCHITECTURE_RESEARCH_BRIEF.md
 Baseline: docs/research/baselines/workbench-baseline.md
