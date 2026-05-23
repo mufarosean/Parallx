@@ -217,32 +217,48 @@ None. Slice A is the root. Slices B, C, D depend on Slice A completing successfu
 
 ### Slice B: Command and Tool Registry with Contribution Support
 
-(See WORKBENCH_INTERACTION_MODEL_REVIEW.md §10 for sequencing.)
+> **2026-05-23 rescope:** Reality audit ([M81_SLICE_B_AUDIT.md](research/M81_SLICE_B_AUDIT.md), commit `977e660`) verified the original scope against the actual source. Two of the three claimed pain points are already shipped:
+> - "Commands are registered scattered" — **REFUTED.** `CommandService` at [src/commands/commandRegistry.ts:L89-L104](src/commands/commandRegistry.ts) is the single canonical registry; built-in and extension command registrations both go through it; `getCommands()`/`getCommand()`/`hasCommand()` provide the discovery API; Quick Access already consumes it at [src/commands/quickAccess.ts:L254](src/commands/quickAccess.ts).
+> - "No `when` clause support" — **PARTIALLY TRUE / overstated.** When-clauses are already supported across all four contribution types: commands ([commandContribution.ts:L106-L140](src/contributions/commandContribution.ts)), menus ([menuContribution.ts:L130, L224](src/contributions/menuContribution.ts)), keybindings ([keybindingContribution.ts:L248](src/contributions/keybindingContribution.ts)), views ([viewContribution.ts:L159-L254](src/contributions/viewContribution.ts)). What is genuinely missing is an orchestrator.
+> - "Tool enablement not reflected in availability" — **OUTDATED.** `toolEnablementService` fires `onDidChangeEnablement`; `workbench.ts` L2476-L2500 reacts by calling `removeContributions(toolId)` on all four processors. The mechanism is already coarser than the claim (full deactivation, not just hide).
+>
+> Slice B reduces to one genuinely missing piece: a `ContributionRegistry` that wraps the four scattered processor calls in `workbench.ts` so the workbench has one entry point (`processContributions(toolDescription)` / `removeContributions(toolId)`) instead of four. This is a tiny refactor (~2 files, ~80 LOC) that preserves all existing behavior. Type validation, when-clause grammar docs, and extended context discovery are explicit non-goals for this slice — they are speculative until a real consumer surfaces.
 
 **Workflow hop it serves:**
-[PARALLX_MANIFEST.md §5](docs/PARALLX_MANIFEST.md#5-core-product-workflow): "User asks AI chat about documents → AI uses chat tools → tool results reference workspace."
+[PARALLX_MANIFEST.md §5](docs/PARALLX_MANIFEST.md#5-core-product-workflow): "User asks AI chat about documents → AI uses chat tools → tool results reference workspace." A unified contribution registry gives future surfaces (Slice D bridge replacement, Slice C task-routed workflows) a single integration point.
 
-**Current pain point (Atlas §2 CommandRegistry, §4.2 Duplicate Contracts):**
-- Commands are registered scattered across the app; no centralized discovery.
-- Contributions (menus, views, keybindings) are hardcoded in contribution processors; no `when` clause support.
-- Tool enablement status is stored in settings but not reflected in command/menu availability.
+**Current pain point (audit-corrected):**
+- `workbench.ts` calls four processors separately at three different sites (L2302-L2319 process on register, L2469-L2472 remove on deactivate, L2484+ re-process on re-enable). Adding a new contribution type requires editing all three sites. Tests that exercise contribution lifecycle need to mock four services instead of one. This is a maintainability hot-spot, not a functional bug.
 
-**Interaction-model section:**
-[WORKBENCH_INTERACTION_MODEL.md §2.6 Command, §2.7 Tool, §2.8 Contribution](docs/architecture/WORKBENCH_INTERACTION_MODEL.md#26-command) and §5 Duplicate-Contract Resolution.
+**Interaction-model section that defines the target:**
+[WORKBENCH_INTERACTION_MODEL.md §2.8 Contribution](docs/architecture/WORKBENCH_INTERACTION_MODEL.md#28-contribution) — single canonical registry that owns all contribution-type processors and presents one interface to the workbench.
 
-**Atlas anchor:**
-- CommandRegistry: [src/commands/commandRegistry.ts](src/commands/commandRegistry.ts)
-- ToolRegistry: [src/tools/toolRegistry.ts](src/tools/toolRegistry.ts)
-- Contributions: [src/contributions/*.ts](src/contributions/)
+**Atlas anchor (verified by audit):**
+- Single CommandService (already canonical): [src/commands/commandRegistry.ts:L89-L104](src/commands/commandRegistry.ts)
+- Single ToolRegistry with state machine (already canonical): [src/tools/toolRegistry.ts:L28-L33](src/tools/toolRegistry.ts)
+- Four separate contribution processors with shared `IContributionProcessor` interface at [src/contributions/contributionTypes.ts:L24-L57](src/contributions/contributionTypes.ts)
+- Scattered orchestration sites in [src/workbench/workbench.ts:L2302-L2319, L2469-L2472, L2484+](src/workbench/workbench.ts)
 
-**Files touched:**
-- `src/commands/commandRegistry.ts` (MODIFY: add typed contract, `when` support)
-- `src/tools/toolRegistry.ts` (MODIFY: add ToolSchema, capabilities)
-- `src/contributions/contributionRegistry.ts` (NEW or MODIFY: centralized registry with `when` predicate support)
-- `src/api/bridges/commandBridge.ts` (MODIFY: export typed signatures)
-- `tests/unit/commandContractValidation.test.ts` (NEW)
-- `tests/unit/toolActivationFiltering.test.ts` (NEW)
-- `tests/unit/contributionVisibilityPredicate.test.ts` (NEW)
+**Files touched** (rescoped — every file the Surgical Executor may modify in this slice):
+- `src/contributions/contributionRegistry.ts` *(NEW, ~60 LOC)* — `ContributionRegistry` class that takes the four existing processors in its constructor and exposes `processContributions(toolDescription)` and `removeContributions(toolId)` that fan out to each processor in the order workbench.ts currently does. Errors from one processor are caught and logged (per Landmine 1 of the audit) so one bad contribution cannot block the others.
+- `src/contributions/contributionTypes.ts` *(MODIFY, ~15 LOC)* — export `IContributionRegistry` interface alongside the existing `IContributionProcessor` interface. No changes to existing types.
+- `src/workbench/workbench.ts` *(MODIFY, ~20 LOC)* — construct `ContributionRegistry` in Phase 3 with the four existing processor instances; replace the three scattered orchestration sites (L2302-L2319, L2469-L2472, L2484+) with single calls into the registry. Existing processor instances and their public methods stay unchanged so any direct caller (tests, future consumers) keeps working.
+- `tests/unit/contributionRegistry.test.ts` *(NEW, ~80 LOC)* — verify the registry fans out to all four processors on `processContributions()`, fans out to all four on `removeContributions(toolId)`, and that one processor throwing does not block the others (uses test doubles for the four processors).
+
+**Deferred to later slices (with explicit audit reasons):**
+- **Typed command/tool contracts** — DEFERRED. The audit found no current consumer that needs argument/result type generics beyond what `executeCommand<T>(id, ...args)` already provides. Revisit when extension API generics become a real pain point.
+- **Contribution payload schema validation** — DEFERRED. Speculative without a current bug report; processors already validate the fields they read. A future slice can add Zod/JSON-Schema if needed.
+- **When-clause grammar documentation** — DEFERRED. `IContextKeyServiceLike.contextMatchesRules()` is the live implementation; documenting it is a docs task, not a Slice B code change.
+- **Tool-contributed context keys** — DEFERRED to Slice D, where extensions need stable context-key registration.
+- **`api.contributions.getSupportedTypes()` discovery API** — DEFERRED. No current call-site; can ship with extension capability work in Slice C.
+
+**Files NOT touched** (anti-list — high-risk neighbors that must remain untouched):
+- `src/commands/commandRegistry.ts` — already canonical; do not modify.
+- `src/tools/toolRegistry.ts` — state machine already correct; do not modify.
+- `src/contributions/commandContribution.ts`, `keybindingContribution.ts`, `menuContribution.ts`, `viewContribution.ts` — the registry wraps them; their internal logic is unchanged.
+- `src/tools/toolEnablementService.ts` — the onDidChangeEnablement contract is unchanged; the registry is called from the existing listener.
+- `src/api/bridges/commandsBridge.ts` — extension API unchanged.
+- Everything in the §3.3 preservation-required list and the Slice A "Files NOT touched" list still applies.
 
 **Characterization tests that must pass BEFORE Slice B:**
 - All Slice A tests pass (foundation required).
