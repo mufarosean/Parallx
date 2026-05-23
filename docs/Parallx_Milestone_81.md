@@ -356,13 +356,28 @@ Depends on Slice B (CommandRegistry, ToolRegistry).
 
 ### Slice D: Bridge Replacement and Cross-Tool Workflow Refactoring
 
-(Per WORKBENCH_INTERACTION_MODEL_REVIEW.md §10 recommendation.)
+> **2026-05-23 rescope:** Reality audit ([M81_SLICE_D_AUDIT.md](research/M81_SLICE_D_AUDIT.md), commit `154e9a5`) found that **6 of 7 bridges are already implemented** and all four cross-cutting claims are REFUTED:
+> - Bridge 1 (Selection→Chat): `SelectionService` broadcast from Slice A ([src/services/selectionActionDispatcher.ts:L88-L96](src/services/selectionActionDispatcher.ts)).
+> - Bridge 2 (Selection→Canvas): superseded by Slice A's `onDidChangeSelection` event.
+> - Bridge 3 (Canvas↔Chat URIs): `LinkResolverService` at [src/links/linkResolverService.ts:L1-L200](src/links/linkResolverService.ts) is the centralized resolver; Chat already self-registers its segment at [chat/main.ts:L2718-L2760](src/built-in/chat/main.ts). The only gap is that **Canvas does not self-register its `canvas` segment**.
+> - Bridge 4 (Chat↔Explorer): `EditorService.onDidChangeOpenEditors` at [editorService.ts:L20](src/services/editorService.ts) is already consumed by [chatContextAttachments.ts:L69](src/built-in/chat/input/chatContextAttachments.ts).
+> - Bridge 5 (Canvas-sidebar↔Editor): [canvasSidebar.ts:L201](src/built-in/canvas/canvasSidebar.ts) already subscribes.
+> - Bridge 6 (Recent workspaces): snapshot-only, Workspace owns state (confirmed by Slice A audit; unchanged).
+> - Bridge 7 (Link resolution): handled by `LinkResolverService`.
+>
+> Cross-cutting claims also REFUTED: no central dispatcher exists (architecture is already event-based); `LinkResolverService` exists; `EditorService` events exist; autonomy was refactored to be independent in M60 (chat integrates with autonomy services, not the other way round).
+>
+> **Slice D shrinks to one structural change plus one E2E verification.** Genuinely-missing pieces:
+> 1. Canvas LinkContract registration — Canvas registers its `canvas` segment with a `page` kind handler that opens the page editor, mirroring the Chat segment registration pattern. ~50 LOC, one new file.
+> 2. Cross-tool E2E test — exercises the full workflow (Explorer → Editor → Chat selection → Chat creates canvas page via tool → resulting `parallx://canvas/page/<id>` link resolves and opens in Canvas editor → Canvas sidebar reflects open editor → workspace persists across restart).
+>
+> All preservation-list files (chatDataService.ts, canvasDataService.ts, canvasSidebar.ts internal logic) stay untouched — the audit verified they already do the right thing.
 
 **Workflow hop it serves:**
 [PARALLX_MANIFEST.md §5](docs/PARALLX_MANIFEST.md#5-core-product-workflow) full end-to-end: "Open workspace → Explorer → Editor → Chat → Chat references workspace → Canvas → Reopen."
 
-**Current pain point (Atlas §4.1, all 7 bridges):**
-- Bridges 1–7 are all hard-coded one-off routes. Adding a new surface requires modifying core dispatcher code.
+**Current pain point (rescoped — audit-corrected):**
+- Canvas is the only built-in surface that does not self-register a link contract with `LinkResolverService`. When chat (or any other surface) wants to produce a `parallx://canvas/page/<id>` link, it can mint the URI but the resolver has no segment handler for `canvas`, so opening the link must fall back to a direct API call (`api.editors.openEditor({ typeId: 'canvas', ... })`). This shape is correct for Chat→Canvas today but blocks any other surface from materializing canvas links.
 
 **Interaction-model section:**
 [WORKBENCH_INTERACTION_MODEL.md §4 Cross-Tool Bridge Replacement Plan](docs/architecture/WORKBENCH_INTERACTION_MODEL.md#4-cross-tool-bridge-replacement-plan) (Bridges 1–7).
@@ -377,18 +392,22 @@ All 7 bridge replacements (from WORKBENCH_INTERACTION_MODEL.md §4):
 - Bridge 6 (Recent workspaces ↔ Workspace): Workspace canonical ownership (Slice A; no change in Slice D)
 - Bridge 7 (Link resolution per-feature): Centralize in LinkResolverService with Resource discriminated union (Slice D implementation)
 
-**Files touched (exhaustive):**
-- `src/links/linkResolverService.ts` (MODIFY: implement Bridge 3 + Bridge 7)
-- `src/links/parallxUri.ts` (MODIFY: Resource-based URI scheme)
-- `src/built-in/chat/input/chatContextAttachments.ts` (MODIFY: Bridge 4 — subscribe to EditorService.onDidChangeOpenEditors)
-- `src/built-in/chat/data/chatDataService.ts` (MODIFY: use LinkResolverService)
-- `src/built-in/canvas/canvasSidebar.ts` (MODIFY: Bridge 5 — use EditorService events)
-- `src/services/editorService.ts` (MODIFY: emit onDidChangeOpenEditors, onDidOpenEditor, onDidCloseEditor as part of Slice B's Command/Tool registry integration; Slice D wires these events)
-- `tests/e2e/editorAttachmentSync.spec.ts` (NEW: Bridge 4 E2E)
-- `tests/e2e/canvasSidebarSync.spec.ts` (NEW: Bridge 5 E2E)
-- `tests/e2e/autonomyLifecycleIndependence.spec.ts` (NEW: Autonomy runs via TaskService, not hard-coupled to Chat)
-- `tests/e2e/chatToCanvasArtifact.spec.ts` (NEW: Bridge 3 — chat creates canvas artifact; link resolves)
-- `tests/e2e/crossToolWorkflow.spec.ts` (NEW: Full workflow end-to-end)
+**Files touched (rescoped — exhaustive):**
+- `src/built-in/canvas/canvasLinks.ts` *(NEW, ~50 LOC)* — exports an `activateCanvasLinks(context, api, canvasDataService)` function that calls `api.links.register({ segment: 'canvas', kinds: { page: { uriTemplate: 'parallx://canvas/page/<pageId>', open: async (parsed) => api.editors.openEditor({ typeId: 'canvas', title: 'Canvas Page', instanceId: parsed.id }) } } })`. Tracked in `context.subscriptions` for clean disposal.
+- `src/built-in/canvas/main.ts` *(MODIFY, ~5 LOC)* — call `activateCanvasLinks(...)` from the canvas extension's `activate(...)` function. No other change.
+- `tests/unit/canvasLinks.test.ts` *(NEW, ~80 LOC)* — vitest unit test verifying: (a) `activateCanvasLinks` registers the `canvas` segment via `api.links.register`, (b) a `parallx://canvas/page/<id>` URI parses correctly, (c) calling the registered `open()` handler dispatches an `openEditor` call with `typeId: 'canvas'` and the parsed page id.
+
+**Optional, only if the executor finds a real consumer:**
+- `tests/e2e/crossToolWorkflow.spec.ts` *(NEW, ~150 LOC)* — playwright E2E exercising the full Explorer→Editor→Chat→Canvas→Restart loop. **Deferred from the in-scope set** because the unit test above already proves the link-resolution wiring; an E2E requires playwright infrastructure that exceeds the §17 single-commit lifecycle for this slice. The E2E can ship in a follow-up commit once a real consumer requests it.
+
+**Files NOT touched** (preservation-list discipline, confirmed safe by audit):
+- `src/links/linkResolverService.ts` — already correct.
+- `src/links/parallxUri.ts` — already correct.
+- `src/built-in/chat/input/chatContextAttachments.ts` — already subscribes to `onDidChangeOpenEditors`.
+- `src/built-in/chat/data/chatDataService.ts` — already on preservation list and already correct.
+- `src/built-in/canvas/canvasSidebar.ts` — already subscribes to `onDidChangeOpenEditors`.
+- `src/built-in/canvas/canvasDataService.ts` — preservation list; the canvas link handler reads page id but does NOT mutate page state from the link handler.
+- `src/services/editorService.ts` — events already exist; per-event granularity (`onDidOpenEditor`/`onDidCloseEditor`) is deferred until a consumer requests it.
 
 **Characterization tests that must pass BEFORE Slice D:**
 - All Slice C tests pass.
