@@ -42,8 +42,8 @@ The two new contribution points participate in this workflow without rewriting i
 ### In scope (this milestone)
 
 - **API surface** (extension API, additive):
-  - `api.canvas.registerBlockType(definition: BlockTypeDefinition): IDisposable`
-  - `api.chat.registerParticipant(participant: ChatParticipantDefinition): IDisposable`
+  - `api.canvas.registerBlockType(definition: BlockTypeDefinition): IDisposable` where `BlockTypeDefinition` reuses the existing built-in `BlockDefinition` interface from [src/built-in/canvas/config/blockRegistry.ts](src/built-in/canvas/config/blockRegistry.ts) (no new type invented).
+  - `api.chat.registerParticipant(participant: ChatParticipantDefinition): IDisposable` where `ChatParticipantDefinition` matches the **VS Code `contributes.chatParticipants` shape verbatim** (`id`, `name`, `fullName`, `description`, `isSticky`, `commands[]`) per [M82_CONTRIBUTION_AUDIT §E1](docs/research/M82_CONTRIBUTION_AUDIT.md#e1-vs-code-contributeschatparticipants-shape). `isSticky` and `commands[]` are accepted for shape parity but not consumed by M82 UI (deferred).
 - **Internal wiring** (workbench, additive):
   - One new contribution processor file under `src/contributions/` that consumes block-type and participant manifest entries (re-using the `ContributionRegistry` orchestrator shipped in M81 Slice B, commit `01e261fe`).
   - One new manifest field per kind under `contributes.canvas.blockTypes[]` and `contributes.chat.participants[]`. Schema validated through the existing manifest loader; processors validate the fields they read.
@@ -85,9 +85,11 @@ If any of these need to change mid-execution, the Surgical Executor must stop an
 | Per-slice fitness review | Fitness and Review Agent → `docs/research/M82_SLICE_<A\|B>_REVIEW.md` | [docs/research/agents/fitness-and-review-agent.md](docs/research/agents/fitness-and-review-agent.md) |
 | Branch/commit/rollback bookkeeping | Git and Release Steward | [docs/research/agents/git-and-release-steward.md](docs/research/agents/git-and-release-steward.md) |
 
-## 6. Current-State Research Required (before Slice A)
+## 6. Current-State Research Required (before Slice A) — ✅ COMPLETE 2026-05-23
 
-The Research Agent must produce `docs/research/M82_CONTRIBUTION_AUDIT.md` answering:
+The Research Agent produced [docs/research/M82_CONTRIBUTION_AUDIT.md](docs/research/M82_CONTRIBUTION_AUDIT.md) on 2026-05-23. All five questions answered with file:line anchors; all M82 scope items verified or redlined. See `Findings Summary` section of the audit for the three redlines applied above.
+
+Original questions (now answered in the audit doc):
 
 1. **Canvas authoring path.** Which functions in `blockRegistry.ts` actually need to be parameterised vs. left private? Trace every consumer of the exported `createEditorExtensions` / `PageChromeController` / `resolvePageIcon` / `ALL_PAGE_SELECTABLE_ICONS` symbols. List which symbols must remain canonical for built-ins. (Approx 5–10 anchors.)
 2. **Canvas save/restore round-trip.** Where in `canvasDataService` is block content encoded for storage, and what is the contract for a block with extension-defined attributes? Cite the schema-version migration path so contributed blocks don't break workspace reload.
@@ -97,7 +99,11 @@ The Research Agent must produce `docs/research/M82_CONTRIBUTION_AUDIT.md` answer
 
 Each finding must include a file:line anchor and a one-line statement of what M82 may or may not assume from it. **Speculative recommendations without anchors are rejected.**
 
-## 7. External Research Required (before Slice A)
+## 7. External Research Required (before Slice A) — ✅ COMPLETE 2026-05-23
+
+External findings appended to [M82_CONTRIBUTION_AUDIT.md §E1–§E3](docs/research/M82_CONTRIBUTION_AUDIT.md#e1-vs-code-contributeschatparticipants-shape). VS Code `chatParticipants` shape adopted verbatim (E1). VS Code `languages`-contribution precedent confirms unprefixed `id` keys with conflict detection at registration (E2). Eclipse anti-patterns confirmed avoided (E3).
+
+Original questions:
 
 Appended to `M82_CONTRIBUTION_AUDIT.md`:
 
@@ -107,12 +113,13 @@ Appended to `M82_CONTRIBUTION_AUDIT.md`:
 
 External findings must connect to a Parallx workflow and to current code. Best-practice quotes alone are insufficient.
 
-## 8. Baseline And Metrics Required (before Slice A)
+## 8. Baseline And Metrics Required (before Slice A) — ⚠️ REVISED 2026-05-23
 
-The Baseline and Metrics Agent must:
+Baseline-Agent investigation surfaced that M81 Phase 5 characterization tests **do not exist** — they are aspirational rows in [workbench-baseline.md §1](docs/research/baselines/workbench-baseline.md). Therefore the original 'run existing tests' requirement is unmeetable as written. Revised plan recorded in [workbench-baseline.md §5](docs/research/baselines/workbench-baseline.md#5-m82-extension-activation-baseline-added-2026-05-23):
 
-1. Run the existing workbench characterization tests (M81 Phase 5 baseline rows) on the current `systems-redesign-planning` HEAD and record results in `workbench-baseline.md`.
-2. Add one extension-activation measurement to `workbench-baseline.md` (H15, currently unmeasured per Review §I) — wall-clock time from `WorkbenchExtensionRegistry.onDidActivate` first fire to chat-default participant register. Record on current HEAD. M82 may not claim activation improvements without this baseline.
+1. **Create `tests/unit/extensionActivationSync.test.ts`** in Slice A. Measures `ContributionRegistry.processContributions()` iteration cost for 14 built-in tools. Records baseline-N on the **commit immediately before** the Slice A processor code lands.
+2. **M82 closeout assertion**: post-Slice-B sync latency ≤ baseline × 1.05.
+3. **Honest scope**: this is a synchronous proxy, NOT full wall-clock H15. M82 closeout language uses 'synchronous contribution processing' not 'H15.' Full H15 measurement requires an Electron probe and is out of M82 scope.
 
 ## 9. Workbench Concepts Involved
 
@@ -131,7 +138,7 @@ From [WORKBENCH_INTERACTION_MODEL.md §2](docs/architecture/WORKBENCH_INTERACTIO
 **Scope:**
 - New file `src/contributions/canvasBlockTypeContribution.ts` (~120 lines target). Processor only; reads `contributes.canvas.blockTypes[]` from extension manifests and registers them with a new lightweight `ICanvasBlockTypeRegistry` (in-memory map, no DB).
 - Minimal `ICanvasBlockTypeRegistry` service at `src/services/canvasBlockTypeRegistry.ts` (~80 lines). Single owner per id; rejects conflicts with built-in ids by reading the built-in list once at startup.
-- Canvas editor reads `ICanvasBlockTypeRegistry.getAll()` once during editor extension assembly and merges the result with built-ins. (One narrow call in `canvasEditorProvider.ts` — does NOT modify `blockRegistry.ts`.)
+- Canvas editor passes an extended `EditorExtensionContext` (with one new optional field `contributedBlockTypes: readonly BlockDefinition[]`) into `getBlockExtensions(context)` at [src/built-in/canvas/config/tiptapExtensions.ts:L20](src/built-in/canvas/config/tiptapExtensions.ts#L20). The function **signature does not change**; only the context shape gains one optional field. Built-in `BLOCK_REGISTRY` remains canonical and is read-only at startup for conflict detection. Audit anchor: [M82_CONTRIBUTION_AUDIT §Q1](docs/research/M82_CONTRIBUTION_AUDIT.md#q1-canvas-authoring-path).
 - Reference extension at `ext/example-canvas-block/` (~50 lines) contributing one "embedded-iframe" block.
 - Schema migration: none required. Block types are runtime registrations, not persistent rows. Workspace files that reference an unregistered block id fall back to a placeholder text node — same recovery path Tiptap already uses for unknown nodes.
 
@@ -156,7 +163,7 @@ From [WORKBENCH_INTERACTION_MODEL.md §2](docs/architecture/WORKBENCH_INTERACTIO
 
 **Verification:**
 - Unit: `tests/unit/chatParticipantContribution.test.ts` — loads manifest stub, asserts `registerAgent` was called with parsed definition, asserts dispose unregisters.
-- Characterization: `tests/unit/chatContributedParticipantInvoke.test.ts` — register example participant, dispatch invoke, assert echo result returns through standard agent invoke path.
+- Characterization: `tests/unit/chatContributedParticipantInvoke.test.ts` — register example participant, dispatch invoke, assert echo result returns through standard agent invoke path. **Enumeration via `onDidChangeAgents` event subscription**, not `getRegisteredParticipants()` (no such public method exists today per [M82_CONTRIBUTION_AUDIT §Q3](docs/research/M82_CONTRIBUTION_AUDIT.md#q3-chat-participant-lifecycle)). If event-based assertion proves awkward, add a minimal `IChatAgentService.getAllParticipants()` accessor (~5 lines) — but only if the event path fails.
 
 **Commit message:** `feat(chat): extension point for participant contribution (M82 Slice B)`. Includes `Rollback: git revert HEAD.`
 
@@ -238,4 +245,5 @@ The Surgical Executor must stop and surface to the user if any of these occur:
 
 | Date | Status | Change | Commit |
 |---|---|---|---|
-| 2026-05-23 | `planning` | Drafted by Conductor as M81 successor. Pending user acceptance + research/baseline gates. | (this commit) |
+| 2026-05-23 | `planning` | Drafted by Conductor as M81 successor. Pending user acceptance + research/baseline gates. | 5421639d |
+| 2026-05-23 | `planning` | Research + Baseline gates completed. Audit doc + baseline §5 committed. Three scope redlines applied (Slice A hook is `getBlockExtensions` not `createEditorExtensions`; Slice B participant shape locked to VS Code `chatParticipants` verbatim; Slice B enumeration via `onDidChangeAgents` event not nonexistent `getRegisteredParticipants()`). Awaiting user accept → flip to `active`. | (this commit) |
