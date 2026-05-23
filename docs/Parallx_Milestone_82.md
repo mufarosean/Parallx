@@ -1,5 +1,5 @@
 ---
-Status: active — accepted by user 2026-05-23; Slice B (chat participants) first, Slice A (canvas blocks) second
+Status: implemented-verified — Slice B shipped 2026-05-23 (3cd80b07); Slice A shipped 2026-05-23 (e9320875); fitness reviews b8646212, 3334654c; full suite 3203/3204 green; baseline within +5% ceiling
 Milestone: M82 / SR-2: Extension Contribution Model (Canvas Block Types & Chat Participants)
 Branch: systems-redesign-planning
 Created: 2026-05-23
@@ -248,3 +248,8 @@ The Surgical Executor must stop and surface to the user if any of these occur:
 | 2026-05-23 | `planning` | Drafted by Conductor as M81 successor. Pending user acceptance + research/baseline gates. | 5421639d |
 | 2026-05-23 | `planning` | Research + Baseline gates completed. Audit doc + baseline §5 committed. Three scope redlines applied (Slice A hook is `getBlockExtensions` not `createEditorExtensions`; Slice B participant shape locked to VS Code `chatParticipants` verbatim; Slice B enumeration via `onDidChangeAgents` event not nonexistent `getRegisteredParticipants()`). Awaiting user accept → flip to `active`. | 08af9e0f |
 | 2026-05-23 | `active` | User accepted scope (Slice B first). Surgical Executor cleared. | (this commit) |
+| 2026-05-23 | `active` | Slice B (chat participants) implemented. Manifest schema, processor, bridge, reference extension, 11 unit tests. Baseline within noise. | 3cd80b07 |
+| 2026-05-23 | `active` | Slice B fitness review recorded — KEEP verdict. Three non-blocking follow-ups noted. | b8646212 |
+| 2026-05-23 | `active` | Slice A (canvas block types) implemented. Manifest schema, runtime registry, processor, bridge, canvas-editor wiring, reference extension, 12 unit tests. Baseline within noise. Anti-list untouched (new 3rd parameter on `createEditorExtensions` rather than extending `EditorExtensionContext`). | e9320875 |
+| 2026-05-23 | `active` | Slice A fitness review recorded — KEEP verdict. Four non-blocking follow-ups noted (live re-registration, Playwright fixture, slash-menu UX, `kind` field). | 3334654c |
+| 2026-05-23 | `implemented-verified` | Both slices shipped and reviewed. Full suite 3203/3204 green. Activation-sync baseline 79 ns/call in isolation (well under +5% ceiling). Closeout. | (this commit) |
