@@ -1,8 +1,11 @@
 # Parallx Documentation Index
 
 Canonical product docs live at this folder's root and one level deep.
-Anything under `docs/archive/` is historical — read for context, not as
+Anything under `docs/archive/` is historical - read for context, not as
 source-of-truth.
+
+## Product
+- [PARALLX_MANIFEST.md](./PARALLX_MANIFEST.md)
 
 ## End users
 - [USER_GUIDE.md](./USER_GUIDE.md)
@@ -30,22 +33,26 @@ source-of-truth.
 - [research/INTERACTION_LAYER_ARCHITECTURE.md](./research/INTERACTION_LAYER_ARCHITECTURE.md)
 - [research/Living_UI_Ideas.md](./research/Living_UI_Ideas.md)
 - [research/Living_UI_Research.md](./research/Living_UI_Research.md)
+- [research/SYSTEMS_REDESIGN_CLEANUP_AND_MILESTONES.md](./research/SYSTEMS_REDESIGN_CLEANUP_AND_MILESTONES.md)
 - [research/SYSTEMS_REDESIGN_AGENTS_AND_SKILLS.md](./research/SYSTEMS_REDESIGN_AGENTS_AND_SKILLS.md)
 - [research/SYSTEMS_THINKING_FOR_PARALLX.md](./research/SYSTEMS_THINKING_FOR_PARALLX.md)
 
-## Active milestone
-- [Parallx_Milestone_64.md](./Parallx_Milestone_64.md)
+## Milestone status
+The root milestone docs M64-M80 are under systems-redesign triage. Do not treat
+any single root milestone file as active until it has been labeled in
+[research/SYSTEMS_REDESIGN_CLEANUP_AND_MILESTONES.md](./research/SYSTEMS_REDESIGN_CLEANUP_AND_MILESTONES.md)
+and accepted as the next execution milestone.
 
 ## Archive
-- [archive/milestones/](./archive/milestones/) — closed milestones M01–M63
-- [archive/audits/](./archive/audits/) — M41 OpenClaw parity audits/gap maps/trackers
-- [archive/ai-plans/](./archive/ai-plans/) — completed AI feature plans
-- [archive/ai-openclaw/](./archive/ai-openclaw/) — OpenClaw integration history
-- [archive/canvas-plans/](./archive/canvas-plans/), [archive/canvas-research/](./archive/canvas-research/), [archive/canvas-archive/](./archive/canvas-archive/) — canvas history
-- [archive/research/](./archive/research/) — capability assessments
-- [archive/root-audits/](./archive/root-audits/) — historical settings/perf/theme audits
-- [archive/clawrallx-planning/](./archive/clawrallx-planning/), [archive/deep-audit/](./archive/deep-audit/) — older planning artifacts
-- [archive/perchance/](./archive/perchance/) — old export
+- [archive/milestones/](./archive/milestones/) - closed milestones M01-M63
+- [archive/audits/](./archive/audits/) - M41 OpenClaw parity audits/gap maps/trackers
+- [archive/ai-plans/](./archive/ai-plans/) - completed AI feature plans
+- [archive/ai-openclaw/](./archive/ai-openclaw/) - OpenClaw integration history
+- [archive/canvas-plans/](./archive/canvas-plans/), [archive/canvas-research/](./archive/canvas-research/), [archive/canvas-archive/](./archive/canvas-archive/) - canvas history
+- [archive/research/](./archive/research/) - capability assessments
+- [archive/root-audits/](./archive/root-audits/) - historical settings/perf/theme audits
+- [archive/clawrallx-planning/](./archive/clawrallx-planning/), [archive/deep-audit/](./archive/deep-audit/) - older planning artifacts
+- [archive/perchance/](./archive/perchance/) - old export
 
 ---
 
