@@ -782,6 +782,62 @@ export interface IContextKeyService extends IDisposable {
 
 export const IContextKeyService = createServiceIdentifier<IContextKeyService>('IContextKeyService');
 
+// ─── ISelectionService (M81 Slice A) ─────────────────────────────────────────
+
+import type { ISelection } from './selectionActionTypes.js';
+export type { ISelection } from './selectionActionTypes.js';
+
+/**
+ * Event payload fired when a surface's current selection changes.
+ */
+export interface ISelectionChangeEvent {
+  /** Surface whose selection changed. */
+  readonly surfaceId: string;
+  /** New selection, or `undefined` if the surface cleared its selection. */
+  readonly selection: ISelection | undefined;
+  /** Previous selection on that surface, if any. */
+  readonly previous?: ISelection;
+}
+
+/**
+ * State-shaped event broadcast for "the current selection changed".
+ *
+ * Sits alongside (not replacing) `SelectionActionDispatcher`. The dispatcher
+ * is action-shaped (routes named actions like "add-to-chat" to handlers);
+ * `ISelectionService` is state-shaped — it tracks the most recent selection
+ * per surface and emits an event that future surfaces, context-key wiring,
+ * and when-clause consumers can subscribe to without coupling to the
+ * dispatcher's handler-registration API.
+ *
+ * Introduced in M81 Slice A. See `docs/Parallx_Milestone_81.md` §4.
+ */
+export interface ISelectionService extends IDisposable {
+  /**
+   * Record the current selection for a surface. Pass `undefined` to clear it.
+   * Fires `onDidChangeSelection` if the value differs from the prior value
+   * for the same surface.
+   */
+  setSelection(surfaceId: string, selection: ISelection | undefined): void;
+
+  /**
+   * Get the current selection.
+   *
+   * @param surfaceId If provided, returns that surface's current selection.
+   *                  If omitted, returns the most-recently-set selection
+   *                  across all surfaces (or `undefined` if all surfaces
+   *                  have cleared).
+   */
+  getSelection(surfaceId?: string): ISelection | undefined;
+
+  /** Fires when any surface's selection changes. */
+  readonly onDidChangeSelection: Event<ISelectionChangeEvent>;
+
+  /** `true` iff at least one surface currently has a non-undefined selection. */
+  hasAnySelection(): boolean;
+}
+
+export const ISelectionService = createServiceIdentifier<ISelectionService>('ISelectionService');
+
 // ─── IToolRegistryService ────────────────────────────────────────────────────
 
 import type { IToolDescription } from '../tools/toolManifest.js';

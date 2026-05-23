@@ -14,7 +14,7 @@ import { addDisposableListener } from '../ui/dom.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IWorkspaceTranscriptService, IGlobalStorageService, IWorkspaceStorageService, ISurfaceRouterService } from '../services/serviceTypes.js';
+import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IWorkspaceTranscriptService, IGlobalStorageService, IWorkspaceStorageService, ISurfaceRouterService, ISelectionService } from '../services/serviceTypes.js';
 import { SurfaceRouterService } from '../services/surfaceRouterService.js';
 import { NotificationsSurfacePlugin } from './surfaces/notificationSurface.js';
 import { StatusSurfacePlugin } from './surfaces/statusSurface.js';
@@ -1061,6 +1061,14 @@ export class Workbench extends Layout {
     this._workbenchContext = this._register(
       new WorkbenchContextManager(this._contextKeyService, this._focusTracker),
     );
+
+    // 4b. M81 Slice A — wire SelectionService into the selectionExists key.
+    // The service itself is owned by ServiceCollection (registered in
+    // workbenchServices.ts) and disposed when `this._services` disposes.
+    const selectionService = this._services.tryGet(ISelectionService);
+    if (selectionService) {
+      this._workbenchContext.trackSelectionService(selectionService);
+    }
 
     // 5. Track part visibility
     this._workbenchContext.trackPartVisibility(this._sidebar, CTX_SIDEBAR_VISIBLE);

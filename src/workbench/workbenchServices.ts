@@ -1,7 +1,7 @@
 // workbenchServices.ts — service registration and initialization
 
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager } from '../services/serviceTypes.js';
+import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager, ISelectionService } from '../services/serviceTypes.js';
 import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
 import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService, IUnifiedAIConfigService, IDocumentExtractionService, IDiagnosticsService, IObservabilityService, IRuntimeHookRegistry, IMcpClientService, IAutonomyLogService, ISemanticGraphService, IMindMapRefreshOrchestrator } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
@@ -18,6 +18,8 @@ import { ChatWidgetService } from '../services/chatWidgetService.js';
 import { LanguageModelToolsService } from '../services/languageModelToolsService.js';
 import { ToolErrorService } from '../tools/toolErrorIsolation.js';
 import { SessionManager } from '../workspace/sessionManager.js';
+import { SelectionService } from '../services/selectionService.js';
+import { setActiveSelectionService } from '../services/selectionActionDispatcher.js';
 import { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
 import { ConfigurationService } from '../configuration/configurationService.js';
 import { CommandContributionProcessor } from '../contributions/commandContribution.js';
@@ -71,6 +73,15 @@ export function registerWorkbenchServices(services: ServiceCollection): void {
 
   // ── Context Key (Capability 8) ──
   services.registerInstance(IContextKeyService, new ContextKeyService());
+
+  // ── Selection Service (M81 Slice A) ──
+  // State-shaped broadcast of "current selection changed" — sits alongside
+  // the action-shaped SelectionActionDispatcher. The dispatcher publishes
+  // through this service via the module-level hook below, so existing
+  // `new SelectionActionDispatcher()` call-sites need no change.
+  const selectionService = new SelectionService();
+  services.registerInstance(ISelectionService, selectionService);
+  setActiveSelectionService(selectionService);
 
   // ── Command (Capability 7) ──
   services.registerInstance(ICommandService, new CommandService(services));

@@ -22,6 +22,25 @@ import type { IChatSelectionAttachment } from './chatTypes.js';
 // ── Layer 1: Surface Adapter Contracts ───────────────────────────────────────
 
 /**
+ * State-shaped representation of "the current selection on a surface".
+ *
+ * Distinct from `ISelectionActionPayload`, which is action-shaped (carries
+ * an `actionId` for the dispatcher to route to a named handler). `ISelection`
+ * is what the `SelectionService` (M81 Slice A) broadcasts via
+ * `onDidChangeSelection` so subscribers (e.g. context-key wiring, future
+ * when-clause consumers) can react to "the current selection changed"
+ * independently of any action.
+ */
+export interface ISelection {
+  /** Source surface identifier (matches `ISelectionActionPayload.surface`). */
+  readonly surfaceId: string;
+  /** The selected text content. */
+  readonly selectedText: string;
+  /** Source file metadata for the selection. */
+  readonly source: ISelectionSource;
+}
+
+/**
  * Source metadata for a text selection — where it came from.
  */
 export interface ISelectionSource {

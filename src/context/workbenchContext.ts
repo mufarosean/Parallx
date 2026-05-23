@@ -12,6 +12,7 @@ import { Disposable } from '../platform/lifecycle.js';
 import { ContextKeyService, IContextKey } from './contextKey.js';
 import { FocusTracker } from './focusTracker.js';
 import type { TrackablePart, TrackableViewManager } from './contextTypes.js';
+import type { ISelectionService } from '../services/serviceTypes.js';
 export type { TrackablePart, TrackableViewManager } from './contextTypes.js';
 
 // ─── Standard Context Key Names ──────────────────────────────────────────────
@@ -45,6 +46,9 @@ export const CTX_WORKSPACE_HAS_FOLDER = 'workspaceHasFolder';
 export const CTX_RESOURCE_SCHEME = 'resourceScheme';
 export const CTX_RESOURCE_EXTNAME = 'resourceExtname';
 export const CTX_RESOURCE_FILENAME = 'resourceFilename';
+
+// M81 Slice A — selection state
+export const CTX_SELECTION_EXISTS = 'selectionExists';
 
 // ─── WorkbenchContextManager ─────────────────────────────────────────────────
 
@@ -93,6 +97,9 @@ export class WorkbenchContextManager extends Disposable {
   private readonly _resourceExtname: IContextKey<string>;
   private readonly _resourceFilename: IContextKey<string>;
 
+  // M81 Slice A — selection
+  private readonly _selectionExists: IContextKey<boolean>;
+
   constructor(
     _contextKeyService: ContextKeyService,
     _focusTracker: FocusTracker | undefined,
@@ -129,6 +136,9 @@ export class WorkbenchContextManager extends Disposable {
     this._resourceScheme = _contextKeyService.createKey(CTX_RESOURCE_SCHEME, '');
     this._resourceExtname = _contextKeyService.createKey(CTX_RESOURCE_EXTNAME, '');
     this._resourceFilename = _contextKeyService.createKey(CTX_RESOURCE_FILENAME, '');
+
+    // M81 Slice A — selection
+    this._selectionExists = _contextKeyService.createKey(CTX_SELECTION_EXISTS, false);
 
     // Subscribe to focus tracker
     if (_focusTracker) {
@@ -262,4 +272,33 @@ export class WorkbenchContextManager extends Disposable {
   setResourceFilename(filename: string): void {
     this._resourceFilename.set(filename);
   }
+
+  // ─── M81 Slice A — Selection Tracking ──────────────────────────────────
+
+  /**
+   * Wire up tracking of the workbench-wide `SelectionService` so the
+   * `selectionExists` context key reflects whether any surface currently has
+   * a non-undefined selection. Safe to call once; subsequent calls overwrite
+   * the prior subscription.
+   */
+  trackSelectionService(service: ISelectionService): void {
+    // Initial value
+    this._selectionExists.set(service.hasAnySelection());
+
+    this._register(service.onDidChangeSelection(() => {
+      this._selectionExists.set(service.hasAnySelection());
+    }));
+  }
 }
+
+// ─── M81 Slice A — Canonical context-key registry alias ──────────────────
+//
+// `WorkbenchContextManager` already holds every standard workbench context
+// key (sidebar/panel visibility, focused part/view, workspace state, selection
+// state, etc.) and is the only writer of those keys. Slice B contributions
+// (when-clause evaluation for menus and keybindings) will consume the same
+// surface. We expose the type under a stable name here so future consumers
+// can depend on `IContextKeyRegistry` without coupling to the concrete class
+// name.
+
+export type IContextKeyRegistry = WorkbenchContextManager;
