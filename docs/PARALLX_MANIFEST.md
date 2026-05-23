@@ -82,7 +82,25 @@ Rules:
 
 ---
 
-## 3. Product Identity
+## 3. Fresh Agent Startup Checklist
+
+A fresh agent should begin with these checks before creating plans or assigning work:
+
+1. Verify branch state:
+   - `git status --short --branch`
+   - `git rev-parse master origin/master checkpoint-pre-systems-redesign-2026-05-23 systems-redesign-planning`
+2. Confirm `master`, `origin/master`, and `checkpoint-pre-systems-redesign-2026-05-23` point to the same current-app baseline commit.
+3. Confirm the active branch is `systems-redesign-planning`.
+4. Confirm the working tree is clean or report any unexpected local changes before proceeding.
+5. Read this manifest first, then the companion docs listed later in this document.
+6. Discover available scripts from `package.json`; do not invent test commands.
+7. Produce the kickoff report and agent cards before any code or cleanup changes.
+
+If any branch, baseline, or working-tree fact contradicts this manifest, stop and report the contradiction. Do not "fix" Git state silently.
+
+---
+
+## 4. Product Identity
 
 Parallx is a local-first, extensible Electron workbench for organizing knowledge, documents, tools, and workspace workflows.
 
@@ -104,7 +122,7 @@ The user should be able to open a workspace, understand what is available, edit 
 
 ---
 
-## 4. Core Product Workflow
+## 5. Core Product Workflow
 
 The real unit of success is the end-to-end workflow.
 
@@ -125,7 +143,7 @@ The redesign must protect and improve this kind of workflow.
 
 ---
 
-## 5. Current System Map
+## 6. Current System Map
 
 Parallx currently has these major systems:
 
@@ -148,7 +166,33 @@ Parallx currently has these major systems:
 
 ---
 
-## 6. Scope
+## 7. Repository Orientation
+
+A fresh agent should expect these high-level paths:
+
+| Path | Purpose |
+|---|---|
+| `electron/` | Electron main process, preload, database, document extraction, MCP, and privileged bridges. |
+| `src/` | Renderer/workbench TypeScript application code. |
+| `src/workbench/` | Workbench shell, layout, startup, and workbench services. |
+| `src/built-in/` | Built-in app experiences such as Canvas, chat, editor, explorer, terminal, and settings. |
+| `src/api/` | Extension-facing API factory and bridges. |
+| `src/commands/` | Command model and command contributions. |
+| `src/context/` | Context-key and state context systems. |
+| `src/contributions/` | Contribution registration infrastructure. |
+| `src/links/` | Parallx resource/link identity and resolution. |
+| `src/services/` | Shared services such as storage, graph, language model tools, indexing, and diagnostics. |
+| `src/workspace/` | Workspace model and workspace-related behavior. |
+| `ext/` | Extension implementations and extension manifests. |
+| `tools/` | External tool/MCP server code. |
+| `tests/` | Unit, e2e, eval, and AI-eval tests. |
+| `docs/` | Canonical docs, active planning docs, milestone docs, and archive. |
+
+The first agent should treat this as an orientation map only. It must still verify actual ownership with code anchors before making design claims.
+
+---
+
+## 8. Scope
 
 ### In Scope
 
@@ -177,7 +221,7 @@ Parallx currently has these major systems:
 
 ---
 
-## 7. What Working Well Means
+## 9. What Working Well Means
 
 Parallx works well when its parts compose into reliable cross-tool workflows:
 
@@ -205,7 +249,7 @@ Parallx also works well when:
 
 ---
 
-## 8. Unified Workbench Language
+## 10. Unified Workbench Language
 
 The systems redesign must define a central language for inter-tool interaction. This is the layer that lets separate features behave like one app.
 
@@ -258,7 +302,7 @@ These services should sit above individual features:
 
 ---
 
-## 9. Non-Negotiable Preservation Rules
+## 11. Non-Negotiable Preservation Rules
 
 Do not break:
 
@@ -276,7 +320,7 @@ Any cleanup or redesign must include a rollback path.
 
 ---
 
-## 10. Definition Of Better
+## 12. Definition Of Better
 
 A redesign is better only if it improves one or more of these without regressing preservation rules:
 
@@ -303,7 +347,7 @@ Every redesign claim must state:
 
 ---
 
-## 11. Redesign Operating System
+## 13. Redesign Operating System
 
 Before redesigning Parallx's app system, design the redesign system itself.
 
@@ -352,9 +396,26 @@ Required first artifacts:
 - Baseline/metrics plan.
 - First accepted execution milestone.
 
+### Artifact Locations
+
+Use these default locations unless the conductor accepts a better one:
+
+| Artifact | Default location |
+|---|---|
+| Kickoff report | `docs/research/SYSTEMS_REDESIGN_KICKOFF.md` |
+| Agent cards | `docs/research/agents/<agent-name>.md` |
+| System Atlas | `docs/architecture/SYSTEM_ATLAS.md` |
+| Unified Workbench Language model | `docs/architecture/WORKBENCH_INTERACTION_MODEL.md` |
+| Research briefs | `docs/research/<topic>_RESEARCH_BRIEF.md` |
+| Baseline scorecards | `docs/research/baselines/<workflow>-baseline.md` |
+| Active milestone | `docs/Parallx_Milestone_<number>.md` |
+| Historical milestone archive | `docs/archive/milestones/` |
+
+If a directory does not exist yet, the first milestone should create it intentionally, not as a side effect of unrelated work.
+
 ---
 
-## 12. Research Protocol
+## 14. Research Protocol
 
 Research has two mandatory tracks.
 
@@ -400,7 +461,7 @@ The Research Agent must never return a recommendation that is only external best
 
 ---
 
-## 13. Work Definition Contract
+## 15. Work Definition Contract
 
 All work must be defined as a flow, not as a vague subsystem preference.
 
@@ -424,7 +485,7 @@ No implementation starts from "clean this area up." It starts from a mapped work
 
 ---
 
-## 14. Milestone Document Lifecycle
+## 16. Milestone Document Lifecycle
 
 Milestones are the control surface for the redesign.
 
@@ -499,7 +560,32 @@ A milestone can close only when:
 
 ---
 
-## 15. Commit And Branch Protocol
+## 17. Decision Rights And Escalation
+
+The process must not blur who is allowed to decide what.
+
+| Decision | Owner |
+|---|---|
+| Product direction, scope expansion, and tradeoffs that affect user workflows | User |
+| Whether redesign work may merge to `master` | User after consolidation evidence |
+| Whether to break or migrate extension APIs | User plus conductor after compatibility plan |
+| Whether to delete historical docs | Not allowed by default; archive instead |
+| Agent assignment and handoff order | Systems Redesign Conductor |
+| Whether a slice is ready for implementation | Systems Redesign Conductor after research, atlas, baseline, and preservation gates |
+| Implementation details inside an accepted slice | Surgical Executor Agent |
+| Keep, revise, or roll back recommendation | Fitness and Review Agent |
+
+Ask the user before:
+
+- Changing `master`.
+- Deleting files instead of archiving them.
+- Breaking existing extension APIs, command IDs, settings, keybindings, workspace schemas, or saved data.
+- Expanding a milestone beyond its accepted scope.
+- Accepting a regression as a tradeoff.
+
+---
+
+## 18. Commit And Branch Protocol
 
 Commit authority must be explicit.
 
@@ -522,7 +608,7 @@ Rules:
 
 ---
 
-## 16. Verification And Bug Prevention Contract
+## 19. Verification And Bug Prevention Contract
 
 We cannot rely on users to identify bugs. The redesign process must catch regressions before users experience them.
 
@@ -549,9 +635,23 @@ Required verification categories:
 
 If a bug is found by a user after a redesign slice, the process failed. The next milestone must add a test, trace, or guard that would have caught that bug.
 
+### Available Verification Commands
+
+The first agent must verify these commands from `package.json` before using them:
+
+| Command | Purpose |
+|---|---|
+| `npm run build` | Type-check and build renderer output. |
+| `npm run test:unit` | Run Vitest unit tests. |
+| `npm run test:e2e` | Run Playwright e2e tests. |
+| `npm run test:ai-eval` | Run AI-eval Playwright scenarios when a milestone explicitly requires them. |
+| `npm run dev` | Build and launch the Electron app for manual verification. |
+
+Do not claim runtime quality from documentation changes alone. For implementation milestones, verification must be tied to the accepted workflow and risk level.
+
 ---
 
-## 17. Companion Documents
+## 20. Companion Documents
 
 The first agent should use these documents as supporting context:
 
@@ -569,7 +669,7 @@ The first agent should use these documents as supporting context:
 
 ---
 
-## 18. Documentation Truth Model
+## 21. Documentation Truth Model
 
 Docs fall into four buckets:
 
@@ -584,7 +684,7 @@ Rule: if a doc is canonical, it must be accurate enough to act on. If it is not 
 
 ---
 
-## 19. First Agent Required Output
+## 22. First Agent Required Output
 
 The first agent should return a kickoff report in this shape:
 
@@ -621,6 +721,10 @@ The first agent should return a kickoff report in this shape:
 
 ## Verification And Bug Prevention Plan
 
+## Artifact Locations To Create
+
+## Decisions Needed From User
+
 ## First Milestone Recommendation
 
 ## Stop Rules
@@ -632,7 +736,7 @@ The first agent should not produce code changes as its first output.
 
 ---
 
-## 20. Near-Term Target
+## 23. Near-Term Target
 
 Before any major systems redesign starts, Parallx needs a cleanup baseline:
 
