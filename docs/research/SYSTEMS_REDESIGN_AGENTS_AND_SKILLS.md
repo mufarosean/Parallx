@@ -120,6 +120,7 @@ The recommended team is one always-on conductor plus specialists. This is intent
 | System Atlas Cartographer | Ownership or flow is unclear | Atlas section with code anchors | Docs only |
 | Unified Workbench Interaction Agent | A change crosses Explorer, editors, Canvas, chat, tools, extensions, commands, IPC, or storage | Shared language/contract proposal | Docs/design first |
 | Milestone and Documentation Steward | Milestone docs, README, archive labels, documentation truth | Milestone docs, doc triage table, README/index changes | Docs only |
+| Git and Release Steward | Branch safety, linearity, commit scope, rollback, release readiness | Branch graph, commit plan, rollback/merge recommendation | No app code |
 | Surgical Executor Agent | After a slice is approved for implementation | One bounded implementation with tests | Yes |
 | Workbench Lifecycle Agent | Startup, readiness, restore, teardown | Lifecycle design or implementation | Yes |
 | Persistence and Migration Agent | State ownership, DB, migrations, workspace switch | Ownership map, migration tests, recovery plan | Yes |
@@ -496,7 +497,36 @@ Output format:
 - Required user/conductor decision:
 ```
 
-### 6.13 Unified Workbench Interaction Agent
+### 6.13 Git and Release Steward
+
+```md
+You are the Git and Release Steward for Parallx.
+
+Your job is to keep redesign work reversible, linear, and understandable.
+
+Do not edit app code. Do not rewrite history, delete branches, or update `master` unless the user explicitly approves it.
+
+Tasks:
+1. Verify current branch, upstream, baseline commit, and working tree.
+2. Compare redesign branch against `master`.
+3. Report ahead/behind counts and changed files.
+4. Define commit boundaries for the current milestone.
+5. Confirm rollback path after each implementation slice.
+6. Recommend merge only after consolidation evidence proves the branch is better.
+
+Output format:
+- Current branch:
+- Baseline:
+- Upstream:
+- Ahead/behind:
+- Changed files:
+- Commit boundary recommendation:
+- Rollback path:
+- Merge readiness:
+- Blockers:
+```
+
+### 6.14 Unified Workbench Interaction Agent
 
 ```md
 You are the Unified Workbench Interaction Agent for Parallx.
@@ -527,7 +557,7 @@ Output format:
 - Stop rule:
 ```
 
-### 6.14 Surgical Executor Agent
+### 6.15 Surgical Executor Agent
 
 ```md
 You are the Surgical Executor Agent for Parallx.
@@ -566,6 +596,7 @@ Skills are reusable playbooks. They should be concise and trigger on recurring w
 | `parallx-system-atlas` | Map a flow with code anchors and ownership | "map startup", "document IPC flow", "who owns workspace state" | `references/atlas-template.md` |
 | `parallx-workbench-language` | Define shared concepts for cross-tool interaction | "Explorer to editor to chat to Canvas", "unified command/tool model", "shared context contract" | `references/workbench-language-template.md` |
 | `parallx-milestone-steward` | Create milestone docs, label old milestones, and keep README/canonical docs truthful | "create redesign milestone", "label milestone docs", "archive stale docs" | `references/milestone-template.md` |
+| `parallx-git-boundary` | Verify branch safety, linearity, commit scope, rollback, and merge readiness | "check branch graph", "define commit plan", "is this safe to merge" | `references/git-boundary-template.md` |
 | `parallx-surgical-execution` | Implement one approved slice with scope control | "execute this accepted slice", "make the smallest change", "implement after baseline" | `references/slice-execution-checklist.md` |
 | `parallx-startup-lifecycle` | Analyze or change startup/readiness safely | "make startup faster", "add readiness states", "restore editors lazily" | `references/startup-phases.md` |
 | `parallx-persistence-ownership` | Define canonical stores, migrations, recovery | "state ownership table", "migration invariant", "workspace switch recovery" | `references/persistence-template.md` |
@@ -624,7 +655,7 @@ description: <What it does and exact situations that should trigger it.>
 
 ### Phase -1: Redesign System Setup
 
-Owner: Systems Redesign Conductor
+Owner: Systems Redesign Conductor plus Git and Release Steward
 
 Output:
 
@@ -633,10 +664,12 @@ Output:
 - Exclusions.
 - Agent roles required.
 - Required artifacts and proof gates.
+- Branch graph and commit boundary rules.
 
 Gate:
 
 - No subsystem design until the redesign operating model is accepted.
+- No app code changes until branch safety is verified.
 
 ### Phase 0: Intake
 
@@ -730,10 +763,11 @@ Gate:
 
 - Preserve current user-visible behavior.
 - Keep feature flag or adapter for risky behavior changes.
+- Git and Release Steward verifies commit boundaries before commit.
 
 ### Phase 5: Fitness Review
 
-Owner: Fitness and Review Agent
+Owner: Fitness and Review Agent plus Git and Release Steward
 
 Output:
 
@@ -741,6 +775,7 @@ Output:
 - Before/after evidence.
 - Missing tests.
 - Overengineering assessment.
+- Branch/commit/rollback status.
 
 Gate:
 
@@ -757,15 +792,16 @@ Create skills in this order:
 3. `parallx-system-atlas`
 4. `parallx-workbench-language`
 5. `parallx-milestone-steward`
-6. `parallx-redesign-review`
-7. `parallx-surgical-execution`
-8. `parallx-startup-lifecycle`
-9. `parallx-persistence-ownership`
-10. `parallx-ipc-contract`
-11. `parallx-extension-isolation`
-12. `parallx-canvas-structural-fitness`
-13. `parallx-background-work`
-14. `parallx-system-fitness`
+6. `parallx-git-boundary`
+7. `parallx-redesign-review`
+8. `parallx-surgical-execution`
+9. `parallx-startup-lifecycle`
+10. `parallx-persistence-ownership`
+11. `parallx-ipc-contract`
+12. `parallx-extension-isolation`
+13. `parallx-canvas-structural-fitness`
+14. `parallx-background-work`
+15. `parallx-system-fitness`
 
 Why this order:
 

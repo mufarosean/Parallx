@@ -166,29 +166,26 @@ Parallx currently has these major systems:
 
 ---
 
-## 7. Repository Orientation
+## 7. Repository Discovery Directive
 
-A fresh agent should expect these high-level paths:
+The manifest does not define the repository structure as architecture truth. The first agent must inspect the repo before making claims about ownership, flow, or boundaries.
 
-| Path | Purpose |
-|---|---|
-| `electron/` | Electron main process, preload, database, document extraction, MCP, and privileged bridges. |
-| `src/` | Renderer/workbench TypeScript application code. |
-| `src/workbench/` | Workbench shell, layout, startup, and workbench services. |
-| `src/built-in/` | Built-in app experiences such as Canvas, chat, editor, explorer, terminal, and settings. |
-| `src/api/` | Extension-facing API factory and bridges. |
-| `src/commands/` | Command model and command contributions. |
-| `src/context/` | Context-key and state context systems. |
-| `src/contributions/` | Contribution registration infrastructure. |
-| `src/links/` | Parallx resource/link identity and resolution. |
-| `src/services/` | Shared services such as storage, graph, language model tools, indexing, and diagnostics. |
-| `src/workspace/` | Workspace model and workspace-related behavior. |
-| `ext/` | Extension implementations and extension manifests. |
-| `tools/` | External tool/MCP server code. |
-| `tests/` | Unit, e2e, eval, and AI-eval tests. |
-| `docs/` | Canonical docs, active planning docs, milestone docs, and archive. |
+Required first-pass discovery:
 
-The first agent should treat this as an orientation map only. It must still verify actual ownership with code anchors before making design claims.
+1. List top-level directories.
+2. Read `package.json` scripts.
+3. Locate workbench, built-in features, extension APIs, extensions, Electron main/preload code, tests, and docs.
+4. Identify likely entry points for the target workflow.
+5. Write down uncertainty instead of guessing.
+
+Suggested discovery commands:
+
+```bash
+rg --files
+rg -n "class Workbench|new Workbench|registerCommand|contributes|activation|ipcMain.handle|ipcRenderer.invoke|createEditor|openEditor|canvas|chat|explorer" src electron ext tests docs
+```
+
+The System Atlas must replace this rough discovery with verified code/doc anchors.
 
 ---
 
@@ -363,6 +360,7 @@ The conductor must create or assign these agents before the first implementation
 | Baseline and Metrics Agent | Defines measurable current behavior. | No | Cannot accept "better" without baseline, characterization test, or instrumentation plan. | Baseline scorecard and missing measurement list. |
 | Unified Workbench Interaction Agent | Defines the shared language between Explorer, editors, Canvas, chat, extensions, commands, tools, IPC, and persistence. | Docs/design first | Cannot create a new abstraction without proving current one-off bridges and compatibility needs. | Workbench interaction model and compatibility plan. |
 | Milestone and Documentation Steward | Creates milestone docs, labels old milestones, updates README, and preserves archive history. | Docs only | Cannot delete history. Must archive or label stale docs. Must keep canonical docs discoverable. | Milestone doc, doc triage table, README/index updates. |
+| Git and Release Steward | Maintains branch discipline, linearity, commit boundaries, and release/rollback records. | No app code | Cannot rewrite history, delete branches, or update `master` without explicit user approval. | Branch graph report, commit plan, merge/rollback recommendation. |
 | Surgical Executor Agent | Implements one approved slice only after proof gates are met. | Yes | Cannot expand scope, refactor opportunistically, or commit without verification notes. | Patch, tests, verification record, rollback notes. |
 | Fitness and Review Agent | Independently decides keep, revise, or roll back. | No by default | Cannot be the same agent that implemented the slice. Must look for regressions across workflows. | Keep/revise/rollback decision with evidence. |
 
@@ -394,6 +392,7 @@ Required first artifacts:
 - Research brief covering current Parallx code and external successful apps.
 - Unified Workbench Language skeleton.
 - Baseline/metrics plan.
+- Branch graph and commit discipline plan.
 - First accepted execution milestone.
 
 ### Artifact Locations
@@ -408,6 +407,7 @@ Use these default locations unless the conductor accepts a better one:
 | Unified Workbench Language model | `docs/architecture/WORKBENCH_INTERACTION_MODEL.md` |
 | Research briefs | `docs/research/<topic>_RESEARCH_BRIEF.md` |
 | Baseline scorecards | `docs/research/baselines/<workflow>-baseline.md` |
+| Branch/commit governance notes | `docs/research/git/BRANCH_GOVERNANCE.md` |
 | Active milestone | `docs/Parallx_Milestone_<number>.md` |
 | Historical milestone archive | `docs/archive/milestones/` |
 
@@ -415,7 +415,36 @@ If a directory does not exist yet, the first milestone should create it intentio
 
 ---
 
-## 14. Research Protocol
+## 14. Agent Creation And Sequential Handoffs
+
+The first conductor must create the first generation of agent cards before assigning work.
+
+Required initial sequence for workbench redesign:
+
+| Step | Owner | Input | Output | Handoff to |
+|---|---|---|---|---|
+| 1. Branch and governance check | Git and Release Steward | Current refs, working tree, manifest | Branch graph report and commit rules | Conductor |
+| 2. Repo discovery | Research Agent | Repo files, package scripts, docs | Repo discovery notes and open questions | System Atlas Cartographer |
+| 3. Current workbench atlas | System Atlas Cartographer | Discovery notes, source code, docs | Workbench flow map with anchors | Research Agent, Baseline Agent |
+| 4. External architecture research | Research Agent | Design questions from atlas | Source-backed external pattern brief | Unified Workbench Interaction Agent |
+| 5. Baseline planning | Baseline and Metrics Agent | Target workflow, atlas, tests | Baseline scorecard or instrumentation plan | Conductor |
+| 6. Workbench interaction model | Unified Workbench Interaction Agent | Atlas, external research, baseline plan | Proposed shared language and compatibility plan | Fitness and Review Agent |
+| 7. Milestone creation | Milestone and Documentation Steward | Accepted conductor plan | Active milestone with agents, slices, verification, commits, rollback | Conductor |
+| 8. Implementation slice | Surgical Executor Agent | Accepted milestone slice | Patch, tests, verification notes | Fitness and Review Agent |
+| 9. Independent review | Fitness and Review Agent | Patch, tests, baseline, preservation rules | Keep/revise/rollback decision | Conductor |
+| 10. Commit/release bookkeeping | Git and Release Steward | Accepted result and review | Commit/branch status and rollback notes | Conductor |
+
+Rules:
+
+1. Steps 1-7 happen before app code changes.
+2. Only the conductor can move a slice from design to execution.
+3. The executor receives one accepted slice, not an open-ended subsystem.
+4. The reviewer receives the final diff and evidence, not just the executor's summary.
+5. The Git and Release Steward verifies linearity after each commit and before any merge recommendation.
+
+---
+
+## 15. Research Protocol
 
 Research has two mandatory tracks.
 
@@ -461,7 +490,7 @@ The Research Agent must never return a recommendation that is only external best
 
 ---
 
-## 15. Work Definition Contract
+## 16. Work Definition Contract
 
 All work must be defined as a flow, not as a vague subsystem preference.
 
@@ -485,7 +514,7 @@ No implementation starts from "clean this area up." It starts from a mapped work
 
 ---
 
-## 16. Milestone Document Lifecycle
+## 17. Milestone Document Lifecycle
 
 Milestones are the control surface for the redesign.
 
@@ -560,7 +589,7 @@ A milestone can close only when:
 
 ---
 
-## 17. Decision Rights And Escalation
+## 18. Decision Rights And Escalation
 
 The process must not blur who is allowed to decide what.
 
@@ -574,6 +603,7 @@ The process must not blur who is allowed to decide what.
 | Whether a slice is ready for implementation | Systems Redesign Conductor after research, atlas, baseline, and preservation gates |
 | Implementation details inside an accepted slice | Surgical Executor Agent |
 | Keep, revise, or roll back recommendation | Fitness and Review Agent |
+| Branch linearity, commit hygiene, merge readiness, and rollback notes | Git and Release Steward |
 
 Ask the user before:
 
@@ -585,7 +615,45 @@ Ask the user before:
 
 ---
 
-## 18. Commit And Branch Protocol
+## 19. Git Boundary System
+
+The Git boundary system exists so the redesign stays reversible and understandable.
+
+The Git and Release Steward must maintain:
+
+- Current branch.
+- Upstream branch.
+- Baseline commit.
+- Branch graph.
+- Ahead/behind counts.
+- Changed-file list against `master`.
+- Commit sequence and purpose.
+- Rollback path.
+- Merge-readiness state.
+
+Required checks:
+
+```bash
+git status --short --branch
+git log --oneline --decorate -8
+git rev-list --left-right --count master...HEAD
+git diff --name-status master..HEAD
+```
+
+Rules:
+
+1. Keep redesign work on `systems-redesign-planning` or a dedicated child branch.
+2. Keep commits focused by artifact or implementation slice.
+3. Do not mix docs cleanup, system atlas, app code, and test harness changes in one commit unless the milestone explicitly requires it.
+4. Do not rewrite history without explicit user approval.
+5. Do not delete or move checkpoint branches.
+6. Do not update `master` without explicit user approval.
+7. Do not claim branch linearity without checking local and remote refs.
+8. Every implementation slice must include a rollback note.
+
+---
+
+## 20. Commit Authority Protocol
 
 Commit authority must be explicit.
 
@@ -593,6 +661,7 @@ Commit authority must be explicit.
 |---|---|---|---|
 | Manifest/research/planning docs | Conductor or Milestone Steward | Conductor or Milestone Steward | Link check, status clarity, no false source-of-truth claims. |
 | System Atlas/docs updates | System Atlas Cartographer | Conductor or Milestone Steward | Code/doc anchors and uncertainty markers. |
+| Branch governance notes | Git and Release Steward | Git and Release Steward or Conductor | Branch graph report and no unexpected changes. |
 | App code slice | Surgical Executor Agent | Surgical Executor Agent after conductor approval | Accepted milestone slice, tests/verification, rollback notes. |
 | Test/fitness harness | Baseline Agent or Surgical Executor | Surgical Executor after conductor approval | Baseline intent and preservation checks. |
 | Review fixes | Surgical Executor | Surgical Executor after review decision | Fitness and Review Agent findings addressed. |
@@ -608,7 +677,28 @@ Rules:
 
 ---
 
-## 19. Verification And Bug Prevention Contract
+## 21. Workbench Redesign Runbook
+
+When the first target is "update the workbench based on what we now know about extension usage," run the full process in order:
+
+1. Git and Release Steward verifies branch safety.
+2. Research Agent discovers how built-ins and extensions currently use the workbench.
+3. System Atlas Cartographer maps workbench entry points, services, commands, contributions, context, extension APIs, IPC, persistence, and tests.
+4. Research Agent compares those findings against VS Code and other successful workbench/plugin systems.
+5. Baseline and Metrics Agent identifies current tests and missing instrumentation for workbench startup, extension activation, command invocation, editor/canvas/chat workflow, and workspace restore.
+6. Unified Workbench Interaction Agent proposes a workbench interaction model that preserves existing behavior and names migration paths.
+7. Fitness and Review Agent reviews the proposed model before implementation.
+8. Milestone and Documentation Steward creates the active workbench redesign milestone.
+9. Surgical Executor implements only the first accepted workbench slice.
+10. Fitness and Review Agent checks the diff, tests, preservation, and overengineering risk.
+11. Git and Release Steward records branch/commit state and rollback.
+12. Conductor decides keep, revise, stop, or continue to next slice.
+
+No workbench implementation starts until steps 1-8 are complete.
+
+---
+
+## 22. Verification And Bug Prevention Contract
 
 We cannot rely on users to identify bugs. The redesign process must catch regressions before users experience them.
 
@@ -651,7 +741,7 @@ Do not claim runtime quality from documentation changes alone. For implementatio
 
 ---
 
-## 20. Companion Documents
+## 23. Companion Documents
 
 The first agent should use these documents as supporting context:
 
@@ -669,7 +759,7 @@ The first agent should use these documents as supporting context:
 
 ---
 
-## 21. Documentation Truth Model
+## 24. Documentation Truth Model
 
 Docs fall into four buckets:
 
@@ -684,7 +774,7 @@ Rule: if a doc is canonical, it must be accurate enough to act on. If it is not 
 
 ---
 
-## 22. First Agent Required Output
+## 25. First Agent Required Output
 
 The first agent should return a kickoff report in this shape:
 
@@ -707,6 +797,8 @@ The first agent should return a kickoff report in this shape:
 
 ## Agent Cards To Create
 
+## Sequential Handoff Plan
+
 ## Research Assignments
 
 ## System Atlas Assignments
@@ -718,6 +810,8 @@ The first agent should return a kickoff report in this shape:
 ## Documentation And Milestone Cleanup Plan
 
 ## Commit And Branch Plan
+
+## Git Boundary Report
 
 ## Verification And Bug Prevention Plan
 
@@ -736,7 +830,7 @@ The first agent should not produce code changes as its first output.
 
 ---
 
-## 23. Near-Term Target
+## 26. Near-Term Target
 
 Before any major systems redesign starts, Parallx needs a cleanup baseline:
 
@@ -748,7 +842,8 @@ Before any major systems redesign starts, Parallx needs a cleanup baseline:
 6. The redesign operating model is accepted.
 7. A new System Atlas maps the app end to end.
 8. A unified workbench language map exists.
-9. Milestone docs define accepted work, agents, commit plan, verification plan, and rollback plan.
-10. Baseline measurements exist for startup, IPC, persistence, extensions, canvas, chat participation, and background work.
+9. Git boundary system is documented and active.
+10. Milestone docs define accepted work, agents, handoffs, commit plan, verification plan, and rollback plan.
+11. Baseline measurements exist for startup, IPC, persistence, extensions, canvas, chat participation, and background work.
 
 Only after that should implementation milestones begin.
