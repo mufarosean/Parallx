@@ -1,5 +1,5 @@
 ---
-Status: planning — drafted by Conductor 2026-05-23 as M83 successor; pending user acceptance before research/baseline gates open (Manifest §2, §14, §17)
+Status: active — accepted by user 2026-05-23; research gate open. All five planning gates (research, atlas, baseline methodology, preservation, review) must close before Slice A begins.
 Milestone: M84 / SR-4: System Fitness Harness
 Branch: systems-redesign-planning
 Created: 2026-05-23
@@ -197,4 +197,5 @@ The Surgical Executor must stop and surface to the user if any of:
 
 | Date | Status | Change | Commit |
 |---|---|---|---|
-| 2026-05-23 | `planning` | Drafted by Conductor as M83 successor. Six SR-4 deliverables scoped into six slices. All five planning gates (research, atlas, baseline methodology, preservation, review) pending. Pending user acceptance per Manifest §2, §17. | (this commit) |
+| 2026-05-23 | `planning` | Drafted by Conductor as M83 successor. Six SR-4 deliverables scoped into six slices. All five planning gates (research, atlas, baseline methodology, preservation, review) pending. Pending user acceptance per Manifest §2, §17. | `06c053ac` |
+| 2026-05-23 | `active` | Accepted by user. Research gate open. | (this commit) |
