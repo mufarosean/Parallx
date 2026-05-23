@@ -1,22 +1,131 @@
-# Parallx Manifest
+# Parallx Systems Redesign Manifest
 
-> Status: Draft baseline manifest for systems redesign
+> Status: Draft kickoff manifest for the first redesign agent
 > Created: May 23, 2026
-> Purpose: Define what Parallx is today, what "working well" means, what unified workbench behavior must exist, and what must be preserved during cleanup and systems redesign.
+> Primary reader: Systems Redesign Conductor
+> Purpose: Give the first agent the product goal, operating boundaries, shared workbench language, proof standard, and first required outputs for the Parallx systems redesign.
 
 ---
 
-## 1. Product Identity
+## 0. How To Use This Manifest
 
-Parallx is a local-first, extensible Electron workbench for organizing knowledge, documents, tools, and workspace workflows. It combines a persistent workbench shell, a rich canvas editor, local workspace state, extension-driven tools, MCP integrations, AI-assisted workflows, and durable project memory into one app.
+This document is the kickoff packet for the first agent. It should be read before any redesign work, code cleanup, documentation cleanup, or subsystem implementation begins.
 
-Parallx should feel like one reliable workspace, not a collection of disconnected panels. The user should be able to open a workspace, understand what is available, edit and organize content, use extensions, and return later without losing continuity.
+The first agent is not being asked to redesign the app immediately. The first agent is being asked to coordinate the redesign system:
 
-The real unit of success is the end-to-end workflow. A user may open files in Explorer, read or edit them in an editor, ask AI chat about them, and have notes or structured output documented in Canvas. Even when those capabilities are implemented by separate extensions, services, or workbench parts, the app should behave as one coherent system.
+1. Confirm the product goal.
+2. Confirm branch/checkpoint safety.
+3. Confirm what is in and out of scope.
+4. Assign research, atlas, baseline, interaction-model, execution, and review roles.
+5. Produce the first plan of work.
+6. Stop before implementation unless the required proof gates are satisfied.
+
+The first agent should treat this manifest as the highest-level product contract for this redesign branch.
 
 ---
 
-## 2. Current State
+## 1. First Agent Brief
+
+### Role
+
+You are the **Systems Redesign Conductor** for Parallx.
+
+Your job is to keep the whole app in view while coordinating a surgical redesign process. You do not start by changing code. You first design the process that will decide what can safely change.
+
+### Mission
+
+Make Parallx more reliable, coherent, debuggable, performant, and maintainable without losing current functionality.
+
+The redesign is successful only if Parallx becomes a better unified workbench, not merely a cleaner collection of separate features.
+
+### Immediate Objective
+
+Create the first executable redesign plan:
+
+- What must be researched.
+- What must be mapped.
+- What must be measured.
+- Which agents or skills are needed.
+- Which documentation cleanup happens first.
+- Which app-system changes are explicitly not allowed yet.
+
+### Stop Rule
+
+Stop before implementation if any of these are missing:
+
+- A verified branch/checkpoint state.
+- A named target workflow.
+- Current-state map with code/doc anchors.
+- Baseline or instrumentation plan.
+- Preservation checks.
+- Rollback rule.
+- Independent review gate.
+
+---
+
+## 2. Repository And Branch Contract
+
+At the time this manifest was created:
+
+| Ref | Meaning |
+|---|---|
+| `master` / `origin/master` | Latest current app state at commit `9b9a243`. |
+| `checkpoint-pre-systems-redesign-2026-05-23` | Restore point for the latest current app state at commit `9b9a243`. |
+| `systems-redesign-planning` | Dedicated branch for redesign planning and future redesign work. |
+
+Rules:
+
+1. Do not work directly on `master`.
+2. Do not delete checkpoint branches.
+3. Do not merge redesign work into `master` until a release decision says the branch is measurably better.
+4. Treat branch verification as part of the first agent's startup checklist.
+
+---
+
+## 3. Product Identity
+
+Parallx is a local-first, extensible Electron workbench for organizing knowledge, documents, tools, and workspace workflows.
+
+It combines:
+
+- Persistent workbench shell.
+- File Explorer.
+- Editors.
+- Canvas.
+- Local workspace state.
+- Extension-driven tools.
+- MCP integrations.
+- AI-assisted workflows.
+- Durable project memory.
+
+Parallx should feel like one reliable workspace, not a collection of disconnected panels.
+
+The user should be able to open a workspace, understand what is available, edit and organize content, use extensions, use AI-assisted workflows, and return later without losing continuity.
+
+---
+
+## 4. Core Product Workflow
+
+The real unit of success is the end-to-end workflow.
+
+Example target workflow:
+
+1. User opens a workspace.
+2. User browses files in Explorer.
+3. User opens documents in editors.
+4. User asks AI chat about those documents.
+5. AI chat references the same workspace resources.
+6. User or AI creates notes, summaries, or structured output.
+7. Those outputs become Canvas pages, blocks, links, or artifacts.
+8. The user can reopen the workspace later and continue.
+
+This workflow crosses multiple features, extensions, services, and storage layers. It must still feel like one app.
+
+The redesign must protect and improve this kind of workflow.
+
+---
+
+## 5. Current System Map
 
 Parallx currently has these major systems:
 
@@ -24,21 +133,51 @@ Parallx currently has these major systems:
 |---|---|
 | Workbench shell | Owns startup phases, layout, parts, views, editors, commands, context, and lifecycle. |
 | Workspace model | Owns workspace identity, folders, restore/save, recent workspaces, and stale guards. |
+| Explorer | Presents workspace files and entry points into file/resource workflows. |
+| Editors | Present and edit documents, PDFs, EPUBs, and other file-backed or resource-backed content. |
 | Canvas | Rich page/block editor with structural invariants and registry gates. |
+| AI chat | Participates in workspace workflows as a consumer and producer of context, resources, tools, and artifacts. Its internals are not redesigned in this effort. |
 | Persistence | Mix of SQLite, workspace JSON, global/workspace storage, extension DBs, migrations, and `.parallx` files. |
 | Extension platform | Manifest-based tools with activation events, contributions, API bridges, settings, and packaging. |
 | MCP/tool integrations | External process/tool bridge used by extensions and workspace workflows. |
 | IPC layer | Renderer-main bridge for filesystem, database, storage, dialog, shell, terminal, document extraction, secrets, MCP, and lifecycle. |
 | UI system | Shared UI primitives, workbench parts, views, editors, status bar, menus, and keybindings. |
 | Unified workbench language | Emerging but not fully explicit. Commands, tools, views, links, selections, context, resources, and extension contributions exist, but the redesign must define the central model they all speak. |
-| Documentation | User guides, authoring guides, reference docs, research docs, many active-looking milestone docs, and historical archives. |
-| Tests/evals | Broad unit tests, e2e tests, eval harnesses, architecture compliance tests, and feature-specific regressions. |
-
-Scope note: AI chat/OpenClaw exists as part of the app, but this systems redesign does not redesign that runtime. AI chat should still participate in the workbench-level contracts as a consumer and producer of resources, commands, tools, context, and artifacts. Its internals remain out of scope unless a future user request explicitly reopens them.
+| Documentation | User guides, authoring guides, reference docs, research docs, active-looking milestone docs, and historical archives. |
+| Tests/evals | Unit tests, e2e tests, eval harnesses, architecture compliance tests, and feature-specific regressions. |
 
 ---
 
-## 3. What Working Well Means
+## 6. Scope
+
+### In Scope
+
+- Workbench-level architecture.
+- Cross-tool interaction model.
+- Documentation truth and milestone cleanup.
+- System Atlas.
+- Startup/lifecycle readiness.
+- Persistence ownership.
+- IPC contracts.
+- Extension contribution and capability model.
+- Canvas participation in shared workbench workflows.
+- AI chat participation in shared workbench workflows.
+- Background work, tasks, cancellation, and workspace fences.
+- Metrics, diagnostics, tests, and fitness gates.
+
+### Out Of Scope
+
+- Rewriting the app from scratch.
+- Redesigning AI chat internals.
+- Redesigning OpenClaw internals.
+- Replacing Claude/OpenClaw behavior.
+- Breaking extension APIs without an explicit migration plan.
+- Removing existing workflows because they are inconvenient to redesign.
+- Large refactors before the System Atlas and baseline exist.
+
+---
+
+## 7. What Working Well Means
 
 Parallx works well when its parts compose into reliable cross-tool workflows:
 
@@ -66,7 +205,7 @@ Parallx also works well when:
 
 ---
 
-## 4. Unified Workbench Language
+## 8. Unified Workbench Language
 
 The systems redesign must define a central language for inter-tool interaction. This is the layer that lets separate features behave like one app.
 
@@ -114,17 +253,17 @@ These services should sit above individual features:
 2. Extensions contribute to the workbench through manifests, registries, and APIs, not by patching unrelated systems.
 3. IPC exposes contracts for workbench concepts and privileged operations, not private shortcuts for single features.
 4. Feature-specific state may exist, but cross-feature state must have a canonical owner.
-5. Any new cross-tool interaction must answer: resource, context, command/tool, capability, event, task, artifact, and test.
+5. Any new cross-tool interaction must answer: resource, context, command/tool, capability, event, task, artifact, provenance, and test.
 6. A redesign that improves one subsystem but weakens cross-tool composition is not better.
 
 ---
 
-## 5. Non-Negotiable Preservation Rules
+## 9. Non-Negotiable Preservation Rules
 
 Do not break:
 
 - Existing workspaces.
-- Existing cross-tool workflows, including file Explorer to editor to AI chat to Canvas flows.
+- Existing cross-tool workflows, including Explorer to editor to AI chat to Canvas flows.
 - Canvas page content and block graph.
 - Extension manifests and common extension APIs.
 - User settings.
@@ -137,7 +276,7 @@ Any cleanup or redesign must include a rollback path.
 
 ---
 
-## 6. Definition of "Better"
+## 10. Definition Of Better
 
 A redesign is better only if it improves one or more of these without regressing preservation rules:
 
@@ -152,29 +291,68 @@ A redesign is better only if it improves one or more of these without regressing
 | Maintainability | Smaller contracts, fewer illegal imports, less duplicated state ownership. |
 | User clarity | Docs and UI match what the app actually does. |
 
----
+Every redesign claim must state:
 
-## 7. Redesign System Requirement
-
-Before redesigning Parallx's app system, we must design the redesign system itself.
-
-That means the process needs:
-
-- A conductor/orchestrator that always holds the product goal, redesign goal, exclusions, proof gates, and current branch state.
-- A research agent that studies successful workbench and extension systems, especially VS Code-style contribution points, command registries, context keys, extension APIs, and comparable mature app architectures.
-- A system atlas agent that maps current Parallx behavior before proposing changes.
-- A baseline/metrics agent that defines what "better" means for each flow before implementation.
-- A unified workbench interaction agent that defines the common language between Explorer, editors, Canvas, chat, extensions, commands, tools, IPC, and persistence.
-- A surgical executor that makes one scoped change only after the design and proof gate are accepted.
-- A checker/review agent that independently decides whether the change is safer, faster, easier to debug, less bug-prone, and still compatible.
-
-No implementation milestone should begin until this operating model is accepted and the first target flow has baseline evidence.
+- Current behavior.
+- Proposed intervention.
+- Why it is better.
+- Baseline evidence or missing instrumentation.
+- Preservation checks.
+- Tests.
+- Rollback or stop condition.
 
 ---
 
-## 8. Documentation Truth Model
+## 11. Redesign Operating System
 
-Going forward, docs should fall into one of four buckets:
+Before redesigning Parallx's app system, design the redesign system itself.
+
+Required roles:
+
+| Role | Purpose | First responsibility |
+|---|---|---|
+| Systems Redesign Conductor | Holds product goal, redesign goal, scope, branch state, handoffs, proof gates, and final decision. | Produce the kickoff plan. |
+| External Architecture Research Agent | Researches successful workbench and extension systems. | Study VS Code-style contribution points, commands, context keys, extension APIs, and comparable mature systems. |
+| System Atlas Cartographer | Maps current Parallx behavior with code/doc anchors. | Create the atlas skeleton and first cross-tool workflow map. |
+| Baseline and Metrics Agent | Defines measurable current behavior. | Decide which baselines or instrumentation are required before implementation. |
+| Unified Workbench Interaction Agent | Defines the shared language between Explorer, editors, Canvas, chat, extensions, commands, tools, IPC, and persistence. | Draft the first interaction model. |
+| Surgical Executor Agent | Implements one approved slice only after proof gates are met. | Wait; no execution until conductor approves a slice. |
+| Fitness and Review Agent | Independently decides keep, revise, or roll back. | Define review criteria before the first implementation slice. |
+
+Required first artifacts:
+
+- Branch/checkpoint verification.
+- Documentation truth plan.
+- Milestone triage plan.
+- System Atlas skeleton.
+- External architecture research brief.
+- Unified Workbench Language skeleton.
+- Baseline/metrics plan.
+- First accepted execution milestone.
+
+---
+
+## 12. Companion Documents
+
+The first agent should use these documents as supporting context:
+
+| Document | Use |
+|---|---|
+| [docs/README.md](./README.md) | Current documentation index and documentation rules. |
+| [docs/research/SYSTEMS_THINKING_FOR_PARALLX.md](./research/SYSTEMS_THINKING_FOR_PARALLX.md) | Systems-thinking research and Parallx application. |
+| [docs/research/SYSTEMS_REDESIGN_AGENTS_AND_SKILLS.md](./research/SYSTEMS_REDESIGN_AGENTS_AND_SKILLS.md) | Agent roster, prompts, skills, and operating model. |
+| [docs/research/SYSTEMS_REDESIGN_CLEANUP_AND_MILESTONES.md](./research/SYSTEMS_REDESIGN_CLEANUP_AND_MILESTONES.md) | Cleanup strategy, milestone labels, and proposed redesign milestones. |
+| [docs/USER_GUIDE.md](./USER_GUIDE.md) | Current user-facing behavior to preserve. |
+| [docs/PARALLX_EXTENSION_AUTHORING_FOR_AI.md](./PARALLX_EXTENSION_AUTHORING_FOR_AI.md) | Current extension authoring model. |
+| [docs/PARALLX_MCP_SERVER_AUTHORING_FOR_AI.md](./PARALLX_MCP_SERVER_AUTHORING_FOR_AI.md) | Current MCP server authoring model. |
+| [docs/PARALLX_WORKSPACE_SCHEMA.md](./PARALLX_WORKSPACE_SCHEMA.md) | Workspace state model. |
+| [docs/SETTINGS_REGISTRY.md](./SETTINGS_REGISTRY.md) | Settings ownership and registry context. |
+
+---
+
+## 13. Documentation Truth Model
+
+Docs fall into four buckets:
 
 | Bucket | Meaning | Examples |
 |---|---|---|
@@ -187,7 +365,49 @@ Rule: if a doc is canonical, it must be accurate enough to act on. If it is not 
 
 ---
 
-## 9. Near-Term Target
+## 14. First Agent Required Output
+
+The first agent should return a kickoff report in this shape:
+
+```md
+# Parallx Systems Redesign Kickoff
+
+## Product Goal
+
+## Current Branch State
+
+## In Scope
+
+## Out Of Scope
+
+## Primary End-To-End Workflow
+
+## Risks If We Start Too Locally
+
+## Agents Needed First
+
+## Research Assignments
+
+## System Atlas Assignments
+
+## Baseline And Metrics Assignments
+
+## Unified Workbench Language Questions
+
+## Documentation And Milestone Cleanup Plan
+
+## First Milestone Recommendation
+
+## Stop Rules
+
+## Next Action
+```
+
+The first agent should not produce code changes as its first output.
+
+---
+
+## 15. Near-Term Target
 
 Before any major systems redesign starts, Parallx needs a cleanup baseline:
 
