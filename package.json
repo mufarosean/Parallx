@@ -19,7 +19,8 @@
     "test:ai-eval": "npx playwright test --config=playwright.ai-eval.config.ts",
     "test:ai-eval:report": "node tests/ai-eval/aggregate.mjs",
     "test:unit": "npx vitest run",
-    "test:unit:watch": "npx vitest"
+    "test:unit:watch": "npx vitest",
+    "test:system-fitness": "node scripts/run-fitness.mjs"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.3",

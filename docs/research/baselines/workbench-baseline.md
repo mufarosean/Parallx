@@ -59,6 +59,9 @@ Searched repo for existing tests, instrumentation, and measurement sources.
 | Database PRAGMA: wal_autocheckpoint | 1000 | [electron/database.cjs:L63](electron/database.cjs#L63) | High | M78 Phase 2; keeps WAL bounded on long sessions |
 | Database PRAGMA: temp_store | MEMORY | [electron/database.cjs:L64](electron/database.cjs#L64) | High | M78 Phase 2; keeps sort/group/CTE data in RAM |
 | H7 | Chat turn latency (ai-eval, median) | Measured per run | [tests/ai-eval/aggregate.mjs:L135-L144](tests/ai-eval/aggregate.mjs#L135-L144) | Medium | Latency extracted from turn records; reported as median in ai-eval aggregator |
+| H1 | Launch → first window (p50/p95) | 967.5 / 1127.4 ms | [tests/fitness/startup.fitness.ts](tests/fitness/startup.fitness.ts) (M84 Slice A; commit 6499cfbf) | High | 4 cold launches (5 runs, first discarded). Tolerance band p95 × 1.25 = 1409.3 ms. Reported in `data/fitness-reports/<ISO>.json` |
+| H1 | Launch → workbench-ready (titlebar selector visible) (p50/p95) | 1829.1 / 2459.4 ms | [tests/fitness/startup.fitness.ts](tests/fitness/startup.fitness.ts) (M84 Slice A) | High | Anchored on `[data-part-id="workbench.parts.titlebar"]`. Tolerance p95 × 1.25 = 3074.3 ms |
+| H1 | Launch → first editor pane visible (p50/p95) | 1887.2 / 2512.9 ms | [tests/fitness/startup.fitness.ts](tests/fitness/startup.fitness.ts) (M84 Slice A) | High | Anchored on `[data-part-id="workbench.parts.editor"]`. Tolerance p95 × 1.25 = 3141.1 ms. Workspace = empty `parallx-fitness-*` temp dir |
 
 ---
 
