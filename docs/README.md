@@ -30,6 +30,8 @@ source-of-truth.
 - [research/INTERACTION_LAYER_ARCHITECTURE.md](./research/INTERACTION_LAYER_ARCHITECTURE.md)
 - [research/Living_UI_Ideas.md](./research/Living_UI_Ideas.md)
 - [research/Living_UI_Research.md](./research/Living_UI_Research.md)
+- [research/SYSTEMS_REDESIGN_AGENTS_AND_SKILLS.md](./research/SYSTEMS_REDESIGN_AGENTS_AND_SKILLS.md)
+- [research/SYSTEMS_THINKING_FOR_PARALLX.md](./research/SYSTEMS_THINKING_FOR_PARALLX.md)
 
 ## Active milestone
 - [Parallx_Milestone_64.md](./Parallx_Milestone_64.md)
