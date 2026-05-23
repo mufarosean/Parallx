@@ -1,5 +1,7 @@
 # Milestone 79 — Text Generator: RP Engine Hardening
 
+> **Triage Status (2026-05-23):** `partial` — per [docs/research/MILESTONE_DOC_TRIAGE.md](research/MILESTONE_DOC_TRIAGE.md) (commit acd1ead). Canonical labels per [docs/PARALLX_MANIFEST.md](PARALLX_MANIFEST.md) §17.
+
 > **Status:** Planning + execution underway.
 
 ## Why

@@ -1,5 +1,7 @@
 # Milestone 80 — Budget Sync as a Skill+Tools Agent
 
+> **Triage Status (2026-05-23):** `planning` — per [docs/research/MILESTONE_DOC_TRIAGE.md](research/MILESTONE_DOC_TRIAGE.md) (commit acd1ead). Canonical labels per [docs/PARALLX_MANIFEST.md](PARALLX_MANIFEST.md) §17.
+
 > **Status:** Planning. Awaiting user sign-off.
 >
 > **Active milestone.** Supersedes the bespoke budget AI pipeline that was

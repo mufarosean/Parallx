@@ -1,5 +1,7 @@
 # Milestone 70 — App Command Control
 
+> **Triage Status (2026-05-23):** `implemented-verified` — per [docs/research/MILESTONE_DOC_TRIAGE.md](research/MILESTONE_DOC_TRIAGE.md) (commit acd1ead). Canonical labels per [docs/PARALLX_MANIFEST.md](PARALLX_MANIFEST.md) §17.
+
 > **Status:** Implemented (commits `e71615e`, `31c43ca`). Both tools shipped
 > with the AI Hub toggle, denylist, and ~89 opted-in commands. See verification
 > at the bottom of this doc.

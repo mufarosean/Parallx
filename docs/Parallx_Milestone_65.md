@@ -1,5 +1,7 @@
 # Milestone 65 — Web Research Extension (secure, agent-driven)
 
+> **Triage Status (2026-05-23):** `implemented-verified` — per [docs/research/MILESTONE_DOC_TRIAGE.md](research/MILESTONE_DOC_TRIAGE.md) (commit acd1ead). Canonical labels per [docs/PARALLX_MANIFEST.md](PARALLX_MANIFEST.md) §17.
+
 ## Why
 
 Parallx is a second brain. Today it can only think over content the user has

@@ -1,5 +1,7 @@
 # Milestone 67 — Security & data-leakage hardening
 
+> **Triage Status (2026-05-23):** `partial` — per [docs/research/MILESTONE_DOC_TRIAGE.md](research/MILESTONE_DOC_TRIAGE.md) (commit acd1ead). Canonical labels per [docs/PARALLX_MANIFEST.md](PARALLX_MANIFEST.md) §17.
+
 > **Status:** Substantially shipped. The findings audit is closed out at
 > the cheap end (Phase 1.1, 1.2, 1.4, 1.5, 4.1, 4.2, 4.5 + finding #3
 > all landed) and the structural pieces are in place (PolicyDecisionPoint

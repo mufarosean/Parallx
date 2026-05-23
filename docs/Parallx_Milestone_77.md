@@ -1,5 +1,7 @@
 # Milestone 77 — Canvas Reliability Hardening
 
+> **Triage Status (2026-05-23):** `implemented-verified` — per [docs/research/MILESTONE_DOC_TRIAGE.md](research/MILESTONE_DOC_TRIAGE.md) (commit acd1ead). Canonical labels per [docs/PARALLX_MANIFEST.md](PARALLX_MANIFEST.md) §17.
+
 > **Status:** Implemented. All 11 phases shipped, including round-2 / round-3
 > audit follow-ups. Phase 10.1 (AI page-write revision bump) verified at
 > `pageTools.ts:712`; Phase 11.5 (friendly save-error toast) at

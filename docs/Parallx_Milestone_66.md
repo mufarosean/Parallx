@@ -1,5 +1,7 @@
 # Milestone 66 — Unified linking, citations, and AI self-awareness
 
+> **Triage Status (2026-05-23):** `planning` — per [docs/research/MILESTONE_DOC_TRIAGE.md](research/MILESTONE_DOC_TRIAGE.md) (commit acd1ead). Canonical labels per [docs/PARALLX_MANIFEST.md](PARALLX_MANIFEST.md) §17.
+
 ## Why
 
 Parallx is six tools in one shell, but they don't feel like one app. The user

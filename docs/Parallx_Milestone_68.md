@@ -1,5 +1,7 @@
 # Milestone 68 - Semantic Workspace Graph
 
+> **Triage Status (2026-05-23):** `implemented-unverified` — per [docs/research/MILESTONE_DOC_TRIAGE.md](research/MILESTONE_DOC_TRIAGE.md) (commit acd1ead). Canonical labels per [docs/PARALLX_MANIFEST.md](PARALLX_MANIFEST.md) §17.
+
 > **Status:** MVP implemented; bake/tune ongoing. This milestone is reserved
 > for cached semantic links in Workspace Graph. M67 remains the separate
 > security/data leakage hardening plan.

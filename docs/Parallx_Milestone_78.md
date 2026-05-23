@@ -1,5 +1,7 @@
 # Milestone 78 — Performance Hardening
 
+> **Triage Status (2026-05-23):** `implemented-verified` — per [docs/research/MILESTONE_DOC_TRIAGE.md](research/MILESTONE_DOC_TRIAGE.md) (commit acd1ead). Canonical labels per [docs/PARALLX_MANIFEST.md](PARALLX_MANIFEST.md) §17.
+
 > **Status:** Implemented. All 8 implementation phases (1–8) shipped.
 > Verified: `timedDbHandler` at `main.cjs:1762`, SQLite PRAGMAs at
 > `database.cjs:62-64`, embedding worker flag in `embeddingService.ts`,

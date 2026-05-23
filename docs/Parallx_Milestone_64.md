@@ -1,5 +1,7 @@
 # Milestone 64 — Budget extension UX consolidation
 
+> **Triage Status (2026-05-23):** `implemented-verified` — per [docs/research/MILESTONE_DOC_TRIAGE.md](research/MILESTONE_DOC_TRIAGE.md) (commit acd1ead). Canonical labels per [docs/PARALLX_MANIFEST.md](PARALLX_MANIFEST.md) §17.
+
 ## Why
 
 After M63 the budget extension's math is correct (verified May 2026: $1,321.06
