@@ -22,7 +22,7 @@ import {
   getNodePlaceholder,
   getBlockExtensions,
 } from './blockRegistry.js';
-import type { EditorExtensionContext } from './blockRegistry.js';
+import type { EditorExtensionContext, BlockDefinition } from './blockRegistry.js';
 
 import type { Extensions } from '@tiptap/core';
 import { Extension } from '@tiptap/core';
@@ -95,11 +95,24 @@ export const UNIQUE_ID_BLOCK_TYPES: string[] = [
  * Extension sources:
  *   1. StarterKit         — bundled blocks (paragraph, heading, lists, etc.)
  *   2. Block registry      — all non-StarterKit block extensions via factories
- *   3. Infrastructure      — marks, plugins, utilities (Placeholder, DragHandle, etc.)
+ *   3. Contributed blocks  — extensions that called api.canvas.registerBlockType (M82 Slice A)
+ *   4. Infrastructure      — marks, plugins, utilities (Placeholder, DragHandle, etc.)
  *
  * @param lowlight - Pre-configured lowlight instance for syntax highlighting
+ * @param context  - Optional editor extension context (data service, pageId, etc.)
+ * @param contributedBlocks - Optional array of `BlockDefinition`s contributed
+ *   by extensions through `api.canvas.registerBlockType`. Each definition's
+ *   `extension(context)` factory is invoked and the returned Tiptap
+ *   extension(s) appended after the built-in block extensions. Built-in
+ *   `BLOCK_REGISTRY` remains canonical and takes precedence; the caller is
+ *   expected to ensure no id conflicts (the `CanvasBlockTypeRegistry`
+ *   enforces this at registration time).
  */
-export function createEditorExtensions(lowlight: any, context?: EditorExtensionContext): Extensions {
+export function createEditorExtensions(
+  lowlight: any,
+  context?: EditorExtensionContext,
+  contributedBlocks?: readonly BlockDefinition[],
+): Extensions {
   const registryContext: EditorExtensionContext = { lowlight, ...context };
 
   const clipboardImagePaste = Extension.create({
@@ -270,6 +283,18 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
 
     // ── 2. Block extensions from registry ──
     ...getBlockExtensions(registryContext),
+
+    // ── 2b. Block extensions contributed by extensions (M82 Slice A) ──
+    ...(contributedBlocks ?? []).flatMap((def) => {
+      if (!def?.extension) return [];
+      try {
+        const ext = def.extension(registryContext);
+        return Array.isArray(ext) ? ext : [ext];
+      } catch (err) {
+        console.error(`[tiptapExtensions] contributed block "${def.id}" extension() threw:`, err);
+        return [];
+      }
+    }),
 
     // ── 3. Infrastructure (marks, plugins, utilities) ──
     Placeholder.configure({

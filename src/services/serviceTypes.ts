@@ -1144,6 +1144,54 @@ export interface IChatParticipantContributionService {
 export const IChatParticipantContributionService =
   createServiceIdentifier<IChatParticipantContributionService>('IChatParticipantContributionService');
 
+// ─── Canvas Block-Type Contribution (M82 Slice A) ────────────────────────────
+
+/**
+ * Service for processing `contributes.canvas.blockTypes[]` from tool manifests.
+ * Owns id reservations and the wiring from the imperative
+ * `api.canvas.registerBlockType(definition)` call into the runtime
+ * `ICanvasBlockTypeRegistry`. Optional — only registered when the canvas
+ * block-type registry is available.
+ */
+export interface ICanvasBlockTypeContributionService {
+  processContributions(toolDescription: import('../tools/toolManifest.js').IToolDescription): void;
+  removeContributions(toolId: string): void;
+  hasContributed(blockTypeId: string): boolean;
+  getOwnerToolId(blockTypeId: string): string | undefined;
+  /**
+   * Wire the real Tiptap BlockDefinition for a contributed block type.
+   * Returns true if the manifest stub existed and the runtime entry was
+   * registered; false if no stub exists for this id.
+   */
+  wireRealDefinition(
+    blockTypeId: string,
+    definition: import('../built-in/canvas/config/blockRegistry.js').BlockDefinition,
+  ): boolean;
+  /** Drop the runtime entry previously installed by wireRealDefinition. */
+  unwireRealDefinition(blockTypeId: string): void;
+  getContributedIds(): readonly string[];
+  readonly onDidRegisterBlockType: import('../platform/events.js').Event<{ toolId: string; blockTypeId: string }>;
+  readonly onDidRemoveBlockType: import('../platform/events.js').Event<{ toolId: string; blockTypeId: string }>;
+}
+
+export const ICanvasBlockTypeContributionService =
+  createServiceIdentifier<ICanvasBlockTypeContributionService>('ICanvasBlockTypeContributionService');
+
+/**
+ * Runtime registry of contributed canvas block definitions.
+ * Optional service — present whenever the canvas surface is part of this
+ * workbench instance.
+ */
+export interface ICanvasBlockTypeRegistryService {
+  register(definition: import('../built-in/canvas/config/blockRegistry.js').BlockDefinition): import('../platform/lifecycle.js').IDisposable;
+  getAll(): readonly import('../built-in/canvas/config/blockRegistry.js').BlockDefinition[];
+  has(id: string): boolean;
+  readonly onDidChange: import('../platform/events.js').Event<void>;
+}
+
+export const ICanvasBlockTypeRegistryService =
+  createServiceIdentifier<ICanvasBlockTypeRegistryService>('ICanvasBlockTypeRegistryService');
+
 // ─── IKeybindingService ──────────────────────────────────────────────────────
 
 /**

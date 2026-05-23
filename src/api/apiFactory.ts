@@ -60,7 +60,8 @@ import {
   ILanguageModelToolsService,
 } from '../services/chatTypes.js';
 import { ICanvasPageQueryService } from '../services/serviceTypes.js';
-import { IChatParticipantContributionService } from '../services/serviceTypes.js';
+import { IChatParticipantContributionService, ICanvasBlockTypeContributionService, ICanvasBlockTypeRegistryService } from '../services/serviceTypes.js';
+import { CanvasBridge } from './bridges/canvasBridge.js';
 
 // ─── API Dependencies ────────────────────────────────────────────────────────
 
@@ -245,6 +246,17 @@ export interface ParallxApiObject {
     createChatParticipant(id: string, handler: (...args: unknown[]) => Promise<unknown>): IDisposable & { id: string; displayName: string; description: string; iconPath?: string; commands: { name: string; description: string }[] };
     registerTool(name: string, tool: { description: string; parameters: Record<string, unknown>; handler: (args: Record<string, unknown>, token: unknown) => Promise<{ content: string; isError?: boolean }>; requiresConfirmation: boolean }): IDisposable;
   } | undefined;
+  /**
+   * Canvas extension surface (M82 Slice A).
+   * `registerBlockType(definition)` adds a contributed Tiptap node type to
+   * the canvas editor's runtime block registry. The definition must conform
+   * to `BlockDefinition` from
+   * `src/built-in/canvas/config/blockRegistry.ts`. Undefined when the
+   * canvas surface is not part of this workbench instance.
+   */
+  readonly canvas: {
+    registerBlockType(definition: unknown): IDisposable;
+  } | undefined;
   /** Per-extension isolated database (external extensions only). */
   readonly database: {
     open(): Promise<{ error: null; dbPath: string } | { error: { code: string; message: string } }>;
@@ -410,6 +422,17 @@ export function createToolApi(
   // M82 Slice B — optional chat-participant contribution processor.
   const chatParticipantContribution = deps.services.has(IChatParticipantContributionService)
     ? deps.services.get<import('../services/serviceTypes.js').IChatParticipantContributionService>(IChatParticipantContributionService)
+    : undefined;
+
+  // M82 Slice A — optional canvas block-type registry + contribution processor.
+  const canvasBlockTypeRegistry = deps.services.has(ICanvasBlockTypeRegistryService)
+    ? deps.services.get<import('../services/serviceTypes.js').ICanvasBlockTypeRegistryService>(ICanvasBlockTypeRegistryService)
+    : undefined;
+  const canvasBlockTypeContribution = deps.services.has(ICanvasBlockTypeContributionService)
+    ? deps.services.get<import('../services/serviceTypes.js').ICanvasBlockTypeContributionService>(ICanvasBlockTypeContributionService)
+    : undefined;
+  const canvasBridge = canvasBlockTypeRegistry
+    ? new CanvasBridge(toolId, canvasBlockTypeRegistry, subscriptions, canvasBlockTypeContribution)
     : undefined;
 
   const iconsBridge = new IconsBridge();
@@ -826,6 +849,13 @@ export function createToolApi(
         })
       : undefined,
 
+    // M82 Slice A — canvas block-type contribution surface.
+    canvas: canvasBridge
+      ? Object.freeze({
+          registerBlockType: (definition: any) => canvasBridge.registerBlockType(definition),
+        })
+      : undefined,
+
     // M63 P0 — MCP tool invocation surface.
     mcp: mcpBridge
       ? Object.freeze({
@@ -904,6 +934,7 @@ export function createToolApi(
     editorsBridge.dispose();
     languageModelBridge?.dispose();
     chatBridge?.dispose();
+    canvasBridge?.dispose();
 
     // Dispose all tracked subscriptions
     for (const s of subscriptions) {

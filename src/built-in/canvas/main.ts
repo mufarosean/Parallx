@@ -15,7 +15,7 @@ import 'katex/dist/katex.min.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { LinksApi } from '../../links/linksApi.js';
-import { ICanvasPageQueryService, IIndexingPipelineService, IVectorStoreService } from '../../services/serviceTypes.js';
+import { ICanvasPageQueryService, IIndexingPipelineService, IVectorStoreService, ICanvasBlockTypeRegistryService } from '../../services/serviceTypes.js';
 import { CanvasDataService } from './canvasDataService.js';
 import type { ICanvasDataService } from './canvasTypes.js';
 import { PageChangeKind } from './canvasTypes.js';
@@ -274,6 +274,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   editorProvider.setOpenEditor((opts) => api.editors.openEditor(opts));
   if (_propertyService) {
     editorProvider.setPropertyService(_propertyService);
+  }
+  // M82 Slice A — wire contributed-block snapshot from the workbench registry.
+  if (api.services.has(ICanvasBlockTypeRegistryService)) {
+    const blockTypeRegistry = api.services.get<
+      import('../../services/serviceTypes.js').ICanvasBlockTypeRegistryService
+    >(ICanvasBlockTypeRegistryService);
+    editorProvider.setContributedBlocksProvider(() => blockTypeRegistry.getAll());
   }
   context.subscriptions.push(
     api.editors.registerEditorProvider('canvas', {

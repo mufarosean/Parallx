@@ -21,6 +21,7 @@ import type { KeybindingContributionProcessor } from './keybindingContribution.j
 import type { MenuContributionProcessor } from './menuContribution.js';
 import type { ViewContributionProcessor } from './viewContribution.js';
 import type { ChatParticipantContributionProcessor } from './chatParticipantContribution.js';
+import type { CanvasBlockTypeContributionProcessor } from './canvasBlockTypeContribution.js';
 import type { IContributionRegistry } from './contributionTypes.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
 
@@ -32,6 +33,8 @@ export class ContributionRegistry extends Disposable implements IContributionReg
     private readonly _viewContribution: ViewContributionProcessor,
     /** M82 Slice B — optional; passed in only on the live workbench path. */
     private readonly _chatParticipantContribution?: ChatParticipantContributionProcessor,
+    /** M82 Slice A — optional; passed in only on the live workbench path. */
+    private readonly _canvasBlockTypeContribution?: CanvasBlockTypeContributionProcessor,
   ) {
     super();
   }
@@ -73,6 +76,13 @@ export class ContributionRegistry extends Disposable implements IContributionReg
         console.error('[ContributionRegistry] chat-participant processContributions failed for tool', toolId, err);
       }
     }
+    if (this._canvasBlockTypeContribution) {
+      try {
+        this._canvasBlockTypeContribution.processContributions(description);
+      } catch (err) {
+        console.error('[ContributionRegistry] canvas-block-type processContributions failed for tool', toolId, err);
+      }
+    }
   }
 
   /**
@@ -109,6 +119,13 @@ export class ContributionRegistry extends Disposable implements IContributionReg
         this._chatParticipantContribution.removeContributions(toolId);
       } catch (err) {
         console.error('[ContributionRegistry] chat-participant removeContributions failed for tool', toolId, err);
+      }
+    }
+    if (this._canvasBlockTypeContribution) {
+      try {
+        this._canvasBlockTypeContribution.removeContributions(toolId);
+      } catch (err) {
+        console.error('[ContributionRegistry] canvas-block-type removeContributions failed for tool', toolId, err);
       }
     }
   }

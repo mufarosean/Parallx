@@ -205,6 +205,13 @@ export interface IManifestContributions {
    * by M82 UI (deferred).
    */
   readonly chat?: IManifestChatContributions;
+  /**
+   * Canvas extension points (M82 Slice A).
+   * Today only `blockTypes[]` — extensions may declare new Tiptap node ids
+   * up-front; the actual factory is supplied at activate() time via
+   * `api.canvas.registerBlockType(definition)`.
+   */
+  readonly canvas?: IManifestCanvasContributions;
 }
 
 /**
@@ -239,6 +246,35 @@ export interface IManifestChatParticipant {
 export interface IManifestChatParticipantCommand {
   readonly name: string;
   readonly description?: string;
+}
+
+/**
+ * The `contributes.canvas` section of a tool manifest (M82 Slice A).
+ */
+export interface IManifestCanvasContributions {
+  readonly blockTypes?: readonly IManifestCanvasBlockType[];
+}
+
+/**
+ * One canvas block-type entry under `contributes.canvas.blockTypes[]`.
+ * Declarative metadata only — the Tiptap extension factory is supplied
+ * imperatively in `activate()` via `api.canvas.registerBlockType(def)`.
+ *
+ * Mirrors the metadata subset of the built-in `BlockDefinition` from
+ * `src/built-in/canvas/config/blockRegistry.ts`. Validated at registration
+ * time by `CanvasBlockTypeContributionProcessor`.
+ */
+export interface IManifestCanvasBlockType {
+  /** Unique registry key. Must not collide with a built-in id. */
+  readonly id: string;
+  /** ProseMirror node type name. Must match the Tiptap extension's name. */
+  readonly name: string;
+  /** Human-readable label (e.g. shown in slash menu). */
+  readonly label?: string;
+  /** Icon key (consumed by svgIcon) or text glyph. */
+  readonly icon?: string;
+  /** Structural classification — passed through to BlockDefinition.kind. */
+  readonly kind?: 'leaf' | 'container' | 'atom' | 'inline' | 'structural';
 }
 
 /**

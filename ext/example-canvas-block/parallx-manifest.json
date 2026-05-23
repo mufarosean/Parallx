@@ -1,0 +1,22 @@
+{
+  "id": "parallx.example-canvas-block",
+  "displayName": "Example Canvas Block",
+  "version": "0.1.0",
+  "publisher": "parallx",
+  "engines": { "parallx": ">=1.0.0" },
+  "main": "main.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "canvas": {
+      "blockTypes": [
+        {
+          "id": "example.embeddedIframe",
+          "name": "exampleEmbeddedIframe",
+          "label": "Embedded iframe",
+          "icon": "browser",
+          "kind": "atom"
+        }
+      ]
+    }
+  }
+}

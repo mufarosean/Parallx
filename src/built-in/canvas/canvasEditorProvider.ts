@@ -29,6 +29,7 @@
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import type { ICanvasDataService } from './canvasTypes.js';
+import type { BlockDefinition } from './config/blockRegistry.js';
 import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
@@ -121,10 +122,29 @@ export class CanvasEditorProvider {
   /** Property data service (set from main.ts after activation). */
   private _propertyService: IPropertyDataService | undefined;
 
+  /**
+   * Contributed-block snapshot provider (M82 Slice A).
+   * Called at editor-pane construction; returns a snapshot of every
+   * `BlockDefinition` currently in `ICanvasBlockTypeRegistry`. Each pane
+   * uses its own snapshot for the lifetime of that Tiptap editor instance.
+   * Live re-registration is intentionally out of scope.
+   */
+  private _contributedBlocksProvider: (() => readonly BlockDefinition[]) | undefined;
+
   constructor(
     private readonly _dataService: ICanvasDataService,
     private readonly _window: CanvasWindowApi | undefined,
   ) {}
+
+  /** Set the provider used to snapshot contributed block types (M82 Slice A). */
+  setContributedBlocksProvider(fn: () => readonly BlockDefinition[]): void {
+    this._contributedBlocksProvider = fn;
+  }
+
+  /** Snapshot contributed block definitions, or an empty array if none. */
+  getContributedBlocks(): readonly BlockDefinition[] {
+    return this._contributedBlocksProvider ? this._contributedBlocksProvider() : [];
+  }
 
   /**
    * Set the openEditor callback so panes can navigate to other pages.
@@ -435,7 +455,7 @@ class CanvasEditorPane implements IDisposable {
         pageId: this._pageId,
         openEditor: this._openEditor,
         showIconPicker: (opts) => this._menuRegistry?.showIconMenu(opts),
-      }),
+      }, this._provider.getContributedBlocks()),
       content: '',
       editorProps: {
         attributes: {

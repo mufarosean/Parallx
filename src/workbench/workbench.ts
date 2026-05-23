@@ -134,8 +134,11 @@ import { ContributionRegistry } from '../contributions/contributionRegistry.js';
 
 // Chat Participant Contribution (M82 Slice B)
 import { ChatParticipantContributionProcessor } from '../contributions/chatParticipantContribution.js';
+import { CanvasBlockTypeContributionProcessor } from '../contributions/canvasBlockTypeContribution.js';
+import { CanvasBlockTypeRegistry } from '../services/canvasBlockTypeRegistry.js';
 import { IChatAgentService } from '../services/chatTypes.js';
 import { IChatParticipantContributionService } from '../services/serviceTypes.js';
+import { ICanvasBlockTypeContributionService, ICanvasBlockTypeRegistryService } from '../services/serviceTypes.js';
 
 // Contribution handler (D.1 extraction)
 import { WorkbenchContributionHandler } from './workbenchContributionHandler.js';
@@ -2325,12 +2328,23 @@ export class Workbench extends Layout {
       this._register(chatParticipantContribution);
     }
 
+    // M82 Slice A: canvas block-type contribution. Always registered —
+    // built-in BLOCK_REGISTRY is read at construction time for conflict
+    // detection; no other service dependency.
+    const canvasBlockTypeRegistry = new CanvasBlockTypeRegistry();
+    this._services.registerInstance(ICanvasBlockTypeRegistryService, canvasBlockTypeRegistry);
+    this._register(canvasBlockTypeRegistry);
+    const canvasBlockTypeContribution = new CanvasBlockTypeContributionProcessor(canvasBlockTypeRegistry);
+    this._services.registerInstance(ICanvasBlockTypeContributionService, canvasBlockTypeContribution);
+    this._register(canvasBlockTypeContribution);
+
     this._contributionRegistry = this._register(new ContributionRegistry(
       commandContribution,
       keybindingContribution,
       menuContribution,
       this._viewContribution,
       chatParticipantContribution,
+      canvasBlockTypeContribution,
     ));
 
     // Process contributions from already-registered tools
