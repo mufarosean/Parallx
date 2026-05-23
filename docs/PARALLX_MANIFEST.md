@@ -307,17 +307,39 @@ Every redesign claim must state:
 
 Before redesigning Parallx's app system, design the redesign system itself.
 
-Required roles:
+### Required Agents
 
-| Role | Purpose | First responsibility |
-|---|---|---|
-| Systems Redesign Conductor | Holds product goal, redesign goal, scope, branch state, handoffs, proof gates, and final decision. | Produce the kickoff plan. |
-| External Architecture Research Agent | Researches successful workbench and extension systems. | Study VS Code-style contribution points, commands, context keys, extension APIs, and comparable mature systems. |
-| System Atlas Cartographer | Maps current Parallx behavior with code/doc anchors. | Create the atlas skeleton and first cross-tool workflow map. |
-| Baseline and Metrics Agent | Defines measurable current behavior. | Decide which baselines or instrumentation are required before implementation. |
-| Unified Workbench Interaction Agent | Defines the shared language between Explorer, editors, Canvas, chat, extensions, commands, tools, IPC, and persistence. | Draft the first interaction model. |
-| Surgical Executor Agent | Implements one approved slice only after proof gates are met. | Wait; no execution until conductor approves a slice. |
-| Fitness and Review Agent | Independently decides keep, revise, or roll back. | Define review criteria before the first implementation slice. |
+The conductor must create or assign these agents before the first implementation milestone:
+
+| Agent | Purpose | Can edit app code? | Constraints | Required output |
+|---|---|---:|---|---|
+| Systems Redesign Conductor | Holds product goal, redesign goal, scope, branch state, handoffs, proof gates, and final decision. | No by default | Cannot approve implementation without research, atlas, baseline, preservation, and review gates. | Kickoff plan and milestone recommendation. |
+| Research Agent | Researches current Parallx code and external successful app/workbench patterns. | No | Must separate current-code facts from external patterns and recommendations. Must cite code/docs/sources. | Research brief with Parallx findings, external findings, applicability, and risks. |
+| System Atlas Cartographer | Maps current Parallx behavior with code/doc anchors. | Docs only | Cannot propose redesign before mapping entry points, state owners, events, IPC, storage, and tests. | System Atlas section and cross-tool workflow map. |
+| Baseline and Metrics Agent | Defines measurable current behavior. | No | Cannot accept "better" without baseline, characterization test, or instrumentation plan. | Baseline scorecard and missing measurement list. |
+| Unified Workbench Interaction Agent | Defines the shared language between Explorer, editors, Canvas, chat, extensions, commands, tools, IPC, and persistence. | Docs/design first | Cannot create a new abstraction without proving current one-off bridges and compatibility needs. | Workbench interaction model and compatibility plan. |
+| Milestone and Documentation Steward | Creates milestone docs, labels old milestones, updates README, and preserves archive history. | Docs only | Cannot delete history. Must archive or label stale docs. Must keep canonical docs discoverable. | Milestone doc, doc triage table, README/index updates. |
+| Surgical Executor Agent | Implements one approved slice only after proof gates are met. | Yes | Cannot expand scope, refactor opportunistically, or commit without verification notes. | Patch, tests, verification record, rollback notes. |
+| Fitness and Review Agent | Independently decides keep, revise, or roll back. | No by default | Cannot be the same agent that implemented the slice. Must look for regressions across workflows. | Keep/revise/rollback decision with evidence. |
+
+### Agent Card Template
+
+Before an agent starts work, the conductor must create a short agent card:
+
+```md
+## Agent
+
+Name:
+Mission:
+Inputs:
+Allowed edits:
+Forbidden actions:
+Required sources:
+Required output:
+Verification required:
+Stop rules:
+Handoff target:
+```
 
 Required first artifacts:
 
@@ -325,14 +347,211 @@ Required first artifacts:
 - Documentation truth plan.
 - Milestone triage plan.
 - System Atlas skeleton.
-- External architecture research brief.
+- Research brief covering current Parallx code and external successful apps.
 - Unified Workbench Language skeleton.
 - Baseline/metrics plan.
 - First accepted execution milestone.
 
 ---
 
-## 12. Companion Documents
+## 12. Research Protocol
+
+Research has two mandatory tracks.
+
+### Current Parallx Research
+
+The Research Agent and System Atlas Cartographer must inspect the current app before proposing changes.
+
+Minimum local research:
+
+- Identify entry points for the target workflow.
+- Trace how Explorer, editor, AI chat, Canvas, extensions, tools, IPC, persistence, and background work interact today.
+- Find the command, contribution, context, selection, resource, and tool primitives that already exist.
+- Identify duplicated concepts, one-off bridges, hidden coupling, and unclear ownership.
+- Locate tests/evals that already protect the workflow.
+- Mark unverified assumptions explicitly.
+
+Required evidence:
+
+- Code file anchors.
+- Existing docs.
+- Existing tests or missing-test notes.
+- Current behavior summary.
+
+### External Architecture Research
+
+The Research Agent must also study successful apps and mature workbench/plugin systems before recommending a new Parallx-level model.
+
+Minimum external research:
+
+- VS Code contribution points, commands, context keys, menus/views, extension APIs, activation, and extension host boundaries.
+- At least one comparable mature plugin/workbench architecture, such as Eclipse extension points or JetBrains IntelliJ Platform extension/action systems.
+- Optional domain-specific apps only when they illuminate the target Parallx workflow.
+
+Required evidence:
+
+- Source links.
+- Pattern summary.
+- What Parallx should learn.
+- What Parallx should not copy.
+- Risks of overengineering.
+
+The Research Agent must never return a recommendation that is only external best practice. It must connect each recommendation to current Parallx code and a user workflow.
+
+---
+
+## 13. Work Definition Contract
+
+All work must be defined as a flow, not as a vague subsystem preference.
+
+Every work item must include:
+
+| Field | Required answer |
+|---|---|
+| User workflow | What user-visible workflow are we protecting or improving? |
+| Current behavior | How does it work today? |
+| Pain or risk | What is fragile, slow, hard to debug, duplicated, or bug-prone? |
+| Workbench concepts | Which shared concepts are involved? |
+| Scope | Which files/systems may be touched? |
+| Out of scope | Which systems must not be redesigned in this slice? |
+| Baseline | What current metric, test, trace, or characterization exists? |
+| Better claim | What must improve? |
+| Preservation checks | What must keep working? |
+| Verification | Which tests, inspections, or measurements prove it? |
+| Rollback | How do we return to the prior behavior? |
+
+No implementation starts from "clean this area up." It starts from a mapped workflow and a measurable claim.
+
+---
+
+## 14. Milestone Document Lifecycle
+
+Milestones are the control surface for the redesign.
+
+### Creation
+
+The Milestone and Documentation Steward creates a milestone document only after the conductor accepts a workflow, scope, proof gate, and rollback rule.
+
+New redesign milestones should use this shape:
+
+```md
+# Parallx Milestone <number>: <title>
+
+Status:
+Branch:
+Parent baseline:
+Created:
+Conductor:
+
+## Goal
+
+## User Workflows Protected
+
+## Scope
+
+## Out Of Scope
+
+## Agents Assigned
+
+## Current-State Research Required
+
+## External Research Required
+
+## Baseline And Metrics Required
+
+## Workbench Concepts Involved
+
+## Implementation Slices
+
+## Verification Plan
+
+## Preservation Checklist
+
+## Commit Plan
+
+## Rollback Plan
+
+## Closeout Evidence
+```
+
+### Status Labels
+
+Use these labels:
+
+- `planning`
+- `active`
+- `partial`
+- `implemented-unverified`
+- `implemented-verified`
+- `superseded`
+- `archived`
+
+### Closeout
+
+A milestone can close only when:
+
+- The implementation matches the accepted scope.
+- The verification plan has run or has documented blockers.
+- The Fitness and Review Agent has returned keep/revise/rollback.
+- Docs affected by the change are updated.
+- Known risks are listed.
+- Rollback path is still valid.
+
+---
+
+## 15. Commit And Branch Protocol
+
+Commit authority must be explicit.
+
+| Work type | Who prepares it | Who may commit it | Required before commit |
+|---|---|---|---|
+| Manifest/research/planning docs | Conductor or Milestone Steward | Conductor or Milestone Steward | Link check, status clarity, no false source-of-truth claims. |
+| System Atlas/docs updates | System Atlas Cartographer | Conductor or Milestone Steward | Code/doc anchors and uncertainty markers. |
+| App code slice | Surgical Executor Agent | Surgical Executor Agent after conductor approval | Accepted milestone slice, tests/verification, rollback notes. |
+| Test/fitness harness | Baseline Agent or Surgical Executor | Surgical Executor after conductor approval | Baseline intent and preservation checks. |
+| Review fixes | Surgical Executor | Surgical Executor after review decision | Fitness and Review Agent findings addressed. |
+
+Rules:
+
+1. Checker/review agents do not commit implementation work.
+2. Research agents do not commit app code.
+3. The executor commits only the accepted slice.
+4. One commit should have one clear purpose.
+5. Commit messages should name the domain and intent, for example `docs: add workbench interaction model` or `test: characterize workspace switch recovery`.
+6. Do not merge to `master` until the consolidation milestone says the branch is measurably better.
+
+---
+
+## 16. Verification And Bug Prevention Contract
+
+We cannot rely on users to identify bugs. The redesign process must catch regressions before users experience them.
+
+Every implementation slice must include at least one of:
+
+- Existing test run that covers the workflow.
+- New characterization test.
+- New regression test.
+- New fitness check.
+- New instrumentation that establishes a baseline before changing behavior.
+- Manual verification script with exact steps only when automation is not yet feasible.
+
+Required verification categories:
+
+| Category | What must be checked |
+|---|---|
+| Workflow preservation | The core user workflow still works end to end. |
+| Data preservation | Existing workspaces, files, settings, canvas content, and extension data survive. |
+| Cross-tool interaction | Explorer, editor, AI chat, Canvas, commands, tools, IPC, and persistence still agree on resource/context behavior. |
+| Failure behavior | Slow, failed, or missing extensions/tools do not break the workbench. |
+| Performance | Startup or runtime behavior does not regress without explicit acceptance. |
+| Recovery | Workspace switch, save, crash/interruption, and retry behavior stay consistent. |
+| Debuggability | Logs, errors, traces, or ownership are clearer than before. |
+
+If a bug is found by a user after a redesign slice, the process failed. The next milestone must add a test, trace, or guard that would have caught that bug.
+
+---
+
+## 17. Companion Documents
 
 The first agent should use these documents as supporting context:
 
@@ -350,7 +569,7 @@ The first agent should use these documents as supporting context:
 
 ---
 
-## 13. Documentation Truth Model
+## 18. Documentation Truth Model
 
 Docs fall into four buckets:
 
@@ -365,7 +584,7 @@ Rule: if a doc is canonical, it must be accurate enough to act on. If it is not 
 
 ---
 
-## 14. First Agent Required Output
+## 19. First Agent Required Output
 
 The first agent should return a kickoff report in this shape:
 
@@ -386,6 +605,8 @@ The first agent should return a kickoff report in this shape:
 
 ## Agents Needed First
 
+## Agent Cards To Create
+
 ## Research Assignments
 
 ## System Atlas Assignments
@@ -395,6 +616,10 @@ The first agent should return a kickoff report in this shape:
 ## Unified Workbench Language Questions
 
 ## Documentation And Milestone Cleanup Plan
+
+## Commit And Branch Plan
+
+## Verification And Bug Prevention Plan
 
 ## First Milestone Recommendation
 
@@ -407,7 +632,7 @@ The first agent should not produce code changes as its first output.
 
 ---
 
-## 15. Near-Term Target
+## 20. Near-Term Target
 
 Before any major systems redesign starts, Parallx needs a cleanup baseline:
 
@@ -419,6 +644,7 @@ Before any major systems redesign starts, Parallx needs a cleanup baseline:
 6. The redesign operating model is accepted.
 7. A new System Atlas maps the app end to end.
 8. A unified workbench language map exists.
-9. Baseline measurements exist for startup, IPC, persistence, extensions, canvas, chat participation, and background work.
+9. Milestone docs define accepted work, agents, commit plan, verification plan, and rollback plan.
+10. Baseline measurements exist for startup, IPC, persistence, extensions, canvas, chat participation, and background work.
 
 Only after that should implementation milestones begin.

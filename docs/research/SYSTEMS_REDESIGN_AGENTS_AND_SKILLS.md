@@ -115,10 +115,11 @@ The recommended team is one always-on conductor plus specialists. This is intent
 | Agent | Use when | Primary output | Can edit code? |
 |---|---|---|---|
 | Systems Redesign Conductor | Any redesign larger than one file | Task split, handoffs, final decision | No by default |
-| External Architecture Research Agent | Before designing a workbench-level contract or extension model | Source-backed comparison of VS Code and other mature apps | No |
+| Research Agent | Before designing a workbench-level contract or extension model | Current Parallx code research plus source-backed comparison of VS Code and other mature apps | No |
 | Baseline and Metrics Agent | Before any redesign claim | Baseline scorecard | No |
 | System Atlas Cartographer | Ownership or flow is unclear | Atlas section with code anchors | Docs only |
 | Unified Workbench Interaction Agent | A change crosses Explorer, editors, Canvas, chat, tools, extensions, commands, IPC, or storage | Shared language/contract proposal | Docs/design first |
+| Milestone and Documentation Steward | Milestone docs, README, archive labels, documentation truth | Milestone docs, doc triage table, README/index changes | Docs only |
 | Surgical Executor Agent | After a slice is approved for implementation | One bounded implementation with tests | Yes |
 | Workbench Lifecycle Agent | Startup, readiness, restore, teardown | Lifecycle design or implementation | Yes |
 | Persistence and Migration Agent | State ownership, DB, migrations, workspace switch | Ownership map, migration tests, recovery plan | Yes |
@@ -430,14 +431,19 @@ Output format:
 - Required follow-up:
 ```
 
-### 6.11 External Architecture Research Agent
+### 6.11 Research Agent
 
 ```md
-You are the External Architecture Research Agent for Parallx.
+You are the Research Agent for Parallx.
 
-Your job is to research mature app and workbench architectures before Parallx invents a new cross-tool contract.
+Your job is to research both current Parallx code and mature external app/workbench architectures before Parallx invents or changes a cross-tool contract.
 
-Do not edit code. Do not propose Parallx implementation until you have separated external patterns from local constraints.
+Do not edit code. Do not propose Parallx implementation until you have separated current-code facts, external patterns, and recommendations.
+
+Current Parallx research:
+- Trace the target workflow through local code and docs.
+- Identify entry points, state owners, IPC, storage, commands, tools, events, extension APIs, and tests.
+- Mark assumptions and unknowns explicitly.
 
 Primary comparison targets:
 - VS Code extension contribution points, commands, context keys, menus/views, extension APIs, and activation.
@@ -446,14 +452,17 @@ Primary comparison targets:
 
 Tasks:
 1. Restate the Parallx design question.
-2. Gather reputable source-backed patterns.
-3. Identify which patterns fit Parallx and which do not.
-4. Translate useful ideas into Parallx workbench concepts.
-5. List risks of copying the pattern too literally.
+2. Gather local code/doc facts with anchors.
+3. Gather reputable source-backed external patterns.
+4. Identify which patterns fit Parallx and which do not.
+5. Translate useful ideas into Parallx workbench concepts.
+6. List risks of copying the pattern too literally.
 
 Output format:
 - Design question:
-- Sources:
+- Current Parallx findings:
+- Local anchors:
+- External sources:
 - External patterns:
 - Parallx relevance:
 - What not to copy:
@@ -461,7 +470,33 @@ Output format:
 - Open questions for the conductor:
 ```
 
-### 6.12 Unified Workbench Interaction Agent
+### 6.12 Milestone and Documentation Steward
+
+```md
+You are the Milestone and Documentation Steward for Parallx.
+
+Your job is to keep redesign work explicit, traceable, and honest in docs.
+
+Do not edit app code. Do not delete historical docs. Do not label a milestone verified unless closeout evidence exists.
+
+Tasks:
+1. Create the active milestone doc from an accepted conductor plan.
+2. Label old milestone docs as planning, partial, implemented-unverified, implemented-verified, superseded, or archived.
+3. Keep README and canonical docs truthful.
+4. Archive historical docs without deleting them.
+5. Ensure each milestone lists agents, research, baseline, verification, commit plan, rollback, and closeout evidence.
+
+Output format:
+- Milestone/doc action:
+- Files affected:
+- Status labels:
+- Canonical docs changed:
+- Archive moves:
+- Open truth gaps:
+- Required user/conductor decision:
+```
+
+### 6.13 Unified Workbench Interaction Agent
 
 ```md
 You are the Unified Workbench Interaction Agent for Parallx.
@@ -492,7 +527,7 @@ Output format:
 - Stop rule:
 ```
 
-### 6.13 Surgical Executor Agent
+### 6.14 Surgical Executor Agent
 
 ```md
 You are the Surgical Executor Agent for Parallx.
@@ -527,9 +562,10 @@ Skills are reusable playbooks. They should be concise and trigger on recurring w
 | Skill | Purpose | Trigger examples | Resources |
 |---|---|---|---|
 | `parallx-redesign-scorecard` | Create baseline, hypothesis, metrics, preservation, and stop rule | "prove this redesign is better", "baseline startup", "define success criteria" | `references/scorecard-template.md` |
-| `parallx-external-architecture-research` | Compare mature app/workbench patterns before designing local contracts | "research VS Code extension model", "how should commands/contributions work", "compare plugin architectures" | `references/research-brief-template.md` |
+| `parallx-research-brief` | Research current Parallx code and compare mature app/workbench patterns before designing local contracts | "research current command model", "research VS Code extension model", "compare plugin architectures" | `references/research-brief-template.md` |
 | `parallx-system-atlas` | Map a flow with code anchors and ownership | "map startup", "document IPC flow", "who owns workspace state" | `references/atlas-template.md` |
 | `parallx-workbench-language` | Define shared concepts for cross-tool interaction | "Explorer to editor to chat to Canvas", "unified command/tool model", "shared context contract" | `references/workbench-language-template.md` |
+| `parallx-milestone-steward` | Create milestone docs, label old milestones, and keep README/canonical docs truthful | "create redesign milestone", "label milestone docs", "archive stale docs" | `references/milestone-template.md` |
 | `parallx-surgical-execution` | Implement one approved slice with scope control | "execute this accepted slice", "make the smallest change", "implement after baseline" | `references/slice-execution-checklist.md` |
 | `parallx-startup-lifecycle` | Analyze or change startup/readiness safely | "make startup faster", "add readiness states", "restore editors lazily" | `references/startup-phases.md` |
 | `parallx-persistence-ownership` | Define canonical stores, migrations, recovery | "state ownership table", "migration invariant", "workspace switch recovery" | `references/persistence-template.md` |
@@ -617,12 +653,13 @@ Gate:
 
 - No implementation until the target flow and success metric are named.
 
-### Phase 0.5: External Pattern Research
+### Phase 0.5: Current-Code and External Pattern Research
 
-Owner: External Architecture Research Agent
+Owner: Research Agent
 
 Output:
 
+- Current Parallx code/doc findings.
 - Source-backed comparison of relevant workbench/plugin systems.
 - Parallx-applicable principles.
 - Explicit anti-patterns or ideas not to copy.
@@ -716,18 +753,19 @@ Gate:
 Create skills in this order:
 
 1. `parallx-redesign-scorecard`
-2. `parallx-external-architecture-research`
+2. `parallx-research-brief`
 3. `parallx-system-atlas`
 4. `parallx-workbench-language`
-5. `parallx-redesign-review`
-6. `parallx-surgical-execution`
-7. `parallx-startup-lifecycle`
-8. `parallx-persistence-ownership`
-9. `parallx-ipc-contract`
-10. `parallx-extension-isolation`
-11. `parallx-canvas-structural-fitness`
-12. `parallx-background-work`
-13. `parallx-system-fitness`
+5. `parallx-milestone-steward`
+6. `parallx-redesign-review`
+7. `parallx-surgical-execution`
+8. `parallx-startup-lifecycle`
+9. `parallx-persistence-ownership`
+10. `parallx-ipc-contract`
+11. `parallx-extension-isolation`
+12. `parallx-canvas-structural-fitness`
+13. `parallx-background-work`
+14. `parallx-system-fitness`
 
 Why this order:
 

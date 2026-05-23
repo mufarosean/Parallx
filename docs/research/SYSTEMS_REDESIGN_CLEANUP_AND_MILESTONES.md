@@ -153,9 +153,10 @@ Deliverables:
 - `origin/master` reflects the latest current app.
 - Remote checkpoint branch pushed.
 - `PARALLX_MANIFEST.md` accepted.
-- Agent roster accepted: conductor, research, atlas, baseline, unified interaction, executor, checker.
+- Agent roster accepted: conductor, research, atlas, baseline, unified interaction, milestone/documentation steward, executor, checker.
 - Skill list accepted.
 - Milestone docs labeled.
+- Milestone template includes agents, research, baseline, verification, commit plan, rollback, and closeout evidence.
 - README updated to reflect true active/planning/archive state.
 - No docs deleted; archive-only moves.
 
@@ -164,7 +165,8 @@ Proof gate:
 - Branch graph is verified.
 - All links in canonical docs resolve or are marked for repair.
 - User can identify what docs are current in under one minute.
-- The redesign process has named roles, artifacts, proof gates, and rollback rules.
+- The redesign process has named roles, artifacts, commit rules, proof gates, verification rules, and rollback rules.
+- The bug-prevention rule is explicit: users are not the QA plan.
 
 ### M82 / SR-2: Whole-App Atlas and Cross-Tool Workflow Map
 
@@ -187,7 +189,7 @@ Proof gate:
 
 - Each major flow has owner, state, failure modes, and tests.
 - Cross-tool workflows identify resources, surfaces, selections, context, commands, tools, capabilities, events, tasks, artifacts, and provenance.
-- Missing measurements are listed as first-class work.
+- Missing measurements and missing bug-catching tests are listed as first-class work.
 
 ### M83 / SR-3: Unified Workbench Language and Extension Interaction Model
 
