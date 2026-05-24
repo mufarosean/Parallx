@@ -249,4 +249,57 @@ describe('ChatAgentService', () => {
       note: 'boom',
     }));
   });
+
+  // ── Participant resolution priority (M82 §11 / audit Q3) ────────────────
+  //
+  // _resolveAgent priority order — pinned because Slice B / M82 chat-participant
+  // contributions all rely on this lookup chain. Order must be:
+  //   1. exact id match
+  //   2. (only if id has no '.') `parallx.chat.<id>` namespace fallback
+  //   3. case-insensitive `displayName` match
+  describe('participant resolution priority (M82 §11 / audit Q3)', () => {
+    it('exact id beats namespace fallback', () => {
+      const direct = createMockParticipant('myExt.assistant');
+      service.registerAgent(direct);
+      // also register a namespaced "assistant" — the bare id "myExt.assistant"
+      // contains a dot so namespace fallback is NOT considered.
+      const namespaced = createMockParticipant('parallx.chat.assistant');
+      service.registerAgent(namespaced);
+
+      expect(service.getAgent('myExt.assistant')).toBe(direct);
+    });
+
+    it('bare id falls back to `parallx.chat.<id>` namespace match', () => {
+      const builtin = createMockParticipant('parallx.chat.default');
+      service.registerAgent(builtin);
+
+      expect(service.getAgent('default')).toBe(builtin);
+    });
+
+    it('namespace fallback is NOT attempted when id contains a dot', () => {
+      const builtin = createMockParticipant('parallx.chat.default');
+      service.registerAgent(builtin);
+
+      // "x.default" contains a dot → no namespace fallback → no display-name
+      // match (displayName='parallx.chat.default') → undefined.
+      expect(service.getAgent('x.default')).toBeUndefined();
+    });
+
+    it('case-insensitive displayName match is last-resort', () => {
+      const agent: IChatParticipant = {
+        ...createMockParticipant('opaque.id'),
+        displayName: 'Researcher',
+      };
+      service.registerAgent(agent);
+
+      expect(service.getAgent('researcher')).toBe(agent);
+      expect(service.getAgent('RESEARCHER')).toBe(agent);
+      expect(service.getAgent('  Researcher  ')).toBe(agent);
+    });
+
+    it('returns undefined when no rule matches', () => {
+      service.registerAgent(createMockParticipant('a.b'));
+      expect(service.getAgent('totally-unknown')).toBeUndefined();
+    });
+  });
 });
