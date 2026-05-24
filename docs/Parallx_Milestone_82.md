@@ -1,5 +1,5 @@
 ---
-Status: implemented-verified — Slice B shipped 2026-05-23 (3cd80b07); Slice A shipped 2026-05-23 (e9320875); fitness reviews b8646212, 3334654c; full suite 3203/3204 green; baseline within +5% ceiling
+Status: implemented-verified — Slice B shipped 2026-05-23 (3cd80b07); Slice A shipped 2026-05-23 (e9320875); fitness reviews b8646212, 3334654c; §22 characterization tests physicalized 2026-05-24 (`canvasContributedBlockRoundtrip.test.ts` 119f86f7, `chatContributedParticipantInvoke.test.ts` 09fa0ff0); full suite 3526/1-skip green; baseline within +5% ceiling
 Milestone: M82 / SR-2: Extension Contribution Model (Canvas Block Types & Chat Participants)
 Branch: systems-redesign-planning
 Created: 2026-05-23
