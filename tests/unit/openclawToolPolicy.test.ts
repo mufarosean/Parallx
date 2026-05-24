@@ -402,6 +402,24 @@ describe('getToolColor (M65 Iter 2)', () => {
   it('classifies unknown tool names as green', () => {
     expect(getToolColor('totally_unknown_tool')).toBe('green');
   });
+
+  // M65 Iter 2 contract: any tool whose name begins with the MCP source
+  // prefix `mcp__` is red. Pinning prevents a future refactor from accidentally
+  // narrowing this to a specific server list.
+  it('classifies any mcp__-prefixed tool as red', () => {
+    expect(getToolColor('mcp__github__create_issue')).toBe('red');
+    expect(getToolColor('mcp__filesystem__read')).toBe('red');
+    expect(getToolColor('mcp__a__b')).toBe('red');
+    // Boundary: a tool that merely contains "mcp__" later in the name is NOT red.
+    expect(getToolColor('foo_mcp__bar')).toBe('green');
+  });
+
+  // M70 contract: `app__run_command` is blue (post-red gated); the read-only
+  // counterpart `app__find_commands` is green.
+  it('classifies app__run_command as blue but app__find_commands as green', () => {
+    expect(getToolColor('app__run_command')).toBe('blue');
+    expect(getToolColor('app__find_commands')).toBe('green');
+  });
 });
 
 describe('tainted-turn registry (M65 Iter 2)', () => {
