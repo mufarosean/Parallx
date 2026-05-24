@@ -20,7 +20,9 @@
     "test:ai-eval:report": "node tests/ai-eval/aggregate.mjs",
     "test:unit": "npx vitest run",
     "test:unit:watch": "npx vitest",
-    "test:system-fitness": "node scripts/run-fitness.mjs"
+    "test:system-fitness": "node scripts/run-fitness.mjs",
+    "preserve:slice": "node scripts/preserve-slice.mjs",
+    "check:slice-closure": "node scripts/check-slice-closure.mjs"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.3",

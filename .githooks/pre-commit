@@ -1,0 +1,24 @@
+#!/usr/bin/env sh
+# .githooks/pre-commit
+#
+# Enforces PARALLX_MANIFEST.md §13a + /memories/repo/orchestrator-discipline.md.
+# Blocks commits that touch a preservation surface unless the slice-closure
+# gate has been satisfied for the current HEAD.
+#
+# To enable: git config core.hooksPath .githooks
+# To bypass once (requires user approval per §13a rule 5): git commit --no-verify
+
+set -e
+
+# Discover repo root regardless of where the hook is invoked from.
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# Run the closure checker. It reads the staged index itself, so we just invoke it.
+node "$REPO_ROOT/scripts/check-slice-closure.mjs" || {
+  echo ""
+  echo "Commit blocked by pre-commit slice-closure check."
+  echo "If this is intentional (degraded single-agent mode with user approval),"
+  echo "re-run with: git commit --no-verify  and include 'degraded-mode: <reason>'"
+  echo "in the commit message body."
+  exit 1
+}

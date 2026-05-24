@@ -18,3 +18,7 @@ test-output.json
 test-output.txt
 playwright-report/
 screenshots/.git-commit-msg.txt
+
+# Slice closure receipts (local-only, written by scripts/preserve-slice.mjs)
+.slice-closure-ok
+.slice-closure/

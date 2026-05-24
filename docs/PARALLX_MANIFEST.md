@@ -447,6 +447,21 @@ The Surgical Executor card may remain inactive until an implementation slice is 
 
 ---
 
+## 13a. Conductor Self-Substitution Prohibition
+
+§13 and §14 imply this, but a previous slice (`7dca7c0e`, reverted in `68635c07`) shipped a regression because the conductor agent acted as Surgical Executor and Fitness and Review Agent in the same session. This section makes the rule explicit and enforceable.
+
+Rules:
+
+1. For any slice that touches a preservation surface listed in §11 or in `/memories/repo/orchestrator-discipline.md` (notably `src/built-in/*/main.ts`, `electron/**`, `src/openclaw/**`, `src/services/chatAgentService.ts`, `src/contributions/**`, `src/links/linkResolverService.ts`, and the canvas data/persistence/registry files), the conductor MUST invoke a separate subagent as Surgical Executor and a different subagent as Fitness and Review Agent. The conductor MUST NOT author the executor's diff and the reviewer's decision in the same agent session.
+2. "Audit", "reality check", and "status" commits MUST include cited file:line diffs against current source for every claim they make. Narrative summaries without citations are forbidden. (Manifest §15.)
+3. Closing a slice that touches a preservation surface requires `npm run preserve:slice` to be green on the slice's HEAD. Unit-green alone is NOT closure. The executable gate writes `.slice-closure-ok` and `.slice-closure/last-run.json`.
+4. `scripts/check-slice-closure.mjs` must print `OK TO COMMIT` before any commit that touches a preservation surface. It verifies the receipt is fresh, an agent card path is supplied, and a Fitness and Review artifact path is supplied.
+5. If the environment cannot invoke subagents, the conductor MUST stop and ask the user. Degraded single-agent mode is allowed only with explicit user approval and must be labeled in the commit message body (`degraded-mode: <reason>`).
+6. A bug reaching the user after a slice closure is process failure by definition (§22). The next slice MUST add the gate that would have caught it.
+
+---
+
 ## 14. Agent Creation And Sequential Handoffs
 
 The first conductor must create the first generation of agent cards before assigning work.
