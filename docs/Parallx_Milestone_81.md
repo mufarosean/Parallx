@@ -1,5 +1,5 @@
 ---
-Status: implemented-verified — Slices A, B, C, D all resolved 2026-05-23. Slice A shipped SelectionService event broadcast. Slice B shipped ContributionRegistry orchestrator. Slice C: 4 items CLOSED in-place + Canvas page provenance SHIPPED. Slice D shipped canvas link-resolver self-registration.
+Status: implemented-verified — Slices A, B, C, D all resolved 2026-05-23. Slice A shipped SelectionService event broadcast. Slice B shipped ContributionRegistry orchestrator. Slice C: 4 items CLOSED in-place + Canvas page provenance SHIPPED. Slice D shipped canvas link-resolver self-registration. §22 promised tests physicalized 2026-05-24 (commits 00d4ce48, 1253d803, eec372ee, dedfbf36, 328d539c).
 Milestone: M81 / SR-1: Workbench Unification, Slice 1 (Primitives & Event Routing)
 Branch: systems-redesign-planning
 Created: 2026-05-23
