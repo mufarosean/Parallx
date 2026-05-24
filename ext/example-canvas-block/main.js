@@ -71,4 +71,4 @@ function deactivate() {
   // Subscriptions registered above are disposed automatically by the host.
 }
 
-module.exports = { activate, deactivate };
+export { activate, deactivate };

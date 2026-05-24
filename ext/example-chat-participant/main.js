@@ -39,4 +39,4 @@ async function activate(context, api) {
   context.subscriptions.push(disposable);
 }
 
-module.exports = { activate };
+export { activate };
