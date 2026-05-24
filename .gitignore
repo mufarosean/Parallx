@@ -22,3 +22,14 @@ screenshots/.git-commit-msg.txt
 # Slice closure receipts (local-only, written by scripts/preserve-slice.mjs)
 .slice-closure-ok
 .slice-closure/
+
+# Ad-hoc scratch logs from build/e2e/preserve-slice runs (local-only)
+*.log
+preserve-slice.log
+master-e2e.log
+app-changes.txt
+build-out.txt
+canvas-head.txt
+full-run.txt
+flaky-output.txt
+tg-diff.txt
