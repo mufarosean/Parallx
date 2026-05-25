@@ -16,6 +16,7 @@
 // only by its tier-0 unit tests.
 
 import { Disposable } from '../../platform/lifecycle.js';
+import { Emitter, Event } from '../../platform/events.js';
 import type { Resource, ResourceType } from './resource.js';
 import { parse } from './parallxUri.js';
 
@@ -44,6 +45,13 @@ export interface IResourceRegistry {
   /** Whether a resolver exists for the given type. */
   has(type: ResourceType): boolean;
 
+  /** Snapshot list of every currently-registered resource type. Order is
+   *  insertion order. */
+  types(): readonly ResourceType[];
+
+  /** Fires whenever a resolver is registered, replaced, or unregistered. */
+  readonly onDidChange: Event<ResourceRegistryChangeEvent>;
+
   /** Resolve a Resource via the registered resolver for its type. Rejects if none is registered. */
   resolve<T = unknown>(resource: Resource): Promise<T>;
 
@@ -56,28 +64,46 @@ export interface IResourceRegistry {
   resolveUri<T = unknown>(uri: string): Promise<T | null>;
 }
 
+/** Change notification fired by {@link IResourceRegistry.onDidChange}. */
+export interface ResourceRegistryChangeEvent {
+  readonly type: ResourceType;
+  readonly kind: 'register' | 'override' | 'unregister';
+}
+
 export class ResourceRegistry extends Disposable implements IResourceRegistry {
   private readonly _resolvers = new Map<ResourceType, ResourceResolver>();
+  private readonly _onDidChange = this._register(new Emitter<ResourceRegistryChangeEvent>());
+  readonly onDidChange = this._onDidChange.event;
 
   register<R extends Resource, T>(resolver: ResourceResolver<R, T>): void {
     if (this._resolvers.has(resolver.type)) {
       throw new Error(`[ResourceRegistry] resolver for type "${resolver.type}" is already registered`);
     }
     this._resolvers.set(resolver.type, resolver as ResourceResolver);
+    this._onDidChange.fire({ type: resolver.type, kind: 'register' });
   }
 
   override<R extends Resource, T>(resolver: ResourceResolver<R, T>): boolean {
     const had = this._resolvers.has(resolver.type);
     this._resolvers.set(resolver.type, resolver as ResourceResolver);
+    this._onDidChange.fire({ type: resolver.type, kind: had ? 'override' : 'register' });
     return had;
   }
 
   unregister(type: ResourceType): boolean {
-    return this._resolvers.delete(type);
+    const had = this._resolvers.delete(type);
+    if (had) {
+      this._onDidChange.fire({ type, kind: 'unregister' });
+    }
+    return had;
   }
 
   has(type: ResourceType): boolean {
     return this._resolvers.has(type);
+  }
+
+  types(): readonly ResourceType[] {
+    return Array.from(this._resolvers.keys());
   }
 
   async resolve<T = unknown>(resource: Resource): Promise<T> {
