@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "id": "parallx.example-template",
+  "name": "Example Template Extension",
+  "version": "0.0.1",
+  "publisher": "parallx",
+  "description": "M86-W9 starter scaffold. Copy this folder, rename id/name, and run with no further configuration. Demonstrates the activate/deactivate contract, a sample command, and the optional webview entry point.",
+  "main": "main.js",
+  "activationEvents": ["*"],
+  "engines": {
+    "parallx": "^0.1.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "id": "exampleTemplate.hello",
+        "title": "Example Template: Hello World"
+      }
+    ]
+  }
+}
