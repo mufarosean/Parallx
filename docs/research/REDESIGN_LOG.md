@@ -6,6 +6,21 @@
 
 ---
 
+## Iteration 68 — Slice A67: ISurfaceRegistry.find (2026-05-25)
+
+- Added `find(predicate: (surface) => boolean): Surface | undefined` returning
+  the first registered surface matching `predicate` in registration order.
+  Short-circuits — does not invoke predicate after the first match.
+  Symmetric with `IToolArtifactStore.find()` and useful for ad-hoc queries
+  that don't fit `listByKind` / `findByResource` / `listByWorkspace`.
+- 7 tier-0 tests in `surfaceRegistryFind.tier0.test.ts` covering empty,
+  no-match, first-match order, id predicate, post-unregister, post-clear,
+  and short-circuit behavior.
+- Pure-additive — no preservation surface touched. `single-pass-review:
+  tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 67 — Slice A66: ISurfaceRegistry.entries (2026-05-25)
 
 - Added `entries(): ReadonlyArray<readonly [string, Surface]>` returning

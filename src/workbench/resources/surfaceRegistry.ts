@@ -45,6 +45,16 @@ export interface ISurfaceRegistry {
   entries(): ReadonlyArray<readonly [string, Surface]>;
 
   /**
+   * Return the first registered surface for which `predicate` returns
+   * truthy, or `undefined` if none match. Iteration is in registration
+   * order. The predicate is invoked at most once per surface and must
+   * not mutate the registry. Symmetric with `IToolArtifactStore.find()`
+   * and useful for ad-hoc queries that don't fit `listByKind` /
+   * `findByResource` / `listByWorkspace`.
+   */
+  find(predicate: (surface: Surface) => boolean): Surface | undefined;
+
+  /**
    * All currently-registered surfaces whose `kind` matches the given
    * value. Insertion order preserved. Returns a fresh snapshot.
    */
@@ -262,6 +272,13 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
       out.push([id, s] as const);
     }
     return out;
+  }
+
+  find(predicate: (surface: Surface) => boolean): Surface | undefined {
+    for (const s of this._surfaces.values()) {
+      if (predicate(s)) return s;
+    }
+    return undefined;
   }
 
   listByKind(kind: SurfaceKind): ReadonlyArray<Surface> {
