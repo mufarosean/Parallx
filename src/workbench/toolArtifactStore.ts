@@ -129,6 +129,14 @@ export interface IToolArtifactStore {
    * not mutate the store.
    */
   count(predicate: (record: ToolArtifactRecord) => boolean): number;
+
+  /**
+   * Return `true` if at least one record matches `predicate`. Iterates
+   * in insertion order and short-circuits on the first match. Empty
+   * store → `false`. Allocation-free; predicate must not mutate the
+   * store.
+   */
+  some(predicate: (record: ToolArtifactRecord) => boolean): boolean;
   /**
    * Delete every stored artifact. Returns the number removed. Fires
    * `onDidChange` once per record (insertion order, `kind: 'delete'`),
@@ -402,6 +410,13 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
       if (predicate(r)) n++;
     }
     return n;
+  }
+
+  some(predicate: (record: ToolArtifactRecord) => boolean): boolean {
+    for (const r of this._records.values()) {
+      if (predicate(r)) return true;
+    }
+    return false;
   }
 
   clear(): number {

@@ -6,6 +6,17 @@
 
 ---
 
+## Iteration 78 — Slice A77: IToolArtifactStore.some(predicate) (2026-05-25)
+
+- Added `some(predicate)` on `IToolArtifactStore`. Short-circuit boolean
+  existence query; iterates in insertion order, stops on first match.
+  Empty store → `false`. Allocation-free.
+- 7 tier-0 tests: empty, no-match, first-match, short-circuit-count-2,
+  true-with-non-empty, post-delete, post-clear.
+- Pure-additive. `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 77 — Slice A76: ISelectionService.count(predicate) (2026-05-25)
 
 - Added `count(predicate)` on `ISelectionService`. Completes count trio
