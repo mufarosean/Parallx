@@ -88,13 +88,25 @@ export class Workspace {
 
   /**
    * VS Code-style display name:
-   * - Single folder  → folder name (e.g. "Books")
-   * - Multiple folders → workspace identity name
-   * - No folders      → workspace identity name
+   * - Single folder, default identity name → folder name (e.g. "Books")
+   * - Single folder, user-renamed identity → identity name (user intent wins)
+   * - Multiple folders                     → workspace identity name
+   * - No folders                           → workspace identity name
+   *
+   * The single-folder + folder-name case is the "implicit workspace"
+   * convenience: opening "Books/" shows "Books" without forcing the user
+   * to name anything. The moment the user explicitly renames or saves-as,
+   * `identity.name` diverges from the folder name and that explicit choice
+   * wins — otherwise Rename / Save-As would silently appear to do nothing
+   * in the titlebar.
    */
   get displayName(): string {
     if (this._folders.length === 1) {
-      return this._folders[0].name;
+      const folderName = this._folders[0].name;
+      if (this._identity.name && this._identity.name !== folderName) {
+        return this._identity.name;
+      }
+      return folderName;
     }
     return this._identity.name;
   }
