@@ -59,6 +59,13 @@ export interface IToolArtifactStore {
    */
   list(toolId?: string): readonly ToolArtifactRecord[];
   /**
+   * Snapshot of every record whose `workspaceId === workspaceId`.
+   * Records without a `workspaceId` never match. Insertion order; fresh
+   * snapshot. Symmetric query counterpart to `deleteByWorkspace`.
+   * Empty/undefined `workspaceId` returns an empty array.
+   */
+  listByWorkspace(workspaceId: string): readonly ToolArtifactRecord[];
+  /**
    * Return the first stored record for which `predicate` returns truthy,
    * or `undefined` if none match. Iteration is in insertion order. The
    * predicate is invoked at most once per record and must not mutate the
@@ -166,6 +173,15 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
     const out: ToolArtifactRecord[] = [];
     for (const r of this._records.values()) {
       if (r.toolId === toolId) out.push(r);
+    }
+    return out;
+  }
+
+  listByWorkspace(workspaceId: string): readonly ToolArtifactRecord[] {
+    if (!workspaceId) return [];
+    const out: ToolArtifactRecord[] = [];
+    for (const r of this._records.values()) {
+      if (r.workspaceId === workspaceId) out.push(r);
     }
     return out;
   }

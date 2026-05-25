@@ -6,6 +6,22 @@
 
 ---
 
+## Iteration 34 — Slice A33: IToolArtifactStore.listByWorkspace (2026-05-25)
+
+Added `listByWorkspace(workspaceId: string): readonly ToolArtifactRecord[]`
+on `IToolArtifactStore`. Returns every record whose `workspaceId` matches,
+in insertion order, as a fresh snapshot. Records without a `workspaceId`
+never match. Empty/unknown `workspaceId` → empty array. Symmetric query
+counterpart to the existing `deleteByWorkspace(workspaceId)` mutator.
+
+Pure-additive. Tier-0: **42 files / 365 tests**, all green. tsc clean.
+
+Files: `src/workbench/toolArtifactStore.ts`,
+`tests/unit/platform/toolArtifactStoreListByWorkspace.tier0.test.ts` (new, 7
+tests).
+
+---
+
 ## Iteration 33 — Slice A32: resourceWorkspaceId() helper (2026-05-25)
 
 Added `resourceWorkspaceId(r: Resource): string | undefined` — uniform
