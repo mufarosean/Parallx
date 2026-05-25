@@ -836,6 +836,13 @@ export interface ISelectionService extends IDisposable {
   hasAnySelection(): boolean;
 
   /**
+   * `true` iff the given `surfaceId` currently holds a non-undefined
+   * selection. Equivalent to `getSelection(surfaceId) !== undefined`
+   * but spelled as a guard.
+   */
+  hasSelection(surfaceId: string): boolean;
+
+  /**
    * Surface ids that currently hold a selection. Insertion order =
    * order of first `setSelection(surfaceId, …)` for that surface. Used
    * by diagnostics, when-clause builders, and AI context retrieval to

@@ -6,6 +6,34 @@
 
 ---
 
+## Iteration 26 — Slice A25: ISelectionService.hasSelection(surfaceId) (2026-05-25)
+
+Guard-test counterpart to `getSelection(surfaceId)`:
+
+- **`hasSelection(surfaceId): boolean`** — `true` iff that surface
+  currently holds a non-undefined selection. Equivalent to
+  `getSelection(surfaceId) !== undefined`.
+
+Pairs with `hasAnySelection()` (global) and `surfaceIds()` (enumerate)
+to give consumers a complete read-only query surface without ever
+needing to allocate the selection object.
+
+**Files**
+
+- `src/services/serviceTypes.ts` — interface
+- `src/services/selectionService.ts` — impl
+- `tests/unit/platform/selectionServiceHasSelection.tier0.test.ts` (6 tests)
+
+**Verification**
+
+- `npm run test:unit:tier0 -- --run`: 34 files / 312 passed (6 new).
+- `npx tsc --noEmit`: clean.
+
+**Commit**: pending
+**Review**: single-pass — tier-0 corpus green + tsc clean.
+
+---
+
 ## Iteration 25 — Slice A24: IContextService.matches() (2026-05-25)
 
 `when`-clause-style boolean test against the composed workbench context:
