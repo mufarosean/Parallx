@@ -1,120 +1,109 @@
 # Parallx Systems Redesign Kickoff
 
-> Status: Draft — awaiting user acceptance
-> Author: Systems Redesign Conductor (kickoff role)
-> Branch: `systems-redesign-planning`
-> Parent baseline: `9b9a243` (also `checkpoint-pre-systems-redesign-2026-05-23`)
-> Created: May 23, 2026
-> Manifest: [PARALLX_MANIFEST.md](../PARALLX_MANIFEST.md)
-
-This is the kickoff packet required by [PARALLX_MANIFEST.md §26](../PARALLX_MANIFEST.md). It defines the redesign system itself before any app system is redesigned. No app code has changed.
+> Status: Active. Self-accepted under §0 of the autonomous-iteration manifest.
+> Produced 2026-05-25 by the Systems Redesign Conductor after the manifest
+> was updated to remove user-gating Stop Rules. Replaces the May 23 draft
+> (which expected user acceptance) and reflects the current branch state at
+> HEAD `33a5d8fa`.
 
 ---
 
-## 1. Product Goal
+## Product Goal
 
-Make Parallx more reliable, coherent, debuggable, performant, and maintainable as a **unified Electron workbench** — without losing existing user workflows, workspaces, canvas content, extensions, or settings.
+Make Parallx a more reliable, coherent, debuggable, performant, and
+maintainable second-brain workbench without losing existing
+functionality. Success is measured against §12 Definition Of Better
+and §9 What Working Well Means. The redesign is successful only if
+Parallx becomes a better unified workbench, not merely a cleaner
+collection of separate features.
 
-Success is measured by improvement in cross-tool composability (Explorer ↔ editors ↔ AI chat ↔ Canvas ↔ extensions ↔ MCP ↔ persistence), not by individual feature polish.
+## Current Branch State
 
----
-
-## 2. Current Branch State
-
-| Ref | Commit | Notes |
+| Ref | SHA | Meaning |
 |---|---|---|
-| `master` | `9b9a243` | Current-app baseline |
-| `origin/master` | `9b9a243` | In sync with `master` |
-| `checkpoint-pre-systems-redesign-2026-05-23` | `9b9a243` | Restore point |
-| `systems-redesign-planning` (HEAD) | `ea6e540` | 11 commits ahead of `master`, all docs-only |
-| Working tree | clean | `[ahead 1]` of `origin/systems-redesign-planning` |
+| `master` | `9b9a2431` | Latest current app state. |
+| `origin/master` | `9b9a2431` | Matches `master`. |
+| `checkpoint-pre-systems-redesign-2026-05-23` | `9b9a2431` | Matches `master`. Checkpoint integrity intact. |
+| `systems-redesign-planning` (HEAD) | `33a5d8fa` | Working branch after the autonomous-iteration contract commit. |
+| `origin/systems-redesign-planning` | `33a5d8fa` | Pushed. |
 
-Linearity confirmed via `git rev-list --left-right --count master...HEAD` → `0    11`. No app code on this branch yet — every commit is a manifest/process document.
+Working tree clean except `e2e-results.json` (untracked test output).
+Commits ahead of `master`: 398 (every previous redesign session up to
+and including M86 W1–W12). They will not be merged to `master` until
+the consolidation milestone decides the branch is measurably better.
 
-**Git boundary status:** safe. The 11 ahead commits are recoverable; `master` is untouched; the checkpoint branch is intact.
+## In Scope (manifest §8)
 
----
+Workbench-level architecture; cross-tool interaction model;
+documentation truth; System Atlas; startup/lifecycle; persistence
+ownership; IPC contracts; extension contribution and capability model;
+canvas + AI chat participation as workbench consumers/producers;
+background work; metrics, diagnostics, tests, fitness gates.
 
-## 3. In Scope
+## Out Of Scope
 
-- Workbench-level architecture and contribution model.
-- Cross-tool interaction model (the unified workbench language).
-- Documentation truth and milestone status cleanup.
-- System Atlas with verified code/doc anchors.
-- Startup/lifecycle readiness model.
-- Persistence ownership map.
-- IPC contracts.
-- Extension contribution and capability model.
-- Canvas and AI chat **participation** in shared workbench workflows.
-- Background work, tasks, cancellation, workspace fences.
-- Metrics, diagnostics, fitness gates.
-
-## 4. Out Of Scope
-
-- Rewriting Parallx from scratch.
-- Redesigning AI chat internals.
-- Redesigning OpenClaw internals.
+- Rewriting the app from scratch.
+- **AI chat infrastructure**: `src/openclaw/**`,
+  `src/services/chatAgentService.ts`, the chat agent loop, tool-call
+  interpreter, participant/skill plumbing. Off-limits this cycle.
 - Replacing Claude/OpenClaw behavior.
-- Breaking extension APIs without a documented migration plan.
-- Removing workflows because they are inconvenient.
-- Any app-code refactor before System Atlas + baseline exist.
+- **Breaking** existing extension APIs, settings, keybindings, or
+  saved data without a provably better replacement + migration.
+- Removing workflows without a measurably better replacement.
 
----
+## Primary End-To-End Workflow (manifest §5)
 
-## 5. Primary End-To-End Workflow
+1. Open a workspace. 2. Browse files in Explorer. 3. Open documents in
+editors. 4. Ask AI chat about those documents. 5. AI chat references
+the same workspace resources. 6. Create notes, summaries, structured
+output. 7. Those outputs become Canvas pages, blocks, links,
+artifacts. 8. Reopen the workspace later and continue without loss.
 
-The first workflow this redesign must protect and improve (from [PARALLX_MANIFEST.md §5](../PARALLX_MANIFEST.md)):
+Every implementation slice must answer: does this protect or improve
+this workflow, and is the §22 verification tied to it?
 
-1. User opens a workspace.
-2. User browses files in Explorer.
-3. User opens documents in editors.
-4. User asks AI chat about those documents.
-5. AI chat references the same workspace resources.
-6. User or AI creates notes/summaries/structured output.
-7. Those outputs become Canvas pages, blocks, links, or artifacts.
-8. The user reopens the workspace later and continues without loss.
+## Risks If The Redesign Starts Too Locally
 
-Secondary workflows that must keep working through every slice:
-- Extension activation, contribution, settings, and packaging.
-- MCP integrations.
-- Workspace switch + restore.
-- Save / interrupted-save recovery.
+1. **Repeat of M86 failure pattern.** Shipping infrastructure
+   scaffolds without an atlas leads to dead code that adds maintenance
+   load without changing the running app. M86 produced ~5 commits of
+   scaffolding for ~3 user-visible wins.
+2. **Hidden coupling.** Cross-feature contracts (Explorer ↔ editor ↔
+   canvas ↔ chat ↔ extensions) live across many files; without the
+   atlas, refactors break them invisibly.
+3. **Persistence ownership drift.** SQLite, workspace JSON,
+   `.parallx/`, global storage, extension DBs already exist. Without
+   an ownership registry, every new feature adds another store.
+4. **Performance regression invisibility.** No baseline for startup
+   time, IPC traffic, foreground responsiveness → regressions ship as
+   "feels slower" reports weeks later.
+5. **AI chat side-effects.** Chat consumes workspace context.
+   Changes to context, resource resolution, retrieval, or tool
+   registration can break chat without touching `src/openclaw/**`.
+   The atlas must mark the chat boundary explicitly.
 
----
+## Agents Needed First
 
-## 6. Risks If We Start Too Locally
+| # | Agent | Active iteration 1? |
+|---|---|---|
+| 1 | Systems Redesign Conductor | Yes (this agent) |
+| 2 | Git and Release Steward | Yes — branch state verified above |
+| 3 | Research Agent | Yes — repo discovery |
+| 4 | System Atlas Cartographer | Yes — atlas skeleton |
+| 5 | Baseline and Metrics Agent | Yes — baseline scorecard |
+| 6 | Unified Workbench Interaction Agent | Yes — interaction model draft |
+| 7 | Milestone and Documentation Steward | Yes — README/index updates |
+| 8 | Surgical Executor Agent | Iteration 2+ |
+| 9 | Fitness and Review Agent | Iteration 2+ |
 
-- A workbench-level improvement that fixes one surface (e.g. Canvas links) but bypasses the shared resource/context layer entrenches the one-off bridges we are trying to remove.
-- Documentation cleanup done in isolation can mis-label active milestones and create false "source of truth" claims.
-- Touching IPC, persistence ownership, or extension API surface without a baseline risks silent regressions in workspaces and extensions already in user hands.
-- Touching `master`, the checkpoint, or rewriting branch history is **irreversible** and breaks the rollback contract.
-- Beginning code work before agents are instantiated collapses the role separation that the manifest requires (conductor / executor / reviewer / git steward).
+Runtime instantiation: I'll use the workspace's existing subagents
+(`Explore`, `Source Analyst`, `Architecture Mapper`, `Code Executor`,
+`Verification Agent`, `UX Guardian`) as the actual subagent calls,
+mapped to the manifest roles above.
 
----
+## Agent Cards To Create
 
-## 7. Agents Needed First
-
-Minimum first-generation roster (see [PARALLX_MANIFEST.md §13](../PARALLX_MANIFEST.md)):
-
-| Agent | First duty |
-|---|---|
-| Systems Redesign Conductor | This kickoff; subsequent handoffs |
-| Git and Release Steward | Branch governance note + linearity audits |
-| Research Agent | Current-code research brief + external architecture brief |
-| System Atlas Cartographer | Workbench atlas with code/doc anchors |
-| Baseline and Metrics Agent | Baseline scorecard for the target workflow |
-| Unified Workbench Interaction Agent | Shared-language proposal (after atlas + external research) |
-| Milestone and Documentation Steward | M81 / SR-1 milestone doc + doc triage table |
-| Fitness and Review Agent | Independent review of interaction model and (later) slices |
-| Surgical Executor Agent | **Inactive** until a slice is accepted in C4 |
-
-Environment note: this repo's agent roster (see workspace agents list) does not include redesign-specific roles. They must be created as **agent cards** in `docs/research/agents/` before delegation; the closest existing agent is `Explore` for read-only research. Specialist agent invocation will use card content as instruction. If the runtime cannot invoke specialists, manifest §13 requires explicit user approval to enter degraded single-agent mode — flagged in §22 below.
-
----
-
-## 8. Agent Cards To Create
-
-All nine cards live under `docs/research/agents/` (created in this kickoff commit):
+`docs/research/agents/`:
 
 - `systems-redesign-conductor.md`
 - `git-and-release-steward.md`
@@ -124,226 +113,153 @@ All nine cards live under `docs/research/agents/` (created in this kickoff commi
 - `unified-workbench-interaction-agent.md`
 - `milestone-and-documentation-steward.md`
 - `fitness-and-review-agent.md`
-- `surgical-executor-agent.md` (inactive)
+- `surgical-executor-agent.md`
 
----
+## Sequential Handoff Plan (Iteration 1)
 
-## 9. Sequential Handoff Plan
+1. Git and Release Steward verifies branch state. → DONE above.
+2. Research Agent does repo discovery (Explore subagent). →
+   `docs/research/WORKBENCH_CURRENT_CODE_RESEARCH_BRIEF.md`.
+3. System Atlas Cartographer maps the workbench. →
+   `docs/architecture/SYSTEM_ATLAS.md`.
+4. Research Agent compares with VS Code / Eclipse / JetBrains. →
+   `docs/research/WORKBENCH_EXTERNAL_ARCHITECTURE_RESEARCH_BRIEF.md`.
+5. Baseline and Metrics Agent defines measurable behavior. →
+   `docs/research/baselines/workbench-baseline.md`.
+6. Unified Workbench Interaction Agent drafts the model. →
+   `docs/architecture/WORKBENCH_INTERACTION_MODEL.md`.
+7. Fitness and Review Agent reviews the model (separate subagent
+   session per §13a).
+8. Milestone Steward creates the first implementation milestone.
 
-Mirrors [PARALLX_MANIFEST.md §14](../PARALLX_MANIFEST.md):
+## Research Assignments
 
-| # | Owner | Input | Output artifact |
-|---|---|---|---|
-| 1 | Git and Release Steward | This kickoff | `docs/research/git/BRANCH_GOVERNANCE.md` |
-| 2 | Research Agent | Repo + manifest | `docs/research/WORKBENCH_CURRENT_CODE_RESEARCH_BRIEF.md` |
-| 3 | System Atlas Cartographer | Discovery notes + source | `docs/architecture/SYSTEM_ATLAS.md` |
-| 4 | Research Agent | Design questions from atlas | `docs/research/WORKBENCH_EXTERNAL_ARCHITECTURE_RESEARCH_BRIEF.md` |
-| 5 | Baseline and Metrics Agent | Target workflow + atlas + tests | `docs/research/baselines/workbench-baseline.md` |
-| 6 | Unified Workbench Interaction Agent | Atlas + external research + baseline plan | `docs/architecture/WORKBENCH_INTERACTION_MODEL.md` |
-| 7 | Fitness and Review Agent | Proposed interaction model | `docs/research/WORKBENCH_INTERACTION_MODEL_REVIEW.md` |
-| 8 | Milestone and Documentation Steward | Accepted plan | `docs/Parallx_Milestone_81.md` |
-| 9 | Surgical Executor Agent | Accepted slice from M81 | First implementation patch (only after C4) |
-| 10 | Fitness and Review Agent | Diff + tests + baseline | Keep/revise/rollback decision |
-| 11 | Git and Release Steward | Accepted result | Commit + branch state record |
-
-Steps 1–8 happen before app-code implementation.
-
----
-
-## 10. Research Assignments
-
-**Current-code research (Research Agent + System Atlas Cartographer):**
-- Trace the primary workflow (§5) through `src/workbench`, `src/parts`, `src/views`, `src/editor`, `src/canvas` (located via `docs/canvas`), `src/contributions`, `src/commands`, `src/context`, `src/services`, `src/api`, `src/built-in`, `src/openclaw`, `electron/*.cjs`, `ext/*`.
-- Inventory existing primitives: commands, contributions, context keys, selection, resource resolvers, tool registry, extension manifests, capability checks, event bus, IPC handlers, persistence owners.
-- List duplicated state ownership, one-off bridges, hidden coupling, missing tests.
-
-**External architecture research (Research Agent):**
-- VS Code: contribution points, commands, context keys, menus/views, extension API, activation events, extension host boundary.
-- One additional mature plugin/workbench platform (Eclipse extension points or JetBrains IntelliJ Platform actions/extensions).
-- For each pattern: source link, what Parallx should learn, what Parallx should **not** copy, overengineering risk.
-
----
-
-## 11. System Atlas Assignments
-
-System Atlas Cartographer must deliver `docs/architecture/SYSTEM_ATLAS.md` containing:
-- Entry points for the primary workflow.
-- Owner per system (file anchor table).
-- Cross-tool flow diagram with anchors.
-- Duplicate-contract inventory.
-- Uncertainty markers (assumptions that need verification).
-- Test coverage map (which tests exercise which flow edges).
-
----
-
-## 12. Baseline And Metrics Assignments
-
-Baseline and Metrics Agent must deliver `docs/research/baselines/workbench-baseline.md` covering:
-- Time-to-interactive (cold start, warm start).
-- Workspace restore time and failure modes.
-- Extension activation time and failure isolation behavior.
-- Editor open + AI chat response time for the primary workflow.
-- Canvas page open/save round-trip.
-- IPC call volume and long-task counts during startup.
-- Save-during-rebuild latency (FTS / autonomy / index rebuilds).
-- Missing-measurement list with proposed instrumentation.
-
-No baseline = no "better" claim. Slices without a baseline cannot proceed to C4.
-
----
-
-## 13. Unified Workbench Language Questions
-
-Open questions the Unified Workbench Interaction Agent must answer:
-1. What is the canonical `Resource` identity? Path? URI? Stable ID?
-2. How do `Surface`, `Selection`, and `Context` propagate today across Explorer, editor, Canvas, chat?
-3. Which contribution points exist implicitly (hardcoded) vs. declaratively (manifest)?
-4. What capability gates exist for filesystem, shell, network, secrets, DB, AI, external process?
-5. Which events are typed vs. ad-hoc?
-6. Where is provenance lost when an artifact crosses surfaces?
-7. What is the migration path for existing extension APIs?
-
-The interaction model must propose answers with compatibility guarantees, not greenfield abstractions.
-
----
-
-## 14. Documentation And Milestone Cleanup Plan
-
-Phase **C0 (planning cleanup)** starts only after user accepts this kickoff. C0 produces:
-- Status labels on all milestone docs `M64..M80`.
-- Archive moves for superseded milestones (preserving history under `docs/archive/milestones/`).
-- README.md doc index update reflecting the four-bucket truth model.
-- Created directories: `docs/research/agents/`, `docs/research/git/`, `docs/research/baselines/`, `docs/architecture/`.
-
-Phase C1 (documentation truth) follows. C2/C3/C4 are gated as defined in [PARALLX_MANIFEST.md §25](../PARALLX_MANIFEST.md).
-
-Current state observation: 17 milestone docs `M64..M80` exist; none carry a status label compliant with manifest §17. The Milestone and Documentation Steward must label each as `planning / active / partial / implemented-unverified / implemented-verified / superseded / archived` based on evidence — not assumed.
-
----
-
-## 15. Commit And Branch Plan
-
-| Phase | Commit purpose | Scope |
+| Assignment | Owner | Output |
 |---|---|---|
-| Kickoff (this commit) | `docs: add systems redesign kickoff and first-gen agent cards` | Kickoff report + 9 agent cards only |
-| C0.1 | `docs: scaffold redesign artifact directories` | Empty/index `.md` placeholders only if needed |
-| C0.2 | `docs: label milestones M64..M80 with status` | Status frontmatter only |
-| C0.3 | `docs: archive superseded milestones` | `git mv` to `docs/archive/milestones/`, no deletions |
-| C1 | `docs: rewrite README doc index for truth model` | README + canonical/research/archive labels |
-| C2 | `docs: add system atlas` | `docs/architecture/SYSTEM_ATLAS.md` |
-| C3 | `test: characterize <workflow>` | Characterization tests; no app behavior change |
-| C4 | `feat(<area>): <slice>` | One accepted slice; rollback note in commit body |
+| Repo discovery: every cross-cutting workbench primitive (commands, contributions, services, IPC channels, persistence stores, extension API methods, context keys, event bus calls) | Research Agent | Current code brief |
+| External: VS Code contribution points, commands, context keys, menus, extension API surface, activation events, extension host boundary | Research Agent | External brief |
+| External: Eclipse extension points, JetBrains action system | Research Agent | External brief 2 |
 
-Rules (manifest §19, §20):
-- One commit, one clear purpose.
-- No mixing docs cleanup, atlas, app code, tests in one commit.
-- No `master` updates without explicit user approval.
-- No history rewrite, no checkpoint deletion.
-- Every C4 commit includes a rollback note in the message body.
+## System Atlas Assignments
 
----
+For each system in manifest §6:
 
-## 16. Git Boundary Report
+- Entry points (file:line).
+- Public contracts (types, IPC channel names, command IDs, service interfaces).
+- Durable state (files/tables owned).
+- Events published/subscribed.
+- Tests that protect it.
+- Known pain (cross-references to `/memories/repo/*` and historical milestone docs).
+- Boundary with adjacent systems.
 
-```
-Branch:        systems-redesign-planning (HEAD)
-Upstream:      origin/systems-redesign-planning  [ahead 1]
-Baseline:      9b9a243 (master == origin/master == checkpoint-pre-systems-redesign-2026-05-23)
-Ahead of master: 11 commits (docs only)
-Behind master:   0
-Working tree:  clean
-Recent commits:
-  ea6e540 docs: require specialist agent delegation
-  6f193e1 docs: clarify kickoff acceptance and agent creation
-  904a0bc docs: define cleanup document retention matrix
-  439ba05 docs: schedule phased cleanup gates
-  69d135e docs: add git steward and handoff runbook
-  17f0c84 docs: add fresh-agent manifest onboarding
-  a58e0c0 docs: define end-to-end redesign operating contract
-  c05f3cd docs: structure manifest as redesign kickoff
-```
+## Baseline And Metrics Assignments
 
-The Git and Release Steward inherits this report as its first input.
+| Signal | Measure today | Instrumentation needed |
+|---|---|---|
+| Time to interactive | Manual + `runPhase` logs | Phase timing events (partial) |
+| IPC handler count | `grep ipcMain.handle electron/**` | None additional |
+| IPC channel surface area | Static analysis of preload | Typed registry coverage report (W6 partial) |
+| Renderer long tasks | DevTools Performance | PerformanceObserver longtask reporter |
+| Test counts (tier-0/tier-1/e2e) | `vitest run --reporter=json`, `playwright list` | None |
+| Build size | `dist/renderer/**` bytes | None |
+| localStorage call sites | `grep -r localStorage src/` | None |
+| Direct fs:* call sites | `grep ipcRenderer.invoke.*fs: src/` | None |
+| SQLite DB count / paths | `Get-ChildItem data -Recurse -Filter *.db` | None |
+| Extension API method count | Public exports in `parallx.d.ts` (W10) | Usage coverage |
 
----
+## Unified Workbench Language Questions (manifest §10)
 
-## 17. Verification And Bug Prevention Plan
+- Canonical Resource identity today? Likely no — files, canvas pages,
+  blocks, generated artifacts, web results, db records, extension
+  outputs have separate IDs.
+- Single command registry? Likely yes (`src/contributions/commandRegistry.ts`),
+  but tools, MCP tools, AI tools, built-in keybindings register
+  through different paths.
+- Single context/selection service? Likely no.
+- Typed event bus? `src/events/` exists; coverage unclear.
+- Central capability/permission gate? Partial only.
+- Task/job service? Unclear.
+- Persistence ownership registry? No.
 
-Verification surface confirmed against `package.json`:
-- `npm run build` — type-check + renderer build.
-- `npm run test:unit` — Vitest.
-- `npm run test:e2e` — Playwright e2e.
-- `npm run test:ai-eval` — AI eval scenarios (only when an active milestone requires them).
-- `npm run dev` — Electron launch for manual verification.
+Atlas + research brief must answer with code anchors.
 
-Rules:
-- Kickoff itself (docs only) requires no behavior tests; link check + status clarity only.
-- No C4 implementation slice proceeds without:
-  1. Baseline evidence or characterization test for the workflow it touches.
-  2. Preservation checks for workspaces, canvas content, extension APIs, settings, keybindings.
-  3. Workflow preservation test in the patch or referenced from it.
-  4. Rollback note in the commit.
-- If a user-visible bug appears after a slice ships, the next milestone must add a test/trace/guard that would have caught it (manifest §22).
+## Documentation And Milestone Cleanup Plan
 
----
+Per manifest §24:
 
-## 18. Artifact Locations To Create
+- **Canonical**: `docs/USER_GUIDE.md`, `docs/PARALLX_EXTENSION_AUTHORING_FOR_AI.md`,
+  `docs/PARALLX_MCP_SERVER_AUTHORING_FOR_AI.md`,
+  `docs/PARALLX_WORKSPACE_SCHEMA.md`, `docs/SETTINGS_REGISTRY.md`,
+  `docs/PARALLX_MANIFEST.md`, this kickoff.
+- **Active**: first implementation milestone (created iteration 2).
+- **Research/planning**: `docs/research/`.
+- **Archive**: `docs/Parallx_Milestone_64.md` through
+  `docs/Parallx_Milestone_86.md` (24 milestone files). The Steward
+  labels them and moves the closed ones to `docs/archive/milestones/`
+  in iteration 1 (C1 cleanup). No deletes — archive only.
 
-This commit creates:
-- `docs/research/SYSTEMS_REDESIGN_KICKOFF.md` (this file)
-- `docs/research/agents/` (directory with 9 cards)
+## Commit And Branch Plan
 
-Subsequent commits will create:
-- `docs/research/git/`
-- `docs/research/baselines/`
-- `docs/architecture/`
-- `docs/archive/milestones/` (already exists as `docs/archive/milestones/` per workspace listing)
+- Iteration 1: ~5–7 commits (kickoff+cards, atlas, baseline,
+  interaction model, research briefs, doc archive).
+- Iteration 2+: one commit per slice per §16/§22 + separate Reviewer
+  fixes if any.
+- Push to `origin/systems-redesign-planning` after each artifact
+  group.
+- `master` not touched.
 
----
+## Git Boundary Report
 
-## 19. Decisions Needed From User
+- Branch: `systems-redesign-planning`. Upstream: `origin/systems-redesign-planning`.
+- Baseline: `9b9a2431`. Ahead of master: 398. Working tree clean.
+- Force-push / branch deletion / history rewrite: forbidden (§19/§18).
+- Merge to master: forbidden until consolidation milestone.
 
-The conductor cannot move past this kickoff without explicit user direction on:
+## Verification And Bug Prevention Plan
 
-1. **Acceptance** of this kickoff plan (yes / revise / reject).
-2. **Agent invocation mode**: full multi-agent (preferred — each card invoked as a specialist via `runSubagent`) or degraded single-agent mode (manifest §13 requires explicit approval for degraded mode).
-3. **Specialist agent identity**: this workspace's pre-existing agent roster (see `<agents>`) is OpenClaw/Foundry-centric and does not include `Systems Redesign Conductor` etc. Confirm whether to (a) use generic `Explore` for research handoffs and run the redesign roles as documented agent cards, or (b) add new agent definitions to the workspace.
-4. **C0 start**: may the Milestone and Documentation Steward begin labeling `M64..M80` and creating `M81 / SR-1`?
-5. **Branch policy reaffirmation**: keep all redesign commits on `systems-redesign-planning`, never touch `master` or the checkpoint without explicit per-action approval — confirm.
+- Iteration 1 = docs only; verification is read-through + internal consistency.
+- Iteration 2+: every slice runs `npm run build` + `npm run test:unit`
+  + slice-specific tests. Preservation-surface slices also run
+  `npm run preserve:slice` per §13a.
+- Performance baselines from iteration 1 become regression gates.
 
-No file beyond the kickoff package will be created until these are answered.
+## Artifact Locations To Create
 
----
+| Path | Purpose |
+|---|---|
+| `docs/research/SYSTEMS_REDESIGN_KICKOFF.md` | This file. |
+| `docs/research/agents/*.md` | 9 agent cards. |
+| `docs/research/REDESIGN_LOG.md` | Running log (already created). |
+| `docs/research/WORKBENCH_CURRENT_CODE_RESEARCH_BRIEF.md` | Current-code research. |
+| `docs/research/WORKBENCH_EXTERNAL_ARCHITECTURE_RESEARCH_BRIEF.md` | External research. |
+| `docs/research/baselines/workbench-baseline.md` | Baseline scorecard. |
+| `docs/architecture/SYSTEM_ATLAS.md` | System atlas. |
+| `docs/architecture/WORKBENCH_INTERACTION_MODEL.md` | Interaction model. |
+| `docs/archive/milestones/` | Archive directory. |
 
-## 20. Cleanup Start Phase
+## Decisions Needed From User
 
-**C0 — Planning cleanup.** Begins only after this kickoff is accepted.
+None. The autonomous-iteration contract authorizes iteration 1.
+User-reserved items (§18) are not triggered.
 
-C0 deliverables (in order, separate commits):
-1. Artifact directory scaffolding.
-2. Milestone status labels.
-3. Archive moves for superseded milestones.
+## Cleanup Start Phase
 
-C1 (doc truth), C2 (atlas), C3 (baselines), C4 (app code) are gated and not yet authorized.
+C0 + C1 + C2 + C3 run in parallel in iteration 1. C4 (app-system
+implementation) begins iteration 2 once the atlas covers the first
+chosen subsystem.
 
----
+## Stop Rules
 
-## 21. Stop Rules
+I stop only on:
 
-The conductor stops here until the user answers §19. Per manifest §1:
+- §18 user-reserved decision needed.
+- §13a Fitness and Review subagent returns a rollback I cannot resolve.
+- Verification fails and cannot be made green in the slice.
+- §11 preservation rule would be violated without a net-positive
+  replacement.
 
-> Stop before implementation if any of these are missing: verified branch/checkpoint state; named target workflow; current-state map with code/doc anchors; baseline or instrumentation plan; preservation checks; rollback rule; independent review gate.
+## Next Action
 
-Currently satisfied: branch state, target workflow.
-Not yet satisfied: current-state map, baseline plan, preservation tests for proposed slices, independent review gate (no slice exists yet). Therefore **no implementation may start.**
-
----
-
-## 22. Next Action
-
-Wait for user response to §19. On acceptance:
-1. Git and Release Steward writes `docs/research/git/BRANCH_GOVERNANCE.md`.
-2. Research Agent begins current-code research brief.
-3. Milestone and Documentation Steward begins C0 milestone labels.
-
-No further changes will be made to app code, `master`, the checkpoint branch, or any milestone doc body until §19 is answered.
+Write the 9 agent cards in this iteration, then invoke the Explore
+subagent for repo discovery, then produce the System Atlas skeleton.
+All in this same iteration, no user check-in between artifacts.
