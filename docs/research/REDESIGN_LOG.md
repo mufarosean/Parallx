@@ -6,6 +6,21 @@
 
 ---
 
+## Iteration 33 — Slice A32: resourceWorkspaceId() helper (2026-05-25)
+
+Added `resourceWorkspaceId(r: Resource): string | undefined` — uniform
+accessor for the optional `workspaceId` field across every Resource variant.
+`ExternalResource` has no workspace scope, so it always returns `undefined`
+for it. Lets callers filter surfaces, artifacts, or selections by workspace
+without writing a switch on `type` at every call site.
+
+Pure-additive. Tier-0: **41 files / 358 tests**, all green. tsc clean.
+
+Files: `src/workbench/resources/resource.ts`,
+`tests/unit/platform/resourceWorkspaceId.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 32 — Slice A31: ISurfaceRegistry.clear() (2026-05-25)
 
 Added `clear(): readonly string[]` on `ISurfaceRegistry`. Unregisters every

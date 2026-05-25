@@ -107,6 +107,24 @@ export function resourceFromSelectionSource(source: { filePath?: string; pageNum
 }
 
 /**
+ * Uniform accessor for the optional `workspaceId` field across all
+ * Resource variants. `ExternalResource` has no workspace scope, so
+ * this always returns `undefined` for it. Useful for filtering surfaces,
+ * artifacts, or selections by workspace without switching on `type`.
+ */
+export function resourceWorkspaceId(r: Resource): string | undefined {
+  switch (r.type) {
+    case 'file':
+    case 'canvas-page':
+    case 'chat-session':
+    case 'tool-artifact':
+      return r.workspaceId;
+    case 'external':
+      return undefined;
+  }
+}
+
+/**
  * Structural equality for Resources. Compares by `type` plus the
  * type-specific identity fields:
  *   - file          → `path`
