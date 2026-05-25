@@ -6,6 +6,42 @@
 
 ---
 
+## Iteration 92 — Slice B12: `activeWorkspaceId` context key (2026-05-25)
+
+- B3 mirrored two of the three identity fields carried by
+  `IContextService.getContext()` into the workbench context-key layer:
+  `activeSurfaceKind` and `activeResourceType`. The third —
+  `workspaceId` — was still missing, so no `when`-clause in the palette
+  or keybinding service could gate on workspace identity.
+- This slice adds the missing key end-to-end:
+  - `CTX_ACTIVE_WORKSPACE_ID = 'activeWorkspaceId'` in
+    `src/context/workbenchContext.ts`, with the matching
+    `_activeWorkspaceId` handle and `setActiveWorkspaceId()` setter
+    following the §86 empty-string-means-absent convention.
+  - `contextBinding.ts` now pushes `ctx.workspaceId` through to the
+    new setter on every IContextService change (and clears it on
+    binding dispose, mirroring B3's teardown symmetry).
+- After this slice, `when`-clauses such as `activeWorkspaceId`
+  (truthiness), `activeWorkspaceId == 'ws-1'` (equality), and the
+  compound `activeWorkspaceId == 'ws-1' && activeSurfaceKind ==
+  'editor' && activeResourceType == 'file'` all evaluate correctly
+  against the live snapshot — preparing the ground for workspace-
+  scoped gating in future slices.
+- 6 new tier-0 tests in
+  `tests/unit/platform/activeWorkspaceIdContextKey.tier0.test.ts`
+  exercising the full ContextKeyService + WorkbenchContextManager +
+  contextBinding stack (no stubs): key name constant, cold-start
+  falsy default, propagation, clear-on-undefined, clear-on-dispose,
+  compound `&&` against the other §86 keys.
+- The existing B3 `contextBinding.tier0.test.ts` was widened in lock-step:
+  the fake workbench-context now also stubs `setActiveWorkspaceId` and
+  asserts the call symmetry. No assertion semantics changed for the
+  pre-existing fields.
+- Suite: 99 tier-0 files / 752 tests pass. typecheck clean.
+- `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 91 — Slice B11: compound `&&` when-clause + keybinding (2026-05-25)
 
 - Built-in commands so far gated either on truthiness

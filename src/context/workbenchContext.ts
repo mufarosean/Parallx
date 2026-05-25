@@ -57,6 +57,11 @@ export const CTX_SELECTION_EXISTS = 'selectionExists';
 export const CTX_ACTIVE_SURFACE_KIND = 'activeSurfaceKind';
 export const CTX_ACTIVE_RESOURCE_TYPE = 'activeResourceType';
 
+// §86 / Slice B12 — Identity of the active workspace as carried by
+// IContextService.getContext().workspaceId. Mirrors the same
+// empty-string-means-absent convention as the other §86 keys.
+export const CTX_ACTIVE_WORKSPACE_ID = 'activeWorkspaceId';
+
 // ─── WorkbenchContextManager ─────────────────────────────────────────────────
 
 /**
@@ -107,9 +112,10 @@ export class WorkbenchContextManager extends Disposable {
   // M81 Slice A — selection
   private readonly _selectionExists: IContextKey<boolean>;
 
-  // §86 / Slice B3 — derived from IContextService snapshots
+  // §86 / Slice B3 + B12 — derived from IContextService snapshots
   private readonly _activeSurfaceKind: IContextKey<string>;
   private readonly _activeResourceType: IContextKey<string>;
+  private readonly _activeWorkspaceId: IContextKey<string>;
 
   constructor(
     _contextKeyService: ContextKeyService,
@@ -151,9 +157,10 @@ export class WorkbenchContextManager extends Disposable {
     // M81 Slice A — selection
     this._selectionExists = _contextKeyService.createKey(CTX_SELECTION_EXISTS, false);
 
-    // §86 / Slice B3 — context keys mirror IContextService snapshot fields.
+    // §86 / Slice B3 + B12 — context keys mirror IContextService snapshot fields.
     this._activeSurfaceKind = _contextKeyService.createKey(CTX_ACTIVE_SURFACE_KIND, '');
     this._activeResourceType = _contextKeyService.createKey(CTX_ACTIVE_RESOURCE_TYPE, '');
+    this._activeWorkspaceId = _contextKeyService.createKey(CTX_ACTIVE_WORKSPACE_ID, '');
 
     // Subscribe to focus tracker
     if (_focusTracker) {
@@ -248,6 +255,16 @@ export class WorkbenchContextManager extends Disposable {
    */
   setActiveResourceType(type: string | undefined): void {
     this._activeResourceType.set(type ?? '');
+  }
+
+  /**
+   * §86 / Slice B12. Set by the IContextService binding whenever the
+   * active workspace changes. `undefined` resets to empty string so the
+   * same truthiness/equality grammar used for the other §86 keys works
+   * for `activeWorkspaceId` too.
+   */
+  setActiveWorkspaceId(id: string | undefined): void {
+    this._activeWorkspaceId.set(id ?? '');
   }
 
   setWorkspaceLoaded(loaded: boolean): void {

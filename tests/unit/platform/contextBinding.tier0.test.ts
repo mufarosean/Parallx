@@ -31,8 +31,10 @@ class FakeContextService {
 class FakeWorkbenchContext {
   surfaceKind: string | undefined;
   resourceType: string | undefined;
+  workspaceId: string | undefined;
   surfaceCalls = 0;
   resourceCalls = 0;
+  workspaceCalls = 0;
   setActiveSurfaceKind(k: string | undefined): void {
     this.surfaceCalls++;
     this.surfaceKind = k ?? '';
@@ -40,6 +42,10 @@ class FakeWorkbenchContext {
   setActiveResourceType(t: string | undefined): void {
     this.resourceCalls++;
     this.resourceType = t ?? '';
+  }
+  setActiveWorkspaceId(id: string | undefined): void {
+    this.workspaceCalls++;
+    this.workspaceId = id ?? '';
   }
 }
 

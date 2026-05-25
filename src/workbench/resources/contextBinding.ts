@@ -34,6 +34,7 @@ export function bindContextToWorkbenchContextManager(
     const ctx = contextService.getContext();
     workbenchContext.setActiveSurfaceKind(ctx.activeSurfaceKind);
     workbenchContext.setActiveResourceType(ctx.activeResourceType);
+    workbenchContext.setActiveWorkspaceId(ctx.workspaceId);
   };
 
   store.add(contextService.onDidChangeContext(() => push()));
@@ -47,6 +48,7 @@ export function bindContextToWorkbenchContextManager(
       // binding. Matches the symmetry of B1's editor-surface unregister.
       workbenchContext.setActiveSurfaceKind(undefined);
       workbenchContext.setActiveResourceType(undefined);
+      workbenchContext.setActiveWorkspaceId(undefined);
     },
   };
 }
