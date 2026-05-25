@@ -6,6 +6,52 @@
 
 ---
 
+## Iteration 83 — Slice B3: IContextService → WorkbenchContextManager (2026-05-25)
+
+- First product-side consumer of `IContextService`. Before this slice
+  the unified context snapshot (`activeSurfaceKind`, `activeResourceType`,
+  …) was a write-only signal — no `when` clause could reach it.
+- Added two new context keys on `WorkbenchContextManager`:
+  `activeSurfaceKind` and `activeResourceType` (both string, empty when
+  unset to match the existing `resourceScheme` convention) plus
+  `setActiveSurfaceKind` / `setActiveResourceType` setters.
+- New module `src/workbench/resources/contextBinding.ts`:
+  `bindContextToWorkbenchContextManager(contextService, workbenchContext)`.
+  Seeds with the current snapshot on construction, subscribes to
+  `onDidChangeContext`, and pushes both fields. `dispose()` clears the
+  keys so stale state doesn't outlive the binding.
+- Wired in `workbench.ts._initializeContext()` step 7b, gated on
+  `tryGet(IContextService)`.
+- Closes the B1→B3 chain: editor open → `ISurfaceRegistry.register` →
+  `ContextService` snapshot updates → `WorkbenchContextManager`
+  `when`-clause keys flip → command palette / view enablement can now
+  branch on `activeResourceType == 'canvas-page'` etc.
+- 6 tier-0 tests (`contextBinding.tier0.test.ts`): seed on construct,
+  propagate change, canvas-page round-trip, clear on undefined,
+  `syncNow()` without event, dispose stops subscriptions and clears keys.
+- Suite: 90 tier-0 files / 697 tests pass. typecheck clean.
+- `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
+## Iteration 82 — Slice B2: editorSurfaceBinding parses parallx:// URIs (2026-05-25)
+
+- Generalised the editor → surface binding from B1 so non-`file:` URIs
+  are run through `parallxUri.parse()`. Canvas-page editor inputs
+  (`parallx://canvas-page:<id>`) now surface as a `CanvasPageResource`
+  with the active workspaceId stamped on; chat-session editor inputs
+  (`parallx://chat-session:<id>`) become a `ChatSessionResource`.
+- `external` and unparseable URIs still produce `resource: undefined`.
+- File URIs continue to short-circuit through `URI.fsPath` so they
+  don't pay the parse cost or risk encoding mismatches.
+- 5 additional tier-0 tests on top of B1's 8: untitled, no-URI,
+  canvas-page (workspace stamp), chat-session, explicit workspace
+  query, external URI.
+- Suite: 90 tier-0 files / 697 tests pass. typecheck clean.
+- `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 81 — Slice B1: Editor adopts ISurfaceRegistry (2026-05-25)
 
 - First real **product-side writer** for `ISurfaceRegistry`. The 80

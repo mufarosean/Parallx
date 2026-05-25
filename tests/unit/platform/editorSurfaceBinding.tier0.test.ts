@@ -90,15 +90,66 @@ describe('editorSurfaceBinding (Slice B1)', () => {
     b.dispose();
   });
 
-  it('opening a non-file input registers a surface with no resource', () => {
+  it('opening a non-file, non-parallx input registers a surface with no resource', () => {
     const b = makeBinding(reg, svc, ws);
-    const settings: FakeInput = { id: 'settings', name: 'Settings' };
+    const settings: FakeInput = { id: 'settings', name: 'Settings', uri: URI.parse('untitled:Untitled-1') };
     svc.setOpen([settings], settings);
 
     expect(reg.has('editor:settings')).toBe(true);
     expect(reg.activeKind()).toBe('editor');
     expect(reg.activeResource()).toBeUndefined();
     expect(reg.activeWorkspaceId()).toBeUndefined();
+    b.dispose();
+  });
+
+  it('opening an input with no URI registers a surface with no resource', () => {
+    const b = makeBinding(reg, svc, ws);
+    const noUri: FakeInput = { id: 'no-uri', name: 'No URI' };
+    svc.setOpen([noUri], noUri);
+    expect(reg.has('editor:no-uri')).toBe(true);
+    expect(reg.activeResource()).toBeUndefined();
+    b.dispose();
+  });
+
+  it('opening a parallx://canvas-page input produces a CanvasPageResource stamped with workspaceId (B2)', () => {
+    const b = makeBinding(reg, svc, ws);
+    const page: FakeInput = { id: 'page-1', name: 'Project Plan', uri: URI.parse('parallx://canvas-page:abc-123') };
+    svc.setOpen([page], page);
+    expect(reg.activeKind()).toBe('editor');
+    const r = reg.activeResource();
+    expect(r).toEqual({ type: 'canvas-page', pageId: 'abc-123', workspaceId: 'ws-1' });
+    expect(reg.activeWorkspaceId()).toBe('ws-1');
+    b.dispose();
+  });
+
+  it('opening a parallx://chat-session input produces a ChatSessionResource (B2)', () => {
+    const b = makeBinding(reg, svc, ws);
+    const chat: FakeInput = { id: 'chat-7', name: 'Session 7', uri: URI.parse('parallx://chat-session:s7') };
+    svc.setOpen([chat], chat);
+    const r = reg.activeResource();
+    expect(r).toEqual({ type: 'chat-session', sessionId: 's7', workspaceId: 'ws-1' });
+    b.dispose();
+  });
+
+  it('preserves an explicit workspaceId encoded in the parallx URI query', () => {
+    const b = makeBinding(reg, svc, ws);
+    const page: FakeInput = {
+      id: 'p2',
+      name: 'Shared Page',
+      uri: URI.parse('parallx://canvas-page:def-456?workspace=other-ws'),
+    };
+    svc.setOpen([page], page);
+    const r = reg.activeResource();
+    expect(r).toEqual({ type: 'canvas-page', pageId: 'def-456', workspaceId: 'other-ws' });
+    b.dispose();
+  });
+
+  it('opening an external URI input registers a surface with no resource (B2)', () => {
+    const b = makeBinding(reg, svc, ws);
+    const ext: FakeInput = { id: 'ext-1', name: 'Docs', uri: URI.parse('https://example.com/docs') };
+    svc.setOpen([ext], ext);
+    expect(reg.has('editor:ext-1')).toBe(true);
+    expect(reg.activeResource()).toBeUndefined();
     b.dispose();
   });
 

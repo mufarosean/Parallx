@@ -50,6 +50,13 @@ export const CTX_RESOURCE_FILENAME = 'resourceFilename';
 // M81 Slice A — selection state
 export const CTX_SELECTION_EXISTS = 'selectionExists';
 
+// §86 / Slice B3 — Surface & resource type of the active surface, derived
+// from IContextService.getContext().activeSurfaceKind / activeResourceType.
+// Empty string means "no active surface / resource" (matches the existing
+// `resourceScheme` convention).
+export const CTX_ACTIVE_SURFACE_KIND = 'activeSurfaceKind';
+export const CTX_ACTIVE_RESOURCE_TYPE = 'activeResourceType';
+
 // ─── WorkbenchContextManager ─────────────────────────────────────────────────
 
 /**
@@ -100,6 +107,10 @@ export class WorkbenchContextManager extends Disposable {
   // M81 Slice A — selection
   private readonly _selectionExists: IContextKey<boolean>;
 
+  // §86 / Slice B3 — derived from IContextService snapshots
+  private readonly _activeSurfaceKind: IContextKey<string>;
+  private readonly _activeResourceType: IContextKey<string>;
+
   constructor(
     _contextKeyService: ContextKeyService,
     _focusTracker: FocusTracker | undefined,
@@ -139,6 +150,10 @@ export class WorkbenchContextManager extends Disposable {
 
     // M81 Slice A — selection
     this._selectionExists = _contextKeyService.createKey(CTX_SELECTION_EXISTS, false);
+
+    // §86 / Slice B3 — context keys mirror IContextService snapshot fields.
+    this._activeSurfaceKind = _contextKeyService.createKey(CTX_ACTIVE_SURFACE_KIND, '');
+    this._activeResourceType = _contextKeyService.createKey(CTX_ACTIVE_RESOURCE_TYPE, '');
 
     // Subscribe to focus tracker
     if (_focusTracker) {
@@ -216,6 +231,23 @@ export class WorkbenchContextManager extends Disposable {
 
   setActiveEditorDirty(dirty: boolean): void {
     this._activeEditorDirty.set(dirty);
+  }
+
+  /**
+   * §86 / Slice B3. Set by the IContextService binding whenever the active
+   * surface changes. `undefined` resets to empty string so `when` clauses
+   * like `activeSurfaceKind == 'editor'` evaluate correctly.
+   */
+  setActiveSurfaceKind(kind: string | undefined): void {
+    this._activeSurfaceKind.set(kind ?? '');
+  }
+
+  /**
+   * §86 / Slice B3. Set by the IContextService binding whenever the active
+   * resource changes. `undefined` resets to empty string.
+   */
+  setActiveResourceType(type: string | undefined): void {
+    this._activeResourceType.set(type ?? '');
   }
 
   setWorkspaceLoaded(loaded: boolean): void {

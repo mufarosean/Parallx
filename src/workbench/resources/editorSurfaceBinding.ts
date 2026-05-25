@@ -31,6 +31,8 @@ import type { IEditorService } from '../../services/serviceTypes.js';
 import type { IWorkspaceService } from '../../services/serviceTypes.js';
 import type { ISurfaceRegistry } from '../../services/serviceTypes.js';
 import { fileResource } from './resource.js';
+import type { Resource } from './resource.js';
+import { parse as parseParallxUri } from './parallxUri.js';
 import { surface, type Surface } from './surface.js';
 
 export interface IEditorSurfaceBinding extends IDisposable {
@@ -47,13 +49,50 @@ function surfaceIdFor(inputId: string): string {
 function buildEditorSurface(
   inputId: string,
   displayName: string,
-  uri: { scheme: string; fsPath: string } | undefined,
+  uri: { scheme: string; fsPath: string; toString(): string } | undefined,
   workspaceId: string | undefined,
 ): Surface {
-  const resource = uri && uri.scheme === 'file'
-    ? fileResource(uri.fsPath, workspaceId ? { workspaceId } : undefined)
-    : undefined;
+  const resource = resolveResourceFromUri(uri, workspaceId);
   return surface(surfaceIdFor(inputId), 'editor', displayName, resource);
+}
+
+function resolveResourceFromUri(
+  uri: { scheme: string; fsPath: string; toString(): string } | undefined,
+  workspaceId: string | undefined,
+): Resource | undefined {
+  if (!uri) return undefined;
+  // File URIs: produce a FileResource directly. Cheaper than round-tripping
+  // through parallxUri and avoids any percent-encoding surprises in fsPath.
+  if (uri.scheme === 'file') {
+    return fileResource(uri.fsPath, workspaceId ? { workspaceId } : undefined);
+  }
+  // parallx:// (or the legacy `canvas:` alias) URIs: parse to a typed
+  // Resource (canvas-page / chat-session / tool-artifact / file). This
+  // lets canvas-page editor inputs surface a CanvasPageResource even though
+  // the binding has no canvas-specific knowledge of its own.
+  const uriString = safeUriToString(uri);
+  if (!uriString) return undefined;
+  const parsed = parseParallxUri(uriString);
+  if (!parsed) return undefined;
+  // External resources (http(s), mailto, etc.) are technically Resources but
+  // they don't carry a workspaceId and don't model editor content. Drop them
+  // so consumers don't see misleading active-resource state.
+  if (parsed.type === 'external') return undefined;
+  // Stamp the active workspace id on the resource if it doesn't already
+  // carry one. The parser only sets workspaceId when it's encoded in the
+  // URI's `workspace` query — most editor inputs won't include that.
+  if (workspaceId && !('workspaceId' in parsed && parsed.workspaceId)) {
+    return { ...parsed, workspaceId } as Resource;
+  }
+  return parsed;
+}
+
+function safeUriToString(uri: { toString(): string }): string | undefined {
+  try {
+    return uri.toString();
+  } catch {
+    return undefined;
+  }
 }
 
 /**

@@ -14,9 +14,10 @@ import { addDisposableListener } from '../ui/dom.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IWorkspaceTranscriptService, IGlobalStorageService, IWorkspaceStorageService, ISurfaceRouterService, ISelectionService, ISurfaceRegistry, IWorkspaceService } from '../services/serviceTypes.js';
+import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IWorkspaceTranscriptService, IGlobalStorageService, IWorkspaceStorageService, ISurfaceRouterService, ISelectionService, ISurfaceRegistry, IWorkspaceService, IContextService } from '../services/serviceTypes.js';
 import { SurfaceRouterService } from '../services/surfaceRouterService.js';
 import { bindEditorToSurfaceRegistry } from './resources/editorSurfaceBinding.js';
+import { bindContextToWorkbenchContextManager } from './resources/contextBinding.js';
 import { NotificationsSurfacePlugin } from './surfaces/notificationSurface.js';
 import { StatusSurfacePlugin } from './surfaces/statusSurface.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
@@ -1140,6 +1141,15 @@ export class Workbench extends Layout {
 
     // 7. Initial editor group state (Capability 9 will update these dynamically)
     this._workbenchContext.setEditorGroupCount(1);
+
+    // 7b. §86 / Slice B3 — bind IContextService so activeSurfaceKind /
+    //     activeResourceType context keys mirror the unified workbench
+    //     context snapshot. First real consumer of IContextService in
+    //     product code; depends on the facade having already registered it.
+    const contextService = this._services.tryGet(IContextService);
+    if (contextService) {
+      this._register(bindContextToWorkbenchContextManager(contextService, this._workbenchContext));
+    }
 
     // 8. Wire the command palette's when-clause filtering & focus trapping
     if (this._commandPalette) {
