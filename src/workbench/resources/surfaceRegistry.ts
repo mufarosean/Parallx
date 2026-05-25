@@ -83,6 +83,21 @@ export interface ISurfaceRegistry {
   ids(): readonly string[];
 
   /**
+   * Number of currently-registered surfaces whose `kind === kind`.
+   * Cheap O(n) count that avoids the allocation of `listByKind(kind)`
+   * when callers only need the length. Empty/undefined `kind` returns 0.
+   */
+  countByKind(kind: SurfaceKind): number;
+
+  /**
+   * Number of currently-registered surfaces whose backing resource has
+   * `workspaceId === workspaceId`. Surfaces without a resource or whose
+   * resource is external are never counted. Empty/undefined `workspaceId`
+   * returns 0. Allocation-free counterpart to `listByWorkspace(id).length`.
+   */
+  countByWorkspace(workspaceId: string): number;
+
+  /**
    * Number of currently-registered surfaces. Cheap accessor that
    * avoids materializing `list()` just to read its length. Symmetric
    * with `IToolArtifactStore.size` (A12) and `ISelectionService.size`
@@ -213,6 +228,26 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
 
   ids(): readonly string[] {
     return Array.from(this._surfaces.keys());
+  }
+
+  countByKind(kind: SurfaceKind): number {
+    if (!kind) return 0;
+    let n = 0;
+    for (const s of this._surfaces.values()) {
+      if (s.kind === kind) n++;
+    }
+    return n;
+  }
+
+  countByWorkspace(workspaceId: string): number {
+    if (!workspaceId) return 0;
+    let n = 0;
+    for (const s of this._surfaces.values()) {
+      if (s.resource && resourceWorkspaceId(s.resource) === workspaceId) {
+        n++;
+      }
+    }
+    return n;
   }
 
   has(id: string): boolean {

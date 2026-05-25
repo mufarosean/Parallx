@@ -6,6 +6,22 @@
 
 ---
 
+## Iteration 47 — Slice A46: ISurfaceRegistry.countByKind / countByWorkspace (2026-05-25)
+
+Added `countByKind(kind): number` and `countByWorkspace(workspaceId): number`
+on `ISurfaceRegistry`. Cheap O(n) counts that avoid the allocation of
+`listByKind` / `listByWorkspace` when callers only need the length.
+Surfaces with no resource or external resources are skipped by
+`countByWorkspace`. Empty args return 0. Symmetric with the A45
+artifact-store counts.
+
+Pure-additive. Tier-0: **55 files / 447 tests**, all green. tsc clean.
+
+Files: `src/workbench/resources/surfaceRegistry.ts`,
+`tests/unit/platform/surfaceRegistryCounts.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 46 — Slice A45: IToolArtifactStore.countByTool / countByWorkspace (2026-05-25)
 
 Added `countByTool(toolId): number` and `countByWorkspace(workspaceId): number`
