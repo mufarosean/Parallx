@@ -6,6 +6,19 @@
 
 ---
 
+## Iteration 63 — Slice A62: IToolArtifactStore.toolIdsByWorkspace (2026-05-25)
+
+Added `toolIdsByWorkspace(workspaceId)` on `IToolArtifactStore`. Returns
+distinct toolIds with at least one artifact stored in `workspaceId`, in
+first-insertion order. Workspace-scoped inventory counterpart to `toolIds()`.
+
+Pure-additive. Tier-0: **71 files / 559 tests**, all green. tsc clean.
+
+Files: `src/workbench/toolArtifactStore.ts`,
+`tests/unit/platform/toolArtifactStoreToolIdsByWorkspace.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 62 — Slice A61: IToolArtifactStore.artifactIdsByWorkspace (2026-05-25)
 
 Added `artifactIdsByWorkspace(workspaceId)` on `IToolArtifactStore`.

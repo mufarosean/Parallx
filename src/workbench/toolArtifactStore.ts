@@ -82,6 +82,15 @@ export interface IToolArtifactStore {
    * id-only-by-workspace family begun in A58 (surfaces) and A59 (selections).
    */
   artifactIdsByWorkspace(workspaceId: string): readonly string[];
+
+  /**
+   * Distinct toolIds with at least one artifact stored in `workspaceId`,
+   * in first-insertion order. Fresh array. Empty `workspaceId` → empty
+   * array. Workspace-scoped inventory counterpart to `toolIds()`. Lets a
+   * caller answer "which tools have produced artifacts in this workspace?"
+   * without materializing the full record list.
+   */
+  toolIdsByWorkspace(workspaceId: string): readonly string[];
   /**
    * Return the first stored record for which `predicate` returns truthy,
    * or `undefined` if none match. Iteration is in insertion order. The
@@ -292,6 +301,19 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
     const out: string[] = [];
     for (const r of this._records.values()) {
       if (r.workspaceId === workspaceId) out.push(r.artifactId);
+    }
+    return out;
+  }
+
+  toolIdsByWorkspace(workspaceId: string): readonly string[] {
+    if (!workspaceId) return [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const r of this._records.values()) {
+      if (r.workspaceId === workspaceId && !seen.has(r.toolId)) {
+        seen.add(r.toolId);
+        out.push(r.toolId);
+      }
     }
     return out;
   }
