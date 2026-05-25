@@ -6,6 +6,19 @@
 
 ---
 
+## Iteration 62 — Slice A61: IToolArtifactStore.artifactIdsByWorkspace (2026-05-25)
+
+Added `artifactIdsByWorkspace(workspaceId)` on `IToolArtifactStore`.
+Id-only counterpart to `listByWorkspace`. Completes the id-only-by-workspace
+family across all three primitives (surfaces A58, selections A59, artifacts A61).
+
+Pure-additive. Tier-0: **70 files / 552 tests**, all green. tsc clean.
+
+Files: `src/workbench/toolArtifactStore.ts`,
+`tests/unit/platform/toolArtifactStoreArtifactIdsByWorkspace.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 61 — Slice A60: IToolArtifactStore.artifactIdsByTool (2026-05-25)
 
 Added `artifactIdsByTool(toolId: string): readonly string[]` on

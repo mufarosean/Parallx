@@ -74,6 +74,14 @@ export interface IToolArtifactStore {
    * Empty/undefined `workspaceId` returns an empty array.
    */
   listByWorkspace(workspaceId: string): readonly ToolArtifactRecord[];
+
+  /**
+   * Artifact ids owned by `workspaceId`, in insertion order. Fresh array.
+   * Empty `workspaceId` → empty array. Id-only counterpart to
+   * `listByWorkspace(workspaceId).map(r => r.artifactId)`. Completes the
+   * id-only-by-workspace family begun in A58 (surfaces) and A59 (selections).
+   */
+  artifactIdsByWorkspace(workspaceId: string): readonly string[];
   /**
    * Return the first stored record for which `predicate` returns truthy,
    * or `undefined` if none match. Iteration is in insertion order. The
@@ -275,6 +283,15 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
     const out: ToolArtifactRecord[] = [];
     for (const r of this._records.values()) {
       if (r.workspaceId === workspaceId) out.push(r);
+    }
+    return out;
+  }
+
+  artifactIdsByWorkspace(workspaceId: string): readonly string[] {
+    if (!workspaceId) return [];
+    const out: string[] = [];
+    for (const r of this._records.values()) {
+      if (r.workspaceId === workspaceId) out.push(r.artifactId);
     }
     return out;
   }
