@@ -6,6 +6,37 @@
 
 ---
 
+## Iteration 90 — Slice B10: bounded FIFO eviction for ToolArtifactStore (2026-05-25)
+
+- Slice B8 wired the first production writer for
+  `IToolArtifactStore`. Without an upper bound the in-memory store
+  would grow indefinitely once tools begin opting in via
+  `producesArtifact: true`. B10 hardens the store.
+- `InMemoryToolArtifactStore` now accepts a constructor option
+  `{ maxEntries?: number }` (default `1000`, `0` disables, negative
+  clamps to `0`). `put()` evicts the oldest entry (by first-insertion)
+  whenever the store would exceed the limit, firing a `'delete'`
+  change event for the victim so resolvers and UI cache invalidation
+  observe the loss.
+- Eviction is FIFO rather than LRU on purpose: the §A37 `toolIds()`
+  insertion-order contract requires that replace-in-place preserves the
+  existing slot, which rules out touch-refresh semantics. B8's writer
+  always generates fresh ids, so FIFO is the correct model in practice.
+- The facade-level wiring (`workbenchFacadeFactory.ts`) was left
+  untouched: it uses the default `1000`. The bound is overridable for
+  tests and host-specific tunings.
+- 6 new tier-0 tests in
+  `tests/unit/platform/toolArtifactStoreLru.tier0.test.ts`: default
+  1000-entry capacity, FIFO eviction at the boundary, replace-in-place
+  preserves position (the A37-vs-LRU trade-off), `delete` event fires
+  for evicted entry, `maxEntries: 0` disables, negative clamps to `0`.
+  The existing A37 `toolIds()` order test continues to pass without
+  modification.
+- Suite: 97 tier-0 files / 741 tests pass. typecheck clean.
+- `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 89 — Slice B9: keybinding adoption for `activeResourceType` (2026-05-25)
 
 - The first 8 B-slices wired §86 primitives into surface registry,

@@ -193,11 +193,31 @@ export interface IToolArtifactStore {
   readonly onDidChange: Event<{ readonly toolId: string; readonly artifactId: string; readonly kind: 'put' | 'delete' }>;
 }
 
+export interface InMemoryToolArtifactStoreOptions {
+  /**
+   * Maximum number of records the store will hold. When `put()` would
+   * push the store above this limit, the oldest entry (first-inserted,
+   * preserving the §A37 `toolIds()` insertion-order contract) is
+   * evicted and an `onDidChange` `'delete'` event fires for it.
+   * Defaults to `1000`. A value of `0` disables eviction (unbounded).
+   * Negative values are clamped to `0`.
+   */
+  readonly maxEntries?: number;
+}
+
 export class InMemoryToolArtifactStore extends Disposable implements IToolArtifactStore {
   private readonly _records = new Map<string, ToolArtifactRecord>();
+  private readonly _maxEntries: number;
   private readonly _onDidChange = this._register(
     new Emitter<{ readonly toolId: string; readonly artifactId: string; readonly kind: 'put' | 'delete' }>(),
   );
+
+  constructor(options?: InMemoryToolArtifactStoreOptions) {
+    super();
+    const raw = options?.maxEntries;
+    this._maxEntries = raw === undefined ? 1000 : Math.max(0, Math.floor(raw));
+  }
+
   readonly onDidChange = this._onDidChange.event;
 
   private static _key(toolId: string, artifactId: string): string {
@@ -209,8 +229,28 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
     if (!record.toolId || !record.artifactId) {
       throw new Error('[InMemoryToolArtifactStore] toolId and artifactId are required');
     }
-    this._records.set(InMemoryToolArtifactStore._key(record.toolId, record.artifactId), record);
+    const key = InMemoryToolArtifactStore._key(record.toolId, record.artifactId);
+    // Replace-in-place preserves insertion order (the A37 `toolIds()`
+    // contract relies on this). Eviction is therefore FIFO-by-first-put,
+    // not LRU-by-touch — sufficient for the B8 producer which only ever
+    // generates fresh artifact ids.
+    this._records.set(key, record);
     this._onDidChange.fire({ toolId: record.toolId, artifactId: record.artifactId, kind: 'put' });
+    if (this._maxEntries > 0) {
+      while (this._records.size > this._maxEntries) {
+        const oldestKey = this._records.keys().next().value as string | undefined;
+        if (oldestKey === undefined) break;
+        const oldest = this._records.get(oldestKey);
+        this._records.delete(oldestKey);
+        if (oldest) {
+          this._onDidChange.fire({
+            toolId: oldest.toolId,
+            artifactId: oldest.artifactId,
+            kind: 'delete',
+          });
+        }
+      }
+    }
   }
 
   get(toolId: string, artifactId: string): ToolArtifactRecord | undefined {
