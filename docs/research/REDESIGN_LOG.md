@@ -6,6 +6,16 @@
 
 ---
 
+## Iteration 77 — Slice A76: ISelectionService.count(predicate) (2026-05-25)
+
+- Added `count(predicate)` on `ISelectionService`. Completes count trio
+  (A74/A75/A76) — allocation-free counting on all three primitives.
+- 7 tier-0 tests: empty, no-match, multi-type, true-equals-entries-length,
+  filter-length parity, setSelection(undefined) clearing, post-clearAll.
+- Pure-additive. `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 76 — Slice A75: ISurfaceRegistry.count(predicate) (2026-05-25)
 
 - Added `count(predicate)` on `ISurfaceRegistry`. Allocation-free counting

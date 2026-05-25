@@ -963,6 +963,17 @@ export interface ISelectionService extends IDisposable {
   ): void;
 
   /**
+   * Return the number of `(surfaceId, selection)` entries for which
+   * `predicate` returns truthy. Allocation-free counting alternative to
+   * `filter(p).length`. Iterates in insertion order; predicate must not
+   * mutate the service. Symmetric with `ISurfaceRegistry.count()` (A75)
+   * and `IToolArtifactStore.count()` (A74); completes the count trio.
+   */
+  count(
+    predicate: (entry: { readonly surfaceId: string; readonly selection: ISelection }) => boolean,
+  ): number;
+
+  /**
    * Snapshot of distinct `workspaceId` values across every current
    * selection, in first-insertion order. Derived from `selection.resource`
    * via `resourceWorkspaceId`. Selections without a resource, or whose
