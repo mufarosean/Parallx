@@ -19,6 +19,7 @@
 import { Disposable } from '../../platform/lifecycle.js';
 import { Emitter, Event } from '../../platform/events.js';
 import type { Resource } from './resource.js';
+import type { ResourceType } from './resource.js';
 import type { Surface, SurfaceKind } from './surface.js';
 
 /**
@@ -64,6 +65,14 @@ export interface WorkbenchContext {
    * `undefined` when no surface is active.
    */
   readonly activeSurfaceKind: SurfaceKind | undefined;
+  /**
+   * Derived from `activeResource.type` (Slice A64). Lets `when`-clause-style
+   * predicates ask "is the active resource a file / canvas-page /
+   * tool-artifact?" without dereferencing the Resource discriminated
+   * union. `undefined` when there is no active resource. Symmetric with
+   * `activeSurfaceKind`.
+   */
+  readonly activeResourceType: ResourceType | undefined;
 }
 
 export interface IContextService {
@@ -118,12 +127,14 @@ export class ContextService extends Disposable implements IContextService {
   private _snapshot(): WorkbenchContext {
     const activeSelection = this._selection.getSelection();
     const activeSurface = this._surfaces.getActive();
+    const activeResource = extractResource(activeSelection);
     return {
       workspaceId: this._workspace.activeWorkspace?.id,
       activeSurface,
       activeSelection,
-      activeResource: extractResource(activeSelection),
+      activeResource,
       activeSurfaceKind: activeSurface?.kind,
+      activeResourceType: activeResource?.type,
     };
   }
 
@@ -136,7 +147,8 @@ export class ContextService extends Disposable implements IContextService {
       next.activeSurface === prev.activeSurface &&
       next.activeSelection === prev.activeSelection &&
       next.activeResource === prev.activeResource &&
-      next.activeSurfaceKind === prev.activeSurfaceKind
+      next.activeSurfaceKind === prev.activeSurfaceKind &&
+      next.activeResourceType === prev.activeResourceType
     ) {
       return;
     }

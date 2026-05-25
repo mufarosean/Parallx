@@ -6,6 +6,23 @@
 
 ---
 
+## Iteration 65 — Slice A64: WorkbenchContext.activeResourceType (2026-05-25)
+
+- Added `activeResourceType: ResourceType | undefined` to `WorkbenchContext`,
+  derived from `activeResource?.type` in `_snapshot()`. Included in the
+  `_maybeFire()` dedup equality so consumers re-render only when the type
+  actually changes.
+- Symmetric with `activeSurfaceKind` (A28): lets `when`-clause-style
+  predicates ask "is the active resource a file / canvas-page / tool-artifact?"
+  without dereferencing the `Resource` discriminated union.
+- 7 tier-0 tests in `contextServiceActiveResourceType.tier0.test.ts` covering
+  no-selection, no-resource, each resource kind (file / canvas-page /
+  external), change-firing, and dedup equality.
+- Pure-additive — no preservation surface touched. `single-pass-review:
+  tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 64 — Slice A63: ISurfaceRegistry.kindsByWorkspace (2026-05-25)
 
 Added `kindsByWorkspace(workspaceId)` on `ISurfaceRegistry`. Returns
