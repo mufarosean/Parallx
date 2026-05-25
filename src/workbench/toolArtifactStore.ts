@@ -121,6 +121,14 @@ export interface IToolArtifactStore {
    * must not be mutated from inside `cb`.
    */
   forEach(cb: (record: ToolArtifactRecord) => void): void;
+
+  /**
+   * Return the number of records for which `predicate` returns truthy.
+   * Allocation-free counting alternative to `filter(p).length` for hot
+   * paths and diagnostics. Iterates in insertion order; predicate must
+   * not mutate the store.
+   */
+  count(predicate: (record: ToolArtifactRecord) => boolean): number;
   /**
    * Delete every stored artifact. Returns the number removed. Fires
    * `onDidChange` once per record (insertion order, `kind: 'delete'`),
@@ -386,6 +394,14 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
     for (const r of this._records.values()) {
       cb(r);
     }
+  }
+
+  count(predicate: (record: ToolArtifactRecord) => boolean): number {
+    let n = 0;
+    for (const r of this._records.values()) {
+      if (predicate(r)) n++;
+    }
+    return n;
   }
 
   clear(): number {

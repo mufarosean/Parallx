@@ -6,6 +6,18 @@
 
 ---
 
+## Iteration 75 — Slice A74: IToolArtifactStore.count(predicate) (2026-05-25)
+
+- Added `count(predicate: (record) => boolean): number` on
+  `IToolArtifactStore`. Allocation-free counting alternative to
+  `filter(p).length` for hot paths and diagnostics. Iterates in
+  insertion order.
+- 7 tier-0 tests: empty, no-match, multi-match across toolIds, true-equals-list-length,
+  filter-length parity, post-delete, post-clear.
+- Pure-additive. `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 74 — Slice A73: ISelectionService.forEach (2026-05-25)
 
 - Added `forEach(cb: (entry) => void): void` on `ISelectionService`.
