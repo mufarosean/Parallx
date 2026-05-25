@@ -6,6 +6,40 @@
 
 ---
 
+## Iteration 21 — Slice A20: IResourceRegistry.resolveSafe() (2026-05-25)
+
+Pure-additive non-throwing variant of `resolve` / `resolveUri`. Returns
+a discriminated union `{ ok:true; value } | { ok:false; reason; error? }`
+where `reason ∈ 'malformed-uri' | 'no-resolver' | 'failed'`. Removes
+the asymmetry between `resolve` (throws) and `resolveUri` (returns
+`null` only for malformed URIs).
+
+**Behavior**
+
+- Accepts `Resource | string | null | undefined`.
+- `null`/`undefined`/non-object/non-`{type:string}` → `malformed-uri`.
+- Unparseable URI string → `malformed-uri`.
+- Type with no registered resolver → `no-resolver`.
+- Resolver throws → `failed` with the error attached.
+- Never rejects.
+
+**Files**
+
+- `src/workbench/resources/resourceRegistry.ts` — interface + impl,
+  new `ResolveSafeResult<T>` discriminated-union export.
+- `tests/unit/platform/resourceRegistryResolveSafe.tier0.test.ts`
+  (8 tests)
+
+**Verification**
+
+- `npm run test:unit:tier0 -- --run`: 28 files / 261 passed (8 new).
+- `npx tsc --noEmit`: clean.
+
+**Commit**: pending
+**Review**: single-pass — tier-0 corpus green + tsc clean.
+
+---
+
 ## Iteration 20 — Slice A19: ISelectionService introspection (2026-05-25)
 
 Pure-additive `surfaceIds(): readonly string[]` and

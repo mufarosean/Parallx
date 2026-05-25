@@ -72,7 +72,25 @@ export interface IResourceRegistry {
    * is registered for the parsed type.
    */
   resolveUri<T = unknown>(uri: string): Promise<T | null>;
+
+  /**
+   * Non-throwing variant of {@link resolve} / {@link resolveUri}.
+   * Returns a discriminated union describing exactly what happened.
+   * Accepts a Resource, a URI string, or `null`/`undefined` (latter
+   * yield `{ ok:false, reason:'malformed-uri' }`).
+   *
+   * Removes the asymmetry between `resolve` (throws on missing
+   * resolver) and `resolveUri` (returns `null` on malformed URI), so
+   * callers that just want best-effort dispatch don't have to wrap
+   * in try/catch.
+   */
+  resolveSafe<T = unknown>(target: Resource | string | null | undefined): Promise<ResolveSafeResult<T>>;
 }
+
+/** Result of {@link IResourceRegistry.resolveSafe}. */
+export type ResolveSafeResult<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly reason: 'malformed-uri' | 'no-resolver' | 'failed'; readonly error?: unknown };
 
 /** Change notification fired by {@link IResourceRegistry.onDidChange}. */
 export interface ResourceRegistryChangeEvent {
@@ -139,6 +157,31 @@ export class ResourceRegistry extends Disposable implements IResourceRegistry {
     const resource = parse(uri);
     if (!resource) return null;
     return this.resolve<T>(resource);
+  }
+
+  async resolveSafe<T = unknown>(target: Resource | string | null | undefined): Promise<ResolveSafeResult<T>> {
+    let resource: Resource | null;
+    if (target == null) {
+      return { ok: false, reason: 'malformed-uri' };
+    }
+    if (typeof target === 'string') {
+      resource = parse(target);
+      if (!resource) return { ok: false, reason: 'malformed-uri' };
+    } else if (typeof target === 'object' && typeof (target as { type?: unknown }).type === 'string') {
+      resource = target as Resource;
+    } else {
+      return { ok: false, reason: 'malformed-uri' };
+    }
+    const resolver = this._resolvers.get(resource.type);
+    if (!resolver) {
+      return { ok: false, reason: 'no-resolver' };
+    }
+    try {
+      const value = await (resolver.resolve(resource) as Promise<T>);
+      return { ok: true, value };
+    } catch (error) {
+      return { ok: false, reason: 'failed', error };
+    }
   }
 
   override dispose(): void {
