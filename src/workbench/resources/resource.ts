@@ -105,3 +105,45 @@ export function resourceFromSelectionSource(source: { filePath?: string; pageNum
   if (!p || typeof p !== 'string') return undefined;
   return fileResource(p, { workspaceId: source.workspaceId });
 }
+
+/**
+ * Structural equality for Resources. Compares by `type` plus the
+ * type-specific identity fields:
+ *   - file          → `path`
+ *   - canvas-page   → `pageId` + `blockId`
+ *   - chat-session  → `sessionId` + `turnId`
+ *   - tool-artifact → `toolId` + `artifactId`
+ *   - external      → `uri`
+ *
+ * `workspaceId` is part of identity for the four workspace-scoped kinds
+ * (file, canvas-page, chat-session, tool-artifact) — a Resource pointing
+ * at the same path in a different workspace is NOT the same Resource.
+ * `hash` on FileResource is metadata, NOT identity.
+ *
+ * Useful for "is this resource open in any surface", de-duplicating
+ * artifact lists, and active-resource change detection without relying
+ * on object reference identity.
+ */
+export function resourceEquals(a: Resource | undefined, b: Resource | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.type !== b.type) return false;
+  switch (a.type) {
+    case 'file':
+      return a.path === (b as FileResource).path && a.workspaceId === (b as FileResource).workspaceId;
+    case 'canvas-page': {
+      const bb = b as CanvasPageResource;
+      return a.pageId === bb.pageId && a.blockId === bb.blockId && a.workspaceId === bb.workspaceId;
+    }
+    case 'chat-session': {
+      const bb = b as ChatSessionResource;
+      return a.sessionId === bb.sessionId && a.turnId === bb.turnId && a.workspaceId === bb.workspaceId;
+    }
+    case 'tool-artifact': {
+      const bb = b as ToolArtifactResource;
+      return a.toolId === bb.toolId && a.artifactId === bb.artifactId && a.workspaceId === bb.workspaceId;
+    }
+    case 'external':
+      return a.uri === (b as ExternalResource).uri;
+  }
+}

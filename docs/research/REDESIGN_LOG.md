@@ -6,6 +6,43 @@
 
 ---
 
+## Iteration 23 — Slice A22: resourceEquals() + SurfaceRegistry.findByResource() (2026-05-25)
+
+Two pure-additive primitives:
+
+1. **`resourceEquals(a, b): boolean`** — structural Resource equality
+   in `resource.ts`. Compares by `type` + type-specific identity:
+   - `file` → `path` + `workspaceId` (`hash` is metadata, NOT identity)
+   - `canvas-page` → `pageId` + `blockId` + `workspaceId`
+   - `chat-session` → `sessionId` + `turnId` + `workspaceId`
+   - `tool-artifact` → `toolId` + `artifactId` + `workspaceId`
+   - `external` → `uri`
+
+2. **`ISurfaceRegistry.findByResource(resource)`** — returns every
+   surface currently showing a structurally-equal Resource. Powers
+   "is this resource already open?", "reveal in editor", and dedup
+   of resource-aware command targets. Surfaces with no resource are
+   never matched. Returns fresh snapshot in insertion order.
+
+**Files**
+
+- `src/workbench/resources/resource.ts` — `resourceEquals()` export
+- `src/workbench/resources/surfaceRegistry.ts` — interface + impl
+- `tests/unit/platform/resourceEquals.tier0.test.ts` (15 tests)
+- `tests/unit/platform/surfaceRegistryFindByResource.tier0.test.ts`
+  (7 tests)
+
+**Verification**
+
+- `npm run test:unit:tier0 -- --run`: 31 files / 291 passed
+  (22 new — 15 + 7).
+- `npx tsc --noEmit`: clean.
+
+**Commit**: pending
+**Review**: single-pass — tier-0 corpus green + tsc clean.
+
+---
+
 ## Iteration 22 — Slice A21: IToolArtifactStore.deleteByWorkspace() (2026-05-25)
 
 Pure-additive `deleteByWorkspace(workspaceId): number` counterpart to

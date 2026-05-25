@@ -11,6 +11,8 @@
 import { Disposable } from '../../platform/lifecycle.js';
 import { Emitter, Event } from '../../platform/events.js';
 import type { Surface, SurfaceKind } from './surface.js';
+import type { Resource } from './resource.js';
+import { resourceEquals } from './resource.js';
 
 export interface ISurfaceChangeEvent {
   readonly kind: 'registered' | 'updated' | 'unregistered' | 'active';
@@ -36,6 +38,18 @@ export interface ISurfaceRegistry {
    * value. Insertion order preserved. Returns a fresh snapshot.
    */
   listByKind(kind: SurfaceKind): ReadonlyArray<Surface>;
+
+  /**
+   * All currently-registered surfaces whose `resource` is structurally
+   * equal to the given Resource. Insertion order. Fresh snapshot.
+   * Surfaces without a resource are never matched.
+   *
+   * Equality uses {@link resourceEquals} — file path + workspaceId,
+   * canvas pageId + blockId + workspaceId, chat sessionId + turnId
+   * + workspaceId, tool toolId + artifactId + workspaceId, external
+   * uri. `hash` on FileResource is metadata and NOT part of identity.
+   */
+  findByResource(resource: Resource): ReadonlyArray<Surface>;
 
   /** Lookup by id. */
   get(id: string): Surface | undefined;
@@ -99,6 +113,14 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
     const out: Surface[] = [];
     for (const s of this._surfaces.values()) {
       if (s.kind === kind) out.push(s);
+    }
+    return out;
+  }
+
+  findByResource(resource: Resource): ReadonlyArray<Surface> {
+    const out: Surface[] = [];
+    for (const s of this._surfaces.values()) {
+      if (s.resource && resourceEquals(s.resource, resource)) out.push(s);
     }
     return out;
   }
