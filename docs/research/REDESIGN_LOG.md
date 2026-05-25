@@ -6,6 +6,93 @@
 
 ---
 
+## Iteration 15 — Slice A14: ContextService.activeResource derived field (2026-05-25)
+
+Pure-additive enrichment of `WorkbenchContext` with an `activeResource`
+field derived from `activeSelection.resource` (populated automatically
+by SelectionService in slice A7). Consumers of context (when-clauses,
+context keys, command availability, future AI retrieval glue) now have
+a typed Resource hook without having to reach into the loose
+`ContextSelectionLike` shape.
+
+**Behavior**
+
+- `ContextService._snapshot()` reads `selection.resource` via a
+  duck-typed `extractResource()` helper: any object with a string
+  `type` is treated as a `Resource`. Missing / non-object / wrong-shape
+  values yield `undefined`.
+- `_maybeFire()` adds `activeResource` to its dedup check so the event
+  fires when the derived resource changes (typically tied to selection
+  change anyway).
+- All existing tier-0 contextService tests still pass — they used
+  `toEqual` against shape literals; vitest treats `undefined` own
+  properties as equivalent to missing in those comparisons.
+
+**Files**
+
+- `src/workbench/resources/contextService.ts`
+  - import `Resource` type from `resource.js`
+  - `WorkbenchContext.activeResource: Resource | undefined`
+  - `_snapshot()` reads selection once and derives resource via
+    `extractResource(selection)`
+  - `_maybeFire()` includes `activeResource` in coalescing check
+  - new `extractResource(selection)` helper (file-local)
+- `tests/unit/platform/contextServiceActiveResource.tier0.test.ts`
+  (7 tests covering: undefined when no selection, undefined when
+  selection has no resource field, FileResource extraction,
+  ExternalResource extraction, fires on selection change, rejects
+  non-object resource, rejects resource without type)
+
+**Verification**
+
+- `npm run test:unit:tier0 -- --run`: 22 files / 215 passed
+  (7 new from this slice).
+- `npx tsc --noEmit`: clean.
+
+**Commit**: pending
+**Review**: single-pass — tier-0 corpus green + tsc clean.
+
+---
+
+## Iteration 14 — Slice A13: ResourceRegistry introspection (2026-05-25)
+
+Adds two pure-additive read APIs to `IResourceRegistry`:
+
+- `types(): readonly ResourceType[]` — snapshot of registered types in
+  insertion order. Fresh array per call (callers can't mutate state).
+- `onDidChange: Event<ResourceRegistryChangeEvent>` — fires on
+  register / override / unregister with `{ type, kind }` where `kind`
+  is `'register'` on first add (even via `override()`), `'override'`
+  on replace, and `'unregister'` on actual removal (no-op unregisters
+  do not fire).
+
+Enables diagnostics commands, status surfaces, and consumers that need
+to react to new resolver registrations (e.g. when an extension
+contributes a custom Resource type).
+
+**Files**
+
+- `src/workbench/resources/resourceRegistry.ts`
+  - import `Emitter, Event` from `platform/events.js`
+  - exported `ResourceRegistryChangeEvent` type
+  - `IResourceRegistry.types()` + `IResourceRegistry.onDidChange`
+  - `ResourceRegistry` emits change events from register/override/
+    unregister; `override` distinguishes 'override' vs 'register'
+    based on prior presence.
+- `tests/unit/platform/resourceRegistryIntrospection.tier0.test.ts`
+  (8 tests)
+
+**Verification**
+
+- `npm run test:unit:tier0 -- --run`: 21 files / 208 passed
+  (8 new from this slice).
+- `npx tsc --noEmit`: clean.
+
+**Commit**: `fb907e75`
+**Review**: single-pass — tier-0 corpus green + tsc clean.
+
+---
+
 ## Iteration 13 — Slice A12: publishToolArtifact helper (2026-05-25)
 
 **Continuation of:** A10 created the store, A11 verified end-to-end

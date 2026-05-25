@@ -18,6 +18,7 @@
 
 import { Disposable } from '../../platform/lifecycle.js';
 import { Emitter, Event } from '../../platform/events.js';
+import type { Resource } from './resource.js';
 import type { Surface } from './surface.js';
 
 /**
@@ -49,6 +50,13 @@ export interface WorkbenchContext {
   readonly workspaceId: string | undefined;
   readonly activeSurface: Surface | undefined;
   readonly activeSelection: ContextSelectionLike | undefined;
+  /**
+   * Derived from `activeSelection.resource` when present (Slice A7+).
+   * Lets consumers react to the active resource without coupling to the
+   * full ISelection shape. `undefined` when there is no selection, or when
+   * the selection has no associated Resource.
+   */
+  readonly activeResource: Resource | undefined;
 }
 
 export interface IContextService {
@@ -90,10 +98,12 @@ export class ContextService extends Disposable implements IContextService {
   }
 
   private _snapshot(): WorkbenchContext {
+    const activeSelection = this._selection.getSelection();
     return {
       workspaceId: this._workspace.activeWorkspace?.id,
       activeSurface: this._surfaces.getActive(),
-      activeSelection: this._selection.getSelection(),
+      activeSelection,
+      activeResource: extractResource(activeSelection),
     };
   }
 
@@ -104,11 +114,22 @@ export class ContextService extends Disposable implements IContextService {
     if (
       next.workspaceId === prev.workspaceId &&
       next.activeSurface === prev.activeSurface &&
-      next.activeSelection === prev.activeSelection
+      next.activeSelection === prev.activeSelection &&
+      next.activeResource === prev.activeResource
     ) {
       return;
     }
     this._last = next;
     this._onDidChangeContext.fire(next);
   }
+}
+
+function extractResource(selection: ContextSelectionLike | undefined): Resource | undefined {
+  if (!selection || typeof selection !== 'object') return undefined;
+  const r = (selection as { resource?: unknown }).resource;
+  if (!r || typeof r !== 'object') return undefined;
+  // Duck-type: any object with a string `type` field is treated as a Resource.
+  // The ResourceRegistry will reject unknown types if a consumer tries to resolve it.
+  if (typeof (r as { type?: unknown }).type !== 'string') return undefined;
+  return r as Resource;
 }
