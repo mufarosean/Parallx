@@ -19,6 +19,7 @@ import { SurfaceRouterService } from '../services/surfaceRouterService.js';
 import { NotificationsSurfacePlugin } from './surfaces/notificationSurface.js';
 import { StatusSurfacePlugin } from './surfaces/statusSurface.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
+import { runPhase } from './startupPhases.js';
 import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices, registerUnifiedAIConfigService } from './workbenchServices.js';
 import { IChatService, ILanguageModelsService, ILanguageModelToolsService } from '../services/chatTypes.js';
 import { consolidateOrphanedSessions } from '../services/chatSessionPersistence.js';
@@ -811,52 +812,55 @@ export class Workbench extends Layout {
     // Global storage (settings, models, etc.) — app-level, persists across workspaces
     this._globalStorage = new FileBackedGlobalStorage(storageBridge, `${appPath}/data/global-storage.json`);
 
-    // Pre-warm the global-storage cache in parallel with the last-workspace
-    // lookup. Without this, the two reads serialize through the IPC bridge
-    // (last-workspace first, then global-storage via initUserThemesCache /
-    // theme lookup further down). Triggering an unused get() kicks off
-    // _ensureLoaded immediately; later awaits become cache hits.
-    const globalStorageWarmup = this._globalStorage.get('').catch(() => undefined);
-
-    // Read last workspace path (may not exist on first launch)
-    const lastWsResult = await storageBridge.readJson(`${appPath}/data/last-workspace.json`);
-    let wsPath = (lastWsResult.data as any)?.path as string | undefined;
-
-    // M85-F2: Verify the recorded workspace folder still exists on disk.
-    // If the user moved or deleted it between sessions, fall back to the
-    // welcome screen instead of restoring phantom state pointing at nothing.
-    // Uses fs:existsPath (bypasses the read allowlist) because the workspace
-    // root isn't yet in the allowlist at Phase 1. Fails OPEN on IPC error so
-    // a transient hiccup never blocks workspace restoration.
-    if (wsPath) {
-      const stillExists = await window.parallxElectron!.fs.existsPath(wsPath).catch(() => true);
-      if (!stillExists) {
-        console.warn('[Workbench] Last workspace folder no longer exists: %s — falling back to welcome', wsPath);
-        wsPath = undefined;
-      }
-    }
-    this._workspaceFolderPath = wsPath;
-
-    if (wsPath) {
-      this._storage = new FileBackedWorkspaceStorage(storageBridge, `${wsPath}/.parallx/workspace-state.json`);
-    } else {
-      // First launch or no workspace — use in-memory storage
-      this._storage = new InMemoryStorage();
-    }
-
-    // Pre-warm the workspace-storage cache. registerUnifiedAIConfigService,
-    // agentTaskStore.setStorage, and agentApprovalService.setStorage below
-    // all read from it; warming it now lets that IPC overlap with
-    // migrateFromLocalStorage + initUserThemesCache.
-    const workspaceStorageWarmup = this._storage.get('').catch(() => undefined);
-
-    // Ensure both caches are loaded before any code below relies on them.
+    // M86-W2: Declarative startup phase. The two cold IPC reads (global
+    // storage + last-workspace lookup) overlap as warmups; the body runs
+    // only after BOTH have resolved. This bakes the M85-F3 invariant
+    // ("Phase 1 reads must parallel-warm") into a structural primitive
+    // rather than relying on a hand-maintained Promise.all comment.
     //
-    // M85-F3 note: if you add a NEW Phase 1 storage read (anything that
-    // awaits storage before this point), include its warmup in the
-    // Promise.all below — otherwise the new read will serialize behind
-    // the IPC bridge and re-introduce the W1 startup-latency regression.
-    await Promise.all([globalStorageWarmup, workspaceStorageWarmup]);
+    // Adding a new Phase 1 storage read? Add it as a warmup here. The
+    // helper guarantees the body sees a warm cache.
+    let resolvedWsPath: string | undefined;
+    const phase1 = await runPhase<{ wsPath: string | undefined }>({
+      name: 'workbench.phase1.storage-warmup',
+      warmups: [
+        // Pre-warm the global-storage cache. Without this it serializes
+        // behind the last-workspace read via initUserThemesCache later.
+        () => this._globalStorage!.get('').then(() => undefined),
+        // Resolve the last workspace path (may not exist on first launch)
+        // and verify the folder still exists on disk (M85-F2).
+        async () => {
+          const lastWsResult = await storageBridge.readJson(`${appPath}/data/last-workspace.json`);
+          let wsPath = (lastWsResult.data as any)?.path as string | undefined;
+          if (wsPath) {
+            // fs:existsPath bypasses the read allowlist; the workspace root
+            // isn't in it yet at Phase 1. Fails OPEN on IPC error so a
+            // transient hiccup never blocks workspace restoration.
+            const stillExists = await window.parallxElectron!.fs.existsPath(wsPath).catch(() => true);
+            if (!stillExists) {
+              console.warn('[Workbench] Last workspace folder no longer exists: %s — falling back to welcome', wsPath);
+              wsPath = undefined;
+            }
+          }
+          resolvedWsPath = wsPath;
+        },
+      ],
+      body: async () => {
+        // Construct the workspace storage based on the resolved path, then
+        // warm its cache so downstream consumers (registerUnifiedAIConfigService,
+        // agentTaskStore.setStorage, etc.) hit a populated cache.
+        const wsPath = resolvedWsPath;
+        if (wsPath) {
+          this._storage = new FileBackedWorkspaceStorage(storageBridge, `${wsPath}/.parallx/workspace-state.json`);
+        } else {
+          this._storage = new InMemoryStorage();
+        }
+        await this._storage.get('');
+        return { wsPath };
+      },
+    });
+    const wsPath = phase1.value.wsPath;
+    this._workspaceFolderPath = wsPath;
 
     // M53 D5: One-time migration from localStorage to file-backed storage
     await migrateFromLocalStorage(this._globalStorage, this._storage, wsPath, storageBridge, appPath);
