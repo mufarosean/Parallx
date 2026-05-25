@@ -6,6 +6,18 @@
 
 ---
 
+## Iteration 73 — Slice A72: ISurfaceRegistry.forEach (2026-05-25)
+
+- Added `forEach(cb: (surface) => void): void` on `ISurfaceRegistry`.
+  Allocation-free registration-order traversal. Symmetric with
+  `IToolArtifactStore.forEach()` (A71). Throws from `cb` propagate and
+  stop iteration.
+- 7 tier-0 tests covering empty, count+order, surface contents,
+  post-unregister, post-clear, throw-stops-iteration, list() parity.
+- Pure-additive. `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 72 — Slice A71: IToolArtifactStore.forEach (2026-05-25)
 
 - Added `forEach(cb: (record) => void): void` on `IToolArtifactStore`.

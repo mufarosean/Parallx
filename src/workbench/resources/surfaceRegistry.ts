@@ -64,6 +64,15 @@ export interface ISurfaceRegistry {
   filter(predicate: (surface: Surface) => boolean): ReadonlyArray<Surface>;
 
   /**
+   * Invoke `cb` once per registered surface, in registration order.
+   * Allocation-free traversal alternative to `list()` / `entries()` for
+   * hot paths and bulk diagnostics where the caller does not need a
+   * snapshot array. The registry must not be mutated from inside `cb`.
+   * Symmetric with `IToolArtifactStore.forEach()` (A71).
+   */
+  forEach(cb: (surface: Surface) => void): void;
+
+  /**
    * All currently-registered surfaces whose `kind` matches the given
    * value. Insertion order preserved. Returns a fresh snapshot.
    */
@@ -296,6 +305,12 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
       if (predicate(s)) out.push(s);
     }
     return out;
+  }
+
+  forEach(cb: (surface: Surface) => void): void {
+    for (const s of this._surfaces.values()) {
+      cb(s);
+    }
   }
 
   listByKind(kind: SurfaceKind): ReadonlyArray<Surface> {
