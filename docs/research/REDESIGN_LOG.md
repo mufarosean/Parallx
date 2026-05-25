@@ -6,6 +6,17 @@
 
 ---
 
+## Iteration 76 — Slice A75: ISurfaceRegistry.count(predicate) (2026-05-25)
+
+- Added `count(predicate)` on `ISurfaceRegistry`. Allocation-free counting
+  alternative to `filter(p).length`. Symmetric with
+  `IToolArtifactStore.count()` (A74).
+- 7 tier-0 tests: empty, no-match, multi-kind, true-equals-list-length,
+  filter-length parity, post-unregister, post-clear.
+- Pure-additive. `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 75 — Slice A74: IToolArtifactStore.count(predicate) (2026-05-25)
 
 - Added `count(predicate: (record) => boolean): number` on

@@ -73,6 +73,15 @@ export interface ISurfaceRegistry {
   forEach(cb: (surface: Surface) => void): void;
 
   /**
+   * Return the number of registered surfaces for which `predicate`
+   * returns truthy. Allocation-free counting alternative to
+   * `filter(p).length`. Iterates in registration order; predicate must
+   * not mutate the registry. Symmetric with `IToolArtifactStore.count()`
+   * (A74).
+   */
+  count(predicate: (surface: Surface) => boolean): number;
+
+  /**
    * All currently-registered surfaces whose `kind` matches the given
    * value. Insertion order preserved. Returns a fresh snapshot.
    */
@@ -311,6 +320,14 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
     for (const s of this._surfaces.values()) {
       cb(s);
     }
+  }
+
+  count(predicate: (surface: Surface) => boolean): number {
+    let n = 0;
+    for (const s of this._surfaces.values()) {
+      if (predicate(s)) n++;
+    }
+    return n;
   }
 
   listByKind(kind: SurfaceKind): ReadonlyArray<Surface> {
