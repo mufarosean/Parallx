@@ -6,6 +6,23 @@
 
 ---
 
+## Iteration 50 — Slice A49: ISelectionService.mostRecentSurfaceId() (2026-05-25)
+
+Added `mostRecentSurfaceId(): string | undefined` on `ISelectionService`.
+Exposes the existing private `_mostRecentSurfaceId` bookkeeping — the
+surface whose selection `getSelection()` (no arg) returns. Cheap
+accessor that avoids materializing the selection object when callers
+only need the implicit-active surface id. Tracks the same fall-back
+semantics: returns the previously-set surface when the current one is
+cleared, undefined after clearAll().
+
+Pure-additive. Tier-0: **58 files / 468 tests**, all green. tsc clean.
+
+Files: `src/services/serviceTypes.ts`, `src/services/selectionService.ts`,
+`tests/unit/platform/selectionServiceMostRecentSurfaceId.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 49 — Slice A48: ISurfaceRegistry.getActiveId() (2026-05-25)
 
 Added `getActiveId(): string | undefined` on `ISurfaceRegistry`. Cheap

@@ -829,6 +829,16 @@ export interface ISelectionService extends IDisposable {
    */
   getSelection(surfaceId?: string): ISelection | undefined;
 
+  /**
+   * Id of the surface whose selection was most recently set
+   * (`getSelection()` with no argument returns that surface's
+   * selection). `undefined` when no surface holds a selection or after
+   * `clearAll()`. Cheap accessor that avoids materializing the
+   * selection object when callers only need to know which surface is
+   * the implicit-active for selection.
+   */
+  mostRecentSurfaceId(): string | undefined;
+
   /** Fires when any surface's selection changes. */
   readonly onDidChangeSelection: Event<ISelectionChangeEvent>;
 
