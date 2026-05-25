@@ -44,6 +44,7 @@ import { ViewService } from '../services/viewService.js';
 import { WorkspaceService } from '../services/workspaceService.js';
 import { ContextService } from './resources/contextService.js';
 import { fileResourceResolver } from './resources/resolvers/fileResolver.js';
+import { externalResourceResolver } from './resources/resolvers/externalResolver.js';
 import { WorkspaceBoundaryService } from '../services/workspaceBoundaryService.js';
 import { WorkspaceMemoryService } from '../services/workspaceMemoryService.js';
 import { WorkspaceTranscriptService } from '../services/workspaceTranscriptService.js';
@@ -155,6 +156,12 @@ export function registerFacadeServices(deps: FacadeFactoryDeps): IDisposable[] {
   // Pure-additive — no consumer reads from it yet.
   if (services.has(IResourceRegistry) && services.has(IFileService)) {
     services.get(IResourceRegistry).register(fileResourceResolver(services.get(IFileService)));
+  }
+
+  // External resolver needs no source service (echoes URI unchanged); register
+  // unconditionally so consumers can call resolveUri on http(s)/mailto URIs.
+  if (services.has(IResourceRegistry)) {
+    services.get(IResourceRegistry).register(externalResourceResolver());
   }
 
   // Workspace boundary service

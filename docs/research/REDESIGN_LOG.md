@@ -6,6 +6,51 @@
 
 ---
 
+## Iteration 10 — Slice A9: tool-artifact & external resolvers + external wiring (2026-05-25)
+
+**Continuation of:** Slices A6 + A8 introduced three resolvers. This
+slice closes the resolver matrix for all five `ResourceType`s and wires
+the external resolver into `IResourceRegistry`.
+
+**Done:**
+
+- `ToolArtifactResourceResolver` (type `tool-artifact`) — takes
+  `ToolArtifactSource { getArtifact(toolId, artifactId) }`. Rejects on
+  empty ids and on `undefined`/`null` lookups.
+- `ExternalResourceResolver` (type `external`) — echoes the URI
+  unchanged. Network fetching for `http(s):` URIs intentionally stays
+  in the web-research extension's bounded egress chokepoint
+  (`electron/webFetchBridge.cjs`), which has its own security model.
+  Registered into `IResourceRegistry` at facade-factory time (no source
+  service required).
+
+Resolver matrix coverage:
+
+| ResourceType | Resolver class | Wired in registry |
+|---|---|---|
+| `file` | `FileResourceResolver` | ✓ (Slice A6) |
+| `external` | `ExternalResourceResolver` | ✓ (Slice A9 here) |
+| `canvas-page` | `CanvasPageResourceResolver` | — (source service not in scope) |
+| `chat-session` | `ChatSessionResourceResolver` | — (source service not in scope) |
+| `tool-artifact` | `ToolArtifactResourceResolver` | — (source service not in scope) |
+
+**Files:** `src/workbench/resources/resolvers/toolArtifactResolver.ts`
+(~45 LOC), `src/workbench/resources/resolvers/externalResolver.ts`
+(~35 LOC), `src/workbench/workbenchFacadeFactory.ts` (+5 wiring lines),
+two tier-0 test files (5 + 4 tests).
+
+**Verification:** tier-0 17 files / 178 passed (9 new). `tsc --noEmit`
+clean.
+
+**§13a:** All new files in `src/workbench/resources/resolvers/`
+(non-preservation). `workbenchFacadeFactory.ts` wiring is purely
+additive registration. Recording
+`single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+**Commits this iteration:** `<pending>`.
+
+---
+
 ## Iteration 9 — Slice A8: canvas-page & chat-session Resource resolvers (2026-05-25)
 
 **Continuation of:** Slice A6 introduced the first resolver (file). This
