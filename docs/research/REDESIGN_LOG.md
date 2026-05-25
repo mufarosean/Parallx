@@ -6,6 +6,21 @@
 
 ---
 
+## Iteration 57 — Slice A56: ISurfaceRegistry.activeWorkspaceId (2026-05-25)
+
+Added `activeWorkspaceId(): string | undefined` on `ISurfaceRegistry`.
+Cheap derived accessor equivalent to
+`resourceWorkspaceId(activeResource())` — returns the workspace id of
+the active surface's backing resource, or undefined if none. Extends
+the active-derived family (A54, A55) with workspace-id parity.
+
+Pure-additive. Tier-0: **65 files / 517 tests**, all green. tsc clean.
+
+Files: `src/workbench/resources/surfaceRegistry.ts`,
+`tests/unit/platform/surfaceRegistryActiveWorkspaceId.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 56 — Slice A55: ISelectionService.mostRecentResource (2026-05-25)
 
 Added `mostRecentResource(): Resource | undefined` on

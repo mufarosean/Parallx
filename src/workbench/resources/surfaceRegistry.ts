@@ -157,6 +157,16 @@ export interface ISurfaceRegistry {
   activeResource(): Resource | undefined;
 
   /**
+   * Workspace id of the currently active surface's backing resource,
+   * or `undefined` if none is active, the active surface has no
+   * resource, or the resource has no workspace scope. Cheap derived
+   * accessor — equivalent to
+   * `resourceWorkspaceId(activeResource())` without intermediate
+   * allocations.
+   */
+  activeWorkspaceId(): string | undefined;
+
+  /**
    * Unregister every surface. If a surface was active, first fires an
    * `'active'` event with `surface: undefined`. Then fires one
    * `'unregistered'` event per surface in insertion order. Returns the
@@ -338,6 +348,11 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
 
   activeResource(): Resource | undefined {
     return this.getActive()?.resource;
+  }
+
+  activeWorkspaceId(): string | undefined {
+    const r = this.getActive()?.resource;
+    return r ? resourceWorkspaceId(r) : undefined;
   }
 
   clear(): readonly string[] {
