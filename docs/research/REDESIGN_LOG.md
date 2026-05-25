@@ -6,6 +6,35 @@
 
 ---
 
+## Iteration 85 — Slice B5: Copy Active Resource URI command (2026-05-25)
+
+- First when-clause consumer of the §86 context keys introduced in B3.
+  New built-in command `workbench.action.copyActiveResourceUri`,
+  category "View", `when: 'activeResourceType'`. Registers alongside
+  the other workbench commands in `ALL_BUILTIN_COMMANDS`.
+- Handler reads `IContextService.getContext().activeResource`, runs it
+  through `serialize()` from `parallxUri.ts`, writes the resulting
+  canonical URI to `navigator.clipboard`, and returns it. Clipboard
+  errors are non-fatal — the URI is still returned so AI / test
+  invocations can use it.
+- `aiInvocable: true` with an explicit `aiDescription`, so the agent
+  can ask "copy the active resource URI" and have it routed through
+  the command service. This is the first AI-invocable command whose
+  enablement depends on the §86 context snapshot.
+- Closes the visible chain B1 → B3 → B4 → B5: editor opens a
+  parallx://canvas-page:… input → surface registry update → context
+  service snapshot → workbench-context key flip → status-bar label
+  flips to "Canvas" → command palette enables "Copy Active Resource
+  URI" → invoking it puts the canonical URI on the clipboard.
+- 8 tier-0 tests (`copyActiveResourceUriCommand.tier0.test.ts`):
+  metadata, file / canvas-page / chat-session / tool-artifact URI
+  shapes, no-resource → undefined, missing IContextService →
+  undefined, clipboard failure swallowed.
+- Suite: 92 tier-0 files / 714 tests pass. typecheck clean.
+- `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 84 — Slice B4: status-bar entry for active resource type (2026-05-25)
 
 - First UI consumer of `IContextService`. Pure reader: subscribes to

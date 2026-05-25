@@ -17,6 +17,8 @@ import type { CommandDescriptor } from './commandTypes.js';
 import type { CommandService } from './commandRegistry.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { IEditorGroupService, IEditorService } from '../services/serviceTypes.js';
+import type { IContextService } from '../services/serviceTypes.js';
+import { serialize as serializeParallxUri } from '../workbench/resources/parallxUri.js';
 import { wb } from './structuralCommandTypes.js';
 
 //  Re-export sub-modules for backward compatibility 
@@ -223,6 +225,36 @@ const openKeybindings: CommandDescriptor = {
   },
 };
 
+// §86 / Slice B5 — first command gated on the new activeResourceType context
+// key (set by B3's binding from the §86 ContextService snapshot). Copies the
+// canonical `parallx://...` URI of the active resource to the clipboard.
+// Pure consumer of B1+B3+B4 plumbing.
+const copyActiveResourceUri: CommandDescriptor = {
+  id: 'workbench.action.copyActiveResourceUri',
+  title: 'Copy Active Resource URI',
+  category: 'View',
+  when: 'activeResourceType',
+  aiInvocable: true,
+  aiDescription:
+    'Copy the canonical parallx:// URI of the currently active resource (file, canvas page, chat session, or tool artifact) to the system clipboard. Returns the URI string.',
+  async handler(ctx) {
+    const contextService = ctx.getService<IContextService>('IContextService');
+    if (!contextService) return undefined;
+    const resource = contextService.getContext().activeResource;
+    if (!resource) return undefined;
+    const uri = serializeParallxUri(resource);
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(uri);
+      }
+    } catch {
+      // clipboard write failure is non-fatal; the URI is still returned to
+      // the caller so AI/test invocations can use it.
+    }
+    return uri;
+  },
+};
+
 //  All builtin commands 
 
 const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
@@ -298,6 +330,8 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   openSettings,
   openKeybindings,
   selectColorTheme,
+  // §86 / Slice B5 — resource utilities (gated on activeResourceType)
+  copyActiveResourceUri,
   // Docling (M21)
   installDocling,
   // M48: Selection → AI command
