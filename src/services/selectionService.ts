@@ -164,6 +164,16 @@ export class SelectionService extends Disposable implements ISelectionService {
     return out;
   }
 
+  find(
+    predicate: (entry: { readonly surfaceId: string; readonly selection: ISelection }) => boolean,
+  ): { readonly surfaceId: string; readonly selection: ISelection } | undefined {
+    for (const [surfaceId, selection] of this._perSurface) {
+      const entry = { surfaceId, selection };
+      if (predicate(entry)) return entry;
+    }
+    return undefined;
+  }
+
   workspaceIds(): readonly string[] {
     const seen = new Set<string>();
     const out: string[] = [];

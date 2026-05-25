@@ -927,6 +927,19 @@ export interface ISelectionService extends IDisposable {
   findByResource(resource: Resource): ReadonlyArray<{ readonly surfaceId: string; readonly selection: ISelection }>;
 
   /**
+   * Return the first `(surfaceId, selection)` pair for which `predicate`
+   * returns truthy, or `undefined` if none match. Iteration is in
+   * insertion order. Short-circuits after the first match — the
+   * predicate is invoked at most once per held selection and must not
+   * mutate the service. Symmetric with `ISurfaceRegistry.find()` (A67)
+   * and `IToolArtifactStore.find()`; general-purpose query for cases
+   * that don't fit `findByResource` / `entriesByWorkspace`.
+   */
+  find(
+    predicate: (entry: { readonly surfaceId: string; readonly selection: ISelection }) => boolean,
+  ): { readonly surfaceId: string; readonly selection: ISelection } | undefined;
+
+  /**
    * Snapshot of distinct `workspaceId` values across every current
    * selection, in first-insertion order. Derived from `selection.resource`
    * via `resourceWorkspaceId`. Selections without a resource, or whose

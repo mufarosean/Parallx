@@ -6,6 +6,18 @@
 
 ---
 
+## Iteration 70 — Slice A69: ISelectionService.find (2026-05-25)
+
+- Added `find(predicate: (entry) => boolean)` on `ISelectionService` returning
+  the first `(surfaceId, selection)` pair matching the predicate in insertion
+  order, or `undefined`. Short-circuits after first match. Symmetric with
+  `ISurfaceRegistry.find()` (A67) and `IToolArtifactStore.find()`.
+- 7 tier-0 tests covering empty, no-match, first-match order, predicate
+  arguments, short-circuit, post-clear-one, post-clearAll.
+- Pure-additive. `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 69 — Slice A68: ISurfaceRegistry.filter (2026-05-25)
 
 - Added `filter(predicate: (surface) => boolean): ReadonlyArray<Surface>`
