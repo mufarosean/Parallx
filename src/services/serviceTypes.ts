@@ -856,6 +856,20 @@ export interface ISelectionService extends IDisposable {
    * currently holds a selection. Insertion order. Fresh array.
    */
   entries(): ReadonlyArray<{ readonly surfaceId: string; readonly selection: ISelection }>;
+
+  /**
+   * Clear every surface's selection in one call. Fires one
+   * `onDidChangeSelection` event per cleared surface (in insertion
+   * order) with `selection: undefined`, so existing subscribers behave
+   * exactly as if each was cleared via `setSelection(id, undefined)`.
+   * Resets `_mostRecentSurfaceId`. Returns the surface ids that had a
+   * selection and were cleared, in the order events fired. Returns an
+   * empty array if there was nothing to clear (no events fired).
+   *
+   * Used by workspace switches and test teardown to return the service
+   * to a clean slate without subscribers missing transitions.
+   */
+  clearAll(): readonly string[];
 }
 
 export const ISelectionService = createServiceIdentifier<ISelectionService>('ISelectionService');

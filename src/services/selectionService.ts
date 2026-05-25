@@ -111,6 +111,22 @@ export class SelectionService extends Disposable implements ISelectionService {
     return out;
   }
 
+  clearAll(): readonly string[] {
+    if (this._perSurface.size === 0) return [];
+    const ids = Array.from(this._perSurface.keys());
+    const previousMap = new Map(this._perSurface);
+    this._perSurface.clear();
+    this._mostRecentSurfaceId = undefined;
+    for (const id of ids) {
+      this._onDidChangeSelection.fire({
+        surfaceId: id,
+        selection: undefined,
+        previous: previousMap.get(id),
+      });
+    }
+    return ids;
+  }
+
   override dispose(): void {
     this._perSurface.clear();
     this._mostRecentSurfaceId = undefined;

@@ -6,6 +6,24 @@
 
 ---
 
+## Iteration 30 — Slice A29: ISelectionService.clearAll() (2026-05-25)
+
+Added `clearAll(): readonly string[]` on `ISelectionService`. Clears every
+surface's selection in one call, fires one `onDidChangeSelection` event per
+cleared surface (in insertion order, `selection: undefined`, with the prior
+selection in `previous`), resets `_mostRecentSurfaceId`, and returns the ids
+that were cleared. Empty service → empty array, no events. Idempotent.
+
+Designed for workspace switches and test teardown to return to a clean slate
+without subscribers missing transitions.
+
+Pure-additive. Tier-0: **38 files / 338 tests**, all green. tsc clean.
+
+Files: `src/services/serviceTypes.ts`, `src/services/selectionService.ts`,
+`tests/unit/platform/selectionServiceClearAll.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 29 — Slice A28: WorkbenchContext.activeSurfaceKind (2026-05-25)
 
 Added a derived field `activeSurfaceKind: SurfaceKind | undefined` to
