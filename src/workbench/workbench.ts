@@ -851,6 +851,11 @@ export class Workbench extends Layout {
     const workspaceStorageWarmup = this._storage.get('').catch(() => undefined);
 
     // Ensure both caches are loaded before any code below relies on them.
+    //
+    // M85-F3 note: if you add a NEW Phase 1 storage read (anything that
+    // awaits storage before this point), include its warmup in the
+    // Promise.all below — otherwise the new read will serialize behind
+    // the IPC bridge and re-introduce the W1 startup-latency regression.
     await Promise.all([globalStorageWarmup, workspaceStorageWarmup]);
 
     // M53 D5: One-time migration from localStorage to file-backed storage
