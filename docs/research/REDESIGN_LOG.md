@@ -6,6 +6,32 @@
 
 ---
 
+## Iteration 37 — Slice A36: ISelectionService.entriesByWorkspace (2026-05-25)
+
+Added `entriesByWorkspace(workspaceId: string)` on `ISelectionService`.
+Returns the same `(surfaceId, selection)` shape as `entries()` but
+filtered to selections whose `selection.resource` has the matching
+`workspaceId`. Selections without a resource, or whose resource is
+`external` (no workspace scope), are never matched. Empty `workspaceId`
+→ empty array. Insertion order. Fresh snapshot.
+
+Extends the workspace-query family across all three workspace-scoped
+primitives:
+- `IToolArtifactStore.listByWorkspace` (A33)
+- `ISurfaceRegistry.listByWorkspace` (A34)
+- `ISelectionService.entriesByWorkspace` (A36)
+
+All three are built on `resourceWorkspaceId` (A32) so the lookup
+semantics are uniform.
+
+Pure-additive. Tier-0: **45 files / 384 tests**, all green. tsc clean.
+
+Files: `src/services/serviceTypes.ts`, `src/services/selectionService.ts`,
+`tests/unit/platform/selectionServiceEntriesByWorkspace.tier0.test.ts`
+(new, 7 tests).
+
+---
+
 ## Iteration 36 — Slice A35: IResourceRegistry.clear() (2026-05-25)
 
 Added `clear(): readonly ResourceType[]` on `IResourceRegistry`. Removes

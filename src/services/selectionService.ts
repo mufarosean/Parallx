@@ -20,7 +20,7 @@ import type {
   ISelectionChangeEvent,
 } from './serviceTypes.js';
 import type { ISelection } from './selectionActionTypes.js';
-import { resourceFromSelectionSource } from '../workbench/resources/resource.js';
+import { resourceFromSelectionSource, resourceWorkspaceId } from '../workbench/resources/resource.js';
 
 export class SelectionService extends Disposable implements ISelectionService {
   private readonly _perSurface = new Map<string, ISelection>();
@@ -107,6 +107,18 @@ export class SelectionService extends Disposable implements ISelectionService {
     const out: Array<{ surfaceId: string; selection: ISelection }> = [];
     for (const [surfaceId, selection] of this._perSurface) {
       out.push({ surfaceId, selection });
+    }
+    return out;
+  }
+
+  entriesByWorkspace(workspaceId: string): ReadonlyArray<{ readonly surfaceId: string; readonly selection: ISelection }> {
+    if (!workspaceId) return [];
+    const out: Array<{ surfaceId: string; selection: ISelection }> = [];
+    for (const [surfaceId, selection] of this._perSurface) {
+      const r = selection.resource;
+      if (r && resourceWorkspaceId(r) === workspaceId) {
+        out.push({ surfaceId, selection });
+      }
     }
     return out;
   }
