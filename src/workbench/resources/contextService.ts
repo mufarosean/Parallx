@@ -127,7 +127,15 @@ export class ContextService extends Disposable implements IContextService {
   private _snapshot(): WorkbenchContext {
     const activeSelection = this._selection.getSelection();
     const activeSurface = this._surfaces.getActive();
-    const activeResource = extractResource(activeSelection);
+    // §86 / Slice B6 — surface fallback. The selection layer remains the
+    // primary source of `activeResource` (Slice A14), but when no surface
+    // currently holds a selection-with-resource we fall back to the active
+    // surface's own backing resource. This lets editor-driven adoption
+    // (Slice B1) light up `activeResource` / `activeResourceType` end-to-end
+    // without requiring every surface to publish a synthetic primary
+    // selection. Consumers that need a "real" selection should keep reading
+    // `activeSelection` directly.
+    const activeResource = extractResource(activeSelection) ?? activeSurface?.resource;
     return {
       workspaceId: this._workspace.activeWorkspace?.id,
       activeSurface,

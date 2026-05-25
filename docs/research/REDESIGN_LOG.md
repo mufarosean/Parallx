@@ -6,6 +6,36 @@
 
 ---
 
+## Iteration 86 — Slice B6: ContextService surface-resource fallback (2026-05-25)
+
+- `ContextService._snapshot()` now falls back to `activeSurface.resource`
+  when no selection holds a resource. The selection layer remains the
+  primary source (Slice A14); the fallback is engaged only when the
+  selection layer is silent.
+- This is what closes the B1 → B3 → B4 → B5 visible chain end-to-end.
+  Before B6, editor surfaces published via `ISurfaceRegistry` carried a
+  `FileResource` / `CanvasPageResource` / `ChatSessionResource` /
+  `ToolArtifactResource` (Slice B2 parsing), but `activeResource` was
+  derived strictly from selection, so opening an editor never lit up
+  `activeResource` / `activeResourceType` / the status-bar entry /
+  `workbench.action.copyActiveResourceUri`. With B6 the editor's resource
+  reaches the workbench context with no extra publisher.
+- Surgical scope: a single fallback expression in `_snapshot()`. The A14
+  contract ("when selection has no resource, activeResource is undefined")
+  is preserved for the no-surface-resource case; existing tier-0 tests in
+  `contextServiceActiveResource.tier0.test.ts` pass unchanged because
+  their `SFStub.getActive()` returns `undefined`.
+- 5 new tier-0 tests in
+  `contextServiceSurfaceResourceFallback.tier0.test.ts`: fallback to
+  surface file resource, fallback to surface canvas-page resource,
+  selection wins over surface when both present, fires once on surface
+  activation with a resource, undefined when both layers lack a
+  resource.
+- Suite: 93 tier-0 files / 719 tests pass. typecheck clean.
+- `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 85 — Slice B5: Copy Active Resource URI command (2026-05-25)
 
 - First when-clause consumer of the §86 context keys introduced in B3.
