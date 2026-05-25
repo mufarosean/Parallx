@@ -102,6 +102,19 @@ export interface IToolArtifactStore {
    * loops and diagnostics.
    */
   workspaceIds(): readonly string[];
+  /**
+   * Number of stored records whose `toolId === toolId`. Cheap O(n)
+   * count that avoids allocating the snapshot array `list(toolId)`
+   * would produce. Empty/undefined `toolId` returns 0.
+   */
+  countByTool(toolId: string): number;
+  /**
+   * Number of stored records whose `workspaceId === workspaceId`.
+   * Records without a `workspaceId` are skipped. Empty/undefined
+   * `workspaceId` returns 0. Symmetric with `listByWorkspace().length`
+   * but allocation-free.
+   */
+  countByWorkspace(workspaceId: string): number;
   /** Number of stored artifacts. */
   readonly size: number;
   /** Fires whenever an artifact is added, replaced, or deleted. */
@@ -179,6 +192,24 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
 
   get size(): number {
     return this._records.size;
+  }
+
+  countByTool(toolId: string): number {
+    if (!toolId) return 0;
+    let n = 0;
+    for (const r of this._records.values()) {
+      if (r.toolId === toolId) n++;
+    }
+    return n;
+  }
+
+  countByWorkspace(workspaceId: string): number {
+    if (!workspaceId) return 0;
+    let n = 0;
+    for (const r of this._records.values()) {
+      if (r.workspaceId === workspaceId) n++;
+    }
+    return n;
   }
 
   list(toolId?: string): readonly ToolArtifactRecord[] {

@@ -6,6 +6,23 @@
 
 ---
 
+## Iteration 46 — Slice A45: IToolArtifactStore.countByTool / countByWorkspace (2026-05-25)
+
+Added `countByTool(toolId): number` and `countByWorkspace(workspaceId): number`
+on `IToolArtifactStore`. Cheap O(n) counts that avoid allocating the
+snapshot arrays `list(toolId)` / `listByWorkspace(id)` would produce.
+Records without a `workspaceId` are skipped by `countByWorkspace`.
+Empty/undefined args return 0. Allocation-free counterparts to the
+existing list/listByWorkspace methods — useful in when-clauses, status
+bars, and diagnostics.
+
+Pure-additive. Tier-0: **54 files / 440 tests**, all green. tsc clean.
+
+Files: `src/workbench/toolArtifactStore.ts`,
+`tests/unit/platform/toolArtifactStoreCounts.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 45 — Slice A44: ISurfaceRegistry.ids() (2026-05-25)
 
 Added `ids(): readonly string[]` on `ISurfaceRegistry`. Returns every
