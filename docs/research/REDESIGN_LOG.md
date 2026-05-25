@@ -6,6 +6,38 @@
 
 ---
 
+## Iteration 17 — Slice A16: IToolArtifactStore.deleteByTool() bulk cleanup (2026-05-25)
+
+Pure-additive bulk `deleteByTool(toolId): number` on the artifact store.
+Powers tool-unload cleanup, "discard all web-research results" UX, and
+test-suite teardown without forcing callers to enumerate via `list()`.
+
+**Behavior**
+
+- Returns count removed.
+- Fires `onDidChange` once per removed record (kind: 'delete') in
+  insertion order.
+- Empty `toolId` returns 0 without firing events.
+- Iterates over a pre-collected key list, so map mutation semantics
+  don't matter.
+
+**Files**
+
+- `src/workbench/toolArtifactStore.ts` — interface + impl
+- `tests/unit/platform/toolArtifactStoreDeleteByTool.tier0.test.ts`
+  (7 tests)
+
+**Verification**
+
+- `npm run test:unit:tier0 -- --run`: 24 files / 230 passed
+  (7 new from this slice).
+- `npx tsc --noEmit`: clean.
+
+**Commit**: pending
+**Review**: single-pass — tier-0 corpus green + tsc clean.
+
+---
+
 ## Iteration 16 — Slice A15: IToolArtifactStore.list() query API (2026-05-25)
 
 Pure-additive `list(toolId?): readonly ToolArtifactRecord[]` method on

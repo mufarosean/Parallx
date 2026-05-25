@@ -33,6 +33,12 @@ export interface IToolArtifactStore {
   /** Delete an artifact. Returns `true` if it existed. */
   delete(toolId: string, artifactId: string): boolean;
   /**
+   * Delete every artifact owned by `toolId`. Returns the number of
+   * records removed. Fires `onDidChange` once per removed record
+   * (in insertion order).
+   */
+  deleteByTool(toolId: string): number;
+  /**
    * Snapshot listing of stored artifacts. With no argument, returns every
    * record. With a `toolId` argument, returns only records owned by that
    * tool. Insertion order is preserved. The returned array is a fresh
@@ -76,6 +82,23 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
       this._onDidChange.fire({ toolId, artifactId, kind: 'delete' });
     }
     return existed;
+  }
+
+  deleteByTool(toolId: string): number {
+    if (!toolId) return 0;
+    // Collect first so we don't mutate the map during iteration in a way
+    // that depends on the runtime's deletion semantics.
+    const victims: string[] = [];
+    for (const [key, rec] of this._records) {
+      if (rec.toolId === toolId) victims.push(key);
+    }
+    for (const key of victims) {
+      const rec = this._records.get(key);
+      if (!rec) continue;
+      this._records.delete(key);
+      this._onDidChange.fire({ toolId: rec.toolId, artifactId: rec.artifactId, kind: 'delete' });
+    }
+    return victims.length;
   }
 
   get size(): number {
