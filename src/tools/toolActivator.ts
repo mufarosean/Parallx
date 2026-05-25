@@ -30,6 +30,56 @@ export type { ActivatedTool, ToolActivationEvent, ToolStorageDependencies } from
 // ─── Placeholder Memento ─────────────────────────────────────────────────────
 
 /**
+ * Default soft timeout for a tool's `activate()` call (M83-W4).
+ *
+ * If activate() does not resolve within this window, the workbench
+ * abandons the tool, disposes its API, marks it Deactivated, and
+ * continues startup. The hung activate function is left running in
+ * the background — JavaScript cannot truly cancel it — but any
+ * subsequent register* calls fail closed because the API is gone.
+ */
+export const DEFAULT_ACTIVATION_TIMEOUT_MS = 5000;
+
+/**
+ * Sentinel error thrown when activate() exceeds the activation budget.
+ * Caught by the standard activation try/catch alongside any error
+ * activate() itself throws.
+ */
+export class ToolActivationTimeoutError extends Error {
+  constructor(toolId: string, timeoutMs: number) {
+    super(`Tool "${toolId}" activate() did not resolve within ${timeoutMs}ms`);
+    this.name = 'ToolActivationTimeoutError';
+  }
+}
+
+/**
+ * Race the tool's activate() promise against a soft timeout.
+ * The timer is cleared on success to avoid keeping the process alive.
+ */
+async function awaitActivationWithTimeout(
+  toolId: string,
+  result: unknown,
+  timeoutMs: number,
+): Promise<void> {
+  if (!(result instanceof Promise)) return;
+  // Zero or negative timeout disables the gate — useful for tests that
+  // want to assert pre-timeout behavior without flakiness.
+  if (timeoutMs <= 0) {
+    await result;
+    return;
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new ToolActivationTimeoutError(toolId, timeoutMs)), timeoutMs);
+  });
+  try {
+    await Promise.race([result, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
  * In-memory fallback Memento used when no persistent storage is available.
  */
 class InMemoryMemento implements Memento {
@@ -94,6 +144,7 @@ export class ToolActivator extends Disposable {
     private readonly _activationEvents: ActivationEventService,
     private readonly _apiFactoryDeps: ApiFactoryDependencies,
     private readonly _storageDeps?: ToolStorageDependencies,
+    private readonly _activationTimeoutMs: number = DEFAULT_ACTIVATION_TIMEOUT_MS,
   ) {
     super();
 
@@ -184,13 +235,10 @@ export class ToolActivator extends Disposable {
     // 5. Create scoped API
     const { api, dispose: disposeApi } = createToolApi(entry.description, this._apiFactoryDeps);
 
-    // 6. Call activate(api, context)
+    // 6. Call activate(api, context) under a soft timeout (M83-W4)
     try {
       const activateResult = toolModule.activate(api, context);
-      // Handle async activation
-      if (activateResult instanceof Promise) {
-        await activateResult;
-      }
+      await awaitActivationWithTimeout(toolId, activateResult, this._activationTimeoutMs);
     } catch (err) {
       const duration = performance.now() - startTime;
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -277,9 +325,7 @@ export class ToolActivator extends Disposable {
 
     try {
       const activateResult = toolModule.activate(api, context);
-      if (activateResult instanceof Promise) {
-        await activateResult;
-      }
+      await awaitActivationWithTimeout(toolId, activateResult, this._activationTimeoutMs);
     } catch (err) {
       const duration = performance.now() - startTime;
       const errorMsg = err instanceof Error ? err.message : String(err);
