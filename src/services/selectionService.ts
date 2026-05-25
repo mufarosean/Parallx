@@ -100,6 +100,11 @@ export class SelectionService extends Disposable implements ISelectionService {
     return this.getSelection()?.resource;
   }
 
+  mostRecentWorkspaceId(): string | undefined {
+    const r = this.getSelection()?.resource;
+    return r ? resourceWorkspaceId(r) : undefined;
+  }
+
   hasAnySelection(): boolean {
     return this._perSurface.size > 0;
   }

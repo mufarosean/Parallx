@@ -849,6 +849,16 @@ export interface ISelectionService extends IDisposable {
    */
   mostRecentResource(): Resource | undefined;
 
+  /**
+   * Workspace id of the most-recent selection's backing resource, or
+   * `undefined` if no surface holds a selection, the most-recent
+   * selection has no resource, or the resource has no workspace
+   * scope. Cheap derived accessor — equivalent to
+   * `resourceWorkspaceId(mostRecentResource())`. Symmetric with
+   * `ISurfaceRegistry.activeWorkspaceId()` (A56).
+   */
+  mostRecentWorkspaceId(): string | undefined;
+
   /** Fires when any surface's selection changes. */
   readonly onDidChangeSelection: Event<ISelectionChangeEvent>;
 

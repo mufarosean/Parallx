@@ -6,6 +6,21 @@
 
 ---
 
+## Iteration 58 — Slice A57: ISelectionService.mostRecentWorkspaceId (2026-05-25)
+
+Added `mostRecentWorkspaceId(): string | undefined` on
+`ISelectionService`. Cheap derived accessor equivalent to
+`resourceWorkspaceId(mostRecentResource())`. Symmetric with
+`ISurfaceRegistry.activeWorkspaceId()` (A56) — completes the
+active-derived workspace-id parity across both primitives.
+
+Pure-additive. Tier-0: **66 files / 524 tests**, all green. tsc clean.
+
+Files: `src/services/serviceTypes.ts`, `src/services/selectionService.ts`,
+`tests/unit/platform/selectionServiceMostRecentWorkspaceId.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 57 — Slice A56: ISurfaceRegistry.activeWorkspaceId (2026-05-25)
 
 Added `activeWorkspaceId(): string | undefined` on `ISurfaceRegistry`.
