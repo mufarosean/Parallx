@@ -974,6 +974,17 @@ export interface ISelectionService extends IDisposable {
   ): number;
 
   /**
+   * Return `true` if at least one `(surfaceId, selection)` entry
+   * matches `predicate`. Iterates in insertion order and short-circuits
+   * on the first match. Empty service → `false`. Allocation-free.
+   * Symmetric with `ISurfaceRegistry.some()` (A78) and
+   * `IToolArtifactStore.some()` (A77); completes the some trio.
+   */
+  some(
+    predicate: (entry: { readonly surfaceId: string; readonly selection: ISelection }) => boolean,
+  ): boolean;
+
+  /**
    * Snapshot of distinct `workspaceId` values across every current
    * selection, in first-insertion order. Derived from `selection.resource`
    * via `resourceWorkspaceId`. Selections without a resource, or whose

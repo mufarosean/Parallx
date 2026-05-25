@@ -6,6 +6,16 @@
 
 ---
 
+## Iteration 80 — Slice A79: ISelectionService.some(predicate) (2026-05-25)
+
+- Added `some(predicate)` on `ISelectionService`. Completes some trio
+  (A77/A78/A79) — short-circuit existence on all three primitives.
+- 7 tier-0 tests: empty, no-match, first-match, short-circuit-count-2,
+  true-with-non-empty, setSelection(undefined) clearing, post-clearAll.
+- Pure-additive. `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 79 — Slice A78: ISurfaceRegistry.some(predicate) (2026-05-25)
 
 - Added `some(predicate)` on `ISurfaceRegistry`. Short-circuit existence
