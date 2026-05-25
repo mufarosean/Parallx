@@ -6,6 +6,21 @@
 
 ---
 
+## Iteration 49 — Slice A48: ISurfaceRegistry.getActiveId() (2026-05-25)
+
+Added `getActiveId(): string | undefined` on `ISurfaceRegistry`. Cheap
+accessor that returns the id of the active surface without the Map
+lookup `getActive()` performs. Useful when callers only need the id
+(when-clauses, telemetry, status bars). `getActiveId() === undefined`
+iff `getActive() === undefined`.
+
+Pure-additive. Tier-0: **57 files / 461 tests**, all green. tsc clean.
+
+Files: `src/workbench/resources/surfaceRegistry.ts`,
+`tests/unit/platform/surfaceRegistryActiveId.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 48 — Slice A47: ISelectionService.countByWorkspace (2026-05-25)
 
 Added `countByWorkspace(workspaceId): number` on `ISelectionService`.

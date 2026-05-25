@@ -118,6 +118,14 @@ export interface ISurfaceRegistry {
   getActive(): Surface | undefined;
 
   /**
+   * Id of the currently active surface, or `undefined` if none is
+   * active. Cheap accessor that avoids the Map lookup `getActive()`
+   * performs when callers only need the id (when-clauses, telemetry,
+   * status bars). `getActiveId() === undefined` iff `getActive() === undefined`.
+   */
+  getActiveId(): string | undefined;
+
+  /**
    * Unregister every surface. If a surface was active, first fires an
    * `'active'` event with `surface: undefined`. Then fires one
    * `'unregistered'` event per surface in insertion order. Returns the
@@ -269,6 +277,10 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
 
   getActive(): Surface | undefined {
     return this._activeId !== undefined ? this._surfaces.get(this._activeId) : undefined;
+  }
+
+  getActiveId(): string | undefined {
+    return this._activeId;
   }
 
   clear(): readonly string[] {
