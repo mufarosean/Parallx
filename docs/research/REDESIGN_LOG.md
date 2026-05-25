@@ -6,6 +6,35 @@
 
 ---
 
+## Iteration 84 — Slice B4: status-bar entry for active resource type (2026-05-25)
+
+- First UI consumer of `IContextService`. Pure reader: subscribes to
+  `onDidChangeContext` and renders the active resource type into a
+  right-aligned status-bar entry (id `status.activeResourceType`,
+  priority 50, name `Active Resource`).
+- New module `src/workbench/resources/activeResourceStatusEntry.ts`:
+  `bindActiveResourceStatusEntry(statusBar, contextService)`. Maps
+  resource types to short labels — `file` → `File`, `canvas-page` →
+  `Canvas`, `chat-session` → `Chat`, `tool-artifact` → `Artifact`,
+  `external` → `External`. Tooltip includes the surface kind. Empty
+  text + "No active resource" tooltip when nothing is active.
+- Wired in `workbench.ts` step 4b, immediately after
+  `StatusBarController.setupStatusBar()`. Gated on
+  `tryGet(IContextService)` so the workbench still boots if the §86
+  facade is absent (test paths, early init).
+- Completes the end-to-end visible chain: editor open →
+  `ISurfaceRegistry.register` (B1) → `ContextService` snapshot (B3) →
+  status-bar text flip (B4). The chain is now observable to the user
+  without opening DevTools.
+- 9 tier-0 tests (`activeResourceStatusEntry.tier0.test.ts`): id +
+  right alignment, empty seed, each resource type variant
+  (file/canvas-page/chat-session/tool-artifact), clear on undefined,
+  `syncNow()` without event, dispose stops updates + disposes accessor.
+- Suite: 91 tier-0 files / 706 tests pass. typecheck clean.
+- `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 83 — Slice B3: IContextService → WorkbenchContextManager (2026-05-25)
 
 - First product-side consumer of `IContextService`. Before this slice

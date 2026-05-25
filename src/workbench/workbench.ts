@@ -18,6 +18,7 @@ import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandServ
 import { SurfaceRouterService } from '../services/surfaceRouterService.js';
 import { bindEditorToSurfaceRegistry } from './resources/editorSurfaceBinding.js';
 import { bindContextToWorkbenchContextManager } from './resources/contextBinding.js';
+import { bindActiveResourceStatusEntry } from './resources/activeResourceStatusEntry.js';
 import { NotificationsSurfacePlugin } from './surfaces/notificationSurface.js';
 import { StatusSurfacePlugin } from './surfaces/statusSurface.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
@@ -1034,6 +1035,14 @@ export class Workbench extends Layout {
 
     // 4. Status bar entries
     this._statusBarController.setupStatusBar();
+
+    // 4b. §86 / Slice B4 — status bar entry showing the active resource type.
+    //     First UI reader of IContextService snapshots. Lights up whenever
+    //     an editor / surface change updates the §86 context.
+    const contextServiceForStatusBar = this._services.tryGet(IContextService);
+    if (contextServiceForStatusBar) {
+      this._register(bindActiveResourceStatusEntry(this._statusBar as unknown as StatusBarPart, contextServiceForStatusBar));
+    }
 
     // 4c. Manage gear icon in activity bar (bottom) — VS Code parity
     this._menuBuilder.addManageGearIcon();
