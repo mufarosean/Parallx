@@ -53,6 +53,19 @@ export interface IToolArtifactStore {
    * snapshot and is not affected by subsequent mutations.
    */
   list(toolId?: string): readonly ToolArtifactRecord[];
+  /**
+   * Return the first stored record for which `predicate` returns truthy,
+   * or `undefined` if none match. Iteration is in insertion order. The
+   * predicate is invoked at most once per record and must not mutate the
+   * store.
+   */
+  find(predicate: (record: ToolArtifactRecord) => boolean): ToolArtifactRecord | undefined;
+  /**
+   * Return every stored record for which `predicate` returns truthy.
+   * Insertion order preserved. Returns a fresh snapshot array. The
+   * predicate must not mutate the store.
+   */
+  filter(predicate: (record: ToolArtifactRecord) => boolean): readonly ToolArtifactRecord[];
   /** Number of stored artifacts. */
   readonly size: number;
   /** Fires whenever an artifact is added, replaced, or deleted. */
@@ -135,6 +148,21 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
     const out: ToolArtifactRecord[] = [];
     for (const r of this._records.values()) {
       if (r.toolId === toolId) out.push(r);
+    }
+    return out;
+  }
+
+  find(predicate: (record: ToolArtifactRecord) => boolean): ToolArtifactRecord | undefined {
+    for (const r of this._records.values()) {
+      if (predicate(r)) return r;
+    }
+    return undefined;
+  }
+
+  filter(predicate: (record: ToolArtifactRecord) => boolean): readonly ToolArtifactRecord[] {
+    const out: ToolArtifactRecord[] = [];
+    for (const r of this._records.values()) {
+      if (predicate(r)) out.push(r);
     }
     return out;
   }

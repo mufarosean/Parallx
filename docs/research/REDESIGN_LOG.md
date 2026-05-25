@@ -6,6 +6,35 @@
 
 ---
 
+## Iteration 24 — Slice A23: IToolArtifactStore.find() + .filter() (2026-05-25)
+
+Predicate-based query primitives on the artifact store:
+
+- **`find(predicate): ToolArtifactRecord | undefined`** — first match
+  in insertion order, or undefined.
+- **`filter(predicate): readonly ToolArtifactRecord[]`** — fresh
+  snapshot of every match, insertion order.
+
+Both predicates see the full record (`toolId`, `artifactId`, `data`,
+`createdAt`, `workspaceId`, `mimeType`). Powers ad-hoc queries that
+`list(toolId)` can't express (by workspaceId, by mimeType, by
+createdAt range, etc.).
+
+**Files**
+
+- `src/workbench/toolArtifactStore.ts` — interface + impl
+- `tests/unit/platform/toolArtifactStoreFindFilter.tier0.test.ts` (9 tests)
+
+**Verification**
+
+- `npm run test:unit:tier0 -- --run`: 32 files / 300 passed (9 new).
+- `npx tsc --noEmit`: clean.
+
+**Commit**: pending
+**Review**: single-pass — tier-0 corpus green + tsc clean.
+
+---
+
 ## Iteration 23 — Slice A22: resourceEquals() + SurfaceRegistry.findByResource() (2026-05-25)
 
 Two pure-additive primitives:
