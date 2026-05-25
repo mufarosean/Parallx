@@ -81,10 +81,12 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       renderCallback?.();
     }).catch(() => { /* swallow startup errors */ });
 
-    // Live auto-refresh: re-run checks periodically
-    _autoRefreshTimer = setInterval(() => {
-      diagnosticsService?.runChecks().catch(() => {});
-    }, AUTO_REFRESH_MS);
+    // M83-W5: The 30s live refresh used to run for the entire workbench
+    // session. Each tick fired an Ollama HTTP probe and a getFileCount
+    // DB query that contended with the chat hot path even when no one
+    // was looking at the diagnostics panel. The timer now lives in
+    // renderDiagnosticsView (see below), so it only ticks while the
+    // panel is actually mounted.
   }
 }
 
@@ -195,8 +197,15 @@ function renderDiagnosticsView(container: HTMLElement): IDisposable {
   // Initial render with any existing results
   renderResults();
 
+  // M83-W5: live refresh is scoped to view lifetime so the Ollama probe
+  // and file-count DB query stop the moment the panel is closed.
+  const viewRefreshTimer = setInterval(() => {
+    diagnosticsService?.runChecks().catch(() => {});
+  }, AUTO_REFRESH_MS);
+
   return {
     dispose() {
+      clearInterval(viewRefreshTimer);
       renderCallback = undefined;
       container.textContent = '';
     },

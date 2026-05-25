@@ -13,7 +13,8 @@
  * Pins (with diagnostics service registered):
  *   - subscribes to onDidChange (subscription count === 3)
  *   - runChecks invoked on activate (auto-run on startup)
- *   - 30s auto-refresh timer is scheduled
+ *   - 30s auto-refresh timer is view-scoped: dormant until mount,
+ *     active while mounted (M83-W5)
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { activate, deactivate } from "../../src/built-in/diagnostics/main";
@@ -139,12 +140,26 @@ describe("built-in/diagnostics activate — with service", () => {
     expect(service.runChecks).toHaveBeenCalled();
   });
 
-  it("schedules a 30s auto-refresh timer that calls runChecks again", () => {
+  it("does NOT schedule a 30s auto-refresh while no view is mounted (M83-W5)", () => {
+    // Prior to M83-W5, activate() created an always-on 30s setInterval that
+    // ran an Ollama HTTP probe + file-count DB query for the entire workbench
+    // lifetime. The timer is now scoped to the view's lifetime.
     const { api, service } = makeApi({ hasService: true });
     activate(api as any, makeContext());
     const before = service.runChecks.mock.calls.length;
+    vi.advanceTimersByTime(120_000);
+    expect(service.runChecks.mock.calls.length).toBe(before);
+  });
+
+  it("schedules a 30s auto-refresh timer once the view is mounted (M83-W5)", () => {
+    const { api, viewRegs, service } = makeApi({ hasService: true });
+    activate(api as any, makeContext());
+    const container = document.createElement("div");
+    const view = viewRegs[0].provider.createView(container);
+    const before = service.runChecks.mock.calls.length;
     vi.advanceTimersByTime(30_000);
     expect(service.runChecks.mock.calls.length).toBeGreaterThan(before);
+    view.dispose();
   });
 
   it("'diagnostics.runChecks' command invokes service.runChecks", async () => {

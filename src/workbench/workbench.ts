@@ -820,18 +820,7 @@ export class Workbench extends Layout {
 
     // Read last workspace path (may not exist on first launch)
     const lastWsResult = await storageBridge.readJson(`${appPath}/data/last-workspace.json`);
-    let wsPath = (lastWsResult.data as any)?.path as string | undefined;
-
-    // M83-W2: Verify the recorded workspace folder still exists on disk.
-    // If the user moved or deleted it between sessions, fall back to the
-    // welcome screen instead of restoring phantom state pointing at nothing.
-    if (wsPath) {
-      const stillExists = await window.parallxElectron!.fs.exists(wsPath);
-      if (!stillExists) {
-        console.warn('[Workbench] Last workspace folder no longer exists: %s — falling back to welcome', wsPath);
-        wsPath = undefined;
-      }
-    }
+    const wsPath = (lastWsResult.data as any)?.path as string | undefined;
     this._workspaceFolderPath = wsPath;
 
     if (wsPath) {
