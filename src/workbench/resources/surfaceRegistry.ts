@@ -34,6 +34,17 @@ export interface ISurfaceRegistry {
   list(): ReadonlyArray<Surface>;
 
   /**
+   * Snapshot of every registered surface as `[id, Surface]` tuples, in
+   * registration order. Fresh array per call. Empty registry → empty
+   * array. Tuple counterpart to `list()` for callers that need both
+   * the id key and the surface value without re-indexing by `id`
+   * (e.g. building a Map, diagnostics tables, fan-out dispatch).
+   * Symmetric with `IToolArtifactStore.entries()` (A65) and
+   * `ISelectionService.entries()`.
+   */
+  entries(): ReadonlyArray<readonly [string, Surface]>;
+
+  /**
    * All currently-registered surfaces whose `kind` matches the given
    * value. Insertion order preserved. Returns a fresh snapshot.
    */
@@ -243,6 +254,14 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
 
   list(): ReadonlyArray<Surface> {
     return Array.from(this._surfaces.values());
+  }
+
+  entries(): ReadonlyArray<readonly [string, Surface]> {
+    const out: Array<readonly [string, Surface]> = [];
+    for (const [id, s] of this._surfaces) {
+      out.push([id, s] as const);
+    }
+    return out;
   }
 
   listByKind(kind: SurfaceKind): ReadonlyArray<Surface> {

@@ -6,6 +6,21 @@
 
 ---
 
+## Iteration 67 — Slice A66: ISurfaceRegistry.entries (2026-05-25)
+
+- Added `entries(): ReadonlyArray<readonly [string, Surface]>` returning
+  `[id, Surface]` tuples in registration order. Fresh array per call.
+  Tuple counterpart to `list()` for callers that need both the id key and
+  the surface value without re-indexing (Map construction, fan-out dispatch,
+  diagnostics tables). Symmetric with `IToolArtifactStore.entries()` (A65).
+- 7 tier-0 tests in `surfaceRegistryEntries.tier0.test.ts` covering empty,
+  single, registration order, fresh-array isolation, unregister, post-clear,
+  and pairwise agreement with `ids()`/`list()`.
+- Pure-additive — no preservation surface touched. `single-pass-review:
+  tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 66 — Slice A65: IToolArtifactStore.entries (2026-05-25)
 
 - Added `entries(): ReadonlyArray<readonly [string, string]>` returning
