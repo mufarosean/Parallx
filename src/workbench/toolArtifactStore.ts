@@ -58,6 +58,15 @@ export interface IToolArtifactStore {
    * snapshot and is not affected by subsequent mutations.
    */
   list(toolId?: string): readonly ToolArtifactRecord[];
+
+  /**
+   * Artifact ids owned by `toolId`, in insertion order. Fresh array.
+   * Empty `toolId` → empty array. Id-only counterpart to
+   * `list(toolId).map(r => r.artifactId)` that avoids allocating full
+   * records when callers only need keys. Symmetric with
+   * `ISurfaceRegistry.idsByWorkspace()` (A58).
+   */
+  artifactIdsByTool(toolId: string): readonly string[];
   /**
    * Snapshot of every record whose `workspaceId === workspaceId`.
    * Records without a `workspaceId` never match. Insertion order; fresh
@@ -248,6 +257,15 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
     const out: ToolArtifactRecord[] = [];
     for (const r of this._records.values()) {
       if (r.toolId === toolId) out.push(r);
+    }
+    return out;
+  }
+
+  artifactIdsByTool(toolId: string): readonly string[] {
+    if (!toolId) return [];
+    const out: string[] = [];
+    for (const r of this._records.values()) {
+      if (r.toolId === toolId) out.push(r.artifactId);
     }
     return out;
   }

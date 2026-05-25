@@ -6,6 +6,21 @@
 
 ---
 
+## Iteration 61 — Slice A60: IToolArtifactStore.artifactIdsByTool (2026-05-25)
+
+Added `artifactIdsByTool(toolId: string): readonly string[]` on
+`IToolArtifactStore`. Id-only counterpart to `list(toolId)` that
+avoids allocating full ToolArtifactRecord snapshots when callers only
+need the artifact ids. Extends the id-only-by-key family begun in A58/A59
+to the artifact-store primitive.
+
+Pure-additive. Tier-0: **69 files / 545 tests**, all green. tsc clean.
+
+Files: `src/workbench/toolArtifactStore.ts`,
+`tests/unit/platform/toolArtifactStoreArtifactIdsByTool.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 60 — Slice A59: ISelectionService.surfaceIdsByWorkspace (2026-05-25)
 
 Added `surfaceIdsByWorkspace(workspaceId: string): readonly string[]`
