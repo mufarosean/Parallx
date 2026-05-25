@@ -6,6 +6,37 @@
 
 ---
 
+## Iteration 18 — Slice A17: IResourceRegistry.canResolve() (2026-05-25)
+
+Pure-additive `canResolve(target: Resource | string): boolean` on the
+registry. Powers "should I show this resource as a clickable link?"
+gating, command availability, and "can I attach this to chat?" checks
+without forcing callers to do their own parse + has() pairing.
+
+**Behavior**
+
+- For a `Resource`: checks `has(target.type)`.
+- For a `string`: parses via `parallxUri.parse()` first; returns
+  `false` if unparseable, otherwise `has(parsed.type)`.
+- Defensive against non-object / wrong-shape inputs.
+
+**Files**
+
+- `src/workbench/resources/resourceRegistry.ts` — interface + impl
+- `tests/unit/platform/resourceRegistryCanResolve.tier0.test.ts`
+  (8 tests)
+
+**Verification**
+
+- `npm run test:unit:tier0 -- --run`: 25 files / 238 passed
+  (8 new from this slice).
+- `npx tsc --noEmit`: clean.
+
+**Commit**: pending
+**Review**: single-pass — tier-0 corpus green + tsc clean.
+
+---
+
 ## Iteration 17 — Slice A16: IToolArtifactStore.deleteByTool() bulk cleanup (2026-05-25)
 
 Pure-additive bulk `deleteByTool(toolId): number` on the artifact store.

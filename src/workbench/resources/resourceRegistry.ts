@@ -45,6 +45,16 @@ export interface IResourceRegistry {
   /** Whether a resolver exists for the given type. */
   has(type: ResourceType): boolean;
 
+  /**
+   * Whether the registry has a resolver for the given Resource (or for
+   * the type derived from parsing a URI string). Convenience for the
+   * common pattern:
+   *   `const r = parse(uri); return r ? registry.has(r.type) : false;`
+   * Returns `false` for malformed URIs and for resources whose `type`
+   * has no registered resolver.
+   */
+  canResolve(target: Resource | string): boolean;
+
   /** Snapshot list of every currently-registered resource type. Order is
    *  insertion order. */
   types(): readonly ResourceType[];
@@ -100,6 +110,17 @@ export class ResourceRegistry extends Disposable implements IResourceRegistry {
 
   has(type: ResourceType): boolean {
     return this._resolvers.has(type);
+  }
+
+  canResolve(target: Resource | string): boolean {
+    if (typeof target === 'string') {
+      const r = parse(target);
+      return r !== null && this._resolvers.has(r.type);
+    }
+    if (!target || typeof target !== 'object') return false;
+    const t = (target as { type?: unknown }).type;
+    if (typeof t !== 'string') return false;
+    return this._resolvers.has(t as ResourceType);
   }
 
   types(): readonly ResourceType[] {
