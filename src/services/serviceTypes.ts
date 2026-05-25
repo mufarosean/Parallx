@@ -906,6 +906,16 @@ export interface ISelectionService extends IDisposable {
   entriesByWorkspace(workspaceId: string): ReadonlyArray<{ readonly surfaceId: string; readonly selection: ISelection }>;
 
   /**
+   * Surface ids whose current selection has a resource with
+   * `workspaceId === workspaceId`, in insertion order. Fresh array.
+   * Empty `workspaceId` → empty array. Id-only counterpart to
+   * `entriesByWorkspace(id)` that avoids pair-object allocation when
+   * callers only need keys. Symmetric with
+   * `ISurfaceRegistry.idsByWorkspace()` (A58).
+   */
+  surfaceIdsByWorkspace(workspaceId: string): readonly string[];
+
+  /**
    * Snapshot of `(surfaceId, selection)` pairs whose `selection.resource`
    * is structurally equal to the given Resource (via `resourceEquals`).
    * Selections without a resource are never matched. Insertion order.

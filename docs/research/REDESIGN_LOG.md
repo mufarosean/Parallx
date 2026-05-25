@@ -6,6 +6,20 @@
 
 ---
 
+## Iteration 60 — Slice A59: ISelectionService.surfaceIdsByWorkspace (2026-05-25)
+
+Added `surfaceIdsByWorkspace(workspaceId: string): readonly string[]`
+on `ISelectionService`. Id-only counterpart to `entriesByWorkspace`
+that avoids pair-object allocation. Symmetric with
+`ISurfaceRegistry.idsByWorkspace()` (A58).
+
+Pure-additive. Tier-0: **68 files / 538 tests**, all green. tsc clean.
+
+Files: `src/services/serviceTypes.ts`, `src/services/selectionService.ts`,
+`tests/unit/platform/selectionServiceSurfaceIdsByWorkspace.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 59 — Slice A58: ISurfaceRegistry.idsByWorkspace (2026-05-25)
 
 Added `idsByWorkspace(workspaceId: string): readonly string[]` on
