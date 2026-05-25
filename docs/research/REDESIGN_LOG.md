@@ -6,6 +6,37 @@
 
 ---
 
+## Iteration 19 — Slice A18: ISurfaceRegistry.listByKind() filter (2026-05-25)
+
+Pure-additive `listByKind(kind: SurfaceKind): ReadonlyArray<Surface>`
+on the surface registry. Powers diagnostics ("show me every open
+editor"), AI-context retrieval ("what canvas pages are open?"), and
+command availability filters.
+
+**Behavior**
+
+- Returns surfaces whose `kind === kind` in insertion order.
+- Returns a fresh snapshot independent of later mutations.
+- Reflects `update()` replacements without duplicating.
+- Accepts open-string kinds (extension-defined `extension:*` etc.).
+
+**Files**
+
+- `src/workbench/resources/surfaceRegistry.ts` — interface + impl
+- `tests/unit/platform/surfaceRegistryListByKind.tier0.test.ts`
+  (7 tests)
+
+**Verification**
+
+- `npm run test:unit:tier0 -- --run`: 26 files / 245 passed
+  (7 new from this slice).
+- `npx tsc --noEmit`: clean.
+
+**Commit**: pending
+**Review**: single-pass — tier-0 corpus green + tsc clean.
+
+---
+
 ## Iteration 18 — Slice A17: IResourceRegistry.canResolve() (2026-05-25)
 
 Pure-additive `canResolve(target: Resource | string): boolean` on the

@@ -10,7 +10,7 @@
 
 import { Disposable } from '../../platform/lifecycle.js';
 import { Emitter, Event } from '../../platform/events.js';
-import type { Surface } from './surface.js';
+import type { Surface, SurfaceKind } from './surface.js';
 
 export interface ISurfaceChangeEvent {
   readonly kind: 'registered' | 'updated' | 'unregistered' | 'active';
@@ -30,6 +30,12 @@ export interface ISurfaceRegistry {
 
   /** All currently-registered surfaces. */
   list(): ReadonlyArray<Surface>;
+
+  /**
+   * All currently-registered surfaces whose `kind` matches the given
+   * value. Insertion order preserved. Returns a fresh snapshot.
+   */
+  listByKind(kind: SurfaceKind): ReadonlyArray<Surface>;
 
   /** Lookup by id. */
   get(id: string): Surface | undefined;
@@ -87,6 +93,14 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
 
   list(): ReadonlyArray<Surface> {
     return Array.from(this._surfaces.values());
+  }
+
+  listByKind(kind: SurfaceKind): ReadonlyArray<Surface> {
+    const out: Surface[] = [];
+    for (const s of this._surfaces.values()) {
+      if (s.kind === kind) out.push(s);
+    }
+    return out;
   }
 
   get(id: string): Surface | undefined {
