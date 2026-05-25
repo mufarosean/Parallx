@@ -59,6 +59,18 @@ export interface IResourceRegistry {
    *  insertion order. */
   types(): readonly ResourceType[];
 
+  /**
+   * Unregister every resolver. Fires one `'unregister'` event per
+   * removed type, in insertion order. Returns the removed types in the
+   * order events fired. Empty registry → empty array, no events.
+   * Idempotent. Completes the bulk-clear family with `ISelectionService.clearAll()`
+   * (A29), `IToolArtifactStore.clear()` (A30), and `ISurfaceRegistry.clear()`
+   * (A31).
+   *
+   * Designed for workspace teardown and test reset.
+   */
+  clear(): readonly ResourceType[];
+
   /** Fires whenever a resolver is registered, replaced, or unregistered. */
   readonly onDidChange: Event<ResourceRegistryChangeEvent>;
 
@@ -143,6 +155,16 @@ export class ResourceRegistry extends Disposable implements IResourceRegistry {
 
   types(): readonly ResourceType[] {
     return Array.from(this._resolvers.keys());
+  }
+
+  clear(): readonly ResourceType[] {
+    if (this._resolvers.size === 0) return [];
+    const types = Array.from(this._resolvers.keys());
+    this._resolvers.clear();
+    for (const type of types) {
+      this._onDidChange.fire({ type, kind: 'unregister' });
+    }
+    return types;
   }
 
   async resolve<T = unknown>(resource: Resource): Promise<T> {

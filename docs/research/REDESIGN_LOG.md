@@ -6,6 +6,29 @@
 
 ---
 
+## Iteration 36 — Slice A35: IResourceRegistry.clear() (2026-05-25)
+
+Added `clear(): readonly ResourceType[]` on `IResourceRegistry`. Removes
+every resolver, fires one `'unregister'` event per removed type in
+insertion order, and returns the removed types in firing order. Empty
+registry → empty array, no events. Idempotent.
+
+Completes the bulk-clear family across the four workbench primitives:
+- `ISelectionService.clearAll()` (A29)
+- `IToolArtifactStore.clear()` (A30)
+- `ISurfaceRegistry.clear()` (A31)
+- `IResourceRegistry.clear()` (A35)
+
+Designed for workspace teardown and test reset paths.
+
+Pure-additive. Tier-0: **44 files / 377 tests**, all green. tsc clean.
+
+Files: `src/workbench/resources/resourceRegistry.ts`,
+`tests/unit/platform/resourceRegistryClear.tier0.test.ts` (new, 5
+tests).
+
+---
+
 ## Iteration 35 — Slice A34: ISurfaceRegistry.listByWorkspace (2026-05-25)
 
 Added `listByWorkspace(workspaceId: string): ReadonlyArray<Surface>` on
