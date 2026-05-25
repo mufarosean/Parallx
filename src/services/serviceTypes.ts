@@ -940,6 +940,17 @@ export interface ISelectionService extends IDisposable {
   ): { readonly surfaceId: string; readonly selection: ISelection } | undefined;
 
   /**
+   * Return all `(surfaceId, selection)` pairs for which `predicate`
+   * returns truthy, in insertion order. Fresh array per call. Predicate
+   * must not mutate the service. Symmetric with `ISurfaceRegistry.filter()`
+   * (A68) and `IToolArtifactStore.filter()`; completes the find/filter
+   * pair on `ISelectionService`.
+   */
+  filter(
+    predicate: (entry: { readonly surfaceId: string; readonly selection: ISelection }) => boolean,
+  ): ReadonlyArray<{ readonly surfaceId: string; readonly selection: ISelection }>;
+
+  /**
    * Snapshot of distinct `workspaceId` values across every current
    * selection, in first-insertion order. Derived from `selection.resource`
    * via `resourceWorkspaceId`. Selections without a resource, or whose

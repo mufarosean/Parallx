@@ -6,6 +6,19 @@
 
 ---
 
+## Iteration 71 — Slice A70: ISelectionService.filter (2026-05-25)
+
+- Added `filter(predicate: (entry) => boolean)` on `ISelectionService`
+  returning all `(surfaceId, selection)` pairs matching the predicate
+  in insertion order. Fresh array per call. Completes the find/filter
+  pair on `ISelectionService`; symmetric with `ISurfaceRegistry.filter()`
+  (A68) and `IToolArtifactStore.filter()`.
+- 7 tier-0 tests covering empty, no-match, multi-match order, fresh-array
+  isolation, predicate-true-equals-entries, post-clear-one, post-clearAll.
+- Pure-additive. `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 70 — Slice A69: ISelectionService.find (2026-05-25)
 
 - Added `find(predicate: (entry) => boolean)` on `ISelectionService` returning
