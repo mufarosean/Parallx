@@ -95,6 +95,18 @@ export class SelectionService extends Disposable implements ISelectionService {
     return this._perSurface.size > 0;
   }
 
+  surfaceIds(): readonly string[] {
+    return Array.from(this._perSurface.keys());
+  }
+
+  entries(): ReadonlyArray<{ readonly surfaceId: string; readonly selection: ISelection }> {
+    const out: Array<{ surfaceId: string; selection: ISelection }> = [];
+    for (const [surfaceId, selection] of this._perSurface) {
+      out.push({ surfaceId, selection });
+    }
+    return out;
+  }
+
   override dispose(): void {
     this._perSurface.clear();
     this._mostRecentSurfaceId = undefined;

@@ -6,6 +6,39 @@
 
 ---
 
+## Iteration 20 — Slice A19: ISelectionService introspection (2026-05-25)
+
+Pure-additive `surfaceIds(): readonly string[]` and
+`entries(): ReadonlyArray<{surfaceId, selection}>` on
+`ISelectionService` (and `SelectionService` impl). Lets diagnostics,
+when-clause builders, and AI context retrieval enumerate active
+surfaces without subscribing to every change event.
+
+**Behavior**
+
+- Insertion order = order of first `setSelection(surfaceId, …)`.
+- Re-writes to the same surface preserve original position.
+- Clearing a surface removes it from both methods.
+- `entries()` carries the A7 auto-populated `selection.resource`.
+- Both return fresh snapshots independent of later mutations.
+
+**Files**
+
+- `src/services/serviceTypes.ts` — interface additions
+- `src/services/selectionService.ts` — impl
+- `tests/unit/platform/selectionServiceIntrospection.tier0.test.ts`
+  (8 tests)
+
+**Verification**
+
+- `npm run test:unit:tier0 -- --run`: 27 files / 253 passed (8 new).
+- `npx tsc --noEmit`: clean.
+
+**Commit**: pending
+**Review**: single-pass — tier-0 corpus green + tsc clean.
+
+---
+
 ## Iteration 19 — Slice A18: ISurfaceRegistry.listByKind() filter (2026-05-25)
 
 Pure-additive `listByKind(kind: SurfaceKind): ReadonlyArray<Surface>`

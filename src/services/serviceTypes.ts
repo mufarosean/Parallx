@@ -834,6 +834,21 @@ export interface ISelectionService extends IDisposable {
 
   /** `true` iff at least one surface currently has a non-undefined selection. */
   hasAnySelection(): boolean;
+
+  /**
+   * Surface ids that currently hold a selection. Insertion order =
+   * order of first `setSelection(surfaceId, …)` for that surface. Used
+   * by diagnostics, when-clause builders, and AI context retrieval to
+   * enumerate active surfaces without subscribing to every event.
+   * Returns a fresh snapshot.
+   */
+  surfaceIds(): readonly string[];
+
+  /**
+   * Snapshot of `(surfaceId, selection)` pairs for every surface that
+   * currently holds a selection. Insertion order. Fresh array.
+   */
+  entries(): ReadonlyArray<{ readonly surfaceId: string; readonly selection: ISelection }>;
 }
 
 export const ISelectionService = createServiceIdentifier<ISelectionService>('ISelectionService');
