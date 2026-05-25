@@ -811,9 +811,27 @@ export class Workbench extends Layout {
     // Global storage (settings, models, etc.) — app-level, persists across workspaces
     this._globalStorage = new FileBackedGlobalStorage(storageBridge, `${appPath}/data/global-storage.json`);
 
+    // Pre-warm the global-storage cache in parallel with the last-workspace
+    // lookup. Without this, the two reads serialize through the IPC bridge
+    // (last-workspace first, then global-storage via initUserThemesCache /
+    // theme lookup further down). Triggering an unused get() kicks off
+    // _ensureLoaded immediately; later awaits become cache hits.
+    const globalStorageWarmup = this._globalStorage.get('').catch(() => undefined);
+
     // Read last workspace path (may not exist on first launch)
     const lastWsResult = await storageBridge.readJson(`${appPath}/data/last-workspace.json`);
-    const wsPath = (lastWsResult.data as any)?.path as string | undefined;
+    let wsPath = (lastWsResult.data as any)?.path as string | undefined;
+
+    // M83-W2: Verify the recorded workspace folder still exists on disk.
+    // If the user moved or deleted it between sessions, fall back to the
+    // welcome screen instead of restoring phantom state pointing at nothing.
+    if (wsPath) {
+      const stillExists = await window.parallxElectron!.fs.exists(wsPath);
+      if (!stillExists) {
+        console.warn('[Workbench] Last workspace folder no longer exists: %s — falling back to welcome', wsPath);
+        wsPath = undefined;
+      }
+    }
     this._workspaceFolderPath = wsPath;
 
     if (wsPath) {
@@ -822,6 +840,15 @@ export class Workbench extends Layout {
       // First launch or no workspace — use in-memory storage
       this._storage = new InMemoryStorage();
     }
+
+    // Pre-warm the workspace-storage cache. registerUnifiedAIConfigService,
+    // agentTaskStore.setStorage, and agentApprovalService.setStorage below
+    // all read from it; warming it now lets that IPC overlap with
+    // migrateFromLocalStorage + initUserThemesCache.
+    const workspaceStorageWarmup = this._storage.get('').catch(() => undefined);
+
+    // Ensure both caches are loaded before any code below relies on them.
+    await Promise.all([globalStorageWarmup, workspaceStorageWarmup]);
 
     // M53 D5: One-time migration from localStorage to file-backed storage
     await migrateFromLocalStorage(this._globalStorage, this._storage, wsPath, storageBridge, appPath);
