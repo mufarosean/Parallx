@@ -82,6 +82,14 @@ export interface ISurfaceRegistry {
   count(predicate: (surface: Surface) => boolean): number;
 
   /**
+   * Return `true` if at least one registered surface matches
+   * `predicate`. Iterates in registration order and short-circuits on
+   * the first match. Empty registry → `false`. Allocation-free.
+   * Symmetric with `IToolArtifactStore.some()` (A77).
+   */
+  some(predicate: (surface: Surface) => boolean): boolean;
+
+  /**
    * All currently-registered surfaces whose `kind` matches the given
    * value. Insertion order preserved. Returns a fresh snapshot.
    */
@@ -328,6 +336,13 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
       if (predicate(s)) n++;
     }
     return n;
+  }
+
+  some(predicate: (surface: Surface) => boolean): boolean {
+    for (const s of this._surfaces.values()) {
+      if (predicate(s)) return true;
+    }
+    return false;
   }
 
   listByKind(kind: SurfaceKind): ReadonlyArray<Surface> {

@@ -6,6 +6,16 @@
 
 ---
 
+## Iteration 79 — Slice A78: ISurfaceRegistry.some(predicate) (2026-05-25)
+
+- Added `some(predicate)` on `ISurfaceRegistry`. Short-circuit existence
+  query symmetric with `IToolArtifactStore.some()` (A77).
+- 7 tier-0 tests: empty, no-match, first-match, short-circuit-count-2,
+  true-with-non-empty, post-unregister, post-clear.
+- Pure-additive. `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 78 — Slice A77: IToolArtifactStore.some(predicate) (2026-05-25)
 
 - Added `some(predicate)` on `IToolArtifactStore`. Short-circuit boolean
