@@ -6,6 +6,22 @@
 
 ---
 
+## Iteration 53 — Slice A52: ISelectionService.hasWorkspace (2026-05-25)
+
+Added `hasWorkspace(workspaceId): boolean` on `ISelectionService`.
+Cheap O(n) existence check that short-circuits on the first selection
+whose resource matches `workspaceId`. Skips selections without a
+resource and external resources. Empty arg returns false. Closes the
+existence-check family across the three workbench primitives
+(artifacts A50, surfaces A51, selections A52).
+
+Pure-additive. Tier-0: **61 files / 489 tests**, all green. tsc clean.
+
+Files: `src/services/serviceTypes.ts`, `src/services/selectionService.ts`,
+`tests/unit/platform/selectionServiceHasWorkspace.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 52 — Slice A51: ISurfaceRegistry.hasKind / hasWorkspace (2026-05-25)
 
 Added `hasKind(kind): boolean` and `hasWorkspace(workspaceId): boolean`

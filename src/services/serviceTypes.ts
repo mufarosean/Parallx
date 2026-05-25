@@ -907,6 +907,17 @@ export interface ISelectionService extends IDisposable {
   countByWorkspace(workspaceId: string): number;
 
   /**
+   * `true` iff at least one current selection's `selection.resource`
+   * has `workspaceId === workspaceId`. Selections without a resource
+   * or whose resource is `external` are never matched.
+   * Empty/undefined `workspaceId` returns `false`. Cheap O(n)
+   * existence check that short-circuits on the first hit. Symmetric
+   * with `IToolArtifactStore.hasWorkspace` (A50) and
+   * `ISurfaceRegistry.hasWorkspace` (A51).
+   */
+  hasWorkspace(workspaceId: string): boolean;
+
+  /**
    * Clear every surface's selection in one call. Fires one
    * `onDidChangeSelection` event per cleared surface (in insertion
    * order) with `selection: undefined`, so existing subscribers behave
