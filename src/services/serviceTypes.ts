@@ -951,6 +951,18 @@ export interface ISelectionService extends IDisposable {
   ): ReadonlyArray<{ readonly surfaceId: string; readonly selection: ISelection }>;
 
   /**
+   * Invoke `cb` once per `(surfaceId, selection)` entry, in insertion
+   * order. Allocation-free traversal alternative to `entries()` for
+   * hot paths and bulk diagnostics. The service must not be mutated
+   * from inside `cb`. Throws from `cb` propagate and stop iteration.
+   * Symmetric with `ISurfaceRegistry.forEach()` (A72) and
+   * `IToolArtifactStore.forEach()` (A71).
+   */
+  forEach(
+    cb: (entry: { readonly surfaceId: string; readonly selection: ISelection }) => void,
+  ): void;
+
+  /**
    * Snapshot of distinct `workspaceId` values across every current
    * selection, in first-insertion order. Derived from `selection.resource`
    * via `resourceWorkspaceId`. Selections without a resource, or whose

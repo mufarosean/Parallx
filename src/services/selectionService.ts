@@ -185,6 +185,14 @@ export class SelectionService extends Disposable implements ISelectionService {
     return out;
   }
 
+  forEach(
+    cb: (entry: { readonly surfaceId: string; readonly selection: ISelection }) => void,
+  ): void {
+    for (const [surfaceId, selection] of this._perSurface) {
+      cb({ surfaceId, selection });
+    }
+  }
+
   workspaceIds(): readonly string[] {
     const seen = new Set<string>();
     const out: string[] = [];

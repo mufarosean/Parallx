@@ -6,6 +6,19 @@
 
 ---
 
+## Iteration 74 — Slice A73: ISelectionService.forEach (2026-05-25)
+
+- Added `forEach(cb: (entry) => void): void` on `ISelectionService`.
+  Allocation-free insertion-order traversal of `(surfaceId, selection)`
+  pairs. Symmetric with `ISurfaceRegistry.forEach()` (A72) and
+  `IToolArtifactStore.forEach()` (A71); completes the forEach trio.
+- 7 tier-0 tests covering empty, count+order, entry contents,
+  setSelection(undefined) clearing, post-clearAll, throw-stops-iteration,
+  entries() parity.
+- Pure-additive. `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 73 — Slice A72: ISurfaceRegistry.forEach (2026-05-25)
 
 - Added `forEach(cb: (surface) => void): void` on `ISurfaceRegistry`.
