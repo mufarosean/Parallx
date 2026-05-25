@@ -6,6 +6,22 @@
 
 ---
 
+## Iteration 31 — Slice A30: IToolArtifactStore.clear() (2026-05-25)
+
+Added `clear(): number` on `IToolArtifactStore`. Removes every stored
+artifact in one call, fires one `onDidChange` event per record (insertion
+order, `kind: 'delete'`), returns the removed count. Empty store → 0 with no
+events. Idempotent. Symmetric with Slice A29's `ISelectionService.clearAll()`.
+
+Designed for workspace switches and test teardown.
+
+Pure-additive. Tier-0: **39 files / 344 tests**, all green. tsc clean.
+
+Files: `src/workbench/toolArtifactStore.ts`,
+`tests/unit/platform/toolArtifactStoreClear.tier0.test.ts` (new, 6 tests).
+
+---
+
 ## Iteration 30 — Slice A29: ISelectionService.clearAll() (2026-05-25)
 
 Added `clearAll(): readonly string[]` on `ISelectionService`. Clears every

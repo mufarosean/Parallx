@@ -71,6 +71,15 @@ export interface IToolArtifactStore {
    * predicate must not mutate the store.
    */
   filter(predicate: (record: ToolArtifactRecord) => boolean): readonly ToolArtifactRecord[];
+  /**
+   * Delete every stored artifact. Returns the number removed. Fires
+   * `onDidChange` once per record (insertion order, `kind: 'delete'`),
+   * so existing subscribers see each removal exactly as if `delete()`
+   * had been called for it. Empty store → 0 with no events. Idempotent.
+   *
+   * Designed for workspace switches and test teardown.
+   */
+  clear(): number;
   /** Number of stored artifacts. */
   readonly size: number;
   /** Fires whenever an artifact is added, replaced, or deleted. */
@@ -174,6 +183,16 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
       if (predicate(r)) out.push(r);
     }
     return out;
+  }
+
+  clear(): number {
+    if (this._records.size === 0) return 0;
+    const victims = Array.from(this._records.values());
+    this._records.clear();
+    for (const rec of victims) {
+      this._onDidChange.fire({ toolId: rec.toolId, artifactId: rec.artifactId, kind: 'delete' });
+    }
+    return victims.length;
   }
 
   override dispose(): void {
