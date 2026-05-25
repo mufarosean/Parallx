@@ -79,6 +79,15 @@ export interface ISurfaceRegistry {
    */
   kinds(): readonly SurfaceKind[];
 
+  /**
+   * Distinct SurfaceKinds of surfaces whose backing resource has
+   * `workspaceId === workspaceId`, in first-insertion order. Fresh
+   * array. Empty `workspaceId` → empty array. Workspace-scoped
+   * inventory counterpart to `kinds()`. Symmetric with
+   * `IToolArtifactStore.toolIdsByWorkspace()` (A62).
+   */
+  kindsByWorkspace(workspaceId: string): readonly SurfaceKind[];
+
   /** Lookup by id. */
   get(id: string): Surface | undefined;
 
@@ -279,6 +288,23 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
     const out: SurfaceKind[] = [];
     for (const s of this._surfaces.values()) {
       if (!seen.has(s.kind)) {
+        seen.add(s.kind);
+        out.push(s.kind);
+      }
+    }
+    return out;
+  }
+
+  kindsByWorkspace(workspaceId: string): readonly SurfaceKind[] {
+    if (!workspaceId) return [];
+    const seen = new Set<SurfaceKind>();
+    const out: SurfaceKind[] = [];
+    for (const s of this._surfaces.values()) {
+      if (
+        s.resource &&
+        resourceWorkspaceId(s.resource) === workspaceId &&
+        !seen.has(s.kind)
+      ) {
         seen.add(s.kind);
         out.push(s.kind);
       }

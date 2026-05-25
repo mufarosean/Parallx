@@ -6,6 +6,21 @@
 
 ---
 
+## Iteration 64 — Slice A63: ISurfaceRegistry.kindsByWorkspace (2026-05-25)
+
+Added `kindsByWorkspace(workspaceId)` on `ISurfaceRegistry`. Returns
+distinct SurfaceKinds of surfaces whose backing resource is scoped to
+`workspaceId`, in first-insertion order. Workspace-scoped inventory
+counterpart to `kinds()`. Symmetric with `IToolArtifactStore.toolIdsByWorkspace`
+(A62).
+
+Pure-additive. Tier-0: **72 files / 566 tests**, all green. tsc clean.
+
+Files: `src/workbench/resources/surfaceRegistry.ts`,
+`tests/unit/platform/surfaceRegistryKindsByWorkspace.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 63 — Slice A62: IToolArtifactStore.toolIdsByWorkspace (2026-05-25)
 
 Added `toolIdsByWorkspace(workspaceId)` on `IToolArtifactStore`. Returns
