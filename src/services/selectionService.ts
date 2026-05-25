@@ -123,6 +123,21 @@ export class SelectionService extends Disposable implements ISelectionService {
     return out;
   }
 
+  workspaceIds(): readonly string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const selection of this._perSurface.values()) {
+      const r = selection.resource;
+      if (!r) continue;
+      const wid = resourceWorkspaceId(r);
+      if (wid && !seen.has(wid)) {
+        seen.add(wid);
+        out.push(wid);
+      }
+    }
+    return out;
+  }
+
   clearAll(): readonly string[] {
     if (this._perSurface.size === 0) return [];
     const ids = Array.from(this._perSurface.keys());

@@ -868,6 +868,16 @@ export interface ISelectionService extends IDisposable {
   entriesByWorkspace(workspaceId: string): ReadonlyArray<{ readonly surfaceId: string; readonly selection: ISelection }>;
 
   /**
+   * Snapshot of distinct `workspaceId` values across every current
+   * selection, in first-insertion order. Derived from `selection.resource`
+   * via `resourceWorkspaceId`. Selections without a resource, or whose
+   * resource is `external` (no workspace scope), are skipped. Fresh
+   * array. Empty service → empty array. Inventory query symmetric with
+   * `IToolArtifactStore.workspaceIds()` (A39).
+   */
+  workspaceIds(): readonly string[];
+
+  /**
    * Clear every surface's selection in one call. Fires one
    * `onDidChangeSelection` event per cleared surface (in insertion
    * order) with `selection: undefined`, so existing subscribers behave

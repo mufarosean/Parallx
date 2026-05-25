@@ -6,6 +6,22 @@
 
 ---
 
+## Iteration 41 — Slice A40: ISelectionService.workspaceIds() (2026-05-25)
+
+Added `workspaceIds(): readonly string[]` on `ISelectionService`.
+Returns distinct workspace ids derived from `selection.resource` via
+`resourceWorkspaceId`, in first-insertion order. Selections without a
+resource, or whose resource is `external`, are skipped. Fresh array.
+Empty service → empty array. Completes the inventory-query family
+across the three primitives (artifacts, surfaces, selections).
+
+Pure-additive. Tier-0: **49 files / 409 tests**, all green. tsc clean.
+
+Files: `src/services/serviceTypes.ts`, `src/services/selectionService.ts`,
+`tests/unit/platform/selectionServiceWorkspaceIds.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 40 — Slice A39: IToolArtifactStore.workspaceIds() (2026-05-25)
 
 Added `workspaceIds(): readonly string[]` on `IToolArtifactStore`.
