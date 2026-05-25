@@ -31,6 +31,7 @@ import {
   IContextService,
   ISurfaceRegistry,
   ISelectionService,
+  IResourceRegistry,
   IWorkspaceBoundaryService,
   IWorkspaceMemoryService,
   IWorkspaceTranscriptService,
@@ -42,6 +43,7 @@ import { LayoutService } from '../services/layoutService.js';
 import { ViewService } from '../services/viewService.js';
 import { WorkspaceService } from '../services/workspaceService.js';
 import { ContextService } from './resources/contextService.js';
+import { fileResourceResolver } from './resources/resolvers/fileResolver.js';
 import { WorkspaceBoundaryService } from '../services/workspaceBoundaryService.js';
 import { WorkspaceMemoryService } from '../services/workspaceMemoryService.js';
 import { WorkspaceTranscriptService } from '../services/workspaceTranscriptService.js';
@@ -146,6 +148,14 @@ export function registerFacadeServices(deps: FacadeFactoryDeps): IDisposable[] {
   );
   disposables.push(contextService);
   services.registerInstance(IContextService, contextService);
+
+  // ── File Resource Resolver (Unified Workbench Primitives — Slice A6) ──
+  // Registers a built-in resolver for FileResource so any consumer can call
+  // resourceRegistry.resolveUri('parallx://file:...') and get content back.
+  // Pure-additive — no consumer reads from it yet.
+  if (services.has(IResourceRegistry) && services.has(IFileService)) {
+    services.get(IResourceRegistry).register(fileResourceResolver(services.get(IFileService)));
+  }
 
   // Workspace boundary service
   const workspaceBoundaryService = new WorkspaceBoundaryService();

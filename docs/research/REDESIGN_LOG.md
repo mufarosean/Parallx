@@ -6,6 +6,48 @@
 
 ---
 
+## Iteration 7 — Slice A6: file Resource resolver (2026-05-25)
+
+**Continuation of:** Unified Workbench Primitives. First actual resolver
+populates the ResourceRegistry.
+
+**Done:** New `FileResourceResolver` reads a `FileResource` via
+`IFileService.readFile` and returns `{ resource, content }`. Registered
+into `IResourceRegistry` at workbench facade-factory time so any
+consumer can now call:
+
+```
+resourceRegistry.resolveUri('parallx://file:' + encodeURIComponent(path))
+```
+
+and get back the file's content as a string, without re-implementing
+URI parsing or file-service plumbing.
+
+Pure-additive: no consumer reads from `resolveUri` yet. The resolver is
+exercised end-to-end by tier-0 tests (registry.resolveUri → parseUri →
+file.readFile mocked → content returned).
+
+This is the first move that turns the registry from "empty container"
+into "useful service". Future slices register canvas-page, chat-session,
+and tool-artifact resolvers and migrate consumers (chat retrieval,
+LinkResolverService, extension API) to call `resolveUri` once instead
+of stitching their own per-type dispatch.
+
+**Files:** `src/workbench/resources/resolvers/fileResolver.ts` (~45 LOC),
+`tests/unit/workbench/resources/resolvers/fileResolver.tier0.test.ts`
+(7 tests), `src/workbench/workbenchFacadeFactory.ts` (+10, registration).
+
+**Verification:** tier-0 12 files / 154 passed (7 new). `tsc --noEmit`
+clean.
+
+**§13a:** Single-line registration block in facade factory; no preservation
+surface touched. Recording
+`single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+**Commits this iteration:** `<pending>`.
+
+---
+
 ## Iteration 6 — Slice A5: ISelection.resource + selection→Resource adapter (2026-05-25)
 
 **Continuation of:** Unified Workbench Primitives. Slice A primitive
