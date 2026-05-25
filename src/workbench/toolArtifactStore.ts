@@ -32,6 +32,13 @@ export interface IToolArtifactStore {
   get(toolId: string, artifactId: string): ToolArtifactRecord | undefined;
   /** Delete an artifact. Returns `true` if it existed. */
   delete(toolId: string, artifactId: string): boolean;
+  /**
+   * Snapshot listing of stored artifacts. With no argument, returns every
+   * record. With a `toolId` argument, returns only records owned by that
+   * tool. Insertion order is preserved. The returned array is a fresh
+   * snapshot and is not affected by subsequent mutations.
+   */
+  list(toolId?: string): readonly ToolArtifactRecord[];
   /** Number of stored artifacts. */
   readonly size: number;
   /** Fires whenever an artifact is added, replaced, or deleted. */
@@ -73,6 +80,17 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
 
   get size(): number {
     return this._records.size;
+  }
+
+  list(toolId?: string): readonly ToolArtifactRecord[] {
+    if (toolId === undefined) {
+      return Array.from(this._records.values());
+    }
+    const out: ToolArtifactRecord[] = [];
+    for (const r of this._records.values()) {
+      if (r.toolId === toolId) out.push(r);
+    }
+    return out;
   }
 
   override dispose(): void {

@@ -6,6 +6,39 @@
 
 ---
 
+## Iteration 16 — Slice A15: IToolArtifactStore.list() query API (2026-05-25)
+
+Pure-additive `list(toolId?): readonly ToolArtifactRecord[]` method on
+the artifact store. Powers future diagnostics surfaces (e.g.
+"artifacts produced by web-research this session"), gives consumers a
+way to enumerate without subscribing to `onDidChange` from boot, and
+keeps the workbench-internals observable from a single canonical
+service.
+
+**Behavior**
+
+- `list()` returns every record in insertion order.
+- `list(toolId)` returns only records whose `toolId === toolId`,
+  insertion order preserved.
+- The returned array is a fresh snapshot — subsequent puts/deletes
+  don't mutate it.
+
+**Files**
+
+- `src/workbench/toolArtifactStore.ts` — interface + impl
+- `tests/unit/platform/toolArtifactStoreList.tier0.test.ts` (8 tests)
+
+**Verification**
+
+- `npm run test:unit:tier0 -- --run`: 23 files / 223 passed
+  (8 new from this slice).
+- `npx tsc --noEmit`: clean.
+
+**Commit**: pending
+**Review**: single-pass — tier-0 corpus green + tsc clean.
+
+---
+
 ## Iteration 15 — Slice A14: ContextService.activeResource derived field (2026-05-25)
 
 Pure-additive enrichment of `WorkbenchContext` with an `activeResource`
