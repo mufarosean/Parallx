@@ -32,6 +32,7 @@ import {
   ISurfaceRegistry,
   ISelectionService,
   IResourceRegistry,
+  IToolArtifactStore,
   IWorkspaceBoundaryService,
   IWorkspaceMemoryService,
   IWorkspaceTranscriptService,
@@ -45,6 +46,8 @@ import { WorkspaceService } from '../services/workspaceService.js';
 import { ContextService } from './resources/contextService.js';
 import { fileResourceResolver } from './resources/resolvers/fileResolver.js';
 import { externalResourceResolver } from './resources/resolvers/externalResolver.js';
+import { toolArtifactResourceResolver } from './resources/resolvers/toolArtifactResolver.js';
+import { InMemoryToolArtifactStore } from './toolArtifactStore.js';
 import { WorkspaceBoundaryService } from '../services/workspaceBoundaryService.js';
 import { WorkspaceMemoryService } from '../services/workspaceMemoryService.js';
 import { WorkspaceTranscriptService } from '../services/workspaceTranscriptService.js';
@@ -162,6 +165,22 @@ export function registerFacadeServices(deps: FacadeFactoryDeps): IDisposable[] {
   // unconditionally so consumers can call resolveUri on http(s)/mailto URIs.
   if (services.has(IResourceRegistry)) {
     services.get(IResourceRegistry).register(externalResourceResolver());
+  }
+
+  // ── Tool Artifact Store + Resolver (Slice A10) ──────────────────────────
+  // Workbench-owned in-memory store for tool-produced artifacts. Tools
+  // (extensions, web research, agents) put records here; the tool-artifact
+  // resolver reads them so `resolveUri('parallx://tool-artifact:...')` works
+  // end-to-end. Pure-additive: no existing tool writes to this yet.
+  const toolArtifactStore = new InMemoryToolArtifactStore();
+  disposables.push(toolArtifactStore);
+  services.registerInstance(IToolArtifactStore, toolArtifactStore);
+  if (services.has(IResourceRegistry)) {
+    services.get(IResourceRegistry).register(
+      toolArtifactResourceResolver({
+        getArtifact: (toolId: string, artifactId: string) => toolArtifactStore.get(toolId, artifactId),
+      }),
+    );
   }
 
   // Workspace boundary service

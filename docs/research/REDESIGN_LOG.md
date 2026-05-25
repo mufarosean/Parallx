@@ -6,6 +6,57 @@
 
 ---
 
+## Iteration 11 — Slice A10: InMemoryToolArtifactStore + tool-artifact resolver wired (2026-05-25)
+
+**Continuation of:** Slice A9 left `tool-artifact` as a resolver class
+with no source service in scope. This slice creates the source service
+in the workbench itself and wires it through.
+
+**Done:**
+
+- New `IToolArtifactStore` service identifier and
+  `InMemoryToolArtifactStore` implementation: in-memory `Map`-backed
+  store of `ToolArtifactRecord` keyed by `(toolId, artifactId)`. Emits
+  `onDidChange { kind: 'put' | 'delete' }`. Disposable.
+- Service registered in `workbenchFacadeFactory.ts`.
+- `ToolArtifactResourceResolver` registered against the store via an
+  inline `{ getArtifact: (toolId, id) => store.get(toolId, id) }`
+  adapter. `resolveUri('parallx://tool-artifact:<tool>/<id>')` now
+  works end-to-end (returns `{ resource, artifact: ToolArtifactRecord }`
+  for stored entries; rejects with "not found" for missing).
+
+Resolver matrix after A10:
+
+| ResourceType | Resolver class | Wired in registry |
+|---|---|---|
+| `file` | `FileResourceResolver` | ✓ (A6) |
+| `external` | `ExternalResourceResolver` | ✓ (A9) |
+| `tool-artifact` | `ToolArtifactResourceResolver` | ✓ (A10 here) |
+| `canvas-page` | `CanvasPageResourceResolver` | — (source service not in scope) |
+| `chat-session` | `ChatSessionResourceResolver` | — (source service not in scope) |
+
+Three of five `ResourceType`s now resolve end-to-end. Persistence for
+the artifact store (per-workspace, per-conversation) is a future slice
+— the in-memory store gives extensions, web-research, and agent
+artifacts an immediate concrete home.
+
+**Files:** `src/workbench/toolArtifactStore.ts` (~80 LOC),
+`src/services/serviceTypes.ts` (+10, identifier block),
+`src/workbench/workbenchFacadeFactory.ts` (+~15, wiring),
+`tests/unit/platform/toolArtifactStore.tier0.test.ts` (8 tests).
+
+**Verification:** tier-0 18 files / 186 passed (8 new). `tsc --noEmit`
+clean.
+
+**§13a:** All new files in `src/workbench/`. `workbenchFacadeFactory.ts`
+edit is purely additive registration. `serviceTypes.ts` edit appends a
+new identifier block (no existing identifier touched). Recording
+`single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+**Commits this iteration:** `<pending>`.
+
+---
+
 ## Iteration 10 — Slice A9: tool-artifact & external resolvers + external wiring (2026-05-25)
 
 **Continuation of:** Slices A6 + A8 introduced three resolvers. This

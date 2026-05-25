@@ -870,6 +870,16 @@ export type IContextService = IContextServiceImpl;
 
 export const IContextService = createServiceIdentifier<IContextService>('IContextService');
 
+// ─── IToolArtifactStore (Unified Workbench Primitives - Slice A10) ──────────
+//
+// Workbench-owned canonical store for tool-produced artifacts referenced by
+// `ToolArtifactResource`. See `src/workbench/toolArtifactStore.ts`.
+
+import type { IToolArtifactStore as IToolArtifactStoreImpl } from '../workbench/toolArtifactStore.js';
+export type IToolArtifactStore = IToolArtifactStoreImpl;
+
+export const IToolArtifactStore = createServiceIdentifier<IToolArtifactStore>('IToolArtifactStore');
+
 // ─── IToolRegistryService ────────────────────────────────────────────────────
 
 import type { IToolDescription } from '../tools/toolManifest.js';
