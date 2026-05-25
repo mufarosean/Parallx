@@ -6,6 +6,46 @@
 
 ---
 
+## Iteration 9 — Slice A8: canvas-page & chat-session Resource resolvers (2026-05-25)
+
+**Continuation of:** Slice A6 introduced the first resolver (file). This
+slice adds the next two with the same shape so the registry now knows
+how to talk to three of the five `ResourceType`s.
+
+**Done:** Two new resolver classes, each taking a minimal source-service
+interface so the resolver stays tier-0 testable and never crosses the
+canvas-data or AI-chat preservation/off-limits boundaries:
+
+- `CanvasPageResourceResolver` (type `canvas-page`) — takes
+  `CanvasPageSource { getPage(pageId) }`.
+- `ChatSessionResourceResolver` (type `chat-session`) — takes
+  `ChatSessionSource { getSession(sessionId) }`.
+
+Both reject on empty id and on `undefined`/`null` lookups (page/session
+not found). Both integrate cleanly with `ResourceRegistry.resolveUri`,
+verified end-to-end in tier-0 tests.
+
+**Not yet wired:** registration into `IResourceRegistry` is deferred
+until a canvas-page service and a chat-session source are reachable at
+`workbenchFacadeFactory` time without crossing the preservation /
+off-limits lines. The resolver classes themselves are pure-additive and
+ready to be plugged in by a future slice.
+
+**Files:** `src/workbench/resources/resolvers/canvasPageResolver.ts`
+(~45 LOC), `src/workbench/resources/resolvers/chatSessionResolver.ts`
+(~45 LOC), two tier-0 test files (5 tests each).
+
+**Verification:** tier-0 15 files / 169 passed (10 new). `tsc --noEmit`
+clean.
+
+**§13a:** All new files live in `src/workbench/resources/resolvers/`
+(non-preservation). No existing files modified. Recording
+`single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+**Commits this iteration:** `<pending>`.
+
+---
+
 ## Iteration 8 — Slice A7: SelectionService auto-populates selection.resource (2026-05-25)
 
 **Continuation of:** Unified Workbench Primitives — making the optional
