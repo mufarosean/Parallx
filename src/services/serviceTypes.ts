@@ -836,6 +836,14 @@ export interface ISelectionService extends IDisposable {
   hasAnySelection(): boolean;
 
   /**
+   * Number of surfaces that currently hold a selection. Cheap accessor
+   * symmetric with `IToolArtifactStore.size` (existing) and
+   * `ISurfaceRegistry.size` (A41). Equivalent to `entries().length`
+   * without the array allocation.
+   */
+  readonly size: number;
+
+  /**
    * `true` iff the given `surfaceId` currently holds a non-undefined
    * selection. Equivalent to `getSelection(surfaceId) !== undefined`
    * but spelled as a guard.

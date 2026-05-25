@@ -95,6 +95,10 @@ export class SelectionService extends Disposable implements ISelectionService {
     return this._perSurface.size > 0;
   }
 
+  get size(): number {
+    return this._perSurface.size;
+  }
+
   hasSelection(surfaceId: string): boolean {
     return this._perSurface.has(surfaceId);
   }

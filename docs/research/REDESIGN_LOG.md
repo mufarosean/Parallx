@@ -6,6 +6,20 @@
 
 ---
 
+## Iteration 43 — Slice A42: ISelectionService.size (2026-05-25)
+
+Added `readonly size: number` on `ISelectionService`. Cheap accessor
+returning the count of surfaces that currently hold a selection.
+Completes the size-accessor family across all three primitives
+(artifacts existing, surfaces A41, selections A42).
+
+Pure-additive. Tier-0: **51 files / 421 tests**, all green. tsc clean.
+
+Files: `src/services/serviceTypes.ts`, `src/services/selectionService.ts`,
+`tests/unit/platform/selectionServiceSize.tier0.test.ts` (new, 6 tests).
+
+---
+
 ## Iteration 42 — Slice A41: ISurfaceRegistry.size (2026-05-25)
 
 Added `readonly size: number` on `ISurfaceRegistry`. Cheap accessor
