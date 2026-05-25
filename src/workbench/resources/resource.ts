@@ -89,3 +89,19 @@ export function externalResource(uri: string): ExternalResource {
   const scheme = idx > 0 ? uri.slice(0, idx) : '';
   return { type: 'external', scheme, uri };
 }
+
+// ─── Convenience adapters ────────────────────────────────────────────────────
+
+/**
+ * Build a Resource from a selection source (Slice A5). Selection adapters
+ * carry `{ filePath, pageNumber? }` — this maps them to a `FileResource`
+ * so future selection events can flow as Resources end-to-end without
+ * each call-site re-implementing the conversion.
+ *
+ * Returns undefined when filePath is missing/blank.
+ */
+export function resourceFromSelectionSource(source: { filePath?: string; pageNumber?: number; workspaceId?: string }): Resource | undefined {
+  const p = source?.filePath;
+  if (!p || typeof p !== 'string') return undefined;
+  return fileResource(p, { workspaceId: source.workspaceId });
+}

@@ -6,6 +6,41 @@
 
 ---
 
+## Iteration 6 — Slice A5: ISelection.resource + selection→Resource adapter (2026-05-25)
+
+**Continuation of:** Unified Workbench Primitives. Slice A primitive
+layer was complete in A4; this slice makes the bridge from the existing
+selection world into the new Resource world.
+
+**Done:**
+
+1. Added optional `resource?: Resource` field to `ISelection` so selection
+   adapters can carry a stable cross-tool identity alongside their
+   text payload. Pure-additive: every existing call-site is unaffected.
+2. Added `resourceFromSelectionSource({ filePath, pageNumber?, workspaceId? })`
+   helper. One line converts a selection's `source` into a `FileResource`.
+   Future selection adapters populate `resource` via this helper.
+
+This unblocks consumer migration: chat retrieval, when-clauses, and the
+attachment service can read `selection.resource` directly instead of
+hand-parsing `source.filePath`. No consumer migrated in this slice.
+
+**Files:** `src/workbench/resources/resource.ts` (+15 LOC helper),
+`src/services/selectionActionTypes.ts` (+8 LOC field + import),
+`tests/unit/workbench/resources/resourceFromSelectionSource.tier0.test.ts`
+(6 tests).
+
+**Verification:** tier-0 11 files / 147 passed (6 new). `tsc --noEmit`
+clean.
+
+**§13a:** Optional field on a shared interface — every existing producer
+and consumer is unaffected. No preservation surface touched. Recording
+`single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+**Commits this iteration:** `<pending>`.
+
+---
+
 ## Iteration 5 — Slice A4: ContextService (2026-05-25)
 
 **Continuation of:** Unified Workbench Primitives program. Capstone of

@@ -10,6 +10,7 @@
 // it to the registered ISelectionActionHandler.
 
 import type { IDisposable } from '../platform/lifecycle.js';
+import type { Resource } from '../workbench/resources/resource.js';
 
 // Re-export the canonical IChatSelectionAttachment from chatTypes
 // so consumers of this module can import from a single source.
@@ -38,6 +39,13 @@ export interface ISelection {
   readonly selectedText: string;
   /** Source file metadata for the selection. */
   readonly source: ISelectionSource;
+  /**
+   * Optional Resource identity for the selection's origin (Slice A5).
+   * Pure-additive: existing callers may omit this. Consumers that need
+   * a stable cross-tool identity (chat retrieval, when-clauses, link
+   * resolution) prefer this over reconstructing one from `source.filePath`.
+   */
+  readonly resource?: Resource;
 }
 
 /**
