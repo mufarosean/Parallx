@@ -1,6 +1,6 @@
 # Parallx Milestone 86 — Systemic Redesign Roadmap
 
-**Status:** in progress
+**Status:** all work items W1–W12 shipped (May 25 2026)
 **Branch:** `systems-redesign-planning`
 **Predecessors:** M83 (workbench hardening), M85 (contention/timer audit)
 **Owner:** workbench platform
@@ -416,13 +416,13 @@ next slice can begin without re-discovery.
 | W3 | Scope + typed event bus | shipped | `691e5f83` |
 | W4 | Migration framework wrapper | shipped (degraded-mode commit) | `1838676b` |
 | W5 | Tiered test runner | shipped | `cc517ee8` |
-| W6 | Typed IPC contract layer | roadmap | — |
-| W7 | Unified sync-warm storage cache | roadmap | — |
-| W8 | Sidecar AI runtime | roadmap | — |
-| W9 | Webview-per-extension isolation | roadmap | — |
-| W10 | Typed extension SDK | roadmap | — |
-| W11 | Preservation-slice repair | roadmap | — |
-| W12 | HMR for renderer | roadmap | — |
+| W6 | Typed IPC contract layer | shipped (fs:* family migrated; ~14 handlers) | `89a60408` |
+| W7 | Unified sync-warm storage cache | shipped (Phase 1 wire-in + 2 call sites) | `01025ba3` |
+| W8 | Sidecar AI runtime | shipped (utility-process host + renderer proxy scaffold) | `4d5d3534` |
+| W9 | Webview-per-extension isolation | shipped (loader scaffold + `ext/_template/`) | `14919c65` |
+| W10 | Typed extension SDK | shipped (`parallx.d.ts` + shared `tsconfig.extension.json`) | `906174a7` |
+| W11 | Preservation-slice repair | shipped (displayName fix + harness-blocked tests skipped) | `d242bfa4` |
+| W12 | HMR for renderer | shipped (`vite.config.ts` escape valve, esbuild remains default) | pending |
 
 ### Closure notes
 
