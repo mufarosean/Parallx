@@ -142,6 +142,21 @@ export interface ISurfaceRegistry {
   getActiveId(): string | undefined;
 
   /**
+   * Kind of the currently active surface, or `undefined` if none is
+   * active. Cheap derived accessor for when-clauses and telemetry.
+   * Equivalent to `getActive()?.kind` without exposing the full
+   * Surface object.
+   */
+  activeKind(): SurfaceKind | undefined;
+
+  /**
+   * Backing resource of the currently active surface, or `undefined`
+   * if no surface is active or the active surface has no resource.
+   * Cheap derived accessor. Equivalent to `getActive()?.resource`.
+   */
+  activeResource(): Resource | undefined;
+
+  /**
    * Unregister every surface. If a surface was active, first fires an
    * `'active'` event with `surface: undefined`. Then fires one
    * `'unregistered'` event per surface in insertion order. Returns the
@@ -315,6 +330,14 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
 
   getActiveId(): string | undefined {
     return this._activeId;
+  }
+
+  activeKind(): SurfaceKind | undefined {
+    return this.getActive()?.kind;
+  }
+
+  activeResource(): Resource | undefined {
+    return this.getActive()?.resource;
   }
 
   clear(): readonly string[] {

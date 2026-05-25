@@ -6,6 +6,21 @@
 
 ---
 
+## Iteration 55 — Slice A54: ISurfaceRegistry.activeKind / activeResource (2026-05-25)
+
+Added `activeKind(): SurfaceKind | undefined` and `activeResource():
+Resource | undefined` on `ISurfaceRegistry`. Cheap derived accessors
+equivalent to `getActive()?.kind` / `getActive()?.resource`, but
+without exposing the full Surface object for when-clauses and
+telemetry call-sites.
+
+Pure-additive. Tier-0: **63 files / 503 tests**, all green. tsc clean.
+
+Files: `src/workbench/resources/surfaceRegistry.ts`,
+`tests/unit/platform/surfaceRegistryActiveDerived.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 54 — Slice A53: ISelectionService.findByResource (2026-05-25)
 
 Added `findByResource(resource): readonly { surfaceId, selection }[]`
