@@ -6,6 +6,32 @@
 
 ---
 
+## Iteration 28 — Slice A27: ISurfaceRegistry.has(id) (2026-05-25)
+
+Guard-test counterpart to `get(id)`:
+
+- **`has(id): boolean`** — `true` iff a surface with that id is
+  currently registered.
+
+Completes the existence-guard pattern across primitives:
+`ISelectionService.hasSelection` (A25), `IToolArtifactStore.has`
+(A26), `ISurfaceRegistry.has` (A27).
+
+**Files**
+
+- `src/workbench/resources/surfaceRegistry.ts` — interface + impl
+- `tests/unit/platform/surfaceRegistryHas.tier0.test.ts` (6 tests)
+
+**Verification**
+
+- `npm run test:unit:tier0 -- --run`: 36 files / 325 passed (6 new).
+- `npx tsc --noEmit`: clean.
+
+**Commit**: pending
+**Review**: single-pass — tier-0 corpus green + tsc clean.
+
+---
+
 ## Iteration 27 — Slice A26: IToolArtifactStore.has() (2026-05-25)
 
 Guard-test counterpart to `get(toolId, artifactId)`:

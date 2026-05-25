@@ -54,6 +54,12 @@ export interface ISurfaceRegistry {
   /** Lookup by id. */
   get(id: string): Surface | undefined;
 
+  /**
+   * `true` iff a surface with the given id is currently registered.
+   * Guard counterpart to `get` for callers that only need existence.
+   */
+  has(id: string): boolean;
+
   /** Set the active (focused) surface by id. Pass undefined to clear. No-op if id is unknown. */
   setActive(id: string | undefined): void;
 
@@ -127,6 +133,10 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
 
   get(id: string): Surface | undefined {
     return this._surfaces.get(id);
+  }
+
+  has(id: string): boolean {
+    return this._surfaces.has(id);
   }
 
   setActive(id: string | undefined): void {
