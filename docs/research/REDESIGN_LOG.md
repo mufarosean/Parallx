@@ -6,6 +6,46 @@
 
 ---
 
+## Iteration 12 — Slice A11: ResourceRegistry end-to-end integration test (2026-05-25)
+
+**Continuation of:** A10 wired the third resolver (tool-artifact). The
+primitive layer is now production-shaped. This slice adds an
+integration test that proves `resolveUri` works end-to-end through the
+exact composition the facade performs.
+
+**Done:**
+
+- New tier-0 test `resourceRegistryEndToEnd.tier0.test.ts` (6 tests).
+  Assembles `ResourceRegistry` + `fileResourceResolver` +
+  `externalResourceResolver` + `toolArtifactResourceResolver` against
+  minimal fakes (the same composition `workbenchFacadeFactory.ts`
+  performs) and asserts:
+  - `parallx://file:<encoded-path>` returns file content.
+  - `https://...` returns external pass-through.
+  - `mailto:...` returns external pass-through.
+  - `parallx://tool-artifact:<tool>/<id>` returns stored record.
+  - Unknown tool-artifact id rejects with "not found".
+  - Malformed URI resolves to `null`.
+
+Closes the verification gap: until A11, each resolver had unit tests
+in isolation but no test exercised them through the registry's
+`resolveUri` parse-and-dispatch path together. A regression in
+`parallxUri.parse()`, the registry's dispatch, or any resolver wiring
+will now fail this test.
+
+**Files:** `tests/unit/platform/resourceRegistryEndToEnd.tier0.test.ts`
+(new). No production code changed.
+
+**Verification:** tier-0 19 files / 192 passed (6 new). `tsc --noEmit`
+clean.
+
+**§13a:** Test-only addition; no preservation surface touched.
+`single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+**Commits this iteration:** `<pending>`.
+
+---
+
 ## Iteration 11 — Slice A10: InMemoryToolArtifactStore + tool-artifact resolver wired (2026-05-25)
 
 **Continuation of:** Slice A9 left `tool-artifact` as a resolver class
