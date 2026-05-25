@@ -63,6 +63,13 @@ export interface IContextService {
   /** Snapshot the current composed context. */
   getContext(): WorkbenchContext;
 
+  /**
+   * Convenience boolean test against the current context. Equivalent to
+   * `predicate(getContext())` but spelled as a `when`-clause-style query.
+   * The predicate must not mutate the context.
+   */
+  matches(predicate: (context: WorkbenchContext) => boolean): boolean;
+
   /** Fires whenever the composed context changes (any underlying source fires). */
   readonly onDidChangeContext: Event<WorkbenchContext>;
 }
@@ -95,6 +102,10 @@ export class ContextService extends Disposable implements IContextService {
     // Always return a fresh snapshot — callers may have arrived between events.
     this._last = this._snapshot();
     return this._last;
+  }
+
+  matches(predicate: (context: WorkbenchContext) => boolean): boolean {
+    return predicate(this.getContext());
   }
 
   private _snapshot(): WorkbenchContext {

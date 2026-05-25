@@ -6,6 +6,32 @@
 
 ---
 
+## Iteration 25 — Slice A24: IContextService.matches() (2026-05-25)
+
+`when`-clause-style boolean test against the composed workbench context:
+
+- **`matches(predicate: (ctx: WorkbenchContext) => boolean): boolean`**
+  — equivalent to `predicate(getContext())` but spelled as a query.
+
+Lets command-enablement, menu visibility, and conditional UI read
+"is the active context a file editor in workspace w1?" in one
+call instead of three field reads.
+
+**Files**
+
+- `src/workbench/resources/contextService.ts` — interface + impl
+- `tests/unit/platform/contextServiceMatches.tier0.test.ts` (6 tests)
+
+**Verification**
+
+- `npm run test:unit:tier0 -- --run`: 33 files / 306 passed (6 new).
+- `npx tsc --noEmit`: clean.
+
+**Commit**: pending
+**Review**: single-pass — tier-0 corpus green + tsc clean.
+
+---
+
 ## Iteration 24 — Slice A23: IToolArtifactStore.find() + .filter() (2026-05-25)
 
 Predicate-based query primitives on the artifact store:
