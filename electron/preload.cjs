@@ -79,6 +79,11 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     /** Check if path exists. Returns boolean. */
     exists: (filePath) => ipcRenderer.invoke('fs:exists', filePath),
 
+    /** Check if path exists, bypassing the read allowlist (M85-F2). For paths
+     * not yet promoted to the allowlist — e.g. probing the recorded
+     * last-workspace folder before opening it. Grants no content access. */
+    existsPath: (filePath) => ipcRenderer.invoke('fs:existsPath', filePath),
+
     /** Rename/move a file or directory. Returns { error: null } on success or { error }. */
     rename: (oldPath, newPath) => ipcRenderer.invoke('fs:rename', oldPath, newPath),
 

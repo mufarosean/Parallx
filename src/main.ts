@@ -37,6 +37,8 @@ declare global {
         stat(path: string): Promise<{ type: string; size: number; mtime: number; ctime: number; isReadonly: boolean; error: null } | { error: { code: string; message: string; path: string } }>;
         readdir(path: string): Promise<{ entries: { name: string; type: string; size: number; mtime: number }[]; error: null } | { error: { code: string; message: string; path: string } }>;
         exists(path: string): Promise<boolean>;
+        /** Check if path exists, bypassing the read allowlist (M85-F2). */
+        existsPath(path: string): Promise<boolean>;
         rename(oldPath: string, newPath: string): Promise<{ error: null } | { error: { code: string; message: string; path: string } }>;
         delete(path: string, options?: { useTrash?: boolean; recursive?: boolean }): Promise<{ error: null } | { error: { code: string; message: string; path: string } }>;
         mkdir(path: string): Promise<{ error: null } | { error: { code: string; message: string; path: string } }>;

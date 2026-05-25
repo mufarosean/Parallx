@@ -1380,6 +1380,26 @@ ipcMain.handle('fs:exists', async (_event, filePath) => {
   }
 });
 
+// ── fs:existsPath (M85-F2) ──
+// Narrow path-existence probe for paths NOT yet in the read allowlist.
+// Used at Phase 1 by the workbench to detect a missing recorded
+// workspace folder before promoting it to the allowlist.
+//
+// Security note: returning a boolean for fs.access grants no content
+// access — fs:readFile / fs:readdir still gate on _isAllowedReadPath.
+// The renderer is same-origin shipped code; existence probing is a
+// minor info leak comparable to what window.parallxElectron already
+// exposes via appPath.
+ipcMain.handle('fs:existsPath', async (_event, filePath) => {
+  if (typeof filePath !== 'string' || filePath.length === 0) return false;
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+});
+
 // ── fs:rename ──
 ipcMain.handle('fs:rename', async (_event, oldPath, newPath) => {
   if (!_isAllowedWritePath(oldPath) || !_isAllowedWritePath(newPath)) {
