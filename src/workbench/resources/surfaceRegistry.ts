@@ -12,7 +12,7 @@ import { Disposable } from '../../platform/lifecycle.js';
 import { Emitter, Event } from '../../platform/events.js';
 import type { Surface, SurfaceKind } from './surface.js';
 import type { Resource } from './resource.js';
-import { resourceEquals } from './resource.js';
+import { resourceEquals, resourceWorkspaceId } from './resource.js';
 
 export interface ISurfaceChangeEvent {
   readonly kind: 'registered' | 'updated' | 'unregistered' | 'active';
@@ -50,6 +50,17 @@ export interface ISurfaceRegistry {
    * uri. `hash` on FileResource is metadata and NOT part of identity.
    */
   findByResource(resource: Resource): ReadonlyArray<Surface>;
+
+  /**
+   * All currently-registered surfaces whose backing resource has
+   * `workspaceId === workspaceId`. Surfaces with no resource, or whose
+   * resource is `external` (no workspace scope), are never matched.
+   * Insertion order. Fresh snapshot. Empty `workspaceId` → empty array.
+   *
+   * Query counterpart for workspace-scoped surface enumeration. Useful
+   * for workspace-switch teardown and per-workspace surface inventories.
+   */
+  listByWorkspace(workspaceId: string): ReadonlyArray<Surface>;
 
   /** Lookup by id. */
   get(id: string): Surface | undefined;
@@ -140,6 +151,17 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
     const out: Surface[] = [];
     for (const s of this._surfaces.values()) {
       if (s.resource && resourceEquals(s.resource, resource)) out.push(s);
+    }
+    return out;
+  }
+
+  listByWorkspace(workspaceId: string): ReadonlyArray<Surface> {
+    if (!workspaceId) return [];
+    const out: Surface[] = [];
+    for (const s of this._surfaces.values()) {
+      if (s.resource && resourceWorkspaceId(s.resource) === workspaceId) {
+        out.push(s);
+      }
     }
     return out;
   }

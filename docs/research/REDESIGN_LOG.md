@@ -6,6 +6,27 @@
 
 ---
 
+## Iteration 35 — Slice A34: ISurfaceRegistry.listByWorkspace (2026-05-25)
+
+Added `listByWorkspace(workspaceId: string): ReadonlyArray<Surface>` on
+`ISurfaceRegistry`. Returns every registered surface whose backing
+resource has the matching `workspaceId`, in insertion order, as a fresh
+snapshot. Surfaces with no resource — or whose resource is `external`
+(no workspace scope) — are never matched. Empty `workspaceId` → empty
+array. Built on `resourceWorkspaceId` (A32) so the workspace lookup is
+uniform across all four workspace-scoped Resource variants.
+
+Useful for workspace-switch teardown and per-workspace surface
+inventories without writing the filter at every call site.
+
+Pure-additive. Tier-0: **43 files / 372 tests**, all green. tsc clean.
+
+Files: `src/workbench/resources/surfaceRegistry.ts`,
+`tests/unit/platform/surfaceRegistryListByWorkspace.tier0.test.ts` (new,
+7 tests).
+
+---
+
 ## Iteration 34 — Slice A33: IToolArtifactStore.listByWorkspace (2026-05-25)
 
 Added `listByWorkspace(workspaceId: string): readonly ToolArtifactRecord[]`
