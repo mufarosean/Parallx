@@ -2582,10 +2582,40 @@ export async function activate(api, context) {
   await _loadSettings(api);
   _registerSemanticGraphProvider(api, context);
 
+  // ── M85-F1: consumer ref-count for periodic refresh gating ──
+  // The periodic refresh timer below walks workspace files and queries graph
+  // providers — pointless work when nobody is looking at the graph. Track
+  // mounted consumers (sidebar views + editor panes) so the timer only ticks
+  // while at least one surface is rendering the shared model.
+  let _consumerCount = 0;
+  let _periodicTimer = null;
+  const _startPeriodicTimerIfNeeded = () => {
+    if (_periodicTimer || _consumerCount === 0) return;
+    _periodicTimer = setInterval(() => _scheduleRefresh(0), 30_000);
+  };
+  const _stopPeriodicTimerIfIdle = () => {
+    if (_periodicTimer && _consumerCount === 0) {
+      clearInterval(_periodicTimer);
+      _periodicTimer = null;
+    }
+  };
+  const _wrapWithConsumerTracking = (disposable) => {
+    _consumerCount++;
+    _startPeriodicTimerIfNeeded();
+    return {
+      dispose() {
+        try { disposable && disposable.dispose && disposable.dispose(); } finally {
+          _consumerCount = Math.max(0, _consumerCount - 1);
+          _stopPeriodicTimerIfIdle();
+        }
+      },
+    };
+  };
+
   // Sidebar view
   const viewDisposable = api.views.registerViewProvider('view.workspaceGraph', {
     createView(container) {
-      return createGraphSidebar(container, api);
+      return _wrapWithConsumerTracking(createGraphSidebar(container, api));
     },
   });
   context.subscriptions.push(viewDisposable);
@@ -2593,7 +2623,7 @@ export async function activate(api, context) {
   // Full editor pane
   const editorDisposable = api.editors.registerEditorProvider('workspace-graph', {
     createEditorPane(container, _input) {
-      return createGraphEditor(container, api);
+      return _wrapWithConsumerTracking(createGraphEditor(container, api));
     },
   });
   context.subscriptions.push(editorDisposable);
@@ -2655,9 +2685,12 @@ export async function activate(api, context) {
     context.subscriptions.push(api.links.onDidChangeContracts(() => _scheduleRefresh(800)));
   }
   // Periodic re-scan for file/session changes that don't fire events.
-  // Cheap — _collectFiles walks 3 levels deep with hidden-dir filtering.
-  const _periodicTimer = setInterval(() => _scheduleRefresh(0), 30_000);
-  context.subscriptions.push({ dispose: () => clearInterval(_periodicTimer) });
+  // Gated on consumer mount count (M85-F1): only runs while at least one
+  // sidebar view or editor pane is rendering the shared graph model.
+  // Starts lazily on first mount via _startPeriodicTimerIfNeeded.
+  context.subscriptions.push({ dispose: () => {
+    if (_periodicTimer) { clearInterval(_periodicTimer); _periodicTimer = null; }
+  } });
 
   // M66 link contract — `parallx://workspace-graph/node/<nodeId>` opens the
   // graph editor focused on the given node. Iter A opens the graph; per-node
