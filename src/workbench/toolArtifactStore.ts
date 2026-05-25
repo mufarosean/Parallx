@@ -113,6 +113,14 @@ export interface IToolArtifactStore {
    * predicate must not mutate the store.
    */
   filter(predicate: (record: ToolArtifactRecord) => boolean): readonly ToolArtifactRecord[];
+
+  /**
+   * Invoke `cb` once per stored record, in insertion order. Allocation-free
+   * traversal alternative to `list()` / `entries()` for hot paths and bulk
+   * diagnostics where the caller does not need a snapshot array. The store
+   * must not be mutated from inside `cb`.
+   */
+  forEach(cb: (record: ToolArtifactRecord) => void): void;
   /**
    * Delete every stored artifact. Returns the number removed. Fires
    * `onDidChange` once per record (insertion order, `kind: 'delete'`),
@@ -372,6 +380,12 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
       if (predicate(r)) out.push(r);
     }
     return out;
+  }
+
+  forEach(cb: (record: ToolArtifactRecord) => void): void {
+    for (const r of this._records.values()) {
+      cb(r);
+    }
   }
 
   clear(): number {

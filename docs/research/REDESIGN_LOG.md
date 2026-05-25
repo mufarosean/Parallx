@@ -6,6 +6,19 @@
 
 ---
 
+## Iteration 72 — Slice A71: IToolArtifactStore.forEach (2026-05-25)
+
+- Added `forEach(cb: (record) => void): void` on `IToolArtifactStore`.
+  Allocation-free traversal alternative to `list()` / `entries()` for hot
+  paths and bulk diagnostics where the caller does not need a snapshot
+  array. Iterates in insertion order. Throws from `cb` propagate and stop
+  iteration.
+- 7 tier-0 tests covering empty, count, insertion order, record contents,
+  post-delete, post-clear, and throw-stops-iteration.
+- Pure-additive. `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 71 — Slice A70: ISelectionService.filter (2026-05-25)
 
 - Added `filter(predicate: (entry) => boolean)` on `ISelectionService`
