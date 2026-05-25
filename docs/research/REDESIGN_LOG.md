@@ -6,6 +6,32 @@
 
 ---
 
+## Iteration 93 — Slice B13: workspace-id command + keybinding (2026-05-25)
+
+- Closes the loop on B12 by adding the first consumer of the new
+  `activeWorkspaceId` context key: `workbench.action.copyActiveWorkspaceId`.
+  Gated `when: 'activeWorkspaceId'`, bound to `Ctrl+Alt+W`, AI-invocable.
+  Reads `IContextService.getContext().workspaceId`, returns it, and
+  writes to the clipboard as a side effect (failure non-fatal — matches
+  the B5/B7 pattern).
+- This is the third (id, keybinding, when-clause) trio over §86 keys:
+  - B5 + B9   →  `activeResourceType`        →  Ctrl+Alt+U
+  - B7 + B11  →  compound editor + file      →  Ctrl+Alt+P
+  - B13       →  `activeWorkspaceId`         →  Ctrl+Alt+W
+  The three keybindings now cover all three identity dimensions of the
+  §86 snapshot, so any palette/keybinding contribution can rely on the
+  full when-clause surface.
+- 6 command tests + 4 keybinding tests in
+  `tests/unit/platform/copyActiveWorkspaceIdCommand.tier0.test.ts` and
+  `tests/unit/platform/copyActiveWorkspaceIdKeybinding.tier0.test.ts`:
+  metadata, happy path, empty/undefined workspace id, missing service,
+  clipboard failure, when-gate fires only on non-empty, key clears
+  again when the workspace id reverts to ''.
+- Suite: 101 tier-0 files / 762 tests pass. typecheck clean.
+- `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 92 — Slice B12: `activeWorkspaceId` context key (2026-05-25)
 
 - B3 mirrored two of the three identity fields carried by

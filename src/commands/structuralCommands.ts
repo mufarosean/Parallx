@@ -289,6 +289,36 @@ const copyActiveFilePath: CommandDescriptor = {
   },
 };
 
+// §86 / Slice B13 — third when-clause consumer, this time on the new
+// `activeWorkspaceId` key introduced by Slice B12. Provides a diagnostic
+// way to copy the active workspace identifier to the clipboard / return
+// it to AI callers. Mirrors B5's pattern (truthy gate on a single §86
+// key) so we exercise all three identity fields uniformly.
+const copyActiveWorkspaceId: CommandDescriptor = {
+  id: 'workbench.action.copyActiveWorkspaceId',
+  title: 'Copy Active Workspace ID',
+  category: 'Workspace',
+  when: 'activeWorkspaceId',
+  keybinding: 'Ctrl+Alt+W',
+  aiInvocable: true,
+  aiDescription:
+    'Copy the identifier of the currently active workspace to the system clipboard. Only available when a workspace is active. Returns the workspace ID string.',
+  async handler(ctx) {
+    const contextService = ctx.getService<IContextService>('IContextService');
+    if (!contextService) return undefined;
+    const id = contextService.getContext().workspaceId;
+    if (!id) return undefined;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(id);
+      }
+    } catch {
+      // clipboard write failure is non-fatal; the id is still returned.
+    }
+    return id;
+  },
+};
+
 //  All builtin commands 
 
 const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
@@ -367,6 +397,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   // §86 / Slice B5 — resource utilities (gated on activeResourceType)
   copyActiveResourceUri,
   copyActiveFilePath,
+  copyActiveWorkspaceId,
   // Docling (M21)
   installDocling,
   // M48: Selection → AI command
