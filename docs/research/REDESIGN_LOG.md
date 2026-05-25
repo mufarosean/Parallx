@@ -6,6 +6,32 @@
 
 ---
 
+## Iteration 97 — Slice B17: single-artifact reader command (2026-05-25)
+
+- Natural pair to B16's `listToolArtifacts`. B16 enumerates metadata
+  for every stored artifact; B17 returns the actual `data` payload
+  for one. Together they form a complete read API exposed to the
+  command palette / AI tools without leaking the entire store into
+  any single response.
+- `workbench.action.getToolArtifact` is AI-invocable, no when-clause
+  gate. Takes a single string argument of the form
+  `"toolId/artifactId"` (uses the FIRST `/` as the split point, so
+  artifact ids may themselves contain slashes — e.g.
+  `render/sub/dir/file.png`). Malformed keys (empty string,
+  undefined, missing slash, leading or trailing slash, non-string)
+  short-circuit to `undefined` without touching the store.
+- Returns whatever shape was stored — strings, numbers, plain
+  objects, `Uint8Array`, `null`. No serialization wrapper: the
+  caller decides how to handle the payload.
+- 7 new tier-0 tests in
+  `tests/unit/platform/getToolArtifactCommand.tier0.test.ts`:
+  metadata, happy-path, unknown id, missing service, malformed key
+  matrix, slash-in-artifactId, payload shape preservation.
+- Suite: 106 tier-0 files / 792 tests pass. typecheck clean.
+- `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 96 — Slice B16: tool-artifact reader command (2026-05-25)
 
 - Closes the IToolArtifactStore loop opened by B8: B8 added the first

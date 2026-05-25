@@ -393,6 +393,33 @@ const listToolArtifacts: CommandDescriptor = {
   },
 };
 
+// §86 / Slice B17 — full-record reader counterpart to B16. Given a
+// `(toolId, artifactId)` pair (as a single combined argument string in
+// the form "toolId/artifactId" to fit the existing CommandDescriptor
+// handler shape), returns the stored record's `data` payload directly,
+// or `undefined` if no such artifact exists. Distinct from B16 which
+// only returns metadata for ALL artifacts — this one targets a single
+// artifact's actual content. Empty-key inputs short-circuit to undefined.
+const getToolArtifact: CommandDescriptor = {
+  id: 'workbench.action.getToolArtifact',
+  title: 'Get Tool Artifact',
+  category: 'View',
+  aiInvocable: true,
+  aiDescription:
+    'Retrieve the data payload of a single artifact from the tool-artifact store. Argument: a string of the form "toolId/artifactId". Returns the payload (any shape — string, number, object, Uint8Array, …) or undefined if the artifact is not stored. Pair with `workbench.action.listToolArtifacts` to discover available ids.',
+  async handler(ctx, key?: unknown) {
+    const store = ctx.getService<IToolArtifactStore>('IToolArtifactStore');
+    if (!store) return undefined;
+    if (typeof key !== 'string' || key.length === 0) return undefined;
+    const slash = key.indexOf('/');
+    if (slash <= 0 || slash === key.length - 1) return undefined;
+    const toolId = key.slice(0, slash);
+    const artifactId = key.slice(slash + 1);
+    const record = store.get(toolId, artifactId);
+    return record?.data;
+  },
+};
+
 //  All builtin commands 
 
 const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
@@ -474,6 +501,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   copyActiveWorkspaceId,
   inspectActiveSelection,
   listToolArtifacts,
+  getToolArtifact,
   // Docling (M21)
   installDocling,
   // M48: Selection → AI command
