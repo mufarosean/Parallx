@@ -93,6 +93,11 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   private readonly _onDidChangeTools = this._register(new Emitter<void>());
   readonly onDidChangeTools: Event<void> = this._onDidChangeTools.event;
 
+  // §86 / Slice B8 — fires after a successful invocation of a tool that
+  // declared `producesArtifact: true`. See ILanguageModelToolsService.
+  private readonly _onDidExecuteTool = this._register(new Emitter<import('./chatTypes.js').IToolExecutedEvent>());
+  readonly onDidExecuteTool: Event<import('./chatTypes.js').IToolExecutedEvent> = this._onDidExecuteTool.event;
+
   // ── Permission service (M11 Task 2.1) + Policy Decision Point (M67 Phase 2) ──
 
   private _permissionService: PermissionService | undefined;
@@ -381,6 +386,14 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
       // Taint is set ONLY here, ONLY on success, ONLY when sessionId is in scope.
       if (!result.isError && sessionId && decision.willTaintOnSuccess) {
         markTurnTainted(sessionId);
+      }
+      // §86 / Slice B8 — broadcast successful artifact-producing invocations.
+      if (!result.isError && tool.producesArtifact) {
+        try {
+          this._onDidExecuteTool.fire({ toolName: name, args, result, sessionId });
+        } catch {
+          // Subscriber failure must not affect the tool result.
+        }
       }
       observer?.onExecuted?.(metadata, result);
       return result;

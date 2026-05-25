@@ -930,6 +930,22 @@ export interface IToolResult {
   readonly isError?: boolean;
 }
 
+/**
+ * §86 / Slice B8 — event payload broadcast by
+ * `ILanguageModelToolsService.onDidExecuteTool` after a successful
+ * invocation of a tool that declared `producesArtifact: true`.
+ */
+export interface IToolExecutedEvent {
+  /** Tool name (matches `IChatTool.name`). */
+  readonly toolName: string;
+  /** Invocation arguments. */
+  readonly args: Record<string, unknown>;
+  /** Tool result (always `isError === false` or undefined). */
+  readonly result: IToolResult;
+  /** Chat session id, when the invocation was scoped to one. */
+  readonly sessionId?: string;
+}
+
 // ── Permission Model (M11 Task 2.1) ──
 
 /**
@@ -983,6 +999,14 @@ export interface IChatTool {
    * Upstream parity: src/agents/tool-catalog.ts CoreToolDefinition.profiles[].
    */
   readonly profiles?: readonly string[];
+  /**
+   * §86 / Slice B8 — opt-in flag for tools whose successful results
+   * should be published to `IToolArtifactStore` and become referenceable
+   * via `parallx://tool-artifact:<tool>/<id>` URIs. Default `false` so
+   * existing tools are unaffected; tool authors flip this to true when
+   * they want their results to be addressable from other surfaces.
+   */
+  readonly producesArtifact?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1266,6 +1290,17 @@ export const IChatWidgetService = createServiceIdentifier<IChatWidgetService>('I
 export interface ILanguageModelToolsService extends IDisposable {
   /** Fires when tools are added/removed or enablement changes. */
   readonly onDidChangeTools: Event<void>;
+  /**
+   * §86 / Slice B8 — fires after every successful tool invocation whose
+   * tool descriptor declared `producesArtifact: true`. Workbench-side
+   * artifact bindings subscribe to this to publish results into the
+   * `IToolArtifactStore` so they become referenceable via
+   * `parallx://tool-artifact:<tool>/<id>` URIs.
+   *
+   * Failed invocations (`result.isError === true`) do NOT fire. Tools
+   * without `producesArtifact` opt-in do NOT fire.
+   */
+  readonly onDidExecuteTool: Event<IToolExecutedEvent>;
   /** Register a chat tool. */
   registerTool(tool: IChatTool): IDisposable;
   /** Get all registered tools (regardless of enablement). */

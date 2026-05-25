@@ -47,6 +47,8 @@ import { ContextService } from './resources/contextService.js';
 import { fileResourceResolver } from './resources/resolvers/fileResolver.js';
 import { externalResourceResolver } from './resources/resolvers/externalResolver.js';
 import { toolArtifactResourceResolver } from './resources/resolvers/toolArtifactResolver.js';
+import { bindToolExecutionToArtifactStore } from './toolExecutionArtifactBinding.js';
+import { ILanguageModelToolsService } from '../services/chatTypes.js';
 import { InMemoryToolArtifactStore } from './toolArtifactStore.js';
 import { WorkspaceBoundaryService } from '../services/workspaceBoundaryService.js';
 import { WorkspaceMemoryService } from '../services/workspaceMemoryService.js';
@@ -181,6 +183,19 @@ export function registerFacadeServices(deps: FacadeFactoryDeps): IDisposable[] {
         getArtifact: (toolId: string, artifactId: string) => toolArtifactStore.get(toolId, artifactId),
       }),
     );
+  }
+
+  // §86 / Slice B8 — first production writer for `IToolArtifactStore`.
+  // Bridges successful tool invocations (for tools that opted in via
+  // `producesArtifact: true`) into the artifact store so their results
+  // become referenceable via `parallx://tool-artifact:<tool>/<id>` URIs.
+  // No tool ships with `producesArtifact: true` today, so the binding is
+  // a no-op until a tool author flips the flag.
+  if (services.has(ILanguageModelToolsService)) {
+    const toolsService = services.get(ILanguageModelToolsService);
+    disposables.push(bindToolExecutionToArtifactStore(toolsService, toolArtifactStore, {
+      workspaceId: () => workspaceService.activeWorkspace?.identity.id,
+    }));
   }
 
   // Workspace boundary service

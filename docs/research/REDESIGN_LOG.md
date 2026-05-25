@@ -6,6 +6,43 @@
 
 ---
 
+## Iteration 88 — Slice B8: first IToolArtifactStore writer (2026-05-25)
+
+- Before this slice `IToolArtifactStore` had zero production writers: the
+  resolver was wired (Slice A10), the store was constructed and
+  registered, but no path published into it. `parallx://tool-artifact:...`
+  URIs therefore could not resolve in product code.
+- Three pieces shipped together:
+  1. **API surface (chatTypes.ts)** — added
+     `IChatTool.producesArtifact?: boolean` opt-in flag and
+     `ILanguageModelToolsService.onDidExecuteTool: Event<IToolExecutedEvent>`.
+     The event fires only for successful invocations (`!result.isError`)
+     of tools whose descriptor opted in. New `IToolExecutedEvent` type
+     captures `{ toolName, args, result, sessionId? }`.
+  2. **Emitter (languageModelToolsService.ts)** — wired alongside the
+     existing `observer?.onExecuted?.()` callback in the success path of
+     `invokeToolWithRuntimeControl`. Subscriber failures are swallowed
+     so a misbehaving binding can never affect the tool result.
+  3. **Workbench binding (toolExecutionArtifactBinding.ts)** — new
+     `bindToolExecutionToArtifactStore(toolsService, store, opts)`.
+     Subscribes to `onDidExecuteTool` and publishes a
+     `ToolArtifactRecord` per successful event via `publishToolArtifact`.
+     Artifact id is generated locally (monotonic seq + ms timestamp)
+     so callers don't thread one through. Workspace id is pulled from
+     the active workspace at fire-time.
+  4. **Facade wiring (workbenchFacadeFactory.ts)** — instantiated next
+     to the `toolArtifactStore` registration. No tool ships with
+     `producesArtifact: true` today, so the binding is a no-op until a
+     tool author opts in — but the wiring is in place end-to-end.
+- 6 tier-0 tests in `toolExecutionArtifactBinding.tier0.test.ts`:
+  publishes on success, ignores errors, attaches workspaceId, monotonic
+  default id sequence, dispose detaches subscriber, subscriber errors
+  swallowed.
+- Suite: 95 tier-0 files / 731 tests pass. typecheck clean.
+- `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 87 — Slice B7: equality-gated activeResourceType command (2026-05-25)
 
 - Second when-clause consumer of the §86 context keys, this time using
