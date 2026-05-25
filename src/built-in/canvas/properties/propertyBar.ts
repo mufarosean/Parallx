@@ -18,6 +18,7 @@ import { isSystemPropertyName } from './propertyTypes.js';
 import { createPropertyEditor, createTypeIconElement } from './propertyEditors.js';
 import { showPropertyPicker } from './propertyPicker.js';
 import { getGlobalSettingsRegistry } from '../../../services/settingsRegistryService.js';
+import { uiCacheGet, uiCacheSet } from '../../../platform/uiCache.js';
 import { PageChangeKind, type ICanvasDataService } from '../canvasTypes.js';
 import { createIconElement } from '../../../ui/iconRegistry.js';
 
@@ -31,8 +32,11 @@ interface PropertyBarWindowApi {
 
 /**
  * Read the collapsed-state preference. Prefers the M60 §7 settings
- * registry (canonical store); falls back to the legacy localStorage key
- * for first paint before the registry is wired (or in headless tests).
+ * registry (canonical store); falls back to the M86-W7 sync UI cache
+ * (file-backed via global-storage) for first paint before the registry
+ * is wired (or in headless tests). The legacy localStorage fallback is
+ * gone — the UI cache is warmed in Phase 1 so reads here always see a
+ * value if one was previously set.
  */
 function _readCollapsed(): boolean {
   const reg = getGlobalSettingsRegistry();
@@ -43,17 +47,13 @@ function _readCollapsed(): boolean {
       /* fall through */
     }
   }
-  try {
-    return localStorage.getItem(COLLAPSED_KEY) === 'true';
-  } catch {
-    return false;
-  }
+  return uiCacheGet<boolean>(COLLAPSED_KEY) === true;
 }
 
 /**
  * Persist the collapsed-state preference. Writes to the registry when
- * available; mirrors to localStorage as a synchronous cache for the
- * next renderer paint.
+ * available; mirrors to the M86-W7 sync UI cache so the next renderer
+ * paint reads the same value before the registry has rehydrated.
  */
 function _writeCollapsed(value: boolean): void {
   const reg = getGlobalSettingsRegistry();
@@ -62,11 +62,7 @@ function _writeCollapsed(value: boolean): void {
       console.warn('[PropertyBar] settings write failed:', err);
     });
   }
-  try {
-    localStorage.setItem(COLLAPSED_KEY, String(value));
-  } catch {
-    /* localStorage may be unavailable */
-  }
+  uiCacheSet<boolean>(COLLAPSED_KEY, value);
 }
 
 // ─── PropertyBar ─────────────────────────────────────────────────────────────

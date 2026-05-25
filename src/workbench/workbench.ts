@@ -44,6 +44,7 @@ import { LayoutRenderer } from '../layout/layoutRenderer.js';
 // Storage + Persistence
 import { IStorage, InMemoryStorage } from '../platform/storage.js';
 import { FileBackedGlobalStorage, FileBackedWorkspaceStorage } from '../platform/fileBackedStorage.js';
+import { initUiCache } from '../platform/uiCache.js';
 import { migrateFromLocalStorage } from '../platform/storageMigration.js';
 
 // Workspace
@@ -827,6 +828,10 @@ export class Workbench extends Layout {
         // Pre-warm the global-storage cache. Without this it serializes
         // behind the last-workspace read via initUserThemesCache later.
         () => this._globalStorage!.get('').then(() => undefined),
+        // M86-W7: warm the sync UI-state cache (property-bar collapse,
+        // recent canvas colors) so first-paint reads hit a populated
+        // map instead of falling through to localStorage.
+        () => initUiCache(this._globalStorage!),
         // Resolve the last workspace path (may not exist on first launch)
         // and verify the folder still exists on disk (M85-F2).
         async () => {

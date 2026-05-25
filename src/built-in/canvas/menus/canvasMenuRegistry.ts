@@ -15,6 +15,7 @@
 
 import type { Editor } from '@tiptap/core';
 import type { IDisposable } from '../../../platform/lifecycle.js';
+import { uiCacheGet, uiCacheSet } from '../../../platform/uiCache.js';
 import { $ } from '../../../ui/dom.js';
 import { SlashMenuController, type SlashMenuHost } from './slashMenu.js';
 import { BubbleMenuController, type BubbleMenuHost } from './bubbleMenu.js';
@@ -143,10 +144,11 @@ export const BG_COLORS: readonly ColorSwatch[] = [
 ];
 
 // ── Recent-list helper (Notion parity) ─────────────────────────────────────
-// Tiny localStorage-backed MRU list used by slash-menu recents and the colour
-// palette Recent section.  Per-device UI state (parity with property-bar
-// collapse), not per-workspace.  All errors degrade silently — quota exhaustion
-// or disabled storage should never break the canvas.
+// Tiny MRU list backed by the M86-W7 sync UI cache (file-backed via
+// global-storage). Used by slash-menu recents and the colour palette
+// Recent section. Per-device UI state (parity with property-bar
+// collapse). All errors degrade silently — quota exhaustion or a
+// pre-warm read should never break the canvas.
 
 export interface RecentList {
   /** Return the recents list, newest-first, capped at the max. */
@@ -157,23 +159,13 @@ export interface RecentList {
 
 export function createRecentList(key: string, max: number): RecentList {
   const read = (): string[] => {
-    try {
-      const raw = localStorage.getItem(key);
-      if (!raw) return [];
-      const parsed: unknown = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter((x): x is string => typeof x === 'string').slice(0, max);
-    } catch {
-      return [];
-    }
+    const parsed = uiCacheGet<unknown>(key);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === 'string').slice(0, max);
   };
   const record = (value: string): void => {
-    try {
-      const next = [value, ...read().filter(v => v !== value)].slice(0, max);
-      localStorage.setItem(key, JSON.stringify(next));
-    } catch {
-      /* localStorage may be unavailable / quota-exceeded — silently degrade */
-    }
+    const next = [value, ...read().filter(v => v !== value)].slice(0, max);
+    uiCacheSet<string[]>(key, next);
   };
   return { read, record };
 }

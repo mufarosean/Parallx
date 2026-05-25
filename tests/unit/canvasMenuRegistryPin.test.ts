@@ -1,9 +1,15 @@
 /**
  * Pin: canvasMenuRegistry — TEXT_COLORS / BG_COLORS swatch palettes,
- * createRecentList (localStorage-backed MRU), recordRecentColor (ignores
- * null), getRecentColors (filters against the canonical palette). These
- * are the source-of-truth Notion-parity palettes the slash menu, block
- * action menu, and bubble menu all bind to.
+ * createRecentList (M86-W7 uiCache-backed MRU), recordRecentColor
+ * (ignores null), getRecentColors (filters against the canonical
+ * palette). These are the source-of-truth Notion-parity palettes the
+ * slash menu, block action menu, and bubble menu all bind to.
+ *
+ * Storage backing was migrated from localStorage to the M86-W7 sync UI
+ * cache so the recents survive across renderer crashes and replicate
+ * through global-storage.json instead of vanishing with the renderer
+ * profile. Tests stub a tiny IStorage and warm the uiCache before each
+ * case so the createRecentList helper sees a populated cache.
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import {
@@ -13,19 +19,38 @@ import {
   recordRecentColor,
   getRecentColors,
 } from "../../src/built-in/canvas/menus/canvasMenuRegistry";
+import { initUiCache, _resetUiCacheForTests } from "../../src/platform/uiCache";
+import type { IStorage } from "../../src/platform/storage";
 
-class MemoryStorage implements Storage {
-  private _store = new Map<string, string>();
-  get length(): number { return this._store.size; }
-  clear(): void { this._store.clear(); }
-  getItem(k: string): string | null { return this._store.get(k) ?? null; }
-  key(i: number): string | null { return [...this._store.keys()][i] ?? null; }
-  removeItem(k: string): void { this._store.delete(k); }
-  setItem(k: string, v: string): void { this._store.set(k, String(v)); }
+class FakeStorage implements IStorage {
+  store = new Map<string, string>();
+  failSet = false;
+  async get(k: string): Promise<string | undefined> { return this.store.get(k); }
+  async set(k: string, v: string): Promise<void> {
+    if (this.failSet) throw new Error("QuotaExceeded");
+    this.store.set(k, v);
+  }
+  async delete(k: string): Promise<void> { this.store.delete(k); }
+  async has(k: string): Promise<boolean> { return this.store.has(k); }
+  async keys(prefix?: string): Promise<string[]> {
+    const all = [...this.store.keys()];
+    return prefix ? all.filter(k => k.startsWith(prefix)) : all;
+  }
+  async clear(): Promise<void> { this.store.clear(); }
 }
 
-beforeEach(() => {
-  (globalThis as any).localStorage = new MemoryStorage();
+let backing: FakeStorage;
+
+async function _seed(key: string, value: unknown): Promise<void> {
+  backing.store.set(`ui-cache:${key}`, JSON.stringify(value));
+  _resetUiCacheForTests();
+  await initUiCache(backing);
+}
+
+beforeEach(async () => {
+  _resetUiCacheForTests();
+  backing = new FakeStorage();
+  await initUiCache(backing);
 });
 
 describe("canvasMenuRegistry — TEXT_COLORS palette", () => {
@@ -79,23 +104,18 @@ describe("canvasMenuRegistry — createRecentList", () => {
     expect(list.read()).toEqual([]);
   });
 
-  it("read() returns [] when value is invalid JSON (silent degrade)", () => {
-    localStorage.setItem("k-bad", "not-json");
-    expect(createRecentList("k-bad", 3).read()).toEqual([]);
-  });
-
-  it("read() returns [] when stored value is not an array", () => {
-    localStorage.setItem("k-obj", JSON.stringify({ a: 1 }));
+  it("read() returns [] when stored value is not an array", async () => {
+    await _seed("k-obj", { a: 1 });
     expect(createRecentList("k-obj", 3).read()).toEqual([]);
   });
 
-  it("read() filters non-string entries out of a stored array", () => {
-    localStorage.setItem("k-mix", JSON.stringify(["a", 1, "b", null, "c"]));
+  it("read() filters non-string entries out of a stored array", async () => {
+    await _seed("k-mix", ["a", 1, "b", null, "c"]);
     expect(createRecentList("k-mix", 5).read()).toEqual(["a", "b", "c"]);
   });
 
-  it("read() truncates to the max", () => {
-    localStorage.setItem("k-cap", JSON.stringify(["a", "b", "c", "d"]));
+  it("read() truncates to the max", async () => {
+    await _seed("k-cap", ["a", "b", "c", "d"]);
     expect(createRecentList("k-cap", 2).read()).toEqual(["a", "b"]);
   });
 
@@ -109,12 +129,13 @@ describe("canvasMenuRegistry — createRecentList", () => {
     expect(list.read()).toEqual(["d", "a", "c"]);
   });
 
-  it("record() silently degrades when localStorage.setItem throws", () => {
-    const failing: any = new MemoryStorage();
-    failing.setItem = () => { throw new Error("QuotaExceeded"); };
-    (globalThis as any).localStorage = failing;
+  it("record() silently degrades when the backing storage rejects writes", () => {
+    backing.failSet = true;
     const list = createRecentList("k-quota", 3);
+    // Cache update is synchronous; the write-through rejection is
+    // swallowed by SyncCachedStorage's write queue.
     expect(() => list.record("a")).not.toThrow();
+    expect(list.read()).toEqual(["a"]);
   });
 });
 
@@ -133,8 +154,8 @@ describe("canvasMenuRegistry — recordRecentColor / getRecentColors", () => {
     expect(getRecentColors("bg").map((s) => s.label)).toEqual(["Green background"]);
   });
 
-  it("getRecentColors filters out stored values that are no longer in the canonical palette", () => {
-    localStorage.setItem("parallx-canvas-recent-text-colors", JSON.stringify(["rgb(80,185,120)", "rgb(999,999,999)"]));
+  it("getRecentColors filters out stored values that are no longer in the canonical palette", async () => {
+    await _seed("parallx-canvas-recent-text-colors", ["rgb(80,185,120)", "rgb(999,999,999)"]);
     const recents = getRecentColors("text");
     expect(recents.map((c) => c.label)).toEqual(["Green text"]);
   });
