@@ -256,16 +256,19 @@ const copyActiveResourceUri: CommandDescriptor = {
   },
 };
 
-// §86 / Slice B7 — second when-clause consumer of the new context keys,
+// §86 / Slice B7 + B11 — second when-clause consumer of the new context keys,
 // this time using the equality operator on `activeResourceType`. The command
 // is only enabled when the active resource is a file (i.e. the editor surface
 // has a file-backed input). It copies the file's absolute fsPath — distinct
-// from B5 which copies the canonical parallx:// URI.
+// from B5 which copies the canonical parallx:// URI. Slice B11 strengthens
+// the gate to require an *editor* surface (the first compound `&&` when-clause
+// in the built-in palette) and binds a default `Ctrl+Alt+P` keybinding.
 const copyActiveFilePath: CommandDescriptor = {
   id: 'workbench.action.copyActiveFilePath',
   title: 'Copy Active File Path',
   category: 'File',
-  when: "activeResourceType == 'file'",
+  when: "activeResourceType == 'file' && activeSurfaceKind == 'editor'",
+  keybinding: 'Ctrl+Alt+P',
   aiInvocable: true,
   aiDescription:
     'Copy the absolute filesystem path of the currently active file to the system clipboard. Only available when a file resource is active. Returns the path string.',

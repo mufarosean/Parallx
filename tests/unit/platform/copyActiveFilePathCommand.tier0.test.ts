@@ -44,7 +44,9 @@ describe('copyActiveFilePath command (Slice B7)', () => {
     expect(cmd).toBeDefined();
     expect(cmd.title).toBe('Copy Active File Path');
     expect(cmd.category).toBe('File');
-    expect(cmd.when).toBe("activeResourceType == 'file'");
+    expect(cmd.when).toBe(
+      "activeResourceType == 'file' && activeSurfaceKind == 'editor'"
+    );
     expect(cmd.aiInvocable).toBe(true);
     expect(typeof cmd.aiDescription).toBe('string');
   });

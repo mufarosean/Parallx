@@ -6,6 +6,38 @@
 
 ---
 
+## Iteration 91 — Slice B11: compound `&&` when-clause + keybinding (2026-05-25)
+
+- Built-in commands so far gated either on truthiness
+  (`activeResourceType`, B5) or a single equality
+  (`activeResourceType == 'file'`, B7). No production palette command
+  exercised the §86 when-clause grammar's `&&` operator across two
+  primitives.
+- `copyActiveFilePath` (B7) now declares the compound gate
+  `activeResourceType == 'file' && activeSurfaceKind == 'editor'`.
+  Both halves are §86 context keys published by
+  `WorkbenchContextManager`. The command also gains a default
+  `Ctrl+Alt+P` keybinding, picked up by
+  `_registerStructuralKeybindings` and registered with the same
+  `when`-clause forwarded verbatim to `KeybindingService`.
+- The slice tightens correctness too: B7's underlying handler only
+  makes sense for editor-hosted files. Previously a future
+  `file` resource published from a non-editor surface (e.g. a thumbnail
+  preview) would have falsely enabled the command. The compound gate
+  pins it to the editor surface kind.
+- 5 new tier-0 tests in
+  `tests/unit/platform/copyActiveFilePathKeybinding.tier0.test.ts`:
+  descriptor declares chord + compound when, no-op on cold start, no-op
+  when only one half matches (either side), fires when both match,
+  reverts to no-op when one side flips. Uses the real
+  `ContextKeyService` so the `&&` evaluation path is exercised end-to-end.
+- The existing B7 descriptor-metadata test was updated for the new
+  when-clause string (single trivial line change).
+- Suite: 98 tier-0 files / 746 tests pass. typecheck clean.
+- `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 90 — Slice B10: bounded FIFO eviction for ToolArtifactStore (2026-05-25)
 
 - Slice B8 wired the first production writer for
