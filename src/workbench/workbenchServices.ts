@@ -21,7 +21,8 @@ import { SessionManager } from '../workspace/sessionManager.js';
 import { SelectionService } from '../services/selectionService.js';
 import { setActiveSelectionService } from '../services/selectionActionDispatcher.js';
 import { ResourceRegistry } from './resources/resourceRegistry.js';
-import { IResourceRegistry } from '../services/serviceTypes.js';
+import { SurfaceRegistry } from './resources/surfaceRegistry.js';
+import { IResourceRegistry, ISurfaceRegistry } from '../services/serviceTypes.js';
 import { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
 import { ConfigurationService } from '../configuration/configurationService.js';
 import { CommandContributionProcessor } from '../contributions/commandContribution.js';
@@ -91,6 +92,12 @@ export function registerWorkbenchServices(services: ServiceCollection): void {
   // consumers call resolveUri() instead of hand-rolling URI matching.
   // Pure-additive — nothing reads from it yet.
   services.registerInstance(IResourceRegistry, new ResourceRegistry());
+
+  // ── Surface Registry (Unified Workbench Primitives — Slice A) ──
+  // Tracks Surfaces (explorer, editors, canvas, chat, panels) and the
+  // active surface. Future slices have parts/editors register themselves.
+  // Pure-additive — nothing registers yet.
+  services.registerInstance(ISurfaceRegistry, new SurfaceRegistry());
 
   // ── Command (Capability 7) ──
   services.registerInstance(ICommandService, new CommandService(services));

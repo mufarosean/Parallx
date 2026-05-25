@@ -850,6 +850,16 @@ export type IResourceRegistry = IResourceRegistryImpl;
 
 export const IResourceRegistry = createServiceIdentifier<IResourceRegistry>('IResourceRegistry');
 
+// ─── ISurfaceRegistry (Unified Workbench Primitives - Slice A) ───────────────
+//
+// Tracks Surfaces and the active surface. See
+// `src/workbench/resources/surfaceRegistry.ts`.
+
+import type { ISurfaceRegistry as ISurfaceRegistryImpl } from '../workbench/resources/surfaceRegistry.js';
+export type ISurfaceRegistry = ISurfaceRegistryImpl;
+
+export const ISurfaceRegistry = createServiceIdentifier<ISurfaceRegistry>('ISurfaceRegistry');
+
 // ─── IToolRegistryService ────────────────────────────────────────────────────
 
 import type { IToolDescription } from '../tools/toolManifest.js';

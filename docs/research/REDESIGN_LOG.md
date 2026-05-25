@@ -6,6 +6,35 @@
 
 ---
 
+## Iteration 4 — Slice A3: SurfaceRegistry (2026-05-25)
+
+**Continuation of:** Unified Workbench Primitives program.
+
+**Done:** New `Surface` type + `SurfaceRegistry` (register / update /
+unregister / active / events) + wiring into the service container as
+`ISurfaceRegistry`. Pure-additive: no part / editor / view registers as
+a Surface yet. Symmetric with `ResourceRegistry` and prepares the
+foundation for atlas weakness #2 (no unified Context/Selection) — a
+future ContextService will compose `SurfaceRegistry.getActive()` +
+`SelectionService.getSelection()` + workspace into one canonical context.
+
+**Files:** `src/workbench/resources/surface.ts` (~60 LOC),
+`src/workbench/resources/surfaceRegistry.ts` (~120 LOC),
+`tests/unit/workbench/resources/surfaceRegistry.tier0.test.ts` (16 tests),
+`src/services/serviceTypes.ts` (+10 lines, `ISurfaceRegistry` id),
+`src/workbench/workbenchServices.ts` (+8 lines, registration).
+
+**Verification:** tier-0 9 files / 130 passed (16 new, no regressions).
+`tsc --noEmit` clean.
+
+**§13a:** Pure-additive. workbenchServices.ts registration is one line
+per service. No preservation surface touched. Recording
+`single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+**Commits this iteration:** `<pending>`.
+
+---
+
 ## Iteration 2 — Slice A1: Resource Primitive (2026-05-25)
 
 **Program:** Unified Workbench Primitives — landing Slice A from
