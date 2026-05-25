@@ -94,6 +94,14 @@ export interface IToolArtifactStore {
    * query for diagnostics, when-clauses, and per-tool teardown loops.
    */
   toolIds(): readonly string[];
+  /**
+   * Snapshot of distinct `workspaceId` values across every stored
+   * record, in first-insertion order. Records without a `workspaceId`
+   * are skipped. Fresh array. Empty store → empty array. Inventory
+   * query symmetric with `toolIds()`. Useful for per-workspace cleanup
+   * loops and diagnostics.
+   */
+  workspaceIds(): readonly string[];
   /** Number of stored artifacts. */
   readonly size: number;
   /** Fires whenever an artifact is added, replaced, or deleted. */
@@ -200,6 +208,18 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
       if (!seen.has(r.toolId)) {
         seen.add(r.toolId);
         out.push(r.toolId);
+      }
+    }
+    return out;
+  }
+
+  workspaceIds(): readonly string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const r of this._records.values()) {
+      if (r.workspaceId && !seen.has(r.workspaceId)) {
+        seen.add(r.workspaceId);
+        out.push(r.workspaceId);
       }
     }
     return out;

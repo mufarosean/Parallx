@@ -6,6 +6,21 @@
 
 ---
 
+## Iteration 40 — Slice A39: IToolArtifactStore.workspaceIds() (2026-05-25)
+
+Added `workspaceIds(): readonly string[]` on `IToolArtifactStore`.
+Returns distinct `workspaceId` values across every stored record in
+first-insertion order. Records without a `workspaceId` are skipped.
+Fresh array. Empty store → empty array. Symmetric inventory query to
+`toolIds()` (A37).
+
+Pure-additive. Tier-0: **48 files / 402 tests**, all green. tsc clean.
+
+Files: `src/workbench/toolArtifactStore.ts`,
+`tests/unit/platform/toolArtifactStoreWorkspaceIds.tier0.test.ts` (new, 6 tests).
+
+---
+
 ## Iteration 39 — Slice A38: ISurfaceRegistry.kinds() (2026-05-25)
 
 Added `kinds(): readonly SurfaceKind[]` on `ISurfaceRegistry`. Returns
