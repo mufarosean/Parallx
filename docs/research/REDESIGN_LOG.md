@@ -6,6 +6,22 @@
 
 ---
 
+## Iteration 48 — Slice A47: ISelectionService.countByWorkspace (2026-05-25)
+
+Added `countByWorkspace(workspaceId): number` on `ISelectionService`.
+Cheap O(n) count of selections whose `selection.resource` has matching
+workspaceId. Selections without a resource or with external resources
+are never counted. Empty arg returns 0. Allocation-free counterpart to
+`entriesByWorkspace(id).length`. Completes the count-by-workspace
+family across all three primitives (A45/A46/A47).
+
+Pure-additive. Tier-0: **56 files / 454 tests**, all green. tsc clean.
+
+Files: `src/services/serviceTypes.ts`, `src/services/selectionService.ts`,
+`tests/unit/platform/selectionServiceCountByWorkspace.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 47 — Slice A46: ISurfaceRegistry.countByKind / countByWorkspace (2026-05-25)
 
 Added `countByKind(kind): number` and `countByWorkspace(workspaceId): number`

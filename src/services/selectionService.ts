@@ -142,6 +142,16 @@ export class SelectionService extends Disposable implements ISelectionService {
     return out;
   }
 
+  countByWorkspace(workspaceId: string): number {
+    if (!workspaceId) return 0;
+    let n = 0;
+    for (const selection of this._perSurface.values()) {
+      const r = selection.resource;
+      if (r && resourceWorkspaceId(r) === workspaceId) n++;
+    }
+    return n;
+  }
+
   clearAll(): readonly string[] {
     if (this._perSurface.size === 0) return [];
     const ids = Array.from(this._perSurface.keys());

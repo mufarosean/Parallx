@@ -886,6 +886,17 @@ export interface ISelectionService extends IDisposable {
   workspaceIds(): readonly string[];
 
   /**
+   * Number of current selections whose `selection.resource` has
+   * `workspaceId === workspaceId`. Selections without a resource, or
+   * whose resource is `external`, are never counted. Empty/undefined
+   * `workspaceId` returns 0. Cheap O(n) count that avoids the array
+   * allocation of `entriesByWorkspace(id).length`. Symmetric with
+   * `IToolArtifactStore.countByWorkspace` (A45) and
+   * `ISurfaceRegistry.countByWorkspace` (A46).
+   */
+  countByWorkspace(workspaceId: string): number;
+
+  /**
    * Clear every surface's selection in one call. Fires one
    * `onDidChangeSelection` event per cleared surface (in insertion
    * order) with `selection: undefined`, so existing subscribers behave
