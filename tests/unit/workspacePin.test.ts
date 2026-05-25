@@ -139,11 +139,16 @@ describe("workspace/Workspace — folders + state", () => {
     expect(ws.folders.map((f) => f.name)).toEqual(["a"]);
   });
 
-  it("displayName: empty → identity.name; single folder → folder.name", () => {
-    const ws = Workspace.create("Identity", undefined);
-    expect(ws.displayName).toBe("Identity");
-    ws.addFolder(URI.file("/tmp/books"), "Books");
-    expect(ws.displayName).toBe("Books");
+  it("displayName: empty → identity.name; single folder → folder.name when identity matches, else identity.name (W11)", () => {
+    const ws = Workspace.create("books", undefined);
+    expect(ws.displayName).toBe("books");
+    ws.addFolder(URI.file("/tmp/books"), "books");
+    expect(ws.displayName).toBe("books");
+
+    // Diverged identity (user rename) wins over folder.name.
+    const ws2 = Workspace.create("Identity", undefined);
+    ws2.addFolder(URI.file("/tmp/books"), "Books");
+    expect(ws2.displayName).toBe("Identity");
   });
 
   it("getWorkspaceFolder matches the folder for an exact path AND descendants (case-insensitive)", () => {

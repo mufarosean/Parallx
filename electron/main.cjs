@@ -15,6 +15,7 @@ const doclingBridge = require('./doclingBridge.cjs');
 const { setupMcpBridge, killAllMcpProcesses } = require('./mcpBridge.cjs');
 const { setupStorageHandlers } = require('./storageHandlers.cjs');
 const { setupWebFetchBridge } = require('./webFetchBridge.cjs');
+const { defineHandler, configureGuards } = require('./ipc/registry.cjs');
 
 // ════════════════════════════════════════════════════════════════════════════════
 // Workspace Teardown Registry
@@ -1217,16 +1218,31 @@ function _isAllowedReadPath(filePath) {
   return _matchesAnyRoot(normalized, _fsExtraRoots);
 }
 
+// M86-W6: wire the path-allowlist guards into the typed IPC handler
+// registry. Every fs:* handler below registers through `defineHandler`
+// with an explicit policy, and the registry enforces the guard. A handler
+// author can no longer "forget" the allowlist check at the call site —
+// that was the M85-W2/F2 bug class.
+configureGuards({
+  isAllowedReadPath: _isAllowedReadPath,
+  isAllowedWritePath: _isAllowedWritePath,
+  getWorkspaceRoot: () => _fsWorkspaceRoot,
+});
+
 // ── fs:setWorkspaceRoot ──
 // Called by the renderer when a workspace is opened or switched. Registers the
 // workspace root so write-path validation can enforce containment.
-ipcMain.handle('fs:setWorkspaceRoot', (_event, rootPath) => {
+defineHandler({
+  name: 'fs:setWorkspaceRoot',
+  policy: 'public',
+  handler: (_event, rootPath) => {
   if (typeof rootPath === 'string' && rootPath.length > 0) {
     _fsWorkspaceRoot = path.resolve(rootPath);
   } else {
     _fsWorkspaceRoot = null;
   }
   return { ok: true };
+  },
 });
 
 // ── fs:registerExtraRoots ──
@@ -1238,7 +1254,10 @@ ipcMain.handle('fs:setWorkspaceRoot', (_event, rootPath) => {
 // through an extension UI should be passed in. Replaces the previous set
 // each call; callers re-send the full list when the user adds or removes
 // a root.
-ipcMain.handle('fs:registerExtraRoots', (_event, roots) => {
+defineHandler({
+  name: 'fs:registerExtraRoots',
+  policy: 'public',
+  handler: (_event, roots) => {
   _fsExtraRoots.clear();
   if (Array.isArray(roots)) {
     for (const r of roots) {
@@ -1248,13 +1267,17 @@ ipcMain.handle('fs:registerExtraRoots', (_event, roots) => {
     }
   }
   return { ok: true, count: _fsExtraRoots.size };
+  },
 });
 
 // ── fs:readFile ──
-ipcMain.handle('fs:readFile', async (_event, filePath, encoding) => {
-  if (!_isAllowedReadPath(filePath)) {
-    return { error: { code: 'EACCES', message: 'Read path is outside the allowed roots', path: filePath } };
-  }
+// Policy: allowlistRead — the registry rejects paths outside the read
+// allowlist before this handler runs. Handler body assumes path is valid.
+defineHandler({
+  name: 'fs:readFile',
+  policy: 'allowlistRead',
+  pathArgIndex: 0,
+  handler: async (_event, filePath, encoding) => {
   try {
     const stat = await fs.stat(filePath);
     if (stat.isDirectory()) {
@@ -1274,13 +1297,15 @@ ipcMain.handle('fs:readFile', async (_event, filePath, encoding) => {
   } catch (err) {
     return { error: normalizeError(err, filePath) };
   }
+  },
 });
 
 // ── fs:writeFile ──
-ipcMain.handle('fs:writeFile', async (_event, filePath, content, encoding) => {
-  if (!_isAllowedWritePath(filePath)) {
-    return { error: { code: 'EACCES', message: 'Write path is outside the workspace root', path: filePath } };
-  }
+defineHandler({
+  name: 'fs:writeFile',
+  policy: 'allowlistWrite',
+  pathArgIndex: 0,
+  handler: async (_event, filePath, content, encoding) => {
   try {
     // Ensure parent directory exists
     await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -1293,13 +1318,15 @@ ipcMain.handle('fs:writeFile', async (_event, filePath, content, encoding) => {
   } catch (err) {
     return { error: normalizeError(err, filePath) };
   }
+  },
 });
 
 // ── fs:stat ──
-ipcMain.handle('fs:stat', async (_event, filePath) => {
-  if (!_isAllowedReadPath(filePath)) {
-    return { error: { code: 'EACCES', message: 'Path is outside the allowed roots', path: filePath } };
-  }
+defineHandler({
+  name: 'fs:stat',
+  policy: 'allowlistRead',
+  pathArgIndex: 0,
+  handler: async (_event, filePath) => {
   try {
     const stat = await fs.stat(filePath);
     let type = 'file';
@@ -1325,13 +1352,15 @@ ipcMain.handle('fs:stat', async (_event, filePath) => {
   } catch (err) {
     return { error: normalizeError(err, filePath) };
   }
+  },
 });
 
 // ── fs:readdir ──
-ipcMain.handle('fs:readdir', async (_event, dirPath) => {
-  if (!_isAllowedReadPath(dirPath)) {
-    return { error: { code: 'EACCES', message: 'Directory is outside the allowed roots', path: dirPath } };
-  }
+defineHandler({
+  name: 'fs:readdir',
+  policy: 'allowlistRead',
+  pathArgIndex: 0,
+  handler: async (_event, dirPath) => {
   try {
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
     const results = [];
@@ -1365,10 +1394,19 @@ ipcMain.handle('fs:readdir', async (_event, dirPath) => {
   } catch (err) {
     return { error: normalizeError(err, dirPath) };
   }
+  },
 });
 
 // ── fs:exists ──
-ipcMain.handle('fs:exists', async (_event, filePath) => {
+// Returns a plain boolean (not the standard error envelope) so the
+// registry can't enforce policy via return-shape rewriting. Kept on
+// 'public' policy with an inline read-allowlist check that fails closed
+// with `false`. Renderers MUST NOT use this as a substitute for a real
+// read; treat it strictly as a probe.
+defineHandler({
+  name: 'fs:exists',
+  policy: 'public',
+  handler: async (_event, filePath) => {
   if (!_isAllowedReadPath(filePath)) {
     return false;
   }
@@ -1378,6 +1416,7 @@ ipcMain.handle('fs:exists', async (_event, filePath) => {
   } catch {
     return false;
   }
+  },
 });
 
 // ── fs:existsPath (M85-F2) ──
@@ -1390,7 +1429,10 @@ ipcMain.handle('fs:exists', async (_event, filePath) => {
 // The renderer is same-origin shipped code; existence probing is a
 // minor info leak comparable to what window.parallxElectron already
 // exposes via appPath.
-ipcMain.handle('fs:existsPath', async (_event, filePath) => {
+defineHandler({
+  name: 'fs:existsPath',
+  policy: 'public',
+  handler: async (_event, filePath) => {
   if (typeof filePath !== 'string' || filePath.length === 0) return false;
   try {
     await fs.access(filePath);
@@ -1398,10 +1440,19 @@ ipcMain.handle('fs:existsPath', async (_event, filePath) => {
   } catch {
     return false;
   }
+  },
 });
 
 // ── fs:rename ──
-ipcMain.handle('fs:rename', async (_event, oldPath, newPath) => {
+// Two-path handler. The registry only enforces a single pathArgIndex, so
+// rename declares policy 'public' and runs the write-allowlist check for
+// BOTH oldPath and newPath inline. This is the documented exception to
+// the registry contract; new two-path handlers should follow the same
+// pattern.
+defineHandler({
+  name: 'fs:rename',
+  policy: 'public',
+  handler: async (_event, oldPath, newPath) => {
   if (!_isAllowedWritePath(oldPath) || !_isAllowedWritePath(newPath)) {
     return { error: { code: 'EACCES', message: 'Rename path is outside the workspace root', path: oldPath } };
   }
@@ -1411,6 +1462,7 @@ ipcMain.handle('fs:rename', async (_event, oldPath, newPath) => {
   } catch (err) {
     return { error: normalizeError(err, oldPath) };
   }
+  },
 });
 
 // ── fs:delete ──
@@ -1428,10 +1480,11 @@ ipcMain.handle('fs:rename', async (_event, oldPath, newPath) => {
 //                      for callers that may operate on external/encrypted
 //                      drives).
 //   false            — permanent delete (no recycle bin).
-ipcMain.handle('fs:delete', async (_event, filePath, options) => {
-  if (!_isAllowedWritePath(filePath)) {
-    return { error: { code: 'EACCES', message: 'Delete path is outside the workspace root', path: filePath } };
-  }
+defineHandler({
+  name: 'fs:delete',
+  policy: 'allowlistWrite',
+  pathArgIndex: 0,
+  handler: async (_event, filePath, options) => {
   try {
     const opt = options?.useTrash === undefined ? 'auto' : options.useTrash;
     let useTrash = opt !== false; // default: true (then refined below)
@@ -1465,6 +1518,7 @@ ipcMain.handle('fs:delete', async (_event, filePath, options) => {
   } catch (err) {
     return { error: normalizeError(err, filePath) };
   }
+  },
 });
 
 // ── shell:showItemInFolder ──
@@ -1623,23 +1677,29 @@ ipcMain.handle('secret:delete', async (_event, key) => {
 });
 
 // ── fs:mkdir ──
-ipcMain.handle('fs:mkdir', async (_event, dirPath) => {
-  if (!_isAllowedWritePath(dirPath)) {
-    return { error: { code: 'EACCES', message: 'mkdir path is outside the workspace root', path: dirPath } };
-  }
+defineHandler({
+  name: 'fs:mkdir',
+  policy: 'allowlistWrite',
+  pathArgIndex: 0,
+  handler: async (_event, dirPath) => {
   try {
     await fs.mkdir(dirPath, { recursive: true });
     return { error: null };
   } catch (err) {
     return { error: normalizeError(err, dirPath) };
   }
+  },
 });
 
 // ── fs:copy ──
-ipcMain.handle('fs:copy', async (_event, source, destination) => {
-  if (!_isAllowedWritePath(destination)) {
-    return { error: { code: 'EACCES', message: 'Copy destination is outside the workspace root', path: destination } };
-  }
+// The destination is the protected path; source is read-only on disk and
+// only goes back to the renderer via the copy itself. pathArgIndex points
+// at the destination (arg 1, zero-based).
+defineHandler({
+  name: 'fs:copy',
+  policy: 'allowlistWrite',
+  pathArgIndex: 1,
+  handler: async (_event, source, destination) => {
   try {
     const stat = await fs.stat(source);
     if (stat.isDirectory()) {
@@ -1651,6 +1711,7 @@ ipcMain.handle('fs:copy', async (_event, source, destination) => {
   } catch (err) {
     return { error: normalizeError(err, source) };
   }
+  },
 });
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -2179,7 +2240,14 @@ const WATCHER_IGNORE_FILES = new Set(['workspace-state.json', 'global-storage.js
 const WATCHER_DEBOUNCE_MS = 100;
 
 // ── fs:watch ──
-ipcMain.handle('fs:watch', async (_event, watchPath, _options) => {
+// M86-W6: previously this handler did not validate the watch path. Now
+// allowlistRead-gated so a renderer compromise can't spawn watchers
+// against arbitrary disk paths.
+defineHandler({
+  name: 'fs:watch',
+  policy: 'allowlistRead',
+  pathArgIndex: 0,
+  handler: async (_event, watchPath, _options) => {
   if (_activeWatchers.size >= MAX_WATCHERS) {
     return { error: { code: 'ELIMIT', message: `Maximum ${MAX_WATCHERS} watchers reached`, path: watchPath } };
   }
@@ -2255,12 +2323,17 @@ ipcMain.handle('fs:watch', async (_event, watchPath, _options) => {
   } catch (err) {
     return { error: normalizeError(err, watchPath) };
   }
+  },
 });
 
 // ── fs:unwatch ──
-ipcMain.handle('fs:unwatch', async (_event, watchId) => {
+defineHandler({
+  name: 'fs:unwatch',
+  policy: 'public',
+  handler: async (_event, watchId) => {
   _cleanupWatcher(watchId);
   return { error: null };
+  },
 });
 
 function _cleanupWatcher(watchId) {

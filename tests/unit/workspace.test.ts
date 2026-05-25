@@ -85,11 +85,21 @@ describe("Workspace — state + displayName", () => {
     expect(fired).toHaveBeenCalledWith(WorkbenchState.FOLDER);
   });
 
-  it("displayName returns the folder name for single-folder workspaces", () => {
-    const w = Workspace.create("Identity");
-    expect(w.displayName).toBe("Identity");
-    w.addFolder(URI.from({ scheme: "file", path: "/repo/books" }), "Books");
-    expect(w.displayName).toBe("Books");
+  it("displayName: folder.name when identity tracks folder; identity.name when user-renamed", () => {
+    // Implicit case: when identity matches the (only) folder name, we show
+    // the folder name. Workspace.create with no folder => identity wins
+    // until a folder is added that shares the identity name.
+    const w = Workspace.create("books");
+    expect(w.displayName).toBe("books");
+    w.addFolder(URI.from({ scheme: "file", path: "/repo/books" }), "books");
+    expect(w.displayName).toBe("books");
+
+    // Explicit-rename case (W11): user renamed the workspace to something
+    // that diverges from the folder name. Identity must win so the
+    // titlebar reflects the user's intent.
+    const w2 = Workspace.create("My Reading Notes");
+    w2.addFolder(URI.from({ scheme: "file", path: "/repo/books" }), "books");
+    expect(w2.displayName).toBe("My Reading Notes");
   });
 });
 
