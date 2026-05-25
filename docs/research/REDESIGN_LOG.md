@@ -6,6 +6,20 @@
 
 ---
 
+## Iteration 39 — Slice A38: ISurfaceRegistry.kinds() (2026-05-25)
+
+Added `kinds(): readonly SurfaceKind[]` on `ISurfaceRegistry`. Returns
+distinct `SurfaceKind` values across every registered surface, in
+first-insertion order. Fresh array. Empty registry → empty array.
+Symmetric inventory query to `IToolArtifactStore.toolIds()` (A37).
+
+Pure-additive. Tier-0: **47 files / 396 tests**, all green. tsc clean.
+
+Files: `src/workbench/resources/surfaceRegistry.ts`,
+`tests/unit/platform/surfaceRegistryKinds.tier0.test.ts` (new, 6 tests).
+
+---
+
 ## Iteration 38 — Slice A37: IToolArtifactStore.toolIds() (2026-05-25)
 
 Added `toolIds(): readonly string[]` on `IToolArtifactStore`. Returns

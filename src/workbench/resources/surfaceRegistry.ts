@@ -62,6 +62,15 @@ export interface ISurfaceRegistry {
    */
   listByWorkspace(workspaceId: string): ReadonlyArray<Surface>;
 
+  /**
+   * Snapshot of distinct `SurfaceKind` values across every registered
+   * surface, in first-insertion order (the order each kind first
+   * appeared in the registry). Fresh array. Empty registry → empty
+   * array. Inventory query for diagnostics and per-kind enumeration
+   * loops. Symmetric with `IToolArtifactStore.toolIds()` (A37).
+   */
+  kinds(): readonly SurfaceKind[];
+
   /** Lookup by id. */
   get(id: string): Surface | undefined;
 
@@ -161,6 +170,18 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
     for (const s of this._surfaces.values()) {
       if (s.resource && resourceWorkspaceId(s.resource) === workspaceId) {
         out.push(s);
+      }
+    }
+    return out;
+  }
+
+  kinds(): readonly SurfaceKind[] {
+    const seen = new Set<SurfaceKind>();
+    const out: SurfaceKind[] = [];
+    for (const s of this._surfaces.values()) {
+      if (!seen.has(s.kind)) {
+        seen.add(s.kind);
+        out.push(s.kind);
       }
     }
     return out;
