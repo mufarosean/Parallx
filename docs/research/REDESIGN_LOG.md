@@ -6,6 +6,69 @@
 
 ---
 
+## Iteration 2 — Slice A1: Resource Primitive (2026-05-25)
+
+**Program:** Unified Workbench Primitives — landing Slice A from
+[`WORKBENCH_INTERACTION_MODEL.md` §7.2](../architecture/WORKBENCH_INTERACTION_MODEL.md).
+This is the big-win, top-down redesign. Atlas §12 weakness #1 ("No unified
+concept of Resource or Surface") is the highest-leverage gap. Every cross-tool
+bridge in atlas §4.1 (Selection→Chat, Selection→Canvas, Canvas↔Chat URIs,
+Chat↔Explorer attachments, Canvas-sidebar↔Editor, Recent-workspaces dual
+owners, per-feature URI handlers) depends on these primitives existing first.
+
+**Pivot away from small fixes:** I scoped a canvas-block theme-propagation
+slice from atlas §4.3, then verified by grep + reading `themeService.ts` that
+the theme service injects CSS custom properties on `body` (line 67 fires
+`onDidChangeTheme` after re-injecting). Any consumer using `var(--*)` updates
+automatically. The atlas claim that canvas blocks don't see theme changes is
+inaccurate — there are zero theme references in any canvas .ts file, and the
+update path is CSS, not JS. Slice rejected on verification. User then said
+explicitly: "focus top down, big wins first." Pivoted to the Resource program.
+
+**Slice A1 — §16 Work Definition Contract:**
+
+| Field | Answer |
+|---|---|
+| User workflow | Cross-tool referencing across files, canvas pages, chat sessions, tool artifacts (the §5 primary workflow). |
+| Current behavior | Each feature invents its own ID scheme. Canvas: `parallx.canvas:canvas:<uuid>`. Files: absolute paths. Chat: opaque session IDs. Link resolver handles each ad-hoc. |
+| Pain | Atlas §12 weakness #1. Every new bridge or new resource type touches every feature. Bridges 3 and 7 in atlas §4.1 are hard-coded URI handlers. |
+| Workbench concepts | Resource (manifest §10), URI scheme, Provenance (precursor). |
+| Scope | `src/workbench/resources/resource.ts`, `src/workbench/resources/parallxUri.ts`, `tests/unit/workbench/resources/parallxUri.tier0.test.ts`. New files only. |
+| Out of scope | LinkResolverService, ChatDataService, CanvasDataService, SelectionActionDispatcher — no consumer migrated this slice. SurfaceRegistry, SelectionService — separate slices. |
+| Baseline | None — purely additive. Establishes the Resource baseline future slices migrate to. |
+| Better claim | Single canonical `Resource` discriminated union exists. URI scheme round-trips deterministically across all 5 variants. Legacy `parallx.canvas:canvas:<uuid>` parseable via alias. |
+| Preservation checks | None touched. `src/links/linkResolverService.ts` (preservation surface) NOT modified. Zero imports added to existing code. |
+| Verification | Tier-0 vitest: 32 tests covering parse (typed + legacy alias + external + 8 rejection paths), serialize (5 variants), round-trip (8 cases), equals. `npm run build` clean. |
+| Rollback | `git revert <hash>`. No consumer depends on the new files. |
+
+**Done this iteration:**
+- Created `src/workbench/resources/resource.ts` (discriminated union + constructors).
+- Created `src/workbench/resources/parallxUri.ts` (`parse`, `serialize`, `equals`).
+- Created `tests/unit/workbench/resources/parallxUri.tier0.test.ts` (32 tests).
+- `npm run test:unit:tier0` → 7 files / 100 passed (32 new, 68 prior, no regressions).
+- `npm run build` → tsc clean, renderer bundle written.
+- §13a: pure-additive slice, no preservation surface, no subagent reviewer.
+  Recording `single-pass-review: tier-0-tests-pass-build-green` in commit body.
+
+**Why this slice unlocks the program:**
+- SelectionService (Slice A continuation) needs `Resource` as the selection
+  payload type.
+- SurfaceRegistry needs `Resource` for `Surface.activeResource`.
+- LinkResolverService unification (atlas bridge #7) needs the union + URI
+  scheme to register per-type resolvers.
+- Canvas↔Chat URI replacement (atlas bridge #3) needs the legacy alias path
+  this slice ships.
+
+**Next slice (A2 candidate):** ResourceRegistry / resolver interface — the
+service that lets each domain (Canvas, Chat, File, Tool) register a resolver
+for its Resource type, and that link-handling code calls instead of the
+ad-hoc URI matching in `linkResolverService.ts`. Still purely additive;
+existing `linkResolverService.ts` untouched.
+
+**Commits this iteration:** `<pending>` — Slice A1 commit follows this log update.
+
+---
+
 ## Iteration 1 — Foundational Artifacts (2026-05-25)
 
 **Status:** inherited from prior sessions; accepted as iteration-1 baseline.
