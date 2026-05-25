@@ -96,6 +96,10 @@ export class SelectionService extends Disposable implements ISelectionService {
     return this._mostRecentSurfaceId;
   }
 
+  mostRecentResource(): Resource | undefined {
+    return this.getSelection()?.resource;
+  }
+
   hasAnySelection(): boolean {
     return this._perSurface.size > 0;
   }

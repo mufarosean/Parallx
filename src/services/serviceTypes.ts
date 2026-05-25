@@ -840,6 +840,15 @@ export interface ISelectionService extends IDisposable {
    */
   mostRecentSurfaceId(): string | undefined;
 
+  /**
+   * Backing resource of the most-recent selection, or `undefined` if
+   * no surface holds a selection or the most-recent selection has no
+   * resource. Cheap derived accessor — equivalent to
+   * `getSelection()?.resource`. Symmetric with
+   * `ISurfaceRegistry.activeResource()` (A54).
+   */
+  mostRecentResource(): Resource | undefined;
+
   /** Fires when any surface's selection changes. */
   readonly onDidChangeSelection: Event<ISelectionChangeEvent>;
 

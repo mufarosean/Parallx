@@ -6,6 +6,21 @@
 
 ---
 
+## Iteration 56 — Slice A55: ISelectionService.mostRecentResource (2026-05-25)
+
+Added `mostRecentResource(): Resource | undefined` on
+`ISelectionService`. Cheap derived accessor equivalent to
+`getSelection()?.resource` — returns the backing resource of the
+most-recent selection, or undefined if none exists. Symmetric with
+`ISurfaceRegistry.activeResource()` (A54).
+
+Pure-additive. Tier-0: **64 files / 510 tests**, all green. tsc clean.
+
+Files: `src/services/serviceTypes.ts`, `src/services/selectionService.ts`,
+`tests/unit/platform/selectionServiceMostRecentResource.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 55 — Slice A54: ISurfaceRegistry.activeKind / activeResource (2026-05-25)
 
 Added `activeKind(): SurfaceKind | undefined` and `activeResource():
