@@ -55,6 +55,15 @@ export interface ISurfaceRegistry {
   find(predicate: (surface: Surface) => boolean): Surface | undefined;
 
   /**
+   * Return all registered surfaces for which `predicate` returns truthy.
+   * Insertion order. Fresh array per call. Empty registry or no-match
+   * → empty array. Predicate must not mutate the registry. Symmetric
+   * with `IToolArtifactStore.filter()`; general-purpose query for cases
+   * that don't fit `listByKind` / `findByResource` / `listByWorkspace`.
+   */
+  filter(predicate: (surface: Surface) => boolean): ReadonlyArray<Surface>;
+
+  /**
    * All currently-registered surfaces whose `kind` matches the given
    * value. Insertion order preserved. Returns a fresh snapshot.
    */
@@ -279,6 +288,14 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
       if (predicate(s)) return s;
     }
     return undefined;
+  }
+
+  filter(predicate: (surface: Surface) => boolean): ReadonlyArray<Surface> {
+    const out: Surface[] = [];
+    for (const s of this._surfaces.values()) {
+      if (predicate(s)) out.push(s);
+    }
+    return out;
   }
 
   listByKind(kind: SurfaceKind): ReadonlyArray<Surface> {

@@ -6,6 +6,18 @@
 
 ---
 
+## Iteration 69 — Slice A68: ISurfaceRegistry.filter (2026-05-25)
+
+- Added `filter(predicate: (surface) => boolean): ReadonlyArray<Surface>`
+  returning all registered surfaces matching `predicate` in registration
+  order. Fresh array per call. Symmetric with `IToolArtifactStore.filter()`;
+  completes the find/filter pair on ISurfaceRegistry (find = A67, filter = A68).
+- 7 tier-0 tests covering empty, no-match, multi-match order, fresh-array
+  isolation, predicate-true-equals-list, post-unregister, post-clear.
+- Pure-additive. `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 68 — Slice A67: ISurfaceRegistry.find (2026-05-25)
 
 - Added `find(predicate: (surface) => boolean): Surface | undefined` returning
