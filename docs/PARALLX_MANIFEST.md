@@ -807,7 +807,9 @@ The first agent must verify these commands from `package.json` before using them
 | Command | Purpose |
 |---|---|
 | `npm run build` | Type-check and build renderer output. |
-| `npm run test:unit` | Run Vitest unit tests. |
+| `npm run test:unit` | Run all Vitest unit tests (tier-0 + tier-1). |
+| `npm run test:unit:tier0` | Run M86-W5 tier-0 tests only (pure-Node, no jsdom). Add tests here when they have no DOM, IPC, or filesystem dependencies. Selected by `tests/unit/platform/**` or `*.tier0.test.ts`. |
+| `npm run test:unit:tier1` | Run remaining unit tests (jsdom + IPC mocks). This is the historic `test:unit` behavior. |
 | `npm run test:e2e` | Run Playwright e2e tests. |
 | `npm run test:ai-eval` | Run AI-eval Playwright scenarios when a milestone explicitly requires them. |
 | `npm run dev` | Build and launch the Electron app for manual verification. |

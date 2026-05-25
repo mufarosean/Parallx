@@ -9,7 +9,7 @@ import {
   _resetGlobalLoggerForTests,
   type LogRecord,
   type ILogSink,
-} from '../../src/platform/log.js';
+} from '../../../src/platform/log.js';
 
 class CaptureSink implements ILogSink {
   records: LogRecord[] = [];

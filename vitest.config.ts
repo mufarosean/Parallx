@@ -20,6 +20,14 @@ export default defineConfig({
   plugins: [cssStubPlugin],
   test: {
     include: ['tests/unit/**/*.test.ts'],
+    // M86-W5: tier-0 tests live under tests/unit/platform/** or use the
+    // *.tier0.test.ts suffix and run under vitest.tier0.config.ts (no jsdom).
+    // Excluded here so they don't double-run in tier 1.
+    exclude: [
+      '**/node_modules/**',
+      'tests/unit/platform/**',
+      'tests/unit/**/*.tier0.test.ts',
+    ],
     globals: true,
     pool: 'forks',
   },
