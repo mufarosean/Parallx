@@ -111,7 +111,14 @@ existing `linkResolverService.ts` untouched.
 3. **Canvas-sidebar editor sync** — atlas bridge #5. Same pattern.
 4. **Workspace canonical ownership of folder set** — atlas bridge #6.
 
-**Commits this iteration:** `<pending>` — slice A2 commit follows.
+**Commits this iteration:** `051253b8` (A2 registry) + `<pending>` (A2 wiring).
+
+**A2 wiring follow-up (same iteration):** Registered `IResourceRegistry`
+service identifier in `serviceTypes.ts` and instantiated `ResourceRegistry`
+in `workbenchServices.ts`. The registry is now reachable through the
+standard service container so future consumer slices can `getService(IResourceRegistry)`.
+No consumer wired yet — still pure-additive. Verification: tier-0
+8 files / 114 passed (no change in count, no regressions). `tsc --noEmit` clean.
 
 ---
 

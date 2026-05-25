@@ -20,6 +20,8 @@ import { ToolErrorService } from '../tools/toolErrorIsolation.js';
 import { SessionManager } from '../workspace/sessionManager.js';
 import { SelectionService } from '../services/selectionService.js';
 import { setActiveSelectionService } from '../services/selectionActionDispatcher.js';
+import { ResourceRegistry } from './resources/resourceRegistry.js';
+import { IResourceRegistry } from '../services/serviceTypes.js';
 import { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
 import { ConfigurationService } from '../configuration/configurationService.js';
 import { CommandContributionProcessor } from '../contributions/commandContribution.js';
@@ -82,6 +84,13 @@ export function registerWorkbenchServices(services: ServiceCollection): void {
   const selectionService = new SelectionService();
   services.registerInstance(ISelectionService, selectionService);
   setActiveSelectionService(selectionService);
+
+  // ── Resource Registry (Unified Workbench Primitives — Slice A) ──
+  // Per-type Resource resolver dispatch. Future slices register file /
+  // canvas-page / chat-session / tool-artifact resolvers here, then
+  // consumers call resolveUri() instead of hand-rolling URI matching.
+  // Pure-additive — nothing reads from it yet.
+  services.registerInstance(IResourceRegistry, new ResourceRegistry());
 
   // ── Command (Capability 7) ──
   services.registerInstance(ICommandService, new CommandService(services));

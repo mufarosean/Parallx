@@ -838,6 +838,18 @@ export interface ISelectionService extends IDisposable {
 
 export const ISelectionService = createServiceIdentifier<ISelectionService>('ISelectionService');
 
+// ─── IResourceRegistry (Unified Workbench Primitives - Slice A) ──────────────
+//
+// Canonical per-type resolver dispatch for the Resource union. See
+// `src/workbench/resources/resourceRegistry.ts` for behavior. The service
+// identifier lives here so downstream consumers can request it through the
+// standard service container without depending on the implementation file.
+
+import type { IResourceRegistry as IResourceRegistryImpl } from '../workbench/resources/resourceRegistry.js';
+export type IResourceRegistry = IResourceRegistryImpl;
+
+export const IResourceRegistry = createServiceIdentifier<IResourceRegistry>('IResourceRegistry');
+
 // ─── IToolRegistryService ────────────────────────────────────────────────────
 
 import type { IToolDescription } from '../tools/toolManifest.js';
