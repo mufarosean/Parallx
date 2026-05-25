@@ -6,6 +6,43 @@
 
 ---
 
+## Iteration 81 — Slice B1: Editor adopts ISurfaceRegistry (2026-05-25)
+
+- First real **product-side writer** for `ISurfaceRegistry`. The 80
+  pure-additive predicates added in A1..A79 (`some/count/forEach/find/
+  filter/entries`, `*ByWorkspace`, `activeKind/activeResource/
+  activeWorkspaceId`) operated against a registry that was empty at
+  runtime — only tier-0 tests exercised it. This slice exits that
+  pure-additive ratchet.
+- New module `src/workbench/resources/editorSurfaceBinding.ts`:
+  `bindEditorToSurfaceRegistry(editorService, workspaceService,
+  surfaceRegistry)`. Mirrors `IEditorService` lifecycle into the
+  registry: every open editor gets registered as a `kind:'editor'`
+  surface with id `editor:<input.id>`, file-backed inputs carry a
+  `FileResource(path, { workspaceId })`, non-file inputs carry
+  `resource: undefined`. Active editor → `setActive`. Closed editors →
+  `unregister`. Disposable cleans up everything it owns.
+- Wired in `workbench.ts._registerEditorServices()` via
+  `this._services.tryGet(ISurfaceRegistry)` /
+  `tryGet(IWorkspaceService)`; gated on both being present so it stays
+  optional. Registered with `_register(...)` so workbench teardown
+  unwinds it.
+- 8 tier-0 tests (`editorSurfaceBinding.tier0.test.ts`): empty seed,
+  file-backed open → registered + active + file resource with
+  workspaceId, non-file open → resource undefined, active switch →
+  registers + activates new id, close active → unregister + active
+  clears, label rename → `update` (no register/unregister churn),
+  dispose → all owned surfaces unregister, workspace switch →
+  workspaceId on resource refreshes on next active change.
+- Preservation: no prior reader of `ISurfaceRegistry` exists in product,
+  so this introduces zero observable behavior change. `WorkbenchContext.
+  activeResourceType` (A64) and the `activeKind/activeResource` family
+  now report real editor state on the first slice that consumes them.
+- Suite: 89 tier-0 files / 686 tests pass. typecheck clean.
+- `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 80 — Slice A79: ISelectionService.some(predicate) (2026-05-25)
 
 - Added `some(predicate)` on `ISelectionService`. Completes some trio

@@ -14,8 +14,9 @@ import { addDisposableListener } from '../ui/dom.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IWorkspaceTranscriptService, IGlobalStorageService, IWorkspaceStorageService, ISurfaceRouterService, ISelectionService } from '../services/serviceTypes.js';
+import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IWorkspaceTranscriptService, IGlobalStorageService, IWorkspaceStorageService, ISurfaceRouterService, ISelectionService, ISurfaceRegistry, IWorkspaceService } from '../services/serviceTypes.js';
 import { SurfaceRouterService } from '../services/surfaceRouterService.js';
+import { bindEditorToSurfaceRegistry } from './resources/editorSurfaceBinding.js';
 import { NotificationsSurfacePlugin } from './surfaces/notificationSurface.js';
 import { StatusSurfacePlugin } from './surfaces/statusSurface.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
@@ -2249,6 +2250,17 @@ export class Workbench extends Layout {
       // Update window title
       this._statusBarController.updateWindowTitle(editor);
     });
+
+    // Slice B1: First product writer for ISurfaceRegistry. Mirrors the
+    // set of open editors + the active editor into the registry so
+    // `activeKind()`, `activeResource()`, and `WorkbenchContext.activeResourceType`
+    // (Iter 65 / A64) reflect reality. Pure-additive — no existing
+    // ISurfaceRegistry reader is in product code today.
+    const surfaceRegistry = this._services.tryGet(ISurfaceRegistry);
+    const workspaceService = this._services.tryGet(IWorkspaceService);
+    if (surfaceRegistry && workspaceService) {
+      this._register(bindEditorToSurfaceRegistry(editorService, workspaceService, surfaceRegistry));
+    }
 
     console.log('[Workbench] Editor services registered (Capability 9)');
   }
