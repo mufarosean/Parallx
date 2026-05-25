@@ -6,6 +6,43 @@
 
 ---
 
+## Iteration 13 — Slice A12: publishToolArtifact helper (2026-05-25)
+
+**Continuation of:** A10 created the store, A11 verified end-to-end
+resolution. This slice provides the canonical *write* path: a small
+helper that bundles "store record + return URI" so tools (extensions,
+web research, agents) don't reinvent the pairing.
+
+**Done:**
+
+- New `src/workbench/toolArtifactPublisher.ts` (~55 LOC).
+- `publishToolArtifact(store, input): { uri, record }`:
+  - Validates non-empty `toolId` / `artifactId`.
+  - Builds a `ToolArtifactRecord` (timestamp defaults to `Date.now()`).
+  - Calls `IToolArtifactStore.put`.
+  - Returns the canonical `parallx://tool-artifact:<tool>/<id>[?workspace=...]`
+    URI via `serialize()` so the value can be embedded in chat
+    attachments, canvas blocks, or links.
+
+The helper closes the producer side of the tool-artifact loop:
+producers call `publishToolArtifact`; consumers call
+`registry.resolveUri(uri)`. Both sides talk to the same store, never
+to each other.
+
+**Files:** `src/workbench/toolArtifactPublisher.ts` (new),
+`tests/unit/platform/toolArtifactPublisher.tier0.test.ts` (8 tests
+incl. round-trip-via-registry).
+
+**Verification:** tier-0 20 files / 200 passed (8 new). `tsc --noEmit`
+clean.
+
+**§13a:** Pure workbench addition, no preservation surface touched.
+`single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+**Commits this iteration:** `<pending>`.
+
+---
+
 ## Iteration 12 — Slice A11: ResourceRegistry end-to-end integration test (2026-05-25)
 
 **Continuation of:** A10 wired the third resolver (tool-artifact). The
