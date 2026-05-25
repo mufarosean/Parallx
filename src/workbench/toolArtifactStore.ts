@@ -30,6 +30,11 @@ export interface IToolArtifactStore {
   put(record: ToolArtifactRecord): void;
   /** Retrieve an artifact, or `undefined` if not stored. */
   get(toolId: string, artifactId: string): ToolArtifactRecord | undefined;
+  /**
+   * `true` iff an artifact is stored at `(toolId, artifactId)`. Guard
+   * counterpart to `get` for callers that only need existence.
+   */
+  has(toolId: string, artifactId: string): boolean;
   /** Delete an artifact. Returns `true` if it existed. */
   delete(toolId: string, artifactId: string): boolean;
   /**
@@ -94,6 +99,10 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
 
   get(toolId: string, artifactId: string): ToolArtifactRecord | undefined {
     return this._records.get(InMemoryToolArtifactStore._key(toolId, artifactId));
+  }
+
+  has(toolId: string, artifactId: string): boolean {
+    return this._records.has(InMemoryToolArtifactStore._key(toolId, artifactId));
   }
 
   delete(toolId: string, artifactId: string): boolean {

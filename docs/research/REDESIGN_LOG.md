@@ -6,6 +6,32 @@
 
 ---
 
+## Iteration 27 — Slice A26: IToolArtifactStore.has() (2026-05-25)
+
+Guard-test counterpart to `get(toolId, artifactId)`:
+
+- **`has(toolId, artifactId): boolean`** — `true` iff a record is
+  stored. Equivalent to `get(toolId, artifactId) !== undefined`.
+
+Lets consumers check artifact existence without retrieving the
+record object. Matches the `hasSelection`/`hasAnySelection` pattern
+established in A25.
+
+**Files**
+
+- `src/workbench/toolArtifactStore.ts` — interface + impl
+- `tests/unit/platform/toolArtifactStoreHas.tier0.test.ts` (7 tests)
+
+**Verification**
+
+- `npm run test:unit:tier0 -- --run`: 35 files / 319 passed (7 new).
+- `npx tsc --noEmit`: clean.
+
+**Commit**: pending
+**Review**: single-pass — tier-0 corpus green + tsc clean.
+
+---
+
 ## Iteration 26 — Slice A25: ISelectionService.hasSelection(surfaceId) (2026-05-25)
 
 Guard-test counterpart to `getSelection(surfaceId)`:
