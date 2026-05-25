@@ -65,7 +65,53 @@ for its Resource type, and that link-handling code calls instead of the
 ad-hoc URI matching in `linkResolverService.ts`. Still purely additive;
 existing `linkResolverService.ts` untouched.
 
-**Commits this iteration:** `<pending>` — Slice A1 commit follows this log update.
+**Commits this iteration:** `959a6767` — slice A1.
+
+---
+
+## Iteration 3 — Slice A2: ResourceRegistry (2026-05-25)
+
+**Continuation of:** Unified Workbench Primitives program (Slice A).
+
+**Slice A2 — §16 Work Definition Contract:**
+
+| Field | Answer |
+|---|---|
+| User workflow | Same as A1 — cross-tool referencing across files, canvas pages, chat sessions, tool artifacts. |
+| Current behavior | Each domain has its own URI handler. `LinkResolverService` (preservation surface) contains the union by hand-rolled matching. |
+| Pain | A2 is the dispatch layer that future bridges and a future `LinkResolverService` migration will sit on. Without it, every consumer of `parse()` has to re-implement type dispatch. |
+| Workbench concepts | Resource, ResourceRegistry (per interaction model §2.2 migration story). |
+| Scope | `src/workbench/resources/resourceRegistry.ts` + `tests/unit/workbench/resources/resourceRegistry.tier0.test.ts`. New files only. |
+| Out of scope | LinkResolverService (preservation surface — separate slice with subagent review). No consumer wired this slice. |
+| Baseline | None — purely additive. |
+| Better claim | A typed per-`ResourceType` resolver registry exists. Consumers can call `registry.resolveUri(uri)` and get unified parse+dispatch in one place. |
+| Preservation checks | None touched. `src/links/linkResolverService.ts` not modified. Zero imports added to existing code. |
+| Verification | Tier-0 vitest: 14 tests covering register/has/override/unregister, dispatch, duplicate-throw, dispose, resolveUri including legacy alias and malformed URIs. `npx tsc --noEmit` clean. |
+| Rollback | `git revert <hash>`. No consumer depends on the new file. |
+
+**Done this iteration:**
+- Created `src/workbench/resources/resourceRegistry.ts` (~95 LOC).
+- Created `tests/unit/workbench/resources/resourceRegistry.tier0.test.ts` (14 tests).
+- `npm run test:unit:tier0` → 8 files / 114 passed (14 new, no regressions).
+- `npx tsc --noEmit` clean.
+- §13a: pure-additive slice, no preservation surface, no subagent reviewer.
+  Recording `single-pass-review: tier-0-tests-pass-typecheck-clean` in commit body.
+
+**Slice A status after this iteration:**
+- Resource union type — landed (A1).
+- ParallxUri parse/serialize/equals + legacy alias — landed (A1).
+- ResourceRegistry (per-type resolver dispatch) — landed (A2).
+- Resource is now ready for consumer migration. The remaining Slice A items
+  (SelectionService → Resource payload, SurfaceRegistry, ContextService) are
+  follow-on slices.
+
+**Next-slice candidates (atlas-prioritized, ordered by leverage):**
+1. **LinkResolverService migration to ResourceRegistry** — kills atlas bridges #3 and #7 in one move. Preservation surface — needs separate Executor + Reviewer subagents OR a documented single-pass-review with extra care.
+2. **Chat-context attachments via editor event** — atlas bridge #4. `src/built-in/chat/input/chatContextAttachments.ts` is NOT preservation-listed (only `main.ts` is). Replaces iteration of `api.editors.openEditors` with an `onDidChangeOpenEditors` subscription.
+3. **Canvas-sidebar editor sync** — atlas bridge #5. Same pattern.
+4. **Workspace canonical ownership of folder set** — atlas bridge #6.
+
+**Commits this iteration:** `<pending>` — slice A2 commit follows.
 
 ---
 
