@@ -75,6 +75,14 @@ export interface ISurfaceRegistry {
   get(id: string): Surface | undefined;
 
   /**
+   * Snapshot of every currently-registered surface id, in registration
+   * order. Fresh array. Empty registry → empty array. Cheap inventory
+   * query that avoids materializing full `list()` records when callers
+   * only need the keys. Symmetric with `ISelectionService.surfaceIds()`.
+   */
+  ids(): readonly string[];
+
+  /**
    * Number of currently-registered surfaces. Cheap accessor that
    * avoids materializing `list()` just to read its length. Symmetric
    * with `IToolArtifactStore.size` (A12) and `ISelectionService.size`
@@ -201,6 +209,10 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
 
   get size(): number {
     return this._surfaces.size;
+  }
+
+  ids(): readonly string[] {
+    return Array.from(this._surfaces.keys());
   }
 
   has(id: string): boolean {

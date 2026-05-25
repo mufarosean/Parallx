@@ -6,6 +6,21 @@
 
 ---
 
+## Iteration 45 — Slice A44: ISurfaceRegistry.ids() (2026-05-25)
+
+Added `ids(): readonly string[]` on `ISurfaceRegistry`. Returns every
+currently-registered surface id in registration order. Fresh array.
+Empty registry → empty array. Cheap inventory query that avoids
+materializing full `list()` records when callers only need the keys.
+Symmetric with the existing `ISelectionService.surfaceIds()`.
+
+Pure-additive. Tier-0: **53 files / 433 tests**, all green. tsc clean.
+
+Files: `src/workbench/resources/surfaceRegistry.ts`,
+`tests/unit/platform/surfaceRegistryIds.tier0.test.ts` (new, 6 tests).
+
+---
+
 ## Iteration 44 — Slice A43: IResourceRegistry.size (2026-05-25)
 
 Added `readonly size: number` on `IResourceRegistry`. Cheap accessor
