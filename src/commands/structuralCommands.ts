@@ -18,6 +18,7 @@ import type { CommandService } from './commandRegistry.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { IEditorGroupService, IEditorService } from '../services/serviceTypes.js';
 import type { IContextService } from '../services/serviceTypes.js';
+import type { IToolArtifactStore } from '../services/serviceTypes.js';
 import { serialize as serializeParallxUri } from '../workbench/resources/parallxUri.js';
 import { wb } from './structuralCommandTypes.js';
 
@@ -357,6 +358,41 @@ const inspectActiveSelection: CommandDescriptor = {
   },
 };
 
+// §86 / Slice B16 — first reader command for `IToolArtifactStore`. B8
+// established the writer half (chatAgentService → onDidExecuteTool →
+// store.put). This slice closes the loop by giving AI tools and the
+// command palette a way to enumerate what got stored. Returns a JSON
+// array of {toolId, artifactId, mimeType, workspaceId, createdAt}
+// records — `data` is intentionally omitted to keep the payload small
+// and to avoid leaking large binaries into the clipboard. No when-clause
+// gate: the command is always available; an empty store yields '[]'.
+const listToolArtifacts: CommandDescriptor = {
+  id: 'workbench.action.listToolArtifacts',
+  title: 'List Tool Artifacts',
+  category: 'View',
+  aiInvocable: true,
+  aiDescription:
+    'Return a JSON array describing every artifact currently held in the workbench tool-artifact store. Each entry has {toolId, artifactId, mimeType, workspaceId, createdAt}. The artifact payload (`data`) is omitted to keep the response small. Empty store yields "[]".',
+  async handler(ctx) {
+    const store = ctx.getService<IToolArtifactStore>('IToolArtifactStore');
+    if (!store) return '[]';
+    const summary = store.list().map((r) => ({
+      toolId: r.toolId,
+      artifactId: r.artifactId,
+      mimeType: r.mimeType,
+      workspaceId: r.workspaceId,
+      createdAt: r.createdAt,
+    }));
+    let json: string;
+    try {
+      json = JSON.stringify(summary);
+    } catch {
+      json = '[]';
+    }
+    return json;
+  },
+};
+
 //  All builtin commands 
 
 const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
@@ -437,6 +473,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   copyActiveFilePath,
   copyActiveWorkspaceId,
   inspectActiveSelection,
+  listToolArtifacts,
   // Docling (M21)
   installDocling,
   // M48: Selection → AI command

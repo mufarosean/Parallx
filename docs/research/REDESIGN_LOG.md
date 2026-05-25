@@ -6,6 +6,31 @@
 
 ---
 
+## Iteration 96 — Slice B16: tool-artifact reader command (2026-05-25)
+
+- Closes the IToolArtifactStore loop opened by B8: B8 added the first
+  writer (`onDidExecuteTool` → `store.put`), B10 added bounded FIFO
+  eviction, B16 adds the first *reader* consumer in product code —
+  `workbench.action.listToolArtifacts`, AI-invocable, no when-clause
+  gate (always available; empty store yields '[]').
+- Returns a JSON array describing every stored artifact as
+  `{toolId, artifactId, mimeType, workspaceId, createdAt}`. The
+  artifact payload (`data`) is intentionally omitted so the response
+  stays small and binaries don't end up in the clipboard / model
+  context window. AI tools that need the actual payload can follow up
+  through a future `getToolArtifact(toolId, artifactId)` reader.
+- Preserves insertion order from `store.list()` (which is the A37
+  contract). Handles missing service (returns '[]') and JSON.stringify
+  failures (also '[]') gracefully — never throws.
+- 6 new tier-0 tests in
+  `tests/unit/platform/listToolArtifactsCommand.tier0.test.ts`:
+  metadata, missing service, empty store, payload omission, ordering,
+  optional fields.
+- Suite: 105 tier-0 files / 785 tests pass. typecheck clean.
+- `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 95 — Slice B15: inspect-selection command + keybinding (2026-05-25)
 
 - First consumer of the boolean §86 key `activeSelectionExists` (B14):
