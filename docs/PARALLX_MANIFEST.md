@@ -11,18 +11,18 @@
 
 This document is the kickoff packet for the first agent. It should be read before any redesign work, code cleanup, documentation cleanup, or subsystem implementation begins.
 
-The first agent is not being asked to redesign the app immediately. The first agent is being asked to coordinate the redesign system:
+The agent is asked to coordinate the redesign system AND to iterate autonomously until Parallx is measurably better. The agent must:
 
 1. Confirm the product goal.
 2. Confirm branch/checkpoint safety.
 3. Confirm what is in and out of scope.
-4. Assign research, atlas, baseline, interaction-model, execution, and review roles.
-5. Produce the first plan of work.
-6. Stop before implementation unless the required proof gates are satisfied.
+4. Assign research, atlas, baseline, interaction-model, execution, and review roles to subagents.
+5. Produce a plan of work.
+6. Execute the plan continuously, slice by slice, without waiting for per-slice user approval, escalating only on destructive or out-of-scope actions defined in §18.
 
-The first agent should treat this manifest as the highest-level product contract for this redesign branch.
+The agent should treat this manifest as the highest-level product contract for this redesign branch.
 
-When this document says "accepted," it means explicit user approval or an explicit user instruction to continue under the plan. The conductor may recommend acceptance, but it does not silently accept its own kickoff plan.
+When this document says "accepted," it means one of: (a) the agent has produced the required artifact under the manifest's process and the §13a subagent review has returned a keep decision; or (b) explicit user approval for the narrow set of actions reserved to the user in §18. The agent is authorized to self-accept its own non-destructive artifacts and slices when the manifest's quality gates (§13a subagent role separation, §16 work definition, §22 verification) are met. The agent must NOT wait for user approval on routine slices.
 
 ---
 
@@ -42,26 +42,29 @@ The redesign is successful only if Parallx becomes a better unified workbench, n
 
 ### Immediate Objective
 
-Create the first executable redesign plan:
+Iterate continuously until Parallx is measurably better against §12 Definition Of Better. Each iteration:
 
-- What must be researched.
-- What must be mapped.
-- What must be measured.
-- Which agents or skills are needed.
-- Which documentation cleanup happens first.
-- Which app-system changes are explicitly not allowed yet.
+1. Pick the next named target workflow from §5 / §6 or from the active milestone.
+2. Produce the §16 Work Definition Contract for the slice (workflow, current behavior, pain, scope, baseline, better claim, preservation checks, verification, rollback).
+3. Invoke a Surgical Executor subagent to implement the slice.
+4. Invoke a separate Fitness and Review subagent to keep/revise/rollback (§13a — MUST be a different subagent session than the executor).
+5. Run §22 verification.
+6. Commit per §19 / §20.
+7. Update the milestone doc.
+8. Start the next iteration.
 
-### Stop Rule
+The agent does NOT stop and ask the user between slices. The agent stops only on the conditions in §18 Decision Rights: changing `master`, force-pushing or rewriting published history, deleting branches/checkpoints, breaking existing extension APIs/settings/keybindings/saved data without a net-positive replacement and migration, or accepting a regression. Scope is driven by the state of the codebase, not by a milestone doc.
 
-Stop before implementation if any of these are missing:
+### Autonomous Iteration Mandate
 
-- A verified branch/checkpoint state.
-- A named target workflow.
-- Current-state map with code/doc anchors.
-- Baseline or instrumentation plan.
-- Preservation checks.
-- Rollback rule.
-- Independent review gate.
+The agent is expected to run without sitting the user at the keyboard. The quality gates are subagent review (§13a), work-definition discipline (§16), and verification (§22) — all of which the agent runs itself. Lack of user approval on a routine slice is NOT a reason to stop. The only reasons to stop are:
+
+- A §18 user-reserved decision is required.
+- The §13a Fitness and Review subagent returns a rollback or revise decision the executor cannot resolve.
+- Verification fails and cannot be made green within the slice.
+- A preservation rule in §11 would be violated without a net-positive replacement.
+
+Otherwise the agent keeps iterating. The agent reads the codebase, decides which subsystem is most broken or most leveraged next, and works there — milestone docs are the record of what was done, not the driver of what to do.
 
 ---
 
@@ -158,7 +161,7 @@ Parallx currently has these major systems:
 | Explorer | Presents workspace files and entry points into file/resource workflows. |
 | Editors | Present and edit documents, PDFs, EPUBs, and other file-backed or resource-backed content. |
 | Canvas | Rich page/block editor with structural invariants and registry gates. |
-| AI chat | Participates in workspace workflows as a consumer and producer of context, resources, tools, and artifacts. Its internals are not redesigned in this effort. |
+| AI chat | The agent runtime that mimics OpenClaw. **Internals are off-limits** for this redesign cycle. Surrounding API surfaces (workspace context, retrieval, tools, settings, language-model service) are in scope. |
 | Persistence | Mix of SQLite, workspace JSON, global/workspace storage, extension DBs, migrations, and `.parallx` files. |
 | Extension platform | Manifest-based tools with activation events, contributions, API bridges, settings, and packaging. |
 | MCP/tool integrations | External process/tool bridge used by extensions and workspace workflows. |
@@ -213,12 +216,10 @@ The System Atlas must replace this rough discovery with verified code/doc anchor
 ### Out Of Scope
 
 - Rewriting the app from scratch.
-- Redesigning AI chat internals.
-- Redesigning OpenClaw internals.
+- **AI chat infrastructure** — the runtime that mimics OpenClaw (`src/openclaw/**`, `src/services/chatAgentService.ts`, the chat agent loop, the tool-call interpreter, the participant/skill plumbing). It will be revisited after the rest of the app is in top shape. The **surrounding API surfaces** (how chat consumes workspace context, resources, tools, settings, language-model service, retrieval) ARE in scope — only the core agent runtime is off-limits.
 - Replacing Claude/OpenClaw behavior.
-- Breaking extension APIs without an explicit migration plan.
-- Removing existing workflows because they are inconvenient to redesign.
-- Large refactors before the System Atlas and baseline exist.
+- **Breaking** existing extension APIs, settings, keybindings, or saved data without a provably better replacement and a migration path. ("Net positive only" — break only to improve.)
+- Removing existing workflows without a replacement that is measurably better.
 
 ---
 
@@ -457,7 +458,7 @@ Rules:
 2. "Audit", "reality check", and "status" commits MUST include cited file:line diffs against current source for every claim they make. Narrative summaries without citations are forbidden. (Manifest §15.)
 3. Closing a slice that touches a preservation surface requires `npm run preserve:slice` to be green on the slice's HEAD. Unit-green alone is NOT closure. The executable gate writes `.slice-closure-ok` and `.slice-closure/last-run.json`.
 4. `scripts/check-slice-closure.mjs` must print `OK TO COMMIT` before any commit that touches a preservation surface. It verifies the receipt is fresh, an agent card path is supplied, and a Fitness and Review artifact path is supplied.
-5. If the environment cannot invoke subagents, the conductor MUST stop and ask the user. Degraded single-agent mode is allowed only with explicit user approval and must be labeled in the commit message body (`degraded-mode: <reason>`).
+5. If the environment cannot invoke subagents on a given turn, the conductor MUST find another way to get independent review before closing the slice — a fresh-context re-read pass against the §16 contract and §11 preservation list, or a deferred review subagent invocation on the next turn. The conductor does NOT stop and wait for user approval; it routes around the failure. The commit body must record `single-pass-review: <method>` when no subagent reviewer was used.
 6. A bug reaching the user after a slice closure is process failure by definition (§22). The next slice MUST add the gate that would have caught it.
 
 ---
@@ -670,23 +671,32 @@ The process must not blur who is allowed to decide what.
 
 | Decision | Owner |
 |---|---|
-| Product direction, scope expansion, and tradeoffs that affect user workflows | User |
-| Whether redesign work may merge to `master` | User after consolidation evidence |
-| Whether to break or migrate extension APIs | User plus conductor after compatibility plan |
+| Product direction and major tradeoffs that affect user workflows | User |
+| Whether redesign work may merge to `master` | User |
+| Force-push, history rewrite, branch deletion, checkpoint deletion | User |
+| Whether to break extension APIs / settings / keybindings / saved data | Agent may proceed if the replacement is provably net positive AND ships with a migration; otherwise ask the user |
 | Whether to delete historical docs | Not allowed by default; archive instead |
-| Agent assignment and handoff order | Systems Redesign Conductor |
-| Whether a slice is ready for implementation | Systems Redesign Conductor after research, atlas, baseline, and preservation gates |
+| Agent assignment, handoff order, and slice priority | Systems Redesign Conductor (driven by code state, not by milestone docs) |
+| Whether a slice is ready for implementation | Systems Redesign Conductor after §16 work-definition + §11 preservation checks |
 | Implementation details inside an accepted slice | Surgical Executor Agent |
 | Keep, revise, or roll back recommendation | Fitness and Review Agent |
-| Branch linearity, commit hygiene, merge readiness, and rollback notes | Git and Release Steward |
+| Branch linearity, commit hygiene, push/merge readiness, rollback notes | Git and Release Steward |
 
 Ask the user before:
 
 - Changing `master`.
-- Deleting files instead of archiving them.
-- Breaking existing extension APIs, command IDs, settings, keybindings, workspace schemas, or saved data.
-- Expanding a milestone beyond its accepted scope.
-- Accepting a regression as a tradeoff.
+- Force-pushing, rewriting published history, deleting any branch (including checkpoint branches), or doing anything that makes revert hard.
+- Deleting historical files instead of archiving them.
+- Breaking existing extension APIs / settings / keybindings / saved data without a net-positive replacement and migration.
+- Accepting a known regression as a tradeoff. (Aggressive improvement is encouraged — just keep the net positive.)
+
+The agent MAY (without asking):
+
+- Commit and push to `systems-redesign-planning` or any non-`master` working branch.
+- Create new branches off the working branch.
+- Refactor any subsystem on the working branch when the §16 + §11 + §22 gates pass.
+- Add, replace, or restructure any code outside the off-limits surfaces in §8, as long as the result is net positive.
+- Update documentation and milestone docs to reflect what was actually done.
 
 ---
 
@@ -853,19 +863,17 @@ Rule: if a doc is canonical, it must be accurate enough to act on. If it is not 
 
 ## 25. Cleanup Start Schedule
 
-Cleanup is scheduled in phases:
+Cleanup phases below are **guidance for sequencing**, not a hard gate. The agent reads the codebase and picks the most-broken or highest-leverage subsystem next; the phases describe the natural dependency order (you need an atlas before you can confidently slice the workbench), not a mandatory pause-and-wait checklist.
 
-| Phase | Starts when | What starts |
+| Phase | Natural prerequisite | What it produces |
 |---|---|---|
-| C0: Planning cleanup | After the first kickoff report is accepted | In-place labels, agent cards, milestone template, README truth notes, artifact directories. |
-| C1: Documentation truth cleanup | After labels/archive rules/README shape are accepted | Archive moves, canonical/research/archive status updates, README rewrite. |
-| C2: System atlas cleanup | After C1 and repo discovery | System Atlas, ownership maps, workflow maps, duplicate-contract inventory. |
-| C3: Baseline/fitness cleanup | After target workflows are mapped | Characterization tests, missing instrumentation notes, baseline scorecards. |
-| C4: App-system cleanup | After atlas, baseline, workbench language, active milestone, and review gates pass | One accepted implementation slice at a time. |
+| C0: Planning cleanup | None | Agent cards, milestone template, README truth notes, artifact directories. |
+| C1: Documentation truth cleanup | C0 in motion | Archive moves, canonical/research/archive labels, README rewrite. |
+| C2: System atlas | Repo discovery done | System Atlas, ownership maps, workflow maps, duplicate-contract inventory. |
+| C3: Baseline/fitness | Atlas covering the target subsystem | Characterization tests, instrumentation, baseline scorecards. |
+| C4: App-system implementation | Atlas + baseline for the target subsystem | Implementation slices with §13a review and §22 verification. |
 
-So the first cleanup to start is **planning cleanup**, not app cleanup. App-system cleanup does not start until C4.
-
-The first scheduled cleanup milestone is `M81 / SR-1: Checkpoint, Manifest, Redesign System, and Documentation Triage`. It begins at C0 only after the kickoff report is accepted.
+C4 work on a given subsystem should not start before C2/C3 exist for that subsystem — not because of a process gate, but because slicing without a map and a baseline is how regressions happen. The agent may run C0–C4 in parallel across different subsystems.
 
 ---
 
