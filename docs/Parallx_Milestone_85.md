@@ -115,6 +115,36 @@ The anti-patterns audited here come from [/memories/debugging.md](../memories/de
   disconnections.
 - **Fix:** none.
 
+### F8 — raw localStorage in canvas surfaces (deferred)
+
+- **Files:**
+  [src/built-in/canvas/menus/canvasMenuRegistry.ts](../src/built-in/canvas/menus/canvasMenuRegistry.ts) line 161,
+  [src/built-in/canvas/properties/propertyBar.ts](../src/built-in/canvas/properties/propertyBar.ts) line 47
+- **Pattern:** propertyBar collapse state and canvas menu recent-color
+  picks are persisted to `localStorage` as a synchronous first-paint cache.
+  The registry is the source of truth, localStorage mirrors it.
+- **Severity:** LOW. Functional today — just not portable across
+  workspaces. Recent-color picks don't follow the user.
+- **Fix:** deferred. Would need a synchronous-warm equivalent (preload the
+  registry value before first paint) or accept the cold-start cost. Not
+  worth a slice on its own.
+
+### F9 — sequential index creation in memoryService (acceptable)
+
+- **File:** [src/services/memoryService.ts](../src/services/memoryService.ts) line 309
+- **Pattern:** `for (const idx of CREATE_CONCEPTS_INDEXES) await this._db.run(idx);`
+- **Severity:** N/A. One-time schema migration; small N. Sequential is fine.
+- **Fix:** none.
+
+### F10 — media-organizer JSON.parse(JSON.stringify(...)) deep clones (acceptable)
+
+- **File:** [ext/media-organizer/main.js](../ext/media-organizer/main.js) lines 16954, 17102
+- **Pattern:** classic JSON-based deep clone for tag/category snapshots.
+- **Severity:** N/A. Tag objects are small JSON; clone cost is sub-ms.
+  Replacing with structuredClone would be a stylistic win, not a perf
+  one.
+- **Fix:** none.
+
 ## Execution order
 
 1. **F1** — workspace-graph periodic refresh gating (highest value, smallest
@@ -127,3 +157,21 @@ Each fix lands as its own commit with a focused test. Pre-existing
 `preserve:slice` failures on the branch (9 e2e tests in Explorer/
 Workspaces/Canvas, verified at HEAD `faf3e801`) continue to require
 `degraded-mode` framing for any preservation-surface change.
+
+## Execution log
+
+| Finding | Commit | Status |
+|---|---|---|
+| F1 — workspace-graph periodic refresh gating | `52c31480` | shipped |
+| F2 — `fs:existsPath` IPC + restored W2 guard | `bd90a026` | shipped (degraded-mode) |
+| F3 — Phase 1 warm-invariant comment | `29b11185` | shipped (degraded-mode, comment-only) |
+| F4 — ollama health poll | — | inspected, no change required |
+| F5 — media-organizer FTS rebuild | — | inspected, M64 chunked path intact |
+| F6 — openclawCronService timer | — | inspected, scheduler is the feature |
+| F7 — mcpClientService health timer | — | inspected, bounded |
+| F8 — canvas localStorage usage | — | deferred (cross-workspace portability) |
+| F9 — memoryService sequential indexes | — | inspected, acceptable |
+| F10 — media-organizer JSON deep clone | — | inspected, acceptable |
+
+Unit suite at closing HEAD `29b11185`: 552 files / 7479 tests / 1 skipped
+/ 78.74s. `tsc -p tsconfig.json --noEmit` exit 0.
