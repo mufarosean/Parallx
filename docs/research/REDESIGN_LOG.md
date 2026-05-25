@@ -6,6 +6,27 @@
 
 ---
 
+## Iteration 87 — Slice B7: equality-gated activeResourceType command (2026-05-25)
+
+- Second when-clause consumer of the §86 context keys, this time using
+  the equality operator: `when: "activeResourceType == 'file'"`. The
+  command is only enabled when the active resource is a file — a real
+  consumer of the typed Resource discriminant exposed through the
+  workbench context, not just the truthiness gate B5 used.
+- New command `workbench.action.copyActiveFilePath` (category "File"):
+  reads `IContextService.getContext().activeResource`, narrows to the
+  `file` branch, and writes `resource.path` to the system clipboard.
+  Returns the path string. `aiInvocable: true` with an explicit
+  `aiDescription` so the agent can ask for it.
+- 6 tier-0 tests in `copyActiveFilePathCommand.tier0.test.ts`: metadata
+  + when-clause shape, copies file fsPath, undefined when active
+  resource is canvas-page, undefined when no resource, undefined when
+  `IContextService` missing, clipboard failure swallowed.
+- Suite: 94 tier-0 files / 725 tests pass. typecheck clean.
+- `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 86 — Slice B6: ContextService surface-resource fallback (2026-05-25)
 
 - `ContextService._snapshot()` now falls back to `activeSurface.resource`

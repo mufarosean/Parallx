@@ -255,6 +255,36 @@ const copyActiveResourceUri: CommandDescriptor = {
   },
 };
 
+// §86 / Slice B7 — second when-clause consumer of the new context keys,
+// this time using the equality operator on `activeResourceType`. The command
+// is only enabled when the active resource is a file (i.e. the editor surface
+// has a file-backed input). It copies the file's absolute fsPath — distinct
+// from B5 which copies the canonical parallx:// URI.
+const copyActiveFilePath: CommandDescriptor = {
+  id: 'workbench.action.copyActiveFilePath',
+  title: 'Copy Active File Path',
+  category: 'File',
+  when: "activeResourceType == 'file'",
+  aiInvocable: true,
+  aiDescription:
+    'Copy the absolute filesystem path of the currently active file to the system clipboard. Only available when a file resource is active. Returns the path string.',
+  async handler(ctx) {
+    const contextService = ctx.getService<IContextService>('IContextService');
+    if (!contextService) return undefined;
+    const resource = contextService.getContext().activeResource;
+    if (!resource || resource.type !== 'file') return undefined;
+    const fsPath = resource.path;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(fsPath);
+      }
+    } catch {
+      // clipboard write failure is non-fatal; the path is still returned.
+    }
+    return fsPath;
+  },
+};
+
 //  All builtin commands 
 
 const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
@@ -332,6 +362,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   selectColorTheme,
   // §86 / Slice B5 — resource utilities (gated on activeResourceType)
   copyActiveResourceUri,
+  copyActiveFilePath,
   // Docling (M21)
   installDocling,
   // M48: Selection → AI command
