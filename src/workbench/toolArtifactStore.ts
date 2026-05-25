@@ -60,6 +60,15 @@ export interface IToolArtifactStore {
   list(toolId?: string): readonly ToolArtifactRecord[];
 
   /**
+   * Snapshot of every stored record as `[toolId, artifactId]` id-pair
+   * tuples, in insertion order. Fresh array. Empty store → empty
+   * array. Id-only counterpart to `list()` for callers that need to
+   * iterate composite keys without holding full records (diagnostics,
+   * teardown loops, cross-store joins).
+   */
+  entries(): ReadonlyArray<readonly [string, string]>;
+
+  /**
    * Artifact ids owned by `toolId`, in insertion order. Fresh array.
    * Empty `toolId` → empty array. Id-only counterpart to
    * `list(toolId).map(r => r.artifactId)` that avoids allocating full
@@ -274,6 +283,14 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
     const out: ToolArtifactRecord[] = [];
     for (const r of this._records.values()) {
       if (r.toolId === toolId) out.push(r);
+    }
+    return out;
+  }
+
+  entries(): ReadonlyArray<readonly [string, string]> {
+    const out: Array<readonly [string, string]> = [];
+    for (const r of this._records.values()) {
+      out.push([r.toolId, r.artifactId] as const);
     }
     return out;
   }

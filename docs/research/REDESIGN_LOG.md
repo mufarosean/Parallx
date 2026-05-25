@@ -6,6 +6,21 @@
 
 ---
 
+## Iteration 66 — Slice A65: IToolArtifactStore.entries (2026-05-25)
+
+- Added `entries(): ReadonlyArray<readonly [string, string]>` returning
+  `[toolId, artifactId]` id-pair tuples in insertion order. Fresh array per
+  call. Id-only counterpart to `list()` for callers that need to iterate
+  composite keys (diagnostics, teardown loops, cross-store joins) without
+  holding full records.
+- 7 tier-0 tests in `toolArtifactStoreEntries.tier0.test.ts` covering empty,
+  single record, insertion order across tools, fresh-array isolation,
+  deletions, post-clear, and length+content parity with `list()`.
+- Pure-additive — no preservation surface touched. `single-pass-review:
+  tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 65 — Slice A64: WorkbenchContext.activeResourceType (2026-05-25)
 
 - Added `activeResourceType: ResourceType | undefined` to `WorkbenchContext`,
