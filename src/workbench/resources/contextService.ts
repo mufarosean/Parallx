@@ -19,7 +19,7 @@
 import { Disposable } from '../../platform/lifecycle.js';
 import { Emitter, Event } from '../../platform/events.js';
 import type { Resource } from './resource.js';
-import type { Surface } from './surface.js';
+import type { Surface, SurfaceKind } from './surface.js';
 
 /**
  * Subset of ISelection used by ContextService. We keep this loose so the
@@ -57,6 +57,13 @@ export interface WorkbenchContext {
    * the selection has no associated Resource.
    */
   readonly activeResource: Resource | undefined;
+  /**
+   * Derived from `activeSurface.kind` (Slice A28). Lets `when`-clause-style
+   * predicates ask "is the active surface an editor / canvas / chat?"
+   * without dereferencing a potentially-undefined `activeSurface`.
+   * `undefined` when no surface is active.
+   */
+  readonly activeSurfaceKind: SurfaceKind | undefined;
 }
 
 export interface IContextService {
@@ -110,11 +117,13 @@ export class ContextService extends Disposable implements IContextService {
 
   private _snapshot(): WorkbenchContext {
     const activeSelection = this._selection.getSelection();
+    const activeSurface = this._surfaces.getActive();
     return {
       workspaceId: this._workspace.activeWorkspace?.id,
-      activeSurface: this._surfaces.getActive(),
+      activeSurface,
       activeSelection,
       activeResource: extractResource(activeSelection),
+      activeSurfaceKind: activeSurface?.kind,
     };
   }
 
@@ -126,7 +135,8 @@ export class ContextService extends Disposable implements IContextService {
       next.workspaceId === prev.workspaceId &&
       next.activeSurface === prev.activeSurface &&
       next.activeSelection === prev.activeSelection &&
-      next.activeResource === prev.activeResource
+      next.activeResource === prev.activeResource &&
+      next.activeSurfaceKind === prev.activeSurfaceKind
     ) {
       return;
     }

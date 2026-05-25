@@ -146,7 +146,7 @@ describe('ContextService — composed snapshot', () => {
     sf.set(s);
     sel.set({ blockId: 'b1' });
     const ctx = svc.getContext();
-    expect(ctx).toEqual({ workspaceId: 'w1', activeSurface: s, activeSelection: { blockId: 'b1' } });
+    expect(ctx).toEqual({ workspaceId: 'w1', activeSurface: s, activeSelection: { blockId: 'b1' }, activeSurfaceKind: 'canvas' });
   });
 });
 

@@ -6,6 +6,32 @@
 
 ---
 
+## Iteration 29 — Slice A28: WorkbenchContext.activeSurfaceKind (2026-05-25)
+
+Added a derived field `activeSurfaceKind: SurfaceKind | undefined` to
+`WorkbenchContext`, mirroring `activeSurface?.kind`. Lets when-clause-style
+predicates (`ctx.matches(c => c.activeSurfaceKind === 'editor')`) gate behavior
+on surface kind without dereferencing a possibly-undefined `activeSurface`.
+
+Includes it in the snapshot-equality comparison so transitions between
+surfaces of different kinds still fire `onDidChangeContext` even if some other
+field happens to be stable.
+
+Pure-additive — existing consumers reading `workspaceId / activeSurface /
+activeSelection / activeResource` are unaffected. One existing tier-0 test in
+`tests/unit/workbench/resources/contextService.tier0.test.ts` used a strict
+`toEqual` against a fixed 3-field shape and was updated to include the new
+field.
+
+Tier-0: **37 files / 331 tests**, all green. tsc clean.
+
+Files: `src/workbench/resources/contextService.ts`,
+`tests/unit/platform/contextServiceActiveSurfaceKind.tier0.test.ts` (new, 6
+tests), `tests/unit/workbench/resources/contextService.tier0.test.ts` (assertion
+updated).
+
+---
+
 ## Iteration 28 — Slice A27: ISurfaceRegistry.has(id) (2026-05-25)
 
 Guard-test counterpart to `get(id)`:
