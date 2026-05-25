@@ -1834,7 +1834,7 @@ ipcMain.handle('database:open', async (_event, workspacePath, migrationsDir) => 
 
     // Run migrations if a directory is provided
     if (migrationsDir) {
-      databaseManager.migrate(migrationsDir);
+      await databaseManager.migrate(migrationsDir);
     }
 
     return { error: null, dbPath };
@@ -1847,7 +1847,7 @@ ipcMain.handle('database:open', async (_event, workspacePath, migrationsDir) => 
 // Run migrations from a directory on the currently-open database.
 ipcMain.handle('database:migrate', async (_event, migrationsDir) => {
   try {
-    databaseManager.migrate(migrationsDir);
+    await databaseManager.migrate(migrationsDir);
     return { error: null };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
@@ -2051,7 +2051,7 @@ ipcMain.handle('ext-database:close', async (_event, extensionId) => {
 ipcMain.handle('ext-database:migrate', async (_event, extensionId, migrationsDir) => {
   try {
     if (!validateExtensionId(extensionId)) return { error: { code: 'INVALID_ID', message: 'Invalid extension ID' } };
-    extensionDatabaseManager.migrate(extensionId, migrationsDir);
+    await extensionDatabaseManager.migrate(extensionId, migrationsDir);
     return { error: null };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };

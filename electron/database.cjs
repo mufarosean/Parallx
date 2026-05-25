@@ -15,6 +15,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const sqliteVec = require('sqlite-vec');
+const { applyMigration: applyMigrationStep } = require('./migrationRunner.cjs');
 
 // ─── DatabaseManager ─────────────────────────────────────────────────────────
 
@@ -115,7 +116,7 @@ class DatabaseManager {
    *
    * @param {string} migrationsDir — directory containing *.sql files
    */
-  migrate(migrationsDir) {
+  async migrate(migrationsDir) {
     this._ensureOpen();
 
     // Create the migrations tracking table if it doesn't exist
@@ -148,17 +149,25 @@ class DatabaseManager {
     );
 
     let appliedCount = 0;
+    const insertApplied = this._db.prepare('INSERT INTO _migrations (name) VALUES (?)');
     for (const file of files) {
       if (applied.has(file)) continue;
 
       const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
-      const runMigration = this._db.transaction(() => {
-        this._db.exec(sql);
-        this._db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(file);
-      });
-
       try {
-        runMigration();
+        // M86-W4: delegate to migrationRunner. Migrations with no header
+        // run identically to the historic loop (single atomic transaction).
+        // Migrations that opt in via `-- @parallx:migration { "chunked": true }`
+        // run as multiple smaller transactions with setImmediate yields
+        // between them, so the watcher hot path isn't blocked by long
+        // rebuilds. See electron/migrationRunner.cjs and
+        // /memories/debugging.md "M64 FTS cold-start rebuild".
+        await applyMigrationStep({
+          db: this._db,
+          name: file,
+          sql,
+          recordApplied: (name) => insertApplied.run(name),
+        });
         appliedCount++;
         console.log(`[DatabaseManager] Applied migration: ${file}`);
       } catch (err) {
@@ -434,7 +443,7 @@ class ExtensionDatabaseManager {
    * @param {string} extensionId
    * @param {string} migrationsDir
    */
-  migrate(extensionId, migrationsDir) {
+  async migrate(extensionId, migrationsDir) {
     const db = this._getDb(extensionId);
 
     db.exec(`
@@ -461,17 +470,20 @@ class ExtensionDatabaseManager {
     );
 
     let appliedCount = 0;
+    const insertApplied = db.prepare('INSERT INTO _migrations (name) VALUES (?)');
     for (const file of files) {
       if (applied.has(file)) continue;
 
       const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
-      const runMigration = db.transaction(() => {
-        db.exec(sql);
-        db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(file);
-      });
-
       try {
-        runMigration();
+        // M86-W4: delegate to the shared migrationRunner so extension
+        // migrations can opt in to the chunked path via header.
+        await applyMigrationStep({
+          db,
+          name: file,
+          sql,
+          recordApplied: (name) => insertApplied.run(name),
+        });
         appliedCount++;
         console.log(`[ExtensionDB] Applied migration for "${extensionId}": ${file}`);
       } catch (err) {
