@@ -6,6 +6,20 @@
 
 ---
 
+## Iteration 44 — Slice A43: IResourceRegistry.size (2026-05-25)
+
+Added `readonly size: number` on `IResourceRegistry`. Cheap accessor
+returning the count of currently-registered resolvers. Completes the
+size-accessor family across all four primitives (artifacts existing,
+surfaces A41, selections A42, resolvers A43).
+
+Pure-additive. Tier-0: **52 files / 427 tests**, all green. tsc clean.
+
+Files: `src/workbench/resources/resourceRegistry.ts`,
+`tests/unit/platform/resourceRegistrySize.tier0.test.ts` (new, 6 tests).
+
+---
+
 ## Iteration 43 — Slice A42: ISelectionService.size (2026-05-25)
 
 Added `readonly size: number` on `ISelectionService`. Cheap accessor

@@ -60,6 +60,14 @@ export interface IResourceRegistry {
   types(): readonly ResourceType[];
 
   /**
+   * Number of currently-registered resolvers. Cheap accessor symmetric
+   * with `IToolArtifactStore.size`, `ISurfaceRegistry.size` (A41), and
+   * `ISelectionService.size` (A42). Equivalent to `types().length`
+   * without the array allocation.
+   */
+  readonly size: number;
+
+  /**
    * Unregister every resolver. Fires one `'unregister'` event per
    * removed type, in insertion order. Returns the removed types in the
    * order events fired. Empty registry → empty array, no events.
@@ -155,6 +163,10 @@ export class ResourceRegistry extends Disposable implements IResourceRegistry {
 
   types(): readonly ResourceType[] {
     return Array.from(this._resolvers.keys());
+  }
+
+  get size(): number {
+    return this._resolvers.size;
   }
 
   clear(): readonly ResourceType[] {
