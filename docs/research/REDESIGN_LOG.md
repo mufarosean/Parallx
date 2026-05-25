@@ -6,6 +6,21 @@
 
 ---
 
+## Iteration 52 — Slice A51: ISurfaceRegistry.hasKind / hasWorkspace (2026-05-25)
+
+Added `hasKind(kind): boolean` and `hasWorkspace(workspaceId): boolean`
+on `ISurfaceRegistry`. Cheap O(n) existence checks that short-circuit
+on the first matching surface. `hasWorkspace` skips surfaces without a
+resource and external resources. Empty args return false. Symmetric
+with A50's `IToolArtifactStore.hasTool` / `hasWorkspace`.
+
+Pure-additive. Tier-0: **60 files / 482 tests**, all green. tsc clean.
+
+Files: `src/workbench/resources/surfaceRegistry.ts`,
+`tests/unit/platform/surfaceRegistryHasGroup.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 51 — Slice A50: IToolArtifactStore.hasTool / hasWorkspace (2026-05-25)
 
 Added `hasTool(toolId): boolean` and `hasWorkspace(workspaceId): boolean`

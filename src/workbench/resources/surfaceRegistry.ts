@@ -98,6 +98,22 @@ export interface ISurfaceRegistry {
   countByWorkspace(workspaceId: string): number;
 
   /**
+   * `true` iff at least one currently-registered surface has
+   * `kind === kind`. Cheap O(n) existence check that short-circuits
+   * on the first hit. Empty/undefined `kind` returns `false`.
+   * Symmetric with `IToolArtifactStore.hasTool` (A50).
+   */
+  hasKind(kind: SurfaceKind): boolean;
+
+  /**
+   * `true` iff at least one currently-registered surface's backing
+   * resource has `workspaceId === workspaceId`. Surfaces without a
+   * resource or whose resource is external are never matched.
+   * Empty/undefined `workspaceId` returns `false`. Short-circuits.
+   */
+  hasWorkspace(workspaceId: string): boolean;
+
+  /**
    * Number of currently-registered surfaces. Cheap accessor that
    * avoids materializing `list()` just to read its length. Symmetric
    * with `IToolArtifactStore.size` (A12) and `ISelectionService.size`
@@ -256,6 +272,24 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
       }
     }
     return n;
+  }
+
+  hasKind(kind: SurfaceKind): boolean {
+    if (!kind) return false;
+    for (const s of this._surfaces.values()) {
+      if (s.kind === kind) return true;
+    }
+    return false;
+  }
+
+  hasWorkspace(workspaceId: string): boolean {
+    if (!workspaceId) return false;
+    for (const s of this._surfaces.values()) {
+      if (s.resource && resourceWorkspaceId(s.resource) === workspaceId) {
+        return true;
+      }
+    }
+    return false;
   }
 
   has(id: string): boolean {
