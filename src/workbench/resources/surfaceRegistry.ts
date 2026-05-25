@@ -66,6 +66,19 @@ export interface ISurfaceRegistry {
   /** The currently active surface, if any. */
   getActive(): Surface | undefined;
 
+  /**
+   * Unregister every surface. If a surface was active, first fires an
+   * `'active'` event with `surface: undefined`. Then fires one
+   * `'unregistered'` event per surface in insertion order. Returns the
+   * ids that were removed, in the order events fired. Empty registry
+   * → empty array, no events. Idempotent. Symmetric with
+   * `ISelectionService.clearAll()` (A29) and
+   * `IToolArtifactStore.clear()` (A30).
+   *
+   * Designed for workspace switches and test teardown.
+   */
+  clear(): readonly string[];
+
   /** Subscribe to register / update / unregister / active-change events. */
   readonly onDidChangeSurface: Event<ISurfaceChangeEvent>;
 }
@@ -154,6 +167,27 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
 
   getActive(): Surface | undefined {
     return this._activeId !== undefined ? this._surfaces.get(this._activeId) : undefined;
+  }
+
+  clear(): readonly string[] {
+    if (this._surfaces.size === 0) return [];
+    const ids = Array.from(this._surfaces.keys());
+    const previousActive = this._activeId !== undefined ? this._surfaces.get(this._activeId) : undefined;
+    const hadActive = this._activeId !== undefined;
+    this._activeId = undefined;
+    if (hadActive) {
+      this._onDidChangeSurface.fire({ kind: 'active', surface: undefined, previous: previousActive });
+    }
+    const victims: Surface[] = [];
+    for (const id of ids) {
+      const s = this._surfaces.get(id);
+      if (s) victims.push(s);
+    }
+    this._surfaces.clear();
+    for (const s of victims) {
+      this._onDidChangeSurface.fire({ kind: 'unregistered', surface: s });
+    }
+    return ids;
   }
 
   override dispose(): void {

@@ -6,6 +6,25 @@
 
 ---
 
+## Iteration 32 — Slice A31: ISurfaceRegistry.clear() (2026-05-25)
+
+Added `clear(): readonly string[]` on `ISurfaceRegistry`. Unregisters every
+surface in one call. If a surface was active, first fires an `'active'`
+event with `surface: undefined` (so subscribers see the focus transition
+before the unregistrations); then one `'unregistered'` event per surface in
+insertion order. Returns the removed ids. Empty registry → empty array, no
+events. Idempotent.
+
+Completes the bulk-clear family alongside A29 (`ISelectionService.clearAll`)
+and A30 (`IToolArtifactStore.clear`).
+
+Pure-additive. Tier-0: **40 files / 351 tests**, all green. tsc clean.
+
+Files: `src/workbench/resources/surfaceRegistry.ts`,
+`tests/unit/platform/surfaceRegistryClear.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 31 — Slice A30: IToolArtifactStore.clear() (2026-05-25)
 
 Added `clear(): number` on `IToolArtifactStore`. Removes every stored
