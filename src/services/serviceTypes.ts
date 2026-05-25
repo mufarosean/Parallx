@@ -860,6 +860,16 @@ export type ISurfaceRegistry = ISurfaceRegistryImpl;
 
 export const ISurfaceRegistry = createServiceIdentifier<ISurfaceRegistry>('ISurfaceRegistry');
 
+// ─── IContextService (Unified Workbench Primitives - Slice A4) ──────────────
+//
+// Composes IWorkspaceService + ISurfaceRegistry + ISelectionService into one
+// canonical workbench context. See `src/workbench/resources/contextService.ts`.
+
+import type { IContextService as IContextServiceImpl } from '../workbench/resources/contextService.js';
+export type IContextService = IContextServiceImpl;
+
+export const IContextService = createServiceIdentifier<IContextService>('IContextService');
+
 // ─── IToolRegistryService ────────────────────────────────────────────────────
 
 import type { IToolDescription } from '../tools/toolManifest.js';

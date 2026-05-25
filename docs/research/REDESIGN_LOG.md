@@ -6,6 +6,52 @@
 
 ---
 
+## Iteration 5 — Slice A4: ContextService (2026-05-25)
+
+**Continuation of:** Unified Workbench Primitives program. Capstone of
+Slice A — atlas weakness #2 (no unified Context/Selection) addressed.
+
+**Done:** New `ContextService` composes three independent signals into
+one canonical workbench context:
+
+- active workspace id (from `IWorkspaceService`)
+- active surface (from `ISurfaceRegistry`)
+- active selection (from `ISelectionService`)
+
+Wired into the workbench facade factory immediately after
+`IWorkspaceService` is registered (where all three sources already exist).
+Pure-additive: no consumer reads from it yet. Future slices migrate
+when-clause expressions, command availability checks, AI chat retrieval
+context, and extension `getActiveContext()` calls to a single
+`IContextService.getContext()` snapshot or subscription.
+
+Coalesces no-op events: if all three fields are reference-equal to the
+previous snapshot, no fire — avoids burning listeners on duplicate signals.
+
+**Files:** `src/workbench/resources/contextService.ts` (~115 LOC),
+`tests/unit/workbench/resources/contextService.tier0.test.ts` (11 tests),
+`src/services/serviceTypes.ts` (+10, `IContextService` id),
+`src/workbench/workbenchFacadeFactory.ts` (+22, construction & wiring).
+
+**Verification:** tier-0 10 files / 141 passed (11 new). `tsc --noEmit`
+clean.
+
+**§13a:** workbenchFacadeFactory.ts is not preservation-listed; the edit
+is one additive `new ContextService(...) + registerInstance` block with
+zero changes to existing service construction. Recording
+`single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+**Slice A status:** Resource ✓, ParallxUri ✓, ResourceRegistry ✓ (wired),
+Surface ✓, SurfaceRegistry ✓ (wired), ContextService ✓ (wired). Slice A
+primitive layer complete. Remaining future work: extend SelectionService
+payload to carry Resource (Slice A5), migrate LinkResolverService to use
+ResourceRegistry (preservation-surface slice), migrate canvas / chat /
+extension consumers to read from IContextService.
+
+**Commits this iteration:** `<pending>`.
+
+---
+
 ## Iteration 4 — Slice A3: SurfaceRegistry (2026-05-25)
 
 **Continuation of:** Unified Workbench Primitives program.

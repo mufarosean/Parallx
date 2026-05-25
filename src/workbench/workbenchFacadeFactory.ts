@@ -28,6 +28,9 @@ import {
   ILayoutService,
   IViewService,
   IWorkspaceService,
+  IContextService,
+  ISurfaceRegistry,
+  ISelectionService,
   IWorkspaceBoundaryService,
   IWorkspaceMemoryService,
   IWorkspaceTranscriptService,
@@ -38,6 +41,7 @@ import {
 import { LayoutService } from '../services/layoutService.js';
 import { ViewService } from '../services/viewService.js';
 import { WorkspaceService } from '../services/workspaceService.js';
+import { ContextService } from './resources/contextService.js';
 import { WorkspaceBoundaryService } from '../services/workspaceBoundaryService.js';
 import { WorkspaceMemoryService } from '../services/workspaceMemoryService.js';
 import { WorkspaceTranscriptService } from '../services/workspaceTranscriptService.js';
@@ -126,6 +130,22 @@ export function registerFacadeServices(deps: FacadeFactoryDeps): IDisposable[] {
   });
   disposables.push(workspaceService);
   services.registerInstance(IWorkspaceService, workspaceService);
+
+  // ── Context Service (Unified Workbench Primitives — Slice A4) ──
+  // Composes workspace + active surface + selection into one canonical
+  // workbench context. Pure-additive — no consumer reads from it yet.
+  // Wired here (not in registerWorkbenchServices) because IWorkspaceService
+  // is constructed at facade time, after the three source services exist.
+  const contextService = new ContextService(
+    {
+      get activeWorkspace() { return workspaceService.activeWorkspace ? { id: workspaceService.activeWorkspace.id } : undefined; },
+      onDidChangeWorkspace: workspaceService.onDidChangeWorkspace,
+    },
+    services.get(ISurfaceRegistry),
+    services.get(ISelectionService),
+  );
+  disposables.push(contextService);
+  services.registerInstance(IContextService, contextService);
 
   // Workspace boundary service
   const workspaceBoundaryService = new WorkspaceBoundaryService();
