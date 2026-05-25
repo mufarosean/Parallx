@@ -411,11 +411,11 @@ next slice can begin without re-discovery.
 
 | ID | Title | Status | Commit |
 |----|-------|--------|--------|
-| W1 | Structured logger | pending | — |
-| W2 | Phase-graph startup helper | pending | — |
-| W3 | Scope + typed event bus | pending | — |
-| W4 | Migration framework wrapper | pending | — |
-| W5 | Tiered test runner | pending | — |
+| W1 | Structured logger | shipped | `691e5f83` |
+| W2 | Phase-graph startup helper | shipped (helper only; `workbench.ts` migration deferred) | `691e5f83` |
+| W3 | Scope + typed event bus | shipped | `691e5f83` |
+| W4 | Migration framework wrapper | shipped (degraded-mode commit) | `1838676b` |
+| W5 | Tiered test runner | shipped | `cc517ee8` |
 | W6 | Typed IPC contract layer | roadmap | — |
 | W7 | Unified sync-warm storage cache | roadmap | — |
 | W8 | Sidecar AI runtime | roadmap | — |
@@ -423,3 +423,27 @@ next slice can begin without re-discovery.
 | W10 | Typed extension SDK | roadmap | — |
 | W11 | Preservation-slice repair | roadmap | — |
 | W12 | HMR for renderer | roadmap | — |
+
+### Closure notes
+
+- **W1/W2/W3 (`691e5f83`)** landed as new files only — no preservation surface touched, clean commit. Tier-0 + tier-1 green.
+- **W5 (`cc517ee8`)** added `vitest.tier0.config.ts`, excluded tier-0 globs from `vitest.config.ts`, split `npm run test:unit` into `test:unit:tier0` + `test:unit:tier1`, moved `tests/unit/log.test.ts` → `tests/unit/platform/log.test.ts` as the seed. Manifest §22 updated.
+- **W4 (`1838676b`)** required a `--no-verify` commit with `degraded-mode:` body tag because it modified `electron/database.cjs` and `electron/main.cjs`. Pre-commit gate fired as designed; commit body documents the reason (preservation-surface change without a fresh e2e refresh, out of scope for this slice). The 9 pre-existing e2e failures verified at `faf3e801` are unchanged.
+- **W2 caveat:** `runPhase` is shipped and tested but `workbench.ts._initializeServices` was NOT migrated to use it. The M85-F3 inline comment still bridges the invariant. A future slice should migrate the call sites — that slice will be preservation surface and will need a degraded-mode commit or a fresh slice-closure.
+- **Future-proofing:** W4's chunked-migration header is opt-in and defaults to historic behavior, so no existing migration changes shape. Authors who add a large-rebuild migration in the future can simply add `-- @parallx:migration { "chunked": true }` and `-- @parallx:chunk` markers, and the runner will yield the SQLite write lock between chunks (M64 lesson).
+
+### Verification at closure HEAD `1838676b`
+
+- `npx tsc -p tsconfig.json --noEmit` → exit 0
+- `npm run test:unit:tier0` → 24/24 in ~210ms (2 files: log, migrationRunner)
+- `npm run test:unit:tier1` → 554/7494/1 skipped in 78.66s
+
+### Reusable patterns recorded
+
+These primitives are now available for future milestones:
+
+- `Logger` + `RingBufferSink` (`src/platform/log.ts`) for any new categorized perf/lifecycle logging without ad-hoc `console.warn`.
+- `Scope` + `RefCountedResource` + `TypedEventBus` (`src/platform/scope.ts`) for any new feature that needs M85-F1-style consumer ref-counting or scope-bound event subscriptions.
+- `runPhase` / `runPhasesSequential` (`src/workbench/startupPhases.ts`) for any phased async initialization where Phase N's warmups must complete before Phase N's body.
+- Migration runner header (`-- @parallx:migration { "chunked": true }`) for any future migration that does large in-place rebuilds and shouldn't block the watcher hot path.
+- Tier-0 test convention (`tests/unit/platform/**` or `*.tier0.test.ts`) for pure-Node tests that don't need jsdom.
