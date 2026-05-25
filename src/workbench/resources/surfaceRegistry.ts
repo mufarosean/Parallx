@@ -63,6 +63,14 @@ export interface ISurfaceRegistry {
   listByWorkspace(workspaceId: string): ReadonlyArray<Surface>;
 
   /**
+   * Surface ids whose backing resource has `workspaceId === workspaceId`,
+   * in registration order. Fresh array. Empty `workspaceId` → empty
+   * array. Id-only counterpart to `listByWorkspace(id)` that avoids
+   * materializing full Surface records when callers only need keys.
+   */
+  idsByWorkspace(workspaceId: string): readonly string[];
+
+  /**
    * Snapshot of distinct `SurfaceKind` values across every registered
    * surface, in first-insertion order (the order each kind first
    * appeared in the registry). Fresh array. Empty registry → empty
@@ -250,6 +258,17 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
     for (const s of this._surfaces.values()) {
       if (s.resource && resourceWorkspaceId(s.resource) === workspaceId) {
         out.push(s);
+      }
+    }
+    return out;
+  }
+
+  idsByWorkspace(workspaceId: string): readonly string[] {
+    if (!workspaceId) return [];
+    const out: string[] = [];
+    for (const s of this._surfaces.values()) {
+      if (s.resource && resourceWorkspaceId(s.resource) === workspaceId) {
+        out.push(s.id);
       }
     }
     return out;

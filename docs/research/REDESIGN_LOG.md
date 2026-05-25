@@ -6,6 +6,20 @@
 
 ---
 
+## Iteration 59 — Slice A58: ISurfaceRegistry.idsByWorkspace (2026-05-25)
+
+Added `idsByWorkspace(workspaceId: string): readonly string[]` on
+`ISurfaceRegistry`. Id-only counterpart to `listByWorkspace(id)` that
+avoids materializing full Surface records when callers only need keys
+(workspace-teardown loops, telemetry, when-clauses).
+
+Pure-additive. Tier-0: **67 files / 531 tests**, all green. tsc clean.
+
+Files: `src/workbench/resources/surfaceRegistry.ts`,
+`tests/unit/platform/surfaceRegistryIdsByWorkspace.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 58 — Slice A57: ISelectionService.mostRecentWorkspaceId (2026-05-25)
 
 Added `mostRecentWorkspaceId(): string | undefined` on
