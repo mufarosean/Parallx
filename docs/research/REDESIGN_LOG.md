@@ -6,6 +6,36 @@
 
 ---
 
+## Iteration 22 — Slice A21: IToolArtifactStore.deleteByWorkspace() (2026-05-25)
+
+Pure-additive `deleteByWorkspace(workspaceId): number` counterpart to
+`deleteByTool`. Bulk-removes every artifact whose `workspaceId`
+matches. Designed for workspace-close cleanup so per-workspace
+tool outputs don't linger after the workspace is unloaded.
+
+**Behavior**
+
+- Returns count of removed records.
+- Empty `workspaceId` → 0 with no events.
+- Records with no `workspaceId` are never matched.
+- Fires `onDidChange` once per removed record in insertion order.
+
+**Files**
+
+- `src/workbench/toolArtifactStore.ts` — interface + impl
+- `tests/unit/platform/toolArtifactStoreDeleteByWorkspace.tier0.test.ts`
+  (7 tests)
+
+**Verification**
+
+- `npm run test:unit:tier0 -- --run`: 29 files / 268 passed (7 new).
+- `npx tsc --noEmit`: clean.
+
+**Commit**: pending
+**Review**: single-pass — tier-0 corpus green + tsc clean.
+
+---
+
 ## Iteration 21 — Slice A20: IResourceRegistry.resolveSafe() (2026-05-25)
 
 Pure-additive non-throwing variant of `resolve` / `resolveUri`. Returns

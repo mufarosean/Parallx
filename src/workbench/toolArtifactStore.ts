@@ -39,6 +39,14 @@ export interface IToolArtifactStore {
    */
   deleteByTool(toolId: string): number;
   /**
+   * Delete every artifact whose `workspaceId === workspaceId`. Returns
+   * the number of records removed. Fires `onDidChange` once per removed
+   * record (in insertion order). Records with no `workspaceId` are
+   * never matched. Empty/undefined `workspaceId` returns 0 with no
+   * events.
+   */
+  deleteByWorkspace(workspaceId: string): number;
+  /**
    * Snapshot listing of stored artifacts. With no argument, returns every
    * record. With a `toolId` argument, returns only records owned by that
    * tool. Insertion order is preserved. The returned array is a fresh
@@ -91,6 +99,21 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
     const victims: string[] = [];
     for (const [key, rec] of this._records) {
       if (rec.toolId === toolId) victims.push(key);
+    }
+    for (const key of victims) {
+      const rec = this._records.get(key);
+      if (!rec) continue;
+      this._records.delete(key);
+      this._onDidChange.fire({ toolId: rec.toolId, artifactId: rec.artifactId, kind: 'delete' });
+    }
+    return victims.length;
+  }
+
+  deleteByWorkspace(workspaceId: string): number {
+    if (!workspaceId) return 0;
+    const victims: string[] = [];
+    for (const [key, rec] of this._records) {
+      if (rec.workspaceId === workspaceId) victims.push(key);
     }
     for (const key of victims) {
       const rec = this._records.get(key);
