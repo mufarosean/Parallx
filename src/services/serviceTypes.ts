@@ -786,6 +786,7 @@ export const IContextKeyService = createServiceIdentifier<IContextKeyService>('I
 
 import type { ISelection } from './selectionActionTypes.js';
 export type { ISelection } from './selectionActionTypes.js';
+import type { Resource } from '../workbench/resources/resource.js';
 
 /**
  * Event payload fired when a surface's current selection changes.
@@ -884,6 +885,17 @@ export interface ISelectionService extends IDisposable {
    * `IToolArtifactStore.listByWorkspace` (A33).
    */
   entriesByWorkspace(workspaceId: string): ReadonlyArray<{ readonly surfaceId: string; readonly selection: ISelection }>;
+
+  /**
+   * Snapshot of `(surfaceId, selection)` pairs whose `selection.resource`
+   * is structurally equal to the given Resource (via `resourceEquals`).
+   * Selections without a resource are never matched. Insertion order.
+   * Fresh array. Symmetric with `ISurfaceRegistry.findByResource`.
+   * Useful when callers want to discover which surfaces currently
+   * focus the same logical thing (e.g. "who else is editing this
+   * file?").
+   */
+  findByResource(resource: Resource): ReadonlyArray<{ readonly surfaceId: string; readonly selection: ISelection }>;
 
   /**
    * Snapshot of distinct `workspaceId` values across every current

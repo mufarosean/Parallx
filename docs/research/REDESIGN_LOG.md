@@ -6,6 +6,22 @@
 
 ---
 
+## Iteration 54 — Slice A53: ISelectionService.findByResource (2026-05-25)
+
+Added `findByResource(resource): readonly { surfaceId, selection }[]`
+on `ISelectionService`. Walks current selections and returns those
+whose `selection.resource` is structurally equal to the given Resource
+(via `resourceEquals`). Insertion order. Fresh array. Symmetric with
+`ISurfaceRegistry.findByResource`. Useful for "who else focuses this
+thing?" queries.
+
+Pure-additive. Tier-0: **62 files / 496 tests**, all green. tsc clean.
+
+Files: `src/services/serviceTypes.ts`, `src/services/selectionService.ts`,
+`tests/unit/platform/selectionServiceFindByResource.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 53 — Slice A52: ISelectionService.hasWorkspace (2026-05-25)
 
 Added `hasWorkspace(workspaceId): boolean` on `ISelectionService`.
