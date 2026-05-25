@@ -234,6 +234,7 @@ const copyActiveResourceUri: CommandDescriptor = {
   title: 'Copy Active Resource URI',
   category: 'View',
   when: 'activeResourceType',
+  keybinding: 'Ctrl+Alt+U',
   aiInvocable: true,
   aiDescription:
     'Copy the canonical parallx:// URI of the currently active resource (file, canvas page, chat session, or tool artifact) to the system clipboard. Returns the URI string.',

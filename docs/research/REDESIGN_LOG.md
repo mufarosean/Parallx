@@ -6,6 +6,36 @@
 
 ---
 
+## Iteration 89 — Slice B9: keybinding adoption for `activeResourceType` (2026-05-25)
+
+- The first 8 B-slices wired §86 primitives into surface registry,
+  context keys, status bar, commands, context-service fallback, and
+  the artifact store. The keybinding service supports `when`-clause
+  gating against ContextKeyService but no built-in chord yet exercised
+  one of the new §86 context keys.
+- `copyActiveResourceUri` (Slice B5) now declares `keybinding:
+  'Ctrl+Alt+U'`. The structural keybinding registration loop in
+  `workbench.ts` (`_registerStructuralKeybindings`) picks this up and
+  hands it to `KeybindingService.registerKeybindings`, with `when:
+  'activeResourceType'` forwarded verbatim. The chord is therefore
+  evaluated against the live context key on every keypress.
+- End-to-end behaviour: pressing `Ctrl+Alt+U` does nothing while no
+  editor / canvas / chat surface is active, and copies the canonical
+  `parallx://…` URI to the clipboard once any active resource exists.
+  This is the first §86 context key consumed by the keyboard dispatch
+  path; previously only the command-palette `when`-evaluator saw them.
+- 4 new tier-0 tests in
+  `tests/unit/platform/copyActiveResourceUriKeybinding.tier0.test.ts`:
+  descriptor declares the chord + `when`, chord is a no-op while the
+  key is unset, fires once the key is set, and reverts to no-op when
+  the key returns to the empty default. Uses the real
+  `ContextKeyService` (not a stub) so the test exercises the production
+  truthiness rule (`'' → false`, `'file' → true`).
+- Suite: 96 tier-0 files / 735 tests pass. typecheck clean.
+- `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 88 — Slice B8: first IToolArtifactStore writer (2026-05-25)
 
 - Before this slice `IToolArtifactStore` had zero production writers: the
