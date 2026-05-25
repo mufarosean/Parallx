@@ -6,6 +6,20 @@
 
 ---
 
+## Iteration 42 — Slice A41: ISurfaceRegistry.size (2026-05-25)
+
+Added `readonly size: number` on `ISurfaceRegistry`. Cheap accessor
+returning the count of currently-registered surfaces without
+materializing `list()`. Symmetric with `IToolArtifactStore.size`
+(existing) and pending `ISelectionService.size` (A42).
+
+Pure-additive. Tier-0: **50 files / 415 tests**, all green. tsc clean.
+
+Files: `src/workbench/resources/surfaceRegistry.ts`,
+`tests/unit/platform/surfaceRegistrySize.tier0.test.ts` (new, 6 tests).
+
+---
+
 ## Iteration 41 — Slice A40: ISelectionService.workspaceIds() (2026-05-25)
 
 Added `workspaceIds(): readonly string[]` on `ISelectionService`.

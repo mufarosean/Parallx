@@ -75,6 +75,14 @@ export interface ISurfaceRegistry {
   get(id: string): Surface | undefined;
 
   /**
+   * Number of currently-registered surfaces. Cheap accessor that
+   * avoids materializing `list()` just to read its length. Symmetric
+   * with `IToolArtifactStore.size` (A12) and `ISelectionService.size`
+   * (A42).
+   */
+  readonly size: number;
+
+  /**
    * `true` iff a surface with the given id is currently registered.
    * Guard counterpart to `get` for callers that only need existence.
    */
@@ -189,6 +197,10 @@ export class SurfaceRegistry extends Disposable implements ISurfaceRegistry {
 
   get(id: string): Surface | undefined {
     return this._surfaces.get(id);
+  }
+
+  get size(): number {
+    return this._surfaces.size;
   }
 
   has(id: string): boolean {
