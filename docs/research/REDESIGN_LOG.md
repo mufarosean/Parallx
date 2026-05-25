@@ -6,6 +6,37 @@
 
 ---
 
+## Iteration 94 — Slice B14: `activeSelectionExists` context key (2026-05-25)
+
+- Completes the §86 identity-key quartet: surfaceKind, resourceType,
+  workspaceId already shipped via B3/B12; B14 adds the fourth boolean
+  `activeSelectionExists`, derived from
+  `IContextService.getContext().activeSelection !== undefined`.
+- New constant `CTX_ACTIVE_SELECTION_EXISTS = 'activeSelectionExists'`
+  and matching `setActiveSelectionExists(boolean)` setter on
+  `WorkbenchContextManager`. `contextBinding.ts` push & dispose paths
+  now drive the key (true on selection-present, false on clear and on
+  teardown).
+- Intentionally distinct from M81's older `selectionExists` key (which
+  reflects `SelectionService.hasAnySelection()` — a workbench-wide
+  aggregate). B14 specifically follows whatever the active surface
+  declares through the §86 unified snapshot. A dedicated test asserts
+  the two keys remain independent so future when-clauses can choose
+  the precise semantics they need.
+- 7 new tier-0 tests in
+  `tests/unit/platform/activeSelectionExistsContextKey.tier0.test.ts`
+  exercising the real ContextKeyService + WorkbenchContextManager +
+  contextBinding stack: key name, cold-start default, flip on/off,
+  clear-on-dispose, compound `&&` over all four §86 keys, M81
+  independence guarantee.
+- B3's `contextBinding.tier0.test.ts` widened in lock-step: the
+  FakeWorkbenchContext now also stubs `setActiveSelectionExists` so
+  the binding's new call doesn't error in pure-fake mode.
+- Suite: 102 tier-0 files / 769 tests pass. typecheck clean.
+- `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 93 — Slice B13: workspace-id command + keybinding (2026-05-25)
 
 - Closes the loop on B12 by adding the first consumer of the new

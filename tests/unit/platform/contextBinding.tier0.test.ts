@@ -32,9 +32,11 @@ class FakeWorkbenchContext {
   surfaceKind: string | undefined;
   resourceType: string | undefined;
   workspaceId: string | undefined;
+  selectionExists = false;
   surfaceCalls = 0;
   resourceCalls = 0;
   workspaceCalls = 0;
+  selectionCalls = 0;
   setActiveSurfaceKind(k: string | undefined): void {
     this.surfaceCalls++;
     this.surfaceKind = k ?? '';
@@ -46,6 +48,10 @@ class FakeWorkbenchContext {
   setActiveWorkspaceId(id: string | undefined): void {
     this.workspaceCalls++;
     this.workspaceId = id ?? '';
+  }
+  setActiveSelectionExists(exists: boolean): void {
+    this.selectionCalls++;
+    this.selectionExists = exists;
   }
 }
 

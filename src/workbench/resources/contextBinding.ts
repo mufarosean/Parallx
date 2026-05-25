@@ -35,6 +35,7 @@ export function bindContextToWorkbenchContextManager(
     workbenchContext.setActiveSurfaceKind(ctx.activeSurfaceKind);
     workbenchContext.setActiveResourceType(ctx.activeResourceType);
     workbenchContext.setActiveWorkspaceId(ctx.workspaceId);
+    workbenchContext.setActiveSelectionExists(ctx.activeSelection !== undefined);
   };
 
   store.add(contextService.onDidChangeContext(() => push()));
@@ -49,6 +50,7 @@ export function bindContextToWorkbenchContextManager(
       workbenchContext.setActiveSurfaceKind(undefined);
       workbenchContext.setActiveResourceType(undefined);
       workbenchContext.setActiveWorkspaceId(undefined);
+      workbenchContext.setActiveSelectionExists(false);
     },
   };
 }

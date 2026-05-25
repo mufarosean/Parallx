@@ -62,6 +62,14 @@ export const CTX_ACTIVE_RESOURCE_TYPE = 'activeResourceType';
 // empty-string-means-absent convention as the other §86 keys.
 export const CTX_ACTIVE_WORKSPACE_ID = 'activeWorkspaceId';
 
+// §86 / Slice B14 — Boolean parallel to the other §86 identity keys,
+// derived from IContextService.getContext().activeSelection !== undefined.
+// Distinct from M81's `selectionExists` (which tracks the workbench-wide
+// `SelectionService.hasAnySelection()` aggregate) — this one specifically
+// follows whatever the active surface declares as its selection through
+// the §86 unified snapshot.
+export const CTX_ACTIVE_SELECTION_EXISTS = 'activeSelectionExists';
+
 // ─── WorkbenchContextManager ─────────────────────────────────────────────────
 
 /**
@@ -112,10 +120,11 @@ export class WorkbenchContextManager extends Disposable {
   // M81 Slice A — selection
   private readonly _selectionExists: IContextKey<boolean>;
 
-  // §86 / Slice B3 + B12 — derived from IContextService snapshots
+  // §86 / Slice B3 + B12 + B14 — derived from IContextService snapshots
   private readonly _activeSurfaceKind: IContextKey<string>;
   private readonly _activeResourceType: IContextKey<string>;
   private readonly _activeWorkspaceId: IContextKey<string>;
+  private readonly _activeSelectionExists: IContextKey<boolean>;
 
   constructor(
     _contextKeyService: ContextKeyService,
@@ -157,10 +166,11 @@ export class WorkbenchContextManager extends Disposable {
     // M81 Slice A — selection
     this._selectionExists = _contextKeyService.createKey(CTX_SELECTION_EXISTS, false);
 
-    // §86 / Slice B3 + B12 — context keys mirror IContextService snapshot fields.
+    // §86 / Slice B3 + B12 + B14 — context keys mirror IContextService snapshot fields.
     this._activeSurfaceKind = _contextKeyService.createKey(CTX_ACTIVE_SURFACE_KIND, '');
     this._activeResourceType = _contextKeyService.createKey(CTX_ACTIVE_RESOURCE_TYPE, '');
     this._activeWorkspaceId = _contextKeyService.createKey(CTX_ACTIVE_WORKSPACE_ID, '');
+    this._activeSelectionExists = _contextKeyService.createKey(CTX_ACTIVE_SELECTION_EXISTS, false);
 
     // Subscribe to focus tracker
     if (_focusTracker) {
@@ -265,6 +275,16 @@ export class WorkbenchContextManager extends Disposable {
    */
   setActiveWorkspaceId(id: string | undefined): void {
     this._activeWorkspaceId.set(id ?? '');
+  }
+
+  /**
+   * §86 / Slice B14. Set by the IContextService binding whenever the
+   * `activeSelection` field of the §86 snapshot transitions between
+   * present and absent. Distinct from M81's `selectionExists` which is
+   * driven by the workbench-wide SelectionService aggregate.
+   */
+  setActiveSelectionExists(exists: boolean): void {
+    this._activeSelectionExists.set(exists);
   }
 
   setWorkspaceLoaded(loaded: boolean): void {
