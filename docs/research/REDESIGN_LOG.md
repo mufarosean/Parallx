@@ -6,6 +6,22 @@
 
 ---
 
+## Iteration 51 — Slice A50: IToolArtifactStore.hasTool / hasWorkspace (2026-05-25)
+
+Added `hasTool(toolId): boolean` and `hasWorkspace(workspaceId): boolean`
+on `IToolArtifactStore`. Cheap O(n) existence checks that short-circuit
+on the first matching record (faster than `countByTool > 0` /
+`countByWorkspace > 0` when the answer is yes). `hasWorkspace` skips
+records without a workspaceId. Empty args return false. Opens the
+existence-check family for the workbench primitives.
+
+Pure-additive. Tier-0: **59 files / 475 tests**, all green. tsc clean.
+
+Files: `src/workbench/toolArtifactStore.ts`,
+`tests/unit/platform/toolArtifactStoreHasGroup.tier0.test.ts` (new, 7 tests).
+
+---
+
 ## Iteration 50 — Slice A49: ISelectionService.mostRecentSurfaceId() (2026-05-25)
 
 Added `mostRecentSurfaceId(): string | undefined` on `ISelectionService`.

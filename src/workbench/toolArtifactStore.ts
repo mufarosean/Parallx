@@ -115,6 +115,19 @@ export interface IToolArtifactStore {
    * but allocation-free.
    */
   countByWorkspace(workspaceId: string): number;
+  /**
+   * `true` iff at least one stored record has `toolId === toolId`.
+   * Cheap O(n) existence check that short-circuits on the first hit
+   * (faster than `countByTool(toolId) > 0` when the answer is yes).
+   * Empty/undefined `toolId` returns `false`.
+   */
+  hasTool(toolId: string): boolean;
+  /**
+   * `true` iff at least one stored record has `workspaceId === workspaceId`.
+   * Records without a `workspaceId` are never matched. Empty/undefined
+   * `workspaceId` returns `false`. Cheap O(n) existence check.
+   */
+  hasWorkspace(workspaceId: string): boolean;
   /** Number of stored artifacts. */
   readonly size: number;
   /** Fires whenever an artifact is added, replaced, or deleted. */
@@ -210,6 +223,22 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
       if (r.workspaceId === workspaceId) n++;
     }
     return n;
+  }
+
+  hasTool(toolId: string): boolean {
+    if (!toolId) return false;
+    for (const r of this._records.values()) {
+      if (r.toolId === toolId) return true;
+    }
+    return false;
+  }
+
+  hasWorkspace(workspaceId: string): boolean {
+    if (!workspaceId) return false;
+    for (const r of this._records.values()) {
+      if (r.workspaceId === workspaceId) return true;
+    }
+    return false;
   }
 
   list(toolId?: string): readonly ToolArtifactRecord[] {
