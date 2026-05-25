@@ -1,0 +1,1507 @@
+﻿{
+  "config": {
+    "configFile": "D:\\AI\\Parallx\\playwright.config.ts",
+    "rootDir": "D:/AI/Parallx/tests/e2e",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "D:/AI/Parallx/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "D:/AI/Parallx/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.2",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "02-explorer.spec.ts",
+      "file": "02-explorer.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Explorer Sidebar",
+          "file": "02-explorer.spec.ts",
+          "line": 9,
+          "column": 6,
+          "specs": [
+            {
+              "title": "opening a folder shows the explorer tree",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1407,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:05:29.475Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "78e5b6bae37141c23de5-a1820c5e616cfc6656f5",
+              "file": "02-explorer.spec.ts",
+              "line": 20,
+              "column": 3
+            },
+            {
+              "title": "tree shows folders and files with correct icons",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 1432,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: >= \u001b[32m1\u001b[39m\nReceived:    \u001b[31m0\u001b[39m",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: >= \u001b[32m1\u001b[39m\nReceived:    \u001b[31m0\u001b[39m\n    at D:\\AI\\Parallx\\tests\\e2e\\02-explorer.spec.ts:40:25",
+                        "location": {
+                          "file": "D:\\AI\\Parallx\\tests\\e2e\\02-explorer.spec.ts",
+                          "column": 25,
+                          "line": 40
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 38 |\u001b[39m     \u001b[36mconst\u001b[39m folderCount \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m folderIcons\u001b[33m.\u001b[39mcount()\u001b[33m;\u001b[39m\n \u001b[90m 39 |\u001b[39m     \u001b[36mconst\u001b[39m fileCount \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m fileIcons\u001b[33m.\u001b[39mcount()\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 40 |\u001b[39m     expect(folderCount)\u001b[33m.\u001b[39mtoBeGreaterThanOrEqual(\u001b[35m1\u001b[39m)\u001b[33m;\u001b[39m \u001b[90m// at least src or docs\u001b[39m\n \u001b[90m    |\u001b[39m                         \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 41 |\u001b[39m     expect(fileCount)\u001b[33m.\u001b[39mtoBeGreaterThanOrEqual(\u001b[35m1\u001b[39m)\u001b[33m;\u001b[39m \u001b[90m// at least README.md\u001b[39m\n \u001b[90m 42 |\u001b[39m   })\u001b[33m;\u001b[39m\n \u001b[90m 43 |\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "D:\\AI\\Parallx\\tests\\e2e\\02-explorer.spec.ts",
+                            "column": 25,
+                            "line": 40
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: >= \u001b[32m1\u001b[39m\nReceived:    \u001b[31m0\u001b[39m\n\n  38 |     const folderCount = await folderIcons.count();\n  39 |     const fileCount = await fileIcons.count();\n> 40 |     expect(folderCount).toBeGreaterThanOrEqual(1); // at least src or docs\n     |                         ^\n  41 |     expect(fileCount).toBeGreaterThanOrEqual(1); // at least README.md\n  42 |   });\n  43 |\n    at D:\\AI\\Parallx\\tests\\e2e\\02-explorer.spec.ts:40:25"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:05:30.909Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\AI\\Parallx\\test-results\\02-explorer-Explorer-Sideb-f27da-nd-files-with-correct-icons\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "D:\\AI\\Parallx\\tests\\e2e\\02-explorer.spec.ts",
+                        "column": 25,
+                        "line": 40
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "78e5b6bae37141c23de5-3f2d8b68ec0d1ee77b8c",
+              "file": "02-explorer.spec.ts",
+              "line": 30,
+              "column": 3
+            },
+            {
+              "title": "clicking a folder expands to show children",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2496,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:05:33.472Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "78e5b6bae37141c23de5-a68f1c02763dc004053c",
+              "file": "02-explorer.spec.ts",
+              "line": 44,
+              "column": 3
+            },
+            {
+              "title": "clicking an expanded folder collapses it",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3180,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:05:35.995Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "78e5b6bae37141c23de5-8adf86680a94c5f16878",
+              "file": "02-explorer.spec.ts",
+              "line": 70,
+              "column": 3
+            },
+            {
+              "title": "clicking a file opens it in the editor",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 1451,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: > \u001b[32m0\u001b[39m\nReceived:   \u001b[31m0\u001b[39m",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: > \u001b[32m0\u001b[39m\nReceived:   \u001b[31m0\u001b[39m\n    at D:\\AI\\Parallx\\tests\\e2e\\02-explorer.spec.ts:104:19",
+                        "location": {
+                          "file": "D:\\AI\\Parallx\\tests\\e2e\\02-explorer.spec.ts",
+                          "column": 19,
+                          "line": 104
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 102 |\u001b[39m     \u001b[36mconst\u001b[39m fileNodes \u001b[33m=\u001b[39m window\u001b[33m.\u001b[39mlocator(\u001b[32m'.tree-node:has(.tree-node-icon:has-text(\"≡ƒôä\"))'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 103 |\u001b[39m     \u001b[36mconst\u001b[39m count \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m fileNodes\u001b[33m.\u001b[39mcount()\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 104 |\u001b[39m     expect(count)\u001b[33m.\u001b[39mtoBeGreaterThan(\u001b[35m0\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                   \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 105 |\u001b[39m\n \u001b[90m 106 |\u001b[39m     \u001b[90m// Click the first file\u001b[39m\n \u001b[90m 107 |\u001b[39m     \u001b[36mconst\u001b[39m firstFile \u001b[33m=\u001b[39m fileNodes\u001b[33m.\u001b[39mfirst()\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "D:\\AI\\Parallx\\tests\\e2e\\02-explorer.spec.ts",
+                            "column": 19,
+                            "line": 104
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: > \u001b[32m0\u001b[39m\nReceived:   \u001b[31m0\u001b[39m\n\n  102 |     const fileNodes = window.locator('.tree-node:has(.tree-node-icon:has-text(\"≡ƒôä\"))');\n  103 |     const count = await fileNodes.count();\n> 104 |     expect(count).toBeGreaterThan(0);\n      |                   ^\n  105 |\n  106 |     // Click the first file\n  107 |     const firstFile = fileNodes.first();\n    at D:\\AI\\Parallx\\tests\\e2e\\02-explorer.spec.ts:104:19"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:05:39.183Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\AI\\Parallx\\test-results\\02-explorer-Explorer-Sideb-3f2ce-file-opens-it-in-the-editor\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "D:\\AI\\Parallx\\tests\\e2e\\02-explorer.spec.ts",
+                        "column": 19,
+                        "line": 104
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "78e5b6bae37141c23de5-4252f652642077083068",
+              "file": "02-explorer.spec.ts",
+              "line": 98,
+              "column": 3
+            },
+            {
+              "title": "double-clicking a file pins it (not preview)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1387,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:05:41.732Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "78e5b6bae37141c23de5-e0a28f04a6c239f73b16",
+              "file": "02-explorer.spec.ts",
+              "line": 119,
+              "column": 3
+            },
+            {
+              "title": "selecting a tree node highlights it",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1745,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:05:43.145Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "78e5b6bae37141c23de5-f7e195113c2b5ce90a71",
+              "file": "02-explorer.spec.ts",
+              "line": 140,
+              "column": 3
+            },
+            {
+              "title": "opening a different folder replaces the previous one",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3867,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:05:44.897Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "78e5b6bae37141c23de5-3b970d0c6dd3b969c911",
+              "file": "02-explorer.spec.ts",
+              "line": 155,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "08-workspaces.spec.ts",
+      "file": "08-workspaces.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Workspace Management ΓÇö User Experience",
+          "file": "08-workspaces.spec.ts",
+          "line": 53,
+          "column": 6,
+          "specs": [
+            {
+              "title": "initial launch shows Explorer with no placeholder fake files",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1359,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:05:48.813Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-8395ce88e2e06b5802ec",
+              "file": "08-workspaces.spec.ts",
+              "line": 59,
+              "column": 3
+            },
+            {
+              "title": "initial launch shows \"No folder opened\" empty state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1463,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:05:50.179Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-b0f447972b1ad5834da4",
+              "file": "08-workspaces.spec.ts",
+              "line": 81,
+              "column": 3
+            },
+            {
+              "title": "open folder shows real files from disk",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 1361,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n    at D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts:115:83",
+                        "location": {
+                          "file": "D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts",
+                          "column": 83,
+                          "line": 115
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 113 |\u001b[39m\n \u001b[90m 114 |\u001b[39m     \u001b[90m// Should include real files, NOT the hardcoded placeholder files\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 115 |\u001b[39m     expect(allLabels\u001b[33m.\u001b[39msome(l \u001b[33m=>\u001b[39m l \u001b[33m===\u001b[39m \u001b[32m'README.md'\u001b[39m \u001b[33m||\u001b[39m l \u001b[33m===\u001b[39m \u001b[32m'src'\u001b[39m \u001b[33m||\u001b[39m l \u001b[33m===\u001b[39m \u001b[32m'docs'\u001b[39m))\u001b[33m.\u001b[39mtoBe(\u001b[36mtrue\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                                                                                   \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 116 |\u001b[39m     \u001b[90m// Should NOT include the placeholder's fake files\u001b[39m\n \u001b[90m 117 |\u001b[39m     expect(allLabels\u001b[33m.\u001b[39msome(l \u001b[33m=>\u001b[39m l \u001b[33m===\u001b[39m \u001b[32m'workbench.css'\u001b[39m \u001b[33m||\u001b[39m l \u001b[33m===\u001b[39m \u001b[32m'lifecycle.ts'\u001b[39m))\u001b[33m.\u001b[39mtoBe(\u001b[36mfalse\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 118 |\u001b[39m   })\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts",
+                            "column": 83,
+                            "line": 115
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  113 |\n  114 |     // Should include real files, NOT the hardcoded placeholder files\n> 115 |     expect(allLabels.some(l => l === 'README.md' || l === 'src' || l === 'docs')).toBe(true);\n      |                                                                                   ^\n  116 |     // Should NOT include the placeholder's fake files\n  117 |     expect(allLabels.some(l => l === 'workbench.css' || l === 'lifecycle.ts')).toBe(false);\n  118 |   });\n    at D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts:115:83"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:05:51.648Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\AI\\Parallx\\test-results\\08-workspaces-Workspace-Ma-9c402--shows-real-files-from-disk\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts",
+                        "column": 83,
+                        "line": 115
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-5927413a86c4142bc761",
+              "file": "08-workspaces.spec.ts",
+              "line": 96,
+              "column": 3
+            },
+            {
+              "title": "close folder removes tree and shows empty state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3698,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:05:54.168Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-877c7888f298b9bf0e14",
+              "file": "08-workspaces.spec.ts",
+              "line": 124,
+              "column": 3
+            },
+            {
+              "title": "Save As shows name prompt and switches to new workspace",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 3366,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected substring: \u001b[32m\"My Test Workspace\"\u001b[39m\nReceived string:    \u001b[31m\"parallx-test-1779710746040\"\u001b[39m",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected substring: \u001b[32m\"My Test Workspace\"\u001b[39m\nReceived string:    \u001b[31m\"parallx-test-1779710746040\"\u001b[39m\n    at D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts:167:21",
+                        "location": {
+                          "file": "D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts",
+                          "column": 21,
+                          "line": 167
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 165 |\u001b[39m     \u001b[90m// Titlebar should now show the new workspace name\u001b[39m\n \u001b[90m 166 |\u001b[39m     \u001b[36mconst\u001b[39m newName \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m getTitlebarWorkspaceName(window)\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 167 |\u001b[39m     expect(newName)\u001b[33m.\u001b[39mtoContain(\u001b[32m'My Test Workspace'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                     \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 168 |\u001b[39m     expect(newName)\u001b[33m.\u001b[39mnot\u001b[33m.\u001b[39mtoBe(originalName)\u001b[33m;\u001b[39m\n \u001b[90m 169 |\u001b[39m   })\u001b[33m;\u001b[39m\n \u001b[90m 170 |\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts",
+                            "column": 21,
+                            "line": 167
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected substring: \u001b[32m\"My Test Workspace\"\u001b[39m\nReceived string:    \u001b[31m\"parallx-test-1779710746040\"\u001b[39m\n\n  165 |     // Titlebar should now show the new workspace name\n  166 |     const newName = await getTitlebarWorkspaceName(window);\n> 167 |     expect(newName).toContain('My Test Workspace');\n      |                     ^\n  168 |     expect(newName).not.toBe(originalName);\n  169 |   });\n  170 |\n    at D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts:167:21"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:05:57.880Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\AI\\Parallx\\test-results\\08-workspaces-Workspace-Ma-492e5-d-switches-to-new-workspace\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts",
+                        "column": 21,
+                        "line": 167
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-c42bf4f7e789e1918239",
+              "file": "08-workspaces.spec.ts",
+              "line": 142,
+              "column": 3
+            },
+            {
+              "title": "Save As does NOT duplicate sidebar elements",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3403,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:06:02.390Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-ebaabc47fd3b9c96fac9",
+              "file": "08-workspaces.spec.ts",
+              "line": 171,
+              "column": 3
+            },
+            {
+              "title": "Save As preserves real Explorer (no fake placeholder files)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8904,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:06:05.807Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-e146f676481ddcdf5661",
+              "file": "08-workspaces.spec.ts",
+              "line": 200,
+              "column": 3
+            },
+            {
+              "title": "Save As can be cancelled with Escape",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2038,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:06:14.718Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-2350f80c3616f5887f38",
+              "file": "08-workspaces.spec.ts",
+              "line": 227,
+              "column": 3
+            },
+            {
+              "title": "Duplicate Workspace does not switch away from current",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3639,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:06:16.763Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-a5efe6e36710ddc9d5a8",
+              "file": "08-workspaces.spec.ts",
+              "line": 251,
+              "column": 3
+            },
+            {
+              "title": "switching workspace updates titlebar and preserves UI integrity",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 3593,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected substring: \u001b[32m\"Second Workspace\"\u001b[39m\nReceived string:    \u001b[31m\"parallx-test-1779710766700\"\u001b[39m",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected substring: \u001b[32m\"Second Workspace\"\u001b[39m\nReceived string:    \u001b[31m\"parallx-test-1779710766700\"\u001b[39m\n    at D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts:285:21",
+                        "location": {
+                          "file": "D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts",
+                          "column": 21,
+                          "line": 285
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 283 |\u001b[39m     \u001b[90m// Verify we're on the new workspace\u001b[39m\n \u001b[90m 284 |\u001b[39m     \u001b[36mconst\u001b[39m newName \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m getTitlebarWorkspaceName(window)\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 285 |\u001b[39m     expect(newName)\u001b[33m.\u001b[39mtoContain(\u001b[32m'Second Workspace'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                     \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 286 |\u001b[39m\n \u001b[90m 287 |\u001b[39m     \u001b[90m// UI structure should be intact after the switch\u001b[39m\n \u001b[90m 288 |\u001b[39m     \u001b[90m// ONE header label\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts",
+                            "column": 21,
+                            "line": 285
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected substring: \u001b[32m\"Second Workspace\"\u001b[39m\nReceived string:    \u001b[31m\"parallx-test-1779710766700\"\u001b[39m\n\n  283 |     // Verify we're on the new workspace\n  284 |     const newName = await getTitlebarWorkspaceName(window);\n> 285 |     expect(newName).toContain('Second Workspace');\n      |                     ^\n  286 |\n  287 |     // UI structure should be intact after the switch\n  288 |     // ONE header label\n    at D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts:285:21"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:06:20.407Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\AI\\Parallx\\test-results\\08-workspaces-Workspace-Ma-a75f7--and-preserves-UI-integrity\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts",
+                        "column": 21,
+                        "line": 285
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-8e230b252f69459acb7e",
+              "file": "08-workspaces.spec.ts",
+              "line": 273,
+              "column": 3
+            },
+            {
+              "title": "switching back and forth does not accumulate elements",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5671,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:06:25.077Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-fda8a9d2687034df98a5",
+              "file": "08-workspaces.spec.ts",
+              "line": 302,
+              "column": 3
+            },
+            {
+              "title": "opening a folder after Save As shows real files",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6099,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:06:30.763Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-1ab14420348fe3029a6f",
+              "file": "08-workspaces.spec.ts",
+              "line": 336,
+              "column": 3
+            },
+            {
+              "title": "Save As preserves Explorer tree immediately without app restart",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5604,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:06:36.869Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-b06acf921db7c09db58c",
+              "file": "08-workspaces.spec.ts",
+              "line": 369,
+              "column": 3
+            },
+            {
+              "title": "Rename Workspace updates the titlebar name",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 2051,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m\"Renamed Workspace\"\u001b[39m\nReceived: \u001b[31m\"parallx-test-1779710791931\"\u001b[39m",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m\"Renamed Workspace\"\u001b[39m\nReceived: \u001b[31m\"parallx-test-1779710791931\"\u001b[39m\n    at D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts:419:21",
+                        "location": {
+                          "file": "D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts",
+                          "column": 21,
+                          "line": 419
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 417 |\u001b[39m     \u001b[90m// Titlebar should show the new name\u001b[39m\n \u001b[90m 418 |\u001b[39m     \u001b[36mconst\u001b[39m newName \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m getTitlebarWorkspaceName(window)\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 419 |\u001b[39m     expect(newName)\u001b[33m.\u001b[39mtoBe(\u001b[32m'Renamed Workspace'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                     \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 420 |\u001b[39m   })\u001b[33m;\u001b[39m\n \u001b[90m 421 |\u001b[39m\n \u001b[90m 422 |\u001b[39m   test(\u001b[32m'Rename Workspace can be cancelled with Escape'\u001b[39m\u001b[33m,\u001b[39m \u001b[36masync\u001b[39m ({ window }) \u001b[33m=>\u001b[39m {\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts",
+                            "column": 21,
+                            "line": 419
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m\"Renamed Workspace\"\u001b[39m\nReceived: \u001b[31m\"parallx-test-1779710791931\"\u001b[39m\n\n  417 |     // Titlebar should show the new name\n  418 |     const newName = await getTitlebarWorkspaceName(window);\n> 419 |     expect(newName).toBe('Renamed Workspace');\n      |                     ^\n  420 |   });\n  421 |\n  422 |   test('Rename Workspace can be cancelled with Escape', async ({ window }) => {\n    at D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts:419:21"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:06:42.481Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\AI\\Parallx\\test-results\\08-workspaces-Workspace-Ma-bce6c-e-updates-the-titlebar-name\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "D:\\AI\\Parallx\\tests\\e2e\\08-workspaces.spec.ts",
+                        "column": 21,
+                        "line": 419
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-b672457934578c81cc39",
+              "file": "08-workspaces.spec.ts",
+              "line": 399,
+              "column": 3
+            },
+            {
+              "title": "Rename Workspace can be cancelled with Escape",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2161,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:06:45.644Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-38ec6511368b4a32be31",
+              "file": "08-workspaces.spec.ts",
+              "line": 422,
+              "column": 3
+            },
+            {
+              "title": "Rename Workspace modal has OK and Cancel buttons",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1539,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:06:47.820Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-f3995559cf5d9aeecf19",
+              "file": "08-workspaces.spec.ts",
+              "line": 439,
+              "column": 3
+            },
+            {
+              "title": "Open Recent shows the quick access overlay",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1457,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:06:49.366Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-2cb1ae70714617bd5228",
+              "file": "08-workspaces.spec.ts",
+              "line": 460,
+              "column": 3
+            },
+            {
+              "title": "Ctrl+B toggles sidebar visibility",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2413,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-25T12:06:50.831Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7f2ccff0a24b92587361-b6805079653ccf0fd372",
+              "file": "08-workspaces.spec.ts",
+              "line": 477,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "09-canvas.spec.ts",
+      "file": "09-canvas.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Canvas Tool",
+          "file": "09-canvas.spec.ts",
+          "line": 45,
+          "column": 6,
+          "specs": [],
+          "suites": [
+            {
+              "title": "Sidebar ΓÇö visibility",
+              "file": "09-canvas.spec.ts",
+              "line": 49,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "Canvas activity bar item is visible",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "",
+                      "projectName": "",
+                      "results": [
+                        {
+                          "workerIndex": 7,
+                          "parallelIndex": 0,
+                          "status": "passed",
+                          "duration": 21,
+                          "errors": [],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-05-25T12:06:54.370Z",
+                          "annotations": [],
+                          "attachments": []
+                        }
+                      ],
+                      "status": "expected"
+                    }
+                  ],
+                  "id": "bd6429134af9731f48d0-1f4e3be7181dcc0343b8",
+                  "file": "09-canvas.spec.ts",
+                  "line": 50,
+                  "column": 5
+                },
+                {
+                  "title": "clicking Canvas icon shows the Canvas sidebar with toolbar",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "",
+                      "projectName": "",
+                      "results": [
+                        {
+                          "workerIndex": 7,
+                          "parallelIndex": 0,
+                          "status": "passed",
+                          "duration": 101,
+                          "errors": [],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-05-25T12:06:55.523Z",
+                          "annotations": [],
+                          "attachments": []
+                        }
+                      ],
+                      "status": "expected"
+                    }
+                  ],
+                  "id": "bd6429134af9731f48d0-bce8c1b0828d7927f9dd",
+                  "file": "09-canvas.spec.ts",
+                  "line": 55,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "CRUD & Editor",
+              "file": "09-canvas.spec.ts",
+              "line": 64,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "creates a page and opens the editor",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "",
+                      "projectName": "",
+                      "results": [
+                        {
+                          "workerIndex": 7,
+                          "parallelIndex": 0,
+                          "status": "passed",
+                          "duration": 2215,
+                          "errors": [],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-05-25T12:06:55.632Z",
+                          "annotations": [],
+                          "attachments": []
+                        }
+                      ],
+                      "status": "expected"
+                    }
+                  ],
+                  "id": "bd6429134af9731f48d0-8d6d6381f6b6da04103b",
+                  "file": "09-canvas.spec.ts",
+                  "line": 65,
+                  "column": 5
+                },
+                {
+                  "title": "page menu opens when clicking Γï»",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "",
+                      "projectName": "",
+                      "results": [
+                        {
+                          "workerIndex": 7,
+                          "parallelIndex": 0,
+                          "status": "passed",
+                          "duration": 2120,
+                          "errors": [],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-05-25T12:06:57.858Z",
+                          "annotations": [],
+                          "attachments": []
+                        }
+                      ],
+                      "status": "expected"
+                    }
+                  ],
+                  "id": "bd6429134af9731f48d0-f16f4c1f706189d6f359",
+                  "file": "09-canvas.spec.ts",
+                  "line": 114,
+                  "column": 5
+                },
+                {
+                  "title": "right-click context menu",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "",
+                      "projectName": "",
+                      "results": [
+                        {
+                          "workerIndex": 7,
+                          "parallelIndex": 0,
+                          "status": "failed",
+                          "duration": 5089,
+                          "error": {
+                            "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.canvas-context-menu')\nExpected: visible\nTimeout: 3000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 3000ms\u001b[22m\n\u001b[2m  - waiting for locator('.canvas-context-menu')\u001b[22m\n",
+                            "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.canvas-context-menu')\nExpected: visible\nTimeout: 3000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 3000ms\u001b[22m\n\u001b[2m  - waiting for locator('.canvas-context-menu')\u001b[22m\n\n    at D:\\AI\\Parallx\\tests\\e2e\\09-canvas.spec.ts:145:33",
+                            "location": {
+                              "file": "D:\\AI\\Parallx\\tests\\e2e\\09-canvas.spec.ts",
+                              "column": 33,
+                              "line": 145
+                            },
+                            "snippet": "\u001b[0m \u001b[90m 143 |\u001b[39m       \u001b[36mawait\u001b[39m window\u001b[33m.\u001b[39mlocator(\u001b[32m'.canvas-node'\u001b[39m)\u001b[33m.\u001b[39mfirst()\u001b[33m.\u001b[39mclick({ button\u001b[33m:\u001b[39m \u001b[32m'right'\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m 144 |\u001b[39m       \u001b[36mconst\u001b[39m contextMenu \u001b[33m=\u001b[39m window\u001b[33m.\u001b[39mlocator(\u001b[32m'.canvas-context-menu'\u001b[39m)\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 145 |\u001b[39m       \u001b[36mawait\u001b[39m expect(contextMenu)\u001b[33m.\u001b[39mtoBeVisible({ timeout\u001b[33m:\u001b[39m \u001b[35m3\u001b[39m_000 })\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                                 \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 146 |\u001b[39m\n \u001b[90m 147 |\u001b[39m       \u001b[90m// Verify at least 4 menu items\u001b[39m\n \u001b[90m 148 |\u001b[39m       \u001b[36mconst\u001b[39m items \u001b[33m=\u001b[39m contextMenu\u001b[33m.\u001b[39mlocator(\u001b[32m'.canvas-context-menu-item'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "D:\\AI\\Parallx\\tests\\e2e\\09-canvas.spec.ts",
+                                "column": 33,
+                                "line": 145
+                              },
+                              "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.canvas-context-menu')\nExpected: visible\nTimeout: 3000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 3000ms\u001b[22m\n\u001b[2m  - waiting for locator('.canvas-context-menu')\u001b[22m\n\n\n  143 |       await window.locator('.canvas-node').first().click({ button: 'right' });\n  144 |       const contextMenu = window.locator('.canvas-context-menu');\n> 145 |       await expect(contextMenu).toBeVisible({ timeout: 3_000 });\n      |                                 ^\n  146 |\n  147 |       // Verify at least 4 menu items\n  148 |       const items = contextMenu.locator('.canvas-context-menu-item');\n    at D:\\AI\\Parallx\\tests\\e2e\\09-canvas.spec.ts:145:33"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-05-25T12:06:59.985Z",
+                          "annotations": [],
+                          "attachments": [],
+                          "errorLocation": {
+                            "file": "D:\\AI\\Parallx\\tests\\e2e\\09-canvas.spec.ts",
+                            "column": 33,
+                            "line": 145
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "bd6429134af9731f48d0-69ee10ffaaab08f2ac87",
+                  "file": "09-canvas.spec.ts",
+                  "line": 132,
+                  "column": 5
+                },
+                {
+                  "title": "favorite and trash via context menu",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "",
+                      "projectName": "",
+                      "results": [
+                        {
+                          "workerIndex": 8,
+                          "parallelIndex": 0,
+                          "status": "failed",
+                          "duration": 5206,
+                          "error": {
+                            "message": "TimeoutError: locator.waitFor: Timeout 3000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.canvas-context-menu') to be visible\u001b[22m\n",
+                            "stack": "TimeoutError: locator.waitFor: Timeout 3000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.canvas-context-menu') to be visible\u001b[22m\n\n    at D:\\AI\\Parallx\\tests\\e2e\\09-canvas.spec.ts:166:25",
+                            "location": {
+                              "file": "D:\\AI\\Parallx\\tests\\e2e\\09-canvas.spec.ts",
+                              "column": 25,
+                              "line": 166
+                            },
+                            "snippet": "\u001b[0m \u001b[90m 164 |\u001b[39m       \u001b[36mawait\u001b[39m window\u001b[33m.\u001b[39mlocator(\u001b[32m'.canvas-node'\u001b[39m)\u001b[33m.\u001b[39mfirst()\u001b[33m.\u001b[39mclick({ button\u001b[33m:\u001b[39m \u001b[32m'right'\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m 165 |\u001b[39m       \u001b[36mconst\u001b[39m contextMenu \u001b[33m=\u001b[39m window\u001b[33m.\u001b[39mlocator(\u001b[32m'.canvas-context-menu'\u001b[39m)\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 166 |\u001b[39m       \u001b[36mawait\u001b[39m contextMenu\u001b[33m.\u001b[39mwaitFor({ state\u001b[33m:\u001b[39m \u001b[32m'visible'\u001b[39m\u001b[33m,\u001b[39m timeout\u001b[33m:\u001b[39m \u001b[35m3\u001b[39m_000 })\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                         \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 167 |\u001b[39m\n \u001b[90m 168 |\u001b[39m       \u001b[36mconst\u001b[39m favItem \u001b[33m=\u001b[39m contextMenu\u001b[33m.\u001b[39mlocator(\u001b[32m'.canvas-context-menu-item'\u001b[39m\u001b[33m,\u001b[39m { hasText\u001b[33m:\u001b[39m \u001b[35m/favorite/i\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m 169 |\u001b[39m       \u001b[36mif\u001b[39m (\u001b[36mawait\u001b[39m favItem\u001b[33m.\u001b[39mcount() \u001b[33m>\u001b[39m \u001b[35m0\u001b[39m) {\u001b[0m"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "D:\\AI\\Parallx\\tests\\e2e\\09-canvas.spec.ts",
+                                "column": 25,
+                                "line": 166
+                              },
+                              "message": "TimeoutError: locator.waitFor: Timeout 3000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.canvas-context-menu') to be visible\u001b[22m\n\n\n  164 |       await window.locator('.canvas-node').first().click({ button: 'right' });\n  165 |       const contextMenu = window.locator('.canvas-context-menu');\n> 166 |       await contextMenu.waitFor({ state: 'visible', timeout: 3_000 });\n      |                         ^\n  167 |\n  168 |       const favItem = contextMenu.locator('.canvas-context-menu-item', { hasText: /favorite/i });\n  169 |       if (await favItem.count() > 0) {\n    at D:\\AI\\Parallx\\tests\\e2e\\09-canvas.spec.ts:166:25"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-05-25T12:07:06.523Z",
+                          "annotations": [],
+                          "attachments": [],
+                          "errorLocation": {
+                            "file": "D:\\AI\\Parallx\\tests\\e2e\\09-canvas.spec.ts",
+                            "column": 25,
+                            "line": 166
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "bd6429134af9731f48d0-4a837d2d1b05eb498adb",
+                  "file": "09-canvas.spec.ts",
+                  "line": 153,
+                  "column": 5
+                },
+                {
+                  "title": "slash /page creates sub-page block and opens linked page",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "",
+                      "projectName": "",
+                      "results": [
+                        {
+                          "workerIndex": 9,
+                          "parallelIndex": 0,
+                          "status": "failed",
+                          "duration": 7650,
+                          "error": {
+                            "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.canvas-page-block-icon-picker')\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('.canvas-page-block-icon-picker')\u001b[22m\n",
+                            "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.canvas-page-block-icon-picker')\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('.canvas-page-block-icon-picker')\u001b[22m\n\n    at D:\\AI\\Parallx\\tests\\e2e\\09-canvas.spec.ts:236:70",
+                            "location": {
+                              "file": "D:\\AI\\Parallx\\tests\\e2e\\09-canvas.spec.ts",
+                              "column": 70,
+                              "line": 236
+                            },
+                            "snippet": "\u001b[0m \u001b[90m 234 |\u001b[39m       \u001b[90m// Set child icon from parent block controls.\u001b[39m\n \u001b[90m 235 |\u001b[39m       \u001b[36mawait\u001b[39m window\u001b[33m.\u001b[39mlocator(\u001b[32m'.canvas-page-block-icon'\u001b[39m)\u001b[33m.\u001b[39mfirst()\u001b[33m.\u001b[39mclick()\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 236 |\u001b[39m       \u001b[36mawait\u001b[39m expect(window\u001b[33m.\u001b[39mlocator(\u001b[32m'.canvas-page-block-icon-picker'\u001b[39m))\u001b[33m.\u001b[39mtoBeVisible({ timeout\u001b[33m:\u001b[39m \u001b[35m5\u001b[39m_000 })\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                                                                      \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 237 |\u001b[39m       \u001b[36mawait\u001b[39m window\u001b[33m.\u001b[39mlocator(\u001b[32m'.canvas-page-block-icon-option[title=\"rocket\"]'\u001b[39m)\u001b[33m.\u001b[39mfirst()\u001b[33m.\u001b[39mclick()\u001b[33m;\u001b[39m\n \u001b[90m 238 |\u001b[39m\n \u001b[90m 239 |\u001b[39m       \u001b[90m// Clicking the page block navigates into the linked child page editor.\u001b[39m\u001b[0m"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "D:\\AI\\Parallx\\tests\\e2e\\09-canvas.spec.ts",
+                                "column": 70,
+                                "line": 236
+                              },
+                              "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.canvas-page-block-icon-picker')\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('.canvas-page-block-icon-picker')\u001b[22m\n\n\n  234 |       // Set child icon from parent block controls.\n  235 |       await window.locator('.canvas-page-block-icon').first().click();\n> 236 |       await expect(window.locator('.canvas-page-block-icon-picker')).toBeVisible({ timeout: 5_000 });\n      |                                                                      ^\n  237 |       await window.locator('.canvas-page-block-icon-option[title=\"rocket\"]').first().click();\n  238 |\n  239 |       // Clicking the page block navigates into the linked child page editor.\n    at D:\\AI\\Parallx\\tests\\e2e\\09-canvas.spec.ts:236:70"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-05-25T12:07:14.231Z",
+                          "annotations": [],
+                          "attachments": [],
+                          "errorLocation": {
+                            "file": "D:\\AI\\Parallx\\tests\\e2e\\09-canvas.spec.ts",
+                            "column": 70,
+                            "line": 236
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "bd6429134af9731f48d0-a68ee48caff54374add8",
+                  "file": "09-canvas.spec.ts",
+                  "line": 196,
+                  "column": 5
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-05-25T12:05:28.317Z",
+    "duration": 115113.974,
+    "expected": 24,
+    "skipped": 0,
+    "unexpected": 9,
+    "flaky": 0
+  }
+}

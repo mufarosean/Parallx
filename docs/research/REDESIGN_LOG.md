@@ -6,6 +6,44 @@
 
 ---
 
+## Iteration 8 — Slice A7: SelectionService auto-populates selection.resource (2026-05-25)
+
+**Continuation of:** Unified Workbench Primitives — making the optional
+`ISelection.resource` field (added in A5) actually populated for the
+common case.
+
+**Done:** `SelectionService.setSelection` now derives a `FileResource`
+from `selection.source.filePath` via `resourceFromSelectionSource()`
+when the caller didn't supply `selection.resource`. Pure-additive:
+
+- Existing callers that already set `resource` are respected — auto-fill
+  only fires when the field is `undefined`.
+- Callers with empty/missing `filePath` get `undefined` (no fabrication).
+- The enriched selection is what subscribers receive on
+  `onDidChangeSelection`, so downstream consumers (chat retrieval,
+  when-clauses, link resolution) see the Resource without changing
+  upstream callers.
+
+This is the bridge between the primitive layer (A1–A6) and consumer
+migration: every text selection that flows through `SelectionService`
+now carries a stable cross-tool identity by default.
+
+**Files:** `src/services/selectionService.ts` (+ import + ~12 LOC in
+`setSelection`), `tests/unit/platform/selectionResourceAutoPopulate.tier0.test.ts`
+(5 tests).
+
+**Verification:** tier-0 13 files / 159 passed (5 new). `tsc --noEmit`
+clean.
+
+**§13a:** `selectionService.ts` lives in `src/services/` — not a
+preservation-listed surface. Pure-additive enrichment behind a guard;
+no existing call path changes semantics. Recording
+`single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+**Commits this iteration:** `<pending>`.
+
+---
+
 ## Iteration 7 — Slice A6: file Resource resolver (2026-05-25)
 
 **Continuation of:** Unified Workbench Primitives. First actual resolver

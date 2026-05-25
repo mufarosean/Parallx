@@ -20,6 +20,7 @@ import type {
   ISelectionChangeEvent,
 } from './serviceTypes.js';
 import type { ISelection } from './selectionActionTypes.js';
+import { resourceFromSelectionSource } from '../workbench/resources/resource.js';
 
 export class SelectionService extends Disposable implements ISelectionService {
   private readonly _perSurface = new Map<string, ISelection>();
@@ -56,8 +57,21 @@ export class SelectionService extends Disposable implements ISelectionService {
         }
       }
     } else {
-      this._perSurface.set(surfaceId, selection);
+      // Auto-populate `selection.resource` from `source.filePath` (Slice A7)
+      // if the caller didn't supply one. Pure-additive: existing callers
+      // keep working unchanged; downstream consumers (chat retrieval,
+      // when-clauses, link resolution) get a stable cross-tool identity
+      // for free.
+      let stored = selection;
+      if (stored.resource === undefined) {
+        const derived = resourceFromSelectionSource(stored.source);
+        if (derived !== undefined) {
+          stored = { ...stored, resource: derived };
+        }
+      }
+      this._perSurface.set(surfaceId, stored);
       this._mostRecentSurfaceId = surfaceId;
+      selection = stored;
     }
 
     this._onDidChangeSelection.fire({
