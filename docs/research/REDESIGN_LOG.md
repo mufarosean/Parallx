@@ -6,6 +6,35 @@
 
 ---
 
+## Iteration 95 — Slice B15: inspect-selection command + keybinding (2026-05-25)
+
+- First consumer of the boolean §86 key `activeSelectionExists` (B14):
+  `workbench.action.inspectActiveSelection`, gated `when:
+  'activeSelectionExists'`, bound to `Ctrl+Alt+S`, AI-invocable. Returns
+  a JSON string description of the active selection (and writes it to
+  the clipboard as a side effect). Non-serializable selections fall
+  through to an empty string; clipboard failure is non-fatal.
+- This is the first keybinding/when-clause we ship over a *boolean*
+  §86 key (B9/B11/B13 all used string-equality or truthy-string).
+  Confirms the KeybindingService's when-evaluation pipeline handles
+  the boolean path symmetrically.
+- Quartet of (command, keybinding, when-clause) coverage over §86 keys
+  is now complete:
+  -  B5  + B9   →  `activeResourceType`                    →  Ctrl+Alt+U
+  -  B7  + B11  →  compound editor + file (resource+surface) →  Ctrl+Alt+P
+  -  B13        →  `activeWorkspaceId`                     →  Ctrl+Alt+W
+  -  B15        →  `activeSelectionExists` (boolean)       →  Ctrl+Alt+S
+- 6 command tests + 4 keybinding tests in
+  `tests/unit/platform/inspectActiveSelectionCommand.tier0.test.ts` and
+  `tests/unit/platform/inspectActiveSelectionKeybinding.tier0.test.ts`:
+  metadata, happy-path JSON, no-selection, non-serializable selection,
+  missing service, clipboard failure, when-gate fires only on true,
+  key flips back to false correctly.
+- Suite: 104 tier-0 files / 779 tests pass. typecheck clean.
+- `single-pass-review: tier-0-tests-pass-typecheck-clean`.
+
+---
+
 ## Iteration 94 — Slice B14: `activeSelectionExists` context key (2026-05-25)
 
 - Completes the §86 identity-key quartet: surfaceKind, resourceType,

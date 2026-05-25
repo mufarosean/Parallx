@@ -319,6 +319,44 @@ const copyActiveWorkspaceId: CommandDescriptor = {
   },
 };
 
+// §86 / Slice B15 — first when-clause consumer of the boolean
+// `activeSelectionExists` key (Slice B14). Returns a JSON description of
+// the active selection so AI tools / diagnostic palettes can introspect
+// whatever the active surface declared. The active-selection shape is
+// opaque (`ContextSelectionLike = object`), so we round-trip it through
+// JSON.stringify — anything non-serializable (functions, cyclic refs)
+// is dropped silently and an empty string is returned in its place.
+const inspectActiveSelection: CommandDescriptor = {
+  id: 'workbench.action.inspectActiveSelection',
+  title: 'Inspect Active Selection',
+  category: 'View',
+  when: 'activeSelectionExists',
+  keybinding: 'Ctrl+Alt+S',
+  aiInvocable: true,
+  aiDescription:
+    'Return a JSON description of the active surface\'s current selection. Only available when a selection is present. Returns the JSON string, or undefined if no selection is active.',
+  async handler(ctx) {
+    const contextService = ctx.getService<IContextService>('IContextService');
+    if (!contextService) return undefined;
+    const sel = contextService.getContext().activeSelection;
+    if (!sel) return undefined;
+    let json: string;
+    try {
+      json = JSON.stringify(sel);
+    } catch {
+      json = '';
+    }
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText && json) {
+        await navigator.clipboard.writeText(json);
+      }
+    } catch {
+      // clipboard write failure is non-fatal.
+    }
+    return json;
+  },
+};
+
 //  All builtin commands 
 
 const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
@@ -398,6 +436,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   copyActiveResourceUri,
   copyActiveFilePath,
   copyActiveWorkspaceId,
+  inspectActiveSelection,
   // Docling (M21)
   installDocling,
   // M48: Selection → AI command
