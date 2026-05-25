@@ -6,6 +6,20 @@
 
 ---
 
+## Iteration 38 — Slice A37: IToolArtifactStore.toolIds() (2026-05-25)
+
+Added `toolIds(): readonly string[]` on `IToolArtifactStore`. Returns
+distinct `toolId` values across every stored record, in first-insertion
+order. Fresh array. Empty store → empty array. Inventory query for
+diagnostics, when-clauses, and per-tool teardown loops.
+
+Pure-additive. Tier-0: **46 files / 390 tests**, all green. tsc clean.
+
+Files: `src/workbench/toolArtifactStore.ts`,
+`tests/unit/platform/toolArtifactStoreToolIds.tier0.test.ts` (new, 6 tests).
+
+---
+
 ## Iteration 37 — Slice A36: ISelectionService.entriesByWorkspace (2026-05-25)
 
 Added `entriesByWorkspace(workspaceId: string)` on `ISelectionService`.

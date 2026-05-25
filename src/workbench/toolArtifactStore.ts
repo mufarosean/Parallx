@@ -87,6 +87,13 @@ export interface IToolArtifactStore {
    * Designed for workspace switches and test teardown.
    */
   clear(): number;
+  /**
+   * Snapshot of distinct `toolId` values across every stored record,
+   * in first-insertion order (the order each tool first published an
+   * artifact). Fresh array. Empty store → empty array. Inventory
+   * query for diagnostics, when-clauses, and per-tool teardown loops.
+   */
+  toolIds(): readonly string[];
   /** Number of stored artifacts. */
   readonly size: number;
   /** Fires whenever an artifact is added, replaced, or deleted. */
@@ -182,6 +189,18 @@ export class InMemoryToolArtifactStore extends Disposable implements IToolArtifa
     const out: ToolArtifactRecord[] = [];
     for (const r of this._records.values()) {
       if (r.workspaceId === workspaceId) out.push(r);
+    }
+    return out;
+  }
+
+  toolIds(): readonly string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const r of this._records.values()) {
+      if (!seen.has(r.toolId)) {
+        seen.add(r.toolId);
+        out.push(r.toolId);
+      }
     }
     return out;
   }
