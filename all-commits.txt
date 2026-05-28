@@ -1,0 +1,489 @@
+﻿989c2b26 ∩╗┐A79: add ISelectionService.some(predicate) (pure-additive)
+b6669efd ∩╗┐A78: add ISurfaceRegistry.some(predicate) (pure-additive)
+d62ad0d3 ∩╗┐A77: add IToolArtifactStore.some(predicate) (pure-additive)
+02ea8d46 ∩╗┐A76: add ISelectionService.count(predicate) (pure-additive)
+3858f0d0 ∩╗┐A75: add ISurfaceRegistry.count(predicate) (pure-additive)
+f6306833 ∩╗┐A74: add IToolArtifactStore.count(predicate) (pure-additive)
+01f6c545 ∩╗┐A73: add ISelectionService.forEach (pure-additive)
+5b1d70cf ∩╗┐A72: add ISurfaceRegistry.forEach (pure-additive)
+0e671d36 ∩╗┐A71: add IToolArtifactStore.forEach (pure-additive)
+8727cf7d ∩╗┐A70: add ISelectionService.filter (pure-additive)
+f11a9de1 ∩╗┐A69: add ISelectionService.find (pure-additive)
+a6980a2f ∩╗┐A68: add ISurfaceRegistry.filter (pure-additive)
+1009f82f ∩╗┐A67: add ISurfaceRegistry.find (pure-additive)
+c2f9b610 ∩╗┐A66: add ISurfaceRegistry.entries (pure-additive)
+d47ebdba ∩╗┐A65: add IToolArtifactStore.entries (pure-additive)
+84009e11 ∩╗┐A64: add WorkbenchContext.activeResourceType (pure-additive)
+39a70f8a slice-a63: ISurfaceRegistry kindsByWorkspace
+9a9dacca slice-a62: IToolArtifactStore toolIdsByWorkspace
+daf3ae86 slice-a61: IToolArtifactStore artifactIdsByWorkspace
+037ef828 slice-a60: IToolArtifactStore artifactIdsByTool
+a51cc9d9 slice-a59: ISelectionService surfaceIdsByWorkspace
+5551e398 slice-a58: ISurfaceRegistry idsByWorkspace
+2d189d65 slice-a57: ISelectionService mostRecentWorkspaceId
+011c7e3e slice-a56: ISurfaceRegistry activeWorkspaceId
+6b98cca8 slice-a55: ISelectionService mostRecentResource
+c9b5155d slice-a54: ISurfaceRegistry activeKind / activeResource
+a317f5b2 slice-a53: ISelectionService findByResource
+bc5583d9 slice-a52: ISelectionService hasWorkspace
+a7bebb1e slice-a51: ISurfaceRegistry hasKind / hasWorkspace
+4796e59d slice-a50: IToolArtifactStore hasTool / hasWorkspace
+72c8cce0 slice-a49: ISelectionService.mostRecentSurfaceId()
+f281151d slice-a48: ISurfaceRegistry.getActiveId()
+839f3a9f slice-a47: ISelectionService.countByWorkspace
+166b7514 slice-a46: ISurfaceRegistry countByKind / countByWorkspace
+cb7a4d94 slice-a45: IToolArtifactStore countByTool / countByWorkspace
+ddad6d28 slice-a44: ISurfaceRegistry.ids()
+d6e9ff41 slice-a43: IResourceRegistry.size
+de8dff25 slice-a42: ISelectionService.size
+d9bdd8fb slice-a41: ISurfaceRegistry.size
+03be393b slice-a40: ISelectionService.workspaceIds()
+51bc1a96 slice-a39: IToolArtifactStore.workspaceIds()
+ae9abf3b slice-a38: ISurfaceRegistry.kinds()
+2e102efb slice-a37: IToolArtifactStore.toolIds()
+79d033c1 slice-a36: ISelectionService.entriesByWorkspace()
+39135396 slice-a35: IResourceRegistry.clear()
+83aceb7e slice-a34: ISurfaceRegistry.listByWorkspace()
+7f6c5418 slice-a33: IToolArtifactStore.listByWorkspace()
+c3623797 slice-a32: resourceWorkspaceId() helper
+8c246065 slice-a31: ISurfaceRegistry.clear()
+8b1257cf slice-a30: IToolArtifactStore.clear()
+03417b13 slice-a29: ISelectionService.clearAll()
+4b058e2f slice-a28: WorkbenchContext.activeSurfaceKind derived field
+7c206d94 redesign: slice A27 - ISurfaceRegistry.has(id)
+b6bd3976 redesign: slice A26 - IToolArtifactStore.has()
+6b54b760 redesign: slice A25 - ISelectionService.hasSelection(surfaceId)
+fce64677 redesign: slice A24 - IContextService.matches() predicate query
+23ffbb8a redesign: slice A23 - IToolArtifactStore.find() + .filter()
+1dbdc873 redesign: slice A22 - resourceEquals() + ISurfaceRegistry.findByResource()
+caffc209 redesign: slice A21 - IToolArtifactStore.deleteByWorkspace()
+ad910dba redesign: slice A20 - IResourceRegistry.resolveSafe()
+a93e9a7a redesign: slice A19 - ISelectionService introspection
+6b337277 redesign: slice A18 - ISurfaceRegistry.listByKind() filter
+c9d55b6a redesign: slice A17 - IResourceRegistry.canResolve()
+a68dd20a redesign: slice A16 - IToolArtifactStore.deleteByTool() bulk cleanup
+43045cfc redesign: slice A15 - IToolArtifactStore.list() query API
+ddf8c308 redesign: slice A14 - ContextService.activeResource derived field
+fb907e75 redesign: slice A13 - ResourceRegistry introspection (types + onDidChange)
+1e2df429 redesign: slice A12 - publishToolArtifact helper (canonical write path)
+5d9f80d5 redesign: slice A11 - ResourceRegistry end-to-end integration test
+71af1259 redesign: slice A10 - InMemoryToolArtifactStore + tool-artifact resolver wired
+81316e0e redesign: slice A9 - tool-artifact + external resolvers; external wired
+18d318df redesign: slice A8 - canvas-page and chat-session Resource resolvers
+fe596389 redesign: slice A7 - SelectionService auto-populates selection.resource
+4d37708f redesign: slice A6 - FileResourceResolver registered in IResourceRegistry
+eae8ef84 redesign: slice A5 - ISelection.resource + selection->Resource adapter
+45ffe475 redesign: slice A4 - ContextService (Slice A capstone)
+99d201b0 redesign: slice A3 - SurfaceRegistry primitive + wiring
+92d2f2b2 redesign: slice A2 wiring - register IResourceRegistry in service container
+051253b8 redesign: slice A2 - ResourceRegistry resolver dispatch
+959a6767 redesign: slice A1 - Resource union + ParallxUri scheme
+06ec565e redesign: iteration 1 acceptance - kickoff refresh and running log
+33a5d8fa manifest: autonomous iteration contract + per-turn instructions + running log
+92633d04 W12: vite config escape valve alongside esbuild; close M86 ledger
+14919c65 W9: extWebviewLoader scaffold + ext/_template starter
+4d5d3534 W8: openclaw utility-process host + renderer proxy scaffold
+906174a7 W10: parallx.d.ts public ABI + shared tsconfig.extension.json
+01025ba3 W7: SyncCachedStorage + UI cache singleton wired into Phase 1
+89a60408 W6: typed IPC handler registry + fs:* migration
+d242bfa4 W11: stabilize e2e suite - displayName respects user rename + skip harness-blocked tests
+2678196c m86-w2-followon: migrate workbench._initializeServices to runPhase
+75b3d5a0 m86: close ledger with W1-W5 shipped and reusable-pattern notes
+1838676b m86-w4: migration framework wrapper with opt-in chunked path
+cc517ee8 m86-w5: split vitest into tier-0 (node) and tier-1 (jsdom) configs
+691e5f83 m86: plan systemic redesign roadmap; ship W1 logger, W2 phase-helper, W3 scope
+dfab4ff4 m85: close audit ledger with execution log and F8-F10 deferred findings
+29b11185 m85-f3: document Phase 1 warm-Promise.all invariant
+bd90a026 m85-f2: add fs:existsPath IPC and restore workbench missing-folder fallback
+52c31480 m85-f1: gate workspace-graph periodic refresh on consumer mount count
+00a049de m83-w5: gate diagnostics auto-refresh behind view visibility; revert m83-w2
+016e59e0 m83-w4: add 5s soft timeout to tool activation
+d7ad9214 m83-w3: seed IResourceService for cross-tool resource identity
+608645cd m83-w1+w2: harden workbench startup (parallel-warm storage, missing-folder fallback)
+faf3e801 test(M82-22): pin distinctiveTermExtractor extractor regexes and sort
+55c27302 test(M82-22): pin openclawToolDescriptionSummary prompt-catalog summarizer
+21f90c27 test(M82-22): pin openclawErrorClassification error classifiers
+4e749693 test(M82-22): pin tryHandleOpenclawDoctorCommand diagnostics rendering
+1356b904 test(M82-22): pin tryHandleOpenclawUsageCommand both render paths
+7afff0e3 test(M82-22): pin slashMenuItems buildSlashMenuItems pure mapping
+47e7f09d test(M82-22): pin openclaw status models tools slash-commands
+eacfa6a9 test(M82-22): pin EpubEditorInput and PdfEditorInput surfaces
+84b3794a test(M82-22): pin commandService barrel re-export identity
+4d25ccca test(M82-22): pin chat participant runtime-trace builder
+e4143449 test(M82-22): pin pageBlock drop edge-vs-interior routing thresholds
+d04e859f test(M82-22): pin Settings, Keybindings, Image EditorInput surfaces
+967292e3 test(M82-22): pin small openclaw command + tier + block-reason utilities
+21d9cef3 test(M82-22): pin MarkdownPreviewInput live-preview EditorInput
+b834e7a6 test(M82-22): pin ReadonlyMarkdownInput EditorInput surface
+5d7d1ee7 test(M82-22): pin openclawCronExecutor real-turn wiring
+c880b6b7 test(M82-22): pin canvas handles/handleRegistry re-export gate
+ee11bc6f test(M82-22): pin canvas imagePathResolver pure helpers + IPC error matrix
+55b2ec15 test(M82-22): pin api/bridges/WorkspaceBridge parallx.workspace surface
+4ea2bcf0 test(M82-22): pin tools/toolTypes enums
+eeb3bb13 test(M82-22): pin workspaceTypes module-level constants + default snapshot factories
+ce08c862 test(M82-22): pin aiSettings sectionBase showSaveIndicator + createSettingRow + SettingsSection
+9a1b7379 test(M82-22): pin ChatSurfacePlugin autonomy delivery routing
+a2d899db test(M82-22): pin CanvasSidebarDragState lifecycle + ancestry
+c18a3020 test(M82-22): pin ViewLifecyclePhase enum
+7e2f5289 test(M82-22): pin chatCodeActions filepath header + action buttons
+a9878e96 test(M82-22): pin workbench LifecycleService phase semantics
+d4e07d0a test(M82-22): pin openclawToolState runtime catalog assembly
+07002add test(M82-22): pin openclawTokenBudget + openclawToolDescriptionSummary
+60a36340 test(pin): partTypes/panelPart ΓÇö 10 tests pinning PartId enum ['workbench.parts.titlebar','workbench.parts.activitybar','workbench.parts.sidebar','workbench.parts.panel','workbench.parts.editor','workbench.parts.auxiliarybar','workbench.parts.statusbar'] (workbench layout persistence keys) and PartPosition enum [top,bottom,left,right,center]. panelPartDescriptor: id=Panel, name='Panel', position=Bottom, defaultVisible=true, constraints minHeight=100, maxHeight=Γê₧, width unconstrained
+9e571d40 test(pin): autonomyLogTool/parallxLinkTool/transcriptTools ΓÇö 11 tests pinning autonomy_log/parallx_link/transcript_get/transcript_search wire-protocol names, descriptions, display summaries, and read-only permission posture (always-allowed, requiresConfirmation=false). parallx_link requires [target] + optional [anchor,note]; autonomy_log properties [origin,limit,onlyUnread,markRead] no required; transcript_get [sessionId]; transcript_search [query,sessionId]
+b91636e7 test(pin): cronTools/surfaceTools/subagentTools ΓÇö 23 tests pinning wire-protocol names, descriptions, and permission posture. CRON_TOOL_NAMES=[cron_status,cron_list,cron_add,cron_update,cron_remove,cron_run,cron_runs,cron_wake]; cron MUTATIONS (add/update/remove) requires-approval+confirm, READS+RUN+WAKE always-allowed+no-confirm; cron_add requires [name,schedule,payload]; cron_update/remove/run require [id]; cron_runs optional jobId; status/list/wake no params; wakeMode enum [now,next-heartbeat]. surface_send requires-approval+confirm M58 uniform; contentType enum [text,structured,binary,action]; surface_list always-allowed; required [surfaceId,content]. SUBAGENT_TOOL_NAMES=[sessions_spawn]; sessions_spawn ALWAYS requires-approval+confirm with required [task] + optional label/model/tools/timeoutMs
+cd070886 test(pin): pageTools ΓÇö 8 canvas page tool names/summaries/permission posture (wire-protocol with model + user-trust contract). Names: canvas_find_pages, canvas_read_page, canvas_get_page, canvas_list_property_definitions, canvas_set_page_property, canvas_create_page, canvas_compose_page, canvas_set_page_style. READ tools (find/read/get/list-prop-defs): always-allowed + requiresConfirmation=false. WRITE tools (set-property/create/compose/set-style): requires-approval + requiresConfirmation=true. canvas_find_pages parameter pins: filter ops enum=[equals,not_equals,contains,is_empty,is_not_empty,greater_than,less_than]; sort dir enum=[asc,desc]; properties=[filter,group,limit,query,sort] with no required fields
+f3a3a350 test(pin): canvasTypes ΓÇö PageChangeKind 5 values (Created/Updated/Deleted/Moved/Reordered) + SaveStateKind 5 values (Pending/Flushing/Saved/Failed/Retrying) + doesPageChangeAffectSidebar (non-Updated kinds always true, Updated with missing/empty changedFields conservatively true, Updated true iff at least one of title/icon/isFavorited/isArchived is in changedFields, false for content/coverUrl/coverYOffset/fontFamily/fullWidth/smallText/isLocked/contentSchemaVersion-only)
+92d41d65 test(pin): serviceTypes DI identifiers ΓÇö all 61 service ids (ILifecycleService, ILayoutService, IViewService, IWorkspaceService + 26 workspace/agent/data, ICommandService, IContextKeyService + 14 contribution/workbench, IFileService, IEmbeddingService, IIndexingPipelineService + 15 indexing/retrieval/AI, ISessionManager, IDiagnosticsService, IObservabilityService, IRuntimeHookRegistry, IMcpClientService, IAutonomyLogService) ΓÇö .id matches name + toString=ServiceIdentifier(<id>) + each is a fresh object + Global/Workspace storage ids are distinct
+e61a44de test(pin): workbench/layout pixel constants + canvasMenuRegistry palettes & MRU ΓÇö pins TITLE_HEIGHT=30, STATUS_HEIGHT=22, ACTIVITY_BAR_WIDTH=48, PART_HEADER_HEIGHT_PX=35, DEFAULT_SIDEBAR_WIDTH=202, DEFAULT_PANEL_HEIGHT=200, DEFAULT_AUX_BAR_WIDTH=480, MIN_EDITOR_WIDTH=200 (all positive integers); TEXT_COLORS 10 swatches canonical order Default/Gray/Brown/Orange/Yellow/Green/Blue/Purple/Pink/Red ΓÇö default value=null + 'rgba(255,255,255,0.81)', others value===display rgb(); BG_COLORS 10 swatches same labels ΓÇö default value=null + 'transparent', others value=0.2 alpha + display=0.35 alpha (Notion-parity translucency); createRecentList returns [] on missing/non-JSON/non-array, filters non-string entries, truncates to max, record inserts newest-first + dedupes + caps + silently degrades on setItem throw; recordRecentColor ignores null, text/bg independent; getRecentColors filters stale palette entries + caps at RECENT_COLOR_MAX=3
+8e27b1e6 test(pin): defaultSkillContents Map ΓÇö pins set of 11 built-in skills (deep-research, scoped-extraction, folder-overview, document-comparison, exhaustive-summary, git-status, fetch-url, pdf-extract, explain-selection, summarize-selection, research-topic); Map.size=11; every value is a YAML-framed SKILL.md; per-entry frontmatter (name matches key; author=parallx; version=1.x.y; kind in {workflow,prompt}; permission in {auto-allow,ask-once,ask-every-time,requires-approval}; user-invocable is boolean; tags is an array); exact mix is 9 workflows + 2 prompts (selection skills); explain-selection / summarize-selection are kind=prompt and ingest 'Selected Text from:' context block (not a typed parameter)
+3ca606bf test(pin): unifiedConfigTypes ΓÇö pins AGENT_VERBOSITY/APPROVAL_STRICTNESS/EXECUTION_STYLE/PROACTIVITY OPTIONS tuples, HEARTBEAT_REASON_OPTIONS (5 reasons); DEFAULT_UNIFIED_CONFIG every section (persona='Parallx AI' + avatar-brain, chat empty/adaptive, model nomic-embed-text/temp=0.7, retrieval autoRag/topK=20/score=0.01 + budget {3,2,1,4}/{5,0,0,0}, suggestions balanced/general/0.65, agent maxIter=25 all-balanced, runtime=openclaw, memory transcriptIndexing=false/evict=90d, indexing 256KB cap, tools workbench OFF by default, heartbeat enabled=false interval=5min coalesce=2s dedup=24h autonomy='allow-safe-actions', watchIncludeExtensions covers source/text/config, watchExcludeGlobs covers node_modules/.git/dist/etc); fromLegacyProfile fills defaults + copies arrays; fromLegacyParallxConfig sparse override + contextWindow omitted when contextLength=null + included when set; tolegacyProfile flattens chatModelΓåÆdefaultModel
+405cd25d test(pin): Workspace class ΓÇö pins identity factory (create generates UUID; fromSerialized round-trip), adoptId (no-op on falsy/same, replaces on different + preserves other identity fields), rename fires onDidRename(newName), setIconOrColor accepts undefined to clear, equals compares by id only, touch advances lastAccessedAt; folders: state EMPTY/FOLDER, addFolder rejects 2nd folder (single-folder-only) + duplicate URI key, fires onDidChangeFolders+onDidChangeState on transition, removeFolder by URI key returns false when missing, setFolders replaces wholesale + reindexes, reorderFolders no-op, displayName (emptyΓåÆidentity.name, single-folderΓåÆfolder.name), getWorkspaceFolder matches exact + descendant paths case-insensitively; serializeFolders/restoreFolders round-trip, createDefaultState emits WORKSPACE_STATE_VERSION + folders, dispose idempotent
+3b266791 test(pin): parallxConfigService DEFAULT_* + mergeConfig ΓÇö pins DEFAULT_MODEL_CONFIG (qwen2.5:32b-instruct/nomic-embed-text/null), DEFAULT_AGENT_CONFIG (maxIter=10/autoRag=true/topK=10/score=0.3), DEFAULT_CONTEXT_BUDGET (10/30/30/30), DEFAULT_PERMISSIONS (ask-every-time everywhere), DEFAULT_INDEXING (autoIndex/watchFiles=true, 262144 byte cap, []), DEFAULT_CONFIG composition; mergeConfig: empty partial ΓåÆ defaults, unknown sections/keys ignored, type-mismatch falls back, arrays rejected when wrong shape, null allowed for non-object defaults, excludePatterns filters non-string entries, contextLength QUIRK (default null is typeof 'object' ΓåÆ numeric override rejected by typeof check), valid same-type overrides flow through across all sections
+d4c6cde2 test(pin): promptFileService matchGlob ΓÇö backslashΓåÆslash normalisation in both pattern and path; * within a segment (not across slashes); **/ matches zero or more segments; bare ** matches across slashes; ? matches exactly one non-slash char; . is literal (not regex any-char); anchored full-string match; realistic .parallx/rules/*.md + **/AGENTS.md cases
+6fadb5a4 test(pin): ContextKeyService ΓÇö global scope always exists; createScope adds child + returned disposable removes it; duplicate scope warns + inert disposable; createKey defaultΓåÆsetΓåÆreset; onDidChangeContext fires {affectedKeys:Set([key])} on set/delete, no-op on same value; child scope inherits + shadows parent; setContext/getContextValue/setContextInScope/removeContext/getAllContext semantics; unknown scope falls back to global; createLookup resolves via inheritance; evaluate(undefined|'')=true and routes through whenClause for non-empty; contextMatchesRules aggregates own keys across ALL scopes (tool:* keys visible globally); dispose() clears all scopes including global
+351b5ad3 test(pin): WorkspaceLoader.load ΓÇö WORKSPACE_STATE_VERSION=2; reads from 'workbench' storage key; returns undefined when storage empty/null/JSON parse fails/storage throws; _isValidState rejects non-numeric version, future version, null identity, empty identity.id, null metadata/layout/grid, non-numeric layout.version, non-array parts/viewContainers/views, non-object editors/context; happy path returns state unchanged at current version; v1 ΓåÆ v2 migration adds folders=[] when missing and preserves folders when present
+b334d18f test(pin): createTranscriptGetTool + createTranscriptSearchTool ΓÇö metadata (transcript_get/transcript_search, always-allowed, requiresConfirmation=false), get: fs-missing path, missing/whitespace sessionId, exists()=false yields .parallx/sessions/<id>.jsonl path msg, sessionId trim, happy path renders 'Transcript from <path>:' header + body, empty parsed transcript msg; search: no transcriptSearch returns disabled msg with 'memory.transcriptIndexingEnabled', isEnabled=falseΓåÆdisabled, isReady=falseΓåÆindexing-in-progress, empty query isError, zero results msg, formatted block (Found N, [idx] Session, Path/Source/Score 3-decimal, empty contextPrefix falls back to sourceId)
+b734b9f8 test(pin): ColorRegistry (registerColor uniqueness+stored shape, getRegisteredColor/getRegisteredColors snapshot, resolveDefault per ThemeType, asCssVariableName dotΓåÆhyphen + --vscode- prefix, size, singleton widget.border defaults); canvasStructuralInvariants (validateCanvasStructuralInvariants codes PX-COL-001..003, PX-DET-001..005, PX-TGL-001..004, PX-CAL-001, PX-TBL-001..003, PX-PGB-001; pageBlock empty-id detection; issueFingerprint sorted join 'code@path' with | separator)
+903c0bf0 test(pin): createAutonomyLogTool ΓÇö metadata (name, source=built-in, always-allowed, requiresConfirmation=false, params shape), unavailable log fail path, default limit=50 + floor + clamp to [1,200], origin/onlyUnread forwarding, non-typed args fall back to defaults, summarize metadata whitelist (reason/jobName/path/eventType + omit when empty), markRead all-returned-ids + unreadCount math, markRead skipped when zero entries, unreadCount floor at 0
+a2db988a test(pin): autonomyFeatureFlags (flag id constants, frozen AUTONOMY_FLAG_DEFAULTS map + SURFACE_FLAG_BY_ID, service initialize hydrate/corrupt-JSON/non-boolean ignore, setEnabled persist/no-op-on-same/unknown-throw, getAll snapshot, isAutonomyTriggerAllowed kill-switch); conceptClusterer (cosineDistance identical/orthogonal/opposite/zero-clamp, dbscan empty/two-cluster/noise/all-noise, groupByCluster excludes noise, stableClusterId order-independent + concept-XXXXXXXX, applyCarryOverRule 70pct carry-over/below-threshold-fresh/userDeleted-skip/best-overlap-wins/userRenamed-propagate)
+c6f5b1a3 test(pin): McpStdioTransport ΓÇö initial 'disconnected', connect spawns via mcp IPC with id/cmd/args/env, error path sets 'error' and throws, onMessage/onClose filtered by serverId, exit sets 'disconnected', send/kill IPC dispatch, close() detaches listeners
+68fc2acb test(pin): CanvasBlockTypeRegistry ΓÇö register/getAll/has, built-in id conflict, duplicate id conflict, missing id/name validation, onDidChange fires on register + dispose-of-disposable, disposable.dispose removes, double-dispose no-op, post-registry-dispose register is no-op
+3ef88a11 test(pin): analyzeChatTurnSemantics ΓÇö normalize whitespace/apostrophe behavior, conversational regex including greeting+social follow-up, workspace/task routing terms suppress conversational, 80-char ceiling, explicit memory recall + transcript suppression, transcript recall regex, file enumeration question+folder/dir/workspace gate + 200-char ceiling
+4a427246 test(pin): showPropertyPicker ΓÇö search filter, existingKeys exclusion, divider gated by item count, item-click ΓåÆ onAdd + dismiss, delete button gated by onDeleteDefinition + isSystemPropertyName, '+ Create new' opens form with default 'text' type, type dropdown enumerates all 8 in order and updates the type-btn label, Create button submits trimmed name + selected type and ignores empty input
+dea77834 test(pin): inputPasteContextMenu ΓÇö contextmenu mount/replace/dismiss, RAF-deferred outside handler, paste insertion via electron bridge + navigator fallback + empty-text no-op
+a78b928e test(pin): secretStorageService + propertyTypes + agentTypes + workspaceManifest
+bdfb65c5 test(pin): chatDiffViewer.renderDiffViewer ΓÇö header (filepath/summary class branches add/remove/mixed/identical/no-changes), token badge, hunk header @@-fmt, gutter+indicator+content for add/remove/equal, word-level highlight pairing emits --removed/--added on correct sides, Accept/Reject decision flow (disable + result class + onReview args), showActions:false suppression, maxVisibleLines truncation message
+720b2f20 test(pin): chatModePicker ΓÇö button icon/label/chevron + Edit-vs-Agent title, onDidChangeMode refresh, mode list active class, click ΓåÆ setMode + onDidSelectMode + close, Edit hides autonomy section, Agent renders separator + 'Agent autonomy' header + 4 rows in fixed order with allow-reads default active, autonomy click ΓåÆ onDidChangeAutonomy + autonomyLevel + close, outside mousedown close, toggle close, dispose teardown
+a02f0ded test(pin): canvasTemplatePicker ΓÇö modal scaffold (backdrop/title/subtitle/grid), builtins+separator+user-with-Custom-pill order, no-userΓåÆno-separator, manage-label flip (ManageΓÇª vs Create customΓÇª), footer button order, card click resolves with template, blank/cancel/backdrop/Escape resolve to null, manage resolves with openedManager:true, modal-click inert, first-card auto-focus
+29453b10 test(pin): chatContextWindowPicker ΓÇö root/button/title/chevron, Ctx-auto vs Ctx-NK formatting (incl. undefined/0/negativeΓåÆauto), 7-preset order, active class + check icon slot parity, preset click ΓåÆ onPick + label + close, Model default clears to 0, toggle close, outside mousedown close, dispose teardown
+d1851876 test(pin): chatModelPicker ΓÇö root/button scaffold, label No-model + truncation (>20ΓåÆ17+ellipsis), onDidChangeModels refresh, dropdown empty/items, active class, click ΓåÆ setActiveModel + onDidSelectModel + close, ctx formatting (4K/128K), outside-mousedown close, getModels rejection no-op, dispose teardown
+bb22feb4 test(pin): iconMenu IconMenuController ΓÇö registry.register on create, picker mount with defaults + overrides, show()-dismisses-prior, select/remove forwarding, dismiss-cb clears state, containsTarget delegation, dispose hygiene
+2a570177 test(pin): canvasShortcutsOverlay ΓÇö modal scaffold, section titles, kbd split rules (+, /, whitespace), Escape/close/backdrop-click dismiss, modal-click inert
+ed9fb10a test(pin): parallxLinkTool ΓÇö descriptor identity, missing/invalid target, unknown segment list surface, anchor concat (?/&) + leading-?/& rejection, note pass-through, snapshot semantics
+2344ee0f test(pin): inputIsolation.isolateInputFromEditor ΓÇö Enter/Escape submit/cancel + preventDefault, keyboard/clipboard/input event stopPropagation contract
+beb65816 test(pin): canvasIcons (ICON_IDS / PAGE_ICON_IDS / svgIcon fallback / resolvePageIcon emoji-fallback) + chatView createChatView (root scaffold, view-section vs auxiliary-bar title-slot fallback, setActiveWidget set/clear, dispose teardown)
+65c82900 test(pin): LayoutRenderer ΓÇö container styles, grid mount/teardown, renderFromState/renderDefault delegation, relayout no-op vs fire, dispose hygiene
+493c74b0 test(pin): chatIcons registry contract, canvas dragSession singleton, viewService Disposable, columnAutoDissolve & structuralInvariant plugin shape
+9cb4850b test(pin): ext/ manifests (budget, media-organizer, text-generator, web-research, workspace-graph) ΓÇö identity, activationEvents, view/editor ids, commands, ai-invocability, configuration defaults
+5f1d0d54 test(pin): toolTypes ΓÇö ToolState/ToolEnablementState/ActivationEventKind enum values (4)
+bf121245 test(pin): textEditorPane ΓÇö DOM, setInput/EOL, word wrap, view state, cursor (11)
+a1865a19 test(pin): toolActivator ΓÇö activate/deactivate lifecycle, dedupe, error path (11)
+30eab8bc test(pin): workbenchFileEditorSetup ΓÇö findOpenEditorInput across editor input types (7)
+3c12e1bb test(pin): settingsEditorPane ΓÇö quick actions, schema grouping, search, change listener (10)
+37e0bcd1 test(pin): epubEditorPane ΓÇö toolbar, chapters, bridge fallback, view state (9)
+0a14b856 test(pin): markdownEditorPane ΓÇö readonly input render, code highlight, layout (10)
+f45d8d41 test(pin): aiSettings mcpSection ΓÇö rows, status mapping, actions, live updates (13)
+1f89a161 test(pin): aiSettings agentSection ΓÇö cards, slider, add/remove (9)
+3b227452 test(pin): aiSettings modelSection ΓÇö rows, refresh, write paths (9)
+816028e0 test(M82-22): pin built-in KeybindingsEditorPane render/filter/clear/focus
+7d8e526f test(M82-22): pin built-in ImageEditorPane lifecycle and zoom
+1430cb87 test(M82-22): pin built-in editor data-holder inputs (pdf/epub/readonlyMd/markdownPreview)
+2b00f6a9 test(M82-22): pin aiSettings sectionBase row/section/search helpers
+37ed3560 test(M82-22): pin api/bridges/LanguageModelBridge delegation + dispose semantics
+aeb5d03b test(M82-22): pin openclaw /doctor + /usage command handlers
+f877d5ff test(M82-22): pin openclaw /status /models /tools command handlers
+c3c0d61b test(M82-22): pin theme/workbenchDesignTokens registration + value resolution
+b1786e85 test(M82-22): pin ThemeService getColor + CSS injection + lifecycle
+d9a0cc36 test(M82-22): pin AuxiliaryBarPart + PanelPart structure and descriptors
+f8d82336 test(M82-22): pin platform/instantiation inject + descriptors + createInstance
+e79344e3 test(M82-22): pin tools/ToolModuleLoader loadModule branches
+da0a900f test(M82-22): pin theme/workbenchColors token registration side-effect
+7f723c38 test(M82-22): pin parts/Part base lifecycle, layout, visibility, state
+c0e1f5db test(M82-22): pin views/View createElement, visibility, layout, state, constraints
+aef02004 test(M82-22): pin commands/structuralCommands catalog and registerBuiltinCommands
+5b9cfd68 test(M82-22): pin ui/BreadcrumbsWidget mount, interaction, dispose
+a9c7fe06 test(M82-22): pin ui/SegmentedControl + ui/Dropdown mount and selection
+811e5ff7 test(M82-22): pin editor/editorGroup barrel + ui/Toggle + ui/Slider
+bd1a3e13 test(M82-22): pin ui/TabBar mount, render, events, active state
+663c0f8d test(M82-22): pin ui/ContextMenu mount, selection, submenu, lifecycle
+04faf62c test(M82-22): pin platform/devMode IIFE and contributions/editableContextMenu listener
+a2d5a7fe test(M82-22): pin built-in/{indexing-log,autonomy-log} activate registrations
+9099c555 test(M82-22): pin built-in/{editor,theme-editor,settings} activate registrations
+f81a58f3 test(M82-22): pin built-in/diagnostics activate, view scaffold, auto-refresh
+f6a0a207 test(M82-22): pin built-in/terminal activate registrations and view scaffold
+51d8e7da test(M82-22): pin built-in/welcome activate registrations, first-launch, commands
+1370c2b5 test(M82-22): pin built-in/output activate registrations and handlers
+f98f231d test(M82-┬º22): pin ui/iconRegistry public API
+1506d090 tests: pin services/surfaces/FilesystemSurfacePlugin (availability/path/serialize)
+4e5142ca tests: pin workbench/workbenchThemePicker (overlay/filter/keyboard apply+revert)
+a08a810e tests: pin workbench/menuBuilder (keybindingHint + default menu bar registration)
+83333297 tests: pin workbench/statusBarController.updateWindowTitle (title + wbCtx resource keys)
+0bdf307b tests: pin ui/BreadcrumbsWidget (render/focus/keyboard/click/dispose)
+a628f9fe tests: pin api/bridges/cronBridge upsert/remove semantics + schedule idempotency
+9e464893 tests: pin ui/FilterableList (filter/keyboard/click/maxVisible/customFilterFn)
+f92bfccd tests: pin views/view base class (lifecycle/layout/visibility/state)
+d2443013 tests: pin ui/textarea (value/readonly/disabled, change/blur events)
+31094ff5 tests: pin ui/overlay backdrop click + escape close + show/hide idempotency
+0fa34492 tests: pin ui/tooltip setup + show/hide delays + dispose
+75ebf2d8 tests: pin ui/button.ts (classes, label/icon, enabled, click gating, focus)
+b346bba1 tests: pin ui/dom helpers ($, append, hide/show, layoutPopup, attachPopupDismiss)
+8d5de6e7 tests: pin NotificationService severity routing, history, and dismiss lifecycle
+f608e2cc tests: pin EditorPane lifecycle and PlaceholderEditorPane label rendering
+cfaa3108 tests: pin EditorDropTarget (overlay lifecycle, zone detection, drop event)
+9d5c4a36 tests: pin BreadcrumbsBar (height, visibility, workspace-relative path segments)
+dceefb0b tests: pin Notifications/Status surface plugins (capabilities, severity routing, dispose)
+ada606ec tests: pin LifecycleService phase ordering, hooks, and error capture
+8aa561e2 tests: pin placeholder view descriptors (ids, containers, constraints, factories)
+fc7a08e1 tests: pin editor enums and drag-type constant
+53229ece tests: pin editorInputDeserializer registry (register, deserialize, errors, dedupe)
+5df1724b tests: pin DropZone (accept, MIME gating, onDidDrop, dispose)
+6e2b06f8 tests: pin Grid (addView/removeView/splitView, serialize/deserialize, layout)
+0f6cc3e2 tests: pin layoutModel (default state, schema version, part visibility, fixed sizes)
+e58ff126 tests: pin BaseGridView (element, layout, visibility, toJSON, constraints event)
+1136201a tests: pin LinksBridge (register, open, mint/parse, metadata, dispose)
+58cf4945 tests: pin ViewsBridge (provider registration, factory, badge, processor delegation)
+b5a8b761 tests: pin EditorsBridge (providers, openEditor, closeEditor, file resolver)
+b20101a1 tests: pin WindowBridge (notifications, output channels, dispose)
+ee85094e tests: pin DragAndDropController (draggable, targets, keyboard drop)
+11c1e049 tests: pin PartRegistry (register, lookup, factory singletons, dispose)
+47487577 tests: pin TitlebarPart (workspace name, menu bar items, window controls)
+02bc9edf tests: pin GridBranchNode and GridLeafNode (children, sashes, serialize, constraints)
+21e6cc5a tests: pin PanelPart and AuxiliaryBarPart (descriptor, slots, state)
+e3fb9aa5 tests: pin ActivityBarPart (icons, active state, badges, events)
+7e2161f6 tests: pin StatusBarPart (entries, priority, commands, context menu)
+eff445e6 tests: pin SidebarPart (create, layout, visibility, active view, state)
+6170f8c1 tests: pin FocusTracker (focusin, history, suspend/resume, restore)
+5789e8d4 tests: pin ui/dom helpers (\$, listeners, layoutPopup, attachPopupDismiss)
+3770ef1a tests: pin DropOverlay (zones, position math, highlight, invalid)
+d05c4275 tests: pin FindReplaceWidget (search, regex, replace, navigation)
+59dad6b4 tests: pin IconPicker overlay (grid, search, remove, dismiss)
+b9471abf tests: pin InputBox component (events, validation, dispose)
+190baa9d tests: stub CSS imports via vite plugin so DOM widgets unit-test cleanly
+8a13052a tests: pin NotificationsSurfacePlugin severity routing
+a829a2d1 tests: pin StatusSurfacePlugin delivery contract
+b1fe9104 tests: pin workbench watermark render + keybinding render
+16a45ed5 tests: pin ActionBar render + click contract
+0022bfa7 tests: pin CountBadge DOM render contract
+13974a71 tests: pin McpBridge invoke/list surface
+7e69fa21 tests: pin CanvasBridge manifest + imperative paths
+17302e98 tests: pin CapabilityFsBridge scope/mode/traversal guards
+e01969a9 tests: pin FileSystemBridge scoping + lifecycle
+96ef0610 tests: pin WorkspaceGraphBridge provider registry
+a3c077ff tests: pin ContextBridge tool-scoped key surface
+069b2185 tests: pin CommandsBridge tool-scoped command surface
+07b4f2cf tests: pin parallx.icons bridge surface
+3f61c761 tests: pin generated Lucide icon registry shape
+2a991202 tests: pin file-type icon constants
+c7d72953 tests: pin AI profile settings schema registration
+e8a68a2a tests: pin ViewManager lifecycle, lookup, visibility and state
+1eed6404 tests: pin ColorThemeData.fromSource parsing and uiTheme mapping
+339cc049 test(M82-22): pin canvasTemplates load/save/delete + sanitize id + sort
+6eaa0042 test(M82-22): pin Image/Pdf/Epub/Settings/MarkdownPreview editor inputs
+231eb7bc test(M82-22): pin KeybindingsEditorInput singleton + ReadonlyMarkdownInput basics
+30c381f1 test(M82-22): pin FileEditorInput resolve/save/saveAs/revert/confirmClose/matches
+7ae88191 test(M82-22): pin UntitledEditorInput counter/dirty/save/revert/confirmClose
+d75aed37 test(M82-22): pin chatTurnRouter route priority (slash/transcript/memory/conv/file)
+59910429 test(M82-22): pin chatParticipantInterpretation+CommandDispatcher routing
+9afa9c19 test(M82-22): pin fileTools list_files/search_files/search_knowledge handlers
+5105c484 test(M82-22): pin transcriptTools transcript_get + transcript_search guards/filters
+ef1564a1 test(M82-22): pin terminalTools run_command blocklist + exec/output formatting
+ea39cb3a test(M82-22): pin memoryTools memory_get + memory_search (layers, dates, scores)
+385154f6 test(M82-22): pin writeTools write/edit/delete sanitization + bridge delegation
+8d75432a test(M82-22): pin appCommandTools find+run handlers (denylist, aiInvocable, args)
+08521524 test(M82-22): pin executeInitCommand workspace/abort/empty-output/write paths
+10885566 test(M82-22): pin chatCodeActions.extractFilePath patterns + traversal rejection
+683005f7 test(M82-22): pin createBridgeParticipantRuntime trace+metadata boundary semantics
+425fcc7f test(M82-22): pin buildParticipantRuntimeTrace route-to-contextPlan mapping
+25646aaa test(M82-22): pin chatMentionResolver extract/strip/resolve for file/workspace/terminal
+0b91366b test(M82-22): pin ChatProgrammaticAccess delegate + no-widget no-op semantics
+8df7c289 test(M82-22): pin executeAutonomyReplay dry-run+apply stub semantics
+efc4a47b test(M82-22): pin installDocling status/install/start branches
+991abee0 test(M82-22): pin ALL_BUILTIN_COMMANDS aggregator + edit keybindings + register delegation
+22401f09 test(M82-22): pin fileCommands keybindings + service guards
+e240faa9 test(M82-22): pin viewCommands toggle/show delegations + keybindings
+4ddfea62 test(M82-22): pin workspaceCommands save/switch/duplicate/folder/close handlers + keybindings
+5dc117ea test(M82-22): pin editorCommands split/close/next/previous + guards + keybindings
+f69329e5 test(M82-22): pin focusCommands cycling order, show-if-hidden, keybindings
+66091d3c test(M82-22): pin structuralCommandTypes wb/electronBridge/ensureUriWithinWorkspaceOrPrompt
+0c01cfc9 test(M82-22): pin keybinding contribution helpers (normalize, keyFromEvent, displayFormat)
+0af1510c test(M82-22): pin builtinManifests validator cleanliness + id/keybinding ownership
+5a7cdbf0 test(M82-22): pin tools/toolScanner bridge wiring, validation gating, dev/built/user ordering
+f85b92cd test(M82-22): pin views/viewDescriptor builder validation + serializer
+afd4c727 test(M82-22): pin platform/instantiation createInstance + descriptor invariants
+5a355b05 test(M82-22): pin /status, /models, /usage, /doctor, /tools slash command rendering invariants
+737b5e1d test(M82-22): pin /think toggle and /new session-flag clear + chat.clearSession dispatch
+372d9583 test(M82-22): pin /verbose toggle, session flag wiring, missing-storage fallback
+c9b34553 test(M82-22): pin DEFAULT_PROFILE shape and BUILT_IN_PRESETS overrides + isolation
+222b93bc test(M82-22): pin InMemoryStorage + Namespaced[Sync]Storage prefix/scope/clear invariants
+b5542772 test(M82-22): pin EditorGroupModel preview/pin/sticky/close/move/serialize invariants
+ee2d0ff4 test(M82-22): pin EditorInput identity/dirty/label/dispose and PlaceholderEditorInput.serialize
+b1533ee2 test(M82-22): pin PartRegistry register/lookup/singleton-factory/dispose invariants
+78ee4e9b test(M82-22): pin createDefaultLayoutState schema version, grid topology, part visibility, and isolation
+e84b457c test(M82-22): pin ToolRegistry register/state-transition/queries/unregister invariants
+c82e75e3 test(M82-22): pin ToolErrorService recordError, wrap/wrapAsync, queries, and warning/force-deactivate thresholds
+b21d7a61 test(M82-22): pin parseActivationEvent + ActivationEventService register/fire/replay/dedup invariants
+d03fdbab test(M82-22): pin ToolEnablementService defaults, can-change, setEnablement event, and load corruption handling
+17a01140 test(M82-22): pin ToolMemento namespacing, quota, load/flush/clear, and factory pair
+3db4a8b4 test(M82-22): pin WorkbenchContextManager part/view tracking, focus subscription, setters, selection wiring
+1df5cd44 test(M82-22): pin ConfigurationService load/get/update/has/dispose + schema event fan-out + validation warn-but-write
+e2e1c63c test(M82-22): pin apiVersionValidation isCompatible semantics across *, ^, ~, >=, exact
+c3f5c192 test(M82-22): pin themeCatalog built-ins, user-theme cache init/update, and id lookups
+2fc642e0 test(M82-22): pin DesignTokenRegistry register/resolveDefault/asCssVariableName
+3220bc4e test(M82-22): pin ColorRegistry register/resolveDefault/asCssVariableName + duplicate throw
+c2590993 test(M82-22): pin ContextKeyService scopes, key handles, evaluate, contextMatchesRules aggregation
+220bc68f test(M82-22): pin ConfigurationRegistry register/unregister + manifest section + value validation
+55256e87 test(M82-22): pin CommandService register/dispose/execute + when-clause enforcement + context
+f6a95569 test(M82-22): pin whenClause parser+evaluator (boolean keys, ==/!=/comparisons, in, parens, cache)
+2fd00281 test(M82-22): pin Workspace identity, folders, state, displayName, default-state, dispose
+fb4384ac test(M82-22): pin ViewContributionProcessor container+view registration, removal, provider registry
+e3cff7b4 test(M82-22): pin MenuContributionProcessor process/remove + view-title/context sort+filter
+0804247a test(M82-22): pin keybinding normalization, platform-aware display formatting, keyFromEvent
+c3d232f9 test(M82-22): pin WorkspaceSaver collectState, save() write path, and debounced requestSave/flush
+c6447a0a test(M82-22): pin WorkspaceLoader load() validation + v1->v2 migration
+abb12e40 test(M82-22): pin WorkspaceSessionContext, SessionLogger, RecentWorkspaces
+5ce0bf95 test(M82-22): pin OpenClaw workspace participant shape, /list + /search + /summarize lanes
+398127e1 test(M82-22): pin OpenClaw canvas participant shape, /describe + /blocks lanes, retrieval debug
+7f7024f1 test(M82-22): pin /context slash command routing, render modes, and Mind Map section
+4e5e25ee test(M82-22): pin McpClientService config persistence + handshake + ping + JSON-RPC dispatch
+30a52976 test(M82-22): pin MCP_CATALOG shape/uniqueness/bundled-placeholder/known-ids
+53745b83 test(M82-22): pin McpStdioTransport connect/spawn-args/message-filter/exit/close
+08c39e73 test(M82-22): pin McpToolBridge namespacing/handler/auto-remove/refresh
+a775f1ce test(M82-22): pin openclawParticipantServices builder forwarding for default/workspace/canvas
+165dd225 test(M82-22): pin openclawSubagentExecutor extract/depth/permission marking/announcer
+d07e0e28 test(M82-22): pin openclawDefaultRuntimeSupport command registry + fallback summary + lifecycle
+7b4606b2 test(M82-22): pin openclawToolState platform/skill/MCP merge + profile + collision + counts
+4c448bb0 test(M82-22): pin openclawPromptArtifacts shape + skills/tools/workspace char accounting
+f410b088 test(M82-22): pin openclawSkillState visibility + count/char limits + compact fallback
+7d6bf03d test(M82-22): pin openclawHeartbeatFileFilter glob+include/exclude+path normalization
+b036dc21 test(M82-22): pin openclawToolDescriptionSummary strip + truncate semantics
+1f30302d test(M82-22): pin devMode resolution order + FileOperationError predicates
+44c33fda test(M82-22): pin storageMigration.ts localStorage->file-backed migration semantics
+c1ad91de test(M82-22): pin FileBackedGlobalStorage + FileBackedWorkspaceStorage IPC bridge wrapper
+8994838c test(M82-22): pin events.ts debounce/throttle/defer/fromPromise + leak-warning surface
+d245e293 test(M82-22): pin URI factories/parse/fsPath/with/toString/equals/joinPath + URIMap + uriCompare
+95ca8f0d test(M82-22): pin DatabaseService bridge IPC, open mutex, lifecycle, query forwarding, dispose-close
+95577191 test(M82-22): pin AutonomyPatternMemoryService argsShape, key id, fs persistence, save serialization
+59b94d8d test(M82-22): pin ProactiveSuggestionsService analyze guards, orphan emission, dismiss + merge preservation
+47e77b9e test(M82-22): pin WorkspaceService host delegation + event forwarding
+d2aa49ce test(M82-22): pin searchWorkspaceTranscripts ranking, filters, error swallow
+6c90b437 test(M82-22): pin TextFileModelManager ref count, dirty, save, conflict
+19c3dbe5 test(M82-22): pin SettingsRegistryService schema, scope, binding, secrets, reset
+1c7deeac test(M82-22): pin autonomy settings schema registration + flag binding
+23ed0fc3 test(M82-22): pin SurfaceRouterService origin tag + gating + event-log
+79ffd241 test(M82-22): pin WindowService electron bridge + event refire
+004215a0 test(M82-22): pin PolicyDecisionPoint rule order + audit log
+98fce22b test(M82-22): pin CanvasBlockTypeRegistry conflict + dispose semantics
+39808812 test(M82-22): pin transcript JSONL parser + display/indexing renderers
+4b00fed6 test(M82-22): pin ServiceCollection DI registry, lifetimes, inject, dispose
+8462daf1 test(M82-22): pin ChatWidgetService registry + session lookup
+c78a9638 test(M82-22): pin DocumentExtractionService init, extract, batch, legacy fallback
+7fffb544 test(M82-22): pin LanguageModelsService registry, active model, fallback chain, chat dispatch
+77ae4ac4 test(M82-22): pin EditorService open/close + group event wiring
+5e5ae643 test(M82-22): pin EditorGroupService facade delegation + event refire
+d8d516ca test(M82-22): pin EditorResolverService ΓÇö registration order, resolve, find helpers
+d4b0e21d test(auto-tagging): pin AutoTaggingService ΓÇö initialize idempotency, CRUD ordering + dedupe, getAllTags distinct, embedding-based suggestTags ranking + decay + cap, autoTagOnSave confidence>0.5 threshold
+d23b28d5 test(related-content): pin RelatedContentService ΓÇö index-complete guard, vectorSearch n=maxResults*3, sourceFilter mapping, same-page filtering, grouping + MIN_SCORE 0.3, label resolution (page title / file basename / Untitled), index-update relay
+db41ba8a test(selection-actions): pin AddSelectionToChat + SendToCanvas handler contracts ΓÇö id/label/icon, reveal-add-focus order, attachment shape, command args, factory order
+79514812 test(permissions): pin PermissionsFileService ΓÇö load no-ops, debounced 500ms save coalescing, empty-overrides skip, swallowed writer errors
+e0ed0e5c test(prompt-files): pin PromptFileService + matchGlob ΓÇö defaults, file fallback, caching/invalidate, rules frontmatter parsing, overlay format
+5de326d2 test(config): pin ParallxConfigService ΓÇö mergeConfig type filtering + null handling, JSONC parsing, missing-file no-event, malformed/array fallback, accessors + dot-path get()
+94486f4f test(layout): pin LayoutService facade ΓÇö pre-host no-ops, post-host delegation (layout/isVisible/setPartHidden), host event relay, dispose detaches
+f05853d8 test(diff): pin DiffService Myers behavior ΓÇö identical, headers, hunks, word-diff shape, estimate/summary, DI wrapper (preserves current backtrack quirks)
+f18e78d3 test(selection): pin SelectionActionDispatcher (overwrite warn, stale-disposable, SelectionService broadcast order + fallback + throw isolation)
+75b35a47 test(diagnostics): pin CORE/EXTENDED/ALL check producers (status mapping, missing-dep warn, error-swallow, observability thresholds)
+65a11e42 test(language): pin getLanguageForFileName (extensions, case-insensitive, exact-filename overrides, Plain Text fallback)
+e23b52e8 test(commands): pin CommandService (dup-reject, register/exec events, when-clause gating, ctx getService swallow, stale-disposable no-op)
+946bab02 test(ignore): pin ParallxIgnore gitignore-subset (defaults, anchoring, wildcards, negation, directory-only short-circuit)
+27743d00 test(autonomy): pin AutonomyTaskRailService (live/history merge, dedupe, sort, sinceDays clamp, filters, change events)
+37b92fb5 test(contributions): pin ContributionRegistry optional processors (chatParticipant + canvasBlockType order, error isolation, skip-when-absent)
+22965388 test(chat): pin chatRequestParser edges (newline preservation, repeated #vars, mid-sentence @/, regex lastIndex reset)
+e9af91c0 test(chat): pin ChatModeService (default Agent, available list, idempotent setMode, dispose detaches listeners)
+390ed491 test(agent): pin AgentMemoryService edges (whitespace, cross-task isolation, correction inheritance, goal=1 cap)
+2b22fbe5 test(agent): pin AgentApprovalService merge rules + full resolution mapping + bundle sort
+e3645cb1 test(workspace): pin WorkspaceBoundaryService path-traversal defense (prefix-sibling + case-insensitive + multi-folder)
+e9bf4952 test(autonomy): pin kill-switch + frozen defaults + corrupt-storage tolerance for AutonomyFeatureFlags
+3f370f3b test(chat): pin ChatToolLoopSafety circuit-breaker (8x consecutive identical call threshold, 30-call window)
+27ff92f6 test(agent): pin delegated-task normalization defaults + autonomy state machine transitions
+ad91b8cb test(platform): pin Emitter + EventUtils contract (let-it-throw, snapshot, once/map/filter/any)
+21041aa6 test(platform): pin Disposable lifecycle primitives (idempotence + post-dispose safety)
+29a342cc test(permissions): pin PermissionService priority chain + safety belt
+ed8a2ee3 test(openclaw): pin getToolColor mcp__-prefix and app__ contract (M65/M70)
+deaa1f2c test(manifest): pin tool manifest validator additive-only contract (M82 ┬º11)
+81ab3d5a test(migrations): pin schema migration sequence invariants (SYSTEMS_THINKING ┬º191)
+5eefe9d5 test(chat): pin ChatAgentService participant resolution priority (M82 audit Q3)
+3ed59026 test(policy): pin PolicyDecisionPoint decision-rule ordering (M67 Phase 2)
+aa34e87f test(selection): pin SelectionService state-shaped event broadcast (M81 Slice A)
+0ffc0b42 test(contributions): pin ContributionRegistry per-processor try/catch isolation (M81 Slice B / M82 ┬º11)
+6e7b6b24 docs(m81): annotate status header with ┬º22 closure commits
+47786d20 docs(m82): record ┬º22 characterization test physicalization
+328d539c docs(m81): record ┬º22 Slice C physicalization closure
+dedfbf36 test(provenance): provenanceTracing pins migration 013 + tool stamping (closes M81 ┬º22 debt; Slice C shipped)
+eec372ee test(links): artifactLinking pins LinkResolverService as the registry (closes M81 ┬º22 debt; Slice C closed ruling)
+1253d803 test(task-queueing): anti-bitrot guard against speculative TaskService (closes M81 ┬º22 debt; pins Slice C closed ruling)
+00d4ce48 test(capability): capabilityGating multi-layer guard (closes M81 ┬º22 debt; pins Slice C closed-in-place ruling)
+09fa0ff0 test(chat): chatContributedParticipantInvoke characterization (closes M82 ┬º22 debt)
+119f86f7 test(canvas): canvasContributedBlockRoundtrip guard (closes M82 ┬º22 characterization debt)
+33999534 test(contributions): contributionVisibilityPredicate guard (closes M81 ┬º22 debt)
+33a8f79e test(workspace): workspaceFolderCanonicalOwnership guard (closes M81 ┬º22 debt)
+6118c602 test(api): extensionApiBridgeContract guard (closes M81 ┬º22 debt)
+cd121a3a test(context): contextKeyDiscovery guard (closes M81 ┬º22 debt)
+91ff49f6 test(tools): toolActivationFiltering guard (closes M81 ┬º22 debt)
+8a963c01 test(contributions): commandContractValidation guard (closes M81 ┬º22 debt)
+ef652754 test(workbench): $22 guard for built-in DI bootstrap order
+27833ce6 chore(gitignore): ignore local scratch logs from build/e2e/preserve-slice runs
+cbdb4ccb fix(ext): use ESM exports in reference extensions + ┬º22 guard
+6d19d3f7 process: add manifest 13a + executable slice-closure gate
+68635c07 Revert "feat(canvas): self-register canvas-page link resolver (M81 Slice D)"
+9b0eee71 docs(M84): record Slice B fitness review (KEEP ΓÇö audit alternative path)
+708c06f3 feat(fitness): IPC instrumentation baseline (M84 Slice B)
+af8d0480 docs(M84): record Slice A fitness review (KEEP infra + REVISE methodology)
+63f5a6b8 feat(fitness): shared utilities and startup baseline (M84 Slice A)
+6499cfbf docs(M84): research gate audit complete
+9bef4711 docs(M84): flip status to active per user acceptance
+06c053ac docs(M84): draft SR-4 System Fitness Harness milestone (planning)
+6fdc3ed4 docs(M83): adopt workbench interaction model + atlas as canonical (M83 / SR-3)
+b5c2a4be docs(M82): flip status to implemented-verified
+3334654c docs(M82): record Slice A fitness review (KEEP verdict)
+e9320875 feat(canvas): extension point for block-type contribution (M82 Slice A)
+b8646212 docs(M82): record Slice B fitness review (KEEP verdict)
+3cd80b07 feat(chat): extension point for chat participant contribution (M82 Slice B)
+2e254a7e test(M82): record extension-activation sync baseline before Slice B
+3c7c6ab5 docs(M82): flip status to active per user acceptance
+08af9e0f docs(M82): apply three audit redlines + mark research/baseline gates complete
+e208c0b8 docs(M82): record extension-activation baseline plan in workbench-baseline ┬º5
+84f30964 docs(M82): record contribution audit (research + external gates complete)
+9a2e6102 docs(README): mark M82 / SR-2 as active milestone (planning status)
+5421639d docs(M82): plan SR-2 extension contribution model (third-party Canvas blocks, Chat participants)
+e5bac2a1 docs(M80): flip status to implemented-verified; update README active-milestone line
+5de2b609 docs(M81): record Slice D fitness review (KEEP verdict)
+c3ea171f docs(M81): replace Slice C deferral with per-item rulings; flip status to implemented-verified
+dcec1a22 feat(canvas): add page provenance fields (M81 Slice C closure)
+7dca7c0e feat(canvas): self-register canvas-page link resolver (M81 Slice D)
+dd69d3c0 docs(M81): rescope Slice D per reality audit (6 of 7 bridges already shipped)
+154e9a5e docs(M81): audit reveals 6 of 7 Slice D bridges already implemented
+d481a774 docs(M81): defer Slice C per reality audit; milestone proceeds to Slice D
+a20ceae6 docs(M81): audit recommends Slice C be deferred (3 of 6 claims REFUTED/SPECULATIVE)
+45f3fbe6 docs(M81): record Slice B fitness review (KEEP verdict)
+01e261fe feat(workbench): introduce ContributionRegistry orchestrator (M81 Slice B)
+c1089a5f docs(M81): rescope Slice B per reality audit
+977e6605 docs(M81): audit reveals Slice B claims 2 already-shipped pain points
+9c956af2 docs(M81): commit Slice A fitness review (KEEP)
+6deec742 feat(workbench): introduce SelectionService event broadcast (M81 Slice A)
+bf212854 docs(M81): rescope Slice A per reality audit
+2a9daf6b docs(M81): audit reveals Slice A mischaracterizes 3 of 4 current primitives
+08a95330 test(web-research): raise readability smoke-test timeout to 30s
+752dba62 docs(C1): rewrite README index for the systems-redesign era
+535dc23f docs(C0.3): label M64..M80 with canonical triage statuses
+ee43ee0b docs(M81): activate Milestone 81 / SR-1 (user accepted 2026-05-23)
+1c8a1314 docs: add Milestone 81 / SR-1 Workbench Unification Slice 1 (planning)
+be4fddfd docs: add workbench interaction model review (APPROVE with revisions)
+f63e2e9c docs: add workbench interaction model (draft, pending review)
+01ad9c14 docs: add workbench baseline scorecard
+acd1ead4 docs: add milestone documentation triage M64..M80
+3c62ae07 docs: add external architecture research brief
+c5756dc0 docs: add system atlas
+d684184e docs: add workbench current-code research brief
+eb27a92e docs: add branch governance for systems redesign
+a9c6e178 docs: add systems redesign kickoff and first-gen agent cards
+ea6e5400 docs: require specialist agent delegation
+6f193e13 docs: clarify kickoff acceptance and agent creation
+904a0bcf docs: define cleanup document retention matrix
+439ba05d docs: schedule phased cleanup gates
+69d135ee docs: add git steward and handoff runbook
+17f0c84d docs: add fresh-agent manifest onboarding
+a58e0c08 docs: define end-to-end redesign operating contract
+c05f3cd5 docs: structure manifest as redesign kickoff
+a2a781ac docs: define unified workbench redesign system
+eb057690 docs: define systems cleanup baseline
+cc87d468 docs: plan systems redesign workflow
