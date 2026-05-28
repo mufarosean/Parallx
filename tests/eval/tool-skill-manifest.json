@@ -317,8 +317,8 @@
     },
 
     {
-      "id": "budget.sync",
-      "description": "Pull new transaction emails from Gmail and run them through the Budget AI pipeline. Returns counts of confirmed/review-queue/snapshot rows.",
+      "id": "budget.runSync",
+      "description": "Run a full budget sync: pull new transaction emails from Gmail, classify/extract/categorize each one, record balance snapshots, flag ambiguous items for review, and advance the cursor. Single deterministic operation. Returns counts of recorded/review-queue/snapshot rows.",
       "paramsSchema": { "type": "object", "properties": {} },
       "source": "ext/budget/main.js",
       "category": "budget"

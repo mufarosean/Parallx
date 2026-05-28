@@ -41,11 +41,17 @@ import { validateCitations } from './openclawResponseValidation.js';
 // ---------------------------------------------------------------------------
 
 /**
- * Maximum characters per tool result before truncation.
+ * Hard ceiling on characters per tool result before truncation.
  * 100 000 chars ≈ 25 000 tokens — large enough for bulk-fetch tools
- * (e.g. Gmail returning 25+ messages with bodies) while still bounding
- * any single tool result so a runaway / misbehaving tool cannot blow
- * out the context window or push the prompt-cache boundary mid-session.
+ * (e.g. Gmail returning 25+ messages with bodies) on big-context models.
+ *
+ * NOTE: this is only the upper bound. The effective cap applied per turn is
+ * budget-aware (`toolResultCharCap`, computed from `context.tokenBudget`) so a
+ * single tool result can never exceed a fraction of the model's context
+ * window. Without that, a runaway / bulk tool result could overflow a small
+ * window — and the mid-loop compaction can't reclaim it because the recent
+ * tool exchange is preserved verbatim, which would then poison every future
+ * turn once persisted to history.
  */
 const MAX_TOOL_RESULT_CHARS = 100_000;
 
@@ -353,6 +359,18 @@ export async function executeOpenclawAttempt(
   let lastHadToolCalls = false;
   let loopBlocked = false;
 
+  // Budget-aware per-tool-result cap. A single tool result must never be
+  // allowed to exceed a fraction of the model's context window. The mid-loop
+  // compaction below preserves the most-recent tool exchange VERBATIM, so an
+  // oversized result cannot be reclaimed by compaction — it overflows the
+  // window on the next model call and (once persisted via afterTurn) poisons
+  // every subsequent turn. Cap each result at the smaller of the fixed ceiling
+  // and ~40% of the window (tokens→chars at the chars/4 estimate), with a floor
+  // so tiny budgets still yield usable output.
+  const toolResultCharCap = context.tokenBudget > 0
+    ? Math.min(MAX_TOOL_RESULT_CHARS, Math.max(4_000, Math.floor(context.tokenBudget * 0.40) * 4))
+    : MAX_TOOL_RESULT_CHARS;
+
   try {
   while (!token.isCancellationRequested && iterations < context.maxToolIterations + 1) {
     // D4: Fire before-model-call hook
@@ -502,15 +520,15 @@ export async function executeOpenclawAttempt(
       // Normalize here so a single misbehaving extension can't break the
       // whole chat turn.
       let resultContent = normalizeToolResultContent(toolResult.content, toolCall.function.name);
-      if (resultContent.length > MAX_TOOL_RESULT_CHARS) {
+      if (resultContent.length > toolResultCharCap) {
         if (toolResult.isError) {
-          // Tail-keep: preserve the last MAX_TOOL_RESULT_CHARS so the
+          // Tail-keep: preserve the last toolResultCharCap chars so the
           // error message + stack frames survive.
           resultContent =
-            `(truncated head, ${resultContent.length - MAX_TOOL_RESULT_CHARS} chars omitted)\n\n`
-            + resultContent.slice(resultContent.length - MAX_TOOL_RESULT_CHARS);
+            `(truncated head, ${resultContent.length - toolResultCharCap} chars omitted)\n\n`
+            + resultContent.slice(resultContent.length - toolResultCharCap);
         } else {
-          resultContent = resultContent.slice(0, MAX_TOOL_RESULT_CHARS)
+          resultContent = resultContent.slice(0, toolResultCharCap)
             + `\n\n... (truncated, ${resultContent.length} chars total)`;
         }
       }

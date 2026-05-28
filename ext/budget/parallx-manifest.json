@@ -88,7 +88,19 @@
             "default": 90,
             "minimum": 1,
             "maximum": 3650,
-            "description": "On the very first sync (no cursor yet), import mail received within this many days."
+            "description": "On the very first sync (no cursor yet), import mail received within this many days. Ignored if budget.syncStartDate is set."
+          },
+          "budget.syncStartDate": {
+            "type": "string",
+            "default": "",
+            "description": "Absolute start date for the very first sync (no cursor yet), as YYYY-MM-DD. When set to a valid date, it pins the exact 'import everything from here' point and takes precedence over budget.syncStartDays. Leave blank to use the relative day window."
+          },
+          "budget.syncMaxEmails": {
+            "type": "number",
+            "default": 100,
+            "minimum": 1,
+            "maximum": 500,
+            "description": "Maximum emails to fetch and process per sync run. Gmail's API ceiling is 500. The default of 100 bounds per-run cost; raise it for heavy inboxes. Emails are fetched newest-first within the window, so on inboxes with more matching mail than this cap older messages in the window may be deferred until a later run."
           }
         }
       }
