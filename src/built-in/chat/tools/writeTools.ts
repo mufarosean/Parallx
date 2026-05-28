@@ -67,7 +67,7 @@ export function createWriteFileTool(
   return {
     name: 'write_file',
     displaySummary: 'Create or overwrite a workspace file on disk (approval).',
-    description: 'Create or overwrite a workspace FILE on disk. Path is relative to workspace root, forward slashes, no `./` or `..`. For canvas pages (the canvas page DB) use `canvas_create_page` or `canvas_compose_page` instead.',
+    description: 'Create or overwrite a workspace FILE on disk. Path is relative to workspace root, forward slashes, no `./` or `..`. For canvas pages (the canvas page DB) use `canvas_create_page` or `canvas_edit_page` instead.',
     parameters: {
       type: 'object',
       required: ['path', 'content'],
@@ -78,6 +78,7 @@ export function createWriteFileTool(
     },
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    category: 'file-system',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireWriter(writer);
 
@@ -117,7 +118,7 @@ export function createEditFileTool(
   return {
     name: 'edit_file',
     displaySummary: 'Edit a workspace file on disk (approval).',
-    description: 'Edit a workspace FILE on disk by exact find-and-replace. old_content must match exactly (whitespace-sensitive). For canvas pages use `canvas_edit_block` or `canvas_compose_page` instead.',
+    description: 'Edit a workspace FILE on disk by exact find-and-replace. old_content must match exactly (whitespace-sensitive). For canvas pages use `canvas_edit_block` or `canvas_edit_page` instead.',
     parameters: {
       type: 'object',
       required: ['path', 'old_content', 'new_content'],
@@ -129,6 +130,7 @@ export function createEditFileTool(
     },
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    category: 'file-system',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireFs(fs);
       requireWriter(writer);
@@ -210,6 +212,7 @@ export function createDeleteFileTool(
     },
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    category: 'file-system',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireFs(fs);
       requireWriter(writer);

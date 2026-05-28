@@ -48,6 +48,39 @@ import { validateCitations } from './openclawResponseValidation.js';
 const MAX_TOOL_RESULT_CHARS = 20_000;
 
 /**
+ * Defensive normalizer for `IToolResult.content` that came in from an
+ * extension or built-in tool. Parallx's contract is `content: string`, but
+ * a few extension authors return MCP-shape `[{ type: 'text', text }, …]`
+ * instead — that array then propagates into `role: 'tool'` message content
+ * and trips Ollama's HTTP 400. This unwraps the MCP shape into a string and
+ * logs a one-line warning so the misbehaving tool can be fixed at the
+ * source. Strings (the contract) pass through untouched.
+ */
+export function normalizeToolResultContent(content: unknown, toolName: string): string {
+  if (typeof content === 'string') { return content; }
+  if (Array.isArray(content)) {
+    const parts = content.map((c) => {
+      if (c && typeof c === 'object' && 'type' in c && (c as { type: unknown }).type === 'text'
+          && 'text' in c && typeof (c as { text: unknown }).text === 'string') {
+        return (c as { text: string }).text;
+      }
+      return JSON.stringify(c);
+    });
+    console.warn(
+      `[openclawAttempt] Tool "${toolName}" returned MCP-shape array content; `
+      + `expected Parallx-shape string. Unwrapping to string.`,
+    );
+    return parts.join('\n');
+  }
+  if (content == null) { return ''; }
+  console.warn(
+    `[openclawAttempt] Tool "${toolName}" returned non-string content (typeof=${typeof content}); `
+    + `coercing via JSON.stringify.`,
+  );
+  return JSON.stringify(content);
+}
+
+/**
  * Escape a string for safe inclusion in a `RegExp` body. Used by
  * `_detectHallucinatedToolCall` so user-defined tool names that happen
  * to contain regex metacharacters can't blow up the matcher.
@@ -459,7 +492,14 @@ export async function executeOpenclawAttempt(
       // For errors, the diagnostic info lives at the END (stack frames,
       // root cause), so truncate from the head and keep the tail when
       // isError is set.
-      let resultContent = toolResult.content;
+      // Defensive: extensions occasionally return the MCP tool-result shape
+      // `{ content: [{ type: 'text', text }, ...] }` instead of Parallx's
+      // `{ content: string }`. An array would propagate to `role: 'tool'`
+      // message content and trip Ollama's HTTP 400 ("cannot unmarshal array
+      // into Go struct field ChatRequest.messages.content of type string").
+      // Normalize here so a single misbehaving extension can't break the
+      // whole chat turn.
+      let resultContent = normalizeToolResultContent(toolResult.content, toolCall.function.name);
       if (resultContent.length > MAX_TOOL_RESULT_CHARS) {
         if (toolResult.isError) {
           // Tail-keep: preserve the last MAX_TOOL_RESULT_CHARS so the

@@ -7,7 +7,7 @@
  *   - agent-runner-execution.ts — compactEmbeddedPiSession called on overflow
  *
  * Parallx adaptation:
- *   - Uses platform services: retrieveContext (RAG), recallMemories, recallConcepts
+ *   - Uses platform services: retrieveContext (RAG), recallMemories
  *   - M11 token budget: System 10%, RAG 30%, History 30%, User 30%
  *   - M9: Token estimation chars / 4
  *   - History from IChatParticipantContext (VS Code chat participant model)
@@ -64,7 +64,6 @@ export interface IOpenclawBootstrapParams {
 export interface IOpenclawBootstrapResult {
   readonly ragReady: boolean;
   readonly memoryReady: boolean;
-  readonly conceptsReady: boolean;
 }
 
 export interface IOpenclawAssembleParams {
@@ -172,11 +171,9 @@ export type IOpenclawContextEngineServices = Pick<
   IDefaultParticipantServices,
   | 'retrieveContext'
   | 'recallMemories'
-  | 'recallConcepts'
   | 'recallTranscripts'
   | 'getCurrentPageContent'
   | 'storeSessionMemory'
-  | 'storeConceptsFromSession'
   | 'sendSummarizationRequest'
 >;
 
@@ -200,7 +197,6 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
   /** Service readiness state set by bootstrap(). */
   private _ragReady = true;
   private _memoryReady = true;
-  private _conceptsReady = true;
   private _transcriptsReady = true;
   private _pageReady = true;
 
@@ -216,14 +212,12 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
   async bootstrap(_params: IOpenclawBootstrapParams): Promise<IOpenclawBootstrapResult> {
     this._ragReady = !!this.services.retrieveContext && (_params.autoRag !== false);
     this._memoryReady = !!this.services.recallMemories;
-    this._conceptsReady = !!this.services.recallConcepts;
     this._transcriptsReady = !!this.services.recallTranscripts;
     this._pageReady = !!this.services.getCurrentPageContent;
 
     return {
       ragReady: this._ragReady,
       memoryReady: this._memoryReady,
-      conceptsReady: this._conceptsReady,
     };
   }
 
@@ -255,22 +249,21 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     // ── Sub-lane budget allocation (normalized to 100% of RAG budget) ──
     // Upstream: context engine assembles content UNDER the token budget.
     // Sub-lanes must sum to ≤ 100% to prevent over-allocation.
-    const ragLaneBudget = Math.floor(budget.rag * 0.55);     // 55% — primary retrieval
+    // M81 Phase 3 Stage 2: the concept retrieval lane was removed — its 5%
+    // moved to RAG, which now also picks up agent-curated MEMORY.md content
+    // via the standard vector index.
+    const ragLaneBudget = Math.floor(budget.rag * 0.60);     // 60% — primary retrieval
     const pageLaneBudget = Math.floor(budget.rag * 0.15);    // 15% — open page
     const memoryLaneBudget = Math.floor(budget.rag * 0.15);  // 15% — recalled memories
     const transcriptLaneBudget = Math.floor(budget.rag * 0.10); // 10% — transcripts
-    const conceptLaneBudget = Math.floor(budget.rag * 0.05); // 5%  — concepts
 
     // ── C1: Parallel loading — fire all retrieval services concurrently ──
-    const [ragResult, memoryResult, conceptResult, pageResult, transcriptResult] = await Promise.all([
+    const [ragResult, memoryResult, pageResult, transcriptResult] = await Promise.all([
       (this._ragReady && this.services.retrieveContext)
         ? this.services.retrieveContext(params.prompt).catch(() => undefined)
         : Promise.resolve(undefined),
       (this._memoryReady && this.services.recallMemories)
         ? this.services.recallMemories(params.prompt, params.sessionId).catch(() => undefined)
-        : Promise.resolve(undefined),
-      (this._conceptsReady && this.services.recallConcepts)
-        ? this.services.recallConcepts(params.prompt).catch(() => undefined)
         : Promise.resolve(undefined),
       (this._pageReady && this.services.getCurrentPageContent)
         ? this.services.getCurrentPageContent().catch(() => undefined)
@@ -333,15 +326,6 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
       }
     }
 
-    // ── Concepts: recall relevant concepts ──
-    if (conceptResult) {
-      const conceptTokens = estimateTokens(conceptResult);
-      if (conceptTokens <= conceptLaneBudget && usedRagTokens + conceptTokens <= budget.rag) {
-        contextSections.push(`## Concepts\n${conceptResult}`);
-        usedRagTokens += conceptTokens;
-      }
-    }
-
     // ── Deliver retrieval content via messages (upstream pattern) ──
     // Upstream: AssembleResult.messages is the primary delivery channel.
     // RAG content goes in a context message BEFORE history, not in the system prompt.
@@ -395,18 +379,6 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
         return line;
       })
       .join('\n\n');
-
-    // D6-4: Extract and store concepts before summarization (preserves entities from compacted history)
-    if (this.services.storeConceptsFromSession && transcript.length > 0 && history.length > 2) {
-      try {
-        const concepts = extractConceptsFromTranscript(transcript);
-        if (concepts.length > 0) {
-          await this.services.storeConceptsFromSession(concepts, params.sessionId);
-        }
-      } catch {
-        // Concept extraction failure is non-fatal
-      }
-    }
 
     let summaryText = '';
     let qualityScore: number | undefined;
@@ -513,20 +485,12 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     };
   }
 
-  async afterTurn(params: IOpenclawAfterTurnParams): Promise<void> {
-    // D6-4/R5: Extract concepts from the turn's messages and store them.
-    // This catches concepts from short sessions that never trigger compact().
-    if (this.services.storeConceptsFromSession && params.messages.length > 0) {
-      try {
-        const transcript = params.messages.map(m => m.content).join('\n');
-        const concepts = extractConceptsFromTranscript(transcript);
-        if (concepts.length > 0) {
-          await this.services.storeConceptsFromSession(concepts, params.sessionId);
-        }
-      } catch {
-        // Concept extraction failure is non-fatal
-      }
-    }
+  async afterTurn(_params: IOpenclawAfterTurnParams): Promise<void> {
+    // M81 Phase 3 Stage 2 — the regex-based concept extraction that used to
+    // run here was removed. Agent-curated memory writes happen via the
+    // `memory_edit` tool during the turn itself, which is higher-signal
+    // and avoids unconditional writes that compete with the agent for
+    // MEMORY.md's bounded space.
   }
 
   /**
@@ -752,45 +716,11 @@ export function auditCompactionQuality(
   return { passed: score >= QUALITY_THRESHOLD, score, missingIdentifiers: missing };
 }
 
-/**
- * D6-4: Extract concepts from a transcript for long-term concept storage.
- * Lightweight heuristic — no model call required.
- */
-export function extractConceptsFromTranscript(
-  transcript: string,
-): Array<{ concept: string; category: string; summary: string; struggled: boolean }> {
-  const concepts: Array<{ concept: string; category: string; summary: string; struggled: boolean }> = [];
-  const seen = new Set<string>();
-
-  // Extract file references as 'reference' concepts
-  for (const m of transcript.matchAll(/(?:\/[\w.-]+)+\.\w+/g)) {
-    const ref = m[0];
-    if (!seen.has(ref)) {
-      seen.add(ref);
-      concepts.push({ concept: ref, category: 'reference', summary: `File reference: ${ref}`, struggled: false });
-    }
-  }
-
-  // Extract URIs as 'reference' concepts
-  for (const m of transcript.matchAll(/https?:\/\/\S+/g)) {
-    const uri = m[0];
-    if (!seen.has(uri)) {
-      seen.add(uri);
-      concepts.push({ concept: uri, category: 'reference', summary: `URI: ${uri}`, struggled: false });
-    }
-  }
-
-  // Extract capitalized multi-word terms (potential proper nouns/entities)
-  for (const m of transcript.matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/g)) {
-    const term = m[1];
-    if (!seen.has(term) && term.length > 4) {
-      seen.add(term);
-      concepts.push({ concept: term, category: 'entity', summary: `Entity: ${term}`, struggled: false });
-    }
-  }
-
-  return concepts;
-}
+// M81 Phase 3 Stage 2 — extractConceptsFromTranscript was a regex-based pull
+// of file paths, URIs, and capitalized multi-word terms from chat transcripts.
+// It auto-wrote these to MEMORY.md's `## Concepts` section, competing with
+// agent-driven `memory_edit` writes for the bounded curation surface. Removed
+// in favor of agent-authored curation via `memory_edit`.
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -101,6 +101,7 @@ export function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): ICh
     },
     requiresConfirmation: false,
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
+    category: 'file-system',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireFs(fs);
       const relPath = String(args['path'] || '.').replace(/\\/g, '/');
@@ -147,6 +148,7 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
     },
     requiresConfirmation: false,
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
+    category: 'file-system',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireFs(fs);
       const relPath = String(args['path'] || '').replace(/\\/g, '/');
@@ -228,6 +230,7 @@ export function createSearchFilesTool(fs: IBuiltInToolFileSystem | undefined): I
     },
     requiresConfirmation: false,
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
+    category: 'file-system',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireFs(fs);
       const pattern = String(args['pattern'] || '').toLowerCase();
@@ -279,6 +282,7 @@ export function createGrepSearchTool(fs: IBuiltInToolFileSystem | undefined): IC
     },
     requiresConfirmation: false,
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
+    category: 'file-system',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireFs(fs);
       const patternStr = String(args['pattern'] || '');
@@ -502,6 +506,7 @@ export function createSearchKnowledgeTool(retrieval: IBuiltInToolRetrieval | und
     },
     requiresConfirmation: false,
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
+    category: 'file-system',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       if (!retrieval) {
         return { content: 'Knowledge search is not available — the retrieval service has not been initialized.', isError: true };

@@ -89,6 +89,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
           description: t.description,
           enabled: languageModelToolsService.isToolEnabled(t.name),
           extensionId: t.ownerToolId, // M66 — used to group by extension in the UI
+          category: t.category, // M81 P10 — sub-group within Built-In
         })),
         setToolEnabled: (name: string, enabled: boolean) =>
           languageModelToolsService.setToolEnabled(name, enabled),

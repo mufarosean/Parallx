@@ -76,10 +76,15 @@ export function buildOpenclawRuntimeSkillState(
     .filter((entry) => entry.modelVisible)
     .map((entry) => {
       const source = catalog.find((skill) => skill.name === entry.name);
+      const bundledFiles = source?.bundledFiles;
       return {
         name: entry.name,
         description: source?.description ?? '',
         location: entry.location ?? '',
+        // M81 Phase 6 — forward bundled file paths from the loader catalog
+        // through to the prompt builder. Undefined when the skill has no
+        // bundled subfolders, so the prompt stays unchanged for it.
+        ...(bundledFiles && bundledFiles.length > 0 ? { bundledFiles } : {}),
       };
     });
 

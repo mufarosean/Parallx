@@ -1,8 +1,9 @@
-// promptFileService.ts — Prompt file loader (M11 Task 1.1)
+// promptFileService.ts — Prompt file loader (M11 Task 1.1, extended M81)
 //
 // Reads layered prompt files from .parallx/:
-//   .parallx/AGENTS.md  — Project context for the agent
 //   .parallx/SOUL.md    — Agent personality and constraints
+//   .parallx/USER.md    — User identity and preferences (M81 Phase 1)
+//   .parallx/AGENTS.md  — Project context for the agent
 //   .parallx/TOOLS.md   — Tool usage instructions
 //   .parallx/rules/*.md — Pattern-scoped rules
 //
@@ -37,6 +38,8 @@ export interface IPromptRule {
 export interface IPromptFileLayers {
   /** Content of SOUL.md (personality/identity). Falls back to built-in default. */
   readonly soul: string;
+  /** Content of USER.md (user identity + preferences). Empty if not present (M81). */
+  readonly user: string;
   /** Content of AGENTS.md (project context). Empty if not present. */
   readonly agents: string;
   /** Content of TOOLS.md (tool instructions). Falls back to auto-generated. */
@@ -237,6 +240,7 @@ export class PromptFileService extends Disposable {
       // No workspace — return defaults
       this._cache = {
         soul: DEFAULT_SOUL,
+        user: '',
         agents: '',
         tools: this._autoToolsContent,
         rules: [],
@@ -244,14 +248,15 @@ export class PromptFileService extends Disposable {
       return this._cache;
     }
 
-    const [soul, agents, tools, rules] = await Promise.all([
+    const [soul, user, agents, tools, rules] = await Promise.all([
       this._loadFile('.parallx/SOUL.md', DEFAULT_SOUL),
+      this._loadFile('.parallx/USER.md', ''),
       this._loadFile('.parallx/AGENTS.md', ''),
       this._loadFile('.parallx/TOOLS.md', this._autoToolsContent),
       this._loadRules(),
     ]);
 
-    this._cache = { soul, agents, tools, rules };
+    this._cache = { soul, user, agents, tools, rules };
     return this._cache;
   }
 
@@ -268,8 +273,8 @@ export class PromptFileService extends Disposable {
   /**
    * Assemble the prompt overlay from pattern-matched rules only.
    *
-   * SOUL.md, AGENTS.md, and TOOLS.md are NOT included here — they are
-   * already injected in full via OpenClaw bootstrap files in the
+   * SOUL.md, USER.md, AGENTS.md, and TOOLS.md are NOT included here — they
+   * are already injected in full via OpenClaw bootstrap files in the
    * Workspace Context section. Including them here would duplicate
    * content that the bootstrap pipeline already provides.
    */

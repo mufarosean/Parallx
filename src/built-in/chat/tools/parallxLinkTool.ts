@@ -78,6 +78,7 @@ export function createParallxLinkTool(getContracts: LinkContractSnapshot): IChat
     },
     requiresConfirmation: false,
     permissionLevel: 'always-allowed',
+    category: 'linking',
     source: 'built-in',
     handler: async (args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> => {
       const target = readString(args.target);

@@ -407,6 +407,89 @@ Private instructions.`;
     expect(service.getSkill('read_file')).toBeUndefined();
     expect(listener).toHaveBeenCalledWith({ added: [], removed: ['read_file'] });
   });
+
+  // M81 Phase 6 — bundled scripts/references/assets discovery
+  it('discovers bundled files under scripts/, references/, assets/ (agentskills.io subfolder alignment)', async () => {
+    const TEST_SKILL = `---
+name: test-skill
+description: A skill with bundled files
+version: 1.0.0
+permission: always-allowed
+tags: [test]
+---
+
+Body.`;
+
+    const fs: ISkillFileSystem = {
+      readFile: vi.fn(async () => TEST_SKILL),
+      listDirs: vi.fn(async (parent: string) => {
+        if (parent === '.parallx/skills') { return ['test-skill']; }
+        return [];
+      }),
+      listFiles: vi.fn(async (parent: string) => {
+        if (parent === '.parallx/skills/test-skill/scripts') {
+          return ['helper.py'];
+        }
+        if (parent === '.parallx/skills/test-skill/references') {
+          return ['notes.md'];
+        }
+        if (parent === '.parallx/skills/test-skill/assets') {
+          return [];
+        }
+        return [];
+      }),
+      exists: vi.fn(async (path: string) => {
+        // Skill SKILL.md + the three bundle folders all exist
+        if (path === '.parallx/skills' || path.endsWith('SKILL.md')) { return true; }
+        if (path === '.parallx/skills/test-skill/scripts') { return true; }
+        if (path === '.parallx/skills/test-skill/references') { return true; }
+        if (path === '.parallx/skills/test-skill/assets') { return true; }
+        return false;
+      }),
+    };
+
+    const svc = new SkillLoaderService();
+    svc.setFileSystem(fs);
+    await svc.scanSkills();
+
+    const catalog = svc.getSkillCatalog();
+    expect(catalog).toHaveLength(1);
+    const entry = catalog[0];
+    expect(entry.name).toBe('test-skill');
+    expect(entry.bundledFiles).toEqual([
+      '.parallx/skills/test-skill/references/notes.md',
+      '.parallx/skills/test-skill/scripts/helper.py',
+    ]);
+  });
+
+  it('emits empty bundledFiles when no subfolders exist (existing skills load unchanged)', async () => {
+    await service.scanSkills();
+    const catalog = service.getSkillCatalog();
+    expect(catalog).toHaveLength(2);
+    for (const entry of catalog) {
+      expect(entry.bundledFiles).toEqual([]);
+    }
+  });
+
+  it('does not call listFiles when filesystem does not provide it (backward compatible)', async () => {
+    // Mock fs without listFiles — should not throw, bundledFiles stays []
+    const fs: ISkillFileSystem = {
+      readFile: vi.fn(async () => `---
+name: legacy-skill
+description: No bundle support
+tags: []
+---
+body`),
+      listDirs: vi.fn(async () => ['legacy-skill']),
+      exists: vi.fn(async () => true),
+    };
+    const svc = new SkillLoaderService();
+    svc.setFileSystem(fs);
+    await svc.scanSkills();
+    const catalog = svc.getSkillCatalog();
+    expect(catalog).toHaveLength(1);
+    expect(catalog[0].bundledFiles).toEqual([]);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -53,6 +53,7 @@ export function buildOpenclawPromptArtifacts(
     name: tool.name,
     description: tool.description,
     displaySummary: tool.displaySummary,
+    category: tool.category,
   }));
 
   const systemPrompt = buildOpenclawSystemPrompt({

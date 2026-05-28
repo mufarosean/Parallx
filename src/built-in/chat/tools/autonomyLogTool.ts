@@ -92,6 +92,7 @@ export function createAutonomyLogTool(log: IAutonomyLogReader | undefined): ICha
     },
     requiresConfirmation: false,
     permissionLevel: 'always-allowed',
+    category: 'autonomy',
     source: 'built-in',
     handler: async (args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> => {
       if (!log) return fail('autonomy log service unavailable');

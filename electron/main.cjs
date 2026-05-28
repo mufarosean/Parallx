@@ -1214,7 +1214,37 @@ function _isAllowedReadPath(filePath) {
       return true;
     }
   }
-  return _matchesAnyRoot(normalized, _fsExtraRoots);
+  if (_matchesAnyRoot(normalized, _fsExtraRoots)) return true;
+  // Short-lived consent grant from a user-initiated dialog selection.
+  // Image / cover / media upload popups call dialog:openFile, then read the
+  // returned path back into base64 — that path lives outside the workspace
+  // by design (Pictures, Downloads, …). The grant is created when the dialog
+  // returns and expires shortly after, so the read window is bounded.
+  return _consumeDialogReadGrant(normalized);
+}
+
+// ── Dialog-returned read grants ──────────────────────────────────────────
+// Map<absPath, expiryMs>. Entries are inserted by dialog:openFile and
+// consumed by _isAllowedReadPath. TTL is short on purpose — the dialog
+// is followed immediately by a read in every popup that calls it.
+const _DIALOG_READ_GRANT_TTL_MS = 60_000;
+const _dialogReadGrants = new Map();
+
+function _registerDialogReadGrant(filePath) {
+  if (typeof filePath !== 'string' || filePath.length === 0) return;
+  const abs = path.resolve(filePath);
+  _dialogReadGrants.set(abs, Date.now() + _DIALOG_READ_GRANT_TTL_MS);
+}
+
+function _consumeDialogReadGrant(absPath) {
+  const expiry = _dialogReadGrants.get(absPath);
+  if (expiry === undefined) return false;
+  if (expiry <= Date.now()) {
+    _dialogReadGrants.delete(absPath);
+    return false;
+  }
+  _dialogReadGrants.delete(absPath);
+  return true;
 }
 
 // ── fs:setWorkspaceRoot ──
@@ -1648,7 +1678,12 @@ ipcMain.handle('dialog:openFile', async (_event, options) => {
     filters: options?.filters || [],
     defaultPath: options?.defaultPath || app.getPath('home'),
   });
-  return result.canceled ? null : result.filePaths;
+  if (result.canceled) return null;
+  // Grant the renderer a short read window for each path the user just
+  // picked. Without this, fs:readFile rejects paths outside the workspace —
+  // breaking image upload, cover upload, and the media-insert popups.
+  for (const p of result.filePaths) _registerDialogReadGrant(p);
+  return result.filePaths;
 });
 
 // ── dialog:openFolder ──

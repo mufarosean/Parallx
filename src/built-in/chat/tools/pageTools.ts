@@ -89,6 +89,7 @@ export function createFindPagesTool(db: IBuiltInToolDatabase | undefined): IChat
     },
     requiresConfirmation: false,
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
+    category: 'canvas',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
 
@@ -225,21 +226,24 @@ export function createReadPageTool(
 ): IChatTool {
   return {
     name: 'canvas_read_page',
-    displaySummary: 'Read a canvas page by id, title, or "current".',
+    displaySummary: 'Read a canvas page (body + metadata + properties).',
     description:
-      'Reads the full content of a canvas page (the workspace page database, not a file on disk). ' +
+      'Reads a canvas page from the workspace page database (not a file on disk). ' +
+      'Returns the page body, metadata (title, id, icon, timestamps, archived state, block count), and any custom properties. ' +
       '`pageId` accepts a page UUID, a case-insensitive page title, or the literal "current" for the page open in the editor. ' +
       'Use this directly when you know the page title — do NOT call `canvas_find_pages` first to resolve a known title. ' +
-      'For files on disk use `read_file`.',
+      'For files on disk use `read_file`. ' +
+      'For workspace-wide property definitions use `canvas_list_property_definitions`.',
     parameters: {
       type: 'object',
       required: ['pageId'],
       properties: {
-        pageId: { type: 'string', description: 'Page UUID, page title (case-insensitive exact match, falls back to partial match), or "current" for the editor page. Pass the title directly — this tool resolves it. Other canvas_* tools require a UUID.' },
+        pageId: { type: 'string', description: 'Page UUID, page title (case-insensitive exact match, falls back to partial match), or "current" for the editor page. Pass the title directly — this tool resolves it.' },
       },
     },
     requiresConfirmation: false,
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
+    category: 'canvas',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
       const identifier = String(args['pageId'] || '').trim();
@@ -247,116 +251,62 @@ export function createReadPageTool(
         return { content: 'pageId is required', isError: true };
       }
 
+      // Resolve the page row (full metadata, not just body).
+      type PageRow = {
+        id: string;
+        title: string;
+        content: string;
+        icon: string | null;
+        is_archived: number;
+        created_at: string;
+        updated_at: string;
+      };
+      const PAGE_COLS = 'id, title, content, icon, is_archived, created_at, updated_at';
+      let page: PageRow | undefined | null = undefined;
+      let isCurrent = false;
+
       // Special form: 'current' → resolve to the active editor page.
       if (identifier.toLowerCase() === 'current') {
         const currentId = getCurrentPageId?.();
         if (!currentId) {
           return { content: 'No page is currently open in the editor.', isError: true };
         }
-        const page = await db!.get<{ id: string; title: string; content: string }>(
-          'SELECT id, title, content FROM pages WHERE id = ?',
-          [currentId],
-        );
+        page = await db!.get<PageRow>(`SELECT ${PAGE_COLS} FROM pages WHERE id = ?`, [currentId]);
         if (!page) {
           return { content: `The active editor page (${currentId}) was not found in the database.`, isError: true };
         }
-        const text = extractTextContent(page.content);
-        return { content: `**${page.title}** (id: ${page.id}) — currently open\n\n${text || '(empty page)'}` };
-      }
+        isCurrent = true;
+      } else {
+        // Try UUID lookup first (exact match)
+        page = await db!.get<PageRow>(`SELECT ${PAGE_COLS} FROM pages WHERE id = ?`, [identifier]);
 
-      // Try UUID lookup first (exact match)
-      let page = await db!.get<{ id: string; title: string; content: string }>(
-        'SELECT id, title, content FROM pages WHERE id = ?',
-        [identifier],
-      );
+        // Fallback: case-insensitive exact title match
+        if (!page) {
+          page = await db!.get<PageRow>(
+            `SELECT ${PAGE_COLS} FROM pages WHERE is_archived = 0 AND LOWER(title) = LOWER(?)`,
+            [identifier],
+          );
+        }
 
-      // Fallback: case-insensitive exact title match
-      if (!page) {
-        page = await db!.get<{ id: string; title: string; content: string }>(
-          'SELECT id, title, content FROM pages WHERE is_archived = 0 AND LOWER(title) = LOWER(?)',
-          [identifier],
-        );
-      }
-
-      // Fallback: partial title match (LIKE)
-      if (!page) {
-        page = await db!.get<{ id: string; title: string; content: string }>(
-          'SELECT id, title, content FROM pages WHERE is_archived = 0 AND title LIKE ? ORDER BY updated_at DESC',
-          [`%${identifier}%`],
-        );
+        // Fallback: partial title match (LIKE)
+        if (!page) {
+          page = await db!.get<PageRow>(
+            `SELECT ${PAGE_COLS} FROM pages WHERE is_archived = 0 AND title LIKE ? ORDER BY updated_at DESC`,
+            [`%${identifier}%`],
+          );
+        }
       }
 
       if (!page) {
         return { content: `Page "${identifier}" not found. Use canvas_find_pages to see available pages.`, isError: true };
       }
 
-      const text = extractTextContent(page.content);
-      return { content: `**${page.title}** (id: ${page.id})\n\n${text || '(empty page)'}` };
-    },
-  };
-}
-
-/**
- * get_page — return page metadata, custom properties, and applicable
- * property definitions in one shot.
- *
- * Replaces the former get_page_properties tool and additionally surfaces
- * the workspace property definitions that the assistant can use with
- * set_page_property.
- */
-export function createGetPageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
-  return {
-    name: 'canvas_get_page',
-    displaySummary: 'Get canvas page metadata, properties, and definitions.',
-    description: 'Get a CANVAS PAGE\'s metadata, properties, and applicable property definitions. Operates on the canvas page DB; for files on disk see `read_file`.',
-    parameters: {
-      type: 'object',
-      required: ['pageId'],
-      properties: {
-        pageId: { type: 'string', description: 'Page UUID (not a title). If you only have a title, call canvas_read_page or canvas_find_pages first to resolve.' },
-      },
-    },
-    requiresConfirmation: false,
-    permissionLevel: 'always-allowed' as ToolPermissionLevel,
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
-      requireDb(db);
-      const pageId = String(args['pageId'] || '');
-      if (!pageId) {
-        return { content: 'pageId is required', isError: true };
-      }
-
-      const page = await db!.get<{
-        id: string;
-        title: string;
-        icon: string | null;
-        is_archived: number;
-        created_at: string;
-        updated_at: string;
-      }>(
-        'SELECT id, title, icon, is_archived, created_at, updated_at FROM pages WHERE id = ?',
-        [pageId],
-      );
-
-      if (!page) {
-        return { content: `Page "${pageId}" not found.`, isError: true };
-      }
-
+      // Folded from the former canvas_get_page tool: include block count + properties.
       const blockCount = await db!.get<{ cnt: number }>(
         'SELECT COUNT(*) as cnt FROM canvas_blocks WHERE page_id = ?',
-        [pageId],
+        [page.id],
       );
 
-      const lines: (string | null)[] = [
-        `**Title:** ${page.title}`,
-        `**ID:** ${page.id}`,
-        page.icon ? `**Icon:** ${page.icon}` : null,
-        `**Created:** ${page.created_at}`,
-        `**Updated:** ${page.updated_at}`,
-        `**Archived:** ${page.is_archived ? 'Yes' : 'No'}`,
-        `**Blocks:** ${blockCount?.cnt ?? 0}`,
-      ];
-
-      // Custom properties.
       const props = await db!.all<{
         key: string;
         value_type: string;
@@ -364,8 +314,18 @@ export function createGetPageTool(db: IBuiltInToolDatabase | undefined): IChatTo
         def_type: string | null;
       }>(
         'SELECT pp.key, pp.value_type, pp.value, pd.type as def_type FROM page_properties pp LEFT JOIN property_definitions pd ON pp.key = pd.name WHERE pp.page_id = ?',
-        [pageId],
+        [page.id],
       );
+
+      const text = extractTextContent(page.content);
+      const lines: (string | null)[] = [
+        `**${page.title}** (id: ${page.id})${isCurrent ? ' — currently open' : ''}`,
+        page.icon ? `**Icon:** ${page.icon}` : null,
+        `**Created:** ${page.created_at}`,
+        `**Updated:** ${page.updated_at}`,
+        page.is_archived ? '**Archived:** Yes' : null,
+        `**Blocks:** ${blockCount?.cnt ?? 0}`,
+      ];
 
       if (props.length > 0) {
         lines.push('', '**Custom Properties:**');
@@ -376,21 +336,15 @@ export function createGetPageTool(db: IBuiltInToolDatabase | undefined): IChatTo
         }
       }
 
-      // Applicable property definitions (workspace-wide).
-      const defs = await db!.all<{ name: string; type: string }>(
-        'SELECT name, type FROM property_definitions ORDER BY sort_order, name',
-      );
-      if (defs.length > 0) {
-        lines.push('', '**Applicable Property Definitions:**');
-        for (const d of defs) {
-          lines.push(`- **${d.name}** (${d.type})`);
-        }
-      }
-
+      lines.push('', text || '(empty page)');
       return { content: lines.filter((l) => l !== null).join('\n') };
     },
   };
 }
+
+// M81 Phase 9 — `createGetPageTool` was folded into `createReadPageTool`. The
+// merged tool returns body + metadata + custom properties in one call. For
+// workspace-wide property definitions, use `canvas_list_property_definitions`.
 
 /** Format a JSON-stored property value for display. */
 function formatPropertyValue(raw: string, _type: string): string {
@@ -418,6 +372,7 @@ export function createListPropertyDefinitionsTool(db: IBuiltInToolDatabase | und
     },
     requiresConfirmation: false,
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
+    category: 'canvas',
     async handler(_args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
 
@@ -484,6 +439,7 @@ export function createSetPagePropertyTool(db: IBuiltInToolDatabase | undefined):
     },
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    category: 'canvas',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
       const pageId = String(args['pageId'] || '');
@@ -561,8 +517,12 @@ export function createCreatePageTool(
 ): IChatTool {
   return {
     name: 'canvas_create_page',
-    displaySummary: 'Create a new canvas page.',
-    description: 'Create a CANVAS PAGE (in the canvas page DB). Use markdown for structured body. For files on disk (.md, .txt, code, etc.) use `write_file` instead.',
+    displaySummary: 'Create a NEW canvas page (auto-assigns UUID).',
+    description:
+      'CREATE a NEW canvas page in the canvas page DB. The UUID is generated automatically — do NOT pass one. ' +
+      'Use this only when the page does not yet exist. ' +
+      'To edit an EXISTING page (you have its UUID), use `canvas_edit_page`. ' +
+      'For files on disk (.md, .txt, code, etc.) use `write_file` instead.',
     parameters: {
       type: 'object',
       required: ['title'],
@@ -575,6 +535,7 @@ export function createCreatePageTool(
     },
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    category: 'canvas',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
       const title = String(args['title'] || '').trim();
@@ -643,19 +604,24 @@ export function createCreatePageTool(
  * reloads the new content. Local unsaved edits in the open editor will be
  * blown away by the reload — acceptable trade for AI/user co-authoring.
  */
-export function createComposePageTool(
+export function createEditPageTool(
   db: IBuiltInToolDatabase | undefined,
   notifyPageMutated?: PageMutationNotifier,
 ): IChatTool {
   return {
-    name: 'canvas_compose_page',
-    displaySummary: 'Write or update a canvas page from markdown.',
-    description: 'Write or update a CANVAS PAGE (in the canvas page DB) from markdown. mode: replace (default), append, or prepend. For files on disk use `write_file` or `edit_file` instead.',
+    name: 'canvas_edit_page',
+    displaySummary: 'Edit (update) an existing canvas page from markdown.',
+    description:
+      'EDIT an EXISTING canvas page in the canvas page DB. Requires the page\'s UUID — this tool does NOT create new pages. ' +
+      'Use `canvas_create_page` to make a new page (which auto-assigns the UUID). ' +
+      'Use `canvas_read_page` or `canvas_find_pages` first if you only have a title and need the UUID. ' +
+      '`mode` controls how `markdown` combines with the existing body: `replace` (default) wipes and rewrites; `append` adds after; `prepend` adds before. ' +
+      'For files on disk use `write_file` or `edit_file` instead.',
     parameters: {
       type: 'object',
       required: ['pageId', 'markdown'],
       properties: {
-        pageId: { type: 'string', description: 'Page UUID (not a title). If you only have a title, call canvas_read_page or canvas_find_pages first to resolve.' },
+        pageId: { type: 'string', description: 'UUID of an EXISTING page (not a title). Resolve from a title via canvas_read_page or canvas_find_pages first.' },
         markdown: { type: 'string', description: 'Markdown body. Standard CommonMark — headings, lists, code blocks, links. Rendered into Tiptap blocks on save.' },
         mode: {
           type: 'string',
@@ -666,6 +632,7 @@ export function createComposePageTool(
     },
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    category: 'canvas',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
 
@@ -912,6 +879,7 @@ export function createSetPageStyleTool(
     },
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    category: 'canvas',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
       const pageId = String(args['pageId'] || '').trim();

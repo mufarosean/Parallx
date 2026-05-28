@@ -20,6 +20,7 @@ import type {
 
 export const OPENCLAW_BOOTSTRAP_FILES = [
   '.parallx/SOUL.md',
+  '.parallx/USER.md',
   '.parallx/AGENTS.md',
   '.parallx/TOOLS.md',
 ] as const;
@@ -53,6 +54,17 @@ You help the user understand and work with their project files and canvas pages.
 - Reference file paths relative to workspace root
 - When showing diffs, use unified diff format
 - For long explanations, use headers and bullet points`],
+  ['.parallx/USER.md', `# User
+
+## About
+- (Name, role, what you do)
+
+## Current focus
+- (What you're working on)
+
+## Preferences
+- (How you like the AI to behave)
+`],
   ['.parallx/TOOLS.md', `# Tool Usage Guidelines
 
 ## When to Use Tools

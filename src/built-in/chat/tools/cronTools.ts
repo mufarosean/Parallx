@@ -147,6 +147,7 @@ export function createCronStatusTool(host: ICronToolHost | undefined): IChatTool
     parameters: { type: 'object', properties: {} },
     requiresConfirmation: false,
     permissionLevel: cronToolPermissionLevel(name),
+    category: 'cron',
     source: 'built-in',
     handler: async (_args, _token: ICancellationToken): Promise<IToolResult> => {
       if (!host) return missingHost();
@@ -167,6 +168,7 @@ export function createCronListTool(host: ICronToolHost | undefined): IChatTool {
     parameters: { type: 'object', properties: {} },
     requiresConfirmation: false,
     permissionLevel: cronToolPermissionLevel(name),
+    category: 'cron',
     source: 'built-in',
     handler: async (_args, _token): Promise<IToolResult> => {
       if (!host) return missingHost();
@@ -200,6 +202,7 @@ export function createCronAddTool(host: ICronToolHost | undefined): IChatTool {
     },
     requiresConfirmation: true,
     permissionLevel: cronToolPermissionLevel(name),
+    category: 'cron',
     source: 'built-in',
     handler: async (args, _token): Promise<IToolResult> => {
       if (!host) return missingHost();
@@ -254,6 +257,7 @@ export function createCronUpdateTool(host: ICronToolHost | undefined): IChatTool
     },
     requiresConfirmation: true,
     permissionLevel: cronToolPermissionLevel(name),
+    category: 'cron',
     source: 'built-in',
     handler: async (args, _token): Promise<IToolResult> => {
       if (!host) return missingHost();
@@ -297,6 +301,7 @@ export function createCronRemoveTool(host: ICronToolHost | undefined): IChatTool
     },
     requiresConfirmation: true,
     permissionLevel: cronToolPermissionLevel(name),
+    category: 'cron',
     source: 'built-in',
     handler: async (args, _token): Promise<IToolResult> => {
       if (!host) return missingHost();
@@ -326,6 +331,7 @@ export function createCronRunTool(host: ICronToolHost | undefined): IChatTool {
     },
     requiresConfirmation: false,
     permissionLevel: cronToolPermissionLevel(name),
+    category: 'cron',
     source: 'built-in',
     handler: async (args, _token): Promise<IToolResult> => {
       if (!host) return missingHost();
@@ -358,6 +364,7 @@ export function createCronRunsTool(host: ICronToolHost | undefined): IChatTool {
     },
     requiresConfirmation: false,
     permissionLevel: cronToolPermissionLevel(name),
+    category: 'cron',
     source: 'built-in',
     handler: async (args, _token): Promise<IToolResult> => {
       if (!host) return missingHost();
@@ -380,6 +387,7 @@ export function createCronWakeTool(host: ICronToolHost | undefined): IChatTool {
     parameters: { type: 'object', properties: {} },
     requiresConfirmation: false,
     permissionLevel: cronToolPermissionLevel(name),
+    category: 'cron',
     source: 'built-in',
     handler: async (_args, _token): Promise<IToolResult> => {
       if (!host) return missingHost();

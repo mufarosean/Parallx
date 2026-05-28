@@ -69,6 +69,7 @@ export function createSurfaceSendTool(
     // loosening (chat/notifications/status free) scheduled for M59.
     requiresConfirmation: true,
     permissionLevel: 'requires-approval',
+    category: 'surface',
     source: 'built-in',
     handler: async (args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> => {
       if (!router) {
@@ -121,6 +122,7 @@ export function createSurfaceListTool(
     },
     requiresConfirmation: false,
     permissionLevel: 'always-allowed',
+    category: 'surface',
     source: 'built-in',
     handler: async (_args, _token): Promise<IToolResult> => {
       if (!router) {

@@ -105,6 +105,45 @@ export class NotificationService extends Disposable {
     this._promptContainer = $('div');
     this._promptContainer.className = 'parallx-notification-prompts-container';
     parent.appendChild(this._promptContainer);
+
+    // Modal behaviors for prompts:
+    //   - Click on the backdrop (not the dialog itself) → cancel the
+    //     top-most prompt as if the user clicked the Cancel button.
+    //   - Escape key while a prompt is open → cancel the top-most
+    //     prompt.
+    // Both routes resolve the action promise with the cancel action so
+    // callers can distinguish from a deliberate confirm.
+    this._promptContainer.addEventListener('mousedown', (e) => {
+      if (e.target === this._promptContainer) {
+        this._cancelTopPrompt();
+      }
+    });
+    document.addEventListener('keydown', this._handlePromptEscape, true);
+  }
+
+  /** Escape closes the most-recently-shown prompt with its cancel action. */
+  private readonly _handlePromptEscape = (e: KeyboardEvent): void => {
+    if (e.key !== 'Escape') return;
+    if (!this._promptContainer || this._promptContainer.childElementCount === 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this._cancelTopPrompt();
+  };
+
+  private _cancelTopPrompt(): void {
+    if (!this._promptContainer) return;
+    const topEl = this._promptContainer.firstElementChild as HTMLElement | null;
+    if (!topEl) return;
+    const id = topEl.dataset.notificationId;
+    if (!id) return;
+    // Find the cancel action by title and resolve with it. If no
+    // cancel-named action exists, resolve with undefined (close button
+    // semantics).
+    const entry = this._activeNotifications.get(id);
+    if (!entry) return;
+    const history = this._history.find(h => h.id === id);
+    const cancelAction = history?.actions.find(a => /^(cancel|close|dismiss|no)$/i.test(a.title.trim()));
+    this._dismiss(id, cancelAction);
   }
 
   /**
@@ -247,14 +286,39 @@ export class NotificationService extends Disposable {
 
     el.appendChild(content);
 
-    // Actions row
+    // Actions row.
+    //
+    // Button hierarchy:
+    //   - "Cancel" / "Close" / "Dismiss" → secondary (low-emphasis)
+    //   - First non-cancel action → primary; promoted to `--danger` for
+    //     Warning/Error severity prompts, which are almost always
+    //     destructive ("Move 73 pages to Trash", "Permanently delete…")
+    //   - Other actions → also primary but without danger styling
+    //
+    // The cancel-by-name heuristic avoids requiring every callsite to
+    // opt in via a new API field; the user types literal `Cancel` /
+    // `Close` strings throughout the codebase already.
     if (notification.actions.length > 0) {
       const actionsRow = $('div');
       actionsRow.className = 'parallx-notification-actions';
 
+      const isCancel = (t: string) => /^(cancel|close|dismiss|no)$/i.test(t.trim());
+      const isDanger = notification.severity === NotificationSeverity.Warning
+        || notification.severity === NotificationSeverity.Error;
+      let primaryAssigned = false;
+
       for (const action of notification.actions) {
         const btn = $('button');
         btn.className = 'parallx-notification-action-btn';
+        if (isCancel(action.title)) {
+          btn.classList.add('parallx-notification-action-btn--secondary');
+        } else if (!primaryAssigned) {
+          btn.classList.add('parallx-notification-action-btn--primary');
+          if (isDanger) btn.classList.add('parallx-notification-action-btn--danger');
+          primaryAssigned = true;
+        } else {
+          btn.classList.add('parallx-notification-action-btn--primary');
+        }
         btn.textContent = action.title;
         btn.addEventListener('click', () => {
           this._dismiss(notification.id, action);
@@ -297,6 +361,7 @@ export class NotificationService extends Disposable {
 
   override dispose(): void {
     this.dismissAll();
+    document.removeEventListener('keydown', this._handlePromptEscape, true);
     this._container?.remove();
     this._container = undefined;
     this._promptContainer?.remove();

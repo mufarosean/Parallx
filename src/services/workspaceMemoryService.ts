@@ -5,8 +5,49 @@ import type { IFileService, IWorkspaceMemoryService, IWorkspaceService } from '.
 const MEMORY_ROOT_SEGMENTS = ['.parallx', 'memory'] as const;
 const DURABLE_MEMORY_FILE = 'MEMORY.md';
 const PREFERENCES_SECTION_HEADING = '## Preferences';
-const CONCEPTS_SECTION_HEADING = '## Concepts';
 const LEGACY_IMPORT_SECTION_HEADING = '## Legacy Import';
+// M81 Phase 3 Stage 2 — `## Concepts` section was an auto-extracted index of
+// file paths / URIs / capitalized entities. Removed in favor of agent-curated
+// MEMORY.md content via the `memory_edit` tool.
+
+// M81 Phase 8 — lessons + index. MEMORY.md becomes a bounded INDEX of pointers
+// to per-topic lesson files at `.parallx/memory/lessons/<slug>.md`. Archived
+// lessons and the pre-M81 regex-extraction noise move to `_archive/`.
+const LESSONS_DIR = 'lessons';
+const ARCHIVE_DIR = '_archive';
+const ARCHIVE_LESSONS_DIR = 'lessons';
+const ARCHIVE_LEGACY_CONCEPTS_FILE = 'pre-m81-concepts.md';
+const MEMORY_INDEX_DESCRIPTION_MAX = 120;
+const MEMORY_INDEX_HEADER = [
+  '# Memory Index',
+  '',
+  'Long-term lessons. Each line points to a lesson file with the full',
+  'body. Bounded — when the index is full the agent removes an old entry',
+  'before adding a new one.',
+  '',
+].join('\n');
+// Em-dash (—, U+2014) is the parser anchor for index lines. Required.
+const MEMORY_INDEX_LINE_REGEX = /^- \[([^\]]+)\]\(lessons\/([^)]+)\.md\)\s+—\s+(.+)$/;
+// Pre-M81 regex-extraction `## Concepts` blocks contain `- Category:`,
+// `- Encounters: <n>`, `- Mastery: <x>`, `- Struggles: <n>`, and `- Summary:`
+// lines under each `### Title` entry. We detect the signature in the section
+// body and archive the whole section if present.
+const LEGACY_CONCEPTS_SIGNATURE_PATTERNS: readonly RegExp[] = [
+  /\n- Category: /,
+  /\n- Encounters: \d+/,
+  /\n- Mastery: /,
+  /\n- Struggles: \d+/,
+  /\n- Summary: /,
+];
+
+/**
+ * M81 — USER.md is an identity bootstrap file (sibling of SOUL.md and AGENTS.md),
+ * not a memory file. It lives at `.parallx/USER.md`, not under `.parallx/memory/`.
+ * Scaffolding to disk is owned by `/init` (the single workspace-setup command),
+ * matching how SOUL.md and TOOLS.md behave. We keep the path segments here so
+ * the read/write methods used by `memory_edit` can resolve the file URI.
+ */
+const USER_FILE_SEGMENTS = ['.parallx', 'USER.md'] as const;
 
 function formatIsoDate(date: Date): string {
   const year = date.getFullYear();
@@ -73,6 +114,23 @@ function extractLegacyImportTimestamp(section: string | undefined): string | und
   return match?.[1]?.trim() || undefined;
 }
 
+function humanizeSlug(slug: string): string {
+  const trimmed = slug.trim();
+  if (!trimmed) {
+    return '';
+  }
+  const words = trimmed
+    .replace(/[_\s]+/g, '-')
+    .split('-')
+    .filter((part) => part.length > 0);
+  if (words.length === 0) {
+    return '';
+  }
+  const [first, ...rest] = words;
+  const capFirst = first.charAt(0).toUpperCase() + first.slice(1);
+  return [capFirst, ...rest].join(' ');
+}
+
 function parsePreferenceLines(section: string | undefined): Array<{ key: string; value: string }> {
   if (!section) {
     return [];
@@ -97,70 +155,6 @@ function parsePreferenceLines(section: string | undefined): Array<{ key: string;
       return { key, value };
     })
     .filter((entry): entry is { key: string; value: string } => !!entry);
-}
-
-function parseConceptSection(section: string | undefined): Array<{ concept: string; category: string; summary: string; encounterCount: number; masteryLevel: number; struggleCount: number }> {
-  if (!section) {
-    return [];
-  }
-
-  const blocks = section.split(/\n(?=### )/g).map((block) => block.trim()).filter(Boolean);
-  const concepts: Array<{ concept: string; category: string; summary: string; encounterCount: number; masteryLevel: number; struggleCount: number }> = [];
-
-  for (const block of blocks) {
-    const lines = block.split('\n').map((line) => line.trim()).filter(Boolean);
-    if (!lines[0]?.startsWith('### ')) {
-      continue;
-    }
-    const concept = lines[0].slice(4).trim();
-    if (!concept) {
-      continue;
-    }
-
-    const metadata = new Map<string, string>();
-    for (const line of lines.slice(1)) {
-      if (!line.startsWith('- ')) {
-        continue;
-      }
-      const separatorIndex = line.indexOf(':');
-      if (separatorIndex < 0) {
-        continue;
-      }
-      metadata.set(line.slice(2, separatorIndex).trim().toLowerCase(), line.slice(separatorIndex + 1).trim());
-    }
-
-    concepts.push({
-      concept,
-      category: metadata.get('category') || 'general',
-      summary: metadata.get('summary') || '',
-      encounterCount: Number.parseInt(metadata.get('encounters') || '1', 10) || 1,
-      masteryLevel: Number.parseFloat(metadata.get('mastery') || '0') || 0,
-      struggleCount: Number.parseInt(metadata.get('struggles') || '0', 10) || 0,
-    });
-  }
-
-  return concepts;
-}
-
-function normalizeConceptKey(concept: string): string {
-  return concept.trim().toLowerCase();
-}
-
-function scoreConcept(queryTerms: string[], concept: { concept: string; category: string; summary: string }): number {
-  const haystack = `${concept.concept} ${concept.category} ${concept.summary}`.toLowerCase();
-  let score = 0;
-  for (const term of queryTerms) {
-    if (concept.concept.toLowerCase().includes(term)) {
-      score += 4;
-    }
-    if (concept.category.toLowerCase().includes(term)) {
-      score += 2;
-    }
-    if (haystack.includes(term)) {
-      score += 1;
-    }
-  }
-  return score;
 }
 
 export class WorkspaceMemoryService extends Disposable implements IWorkspaceMemoryService {
@@ -215,6 +209,7 @@ export class WorkspaceMemoryService extends Disposable implements IWorkspaceMemo
         '# Durable Memory\n\nCurated long-term decisions, preferences, conventions, and critical facts.\n',
       );
     }
+
   }
 
   async readDurableMemory(): Promise<string> {
@@ -232,6 +227,40 @@ export class WorkspaceMemoryService extends Disposable implements IWorkspaceMemo
   async writeDurableMemory(content: string): Promise<void> {
     await this.ensureScaffold();
     const uri = this.durableMemoryUri;
+    if (!uri) {
+      throw new Error('No workspace root folder available');
+    }
+    await this._fileService.writeFile(uri, ensureTrailingNewline(normalizeMarkdown(content)));
+  }
+
+  // M81 Phase 1/2 — USER.md as an identity bootstrap file. Lives at
+  // .parallx/USER.md (sibling of SOUL.md, not under .parallx/memory/) but
+  // managed here so all curated workspace memory flows through one service.
+
+  private get _userFileUri(): URI | undefined {
+    const root = this._workspaceService.folders[0]?.uri;
+    return root?.joinPath(...USER_FILE_SEGMENTS);
+  }
+
+  getUserFileRelativePath(): string {
+    return USER_FILE_SEGMENTS.join('/');
+  }
+
+  async readUserFile(): Promise<string> {
+    const uri = this._userFileUri;
+    if (!uri) {
+      return '';
+    }
+    if (!(await this._fileService.exists(uri))) {
+      return '';
+    }
+    const result = await this._fileService.readFile(uri);
+    return normalizeMarkdown(result.content);
+  }
+
+  async writeUserFile(content: string): Promise<void> {
+    await this.ensureScaffold();
+    const uri = this._userFileUri;
     if (!uri) {
       throw new Error('No workspace root folder available');
     }
@@ -262,6 +291,288 @@ export class WorkspaceMemoryService extends Disposable implements IWorkspaceMemo
     }
 
     return this.getDailyMemoryRelativePath(date);
+  }
+
+  /**
+   * M81 — Overwrite the daily memory file for a date with the given body.
+   * The date header (`# YYYY-MM-DD`) is re-applied at the top so callers
+   * passing pure body content don't need to know the header convention.
+   * Used by `memory_edit` action=replace/remove on daily files.
+   */
+  async writeDailyMemory(body: string, date: Date = new Date()): Promise<void> {
+    await this.ensureScaffold();
+    const uri = this.getDailyMemoryUri(date);
+    if (!uri) {
+      throw new Error('No workspace root folder available');
+    }
+    const normalized = normalizeMarkdown(body).trim();
+    const content = normalized
+      ? `# ${formatIsoDate(date)}\n\n${normalized}\n`
+      : `# ${formatIsoDate(date)}\n`;
+    await this._fileService.writeFile(uri, content);
+  }
+
+  // ── M81 Phase 8 — lesson files (progressive disclosure) ────────────────────
+  // MEMORY.md is now an INDEX of pointers. Lesson bodies live at
+  // `.parallx/memory/lessons/<slug>.md` and are read on demand by the agent.
+
+  private get _lessonsDirUri(): URI | undefined {
+    return this.memoryRoot?.joinPath(LESSONS_DIR);
+  }
+
+  private get _archiveDirUri(): URI | undefined {
+    return this.memoryRoot?.joinPath(ARCHIVE_DIR);
+  }
+
+  private get _archiveLessonsDirUri(): URI | undefined {
+    return this._archiveDirUri?.joinPath(ARCHIVE_LESSONS_DIR);
+  }
+
+  private _lessonFileUri(slug: string): URI | undefined {
+    return this._lessonsDirUri?.joinPath(`${slug}.md`);
+  }
+
+  private _archiveLessonFileUri(slug: string): URI | undefined {
+    return this._archiveLessonsDirUri?.joinPath(`${slug}.md`);
+  }
+
+  private async _ensureLessonsDir(): Promise<URI> {
+    await this.ensureScaffold();
+    const uri = this._lessonsDirUri;
+    if (!uri) {
+      throw new Error('No workspace root folder available');
+    }
+    if (!(await this._fileService.exists(uri))) {
+      await this._fileService.mkdir(uri);
+    }
+    return uri;
+  }
+
+  private async _ensureArchiveLessonsDir(): Promise<URI> {
+    await this.ensureScaffold();
+    const archiveRoot = this._archiveDirUri;
+    if (!archiveRoot) {
+      throw new Error('No workspace root folder available');
+    }
+    if (!(await this._fileService.exists(archiveRoot))) {
+      await this._fileService.mkdir(archiveRoot);
+    }
+    const lessonsArchive = this._archiveLessonsDirUri;
+    if (!lessonsArchive) {
+      throw new Error('No workspace root folder available');
+    }
+    if (!(await this._fileService.exists(lessonsArchive))) {
+      await this._fileService.mkdir(lessonsArchive);
+    }
+    return lessonsArchive;
+  }
+
+  getLessonsRootRelativePath(): string {
+    return `${MEMORY_ROOT_SEGMENTS.join('/')}/${LESSONS_DIR}`;
+  }
+
+  getLessonFileRelativePath(slug: string): string {
+    return `${MEMORY_ROOT_SEGMENTS.join('/')}/${LESSONS_DIR}/${slug}.md`;
+  }
+
+  async readLessonFile(slug: string): Promise<string> {
+    const uri = this._lessonFileUri(slug);
+    if (!uri) {
+      return '';
+    }
+    if (!(await this._fileService.exists(uri))) {
+      return '';
+    }
+    const result = await this._fileService.readFile(uri);
+    return normalizeMarkdown(result.content);
+  }
+
+  async writeLessonFile(slug: string, content: string): Promise<void> {
+    if (!slug || !slug.trim()) {
+      throw new Error('lesson slug is required');
+    }
+    await this._ensureLessonsDir();
+    const uri = this._lessonFileUri(slug);
+    if (!uri) {
+      throw new Error('No workspace root folder available');
+    }
+    await this._fileService.writeFile(uri, ensureTrailingNewline(normalizeMarkdown(content)));
+  }
+
+  async archiveLessonFile(slug: string): Promise<boolean> {
+    if (!slug || !slug.trim()) {
+      throw new Error('lesson slug is required');
+    }
+    const sourceUri = this._lessonFileUri(slug);
+    if (!sourceUri || !(await this._fileService.exists(sourceUri))) {
+      return false;
+    }
+    await this._ensureArchiveLessonsDir();
+    const targetUri = this._archiveLessonFileUri(slug);
+    if (!targetUri) {
+      throw new Error('No workspace root folder available');
+    }
+    const sourceContent = (await this._fileService.readFile(sourceUri)).content;
+    await this._fileService.writeFile(targetUri, sourceContent);
+    await this._fileService.delete(sourceUri, { recursive: false, useTrash: false });
+    return true;
+  }
+
+  async listLessons(): Promise<string[]> {
+    const uri = this._lessonsDirUri;
+    if (!uri) {
+      return [];
+    }
+    if (!(await this._fileService.exists(uri))) {
+      return [];
+    }
+    let entries: Array<{ name: string }> = [];
+    try {
+      entries = await this._fileService.readdir(uri) as Array<{ name: string }>;
+    } catch {
+      return [];
+    }
+    return entries
+      .map((entry) => entry.name)
+      .filter((name) => name.endsWith('.md'))
+      .map((name) => name.slice(0, -'.md'.length))
+      .filter((slug) => slug.length > 0)
+      .sort((a, b) => a.localeCompare(b));
+  }
+
+  async parseMemoryIndex(): Promise<Array<{ slug: string; description: string; path: string }>> {
+    const memory = await this.readDurableMemory();
+    if (!memory.trim()) {
+      return [];
+    }
+    const out: Array<{ slug: string; description: string; path: string }> = [];
+    for (const rawLine of memory.split('\n')) {
+      const line = rawLine.trimEnd();
+      const match = line.match(MEMORY_INDEX_LINE_REGEX);
+      if (!match) {
+        continue;
+      }
+      const [, , slug, description] = match;
+      out.push({
+        slug,
+        description: description.trim(),
+        path: `${LESSONS_DIR}/${slug}.md`,
+      });
+    }
+    return out;
+  }
+
+  async addMemoryIndexEntry(slug: string, description: string): Promise<void> {
+    await this.ensureScaffold();
+    if (!slug || !slug.trim()) {
+      throw new Error('lesson slug is required');
+    }
+    const trimmedSlug = slug.trim();
+    const truncatedDescription = (description ?? '').trim().slice(0, MEMORY_INDEX_DESCRIPTION_MAX);
+    const title = humanizeSlug(trimmedSlug);
+    const newLine = `- [${title}](lessons/${trimmedSlug}.md) — ${truncatedDescription}`;
+
+    const current = normalizeMarkdown(await this.readDurableMemory());
+    const base = current.includes('# Memory Index')
+      ? current
+      : MEMORY_INDEX_HEADER;
+
+    const lines = base.split('\n');
+    let replaced = false;
+    const nextLines = lines.map((line) => {
+      const trimmed = line.trimEnd();
+      const match = trimmed.match(MEMORY_INDEX_LINE_REGEX);
+      if (match && match[2] === trimmedSlug) {
+        replaced = true;
+        return newLine;
+      }
+      return line;
+    });
+
+    let nextContent: string;
+    if (replaced) {
+      nextContent = nextLines.join('\n');
+    } else {
+      // Append after trimming trailing blank space.
+      const trimmedBase = nextLines.join('\n').replace(/\n+$/, '');
+      nextContent = `${trimmedBase}\n${newLine}\n`;
+    }
+
+    await this.writeDurableMemory(nextContent);
+  }
+
+  async removeMemoryIndexEntry(slug: string): Promise<void> {
+    if (!slug || !slug.trim()) {
+      return;
+    }
+    const trimmedSlug = slug.trim();
+    const current = normalizeMarkdown(await this.readDurableMemory());
+    if (!current) {
+      return;
+    }
+    const lines = current.split('\n');
+    let removed = false;
+    const nextLines = lines.filter((line) => {
+      const match = line.trimEnd().match(MEMORY_INDEX_LINE_REGEX);
+      if (match && match[2] === trimmedSlug) {
+        removed = true;
+        return false;
+      }
+      return true;
+    });
+    if (!removed) {
+      return;
+    }
+    await this.writeDurableMemory(nextLines.join('\n'));
+  }
+
+  async archiveLegacyConceptSection(): Promise<{ archived: boolean; movedChars: number }> {
+    const current = await this.readDurableMemory();
+    if (!current.trim()) {
+      return { archived: false, movedChars: 0 };
+    }
+    const normalized = normalizeMarkdown(current);
+    const heading = '## Concepts';
+    const headingIndex = normalized.indexOf(heading);
+    if (headingIndex < 0) {
+      return { archived: false, movedChars: 0 };
+    }
+    const bodyStart = headingIndex + heading.length;
+    const nextSectionIndex = normalized.indexOf('\n## ', bodyStart);
+    const sectionEnd = nextSectionIndex >= 0 ? nextSectionIndex : normalized.length;
+    const sectionText = normalized.slice(headingIndex, sectionEnd);
+
+    const matchesSignature = LEGACY_CONCEPTS_SIGNATURE_PATTERNS.every((pattern) => pattern.test(sectionText));
+    if (!matchesSignature) {
+      return { archived: false, movedChars: 0 };
+    }
+
+    await this.ensureScaffold();
+    const archiveRoot = this._archiveDirUri;
+    if (!archiveRoot) {
+      throw new Error('No workspace root folder available');
+    }
+    if (!(await this._fileService.exists(archiveRoot))) {
+      await this._fileService.mkdir(archiveRoot);
+    }
+    const archiveFileUri = archiveRoot.joinPath(ARCHIVE_LEGACY_CONCEPTS_FILE);
+    const stamp = formatIsoDate(new Date());
+    const archiveBody = [
+      `<!-- Archived from MEMORY.md ## Concepts section on ${stamp} by M81 Phase 8. -->`,
+      '',
+      sectionText.trim(),
+      '',
+    ].join('\n');
+    await this._fileService.writeFile(archiveFileUri, archiveBody);
+
+    const before = normalized.slice(0, headingIndex).trimEnd();
+    const after = nextSectionIndex >= 0
+      ? normalized.slice(nextSectionIndex).trimStart()
+      : '';
+    const rewritten = [before, after].filter((part) => part.length > 0).join('\n\n');
+    await this.writeDurableMemory(rewritten ? `${rewritten}\n` : '');
+
+    return { archived: true, movedChars: sectionText.length };
   }
 
   async appendDailyMemory(text: string, date: Date = new Date()): Promise<void> {
@@ -356,88 +667,11 @@ export class WorkspaceMemoryService extends Disposable implements IWorkspaceMemo
     );
   }
 
-  async syncConcepts(concepts: Array<{ concept: string; category: string; summary: string; encounterCount?: number; masteryLevel?: number; struggleCount?: number }>): Promise<void> {
-    await this.ensureScaffold();
-
-    const lines = concepts.length > 0
-      ? concepts.map((concept) => {
-          const details = [
-            `- Category: ${concept.category || 'general'}`,
-            typeof concept.encounterCount === 'number' ? `- Encounters: ${concept.encounterCount}` : undefined,
-            typeof concept.masteryLevel === 'number' ? `- Mastery: ${concept.masteryLevel}` : undefined,
-            typeof concept.struggleCount === 'number' ? `- Struggles: ${concept.struggleCount}` : undefined,
-            `- Summary: ${concept.summary || ''}`,
-          ].filter(Boolean);
-          return [`### ${concept.concept}`, '', ...details].join('\n');
-        })
-      : ['- No imported concepts recorded yet.'];
-
-    const current = await this.readDurableMemory();
-    const base = current.trim().length > 0
-      ? current
-      : '# Durable Memory\n\nCurated long-term decisions, preferences, conventions, and critical facts.\n';
-    const next = replaceMarkdownSection(base, CONCEPTS_SECTION_HEADING, lines.join('\n\n'));
-    await this.writeDurableMemory(next);
-  }
-
-  async readConcepts(): Promise<Array<{ concept: string; category: string; summary: string; encounterCount: number; masteryLevel: number; struggleCount: number }>> {
-    const durableMemory = await this.readDurableMemory();
-    return parseConceptSection(extractMarkdownSection(durableMemory, CONCEPTS_SECTION_HEADING));
-  }
-
-  async upsertConcepts(concepts: Array<{ concept: string; category: string; summary: string; encounterCount?: number; masteryLevel?: number; struggleCount?: number }>): Promise<void> {
-    if (concepts.length === 0) {
-      return;
-    }
-
-    const merged = new Map<string, { concept: string; category: string; summary: string; encounterCount: number; masteryLevel: number; struggleCount: number }>();
-    for (const concept of await this.readConcepts()) {
-      merged.set(normalizeConceptKey(concept.concept), concept);
-    }
-
-    for (const concept of concepts) {
-      const key = normalizeConceptKey(concept.concept);
-      const existing = merged.get(key);
-      if (!existing) {
-        merged.set(key, {
-          concept: concept.concept.trim(),
-          category: concept.category || 'general',
-          summary: concept.summary || '',
-          encounterCount: concept.encounterCount ?? 1,
-          masteryLevel: concept.masteryLevel ?? 0,
-          struggleCount: concept.struggleCount ?? 0,
-        });
-        continue;
-      }
-
-      merged.set(key, {
-        concept: existing.concept,
-        category: existing.category === 'general' ? (concept.category || existing.category) : existing.category,
-        summary: (concept.summary || '').length > existing.summary.length ? (concept.summary || '') : existing.summary,
-        encounterCount: existing.encounterCount + (concept.encounterCount ?? 1),
-        masteryLevel: Math.max(0, Math.min(1, concept.masteryLevel ?? existing.masteryLevel)),
-        struggleCount: existing.struggleCount + (concept.struggleCount ?? 0),
-      });
-    }
-
-    await this.syncConcepts(Array.from(merged.values()));
-  }
-
-  async searchConcepts(query: string, topK: number = 5): Promise<Array<{ concept: string; category: string; summary: string; encounterCount: number; masteryLevel: number; struggleCount: number }>> {
-    const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return [];
-    }
-
-    const queryTerms = normalizedQuery.split(/\s+/).filter((term) => term.length > 1);
-    const concepts = await this.readConcepts();
-    return concepts
-      .map((concept) => ({ concept, score: scoreConcept(queryTerms, concept) }))
-      .filter((entry) => entry.score > 0)
-      .sort((a, b) => b.score - a.score || b.concept.encounterCount - a.concept.encounterCount)
-      .slice(0, topK)
-      .map((entry) => entry.concept);
-  }
+  // M81 Phase 3 Stage 2 — syncConcepts / readConcepts / upsertConcepts /
+  // searchConcepts were the substrate for the auto-extracted `## Concepts`
+  // section in MEMORY.md. Removed; concept curation now flows through the
+  // agent's `memory_edit` tool, which writes free-form markdown that the
+  // RAG retrieval layer surfaces in context per-turn.
 
   async getPreferencesPromptBlock(): Promise<string | undefined> {
     const durableMemory = await this.readDurableMemory();
@@ -530,7 +764,6 @@ export class WorkspaceMemoryService extends Disposable implements IWorkspaceMemo
   async importLegacySnapshot(snapshot: {
     memories: Array<{ sessionId: string; createdAt: string; messageCount: number; summary: string }>;
     preferences: Array<{ key: string; value: string }>;
-    concepts: Array<{ concept: string; category: string; summary: string; encounterCount?: number; masteryLevel?: number }>;
   }): Promise<{ imported: boolean; reason: 'imported' | 'already-imported' | 'empty-snapshot' }> {
     await this.ensureScaffold();
 
@@ -538,7 +771,7 @@ export class WorkspaceMemoryService extends Disposable implements IWorkspaceMemo
     const existingImportSection = extractMarkdownSection(durableMemory, LEGACY_IMPORT_SECTION_HEADING);
     const alreadyImported = existingImportSection?.includes('Imported legacy DB snapshot: yes') === true;
 
-    const hasContent = snapshot.memories.length > 0 || snapshot.preferences.length > 0 || snapshot.concepts.length > 0;
+    const hasContent = snapshot.memories.length > 0 || snapshot.preferences.length > 0;
     if (!hasContent) {
       return { imported: false, reason: 'empty-snapshot' };
     }
@@ -548,20 +781,6 @@ export class WorkspaceMemoryService extends Disposable implements IWorkspaceMemo
     const missingPreferences = snapshot.preferences.filter((preference) => !existingPreferenceKeys.has(preference.key));
     if (missingPreferences.length > 0) {
       await this.upsertPreferences(missingPreferences);
-    }
-
-    const existingConcepts = await this.readConcepts();
-    const existingConceptKeys = new Set(existingConcepts.map((concept) => normalizeConceptKey(concept.concept)));
-    const missingConcepts = snapshot.concepts.filter((concept) => !existingConceptKeys.has(normalizeConceptKey(concept.concept)));
-    if (missingConcepts.length > 0) {
-      await this.upsertConcepts(missingConcepts.map((concept) => ({
-        concept: concept.concept,
-        category: concept.category,
-        summary: concept.summary,
-        encounterCount: concept.encounterCount,
-        masteryLevel: concept.masteryLevel,
-        struggleCount: 0,
-      })));
     }
 
     let importedMemories = 0;
@@ -575,8 +794,7 @@ export class WorkspaceMemoryService extends Disposable implements IWorkspaceMemo
     }
 
     const importedPreferences = missingPreferences.length;
-    const importedConcepts = missingConcepts.length;
-    const appliedChanges = importedMemories > 0 || importedPreferences > 0 || importedConcepts > 0;
+    const appliedChanges = importedMemories > 0 || importedPreferences > 0;
 
     if (!appliedChanges && alreadyImported) {
       return { imported: false, reason: 'already-imported' };
@@ -589,11 +807,9 @@ export class WorkspaceMemoryService extends Disposable implements IWorkspaceMemo
       `- Imported at: ${importedAt}`,
       `- Imported memories: ${snapshot.memories.length}`,
       `- Imported preferences: ${snapshot.preferences.length}`,
-      `- Imported concepts: ${snapshot.concepts.length}`,
       `- Last normalized at: ${new Date().toISOString()}`,
       `- Canonical memories present: ${snapshot.memories.length - importedMemories}/${snapshot.memories.length}`,
       `- Canonical preferences present: ${snapshot.preferences.length - importedPreferences}/${snapshot.preferences.length}`,
-      `- Canonical concepts present: ${snapshot.concepts.length - importedConcepts}/${snapshot.concepts.length}`,
     ].join('\n');
     const nextDurableMemory = replaceMarkdownSection(refreshedDurableMemory, LEGACY_IMPORT_SECTION_HEADING, importBody);
     await this.writeDurableMemory(nextDurableMemory);

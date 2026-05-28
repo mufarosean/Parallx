@@ -119,12 +119,9 @@ export interface IDefaultParticipantServices {
   recallMemories?(query: string, sessionId?: string): Promise<string | undefined>;
   recallTranscripts?(query: string): Promise<string | undefined>;
   storeSessionMemory?(sessionId: string, summary: string, messageCount: number): Promise<void>;
-  storeConceptsFromSession?(concepts: Array<{ concept: string; category: string; summary: string; struggled: boolean }>, sessionId: string): Promise<void>;
-  recallConcepts?(query: string): Promise<string | undefined>;
   isSessionEligibleForSummary?(messageCount: number): boolean;
   hasSessionMemory?(sessionId: string): Promise<boolean>;
   getSessionMemoryMessageCount?(sessionId: string): Promise<number | null>;
-  extractPreferences?(text: string): Promise<void>;
   getPreferencesForPrompt?(): Promise<string | undefined>;
   getPromptOverlay?(activeFilePath?: string): Promise<string | undefined>;
   listFilesRelative?(relativePath: string): Promise<{ name: string; type: 'file' | 'directory' }[]>;
@@ -321,6 +318,12 @@ export interface ISkillCatalogEntry {
     readonly required: boolean;
   }[];
   readonly body?: string;
+  /**
+   * M81 Phase 6 — workspace-relative paths of bundled scripts/references/
+   * assets discovered under the skill folder. Optional for backward
+   * compatibility with consumers that pre-date bundled-file support.
+   */
+  readonly bundledFiles?: readonly string[];
 }
 
 /** M39 Phase C — an activated skill ready for injection into the system prompt. */
@@ -627,6 +630,39 @@ export interface IBuiltInToolCanonicalMemorySearch {
     query: string,
     options?: { layer?: 'all' | 'durable' | 'daily'; date?: string },
   ): Promise<Array<{ sourceId: string; contextPrefix: string; text: string; score: number; layer: 'durable' | 'daily' }>>;
+}
+
+/**
+ * Workspace memory write accessor for built-in tools (M81 Phase 2).
+ *
+ * Surfaces the subset of `IWorkspaceMemoryService` that `memory_edit` needs.
+ * Keeps the tool factory decoupled from the full service interface so we can
+ * mock it in unit tests and so the tool can't reach methods outside its
+ * contract.
+ */
+export interface IBuiltInToolWorkspaceMemory {
+  /** Relative path of USER.md (e.g. `.parallx/USER.md`). */
+  getUserFileRelativePath(): string;
+  /** Relative path of MEMORY.md (e.g. `.parallx/memory/MEMORY.md`). */
+  getDurableMemoryRelativePath(): string;
+  /** Relative path of today's daily memory file (or a specified date). */
+  getDailyMemoryRelativePath(date?: Date): string;
+  readUserFile(): Promise<string>;
+  writeUserFile(content: string): Promise<void>;
+  readDurableMemory(): Promise<string>;
+  writeDurableMemory(content: string): Promise<void>;
+  readDailyMemory(date?: Date): Promise<string>;
+  appendDailyMemory(text: string, date?: Date): Promise<void>;
+  writeDailyMemory(body: string, date?: Date): Promise<void>;
+  ensureDailyMemory(date?: Date): Promise<string>;
+  // M81 Phase 8 — lesson files (progressive disclosure).
+  getLessonFileRelativePath(slug: string): string;
+  readLessonFile(slug: string): Promise<string>;
+  writeLessonFile(slug: string, content: string): Promise<void>;
+  archiveLessonFile(slug: string): Promise<boolean>;
+  parseMemoryIndex(): Promise<Array<{ slug: string; description: string; path: string }>>;
+  addMemoryIndexEntry(slug: string, description: string): Promise<void>;
+  removeMemoryIndexEntry(slug: string): Promise<void>;
 }
 
 /** Canonical transcript search accessor for built-in tools. */

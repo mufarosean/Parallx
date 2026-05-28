@@ -50,7 +50,6 @@ import type { PromptFileService } from '../../../services/promptFileService.js';
 import type { ChatWidget } from '../widgets/chatWidget.js';
 import type { IWorkspaceSessionContext } from '../../../workspace/workspaceSessionContext.js';
 import type { RetrievalTrace } from '../../../services/retrievalService.js';
-import { detectPreferences, formatConceptContextBlock } from '../../../services/memoryService.js';
 import { searchWorkspaceTranscripts } from '../../../services/transcriptSearch.js';
 import type { PermissionService } from '../../../services/permissionService.js';
 
@@ -1386,86 +1385,10 @@ export class ChatDataService {
     try { await this._d.memoryService.storeMemory(sessionId, summary, messageCount); } catch { /* best-effort */ }
   }
 
-  /**
-   * Store learning concepts extracted from a session (M17 P1.2 Task 1.2.8).
-   */
-  async storeConceptsFromSession(
-    concepts: Array<{ concept: string; category: string; summary: string; struggled: boolean }>,
-    sessionId: string,
-  ): Promise<void> {
-    if (this._d.workspaceMemoryService) {
-      try {
-        await this._d.workspaceMemoryService.upsertConcepts(concepts.map((c) => ({
-          concept: c.concept,
-          category: c.category,
-          summary: c.summary,
-          encounterCount: 1,
-          masteryLevel: c.struggled ? 0 : 0.1,
-          struggleCount: c.struggled ? 1 : 0,
-        })));
-        return;
-      } catch {
-        // fall through to legacy fallback only if canonical upsert fails
-      }
-    }
-
-    if (!this._d.memoryService) { return; }
-    try {
-      const mapped = concepts.map((c) => ({
-        concept: c.concept,
-        category: c.category,
-        summary: c.summary,
-        masteryLevel: 0,
-        encounterCount: 1,
-        struggleCount: c.struggled ? 1 : 0,
-        firstSeen: '',
-        lastSeen: '',
-        lastAccessed: '',
-        sourceSessions: '[]',
-        decayScore: 1.0,
-      }));
-      await this._d.memoryService.storeConcepts(mapped, sessionId);
-    } catch { /* best-effort */ }
-  }
-
-  /**
-   * Recall learning concepts relevant to a query (M17 P1.2 Task 1.2.8).
-   * Returns formatted context string or undefined.
-   */
-  async recallConcepts(query: string): Promise<string | undefined> {
-    if (this._d.workspaceMemoryService) {
-      try {
-        const concepts = await this._d.workspaceMemoryService.searchConcepts(query);
-        if (!concepts.length) { return undefined; }
-        const now = new Date().toISOString();
-        const formatted = formatConceptContextBlock(concepts.map((concept, index) => ({
-          id: index + 1,
-          concept: concept.concept,
-          category: concept.category,
-          summary: concept.summary,
-          masteryLevel: concept.masteryLevel,
-          encounterCount: concept.encounterCount,
-          struggleCount: concept.struggleCount,
-          firstSeen: now,
-          lastSeen: now,
-          lastAccessed: now,
-          sourceSessions: '[]',
-          decayScore: 1,
-        })));
-        return formatted || undefined;
-      } catch {
-        // fall through to legacy fallback only if canonical search fails
-      }
-    }
-
-    if (!this._d.memoryService) { return undefined; }
-    try {
-      const concepts = await this._d.memoryService.recallConcepts(query);
-      if (!concepts.length) { return undefined; }
-      const formatted = this._d.memoryService.formatConceptContext(concepts);
-      return formatted || undefined;
-    } catch { return undefined; }
-  }
+  // M81 Phase 3 Stage 2 — storeConceptsFromSession + recallConcepts removed.
+  // Concept curation now happens through the agent's `memory_edit` tool,
+  // which writes high-signal entries to MEMORY.md. The auto-extraction path
+  // is gone; per-turn recall comes from the standard RAG lane over MEMORY.md.
 
   isSessionEligibleForSummary(messageCount: number): boolean {
     return this._d.memoryService?.isSessionEligibleForSummary(messageCount) ?? false;
@@ -1491,24 +1414,9 @@ export class ChatDataService {
     try { return await this._d.memoryService.getMemoryMessageCount(sessionId); } catch { return null; }
   }
 
-  async extractPreferences(text: string): Promise<void> {
-    if (this._d.workspaceMemoryService) {
-      try {
-        const extracted = detectPreferences(text);
-        if (extracted.length > 0) {
-          await this._d.workspaceMemoryService.upsertPreferences(extracted);
-        }
-        return;
-      } catch {
-        // fall through to legacy fallback only if canonical upsert fails
-      }
-    }
-
-    if (!this._d.memoryService) { return; }
-    try {
-      await this._d.memoryService.extractAndStorePreferences(text);
-    } catch { /* best-effort */ }
-  }
+  // M81 Phase 4 — extractPreferences removed. Preferences are now written
+  // explicitly by the agent via `memory_edit` (USER.md for user-facing,
+  // MEMORY.md for project-level). No invisible regex extraction.
 
   async getPreferencesForPrompt(): Promise<string | undefined> {
     try {

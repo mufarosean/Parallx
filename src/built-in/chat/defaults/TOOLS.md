@@ -21,20 +21,20 @@ Use the prefix to pick the right family before reading any description.
   For canvas pages, use `canvas_read_page` instead.
 - **list_files** — List directory contents on disk
 - **write_file** — Create or overwrite a workspace file. For canvas pages,
-  use `canvas_create_page` or `canvas_compose_page` instead.
+  use `canvas_create_page` or `canvas_edit_page` instead.
 - **edit_file** — Edit a workspace file by find-and-replace. For canvas
-  pages, use `canvas_edit_block` or `canvas_compose_page` instead.
+  pages, use `canvas_edit_block` or `canvas_edit_page` instead.
 - **delete_file** — Delete a workspace file.
 
 ## Canvas Skills
 - **canvas_find_pages** — Find or list canvas pages by text query (matches
   title AND content), property filters, sort, group
-- **canvas_read_page** — Read a canvas page by UUID, title, or the literal
-  `"current"` for the active editor page
-- **canvas_get_page** — Get a page's metadata, properties, and applicable
-  property definitions
-- **canvas_create_page** — Create a new canvas page (requires approval)
-- **canvas_compose_page** — Author or update a page from markdown
+- **canvas_read_page** — Read a canvas page (body + metadata + properties)
+  by UUID, title, or the literal `"current"` for the active editor page.
+  For workspace-wide property definitions use `canvas_list_property_definitions`.
+- **canvas_create_page** — Create a NEW canvas page; UUID is auto-assigned
+  (requires approval)
+- **canvas_edit_page** — EDIT an existing canvas page from markdown by UUID
   (replace / append / prepend; requires approval)
 - **canvas_set_page_property** — Set a page property (tags, status, etc.)
 - **canvas_set_page_style** — Update a page's icon, cover image, font
@@ -70,7 +70,7 @@ Use the prefix to pick the right family before reading any description.
      it falls back through exact UUID → exact title → partial title
      match.
   4. Only after you have a single matching UUID should you call write
-     tools (`canvas_compose_page`, `canvas_set_page_property`,
+     tools (`canvas_edit_page`, `canvas_set_page_property`,
      `canvas_set_page_style`).
 - If `canvas_find_pages` returns multiple candidates, surface the top
   results to the user and ask which one — do not guess.

@@ -62,12 +62,12 @@ your approval.
      - **Enabled**: ✓
    - Save. The status dot should go `Connecting… → Connected`. The
      server reads the on-disk credentials and refreshes its access
-     token in-process; Parallx core sees only the `gmail.list_unread`
+     token in-process; Parallx core sees only the `gmail.list_emails`
      tool that the server exposes via STDIO JSON-RPC.
 
 5. **Test the connection.**
    - Open chat → ask: *"What unread email do I have?"*
-   - The agent calls the `gmail.list_unread` tool. First call surfaces
+   - The agent calls the `gmail.list_emails` tool. First call surfaces
      the standard MCP-tool approval prompt (every MCP tool ships at
      **require-approval** on first use). Approve once; subsequent calls
      run without prompting if you remembered the decision.
@@ -77,7 +77,7 @@ your approval.
 ```
 ┌─────────────────────────┐         spawn (mcp:spawn IPC)
 │ Parallx renderer        │  ─────────────────────────────────►  ┌──────────────────────────────┐
-│  • gmail.list_unread    │                                       │ tools/gmail-mcp-server       │
+│  • gmail.list_emails    │                                       │ tools/gmail-mcp-server       │
 │    tool call            │                                       │ (Node child process)         │
 │  • no env injection;    │  STDIO JSON-RPC                       │                              │
 │    server self-hosts    │  ◄─────────────────────────────────   │  • reads ~/.parallx/...      │
@@ -123,8 +123,8 @@ What the tool **never** reads:
 
 ## What gets logged
 
-- **Autonomy event log** (per `gmail.list_unread` call):
-  `{ tool: "gmail.list_unread", argsDigest: <sha-256 of canonical args>, outcome }`.
+- **Autonomy event log** (per `gmail.list_emails` call):
+  `{ tool: "gmail.list_emails", argsDigest: <sha-256 of canonical args>, outcome }`.
   Never the resulting messages, never subjects.
 - **MCP child process stderr**: only counts (e.g. `list_unread → 7 message(s)`).
   Never subjects or snippets.
@@ -163,7 +163,7 @@ is in the MCP child process.
 |------------------------------------------------------|----------------------------------------------|---------------------------------------------------------------------|
 | `--auth` fails with "missing env"                    | `GMAIL_OAUTH_CLIENT_ID/SECRET` not set       | Re-run with both env vars set (exit code `2`).                      |
 | `--auth` reports "no refresh_token in response"      | Google returned grant without offline access | Revoke the OAuth client at myaccount.google.com → re-run `--auth`.  |
-| MCP server starts but `gmail.list_unread` fails 401  | Refresh token revoked / expired              | Re-run `node dist/index.js --auth`.                                 |
+| MCP server starts but `gmail.list_emails` fails 401  | Refresh token revoked / expired              | Re-run `node dist/index.js --auth`.                                 |
 | MCP server start fails with "credentials missing"    | `~/.parallx/gmail-mcp/credentials.json` gone | Re-run `--auth`.                                                    |
 | Tool returns `[]` even though inbox has unread       | Filter or query too narrow                   | Check `since` and `query` args in the tool call.                    |
 

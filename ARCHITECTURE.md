@@ -336,16 +336,28 @@ getWorkspaceDigest()
 
 **Prompt Assembly Order:**
 1. Core PARALLX_IDENTITY (hardcoded personality + behavior rules)
-2. `SOUL.md` (user-editable personality, workspace root)
-3. `AGENTS.md` (user-editable project context, workspace root)
-4. `TOOLS.md` (auto-generated from skill manifests)
-5. `.parallx/rules/*.md` (pattern-matched to active file)
-6. Workspace digest (auto-generated page titles + file tree + key file previews)
-7. RAG results (auto-retrieved per user message)
-8. Explicit `@` mentions / attachments
-9. Memory context (recalled from past sessions)
-10. Conversation history
-11. User's current message
+2. `SOUL.md` (user-editable personality, `.parallx/SOUL.md`)
+3. `USER.md` (user-editable identity + preferences, `.parallx/USER.md`, M81)
+4. `AGENTS.md` (user-editable project context, `.parallx/AGENTS.md`)
+5. `TOOLS.md` (auto-generated from skill manifests)
+6. `.parallx/rules/*.md` (pattern-matched to active file)
+7. Workspace digest (auto-generated page titles + file tree + key file previews)
+8. RAG results (auto-retrieved per user message; reads MEMORY.md + daily logs through the standard vector index)
+9. Explicit `@` mentions / attachments
+10. Memory context (recalled from past sessions)
+11. Conversation history
+12. User's current message
+
+**Agent-curated memory surface (M81 Phase 8):** `.parallx/memory/` is now an index + topic-file layout, structurally identical to how skills work.
+
+- `MEMORY.md` is a **bounded INDEX** (~2,500 chars). Each line points to a lesson file: `- [Title](lessons/<slug>.md) — one-line description`.
+- `lessons/<slug>.md` files hold the full body. They are **NOT auto-loaded** — the agent reads them on demand via `memory_get name=<slug>` (or `read_file`). Same progressive-disclosure pattern as the skill catalog.
+- `YYYY-MM-DD.md` daily logs are unchanged (append-only, unbounded).
+- `_archive/` holds removed lessons and the pre-M81 regex-extraction noise from MEMORY.md (migrated on first `/init`).
+
+Writes go through one tool, `memory_edit`, with four file values (USER / MEMORY / daily / lesson). The regex-based preference and concept auto-extraction pipelines were removed in Phases 3–4 — agent-authored writes are the single substrate. Corrections, tool-use gotchas, and durable lessons live in `lessons/`; preferences live in `USER.md`; events live in dailies.
+
+`/init` runs a one-time legacy archive (moves pre-M81 `## Concepts` blocks to `_archive/pre-m81-concepts.md`) and, when daily logs exist but no lessons yet, runs an LLM consolidation pass to derive 3–8 starter lessons from recent dailies.
 
 ### `electron/`
 **Electron main process and preload bridge (outside `src/`).**

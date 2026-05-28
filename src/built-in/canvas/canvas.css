@@ -663,6 +663,37 @@
   background-color: var(--vscode-list-activeSelectionBackground);
 }
 
+/*
+ * M81 P12 — Multi-selection highlight (shift/ctrl-click).
+ *
+ * Uses an explicit blue tint matching the canvas's own selection accent
+ * (cf. .selectedCell, used at 0.12 opacity for table-cell selection).
+ * The `--vscode-list-inactiveSelectionBackground` token is undefined in
+ * our theme bundle, so var()-only fell back to transparent and the user
+ * couldn't see what they had selected. A left-border accent reinforces
+ * the highlight independent of background color in case theming changes
+ * the alpha-blend later.
+ */
+.canvas-node--multi-selected {
+  background-color: rgba(45, 170, 219, 0.22);
+  box-shadow: inset 3px 0 0 var(--vscode-button-background, #2383e2);
+}
+
+.canvas-node--multi-selected:hover {
+  background-color: rgba(45, 170, 219, 0.28);
+}
+
+/*
+ * When a row is BOTH the active editor page AND part of the multi-
+ * selection, keep the active-selection background dominant (it's the
+ * stronger color) but layer the multi-select accent bar so the user
+ * still sees the row is part of the batch.
+ */
+.canvas-node--selected.canvas-node--multi-selected {
+  background-color: var(--vscode-list-activeSelectionBackground, rgba(45, 170, 219, 0.22));
+  box-shadow: inset 3px 0 0 var(--vscode-button-background, #2383e2);
+}
+
 /* ── Icon area (shared container for icon + chevron overlay) ── */
 
 .canvas-node-icon-area {
@@ -805,15 +836,48 @@
 }
 
 /* Placeholder — Notion-style muted italic.
-   position:absolute keeps it fully out of flow so the cursor always
-   renders at the LEFT edge of the block, not after the placeholder text. */
-.canvas-tiptap-editor .is-editor-empty::before,
-.canvas-tiptap-editor .is-empty::before {
+ *
+ * position:absolute keeps it fully out of flow so the cursor always
+ * renders at the LEFT edge of the block, not after the placeholder text.
+ *
+ * EXCLUDES table structural elements (tr, td, th, tableWrapper).
+ * Per CSS spec, when a `<tr>` contains a `::before` pseudo, the browser
+ * generates an anonymous `<td>` wrapping it — even when the pseudo is
+ * `position: absolute`. That phantom cell shifts the real cells right
+ * by one column, producing the M81 P12 bug where empty table body rows
+ * rendered with their cells offset relative to the header row. The
+ * placeholder is meaningful for paragraph-like blocks only.
+ */
+.canvas-tiptap-editor .is-editor-empty:not(tr):not(td):not(th):not(.tableWrapper)::before,
+.canvas-tiptap-editor .is-empty:not(tr):not(td):not(th):not(.tableWrapper)::before {
   content: attr(data-placeholder);
   position: absolute;
   color: var(--vscode-input-placeholderForeground, rgba(255, 255, 255, 0.25));
   pointer-events: none;
   font-style: normal;
+}
+
+/*
+ * Table-cell placeholders truncate with ellipsis. The placeholder text
+ * "Type '/' for commands..." is wider than a column at typical widths
+ * and was wrapping to multiple lines (or spilling past the cell border)
+ * inside table cells (user report 2026-05-27).
+ *
+ * `display: inline-block` is required because `text-overflow: ellipsis`
+ * only applies to block / inline-block containers, not the default
+ * inline pseudo. `left: 0; right: 0` plus the inline-block + `width:
+ * auto` would still grow to content; we anchor the pseudo to the cell's
+ * content area and clip with `width: calc(...)` accounting for cell
+ * padding (8px top/bottom, 12px left/right per the table cell rule).
+ */
+.canvas-tiptap-editor table p.is-empty::before,
+.canvas-tiptap-editor table p.is-editor-empty::before {
+  display: inline-block;
+  max-width: calc(100% - 4px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
 }
 
 /* Paragraphs/headings need position:relative so the absolute placeholder
@@ -917,6 +981,20 @@
   flex-shrink: 0;
   margin-top: 5px;
   user-select: none;
+}
+
+/*
+ * The taskItem renders as
+ *   <li><label>[checkbox]</label><div><p>...</p></div></li>
+ * with the <li> as a flex row. Tiptap doesn't set flex sizing on the inner
+ * <div>, so it defaults to `flex: 0 1 auto` and collapses to its content
+ * width. With an empty paragraph the placeholder text then wraps one char
+ * per line (PX-CANVAS-2026-05-27 bug #1). Give the wrapper div the rest of
+ * the row so the paragraph (and its placeholder) lays out at full width.
+ */
+.canvas-tiptap-editor ul[data-type="taskList"] li > div {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .canvas-tiptap-editor ul[data-type="taskList"] li label input[type="checkbox"] {
@@ -2177,6 +2255,12 @@
   font-weight: 500;
   font-size: var(--parallx-fontSize-lg);
   color: rgba(255, 255, 255, 0.65);
+  /* Browsers default <th> to text-align: center; Notion and most modern
+   * notes apps left-align header cells. Without this override the cursor
+   * (and the placeholder pseudo) sat in the middle of the cell, so the
+   * placeholder text started mid-cell and overflowed into the next one
+   * even with text-overflow:ellipsis set. */
+  text-align: left;
 }
 
 .canvas-tiptap-editor table td > *:first-child,
@@ -3319,6 +3403,13 @@
   color: rgba(255, 255, 255, 0.3);
   text-align: center;
   margin-top: 8px;
+}
+
+.canvas-cover-upload-error {
+  font-size: var(--parallx-fontSize-base);
+  color: var(--vscode-errorForeground);
+  margin-top: 8px;
+  text-align: center;
 }
 
 .canvas-cover-link-row {

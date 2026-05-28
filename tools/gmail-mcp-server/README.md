@@ -15,7 +15,7 @@ Parallx core.
   a Gmail server vs. any other MCP server.
 - **Process isolation.** Runs as a child Node process — never inside
   the Parallx renderer or main process.
-- **Read-only.** Single tool: `list_unread`. No mutations, no writes.
+- **Read-only.** Single tool: `list_emails` (formerly `list_unread`; the old name is accepted for one release for backward compatibility). No mutations, no writes.
 - **Scope minimization.** Hits only `gmail.googleapis.com`; no other
   network egress at runtime.
 - **Privacy.** Never logs message bodies. Subjects and senders are
@@ -25,13 +25,23 @@ Parallx core.
 
 ## Tool
 
-### `list_unread`
+### `list_emails`
 
-| Field   | Type     | Notes                                                       |
-|---------|----------|-------------------------------------------------------------|
-| `since` | string?  | ISO 8601; only mail after this timestamp.                   |
-| `max`   | number?  | 1–100. Default 25.                                          |
-| `query` | string?  | Optional Gmail query, e.g. `from:alice OR is:important`.    |
+General-purpose Gmail search. All parameters are optional — combine them
+freely to filter by date range, sender, account, topic, label, etc.
+
+| Field          | Type     | Notes                                                                                       |
+|----------------|----------|---------------------------------------------------------------------------------------------|
+| `since`        | string?  | ISO 8601; only mail after this timestamp. Composable with `query`.                          |
+| `max`          | number?  | 1–500. Default 25.                                                                          |
+| `query`        | string?  | Gmail search syntax. e.g. `from:alice@x.com`, `subject:invoice`, `has:attachment`, `is:starred`, `after:2026/01/01 before:2026/02/01`, `from:(boss OR hr) vacation`. |
+| `read_state`   | enum?    | `unread` (default), `read`, `all`.                                                          |
+| `include_body` | boolean? | Include decoded plain-text body (truncated to 8 KB). Default false.                         |
+| `page_token`   | string?  | Opaque Gmail pageToken for paginating beyond `max` results per call.                        |
+
+**Backward compatibility:** the server still accepts the legacy tool name
+`list_unread` for one release, so any pinned skill or extension config
+keeps working until rebuilt. New callers should use `list_emails`.
 
 Returns:
 

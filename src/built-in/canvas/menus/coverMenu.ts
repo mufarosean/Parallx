@@ -154,37 +154,53 @@ export class CoverMenuController implements ICanvasMenu {
       content.innerHTML = '';
       const uploadBtn = $('button.canvas-cover-upload-btn');
       uploadBtn.textContent = 'Choose an image';
+      const errEl = $('div.canvas-cover-upload-error');
+      errEl.style.display = 'none';
+      const showError = (msg: string) => {
+        errEl.textContent = msg;
+        errEl.style.display = 'block';
+      };
       uploadBtn.addEventListener('click', async () => {
+        errEl.style.display = 'none';
         try {
           const electron = (window as any).parallxElectron;
-          if (!electron?.dialog?.openFile) return;
+          if (!electron?.dialog?.openFile) {
+            showError('File picker is unavailable in this environment.');
+            return;
+          }
           const filePaths = await electron.dialog.openFile({
             filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
             properties: ['openFile'],
           });
-          if (filePaths?.[0]) {
-            const filePath = filePaths[0];
-            const result = await electron.fs.readFile(filePath);
-            if (result?.content && result?.encoding === 'base64') {
-              const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
-              const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
-              const dataUrl = `data:${mime};base64,${result.content}`;
-              if (result.content.length > 2 * 1024 * 1024 * 1.37) {
-                alert('Image is too large (max 2MB). Please choose a smaller image.');
-                return;
-              }
-              options.onSelectCover(dataUrl);
-              dismiss();
-            }
+          if (!filePaths?.[0]) return; // user cancelled
+          const filePath = filePaths[0];
+          const result = await electron.fs.readFile(filePath);
+          if (result?.error) {
+            showError(`Could not read file: ${result.error.message || result.error.code || 'unknown error'}.`);
+            return;
           }
+          if (!result?.content || result.encoding !== 'base64') {
+            showError('Could not read the selected file.');
+            return;
+          }
+          if (result.content.length > 2 * 1024 * 1024 * 1.37) {
+            showError('Image is too large (max 2 MB).');
+            return;
+          }
+          const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
+          const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+          options.onSelectCover(`data:${mime};base64,${result.content}`);
+          dismiss();
         } catch (err) {
           console.error('[CoverMenu] Cover upload failed:', err);
+          showError('Upload failed — see console.');
         }
       });
       content.appendChild(uploadBtn);
       const hint = $('div.canvas-cover-upload-hint');
       hint.textContent = 'Recommended: 1500×600px or wider. Max 2MB.';
       content.appendChild(hint);
+      content.appendChild(errEl);
     };
 
     // ── Link tab ──

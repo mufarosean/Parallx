@@ -384,7 +384,7 @@ describe('getToolColor (M65 Iter 2)', () => {
     expect(getToolColor('write_file')).toBe('blue');
     expect(getToolColor('edit_file')).toBe('blue');
     expect(getToolColor('canvas_create_page')).toBe('blue');
-    expect(getToolColor('canvas_compose_page')).toBe('blue');
+    expect(getToolColor('canvas_edit_page')).toBe('blue');
     expect(getToolColor('canvas_set_page_property')).toBe('blue');
     expect(getToolColor('canvas_set_page_style')).toBe('blue');
     expect(getToolColor('canvas_edit_block')).toBe('blue');

@@ -203,6 +203,13 @@ export async function setupCanvasPage(
   // Create a new page — handles the database-service context menu
   await clickNewPage(page);
 
+  // M81 P12: a new page creation auto-opens the rename popup at the
+  // new row in the PAGES section. That popup intercepts pointer events
+  // on whatever row it overlaps, so dismiss it before attempting to
+  // click another row.
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(120);
+
   // Open the newly created page (last in sort order)
   await page.locator('.canvas-node').last().click();
   await page.waitForSelector('.tiptap', { timeout: 10_000 });

@@ -439,16 +439,28 @@ export class BlockSelectionController {
   /**
    * Move all selected blocks up by one position within their parent.
    * Returns true if handled.
+   *
+   * Bootstrap: if no block is selected, first select the block at the cursor —
+   * matches the established pattern in `extendSelectionUp/Down`. Without this
+   * bootstrap, Mod-Shift-ArrowUp inside a table cell (or any context where
+   * Escape is intercepted before `selectAtCursor` can fire) is a no-op
+   * because nothing is in the selection set.
    */
   moveSelectedUp(): boolean {
+    if (!this.hasSelection) {
+      if (!this.selectAtCursor()) return false;
+    }
     return this._moveSelected('up');
   }
 
   /**
    * Move all selected blocks down by one position within their parent.
-   * Returns true if handled.
+   * Returns true if handled. Bootstrap: see `moveSelectedUp`.
    */
   moveSelectedDown(): boolean {
+    if (!this.hasSelection) {
+      if (!this.selectAtCursor()) return false;
+    }
     return this._moveSelected('down');
   }
 

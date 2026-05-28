@@ -28,12 +28,9 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly recallMemories?: IDefaultParticipantServices['recallMemories'];
   readonly recallTranscripts?: IDefaultParticipantServices['recallTranscripts'];
   readonly storeSessionMemory?: IDefaultParticipantServices['storeSessionMemory'];
-  readonly storeConceptsFromSession?: IDefaultParticipantServices['storeConceptsFromSession'];
-  readonly recallConcepts?: IDefaultParticipantServices['recallConcepts'];
   readonly isSessionEligibleForSummary?: IDefaultParticipantServices['isSessionEligibleForSummary'];
   readonly hasSessionMemory?: IDefaultParticipantServices['hasSessionMemory'];
   readonly getSessionMemoryMessageCount?: IDefaultParticipantServices['getSessionMemoryMessageCount'];
-  readonly extractPreferences?: IDefaultParticipantServices['extractPreferences'];
   readonly getPreferencesForPrompt?: IDefaultParticipantServices['getPreferencesForPrompt'];
   readonly getPromptOverlay?: IDefaultParticipantServices['getPromptOverlay'];
   readonly listFilesRelative?: IDefaultParticipantServices['listFilesRelative'];
@@ -41,6 +38,10 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly writeFileRelative?: IDefaultParticipantServices['writeFileRelative'];
   readonly existsRelative?: IDefaultParticipantServices['existsRelative'];
   readonly invalidatePromptFiles?: IDefaultParticipantServices['invalidatePromptFiles'];
+  // M81 Phase 8 — workspace memory accessor for `/init` (legacy archive +
+  // lessons consolidation). Optional; chat/main.ts wires this when a
+  // WorkspaceMemoryService is registered.
+  readonly workspaceMemory?: IDefaultParticipantServices['workspaceMemory'];
   readonly reportContextPills?: (pills: IContextPill[]) => void;
   readonly reportRetrievalDebug?: IDefaultParticipantServices['reportRetrievalDebug'];
   readonly reportResponseDebug?: IDefaultParticipantServices['reportResponseDebug'];
@@ -154,12 +155,9 @@ export function buildOpenclawDefaultParticipantServices(
     recallMemories: deps.recallMemories,
     recallTranscripts: deps.recallTranscripts,
     storeSessionMemory: deps.storeSessionMemory,
-    storeConceptsFromSession: deps.storeConceptsFromSession,
-    recallConcepts: deps.recallConcepts,
     isSessionEligibleForSummary: deps.isSessionEligibleForSummary,
     hasSessionMemory: deps.hasSessionMemory,
     getSessionMemoryMessageCount: deps.getSessionMemoryMessageCount,
-    extractPreferences: deps.extractPreferences,
     getPreferencesForPrompt: deps.getPreferencesForPrompt,
     getPromptOverlay: deps.getPromptOverlay,
     listFilesRelative: deps.listFilesRelative,
@@ -167,6 +165,7 @@ export function buildOpenclawDefaultParticipantServices(
     writeFileRelative: deps.writeFileRelative,
     existsRelative: deps.existsRelative,
     invalidatePromptFiles: deps.invalidatePromptFiles,
+    workspaceMemory: deps.workspaceMemory,
     reportContextPills: deps.reportContextPills,
     reportRetrievalDebug: deps.reportRetrievalDebug,
     reportResponseDebug: deps.reportResponseDebug,

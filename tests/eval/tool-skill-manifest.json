@@ -15,22 +15,15 @@
       "category": "canvas"
     },
     {
-      "id": "canvas_get_page",
-      "description": "Get a canvas page's metadata, properties, and applicable property definitions. UUID only.",
-      "paramsSchema": { "type": "object", "required": ["pageId"], "properties": { "pageId": { "type": "string" } } },
-      "source": "src/built-in/chat/tools/pageTools.ts",
-      "category": "canvas"
-    },
-    {
       "id": "canvas_create_page",
-      "description": "Create a CANVAS PAGE (canvas page DB) from markdown. For files on disk use write_file.",
+      "description": "Create a NEW canvas page (canvas page DB). UUID is auto-assigned. Use canvas_edit_page to modify an existing page. For files on disk use write_file.",
       "paramsSchema": { "type": "object", "required": ["title"], "properties": { "title": { "type": "string" }, "markdown": { "type": "string" }, "content": { "type": "string" }, "icon": { "type": "string" }, "parent_id": { "type": "string" } } },
       "source": "src/built-in/chat/tools/pageTools.ts",
       "category": "canvas"
     },
     {
-      "id": "canvas_compose_page",
-      "description": "Write or update a CANVAS PAGE from markdown. mode: replace (default), append, or prepend.",
+      "id": "canvas_edit_page",
+      "description": "EDIT an existing CANVAS PAGE (by UUID) from markdown. mode: replace (default), append, or prepend. Use canvas_create_page for new pages.",
       "paramsSchema": { "type": "object", "required": ["pageId", "markdown"], "properties": { "pageId": { "type": "string" }, "markdown": { "type": "string" }, "mode": { "type": "string", "enum": ["replace", "append", "prepend"] } } },
       "source": "src/built-in/chat/tools/pageTools.ts",
       "category": "canvas"
@@ -65,7 +58,7 @@
     },
     {
       "id": "canvas_edit_block",
-      "description": "Replace the plain-text content of a single block. Markdown is NOT parsed — pass plain text. Use canvas_compose_page for richer edits.",
+      "description": "Replace the plain-text content of a single block. Markdown is NOT parsed — pass plain text. Use canvas_edit_page for richer edits.",
       "paramsSchema": { "type": "object", "required": ["pageId", "blockId", "newContent"], "properties": { "pageId": { "type": "string" }, "blockId": { "type": "string" }, "newContent": { "type": "string" }, "idempotencyKey": { "type": "string" } } },
       "source": "src/built-in/chat/tools/blockTools.ts",
       "category": "canvas"
@@ -101,7 +94,7 @@
     },
     {
       "id": "write_file",
-      "description": "Create or overwrite a workspace FILE on disk. For canvas pages use canvas_create_page or canvas_compose_page.",
+      "description": "Create or overwrite a workspace FILE on disk. For canvas pages use canvas_create_page or canvas_edit_page.",
       "paramsSchema": { "type": "object", "required": ["path", "content"], "properties": { "path": { "type": "string" }, "content": { "type": "string" } } },
       "source": "src/built-in/chat/tools/writeTools.ts",
       "category": "file"
@@ -528,7 +521,7 @@
     {
       "id": "research-topic",
       "description": "Research a topic on the public web: Brave search, fetch 2+ independent sources, sanitize as untrusted content, and write a cited summary page under the Research Hub. Multi-source minimum required for 'research' intent.",
-      "expectedToolChain": ["webSearch", "webFetch", "getResearchHub", "setResearchHub", "canvas_create_page", "canvas_compose_page", "logResearchEvent"],
+      "expectedToolChain": ["webSearch", "webFetch", "getResearchHub", "setResearchHub", "canvas_create_page", "canvas_edit_page", "logResearchEvent"],
       "source": "ext/web-research/skills/research-topic.md (runtime copy: src/built-in/chat/skills/defaultSkillContents.ts)"
     }
   ],

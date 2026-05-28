@@ -94,30 +94,33 @@ export function showImageInsertPopup(
       try {
         const electron = (window as any).parallxElectron;
         if (!electron?.dialog?.openFile) {
-          console.warn('[imageInsertPopup] Electron dialog not available');
+          renderError('File picker is unavailable in this environment.');
           return;
         }
         const filePaths = await electron.dialog.openFile({
           filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] }],
           properties: ['openFile'],
         });
-        if (filePaths?.[0]) {
-          const filePath = filePaths[0];
-          const result = await electron.fs.readFile(filePath);
-          if (result?.content && result?.encoding === 'base64') {
-            const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
-            const mime = ext === 'jpg' ? 'image/jpeg'
-              : ext === 'svg' ? 'image/svg+xml'
-              : `image/${ext}`;
-            const dataUrl = `data:${mime};base64,${result.content}`;
-            // Guard: ~5 MB raw (base64 is ~37% larger)
-            if (result.content.length > 5 * 1024 * 1024 * 1.37) {
-              renderError('Image is too large (max 5 MB).');
-              return;
-            }
-            insertImage(dataUrl);
-          }
+        if (!filePaths?.[0]) return; // user cancelled
+        const filePath = filePaths[0];
+        const result = await electron.fs.readFile(filePath);
+        if (result?.error) {
+          renderError(`Could not read file: ${result.error.message || result.error.code || 'unknown error'}.`);
+          return;
         }
+        if (!result?.content || result.encoding !== 'base64') {
+          renderError('Could not read the selected file.');
+          return;
+        }
+        if (result.content.length > 5 * 1024 * 1024 * 1.37) {
+          renderError('Image is too large (max 5 MB).');
+          return;
+        }
+        const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
+        const mime = ext === 'jpg' ? 'image/jpeg'
+          : ext === 'svg' ? 'image/svg+xml'
+          : `image/${ext}`;
+        insertImage(`data:${mime};base64,${result.content}`);
       } catch (err) {
         console.error('[imageInsertPopup] Upload failed:', err);
         renderError('Upload failed — see console.');

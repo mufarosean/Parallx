@@ -303,7 +303,8 @@ test.describe('Chat Context Integration', () => {
     const toolNames = lastReq.tools.map((t: any) => t.function?.name);
     expect(toolNames).toContain('canvas_read_page');
     expect(toolNames).toContain('canvas_find_pages');
-    expect(toolNames).toContain('canvas_get_page');
+    // M81 Phase 9: canvas_get_page folded into canvas_read_page.
+    expect(toolNames).not.toContain('canvas_get_page');
   });
 
   test('system prompt mentions implicit context behavior', async ({ window }) => {

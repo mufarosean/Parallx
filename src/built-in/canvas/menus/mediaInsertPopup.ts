@@ -176,6 +176,10 @@ export function showMediaInsertPopup(
         if (!filePaths?.[0]) return;
         const filePath = filePaths[0];
         const result = await electron.fs.readFile(filePath);
+        if (result?.error) {
+          renderError(`Could not read file: ${result.error.message || result.error.code || 'unknown error'}.`);
+          return;
+        }
         if (!result?.content || result.encoding !== 'base64') {
           renderError('Could not read selected file.');
           return;

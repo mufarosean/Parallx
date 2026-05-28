@@ -139,9 +139,7 @@ export interface IOpenclawCommandRegistryFacade {
 export interface IOpenclawRuntimeLifecycle {
   queueMemoryWriteBack(
     deps: {
-      extractPreferences?: (text: string) => Promise<void>;
       storeSessionMemory?: (sessionId: string, summary: string, messageCount: number) => Promise<void>;
-      storeConceptsFromSession?: (concepts: Array<{ concept: string; category: string; summary: string; struggled: boolean }>, sessionId: string) => Promise<void>;
       isSessionEligibleForSummary?: (messageCount: number) => boolean;
       getSessionMemoryMessageCount?: (sessionId: string) => Promise<number | null>;
       sendSummarizationRequest?: (messages: readonly IChatMessage[], signal?: AbortSignal) => AsyncIterable<IChatResponseChunk>;
@@ -180,6 +178,36 @@ export interface ISkillCatalogEntry {
     readonly required: boolean;
   }[];
   readonly body?: string;
+  /**
+   * M81 Phase 6 — workspace-relative paths of bundled scripts/references/
+   * assets discovered under the skill folder. Optional for backward
+   * compatibility.
+   */
+  readonly bundledFiles?: readonly string[];
+}
+
+/**
+ * M81 Phase 8 — narrow accessor for the workspace memory service exposed to
+ * `/init`. Only the methods needed for the legacy-concept archive migration
+ * and the lessons-consolidation pass are surfaced here; this keeps the
+ * init command decoupled from the full `IWorkspaceMemoryService` interface
+ * (which lives in `services/serviceTypes.ts`) and avoids importing chat
+ * package types from the openclaw layer.
+ *
+ * Wired by `chat/main.ts` from the same `WorkspaceMemoryService` instance
+ * that backs `memory_edit`. Optional — when undefined (workspace closed,
+ * tests), `/init` skips the new Phase 8 steps and runs the existing
+ * AGENTS.md generation only.
+ */
+export interface IInitWorkspaceMemoryAccessor {
+  /** Idempotent migration: archive pre-M81 regex-extracted `## Concepts`. */
+  archiveLegacyConceptSection(): Promise<{ archived: boolean; movedChars: number }>;
+  /** Slugs of lesson files currently on disk. Used to gate the consolidation pass. */
+  listLessons(): Promise<readonly string[]>;
+  /** Write a new lesson body to `.parallx/memory/lessons/<slug>.md`. */
+  writeLessonFile(slug: string, content: string): Promise<void>;
+  /** Append (or replace) an index line in MEMORY.md for a slug + description. */
+  addMemoryIndexEntry(slug: string, description: string): Promise<void>;
 }
 
 export interface IDefaultParticipantServices {
@@ -218,12 +246,10 @@ export interface IDefaultParticipantServices {
   recallMemories?(query: string, sessionId?: string): Promise<string | undefined>;
   recallTranscripts?(query: string): Promise<string | undefined>;
   storeSessionMemory?(sessionId: string, summary: string, messageCount: number): Promise<void>;
-  storeConceptsFromSession?(concepts: Array<{ concept: string; category: string; summary: string; struggled: boolean }>, sessionId: string): Promise<void>;
-  recallConcepts?(query: string): Promise<string | undefined>;
   isSessionEligibleForSummary?(messageCount: number): boolean;
+
   hasSessionMemory?(sessionId: string): Promise<boolean>;
   getSessionMemoryMessageCount?(sessionId: string): Promise<number | null>;
-  extractPreferences?(text: string): Promise<void>;
   getPreferencesForPrompt?(): Promise<string | undefined>;
   getPromptOverlay?(activeFilePath?: string): Promise<string | undefined>;
   listFilesRelative?(relativePath: string): Promise<{ name: string; type: 'file' | 'directory' }[]>;
@@ -231,6 +257,14 @@ export interface IDefaultParticipantServices {
   writeFileRelative?(relativePath: string, content: string): Promise<void>;
   existsRelative?(relativePath: string): Promise<boolean>;
   invalidatePromptFiles?(): void;
+  /**
+   * M81 Phase 8 — workspace memory accessor used by `/init` for the legacy
+   * concept archive migration and the lessons-consolidation pass. Wired by
+   * `chat/main.ts` from the same WorkspaceMemoryService instance that backs
+   * the `memory_edit` tool. Undefined when no workspace is open or in tests
+   * that don't exercise memory.
+   */
+  workspaceMemory?: IInitWorkspaceMemoryAccessor;
   reportContextPills?(pills: IContextPill[]): void;
   reportRetrievalDebug?(debug: {
     hasActiveSlashCommand: boolean;

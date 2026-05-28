@@ -16,6 +16,7 @@
 
 import { estimateTokens, trimTextToBudget } from './openclawTokenBudget.js';
 import type { IAgentIdentityConfig } from './agents/openclawAgentConfig.js';
+import type { ToolCategory } from '../services/chatTypes.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,6 +31,16 @@ export interface ISkillEntry {
   readonly name: string;
   readonly description: string;
   readonly location: string;
+  /**
+   * M81 Phase 6 — workspace-relative paths of bundled files discovered
+   * under `<skill>/scripts/`, `<skill>/references/`, `<skill>/assets/`.
+   * Surfaced to the agent inside a `<bundle>` child of the `<skill>` XML
+   * so the model can `read_file` the path on demand (Execution stage of
+   * progressive disclosure). Omit or supply an empty array when the
+   * skill has no bundled files — no `<bundle>` block is emitted in that
+   * case.
+   */
+  readonly bundledFiles?: readonly string[];
 }
 
 export interface IToolSummary {
@@ -44,6 +55,14 @@ export interface IToolSummary {
    * upstream's `coreToolSummaries` map is the equivalent.
    */
   readonly displaySummary?: string;
+  /**
+   * M81 Phase 10 — coarse feature-area grouping. When present on at least
+   * one tool, `buildToolSummariesSection` emits a category-to-tools map so
+   * the model sees the surface boundary (canvas vs file-system vs memory…)
+   * up front and stops cross-routing (e.g. calling `read_file` on a canvas
+   * page UUID).
+   */
+  readonly category?: ToolCategory;
 }
 
 /**
@@ -284,10 +303,16 @@ export function buildSkillsSection(
 
   const entries = skills
     .map(s => {
+      // M81 Phase 6 — render <bundle> child when bundledFiles is non-empty.
+      // Existing skills without bundled files render exactly as before.
+      const bundle = s.bundledFiles && s.bundledFiles.length > 0
+        ? `    <bundle>\n${s.bundledFiles.map(f => `      <file>${escapeXml(f)}</file>`).join('\n')}\n    </bundle>`
+        : undefined;
       const inner = [
         `    <name>${escapeXml(s.name)}</name>`,
         compact ? undefined : `    <description>${escapeXml(s.description)}</description>`,
         `    <location>${escapeXml(s.location)}</location>`,
+        bundle,
       ].filter((line): line is string => line !== undefined).join('\n');
       return `  <skill>\n${inner}\n  </skill>`;
     })
@@ -306,34 +331,157 @@ ${entries}
 }
 
 /**
- * Tooling preamble.
+ * Tooling section — category map + selection guidance.
  *
  * The model already has the full tool array (name + description + parameters)
- * injected by Ollama's chat template (e.g. Qwen2.5: `<tools>{tool|tojson}</tools>`).
- * Listing `- name: summary` bullets here only duplicates that array and burns
- * tokens. Instead we emit a short preamble that (a) anchors the model on the
- * tool list it just received, (b) tells it where workspace-editable routing
- * lives (TOOLS.md), and (c) reminds it that tool descriptions carry when-to-use
- * guidance.
+ * injected by Ollama's chat template. Re-listing each tool here as
+ * `- name: summary` bullets only duplicates that and burns tokens. What the
+ * tool array does NOT convey is which **surface** each tool family operates
+ * on. Empirically (M81 P10 trigger), small/medium models will reach for
+ * `read_file` when handed a canvas page reference, or call `canvas_read_page`
+ * when handed a filesystem path. The category map closes that gap.
+ *
+ * What this section emits:
+ *   1. A category → tool-names map grouped by `IToolSummary.category`.
+ *   2. A short routing rubric ("if the user says X, prefer Y").
+ *   3. The preamble noting that tool descriptions are the canonical signal.
+ *
+ * Tools without a category are listed under an "other" bucket — extension
+ * tools that don't yet declare one still appear. If no tool in the list
+ * carries a category, the map is suppressed and the preamble alone is
+ * emitted (keeps behaviour stable for stripped-down test/eval rigs).
  *
  * Upstream parity:
  *   - OpenClaw `src/agents/system-prompt.ts` Tooling section: short preamble
- *     ("Names are case-sensitive; call exactly as listed. TOOLS.md is usage
- *     guidance, not availability."), no per-tool bullets.
+ *     style; we extend it with the category map (Parallx-specific because
+ *     Parallx mixes canvas-DB tools with workspace-file tools — upstream
+ *     only has files).
  *   - Anthropic skill docs: tool descriptions are the selection signal —
- *     don't duplicate them in prose.
- *
- * `tools` is accepted for backward compatibility with callers that pass it,
- * but its content is no longer emitted as a glossary. We keep the parameter
- * so the truncation pass and tests don't break.
+ *     don't duplicate them in prose. We don't; we add orthogonal routing.
  */
-export function buildToolSummariesSection(_tools: readonly IToolSummary[]): string {
-  return [
+export function buildToolSummariesSection(tools: readonly IToolSummary[]): string {
+  const lines: string[] = [
     '## Tooling',
-    'Tool definitions (name, description, parameters) are provided in the function-calling schema for this turn. Each tool\'s description states what it does and when to use it — read it before calling.',
-    'Tool names are case-sensitive; call them exactly as listed in the schema. TOOLS.md (in the workspace, when present) carries workspace-specific usage guidance, not tool availability.',
-    'When two tools could apply, prefer the more specific one (e.g. `canvas_read_page` over `canvas_find_pages` when you already know the page title; `grep_search` over `search_knowledge` when the user wants an exact-text match).',
-  ].join('\n');
+    'Tool definitions (name, description, parameters) are provided in the function-calling schema for this turn. Each tool\'s description states what it does and when to use it — read it before calling. Tool names are case-sensitive.',
+  ];
+
+  const categoryMap = groupToolsByCategory(tools);
+  if (categoryMap.size > 0) {
+    lines.push(
+      '',
+      'Every tool belongs to a **category** that names the surface it operates on. Pick tools from the category that matches the resource type in the user\'s request:',
+      '',
+    );
+    for (const { label, blurb, toolNames } of orderCategoryEntries(categoryMap)) {
+      lines.push(`- **${label}** — ${blurb}`);
+      lines.push(`  Tools: ${toolNames.map(n => `\`${n}\``).join(', ')}`);
+    }
+    lines.push(
+      '',
+      'Routing rules:',
+      '- If the user names a path like `src/foo.ts`, `docs/README.md`, or anything that looks like a filesystem path → **file-system** tools.',
+      '- If the user says "page", "canvas page", "this page", "the page I\'m on", names a page title, or supplies a UUID → **canvas** tools. Never call `read_file` / `write_file` on a canvas page UUID — UUIDs are not file paths.',
+      '- If the user references memory, lessons, USER.md, MEMORY.md, dailies, or "what did we decide" → **memory** tools.',
+      '- If the user asks about past chats or "what did I say earlier in another session" → **transcript** tools.',
+      '- If ambiguous ("open my notes"), prefer `canvas_find_pages` first — it matches title and body and surfaces the right candidate.',
+      'When two tools in the same category could apply, prefer the more specific one (e.g. `canvas_read_page` over `canvas_find_pages` when the title is known; `grep_search` over `search_knowledge` for exact-text matches).',
+    );
+  } else {
+    lines.push(
+      'When two tools could apply, prefer the more specific one (e.g. `canvas_read_page` over `canvas_find_pages` when you already know the page title; `grep_search` over `search_knowledge` when the user wants an exact-text match).',
+    );
+  }
+
+  lines.push(
+    '',
+    'TOOLS.md (in the workspace, when present) carries workspace-specific usage guidance, not tool availability.',
+  );
+  return lines.join('\n');
+}
+
+/**
+ * M81 Phase 10 — short human-readable blurb per category. Lives next to the
+ * `ToolCategory` union so the prompt builder doesn't need to repeat the
+ * "what surface does this name refer to" knowledge in every test.
+ */
+interface ICategoryDescriptor {
+  readonly label: string;
+  readonly blurb: string;
+  /** Sort order in the prompt (lower = first). Surfaces the model uses most go first. */
+  readonly order: number;
+}
+
+const CATEGORY_DESCRIPTORS: Record<ToolCategory, ICategoryDescriptor> = {
+  'canvas':      { label: 'canvas',      blurb: 'canvas page DB (titles, UUIDs, blocks, properties). Pages are NOT files on disk.', order: 10 },
+  'file-system': { label: 'file-system', blurb: 'workspace files on disk under the workspace root (paths like `src/foo.ts`).',       order: 20 },
+  'memory':      { label: 'memory',      blurb: '`.parallx/memory/` — USER.md, MEMORY.md index, lesson files, and daily logs.',     order: 30 },
+  'transcript':  { label: 'transcript',  blurb: 'past chat sessions stored under `.parallx/sessions/`.',                              order: 40 },
+  'linking':     { label: 'linking',     blurb: 'mint canonical `parallx://` URIs that cite workspace resources.',                    order: 50 },
+  'surface':     { label: 'surface',     blurb: 'route a message to a Parallx UI surface (chat, canvas, etc.).',                      order: 60 },
+  'subagent':    { label: 'subagent',    blurb: 'spawn a subagent to run a focused task in its own session.',                         order: 70 },
+  'autonomy':    { label: 'autonomy',    blurb: 'read the autonomy / agent task log.',                                                order: 80 },
+  'cron':        { label: 'cron',        blurb: 'schedule, list, and cancel recurring or one-shot tasks.',                            order: 90 },
+  'app-control': { label: 'app-control', blurb: 'execute Parallx workbench commands (open views, focus panels, etc.).',               order: 100 },
+  'terminal':    { label: 'terminal',    blurb: 'run shell commands on the host machine.',                                            order: 110 },
+};
+
+interface IGroupedCategoryEntry {
+  readonly category: ToolCategory | 'other';
+  readonly label: string;
+  readonly blurb: string;
+  readonly toolNames: readonly string[];
+}
+
+function groupToolsByCategory(tools: readonly IToolSummary[]): Map<ToolCategory | 'other', string[]> {
+  const map = new Map<ToolCategory | 'other', string[]>();
+  let sawAnyCategory = false;
+  for (const t of tools) {
+    if (t.category) {
+      sawAnyCategory = true;
+      const bucket = map.get(t.category) ?? [];
+      bucket.push(t.name);
+      map.set(t.category, bucket);
+    } else {
+      const bucket = map.get('other') ?? [];
+      bucket.push(t.name);
+      map.set('other', bucket);
+    }
+  }
+  // If no tool has a category, suppress the map entirely — the preamble alone
+  // is enough and we don't want to emit a single "other" bucket holding
+  // everything.
+  if (!sawAnyCategory) { return new Map(); }
+  return map;
+}
+
+function orderCategoryEntries(
+  map: Map<ToolCategory | 'other', string[]>,
+): IGroupedCategoryEntry[] {
+  const entries: IGroupedCategoryEntry[] = [];
+  for (const [category, names] of map.entries()) {
+    if (category === 'other') {
+      entries.push({
+        category,
+        label: 'other',
+        blurb: 'tools without a declared category — read each tool\'s description for usage.',
+        toolNames: [...names].sort(),
+      });
+    } else {
+      const desc = CATEGORY_DESCRIPTORS[category];
+      entries.push({
+        category,
+        label: desc.label,
+        blurb: desc.blurb,
+        toolNames: [...names].sort(),
+      });
+    }
+  }
+  entries.sort((a, b) => {
+    const ao = a.category === 'other' ? 9999 : CATEGORY_DESCRIPTORS[a.category].order;
+    const bo = b.category === 'other' ? 9999 : CATEGORY_DESCRIPTORS[b.category].order;
+    return ao - bo;
+  });
+  return entries;
 }
 
 /**
@@ -447,32 +595,53 @@ export function buildRuntimeSection(runtimeInfo: IOpenclawRuntimeInfo): string {
 
 /**
  * Memory section — tells the model the workspace memory subsystem exists,
- * what the two layers are for, and when to read vs. when to defer.
+ * what the layers are for, and when to read or write.
  *
- * The tools `memory_get` and `memory_search` carry their own per-tool
- * descriptions (what + when + when-not), but those only land in the function
- * schema. Small models routinely fail to call memory at all because nothing
- * in the system prompt mentions the existence of `.parallx/memory/`. This
- * block fixes that, mirroring the role of Claude Code's `## auto memory`
- * section and OpenClaw's plugin-injected memory section.
+ * M81 Phase 8: MEMORY.md is no longer a single content file — it is now an
+ * INDEX of pointers to per-topic lesson files. Lesson bodies live at
+ * `.parallx/memory/lessons/<slug>.md` and are read on demand, never auto-
+ * loaded. This mirrors the skill catalog shape (name + description +
+ * location in the prompt, body fetched with a tool call) and the Claude
+ * Code auto-memory pattern (index + topic files, progressive disclosure).
  *
- * Scope is intentionally narrow: announce existence, define layers, give
- * a short when-to-read trigger list. We do NOT prescribe when to *write*
- * memory here — write semantics are user-driven in Parallx.
+ * The tools `memory_get` / `memory_search` / `memory_edit` carry their own
+ * per-tool descriptions in the function schema, but small models routinely
+ * fail to use them unless the system prompt explicitly names the surface
+ * and the write triggers. This block does both.
  */
 export function buildMemorySection(): string {
   return [
     '## Memory',
-    'You have a persistent workspace memory at `.parallx/memory/`:',
-    '- **Durable** (`MEMORY.md`) — long-term facts about the user, the project, and decisions that should persist across chat sessions.',
-    '- **Daily** (`YYYY-MM-DD.md`) — date-stamped logs of what was discussed or done on a given day.',
+    'You have a single workspace memory surface, split across identity files (auto-loaded every turn) and a curated memory store you read and write yourself.',
     '',
-    'Read memory **before answering** when:',
-    '- The user references prior context ("you said earlier…", "remember when…", "what did we decide about…").',
-    '- The user asks what you know or remember about a person, project, file, or topic.',
-    '- You\'re about to make a recommendation that hinges on a past decision or preference.',
+    '**Identity files** — already in your context, no tool call needed:',
+    '- `.parallx/SOUL.md` — your personality and constraints.',
+    '- `.parallx/USER.md` — facts about the user (identity, preferences, current focus). Bounded ~1,500 chars.',
+    '- `.parallx/AGENTS.md` — project context and conventions.',
     '',
-    'Use `memory_search` for topic-based recall ("what do we know about X") and `memory_get` for direct reads of a specific layer or date. ' +
+    '**Curated memory store** — at `.parallx/memory/`:',
+    '- `MEMORY.md` is an **INDEX**, bounded ~2,500 chars. Each line is `- [Title](lessons/<slug>.md) — one-line description` pointing at a lesson file. The index is in your context every turn; lesson bodies are NOT.',
+    '- `lessons/<slug>.md` — durable lessons (tool-use gotchas, workarounds, project conventions, things to remember across sessions). Read a body on demand with `memory_get name=<slug>` (preferred) or `read_file lessons/<slug>.md`.',
+    '- `YYYY-MM-DD.md` — date-stamped daily logs. Unbounded; append-only narrative of what happened today.',
+    '',
+    '**Three tools, one family**:',
+    '- `memory_get` — read USER.md, MEMORY.md (the index), a daily log by date, OR a specific lesson body via `name=<slug>`.',
+    '- `memory_search` — semantic search across all of `.parallx/memory/` (index + lesson bodies + dailies).',
+    '- `memory_edit` — add / replace / remove on USER.md, MEMORY.md sections, daily logs, AND lessons (via `file=lesson` with `slug` + `description` + `entry`).',
+    '',
+    '**Read memory before answering** when the user references prior context ("you said earlier…", "what did we decide…"), asks what you know about a person/project/topic, or you\'re about to make a recommendation that hinges on a past decision. Scan the index in MEMORY.md for matching descriptions — if one fits, open the lesson body. Prefer `memory_search` for topic recall, `memory_get` when you know the exact file or slug.',
+    '',
+    '**Write memory** when you\'ve learned something durable. Call `memory_edit` proactively in these cases:',
+    '- The user states a preference about how you should behave ("I prefer X", "always do Y", "use Z") → `file=USER`.',
+    '- The user reveals a stable fact about themselves (role, project, environment, constraints) → `file=USER`.',
+    '- **The user corrects you** ("don\'t do X", "that\'s wrong, it\'s Y", "use Z instead of W", "you got that backwards") → `memory_edit file=lesson action=add` with a slug like `correction-<topic>`. A correction is not a passing preference — record the exact thing you got wrong and the right answer so you don\'t repeat the mistake. Cite the cue explicitly in the body.',
+    '- You notice a tool-use pattern that should not be repeated (you called the wrong tool, missed an argument, hit a known failure mode) → `file=lesson`.',
+    '- A workaround or gotcha emerges that future sessions will need (a known bug, an upstream limitation, a non-obvious fix) → `file=lesson`.',
+    '- A project-level decision is made or a non-obvious fact about the project surfaces ("we\'re going with Postgres", "this repo uses 2-space indent") → `file=lesson` (MEMORY.md is the index that surfaces it).',
+    '- Something noteworthy happened today and the user will want to look it up later → `file=daily`.',
+    '',
+    '**Cap discipline** — USER.md and the MEMORY.md index are bounded. When `memory_edit add` would exceed the cap, the tool returns the current entries and an error. Pick the least-relevant existing lesson and `memory_edit file=lesson action=remove slug=<old>` before retrying the add. The cap is a curation forcing function: only the most durable, generally-applicable lessons stay in the index.',
+    '',
     'If memory contains a claim that names a specific file, function, or value, verify it against the current workspace before acting on it — memory can go stale.',
   ].join('\n');
 }
@@ -560,23 +729,44 @@ function truncateSystemPromptToBudget(
   const workspaceIdx = mutableSections.findIndex(s => s.startsWith('## Workspace Context'));
   const toolsIdx = mutableSections.findIndex(s => s.startsWith('## Tooling'));
 
-  // Try truncating workspace first
+  // Try truncating workspace first. trimTextToBudget keeps the end of the
+  // text, so naive trimming would drop the "## Workspace Context" header —
+  // breaking downstream consumers that locate the section by its heading.
+  // Preserve the heading line by trimming only the body. M81 Phase 1 exposed
+  // this issue when USER.md content pushed the section past budget.
   if (workspaceIdx >= 0) {
     const sectionBudget = Math.floor(budgetTokens * 0.3);
-    mutableSections[workspaceIdx] = trimTextToBudget(mutableSections[workspaceIdx], sectionBudget).text;
+    mutableSections[workspaceIdx] = trimSectionPreservingHeader(
+      mutableSections[workspaceIdx], sectionBudget,
+    );
     const candidate = mutableSections.join('\n\n');
     if (estimateTokens(candidate) <= budgetTokens) {
       return candidate;
     }
   }
 
-  // Then truncate tools
+  // Then truncate tools (same header-preserving rule)
   if (toolsIdx >= 0) {
     const sectionBudget = Math.floor(budgetTokens * 0.15);
-    mutableSections[toolsIdx] = trimTextToBudget(mutableSections[toolsIdx], sectionBudget).text;
+    mutableSections[toolsIdx] = trimSectionPreservingHeader(
+      mutableSections[toolsIdx], sectionBudget,
+    );
   }
 
   return mutableSections.join('\n\n');
+}
+
+function trimSectionPreservingHeader(section: string, budgetTokens: number): string {
+  const newlineIdx = section.indexOf('\n');
+  if (newlineIdx < 0) {
+    return trimTextToBudget(section, budgetTokens).text;
+  }
+  const header = section.slice(0, newlineIdx);
+  const body = section.slice(newlineIdx + 1);
+  const headerTokens = estimateTokens(header + '\n');
+  const bodyBudget = Math.max(0, budgetTokens - headerTokens);
+  const trimmedBody = trimTextToBudget(body, bodyBudget).text;
+  return trimmedBody ? `${header}\n${trimmedBody}` : header;
 }
 
 function escapeXml(text: string): string {

@@ -1076,12 +1076,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     recallMemories: (memoryService || workspaceMemoryService) ? (q, s) => dataService.recallMemories(q, s) : undefined,
     recallTranscripts: retrievalService ? (q) => dataService.recallTranscripts(q) : undefined,
     storeSessionMemory: (memoryService || workspaceMemoryService) ? (s, su, m) => dataService.storeSessionMemory(s, su, m) : undefined,
-    storeConceptsFromSession: memoryService ? (c, s) => dataService.storeConceptsFromSession(c, s) : undefined,
-    recallConcepts: memoryService ? (q) => dataService.recallConcepts(q) : undefined,
     isSessionEligibleForSummary: memoryService ? (m) => dataService.isSessionEligibleForSummary(m) : undefined,
     hasSessionMemory: memoryService ? (s) => dataService.hasSessionMemory(s) : undefined,
     getSessionMemoryMessageCount: memoryService ? (s) => dataService.getSessionMemoryMessageCount(s) : undefined,
-    extractPreferences: (memoryService || workspaceMemoryService) ? (t) => dataService.extractPreferences(t) : undefined,
     getPreferencesForPrompt: (memoryService || workspaceMemoryService) ? () => dataService.getPreferencesForPrompt() : undefined,
     // M66 — Snapshot every registered `parallx://` link contract for the
     // system prompt builder. Flattened to the descriptor shape that the
@@ -1104,6 +1101,18 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     writeFileRelative: (fileService && workspaceService?.folders?.length) ? (r, c) => dataService.writeFileRelative(r, c) : undefined,
     existsRelative: fsAccessor ? (r) => dataService.existsRelative(r) : undefined,
     invalidatePromptFiles: _promptFileService ? () => dataService.invalidatePromptFiles() : undefined,
+    // M81 Phase 8 — workspace memory accessor for `/init`. Bound only when
+    // a WorkspaceMemoryService is registered; the openclaw layer treats
+    // `undefined` as "no Phase 8 work to do" and falls through to the
+    // existing AGENTS.md generation.
+    workspaceMemory: workspaceMemoryService
+      ? {
+          archiveLegacyConceptSection: () => workspaceMemoryService.archiveLegacyConceptSection(),
+          listLessons: () => workspaceMemoryService.listLessons(),
+          writeLessonFile: (slug: string, content: string) => workspaceMemoryService.writeLessonFile(slug, content),
+          addMemoryIndexEntry: (slug: string, description: string) => workspaceMemoryService.addMemoryIndexEntry(slug, description),
+        }
+      : undefined,
     reportContextPills: (p) => dataService.reportContextPills(p),
     reportRetrievalDebug: (debug) => dataService.reportRetrievalDebug(debug),
     reportResponseDebug: (debug) => dataService.reportResponseDebug(debug),
@@ -1413,6 +1422,34 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
               canonicalMemorySearchService.search(query, options),
           };
         })()
+      : undefined;
+
+    // M81 Phase 2 — workspace memory write accessor for the `memory_edit` tool.
+    // Thin wrapper around IWorkspaceMemoryService that exposes only the methods
+    // the tool needs (USER.md / MEMORY.md / daily file read+write). Lets the
+    // tool stay decoupled from the full service interface.
+    const workspaceMemoryAccessor = workspaceMemoryService
+      ? {
+          getUserFileRelativePath: () => workspaceMemoryService.getUserFileRelativePath(),
+          getDurableMemoryRelativePath: () => workspaceMemoryService.getDurableMemoryRelativePath(),
+          getDailyMemoryRelativePath: (date?: Date) => workspaceMemoryService.getDailyMemoryRelativePath(date),
+          readUserFile: () => workspaceMemoryService.readUserFile(),
+          writeUserFile: (content: string) => workspaceMemoryService.writeUserFile(content),
+          readDurableMemory: () => workspaceMemoryService.readDurableMemory(),
+          writeDurableMemory: (content: string) => workspaceMemoryService.writeDurableMemory(content),
+          readDailyMemory: (date?: Date) => workspaceMemoryService.readDailyMemory(date),
+          appendDailyMemory: (text: string, date?: Date) => workspaceMemoryService.appendDailyMemory(text, date),
+          writeDailyMemory: (body: string, date?: Date) => workspaceMemoryService.writeDailyMemory(body, date),
+          ensureDailyMemory: (date?: Date) => workspaceMemoryService.ensureDailyMemory(date),
+          // M81 Phase 8 — lesson files.
+          getLessonFileRelativePath: (slug: string) => workspaceMemoryService.getLessonFileRelativePath(slug),
+          readLessonFile: (slug: string) => workspaceMemoryService.readLessonFile(slug),
+          writeLessonFile: (slug: string, content: string) => workspaceMemoryService.writeLessonFile(slug, content),
+          archiveLessonFile: (slug: string) => workspaceMemoryService.archiveLessonFile(slug),
+          parseMemoryIndex: () => workspaceMemoryService.parseMemoryIndex(),
+          addMemoryIndexEntry: (slug: string, description: string) => workspaceMemoryService.addMemoryIndexEntry(slug, description),
+          removeMemoryIndexEntry: (slug: string) => workspaceMemoryService.removeMemoryIndexEntry(slug),
+        }
       : undefined;
 
     const transcriptSearchAccessor = retrievalService && indexingPipelineService && unifiedConfigService
@@ -1771,7 +1808,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           void mod.openPageInEditor?.(pageId);
         }
       }).catch(() => { /* canvas not present — no-op */ });
-    });
+    }, workspaceMemoryAccessor);
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }
@@ -2432,6 +2469,14 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           try {
             const entries = await fsAccessor!.readdir(path);
             return entries.filter(e => e.type === 'directory').map(e => e.name);
+          } catch { return []; }
+        },
+        // M81 Phase 6 — enumerate files (not directories) for bundled
+        // scripts/references/assets discovery under each skill folder.
+        listFiles: async (path: string) => {
+          try {
+            const entries = await fsAccessor!.readdir(path);
+            return entries.filter(e => e.type === 'file').map(e => e.name);
           } catch { return []; }
         },
         exists: (path: string) => fsAccessor!.exists(path),

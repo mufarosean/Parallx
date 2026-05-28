@@ -355,9 +355,7 @@ async function runOpenclawDefaultTurn(
     // Memory writeback
     lifecycle.queueMemoryWriteBack(
       {
-        extractPreferences: services.extractPreferences,
         storeSessionMemory: services.storeSessionMemory,
-        storeConceptsFromSession: services.storeConceptsFromSession,
         isSessionEligibleForSummary: services.isSessionEligibleForSummary,
         getSessionMemoryMessageCount: services.getSessionMemoryMessageCount,
         sendSummarizationRequest: services.sendSummarizationRequest,

@@ -1,8 +1,8 @@
 {
   "$schema": "../autonomy-eval.fixture.schema.json",
   "id": "gmail-inbox",
-  "_doc": "Recorded Gmail fixture used when PARALLX_GMAIL_E2E is unset. The runner injects this as the response of the gmail.list_unread tool, bypassing the MCP child process entirely. Contents are synthetic — no real mail, no real sender addresses.",
-  "tool": "gmail.list_unread",
+  "_doc": "Recorded Gmail fixture used when PARALLX_GMAIL_E2E is unset. The runner injects this as the response of the gmail.list_emails tool, bypassing the MCP child process entirely. Contents are synthetic — no real mail, no real sender addresses.",
+  "tool": "gmail.list_emails",
   "messages": [
     {
       "id": "fix-001",

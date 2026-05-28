@@ -82,7 +82,7 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
       // Canvas pages (read-only) — canvas_* prefix per Parallx tool-namespace
       // convention so filesystem and canvas tools never collide in the model's
       // attention.
-      'canvas_find_pages', 'canvas_read_page', 'canvas_get_page',
+      'canvas_find_pages', 'canvas_read_page',
       'canvas_list_property_definitions', 'canvas_read_block',
       // Knowledge & memory & transcripts (read-only)
       'search_knowledge', 'memory_get', 'memory_search',
@@ -100,7 +100,7 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
     allow: [
       // All of readonly:
       'list_files', 'read_file', 'search_files', 'grep_search',
-      'canvas_find_pages', 'canvas_read_page', 'canvas_get_page',
+      'canvas_find_pages', 'canvas_read_page',
       'canvas_list_property_definitions', 'canvas_read_block',
       'search_knowledge', 'memory_get', 'memory_search',
       'transcript_get', 'transcript_search',
@@ -108,7 +108,7 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
       'autonomy_log',
       // Safe writes:
       'write_file', 'edit_file',
-      'canvas_create_page', 'canvas_compose_page', 'canvas_set_page_property', 'canvas_set_page_style',
+      'canvas_create_page', 'canvas_edit_page', 'canvas_set_page_property', 'canvas_set_page_style',
       'canvas_edit_block', 'canvas_insert_block_after', 'canvas_link_block',
     ],
     deny: [],
@@ -438,7 +438,7 @@ const BLUE_TOOLS: ReadonlySet<string> = new Set<string>([
   'run_command',
   // Canvas page writes (canvas_* prefix per Parallx tool-namespace convention)
   'canvas_create_page',
-  'canvas_compose_page',
+  'canvas_edit_page',
   'canvas_set_page_property',
   'canvas_set_page_style',
   'canvas_edit_block',

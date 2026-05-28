@@ -7,7 +7,7 @@
     {
       "id": "tool.selection",
       "max": 2,
-      "description": "Did the agent call gmail.list_unread (and only that read tool) to gather inbox state? 0 = wrong tool, 1 = right tool plus extraneous reads, 2 = exactly gmail.list_unread."
+      "description": "Did the agent call gmail.list_emails (and only that read tool) to gather inbox state? 0 = wrong tool, 1 = right tool plus extraneous reads, 2 = exactly gmail.list_emails."
     },
     {
       "id": "tool.args",

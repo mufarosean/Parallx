@@ -6176,11 +6176,17 @@ async function _seedBudgetSyncSkill(api) {
 // write tools never read more than they need. The AI does all the
 // reasoning — these just persist its decisions.
 
+// Parallx tool results use `{ content: string, isError: boolean }`. MCP's
+// `{ content: [{ type, text }], isError }` shape is for outbound MCP servers,
+// NOT for tools registered via `api.chat.registerTool`. Returning the MCP
+// shape here previously caused Ollama HTTP 400 ("cannot unmarshal array into
+// Go struct field ChatRequest.messages.content of type string") when a tool
+// result reached the model's message history.
 function _toolOk(payload) {
-  return { content: [{ type: 'text', text: JSON.stringify(payload) }], isError: false };
+  return { content: JSON.stringify(payload), isError: false };
 }
 function _toolErr(message) {
-  return { content: [{ type: 'text', text: String(message) }], isError: true };
+  return { content: String(message), isError: true };
 }
 
 async function budgetToolGetLastSyncCursor() {
@@ -6310,10 +6316,17 @@ async function budgetToolListTrash(args = {}) {
 async function budgetToolPullEmails(api, args = {}) {
   const cfg = api.workspace.getConfiguration('budget');
   const serverId = cfg.get('gmailMcpServerId', 'gmail');
-  const toolName = `mcp__${serverId}__list_unread`;
+  // M81 rename: list_unread → list_emails. The MCP server still accepts
+  // the old name for one release, but prefer the new one so logs and
+  // tool-discovery surfaces show the right thing. Falls back to the
+  // legacy name if the server hasn't been rebuilt yet.
+  const newToolName = `mcp__${serverId}__list_emails`;
+  const legacyToolName = `mcp__${serverId}__list_unread`;
   const available = await api.mcp.listTools();
-  if (!available || !available.some(t => t.name === toolName)) {
-    return _toolErr(`Gmail MCP tool '${toolName}' is not connected. Open Settings → MCP Servers.`);
+  const has = (n) => Array.isArray(available) && available.some(t => t.name === n);
+  let toolName = has(newToolName) ? newToolName : (has(legacyToolName) ? legacyToolName : null);
+  if (!toolName) {
+    return _toolErr(`Gmail MCP tool '${newToolName}' is not connected. Open Settings → MCP Servers.`);
   }
   let sinceIso = typeof args.since === 'string' ? args.since : null;
   if (!sinceIso) {
@@ -7150,7 +7163,7 @@ export async function activate(api, context) {
     await api.commands.executeCommand('budget.openImportExport');
   }));
 
-  // 2) Chat tool — same handler, MCP-shaped result so the agent can read it.
+  // 2) Chat tool — same handler, Parallx tool-result shape (string content).
   if (api.chat && typeof api.chat.registerTool === 'function') {
     try {
       _disposables.push(api.chat.registerTool('budget.sync', {
@@ -7159,7 +7172,7 @@ export async function activate(api, context) {
         requiresConfirmation: false,
         handler: async () => {
           return {
-            content: [{ type: 'text', text: 'Budget sync is now driven by the `budget-sync` skill. Use the budget.* tools (budget.pullEmails, budget.recordTransaction, budget.recordBalance, budget.updateSyncCursor, …) to do it yourself per the skill instructions. Do not look for a single "sync" tool — the skill IS the sync.' }],
+            content: 'Budget sync is now driven by the `budget-sync` skill. Use the budget.* tools (budget.pullEmails, budget.recordTransaction, budget.recordBalance, budget.updateSyncCursor, …) to do it yourself per the skill instructions. Do not look for a single "sync" tool — the skill IS the sync.',
             isError: false,
           };
         },

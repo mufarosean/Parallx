@@ -7,12 +7,47 @@
   padding: 0;
 }
 
-/* Default focus outline — use Parallx purple instead of browser white */
+/*
+ * Global focus outline policy.
+ *
+ * `:focus` fires on every focus, including the one triggered by a mouse
+ * click or a programmatic `.focus()` call (e.g. sidebar steals focus on
+ * shift-click so Delete reaches its keydown handler). Showing a default
+ * browser outline in those cases produces an unsolicited white border
+ * around panels — long-standing UX gripe across the app's sidebars and
+ * tab strips. Suppress that.
+ *
+ * `:focus-visible` only fires when the browser heuristically decides the
+ * user wants visible focus (Tab navigation, arrow keys in a focusable
+ * list, etc.). That's where we DO want a ring, in the Parallx accent
+ * colour. Children can opt back into a custom outline by overriding
+ * either rule.
+ */
 :focus {
-  outline-color: var(--vscode-focusBorder, #9333ea);
+  outline: none;
 }
 :focus-visible {
-  outline-color: var(--vscode-focusBorder, #9333ea);
+  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline-offset: -1px;
+}
+
+/*
+ * Primary sidebar is a high-level chrome surface that the user routinely
+ * focuses (clicks into the tree, types in the find box, presses Delete
+ * to remove a selected page). Showing a keyboard-focus ring around the
+ * whole sidebar or its container elements is visual noise — the
+ * individual focused control inside (input, button) already has its own
+ * focus styling.
+ *
+ * Suppresses BOTH :focus and :focus-visible on the sidebar container and
+ * its non-leaf children. Leaf controls (input, button, [role="textbox"])
+ * keep their own focus indicators because they need them.
+ */
+.part-workbench-parts-sidebar:focus,
+.part-workbench-parts-sidebar:focus-visible,
+.part-workbench-parts-sidebar div:focus,
+.part-workbench-parts-sidebar div:focus-visible {
+  outline: none;
 }
 
 html, body {

@@ -193,18 +193,16 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
    */
   private _modelFamilyCache = new Map<string, string>();
 
-  /**
-   * Model families whose `think:true` output loops on long contexts even
-   * when Ollama reports thinking capability. Reproduced on Gemma4:24b
-   * (per user report); applies family-wide because the underlying CoT
-   * prompt is shared across Gemma releases — the model has built-in
-   * chain-of-thought prompting that double-emits when Ollama's separate
-   * `think` channel is also enabled, and the repeat-detection logic
-   * doesn't catch the duplication. Add new families here only after a
-   * reproducible regression report. Comparison is lowercase substring
-   * against the model id AND `details.family` — see `_isBuggyThinkModel`.
-   */
-  private static readonly _BUGGY_THINK_FAMILIES: readonly string[] = ['gemma'];
+  // Prior versions of this file maintained a `_BUGGY_THINK_FAMILIES` static
+  // list (gemma, qwen3.5, qwen3.6) that silently flipped `think:true` to
+  // false for matching models. That mechanism was removed — hardcoding
+  // per-model behavior in the provider is the wrong layer. Model behavior
+  // belongs to the user / model, not the harness. When a model's thinking
+  // mode misbehaves, surface it via UX (settings toggle, release notes)
+  // rather than burying an override here. The reactive `_noThinkModels`
+  // cache below still records models that return HTTP 400 for `think:true`
+  // (so a single 400 doesn't repeat every turn) — that's reacting to
+  // Ollama's own signal, not a hardcoded policy.
 
   /** Set context length override (0 = let Ollama decide). */
   setContextLengthOverride(value: number): void {
@@ -426,21 +424,6 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     };
   }
 
-  /**
-   * True iff `think:true` is known to misbehave for this model. Consults
-   * both the cached family (populated by `getModelInfo`) and the model id
-   * itself — first-turn requests run before getModelInfo completes, so
-   * the id-prefix check is the fast path that catches Gemma3 immediately.
-   */
-  private _isBuggyThinkModel(modelId: string): boolean {
-    const idLower = modelId.toLowerCase();
-    const family = this._modelFamilyCache.get(modelId);
-    for (const buggy of OllamaProvider._BUGGY_THINK_FAMILIES) {
-      if (idLower.includes(buggy)) return true;
-      if (family && family.includes(buggy)) return true;
-    }
-    return false;
-  }
 
   async *sendChatRequest(
     modelId: string,
@@ -481,7 +464,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       if (options.format) {
         body['format'] = options.format;
       }
-      if (options.think && !this._noThinkModels.has(modelId) && !this._isBuggyThinkModel(modelId)) {
+      if (options.think && !this._noThinkModels.has(modelId)) {
         body['think'] = true;
       }
     }

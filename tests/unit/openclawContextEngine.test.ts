@@ -15,7 +15,6 @@ function createMockServices(overrides?: Partial<IOpenclawContextEngineServices>)
       sources: [{ uri: 'file:///policy.md', label: 'Auto Insurance Policy', index: 0 }],
     })),
     recallMemories: vi.fn(async () => 'User prefers detailed answers with citations.'),
-    recallConcepts: vi.fn(async () => 'deductible: amount paid before insurance covers a claim'),
     recallTranscripts: vi.fn(async () => 'Previous: User asked about filing a claim.'),
     getCurrentPageContent: vi.fn(async () => ({
       title: 'Claims Guide',
@@ -23,7 +22,6 @@ function createMockServices(overrides?: Partial<IOpenclawContextEngineServices>)
       textContent: 'Step 1: Report the accident...',
     })),
     storeSessionMemory: vi.fn(async () => {}),
-    storeConceptsFromSession: vi.fn(async () => {}),
     sendSummarizationRequest: undefined,
     ...overrides,
   };
@@ -131,7 +129,6 @@ describe('OpenclawContextEngine', () => {
       const result = await engine.bootstrap({ sessionId: 'test', tokenBudget: 8192 });
       expect(result.ragReady).toBe(true);
       expect(result.memoryReady).toBe(true);
-      expect(result.conceptsReady).toBe(true);
     });
 
     it('reports unavailable services', async () => {
@@ -143,7 +140,6 @@ describe('OpenclawContextEngine', () => {
       const result = await sparseEngine.bootstrap({ sessionId: 'test', tokenBudget: 8192 });
       expect(result.ragReady).toBe(false);
       expect(result.memoryReady).toBe(false);
-      expect(result.conceptsReady).toBe(true);
     });
   });
 
@@ -163,7 +159,6 @@ describe('OpenclawContextEngine', () => {
 
       expect(services.retrieveContext).toHaveBeenCalledWith('What is my deductible?');
       expect(services.recallMemories).toHaveBeenCalledWith('What is my deductible?', 's1');
-      expect(services.recallConcepts).toHaveBeenCalledWith('What is my deductible?');
       expect(services.recallTranscripts).toHaveBeenCalledWith('What is my deductible?');
       expect(services.getCurrentPageContent).toHaveBeenCalled();
     });
@@ -192,7 +187,7 @@ describe('OpenclawContextEngine', () => {
       }
     });
 
-    it('includes memory, concepts, and transcripts in context message', async () => {
+    it('includes memory and transcripts in context message', async () => {
       await engine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
       const result = await engine.assemble({
         sessionId: 's1',
@@ -206,7 +201,6 @@ describe('OpenclawContextEngine', () => {
       );
       expect(contextMsg).toBeDefined();
       expect(contextMsg!.content).toContain('Recalled Memories');
-      expect(contextMsg!.content).toContain('Concepts');
       expect(contextMsg!.content).toContain('Recalled Transcripts');
     });
 
@@ -299,7 +293,6 @@ describe('OpenclawContextEngine', () => {
       const emptyServices = createMockServices({
         retrieveContext: undefined,
         recallMemories: undefined,
-        recallConcepts: undefined,
         recallTranscripts: undefined,
         getCurrentPageContent: undefined,
       });
@@ -861,29 +854,9 @@ describe('D6: auditCompactionQuality', () => {
   });
 });
 
-describe('D6: extractConceptsFromTranscript', () => {
-  it('extracts file references and URIs as concepts', async () => {
-    const { extractConceptsFromTranscript } = await import('../../src/openclaw/openclawContextEngine');
-    const transcript = 'The file /src/config.ts and https://api.example.com/v2 were discussed.';
-    const concepts = extractConceptsFromTranscript(transcript);
-    expect(concepts.some(c => c.concept === '/src/config.ts' && c.category === 'reference')).toBe(true);
-    expect(concepts.some(c => c.concept.includes('https://api.example.com') && c.category === 'reference')).toBe(true);
-  });
-
-  it('extracts capitalized multi-word names as entities', async () => {
-    const { extractConceptsFromTranscript } = await import('../../src/openclaw/openclawContextEngine');
-    const transcript = 'John Smith discussed the Auto Insurance details.';
-    const concepts = extractConceptsFromTranscript(transcript);
-    expect(concepts.some(c => c.concept === 'John Smith' && c.category === 'entity')).toBe(true);
-    expect(concepts.some(c => c.concept === 'Auto Insurance' && c.category === 'entity')).toBe(true);
-  });
-
-  it('returns empty for trivial text', async () => {
-    const { extractConceptsFromTranscript } = await import('../../src/openclaw/openclawContextEngine');
-    const concepts = extractConceptsFromTranscript('hello world');
-    expect(concepts).toHaveLength(0);
-  });
-});
+// M81 Phase 3 Stage 2 — extractConceptsFromTranscript test block removed
+// alongside the regex extractor. Concept curation now happens through the
+// agent's `memory_edit` tool (see tests/unit/memoryEditTool.test.ts).
 
 describe('D6: compact quality retry', () => {
   it('retries with stronger prompt when quality audit fails', async () => {
@@ -950,61 +923,6 @@ describe('D6: compact quality retry', () => {
     expect(sumServices.sendSummarizationRequest).toHaveBeenCalledTimes(3);
   });
 
-  it('calls storeConceptsFromSession during compact', async () => {
-    const { OpenclawContextEngine } = await import('../../src/openclaw/openclawContextEngine');
-
-    async function* mockSummarize(): AsyncIterable<any> {
-      yield { content: 'Summary covering all points.' };
-    }
-
-    const conceptServices = createMockServices({
-      sendSummarizationRequest: vi.fn(() => mockSummarize()),
-      storeConceptsFromSession: vi.fn(async () => {}),
-    });
-    const conceptEngine = new OpenclawContextEngine(conceptServices);
-
-    const history: IChatMessage[] = [
-      { role: 'user', content: 'The /src/app.ts file and https://api.test.com were discussed by John Smith.' },
-      { role: 'assistant', content: 'I understand the context.' },
-      { role: 'user', content: 'What about the Auto Insurance coverage?' },
-      { role: 'assistant', content: 'Auto Insurance covers collision.' },
-    ];
-
-    await conceptEngine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
-    await conceptEngine.assemble({ sessionId: 's1', history, tokenBudget: 8192, prompt: 'test' });
-
-    await conceptEngine.compact({ sessionId: 's1', tokenBudget: 8192 });
-    expect(conceptServices.storeConceptsFromSession).toHaveBeenCalled();
-    const concepts = conceptServices.storeConceptsFromSession.mock.calls[0][0];
-    expect(concepts.length).toBeGreaterThan(0);
-    expect(concepts.some((c: any) => c.category === 'reference')).toBe(true);
-  });
-
-  it('survives concept extraction failure during compact', async () => {
-    const { OpenclawContextEngine } = await import('../../src/openclaw/openclawContextEngine');
-
-    async function* mockSummarize(): AsyncIterable<any> {
-      yield { content: 'Summary of the conversation.' };
-    }
-
-    const failConceptServices = createMockServices({
-      sendSummarizationRequest: vi.fn(() => mockSummarize()),
-      storeConceptsFromSession: vi.fn(async () => { throw new Error('Storage failed'); }),
-    });
-    const failEngine = new OpenclawContextEngine(failConceptServices);
-
-    const history: IChatMessage[] = [
-      { role: 'user', content: 'File /a/b.ts was discussed.' },
-      { role: 'assistant', content: 'Got it.' },
-      { role: 'user', content: 'What next?' },
-      { role: 'assistant', content: 'Proceeding.' },
-    ];
-
-    await failEngine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
-    await failEngine.assemble({ sessionId: 's1', history, tokenBudget: 8192, prompt: 'test' });
-
-    // Should not throw
-    const result = await failEngine.compact({ sessionId: 's1', tokenBudget: 8192 });
-    expect(result.compacted).toBe(true);
-  });
+  // M81 Phase 3 Stage 2 — concept-store / concept-failure compact tests
+  // removed alongside the auto-extraction pipeline.
 });

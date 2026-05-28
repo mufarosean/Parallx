@@ -598,15 +598,38 @@ export class BlockHandlesController {
       return false;
     }
 
-    const rects = [this._resolvedBlockDom.getBoundingClientRect()];
-
-    if (!this._dragHandleEl.classList.contains('hide')) {
-      rects.push(this._dragHandleEl.getBoundingClientRect());
-    }
+    // The sticky zone protects the handle / + button gutter so the user
+    // can transit from the block's content into the handle without the
+    // handle moving away under their cursor. Previously we also included
+    // the block's full DOM rect in this zone — which for container
+    // blocks (toggle / callout / blockquote) covers ALL nested content
+    // and locked the handle to the container's top row even when the
+    // cursor moved over deeply nested blocks. Removing the block-body
+    // from the sticky zone makes the handle ALWAYS follow the cursor.
+    // The handle / + button rects themselves are still sticky so the
+    // user can click them without them dodging away.
+    const rects: DOMRect[] = [this._dragHandleEl.getBoundingClientRect()];
 
     if (this._blockAddBtn && !this._blockAddBtn.classList.contains('hide')) {
       rects.push(this._blockAddBtn.getBoundingClientRect());
     }
+
+    // Also include a thin horizontal corridor from the current handle to
+    // the block's left edge, so the user can move their cursor sideways
+    // OUT of the block toward the handle without the handle re-anchoring
+    // mid-transit. This is the actual "approach corridor" — a horizontal
+    // strip aligned with the current handle's vertical band, bridging
+    // the gutter to the resolved block.
+    const blockRect = this._resolvedBlockDom.getBoundingClientRect();
+    const handleRect = this._dragHandleEl.getBoundingClientRect();
+    const corridorTop = handleRect.top - 4;
+    const corridorBottom = handleRect.bottom + 4;
+    rects.push(new DOMRect(
+      handleRect.left,
+      corridorTop,
+      Math.max(0, blockRect.left - handleRect.left + 4),
+      corridorBottom - corridorTop,
+    ));
 
     const left = Math.min(...rects.map((rect) => rect.left));
     const right = Math.max(...rects.map((rect) => rect.right));
@@ -640,12 +663,58 @@ export class BlockHandlesController {
     if (!hit || !this._resolvedBlockDom.contains(hit)) {
       return false;
     }
-    if (hit === this._resolvedBlockDom || this._isIgnoredOverlayElement(hit)) {
+    if (this._isIgnoredOverlayElement(hit)) {
       return false;
+    }
+
+    // When the cursor lands directly on the container wrapper (in its
+    // padding or in a gap between child blocks), elementFromPoint
+    // returns the container itself rather than a descendant block. The
+    // earlier guard "if hit === _resolvedBlockDom return false" then
+    // locked the handle to the container's anchor — typically the very
+    // top, which for an open toggle is its summary row. The user sees
+    // the handle stuck at "Road Safety" even when their cursor is over
+    // a task item further down. Fix: find the nested descendant block
+    // whose Y range contains the cursor (or is nearest) and treat that
+    // as the refresh target.
+    if (hit === this._resolvedBlockDom) {
+      const nestedByY = this._findNestedBlockByCursorY(view, this._resolvedBlockDom, clientY);
+      return !!nestedByY && nestedByY.pos !== this._resolvedBlockPos;
     }
 
     const nested = this._resolveBlockFromDomElement(view, hit);
     return !!nested && nested.pos !== this._resolvedBlockPos;
+  }
+
+  /**
+   * Walk descendant elements of `containerDom` that map to ProseMirror
+   * blocks, and pick the one whose bounding rect contains `cursorY`
+   * (or is closest by vertical edge). Used to recover from the case
+   * where elementFromPoint returns the container wrapper itself.
+   */
+  private _findNestedBlockByCursorY(
+    view: any,
+    containerDom: HTMLElement,
+    cursorY: number,
+  ): { pos: number; node: any; depth: number } | null {
+    // Collect candidate child elements at any depth inside the container
+    // that ProseMirror knows how to map back to a doc position. Limit
+    // to common block-rendering tags so we don't enumerate text nodes.
+    const candidates = Array.from(
+      containerDom.querySelectorAll<HTMLElement>(
+        'p, li, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, [data-type="detailsSummary"], [data-type="detailsContent"], [data-type="taskItem"]',
+      ),
+    );
+    let best: { el: HTMLElement; dist: number } | null = null;
+    for (const el of candidates) {
+      const r = el.getBoundingClientRect();
+      if (r.height === 0) continue;
+      if (cursorY >= r.top && cursorY <= r.bottom) { best = { el, dist: 0 }; break; }
+      const dist = cursorY < r.top ? r.top - cursorY : cursorY - r.bottom;
+      if (!best || dist < best.dist) best = { el, dist };
+    }
+    if (!best) return null;
+    return this._resolveBlockFromDomElement(view, best.el);
   }
 
 
@@ -674,11 +743,19 @@ export class BlockHandlesController {
       // For atom nodes (mathBlock, bookmark, etc.) 'inside' is -1.
       if (hitResult.inside >= 0) {
         const resolved = this._resolveBlockFromDocPos(view, hitResult.inside);
-        if (resolved && !isListWrapper(resolved.node)) return { pos: resolved.pos, node: resolved.node };
+        if (resolved && !isListWrapper(resolved.node)) {
+          const c1 = this._reanchorListItemToCursor(view, resolved, clientY);
+          const c2 = this._reanchorContainerToCursor(view, c1, clientY);
+          return { pos: c2.pos, node: c2.node };
+        }
       }
       // For atom nodes or boundary positions, use 'pos'.
       const resolved = this._resolveBlockFromDocPos(view, hitResult.pos);
-      if (resolved && !isListWrapper(resolved.node)) return { pos: resolved.pos, node: resolved.node };
+      if (resolved && !isListWrapper(resolved.node)) {
+        const c1 = this._reanchorListItemToCursor(view, resolved, clientY);
+        const c2 = this._reanchorContainerToCursor(view, c1, clientY);
+        return { pos: c2.pos, node: c2.node };
+      }
     }
 
     // Fallback: elementFromPoint → DOM walk → posAtDOM
@@ -825,6 +902,145 @@ export class BlockHandlesController {
     return this._resolveBlockFallback(handleY);
   }
 
+  /**
+   * When ProseMirror's `posAtCoords` resolves to a `listItem`/`taskItem`,
+   * verify the cursor Y is actually inside THAT item's DOM rect. If not,
+   * find the sibling list item whose vertical range contains the cursor
+   * (or the nearest by edge distance) and return it instead.
+   *
+   * Why: bullet/numbered lists (`<ul>` / `<ol>`) have a left gutter (the
+   * 40px browser-default ul padding where bullet/number markers sit).
+   * When the cursor is in that gutter, the cursor is INSIDE the list's
+   * rect but not inside any specific `<li>` rect. `posAtCoords` picks
+   * SOME item — frequently the first — and the handle anchors there
+   * regardless of the actual vertical cursor position. TaskList has
+   * `padding-left: 0` per the canvas CSS, so this codepath only manifests
+   * for bullet/numbered. M81 P13.
+   */
+  private _reanchorListItemToCursor(
+    view: any,
+    resolved: { pos: number; node: any; depth: number },
+    clientY: number,
+  ): { pos: number; node: any; depth: number } {
+    const name = resolved.node?.type?.name;
+    if (name !== 'listItem' && name !== 'taskItem') return resolved;
+    const dom = view.nodeDOM(resolved.pos) as HTMLElement | null;
+    if (!dom) return resolved;
+    const r = dom.getBoundingClientRect();
+    if (clientY >= r.top && clientY <= r.bottom) return resolved;
+
+    // Cursor is outside the resolved item's vertical range. Look at the
+    // parent list's siblings and pick the closest by Y.
+    const listEl = dom.parentElement;
+    if (!listEl || (listEl.tagName !== 'UL' && listEl.tagName !== 'OL')) return resolved;
+    const items = Array.from(listEl.children).filter(
+      (c): c is HTMLElement => c instanceof HTMLElement && c.tagName === 'LI',
+    );
+    let best: { el: HTMLElement; dist: number } | null = null;
+    for (const li of items) {
+      const lr = li.getBoundingClientRect();
+      if (clientY >= lr.top && clientY <= lr.bottom) { best = { el: li, dist: 0 }; break; }
+      const dist = clientY < lr.top ? lr.top - clientY : clientY - lr.bottom;
+      if (!best || dist < best.dist) best = { el: li, dist };
+    }
+    if (!best || best.el === dom) return resolved;
+
+    const directChild = best.el.firstElementChild as HTMLElement | null;
+    const contentEl = directChild?.tagName === 'LABEL'
+      ? (directChild.nextElementSibling as HTMLElement | null) ?? directChild
+      : directChild;
+    try {
+      const domPos = view.posAtDOM(contentEl ?? best.el, 0);
+      const r2 = this._resolveBlockFromDocPos(view, domPos);
+      if (r2) return r2;
+    } catch { /* fall through */ }
+    return resolved;
+  }
+
+  /**
+   * Mirror of `_reanchorListItemToCursor` for container blocks (toggle /
+   * callout / blockquote / column). When ProseMirror resolves to a
+   * container — typically because the cursor landed in the container's
+   * padding, in its summary/title row, or right at a boundary — and the
+   * actual cursor Y is over a descendant block inside the container,
+   * we re-anchor the handle to that descendant. Otherwise the handle
+   * locks to the container's anchor row (the title) even when the user
+   * is hovering deep inside the body (M81 P13b — toggle bug).
+   *
+   * Special-case for details: if the cursor Y is within the SUMMARY
+   * row, KEEP the resolution at the details container — that's where
+   * the user expects the handle to live for the "drag the whole toggle"
+   * gesture.
+   */
+  private _reanchorContainerToCursor(
+    view: any,
+    resolved: { pos: number; node: any; depth: number },
+    clientY: number,
+  ): { pos: number; node: any; depth: number } {
+    const name = resolved.node?.type?.name;
+    if (!isContainerBlockType(name)) return resolved;
+    const dom = view.nodeDOM(resolved.pos) as HTMLElement | null;
+    if (!dom) return resolved;
+
+    // For details, keep the container target when cursor is on the summary.
+    if (name === 'details') {
+      const summary = dom.querySelector(':scope > div > summary, :scope > summary') as HTMLElement | null;
+      if (summary) {
+        const sr = summary.getBoundingClientRect();
+        if (clientY >= sr.top && clientY <= sr.bottom) return resolved;
+      }
+    }
+
+    // Collect candidate descendant blocks (one level deep into the
+    // container's content area) and pick the one whose Y range contains
+    // the cursor, or the closest by edge distance.
+    const contentRoot: HTMLElement = (() => {
+      if (name === 'details') {
+        return (dom.querySelector(':scope [data-type="detailsContent"]') as HTMLElement | null) ?? dom;
+      }
+      return dom;
+    })();
+    const candidates = Array.from(contentRoot.children).filter(
+      (c): c is HTMLElement => c instanceof HTMLElement,
+    );
+    let best: { el: HTMLElement; dist: number } | null = null;
+    for (const el of candidates) {
+      const r = el.getBoundingClientRect();
+      if (r.height === 0) continue;
+      if (clientY >= r.top && clientY <= r.bottom) { best = { el, dist: 0 }; break; }
+      const dist = clientY < r.top ? r.top - clientY : clientY - r.bottom;
+      if (!best || dist < best.dist) best = { el, dist };
+    }
+    if (!best) return resolved;
+
+    try {
+      // Resolve the picked element back to a doc position. For list
+      // wrappers we drill into the closest li by Y.
+      let probe: HTMLElement = best.el;
+      if (probe.tagName === 'UL' || probe.tagName === 'OL') {
+        const lis = Array.from(probe.children).filter(
+          (c): c is HTMLElement => c instanceof HTMLElement && c.tagName === 'LI',
+        );
+        let liBest: { el: HTMLElement; dist: number } | null = null;
+        for (const li of lis) {
+          const lr = li.getBoundingClientRect();
+          if (clientY >= lr.top && clientY <= lr.bottom) { liBest = { el: li, dist: 0 }; break; }
+          const dist = clientY < lr.top ? lr.top - clientY : clientY - lr.bottom;
+          if (!liBest || dist < liBest.dist) liBest = { el: li, dist };
+        }
+        if (liBest) probe = liBest.el;
+      }
+      const directChild = probe.firstElementChild as HTMLElement | null;
+      const contentEl = directChild?.tagName === 'LABEL'
+        ? (directChild.nextElementSibling as HTMLElement | null) ?? directChild
+        : directChild;
+      const domPos = view.posAtDOM(contentEl ?? probe, 0);
+      const r2 = this._resolveBlockFromDocPos(view, domPos);
+      if (r2 && r2.pos !== resolved.pos) return r2;
+    } catch { /* fall through */ }
+    return resolved;
+  }
+
   private _resolveBlockFromDomElement(
     view: any,
     element: HTMLElement,
@@ -842,6 +1058,48 @@ export class BlockHandlesController {
         if (resolved) return resolved;
       } catch {
         // Fall through to the generic ancestor walk.
+      }
+    }
+
+    // Cursor lands in a list wrapper (`<ul>` / `<ol>` / taskList) but NOT
+    // inside any specific `<li>` — typical when the pointer is in a row
+    // gap or in the list's left padding. Default behavior was to walk up
+    // and `posAtDOM(ul, 0)` which always resolves to the FIRST item, so
+    // the handle stuck on item 1 until the cursor drifted clearly into
+    // another item. Instead, pick the `<li>` whose vertical range
+    // contains the cursor Y — or the closest one if the cursor is just
+    // outside any item rect. M81 P13 — caught 2026-05-27.
+    const listEl = element.closest('ul, ol') as HTMLElement | null;
+    const pointerY = this._lastPointerClient?.y;
+    if (listEl && view.dom.contains(listEl) && pointerY != null) {
+      const items = Array.from(listEl.children).filter(
+        (c): c is HTMLElement => c instanceof HTMLElement && c.tagName === 'LI',
+      );
+      let best: { el: HTMLElement; dist: number } | null = null;
+      for (const li of items) {
+        const r = li.getBoundingClientRect();
+        // Containment first — pointer Y inside the item's vertical range
+        // wins outright (zero distance).
+        if (pointerY >= r.top && pointerY <= r.bottom) {
+          best = { el: li, dist: 0 };
+          break;
+        }
+        // Otherwise track the nearest by vertical edge distance.
+        const dist = pointerY < r.top ? r.top - pointerY : pointerY - r.bottom;
+        if (!best || dist < best.dist) best = { el: li, dist };
+      }
+      if (best) {
+        const directChild = best.el.firstElementChild as HTMLElement | null;
+        const contentEl = directChild?.tagName === 'LABEL'
+          ? (directChild.nextElementSibling as HTMLElement | null) ?? directChild
+          : directChild;
+        try {
+          const domPos = view.posAtDOM(contentEl ?? best.el, 0);
+          const resolved = this._resolveBlockFromDocPos(view, domPos);
+          if (resolved) return resolved;
+        } catch {
+          // Fall through to the generic ancestor walk.
+        }
       }
     }
 

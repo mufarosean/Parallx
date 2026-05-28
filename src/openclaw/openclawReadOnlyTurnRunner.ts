@@ -26,6 +26,7 @@ import type {
   IToolResult,
 } from '../services/chatTypes.js';
 import { applyOpenclawToolPolicy } from './openclawToolPolicy.js';
+import { normalizeToolResultContent } from './openclawAttempt.js';
 import { isTransientError, isTimeoutError } from './openclawErrorClassification.js';
 import { ChatToolLoopSafety } from '../services/chatToolLoopSafety.js';
 
@@ -269,7 +270,10 @@ export async function runOpenclawReadOnlyTurn(
       if (options.toolObserver?.onExecuted) {
         try { options.toolObserver.onExecuted(hookMetadata, toolResult); } catch (e) { console.warn('[D4] Readonly tool hook error:', e); }
       }
-      toolResultMessages.push({ role: 'tool', content: toolResult.content, toolName });
+      // Defensive: same MCP-shape unwrap as openclawAttempt — extensions
+      // returning `[{ type: 'text', text }]` instead of plain string would
+      // otherwise trip Ollama's HTTP 400.
+      toolResultMessages.push({ role: 'tool', content: normalizeToolResultContent(toolResult.content, toolName), toolName });
     }
 
     // Batch-append: one assistant message + all collected tool result messages

@@ -179,6 +179,15 @@ export interface IWorkspaceMemoryService extends IDisposable {
   /** Overwrite the durable memory markdown file. */
   writeDurableMemory(content: string): Promise<void>;
 
+  /** Relative path for the user identity file (M81). */
+  getUserFileRelativePath(): string;
+
+  /** Read the user identity markdown file. Returns '' if missing (M81). */
+  readUserFile(): Promise<string>;
+
+  /** Overwrite the user identity markdown file (M81). */
+  writeUserFile(content: string): Promise<void>;
+
   /** Read the daily memory markdown file for a date. */
   readDailyMemory(date?: Date): Promise<string>;
 
@@ -187,6 +196,43 @@ export interface IWorkspaceMemoryService extends IDisposable {
 
   /** Append a note to the daily memory markdown file for a date. */
   appendDailyMemory(text: string, date?: Date): Promise<void>;
+
+  /** Overwrite the daily memory markdown file for a date (M81). Body is rewritten beneath the date header. */
+  writeDailyMemory(body: string, date?: Date): Promise<void>;
+
+  // M81 Phase 8 — lesson files (progressive disclosure). MEMORY.md is an INDEX
+  // of pointers to per-topic lesson files at .parallx/memory/lessons/<slug>.md.
+  // Bodies are read on demand by the agent, not auto-loaded.
+
+  /** Relative path of the lessons directory (e.g. `.parallx/memory/lessons`). */
+  getLessonsRootRelativePath(): string;
+
+  /** Relative path of a lesson file (e.g. `.parallx/memory/lessons/<slug>.md`). */
+  getLessonFileRelativePath(slug: string): string;
+
+  /** Read a lesson file body. Returns '' if missing. */
+  readLessonFile(slug: string): Promise<string>;
+
+  /** Write a lesson file body to `.parallx/memory/lessons/<slug>.md`. Creates the directory if missing. */
+  writeLessonFile(slug: string, content: string): Promise<void>;
+
+  /** Move a lesson from `lessons/<slug>.md` to `_archive/lessons/<slug>.md`. Returns true if archived. */
+  archiveLessonFile(slug: string): Promise<boolean>;
+
+  /** List slugs (without `.md`) of lesson files currently on disk. */
+  listLessons(): Promise<string[]>;
+
+  /** Parse `- [Title](lessons/slug.md) — desc` index lines from MEMORY.md. */
+  parseMemoryIndex(): Promise<Array<{ slug: string; description: string; path: string }>>;
+
+  /** Idempotent: replace the line for `slug` if present, else append a new entry. Description truncated to 120 chars. */
+  addMemoryIndexEntry(slug: string, description: string): Promise<void>;
+
+  /** Remove the index line matching `slug`. No-op if absent. */
+  removeMemoryIndexEntry(slug: string): Promise<void>;
+
+  /** Idempotent migration: if MEMORY.md contains a pre-M81 regex-extracted `## Concepts` section, archive it. */
+  archiveLegacyConceptSection(): Promise<{ archived: boolean; movedChars: number }>;
 
   /** Append a structured session summary block to the daily memory file. */
   appendSessionSummary(sessionId: string, summary: string, messageCount: number, date?: Date): Promise<void>;
@@ -199,18 +245,6 @@ export interface IWorkspaceMemoryService extends IDisposable {
 
   /** Merge preference records into canonical durable memory. */
   upsertPreferences(preferences: Array<{ key: string; value: string }>): Promise<void>;
-
-  /** Sync legacy/imported learning concepts into a durable markdown section. */
-  syncConcepts(concepts: Array<{ concept: string; category: string; summary: string; encounterCount?: number; masteryLevel?: number }>): Promise<void>;
-
-  /** Read canonical durable concepts. */
-  readConcepts(): Promise<Array<{ concept: string; category: string; summary: string; encounterCount: number; masteryLevel: number; struggleCount: number }>>;
-
-  /** Merge concept records into canonical durable memory. */
-  upsertConcepts(concepts: Array<{ concept: string; category: string; summary: string; encounterCount?: number; masteryLevel?: number; struggleCount?: number }>): Promise<void>;
-
-  /** Search canonical durable concepts with simple workspace-local ranking. */
-  searchConcepts(query: string, topK?: number): Promise<Array<{ concept: string; category: string; summary: string; encounterCount: number; masteryLevel: number; struggleCount: number }>>;
 
   /** Read a prompt-ready preferences block from canonical durable memory. */
   getPreferencesPromptBlock(): Promise<string | undefined>;
@@ -228,7 +262,6 @@ export interface IWorkspaceMemoryService extends IDisposable {
   importLegacySnapshot(snapshot: {
     memories: Array<{ sessionId: string; createdAt: string; messageCount: number; summary: string }>;
     preferences: Array<{ key: string; value: string }>;
-    concepts: Array<{ concept: string; category: string; summary: string; encounterCount?: number; masteryLevel?: number }>;
   }): Promise<{ imported: boolean; reason: 'imported' | 'already-imported' | 'empty-snapshot' }>;
 }
 
@@ -1781,15 +1814,6 @@ export interface IMemoryService extends IDisposable {
   /** Delete a specific memory by session ID (M20 F.2). */
   deleteMemory(sessionId: string): Promise<void>;
 
-  /** Get all stored learning concepts (M20 F.1). */
-  getAllConcepts(): Promise<import('./memoryService.js').LearningConcept[]>;
-
-  /** Delete a specific learning concept by ID (M20 F.2). */
-  deleteConcept(conceptId: number): Promise<void>;
-
-  /** Extract and store user preferences from text. */
-  extractAndStorePreferences(text: string): Promise<import('./memoryService.js').UserPreference[]>;
-
   /** Get all stored user preferences, ordered by frequency. */
   getPreferences(): Promise<import('./memoryService.js').UserPreference[]>;
 
@@ -1802,24 +1826,13 @@ export interface IMemoryService extends IDisposable {
   /** Clear all memories and preferences. */
   clearAll(): Promise<void>;
 
-  // ── Concept-Level Memory (M17 P1.2) ──
-
-  /** Store or update learning concepts extracted from a session. */
-  storeConcepts(concepts: import('./memoryService.js').LearningConcept[], sessionId: string): Promise<void>;
-
-  /** Recall concepts relevant to a query via hybrid search. */
-  recallConcepts(query: string, topK?: number): Promise<import('./memoryService.js').LearningConcept[]>;
-
-  /** Format recalled concepts for system prompt injection. */
-  formatConceptContext(concepts: import('./memoryService.js').LearningConcept[]): string;
-
   // ── Decay & Eviction (M17 P1.3) ──
 
-  /** Recalculate decay scores for all memories and concepts. */
+  /** Recalculate decay scores for all memories. */
   recalculateDecayScores(): Promise<void>;
 
-  /** Evict stale memories and concepts that have decayed below threshold. */
-  evictStaleContent(): Promise<{ memoriesEvicted: number; conceptsEvicted: number }>;
+  /** Evict stale memories that have decayed below threshold. */
+  evictStaleContent(): Promise<{ memoriesEvicted: number }>;
 }
 
 export const IMemoryService = createServiceIdentifier<IMemoryService>('IMemoryService');

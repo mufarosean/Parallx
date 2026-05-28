@@ -48,6 +48,7 @@ export function createRunCommandTool(terminal: IBuiltInToolTerminal | undefined,
     },
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    category: 'terminal',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       if (!terminal) {
         return { content: 'Terminal is not available — running outside Electron.', isError: true };

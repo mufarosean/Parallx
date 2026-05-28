@@ -906,6 +906,13 @@ export interface IToolDefinition {
    * a cross-layer import of OpenclawToolProfile).
    */
   readonly profiles?: readonly string[];
+  /**
+   * M81 Phase 10 — coarse feature-area grouping. Threaded through from
+   * `IChatTool.category` so the OpenClaw prompt builder can emit a
+   * category-to-tools map that teaches the model which surface each tool
+   * family operates on.
+   */
+  readonly category?: ToolCategory;
 }
 
 /**
@@ -952,6 +959,37 @@ export type ToolPermissionLevel = 'always-allowed' | 'requires-approval' | 'neve
 export type ToolGrantDecision = 'allow-once' | 'allow-session' | 'always-allow' | 'reject';
 
 /**
+ * M81 Phase 10 — coarse feature-area grouping for built-in tools.
+ *
+ * Drives:
+ *   1. Settings UI sub-grouping inside the "Built-In" bucket (so users see
+ *      Canvas / File System / Memory / etc. instead of one flat list).
+ *   2. System prompt category map (so the model has a clear mental model of
+ *      "canvas_* operates on canvas pages; read_file / write_file operate on
+ *      files on disk"). Closes the routing gap where the AI calls `read_file`
+ *      on a canvas page or `canvas_read_page` on a file path.
+ *
+ * One source of truth — the category lives on `IChatTool`. The eval manifest's
+ * pre-existing `category` strings are advisory only and may diverge; the
+ * runtime `IChatTool.category` is canonical.
+ *
+ * When adding a new category, prefer reusing an existing one. Categories are
+ * coarse on purpose — sub-distinctions belong in the tool's description.
+ */
+export type ToolCategory =
+  | 'canvas'         // canvas page DB ops (find/read/create/edit/properties + block-level)
+  | 'file-system'    // workspace files on disk (list/read/write/edit/delete/search/grep/RAG)
+  | 'memory'         // .parallx/memory/ files (lessons, dailies, USER.md, MEMORY.md index)
+  | 'transcript'     // .parallx/sessions/ transcripts
+  | 'cron'           // scheduled tasks (cron_*)
+  | 'surface'        // UI surface routing (surface_send, surface_list)
+  | 'subagent'       // agent spawning (sessions_spawn)
+  | 'autonomy'       // autonomy log read
+  | 'linking'        // parallx_link
+  | 'app-control'    // workbench command execution
+  | 'terminal';      // shell execution (run_command)
+
+/**
  * A registered chat tool — definition + handler.
  *
  * VS Code reference: IToolData + handler (languageModelToolsService.ts)
@@ -983,6 +1021,14 @@ export interface IChatTool {
    * Upstream parity: src/agents/tool-catalog.ts CoreToolDefinition.profiles[].
    */
   readonly profiles?: readonly string[];
+  /**
+   * M81 Phase 10 — coarse feature-area grouping. Used by the settings UI to
+   * sub-group inside the "Built-In" bucket, and by the system prompt's
+   * tooling section to give the model a clear surface map so it stops
+   * picking the wrong tool. Optional — extensions that don't set this fall
+   * through to the legacy "ungrouped" rendering.
+   */
+  readonly category?: ToolCategory;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1300,7 +1346,7 @@ export const ILanguageModelToolsService = createServiceIdentifier<ILanguageModel
  * AI Hub Tools section and the (deprecated) ChatToolPicker modal.
  */
 export interface IToolPickerServices {
-  getTools(): readonly { name: string; description: string; enabled: boolean; extensionId?: string }[];
+  getTools(): readonly { name: string; description: string; enabled: boolean; extensionId?: string; category?: ToolCategory }[];
   setToolEnabled(name: string, enabled: boolean): void;
   readonly onDidChangeTools: Event<void>;
   getEnabledCount(): number;

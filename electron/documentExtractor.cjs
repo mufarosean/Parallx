@@ -39,11 +39,18 @@ const RICH_DOCUMENT_EXTENSIONS = new Set([
 ]);
 
 /**
- * Maximum file size for rich document extraction (25 MB).
+ * Maximum file size for rich document extraction (100 MB).
  * Study PDFs are often materially larger than lightweight notes; keep the
  * cap high enough for real workspaces while still guarding pathological files.
+ *
+ * ⚠️ DUPLICATED CONSTANT — keep in sync with `MAX_RICH_DOC_SIZE` in
+ * `src/services/indexingPipeline.ts`. The renderer-side cap filters the
+ * directory walk; this main-process cap is the actual extraction guard. If
+ * they diverge, the lower of the two wins and rich-doc indexing silently
+ * skips files in the gap.
+ * TODO: consolidate to a single source — see `project_indexing_size_caps`.
  */
-const MAX_RICH_DOC_SIZE = 25 * 1024 * 1024;
+const MAX_RICH_DOC_SIZE = 100 * 1024 * 1024;
 
 // ─── Lazy module loading ────────────────────────────────────────────────────
 // We lazy-load the extraction libraries so they don't slow down app startup.

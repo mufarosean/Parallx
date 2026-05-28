@@ -6,6 +6,7 @@ import {
   buildToolSummariesSection,
   buildWorkspaceSection,
   buildRuntimeSection,
+  buildMemorySection,
   estimateSystemPromptTokens,
   type IBootstrapFile,
   type IOpenclawRuntimeInfo,
@@ -296,6 +297,38 @@ describe('buildSkillsSection', () => {
     expect(section).toContain('&lt;regex&gt;');
     expect(section).toContain('&quot;test&quot;');
   });
+
+  // M81 Phase 6 — agentskills.io subfolder alignment.
+  it('emits <bundle> with <file> children when skill has bundledFiles', () => {
+    const section = buildSkillsSection([
+      {
+        name: 'my-skill',
+        description: 'A skill with a script',
+        location: '.parallx/skills/my-skill/SKILL.md',
+        bundledFiles: [
+          '.parallx/skills/my-skill/scripts/helper.py',
+          '.parallx/skills/my-skill/references/notes.md',
+        ],
+      },
+    ]);
+    expect(section).toContain('<bundle>');
+    expect(section).toContain('<file>.parallx/skills/my-skill/scripts/helper.py</file>');
+    expect(section).toContain('<file>.parallx/skills/my-skill/references/notes.md</file>');
+    expect(section).toContain('</bundle>');
+  });
+
+  it('does NOT emit <bundle> for skills without bundledFiles (no regression)', () => {
+    // Skill entry created the legacy way — no bundledFiles property at all.
+    const legacyOnly = buildSkillsSection(createSkills());
+    expect(legacyOnly).not.toContain('<bundle>');
+    expect(legacyOnly).not.toContain('<file>');
+
+    // Skill entry explicitly with empty array — also must not emit <bundle>.
+    const explicitEmpty = buildSkillsSection([
+      { name: 'no-bundle', description: 'desc', location: '/x.md', bundledFiles: [] },
+    ]);
+    expect(explicitEmpty).not.toContain('<bundle>');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -344,13 +377,76 @@ describe('buildToolSummariesSection', () => {
     expect(section).not.toContain('### Memory');
   });
 
-  it('output is stable regardless of input tools', () => {
+  it('output is stable when no tool declares a category', () => {
+    // Tools without `category` fall into the no-map branch — the section is
+    // the bare preamble + selection guidance, identical regardless of inputs.
     const a = buildToolSummariesSection([{ name: 'x', description: 'X' }]);
     const b = buildToolSummariesSection([
       { name: 'y', description: 'Y' },
       { name: 'z', description: 'Z' },
     ]);
     expect(a).toBe(b);
+  });
+
+  // M81 Phase 10 — when at least one tool carries a category, the section
+  // emits a category-to-tools map so the model has a routing rubric. This is
+  // the load-bearing change that prevents `read_file` from being called on a
+  // canvas page UUID.
+  describe('category map (M81 P10)', () => {
+    it('emits a per-category section listing tool names when categories are present', () => {
+      const tools: IToolSummary[] = [
+        { name: 'canvas_read_page', description: 'Read a canvas page', category: 'canvas' },
+        { name: 'canvas_find_pages', description: 'Find canvas pages',  category: 'canvas' },
+        { name: 'read_file',         description: 'Read a workspace file', category: 'file-system' },
+        { name: 'memory_get',        description: 'Read memory',           category: 'memory' },
+      ];
+      const section = buildToolSummariesSection(tools);
+      expect(section).toContain('**canvas**');
+      expect(section).toContain('**file-system**');
+      expect(section).toContain('**memory**');
+      expect(section).toContain('`canvas_read_page`');
+      expect(section).toContain('`canvas_find_pages`');
+      expect(section).toContain('`read_file`');
+      expect(section).toContain('`memory_get`');
+    });
+
+    it('explicitly warns against calling read_file on a canvas page UUID', () => {
+      const tools: IToolSummary[] = [
+        { name: 'canvas_read_page', description: 'Read a canvas page', category: 'canvas' },
+        { name: 'read_file',         description: 'Read a workspace file', category: 'file-system' },
+      ];
+      const section = buildToolSummariesSection(tools);
+      // The exact failure mode the user reported.
+      expect(section).toContain('UUIDs are not file paths');
+    });
+
+    it('orders categories by surface importance (canvas → file-system → memory → others)', () => {
+      const tools: IToolSummary[] = [
+        { name: 'run_command',       description: 'Run shell',     category: 'terminal' },
+        { name: 'memory_get',        description: 'Read memory',   category: 'memory' },
+        { name: 'canvas_read_page',  description: 'Read page',     category: 'canvas' },
+        { name: 'read_file',         description: 'Read file',     category: 'file-system' },
+      ];
+      const section = buildToolSummariesSection(tools);
+      const canvasIdx = section.indexOf('**canvas**');
+      const fsIdx = section.indexOf('**file-system**');
+      const memIdx = section.indexOf('**memory**');
+      const termIdx = section.indexOf('**terminal**');
+      expect(canvasIdx).toBeGreaterThanOrEqual(0);
+      expect(canvasIdx).toBeLessThan(fsIdx);
+      expect(fsIdx).toBeLessThan(memIdx);
+      expect(memIdx).toBeLessThan(termIdx);
+    });
+
+    it('groups tools without a declared category into an "other" bucket', () => {
+      const tools: IToolSummary[] = [
+        { name: 'canvas_read_page', description: 'Read page', category: 'canvas' },
+        { name: 'unknown_tool',     description: 'Extension tool with no category' },
+      ];
+      const section = buildToolSummariesSection(tools);
+      expect(section).toContain('**other**');
+      expect(section).toContain('`unknown_tool`');
+    });
   });
 });
 
@@ -422,6 +518,86 @@ describe('buildRuntimeSection', () => {
     expect(section).not.toContain('OS:');
     expect(section).not.toContain('Architecture:');
     expect(section).not.toContain('Shell:');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildMemorySection (M81 Phase 8 — index + topic-files model)
+// ---------------------------------------------------------------------------
+
+describe('buildMemorySection', () => {
+  it('teaches the index model: MEMORY.md is an INDEX, not a content file', () => {
+    const section = buildMemorySection();
+    // The whole point of Phase 8 is that MEMORY.md is an INDEX of pointers.
+    expect(section).toContain('## Memory');
+    expect(section).toContain('`MEMORY.md` is an');
+    expect(section).toContain('INDEX');
+    expect(section).toContain('lessons/<slug>.md');
+  });
+
+  it('names all three identity files', () => {
+    const section = buildMemorySection();
+    expect(section).toContain('.parallx/SOUL.md');
+    expect(section).toContain('.parallx/USER.md');
+    expect(section).toContain('.parallx/AGENTS.md');
+  });
+
+  it('explains how to open a lesson body on demand', () => {
+    const section = buildMemorySection();
+    // memory_get with a name= slug is the preferred path; read_file fallback also documented.
+    expect(section).toContain('memory_get name=<slug>');
+    expect(section).toContain('read_file lessons/<slug>.md');
+  });
+
+  it('lists all three tools in one family', () => {
+    const section = buildMemorySection();
+    expect(section).toContain('memory_get');
+    expect(section).toContain('memory_search');
+    expect(section).toContain('memory_edit');
+    // memory_edit must mention the lesson file= action so the model knows it exists.
+    expect(section).toContain('file=lesson');
+  });
+
+  it('describes the YYYY-MM-DD daily log layer', () => {
+    const section = buildMemorySection();
+    expect(section).toMatch(/YYYY-MM-DD\.md/);
+    expect(section).toMatch(/daily logs?/i);
+  });
+
+  it('includes the user-corrections write trigger', () => {
+    const section = buildMemorySection();
+    // The correction trigger MUST be explicit — this is the one missing in
+    // the pre-Phase-8 wording. Look for the verb "corrects" plus the
+    // example phrasing the spec calls out.
+    expect(section).toMatch(/corrects you/i);
+    expect(section).toContain("don't do X");
+    expect(section).toContain('use Z instead of W');
+  });
+
+  it('routes corrections to a lesson file, not USER.md or daily', () => {
+    const section = buildMemorySection();
+    // The correction line MUST direct the agent to memory_edit file=lesson.
+    expect(section).toMatch(/correct[^.]*memory_edit file=lesson/i);
+  });
+
+  it('includes USER.md and lesson write triggers explicitly', () => {
+    const section = buildMemorySection();
+    expect(section).toMatch(/states a preference[^.]*file=USER/);
+    expect(section).toMatch(/file=lesson/);
+    expect(section).toMatch(/file=daily/);
+  });
+
+  it('describes cap discipline — remove an old lesson before adding when index is full', () => {
+    const section = buildMemorySection();
+    expect(section).toMatch(/cap/i);
+    // The agent must be told to remove an obsolete entry before retrying the add.
+    expect(section).toMatch(/action=remove/);
+  });
+
+  it('keeps the "verify before acting on memory" staleness warning', () => {
+    const section = buildMemorySection();
+    // Carried over from the Phase 5 version — memory can go stale, agent must verify.
+    expect(section).toMatch(/can go stale/i);
   });
 });
 

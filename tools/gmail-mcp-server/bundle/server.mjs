@@ -475,15 +475,15 @@ try {
 var SERVER_NAME = "parallx-gmail-mcp";
 var SERVER_VERSION = "0.1.0";
 var PROTOCOL_VERSION = "2024-11-05";
-var LIST_UNREAD_TOOL = {
-  name: "list_unread",
-  description: "List Gmail messages with sender, subject, snippet, received-at, thread id, and labels. Read-only. Defaults to unread; pass read_state to widen the search.",
+var LIST_EMAILS_TOOL = {
+  name: "list_emails",
+  description: 'Search Gmail and return matching messages with sender, subject, snippet, optional body, received-at, thread id, and labels. Read-only. ALL parameters are optional \u2014 combine them freely:\n  \u2022 `query` \u2014 Gmail search syntax. Use this for sender filters ("from:alice@x.com"), account filters via from:, topic/subject filters ("subject:invoice", "vacation"), label filters ("label:work"), attachment filters ("has:attachment"), date range ("after:2026/01/01 before:2026/02/01"), starred ("is:starred"), or any combination ("from:(boss@x.com OR hr@x.com) subject:offsite").\n  \u2022 `since` \u2014 ISO 8601 timestamp; only return mail received after this time. Composable with `query`.\n  \u2022 `read_state` \u2014 "unread" (default), "read", or "all". Use "all" if `query` already constrains read-state.\n  \u2022 `include_body` \u2014 include decoded plain-text body (truncated to 8 KB). Default false.\n  \u2022 `max` / `page_token` \u2014 pagination. Default 25 per page.\nWith no arguments, returns the 25 most recent unread messages. To pull every email from the last 7 days regardless of read state, pass since + read_state="all". To search by topic across all mail, pass query="<keywords>" + read_state="all".',
   inputSchema: {
     type: "object",
     properties: {
       since: {
         type: "string",
-        description: "ISO 8601 \u2014 only return mail received after this timestamp."
+        description: "ISO 8601 \u2014 only return mail received after this timestamp. Optional. Combines with `query`."
       },
       max: {
         type: "number",
@@ -493,16 +493,16 @@ var LIST_UNREAD_TOOL = {
       },
       query: {
         type: "string",
-        description: 'Optional Gmail search query, e.g. "from:alice OR is:important".'
+        description: 'Gmail search query in standard Gmail syntax. Examples: "from:alice@example.com", "subject:invoice", "label:work has:attachment", "from:(boss OR hr) vacation", "after:2026/01/01 before:2026/02/01", "is:starred". Combine with operators (AND implicit, OR explicit, parens for grouping). Use this to filter by sender, account, topic, subject, label, date \u2014 anything Gmail search supports.'
       },
       read_state: {
         type: "string",
         enum: ["unread", "read", "all"],
-        description: 'Read-state filter. "unread" (default) preserves legacy is:unread; "read" returns only seen mail; "all" applies no read-state constraint.'
+        description: 'Read-state filter. "unread" (default) returns only unread mail; "read" returns only seen mail; "all" applies no read-state constraint. Use "all" when `query` already includes a read-state operator or when you want every match regardless of read state.'
       },
       include_body: {
         type: "boolean",
-        description: "Include decoded plain-text body (truncated to 8 KB). Default false. Set true when callers (e.g. transaction-extractor pipelines) need the email body and not just the snippet preview."
+        description: "Include decoded plain-text body (truncated to 8 KB). Default false. Set true when the caller needs the email body for content analysis (e.g. transaction extraction, summarization) and not just the snippet preview."
       },
       page_token: {
         type: "string",
@@ -541,7 +541,7 @@ function handleToolsList(id) {
   return {
     jsonrpc: "2.0",
     id,
-    result: { tools: [LIST_UNREAD_TOOL] }
+    result: { tools: [LIST_EMAILS_TOOL] }
   };
 }
 var tokenCache = null;
@@ -571,7 +571,7 @@ async function getAccessToken() {
 async function handleToolsCall(id, params) {
   const name = String(params?.name ?? "");
   const args = params?.arguments ?? {};
-  if (name !== "list_unread") {
+  if (name !== "list_emails" && name !== "list_unread") {
     return makeError(id, -32601, `Unknown tool: ${name}`);
   }
   let accessToken;
@@ -605,7 +605,7 @@ async function handleToolsCall(id, params) {
       messages,
       ...nextPageToken ? { nextPageToken } : {}
     };
-    logInfo(`list_unread \u2192 ${messages.length} message(s)`);
+    logInfo(`list_emails \u2192 ${messages.length} message(s)`);
     return {
       jsonrpc: "2.0",
       id,
@@ -626,8 +626,8 @@ async function handleToolsCall(id, params) {
       const c = cause;
       causeStr = ` (cause: ${c.code ?? c.message ?? String(cause)})`;
     }
-    logError(`list_unread failed: ${message}${causeStr}`);
-    return makeError(id, -32001, `list_unread failed: ${message}${causeStr}`);
+    logError(`list_emails failed: ${message}${causeStr}`);
+    return makeError(id, -32001, `list_emails failed: ${message}${causeStr}`);
   }
 }
 function handlePing(id) {

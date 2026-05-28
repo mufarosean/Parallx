@@ -54,6 +54,30 @@ export class CanvasSidebar {
   private _favExpandedIds = new Set<string>();
   private _tree: IPageTreeNode[] = [];
 
+  // ── Multi-selection (M81 P12) ──
+  // Set of page IDs the user has shift/ctrl-selected in the tree. Distinct
+  // from `_selectedPageId` (the page open in the editor). When non-empty,
+  // Delete and the right-click "Delete N pages" action operate on every ID
+  // in this set. Cleared on any plain (no-modifier) click and after a bulk
+  // delete completes.
+  private _multiSelectedIds = new Set<string>();
+  /** Anchor for shift-range selection — the page ID of the last plain click. */
+  private _multiSelectAnchor: string | null = null;
+  /**
+   * Position (index into `.canvas-node[data-page-id]` in DOM order) of
+   * the anchor row at click time. Captured because the same page can
+   * appear in multiple sections (RECENT + PAGES), so looking the anchor
+   * back up by ID with `indexOf` would return the wrong copy and the
+   * range would collapse to whichever section happens to come first.
+   *
+   * The index is stable across re-renders as long as the tree structure
+   * (which sections are visible, which folders are expanded) doesn't
+   * change between the plain click and the shift-click. `_renderTree`
+   * rebuilds the DOM in the same order it walked the data, so the i-th
+   * `.canvas-node` is still the same logical row.
+   */
+  private _multiSelectAnchorPos: number | null = null;
+
   // ── Favorites / Trash state ──
   private _favoritedPages: IPage[] = [];
   private _archivedPages: IPage[] = [];
@@ -352,9 +376,12 @@ export class CanvasSidebar {
           title.textContent = page.title || 'Untitled';
           row.appendChild(title);
 
+          if (this._multiSelectedIds.has(page.id)) {
+            row.classList.add('canvas-node--multi-selected');
+          }
           row.addEventListener('click', (e) => {
             e.stopPropagation();
-            void this._selectAndOpenPage(page);
+            this._handleRowClick(e, page);
           });
           recentSection.appendChild(row);
         }
@@ -590,11 +617,12 @@ export class CanvasSidebar {
     if (page.id === this._selectedPageId) {
       row.classList.add('canvas-node--selected');
     }
+    if (this._multiSelectedIds.has(page.id)) {
+      row.classList.add('canvas-node--multi-selected');
+    }
 
-    // Click → open
-    row.addEventListener('click', () => {
-      this._selectAndOpenPage(page);
-    });
+    // Click → open in editor, or extend / toggle multi-selection.
+    row.addEventListener('click', (e) => this._handleRowClick(e, page));
 
     // Right-click → context menu
     row.addEventListener('contextmenu', (e) => {
@@ -736,13 +764,14 @@ export class CanvasSidebar {
     if (node.id === this._selectedPageId) {
       row.classList.add('canvas-node--selected');
     }
+    if (this._multiSelectedIds.has(node.id)) {
+      row.classList.add('canvas-node--multi-selected');
+    }
 
     // ── Event handlers ──
-
-    // Click → open in editor
-    row.addEventListener('click', () => {
-      this._selectAndOpenPage(node);
-    });
+    // Click → open in editor, OR extend / toggle multi-selection. Shared
+    // with the recents and favorites click paths via _handleRowClick.
+    row.addEventListener('click', (e) => this._handleRowClick(e, node));
 
     // Double-click → page options popup focused on the title
     label.addEventListener('dblclick', (e) => {
@@ -939,13 +968,29 @@ export class CanvasSidebar {
         }
       },
     });
-    addAction({
-      id: 'delete',
-      label: 'Delete',
-      iconId: 'trash',
-      danger: true,
-      action: () => this._deletePage(page.id),
-    });
+    // When the user right-clicks a row that's part of an active
+    // multi-selection containing 2+ pages, offer "Delete N pages" so the
+    // batch confirm path is reachable from the mouse, not just the Delete
+    // key. The single-page Delete still works for the row-only path.
+    const multiCount = this._multiSelectedIds.size;
+    const rowIsMultiSelected = this._multiSelectedIds.has(page.id);
+    if (multiCount >= 2 && rowIsMultiSelected) {
+      addAction({
+        id: 'delete-multi',
+        label: `Delete ${multiCount} pages`,
+        iconId: 'trash',
+        danger: true,
+        action: () => this._deleteMultiSelected(),
+      });
+    } else {
+      addAction({
+        id: 'delete',
+        label: 'Delete',
+        iconId: 'trash',
+        danger: true,
+        action: () => this._deletePage(page.id),
+      });
+    }
 
     document.body.appendChild(popup);
     layoutPopup(popup, anchor, { position: 'below', gap: 4 });
@@ -1318,12 +1363,18 @@ export class CanvasSidebar {
       // `_refreshTree` DB roundtrips, so `querySelector` returned null and the popup
       // (with auto-focused title) never opened.
       await this._refreshTree();
-      const el = this._treeList?.querySelector(`[data-page-id="${createdPage.id}"]`);
+      // Anchor the rename popup to the row in the main PAGES section,
+      // not the RECENT or FAVORITES copy. `querySelector` returns the
+      // first DOM occurrence, which is the RECENT row — anchoring the
+      // popup there hides the actual page in the tree behind the popup.
+      const el = this._treeList?.querySelector<HTMLElement>(
+        `[data-page-id="${createdPage.id}"]:not(.canvas-recent-node):not(.canvas-favorite-node)`,
+      );
       if (el) {
         const node = this._findNode(this._tree, createdPage.id);
         const pageRef = node ?? this._favoritedPages.find(page => page.id === createdPage.id) ?? null;
         if (pageRef) {
-          this._showPageOptionsPopup(pageRef, (el as HTMLElement).getBoundingClientRect(), {
+          this._showPageOptionsPopup(pageRef, el.getBoundingClientRect(), {
             focusTitle: true,
             selectTitle: true,
           });
@@ -1360,6 +1411,161 @@ export class CanvasSidebar {
     } catch (err) {
       console.error('[CanvasSidebar] Delete failed:', err);
     }
+  }
+
+  /**
+   * Bulk-archive every page in `_multiSelectedIds` after a single confirm
+   * prompt. Errors on individual pages are logged but don't abort the
+   * remaining deletes — the user sees one batch result rather than a
+   * confirmation per page.
+   */
+  private async _deleteMultiSelected(): Promise<void> {
+    const ids = [...this._multiSelectedIds];
+    if (ids.length === 0) return;
+    if (ids.length === 1) {
+      // Single-item path goes through the existing per-page confirm so the
+      // wording stays unambiguous when only one row is highlighted.
+      await this._deletePage(ids[0]);
+      this._clearMultiSelection();
+      return;
+    }
+
+    const result = await this._api.window.showWarningMessage(
+      `Move ${ids.length} pages to trash?`,
+      { title: `Move ${ids.length} to Trash` },
+      { title: 'Cancel' },
+    );
+    if (!result?.title?.startsWith('Move')) return;
+
+    let failed = 0;
+    for (const id of ids) {
+      try {
+        await this._dataService.archivePage(id);
+        if (this._selectedPageId === id) {
+          this._selectedPageId = null;
+        }
+      } catch (err) {
+        failed++;
+        console.error('[CanvasSidebar] Bulk delete failed for', id, err);
+      }
+    }
+    this._clearMultiSelection();
+    if (failed > 0) {
+      this._surfaceError('Bulk delete', new Error(`${failed} of ${ids.length} pages failed to archive — see console.`));
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Multi-selection helpers (M81 P12)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Shared click router for every sidebar row that represents a page
+   * (main tree, favorites, recents). Shift extends from the anchor,
+   * Ctrl/Cmd toggles, plain click clears the multi-selection and opens.
+   * Used so the modifier-key semantics are identical across sections.
+   *
+   * For modifier-key gestures we explicitly focus the tree list so the
+   * Delete keypress reaches `_handleKeydown` — without this, a plain row
+   * click was bouncing focus into the editor and the user pressing Delete
+   * was hitting the editor's handler (or none at all) instead of the
+   * sidebar's bulk-delete.
+   */
+  private _handleRowClick(e: MouseEvent, node: { id: string } & (IPage | IPageTreeNode)): void {
+    if (e.shiftKey && this._multiSelectAnchor) {
+      e.preventDefault();
+      // Resolve the clicked row's DOM position right now (BEFORE we
+      // mutate state) so the range computation uses the exact row the
+      // user clicked, not the first DOM occurrence of this page ID. A
+      // page that's also in RECENTS appears twice in the DOM — without
+      // the position we'd collapse the range upward.
+      const targetPos = this._currentRowPos(e);
+      this._extendMultiSelectionTo(targetPos);
+      this._treeList?.focus();
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      this._toggleMultiSelection(node.id);
+      this._treeList?.focus();
+      return;
+    }
+    this._clearMultiSelection();
+    this._multiSelectAnchor = node.id;
+    // Capture the anchor's DOM position so a follow-up shift-click can
+    // extend from the right copy. Captured BEFORE _renderTree() runs in
+    // _selectAndOpenPage, which would otherwise detach the element. The
+    // index is stable as long as the tree's section/expansion shape
+    // doesn't change between the plain click and the shift-click.
+    this._multiSelectAnchorPos = this._currentRowPos(e);
+    void this._selectAndOpenPage(node);
+  }
+
+  /**
+   * DOM position (index into `.canvas-node[data-page-id]` in document
+   * order) of the row that received this click. Returns -1 if no row
+   * could be resolved (e.g. test fires click on a non-row child and the
+   * target chain doesn't include a row).
+   */
+  private _currentRowPos(e: MouseEvent): number {
+    if (!this._treeList) return -1;
+    const rowEl = (e.currentTarget instanceof HTMLElement ? e.currentTarget : null)
+      ?? (e.target instanceof Element ? e.target.closest<HTMLElement>('.canvas-node[data-page-id]') : null);
+    if (!rowEl) return -1;
+    const visibleRows = Array.from(
+      this._treeList.querySelectorAll<HTMLElement>('.canvas-node[data-page-id]'),
+    );
+    return visibleRows.indexOf(rowEl);
+  }
+
+  private _clearMultiSelection(): void {
+    if (this._multiSelectedIds.size === 0) return;
+    this._multiSelectedIds.clear();
+    this._renderTree();
+  }
+
+  private _toggleMultiSelection(pageId: string): void {
+    if (this._multiSelectedIds.has(pageId)) {
+      this._multiSelectedIds.delete(pageId);
+    } else {
+      this._multiSelectedIds.add(pageId);
+    }
+    // Track this as the anchor for subsequent shift-range selections so
+    // shift-click after ctrl-click extends from the most recent action.
+    this._multiSelectAnchor = pageId;
+    this._renderTree();
+  }
+
+  /**
+   * Extend the multi-selection to every row between the anchor (cached
+   * by DOM position at plain-click time) and the shift-clicked row.
+   *
+   * Both positions are stored as indices into `.canvas-node[data-page-id]`
+   * in document order, not as page IDs. Page IDs duplicate across
+   * sections — the same page can show up in RECENT and PAGES at once —
+   * so any ID-based lookup would return the wrong copy and the range
+   * would collapse upward.
+   */
+  private _extendMultiSelectionTo(targetPos: number): void {
+    if (!this._treeList) return;
+    const anchorPos = this._multiSelectAnchorPos;
+    if (anchorPos == null || anchorPos < 0 || targetPos < 0) {
+      return;
+    }
+    const visibleRows = Array.from(
+      this._treeList.querySelectorAll<HTMLElement>('.canvas-node[data-page-id]'),
+    );
+    if (anchorPos >= visibleRows.length || targetPos >= visibleRows.length) {
+      return;
+    }
+    const lo = Math.min(anchorPos, targetPos);
+    const hi = Math.max(anchorPos, targetPos);
+    this._multiSelectedIds.clear();
+    for (let i = lo; i <= hi; i++) {
+      const id = visibleRows[i].dataset.pageId;
+      if (id) this._multiSelectedIds.add(id);
+    }
+    this._renderTree();
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1573,12 +1779,30 @@ export class CanvasSidebar {
   // ══════════════════════════════════════════════════════════════════════════
 
   private readonly _handleKeydown = (e: KeyboardEvent): void => {
+    // Multi-selection takes precedence — Delete with 2+ rows highlighted
+    // archives them all in one confirm. With one row highlighted it falls
+    // through to the existing per-page confirm wording.
+    if (e.key === 'Delete' && this._multiSelectedIds.size > 0) {
+      e.preventDefault();
+      void this._deleteMultiSelected();
+      return;
+    }
+    if (e.key === 'Escape' && this._multiSelectedIds.size > 0) {
+      e.preventDefault();
+      this._clearMultiSelection();
+      return;
+    }
     if (e.key === 'Delete' && this._selectedPageId) {
       e.preventDefault();
       this._deletePage(this._selectedPageId);
     } else if (e.key === 'F2' && this._selectedPageId) {
       e.preventDefault();
-      const el = this._treeList?.querySelector(`[data-page-id="${this._selectedPageId}"]`);
+      // Prefer the row in the main PAGES section over the RECENTS /
+      // FAVORITES copy so the rename popup anchors next to the page's
+      // real position in the tree, not the top of the sidebar.
+      const el = this._treeList?.querySelector<HTMLElement>(
+        `[data-page-id="${this._selectedPageId}"]:not(.canvas-recent-node):not(.canvas-favorite-node)`,
+      ) ?? this._treeList?.querySelector(`[data-page-id="${this._selectedPageId}"]`);
       if (el) {
         const node = this._findNode(this._tree, this._selectedPageId)
           ?? this._favoritedPages.find(page => page.id === this._selectedPageId)

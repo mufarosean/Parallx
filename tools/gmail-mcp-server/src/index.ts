@@ -9,7 +9,7 @@ try { setDefaultResultOrder('ipv4first'); } catch { /* older node */ }
 //
 // Transport: STDIO JSON-RPC 2.0 (newline-delimited).
 // Protocol: MCP (initialize → tools/list → tools/call).
-// Tools: one read-only tool — `list_unread`.
+// Tools: one read-only tool — `list_emails`.
 //
 // Auth: self-contained. Run `node dist/index.js --auth` once to
 // authorize Gmail (PKCE + loopback redirect). Credentials are saved
@@ -35,16 +35,22 @@ const SERVER_NAME = 'parallx-gmail-mcp';
 const SERVER_VERSION = '0.1.0';
 const PROTOCOL_VERSION = '2024-11-05';
 
-const LIST_UNREAD_TOOL: McpToolSchema = {
-  name: 'list_unread',
+const LIST_EMAILS_TOOL: McpToolSchema = {
+  name: 'list_emails',
   description:
-    'List Gmail messages with sender, subject, snippet, received-at, thread id, and labels. Read-only. Defaults to unread; pass read_state to widen the search.',
+    'Search Gmail and return matching messages with sender, subject, snippet, optional body, received-at, thread id, and labels. Read-only. ALL parameters are optional — combine them freely:\n' +
+    '  • `query` — Gmail search syntax. Use this for sender filters ("from:alice@x.com"), account filters via from:, topic/subject filters ("subject:invoice", "vacation"), label filters ("label:work"), attachment filters ("has:attachment"), date range ("after:2026/01/01 before:2026/02/01"), starred ("is:starred"), or any combination ("from:(boss@x.com OR hr@x.com) subject:offsite").\n' +
+    '  • `since` — ISO 8601 timestamp; only return mail received after this time. Composable with `query`.\n' +
+    '  • `read_state` — "unread" (default), "read", or "all". Use "all" if `query` already constrains read-state.\n' +
+    '  • `include_body` — include decoded plain-text body (truncated to 8 KB). Default false.\n' +
+    '  • `max` / `page_token` — pagination. Default 25 per page.\n' +
+    'With no arguments, returns the 25 most recent unread messages. To pull every email from the last 7 days regardless of read state, pass since + read_state="all". To search by topic across all mail, pass query="<keywords>" + read_state="all".',
   inputSchema: {
     type: 'object',
     properties: {
       since: {
         type: 'string',
-        description: 'ISO 8601 — only return mail received after this timestamp.',
+        description: 'ISO 8601 — only return mail received after this timestamp. Optional. Combines with `query`.',
       },
       max: {
         type: 'number',
@@ -54,18 +60,19 @@ const LIST_UNREAD_TOOL: McpToolSchema = {
       },
       query: {
         type: 'string',
-        description: 'Optional Gmail search query, e.g. "from:alice OR is:important".',
+        description:
+          'Gmail search query in standard Gmail syntax. Examples: "from:alice@example.com", "subject:invoice", "label:work has:attachment", "from:(boss OR hr) vacation", "after:2026/01/01 before:2026/02/01", "is:starred". Combine with operators (AND implicit, OR explicit, parens for grouping). Use this to filter by sender, account, topic, subject, label, date — anything Gmail search supports.',
       },
       read_state: {
         type: 'string',
         enum: ['unread', 'read', 'all'],
         description:
-          'Read-state filter. "unread" (default) preserves legacy is:unread; "read" returns only seen mail; "all" applies no read-state constraint.',
+          'Read-state filter. "unread" (default) returns only unread mail; "read" returns only seen mail; "all" applies no read-state constraint. Use "all" when `query` already includes a read-state operator or when you want every match regardless of read state.',
       },
       include_body: {
         type: 'boolean',
         description:
-          'Include decoded plain-text body (truncated to 8 KB). Default false. Set true when callers (e.g. transaction-extractor pipelines) need the email body and not just the snippet preview.',
+          'Include decoded plain-text body (truncated to 8 KB). Default false. Set true when the caller needs the email body for content analysis (e.g. transaction extraction, summarization) and not just the snippet preview.',
       },
       page_token: {
         type: 'string',
@@ -115,7 +122,7 @@ function handleToolsList(id: number | string): JsonRpcResponse {
   return {
     jsonrpc: '2.0',
     id,
-    result: { tools: [LIST_UNREAD_TOOL] },
+    result: { tools: [LIST_EMAILS_TOOL] },
   };
 }
 
@@ -157,7 +164,10 @@ async function handleToolsCall(
 ): Promise<JsonRpcResponse> {
   const name = String(params?.name ?? '');
   const args = (params?.arguments ?? {}) as Record<string, unknown>;
-  if (name !== 'list_unread') {
+  // Accept the legacy `list_unread` name for one release so any pinned
+  // skill / cron / extension config doesn't break in-place. New callers
+  // should use `list_emails`. The behaviour is identical.
+  if (name !== 'list_emails' && name !== 'list_unread') {
     return makeError(id, -32601, `Unknown tool: ${name}`);
   }
 
@@ -199,7 +209,7 @@ async function handleToolsCall(
       ...(nextPageToken ? { nextPageToken } : {}),
     };
     // We log COUNTS only — never subjects or snippets.
-    logInfo(`list_unread → ${messages.length} message(s)`);
+    logInfo(`list_emails → ${messages.length} message(s)`);
     return {
       jsonrpc: '2.0',
       id,
@@ -220,8 +230,8 @@ async function handleToolsCall(
       const c = cause as { code?: string; message?: string };
       causeStr = ` (cause: ${c.code ?? c.message ?? String(cause)})`;
     }
-    logError(`list_unread failed: ${message}${causeStr}`);
-    return makeError(id, -32001, `list_unread failed: ${message}${causeStr}`);
+    logError(`list_emails failed: ${message}${causeStr}`);
+    return makeError(id, -32001, `list_emails failed: ${message}${causeStr}`);
   }
 }
 

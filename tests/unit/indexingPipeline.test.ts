@@ -941,8 +941,8 @@ describe('RICH_DOCUMENT_EXTENSIONS', () => {
 });
 
 describe('MAX_RICH_DOC_SIZE', () => {
-  it('is 10 MB', () => {
-    expect(MAX_RICH_DOC_SIZE).toBe(10 * 1024 * 1024);
+  it('is 100 MB', () => {
+    expect(MAX_RICH_DOC_SIZE).toBe(100 * 1024 * 1024);
   });
 
   it('is larger than MAX_FILE_SIZE', () => {

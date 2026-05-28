@@ -558,21 +558,28 @@ class CanvasEditorPane implements IDisposable {
     this._blockMarquee = new BlockMarqueeController(this);
     this._blockMarquee.setup();
 
-    // Wire Esc shortcut → block selection (via extension storage)
-    const kbExt = this._editor.extensionManager.extensions.find(
-      (ext) => ext.name === 'blockKeyboardShortcuts',
-    );
-    if (kbExt) {
-      const storage = kbExt.storage as any;
-      storage.selectAtCursor = () => this._blockSelection.selectAtCursor();
-      storage.extendSelectionUp = () => this._blockSelection.extendSelectionUp();
-      storage.extendSelectionDown = () => this._blockSelection.extendSelectionDown();
-      storage.deleteSelected = () => this._blockSelection.deleteSelected();
-      storage.duplicateSelected = () => this._blockSelection.duplicateSelected();
-      storage.moveSelectedUp = () => this._blockSelection.moveSelectedUp();
-      storage.moveSelectedDown = () => this._blockSelection.moveSelectedDown();
-      storage.enterEditFirstSelected = () => this._blockSelection.enterEditFirstSelected();
-      storage.hasSelection = () => this._blockSelection.hasSelection;
+    // Wire block-selection callbacks into the extension storage.
+    //
+    // The keymap handlers in `BlockKeyboardShortcuts.addKeyboardShortcuts()`
+    // read from `this.storage.<fn>` which Tiptap resolves to
+    // `editor.storage.blockKeyboardShortcuts.<fn>`. We MUST mutate that
+    // object directly — `extensionManager.extensions[i].storage` is the
+    // extension *descriptor's* storage and is a distinct instance from the
+    // per-editor storage the keymap reads, so writes there never reach the
+    // keymap. Caught by the diagnostic spec on 2026-05-27: every storage
+    // function was null at runtime, breaking Mod-Shift-Arrow movement (and
+    // by extension every other shortcut that bootstraps from cursor).
+    const kbStorage = (this._editor.storage as any).blockKeyboardShortcuts;
+    if (kbStorage) {
+      kbStorage.selectAtCursor = () => this._blockSelection.selectAtCursor();
+      kbStorage.extendSelectionUp = () => this._blockSelection.extendSelectionUp();
+      kbStorage.extendSelectionDown = () => this._blockSelection.extendSelectionDown();
+      kbStorage.deleteSelected = () => this._blockSelection.deleteSelected();
+      kbStorage.duplicateSelected = () => this._blockSelection.duplicateSelected();
+      kbStorage.moveSelectedUp = () => this._blockSelection.moveSelectedUp();
+      kbStorage.moveSelectedDown = () => this._blockSelection.moveSelectedDown();
+      kbStorage.enterEditFirstSelected = () => this._blockSelection.enterEditFirstSelected();
+      kbStorage.hasSelection = () => this._blockSelection.hasSelection;
     }
 
     // ── Click handler for inline math nodes (click-to-edit) ──

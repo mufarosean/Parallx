@@ -103,17 +103,18 @@ describe('registerBuiltInTools', () => {
     // M64 Iter 2: compose_page brings the total to 40.
     // M64 Iter 3: consolidated find_pages + get_page (-6 +2) = 36.
     // M64 Iter 4: set_page_style = 37.
+    // M81 Phase 2: memory_edit = 38.
+    // M81 Phase 9: canvas_get_page folded into canvas_read_page; canvas_compose_page renamed to canvas_edit_page. Net -1 = 37.
     expect(toolsService.registeredTools).toHaveLength(37);
     expect(disposables).toHaveLength(37);
 
     const names = toolsService.registeredTools.map(t => t.name).sort();
     expect(names).toEqual([
       'autonomy_log',
-      'canvas_compose_page',
       'canvas_create_page',
       'canvas_edit_block',
+      'canvas_edit_page',
       'canvas_find_pages',
-      'canvas_get_page',
       'canvas_insert_block_after',
       'canvas_link_block',
       'canvas_list_property_definitions',
@@ -133,6 +134,7 @@ describe('registerBuiltInTools', () => {
       'edit_file',
       'grep_search',
       'list_files',
+      'memory_edit',
       'memory_get',
       'memory_search',
       'read_file',
@@ -148,6 +150,22 @@ describe('registerBuiltInTools', () => {
     ]);
   });
 
+  it('every built-in tool has a category', () => {
+    const toolsService = createMockToolsService();
+    const db = createMockDb();
+    const fs = createMockFs();
+    const retrieval = createMockRetrieval();
+    const canonicalMemorySearch = createMockCanonicalMemorySearch();
+    const transcriptSearch = createMockTranscriptSearch();
+
+    registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
+
+    for (const tool of toolsService.registeredTools) {
+      expect(tool.category, `${tool.name} should have a category`).toBeTruthy();
+      expect(typeof tool.category, `${tool.name} category should be a string`).toBe('string');
+    }
+  });
+
   it('read-only tools do not require confirmation', () => {
     const toolsService = createMockToolsService();
     const db = createMockDb();
@@ -158,7 +176,7 @@ describe('registerBuiltInTools', () => {
 
     registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
-    const readOnly = ['canvas_find_pages', 'canvas_read_page', 'canvas_get_page', 'list_files', 'read_file', 'search_files', 'grep_search', 'search_knowledge', 'memory_get', 'memory_search', 'transcript_get', 'transcript_search', 'canvas_list_property_definitions', 'canvas_read_block'];
+    const readOnly = ['canvas_find_pages', 'canvas_read_page', 'list_files', 'read_file', 'search_files', 'grep_search', 'search_knowledge', 'memory_get', 'memory_search', 'transcript_get', 'transcript_search', 'canvas_list_property_definitions', 'canvas_read_block'];
     for (const name of readOnly) {
       const tool = toolsService.registeredTools.find(t => t.name === name);
       expect(tool?.requiresConfirmation, `${name} should not require confirmation`).toBe(false);
@@ -173,11 +191,11 @@ describe('registerBuiltInTools', () => {
     expect(tool?.requiresConfirmation).toBe(true);
   });
 
-  it('compose_page requires confirmation', () => {
+  it('edit_page requires confirmation', () => {
     const toolsService = createMockToolsService();
     registerBuiltInTools(toolsService, createMockDb());
 
-    const tool = toolsService.registeredTools.find(t => t.name === 'canvas_compose_page');
+    const tool = toolsService.registeredTools.find(t => t.name === 'canvas_edit_page');
     expect(tool?.requiresConfirmation).toBe(true);
     expect(tool?.permissionLevel).toBe('requires-approval');
   });
@@ -338,7 +356,7 @@ describe('find_pages tool', () => {
   });
 });
 
-describe('read_page tool', () => {
+describe('read_page tool (M81 Phase 9: merged body + metadata + properties)', () => {
   let tool: IChatTool;
   let db: IBuiltInToolDatabase;
 
@@ -349,18 +367,88 @@ describe('read_page tool', () => {
     tool = toolsService.registeredTools.find(t => t.name === 'canvas_read_page')!;
   });
 
-  it('reads page content by ID', async () => {
-    (db.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      id: 'abc', title: 'My Page', content: 'Hello world',
-    });
+  it('reads page body + basic metadata by ID', async () => {
+    (db.get as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        id: 'abc', title: 'My Page', content: 'Hello world',
+        icon: null, is_archived: 0, created_at: '2025-01-01', updated_at: '2025-01-02',
+      })
+      .mockResolvedValueOnce({ cnt: 1 });
+    (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]); // no properties
 
     const result = await tool.handler({ pageId: 'abc' }, createToken());
     expect(result.content).toContain('My Page');
     expect(result.content).toContain('Hello world');
+    expect(result.content).toContain('Blocks:** 1');
+    expect(result.content).toContain('Created:** 2025-01-01');
+    expect(result.content).toContain('Updated:** 2025-01-02');
+    expect(result.content).not.toContain('Archived:** Yes'); // not archived
+  });
+
+  it('includes icon when present', async () => {
+    (db.get as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        id: 'abc', title: 'Iconic', content: 'body',
+        icon: '📄', is_archived: 0, created_at: '2025-01-01', updated_at: '2025-01-02',
+      })
+      .mockResolvedValueOnce({ cnt: 0 });
+    (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+
+    const result = await tool.handler({ pageId: 'abc' }, createToken());
+    expect(result.content).toContain('Icon:** 📄');
+  });
+
+  it('includes custom properties when present', async () => {
+    (db.get as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        id: 'p1', title: 'Test Page', content: '',
+        icon: null, is_archived: 0, created_at: '2025-01-01', updated_at: '2025-01-02',
+      })
+      .mockResolvedValueOnce({ cnt: 3 });
+    (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { key: 'status', value_type: 'select', value: '"active"', def_type: 'select' },
+      { key: 'tags', value_type: 'tags', value: '["alpha","beta"]', def_type: 'tags' },
+      { key: 'done', value_type: 'checkbox', value: 'true', def_type: 'checkbox' },
+    ]);
+
+    const result = await tool.handler({ pageId: 'p1' }, createToken());
+    expect(result.content).toContain('Custom Properties');
+    expect(result.content).toContain('**status** (select): active');
+    expect(result.content).toContain('**tags** (tags): alpha, beta');
+    expect(result.content).toContain('**done** (checkbox): Yes');
+  });
+
+  it('omits custom properties section when page has none', async () => {
+    (db.get as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        id: 'p1', title: 'Empty Page', content: '',
+        icon: null, is_archived: 0, created_at: '2025-01-01', updated_at: '2025-01-02',
+      })
+      .mockResolvedValueOnce({ cnt: 0 });
+    (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+
+    const result = await tool.handler({ pageId: 'p1' }, createToken());
+    expect(result.content).not.toContain('Custom Properties');
+  });
+
+  it('shows archived state when archived', async () => {
+    (db.get as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        id: 'abc', title: 'Old Page', content: '',
+        icon: null, is_archived: 1, created_at: '2025-01-01', updated_at: '2025-01-02',
+      })
+      .mockResolvedValueOnce({ cnt: 0 });
+    (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+
+    const result = await tool.handler({ pageId: 'abc' }, createToken());
+    expect(result.content).toContain('Archived:** Yes');
   });
 
   it('returns error for missing page', async () => {
-    (db.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    (db.get as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(undefined)  // UUID lookup
+      .mockResolvedValueOnce(undefined)  // exact title
+      .mockResolvedValueOnce(undefined); // partial title
     const result = await tool.handler({ pageId: 'missing' }, createToken());
     expect(result.isError).toBe(true);
     expect(result.content).toContain('not found');
@@ -430,37 +518,9 @@ describe('transcript tools', () => {
   });
 });
 
-describe('get_page tool', () => {
-  let tool: IChatTool;
-  let db: IBuiltInToolDatabase;
-
-  beforeEach(() => {
-    db = createMockDb();
-    const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, db);
-    tool = toolsService.registeredTools.find(t => t.name === 'canvas_get_page')!;
-  });
-
-  it('returns page metadata', async () => {
-    (db.get as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce({
-        id: 'abc', title: 'My Page', icon: '📄', is_archived: 0,
-        created_at: '2025-01-01', updated_at: '2025-01-02',
-      })
-      .mockResolvedValueOnce({ cnt: 5 });
-
-    const result = await tool.handler({ pageId: 'abc' }, createToken());
-    expect(result.content).toContain('My Page');
-    expect(result.content).toContain('Blocks:** 5');
-    expect(result.content).toContain('Archived:** No');
-  });
-
-  it('returns error for missing page', async () => {
-    (db.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
-    const result = await tool.handler({ pageId: 'gone' }, createToken());
-    expect(result.isError).toBe(true);
-  });
-});
+// M81 Phase 9 — `describe('get_page tool', ...)` deleted: canvas_get_page was
+// folded into canvas_read_page. The "merged body + metadata + properties"
+// describe above covers the previous assertions.
 
 describe('create_page tool', () => {
   let tool: IChatTool;
@@ -517,7 +577,7 @@ describe('create_page tool', () => {
   });
 });
 
-describe('compose_page tool', () => {
+describe('edit_page tool (M81 Phase 9: renamed from compose_page)', () => {
   let tool: IChatTool;
   let db: IBuiltInToolDatabase;
 
@@ -525,7 +585,7 @@ describe('compose_page tool', () => {
     db = createMockDb();
     const toolsService = createMockToolsService();
     registerBuiltInTools(toolsService, db);
-    tool = toolsService.registeredTools.find(t => t.name === 'canvas_compose_page')!;
+    tool = toolsService.registeredTools.find(t => t.name === 'canvas_edit_page')!;
   });
 
   it('returns error for missing pageId', async () => {
@@ -613,9 +673,8 @@ describe('built-in tools with no database', () => {
     const dbBackedToolNames = new Set([
       'canvas_find_pages',
       'canvas_read_page',
-      'canvas_get_page',
       'canvas_create_page',
-      'canvas_compose_page',
+      'canvas_edit_page',
       'canvas_list_property_definitions',
       'canvas_set_page_property',
       'canvas_set_page_style',
@@ -746,74 +805,10 @@ describe('search_knowledge tool', () => {
 
 // ── Property tools (M55 Domain 4) ──
 
-describe('get_page tool (enhanced with custom properties)', () => {
-  let tool: IChatTool;
-  let db: IBuiltInToolDatabase;
-
-  beforeEach(() => {
-    db = createMockDb();
-    const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, db);
-    tool = toolsService.registeredTools.find(t => t.name === 'canvas_get_page')!;
-  });
-
-  it('includes custom properties in output', async () => {
-    (db.get as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce({
-        id: 'p1', title: 'Test Page', icon: null, is_archived: 0,
-        created_at: '2025-01-01', updated_at: '2025-01-02',
-      })
-      .mockResolvedValueOnce({ cnt: 3 });
-    (db.all as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce([
-        { key: 'status', value_type: 'select', value: '"active"', def_type: 'select' },
-        { key: 'tags', value_type: 'tags', value: '["alpha","beta"]', def_type: 'tags' },
-        { key: 'done', value_type: 'checkbox', value: 'true', def_type: 'checkbox' },
-      ])
-      .mockResolvedValueOnce([]); // property_definitions
-
-    const result = await tool.handler({ pageId: 'p1' }, createToken());
-    expect(result.content).toContain('Custom Properties');
-    expect(result.content).toContain('**status** (select): active');
-    expect(result.content).toContain('**tags** (tags): alpha, beta');
-    expect(result.content).toContain('**done** (checkbox): Yes');
-  });
-
-  it('omits custom properties section when page has none', async () => {
-    (db.get as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce({
-        id: 'p1', title: 'Empty Page', icon: null, is_archived: 0,
-        created_at: '2025-01-01', updated_at: '2025-01-02',
-      })
-      .mockResolvedValueOnce({ cnt: 0 });
-    (db.all as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]); // property_definitions
-
-    const result = await tool.handler({ pageId: 'p1' }, createToken());
-    expect(result.content).not.toContain('Custom Properties');
-  });
-
-  it('lists applicable property definitions when present', async () => {
-    (db.get as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce({
-        id: 'p1', title: 'Page', icon: null, is_archived: 0,
-        created_at: '2025-01-01', updated_at: '2025-01-02',
-      })
-      .mockResolvedValueOnce({ cnt: 0 });
-    (db.all as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        { name: 'status', type: 'select' },
-        { name: 'priority', type: 'number' },
-      ]);
-
-    const result = await tool.handler({ pageId: 'p1' }, createToken());
-    expect(result.content).toContain('Applicable Property Definitions');
-    expect(result.content).toContain('**status** (select)');
-    expect(result.content).toContain('**priority** (number)');
-  });
-});
+// M81 Phase 9 — `describe('get_page tool (enhanced with custom properties)', ...)`
+// deleted: those assertions moved into the read_page "merged" describe above.
+// Applicable property definitions are no longer part of read_page; use
+// `canvas_list_property_definitions` (covered by its own describe block).
 
 describe('list_property_definitions tool', () => {
   let tool: IChatTool;

@@ -2,7 +2,7 @@
   "name": "@parallx/gmail-mcp-server",
   "version": "0.1.0",
   "private": true,
-  "description": "Parallx Gmail MCP server — read-only Gmail access via STDIO JSON-RPC. Exposes a single tool: list_unread.",
+  "description": "Parallx Gmail MCP server — read-only Gmail access via STDIO JSON-RPC. Exposes a single tool: list_emails (formerly list_unread; accepts the old name for one release).",
   "license": "MIT",
   "type": "module",
   "main": "bundle/server.mjs",

@@ -164,11 +164,12 @@ export function registerFacadeServices(deps: FacadeFactoryDeps): IDisposable[] {
   if (services.has(IWorkspaceMemoryService) && services.has(IMemoryService)) {
     const workspaceMemoryService = services.get(IWorkspaceMemoryService);
     const memoryService = services.get(IMemoryService);
+    // M81 Phase 3 Stage 2 — legacy concept migration dropped.
+    // Pre-M35 DBs still get their memories + preferences migrated to MEMORY.md.
     Promise.all([
         memoryService.getAllMemories().catch(() => []),
         memoryService.getPreferences().catch(() => []),
-        memoryService.getAllConcepts().catch(() => []),
-      ]).then(([memories, preferences, concepts]) => {
+      ]).then(([memories, preferences]) => {
       return workspaceMemoryService.importLegacySnapshot({
         memories: memories.map((memory) => ({
           sessionId: memory.sessionId,
@@ -179,13 +180,6 @@ export function registerFacadeServices(deps: FacadeFactoryDeps): IDisposable[] {
         preferences: preferences.map((preference) => ({
           key: preference.key,
           value: preference.value,
-        })),
-        concepts: concepts.map((concept) => ({
-          concept: concept.concept,
-          category: concept.category,
-          summary: concept.summary,
-          encounterCount: concept.encounterCount,
-          masteryLevel: concept.masteryLevel,
         })),
       });
     }).catch((err) => {

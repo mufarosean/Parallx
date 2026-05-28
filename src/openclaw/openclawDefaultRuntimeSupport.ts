@@ -17,7 +17,6 @@ import type {
 import {
   COMPACTION_SUMMARIZATION_PROMPT,
   MAX_QUALITY_RETRIES,
-  extractConceptsFromTranscript,
   extractIdentifiers,
   auditCompactionQuality,
 } from './openclawContextEngine.js';
@@ -171,6 +170,11 @@ interface IInitCommandServices {
   readonly writeFile?: IDefaultParticipantServices['writeFileRelative'];
   readonly exists?: IDefaultParticipantServices['existsRelative'];
   readonly invalidatePromptFiles?: IDefaultParticipantServices['invalidatePromptFiles'];
+  // M81 Phase 8 — workspace memory accessor. Optional so the init command
+  // remains usable in tests without a real WorkspaceMemoryService; when
+  // bound, /init runs the legacy-concept archive migration and the
+  // lessons-consolidation pass.
+  readonly workspaceMemory?: IDefaultParticipantServices['workspaceMemory'];
 }
 
 const INIT_CONFIG_FILES = [
@@ -185,7 +189,14 @@ const INIT_CONFIG_FILES = [
 export async function tryHandleOpenclawInitCommand(
   services: Pick<
     IDefaultParticipantServices,
-    'sendChatRequest' | 'getWorkspaceName' | 'listFilesRelative' | 'readFileRelative' | 'writeFileRelative' | 'existsRelative' | 'invalidatePromptFiles'
+    | 'sendChatRequest'
+    | 'getWorkspaceName'
+    | 'listFilesRelative'
+    | 'readFileRelative'
+    | 'writeFileRelative'
+    | 'existsRelative'
+    | 'invalidatePromptFiles'
+    | 'workspaceMemory'
   >,
   requestCommandName: string | undefined,
   response: IChatResponseStream,
@@ -203,6 +214,7 @@ export async function tryHandleOpenclawInitCommand(
     writeFile: services.writeFileRelative,
     exists: services.existsRelative,
     invalidatePromptFiles: services.invalidatePromptFiles,
+    workspaceMemory: services.workspaceMemory,
   };
 
   await executeOpenclawInitCommand(initServices, response, signal);
@@ -220,6 +232,11 @@ async function executeOpenclawInitCommand(
   }
 
   response.progress('Scanning workspace...');
+
+  // M81 Phase 8 — archive pre-M81 regex-extracted `## Concepts` from MEMORY.md.
+  // Idempotent: no-op on a clean MEMORY.md. Runs BEFORE AGENTS.md generation
+  // so that any later consolidation pass sees a clean slate.
+  await runLegacyConceptArchiveMigration(services, response);
 
   const tree = await buildFileTree(services, '', 0);
   const treeStr = tree.join('\n');
@@ -296,11 +313,16 @@ async function executeOpenclawInitCommand(
       return;
     }
     response.warning(`Failed to generate AGENTS.md: ${err instanceof Error ? err.message : String(err)}`);
+    // M81 Phase 8 — consolidation pass is reachable even when AGENTS.md
+    // generation fails. The user may want lessons derived from past dailies
+    // even if the model couldn't produce an AGENTS.md draft.
+    await runLessonsConsolidationPass(services, response, signal);
     return;
   }
 
   if (!generatedContent.trim()) {
     response.warning('The model returned empty content. Try again or write AGENTS.md manually.');
+    await runLessonsConsolidationPass(services, response, signal);
     return;
   }
 
@@ -329,10 +351,237 @@ async function executeOpenclawInitCommand(
     } catch (err) {
       response.warning(`Could not write AGENTS.md: ${err instanceof Error ? err.message : String(err)}`);
     }
+    await runLessonsConsolidationPass(services, response, signal);
     return;
   }
 
   response.markdown('\n\n---\nAGENTS.md generation completed, but the runtime cannot write files in this workspace.');
+  await runLessonsConsolidationPass(services, response, signal);
+}
+
+// ── M81 Phase 8 — legacy archive + lessons consolidation helpers ──────────
+
+/**
+ * Run the pre-M81 `## Concepts` archive migration. Idempotent: no-op when
+ * MEMORY.md is already clean or when the workspaceMemory accessor is
+ * unbound (e.g. tests that don't wire a real WorkspaceMemoryService).
+ */
+async function runLegacyConceptArchiveMigration(
+  services: IInitCommandServices,
+  response: IChatResponseStream,
+): Promise<void> {
+  const memory = services.workspaceMemory;
+  if (!memory) {
+    return;
+  }
+  try {
+    const result = await memory.archiveLegacyConceptSection();
+    if (result.archived) {
+      response.markdown(
+        `\nArchived ${result.movedChars} chars of pre-M81 auto-extracted memory to \`_archive/pre-m81-concepts.md\`.\n`,
+      );
+    }
+  } catch (err) {
+    // Non-fatal: surface as a warning but let /init continue.
+    response.markdown(
+      `\n_Legacy concept archive migration failed: ${err instanceof Error ? err.message : String(err)}_\n`,
+    );
+  }
+}
+
+const LESSONS_CONSOLIDATION_MEMORY_DIR = '.parallx/memory';
+const LESSONS_CONSOLIDATION_MAX_DAILIES = 10;
+const LESSONS_CONSOLIDATION_SLUG_REGEX = /^[a-z0-9][a-z0-9-]*$/;
+const LESSONS_CONSOLIDATION_SLUG_MAX = 40;
+const LESSONS_CONSOLIDATION_DESCRIPTION_MAX = 120;
+const LESSONS_CONSOLIDATION_BODY_MAX = 500;
+
+interface ICandidateLesson {
+  slug: string;
+  description: string;
+  body: string;
+}
+
+/**
+ * Derive durable lessons from existing daily memory logs via an LLM pass.
+ * Runs only when `lessons/` is empty and at least one daily file exists.
+ * Idempotent across re-runs of `/init` because the first condition stops
+ * matching as soon as any lesson has been written.
+ */
+async function runLessonsConsolidationPass(
+  services: IInitCommandServices,
+  response: IChatResponseStream,
+  signal?: AbortSignal,
+): Promise<void> {
+  const memory = services.workspaceMemory;
+  if (!memory || !services.listFiles) {
+    return;
+  }
+  let existingLessons: readonly string[];
+  try {
+    existingLessons = await memory.listLessons();
+  } catch {
+    return;
+  }
+  if (existingLessons.length > 0) {
+    // Idempotent: skip when any lesson exists.
+    return;
+  }
+
+  let memoryEntries: Array<{ name: string; type: 'file' | 'directory' }> = [];
+  try {
+    memoryEntries = await services.listFiles(LESSONS_CONSOLIDATION_MEMORY_DIR);
+  } catch {
+    return;
+  }
+  const dailyFileNames = memoryEntries
+    .filter((entry) => entry.type === 'file' && /^\d{4}-\d{2}-\d{2}\.md$/.test(entry.name))
+    .map((entry) => entry.name)
+    .sort((a, b) => b.localeCompare(a))
+    .slice(0, LESSONS_CONSOLIDATION_MAX_DAILIES);
+
+  if (dailyFileNames.length === 0) {
+    response.markdown('\nSkipped consolidation (no daily logs found yet).\n');
+    return;
+  }
+
+  response.progress('Deriving durable lessons from daily logs...');
+
+  const dailyBlocks: string[] = [];
+  for (const fileName of dailyFileNames) {
+    try {
+      const content = await services.readFile?.(`${LESSONS_CONSOLIDATION_MEMORY_DIR}/${fileName}`);
+      if (content && content.trim()) {
+        dailyBlocks.push(`--- ${fileName} ---\n${content.trim()}`);
+      }
+    } catch {
+      // Skip unreadable files.
+    }
+  }
+
+  if (dailyBlocks.length === 0) {
+    response.markdown('\nSkipped consolidation (daily logs were empty or unreadable).\n');
+    return;
+  }
+
+  const systemPrompt = [
+    'You are reviewing daily memory logs to extract DURABLE LESSONS — tool-use insights, workarounds, project conventions, things-the-AI-should-remember-across-sessions.',
+    '',
+    'Output a JSON array of 3–8 candidate lessons. Each lesson:',
+    '{ slug: kebab-case ≤40 chars, description: ≤120 chars one-line summary, body: short markdown ≤500 chars }',
+    '',
+    'Do NOT output preferences (those go to USER.md), events (those stay in dailies), or general project context (that\'s AGENTS.md).',
+    'Output ONLY the JSON array, no commentary, no markdown fence.',
+  ].join('\n');
+
+  const messages: IChatMessage[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: dailyBlocks.join('\n\n') },
+  ];
+
+  let raw = '';
+  try {
+    for await (const chunk of services.sendChatRequest(messages, undefined, signal)) {
+      if (chunk.content) {
+        raw += chunk.content;
+      }
+    }
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      return;
+    }
+    response.markdown(
+      `\n_Lesson consolidation failed: ${err instanceof Error ? err.message : String(err)}_\n`,
+    );
+    return;
+  }
+
+  const candidates = parseConsolidationCandidates(raw);
+  if (!candidates) {
+    response.markdown('\n_Could not parse lesson consolidation output; skipped._\n');
+    return;
+  }
+
+  const existingSet = new Set(existingLessons);
+  let written = 0;
+  for (const candidate of candidates) {
+    const slug = candidate.slug.trim().toLowerCase();
+    if (!slug || slug.length > LESSONS_CONSOLIDATION_SLUG_MAX) {
+      continue;
+    }
+    if (!LESSONS_CONSOLIDATION_SLUG_REGEX.test(slug)) {
+      continue;
+    }
+    if (existingSet.has(slug)) {
+      continue;
+    }
+    const description = (candidate.description || '').trim().slice(0, LESSONS_CONSOLIDATION_DESCRIPTION_MAX);
+    const body = (candidate.body || '').trim().slice(0, LESSONS_CONSOLIDATION_BODY_MAX);
+    if (!description || !body) {
+      continue;
+    }
+    try {
+      await memory.writeLessonFile(slug, body);
+      await memory.addMemoryIndexEntry(slug, description);
+      existingSet.add(slug);
+      written++;
+    } catch {
+      // Skip — keep going on per-lesson errors.
+    }
+  }
+
+  response.markdown(
+    `\nDerived ${written} lesson(s) from ${dailyFileNames.length} daily log(s).\n`,
+  );
+}
+
+/**
+ * Defensive JSON parser for the consolidation LLM output. Returns
+ * `undefined` if the input cannot be coerced to an array of `{ slug,
+ * description, body }` candidates. Strips common LLM frame noise
+ * (markdown fences, leading prose).
+ */
+function parseConsolidationCandidates(raw: string): ICandidateLesson[] | undefined {
+  if (!raw || !raw.trim()) {
+    return undefined;
+  }
+  let text = raw.trim();
+  // Strip ```json or ``` fences if present.
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenceMatch) {
+    text = fenceMatch[1].trim();
+  }
+  // Find the first '[' and last ']' so we can survive a stray preamble.
+  const start = text.indexOf('[');
+  const end = text.lastIndexOf(']');
+  if (start < 0 || end <= start) {
+    return undefined;
+  }
+  text = text.slice(start, end + 1);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(parsed)) {
+    return undefined;
+  }
+  const out: ICandidateLesson[] = [];
+  for (const entry of parsed) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+    const record = entry as Record<string, unknown>;
+    const slug = typeof record.slug === 'string' ? record.slug : '';
+    const description = typeof record.description === 'string' ? record.description : '';
+    const body = typeof record.body === 'string' ? record.body : '';
+    if (!slug || !description || !body) {
+      continue;
+    }
+    out.push({ slug, description, body });
+  }
+  return out;
 }
 
 async function buildFileTree(
@@ -376,7 +625,7 @@ async function buildFileTree(
 }
 
 export async function tryHandleOpenclawCompactCommand(
-  services: Pick<IDefaultParticipantServices, 'sendSummarizationRequest' | 'compactSession' | 'storeSessionMemory' | 'storeConceptsFromSession'>,
+  services: Pick<IDefaultParticipantServices, 'sendSummarizationRequest' | 'compactSession' | 'storeSessionMemory'>,
   options: {
     readonly activeCommand?: string;
     readonly slashSpecialHandler?: string;
@@ -388,7 +637,6 @@ export async function tryHandleOpenclawCompactCommand(
     sendSummarizationRequest: services.sendSummarizationRequest,
     compactSession: services.compactSession,
     storeSessionMemory: services.storeSessionMemory,
-    storeConceptsFromSession: services.storeConceptsFromSession,
   }, {
     isCompactCommand: options.activeCommand === 'compact' || options.slashSpecialHandler === 'compact',
     sessionId: options.context.sessionId,
@@ -404,7 +652,6 @@ interface IOpenclawCompactCommandDeps {
   ) => AsyncIterable<IChatResponseChunk>;
   readonly compactSession?: (sessionId: string, summaryText: string) => void;
   readonly storeSessionMemory?: (sessionId: string, summary: string, messageCount: number) => Promise<void>;
-  readonly storeConceptsFromSession?: (concepts: Array<{ concept: string; category: string; summary: string; struggled: boolean }>, sessionId: string) => Promise<void>;
 }
 
 async function tryExecuteCompactOpenclawCommand(
@@ -500,19 +747,6 @@ async function tryExecuteCompactOpenclawCommand(
   const afterTokens = Math.ceil(summaryText.length / 4);
   const saved = beforeTokens - afterTokens;
   deps.compactSession?.(input.sessionId, summaryText);
-
-  // D6-4: Extract and store concepts from the transcript before it's discarded
-  if (deps.storeConceptsFromSession) {
-    try {
-      const transcript = input.history.map(pair => pair.request.text).join('\n');
-      const concepts = extractConceptsFromTranscript(transcript);
-      if (concepts.length > 0) {
-        await deps.storeConceptsFromSession(concepts, input.sessionId);
-      }
-    } catch {
-      // Concept extraction failure is non-fatal
-    }
-  }
 
   // Auto-flush summary to long-term memory (upstream pattern: compaction → memory flush)
   if (deps.storeSessionMemory) {
@@ -610,11 +844,9 @@ function queueOpenclawMemoryWriteBack(
     return;
   }
 
-  if (deps.extractPreferences && options.requestText) {
-    deps.extractPreferences(options.requestText).then(() => {
-      reportCheckpoint('memory-preferences-extracted');
-    }).catch((e) => { console.warn('[OpenClaw] Preference extraction failed:', e); });
-  }
+  // M81 Phase 4 — regex preference extraction removed. Agent now writes
+  // preferences explicitly via `memory_edit` on USER.md (and MEMORY.md for
+  // project-level facts). No invisible regex path.
 
   if (!deps.storeSessionMemory || !deps.isSessionEligibleForSummary || !deps.getSessionMemoryMessageCount || options.history.length === 0) {
     return;

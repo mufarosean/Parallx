@@ -12,18 +12,42 @@
 
 import { $ } from '../../../ui/dom.js';
 import { InputBox } from '../../../ui/inputBox.js';
-import type { IToolPickerServices } from '../../../services/chatTypes.js';
+import type { IToolPickerServices, ToolCategory as ToolCategoryKind } from '../../../services/chatTypes.js';
 import type { IUnifiedAIConfigService } from '../../unifiedConfigTypes.js';
 import { SettingsSection } from '../sectionBase.js';
 import type { IAISettingsService, AISettingsProfile } from '../../aiSettingsTypes.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface ToolCategory {
+interface ToolSubGroup {
+  /** Display label (e.g. "Canvas", "File System", "Memory"). */
   label: string;
+  /** Stable key used in the collapsed-state map. */
+  collapseKey: string;
+  /** Sort order (lower first). */
+  order: number;
   collapsed: boolean;
   tools: { name: string; description: string; enabled: boolean }[];
 }
+
+/**
+ * M81 P10 — display metadata per `ToolCategory`. Lives next to the union so
+ * the settings UI and the system prompt builder use the same labels and the
+ * same ordering. If you add a category, add it here.
+ */
+const CATEGORY_DISPLAY: Record<ToolCategoryKind, { label: string; order: number }> = {
+  'canvas':      { label: 'Canvas',       order: 10 },
+  'file-system': { label: 'File System',  order: 20 },
+  'memory':      { label: 'Memory',       order: 30 },
+  'transcript':  { label: 'Transcripts',  order: 40 },
+  'linking':     { label: 'Linking',      order: 50 },
+  'surface':     { label: 'Surface',      order: 60 },
+  'subagent':    { label: 'Subagents',    order: 70 },
+  'autonomy':    { label: 'Autonomy',     order: 80 },
+  'cron':        { label: 'Scheduling',   order: 90 },
+  'app-control': { label: 'App Control',  order: 100 },
+  'terminal':    { label: 'Terminal',     order: 110 },
+};
 
 // ─── ToolsSection ────────────────────────────────────────────────────────────
 
@@ -95,37 +119,45 @@ export class ToolsSection extends SettingsSection {
 
   // ─── Private ───────────────────────────────────────────────────────
 
-  /** Build categorised tool list (mirrors ChatToolPicker.buildCategories). */
+  /**
+   * Build sub-groups from built-in tools using their `category` field.
+   *
+   * M81 P10 — replaces the legacy Pages/Files split, which hardcoded three
+   * tool names and dumped everything else into "Pages". Sub-grouping is now
+   * driven by `IChatTool.category`, the same field the system prompt's
+   * tooling section uses. One source of truth: the category lives on the
+   * tool definition.
+   *
+   * Tools without a declared category fall into an "Other" bucket so they
+   * are still visible — extensions that haven't migrated to the field don't
+   * disappear from the picker.
+   */
   private _buildCategories(
-    tools: readonly { name: string; description: string; enabled: boolean }[],
-  ): ToolCategory[] {
-    const pageTools: { name: string; description: string; enabled: boolean }[] = [];
-    const fileTools: { name: string; description: string; enabled: boolean }[] = [];
-
+    tools: readonly { name: string; description: string; enabled: boolean; category?: ToolCategoryKind }[],
+  ): ToolSubGroup[] {
+    const buckets = new Map<ToolCategoryKind | 'other', { name: string; description: string; enabled: boolean }[]>();
     for (const tool of tools) {
-      if (['list_files', 'read_file', 'search_files'].includes(tool.name)) {
-        fileTools.push(tool);
-      } else {
-        pageTools.push(tool);
-      }
+      const key: ToolCategoryKind | 'other' = tool.category ?? 'other';
+      let bucket = buckets.get(key);
+      if (!bucket) { bucket = []; buckets.set(key, bucket); }
+      bucket.push({ name: tool.name, description: tool.description, enabled: tool.enabled });
     }
 
-    const categories: ToolCategory[] = [];
-    if (pageTools.length > 0) {
-      categories.push({
-        label: 'Pages',
-        collapsed: this._collapsedState.get('Pages') ?? false,
-        tools: pageTools,
+    const groups: ToolSubGroup[] = [];
+    for (const [key, bucketTools] of buckets.entries()) {
+      const label = key === 'other' ? 'Other' : CATEGORY_DISPLAY[key].label;
+      const order = key === 'other' ? 9999 : CATEGORY_DISPLAY[key].order;
+      const collapseKey = `built-in:${key}`;
+      groups.push({
+        label,
+        collapseKey,
+        order,
+        collapsed: this._collapsedState.get(collapseKey) ?? false,
+        tools: bucketTools.sort((a, b) => a.name.localeCompare(b.name)),
       });
     }
-    if (fileTools.length > 0) {
-      categories.push({
-        label: 'Files',
-        collapsed: this._collapsedState.get('Files') ?? false,
-        tools: fileTools,
-      });
-    }
-    return categories;
+    groups.sort((a, b) => a.order - b.order);
+    return groups;
   }
 
   /** Render the tool tree into _treeContainer. */
@@ -143,7 +175,7 @@ export class ToolsSection extends SettingsSection {
     const allTools = services.getTools();
     const q = query.toLowerCase().trim();
 
-    type ToolEntry = { name: string; description: string; enabled: boolean; extensionId?: string };
+    type ToolEntry = { name: string; description: string; enabled: boolean; extensionId?: string; category?: ToolCategoryKind };
 
     // Filter by search
     const filtered: ToolEntry[] = q
@@ -221,11 +253,12 @@ export class ToolsSection extends SettingsSection {
 
       if (groupCollapsed && !q) continue;
 
-      // ── Sub-categories within this group (Pages/Files for built-ins) ──
+      // ── Sub-categories within this group (driven by IChatTool.category) ──
+      // Only built-in tools currently carry categories; extension groups skip
+      // the sub-header. When only one sub-group exists, the header is
+      // redundant and tools render directly under the group.
       const categories = this._buildCategories(groupTools);
       for (const cat of categories) {
-        // For single-category extension groups, skip the redundant category header
-        // and render tools directly under the group.
         const renderCatHeader = groupKey === 'built-in' && categories.length > 1;
 
         if (renderCatHeader) {
@@ -254,7 +287,7 @@ export class ToolsSection extends SettingsSection {
 
           catHeader.addEventListener('click', (e) => {
             if (e.target === catCb) return;
-            this._collapsedState.set(cat.label, !cat.collapsed);
+            this._collapsedState.set(cat.collapseKey, !cat.collapsed);
             this._renderTree(this._searchInput.value);
           });
 

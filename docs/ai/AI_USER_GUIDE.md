@@ -568,17 +568,20 @@ workspace files and memory files.
 
 ### Important workspace-level prompt files
 
-These files are especially important:
+These files are especially important — they're loaded into every system
+prompt automatically. Run `/init` to scaffold them with starter content.
 
-- `SOUL.md`
-- `AGENTS.md`
-- `TOOLS.md`
+- `.parallx/SOUL.md`
+- `.parallx/USER.md`
+- `.parallx/AGENTS.md`
+- `.parallx/TOOLS.md`
 
 ### What they do
 
 | File | Purpose |
 |------|---------|
-| `SOUL.md` | Identity, tone, boundaries, personality |
+| `SOUL.md` | Identity, tone, boundaries, personality of the AI |
+| `USER.md` | Identity + preferences of the user (M81). Bounded ~1,500 chars |
 | `AGENTS.md` | Project context, conventions, instructions |
 | `TOOLS.md` | Notes and guidance about tools and local conventions |
 
@@ -594,8 +597,49 @@ Canonical memory files live under:
 
 Typical files include:
 
-- `.parallx/memory/MEMORY.md`
-- `.parallx/memory/YYYY-MM-DD.md`
+- `.parallx/memory/MEMORY.md` — the **index** of long-term lessons. Bounded ~2,500 chars (M81 Phase 8). Each line is `- [Title](lessons/<slug>.md) — short description` pointing to a lesson file.
+- `.parallx/memory/lessons/<slug>.md` — individual lesson bodies (tool-use gotchas, workarounds, durable corrections). Loaded by the AI on demand, not every turn.
+- `.parallx/memory/YYYY-MM-DD.md` — date-stamped daily logs. Unbounded.
+- `.parallx/memory/_archive/` — removed lessons and pre-M81 auto-extracted noise. Nothing is lost when memory is curated; entries are archived, not deleted.
+
+### How memory gets written (M81 Phase 8)
+
+The AI writes to memory itself via the `memory_edit` tool. There is no
+hidden regex or background process — every write is an explicit, visible
+tool call. Three actions on four files:
+
+| Tool call | When the AI uses it |
+|-----------|---------------------|
+| `memory_edit file=USER action=add` | The user states a preference or reveals a stable fact about themselves |
+| `memory_edit file=lesson action=add slug=<x> description=<y>` | The user corrects you, you notice a tool-use gotcha, or a workaround emerges that future sessions need |
+| `memory_edit file=MEMORY action=add` | Free-form addition to the index header (rare — most durable writes go through `file=lesson`) |
+| `memory_edit file=daily action=add` | Something noteworthy happened today |
+| `memory_edit ... action=replace` | An existing entry needs updating (lesson body, preference value, etc.) |
+| `memory_edit ... action=remove` | An entry is no longer accurate; lessons are archived, not deleted |
+
+USER.md (~1,500 chars) and MEMORY.md (~2,500 chars, the index) are bounded — if an
+`add` would exceed the cap, the tool returns the current contents and the AI must
+consolidate (via `replace` or `remove`) before adding new content. This is a
+curation discipline: those files hold only the most durable facts.
+
+Lesson bodies are not individually bounded but the **index** caps how many
+lessons can be on the books at once (~25). When the AI hits the cap it must
+archive an old lesson before adding a new one.
+
+Daily logs are unbounded.
+
+The AI reads memory via `memory_get` (specific file, date, or lesson by `name=<slug>`)
+and `memory_search` (semantic search across all of `.parallx/memory/`).
+
+### `/init` and memory consolidation (M81 Phase 8)
+
+`/init` does three memory-related things:
+1. Scaffolds the file structure (creates `.parallx/memory/` + USER.md if missing).
+2. Archives any pre-M81 auto-extracted concepts from MEMORY.md to `_archive/pre-m81-concepts.md` (one-time, idempotent).
+3. If daily logs exist but no lessons have been written yet, runs an LLM consolidation
+   pass — reads recent daily logs and proposes 3–8 starter lessons (tool-use insights,
+   workarounds, project conventions). Re-running `/init` is safe: existing lessons
+   are skipped, only new slugs are proposed.
 
 ### Why this matters to users
 

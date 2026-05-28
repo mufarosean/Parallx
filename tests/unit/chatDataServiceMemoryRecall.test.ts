@@ -3,11 +3,10 @@ import { ChatDataService } from '../../src/built-in/chat/data/chatDataService';
 
 function createDataService(overrides: Partial<any> = {}) {
   const memoryService = {
-    evictStaleContent: vi.fn(async () => ({ memoriesEvicted: 0, conceptsEvicted: 0 })),
+    evictStaleContent: vi.fn(async () => ({ memoriesEvicted: 0 })),
     storeMemory: vi.fn(async () => {}),
     recallMemories: vi.fn(async () => []),
     getAllMemories: vi.fn(async () => []),
-    extractAndStorePreferences: vi.fn(async () => []),
     getPreferences: vi.fn(async () => []),
     formatMemoryContext: vi.fn(() => '[Conversation Memory]\n---\nPrevious session (2026-03-12T00:00:00.000Z):\nLegacy DB memory'),
   };
@@ -27,8 +26,6 @@ function createDataService(overrides: Partial<any> = {}) {
     appendSessionSummary: vi.fn(async () => {}),
     syncPreferences: vi.fn(async () => {}),
     upsertPreferences: vi.fn(async () => {}),
-    upsertConcepts: vi.fn(async () => {}),
-    searchConcepts: vi.fn(async () => []),
     getPreferencesPromptBlock: vi.fn(async () => undefined),
     getDurableMemoryRelativePath: vi.fn(() => '.parallx/memory/MEMORY.md'),
     hasSessionSummary: vi.fn(async () => false),
@@ -242,15 +239,9 @@ describe('ChatDataService.recallMemories', () => {
     expect(harness.memoryService.storeMemory).not.toHaveBeenCalled();
   });
 
-  it('syncs extracted preferences into durable canonical memory', async () => {
-    const harness = createDataService();
-    await harness.service.extractPreferences('I prefer structured brevity for technical answers.');
-
-    expect(harness.workspaceMemoryService.upsertPreferences).toHaveBeenCalledWith([
-      { key: 'preference_structured_brevity_for', value: 'structured brevity for technical answers' },
-    ]);
-    expect(harness.memoryService.extractAndStorePreferences).not.toHaveBeenCalled();
-  });
+  // M81 Phase 4 — extractPreferences/extractAndStorePreferences regex pipeline
+  // was removed. Preferences are now agent-authored via `memory_edit`. Tests
+  // for that path live in tests/unit/memoryEditTool.test.ts.
 
   it('prefers canonical durable markdown preferences for prompt injection', async () => {
     const harness = createDataService();
@@ -287,45 +278,9 @@ describe('ChatDataService.recallMemories', () => {
     expect(harness.memoryService.recallMemories).not.toHaveBeenCalled();
   });
 
-  it('stores concepts in canonical workspace memory during normal runtime', async () => {
-    const harness = createDataService();
-
-    await harness.service.storeConceptsFromSession([
-      { concept: 'Coverage reasoning', category: 'insurance', summary: 'Applied coverage rules.', struggled: true },
-    ], 'session-1');
-
-    expect(harness.workspaceMemoryService.upsertConcepts).toHaveBeenCalledWith([
-      {
-        concept: 'Coverage reasoning',
-        category: 'insurance',
-        summary: 'Applied coverage rules.',
-        encounterCount: 1,
-        masteryLevel: 0,
-        struggleCount: 1,
-      },
-    ]);
-  });
-
-  it('recalls concepts from canonical workspace memory during normal runtime', async () => {
-    const harness = createDataService();
-    harness.workspaceMemoryService.searchConcepts.mockResolvedValueOnce([
-      {
-        concept: 'Coverage reasoning',
-        category: 'insurance',
-        summary: 'Applied coverage rules.',
-        encounterCount: 2,
-        masteryLevel: 0.4,
-        struggleCount: 1,
-      },
-    ]);
-
-    const result = await harness.service.recallConcepts('policy coverage');
-
-    expect(result).toContain('[Prior knowledge');
-    expect(result).toContain('Coverage reasoning');
-    expect(result).toContain('struggles noted');
-    expect(harness.memoryService.recallConcepts).toBeUndefined();
-  });
+  // M81 Phase 3 Stage 2 — storeConceptsFromSession / recallConcepts tests
+  // removed alongside the methods. Agent-curated memory writes are covered
+  // by tests/unit/memoryEditTool.test.ts.
 
   it('reads rich documents via readFileContent for workspace-relative reads', async () => {
     const harness = createDataService();

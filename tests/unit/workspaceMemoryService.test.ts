@@ -67,6 +67,10 @@ function createFileServiceMock() {
       async writeFile(uri: URI, content: string): Promise<void> {
         files.set(uri.fsPath, content);
       },
+      async delete(uri: URI): Promise<void> {
+        files.delete(uri.fsPath);
+        directories.delete(uri.fsPath);
+      },
     } as any,
   };
 }
@@ -220,7 +224,7 @@ describe('WorkspaceMemoryService', () => {
     await expect(service.getSessionSummaryMessageCount('missing-session')).resolves.toBeNull();
   });
 
-  it('imports legacy memories, preferences, and concepts into canonical markdown once', async () => {
+  it('imports legacy memories and preferences into canonical markdown once', async () => {
     const workspaceService = createWorkspaceService('D:/AI/Parallx/demo-workspace');
     const fileService = createFileServiceMock();
     const service = new WorkspaceMemoryService(fileService.service, workspaceService);
@@ -237,15 +241,6 @@ describe('WorkspaceMemoryService', () => {
       preferences: [
         { key: 'answer-style', value: 'structured brevity' },
       ],
-      concepts: [
-        {
-          concept: 'coverage reasoning',
-          category: 'insurance',
-          summary: 'User asked about policy coverage logic.',
-          encounterCount: 3,
-          masteryLevel: 0.6,
-        },
-      ],
     });
 
     expect(result).toEqual({ imported: true, reason: 'imported' });
@@ -255,57 +250,15 @@ describe('WorkspaceMemoryService', () => {
 
     expect(durableMemory).toContain('## Preferences');
     expect(durableMemory).toContain('- answer-style: structured brevity');
-    expect(durableMemory).toContain('## Concepts');
-    expect(durableMemory).toContain('### coverage reasoning');
     expect(durableMemory).toContain('## Legacy Import');
     expect(durableMemory).toContain('Imported legacy DB snapshot: yes');
     expect(dailyMemory).toContain('## Session legacy-session');
     expect(dailyMemory).toContain('Imported legacy summary.');
   });
 
-  it('reads, upserts, and searches canonical concepts from durable memory', async () => {
-    const workspaceService = createWorkspaceService('D:/AI/Parallx/demo-workspace');
-    const fileService = createFileServiceMock();
-    const service = new WorkspaceMemoryService(fileService.service, workspaceService);
-
-    await service.upsertConcepts([
-      {
-        concept: 'Coverage reasoning',
-        category: 'insurance',
-        summary: 'User asked how policy coverage applies to incidents.',
-        encounterCount: 1,
-        masteryLevel: 0.2,
-        struggleCount: 1,
-      },
-    ]);
-    await service.upsertConcepts([
-      {
-        concept: 'Coverage reasoning',
-        category: 'insurance',
-        summary: 'User asked how policy coverage applies to multi-vehicle incidents.',
-        encounterCount: 1,
-        masteryLevel: 0.4,
-        struggleCount: 0,
-      },
-      {
-        concept: 'Deductible basics',
-        category: 'insurance',
-        summary: 'User reviewed deductible definitions.',
-        encounterCount: 1,
-        masteryLevel: 0.5,
-        struggleCount: 0,
-      },
-    ]);
-
-    const concepts = await service.readConcepts();
-    expect(concepts).toHaveLength(2);
-    expect(concepts.find((concept) => concept.concept === 'Coverage reasoning')).toEqual(
-      expect.objectContaining({ encounterCount: 2, masteryLevel: 0.4, struggleCount: 1 }),
-    );
-
-    const searchResults = await service.searchConcepts('policy coverage incident');
-    expect(searchResults[0].concept).toBe('Coverage reasoning');
-  });
+  // M81 Phase 3 Stage 2 — `reads, upserts, and searches canonical concepts`
+  // test removed alongside the concept methods. Agent-curated memory is
+  // covered by tests/unit/memoryEditTool.test.ts.
 
   it('treats identical legacy snapshots as already imported once canonical entries are present', async () => {
     const workspaceService = createWorkspaceService('D:/AI/Parallx/demo-workspace');
@@ -322,7 +275,6 @@ describe('WorkspaceMemoryService', () => {
         },
       ],
       preferences: [],
-      concepts: [],
     });
 
     const result = await service.importLegacySnapshot({
@@ -335,7 +287,6 @@ describe('WorkspaceMemoryService', () => {
         },
       ],
       preferences: [],
-      concepts: [],
     });
 
     expect(result).toEqual({ imported: false, reason: 'already-imported' });
@@ -361,15 +312,6 @@ describe('WorkspaceMemoryService', () => {
       preferences: [
         { key: 'answer-style', value: 'structured brevity' },
       ],
-      concepts: [
-        {
-          concept: 'coverage reasoning',
-          category: 'insurance',
-          summary: 'User asked about policy coverage logic.',
-          encounterCount: 3,
-          masteryLevel: 0.6,
-        },
-      ],
     });
 
     fileService.files.set(
@@ -390,15 +332,6 @@ describe('WorkspaceMemoryService', () => {
       preferences: [
         { key: 'answer-style', value: 'structured brevity' },
       ],
-      concepts: [
-        {
-          concept: 'coverage reasoning',
-          category: 'insurance',
-          summary: 'User asked about policy coverage logic.',
-          encounterCount: 3,
-          masteryLevel: 0.6,
-        },
-      ],
     });
 
     expect(result).toEqual({ imported: true, reason: 'imported' });
@@ -407,9 +340,223 @@ describe('WorkspaceMemoryService', () => {
     const dailyMemory = fileService.files.get('D:/AI/Parallx/demo-workspace/.parallx/memory/2026-03-11.md')!;
 
     expect(durableMemory).toContain('## Preferences');
-    expect(durableMemory).toContain('## Concepts');
     expect(durableMemory).toContain('Imported legacy DB snapshot: yes');
     expect(durableMemory).toContain('Last normalized at:');
     expect(dailyMemory).toContain('## Session legacy-session');
+  });
+});
+
+describe('M81 Phase 8 — lessons + index', () => {
+  const WORKSPACE_ROOT = 'D:/AI/Parallx/demo-workspace';
+  const MEMORY_FILE = `${WORKSPACE_ROOT}/.parallx/memory/MEMORY.md`;
+  const LESSONS_DIR = `${WORKSPACE_ROOT}/.parallx/memory/lessons`;
+  const ARCHIVE_LESSONS_DIR = `${WORKSPACE_ROOT}/.parallx/memory/_archive/lessons`;
+  const ARCHIVE_LEGACY_CONCEPTS = `${WORKSPACE_ROOT}/.parallx/memory/_archive/pre-m81-concepts.md`;
+
+  it('exposes lessons root + lesson file relative paths', () => {
+    const workspaceService = createWorkspaceService(WORKSPACE_ROOT);
+    const fileService = createFileServiceMock();
+    const service = new WorkspaceMemoryService(fileService.service, workspaceService);
+
+    expect(service.getLessonsRootRelativePath()).toBe('.parallx/memory/lessons');
+    expect(service.getLessonFileRelativePath('canvas-no-move')).toBe('.parallx/memory/lessons/canvas-no-move.md');
+  });
+
+  it('round-trips writeLessonFile and readLessonFile under lessons/', async () => {
+    const workspaceService = createWorkspaceService(WORKSPACE_ROOT);
+    const fileService = createFileServiceMock();
+    const service = new WorkspaceMemoryService(fileService.service, workspaceService);
+
+    await service.writeLessonFile('canvas-no-move', '# Canvas no move\n\nDetails.\n');
+
+    expect(fileService.directories.has(LESSONS_DIR)).toBe(true);
+    expect(fileService.files.get(`${LESSONS_DIR}/canvas-no-move.md`)).toContain('Details.');
+    await expect(service.readLessonFile('canvas-no-move')).resolves.toContain('Details.');
+    await expect(service.readLessonFile('missing-lesson')).resolves.toBe('');
+  });
+
+  it('rejects empty slugs on writeLessonFile / archiveLessonFile', async () => {
+    const workspaceService = createWorkspaceService(WORKSPACE_ROOT);
+    const fileService = createFileServiceMock();
+    const service = new WorkspaceMemoryService(fileService.service, workspaceService);
+
+    await expect(service.writeLessonFile('', 'body')).rejects.toThrow(/lesson slug is required/);
+    await expect(service.writeLessonFile('   ', 'body')).rejects.toThrow(/lesson slug is required/);
+    await expect(service.archiveLessonFile('')).rejects.toThrow(/lesson slug is required/);
+  });
+
+  it('listLessons returns slugs of files actually on disk', async () => {
+    const workspaceService = createWorkspaceService(WORKSPACE_ROOT);
+    const fileService = createFileServiceMock();
+    const service = new WorkspaceMemoryService(fileService.service, workspaceService);
+
+    await expect(service.listLessons()).resolves.toEqual([]);
+
+    await service.writeLessonFile('alpha', 'body');
+    await service.writeLessonFile('beta', 'body');
+    // Non-markdown file in lessons dir should be ignored.
+    fileService.files.set(`${LESSONS_DIR}/notes.txt`, 'plain');
+
+    await expect(service.listLessons()).resolves.toEqual(['alpha', 'beta']);
+  });
+
+  it('addMemoryIndexEntry initializes a clean header and appends; replaces on re-add', async () => {
+    const workspaceService = createWorkspaceService(WORKSPACE_ROOT);
+    const fileService = createFileServiceMock();
+    const service = new WorkspaceMemoryService(fileService.service, workspaceService);
+
+    await service.addMemoryIndexEntry('canvas-no-move', 'canvas_set_page_property only sets metadata');
+
+    let memory = fileService.files.get(MEMORY_FILE)!;
+    expect(memory).toContain('# Memory Index');
+    expect(memory).toContain('Long-term lessons. Each line points to a lesson file with the full');
+    expect(memory).toContain('- [Canvas no move](lessons/canvas-no-move.md) — canvas_set_page_property only sets metadata');
+
+    // Re-add same slug with new description must REPLACE the line, not duplicate.
+    await service.addMemoryIndexEntry('canvas-no-move', 'updated description here');
+    memory = fileService.files.get(MEMORY_FILE)!;
+    const occurrences = memory.match(/lessons\/canvas-no-move\.md/g) ?? [];
+    expect(occurrences).toHaveLength(1);
+    expect(memory).toContain('— updated description here');
+    expect(memory).not.toContain('canvas_set_page_property only sets metadata');
+
+    // Adding a different slug appends.
+    await service.addMemoryIndexEntry('ollama-tool-result-string', 'extensions returning MCP-shape arrays cause HTTP 400');
+    memory = fileService.files.get(MEMORY_FILE)!;
+    expect(memory).toContain('- [Canvas no move](lessons/canvas-no-move.md)');
+    expect(memory).toContain('- [Ollama tool result string](lessons/ollama-tool-result-string.md)');
+  });
+
+  it('truncates descriptions over 120 chars in the index entry', async () => {
+    const workspaceService = createWorkspaceService(WORKSPACE_ROOT);
+    const fileService = createFileServiceMock();
+    const service = new WorkspaceMemoryService(fileService.service, workspaceService);
+
+    const longDescription = 'x'.repeat(200);
+    await service.addMemoryIndexEntry('long-one', longDescription);
+
+    const memory = fileService.files.get(MEMORY_FILE)!;
+    const match = memory.match(/— (x+)$/m);
+    expect(match).not.toBeNull();
+    expect(match![1].length).toBe(120);
+  });
+
+  it('parseMemoryIndex returns the entries previously added', async () => {
+    const workspaceService = createWorkspaceService(WORKSPACE_ROOT);
+    const fileService = createFileServiceMock();
+    const service = new WorkspaceMemoryService(fileService.service, workspaceService);
+
+    await service.addMemoryIndexEntry('alpha-slug', 'first description');
+    await service.addMemoryIndexEntry('beta-slug', 'second description');
+
+    const entries = await service.parseMemoryIndex();
+    expect(entries).toEqual([
+      { slug: 'alpha-slug', description: 'first description', path: 'lessons/alpha-slug.md' },
+      { slug: 'beta-slug', description: 'second description', path: 'lessons/beta-slug.md' },
+    ]);
+  });
+
+  it('removeMemoryIndexEntry removes the matching line and is a no-op when absent', async () => {
+    const workspaceService = createWorkspaceService(WORKSPACE_ROOT);
+    const fileService = createFileServiceMock();
+    const service = new WorkspaceMemoryService(fileService.service, workspaceService);
+
+    await service.addMemoryIndexEntry('alpha-slug', 'first');
+    await service.addMemoryIndexEntry('beta-slug', 'second');
+
+    await service.removeMemoryIndexEntry('alpha-slug');
+    let entries = await service.parseMemoryIndex();
+    expect(entries.map((entry) => entry.slug)).toEqual(['beta-slug']);
+
+    // No-op when slug absent.
+    const before = fileService.files.get(MEMORY_FILE);
+    await service.removeMemoryIndexEntry('not-there');
+    const after = fileService.files.get(MEMORY_FILE);
+    expect(after).toBe(before);
+  });
+
+  it('archiveLessonFile moves the file to _archive/lessons/ and subsequent reads return ""', async () => {
+    const workspaceService = createWorkspaceService(WORKSPACE_ROOT);
+    const fileService = createFileServiceMock();
+    const service = new WorkspaceMemoryService(fileService.service, workspaceService);
+
+    await service.writeLessonFile('canvas-no-move', '# body\n');
+    expect(fileService.files.has(`${LESSONS_DIR}/canvas-no-move.md`)).toBe(true);
+
+    const result = await service.archiveLessonFile('canvas-no-move');
+    expect(result).toBe(true);
+
+    expect(fileService.files.has(`${LESSONS_DIR}/canvas-no-move.md`)).toBe(false);
+    expect(fileService.files.get(`${ARCHIVE_LESSONS_DIR}/canvas-no-move.md`)).toContain('# body');
+    await expect(service.readLessonFile('canvas-no-move')).resolves.toBe('');
+
+    // Re-archiving (now absent) returns false.
+    await expect(service.archiveLessonFile('canvas-no-move')).resolves.toBe(false);
+  });
+
+  it('archiveLegacyConceptSection moves a regex-style Concepts section to _archive/pre-m81-concepts.md', async () => {
+    const workspaceService = createWorkspaceService(WORKSPACE_ROOT);
+    const fileService = createFileServiceMock();
+    const service = new WorkspaceMemoryService(fileService.service, workspaceService);
+
+    const legacyMemory = [
+      '# Durable Memory',
+      '',
+      'Some intro text.',
+      '',
+      '## Concepts',
+      '',
+      '### Foo',
+      '- Category: tool',
+      '- Encounters: 4',
+      '- Mastery: 0.5',
+      '- Struggles: 2',
+      '- Summary: foo summary',
+      '',
+      '### Bar',
+      '- Category: pattern',
+      '- Encounters: 9',
+      '- Mastery: 0.8',
+      '- Struggles: 1',
+      '- Summary: bar summary',
+      '',
+      '## Other',
+      '',
+      'Keep me.',
+      '',
+    ].join('\n');
+    await service.ensureScaffold();
+    fileService.files.set(MEMORY_FILE, legacyMemory);
+
+    const result = await service.archiveLegacyConceptSection();
+    expect(result.archived).toBe(true);
+    expect(result.movedChars).toBeGreaterThan(0);
+
+    const archived = fileService.files.get(ARCHIVE_LEGACY_CONCEPTS)!;
+    expect(archived).toMatch(/^<!-- Archived from MEMORY\.md ## Concepts section on \d{4}-\d{2}-\d{2} by M81 Phase 8\. -->/);
+    expect(archived).toContain('### Foo');
+    expect(archived).toContain('### Bar');
+
+    const rewritten = fileService.files.get(MEMORY_FILE)!;
+    expect(rewritten).toContain('# Durable Memory');
+    expect(rewritten).toContain('## Other');
+    expect(rewritten).toContain('Keep me.');
+    expect(rewritten).not.toContain('## Concepts');
+    expect(rewritten).not.toContain('### Foo');
+  });
+
+  it('archiveLegacyConceptSection is a no-op on a clean MEMORY.md', async () => {
+    const workspaceService = createWorkspaceService(WORKSPACE_ROOT);
+    const fileService = createFileServiceMock();
+    const service = new WorkspaceMemoryService(fileService.service, workspaceService);
+
+    await service.ensureScaffold();
+    await service.addMemoryIndexEntry('alpha-slug', 'first');
+    const before = fileService.files.get(MEMORY_FILE);
+
+    const result = await service.archiveLegacyConceptSection();
+    expect(result).toEqual({ archived: false, movedChars: 0 });
+    expect(fileService.files.get(MEMORY_FILE)).toBe(before);
+    expect(fileService.files.has(ARCHIVE_LEGACY_CONCEPTS)).toBe(false);
   });
 });

@@ -89,6 +89,7 @@ export function createReadBlockTool(db: IBuiltInToolDatabase | undefined): IChat
     },
     requiresConfirmation: false,
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
+    category: 'canvas',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
       const pageId = String(args['pageId'] || '');
@@ -123,7 +124,7 @@ export function createEditBlockTool(
   return {
     name: 'canvas_edit_block',
     displaySummary: 'Replace a block on a canvas page (approval).',
-    description: 'Replace the plain-text content of a single block inside a CANVAS PAGE. Operates on the canvas page DB. For file edits use `edit_file`. The block becomes a paragraph; markdown formatting is NOT parsed — pass plain text. For richer edits use canvas_compose_page (which accepts markdown).',
+    description: 'Replace the plain-text content of a single block inside a CANVAS PAGE. Operates on the canvas page DB. For file edits use `edit_file`. The block becomes a paragraph; markdown formatting is NOT parsed — pass plain text. For richer edits use canvas_edit_page (which accepts markdown).',
     parameters: {
       type: 'object',
       required: ['pageId', 'blockId', 'newContent'],
@@ -136,6 +137,7 @@ export function createEditBlockTool(
     },
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    category: 'canvas',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
       const pageId = String(args['pageId'] || '');
@@ -177,7 +179,7 @@ export function createInsertBlockAfterTool(
   return {
     name: 'canvas_insert_block_after',
     displaySummary: 'Insert a block into a canvas page (approval).',
-    description: 'Insert a new paragraph block into a CANVAS PAGE, immediately after anchorBlockId. Returns the new blockId. Operates on the canvas page DB. The inserted block is a plain paragraph; markdown is NOT parsed (use canvas_compose_page for multi-block markdown).',
+    description: 'Insert a new paragraph block into a CANVAS PAGE, immediately after anchorBlockId. Returns the new blockId. Operates on the canvas page DB. The inserted block is a plain paragraph; markdown is NOT parsed (use canvas_edit_page for multi-block markdown).',
     parameters: {
       type: 'object',
       required: ['pageId', 'anchorBlockId', 'content'],
@@ -190,6 +192,7 @@ export function createInsertBlockAfterTool(
     },
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    category: 'canvas',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
       const pageId = String(args['pageId'] || '');
@@ -248,6 +251,7 @@ export function createLinkBlockTool(
     },
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    category: 'canvas',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
       const fromPageId = String(args['fromPageId'] || '');

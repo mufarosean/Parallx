@@ -1216,7 +1216,6 @@ describe('default participant integration helpers', () => {
 
     const retrieveContext = vi.fn().mockResolvedValue(undefined);
     const recallMemories = vi.fn().mockResolvedValue(undefined);
-    const recallConcepts = vi.fn().mockResolvedValue(undefined);
     const getCurrentPageContent = vi.fn().mockResolvedValue(undefined);
     const sendChatRequest = vi.fn().mockImplementation(async function* () {
       yield { content: 'Hi there. How can I help?', done: true };
@@ -1226,7 +1225,6 @@ describe('default participant integration helpers', () => {
       sendChatRequest,
       retrieveContext,
       recallMemories,
-      recallConcepts,
       getCurrentPageContent,
       isRAGAvailable: () => true,
       isIndexing: () => false,
@@ -1338,7 +1336,6 @@ describe('default participant integration helpers', () => {
       sendChatRequest,
       retrieveContext,
       recallMemories,
-      recallConcepts: vi.fn().mockResolvedValue(undefined),
       isRAGAvailable: () => true,
       isIndexing: () => false,
       getActiveModel: () => 'test-model',

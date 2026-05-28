@@ -74,6 +74,7 @@ export function createAppFindCommandsTool(
     },
     requiresConfirmation: false,
     permissionLevel: 'always-allowed',
+    category: 'app-control',
     source: 'built-in',
     handler: async (args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> => {
       if (!registry) return fail('command registry unavailable');
@@ -128,6 +129,7 @@ export function createAppRunCommandTool(
     // we leave the default permission level so the user's permission settings
     // (always-allowed / requires-approval / never-allowed) still apply.
     permissionLevel: 'always-allowed',
+    category: 'app-control',
     source: 'built-in',
     handler: async (args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> => {
       if (!commandService) return fail('command service unavailable');

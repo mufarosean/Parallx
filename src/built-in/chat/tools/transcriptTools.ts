@@ -40,6 +40,7 @@ export function createTranscriptGetTool(fs: IBuiltInToolFileSystem | undefined):
     },
     requiresConfirmation: false,
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
+    category: 'transcript',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       if (!fs) {
         return { content: 'Transcript files are not available — no workspace folder is open.', isError: true };
@@ -81,6 +82,7 @@ export function createTranscriptSearchTool(transcriptSearch: IBuiltInToolTranscr
     },
     requiresConfirmation: false,
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
+    category: 'transcript',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       if (!transcriptSearch || !transcriptSearch.isEnabled()) {
         return { content: 'Transcript search is disabled. Enable memory.transcriptIndexingEnabled to index `.parallx/sessions/*.jsonl` for explicit transcript recall.' };

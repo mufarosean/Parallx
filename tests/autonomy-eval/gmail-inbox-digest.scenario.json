@@ -22,7 +22,7 @@
     "fixturePath": "fixtures/gmail-inbox.json",
     "modeFlag": "PARALLX_GMAIL_E2E",
     "modeNotes": {
-      "PARALLX_GMAIL_E2E=0": "Default. Runner injects fixtures/gmail-inbox.json as the gmail.list_unread response. No network egress.",
+      "PARALLX_GMAIL_E2E=0": "Default. Runner injects fixtures/gmail-inbox.json as the gmail.list_emails response. No network egress.",
       "PARALLX_GMAIL_E2E=1": "Runner spawns the real tools/gmail-mcp-server child process with a live access token from the user's OAuth session. Live mail. CI never runs this."
     }
   },
@@ -38,7 +38,7 @@
   },
   "expected": {
     "toolCalls": [
-      { "name": "gmail.list_unread", "atLeast": 1 },
+      { "name": "gmail.list_emails", "atLeast": 1 },
       { "name": "canvas_create_page", "atLeast": 1 }
     ],
     "surfaceRoutes": [
@@ -48,5 +48,5 @@
     "noBodyLeak": true
   },
   "rubric": "gmail-inbox-digest.rubric.json",
-  "_runner_status": "GATED — execution end-to-end requires F2 (OAuth) + F3 (safeStorage) + F4 (gmail.list_unread tool) to land. Until then the runner validates schema + fixture coherence in fixture mode."
+  "_runner_status": "GATED — execution end-to-end requires F2 (OAuth) + F3 (safeStorage) + F4 (gmail.list_emails tool, formerly list_unread) to land. Until then the runner validates schema + fixture coherence in fixture mode."
 }

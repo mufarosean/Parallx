@@ -42,11 +42,9 @@ function createMockServices(overrides?: Partial<IOpenclawContextEngineServices>)
       sources: [{ uri: 'file:///test.md', label: 'test', index: 0 }],
     })),
     recallMemories: vi.fn(async () => ''),
-    recallConcepts: vi.fn(async () => ''),
     recallTranscripts: vi.fn(async () => ''),
     getCurrentPageContent: vi.fn(async () => undefined),
     storeSessionMemory: vi.fn(async () => {}),
-    storeConceptsFromSession: vi.fn(async () => {}),
     sendSummarizationRequest: undefined,
     ...overrides,
   };

@@ -25,6 +25,7 @@ import type {
   IBuiltInToolRetrieval,
   IBuiltInToolTranscriptSearch,
   IBuiltInToolTerminal,
+  IBuiltInToolWorkspaceMemory,
   CurrentPageIdGetter,
   PageMutationNotifier,
 } from '../chatTypes.js';
@@ -38,6 +39,7 @@ export type {
   IBuiltInToolRetrieval,
   IBuiltInToolTranscriptSearch,
   IBuiltInToolTerminal,
+  IBuiltInToolWorkspaceMemory,
   CurrentPageIdGetter,
   PageMutationNotifier,
 } from '../chatTypes.js';
@@ -46,9 +48,8 @@ export type {
 import {
   createFindPagesTool,
   createReadPageTool,
-  createGetPageTool,
   createCreatePageTool,
-  createComposePageTool,
+  createEditPageTool,
   createListPropertyDefinitionsTool,
   createSetPagePropertyTool,
   createSetPageStyleTool,
@@ -63,6 +64,7 @@ import {
 import {
   createMemoryGetTool,
   createMemorySearchTool,
+  createMemoryEditTool,
 } from './memoryTools.js';
 import {
   createTranscriptGetTool,
@@ -107,16 +109,17 @@ export function registerBuiltInTools(
   subagentSpawner?: SubagentSpawner,
   autonomyLog?: IAutonomyLogReader,
   pageMutationNotifier?: PageMutationNotifier,
+  workspaceMemory?: IBuiltInToolWorkspaceMemory,
 ): IDisposable[] {
   const disposables: IDisposable[] = [];
 
   const tools: IChatTool[] = [
-    // ── Canvas/Database tools (M64 Iter 3: consolidated) ──
+    // ── Canvas/Database tools (M64 Iter 3 + M81 Phase 9: consolidated) ──
+    // M81 Phase 9: get_page folded into read_page; compose_page renamed to edit_page.
     createFindPagesTool(db),
     createReadPageTool(db, getCurrentPageId ?? (() => undefined)),
-    createGetPageTool(db),
     createCreatePageTool(db, pageMutationNotifier),
-    createComposePageTool(db, pageMutationNotifier),
+    createEditPageTool(db, pageMutationNotifier),
     createListPropertyDefinitionsTool(db),
     createSetPagePropertyTool(db),
     createSetPageStyleTool(db, pageMutationNotifier, workspaceRoot),
@@ -125,8 +128,9 @@ export function registerBuiltInTools(
     createReadFileTool(fs),
     createSearchFilesTool(fs),
     createGrepSearchTool(fs),
-    createMemoryGetTool(fs),
+    createMemoryGetTool(fs, workspaceMemory),
     createMemorySearchTool(canonicalMemorySearch),
+    createMemoryEditTool(workspaceMemory),
     createTranscriptGetTool(fs),
     createTranscriptSearchTool(transcriptSearch),
     // ── Write tools (M11 Task 2.2 + 2.3) ──

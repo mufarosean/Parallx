@@ -242,6 +242,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
         parameters: tool.parameters,
         displaySummary: tool.displaySummary,
         profiles: tool.profiles,
+        category: tool.category,
       }));
   }
 
@@ -263,6 +264,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
         parameters: tool.parameters,
         displaySummary: tool.displaySummary,
         profiles: tool.profiles,
+        category: tool.category,
       }));
   }
 

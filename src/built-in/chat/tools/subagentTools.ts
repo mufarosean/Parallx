@@ -97,6 +97,7 @@ export function createSessionsSpawnTool(
     },
     requiresConfirmation: true,
     permissionLevel: subagentToolPermissionLevel(name),
+    category: 'subagent',
     source: 'built-in',
     handler: async (args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> => {
       if (!spawner) {

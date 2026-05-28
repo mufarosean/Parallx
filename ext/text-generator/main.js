@@ -4126,6 +4126,30 @@ function renderChatEditor(container, parallx, input) {
   const toolbar = el('div', 'tg-chat-toolbar');
   const modelLabel = el('span', 'tg-chat-toolbar-label', { text: 'Model' });
   const modelSelect = el('select', 'tg-chat-toolbar-select');
+  // Per-thread context-window override picker. Lives next to the model
+  // select so users can pick a heavier model + clamp the context to
+  // keep KV cache in VRAM. Mirrors the chat's ChatContextWindowPicker
+  // but uses a plain `<select>` for visual parity with the model
+  // dropdown that's already in this toolbar.
+  const ctxLabel = el('span', 'tg-chat-toolbar-label', { text: 'Ctx' });
+  const ctxSelect = el('select', 'tg-chat-toolbar-select');
+  ctxSelect.title = 'Context window for this thread (lower = faster, less VRAM)';
+  const CTX_PRESETS = [
+    { label: 'Auto',  value: 0 },
+    { label: '4K',    value: 4_096 },
+    { label: '8K',    value: 8_192 },
+    { label: '16K',   value: 16_384 },
+    { label: '32K',   value: 32_768 },
+    { label: '64K',   value: 65_536 },
+    { label: '128K',  value: 131_072 },
+  ];
+  for (const p of CTX_PRESETS) {
+    const opt = document.createElement('option');
+    opt.value = String(p.value);
+    opt.textContent = p.label;
+    ctxSelect.appendChild(opt);
+  }
+
   const spacer = el('span', 'tg-chat-toolbar-spacer');
   const summaryEl = el('span', 'tg-chat-toolbar-charname');
   const tokenCountEl = el('span', 'tg-token-count');
@@ -4138,7 +4162,7 @@ function renderChatEditor(container, parallx, input) {
   // thread JSON.
   const sceneBtn = el('button', 'tg-chat-toolbar-btn', { html: icon('map', 16) });
   sceneBtn.title = 'View / edit scene state';
-  toolbar.append(modelLabel, modelSelect, spacer, tokenCountEl, sceneBtn, viewPromptBtn, summaryEl);
+  toolbar.append(modelLabel, modelSelect, ctxLabel, ctxSelect, spacer, tokenCountEl, sceneBtn, viewPromptBtn, summaryEl);
   root.appendChild(toolbar);
 
   // ── Scene state panel (collapsible) ──
@@ -5891,12 +5915,21 @@ function renderChatEditor(container, parallx, input) {
       stop.push(`\n${otherName}:`);
     }
 
+    // num_ctx priority: per-thread picker > settings default > undefined.
+    // Sending `undefined` lets Ollama use its own configured num_ctx
+    // (Modelfile / OLLAMA_NUM_CTX). When the user explicitly picks a
+    // preset in the toolbar, the thread override wins so heavy models
+    // can be clamped to fit in VRAM on a per-thread basis.
+    const numCtx = (thread?.contextWindowOverride && thread.contextWindowOverride > 0)
+      ? thread.contextWindowOverride
+      : (currentSettings?.defaultContextWindow || undefined);
+
     return {
       think: true,
       temperature: character?.frontmatter.temperature ?? currentSettings?.defaultTemperature ?? 0.8,
       ...(maxTokens ? { maxTokens } : {}),
       ...(stop.length > 0 ? { stop } : {}),
-      numCtx: currentSettings?.defaultContextWindow || undefined,
+      numCtx,
     };
   }
 
@@ -6566,6 +6599,11 @@ function renderChatEditor(container, parallx, input) {
     const threadModel = thread?.modelId && models.some(m => m.id === thread.modelId) ? thread.modelId : null;
     selectedModelId = threadModel || models[0]?.id || null;
     if (selectedModelId) modelSelect.value = selectedModelId;
+    // Sync the context-window picker to the thread's override. 0 means
+    // "Auto" (use Ollama / Modelfile default), so no override is sent
+    // via num_ctx. Picks above 0 are sent verbatim as num_ctx per call.
+    const ctxVal = Number(thread?.contextWindowOverride) || 0;
+    ctxSelect.value = String(ctxVal);
   }
 
   /**
@@ -6786,6 +6824,22 @@ function renderChatEditor(container, parallx, input) {
     selectedModelId = modelSelect.value || null;
     if (thread && selectedModelId) {
       surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { modelId: selectedModelId }), parallx, 'model selection');
+    }
+  });
+
+  // Persist per-thread context-window override on user pick. 0 clears
+  // the override (null on disk) so the thread falls back to model /
+  // settings defaults. Any non-zero value is sent as num_ctx on every
+  // `sendChatRequest` from this thread (see getGenerationOptions).
+  ctxSelect.addEventListener('change', () => {
+    const v = Number(ctxSelect.value) || 0;
+    if (thread) {
+      thread.contextWindowOverride = v > 0 ? v : null;
+      surfaceSaveError(
+        updateThreadMeta(fs, workspaceUri, threadId, { contextWindowOverride: thread.contextWindowOverride }),
+        parallx,
+        'context window',
+      );
     }
   });
 

@@ -108,8 +108,17 @@ const IMAGE_EXTENSIONS = new Set([
 /** Max file size to index (256 KB). Larger files are skipped. */
 const MAX_FILE_SIZE = 256 * 1024;
 
-/** Max file size for rich documents (10 MB). PDFs/Office docs can be larger. */
-const MAX_RICH_DOC_SIZE = 10 * 1024 * 1024;
+/**
+ * Max file size for rich documents (100 MB). PDFs/Office docs can be larger.
+ *
+ * ⚠️ DUPLICATED CONSTANT — keep in sync with `MAX_RICH_DOC_SIZE` in
+ * `electron/documentExtractor.cjs`. The renderer-side cap (here) filters the
+ * directory walk; the main-process cap is enforced by the extractor before
+ * pdf-parse / mammoth / xlsx run. If they diverge, the lower of the two wins
+ * and rich-doc indexing silently skips files in the gap.
+ * TODO: consolidate to a single source — see `project_indexing_size_caps`.
+ */
+const MAX_RICH_DOC_SIZE = 100 * 1024 * 1024;
 
 /** Yield back to the event loop every N directory entries while walking. */
 const DIRECTORY_WALK_YIELD_EVERY = 200;

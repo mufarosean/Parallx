@@ -41,6 +41,16 @@ export interface ISkillManifest {
   readonly disableModelInvocation: boolean;
   /** Whether the skill appears in the slash-command menu. Default: true. */
   readonly userInvocable: boolean;
+
+  // M81 Phase 6 (agentskills.io subfolder alignment)
+  /**
+   * Workspace-relative paths of files discovered under the skill's
+   * `scripts/`, `references/`, and `assets/` subfolders (one level deep).
+   * Empty array when the skill has no such subfolders. The agent can
+   * `read_file` these paths on demand (Execution stage of progressive
+   * disclosure).
+   */
+  readonly bundledFiles: readonly string[];
 }
 
 export interface ISkillParameter {
@@ -266,6 +276,7 @@ export function validateSkillManifest(
     kind,
     disableModelInvocation,
     userInvocable,
+    bundledFiles: [],
   };
 }
 
@@ -340,6 +351,14 @@ export interface ISkillFileSystem {
   readFile(relativePath: string): Promise<string>;
   listDirs(parentRelativePath: string): Promise<string[]>;
   exists(relativePath: string): Promise<boolean>;
+  /**
+   * M81 Phase 6 — enumerate FILES (not directories) directly inside the
+   * given parent. Used by `scanSkills` to discover bundled scripts /
+   * references / assets one level deep under a skill folder. Optional
+   * for backward compatibility with existing callers; when absent,
+   * `bundledFiles` will be empty for every skill.
+   */
+  listFiles?(parentRelativePath: string): Promise<string[]>;
 }
 
 /**
@@ -391,6 +410,7 @@ export class SkillLoaderService extends Disposable {
     permissionLevel: ToolPermissionLevel;
     parameters: readonly ISkillParameter[];
     body: string;
+    bundledFiles: readonly string[];
   }[] {
     return this.skills
       .map(s => ({
@@ -404,6 +424,7 @@ export class SkillLoaderService extends Disposable {
         permissionLevel: s.permission,
         parameters: s.parameters,
         body: s.body,
+        bundledFiles: s.bundledFiles,
       }));
   }
 
@@ -433,14 +454,25 @@ export class SkillLoaderService extends Disposable {
         const parsed = parseSkillFrontmatter(content);
         if (!parsed) { continue; }
 
-        const manifest = validateSkillManifest(parsed, skillPath);
-        if (!manifest) { continue; }
+        const baseManifest = validateSkillManifest(parsed, skillPath);
+        if (!baseManifest) { continue; }
+
+        // M81 Phase 6 — discover bundled scripts/references/assets one level deep
+        const skillDir = `${SKILLS_DIR}/${dir}`;
+        const bundledFiles = await this._collectBundledFiles(skillDir);
+
+        const manifest: ISkillManifest = bundledFiles.length > 0
+          ? { ...baseManifest, bundledFiles }
+          : baseManifest;
 
         seen.add(manifest.name);
 
         // Check if newly loaded or changed
         const existing = this._skills.get(manifest.name);
-        if (!existing || existing.version !== manifest.version || existing.description !== manifest.description) {
+        const bundleChanged = !existing
+          || existing.bundledFiles.length !== manifest.bundledFiles.length
+          || existing.bundledFiles.some((p, i) => p !== manifest.bundledFiles[i]);
+        if (!existing || existing.version !== manifest.version || existing.description !== manifest.description || bundleChanged) {
           this._skills.set(manifest.name, manifest);
           added.push(manifest);
         }
@@ -487,14 +519,53 @@ export class SkillLoaderService extends Disposable {
       const parsed = parseSkillFrontmatter(content);
       if (!parsed) { return; }
 
-      const manifest = validateSkillManifest(parsed, skillPath);
-      if (!manifest) { return; }
+      const baseManifest = validateSkillManifest(parsed, skillPath);
+      if (!baseManifest) { return; }
+
+      // M81 Phase 6 — refresh bundled-file list on reload
+      const skillDir = `.parallx/skills/${skillName}`;
+      const bundledFiles = await this._collectBundledFiles(skillDir);
+      const manifest: ISkillManifest = bundledFiles.length > 0
+        ? { ...baseManifest, bundledFiles }
+        : baseManifest;
 
       this._skills.set(manifest.name, manifest);
       this._onDidChangeSkills.fire({ added: [manifest], removed: [] });
     } catch {
       // Skip
     }
+  }
+
+  /**
+   * M81 Phase 6 — enumerate the workspace-relative paths of files under
+   * `<skillDir>/scripts/`, `<skillDir>/references/`, `<skillDir>/assets/`
+   * (one level deep). Returns a stable, alphabetically-sorted array.
+   * Returns `[]` when the filesystem accessor cannot enumerate files
+   * (no `listFiles` method) or when no subfolders / files are present.
+   */
+  private async _collectBundledFiles(skillDir: string): Promise<readonly string[]> {
+    if (!this._fs?.listFiles) { return []; }
+
+    const BUNDLE_FOLDERS = ['scripts', 'references', 'assets'] as const;
+    const collected: string[] = [];
+
+    for (const folder of BUNDLE_FOLDERS) {
+      const folderPath = `${skillDir}/${folder}`;
+      try {
+        const folderExists = await this._fs.exists(folderPath);
+        if (!folderExists) { continue; }
+        const files = await this._fs.listFiles(folderPath);
+        for (const file of files) {
+          collected.push(`${folderPath}/${file}`);
+        }
+      } catch {
+        // Skip unreadable bundle folder
+        continue;
+      }
+    }
+
+    collected.sort();
+    return collected;
   }
 }
 
