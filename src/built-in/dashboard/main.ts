@@ -22,6 +22,7 @@ import { DashboardDataService } from './dashboardDataService.js';
 import { DashboardWidgetRegistry } from './dashboardWidgetRegistry.js';
 import { DashboardRefreshScheduler, validateRefreshPolicy } from './dashboardRefreshScheduler.js';
 import { DashboardEditorProvider } from './dashboardEditorProvider.js';
+import { DashboardSidebar } from './dashboardSidebar.js';
 import type { DashboardRegistry, WidgetTypeRegistration } from './dashboardTypes.js';
 import { registerBuiltInDashboardWidgets } from './widgets/builtInWidgets.js';
 
@@ -32,12 +33,17 @@ interface ParallxApi {
     registerCommand(id: string, handler: (...args: unknown[]) => unknown): IDisposable;
     executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
   };
+  views: {
+    registerViewProvider(viewId: string, provider: { createView(container: HTMLElement): IDisposable }, options?: Record<string, unknown>): IDisposable;
+  };
   editors: {
     registerEditorProvider(typeId: string, provider: { createEditorPane(container: HTMLElement, input?: unknown): IDisposable }): IDisposable;
     openEditor(options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string }): Promise<void>;
     closeEditor(editorId: string): Promise<boolean>;
     openFileEditor?(uri: string, options?: { pinned?: boolean }): Promise<void>;
     focusEditor?(editorId: string): Promise<boolean>;
+    readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
+    onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
   workspace: {
     readonly workspaceFolders: readonly { uri: string; name: string; index: number }[] | undefined;
@@ -95,6 +101,22 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     api.editors.registerEditorProvider('dashboard', {
       createEditorPane(container: HTMLElement, input?: unknown): IDisposable {
         return provider.createEditorPane(container, input as { id: string; setName?(n: string): void; setIconHtml?(h: string | undefined): void } | undefined);
+      },
+    }),
+  );
+
+  // 3b. Sidebar view — the ribbon discovery surface. Lists dashboard pages,
+  //     active highlight follows the editor, click opens.
+  const sidebar = new DashboardSidebar(_dataService, {
+    editors: api.editors,
+    commands: api.commands,
+    window: api.window,
+  });
+  context.subscriptions.push(sidebar);
+  context.subscriptions.push(
+    api.views.registerViewProvider('view.dashboard', {
+      createView(container: HTMLElement): IDisposable {
+        return sidebar.createView(container);
       },
     }),
   );
@@ -209,6 +231,34 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
       } catch (err) {
         console.error('[Dashboard] open failed:', err);
         await api.window.showErrorMessage('Could not open dashboard.');
+      }
+    }),
+  );
+
+  // dashboard.newPage — create a fresh dashboard and open it.
+  context.subscriptions.push(
+    api.commands.registerCommand('dashboard.newPage', async () => {
+      if (!_dataService) return;
+      try {
+        const pages = await _dataService.listPages();
+        const used = new Set(pages.map(p => p.name));
+        let name = 'Dashboard';
+        if (used.has(name)) {
+          for (let i = 2; i < 99; i++) {
+            const candidate = `Dashboard ${i}`;
+            if (!used.has(candidate)) { name = candidate; break; }
+          }
+        }
+        const page = await _dataService.createPage(name);
+        await api.editors.openEditor({
+          typeId: 'dashboard',
+          title: page.name || 'Dashboard',
+          iconHtml: _DASHBOARD_ICON_HTML,
+          instanceId: page.id,
+        });
+      } catch (err) {
+        console.error('[Dashboard] newPage failed:', err);
+        await api.window.showErrorMessage('Could not create dashboard.');
       }
     }),
   );

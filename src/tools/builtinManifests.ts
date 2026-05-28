@@ -403,6 +403,8 @@ export const DASHBOARD_MANIFEST: IToolManifest = {
     commands: [
       { id: 'dashboard.open', title: 'Dashboard: Open',
         aiInvocable: true, aiDescription: 'Open the workspace dashboard.' },
+      { id: 'dashboard.newPage', title: 'Dashboard: New Page',
+        aiInvocable: true, aiDescription: 'Create a new dashboard page.' },
       { id: 'dashboard.addWidget', title: 'Dashboard: Add Widget…',
         aiInvocable: true, aiDescription: 'Open the widget picker on the active dashboard page.' },
       { id: 'dashboard.toggleEditMode', title: 'Dashboard: Toggle Edit Layout',
@@ -412,6 +414,12 @@ export const DASHBOARD_MANIFEST: IToolManifest = {
     ],
     keybindings: [
       { command: 'dashboard.open', key: 'Ctrl+Shift+H' },
+    ],
+    viewContainers: [
+      { id: 'dashboard-container', title: 'Dashboard', icon: 'layout-dashboard', location: 'sidebar' as const },
+    ],
+    views: [
+      { id: 'view.dashboard', name: 'Dashboards', defaultContainerId: 'dashboard-container' },
     ],
     editors: [{ typeId: 'dashboard', displayName: 'Dashboard' }],
   },
