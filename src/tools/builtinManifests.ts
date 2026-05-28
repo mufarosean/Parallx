@@ -387,6 +387,36 @@ export const THEME_EDITOR_MANIFEST: IToolManifest = {
   },
 };
 
+// ── Dashboard (M71) ──────────────────────────────────────────────────────
+
+export const DASHBOARD_MANIFEST: IToolManifest = {
+  manifestVersion: 1,
+  id: 'parallx.dashboard',
+  name: 'Dashboard',
+  version: '0.1.0',
+  publisher: 'parallx',
+  description: 'Dashboard — a configurable launchpad for the workspace. Widgets contributed by tools; refresh on cron, interval, or manual.',
+  main: './main.js',
+  engines: { parallx: '^0.1.0' },
+  activationEvents: ['onStartupFinished'],
+  contributes: {
+    commands: [
+      { id: 'dashboard.open', title: 'Dashboard: Open',
+        aiInvocable: true, aiDescription: 'Open the workspace dashboard.' },
+      { id: 'dashboard.addWidget', title: 'Dashboard: Add Widget…',
+        aiInvocable: true, aiDescription: 'Open the widget picker on the active dashboard page.' },
+      { id: 'dashboard.toggleEditMode', title: 'Dashboard: Toggle Edit Layout',
+        aiInvocable: true, aiDescription: 'Toggle the dashboard between view mode and edit-layout mode.' },
+      { id: 'dashboard.refreshAll', title: 'Dashboard: Refresh All Widgets',
+        aiInvocable: true, aiDescription: 'Manually refresh every widget on the active dashboard page.' },
+    ],
+    keybindings: [
+      { command: 'dashboard.open', key: 'Ctrl+Shift+H' },
+    ],
+    editors: [{ typeId: 'dashboard', displayName: 'Dashboard' }],
+  },
+};
+
 // ── Settings (M60 Phase ε §7 T4.D2) ──────────────────────────────────────
 
 export const SETTINGS_MANIFEST: IToolManifest = {

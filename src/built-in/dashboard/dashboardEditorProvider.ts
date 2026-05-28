@@ -1,0 +1,1043 @@
+// dashboardEditorProvider.ts — editor provider + pane for `typeId: 'dashboard'`.
+//
+// Each editor pane represents one dashboard page. The pane owns:
+//   - The 12-column grid host
+//   - The page chrome (title bar, edit-mode toggle, "+ Add widget" button)
+//   - Widget instance lifecycle (instantiate from DB → render → handle config /
+//     refresh / remove)
+//   - Drag-to-move + drag-to-resize in edit mode
+//   - The "Add widget" picker overlay
+//   - The settings drawer overlay
+//
+// Phase 1 ships with the grid + chrome + empty state. Widgets land in
+// Phase 2 (clock-and-links), refresh in Phase 3, AI in Phase 4. The pane
+// is built so each phase plugs in without restructuring this file.
+
+import type { IDisposable } from '../../platform/lifecycle.js';
+import { Emitter } from '../../platform/events.js';
+import type { DashboardDataService } from './dashboardDataService.js';
+import type { DashboardWidgetRegistry } from './dashboardWidgetRegistry.js';
+import type { DashboardRefreshScheduler } from './dashboardRefreshScheduler.js';
+import {
+  DASHBOARD_GRID_COLS,
+  type DashboardWidgetRow,
+  type WidgetContext,
+  type WidgetHandle,
+  type WidgetPlacement,
+  type WidgetTypeRegistration,
+} from './dashboardTypes.js';
+
+// ─── Minimal local API shape (avoids cross-tool import) ──────────────────────
+
+interface DashboardEditorInput {
+  readonly id: string;          // === pageId
+  setName?(name: string): void;
+  setIconHtml?(html: string | undefined): void;
+}
+
+interface DashboardApiSurface {
+  editors: {
+    openFileEditor?(uri: string, options?: { pinned?: boolean }): Promise<void>;
+    focusEditor?(editorId: string): Promise<boolean>;
+  };
+  commands: {
+    executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
+  };
+  window: {
+    showInputBox?(options?: { prompt?: string; value?: string; placeholder?: string }): Promise<string | undefined>;
+    showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
+    showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
+    showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
+  };
+}
+
+// ─── DOM helpers ─────────────────────────────────────────────────────────────
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  return node;
+}
+
+const DASHBOARD_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>';
+
+// ─── Provider ────────────────────────────────────────────────────────────────
+
+export class DashboardEditorProvider {
+  constructor(
+    private readonly _data: DashboardDataService,
+    private readonly _registry: DashboardWidgetRegistry,
+    private readonly _scheduler: DashboardRefreshScheduler,
+    private readonly _api: DashboardApiSurface,
+  ) {}
+
+  createEditorPane(container: HTMLElement, input?: DashboardEditorInput): IDisposable {
+    const pane = new DashboardEditorPane(
+      container,
+      input,
+      this._data,
+      this._registry,
+      this._scheduler,
+      this._api,
+    );
+    pane.init().catch(err => {
+      console.error('[DashboardEditorProvider] pane init failed:', err);
+    });
+    return pane;
+  }
+}
+
+// ─── Pane ────────────────────────────────────────────────────────────────────
+
+class DashboardEditorPane implements IDisposable {
+  private readonly _container: HTMLElement;
+  private _root: HTMLElement | null = null;
+  private _gridEl: HTMLElement | null = null;
+  private _emptyEl: HTMLElement | null = null;
+  private _pageId: string;
+  private _editMode = false;
+  private _disposed = false;
+  private _disposables: IDisposable[] = [];
+
+  /** Per-widget runtime state, keyed by widgetId. */
+  private readonly _instances = new Map<string, {
+    row: DashboardWidgetRow;
+    typeReg: WidgetTypeRegistration<unknown> | undefined;
+    cardEl: HTMLElement;
+    bodyEl: HTMLElement;
+    handle: WidgetHandle | null;
+    configEmitter: Emitter<unknown>;
+  }>();
+
+  constructor(
+    container: HTMLElement,
+    private readonly _input: DashboardEditorInput | undefined,
+    private readonly _data: DashboardDataService,
+    private readonly _registry: DashboardWidgetRegistry,
+    private readonly _scheduler: DashboardRefreshScheduler,
+    private readonly _api: DashboardApiSurface,
+  ) {
+    this._container = container;
+    this._pageId = _input?.id ?? '';
+  }
+
+  async init(): Promise<void> {
+    if (this._disposed) return;
+
+    // Resolve / create page.
+    let page = this._pageId ? await this._data.getPage(this._pageId) : null;
+    if (!page) page = await this._data.ensureDefaultPage();
+    this._pageId = page.id;
+
+    // Restore tab label + icon — same restore-on-open pattern as canvas pane,
+    // because iconHtml isn't persisted by the editor input deserializer.
+    this._input?.setName?.(page.name || 'Dashboard');
+    this._input?.setIconHtml?.(DASHBOARD_ICON_SVG);
+
+    // Build chrome + grid.
+    this._buildShell(page.name);
+    await this._renderAllWidgets();
+
+    // Subscribe to data changes (widget add / remove / config edits etc.)
+    this._disposables.push(this._data.onDidChange((e) => {
+      if (this._disposed) return;
+      if (e.pageId && e.pageId !== this._pageId) return;
+      void this._reconcile(e.kind, e.widgetId);
+    }));
+
+    // Re-render the picker contents if the registry changes (extension activated/
+    // deactivated mid-session).
+    this._disposables.push(this._registry.onDidChange(() => {
+      if (this._disposed) return;
+      // No live picker to refresh — re-opening picks up the new list.
+    }));
+
+    // Command-side hooks (AI-invocable commands fire DOM events the active
+    // pane reacts to). We only respond if our root is connected — multiple
+    // dashboards open simultaneously each install these but only the focused
+    // one is in the DOM.
+    const onAdd = () => { if (this._root?.isConnected) void this._openWidgetPicker(); };
+    const onToggle = () => { if (this._root?.isConnected) this._toggleEditMode(); };
+    const onRefreshAll = () => {
+      if (!this._root?.isConnected) return;
+      for (const id of this._instances.keys()) void this._triggerManualRefresh(id);
+    };
+    document.addEventListener('parallx.dashboard.addWidget', onAdd);
+    document.addEventListener('parallx.dashboard.toggleEditMode', onToggle);
+    document.addEventListener('parallx.dashboard.refreshAll', onRefreshAll);
+    this._disposables.push({
+      dispose() {
+        document.removeEventListener('parallx.dashboard.addWidget', onAdd);
+        document.removeEventListener('parallx.dashboard.toggleEditMode', onToggle);
+        document.removeEventListener('parallx.dashboard.refreshAll', onRefreshAll);
+      },
+    });
+  }
+
+  // ── Shell ──────────────────────────────────────────────────────────────
+
+  private _buildShell(pageName: string): void {
+    this._container.innerHTML = '';
+    this._container.classList.add('dashboard-pane-host');
+
+    const root = el('div', 'dashboard-pane');
+    this._root = root;
+
+    // Header
+    const header = el('header', 'dashboard-header');
+    const titleWrap = el('div', 'dashboard-header__title-wrap');
+
+    const iconEl = el('span', 'dashboard-header__icon');
+    iconEl.innerHTML = DASHBOARD_ICON_SVG;
+    titleWrap.appendChild(iconEl);
+
+    const titleEl = el('h1', 'dashboard-header__title');
+    titleEl.textContent = pageName;
+    titleEl.title = 'Click to rename';
+    titleEl.addEventListener('click', () => void this._promptRename());
+    titleWrap.appendChild(titleEl);
+
+    const subtitleEl = el('p', 'dashboard-header__subtitle');
+    subtitleEl.textContent = this._formatDateLine();
+    titleWrap.appendChild(subtitleEl);
+
+    header.appendChild(titleWrap);
+
+    // Header actions (right side)
+    const actions = el('div', 'dashboard-header__actions');
+
+    const addBtn = el('button', 'dashboard-btn dashboard-btn--primary');
+    addBtn.type = 'button';
+    addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add widget</span>';
+    addBtn.addEventListener('click', () => void this._openWidgetPicker());
+    actions.appendChild(addBtn);
+
+    const editBtn = el('button', 'dashboard-btn dashboard-btn--ghost');
+    editBtn.type = 'button';
+    editBtn.dataset.role = 'edit-toggle';
+    editBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg><span>Edit layout</span>';
+    editBtn.addEventListener('click', () => this._toggleEditMode());
+    actions.appendChild(editBtn);
+
+    header.appendChild(actions);
+    root.appendChild(header);
+
+    // Grid host
+    const gridWrap = el('div', 'dashboard-grid-wrap');
+    const grid = el('div', 'dashboard-grid');
+    grid.style.setProperty('--dashboard-cols', String(DASHBOARD_GRID_COLS));
+    gridWrap.appendChild(grid);
+    this._gridEl = grid;
+
+    // Empty state lives inside gridWrap so it follows the same width
+    const empty = el('div', 'dashboard-empty');
+    empty.innerHTML = `
+      <div class="dashboard-empty__art">
+        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="9" rx="1"/>
+          <rect x="14" y="3" width="7" height="5" rx="1"/>
+          <rect x="14" y="12" width="7" height="9" rx="1"/>
+          <rect x="3" y="16" width="7" height="5" rx="1"/>
+        </svg>
+      </div>
+      <h2 class="dashboard-empty__title">Make this yours</h2>
+      <p class="dashboard-empty__body">Add widgets to see your workspace at a glance — recent files, news briefs, the time, anything tools contribute.</p>
+    `;
+    const emptyAddBtn = el('button', 'dashboard-btn dashboard-btn--primary dashboard-empty__cta');
+    emptyAddBtn.type = 'button';
+    emptyAddBtn.textContent = 'Add your first widget';
+    emptyAddBtn.addEventListener('click', () => void this._openWidgetPicker());
+    empty.appendChild(emptyAddBtn);
+    gridWrap.appendChild(empty);
+    this._emptyEl = empty;
+
+    root.appendChild(gridWrap);
+
+    this._container.appendChild(root);
+  }
+
+  private _formatDateLine(): string {
+    const now = new Date();
+    return now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  }
+
+  // ── Rename flow ────────────────────────────────────────────────────────
+
+  private async _promptRename(): Promise<void> {
+    if (!this._api.window.showInputBox) return;
+    const page = await this._data.getPage(this._pageId);
+    const next = await this._api.window.showInputBox({
+      prompt: 'Rename dashboard',
+      value: page?.name ?? '',
+      placeholder: 'Dashboard',
+    });
+    if (next && next.trim() && next !== page?.name) {
+      await this._data.renamePage(this._pageId, next.trim());
+      this._input?.setName?.(next.trim());
+      const titleEl = this._root?.querySelector('.dashboard-header__title') as HTMLElement | null;
+      if (titleEl) titleEl.textContent = next.trim();
+    }
+  }
+
+  // ── Edit mode ──────────────────────────────────────────────────────────
+
+  private _toggleEditMode(): void {
+    this._editMode = !this._editMode;
+    this._root?.classList.toggle('dashboard-pane--edit', this._editMode);
+    const editBtn = this._root?.querySelector('[data-role="edit-toggle"]') as HTMLElement | null;
+    if (editBtn) {
+      editBtn.classList.toggle('dashboard-btn--active', this._editMode);
+      const label = editBtn.querySelector('span');
+      if (label) label.textContent = this._editMode ? 'Done' : 'Edit layout';
+    }
+  }
+
+  // ── Widget rendering ───────────────────────────────────────────────────
+
+  private async _renderAllWidgets(): Promise<void> {
+    if (!this._gridEl) return;
+    this._gridEl.innerHTML = '';
+
+    // Dispose previous instances first.
+    for (const inst of this._instances.values()) {
+      try { inst.handle?.dispose(); } catch { /* noop */ }
+      inst.configEmitter.dispose();
+      this._scheduler.cancel(inst.row.id);
+    }
+    this._instances.clear();
+
+    const rows = await this._data.listWidgets(this._pageId);
+    if (rows.length === 0) {
+      this._setEmptyState(true);
+      return;
+    }
+    this._setEmptyState(false);
+
+    for (const row of rows) {
+      this._mountWidget(row);
+    }
+  }
+
+  private _setEmptyState(empty: boolean): void {
+    if (!this._emptyEl || !this._gridEl) return;
+    this._emptyEl.classList.toggle('dashboard-empty--hidden', !empty);
+    this._gridEl.classList.toggle('dashboard-grid--hidden', empty);
+  }
+
+  private _mountWidget(row: DashboardWidgetRow): void {
+    if (!this._gridEl) return;
+    const typeReg = this._registry.getWidgetType(row.widgetTypeId);
+
+    // Card chrome
+    const card = el('article', 'dashboard-widget');
+    card.dataset.widgetId = row.id;
+    card.dataset.typeId = row.widgetTypeId;
+    card.style.gridRow = `${row.placement.row + 1} / span ${row.placement.rowSpan}`;
+    card.style.gridColumn = `${row.placement.col + 1} / span ${row.placement.colSpan}`;
+
+    // Header
+    const header = el('header', 'dashboard-widget__header');
+    const drag = el('span', 'dashboard-widget__drag');
+    drag.title = 'Drag to move (in edit mode)';
+    drag.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>';
+    header.appendChild(drag);
+
+    const titleEl = el('span', 'dashboard-widget__title');
+    titleEl.textContent = typeReg?.displayName ?? row.widgetTypeId;
+    header.appendChild(titleEl);
+
+    const status = el('span', 'dashboard-widget__status');
+    status.dataset.role = 'status';
+    header.appendChild(status);
+
+    const actions = el('div', 'dashboard-widget__actions');
+
+    if (typeReg?.refresh) {
+      const refreshBtn = el('button', 'dashboard-widget__btn');
+      refreshBtn.type = 'button';
+      refreshBtn.title = 'Refresh';
+      refreshBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
+      refreshBtn.addEventListener('click', () => void this._triggerManualRefresh(row.id));
+      actions.appendChild(refreshBtn);
+    }
+
+    if (typeReg?.configSchema) {
+      const settingsBtn = el('button', 'dashboard-widget__btn');
+      settingsBtn.type = 'button';
+      settingsBtn.title = 'Configure';
+      settingsBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+      settingsBtn.addEventListener('click', () => this._openSettingsDrawer(row.id));
+      actions.appendChild(settingsBtn);
+    }
+
+    const removeBtn = el('button', 'dashboard-widget__btn dashboard-widget__btn--danger');
+    removeBtn.type = 'button';
+    removeBtn.title = 'Remove widget';
+    removeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
+    removeBtn.addEventListener('click', () => void this._removeWidget(row.id));
+    actions.appendChild(removeBtn);
+
+    header.appendChild(actions);
+    card.appendChild(header);
+
+    // Resize handle (bottom-right corner; only active in edit mode)
+    const resizeHandle = el('span', 'dashboard-widget__resize');
+    resizeHandle.dataset.role = 'resize';
+    resizeHandle.title = 'Drag to resize (in edit mode)';
+    card.appendChild(resizeHandle);
+
+    // Wire drag-to-move + drag-to-resize.
+    this._installDragMove(card, drag, row.id);
+    this._installDragResize(card, resizeHandle, row.id);
+
+    // Body
+    const body = el('div', 'dashboard-widget__body');
+    card.appendChild(body);
+
+    // Footer (cached-at metadata)
+    const footer = el('footer', 'dashboard-widget__footer');
+    footer.dataset.role = 'footer';
+    if (row.cachedAt) {
+      footer.textContent = `Updated ${this._formatRelative(row.cachedAt)}`;
+    } else {
+      footer.textContent = typeReg?.refresh ? 'Never refreshed' : '';
+    }
+    if (!footer.textContent) footer.style.display = 'none';
+    card.appendChild(footer);
+
+    this._gridEl.appendChild(card);
+
+    // Instantiate widget renderer
+    const configEmitter = new Emitter<unknown>();
+    let handle: WidgetHandle | null = null;
+
+    if (!typeReg) {
+      // Unavailable placeholder.
+      body.innerHTML = `
+        <div class="dashboard-widget__unavailable">
+          <strong>Widget unavailable</strong>
+          <p>The "<code>${row.widgetTypeId}</code>" widget type is not registered.<br/>The extension providing it may be disabled.</p>
+        </div>
+      `;
+      status.dataset.value = 'stale';
+    } else {
+      const ctx = this._buildContext(row, configEmitter);
+      try {
+        handle = typeReg.createWidget(body, ctx);
+      } catch (err) {
+        console.error(`[Dashboard] widget renderer crashed for ${row.id}:`, err);
+        body.innerHTML = `<div class="dashboard-widget__error">Widget failed to render.</div>`;
+        status.dataset.value = 'error';
+      }
+
+      // Render initial cached output if widget provides a hook.
+      if (handle?.refreshFromCache) {
+        try { handle.refreshFromCache(row.cachedOutput); } catch { /* noop */ }
+      }
+
+      // Wire scheduled refresh.
+      this._scheduler.schedule(row.id, typeReg, row.refreshPolicy, async () => {
+        await this._runRefresh(row.id);
+      });
+    }
+
+    this._updateStatusBadge(status, row.status, row.errorMessage);
+
+    this._instances.set(row.id, {
+      row,
+      typeReg,
+      cardEl: card,
+      bodyEl: body,
+      handle,
+      configEmitter,
+    });
+  }
+
+  private _buildContext(row: DashboardWidgetRow, configEmitter: Emitter<unknown>): WidgetContext<unknown> {
+    return {
+      instanceId: row.id,
+      pageId: row.pageId,
+      config: row.config,
+      api: this._api,
+      cachedOutput: row.cachedOutput,
+      onDidChangeConfig: configEmitter.event,
+      requestRefresh: () => void this._triggerManualRefresh(row.id),
+      setCachedOutput: (output: string) => {
+        void this._data.setWidgetCachedOutput(row.id, output);
+      },
+      setError: (message: string) => {
+        void this._data.setWidgetError(row.id, message);
+      },
+      clearError: () => {
+        void this._data.clearWidgetError(row.id);
+      },
+    };
+  }
+
+  private _formatRelative(ts: number): string {
+    const diff = Date.now() - ts;
+    if (diff < 60_000) return 'just now';
+    if (diff < 3_600_000) return `${Math.round(diff / 60_000)}m ago`;
+    if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)}h ago`;
+    return `${Math.round(diff / 86_400_000)}d ago`;
+  }
+
+  private _updateStatusBadge(el: HTMLElement, status: string, errorMessage: string | null): void {
+    el.dataset.value = status;
+    if (status === 'error' && errorMessage) {
+      el.title = errorMessage;
+    } else {
+      el.removeAttribute('title');
+    }
+  }
+
+  // ── Refresh ────────────────────────────────────────────────────────────
+
+  private async _triggerManualRefresh(widgetId: string): Promise<void> {
+    await this._runRefresh(widgetId);
+  }
+
+  private async _runRefresh(widgetId: string): Promise<void> {
+    const inst = this._instances.get(widgetId);
+    if (!inst || !inst.typeReg?.refresh) return;
+    const card = inst.cardEl;
+    const statusEl = card.querySelector('[data-role="status"]') as HTMLElement | null;
+    if (statusEl) statusEl.dataset.value = 'running';
+    card.classList.add('dashboard-widget--running');
+
+    try {
+      const output = await inst.typeReg.refresh({
+        instanceId: inst.row.id,
+        pageId: inst.row.pageId,
+        config: inst.row.config,
+        api: this._api,
+      });
+      await this._data.setWidgetCachedOutput(widgetId, output);
+      // Re-read the row to pick up the new cachedAt.
+      const fresh = await this._data.getWidget(widgetId);
+      if (fresh) {
+        inst.row = fresh;
+        if (inst.handle?.refreshFromCache) inst.handle.refreshFromCache(fresh.cachedOutput);
+        this._updateFooter(inst);
+      }
+      if (statusEl) statusEl.dataset.value = 'ok';
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await this._data.setWidgetError(widgetId, msg);
+      if (statusEl) {
+        statusEl.dataset.value = 'error';
+        statusEl.title = msg;
+      }
+    } finally {
+      card.classList.remove('dashboard-widget--running');
+    }
+  }
+
+  private _updateFooter(inst: { cardEl: HTMLElement; row: DashboardWidgetRow }): void {
+    const footer = inst.cardEl.querySelector('[data-role="footer"]') as HTMLElement | null;
+    if (!footer) return;
+    if (inst.row.cachedAt) {
+      footer.textContent = `Updated ${this._formatRelative(inst.row.cachedAt)}`;
+      footer.style.display = '';
+    } else {
+      footer.style.display = 'none';
+    }
+  }
+
+  // ── Reconcile (data-change driven) ─────────────────────────────────────
+
+  private async _reconcile(_kind: string, widgetId?: string): Promise<void> {
+    // Phase 1 is coarse: re-render the entire page. Phase 5 can optimise.
+    if (!widgetId) {
+      await this._renderAllWidgets();
+      return;
+    }
+    const inst = this._instances.get(widgetId);
+    if (!inst) {
+      await this._renderAllWidgets();
+      return;
+    }
+    // Mounted widget — sync cache / status from DB.
+    const fresh = await this._data.getWidget(widgetId);
+    if (!fresh) {
+      // Widget was removed.
+      await this._renderAllWidgets();
+      return;
+    }
+    inst.row = fresh;
+    if (inst.handle?.refreshFromCache) inst.handle.refreshFromCache(fresh.cachedOutput);
+    const statusEl = inst.cardEl.querySelector('[data-role="status"]') as HTMLElement | null;
+    if (statusEl) this._updateStatusBadge(statusEl, fresh.status, fresh.errorMessage);
+    this._updateFooter(inst);
+  }
+
+  // ── Remove ─────────────────────────────────────────────────────────────
+
+  private async _removeWidget(widgetId: string): Promise<void> {
+    await this._data.removeWidget(widgetId);
+    this._scheduler.cancel(widgetId);
+  }
+
+  // ── Widget picker ──────────────────────────────────────────────────────
+
+  private async _openWidgetPicker(): Promise<void> {
+    const root = this._root;
+    if (!root) return;
+
+    // Phase 1: minimal picker. Phase 2 brings the polished overlay.
+    const overlay = el('div', 'dashboard-picker-overlay');
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    const sheet = el('div', 'dashboard-picker');
+
+    const head = el('div', 'dashboard-picker__head');
+    const ht = el('h2', 'dashboard-picker__title');
+    ht.textContent = 'Add a widget';
+    head.appendChild(ht);
+    const hint = el('p', 'dashboard-picker__hint');
+    hint.textContent = 'Choose what to surface on this dashboard.';
+    head.appendChild(hint);
+    sheet.appendChild(head);
+
+    const types = this._registry.listWidgetTypes();
+    if (types.length === 0) {
+      const empty = el('div', 'dashboard-picker__empty');
+      empty.innerHTML = `
+        <strong>No widgets registered yet</strong>
+        <p>Built-in widgets and extension-contributed widgets will appear here. Check back after activating more tools.</p>
+      `;
+      sheet.appendChild(empty);
+    } else {
+      const grid = el('div', 'dashboard-picker__grid');
+      const grouped = new Map<string, WidgetTypeRegistration<unknown>[]>();
+      for (const t of types) {
+        const k = t.category;
+        if (!grouped.has(k)) grouped.set(k, []);
+        grouped.get(k)!.push(t);
+      }
+      const order: { key: string; label: string }[] = [
+        { key: 'static', label: 'At a glance' },
+        { key: 'query', label: 'Workspace activity' },
+        { key: 'ai', label: 'AI-backed' },
+      ];
+      for (const { key, label } of order) {
+        const items = grouped.get(key);
+        if (!items || items.length === 0) continue;
+        const section = el('section', 'dashboard-picker__section');
+        const heading = el('h3', 'dashboard-picker__section-title');
+        heading.textContent = label;
+        section.appendChild(heading);
+        const list = el('div', 'dashboard-picker__items');
+        for (const t of items) {
+          const tile = this._buildPickerTile(t, overlay);
+          list.appendChild(tile);
+        }
+        section.appendChild(list);
+        grid.appendChild(section);
+      }
+      sheet.appendChild(grid);
+    }
+
+    const foot = el('div', 'dashboard-picker__foot');
+    const close = el('button', 'dashboard-btn dashboard-btn--ghost');
+    close.type = 'button';
+    close.textContent = 'Cancel';
+    close.addEventListener('click', () => overlay.remove());
+    foot.appendChild(close);
+    sheet.appendChild(foot);
+
+    overlay.appendChild(sheet);
+    document.body.appendChild(overlay);
+  }
+
+  private _buildPickerTile(reg: WidgetTypeRegistration<unknown>, overlay: HTMLElement): HTMLElement {
+    const tile = el('button', 'dashboard-picker__tile');
+    tile.type = 'button';
+
+    const icon = el('span', 'dashboard-picker__tile-icon');
+    icon.innerHTML = reg.icon ?? DASHBOARD_ICON_SVG;
+    tile.appendChild(icon);
+
+    const text = el('span', 'dashboard-picker__tile-text');
+    const name = el('span', 'dashboard-picker__tile-name');
+    name.textContent = reg.displayName;
+    text.appendChild(name);
+    if (reg.description) {
+      const desc = el('span', 'dashboard-picker__tile-desc');
+      desc.textContent = reg.description;
+      text.appendChild(desc);
+    }
+    tile.appendChild(text);
+
+    tile.addEventListener('click', async () => {
+      try {
+        await this._addWidgetOfType(reg);
+        overlay.remove();
+      } catch (err) {
+        console.error('[Dashboard] addWidgetOfType failed:', err);
+        const msg = err instanceof Error ? err.message : String(err);
+        await this._api.window.showErrorMessage(`Could not add widget: ${msg}`);
+      }
+    });
+
+    return tile;
+  }
+
+  // ── Placement helper ───────────────────────────────────────────────────
+
+  private async _addWidgetOfType(reg: WidgetTypeRegistration<unknown>): Promise<void> {
+    const placement = await this._nextPlacement(reg.defaultSize);
+    await this._data.createWidget({
+      pageId: this._pageId,
+      widgetTypeId: reg.typeId,
+      placement,
+      config: { ...(reg.defaultConfig as Record<string, unknown>) },
+      refreshPolicy: reg.defaultRefreshPolicy ?? { kind: 'manual' },
+    });
+  }
+
+  /**
+   * Naive bottom-stack placement: drop the new widget below the current
+   * lowest row, left-aligned. Phase 5's drag/resize lets the user move it.
+   * Avoids overlap detection complexity for now.
+   */
+  private async _nextPlacement(size: { colSpan: number; rowSpan: number }): Promise<WidgetPlacement> {
+    const widgets = await this._data.listWidgets(this._pageId);
+    let maxRow = -1;
+    for (const w of widgets) {
+      const bottom = w.placement.row + w.placement.rowSpan - 1;
+      if (bottom > maxRow) maxRow = bottom;
+    }
+    return {
+      row: maxRow + 1,
+      col: 0,
+      rowSpan: Math.max(1, size.rowSpan),
+      colSpan: Math.min(DASHBOARD_GRID_COLS, Math.max(1, size.colSpan)),
+    };
+  }
+
+  // ── Drag-to-move ───────────────────────────────────────────────────────
+
+  private _installDragMove(card: HTMLElement, handle: HTMLElement, widgetId: string): void {
+    handle.addEventListener('pointerdown', (e) => {
+      if (!this._editMode) return;
+      e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
+
+      const gridRect = this._gridEl!.getBoundingClientRect();
+      const cellWidth = gridRect.width / DASHBOARD_GRID_COLS;
+      const cellHeight = this._rowHeight();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const inst = this._instances.get(widgetId);
+      if (!inst) return;
+      const origPlacement = inst.row.placement;
+
+      card.classList.add('dashboard-widget--dragging');
+      // Ghost overlay to preview the snap target.
+      const ghost = el('div', 'dashboard-widget__ghost');
+      this._gridEl!.appendChild(ghost);
+      this._placeAt(ghost, origPlacement);
+
+      let lastTarget = origPlacement;
+      const onMove = (ev: PointerEvent) => {
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        const deltaCol = Math.round(dx / cellWidth);
+        const deltaRow = Math.round(dy / cellHeight);
+        const targetCol = Math.max(0, Math.min(DASHBOARD_GRID_COLS - origPlacement.colSpan, origPlacement.col + deltaCol));
+        const targetRow = Math.max(0, origPlacement.row + deltaRow);
+        lastTarget = { ...origPlacement, col: targetCol, row: targetRow };
+        this._placeAt(ghost, lastTarget);
+      };
+      const onUp = async (ev: PointerEvent) => {
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', onUp);
+        handle.removeEventListener('pointercancel', onUp);
+        try { handle.releasePointerCapture(ev.pointerId); } catch { /* noop */ }
+        ghost.remove();
+        card.classList.remove('dashboard-widget--dragging');
+        if (lastTarget.col !== origPlacement.col || lastTarget.row !== origPlacement.row) {
+          // Commit + visually move the card without a full re-render.
+          card.style.gridRow = `${lastTarget.row + 1} / span ${lastTarget.rowSpan}`;
+          card.style.gridColumn = `${lastTarget.col + 1} / span ${lastTarget.colSpan}`;
+          try {
+            await this._data.updateWidgetPlacement(widgetId, lastTarget);
+            inst.row = { ...inst.row, placement: lastTarget };
+          } catch (err) {
+            console.warn('[Dashboard] commit placement failed:', err);
+          }
+        }
+      };
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+      handle.addEventListener('pointercancel', onUp);
+    });
+  }
+
+  // ── Drag-to-resize ─────────────────────────────────────────────────────
+
+  private _installDragResize(card: HTMLElement, handle: HTMLElement, widgetId: string): void {
+    handle.addEventListener('pointerdown', (e) => {
+      if (!this._editMode) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handle.setPointerCapture(e.pointerId);
+
+      const gridRect = this._gridEl!.getBoundingClientRect();
+      const cellWidth = gridRect.width / DASHBOARD_GRID_COLS;
+      const cellHeight = this._rowHeight();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const inst = this._instances.get(widgetId);
+      if (!inst) return;
+      const origPlacement = inst.row.placement;
+      const typeReg = inst.typeReg;
+      const minColSpan = typeReg?.sizeBounds?.minColSpan ?? 1;
+      const maxColSpan = typeReg?.sizeBounds?.maxColSpan ?? DASHBOARD_GRID_COLS;
+      const minRowSpan = typeReg?.sizeBounds?.minRowSpan ?? 1;
+      const maxRowSpan = typeReg?.sizeBounds?.maxRowSpan ?? 12;
+
+      card.classList.add('dashboard-widget--resizing');
+      const ghost = el('div', 'dashboard-widget__ghost');
+      this._gridEl!.appendChild(ghost);
+      this._placeAt(ghost, origPlacement);
+
+      let lastTarget = origPlacement;
+      const onMove = (ev: PointerEvent) => {
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        const deltaCol = Math.round(dx / cellWidth);
+        const deltaRow = Math.round(dy / cellHeight);
+        const targetCol = Math.max(minColSpan, Math.min(maxColSpan, origPlacement.colSpan + deltaCol));
+        const targetRow = Math.max(minRowSpan, Math.min(maxRowSpan, origPlacement.rowSpan + deltaRow));
+        // Clamp so we don't extend past the right edge of the grid.
+        const colSpan = Math.min(targetCol, DASHBOARD_GRID_COLS - origPlacement.col);
+        lastTarget = { ...origPlacement, colSpan, rowSpan: targetRow };
+        this._placeAt(ghost, lastTarget);
+      };
+      const onUp = async (ev: PointerEvent) => {
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', onUp);
+        handle.removeEventListener('pointercancel', onUp);
+        try { handle.releasePointerCapture(ev.pointerId); } catch { /* noop */ }
+        ghost.remove();
+        card.classList.remove('dashboard-widget--resizing');
+        if (lastTarget.colSpan !== origPlacement.colSpan || lastTarget.rowSpan !== origPlacement.rowSpan) {
+          card.style.gridRow = `${lastTarget.row + 1} / span ${lastTarget.rowSpan}`;
+          card.style.gridColumn = `${lastTarget.col + 1} / span ${lastTarget.colSpan}`;
+          try {
+            await this._data.updateWidgetPlacement(widgetId, lastTarget);
+            inst.row = { ...inst.row, placement: lastTarget };
+          } catch (err) {
+            console.warn('[Dashboard] commit resize failed:', err);
+          }
+        }
+      };
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+      handle.addEventListener('pointercancel', onUp);
+    });
+  }
+
+  private _placeAt(el: HTMLElement, p: WidgetPlacement): void {
+    el.style.gridRow = `${p.row + 1} / span ${p.rowSpan}`;
+    el.style.gridColumn = `${p.col + 1} / span ${p.colSpan}`;
+  }
+
+  private _rowHeight(): number {
+    // CSS grid-auto-rows: minmax(72px, auto) — use the computed height of the
+    // first row if a row exists, else the 72px minimum + gap (16px).
+    const firstChild = this._gridEl?.firstElementChild as HTMLElement | undefined;
+    if (firstChild) {
+      const r = firstChild.getBoundingClientRect();
+      return r.height > 0 ? r.height + 16 : 88;
+    }
+    return 88;
+  }
+
+  // ── Settings drawer ────────────────────────────────────────────────────
+
+  private async _openSettingsDrawer(widgetId: string): Promise<void> {
+    const inst = this._instances.get(widgetId);
+    if (!inst) return;
+    const typeReg = inst.typeReg;
+    if (!typeReg?.configSchema) return;
+    const schema = typeReg.configSchema;
+
+    const overlay = el('div', 'dashboard-settings-overlay');
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    const sheet = el('aside', 'dashboard-settings');
+
+    const head = el('div', 'dashboard-settings__head');
+    const ht = el('h2', 'dashboard-settings__title');
+    ht.textContent = `Configure ${typeReg.displayName}`;
+    head.appendChild(ht);
+    const hint = el('p', 'dashboard-settings__hint');
+    hint.textContent = typeReg.description ?? 'Adjust this widget instance.';
+    head.appendChild(hint);
+    sheet.appendChild(head);
+
+    const body = el('div', 'dashboard-settings__body');
+    sheet.appendChild(body);
+
+    const current = { ...(inst.row.config as Record<string, unknown>) };
+    const inputs = new Map<string, () => unknown>();
+
+    for (const [name, field] of Object.entries(schema.fields)) {
+      const block = el('div', 'dashboard-field');
+
+      const addLabelAndHint = () => {
+        const label = el('label', 'dashboard-field__label');
+        label.textContent = field.label;
+        block.appendChild(label);
+        if (field.description) {
+          const hint = el('span', 'dashboard-field__hint');
+          hint.textContent = field.description;
+          block.appendChild(hint);
+        }
+      };
+
+      if (field.type === 'boolean') {
+        // Boolean fields render label inline with the checkbox.
+        const row = el('div', 'dashboard-field__checkbox-row');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = Boolean(current[name] ?? field.default ?? false);
+        row.appendChild(checkbox);
+        const text = document.createElement('span');
+        text.textContent = field.label;
+        row.appendChild(text);
+        block.appendChild(row);
+        if (field.description) {
+          const hint = el('span', 'dashboard-field__hint');
+          hint.textContent = field.description;
+          block.appendChild(hint);
+        }
+        inputs.set(name, () => checkbox.checked);
+      } else if (field.type === 'enum') {
+        addLabelAndHint();
+        const select = document.createElement('select');
+        select.className = 'dashboard-field__input';
+        for (const opt of field.options ?? []) {
+          const o = document.createElement('option');
+          o.value = opt.value;
+          o.textContent = opt.label;
+          select.appendChild(o);
+        }
+        const cur = String(current[name] ?? field.default ?? '');
+        if (cur) select.value = cur;
+        block.appendChild(select);
+        inputs.set(name, () => select.value);
+      } else if (field.type === 'textarea') {
+        addLabelAndHint();
+        const ta = document.createElement('textarea');
+        ta.className = 'dashboard-field__textarea';
+        ta.value = String(current[name] ?? field.default ?? '');
+        if (field.placeholder) ta.placeholder = field.placeholder;
+        block.appendChild(ta);
+        inputs.set(name, () => ta.value);
+      } else if (field.type === 'string-list') {
+        addLabelAndHint();
+        const ta = document.createElement('textarea');
+        ta.className = 'dashboard-field__textarea';
+        const value = current[name];
+        ta.value = Array.isArray(value)
+          ? value.map((v: unknown) => {
+              if (typeof v === 'string') return v;
+              if (v && typeof v === 'object' && 'label' in v && 'url' in v) {
+                const o = v as { label?: unknown; url?: unknown };
+                return `${o.label ?? ''} | ${o.url ?? ''}`;
+              }
+              return '';
+            }).join('\n')
+          : String(value ?? '');
+        if (field.placeholder) ta.placeholder = field.placeholder;
+        block.appendChild(ta);
+        inputs.set(name, () => ta.value.split('\n').map(s => s.trim()).filter(Boolean));
+      } else if (field.type === 'number') {
+        addLabelAndHint();
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'dashboard-field__input';
+        const v = current[name];
+        if (typeof v === 'number' && Number.isFinite(v)) input.value = String(v);
+        else if (typeof field.default === 'number') input.value = String(field.default);
+        if (field.placeholder) input.placeholder = field.placeholder;
+        block.appendChild(input);
+        inputs.set(name, () => {
+          const v = Number(input.value);
+          return Number.isFinite(v) ? v : 0;
+        });
+      } else {
+        // 'string' default
+        addLabelAndHint();
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'dashboard-field__input';
+        input.value = String(current[name] ?? field.default ?? '');
+        if (field.placeholder) input.placeholder = field.placeholder;
+        block.appendChild(input);
+        inputs.set(name, () => input.value);
+      }
+
+      body.appendChild(block);
+    }
+
+    const foot = el('div', 'dashboard-settings__foot');
+    const cancel = el('button', 'dashboard-btn dashboard-btn--ghost');
+    cancel.type = 'button';
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => overlay.remove());
+    foot.appendChild(cancel);
+    const save = el('button', 'dashboard-btn dashboard-btn--primary');
+    save.type = 'button';
+    save.textContent = 'Save';
+    save.addEventListener('click', async () => {
+      const next: Record<string, unknown> = {};
+      for (const [k, getter] of inputs) next[k] = getter();
+      try {
+        await this._data.updateWidgetConfig(widgetId, next);
+        inst.row = { ...inst.row, config: next };
+        inst.configEmitter.fire(next);
+      } catch (err) {
+        console.error('[Dashboard] updateWidgetConfig failed:', err);
+        const msg = err instanceof Error ? err.message : String(err);
+        await this._api.window.showErrorMessage(`Could not save configuration: ${msg}`);
+        return;
+      }
+      overlay.remove();
+    });
+    foot.appendChild(save);
+    sheet.appendChild(foot);
+
+    overlay.appendChild(sheet);
+    document.body.appendChild(overlay);
+  }
+
+  // ── Disposal ───────────────────────────────────────────────────────────
+
+  dispose(): void {
+    if (this._disposed) return;
+    this._disposed = true;
+    for (const inst of this._instances.values()) {
+      try { inst.handle?.dispose(); } catch { /* noop */ }
+      inst.configEmitter.dispose();
+      this._scheduler.cancel(inst.row.id);
+    }
+    this._instances.clear();
+    for (const d of this._disposables) {
+      try { d.dispose(); } catch { /* noop */ }
+    }
+    this._disposables.length = 0;
+    if (this._root && this._root.parentElement) {
+      this._root.remove();
+    }
+    this._container.classList.remove('dashboard-pane-host');
+  }
+}
