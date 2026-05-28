@@ -32,7 +32,7 @@ import type { ICanvasDataService } from './canvasTypes.js';
 import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
-import { createEditorExtensions, PageChromeController } from './config/blockRegistry.js';
+import { createEditorExtensions, PageChromeController, renderPageIconHtml } from './config/blockRegistry.js';
 import { BlockHandlesController, BlockSelectionController, BlockMarqueeController, createBlockSelectionPlugin } from './handles/handleRegistry.js';
 import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuRegistry.js';
 import type { SendChatRequestFn, RetrieveContextFn } from './menus/canvasMenuRegistry.js';
@@ -399,6 +399,22 @@ class CanvasEditorPane implements IDisposable {
       this._pageChrome.currentPage = await this._dataService.getPage(this._pageId) ?? null;
     } catch {
       this._pageChrome.currentPage = null;
+    }
+
+    // ── Restore tab label + icon on the input ──
+    // On workspace restore the deserializer intentionally omits iconHtml
+    // (it's a view artefact, not persisted). Re-seed it now from the loaded
+    // page so Open Editors / tab bar show the user-chosen icon immediately
+    // rather than falling back to the generic filetype icon until the next
+    // page edit triggers syncPageChange.
+    const restoredPage = this._pageChrome.currentPage;
+    if (this._input && restoredPage) {
+      if (typeof (this._input as any).setName === 'function') {
+        (this._input as any).setName(restoredPage.title || 'Untitled');
+      }
+      if (typeof (this._input as any).setIconHtml === 'function') {
+        (this._input as any).setIconHtml(renderPageIconHtml(restoredPage.icon));
+      }
     }
 
     // ── Apply page display settings CSS classes ──

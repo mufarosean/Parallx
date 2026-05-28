@@ -184,8 +184,19 @@ export class BlockMarqueeController {
       const absPos = parentContentStart + offset;
       const name: string = node.type.name;
 
-      // Structural wrappers — recurse, never select
-      if (name === 'columnList' || name === 'column') {
+      // Structural wrappers — recurse, never select the wrapper itself.
+      //
+      // List containers (bulletList / orderedList / taskList) are wrappers
+      // around their items: the user perceives each listItem / taskItem as
+      // the selectable block, not the list as a whole. Without this recursion
+      // the marquee records a single position (the list) but the drag handle
+      // resolves clicks to individual list items, so `_handleClickAction`'s
+      // "preserve multi-selection" check fails and clicking one item's handle
+      // collapses the perceived multi-selection down to a single item.
+      if (
+        name === 'columnList' || name === 'column' ||
+        name === 'bulletList' || name === 'orderedList' || name === 'taskList'
+      ) {
         this._collectBlocks(node, absPos + 1, view, marqueeRect, out);
         return;
       }

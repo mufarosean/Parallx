@@ -982,12 +982,29 @@ export class BlockHandlesController {
     const dom = view.nodeDOM(resolved.pos) as HTMLElement | null;
     if (!dom) return resolved;
 
-    // For details, keep the container target when cursor is on the summary.
+    // If the cursor isn't actually inside the container's vertical range,
+    // do NOT redirect to a descendant. Otherwise hovering ABOVE a toggle
+    // anchors the handle on its first child (Spare Tire below "Road
+    // Safety"), and hovering BELOW would anchor on its last child. Above /
+    // below the container belongs to whichever sibling block the cursor
+    // is over — leave the resolved container target as-is and let the
+    // upstream resolver pick the correct neighbour.
+    const containerRect = dom.getBoundingClientRect();
+    if (clientY < containerRect.top || clientY > containerRect.bottom) {
+      return resolved;
+    }
+
+    // For details, keep the container target whenever the cursor is in
+    // the "title row" — defined as everything from the container's top
+    // edge down through the end of the <summary>. That includes the
+    // small strip of padding/border ABOVE the summary text, which would
+    // otherwise fall through to "find descendant by Y" and incorrectly
+    // pick the first taskItem (the Road Safety / Spare Tire bug).
     if (name === 'details') {
       const summary = dom.querySelector(':scope > div > summary, :scope > summary') as HTMLElement | null;
       if (summary) {
         const sr = summary.getBoundingClientRect();
-        if (clientY >= sr.top && clientY <= sr.bottom) return resolved;
+        if (clientY <= sr.bottom) return resolved;
       }
     }
 

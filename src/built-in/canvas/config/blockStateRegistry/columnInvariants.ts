@@ -154,6 +154,7 @@ export function isColumnEffectivelyEmpty(columnNode: any): boolean {
   return !nodeHasMeaningfulContent(columnNode);
 }
 
+
 function nodeHasMeaningfulContent(node: any): boolean {
   if (!node) return false;
 
@@ -385,6 +386,13 @@ export function deleteDraggedSource(
   const mTo = tr.mapping.map(dragTo);
 
   if (mTo > mFrom) tr.delete(mFrom, mTo);
+
+  // Non-column containers (toggle / callout / blockquote) stay even after
+  // their last child is dragged out — ProseMirror's schema auto-fills an
+  // empty placeholder paragraph, which renders as "hidden content..." in
+  // the canvas placeholder system. The user can re-fill or delete the
+  // container themselves. Auto-removing the container here was too
+  // aggressive; users expect the empty husk to remain visible.
 
   if (sourceColumnStartPos == null || sourceColumnListPos == null) {
     return;

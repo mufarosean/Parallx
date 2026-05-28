@@ -62,6 +62,7 @@ interface ParallxApi {
     openEditor(options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string }): Promise<void>;
     openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
     closeEditor(editorId: string): Promise<boolean>;
+    focusEditor(editorId: string): Promise<boolean>;
     readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string; iconHtml?: string }[];
     onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
@@ -1744,16 +1745,16 @@ function createOpenEditorRow(
   });
   row.appendChild(closeBtn);
 
-  // Click → focus that editor
+  // Click → focus that editor. The editor is already open (it's in the
+  // Open Editors list), so we activate its group + tab by id rather than
+  // re-resolving from a URI. The previous openFileEditor(description)
+  // path broke for non-file editors (canvas pages, databases, …) where
+  // `description` is something like "Tool editor: canvas" and not a URI,
+  // which made a blank fallback text editor appear after app restart.
   row.addEventListener('click', () => {
-    // Re-open the editor to focus it (the editor service deduplicates)
-    // Use the description as a heuristic for the URI
-    if (editor.description) {
-      _api.editors.openFileEditor(editor.description, { pinned: false }).catch(() => {
-        // Fallback — it might be a non-file editor
-        console.log('[Explorer] Could not re-focus editor:', editor.name);
-      });
-    }
+    _api.editors.focusEditor(editor.id).catch((err) => {
+      console.warn('[Explorer] focusEditor failed for', editor.name, err);
+    });
   });
 
   return row;

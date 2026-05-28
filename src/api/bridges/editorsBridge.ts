@@ -239,6 +239,18 @@ export class EditorsBridge {
   }
 
   /**
+   * Focus an already-open editor by its id. Activates the owning group
+   * and selects the editor within that group. Returns false if no editor
+   * with the given id is currently open. Use this to refocus an existing
+   * tab rather than recreating its EditorInput.
+   */
+  async focusEditor(editorId: string): Promise<boolean> {
+    this._throwIfDisposed();
+    if (!this._editorService) return false;
+    return this._editorService.focusEditor(editorId);
+  }
+
+  /**
    * Close an editor by its ID across all groups.
    * Returns true if an editor was found and closed.
    */

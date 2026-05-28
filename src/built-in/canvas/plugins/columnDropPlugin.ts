@@ -473,6 +473,7 @@ export function columnDropPlugin(): Plugin {
     y: number,
     isColumnList: boolean,
     isListItem: boolean,
+    isTable: boolean = false,
   ): 'above' | 'below' | 'left' | 'right' {
     const r = blockEl.getBoundingClientRect();
     const rx = x - r.left;   // cursor X relative to block left edge
@@ -487,10 +488,13 @@ export function columnDropPlugin(): Plugin {
     // scale down to 20% of width so side-drop always remains reachable.
     const EDGE = r.width >= 150 ? 50 : Math.max(16, r.width * 0.2);
 
-    // Nesting constraint: columnList targets only allow above/below.
-    // Blocks INSIDE columns DO allow left/right — the drop handler
-    // inserts a new column into the existing columnList (no nesting).
-    const preventLeftRight = isColumnList || isListItem;
+    // Nesting constraint: columnList and list-item targets only allow
+    // above/below. Tables also forced above/below — a drop near the
+    // table's left/right edge previously created a new column which is
+    // almost never what the user wanted; the table itself is wide so
+    // the entire vertical strip near a table belongs to "drop above /
+    // drop below" rather than "split into columns".
+    const preventLeftRight = isColumnList || isListItem || isTable;
 
     if (!preventLeftRight) {
       // Allow a small negative margin on the left so the zone is
@@ -607,13 +611,30 @@ export function columnDropPlugin(): Plugin {
             hideAll(); return false;
           }
 
-          // Skip if hovering over the source block
+          // Skip if hovering over the source block — or over any descendant
+          // of the source. The position-range check catches direct overlap
+          // and descendants under the original mapping, but when a container
+          // is dragged we ALSO walk the target's doc ancestry to make sure
+          // it isn't a descendant of the dragged range. This blocks dropping
+          // a toggle into one of its own child paragraphs, callout into a
+          // nested block, etc. — which would otherwise produce a self-
+          // referential cycle that PM rejects but only after partial damage.
           if (raw.blockPos >= dF && raw.blockPos < dT) {
             hideAll(); return false;
           }
+          try {
+            const $target = view.state.doc.resolve(Math.max(0, Math.min(raw.blockPos, view.state.doc.content.size)));
+            for (let d = $target.depth; d >= 1; d--) {
+              const ancestorPos = $target.before(d);
+              if (ancestorPos >= dF && ancestorPos < dT) {
+                hideAll(); return false;
+              }
+            }
+          } catch { /* fall through */ }
 
           const isCL = raw.blockNode.type.name === 'columnList';
-          const zone = getZone(raw.blockEl, x, y, isCL, raw.isListItem);
+          const isTable = raw.blockNode.type.name === 'table';
+          const zone = getZone(raw.blockEl, x, y, isCL, raw.isListItem, isTable);
 
           if ((zone === 'above' || zone === 'below') && isNoOpAboveBelowDrop(raw, zone, dF, dT)) {
             hideAll();

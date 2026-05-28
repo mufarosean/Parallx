@@ -140,6 +140,17 @@ export class EditorService extends Disposable implements IEditorService {
     // Note: onDidActiveEditorChange is fired by the group model listener.
   }
 
+  async focusEditor(editorId: string): Promise<boolean> {
+    for (const group of this._editorPart.groups) {
+      const idx = group.model.editors.findIndex(e => e.id === editorId);
+      if (idx < 0) continue;
+      this._editorPart.activateGroup(group.model.id);
+      group.model.setActive(idx);
+      return true;
+    }
+    return false;
+  }
+
   async closeEditor(input?: IEditorInput, groupId?: string, force = false): Promise<boolean> {
     const group = groupId
       ? this._editorPart.getGroup(groupId)

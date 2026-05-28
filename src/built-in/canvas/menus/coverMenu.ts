@@ -183,10 +183,6 @@ export class CoverMenuController implements ICanvasMenu {
             showError('Could not read the selected file.');
             return;
           }
-          if (result.content.length > 2 * 1024 * 1024 * 1.37) {
-            showError('Image is too large (max 2 MB).');
-            return;
-          }
           const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
           const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
           options.onSelectCover(`data:${mime};base64,${result.content}`);
@@ -198,7 +194,7 @@ export class CoverMenuController implements ICanvasMenu {
       });
       content.appendChild(uploadBtn);
       const hint = $('div.canvas-cover-upload-hint');
-      hint.textContent = 'Recommended: 1500×600px or wider. Max 2MB.';
+      hint.textContent = 'Recommended: 1500×600px or wider.';
       content.appendChild(hint);
       content.appendChild(errEl);
     };

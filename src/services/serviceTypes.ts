@@ -705,6 +705,13 @@ export interface IEditorService extends IDisposable {
   /** Open an editor in the active group (or a specified group). */
   openEditor(input: IEditorInput, options?: EditorOpenOptions, groupId?: string): Promise<void>;
 
+  /**
+   * Focus an already-open editor by its id. Activates the owning group and
+   * selects the editor within that group. Returns false if no editor with
+   * the given id is currently open.
+   */
+  focusEditor(editorId: string): Promise<boolean>;
+
   /** Close the active editor (or a specific one). */
   closeEditor(input?: IEditorInput, groupId?: string, force?: boolean): Promise<boolean>;
 }
