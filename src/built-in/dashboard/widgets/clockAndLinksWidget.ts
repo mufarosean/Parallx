@@ -15,14 +15,18 @@ interface QuickLink {
   readonly url: string;
 }
 
+type ClockFormat = '12h' | '24h';
+
 interface ClockAndLinksConfig {
   readonly greetingName: string;
+  readonly clockFormat: ClockFormat;
   readonly showSeconds: boolean;
   readonly links: readonly QuickLink[];
 }
 
 const DEFAULT_CONFIG: ClockAndLinksConfig = {
   greetingName: '',
+  clockFormat: '12h',
   showSeconds: false,
   links: [],
 };
@@ -44,6 +48,7 @@ export const CLOCK_AND_LINKS_WIDGET: WidgetTypeRegistration<ClockAndLinksConfig>
   icon: ICON_SVG,
   category: 'static',
   defaultSize: { colSpan: 4, rowSpan: 2 },
+  chromeStyle: 'minimal',
   defaultConfig: DEFAULT_CONFIG,
   configSchema: {
     fields: {
@@ -52,6 +57,14 @@ export const CLOCK_AND_LINKS_WIDGET: WidgetTypeRegistration<ClockAndLinksConfig>
         label: 'Your name (optional)',
         placeholder: 'e.g. Mufaro',
         description: 'Used in the greeting. Leave blank to show just "Good morning."',
+      },
+      clockFormat: {
+        type: 'enum',
+        label: 'Clock format',
+        options: [
+          { value: '12h', label: '12-hour (3:45 PM)' },
+          { value: '24h', label: '24-hour (15:45)' },
+        ],
       },
       showSeconds: {
         type: 'boolean',
@@ -94,9 +107,7 @@ export const CLOCK_AND_LINKS_WIDGET: WidgetTypeRegistration<ClockAndLinksConfig>
     function tick(): void {
       const now = new Date();
       greeting.textContent = formatGreeting(currentConfig.greetingName);
-      time.textContent = currentConfig.showSeconds
-        ? `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
-        : `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      time.textContent = formatTime(now, currentConfig.clockFormat, currentConfig.showSeconds);
       date.textContent = now.toLocaleDateString(undefined, {
         weekday: 'long',
         month: 'long',
@@ -151,10 +162,24 @@ export const CLOCK_AND_LINKS_WIDGET: WidgetTypeRegistration<ClockAndLinksConfig>
   },
 };
 
+function formatTime(now: Date, format: ClockFormat, withSeconds: boolean): string {
+  if (format === '24h') {
+    const base = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    return withSeconds ? `${base}:${pad(now.getSeconds())}` : base;
+  }
+  const h24 = now.getHours();
+  const period = h24 < 12 ? 'AM' : 'PM';
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  const base = `${h12}:${pad(now.getMinutes())}`;
+  const body = withSeconds ? `${base}:${pad(now.getSeconds())}` : base;
+  return `${body} ${period}`;
+}
+
 function normalizeConfig(raw: unknown): ClockAndLinksConfig {
   const cfg = (raw ?? {}) as Partial<ClockAndLinksConfig> & { links?: unknown };
   return {
     greetingName: typeof cfg.greetingName === 'string' ? cfg.greetingName : '',
+    clockFormat: cfg.clockFormat === '24h' ? '24h' : '12h',
     showSeconds: cfg.showSeconds === true,
     links: parseLinks(cfg.links),
   };

@@ -136,6 +136,7 @@ class DashboardEditorPane implements IDisposable {
 
     // Build chrome + grid.
     this._buildShell(page.name);
+    this._restorePaneHeaderState();
     await this._renderAllWidgets();
 
     // Subscribe to data changes (widget add / remove / config edits etc.)
@@ -183,27 +184,20 @@ class DashboardEditorPane implements IDisposable {
     const root = el('div', 'dashboard-pane');
     this._root = root;
 
-    // Header
+    // Header — title + actions only. No standalone icon, no date subline
+    // (the clock-and-links widget owns the date if the user wants one).
+    // Header can be collapsed via the chevron; when collapsed, hovering
+    // the top edge reveals a slim floating action strip so the user can
+    // still reach Add widget / Edit layout / re-expand.
     const header = el('header', 'dashboard-header');
-    const titleWrap = el('div', 'dashboard-header__title-wrap');
-
-    const iconEl = el('span', 'dashboard-header__icon');
-    iconEl.innerHTML = DASHBOARD_ICON_SVG;
-    titleWrap.appendChild(iconEl);
+    header.dataset.role = 'pane-header';
 
     const titleEl = el('h1', 'dashboard-header__title');
     titleEl.textContent = pageName;
     titleEl.title = 'Click to rename';
     titleEl.addEventListener('click', () => void this._promptRename());
-    titleWrap.appendChild(titleEl);
+    header.appendChild(titleEl);
 
-    const subtitleEl = el('p', 'dashboard-header__subtitle');
-    subtitleEl.textContent = this._formatDateLine();
-    titleWrap.appendChild(subtitleEl);
-
-    header.appendChild(titleWrap);
-
-    // Header actions (right side)
     const actions = el('div', 'dashboard-header__actions');
 
     const addBtn = el('button', 'dashboard-btn dashboard-btn--primary');
@@ -219,8 +213,46 @@ class DashboardEditorPane implements IDisposable {
     editBtn.addEventListener('click', () => this._toggleEditMode());
     actions.appendChild(editBtn);
 
+    const collapseBtn = el('button', 'dashboard-btn dashboard-btn--ghost dashboard-btn--icon-only');
+    collapseBtn.type = 'button';
+    collapseBtn.title = 'Hide header';
+    collapseBtn.dataset.role = 'header-collapse';
+    collapseBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>';
+    collapseBtn.addEventListener('click', () => this._togglePaneHeader());
+    actions.appendChild(collapseBtn);
+
     header.appendChild(actions);
     root.appendChild(header);
+
+    // Reveal strip — visible only when the header is collapsed; hovering
+    // it slides the action toolbar back in so the user can re-expand.
+    const reveal = el('div', 'dashboard-reveal');
+    reveal.dataset.role = 'pane-reveal';
+    const revealActions = el('div', 'dashboard-reveal__actions');
+
+    const revealAdd = el('button', 'dashboard-btn dashboard-btn--primary dashboard-btn--small');
+    revealAdd.type = 'button';
+    revealAdd.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add widget</span>';
+    revealAdd.addEventListener('click', () => void this._openWidgetPicker());
+    revealActions.appendChild(revealAdd);
+
+    const revealEdit = el('button', 'dashboard-btn dashboard-btn--ghost dashboard-btn--small');
+    revealEdit.type = 'button';
+    revealEdit.dataset.role = 'reveal-edit-toggle';
+    revealEdit.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
+    revealEdit.title = 'Edit layout';
+    revealEdit.addEventListener('click', () => this._toggleEditMode());
+    revealActions.appendChild(revealEdit);
+
+    const revealExpand = el('button', 'dashboard-btn dashboard-btn--ghost dashboard-btn--small dashboard-btn--icon-only');
+    revealExpand.type = 'button';
+    revealExpand.title = 'Show header';
+    revealExpand.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+    revealExpand.addEventListener('click', () => this._togglePaneHeader());
+    revealActions.appendChild(revealExpand);
+
+    reveal.appendChild(revealActions);
+    root.appendChild(reveal);
 
     // Grid host
     const gridWrap = el('div', 'dashboard-grid-wrap');
@@ -256,9 +288,30 @@ class DashboardEditorPane implements IDisposable {
     this._container.appendChild(root);
   }
 
-  private _formatDateLine(): string {
-    const now = new Date();
-    return now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  // ── Pane header collapse ───────────────────────────────────────────────
+
+  private _paneHeaderHiddenKey(): string {
+    return `dashboard.headerHidden:${this._pageId}`;
+  }
+
+  private _togglePaneHeader(): void {
+    const root = this._root;
+    if (!root) return;
+    const next = !root.classList.contains('dashboard-pane--header-hidden');
+    root.classList.toggle('dashboard-pane--header-hidden', next);
+    try {
+      window.localStorage.setItem(this._paneHeaderHiddenKey(), next ? '1' : '0');
+    } catch { /* localStorage unavailable */ }
+  }
+
+  private _restorePaneHeaderState(): void {
+    const root = this._root;
+    if (!root) return;
+    let hidden = false;
+    try {
+      hidden = window.localStorage.getItem(this._paneHeaderHiddenKey()) === '1';
+    } catch { /* ignore */ }
+    if (hidden) root.classList.add('dashboard-pane--header-hidden');
   }
 
   // ── Rename flow ────────────────────────────────────────────────────────
@@ -332,6 +385,9 @@ class DashboardEditorPane implements IDisposable {
     const card = el('article', 'dashboard-widget');
     card.dataset.widgetId = row.id;
     card.dataset.typeId = row.widgetTypeId;
+    // Chrome preset (card | minimal | bare) drives background, header, and
+    // footer visibility via CSS. Defaults to full 'card' chrome.
+    card.dataset.chrome = typeReg?.chromeStyle ?? 'card';
     card.style.gridRow = `${row.placement.row + 1} / span ${row.placement.rowSpan}`;
     card.style.gridColumn = `${row.placement.col + 1} / span ${row.placement.colSpan}`;
 

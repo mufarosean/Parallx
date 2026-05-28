@@ -105,6 +105,20 @@ export interface WidgetHandle extends IDisposable {
   refreshFromCache?(cachedOutput: string | null): void;
 }
 
+/**
+ * Visual chrome preset for a widget instance.
+ *
+ * - 'card' (default): full chrome — card background, persistent header
+ *   (title + status + actions), bottom footer for "updated N ago".
+ * - 'minimal': transparent background and no footer. Header is hidden by
+ *   default and reveals on hover so the widget body sits flush with the
+ *   dashboard background. Good for time / counter / glance widgets.
+ * - 'bare': no chrome at all. Just the widget body, edge to edge. Hover
+ *   still reveals a tiny floating action strip in the top-right so the
+ *   user can refresh / configure / remove without losing the look.
+ */
+export type WidgetChromeStyle = 'card' | 'minimal' | 'bare';
+
 export interface WidgetTypeRegistration<TConfig = Record<string, unknown>> {
   readonly typeId: string;
   readonly displayName: string;
@@ -118,6 +132,8 @@ export interface WidgetTypeRegistration<TConfig = Record<string, unknown>> {
   readonly defaultConfig: TConfig;
   readonly configSchema?: WidgetConfigSchema;
   readonly defaultRefreshPolicy?: WidgetRefreshPolicy;
+  /** Default chrome preset. User config may override per instance later. */
+  readonly chromeStyle?: WidgetChromeStyle;
 
   /**
    * Pure data fetch. Runs both headless (scheduler) and mounted (user click).

@@ -107,6 +107,55 @@
 }
 
 
+/* ── Collapsible pane header ────────────────────────────────────────────── */
+/* When the header is hidden, the title bar collapses entirely and a slim
+   reveal strip floats at the top. Hovering the strip slides the essential
+   actions (Add / Edit / re-expand) back in. */
+
+.dashboard-reveal {
+  display: none;
+}
+.dashboard-pane--header-hidden > .dashboard-header {
+  display: none;
+}
+.dashboard-pane--header-hidden > .dashboard-reveal {
+  display: flex;
+  justify-content: flex-end;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: -8px 0 16px;
+  padding: 6px 0;
+}
+.dashboard-reveal__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+  opacity: 0.35;
+  transition: opacity 140ms ease;
+}
+.dashboard-reveal:hover .dashboard-reveal__actions {
+  opacity: 1;
+}
+.dashboard-btn--small {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+.dashboard-btn--icon-only {
+  padding: 0;
+  width: 32px;
+}
+.dashboard-btn--small.dashboard-btn--icon-only {
+  width: 28px;
+}
+
+
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 
 .dashboard-btn {
@@ -301,17 +350,18 @@
 }
 
 .dashboard-widget__status {
-  display: inline-block;
+  /* Hidden by default — a healthy widget shows no dot. Only surfaces
+     when something is actually happening (running) or wrong (error/stale). */
+  display: none;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 22%, transparent);
   transition: background 140ms ease, transform 140ms ease, box-shadow 200ms ease;
 }
-.dashboard-widget__status[data-value="ok"]      { background: #46c46f; box-shadow: 0 0 0 3px color-mix(in srgb, #46c46f 22%, transparent); }
-.dashboard-widget__status[data-value="running"] { background: var(--vscode-button-background, #0e639c); animation: dashboard-status-pulse 1.4s ease-in-out infinite; }
-.dashboard-widget__status[data-value="error"]   { background: #e85a5a; box-shadow: 0 0 0 3px color-mix(in srgb, #e85a5a 22%, transparent); }
-.dashboard-widget__status[data-value="stale"]   { background: #d2a64f; }
+.dashboard-widget__status[data-value="running"] { display: inline-block; background: var(--vscode-button-background, #0e639c); animation: dashboard-status-pulse 1.4s ease-in-out infinite; }
+.dashboard-widget__status[data-value="error"]   { display: inline-block; background: #e85a5a; box-shadow: 0 0 0 3px color-mix(in srgb, #e85a5a 22%, transparent); }
+.dashboard-widget__status[data-value="stale"]   { display: inline-block; background: #d2a64f; }
 
 @keyframes dashboard-status-pulse {
   0%, 100% { transform: scale(1);   opacity: 1; }
@@ -386,6 +436,67 @@
   padding: 1px 5px;
   border-radius: 4px;
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+}
+
+
+/* ── Chrome presets ─────────────────────────────────────────────────────── */
+/* 'card' (default) keeps the full chrome defined above.
+   'minimal' and 'bare' strip the background, border, and persistent header so
+   glanceable widgets (clock, counters) sit flush with the dashboard. The
+   header reveals on hover so move/configure/remove stay reachable. */
+
+.dashboard-widget[data-chrome="minimal"],
+.dashboard-widget[data-chrome="bare"] {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.dashboard-widget[data-chrome="minimal"]:hover,
+.dashboard-widget[data-chrome="bare"]:hover {
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 92%, white);
+  border-color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+}
+
+/* Header collapses to a floating action strip; the title row hides until
+   hover so the widget body owns the full card. */
+.dashboard-widget[data-chrome="minimal"] > .dashboard-widget__header,
+.dashboard-widget[data-chrome="bare"] > .dashboard-widget__header {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  left: auto;
+  z-index: 2;
+  padding: 4px 6px;
+  border-bottom: 0;
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 80%, transparent);
+  border-radius: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+.dashboard-widget[data-chrome="minimal"]:hover > .dashboard-widget__header,
+.dashboard-widget[data-chrome="bare"]:hover > .dashboard-widget__header {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* The title text is noise on a chrome-less widget — only the actions matter. */
+.dashboard-widget[data-chrome="minimal"] > .dashboard-widget__header .dashboard-widget__title,
+.dashboard-widget[data-chrome="bare"] > .dashboard-widget__header .dashboard-widget__title,
+.dashboard-widget[data-chrome="minimal"] > .dashboard-widget__header .dashboard-widget__drag,
+.dashboard-widget[data-chrome="bare"] > .dashboard-widget__header .dashboard-widget__drag {
+  display: none;
+}
+.dashboard-widget[data-chrome="minimal"] > .dashboard-widget__header .dashboard-widget__actions,
+.dashboard-widget[data-chrome="bare"] > .dashboard-widget__header .dashboard-widget__actions {
+  opacity: 1;
+  margin-left: 0;
+}
+
+/* No footer metadata on minimal/bare presets. */
+.dashboard-widget[data-chrome="minimal"] > .dashboard-widget__footer,
+.dashboard-widget[data-chrome="bare"] > .dashboard-widget__footer {
+  display: none !important;
 }
 
 .dashboard-widget__error {
