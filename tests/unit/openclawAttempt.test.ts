@@ -186,7 +186,7 @@ describe('executeOpenclawAttempt', () => {
     );
   });
 
-  it('tool result truncation — >20000 chars truncated', async () => {
+  it('tool result truncation — oversized results are truncated', async () => {
     let callCount = 0;
     const sendChatRequest = vi.fn(() => {
       callCount++;
@@ -198,7 +198,8 @@ describe('executeOpenclawAttempt', () => {
       return streamChunks([textChunk('Done.')]);
     });
 
-    const longContent = 'x'.repeat(25_000);
+    // 150K chars — exceeds the 100K cap, so truncation should kick in.
+    const longContent = 'x'.repeat(150_000);
     const invokeToolWithRuntimeControl = vi.fn(async (): Promise<IToolResult> => ({
       content: longContent,
     }));
@@ -219,9 +220,7 @@ describe('executeOpenclawAttempt', () => {
       createToken(),
     );
 
-    // The tool was called, and the model received a second call with truncated content
     expect(result.toolCallCount).toBe(1);
-    // Verify truncation happened by checking the messages sent to model on 2nd call
     const secondCallMessages = (sendChatRequest.mock.calls as any[][])[1][0] as IChatMessage[];
     const toolMsg = secondCallMessages.find(m => m.role === 'tool');
     expect(toolMsg).toBeDefined();

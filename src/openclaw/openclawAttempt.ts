@@ -42,10 +42,12 @@ import { validateCitations } from './openclawResponseValidation.js';
 
 /**
  * Maximum characters per tool result before truncation.
- * 20 000 chars ≈ 5 000 tokens — leaves room for multiple tool results per turn
- * without blowing out the context window.
+ * 100 000 chars ≈ 25 000 tokens — large enough for bulk-fetch tools
+ * (e.g. Gmail returning 25+ messages with bodies) while still bounding
+ * any single tool result so a runaway / misbehaving tool cannot blow
+ * out the context window or push the prompt-cache boundary mid-session.
  */
-const MAX_TOOL_RESULT_CHARS = 20_000;
+const MAX_TOOL_RESULT_CHARS = 100_000;
 
 /**
  * Defensive normalizer for `IToolResult.content` that came in from an
