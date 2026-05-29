@@ -1,0 +1,702 @@
+/* ============================================================================
+   Planner (M82) — sidebar, editor pane (tasks + calendar), widgets.
+
+   Style philosophy: same workbench-color tokens as the rest of Parallx,
+   refined typography, hover-revealed affordances, subtle motion.
+   ========================================================================== */
+
+
+/* ── Shared buttons ─────────────────────────────────────────────────────── */
+
+.planner-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 80ms ease;
+}
+.planner-btn:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder, #5b9bd5);
+  outline-offset: 2px;
+}
+.planner-btn:active { transform: translateY(0.5px); }
+.planner-btn--primary {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+}
+.planner-btn--primary:hover {
+  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 88%, white);
+}
+.planner-btn--ghost {
+  border-color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
+}
+.planner-btn--ghost:hover {
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+}
+.planner-btn--small { height: 26px; padding: 0 9px; font-size: 11.5px; }
+.planner-btn--icon-only { padding: 0; width: 26px; }
+.planner-btn--active {
+  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 18%, transparent);
+  color: var(--vscode-button-background, #0e639c);
+  border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 38%, transparent);
+}
+
+
+/* ============================================================================
+   Sidebar
+   ========================================================================== */
+
+.planner-sidebar-host { display: flex; width: 100%; height: 100%; }
+
+.planner-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  font-family: var(--vscode-font-family, -apple-system, "Segoe UI", sans-serif);
+  color: var(--vscode-sideBar-foreground, #cccccc);
+}
+
+.planner-sidebar__toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
+}
+.planner-sidebar__newbtn {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+.planner-sidebar__newbtn:hover {
+  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 12%, transparent);
+  border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 40%, transparent);
+}
+.planner-sidebar__openbtn {
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.planner-sidebar__openbtn:hover {
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+.planner-sidebar__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 10px 4px;
+}
+.planner-sidebar__chip {
+  height: 22px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 7%, transparent);
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.planner-sidebar__chip:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent); color: var(--vscode-editor-foreground, #d4d4d4); }
+.planner-sidebar__chip--active {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+}
+
+.planner-sidebar__list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 4px 6px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.planner-sidebar__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 100ms ease, opacity 140ms ease;
+}
+.planner-sidebar__row:hover { background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 100%, transparent); }
+.planner-sidebar__row:focus-visible { outline: none; background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 100%, transparent); box-shadow: inset 0 0 0 1px var(--vscode-focusBorder, #5b9bd5); }
+.planner-sidebar__row--done { opacity: 0.55; }
+.planner-sidebar__row--done .planner-sidebar__title { text-decoration: line-through; text-decoration-thickness: 1px; }
+.planner-sidebar__row--reviewing .planner-sidebar__title { color: var(--vscode-editor-foreground, #f3f3f3); }
+.planner-sidebar__row--overdue .planner-sidebar__meta { color: #f08585; font-weight: 600; }
+
+.planner-sidebar__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px; height: 18px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  cursor: pointer;
+  transition: color 100ms ease, background 100ms ease;
+}
+.planner-sidebar__row--done .planner-sidebar__check { color: #46c46f; }
+.planner-sidebar__check:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent); color: var(--vscode-editor-foreground, #d4d4d4); }
+
+.planner-sidebar__text {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.planner-sidebar__title {
+  font-size: 12.5px;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.planner-sidebar__meta {
+  font-size: 10.5px;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+}
+
+.planner-sidebar__empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+}
+.planner-sidebar__empty strong { display: block; margin-bottom: 4px; color: var(--vscode-editor-foreground, #d4d4d4); font-size: 12.5px; font-weight: 600; }
+.planner-sidebar__empty p { margin: 0; font-size: 11.5px; line-height: 1.55; }
+.planner-sidebar__empty code {
+  font-family: var(--vscode-editor-font-family, "SF Mono", monospace);
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+}
+
+
+/* ============================================================================
+   Editor pane
+   ========================================================================== */
+
+.planner-pane-host {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--vscode-editor-background, #1e1e1e);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  overflow: auto;
+}
+
+.planner-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  font-family: var(--vscode-font-family, -apple-system, "Segoe UI", sans-serif);
+}
+
+.planner-pane__header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 24px;
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 92%, white);
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.planner-pane__tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 80%, white);
+}
+.planner-pane__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.planner-pane__tab:hover { color: var(--vscode-editor-foreground, #d4d4d4); }
+.planner-pane__tab--active {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+}
+
+.planner-pane__actions { display: flex; align-items: center; gap: 6px; }
+
+.planner-pane__body {
+  flex: 1 1 auto;
+  padding: 18px 24px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ── Tasks ────────────────────────────────────────────────────────────── */
+
+.planner-empty {
+  margin: 56px auto;
+  max-width: 480px;
+  text-align: center;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
+}
+.planner-empty h2 { margin: 0 0 8px; font-size: 18px; font-weight: 600; color: var(--vscode-editor-foreground, #f3f3f3); }
+.planner-empty p { margin: 0; font-size: 13px; line-height: 1.55; }
+
+.planner-section { border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 94%, white); overflow: hidden; }
+.planner-section--review { border-color: color-mix(in srgb, #d2a64f 38%, transparent); background: color-mix(in srgb, #d2a64f 8%, transparent); }
+.planner-section--overdue { border-color: color-mix(in srgb, #e85a5a 38%, transparent); }
+.planner-section--today { border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 40%, transparent); }
+.planner-section--collapsed .planner-section__list { display: none; }
+
+.planner-section__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 8px;
+}
+.planner-section__title { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; text-transform: none; }
+.planner-section__count {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+.planner-section__hint {
+  margin: 0 0 0 auto;
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+}
+.planner-section__list { display: flex; flex-direction: column; padding: 4px 6px 10px; }
+
+.planner-task {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  transition: background 100ms ease, opacity 140ms ease;
+}
+.planner-task:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
+.planner-task--done { opacity: 0.55; }
+.planner-task--done .planner-task__title { text-decoration: line-through; text-decoration-thickness: 1px; }
+
+.planner-task__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+.planner-task--done .planner-task__check { color: #46c46f; }
+.planner-task__check:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent); color: var(--vscode-editor-foreground, #d4d4d4); }
+
+.planner-task__main { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
+.planner-task__title { font-size: 13.5px; color: var(--vscode-editor-foreground, #f3f3f3); cursor: text; }
+.planner-task__title:hover { color: var(--vscode-button-background, #0e639c); }
+.planner-task__desc {
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.planner-task__right { display: inline-flex; align-items: center; gap: 4px; }
+.planner-task__due {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 75%, transparent);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.planner-task__due:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 12%, transparent); color: var(--vscode-button-background, #0e639c); border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 38%, transparent); }
+.planner-task__due--empty { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 45%, transparent); font-style: italic; }
+.planner-task__due--overdue { color: #f08585; border-color: color-mix(in srgb, #e85a5a 40%, transparent); }
+
+.planner-task__plan,
+.planner-task__more {
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+}
+.planner-task:hover .planner-task__plan,
+.planner-task:hover .planner-task__more { opacity: 1; }
+.planner-task__plan:hover { color: #46c46f; background: color-mix(in srgb, #46c46f 12%, transparent); }
+.planner-task__more:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent); color: var(--vscode-editor-foreground, #d4d4d4); }
+
+/* ── Menu ─────────────────────────────────────────────────────────────── */
+
+.planner-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+}
+.planner-menu {
+  min-width: 180px;
+  padding: 4px;
+  background: var(--vscode-menu-background, #2c2c2c);
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
+  border-radius: 8px;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.42);
+  animation: planner-menu-in 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes planner-menu-in {
+  from { transform: translateY(-2px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.planner-menu__item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.planner-menu__item:hover { background: var(--vscode-menu-selectionBackground, color-mix(in srgb, var(--vscode-button-background, #0e639c) 40%, transparent)); color: var(--vscode-menu-selectionForeground, #fff); }
+.planner-menu__item--danger:hover { background: color-mix(in srgb, #e85a5a 22%, transparent); color: #f3aeae; }
+
+
+/* ── Calendar (editor) ────────────────────────────────────────────────── */
+
+.planner-calendar__viewbar { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent); border-radius: 7px; }
+.planner-calendar__nav { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+
+.planner-calendar__header {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--vscode-editor-foreground, #f3f3f3);
+  margin-bottom: 6px;
+}
+
+.planner-month {
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+  border-radius: 12px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 94%, white);
+}
+.planner-month__weekdays { display: grid; grid-template-columns: repeat(7, 1fr); background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 4%, transparent); }
+.planner-month__weekday {
+  padding: 8px 10px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+}
+.planner-month__cells { display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: minmax(90px, auto); }
+.planner-month__cell {
+  position: relative;
+  padding: 8px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.planner-month__cell:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 6%, transparent); }
+.planner-month__cell:nth-child(7n) { border-right: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
+.planner-month__cell--other-month { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 30%, transparent); }
+.planner-month__cell--today { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 10%, transparent); }
+.planner-month__cell--today .planner-month__cellnum { color: var(--vscode-button-background, #0e639c); font-weight: 700; }
+.planner-month__cellnum { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+.planner-month__cellevents { display: flex; flex-direction: column; gap: 2px; }
+.planner-month__chip {
+  display: block;
+  width: 100%;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 22%, transparent);
+  color: var(--vscode-editor-foreground, #f3f3f3);
+  font: inherit;
+  font-size: 10.5px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.planner-month__chip:hover { background: var(--vscode-button-background, #0e639c); color: var(--vscode-button-foreground, #fff); }
+.planner-month__more { font-size: 10px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); padding-left: 6px; }
+
+/* Week view */
+.planner-week {
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+  border-radius: 12px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 94%, white);
+}
+.planner-week__header { display: grid; grid-template-columns: 56px repeat(7, 1fr); background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 4%, transparent); }
+.planner-week__corner { }
+.planner-week__weekday { padding: 10px 8px; text-align: center; border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
+.planner-week__weekday--today { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 16%, transparent); }
+.planner-week__weekday-label { display: block; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent); }
+.planner-week__weekday-num { display: block; font-size: 16px; font-weight: 600; margin-top: 2px; color: var(--vscode-editor-foreground, #f3f3f3); }
+.planner-week__body { display: grid; grid-template-columns: 56px repeat(7, 1fr); position: relative; }
+.planner-week__hours { display: flex; flex-direction: column; }
+.planner-week__hour { height: 48px; border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); position: relative; }
+.planner-week__hourlabel { position: absolute; top: -7px; right: 8px; font-size: 9.5px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent); }
+.planner-week__col { position: relative; border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
+.planner-week__cell { height: 48px; border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 5%, transparent); }
+.planner-week__event {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 60%, transparent);
+  color: var(--vscode-button-foreground, #fff);
+  font: inherit;
+  font-size: 10.5px;
+  line-height: 1.25;
+  text-align: left;
+  overflow: hidden;
+  cursor: pointer;
+  transition: filter 120ms ease;
+}
+.planner-week__event:hover { filter: brightness(1.1); }
+.planner-week__event strong { font-size: 11px; font-weight: 600; }
+.planner-week__event span { opacity: 0.85; font-size: 10px; margin-top: 1px; }
+
+/* Day view */
+.planner-day {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+  border-radius: 12px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 94%, white);
+  position: relative;
+}
+.planner-day__hours { display: flex; flex-direction: column; }
+.planner-day__hour { height: 56px; border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); position: relative; }
+.planner-day__hourlabel { position: absolute; top: -7px; right: 8px; font-size: 10px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); }
+.planner-day__col { position: relative; border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
+.planner-day__cell { height: 56px; border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 5%, transparent); }
+.planner-day__event {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 70%, transparent);
+  color: var(--vscode-button-foreground, #fff);
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  cursor: pointer;
+  transition: filter 120ms ease;
+}
+.planner-day__event:hover { filter: brightness(1.1); }
+.planner-day__event-time { font-size: 10.5px; opacity: 0.9; }
+.planner-day__event-title { font-size: 12.5px; font-weight: 600; }
+.planner-day__event-loc { font-size: 10.5px; opacity: 0.8; margin-top: 1px; }
+
+
+/* ============================================================================
+   Dashboard widgets (Planner contributions)
+   ========================================================================== */
+
+/* Tasks summary */
+.pl-ts { display: flex; flex-direction: column; gap: 12px; height: 100%; }
+.pl-ts__summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.pl-ts__tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
+}
+.pl-ts__tile-value { font-size: 18px; font-weight: 700; line-height: 1; color: var(--vscode-editor-foreground, #f3f3f3); font-variant-numeric: tabular-nums; }
+.pl-ts__tile-label { font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); margin-top: 4px; }
+.pl-ts__tile--review { background: color-mix(in srgb, #d2a64f 18%, transparent); }
+.pl-ts__tile--today { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 18%, transparent); }
+.pl-ts__tile--overdue { background: color-mix(in srgb, #e85a5a 18%, transparent); }
+.pl-ts__tile--overdue .pl-ts__tile-value { color: #f08585; }
+
+.pl-ts__list {
+  display: flex; flex-direction: column;
+  gap: 1px;
+  max-height: 100%;
+  overflow-y: auto;
+}
+.pl-ts__row {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pl-ts__row:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
+.pl-ts__row--review .pl-ts__row-title { color: var(--vscode-editor-foreground, #f3f3f3); }
+.pl-ts__row--overdue .pl-ts__row-meta { color: #f08585; font-weight: 600; }
+.pl-ts__row-title { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-ts__row-meta { font-size: 11px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent); flex: 0 0 auto; }
+
+.pl-ts__openlink { margin-top: auto; padding: 0; border: 0; background: transparent; color: var(--vscode-textLink-foreground, #4daafc); font: inherit; font-size: 11.5px; text-align: left; cursor: pointer; }
+.pl-ts__openlink:hover { text-decoration: underline; }
+.pl-ts__empty { font-size: 11.5px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); font-style: italic; }
+.pl-ts__loading { font-size: 11px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent); }
+
+/* Calendar agenda */
+.pl-ag { height: 100%; }
+.pl-ag__list { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; max-height: 100%; }
+.pl-ag__daylabel { padding: 6px 0 2px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); }
+.pl-ag__item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pl-ag__item:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
+.pl-ag__time { font-size: 11px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent); width: 56px; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.pl-ag__main { display: flex; flex-direction: column; min-width: 0; }
+.pl-ag__title { font-size: 12px; color: var(--vscode-editor-foreground, #f3f3f3); }
+.pl-ag__loc { font-size: 10.5px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); }
+.pl-ag__empty { padding: 8px; font-size: 11.5px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent); }
+.pl-ag__empty strong { display: block; color: var(--vscode-editor-foreground, #d4d4d4); margin-bottom: 4px; font-size: 12.5px; font-weight: 600; }
+.pl-ag__empty p { margin: 0; line-height: 1.5; }
+
+/* Calendar view widget */
+.pl-cal { height: 100%; }
+.pl-cal__surface { height: 100%; display: flex; flex-direction: column; cursor: pointer; }
+
+.pl-cal__month { display: flex; flex-direction: column; height: 100%; }
+.pl-cal__weekdays { display: grid; grid-template-columns: repeat(7, 1fr); font-size: 9.5px; font-weight: 600; text-transform: uppercase; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); padding-bottom: 4px; }
+.pl-cal__weekday { padding: 4px; text-align: center; }
+.pl-cal__cells { display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: minmax(0, 1fr); gap: 1px; flex: 1 1 auto; }
+.pl-cal__cell { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 3px; padding: 3px; border-radius: 4px; background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 4%, transparent); }
+.pl-cal__cell--other { opacity: 0.4; }
+.pl-cal__cell--today { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 22%, transparent); }
+.pl-cal__cell--today .pl-cal__num { color: var(--vscode-button-background, #0e639c); font-weight: 700; }
+.pl-cal__num { font-size: 11px; font-weight: 600; color: var(--vscode-editor-foreground, #d4d4d4); }
+.pl-cal__dots { display: flex; align-items: center; gap: 2px; }
+.pl-cal__dot { width: 4px; height: 4px; border-radius: 50%; background: var(--vscode-button-background, #0e639c); }
+.pl-cal__more { font-size: 8.5px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); margin-left: 2px; }
+
+.pl-cal__week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.pl-cal__weekcol { display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 6px; background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 4%, transparent); }
+.pl-cal__weekcol--today { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 14%, transparent); }
+.pl-cal__weekhead { display: flex; align-items: baseline; justify-content: space-between; }
+.pl-cal__weekhead span { font-size: 9.5px; font-weight: 600; text-transform: uppercase; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); }
+.pl-cal__weekhead strong { font-size: 14px; color: var(--vscode-editor-foreground, #f3f3f3); }
+.pl-cal__weeklist { display: flex; flex-direction: column; gap: 2px; }
+.pl-cal__weekchip { display: flex; gap: 4px; font-size: 10px; padding: 2px 4px; border-radius: 3px; background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 22%, transparent); color: var(--vscode-editor-foreground, #f3f3f3); }
+.pl-cal__weekchip-time { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent); flex: 0 0 auto; }
+.pl-cal__weekchip-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-cal__weekmore { font-size: 9.5px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); }
+
+.pl-cal__day { display: flex; flex-direction: column; gap: 4px; }
+.pl-cal__dayrow { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
+.pl-cal__daytime { font-size: 11px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent); width: 100px; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.pl-cal__daymain { display: flex; flex-direction: column; min-width: 0; }
+.pl-cal__daytitle { font-size: 12.5px; color: var(--vscode-editor-foreground, #f3f3f3); }
+.pl-cal__dayloc { font-size: 10.5px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); }
+.pl-cal__empty { font-size: 11.5px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent); padding: 8px; }
+.pl-cal__empty strong { display: block; color: var(--vscode-editor-foreground, #d4d4d4); margin-bottom: 4px; }
+.pl-cal__empty p { margin: 0; line-height: 1.5; }

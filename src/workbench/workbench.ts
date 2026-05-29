@@ -148,6 +148,7 @@ import * as AutonomyLogTool from '../built-in/autonomy-log/main.js';
 import * as ThemeEditorTool from '../built-in/theme-editor/main.js';
 import * as SettingsTool from '../built-in/settings/main.js';
 import * as DashboardTool from '../built-in/dashboard/main.js';
+import * as PlannerTool from '../built-in/planner/main.js';
 import type { IToolManifest, IToolDescription } from '../tools/toolManifest.js';
 import {
   EXPLORER_MANIFEST,
@@ -165,6 +166,7 @@ import {
   THEME_EDITOR_MANIFEST,
   SETTINGS_MANIFEST,
   DASHBOARD_MANIFEST,
+  PLANNER_MANIFEST,
 } from '../tools/builtinManifests.js';
 
 // File Editor Resolver (M4 Capability 4)
@@ -2848,6 +2850,9 @@ export class Workbench extends Layout {
       // Dashboard (M71) — after ChatTool so it can lazily resolve the
       // background AI provider (chat.getInlineAIProvider command).
       { manifest: DASHBOARD_MANIFEST, module: DashboardTool },
+      // Planner (M82) — after ChatTool so it can register its chat tools,
+      // after DashboardTool so it can register dashboard widgets.
+      { manifest: PLANNER_MANIFEST, module: PlannerTool },
     ];
 
     const activationPromises: Promise<void>[] = [];

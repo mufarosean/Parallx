@@ -1,0 +1,350 @@
+// plannerChatTools.ts — three consolidated chat tools the AI can call.
+//
+// captureTask:  create-or-update a task (taskId presence switches mode).
+// captureEvent: create-or-update an event (eventId presence switches mode).
+// read:         single reader, discriminated by `what` ('tasks' | 'events' | 'free-slot').
+//
+// All tools are no-confirmation. Capture writes are safe by default because
+// new tasks land in status='reviewing' — they're visible to the user in the
+// review queue rather than silently merged into their planned work.
+
+import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
+import type { PlannerDataService } from './plannerDataService.js';
+import type { TaskStatus } from './plannerTypes.js';
+
+interface ChatApi {
+  registerTool(toolId: string, def: {
+    description: string;
+    parameters: object;
+    requiresConfirmation: boolean;
+    handler: (args: unknown) => Promise<{ content: string; isError?: boolean }>;
+  }): IDisposable;
+}
+
+const VALID_STATUSES: readonly TaskStatus[] = ['reviewing', 'planned', 'done', 'cancelled'];
+
+function isValidStatus(s: unknown): s is TaskStatus {
+  return typeof s === 'string' && (VALID_STATUSES as readonly string[]).includes(s);
+}
+
+function parseDateInput(input: unknown): number | null {
+  if (typeof input === 'number' && Number.isFinite(input)) return input;
+  if (typeof input !== 'string') return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  // Accept ISO 8601, RFC-ish "+5d" style relative durations, or "YYYY-MM-DD".
+  const rel = trimmed.match(/^\+(\d+)\s*([dhm])$/i);
+  if (rel) {
+    const n = parseInt(rel[1], 10);
+    const unit = rel[2].toLowerCase();
+    const ms = unit === 'd' ? n * 86_400_000 : unit === 'h' ? n * 3_600_000 : n * 60_000;
+    return Date.now() + ms;
+  }
+  const ts = Date.parse(trimmed);
+  return Number.isFinite(ts) ? ts : null;
+}
+
+function ok(payload: unknown): { content: string; isError?: boolean } {
+  return { content: JSON.stringify(payload) };
+}
+function err(message: string): { content: string; isError: true } {
+  return { content: message, isError: true };
+}
+
+// ─── Tool: planner.captureTask ───────────────────────────────────────────────
+
+const CAPTURE_TASK_PARAMETERS = {
+  type: 'object',
+  properties: {
+    taskId: {
+      type: 'string',
+      description: 'Existing task id (e.g. "task-…"). When present this is an update. When absent, a new task is created. Use updates to mark done (status="done"), cancel (status="cancelled"), or set a real due date the user picked.',
+    },
+    title: {
+      type: 'string',
+      description: 'Short user-facing title. Required on create.',
+    },
+    description: {
+      type: 'string',
+      description: 'Optional longer-form context for the task.',
+    },
+    status: {
+      type: 'string',
+      enum: ['reviewing', 'planned', 'done', 'cancelled'],
+      description: 'Task lifecycle. New tasks default to "reviewing" so they sit in the user\'s review queue without breaking their current flow. Use "planned" once a real due date is picked; "done" to complete; "cancelled" as the soft-delete path.',
+    },
+    dueAt: {
+      type: 'string',
+      description: 'Due date as ISO 8601, "YYYY-MM-DD", or a relative shortcut like "+5d" / "+3h". On create the default is "+5d" so journaling-style capture doesn\'t pull the user into a date picker.',
+    },
+    reminderAt: {
+      type: 'string',
+      description: 'Optional reminder time (same format as dueAt). Fires once via the in-app notification service.',
+    },
+    tags: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Optional tag list. Replaces existing tags on update.',
+    },
+    sourceUri: {
+      type: 'string',
+      description: 'Optional URI identifying where the task was captured (e.g. a journal page URI). Helpful for "jump back to the conversation that captured this".',
+    },
+  },
+};
+
+// ─── Tool: planner.captureEvent ──────────────────────────────────────────────
+
+const CAPTURE_EVENT_PARAMETERS = {
+  type: 'object',
+  properties: {
+    eventId: {
+      type: 'string',
+      description: 'Existing event id. Present = update, absent = create.',
+    },
+    title: {
+      type: 'string',
+      description: 'Short user-facing title. Required on create.',
+    },
+    description: {
+      type: 'string',
+      description: 'Optional longer-form description / agenda.',
+    },
+    startAt: {
+      type: 'string',
+      description: 'Event start. ISO 8601, "YYYY-MM-DD" (interpreted as midnight local), or a relative shortcut like "+1d". Required on create.',
+    },
+    endAt: {
+      type: 'string',
+      description: 'Event end. Defaults to startAt + 1 hour. Must be >= startAt.',
+    },
+    allDay: {
+      type: 'boolean',
+      description: 'Whether this is an all-day event. When true, startAt is treated as the start of the day and endAt as the end.',
+    },
+    location: {
+      type: 'string',
+      description: 'Optional location string.',
+    },
+  },
+};
+
+// ─── Tool: planner.read ──────────────────────────────────────────────────────
+
+const READ_PARAMETERS = {
+  type: 'object',
+  required: ['what'],
+  properties: {
+    what: {
+      type: 'string',
+      enum: ['tasks', 'events', 'free-slot'],
+      description: 'Discriminator. "tasks" returns matching tasks; "events" returns events in a time window; "free-slot" returns the first open calendar block of the requested duration.',
+    },
+    // tasks-only filters
+    status: {
+      type: 'string',
+      enum: ['reviewing', 'planned', 'done', 'cancelled'],
+      description: '(tasks) Filter by lifecycle status. Omit to get everything except cancelled.',
+    },
+    dueWithinDays: {
+      type: 'number',
+      description: '(tasks) Limit to tasks due within the next N days from now.',
+    },
+    includeUndated: {
+      type: 'boolean',
+      description: '(tasks) Include tasks with no due date — e.g. for surfacing the review queue.',
+    },
+    tags: {
+      type: 'array',
+      items: { type: 'string' },
+      description: '(tasks) Require all listed tags.',
+    },
+    // events-only filters
+    from: {
+      type: 'string',
+      description: '(events) Window start (ISO 8601 / YYYY-MM-DD / relative). Defaults to now.',
+    },
+    to: {
+      type: 'string',
+      description: '(events) Window end. Defaults to "+7d".',
+    },
+    // free-slot
+    durationMinutes: {
+      type: 'number',
+      description: '(free-slot) How long an open block to find. Required for free-slot.',
+    },
+    withinDays: {
+      type: 'number',
+      description: '(free-slot) How many days ahead to search. Defaults to 7. Max 60.',
+    },
+    startHour: {
+      type: 'number',
+      description: '(free-slot) Earliest hour of the working window (0-23). Defaults to 9.',
+    },
+    endHour: {
+      type: 'number',
+      description: '(free-slot) Latest hour of the working window (1-24). Defaults to 18.',
+    },
+    limit: {
+      type: 'number',
+      description: '(tasks/events) Cap the number of returned rows. Defaults to 50.',
+    },
+  },
+};
+
+// ─── Registration ────────────────────────────────────────────────────────────
+
+export function registerPlannerChatTools(
+  chat: ChatApi,
+  data: PlannerDataService,
+): IDisposable {
+  const disposables: IDisposable[] = [];
+
+  disposables.push(chat.registerTool('planner.captureTask', {
+    description:
+      'Create or update a planner task. Present a taskId to update an existing task; omit it to capture a new one. New tasks default to status="reviewing" and dueAt="+5d" so journaling-style capture lands in the user\'s review queue without breaking their flow. Mark complete with status="done"; soft-delete with status="cancelled".',
+    parameters: CAPTURE_TASK_PARAMETERS,
+    requiresConfirmation: false,
+    handler: async (raw) => {
+      const args = (raw ?? {}) as Record<string, unknown>;
+      const taskId = typeof args.taskId === 'string' ? args.taskId : null;
+      const title = typeof args.title === 'string' ? args.title.trim() : '';
+      const description = typeof args.description === 'string' ? args.description : undefined;
+      const status = isValidStatus(args.status) ? args.status : undefined;
+      const dueAt = args.dueAt !== undefined ? parseDateInput(args.dueAt) : undefined;
+      const reminderAt = args.reminderAt !== undefined ? parseDateInput(args.reminderAt) : undefined;
+      const tags = Array.isArray(args.tags) ? (args.tags as unknown[]).filter((t): t is string => typeof t === 'string') : undefined;
+      const sourceUri = typeof args.sourceUri === 'string' ? args.sourceUri : undefined;
+
+      try {
+        if (taskId) {
+          const updated = await data.updateTask(taskId, {
+            title: title || undefined,
+            description,
+            status,
+            dueAt: dueAt ?? undefined,
+            reminderAt: reminderAt ?? undefined,
+            tags,
+          });
+          if (!updated) return err(`Task not found: ${taskId}`);
+          return ok({ task: updated });
+        }
+        if (!title) return err('createTask requires a title.');
+        const created = await data.createTask({
+          title,
+          description,
+          status: status ?? 'reviewing',
+          // Default the due date for the "log it and move on" capture flow.
+          dueAt: dueAt ?? Date.now() + 5 * 86_400_000,
+          reminderAt: reminderAt ?? null,
+          tags,
+          sourceUri,
+        });
+        return ok({ task: created });
+      } catch (e) {
+        return err(`captureTask failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+  }));
+
+  disposables.push(chat.registerTool('planner.captureEvent', {
+    description:
+      'Create or update a planner calendar event. Present an eventId to update; omit it to create. startAt is required on create.',
+    parameters: CAPTURE_EVENT_PARAMETERS,
+    requiresConfirmation: false,
+    handler: async (raw) => {
+      const args = (raw ?? {}) as Record<string, unknown>;
+      const eventId = typeof args.eventId === 'string' ? args.eventId : null;
+      const title = typeof args.title === 'string' ? args.title.trim() : '';
+      const description = typeof args.description === 'string' ? args.description : undefined;
+      const startAt = args.startAt !== undefined ? parseDateInput(args.startAt) : undefined;
+      const endAt = args.endAt !== undefined ? parseDateInput(args.endAt) : undefined;
+      const allDay = typeof args.allDay === 'boolean' ? args.allDay : undefined;
+      const location = typeof args.location === 'string' ? args.location : undefined;
+
+      try {
+        if (eventId) {
+          const updated = await data.updateEvent(eventId, {
+            title: title || undefined,
+            description,
+            startAt: startAt ?? undefined,
+            endAt: endAt ?? undefined,
+            allDay,
+            location,
+          });
+          if (!updated) return err(`Event not found: ${eventId}`);
+          return ok({ event: updated });
+        }
+        if (!title) return err('createEvent requires a title.');
+        if (startAt === undefined || startAt === null) return err('createEvent requires a startAt.');
+        const created = await data.createEvent({
+          title,
+          description,
+          startAt,
+          endAt: endAt ?? undefined,
+          allDay: allDay ?? false,
+          location,
+        });
+        return ok({ event: created });
+      } catch (e) {
+        return err(`captureEvent failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+  }));
+
+  disposables.push(chat.registerTool('planner.read', {
+    description:
+      'Read planner data. `what="tasks"` returns matching tasks (status / dueWithinDays / tags / includeUndated). `what="events"` returns events in a time window (from / to). `what="free-slot"` returns the first open calendar block of the requested durationMinutes within withinDays.',
+    parameters: READ_PARAMETERS,
+    requiresConfirmation: false,
+    handler: async (raw) => {
+      const args = (raw ?? {}) as Record<string, unknown>;
+      const what = typeof args.what === 'string' ? args.what : '';
+
+      try {
+        if (what === 'tasks') {
+          const dueWithinDays = typeof args.dueWithinDays === 'number' ? args.dueWithinDays : undefined;
+          const tasks = await data.listTasks({
+            status: isValidStatus(args.status) ? args.status : undefined,
+            dueFrom: dueWithinDays !== undefined ? Date.now() : undefined,
+            dueTo: dueWithinDays !== undefined ? Date.now() + dueWithinDays * 86_400_000 : undefined,
+            includeUndated: args.includeUndated === true,
+            tags: Array.isArray(args.tags) ? (args.tags as unknown[]).filter((t): t is string => typeof t === 'string') : undefined,
+            limit: typeof args.limit === 'number' ? args.limit : 50,
+          });
+          return ok({ tasks });
+        }
+        if (what === 'events') {
+          const from = args.from !== undefined ? parseDateInput(args.from) : Date.now();
+          const to = args.to !== undefined ? parseDateInput(args.to) : Date.now() + 7 * 86_400_000;
+          if (from === null || to === null) return err('events: from / to must parse to dates.');
+          const events = await data.listEvents({
+            from,
+            to,
+            limit: typeof args.limit === 'number' ? args.limit : 50,
+          });
+          return ok({ events });
+        }
+        if (what === 'free-slot') {
+          const durationMinutes = typeof args.durationMinutes === 'number' ? args.durationMinutes : NaN;
+          if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return err('free-slot requires a positive durationMinutes.');
+          const withinDays = typeof args.withinDays === 'number' ? args.withinDays : 7;
+          const startHour = typeof args.startHour === 'number' ? args.startHour : undefined;
+          const endHour = typeof args.endHour === 'number' ? args.endHour : undefined;
+          const slot = await data.findFreeSlot({ durationMinutes, withinDays, startHour, endHour });
+          if (!slot) return ok({ slot: null, message: 'No open slot found in the requested window.' });
+          return ok({ slot });
+        }
+        return err(`Unknown what: "${what}". Use "tasks", "events", or "free-slot".`);
+      } catch (e) {
+        return err(`read failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+  }));
+
+  return toDisposable(() => {
+    for (const d of disposables) {
+      try { d.dispose(); } catch { /* noop */ }
+    }
+  });
+}
