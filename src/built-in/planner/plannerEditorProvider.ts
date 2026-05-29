@@ -559,24 +559,9 @@ class PlannerEditorPane implements IDisposable {
       }
       cell.appendChild(evWrap);
 
-      // Hover "+" affordance — appears on hover, indicates the cell is
-      // clickable to create. Click anywhere else on the cell jumps to day view.
-      const addAffordance = el('button', 'planner-month__cellplus');
-      addAffordance.type = 'button';
-      addAffordance.title = 'New event on this day';
-      addAffordance.textContent = '+';
-      addAffordance.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const start = new Date(day);
-        start.setHours(9, 0, 0, 0);
-        this._openEventPopover({
-          mode: 'create',
-          startAt: start.getTime(),
-          endAt: start.getTime() + 60 * 60 * 1000,
-        }, addAffordance.getBoundingClientRect());
-      });
-      cell.appendChild(addAffordance);
-
+      // Month is for navigation. Clicking a cell drills into day view —
+      // event creation happens there via click or drag on time slots, the
+      // way every digital calendar (Google / Apple / Outlook) works.
       cell.addEventListener('click', () => {
         this._cursorDate = startOfDay(day);
         this._calendarView = 'day';
@@ -628,23 +613,14 @@ class PlannerEditorPane implements IDisposable {
       const dayStart = day.getTime();
       const dayEnd = endOfDay(day).getTime();
 
-      // Hour gridlines — clickable for quick-create.
+      // Hour gridlines (visual only — interaction is on the column itself).
       for (let h = HOURS_START; h < HOURS_END; h++) {
         const cell = el('div', 'planner-week__cell');
         cell.dataset.hour = String(h);
-        cell.addEventListener('click', (e) => {
-          // Don't fire when clicking on an event bar that sits above.
-          if (e.target !== cell) return;
-          const slot = new Date(day);
-          slot.setHours(h, 0, 0, 0);
-          this._openEventPopover({
-            mode: 'create',
-            startAt: slot.getTime(),
-            endAt: slot.getTime() + 60 * 60 * 1000,
-          }, cell.getBoundingClientRect());
-        });
         dayCol.appendChild(cell);
       }
+      // Click + drag-to-create on the day column.
+      this._installDragCreate(dayCol, day);
 
       // Current-time indicator on today's column.
       if (sameDay(day, new Date())) {
@@ -702,20 +678,11 @@ class PlannerEditorPane implements IDisposable {
 
       const cell = el('div', 'planner-day__cell');
       cell.dataset.hour = String(h);
-      cell.addEventListener('click', (e) => {
-        if (e.target !== cell) return;
-        const slot = new Date(this._cursorDate);
-        slot.setHours(h, 0, 0, 0);
-        this._openEventPopover({
-          mode: 'create',
-          startAt: slot.getTime(),
-          endAt: slot.getTime() + 60 * 60 * 1000,
-        }, cell.getBoundingClientRect());
-      });
       col.appendChild(cell);
     }
     grid.appendChild(hours);
     grid.appendChild(col);
+    this._installDragCreate(col, this._cursorDate);
 
     // Current-time indicator (only if cursor is on today).
     if (sameDay(this._cursorDate, new Date())) {
@@ -752,6 +719,104 @@ class PlannerEditorPane implements IDisposable {
     }
 
     body.appendChild(grid);
+  }
+
+  // ── Drag-to-create on week / day time columns ───────────────────────
+
+  /**
+   * Standard digital-calendar interaction: pointerdown on a time-slot,
+   * drag to set the range, release to open the create popover with the
+   * range prefilled. A bare click (no drag) defaults to a 1-hour event
+   * starting on the snapped boundary closest to the click.
+   *
+   * The ghost rectangle previews the snap target during the drag (15-min
+   * granularity) so the user can see what they'll get before releasing.
+   *
+   * Events that sit absolutely above the column have their own click
+   * handlers with stopPropagation, so pointerdown on an event bar never
+   * reaches this column-level handler.
+   */
+  private _installDragCreate(col: HTMLElement, day: Date): void {
+    const SNAP_MIN = 15;
+    const SNAP_MS = SNAP_MIN * 60_000;
+    const DAY_MS = 24 * 3_600_000;
+    const MIN_EVENT_MS = 30 * 60_000;
+    const DRAG_THRESHOLD_PX = 3;
+
+    col.addEventListener('pointerdown', (e) => {
+      // Only start from a time-slot cell — not from an event bar that
+      // happens to sit above. Event bars have their own click handlers.
+      if (!(e.target instanceof HTMLElement)) return;
+      const isCell = e.target.classList.contains('planner-week__cell')
+                  || e.target.classList.contains('planner-day__cell');
+      if (!isCell) return;
+      e.preventDefault();
+
+      const colRect = col.getBoundingClientRect();
+      const startY = Math.max(0, Math.min(colRect.height, e.clientY - colRect.top));
+      let endY = startY;
+      let moved = false;
+
+      // Convert Y position → ms, snapped to SNAP_MIN.
+      const dayStartMs = startOfDay(day).getTime();
+      const yToMs = (y: number): number => {
+        const raw = dayStartMs + (y / colRect.height) * DAY_MS;
+        return Math.round(raw / SNAP_MS) * SNAP_MS;
+      };
+      const msToPct = (ms: number): number => ((ms - dayStartMs) / DAY_MS) * 100;
+
+      // Live preview ghost.
+      const ghost = el('div', 'planner-cal__ghost');
+      col.appendChild(ghost);
+
+      const drawGhost = () => {
+        const a = Math.min(startY, endY);
+        const b = Math.max(startY, endY);
+        const startMs = yToMs(a);
+        let endMs = yToMs(b);
+        if (!moved || endMs - startMs < MIN_EVENT_MS) endMs = startMs + MIN_EVENT_MS;
+        const topPct = msToPct(startMs);
+        const heightPct = ((endMs - startMs) / DAY_MS) * 100;
+        ghost.style.top = `${topPct}%`;
+        ghost.style.height = `${heightPct}%`;
+        ghost.textContent = `${formatTimeShort(startMs)} – ${formatTimeShort(endMs)}`;
+      };
+      drawGhost();
+
+      try { col.setPointerCapture(e.pointerId); } catch { /* ok */ }
+
+      const onMove = (ev: PointerEvent) => {
+        const delta = Math.abs(ev.clientY - e.clientY);
+        if (delta > DRAG_THRESHOLD_PX) moved = true;
+        endY = Math.max(0, Math.min(colRect.height, ev.clientY - colRect.top));
+        drawGhost();
+      };
+      const onUp = (ev: PointerEvent) => {
+        col.removeEventListener('pointermove', onMove);
+        col.removeEventListener('pointerup', onUp);
+        col.removeEventListener('pointercancel', onUp);
+        try { col.releasePointerCapture(ev.pointerId); } catch { /* ok */ }
+
+        const a = Math.min(startY, endY);
+        const b = Math.max(startY, endY);
+        const startMs = yToMs(a);
+        let endMs = yToMs(b);
+        // Bare click → 1h default. Drag (any meaningful movement) → snapped range.
+        if (!moved || endMs - startMs < MIN_EVENT_MS) endMs = startMs + (moved ? MIN_EVENT_MS : 60 * 60_000);
+
+        const ghostRect = ghost.getBoundingClientRect();
+        ghost.remove();
+
+        this._openEventPopover({
+          mode: 'create',
+          startAt: startMs,
+          endAt: endMs,
+        }, ghostRect);
+      };
+      col.addEventListener('pointermove', onMove);
+      col.addEventListener('pointerup', onUp);
+      col.addEventListener('pointercancel', onUp);
+    });
   }
 
   // ── Event popover (create + edit) ───────────────────────────────────
@@ -1002,6 +1067,10 @@ function formatHour(h: number): string {
   if (h === 12) return '12 PM';
   if (h < 12) return `${h} AM`;
   return `${h - 12} PM`;
+}
+
+function formatTimeShort(ms: number): string {
+  return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
 function formatTimeRange(ev: PlannerEvent): string {
