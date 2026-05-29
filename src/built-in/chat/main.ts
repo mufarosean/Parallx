@@ -39,6 +39,7 @@ import type {
   ICancellationToken,
   IChatMessage,
   IChatResponseChunk,
+  IToolCall,
 } from '../../services/chatTypes.js';
 import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, IGlobalStorageService, ISurfaceRouterService, IAutonomyLogService, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator } from '../../services/serviceTypes.js';
 import { SettingsRegistryService, setGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
@@ -2398,7 +2399,90 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
-  // 9a-bis. Recent autonomy events — read-only, body-free feed for the
+  // 9a-ter. Tool-enabled one-shot query — runs a bounded agentic loop with a
+  // caller-selected subset of the registered tools and returns the final text.
+  // Unlike `chat.getInlineAIProvider` (a raw, no-tools model call), this lets a
+  // surface like the dashboard News-brief widget actually USE tools — e.g. the
+  // web-research webSearch/webFetch tools — so the model researches real
+  // sources instead of fabricating an answer from parametric memory.
+  //
+  // Contract: { system?, user, toolNames?, maxIterations? } → final assistant
+  // text (string). Defaults to the web-research tools. No token caps,
+  // temperature, or think overrides — model behaviour matches regular chat.
+  context.subscriptions.push(
+    api.commands.registerCommand('chat.runToolQuery', async (...args: unknown[]) => {
+      const opts = (args[0] ?? {}) as {
+        system?: string;
+        user?: string;
+        toolNames?: readonly string[];
+        maxIterations?: number;
+      };
+      const userPrompt = typeof opts.user === 'string' ? opts.user.trim() : '';
+      if (!userPrompt) {
+        throw new Error('runToolQuery: a non-empty "user" prompt is required.');
+      }
+
+      // Resolve the requested tools from the full registered set (platform +
+      // skill tools). Default to the web-research tools.
+      const wanted = new Set(
+        opts.toolNames && opts.toolNames.length > 0
+          ? opts.toolNames
+          : ['webSearch', 'webFetch'],
+      );
+      const tools = mergeRuntimeToolDefinitions(dataService.getToolDefinitions(), false)
+        .filter((t) => wanted.has(t.name));
+      if (tools.length === 0) {
+        throw new Error(
+          `runToolQuery: none of the requested tools (${[...wanted].join(', ')}) are available. Enable the Web Research extension and configure a Brave Search API key in AI Settings.`,
+        );
+      }
+
+      const messages: IChatMessage[] = [];
+      if (typeof opts.system === 'string' && opts.system.trim()) {
+        messages.push({ role: 'system', content: opts.system });
+      }
+      messages.push({ role: 'user', content: userPrompt });
+
+      // Stable turn id so webSearch result URLs land in the same per-turn
+      // provenance set that webFetch validates against (see ext/web-research).
+      const turnId = `dashboard-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const token: ICancellationToken = {
+        isCancellationRequested: false,
+        onCancellationRequested: () => ({ dispose() { /* noop */ } }),
+        turnId,
+      };
+
+      const maxIters = Math.max(1, Math.min(12, opts.maxIterations ?? 8));
+      let finalText = '';
+      for (let i = 0; i < maxIters; i++) {
+        let content = '';
+        let toolCalls: IToolCall[] = [];
+        for await (const chunk of dataService.sendChatRequest(messages, { tools })) {
+          if (chunk.content) content += chunk.content;
+          if (chunk.toolCalls && chunk.toolCalls.length) toolCalls = toolCalls.concat(chunk.toolCalls);
+          if (chunk.done) break;
+        }
+        messages.push({
+          role: 'assistant',
+          content,
+          toolCalls: toolCalls.length ? toolCalls : undefined,
+        });
+        finalText = content;
+        if (toolCalls.length === 0) break;
+        for (const tc of toolCalls) {
+          const result = await invokeRuntimeToolWithSkillSupport(
+            tc.function.name,
+            (tc.function.arguments ?? {}) as Record<string, unknown>,
+            token,
+          );
+          messages.push({ role: 'tool', toolName: tc.function.name, content: result.content });
+        }
+      }
+      return finalText.trim();
+    }),
+  );
+
+
   // dashboard "Autonomy activity" widget (and any other surface that wants a
   // compact view of background agent activity). Mirrors the
   // `chat.getInlineAIProvider` pattern: the chat extension owns the autonomy

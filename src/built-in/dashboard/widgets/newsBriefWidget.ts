@@ -27,29 +27,6 @@ const DEFAULT_CONFIG: NewsBriefConfig = {
 
 const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6z"/></svg>';
 
-// ─── AI provider lookup ──────────────────────────────────────────────────────
-
-interface InlineAIProvider {
-  sendChatRequest(
-    messages: readonly { role: 'system' | 'user' | 'assistant' | 'tool'; content: string }[],
-    options?: { temperature?: number; maxTokens?: number },
-    signal?: AbortSignal,
-  ): AsyncIterable<{ content: string; done: boolean }>;
-}
-
-async function getInlineAIProvider(api: unknown): Promise<InlineAIProvider | null> {
-  const apiTyped = api as { commands?: { executeCommand<T>(id: string): Promise<T> } };
-  if (!apiTyped.commands?.executeCommand) return null;
-  try {
-    const provider = await apiTyped.commands.executeCommand<InlineAIProvider | undefined>(
-      'chat.getInlineAIProvider',
-    );
-    return provider ?? null;
-  } catch {
-    return null;
-  }
-}
-
 // ─── Markdown rendering (lightweight; full markdown is a polish item) ────────
 
 function renderMarkdownToDom(markdown: string): DocumentFragment {
@@ -184,29 +161,33 @@ export const NEWS_BRIEF_WIDGET: WidgetTypeRegistration<NewsBriefConfig> = {
   defaultRefreshPolicy: { kind: 'manual' },
 
   async refresh(ctx: WidgetRefreshContext<NewsBriefConfig>): Promise<string> {
-    const provider = await getInlineAIProvider(ctx.api);
-    if (!provider) {
-      throw new Error('AI provider not available. Ensure the Chat tool is enabled.');
+    const api = ctx.api as { commands?: { executeCommand<T>(id: string, arg?: unknown): Promise<T> } };
+    if (!api.commands?.executeCommand) {
+      throw new Error('Chat tool not available. Ensure the Chat extension is enabled.');
     }
     const cfg = normalize(ctx.config);
-    const messages = [
-      {
-        role: 'system' as const,
-        content: 'You are a concise daily news summarizer. Produce well-formatted Markdown with a top-line heading and a numbered list of stories. Each story is one sentence, followed by an italicized source name. Never fabricate sources — if you don\'t know a real source, omit the source line. Do not include emojis.',
-      },
-      {
-        role: 'user' as const,
-        content: buildPrompt(cfg),
-      },
-    ];
 
-    let buffer = '';
-    const iter = provider.sendChatRequest(messages, { temperature: 0.4, maxTokens: 1024 });
-    for await (const chunk of iter) {
-      if (chunk.content) buffer += chunk.content;
-      if (chunk.done) break;
+    // Run a real, tool-enabled turn: the model uses the web-research tools
+    // (webSearch → webFetch) to pull current, citable stories rather than
+    // inventing them from memory. Routes through chat.runToolQuery, which
+    // owns the agentic tool loop.
+    const system = [
+      'You are a careful local-news researcher. You have two tools: webSearch (Brave) and webFetch.',
+      'Workflow: (1) webSearch for current top stories for the requested location and date; (2) webFetch 2-3 of the most relevant result URLs to confirm details; (3) write the brief ONLY from what those sources actually say.',
+      'Never fabricate stories, numbers, or sources. If the web tools return nothing usable, say so plainly instead of inventing news.',
+      'Output: a single Markdown brief — a top-line heading, then a numbered list. Each item is one concise sentence followed by a Markdown link to its source, e.g. "[source](https://…)". No emojis, no preamble, no closing remarks.',
+    ].join(' ');
+
+    const result = await api.commands.executeCommand<string>('chat.runToolQuery', {
+      system,
+      user: buildPrompt(cfg),
+      toolNames: ['webSearch', 'webFetch'],
+    });
+    const text = (result ?? '').trim();
+    if (!text) {
+      throw new Error('The model returned no brief. Check that a model is loaded and the Brave Search API key is set in AI Settings → Web Research.');
     }
-    return buffer.trim();
+    return text;
   },
 
   createWidget(container: HTMLElement, ctx: WidgetContext<NewsBriefConfig>): WidgetHandle {
@@ -284,8 +265,7 @@ function normalize(raw: unknown): NewsBriefConfig {
 
 function buildPrompt(cfg: NewsBriefConfig): string {
   const today = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-  let prompt = `Write a brief for ${today} covering the top ${cfg.topN} news stories relevant to ${cfg.location}.`;
-  prompt += `\n\nFormat:\n- A "Top stories" heading.\n- A numbered list, one story per item.\n- Each item: a single concise sentence summarizing the story.\n- If known, append an italic source like "*— Source*" at the end of the item.`;
+  let prompt = `Research and write a news brief for ${today} covering the top ${cfg.topN} current stories relevant to ${cfg.location}. Use webSearch to find today's stories, then webFetch the best sources to confirm the details before writing. Every item must link to a real source URL returned by the tools.`;
   if (cfg.extraInstructions.trim()) {
     prompt += `\n\nAdditional instructions: ${cfg.extraInstructions.trim()}`;
   }
