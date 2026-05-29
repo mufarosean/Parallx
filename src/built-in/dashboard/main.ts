@@ -164,25 +164,31 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     context.subscriptions.push(
       api.chat.registerTool('renderToWidget', {
         description:
-          'Deliver finished content to a dashboard widget. Call this once you have gathered and formatted the result a widget asked for. The widget instructed you which instanceId to target. Content is Markdown and replaces whatever the widget currently shows.',
+          'Deliver finished content to a dashboard widget. Call this once you have gathered and formatted the result a widget asked for. Identify the target either by the instanceId the widget gave you, or by its title (the name shown on the widget) — supply at least one. Content is Markdown and replaces whatever the widget currently shows.',
         parameters: {
           type: 'object',
           properties: {
-            instanceId: { type: 'string', description: 'The widget instance id provided in the request. Deliver to exactly this id.' },
+            instanceId: { type: 'string', description: 'The widget instance id provided in the request. Deliver to exactly this id when you have it.' },
+            title: { type: 'string', description: 'The widget\u2019s title, used to find it when no instanceId is given (e.g. the user said "update my Morning News widget"). Must match exactly one widget.' },
             content: { type: 'string', description: 'The finished Markdown to display in the widget.' },
           },
-          required: ['instanceId', 'content'],
+          required: ['content'],
         },
         handler: async (args: Record<string, unknown>) => {
           const instanceId = typeof args.instanceId === 'string' ? args.instanceId.trim() : '';
+          const title = typeof args.title === 'string' ? args.title.trim() : '';
           const content = typeof args.content === 'string' ? args.content : '';
-          if (!instanceId) return { isError: true, content: 'Error: instanceId is required.' };
           if (!_dataService) return { isError: true, content: 'Error: dashboard is not ready.' };
-          const widget = await _dataService.getWidget(instanceId);
-          if (!widget) return { isError: true, content: `Error: no widget with instanceId "${instanceId}".` };
           if (!content.trim()) return { isError: true, content: 'Error: content is empty.' };
-          await _dataService.setWidgetCachedOutput(instanceId, content);
-          return { isError: false, content: `Delivered ${content.length} characters to widget ${instanceId}.` };
+          let widget = instanceId ? await _dataService.getWidget(instanceId) : null;
+          if (!widget && title) widget = await _dataService.findWidgetByTitle(title);
+          if (!widget) {
+            if (instanceId) return { isError: true, content: `Error: no widget with instanceId "${instanceId}".` };
+            if (title) return { isError: true, content: `Error: no single widget titled "${title}" (it may not exist or more than one shares that title).` };
+            return { isError: true, content: 'Error: provide an instanceId or a title to identify the target widget.' };
+          }
+          await _dataService.setWidgetCachedOutput(widget.id, content);
+          return { isError: false, content: `Delivered ${content.length} characters to widget ${widget.id}.` };
         },
         requiresConfirmation: false,
       }),

@@ -237,6 +237,32 @@ export class DashboardDataService extends Disposable {
     return rowToWidget(res.row);
   }
 
+  /**
+   * Resolve a widget by its user-set appearance title (case-insensitive,
+   * trimmed). Lets the AI target a widget the user named — "render this to my
+   * 'Morning News' widget" — without the user ever needing the raw instanceId.
+   * Returns null if no widget matches or the title is ambiguous (more than one
+   * widget shares it), so callers can fall back to an explicit id.
+   */
+  async findWidgetByTitle(title: string): Promise<DashboardWidgetRow | null> {
+    const needle = title.trim().toLowerCase();
+    if (!needle) return null;
+    const res = await this._db.all(
+      `SELECT id, page_id, widget_type_id, row, col, row_span, col_span, position,
+              config_json, refresh_policy_json, appearance_json, cached_output, cached_at, status,
+              error_message, created_at, updated_at
+         FROM dashboard_widgets`,
+    );
+    if (res.error) {
+      console.error('[DashboardDataService] findWidgetByTitle failed:', res.error.message);
+      return null;
+    }
+    const matches = (res.rows ?? [])
+      .map(rowToWidget)
+      .filter((w) => (w.appearance.title ?? '').trim().toLowerCase() === needle);
+    return matches.length === 1 ? matches[0] : null;
+  }
+
   async createWidget(input: {
     pageId: string;
     widgetTypeId: string;

@@ -19,10 +19,19 @@ import { renderMarkdownToDom } from './markdownRenderer.js';
 
 interface CustomAiConfig {
   readonly prompt: string;
+  /**
+   * Optional name of a skill (a `.parallx/skills/<name>/SKILL.md` the user
+   * authored) that the AI should apply when filling this widget. This is the
+   * "write a skill for a particular widget" affordance: the user packages all
+   * the detailed, reusable guidance in a skill file, then points the widget at
+   * it by name. Empty = no skill, just the raw prompt.
+   */
+  readonly skill: string;
 }
 
 const DEFAULT_CONFIG: CustomAiConfig = {
   prompt: '',
+  skill: '',
 };
 
 const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 0-3 3v.5A3 3 0 0 0 6 9v.5A3 3 0 0 0 4.5 12 3 3 0 0 0 6 14.5V15a3 3 0 0 0 3 3v.5a3 3 0 0 0 6 0V18a3 3 0 0 0 3-3v-.5A3 3 0 0 0 19.5 12 3 3 0 0 0 18 9.5V9a3 3 0 0 0-3-3v-.5A3 3 0 0 0 12 3z"/><path d="M12 3v18"/></svg>';
@@ -43,6 +52,12 @@ export const CUSTOM_AI_WIDGET: WidgetTypeRegistration<CustomAiConfig> = {
         description: 'What should the AI gather or write? It runs in your active chat session with all its tools.',
         placeholder: 'e.g. "Summarize my unread email into a short bulleted list."',
       },
+      skill: {
+        type: 'string',
+        label: 'Skill (optional)',
+        description: 'Name of a skill you authored under .parallx/skills/. The AI applies it when filling this widget — write the skill once, reuse its full instructions here.',
+        placeholder: 'e.g. morning-news',
+      },
     },
   },
   defaultRefreshPolicy: { kind: 'manual' },
@@ -52,7 +67,7 @@ export const CUSTOM_AI_WIDGET: WidgetTypeRegistration<CustomAiConfig> = {
     if (!api.commands?.executeCommand) {
       throw new Error('Chat tool not available. Ensure the Chat extension is enabled.');
     }
-    const cfg = normalize(ctx.config);
+    const cfg = normalizeCustomAiConfig(ctx.config);
     if (!cfg.prompt.trim()) {
       return '_No prompt set. Open this widget\u2019s settings and describe what you want the AI to produce._';
     }
@@ -61,7 +76,7 @@ export const CUSTOM_AI_WIDGET: WidgetTypeRegistration<CustomAiConfig> = {
     // session to do the work with its normal tools, then deliver the finished
     // Markdown back via the shared `renderToWidget` tool. It arrives
     // asynchronously and repaints the widget when it lands.
-    const prompt = buildPrompt(cfg, ctx.instanceId);
+    const prompt = buildCustomAiPrompt(cfg, ctx.instanceId);
     await api.commands.executeCommand('chat.submitPrompt', { text: prompt });
 
     // Keep the last good output visible while the new one is produced — prepend
@@ -131,10 +146,11 @@ export const CUSTOM_AI_WIDGET: WidgetTypeRegistration<CustomAiConfig> = {
   },
 };
 
-function normalize(raw: unknown): CustomAiConfig {
+export function normalizeCustomAiConfig(raw: unknown): CustomAiConfig {
   const cfg = (raw ?? {}) as Partial<CustomAiConfig>;
   return {
     prompt: typeof cfg.prompt === 'string' ? cfg.prompt : '',
+    skill: typeof cfg.skill === 'string' ? cfg.skill : '',
   };
 }
 
@@ -144,13 +160,18 @@ function stripRefreshBanner(text: string): string {
   return text.replace(/^_(?:Refreshing|Working)[^\n]*_\s*\n+/, '').trim();
 }
 
-function buildPrompt(cfg: CustomAiConfig, instanceId: string): string {
-  const lines = [
+export function buildCustomAiPrompt(cfg: CustomAiConfig, instanceId: string): string {
+  const lines: string[] = [];
+  const skill = cfg.skill.trim();
+  if (skill) {
+    lines.push(`Use the \`${skill}\` skill for this task.`, '');
+  }
+  lines.push(
     cfg.prompt.trim(),
     '',
     'Then deliver the result to my dashboard widget:',
     '- Format the result as clean Markdown (a short heading, then lists or short paragraphs). No preamble, no emojis. Use only information you can actually verify with your tools — never invent facts, numbers, or sources.',
     `- Call the renderToWidget tool with instanceId "${instanceId}" and the finished Markdown as content. This is how the result reaches the widget — do not skip it.`,
-  ];
+  );
   return lines.join('\n');
 }
