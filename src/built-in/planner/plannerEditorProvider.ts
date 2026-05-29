@@ -804,13 +804,23 @@ class PlannerEditorPane implements IDisposable {
         // Bare click → 1h default. Drag (any meaningful movement) → snapped range.
         if (!moved || endMs - startMs < MIN_EVENT_MS) endMs = startMs + (moved ? MIN_EVENT_MS : 60 * 60_000);
 
+        // Re-render the ghost so it matches the final committed range (in
+        // case the drag ended mid-snap interval). Then hand it off to the
+        // popover — the ghost survives until the popover closes, so the
+        // user sees their selection while they fill in details.
+        const finalTopPct = msToPct(startMs);
+        const finalHeightPct = ((endMs - startMs) / DAY_MS) * 100;
+        ghost.style.top = `${finalTopPct}%`;
+        ghost.style.height = `${finalHeightPct}%`;
+        ghost.textContent = `${formatTimeShort(startMs)} – ${formatTimeShort(endMs)}`;
+
         const ghostRect = ghost.getBoundingClientRect();
-        ghost.remove();
 
         this._openEventPopover({
           mode: 'create',
           startAt: startMs,
           endAt: endMs,
+          pendingGhost: ghost,
         }, ghostRect);
       };
       col.addEventListener('pointermove', onMove);
@@ -829,12 +839,29 @@ class PlannerEditorPane implements IDisposable {
    * navigates away.
    */
   private _openEventPopover(
-    init: { mode: 'create'; startAt: number; endAt: number }
+    init: { mode: 'create'; startAt: number; endAt: number; pendingGhost?: HTMLElement | null }
         | { mode: 'edit'; event: PlannerEvent },
     anchor: DOMRect,
   ): void {
+    // Pending ghost from a drag selection — survives onto the popover so
+    // the user sees what they're creating while they fill it in. Cleared
+    // by close(), so cancel / escape / outside-click / save all dispose
+    // of it without flicker.
+    const pendingGhost = init.mode === 'create' ? init.pendingGhost ?? null : null;
+
+    const close = () => {
+      try { overlay.remove(); } catch { /* noop */ }
+      if (pendingGhost && pendingGhost.parentElement) {
+        try { pendingGhost.remove(); } catch { /* noop */ }
+      }
+      document.removeEventListener('keydown', onKey);
+    };
+
     const overlay = el('div', 'planner-popover-overlay');
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    // Highlight the pending ghost while the popover is open — it's the
+    // visible "this is what you're creating" anchor.
+    if (pendingGhost) pendingGhost.classList.add('planner-cal__ghost--pending');
 
     const pop = el('div', 'planner-popover');
     pop.style.position = 'fixed';
@@ -868,7 +895,7 @@ class PlannerEditorPane implements IDisposable {
     const closeBtn = el('button', 'planner-popover__close');
     closeBtn.type = 'button';
     closeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-    closeBtn.addEventListener('click', () => overlay.remove());
+    closeBtn.addEventListener('click', () => close());
     head.appendChild(closeBtn);
     pop.appendChild(head);
 
@@ -944,7 +971,7 @@ class PlannerEditorPane implements IDisposable {
       delBtn.addEventListener('click', async () => {
         if (!seed.eventId) return;
         await this._data.removeEvent(seed.eventId);
-        overlay.remove();
+        close();
       });
       foot.appendChild(delBtn);
     }
@@ -953,7 +980,7 @@ class PlannerEditorPane implements IDisposable {
     const cancel = el('button', 'planner-popover__btn');
     cancel.type = 'button';
     cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', () => overlay.remove());
+    cancel.addEventListener('click', () => close());
     foot.appendChild(cancel);
     const save = el('button', 'planner-popover__btn planner-popover__btn--primary');
     save.type = 'button';
@@ -991,7 +1018,7 @@ class PlannerEditorPane implements IDisposable {
             description: descInput.value.trim() || null,
           });
         }
-        overlay.remove();
+        close();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         await this._api.window.showErrorMessage(`Could not save event: ${msg}`);
@@ -1005,12 +1032,12 @@ class PlannerEditorPane implements IDisposable {
     document.body.appendChild(overlay);
 
     // Keyboard: Enter saves (when not in textarea), Escape closes.
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); }
+    function onKey(e: KeyboardEvent): void {
+      if (e.key === 'Escape') { close(); }
       else if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement)) {
         e.preventDefault(); void doSave();
       }
-    };
+    }
     document.addEventListener('keydown', onKey);
     overlay.addEventListener('animationend', () => titleInput.focus(), { once: true });
     // Failsafe focus if animation doesn't fire (e.g. reduced-motion).
