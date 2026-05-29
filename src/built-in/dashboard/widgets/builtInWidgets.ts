@@ -8,6 +8,7 @@ import type { DashboardRegistry } from '../dashboardTypes.js';
 import { CLOCK_AND_LINKS_WIDGET } from './clockAndLinksWidget.js';
 import { RECENT_FILES_WIDGET } from './recentFilesWidget.js';
 import { NEWS_BRIEF_WIDGET } from './newsBriefWidget.js';
+import { IMAGE_WIDGET } from './imageWidget.js';
 
 interface ApiSurfaceUsedByWidgets {
   commands: { executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T> };
@@ -26,6 +27,7 @@ export function registerBuiltInDashboardWidgets(
     registry.registerWidgetType(CLOCK_AND_LINKS_WIDGET),
     registry.registerWidgetType(RECENT_FILES_WIDGET),
     registry.registerWidgetType(NEWS_BRIEF_WIDGET),
+    registry.registerWidgetType(IMAGE_WIDGET),
   ];
 
   return toDisposable(() => {

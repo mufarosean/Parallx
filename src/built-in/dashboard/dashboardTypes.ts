@@ -163,6 +163,7 @@ export interface DashboardPageRow {
   readonly id: string;
   readonly name: string;
   readonly position: number;
+  readonly headerHidden: boolean;
   readonly createdAt: number;
   readonly updatedAt: number;
 }

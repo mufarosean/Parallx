@@ -64,6 +64,89 @@ function isHexColor(v: string | null): v is string {
   return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
 }
 
+interface SelectOption { value: string; label: string; }
+interface CustomSelect {
+  el: HTMLElement;
+  getValue(): string;
+  setValue(value: string): void;
+}
+
+/**
+ * A fully self-styled dropdown. Native <select> popups render with OS chrome
+ * that CSS cannot reach, so we build a trigger button plus a fixed-positioned
+ * popup list that matches the Parallx surface.
+ */
+function createSelect(options: SelectOption[], initial: string, onChange: (value: string) => void): CustomSelect {
+  let value = initial;
+
+  const wrap = el('div', 'dashboard-select');
+  const trigger = el('button', 'dashboard-select__trigger');
+  trigger.type = 'button';
+  const labelSpan = el('span', 'dashboard-select__label');
+  trigger.appendChild(labelSpan);
+  const chevron = el('span', 'dashboard-select__chevron');
+  chevron.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+  trigger.appendChild(chevron);
+  wrap.appendChild(trigger);
+
+  const labelFor = (v: string) => options.find(o => o.value === v)?.label ?? '';
+  const syncLabel = () => { labelSpan.textContent = labelFor(value); };
+  syncLabel();
+
+  let popup: HTMLElement | null = null;
+
+  const close = () => {
+    if (!popup) return;
+    popup.remove();
+    popup = null;
+    wrap.classList.remove('dashboard-select--open');
+    document.removeEventListener('pointerdown', onOutside, true);
+    window.removeEventListener('resize', close);
+    window.removeEventListener('scroll', close, true);
+  };
+
+  const onOutside = (e: PointerEvent) => {
+    const t = e.target as Node;
+    if (!popup?.contains(t) && !wrap.contains(t)) close();
+  };
+
+  const open = () => {
+    if (popup) { close(); return; }
+    popup = el('div', 'dashboard-select__popup');
+    for (const opt of options) {
+      const item = el('button', 'dashboard-select__option');
+      item.type = 'button';
+      item.textContent = opt.label;
+      if (opt.value === value) item.classList.add('dashboard-select__option--active');
+      item.addEventListener('click', () => {
+        value = opt.value;
+        syncLabel();
+        close();
+        onChange(value);
+      });
+      popup.appendChild(item);
+    }
+    const rect = trigger.getBoundingClientRect();
+    popup.style.position = 'fixed';
+    popup.style.left = `${rect.left}px`;
+    popup.style.top = `${rect.bottom + 4}px`;
+    popup.style.width = `${rect.width}px`;
+    document.body.appendChild(popup);
+    wrap.classList.add('dashboard-select--open');
+    document.addEventListener('pointerdown', onOutside, true);
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', close, true);
+  };
+
+  trigger.addEventListener('click', open);
+
+  return {
+    el: wrap,
+    getValue: () => value,
+    setValue: (v: string) => { value = v; syncLabel(); },
+  };
+}
+
 const DASHBOARD_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>';
 
 // ─── Provider ────────────────────────────────────────────────────────────────
@@ -141,7 +224,7 @@ class DashboardEditorPane implements IDisposable {
 
     // Build chrome + grid.
     this._buildShell(page.name);
-    this._restorePaneHeaderState();
+    this._restorePaneHeaderState(page.headerHidden);
     await this._renderAllWidgets();
 
     // Subscribe to data changes (widget add / remove / config edits etc.)
@@ -295,27 +378,22 @@ class DashboardEditorPane implements IDisposable {
 
   // ── Pane header collapse ───────────────────────────────────────────────
 
-  private _paneHeaderHiddenKey(): string {
-    return `dashboard.headerHidden:${this._pageId}`;
-  }
-
   private _togglePaneHeader(): void {
     const root = this._root;
     if (!root) return;
     const next = !root.classList.contains('dashboard-pane--header-hidden');
     root.classList.toggle('dashboard-pane--header-hidden', next);
-    try {
-      window.localStorage.setItem(this._paneHeaderHiddenKey(), next ? '1' : '0');
-    } catch { /* localStorage unavailable */ }
+    // Persist in the workspace DB (travels with the workspace, survives
+    // relaunch) — not renderer localStorage, which M53 treats as legacy and
+    // does not migrate for unprefixed keys.
+    void this._data.setPageHeaderHidden(this._pageId, next).catch((err) => {
+      console.error('[Dashboard] setPageHeaderHidden failed:', err);
+    });
   }
 
-  private _restorePaneHeaderState(): void {
+  private _restorePaneHeaderState(hidden: boolean): void {
     const root = this._root;
     if (!root) return;
-    let hidden = false;
-    try {
-      hidden = window.localStorage.getItem(this._paneHeaderHiddenKey()) === '1';
-    } catch { /* ignore */ }
     if (hidden) root.classList.add('dashboard-pane--header-hidden');
   }
 
@@ -892,38 +970,49 @@ class DashboardEditorPane implements IDisposable {
       const maxRowSpan = typeReg?.sizeBounds?.maxRowSpan ?? 12;
 
       card.classList.add('dashboard-widget--resizing');
-      const ghost = el('div', 'dashboard-widget__ghost');
-      this._gridEl!.appendChild(ghost);
-      this._placeAt(ghost, origPlacement);
 
+      // Live-resize the card itself (rAF-batched) so its content reflows as
+      // the user drags and stays visible — no ghost, no dimming. Spans snap to
+      // whole cells, which is also the commit granularity.
       let lastTarget = origPlacement;
-      const onMove = (ev: PointerEvent) => {
-        const dx = ev.clientX - startX;
-        const dy = ev.clientY - startY;
-        const deltaCol = Math.round(dx / cellWidth);
-        const deltaRow = Math.round(dy / cellHeight);
-        const targetCol = Math.max(minColSpan, Math.min(maxColSpan, origPlacement.colSpan + deltaCol));
-        const targetRow = Math.max(minRowSpan, Math.min(maxRowSpan, origPlacement.rowSpan + deltaRow));
+      let pendingDx = 0;
+      let pendingDy = 0;
+      let rafId = 0;
+      const flush = () => {
+        rafId = 0;
+        const deltaCol = Math.round(pendingDx / cellWidth);
+        const deltaRow = Math.round(pendingDy / cellHeight);
+        const wantCol = Math.max(minColSpan, Math.min(maxColSpan, origPlacement.colSpan + deltaCol));
+        const wantRow = Math.max(minRowSpan, Math.min(maxRowSpan, origPlacement.rowSpan + deltaRow));
         // Clamp so we don't extend past the right edge of the grid.
-        const colSpan = Math.min(targetCol, DASHBOARD_GRID_COLS - origPlacement.col);
-        lastTarget = { ...origPlacement, colSpan, rowSpan: targetRow };
-        this._placeAt(ghost, lastTarget);
+        const colSpan = Math.min(wantCol, DASHBOARD_GRID_COLS - origPlacement.col);
+        const rowSpan = wantRow;
+        if (colSpan === lastTarget.colSpan && rowSpan === lastTarget.rowSpan) return;
+        lastTarget = { ...origPlacement, colSpan, rowSpan };
+        card.style.gridColumn = `${lastTarget.col + 1} / span ${colSpan}`;
+        card.style.gridRow = `${lastTarget.row + 1} / span ${rowSpan}`;
+      };
+      const onMove = (ev: PointerEvent) => {
+        pendingDx = ev.clientX - startX;
+        pendingDy = ev.clientY - startY;
+        if (!rafId) rafId = requestAnimationFrame(flush);
       };
       const onUp = async (ev: PointerEvent) => {
+        if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
         handle.removeEventListener('pointermove', onMove);
         handle.removeEventListener('pointerup', onUp);
         handle.removeEventListener('pointercancel', onUp);
         try { handle.releasePointerCapture(ev.pointerId); } catch { /* noop */ }
-        ghost.remove();
         card.classList.remove('dashboard-widget--resizing');
         if (lastTarget.colSpan !== origPlacement.colSpan || lastTarget.rowSpan !== origPlacement.rowSpan) {
-          card.style.gridRow = `${lastTarget.row + 1} / span ${lastTarget.rowSpan}`;
-          card.style.gridColumn = `${lastTarget.col + 1} / span ${lastTarget.colSpan}`;
           try {
             await this._data.updateWidgetPlacement(widgetId, lastTarget);
             inst.row = { ...inst.row, placement: lastTarget };
           } catch (err) {
             console.warn('[Dashboard] commit resize failed:', err);
+            // Revert to the original span on failure.
+            card.style.gridColumn = `${origPlacement.col + 1} / span ${origPlacement.colSpan}`;
+            card.style.gridRow = `${origPlacement.row + 1} / span ${origPlacement.rowSpan}`;
           }
         }
       };
@@ -1008,27 +1097,23 @@ class DashboardEditorPane implements IDisposable {
     const bgLabel = el('label', 'dashboard-field__label');
     bgLabel.textContent = 'Background';
     bgBlock.appendChild(bgLabel);
-    const bgSelect = document.createElement('select');
-    bgSelect.className = 'dashboard-field__input';
-    for (const [value, label] of [['default', 'Theme default'], ['transparent', 'Transparent'], ['custom', 'Custom color']] as const) {
-      const o = document.createElement('option');
-      o.value = value; o.textContent = label;
-      bgSelect.appendChild(o);
-    }
-    bgSelect.value = draft.background;
-    bgBlock.appendChild(bgSelect);
     const bgColor = document.createElement('input');
     bgColor.type = 'color';
     bgColor.className = 'dashboard-field__color';
     bgColor.value = isHexColor(draft.backgroundColor) ? draft.backgroundColor! : '#1e1e1e';
     bgColor.style.display = draft.background === 'custom' ? '' : 'none';
+    const bgSelect = createSelect(
+      [{ value: 'default', label: 'Theme default' }, { value: 'transparent', label: 'Transparent' }, { value: 'custom', label: 'Custom color' }],
+      draft.background,
+      (v) => {
+        draft.background = v as WidgetAppearance['background'];
+        bgColor.style.display = draft.background === 'custom' ? '' : 'none';
+        if (draft.background === 'custom') draft.backgroundColor = bgColor.value;
+        preview();
+      },
+    );
+    bgBlock.appendChild(bgSelect.el);
     bgBlock.appendChild(bgColor);
-    bgSelect.addEventListener('change', () => {
-      draft.background = bgSelect.value as WidgetAppearance['background'];
-      bgColor.style.display = draft.background === 'custom' ? '' : 'none';
-      if (draft.background === 'custom') draft.backgroundColor = bgColor.value;
-      preview();
-    });
     bgColor.addEventListener('input', () => { draft.backgroundColor = bgColor.value; preview(); });
     body.appendChild(bgBlock);
 
@@ -1037,27 +1122,23 @@ class DashboardEditorPane implements IDisposable {
     const bdLabel = el('label', 'dashboard-field__label');
     bdLabel.textContent = 'Border';
     bdBlock.appendChild(bdLabel);
-    const bdSelect = document.createElement('select');
-    bdSelect.className = 'dashboard-field__input';
-    for (const [value, label] of [['default', 'Theme default'], ['none', 'No border'], ['custom', 'Custom color']] as const) {
-      const o = document.createElement('option');
-      o.value = value; o.textContent = label;
-      bdSelect.appendChild(o);
-    }
-    bdSelect.value = draft.border;
-    bdBlock.appendChild(bdSelect);
     const bdColor = document.createElement('input');
     bdColor.type = 'color';
     bdColor.className = 'dashboard-field__color';
     bdColor.value = isHexColor(draft.borderColor) ? draft.borderColor! : '#3c3c3c';
     bdColor.style.display = draft.border === 'custom' ? '' : 'none';
+    const bdSelect = createSelect(
+      [{ value: 'default', label: 'Theme default' }, { value: 'none', label: 'No border' }, { value: 'custom', label: 'Custom color' }],
+      draft.border,
+      (v) => {
+        draft.border = v as WidgetAppearance['border'];
+        bdColor.style.display = draft.border === 'custom' ? '' : 'none';
+        if (draft.border === 'custom') draft.borderColor = bdColor.value;
+        preview();
+      },
+    );
+    bdBlock.appendChild(bdSelect.el);
     bdBlock.appendChild(bdColor);
-    bdSelect.addEventListener('change', () => {
-      draft.border = bdSelect.value as WidgetAppearance['border'];
-      bdColor.style.display = draft.border === 'custom' ? '' : 'none';
-      if (draft.border === 'custom') draft.borderColor = bdColor.value;
-      preview();
-    });
     bdColor.addEventListener('input', () => { draft.borderColor = bdColor.value; preview(); });
     body.appendChild(bdBlock);
 
@@ -1160,18 +1241,11 @@ class DashboardEditorPane implements IDisposable {
         inputs.set(name, () => checkbox.checked);
       } else if (field.type === 'enum') {
         addLabelAndHint();
-        const select = document.createElement('select');
-        select.className = 'dashboard-field__input';
-        for (const opt of field.options ?? []) {
-          const o = document.createElement('option');
-          o.value = opt.value;
-          o.textContent = opt.label;
-          select.appendChild(o);
-        }
-        const cur = String(current[name] ?? field.default ?? '');
-        if (cur) select.value = cur;
-        block.appendChild(select);
-        inputs.set(name, () => select.value);
+        const opts = (field.options ?? []).map(o => ({ value: o.value, label: o.label }));
+        const cur = String(current[name] ?? field.default ?? opts[0]?.value ?? '');
+        const sel = createSelect(opts, cur, () => {});
+        block.appendChild(sel.el);
+        inputs.set(name, () => sel.getValue());
       } else if (field.type === 'textarea') {
         addLabelAndHint();
         const ta = document.createElement('textarea');
