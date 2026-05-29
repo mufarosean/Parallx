@@ -25,12 +25,45 @@ interface SidebarApi {
 
 type FilterKey = 'reviewing' | 'today' | 'week' | 'overdue' | 'all';
 
-const FILTERS: { key: FilterKey; label: string; build: () => TaskQuery }[] = [
-  { key: 'reviewing', label: 'Review',  build: () => ({ status: 'reviewing', includeUndated: true }) },
-  { key: 'today',     label: 'Today',   build: () => ({ status: ['reviewing', 'planned'], dueFrom: startOfDay(), dueTo: endOfDay() }) },
-  { key: 'week',      label: 'Week',    build: () => ({ status: ['reviewing', 'planned'], dueFrom: startOfDay(), dueTo: startOfDay() + 7 * 86_400_000 }) },
-  { key: 'overdue',   label: 'Overdue', build: () => ({ status: ['reviewing', 'planned'], dueTo: Date.now() - 1 }) },
-  { key: 'all',       label: 'All',     build: () => ({ status: ['reviewing', 'planned', 'done'], includeUndated: true, limit: 200 }) },
+const FILTERS: { key: FilterKey; label: string; group?: 'pinned' | 'due' | 'all'; build: () => TaskQuery; matches: (t: PlannerTask) => boolean }[] = [
+  {
+    key: 'reviewing',
+    label: 'Review queue',
+    group: 'pinned',
+    build: () => ({ status: 'reviewing', includeUndated: true }),
+    matches: t => t.status === 'reviewing',
+  },
+  {
+    key: 'today',
+    label: 'Due today',
+    group: 'due',
+    build: () => ({ status: ['reviewing', 'planned'], dueFrom: startOfDay(), dueTo: endOfDay() }),
+    matches: t => (t.status === 'reviewing' || t.status === 'planned')
+      && t.dueAt != null && t.dueAt >= startOfDay() && t.dueAt <= endOfDay(),
+  },
+  {
+    key: 'week',
+    label: 'This week',
+    group: 'due',
+    build: () => ({ status: ['reviewing', 'planned'], dueFrom: startOfDay(), dueTo: startOfDay() + 7 * 86_400_000 }),
+    matches: t => (t.status === 'reviewing' || t.status === 'planned')
+      && t.dueAt != null && t.dueAt >= startOfDay() && t.dueAt <= startOfDay() + 7 * 86_400_000,
+  },
+  {
+    key: 'overdue',
+    label: 'Overdue',
+    group: 'due',
+    build: () => ({ status: ['reviewing', 'planned'], dueTo: Date.now() - 1 }),
+    matches: t => (t.status === 'reviewing' || t.status === 'planned')
+      && t.dueAt != null && t.dueAt < Date.now(),
+  },
+  {
+    key: 'all',
+    label: 'All tasks',
+    group: 'all',
+    build: () => ({ status: ['reviewing', 'planned', 'done'], includeUndated: true, limit: 200 }),
+    matches: t => t.status !== 'cancelled',
+  },
 ];
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] {
@@ -101,16 +134,36 @@ export class PlannerSidebar implements IDisposable {
 
     root.appendChild(toolbar);
 
-    const chips = el('div', 'planner-sidebar__chips');
+    // Vertical filter nav — replaces the chip row. Each row is label + count,
+    // grouped (pinned / due / all) with subtle separators rather than the
+    // workbench's standard sidebar idiom adapted to the planner's filters.
+    const nav = el('nav', 'planner-sidebar__nav');
+    nav.setAttribute('aria-label', 'Filter tasks');
+    let lastGroup: string | undefined;
     for (const f of FILTERS) {
-      const chip = el('button', 'planner-sidebar__chip');
-      chip.type = 'button';
-      chip.dataset.key = f.key;
-      chip.textContent = f.label;
-      chip.addEventListener('click', () => this._setFilter(f.key));
-      chips.appendChild(chip);
+      if (lastGroup !== undefined && f.group !== lastGroup) {
+        nav.appendChild(el('div', 'planner-sidebar__navsep'));
+      }
+      lastGroup = f.group;
+
+      const item = el('button', 'planner-sidebar__navitem');
+      item.type = 'button';
+      item.dataset.key = f.key;
+      item.setAttribute('aria-pressed', 'false');
+
+      const label = el('span', 'planner-sidebar__navlabel');
+      label.textContent = f.label;
+      item.appendChild(label);
+
+      const count = el('span', 'planner-sidebar__navcount');
+      count.dataset.role = 'count';
+      count.textContent = '0';
+      item.appendChild(count);
+
+      item.addEventListener('click', () => this._setFilter(f.key));
+      nav.appendChild(item);
     }
-    root.appendChild(chips);
+    root.appendChild(nav);
 
     const list = el('div', 'planner-sidebar__list');
     list.setAttribute('role', 'listbox');
@@ -139,21 +192,50 @@ export class PlannerSidebar implements IDisposable {
 
   private _setFilter(key: FilterKey, skipRender = false): void {
     this._activeFilter = key;
-    const chipsEl = this._root?.querySelector('.planner-sidebar__chips');
-    if (chipsEl) {
-      for (const child of Array.from(chipsEl.children)) {
-        if (!(child instanceof HTMLElement)) continue;
-        child.classList.toggle('planner-sidebar__chip--active', child.dataset.key === key);
-      }
-    }
+    this._syncNavActive();
     if (!skipRender) void this._refresh();
   }
 
+  private _syncNavActive(): void {
+    const navEl = this._root?.querySelector('.planner-sidebar__nav');
+    if (!navEl) return;
+    for (const child of Array.from(navEl.children)) {
+      if (!(child instanceof HTMLElement)) continue;
+      if (!child.classList.contains('planner-sidebar__navitem')) continue;
+      const active = child.dataset.key === this._activeFilter;
+      child.classList.toggle('planner-sidebar__navitem--active', active);
+      child.setAttribute('aria-pressed', active ? 'true' : 'false');
+    }
+  }
+
+  /**
+   * One fetch, bucketed N ways. Cheaper than running each filter's query
+   * separately and gives us count + active list off the same snapshot —
+   * which is what the nav needs to be informative without flicker.
+   */
   private async _refresh(): Promise<void> {
     if (!this._list) return;
-    const filter = FILTERS.find(f => f.key === this._activeFilter);
-    if (!filter) return;
-    this._tasks = await this._data.listTasks(filter.build());
+    // The widest reasonable snapshot — everything visible across all filters.
+    const all = await this._data.listTasks({
+      status: ['reviewing', 'planned', 'done'],
+      includeUndated: true,
+      limit: 500,
+    });
+    // Update counts on the nav.
+    const navEl = this._root?.querySelector('.planner-sidebar__nav');
+    if (navEl) {
+      for (const f of FILTERS) {
+        const item = navEl.querySelector(`[data-key="${f.key}"]`) as HTMLElement | null;
+        const countEl = item?.querySelector('[data-role="count"]') as HTMLElement | null;
+        if (!countEl) continue;
+        const n = all.filter(f.matches).length;
+        countEl.textContent = String(n);
+        if (item) item.classList.toggle('planner-sidebar__navitem--empty', n === 0);
+      }
+    }
+    // The displayed list is the active filter's subset of the snapshot.
+    const active = FILTERS.find(f => f.key === this._activeFilter);
+    this._tasks = active ? all.filter(active.matches) : all;
     this._renderList();
   }
 

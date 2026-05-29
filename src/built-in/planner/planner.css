@@ -110,31 +110,83 @@
   color: var(--vscode-editor-foreground, #d4d4d4);
 }
 
-.planner-sidebar__chips {
+/* Filter nav — vertical, grouped, count column. No pills, no uppercase. */
+.planner-sidebar__nav {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 6px 10px 4px;
+  flex-direction: column;
+  padding: 6px 4px 4px;
+  gap: 1px;
 }
-.planner-sidebar__chip {
-  height: 22px;
-  padding: 0 10px;
+.planner-sidebar__navitem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 26px;
+  padding: 0 8px 0 10px;
   border: 0;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 7%, transparent);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--vscode-editor-foreground, #d4d4d4);
   font: inherit;
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 12.5px;
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  user-select: none;
+  position: relative;
+  transition: background 100ms ease, color 100ms ease;
 }
-.planner-sidebar__chip:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent); color: var(--vscode-editor-foreground, #d4d4d4); }
-.planner-sidebar__chip--active {
-  background: var(--vscode-button-background, #0e639c);
-  color: var(--vscode-button-foreground, #ffffff);
+.planner-sidebar__navitem:hover {
+  background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 100%, transparent);
+}
+.planner-sidebar__navitem:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 100%, transparent);
+  box-shadow: inset 0 0 0 1px var(--vscode-focusBorder, #5b9bd5);
+}
+.planner-sidebar__navitem--active {
+  background: var(--vscode-list-activeSelectionBackground, #094771);
+  color: var(--vscode-list-activeSelectionForeground, #ffffff);
+}
+.planner-sidebar__navitem--empty .planner-sidebar__navcount {
+  opacity: 0.4;
+}
+/* Soft left rail accent on the pinned Review queue row — its specialness
+   without leaning on a pill or uppercase. */
+.planner-sidebar__navitem[data-key="reviewing"] {
+  padding-left: 14px;
+}
+.planner-sidebar__navitem[data-key="reviewing"]::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: 2px;
+  background: #d2a64f;
+}
+.planner-sidebar__navitem--active[data-key="reviewing"]::before {
+  background: var(--vscode-list-activeSelectionForeground, #ffffff);
+}
+
+.planner-sidebar__navlabel {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0;
+}
+.planner-sidebar__navcount {
+  font-size: 10.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, currentColor 60%, transparent);
+  flex: 0 0 auto;
+}
+.planner-sidebar__navsep {
+  height: 1px;
+  margin: 5px 8px;
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
 }
 
 .planner-sidebar__list {
