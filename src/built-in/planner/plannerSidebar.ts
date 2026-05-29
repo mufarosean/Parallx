@@ -1,13 +1,11 @@
 // plannerSidebar.ts — workbench sidebar view for the planner.
 //
-// Navigation only. Three tiles: Calendar, Tasks, Settings. Clicking a
-// tile opens the planner editor at the matching tab (or invokes a
-// settings command). The task list + filter groupings live INSIDE the
-// editor's Tasks tab — the sidebar is just the way in.
-//
-// This matches every other built-in tool's sidebar role (Explorer for
-// files, Canvas for pages, Dashboards for dashboards, …) — a flat list
-// of jump-off points, not a working surface in its own right.
+// Navigation only. Three rows: Calendar, Tasks, Settings. Same list-row
+// idiom every other Parallx sidebar uses (Explorer file tree, Canvas
+// page tree, Dashboards list) — 26px row height, plain monochrome icon
+// + label, workbench list-selection treatment on hover and active. The
+// task list and filter groupings live inside the editor pane's Tasks
+// tab; the sidebar is just the way in.
 
 import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
@@ -25,11 +23,13 @@ interface SidebarApi {
   };
 }
 
-const ICONS = {
-  calendar: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
-  tasks:    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
-  settings: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
-} as const;
+type NavKey = 'calendar' | 'tasks' | 'settings';
+
+const ICONS: Record<NavKey, string> = {
+  calendar: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+  tasks:    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+  settings: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+};
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
@@ -39,6 +39,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): 
 
 export class PlannerSidebar implements IDisposable {
   private _root: HTMLElement | null = null;
+  private _activeKey: NavKey = 'calendar';
   private _disposed = false;
   private readonly _disposables: IDisposable[] = [];
 
@@ -53,27 +54,25 @@ export class PlannerSidebar implements IDisposable {
     root.setAttribute('aria-label', 'Planner navigation');
     this._root = root;
 
-    type Item = { key: string; label: string; icon: string; subtitle?: string; onClick: () => void };
-    const items: Item[] = [
+    const list = el('div', 'planner-sidebar__list');
+    root.appendChild(list);
+
+    const rows: { key: NavKey; label: string; onClick: () => void }[] = [
       {
         key: 'calendar',
         label: 'Calendar',
-        icon: ICONS.calendar,
-        subtitle: 'Month, week, day views',
         onClick: () => void this._openTab('calendar'),
       },
       {
         key: 'tasks',
         label: 'Tasks',
-        icon: ICONS.tasks,
-        subtitle: 'Capture, plan, complete',
         onClick: () => void this._openTab('tasks'),
       },
       {
         key: 'settings',
         label: 'Settings',
-        icon: ICONS.settings,
         onClick: () => {
+          this._setActive('settings');
           this._api.commands.executeCommand('settings.open').catch(() =>
             this._api.window.showInformationMessage('Planner settings are coming soon.'),
           );
@@ -81,54 +80,43 @@ export class PlannerSidebar implements IDisposable {
       },
     ];
 
-    for (const item of items) {
-      const tile = el('button', 'planner-sidebar__tile');
-      tile.type = 'button';
-      tile.dataset.key = item.key;
+    for (const r of rows) {
+      const row = el('button', 'planner-sidebar__row');
+      row.type = 'button';
+      row.dataset.key = r.key;
+      row.setAttribute('role', 'option');
+      row.tabIndex = 0;
 
-      const iconEl = el('span', 'planner-sidebar__tile-icon');
-      iconEl.innerHTML = item.icon;
-      tile.appendChild(iconEl);
+      const icon = el('span', 'planner-sidebar__row-icon');
+      icon.innerHTML = ICONS[r.key];
+      row.appendChild(icon);
 
-      const text = el('span', 'planner-sidebar__tile-text');
-      const labelEl = el('span', 'planner-sidebar__tile-label');
-      labelEl.textContent = item.label;
-      text.appendChild(labelEl);
-      if (item.subtitle) {
-        const subEl = el('span', 'planner-sidebar__tile-sub');
-        subEl.textContent = item.subtitle;
-        text.appendChild(subEl);
-      }
-      tile.appendChild(text);
+      const label = el('span', 'planner-sidebar__row-label');
+      label.textContent = r.label;
+      row.appendChild(label);
 
-      const chev = el('span', 'planner-sidebar__tile-chev');
-      chev.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>';
-      tile.appendChild(chev);
-
-      tile.addEventListener('click', item.onClick);
-
-      // Small live badge on the Tasks tile — reviewing-queue count. It's
-      // the one piece of state the user wants visible without clicking in.
-      if (item.key === 'tasks') {
-        const badge = el('span', 'planner-sidebar__tile-badge');
-        badge.dataset.role = 'review-count';
-        badge.style.display = 'none';
-        tile.insertBefore(badge, chev);
+      if (r.key === 'tasks') {
+        const count = el('span', 'planner-sidebar__row-count');
+        count.dataset.role = 'review-count';
+        count.style.display = 'none';
+        row.appendChild(count);
       }
 
-      root.appendChild(tile);
+      row.addEventListener('click', r.onClick);
+      list.appendChild(row);
     }
 
     container.appendChild(root);
+    this._syncActive();
 
-    // Hydrate + keep the review-queue badge live.
+    // Live review-queue count on the Tasks row.
     const updateReviewBadge = async () => {
       if (this._disposed || !this._root) return;
       let count = 0;
       try {
         const pending = await this._data.listTasks({ status: 'reviewing', includeUndated: true });
         count = pending.length;
-      } catch { /* swallow — badge defaults to hidden */ }
+      } catch { /* keep hidden */ }
       const badge = this._root.querySelector('[data-role="review-count"]') as HTMLElement | null;
       if (!badge) return;
       if (count > 0) {
@@ -151,19 +139,32 @@ export class PlannerSidebar implements IDisposable {
     });
   }
 
-  private async _openTab(tab: 'tasks' | 'calendar'): Promise<void> {
+  private async _openTab(tab: Exclude<NavKey, 'settings'>): Promise<void> {
     try {
+      this._setActive(tab);
       await this._api.editors.openEditor({
         typeId: 'planner',
         title: 'Planner',
         instanceId: 'main',
       });
-      // After the editor mounts, the cross-pane event bus could signal
-      // which tab to focus — for now the editor remembers the last tab.
       document.dispatchEvent(new CustomEvent('parallx.planner.focusTab', { detail: { tab } }));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       await this._api.window.showErrorMessage(`Could not open Planner: ${msg}`);
+    }
+  }
+
+  private _setActive(key: NavKey): void {
+    this._activeKey = key;
+    this._syncActive();
+  }
+
+  private _syncActive(): void {
+    const list = this._root?.querySelector('.planner-sidebar__list');
+    if (!list) return;
+    for (const child of Array.from(list.children)) {
+      if (!(child instanceof HTMLElement)) continue;
+      child.classList.toggle('planner-sidebar__row--active', child.dataset.key === this._activeKey);
     }
   }
 

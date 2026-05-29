@@ -56,10 +56,10 @@
    Sidebar
    ========================================================================== */
 
-/* Sidebar — navigation tiles only. The filter chips + task list that
-   used to live here moved into the editor pane's Tasks tab; the
-   sidebar's job is "jump into a major view of the planner", same as
-   Explorer / Canvas / Dashboards sidebars. */
+/* Sidebar — navigation only, matching the workbench list-row idiom used
+   by Explorer / Canvas / Dashboards. Flat 26px rows with monochrome
+   icon + label; hover and active states use the standard list-selection
+   tokens so it reads as a peer of the other sidebars. */
 .planner-sidebar-host { display: flex; width: 100%; height: 100%; }
 
 .planner-sidebar {
@@ -67,17 +67,25 @@
   flex-direction: column;
   width: 100%;
   height: 100%;
-  padding: 8px 6px;
-  gap: 2px;
   font-family: var(--vscode-font-family, -apple-system, "Segoe UI", sans-serif);
   color: var(--vscode-sideBar-foreground, #cccccc);
 }
 
-.planner-sidebar__tile {
+.planner-sidebar__list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 6px 6px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.planner-sidebar__row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
+  gap: 8px;
+  height: 26px;
+  padding: 0 8px;
   border: 0;
   border-radius: 5px;
   background: transparent;
@@ -85,76 +93,64 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background 100ms ease;
+  user-select: none;
+  position: relative;
+  transition: background 100ms ease, color 100ms ease;
 }
-.planner-sidebar__tile:hover {
+.planner-sidebar__row:hover {
   background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 100%, transparent);
 }
-.planner-sidebar__tile:focus-visible {
+.planner-sidebar__row:focus-visible {
   outline: none;
   background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 100%, transparent);
   box-shadow: inset 0 0 0 1px var(--vscode-focusBorder, #5b9bd5);
 }
-
-.planner-sidebar__tile-icon {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 12%, transparent);
-  color: var(--vscode-button-background, #0e639c);
+.planner-sidebar__row--active {
+  background: var(--vscode-list-activeSelectionBackground, #094771);
+  color: var(--vscode-list-activeSelectionForeground, #ffffff);
+}
+.planner-sidebar__row--active .planner-sidebar__row-icon {
+  color: var(--vscode-list-activeSelectionForeground, #ffffff);
 }
 
-.planner-sidebar__tile-text {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: 1px;
-}
-.planner-sidebar__tile-label {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--vscode-editor-foreground, #f3f3f3);
-}
-.planner-sidebar__tile-sub {
-  font-size: 11px;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
-}
-
-.planner-sidebar__tile-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: 9px;
-  background: color-mix(in srgb, #d2a64f 80%, transparent);
-  color: #1e1500;
-  font-size: 10.5px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  flex: 0 0 auto;
-}
-
-.planner-sidebar__tile-chev {
+.planner-sidebar__row-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 30%, transparent);
-  transition: transform 120ms ease, color 120ms ease;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
 }
-.planner-sidebar__tile:hover .planner-sidebar__tile-chev {
-  transform: translateX(2px);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+.planner-sidebar__row-icon svg { width: 14px; height: 14px; }
+
+.planner-sidebar__row-label {
+  flex: 1 1 auto;
+  font-size: 12.5px;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.planner-sidebar__row-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+.planner-sidebar__row--active .planner-sidebar__row-count {
+  background: color-mix(in srgb, var(--vscode-list-activeSelectionForeground, #ffffff) 22%, transparent);
+  color: var(--vscode-list-activeSelectionForeground, #ffffff);
 }
 
 

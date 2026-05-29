@@ -497,18 +497,20 @@ class PlannerEditorPane implements IDisposable {
   // ── Calendar tab ─────────────────────────────────────────────────────
 
   private async _renderCalendarTab(body: HTMLElement, actions: HTMLElement): Promise<void> {
-    // Goal: tight, single-row chrome where every interactive control is
-    // the same height (28px) so the eye doesn't see a stack of different
-    // button shapes. Date label moves INTO the header (no big subtitle
-    // below) — same layout Google Calendar uses.
+    // Clean layout: one tight cluster of calendar controls on the left
+    // (Today, prev/next, big date label, view dropdown), Create button on
+    // the far right. No search/settings clutter — Settings lives in the
+    // sidebar where it belongs. Every control sits on the same 28px
+    // baseline so the chrome reads as one row of equal-weight elements.
 
-    // Today + connected prev/next pair
+    // Today — outlined sharp button, distinct from the arrow pair.
     const today = el('button', 'planner-todaybtn');
     today.type = 'button';
     today.textContent = 'Today';
     today.addEventListener('click', () => { this._cursorDate = startOfDay(new Date()); void this._renderTab(); });
     actions.appendChild(today);
 
+    // Prev / Next — connected icon pair.
     const nav = el('div', 'planner-cnav');
     const prev = el('button', 'planner-iconbtn');
     prev.type = 'button';
@@ -524,38 +526,12 @@ class PlannerEditorPane implements IDisposable {
     nav.appendChild(next);
     actions.appendChild(nav);
 
-    // Inline date label (replaces the big subtitle that used to sit below).
+    // Big inline date label — focal element of the cluster.
     const dateLabel = el('span', 'planner-cdate');
     dateLabel.textContent = this._calendarRangeLabel();
     actions.appendChild(dateLabel);
 
-    // Push the rest right.
-    const spacer = el('span', 'planner-pane__spacer');
-    actions.appendChild(spacer);
-
-    // Search (placeholder for now — opens a quick-search popover later).
-    const searchBtn = el('button', 'planner-iconbtn');
-    searchBtn.type = 'button';
-    searchBtn.title = 'Search planner';
-    searchBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
-    searchBtn.addEventListener('click', () => {
-      void this._api.window.showInformationMessage('Quick search is coming soon.');
-    });
-    actions.appendChild(searchBtn);
-
-    // Settings.
-    const settingsBtn = el('button', 'planner-iconbtn');
-    settingsBtn.type = 'button';
-    settingsBtn.title = 'Planner settings';
-    settingsBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
-    settingsBtn.addEventListener('click', () => {
-      void this._api.commands.executeCommand('settings.open').catch(() =>
-        this._api.window.showInformationMessage('Planner settings are coming soon.'),
-      );
-    });
-    actions.appendChild(settingsBtn);
-
-    // View dropdown — replaces the three-tab switcher.
+    // View dropdown sits next to the date as part of the same cluster.
     const viewBtn = el('button', 'planner-viewdrop');
     viewBtn.type = 'button';
     const label = this._calendarView[0].toUpperCase() + this._calendarView.slice(1);
@@ -563,7 +539,11 @@ class PlannerEditorPane implements IDisposable {
     viewBtn.addEventListener('click', () => this._openViewMenu(viewBtn));
     actions.appendChild(viewBtn);
 
-    // Primary CTA — same height as everything else.
+    // Spacer pushes Create to the far right.
+    const spacer = el('span', 'planner-pane__spacer');
+    actions.appendChild(spacer);
+
+    // Primary CTA.
     const addEvt = el('button', 'planner-cta');
     addEvt.type = 'button';
     addEvt.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Create</span>';
