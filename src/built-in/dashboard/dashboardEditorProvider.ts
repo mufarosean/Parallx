@@ -64,6 +64,9 @@ function isHexColor(v: string | null): v is string {
   return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
 }
 
+/** Resize handle direction — cardinal edges + corners. */
+type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+
 interface SelectOption { value: string; label: string; }
 interface CustomSelect {
   el: HTMLElement;
@@ -426,6 +429,14 @@ class DashboardEditorPane implements IDisposable {
       const label = editBtn.querySelector('span');
       if (label) label.textContent = this._editMode ? 'Done' : 'Edit layout';
     }
+    // The reveal strip (shown when the header is hidden) has its own edit
+    // toggle — keep it in sync so the active state and tooltip are obvious
+    // there too, otherwise there's no way to tell you're in edit mode.
+    const revealEditBtn = this._root?.querySelector('[data-role="reveal-edit-toggle"]') as HTMLElement | null;
+    if (revealEditBtn) {
+      revealEditBtn.classList.toggle('dashboard-btn--active', this._editMode);
+      revealEditBtn.title = this._editMode ? 'Done editing' : 'Edit layout';
+    }
   }
 
   // ── Widget rendering ───────────────────────────────────────────────────
@@ -528,15 +539,22 @@ class DashboardEditorPane implements IDisposable {
     header.appendChild(actions);
     card.appendChild(header);
 
-    // Resize handle (bottom-right corner; only active in edit mode)
-    const resizeHandle = el('span', 'dashboard-widget__resize');
-    resizeHandle.dataset.role = 'resize';
-    resizeHandle.title = 'Drag to resize (in edit mode)';
-    card.appendChild(resizeHandle);
+    // Resize handles — all four edges and corners, only active in edit mode.
+    // Edge handles resize along one axis; corner handles resize both. West/
+    // north handles also move the widget's origin so the opposite edge stays
+    // pinned (you can grow/shrink from any side, not just bottom-right).
+    const resizeDirs: ResizeDir[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
+    for (const dir of resizeDirs) {
+      const h = el('span', `dashboard-widget__resize dashboard-widget__resize--${dir}`);
+      h.dataset.role = 'resize';
+      h.dataset.dir = dir;
+      h.title = 'Drag to resize (in edit mode)';
+      card.appendChild(h);
+      this._installDragResize(card, h, row.id, dir);
+    }
 
-    // Wire drag-to-move + drag-to-resize.
+    // Wire drag-to-move (resize handles were wired above, one per direction).
     this._installDragMove(card, row.id);
-    this._installDragResize(card, resizeHandle, row.id);
 
     // Body
     const body = el('div', 'dashboard-widget__body');
@@ -951,7 +969,12 @@ class DashboardEditorPane implements IDisposable {
 
   // ── Drag-to-resize ─────────────────────────────────────────────────────
 
-  private _installDragResize(card: HTMLElement, handle: HTMLElement, widgetId: string): void {
+  private _installDragResize(card: HTMLElement, handle: HTMLElement, widgetId: string, dir: ResizeDir): void {
+    const movesWest = dir.includes('w');
+    const movesNorth = dir.includes('n');
+    const affectsCol = dir.includes('e') || dir.includes('w');
+    const affectsRow = dir.includes('n') || dir.includes('s');
+
     handle.addEventListener('pointerdown', (e) => {
       if (!this._editMode) return;
       e.preventDefault();
@@ -972,6 +995,10 @@ class DashboardEditorPane implements IDisposable {
       const minRowSpan = typeReg?.sizeBounds?.minRowSpan ?? 1;
       const maxRowSpan = typeReg?.sizeBounds?.maxRowSpan ?? 12;
 
+      // Fixed edges (the side opposite the handle stays pinned).
+      const rightEdge = origPlacement.col + origPlacement.colSpan; // exclusive
+      const bottomEdge = origPlacement.row + origPlacement.rowSpan; // exclusive
+
       card.classList.add('dashboard-widget--resizing');
 
       // Live-resize the card itself (rAF-batched) so its content reflows as
@@ -985,15 +1012,45 @@ class DashboardEditorPane implements IDisposable {
         rafId = 0;
         const deltaCol = Math.round(pendingDx / cellWidth);
         const deltaRow = Math.round(pendingDy / cellHeight);
-        const wantCol = Math.max(minColSpan, Math.min(maxColSpan, origPlacement.colSpan + deltaCol));
-        const wantRow = Math.max(minRowSpan, Math.min(maxRowSpan, origPlacement.rowSpan + deltaRow));
-        // Clamp so we don't extend past the right edge of the grid.
-        const colSpan = Math.min(wantCol, DASHBOARD_GRID_COLS - origPlacement.col);
-        const rowSpan = wantRow;
-        if (colSpan === lastTarget.colSpan && rowSpan === lastTarget.rowSpan) return;
-        lastTarget = { ...origPlacement, colSpan, rowSpan };
-        card.style.gridColumn = `${lastTarget.col + 1} / span ${colSpan}`;
-        card.style.gridRow = `${lastTarget.row + 1} / span ${rowSpan}`;
+
+        let col = origPlacement.col;
+        let colSpan = origPlacement.colSpan;
+        if (affectsCol) {
+          if (movesWest) {
+            // Left edge moves; right edge pinned at rightEdge.
+            const minCol = Math.max(0, rightEdge - maxColSpan);
+            const maxCol = rightEdge - minColSpan;
+            col = Math.max(minCol, Math.min(maxCol, origPlacement.col + deltaCol));
+            colSpan = rightEdge - col;
+          } else {
+            // Right edge moves; left edge (col) pinned.
+            const want = origPlacement.colSpan + deltaCol;
+            colSpan = Math.max(minColSpan, Math.min(maxColSpan, want));
+            colSpan = Math.min(colSpan, DASHBOARD_GRID_COLS - col);
+          }
+        }
+
+        let row = origPlacement.row;
+        let rowSpan = origPlacement.rowSpan;
+        if (affectsRow) {
+          if (movesNorth) {
+            // Top edge moves; bottom edge pinned at bottomEdge.
+            const minRow = Math.max(0, bottomEdge - maxRowSpan);
+            const maxRow = bottomEdge - minRowSpan;
+            row = Math.max(minRow, Math.min(maxRow, origPlacement.row + deltaRow));
+            rowSpan = bottomEdge - row;
+          } else {
+            // Bottom edge moves; top edge (row) pinned.
+            const want = origPlacement.rowSpan + deltaRow;
+            rowSpan = Math.max(minRowSpan, Math.min(maxRowSpan, want));
+          }
+        }
+
+        if (col === lastTarget.col && row === lastTarget.row
+          && colSpan === lastTarget.colSpan && rowSpan === lastTarget.rowSpan) return;
+        lastTarget = { col, row, colSpan, rowSpan };
+        card.style.gridColumn = `${col + 1} / span ${colSpan}`;
+        card.style.gridRow = `${row + 1} / span ${rowSpan}`;
       };
       const onMove = (ev: PointerEvent) => {
         pendingDx = ev.clientX - startX;
@@ -1007,13 +1064,15 @@ class DashboardEditorPane implements IDisposable {
         handle.removeEventListener('pointercancel', onUp);
         try { handle.releasePointerCapture(ev.pointerId); } catch { /* noop */ }
         card.classList.remove('dashboard-widget--resizing');
-        if (lastTarget.colSpan !== origPlacement.colSpan || lastTarget.rowSpan !== origPlacement.rowSpan) {
+        const changed = lastTarget.col !== origPlacement.col || lastTarget.row !== origPlacement.row
+          || lastTarget.colSpan !== origPlacement.colSpan || lastTarget.rowSpan !== origPlacement.rowSpan;
+        if (changed) {
           try {
             await this._data.updateWidgetPlacement(widgetId, lastTarget);
             inst.row = { ...inst.row, placement: lastTarget };
           } catch (err) {
             console.warn('[Dashboard] commit resize failed:', err);
-            // Revert to the original span on failure.
+            // Revert to the original placement on failure.
             card.style.gridColumn = `${origPlacement.col + 1} / span ${origPlacement.colSpan}`;
             card.style.gridRow = `${origPlacement.row + 1} / span ${origPlacement.rowSpan}`;
           }

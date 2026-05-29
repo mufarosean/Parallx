@@ -154,6 +154,12 @@
 .dashboard-reveal:hover .dashboard-reveal__actions {
   opacity: 1;
 }
+/* In edit mode the reveal strip stays fully visible so the active "Edit
+   layout" button (highlighted) is always discoverable while the header is
+   hidden — that's the only way back out of edit mode. */
+.dashboard-pane--edit .dashboard-reveal__actions {
+  opacity: 1;
+}
 .dashboard-btn--small {
   height: 28px;
   padding: 0 10px;
@@ -542,26 +548,48 @@
   opacity: 1;
 }
 
-/* Resize handle: bottom-right corner, only interactive in edit mode. */
+/* Resize handles: all four edges + corners, only interactive in edit mode.
+   Edges are thin strips along each side; corners are small squares that sit
+   on top of the edges. The visible corner "grip" only shows on the SE corner
+   (classic affordance), but every handle is draggable in edit mode. */
 .dashboard-widget__resize {
   position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 18px;
-  height: 18px;
-  cursor: se-resize;
   opacity: 0;
-  transition: opacity 140ms ease;
   pointer-events: none;
+  transition: opacity 140ms ease;
+  z-index: 3;
+}
+/* Edges */
+.dashboard-widget__resize--n { top: -3px; left: 8px; right: 8px; height: 8px; cursor: ns-resize; }
+.dashboard-widget__resize--s { bottom: -3px; left: 8px; right: 8px; height: 8px; cursor: ns-resize; }
+.dashboard-widget__resize--e { right: -3px; top: 8px; bottom: 8px; width: 8px; cursor: ew-resize; }
+.dashboard-widget__resize--w { left: -3px; top: 8px; bottom: 8px; width: 8px; cursor: ew-resize; }
+/* Corners (sit above the edge strips) */
+.dashboard-widget__resize--ne { top: -3px; right: -3px; width: 14px; height: 14px; cursor: nesw-resize; z-index: 4; }
+.dashboard-widget__resize--nw { top: -3px; left: -3px; width: 14px; height: 14px; cursor: nwse-resize; z-index: 4; }
+.dashboard-widget__resize--se { bottom: -3px; right: -3px; width: 14px; height: 14px; cursor: nwse-resize; z-index: 4; }
+.dashboard-widget__resize--sw { bottom: -3px; left: -3px; width: 14px; height: 14px; cursor: nesw-resize; z-index: 4; }
+/* SE corner shows the classic diagonal grip so the affordance is discoverable. */
+.dashboard-widget__resize--se {
   background:
-    linear-gradient(135deg, transparent 50%, color-mix(in srgb, var(--vscode-button-background, #0e639c) 70%, transparent) 50%) center / 14px 14px no-repeat;
+    linear-gradient(135deg, transparent 50%, color-mix(in srgb, var(--vscode-button-background, #0e639c) 70%, transparent) 50%) center / 12px 12px no-repeat;
   border-bottom-right-radius: 12px;
 }
 .dashboard-pane--edit .dashboard-widget__resize {
-  opacity: 0.8;
+  opacity: 1;
   pointer-events: auto;
 }
-.dashboard-pane--edit .dashboard-widget__resize:hover { opacity: 1; }
+.dashboard-pane--edit .dashboard-widget__resize--se { opacity: 0.8; }
+.dashboard-pane--edit .dashboard-widget__resize--se:hover { opacity: 1; }
+/* Edge/corner handles (besides SE) reveal a subtle accent line on hover so
+   the user can see which side they're grabbing. */
+.dashboard-pane--edit .dashboard-widget__resize--n:hover,
+.dashboard-pane--edit .dashboard-widget__resize--s:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 55%, transparent); border-radius: 4px; }
+.dashboard-pane--edit .dashboard-widget__resize--e:hover,
+.dashboard-pane--edit .dashboard-widget__resize--w:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 55%, transparent); border-radius: 4px; }
+.dashboard-pane--edit .dashboard-widget__resize--ne:hover,
+.dashboard-pane--edit .dashboard-widget__resize--nw:hover,
+.dashboard-pane--edit .dashboard-widget__resize--sw:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 55%, transparent); border-radius: 4px; }
 
 /* Ghost overlay shown while dragging / resizing — previews the snap target. */
 .dashboard-widget__ghost {
