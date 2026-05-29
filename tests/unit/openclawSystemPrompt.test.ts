@@ -447,6 +447,33 @@ describe('buildToolSummariesSection', () => {
       expect(section).toContain('**other**');
       expect(section).toContain('`unknown_tool`');
     });
+
+    it('splits the uncategorized bucket by tool-name namespace so each extension reads as its own group', () => {
+      const tools: IToolSummary[] = [
+        { name: 'canvas_read_page',  description: 'Read page', category: 'canvas' },
+        { name: 'budget.pullEmails', description: 'Pull emails' },
+        { name: 'budget.runSync',    description: 'Run sync' },
+        { name: 'renderToWidget',    description: 'Render to a dashboard widget' },
+      ];
+      const section = buildToolSummariesSection(tools);
+      // The budget family gets its own labelled group with exact dotted names.
+      expect(section).toContain('**budget**');
+      expect(section).toContain('`budget.pullEmails`');
+      expect(section).toContain('`budget.runSync`');
+      // A dotless extension tool still surfaces under the residual "other".
+      expect(section).toContain('**other**');
+      expect(section).toContain('`renderToWidget`');
+      // The budget group is emitted before the residual "other" group.
+      expect(section.indexOf('**budget**')).toBeLessThan(section.indexOf('**other**'));
+    });
+
+    it('warns the model to copy tool-name punctuation exactly (dot vs underscore)', () => {
+      const tools: IToolSummary[] = [
+        { name: 'budget.pullEmails', description: 'Pull emails' },
+      ];
+      const section = buildToolSummariesSection(tools);
+      expect(section).toContain('never swap one for the other');
+    });
   });
 });
 

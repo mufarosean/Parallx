@@ -362,7 +362,7 @@ ${entries}
 export function buildToolSummariesSection(tools: readonly IToolSummary[]): string {
   const lines: string[] = [
     '## Tooling',
-    'Tool definitions (name, description, parameters) are provided in the function-calling schema for this turn. Each tool\'s description states what it does and when to use it — read it before calling. Tool names are case-sensitive.',
+    'Tool definitions (name, description, parameters) are provided in the function-calling schema for this turn. Each tool\'s description states what it does and when to use it — read it before calling. Tool names are case-sensitive, and you must copy each name exactly as written below — including its punctuation. Some tools use a dot (e.g. `budget.pullEmails`) and others an underscore (e.g. `read_file`); never swap one for the other or invent a separator.',
   ];
 
   const categoryMap = groupToolsByCategory(tools);
@@ -430,6 +430,8 @@ interface IGroupedCategoryEntry {
   readonly label: string;
   readonly blurb: string;
   readonly toolNames: readonly string[];
+  /** Sort key in the prompt (lower = first). */
+  readonly order: number;
 }
 
 function groupToolsByCategory(tools: readonly IToolSummary[]): Map<ToolCategory | 'other', string[]> {
@@ -460,12 +462,47 @@ function orderCategoryEntries(
   const entries: IGroupedCategoryEntry[] = [];
   for (const [category, names] of map.entries()) {
     if (category === 'other') {
-      entries.push({
-        category,
-        label: 'other',
-        blurb: 'tools without a declared category — read each tool\'s description for usage.',
-        toolNames: [...names].sort(),
+      // Extension tools rarely declare a `ToolCategory`, so they'd otherwise
+      // pile into one undifferentiated "other" blob — which is exactly where
+      // small models start hallucinating names (e.g. `budget_pullEmails` for
+      // `budget.pullEmails`). Split the bucket by tool-name namespace (the
+      // segment before the first `.`) so each extension's family reads as its
+      // own labelled group with the exact dotted names intact. Tools with no
+      // namespace fall through to a residual "other" group.
+      const namespaced = new Map<string, string[]>();
+      const dotless: string[] = [];
+      for (const name of names) {
+        const dot = name.indexOf('.');
+        if (dot > 0) {
+          const ns = name.slice(0, dot);
+          const bucket = namespaced.get(ns) ?? [];
+          bucket.push(name);
+          namespaced.set(ns, bucket);
+        } else {
+          dotless.push(name);
+        }
+      }
+      // Namespaced groups, alphabetised, after the known categories.
+      const nsList = [...namespaced.keys()].sort();
+      nsList.forEach((ns, i) => {
+        entries.push({
+          category: 'other',
+          label: ns,
+          blurb: `\`${ns}.*\` extension tools — names use a dot separator; copy them exactly.`,
+          toolNames: namespaced.get(ns)!.slice().sort(),
+          order: 1000 + i,
+        });
       });
+      // Residual tools with no namespace go last.
+      if (dotless.length > 0) {
+        entries.push({
+          category: 'other',
+          label: 'other',
+          blurb: 'tools without a declared category — read each tool\'s description for usage.',
+          toolNames: dotless.slice().sort(),
+          order: 9999,
+        });
+      }
     } else {
       const desc = CATEGORY_DESCRIPTORS[category];
       entries.push({
@@ -473,14 +510,11 @@ function orderCategoryEntries(
         label: desc.label,
         blurb: desc.blurb,
         toolNames: [...names].sort(),
+        order: desc.order,
       });
     }
   }
-  entries.sort((a, b) => {
-    const ao = a.category === 'other' ? 9999 : CATEGORY_DESCRIPTORS[a.category].order;
-    const bo = b.category === 'other' ? 9999 : CATEGORY_DESCRIPTORS[b.category].order;
-    return ao - bo;
-  });
+  entries.sort((a, b) => a.order - b.order);
   return entries;
 }
 
