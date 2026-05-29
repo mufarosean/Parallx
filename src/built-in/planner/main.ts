@@ -143,14 +143,37 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   );
 
   // 8. Dashboard widgets — only if the dashboard tool is up.
-  try {
-    const dashboardRegistry = await api.commands.executeCommand<unknown>('dashboard.getRegistry');
-    if (dashboardRegistry) {
-      context.subscriptions.push(
-        registerPlannerDashboardWidgets(dashboardRegistry as never, _data),
-      );
+  //
+  // Built-in tools all activate in parallel via Promise.allSettled in the
+  // workbench (workbench.ts), so the dashboard tool may not have its
+  // `dashboard.getRegistry` command in place yet when we land here.
+  // Awaiting it once and silently swallowing the "Unknown command" throw
+  // was the bug that made the planner widgets invisible in the picker
+  // even though both tools were active.
+  //
+  // Fix: poll with a short backoff. If the dashboard is enabled at all it
+  // activates within a handful of microtasks; if it's actually disabled
+  // we give up cleanly after ~1.5s and move on.
+  void (async () => {
+    if (!_data) return;
+    const attempts = [0, 30, 60, 120, 250, 500, 750];
+    for (const delay of attempts) {
+      if (delay > 0) await new Promise(r => setTimeout(r, delay));
+      try {
+        const dashboardRegistry = await api.commands.executeCommand<unknown>('dashboard.getRegistry');
+        if (dashboardRegistry) {
+          context.subscriptions.push(
+            registerPlannerDashboardWidgets(dashboardRegistry as never, _data),
+          );
+          if (isDevMode) console.log('[Planner] dashboard widgets registered');
+          return;
+        }
+      } catch {
+        // command not registered yet — back off and try again
+      }
     }
-  } catch { /* dashboard tool not activated — that's fine */ }
+    if (isDevMode) console.log('[Planner] dashboard tool not available; widgets not registered');
+  })();
 
   // 9. Commands.
   _registerCommands(api, context);
