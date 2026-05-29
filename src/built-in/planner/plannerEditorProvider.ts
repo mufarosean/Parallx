@@ -133,10 +133,91 @@ class PlannerEditorPane implements IDisposable {
     };
     document.addEventListener('parallx.planner.newTask', onNewTask);
 
+    // Keyboard shortcuts — Notion Calendar / Cron parity. Only fire when
+    // the pane is connected and the user isn't typing in an input.
+    const onKey = (e: KeyboardEvent) => {
+      if (!this._root?.isConnected) return;
+      const target = e.target as HTMLElement | null;
+      // Skip when focus is inside any input / textarea / contenteditable —
+      // those characters belong to the user's typing.
+      if (target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      )) return;
+      // Skip when a popover is open — it owns its own keyboard handling.
+      if (document.querySelector('.planner-popover-overlay')) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      switch (e.key.toLowerCase()) {
+        case 't':
+          // T — jump to today (calendar only)
+          if (this._activeTab === 'calendar') {
+            this._cursorDate = startOfDay(new Date());
+            void this._renderTab();
+            e.preventDefault();
+          }
+          break;
+        case 'c':
+          // C — quick create (event in calendar, task in tasks)
+          if (this._activeTab === 'calendar') {
+            const start = new Date(this._cursorDate);
+            start.setHours(9, 0, 0, 0);
+            this._openEventPopover({
+              mode: 'create',
+              startAt: start.getTime(),
+              endAt: start.getTime() + 60 * 60 * 1000,
+            }, new DOMRect(window.innerWidth / 2 - 180, 100, 0, 0));
+          } else {
+            this._openTaskPopover({ mode: 'create' }, new DOMRect(window.innerWidth / 2 - 180, 100, 0, 0));
+          }
+          e.preventDefault();
+          break;
+        case 'arrowleft':
+          if (this._activeTab === 'calendar') {
+            this._navigateCalendar(-1);
+            void this._renderTab();
+            e.preventDefault();
+          }
+          break;
+        case 'arrowright':
+          if (this._activeTab === 'calendar') {
+            this._navigateCalendar(1);
+            void this._renderTab();
+            e.preventDefault();
+          }
+          break;
+        case 'm':
+          if (this._activeTab === 'calendar') {
+            this._calendarView = 'month';
+            void this._renderTab();
+            e.preventDefault();
+          }
+          break;
+        case 'w':
+          if (this._activeTab === 'calendar') {
+            this._calendarView = 'week';
+            void this._renderTab();
+            e.preventDefault();
+          }
+          break;
+        case 'd':
+          if (this._activeTab === 'calendar') {
+            this._calendarView = 'day';
+            void this._renderTab();
+            e.preventDefault();
+          }
+          break;
+      }
+    };
+    document.addEventListener('keydown', onKey);
+
     this._disposables.push({
       dispose() {
         document.removeEventListener('parallx.planner.focusTab', onFocusTab);
         document.removeEventListener('parallx.planner.newTask', onNewTask);
+        document.removeEventListener('keydown', onKey);
       },
     });
   }
@@ -477,6 +558,7 @@ class PlannerEditorPane implements IDisposable {
     const today = el('button', 'planner-todaybtn');
     today.type = 'button';
     today.textContent = 'Today';
+    today.title = 'Jump to today (T)';
     today.addEventListener('click', () => { this._cursorDate = startOfDay(new Date()); void this._renderTab(); });
     actions.appendChild(today);
 
@@ -484,13 +566,13 @@ class PlannerEditorPane implements IDisposable {
     const nav = el('div', 'planner-cnav');
     const prev = el('button', 'planner-iconbtn');
     prev.type = 'button';
-    prev.title = 'Previous';
+    prev.title = 'Previous (←)';
     prev.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>';
     prev.addEventListener('click', () => { this._navigateCalendar(-1); void this._renderTab(); });
     nav.appendChild(prev);
     const next = el('button', 'planner-iconbtn');
     next.type = 'button';
-    next.title = 'Next';
+    next.title = 'Next (→)';
     next.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>';
     next.addEventListener('click', () => { this._navigateCalendar(1); void this._renderTab(); });
     nav.appendChild(next);
@@ -516,6 +598,7 @@ class PlannerEditorPane implements IDisposable {
     // Primary CTA.
     const addEvt = el('button', 'planner-cta');
     addEvt.type = 'button';
+    addEvt.title = 'Create event (C)';
     addEvt.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Create</span>';
     addEvt.addEventListener('click', () => {
       const start = new Date(this._cursorDate);
