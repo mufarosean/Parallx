@@ -828,30 +828,41 @@ html, body {
   background: transparent;
 }
 
-/* Reveal scrollbar thumb when hovering anywhere on a workbench surface.
-   The editor area is now in this group too — always-on scrollbars in
-   dashboard widgets / canvas pages / planner panes were adding visual
-   noise to surfaces that aren't being interacted with. Hovering the part
-   reveals scrollbar thumbs within; leaving it hides them again.
-   Part root elements use class: part-workbench-parts-<name> (dots→dashes). */
+/* Sidebar / panel / aux bar: when any of those parts is hovered, reveal
+   ALL scrollbar thumbs inside. They're narrow chrome with one primary
+   scrollable surface (the file tree, the chat list, etc.) — one
+   reveal-trigger for the whole part is the right granularity. */
 .part-workbench-parts-sidebar:hover ::-webkit-scrollbar-thumb,
 .part-workbench-parts-panel:hover ::-webkit-scrollbar-thumb,
-.part-workbench-parts-auxiliarybar:hover ::-webkit-scrollbar-thumb,
-.part-workbench-parts-editor:hover ::-webkit-scrollbar-thumb {
+.part-workbench-parts-auxiliarybar:hover ::-webkit-scrollbar-thumb {
   background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
 }
-
 .part-workbench-parts-sidebar:hover ::-webkit-scrollbar-thumb:hover,
 .part-workbench-parts-panel:hover ::-webkit-scrollbar-thumb:hover,
-.part-workbench-parts-auxiliarybar:hover ::-webkit-scrollbar-thumb:hover,
-.part-workbench-parts-editor:hover ::-webkit-scrollbar-thumb:hover {
+.part-workbench-parts-auxiliarybar:hover ::-webkit-scrollbar-thumb:hover {
   background: var(--vscode-scrollbarSlider-hoverBackground, rgba(121, 121, 121, 0.7));
 }
-
 .part-workbench-parts-sidebar:hover ::-webkit-scrollbar-thumb:active,
 .part-workbench-parts-panel:hover ::-webkit-scrollbar-thumb:active,
-.part-workbench-parts-auxiliarybar:hover ::-webkit-scrollbar-thumb:active,
-.part-workbench-parts-editor:hover ::-webkit-scrollbar-thumb:active {
+.part-workbench-parts-auxiliarybar:hover ::-webkit-scrollbar-thumb:active {
+  background: var(--vscode-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.5));
+}
+
+/* Editor area: per-element scoping. The editor area can hold many
+   independently-scrollable surfaces (dashboard widgets, canvas pages,
+   planner panes, etc.). Hovering one widget shouldn't light up the
+   scrollbars on every other widget.
+
+   `:hover::-webkit-scrollbar-thumb` (no space between :hover and the
+   pseudo) styles the scrollbar of the specifically-hovered element,
+   not of descendants. Each widget gets its own reveal trigger. */
+.part-workbench-parts-editor :hover::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+}
+.part-workbench-parts-editor :hover::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground, rgba(121, 121, 121, 0.7));
+}
+.part-workbench-parts-editor :hover::-webkit-scrollbar-thumb:active {
   background: var(--vscode-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.5));
 }
 
