@@ -578,22 +578,24 @@ class PlannerEditorPane implements IDisposable {
     nav.appendChild(next);
     actions.appendChild(nav);
 
-    // Big inline date label — focal element of the cluster.
+    // Big inline date label — focal element of the left cluster.
     const dateLabel = el('span', 'planner-cdate');
     dateLabel.textContent = this._calendarRangeLabel();
     actions.appendChild(dateLabel);
 
-    // View dropdown sits next to the date as part of the same cluster.
+    // Spacer pushes the view dropdown + Create to the far right, so the
+    // header reads as two distinct clusters (navigation left, action right)
+    // rather than one bunched-up row.
+    const spacer = el('span', 'planner-pane__spacer');
+    actions.appendChild(spacer);
+
+    // View dropdown — right cluster.
     const viewBtn = el('button', 'planner-viewdrop');
     viewBtn.type = 'button';
     const label = this._calendarView[0].toUpperCase() + this._calendarView.slice(1);
-    viewBtn.innerHTML = `<span>${label}</span><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
+    viewBtn.innerHTML = `<span>${label}</span><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 9 12 15 18 9"/></svg>`;
     viewBtn.addEventListener('click', () => this._openViewMenu(viewBtn));
     actions.appendChild(viewBtn);
-
-    // Spacer pushes Create to the far right.
-    const spacer = el('span', 'planner-pane__spacer');
-    actions.appendChild(spacer);
 
     // Primary CTA.
     const addEvt = el('button', 'planner-cta');

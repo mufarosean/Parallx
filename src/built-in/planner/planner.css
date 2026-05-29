@@ -719,7 +719,7 @@
 
 /* ── Calendar chrome — sharp, no pills ────────────────────────────────── */
 
-/* "Today" — standalone, outlined, distinct from the arrow pair */
+/* "Today" — outlined sharp button, header baseline 13px / 28px */
 .planner-todaybtn {
   height: 28px;
   padding: 0 12px;
@@ -728,7 +728,7 @@
   background: transparent;
   color: var(--vscode-editor-foreground, #d4d4d4);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: background 100ms ease, border-color 100ms ease;
@@ -738,19 +738,19 @@
   border-color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 28%, transparent);
 }
 
-/* Prev/Next — connected icon pair, distinct from Today */
+/* Prev/Next — flat icon buttons, no box, no divider. The connected-pair
+   container chrome was overstating their importance — they're navigation
+   step controls, not a primary action group. */
 .planner-cnav {
   display: inline-flex;
-  align-items: stretch;
-  margin-left: 4px;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 18%, transparent);
-  border-radius: 4px;
-  overflow: hidden;
+  align-items: center;
+  gap: 2px;
 }
 .planner-iconbtn {
   width: 28px; height: 28px;
   display: inline-flex; align-items: center; justify-content: center;
   border: 0;
+  border-radius: 4px;
   background: transparent;
   color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
   cursor: pointer;
@@ -760,13 +760,11 @@
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
   color: var(--vscode-editor-foreground, #d4d4d4);
 }
-.planner-cnav .planner-iconbtn + .planner-iconbtn {
-  border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
-}
 
-/* Inline date label — calendar focal text, sits in the header now */
+/* Inline date label — focal element of the left cluster. One step up
+   from the 13px baseline so it reads as the heading; weight + color
+   carry the rest. */
 .planner-cdate {
-  margin-left: 6px;
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -774,11 +772,11 @@
   white-space: nowrap;
 }
 
-/* View dropdown — single button + chevron, opens the planner-menu */
+/* View dropdown — header-baseline 13px / 28px, matches Today + Create */
 .planner-viewdrop {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   height: 28px;
   padding: 0 8px 0 12px;
   border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 18%, transparent);
@@ -786,7 +784,7 @@
   background: transparent;
   color: var(--vscode-editor-foreground, #d4d4d4);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: background 100ms ease, border-color 100ms ease;
@@ -795,9 +793,9 @@
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
   border-color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 28%, transparent);
 }
-.planner-viewdrop svg { opacity: 0.65; flex: 0 0 auto; }
+.planner-viewdrop svg { opacity: 0.55; flex: 0 0 auto; }
 
-/* Primary CTA — same 28px height as everything else; sharp icon button */
+/* Primary CTA — 13px header baseline */
 .planner-cta {
   display: inline-flex;
   align-items: center;
@@ -809,7 +807,7 @@
   background: var(--vscode-button-background, #0e639c);
   color: var(--vscode-button-foreground, #fff);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: filter 120ms ease, transform 80ms ease;
@@ -817,14 +815,28 @@
 .planner-cta:hover { filter: brightness(1.08); }
 .planner-cta:active { transform: translateY(0.5px); }
 
-/* Narrow variant of the planner menu — used for view dropdown */
-.planner-menu--narrow { min-width: 140px; }
+/* Narrow variant of the planner menu — view dropdown. Sized to its
+   content: short labels (Month / Week / Day) shouldn't get a 140px
+   row that looks half-empty. */
+.planner-menu--narrow {
+  min-width: 0;
+  width: max-content;
+  padding: 3px;
+}
 .planner-menu--narrow .planner-menu__item {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  width: auto;
+  min-width: 96px;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12.5px;
 }
-.planner-menu--narrow .planner-menu__item svg { flex: 0 0 13px; color: var(--vscode-button-background, #0e639c); }
+.planner-menu--narrow .planner-menu__item svg {
+  flex: 0 0 12px;
+  color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 90%, transparent);
+}
 
 .planner-month {
   /* Sharp grid with full outer border — calendar reads as a contained frame */
