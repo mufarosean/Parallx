@@ -299,35 +299,50 @@
   backdrop-filter: blur(8px);
 }
 
+/* Tabs — flat underline pattern, no pill chrome around them */
 .planner-pane__tabs {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 80%, white);
+  gap: 2px;
+  align-self: stretch;
+  position: relative;
+}
+.planner-pane__tabs::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -15px;
+  height: 1px;
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
 }
 .planner-pane__tab {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 12px;
+  gap: 8px;
+  height: 32px;
+  padding: 0 14px;
   border: 0;
-  border-radius: 6px;
   background: transparent;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition: color 100ms ease;
 }
 .planner-pane__tab:hover { color: var(--vscode-editor-foreground, #d4d4d4); }
 .planner-pane__tab--active {
+  color: var(--vscode-editor-foreground, #f3f3f3);
+  font-weight: 600;
+}
+.planner-pane__tab--active::after {
+  content: '';
+  position: absolute;
+  left: 12px; right: 12px;
+  bottom: -16px;
+  height: 2px;
+  border-radius: 1px;
   background: var(--vscode-button-background, #0e639c);
-  color: var(--vscode-button-foreground, #ffffff);
 }
 
 .planner-pane__actions { display: flex; align-items: center; gap: 6px; }
@@ -454,7 +469,133 @@
 .planner-task__plan:hover { color: #46c46f; background: color-mix(in srgb, #46c46f 12%, transparent); }
 .planner-task__more:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent); color: var(--vscode-editor-foreground, #d4d4d4); }
 
-/* ── Menu ─────────────────────────────────────────────────────────────── */
+/* ── Event popover (calendar quick-create + edit) ─────────────────────── */
+
+.planner-popover-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1150;
+  background: transparent;
+}
+.planner-popover {
+  width: 360px;
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 92%, white);
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 18%, transparent);
+  border-radius: 10px;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  animation: planner-popover-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes planner-popover-in {
+  from { transform: translateY(-3px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.planner-popover__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 8px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+}
+.planner-popover__title { margin: 0; font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; }
+.planner-popover__close {
+  width: 24px; height: 24px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+.planner-popover__close:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent); color: var(--vscode-editor-foreground, #d4d4d4); }
+
+.planner-popover__body { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+
+.planner-popover__title-input,
+.planner-popover__field,
+.planner-popover__textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 82%, white);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  font: inherit;
+  font-size: 12.5px;
+  transition: border-color 100ms ease, background 100ms ease;
+}
+.planner-popover__title-input { font-size: 14px; font-weight: 500; }
+.planner-popover__textarea { min-height: 64px; resize: vertical; }
+.planner-popover__title-input:focus,
+.planner-popover__field:focus,
+.planner-popover__textarea:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder, #5b9bd5);
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 90%, white);
+}
+
+.planner-popover__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.planner-popover__field--date { flex: 1 1 130px; min-width: 0; }
+.planner-popover__field--time { flex: 0 0 90px; }
+.planner-popover__field--full { flex: 1 1 100%; }
+.planner-popover__sep { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent); font-size: 12px; }
+
+.planner-popover__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  cursor: pointer;
+}
+.planner-popover__check input { width: 14px; height: 14px; accent-color: var(--vscode-button-background, #0e639c); }
+
+.planner-popover__foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+}
+.planner-popover__spacer { flex: 1 1 auto; }
+.planner-popover__btn {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 100ms ease, border-color 100ms ease, color 100ms ease;
+}
+.planner-popover__btn:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent); }
+.planner-popover__btn--primary {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  border-color: transparent;
+}
+.planner-popover__btn--primary:hover { filter: brightness(1.08); background: var(--vscode-button-background, #0e639c); }
+.planner-popover__btn--danger {
+  color: #f08585;
+  border-color: color-mix(in srgb, #e85a5a 38%, transparent);
+}
+.planner-popover__btn--danger:hover {
+  background: color-mix(in srgb, #e85a5a 14%, transparent);
+  color: #f3aeae;
+}
+
+/* ── Context menu (existing) ──────────────────────────────────────────── */
 
 .planner-menu-overlay {
   position: fixed;
@@ -492,24 +633,97 @@
 .planner-menu__item--danger:hover { background: color-mix(in srgb, #e85a5a 22%, transparent); color: #f3aeae; }
 
 
-/* ── Calendar (editor) ────────────────────────────────────────────────── */
+/* ── Calendar chrome — sharp, no pills ────────────────────────────────── */
 
-.planner-calendar__viewbar { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent); border-radius: 7px; }
-.planner-calendar__nav { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+/* Nav (prev / Today / next) — flat text buttons + sharp icon buttons */
+.planner-cnav { display: inline-flex; align-items: center; gap: 2px; }
+.planner-iconbtn {
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+.planner-iconbtn:hover {
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+.planner-flatbtn {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.planner-flatbtn:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent); }
 
-.planner-calendar__header {
-  font-size: 16px;
+/* View switcher — underline tabs, no pills */
+.planner-viewtabs { display: inline-flex; gap: 0; margin-left: 8px; }
+.planner-viewtab {
+  position: relative;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 100ms ease;
+}
+.planner-viewtab:hover { color: var(--vscode-editor-foreground, #d4d4d4); }
+.planner-viewtab--active { color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
+.planner-viewtab--active::after {
+  content: '';
+  position: absolute;
+  left: 10px; right: 10px; bottom: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--vscode-button-background, #0e639c);
+}
+
+/* Primary CTA — modest rounding (not a pill), inline icon */
+.planner-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px 0 10px;
+  margin-left: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter 120ms ease, transform 80ms ease;
+}
+.planner-cta:hover { filter: brightness(1.08); }
+.planner-cta:active { transform: translateY(0.5px); }
+
+/* Big date heading */
+.planner-cheader { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+.planner-cheader__date {
+  margin: 0;
+  font-size: 22px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   color: var(--vscode-editor-foreground, #f3f3f3);
-  margin-bottom: 6px;
 }
 
 .planner-month {
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
-  border-radius: 12px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 94%, white);
+  /* Sharp grid — no rounded "card" container around the calendar */
+  border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
+  background: var(--vscode-editor-background, #1e1e1e);
 }
 .planner-month__weekdays { display: grid; grid-template-columns: repeat(7, 1fr); background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 4%, transparent); }
 .planner-month__weekday {
@@ -523,18 +737,45 @@
 .planner-month__cells { display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: minmax(90px, auto); }
 .planner-month__cell {
   position: relative;
-  padding: 8px 10px;
-  border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
-  border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
+  padding: 6px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
   cursor: pointer;
-  transition: background 120ms ease;
+  transition: background 100ms ease;
+  min-height: 84px;
 }
-.planner-month__cell:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 6%, transparent); }
-.planner-month__cell:nth-child(7n) { border-right: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
-.planner-month__cell--other-month { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 30%, transparent); }
-.planner-month__cell--today { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 10%, transparent); }
-.planner-month__cell--today .planner-month__cellnum { color: var(--vscode-button-background, #0e639c); font-weight: 700; }
-.planner-month__cellnum { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+.planner-month__cell:nth-child(7n) { border-right: 0; }
+.planner-month__cell:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 5%, transparent); }
+.planner-month__cell:hover .planner-month__cellplus { opacity: 1; }
+.planner-month__cell--other-month .planner-month__cellnum { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 30%, transparent); }
+.planner-month__cell--today { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 7%, transparent); }
+.planner-month__cell--today .planner-month__cellnum {
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+  border-radius: 50%;
+  margin-bottom: 4px;
+}
+.planner-month__cellnum { display: inline-flex; font-size: 12px; font-weight: 600; margin-bottom: 4px; padding: 0 4px; }
+.planner-month__cellplus {
+  position: absolute;
+  top: 4px; right: 4px;
+  width: 18px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+.planner-month__cellplus:hover { background: var(--vscode-button-background, #0e639c); color: var(--vscode-button-foreground, #ffffff); }
 .planner-month__cellevents { display: flex; flex-direction: column; gap: 2px; }
 .planner-month__chip {
   display: block;
@@ -555,12 +796,10 @@
 .planner-month__chip:hover { background: var(--vscode-button-background, #0e639c); color: var(--vscode-button-foreground, #fff); }
 .planner-month__more { font-size: 10px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); padding-left: 6px; }
 
-/* Week view */
+/* Week view — flat, no rounded card */
 .planner-week {
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
-  border-radius: 12px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 94%, white);
+  border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
+  background: var(--vscode-editor-background, #1e1e1e);
 }
 .planner-week__header { display: grid; grid-template-columns: 56px repeat(7, 1fr); background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 4%, transparent); }
 .planner-week__corner { }
@@ -573,7 +812,25 @@
 .planner-week__hour { height: 48px; border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); position: relative; }
 .planner-week__hourlabel { position: absolute; top: -7px; right: 8px; font-size: 9.5px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent); }
 .planner-week__col { position: relative; border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
-.planner-week__cell { height: 48px; border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 5%, transparent); }
+.planner-week__cell { height: 48px; border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 5%, transparent); cursor: pointer; transition: background 100ms ease; }
+.planner-week__cell:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 5%, transparent); }
+
+/* Current-time indicator on today's week column */
+.planner-week__nowline {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: #e85a5a;
+  z-index: 2;
+  pointer-events: none;
+}
+.planner-week__nowdot {
+  position: absolute;
+  left: -4px; top: -3px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #e85a5a;
+}
 .planner-week__event {
   position: absolute;
   left: 4px;
@@ -598,21 +855,37 @@
 .planner-week__event strong { font-size: 11px; font-weight: 600; }
 .planner-week__event span { opacity: 0.85; font-size: 10px; margin-top: 1px; }
 
-/* Day view */
+/* Day view — flat */
 .planner-day {
   display: grid;
   grid-template-columns: 56px 1fr;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
-  border-radius: 12px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 94%, white);
+  border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
+  background: var(--vscode-editor-background, #1e1e1e);
   position: relative;
 }
 .planner-day__hours { display: flex; flex-direction: column; }
 .planner-day__hour { height: 56px; border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); position: relative; }
 .planner-day__hourlabel { position: absolute; top: -7px; right: 8px; font-size: 10px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); }
 .planner-day__col { position: relative; border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
-.planner-day__cell { height: 56px; border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 5%, transparent); }
+.planner-day__cell { height: 56px; border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 5%, transparent); cursor: pointer; transition: background 100ms ease; }
+.planner-day__cell:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 5%, transparent); }
+
+/* Current-time indicator (day view) */
+.planner-day__nowline {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: #e85a5a;
+  z-index: 2;
+  pointer-events: none;
+}
+.planner-day__nowdot {
+  position: absolute;
+  left: -4px; top: -3px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #e85a5a;
+}
 .planner-day__event {
   position: absolute;
   left: 8px;

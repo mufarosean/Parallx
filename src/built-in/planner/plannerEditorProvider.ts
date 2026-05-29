@@ -414,48 +414,63 @@ class PlannerEditorPane implements IDisposable {
   // ── Calendar tab ─────────────────────────────────────────────────────
 
   private async _renderCalendarTab(body: HTMLElement, actions: HTMLElement): Promise<void> {
-    // View toggle
-    const viewBar = el('div', 'planner-calendar__viewbar');
-    for (const v of ['month', 'week', 'day'] as CalendarView[]) {
-      const btn = el('button', 'planner-btn planner-btn--ghost planner-btn--small');
-      btn.type = 'button';
-      btn.textContent = v[0].toUpperCase() + v.slice(1);
-      if (v === this._calendarView) btn.classList.add('planner-btn--active');
-      btn.addEventListener('click', () => { this._calendarView = v; void this._renderTab(); });
-      viewBar.appendChild(btn);
-    }
-    actions.appendChild(viewBar);
+    // Sharp chrome — no pills, no rounded "bar" containers. Text-emphasized
+    // active states match the underline-tab idiom most calendar apps use.
 
-    // Date nav
-    const nav = el('div', 'planner-calendar__nav');
-    const prev = el('button', 'planner-btn planner-btn--ghost planner-btn--small planner-btn--icon-only');
+    // Date nav (chevron + Today + chevron, sharp text buttons)
+    const nav = el('div', 'planner-cnav');
+    const prev = el('button', 'planner-iconbtn');
     prev.type = 'button';
     prev.title = 'Previous';
-    prev.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>';
+    prev.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>';
     prev.addEventListener('click', () => { this._navigateCalendar(-1); void this._renderTab(); });
     nav.appendChild(prev);
-    const today = el('button', 'planner-btn planner-btn--ghost planner-btn--small');
+    const today = el('button', 'planner-flatbtn');
     today.type = 'button';
     today.textContent = 'Today';
     today.addEventListener('click', () => { this._cursorDate = startOfDay(new Date()); void this._renderTab(); });
     nav.appendChild(today);
-    const next = el('button', 'planner-btn planner-btn--ghost planner-btn--small planner-btn--icon-only');
+    const next = el('button', 'planner-iconbtn');
     next.type = 'button';
     next.title = 'Next';
-    next.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>';
+    next.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>';
     next.addEventListener('click', () => { this._navigateCalendar(1); void this._renderTab(); });
     nav.appendChild(next);
     actions.appendChild(nav);
 
-    const addEvt = el('button', 'planner-btn planner-btn--primary planner-btn--small');
+    // View switcher — underline-tab pattern, not pills
+    const views = el('div', 'planner-viewtabs');
+    for (const v of ['month', 'week', 'day'] as CalendarView[]) {
+      const vt = el('button', 'planner-viewtab');
+      vt.type = 'button';
+      vt.textContent = v[0].toUpperCase() + v.slice(1);
+      if (v === this._calendarView) vt.classList.add('planner-viewtab--active');
+      vt.addEventListener('click', () => { this._calendarView = v; void this._renderTab(); });
+      views.appendChild(vt);
+    }
+    actions.appendChild(views);
+
+    // Primary CTA (kept sharp — single rounded corner instead of pill)
+    const addEvt = el('button', 'planner-cta');
     addEvt.type = 'button';
     addEvt.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>New event</span>';
-    addEvt.addEventListener('click', () => void this._captureNewEvent());
+    addEvt.addEventListener('click', () => {
+      // Anchor the popover to the CTA so users see where the new-event UI came from.
+      const start = new Date(this._cursorDate);
+      start.setHours(9, 0, 0, 0);
+      this._openEventPopover({
+        mode: 'create',
+        startAt: start.getTime(),
+        endAt: start.getTime() + 60 * 60 * 1000,
+      }, addEvt.getBoundingClientRect());
+    });
     actions.appendChild(addEvt);
 
-    // Header — date range label
-    const header = el('div', 'planner-calendar__header');
-    header.textContent = this._calendarRangeLabel();
+    // Big date label — calendar-app focal point
+    const header = el('div', 'planner-cheader');
+    const heading = el('h2', 'planner-cheader__date');
+    heading.textContent = this._calendarRangeLabel();
+    header.appendChild(heading);
     body.appendChild(header);
 
     if (this._calendarView === 'month') await this._renderMonthView(body);
@@ -534,7 +549,7 @@ class PlannerEditorPane implements IDisposable {
         chip.type = 'button';
         chip.textContent = ev.title;
         chip.title = `${ev.title}\n${formatTimeRange(ev)}`;
-        chip.addEventListener('click', (e) => { e.stopPropagation(); void this._openEvent(ev); });
+        chip.addEventListener('click', (e) => { e.stopPropagation(); this._openEventPopover({ mode: 'edit', event: ev }, chip.getBoundingClientRect()); });
         evWrap.appendChild(chip);
       }
       if (dayEvents.length > MAX_SHOWN) {
@@ -543,6 +558,24 @@ class PlannerEditorPane implements IDisposable {
         evWrap.appendChild(more);
       }
       cell.appendChild(evWrap);
+
+      // Hover "+" affordance — appears on hover, indicates the cell is
+      // clickable to create. Click anywhere else on the cell jumps to day view.
+      const addAffordance = el('button', 'planner-month__cellplus');
+      addAffordance.type = 'button';
+      addAffordance.title = 'New event on this day';
+      addAffordance.textContent = '+';
+      addAffordance.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const start = new Date(day);
+        start.setHours(9, 0, 0, 0);
+        this._openEventPopover({
+          mode: 'create',
+          startAt: start.getTime(),
+          endAt: start.getTime() + 60 * 60 * 1000,
+        }, addAffordance.getBoundingClientRect());
+      });
+      cell.appendChild(addAffordance);
 
       cell.addEventListener('click', () => {
         this._cursorDate = startOfDay(day);
@@ -595,9 +628,34 @@ class PlannerEditorPane implements IDisposable {
       const dayStart = day.getTime();
       const dayEnd = endOfDay(day).getTime();
 
-      // Hour gridlines
+      // Hour gridlines — clickable for quick-create.
       for (let h = HOURS_START; h < HOURS_END; h++) {
-        dayCol.appendChild(el('div', 'planner-week__cell'));
+        const cell = el('div', 'planner-week__cell');
+        cell.dataset.hour = String(h);
+        cell.addEventListener('click', (e) => {
+          // Don't fire when clicking on an event bar that sits above.
+          if (e.target !== cell) return;
+          const slot = new Date(day);
+          slot.setHours(h, 0, 0, 0);
+          this._openEventPopover({
+            mode: 'create',
+            startAt: slot.getTime(),
+            endAt: slot.getTime() + 60 * 60 * 1000,
+          }, cell.getBoundingClientRect());
+        });
+        dayCol.appendChild(cell);
+      }
+
+      // Current-time indicator on today's column.
+      if (sameDay(day, new Date())) {
+        const now = new Date();
+        const elapsed = now.getTime() - startOfDay(now).getTime();
+        const pct = (elapsed / (24 * 3_600_000)) * 100;
+        const nowLine = el('div', 'planner-week__nowline');
+        nowLine.style.top = `${pct}%`;
+        const dot = el('span', 'planner-week__nowdot');
+        nowLine.appendChild(dot);
+        dayCol.appendChild(nowLine);
       }
 
       // Events as absolutely-positioned bars
@@ -613,7 +671,10 @@ class PlannerEditorPane implements IDisposable {
         bar.style.height = `${heightPct}%`;
         bar.title = `${ev.title}\n${formatTimeRange(ev)}`;
         bar.innerHTML = `<strong>${escapeHtml(ev.title)}</strong><span>${escapeHtml(formatTimeRange(ev))}</span>`;
-        bar.addEventListener('click', () => void this._openEvent(ev));
+        bar.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this._openEventPopover({ mode: 'edit', event: ev }, bar.getBoundingClientRect());
+        });
         dayCol.appendChild(bar);
       }
 
@@ -638,10 +699,35 @@ class PlannerEditorPane implements IDisposable {
       label.textContent = formatHour(h);
       hourCell.appendChild(label);
       hours.appendChild(hourCell);
-      col.appendChild(el('div', 'planner-day__cell'));
+
+      const cell = el('div', 'planner-day__cell');
+      cell.dataset.hour = String(h);
+      cell.addEventListener('click', (e) => {
+        if (e.target !== cell) return;
+        const slot = new Date(this._cursorDate);
+        slot.setHours(h, 0, 0, 0);
+        this._openEventPopover({
+          mode: 'create',
+          startAt: slot.getTime(),
+          endAt: slot.getTime() + 60 * 60 * 1000,
+        }, cell.getBoundingClientRect());
+      });
+      col.appendChild(cell);
     }
     grid.appendChild(hours);
     grid.appendChild(col);
+
+    // Current-time indicator (only if cursor is on today).
+    if (sameDay(this._cursorDate, new Date())) {
+      const now = new Date();
+      const elapsed = now.getTime() - startOfDay(now).getTime();
+      const pct = (elapsed / (24 * 3_600_000)) * 100;
+      const nowLine = el('div', 'planner-day__nowline');
+      nowLine.style.top = `${pct}%`;
+      const dot = el('span', 'planner-day__nowdot');
+      nowLine.appendChild(dot);
+      col.appendChild(nowLine);
+    }
 
     for (const ev of events) {
       const evStart = Math.max(ev.startAt, dayStart);
@@ -658,47 +744,224 @@ class PlannerEditorPane implements IDisposable {
         <strong class="planner-day__event-title">${escapeHtml(ev.title)}</strong>
         ${ev.location ? `<span class="planner-day__event-loc">${escapeHtml(ev.location)}</span>` : ''}
       `;
-      bar.addEventListener('click', () => void this._openEvent(ev));
+      bar.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._openEventPopover({ mode: 'edit', event: ev }, bar.getBoundingClientRect());
+      });
       col.appendChild(bar);
     }
 
     body.appendChild(grid);
   }
 
-  private async _captureNewEvent(): Promise<void> {
-    if (!this._api.window.showInputBox) return;
-    const title = await this._api.window.showInputBox({
-      prompt: 'New event',
-      placeholder: 'Title',
-    });
-    if (!title?.trim()) return;
-    const dayStart = new Date(this._cursorDate);
-    dayStart.setHours(9, 0, 0, 0);
-    try {
-      await this._data.createEvent({
-        title: title.trim(),
-        startAt: dayStart.getTime(),
-        endAt: dayStart.getTime() + 60 * 60 * 1000,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      await this._api.window.showErrorMessage(`Could not create event: ${msg}`);
-    }
-  }
+  // ── Event popover (create + edit) ───────────────────────────────────
 
-  private async _openEvent(ev: PlannerEvent): Promise<void> {
-    // Simple detail popup. Edit path: rename via input; reschedule via input box.
-    if (!this._api.window.showInputBox) return;
-    const result = await this._api.window.showInformationMessage(
-      `${ev.title}\n${formatTimeRange(ev)}${ev.location ? `\n${ev.location}` : ''}${ev.description ? `\n\n${ev.description}` : ''}`,
-      { title: 'Rename' }, { title: 'Delete' }, { title: 'Close' },
-    );
-    if (result?.title === 'Rename') {
-      const next = await this._api.window.showInputBox({ prompt: 'Rename event', value: ev.title });
-      if (next?.trim()) await this._data.updateEvent(ev.id, { title: next.trim() });
-    } else if (result?.title === 'Delete') {
-      await this._data.removeEvent(ev.id);
+  /**
+   * Single popover for both creating a new event and editing an existing
+   * one. Form: title, start time, end time, all-day toggle, location,
+   * description. Save commits via createEvent / updateEvent; Delete only
+   * shows in edit mode. Dismisses on Escape or outside click; never
+   * navigates away.
+   */
+  private _openEventPopover(
+    init: { mode: 'create'; startAt: number; endAt: number }
+        | { mode: 'edit'; event: PlannerEvent },
+    anchor: DOMRect,
+  ): void {
+    const overlay = el('div', 'planner-popover-overlay');
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+    const pop = el('div', 'planner-popover');
+    pop.style.position = 'fixed';
+
+    const isEdit = init.mode === 'edit';
+    const seed: { title: string; startAt: number; endAt: number; allDay: boolean; location: string; description: string; eventId: string | null } = isEdit
+      ? {
+          title: init.event.title,
+          startAt: init.event.startAt,
+          endAt: init.event.endAt,
+          allDay: init.event.allDay,
+          location: init.event.location ?? '',
+          description: init.event.description ?? '',
+          eventId: init.event.id,
+        }
+      : {
+          title: '',
+          startAt: init.startAt,
+          endAt: init.endAt,
+          allDay: false,
+          location: '',
+          description: '',
+          eventId: null,
+        };
+
+    // Header
+    const head = el('div', 'planner-popover__head');
+    const heading = el('h3', 'planner-popover__title');
+    heading.textContent = isEdit ? 'Edit event' : 'New event';
+    head.appendChild(heading);
+    const closeBtn = el('button', 'planner-popover__close');
+    closeBtn.type = 'button';
+    closeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    closeBtn.addEventListener('click', () => overlay.remove());
+    head.appendChild(closeBtn);
+    pop.appendChild(head);
+
+    // Body
+    const body = el('div', 'planner-popover__body');
+
+    const titleInput = el('input', 'planner-popover__title-input') as HTMLInputElement;
+    titleInput.type = 'text';
+    titleInput.placeholder = 'Add a title';
+    titleInput.value = seed.title;
+    body.appendChild(titleInput);
+
+    // Date / time row
+    const timeRow = el('div', 'planner-popover__row');
+    const startDate = el('input', 'planner-popover__field planner-popover__field--date') as HTMLInputElement;
+    startDate.type = 'date';
+    startDate.value = toDateInputValue(seed.startAt);
+    const startTime = el('input', 'planner-popover__field planner-popover__field--time') as HTMLInputElement;
+    startTime.type = 'time';
+    startTime.value = toTimeInputValue(seed.startAt);
+    const sep = el('span', 'planner-popover__sep');
+    sep.textContent = '—';
+    const endTime = el('input', 'planner-popover__field planner-popover__field--time') as HTMLInputElement;
+    endTime.type = 'time';
+    endTime.value = toTimeInputValue(seed.endAt);
+    const endDate = el('input', 'planner-popover__field planner-popover__field--date') as HTMLInputElement;
+    endDate.type = 'date';
+    endDate.value = toDateInputValue(seed.endAt);
+    timeRow.appendChild(startDate);
+    timeRow.appendChild(startTime);
+    timeRow.appendChild(sep);
+    timeRow.appendChild(endTime);
+    timeRow.appendChild(endDate);
+    body.appendChild(timeRow);
+
+    const allDayRow = el('label', 'planner-popover__check');
+    const allDayInput = el('input') as HTMLInputElement;
+    allDayInput.type = 'checkbox';
+    allDayInput.checked = seed.allDay;
+    const allDayText = el('span');
+    allDayText.textContent = 'All day';
+    allDayRow.appendChild(allDayInput);
+    allDayRow.appendChild(allDayText);
+    body.appendChild(allDayRow);
+    const updateAllDayUI = () => {
+      const off = allDayInput.checked;
+      startTime.disabled = off; endTime.disabled = off;
+      startTime.style.opacity = off ? '0.4' : '';
+      endTime.style.opacity = off ? '0.4' : '';
+    };
+    allDayInput.addEventListener('change', updateAllDayUI);
+    updateAllDayUI();
+
+    const locationInput = el('input', 'planner-popover__field planner-popover__field--full') as HTMLInputElement;
+    locationInput.type = 'text';
+    locationInput.placeholder = 'Add location';
+    locationInput.value = seed.location;
+    body.appendChild(locationInput);
+
+    const descInput = el('textarea', 'planner-popover__textarea') as HTMLTextAreaElement;
+    descInput.placeholder = 'Add description';
+    descInput.value = seed.description;
+    body.appendChild(descInput);
+
+    pop.appendChild(body);
+
+    // Footer
+    const foot = el('div', 'planner-popover__foot');
+    if (isEdit) {
+      const delBtn = el('button', 'planner-popover__btn planner-popover__btn--danger');
+      delBtn.type = 'button';
+      delBtn.textContent = 'Delete';
+      delBtn.addEventListener('click', async () => {
+        if (!seed.eventId) return;
+        await this._data.removeEvent(seed.eventId);
+        overlay.remove();
+      });
+      foot.appendChild(delBtn);
     }
+    const spacer = el('span', 'planner-popover__spacer');
+    foot.appendChild(spacer);
+    const cancel = el('button', 'planner-popover__btn');
+    cancel.type = 'button';
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => overlay.remove());
+    foot.appendChild(cancel);
+    const save = el('button', 'planner-popover__btn planner-popover__btn--primary');
+    save.type = 'button';
+    save.textContent = isEdit ? 'Save' : 'Create';
+    const doSave = async () => {
+      const title = titleInput.value.trim();
+      if (!title) { titleInput.focus(); return; }
+      const startMs = fromDateTimeInputs(startDate.value, startTime.value);
+      const endMs = fromDateTimeInputs(endDate.value, endTime.value);
+      if (startMs === null || endMs === null) {
+        await this._api.window.showErrorMessage('Invalid date or time.');
+        return;
+      }
+      if (endMs < startMs) {
+        await this._api.window.showErrorMessage('End time must be after start time.');
+        return;
+      }
+      try {
+        if (isEdit && seed.eventId) {
+          await this._data.updateEvent(seed.eventId, {
+            title,
+            startAt: startMs,
+            endAt: endMs,
+            allDay: allDayInput.checked,
+            location: locationInput.value.trim() || null,
+            description: descInput.value.trim() || null,
+          });
+        } else {
+          await this._data.createEvent({
+            title,
+            startAt: startMs,
+            endAt: endMs,
+            allDay: allDayInput.checked,
+            location: locationInput.value.trim() || null,
+            description: descInput.value.trim() || null,
+          });
+        }
+        overlay.remove();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await this._api.window.showErrorMessage(`Could not save event: ${msg}`);
+      }
+    };
+    save.addEventListener('click', () => void doSave());
+    foot.appendChild(save);
+    pop.appendChild(foot);
+
+    overlay.appendChild(pop);
+    document.body.appendChild(overlay);
+
+    // Keyboard: Enter saves (when not in textarea), Escape closes.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); }
+      else if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault(); void doSave();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    overlay.addEventListener('animationend', () => titleInput.focus(), { once: true });
+    // Failsafe focus if animation doesn't fire (e.g. reduced-motion).
+    setTimeout(() => { if (document.activeElement !== titleInput) titleInput.focus(); }, 80);
+
+    // Position the popover next to the anchor; keep it on-screen.
+    const m = pop.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let left = anchor.left;
+    let top = anchor.bottom + 6;
+    // If anchor is in the right half, prefer left-align to its right edge so
+    // long popovers don't fall off-screen.
+    if (anchor.left + m.width > vw - 12) left = Math.max(12, vw - m.width - 12);
+    if (top + m.height > vh - 12) top = Math.max(12, anchor.top - m.height - 6);
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
   }
 
   // ── Disposal ─────────────────────────────────────────────────────────
@@ -763,4 +1026,33 @@ function parseRelativeOrIso(input: string): number | null {
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
+function toDateInputValue(ms: number): string {
+  const d = new Date(ms);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function toTimeInputValue(ms: number): string {
+  const d = new Date(ms);
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
+function fromDateTimeInputs(dateStr: string, timeStr: string): number | null {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.split('-').map(n => parseInt(n, 10));
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+  let hour = 0, min = 0;
+  if (timeStr) {
+    const [hh, mm] = timeStr.split(':').map(n => parseInt(n, 10));
+    if (Number.isFinite(hh)) hour = hh;
+    if (Number.isFinite(mm)) min = mm;
+  }
+  const dt = new Date(y, m - 1, d, hour, min, 0, 0);
+  return Number.isFinite(dt.getTime()) ? dt.getTime() : null;
 }
