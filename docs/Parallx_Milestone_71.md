@@ -1,8 +1,65 @@
 # Milestone 71 — Dashboard
 
-> **Status:** Planning. M71 framework + 3 reference widgets. Prototype-first — interaction
-> details (drag affordances, config UX, header chrome) are expected to shift after
-> first contact.
+> **Status:** Shipped. M71 framework + 6 widgets. Iterated past the initial spec —
+> push-model AI delivery, per-widget appearance, per-page header collapse persisted
+> to the DB, and three widgets beyond the original reference set (AI widget, image,
+> autonomy activity). This doc has been back-updated from shipped code. For ground
+> truth always verify against [src/built-in/dashboard/](../src/built-in/dashboard/).
+
+## Post-spec evolution
+
+The framework + 3 reference widgets shipped roughly as specced. Most of the
+interesting design moves happened *after* first contact, in this order:
+
+1. **Widget chrome modes + per-instance appearance.** `WidgetChromeStyle =
+   'card' | 'minimal' | 'bare'` on the type, plus a `WidgetAppearance` JSON
+   blob per instance (background, border, title, titleHidden) edited from a
+   dedicated drawer. Migration 002 added `appearance_json` to
+   `dashboard_widgets`. The clock widget defaults to `minimal` (transparent),
+   AI/news/files default to `card`. Status dot only renders when status ≠ ok.
+2. **Pane header collapse persisted to DB.** Migration 003 added
+   `dashboard_pages.header_hidden`. (Initially landed in renderer
+   localStorage, which M53 doesn't migrate, so the state was effectively
+   lost across launches.) Collapsed header still exposes Add / Edit / expand
+   via a reveal strip at the top edge.
+3. **All-edge resize + smoother drag.** Resize handles on every edge + the
+   bottom-right corner, live during drag (snap on release). Drag/resize
+   share placement math through the same scheduler.
+4. **Push-model AI widgets.** News brief and the new generic AI widget no
+   longer compute their own output. They call `chat.submitPrompt` /
+   `chat.runToolQuery`; the AI does the work with its real tools, then
+   delivers the finished Markdown back via a shared `renderToWidget` tool.
+   Slow / failed turns never wipe the last good content — the refresh
+   handler returns a "Refreshing…" banner over the prior output, and the
+   AI's later callback overwrites the whole cache.
+5. **Title-addressable rendering.** `renderToWidget` resolves its target by
+   `instanceId` *or* by case-insensitive title via
+   `DashboardDataService.findWidgetByTitle` (refuses ambiguous matches). A
+   widget's own refresh auto-injects its instanceId; users + skills can
+   address a widget by title ("update my Morning News widget").
+6. **Per-widget skills.** The generic AI widget exposes a `skill` field. If
+   set, the refresh prompt prepends `Use the <skill> skill for this task.`
+   so the model loads the user's authored skill from
+   `.parallx/skills/<name>/SKILL.md`. Rich, reusable guidance lives in the
+   skill; the widget config stays one field.
+7. **In-body error feedback.** `WidgetHandle.renderError(message | null)`
+   + persisted `errorMessage` on `WidgetContext`. Failed widgets surface
+   reasons in their own body, not just as a header dot, and a relaunched
+   broken widget says *why* it's broken instead of looking empty.
+8. **News brief moved to `chat.runToolQuery`.** The original
+   `chat.getInlineAIProvider` path was a raw model call with no tools; the
+   model invented stories. `chat.runToolQuery` runs a bounded agentic loop
+   with the web-research tools (webSearch + webFetch) and returns the final
+   assistant text. Real sources, real URLs.
+9. **Three more widgets shipped:** `ai-custom` (generic AI widget),
+   `image` (drop / pick / paste an image, downscaled client-side, persisted
+   as data URL in `cached_output`), `autonomy-activity` (query-backed via
+   `chat.getRecentAutonomyEvents` — shows recent background agent runs).
+
+What landed below the spec line:
+
+- **`event` refresh policy.** Specced, never shipped. Live policies are
+  `manual | interval | cron` only.
 
 ## Why
 
@@ -89,91 +146,115 @@ interface WidgetPlacement {
 
 The grid is plain CSS Grid — no layout engine, no Tiptap, no virtual nodes. Drag-to-
 move and drag-to-resize are pure DOM interactions: the dashboard listens for
-`pointerdown` on widget headers (move) and corner handles (resize), snaps to integer
-cells during the drag, commits on release.
+`pointerdown` on widget headers (move) and **all-edge + corner** resize handles
+(resize), updates the cell live during the drag, snaps to integer cells, commits on
+release.
 
 Layout is **read-only by default and editable in an explicit "Edit layout" mode**
-(toolbar toggle on the dashboard pane). Exiting edit mode commits the layout to the
-DB. This keeps the inactive dashboard from accidentally rearranging itself when the
-user clicks into a widget.
+(toolbar toggle on the dashboard pane). When the pane header is collapsed, the same
+Edit-layout button lives in the reveal strip so the toggle is always reachable.
+Exiting edit mode commits the layout to the DB. This keeps the inactive dashboard
+from accidentally rearranging itself when the user clicks into a widget.
 
 ## Widget contribution interface
 
 Widgets are contributed by tools, including built-in tools. A tool registers a widget
 type once and the dashboard can instantiate it many times across pages.
 
+Current shipped shape (see
+[dashboardTypes.ts](../src/built-in/dashboard/dashboardTypes.ts)):
+
 ```typescript
-interface WidgetTypeRegistration {
-  /** Unique id, namespaced by tool. e.g. 'parallx.dashboard.clock', 'budget.summary'. */
+type WidgetChromeStyle = 'card' | 'minimal' | 'bare';
+
+interface WidgetTypeRegistration<TConfig = Record<string, unknown>> {
   readonly typeId: string;
-  /** Human-readable label shown in the widget picker. */
   readonly displayName: string;
-  /** Icon (codicon id or pre-rendered SVG). */
-  readonly icon?: string;
-  /** Short description shown in the picker. */
   readonly description?: string;
-  /** Default cell size when first added. User can resize freely after that. */
+  readonly icon?: string;
+  /** Coarse category — drives picker grouping ('static' / 'query' / 'ai'). */
+  readonly category: WidgetCategory;
   readonly defaultSize: { colSpan: number; rowSpan: number };
-  /** Optional min/max bounds for resize, if the widget has hard layout requirements. */
-  readonly sizeBounds?: { minColSpan?: number; maxColSpan?: number; minRowSpan?: number; maxRowSpan?: number };
-  /** Default config for a new instance. */
-  readonly defaultConfig: Record<string, unknown>;
-  /**
-   * Optional schema for the config — drives the per-widget settings form.
-   * Restricted to flat objects of primitives: string / number / boolean / enum.
-   * Anything fancier and the widget can render its own settings drawer.
-   */
+  readonly sizeBounds?: WidgetSizeBounds;
+  readonly defaultConfig: TConfig;
+  /** Drives the per-widget settings form. Primitives + textarea + string-list. */
   readonly configSchema?: WidgetConfigSchema;
-  /** Optional refresh policy hint — the user can override per instance. */
   readonly defaultRefreshPolicy?: WidgetRefreshPolicy;
+  /** Default chrome preset. Per-instance overrides live in WidgetAppearance. */
+  readonly chromeStyle?: WidgetChromeStyle;
 
   /**
-   * Pure data fetch. Runs both headless (cron / interval) and mounted (manual
-   * refresh from the UI). MUST return a string ≤ 256 KB. Omit for widgets with
-   * nothing to refresh (e.g. a clock).
+   * Pure data fetch. Runs both headless (interval/cron) and mounted (manual
+   * refresh from the UI). MUST return a string ≤ MAX_CACHED_OUTPUT_BYTES.
+   * Omit for widgets with nothing to refresh (e.g. clock, image).
+   *
+   * Push-model AI widgets (news brief, ai-custom) use refresh() as a
+   * trigger: they dispatch chat.submitPrompt / chat.runToolQuery and return
+   * a "Refreshing…" banner over the prior output. The real Markdown is
+   * delivered asynchronously by the AI calling the `renderToWidget` tool.
    */
-  refresh?(ctx: WidgetRefreshContext): Promise<string>;
+  refresh?(ctx: WidgetRefreshContext<TConfig>): Promise<string>;
 
-  /**
-   * DOM render. Only runs when the dashboard is mounted. The widget paints from
-   * ctx.cachedOutput on first paint and from subsequent setCachedOutput calls.
-   */
-  createWidget(container: HTMLElement, ctx: WidgetContext): WidgetHandle;
+  /** DOM render. Receives cachedOutput via ctx.cachedOutput on first paint. */
+  createWidget(container: HTMLElement, ctx: WidgetContext<TConfig>): WidgetHandle;
 }
 
-interface WidgetRefreshContext {
+interface WidgetRefreshContext<TConfig = unknown> {
   readonly instanceId: string;
   readonly pageId: string;
-  readonly config: Record<string, unknown>;
-  /** Access to the workbench API surface (chat, fs, editors, mcp, db, …). */
-  readonly api: ParallxApi;
+  readonly config: TConfig;
+  /** Parallx API surface (commands, editors, fs, …). */
+  readonly api: unknown;
+  /** Last cached output for this instance, if any. */
+  readonly cachedOutput: string | null;
 }
 
-interface WidgetContext extends WidgetRefreshContext {
-  /** Latest cached output, if any. Widgets render from cache on first paint. */
-  readonly cachedOutput: string | null;
-  /** Subscribe to config changes from the dashboard's settings drawer. */
-  readonly onDidChangeConfig: Event<Record<string, unknown>>;
-  /** Trigger a manual refresh (calls the widget's refresh() if defined). */
+interface WidgetContext<TConfig = unknown> extends WidgetRefreshContext<TConfig> {
+  /** Persisted error message from the last failed refresh, if any. */
+  readonly errorMessage: string | null;
+  readonly onDidChangeConfig: Event<TConfig>;
   requestRefresh(): void;
-  /** Push fresh output. Persists to DB cache and clears any error state. */
   setCachedOutput(output: string): void;
-  /** Flip status to 'error' with a message. Shown in the widget chrome with retry. */
   setError(message: string): void;
-  /** Explicitly clear an error without writing new output. */
   clearError(): void;
 }
 
-interface WidgetHandle {
-  /** Called when the widget is removed, page closes, or extension deactivates. */
-  dispose(): void;
+interface WidgetHandle extends IDisposable {
+  /** Called after setCachedOutput so the widget can re-paint from the new cache. */
+  refreshFromCache?(cachedOutput: string | null): void;
+  /**
+   * Called on refresh failure (message) AND success (null) so the widget can
+   * surface the reason in its own body instead of relying on the header status
+   * dot. Failed-then-relaunched widgets show their reason on mount via the
+   * persisted errorMessage on WidgetContext.
+   */
+  renderError?(message: string | null): void;
 }
 
 type WidgetRefreshPolicy =
   | { kind: 'manual' }
-  | { kind: 'interval'; ms: number }            // ms ≥ 60_000
-  | { kind: 'cron'; cron: string }              // standard cron expression
-  | { kind: 'event'; eventName: string };       // workbench event the widget listens for
+  | { kind: 'interval'; ms: number }   // ms ≥ 60_000
+  | { kind: 'cron'; cron: string };    // standard 5-field cron
+// (The originally-specced 'event' policy did not ship.)
+```
+
+Per-instance overrides live in `WidgetAppearance`, persisted as
+`appearance_json` (migration 002) and edited from the dedicated Appearance
+drawer:
+
+```typescript
+interface WidgetAppearance {
+  /** 'default' = chrome default, 'transparent' = no fill, 'custom' = backgroundColor. */
+  readonly background: 'default' | 'transparent' | 'custom';
+  readonly backgroundColor: string | null;
+  /** 'default' = chrome default, 'none' = no border, 'custom' = borderColor. */
+  readonly border: 'default' | 'none' | 'custom';
+  readonly borderColor: string | null;
+  /** Per-instance title override. Null/empty falls back to displayName. */
+  readonly title: string | null;
+  /** Hide the title row entirely (actions still reveal on hover). */
+  readonly titleHidden: boolean;
+}
 ```
 
 Registration is one line from the tool's `activate()`:
@@ -197,40 +278,63 @@ contribution model open — third-party widgets do not need to know about the gr
 ## Widget lifecycle
 
 1. **First paint (open or reopen):** dashboard reads `dashboard_widgets`, creates a
-   container per row, instantiates the widget renderer, passes `cachedOutput` via
-   `ctx`. Renderer paints from cache immediately — no network, no AI call.
+   container per row, instantiates the widget renderer, passes `cachedOutput` *and*
+   `errorMessage` via `ctx`. Renderer paints from cache immediately — no network,
+   no AI call. If `errorMessage` is non-null and `cachedOutput` is null, the
+   widget paints its persisted reason instead of looking empty.
 2. **Mounted refresh:** user clicks the header refresh button. Dashboard calls
    `widget.refresh(ctx)` and writes the resolved string to the cache.
-3. **Headless refresh:** scheduled by cron / interval policy. The dashboard tool
-   registers callbacks with `ICronService` that run regardless of whether any
-   dashboard tab is open. Each callback calls `refresh(ctx)` and writes the result to
-   the cache. Next time the user opens the dashboard, the cell paints fresh from
-   cache instantly.
+3. **Headless refresh:** scheduled by cron / interval policy by the dashboard's
+   own scheduler ([dashboardRefreshScheduler.ts](../src/built-in/dashboard/dashboardRefreshScheduler.ts)).
+   Same code path as mounted — `refresh(ctx)` runs whether or not the tab is open;
+   the result lands in the DB cache; next mount paints fresh.
 4. **Config edits:** the dashboard's settings drawer renders a form from the widget's
    `configSchema`. On save, the dashboard writes `config_json` and fires
-   `onDidChangeConfig` on the live instance. Widgets that prefer the simpler
-   "re-render from scratch" path can ignore the event and let the dashboard
-   re-instantiate them on the next refresh — both are valid.
-5. **Errors:** `setError(msg)` flips `status='error'` in the DB; the cell shows the
-   message with a retry button that triggers another `refresh(ctx)`. A subsequent
-   `setCachedOutput` clears the error.
+   `onDidChangeConfig` on the live instance.
+5. **Errors:** `setError(msg)` flips `status='error'` in the DB and calls
+   `WidgetHandle.renderError(msg)`, so the widget paints the reason in its own
+   body. A subsequent `setCachedOutput` clears the error and calls
+   `renderError(null)`.
+
+### Push model — for AI widgets
+
+AI widgets do **not** compute their result in `refresh()`. Pattern:
+
+1. `refresh()` dispatches the work to the active chat session via
+   `chat.submitPrompt({ text })` (or `chat.runToolQuery` for a bounded
+   tool-loop). The prompt embeds the widget's `instanceId` and instructs
+   the AI to deliver the finished Markdown via the shared `renderToWidget`
+   tool when done.
+2. `refresh()` returns immediately with a `"_Refreshing…_"` banner over
+   the prior output, so the cell repaints instantly and the user always
+   has the last good content visible while the new run is in flight.
+3. The AI's later `renderToWidget` call resolves the target widget by
+   `instanceId` *or* by case-insensitive title
+   (`DashboardDataService.findWidgetByTitle`, refuses ambiguous matches)
+   and writes the finished Markdown to `cached_output`. The cell re-paints.
+4. A slow / failed turn never wipes good content — worst case, the
+   "Refreshing…" banner lingers above yesterday's still-readable brief.
+
+This is what makes "update my Morning News widget" work from chat or from a
+hand-written skill: the widget is title-addressable.
 
 ### Single-flight per widget
 
 Mounted refresh + headless refresh could race when the dashboard is open at the
-moment the cron fires. The dashboard enforces single-flight per `instanceId`: a
-second `refresh()` request while one is in flight is a no-op (or coalesces to a
-"will refresh after current completes" — the simpler form ships first).
+moment the schedule fires. The dashboard enforces single-flight per `instanceId`:
+a second `refresh()` request while one is in flight reuses the same promise.
 
 ## Storage
 
-Two tables in the shared workspace DB, prefixed `dashboard_*`:
+Two tables in the shared workspace DB, prefixed `dashboard_*`, evolved across
+three migrations ([migrations/](../src/built-in/dashboard/migrations/)):
 
 ```sql
+-- 001_dashboard_schema.sql — base
 CREATE TABLE dashboard_pages (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
-  position    INTEGER NOT NULL,         -- ordering, even if UI ships with 1 page
+  position    INTEGER NOT NULL,
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL
 );
@@ -239,25 +343,31 @@ CREATE TABLE dashboard_widgets (
   id                  TEXT PRIMARY KEY,
   page_id             TEXT NOT NULL REFERENCES dashboard_pages(id) ON DELETE CASCADE,
   widget_type_id      TEXT NOT NULL,
-  -- Placement
   row                 INTEGER NOT NULL,
   col                 INTEGER NOT NULL,
   row_span            INTEGER NOT NULL,
   col_span            INTEGER NOT NULL,
-  position            INTEGER NOT NULL,            -- stable ordering tiebreaker
-  -- Behaviour
+  position            INTEGER NOT NULL,
   config_json         TEXT NOT NULL,
   refresh_policy_json TEXT NOT NULL,
-  -- Cache + status (managed by dashboard, written by widgets via ctx)
   cached_output       TEXT,
   cached_at           INTEGER,
-  status              TEXT NOT NULL DEFAULT 'ok',  -- 'ok' | 'error' | 'running'
+  status              TEXT NOT NULL DEFAULT 'ok',
   error_message       TEXT,
   created_at          INTEGER NOT NULL,
   updated_at          INTEGER NOT NULL
 );
-
 CREATE INDEX idx_dashboard_widgets_page ON dashboard_widgets(page_id);
+
+-- 002_widget_appearance.sql — per-instance visual overrides (JSON blob so
+-- the shape can evolve without further migrations; empty {} = inherit chrome).
+ALTER TABLE dashboard_widgets
+  ADD COLUMN appearance_json TEXT NOT NULL DEFAULT '{}';
+
+-- 003_page_header_hidden.sql — pane header collapse persisted in the
+-- workspace DB (moved out of renderer localStorage, which M53 didn't migrate).
+ALTER TABLE dashboard_pages
+  ADD COLUMN header_hidden INTEGER NOT NULL DEFAULT 0;
 ```
 
 ### What the dashboard owns vs. what widgets own
@@ -272,29 +382,48 @@ The dashboard tool's startup hook auto-creates a default page on first open if n
 rows exist — no init command. New schema versions land via the standard migration
 runner.
 
-## Background AI calls
+## AI integration
 
-AI-backed widgets (news brief, summaries) must use a **background chat path** — not
-the active chat thread the user is mid-conversation in.
+AI-backed widgets use the active chat session as their runtime so they
+inherit the user's model + skills + tools. Two distinct cross-extension
+contracts grew out of the iteration:
 
-The verified surface: the chat tool registers a command
-`chat.getInlineAIProvider` ([chat/main.ts:2372-2395](../src/built-in/chat/main.ts#L2372-L2395))
-that returns `{ sendChatRequest, retrieveContext? }` where:
+**Push model** (`ai-custom`, news brief). The widget's `refresh()` calls
+`chat.submitPrompt({ text })` with a prompt that:
 
-```ts
-sendChatRequest(
-  messages: readonly IChatMessage[],
-  options?: { temperature?: number; maxTokens?: number },
-  signal?: AbortSignal,
-): AsyncIterable<IChatResponseChunk>;
-```
+- embeds the widget's `instanceId` so the AI can address its target,
+- instructs the AI to gather what it needs with its normal tools,
+- instructs the AI to deliver the finished Markdown via the shared
+  `renderToWidget` tool.
 
-Widget refresh handlers obtain the provider via
-`api.commands.executeCommand('chat.getInlineAIProvider')` (cached after first call),
-build messages, await the async iterable, and pass the concatenated content to
-`ctx.setCachedOutput`. This is the same surface canvas's inline-AI uses
-([canvas/main.ts:289-296](../src/built-in/canvas/main.ts#L289-L296)) — no new
-chat infrastructure for M71.
+`refresh()` returns immediately with a `"_Refreshing…_"` banner over the
+prior output (preserved). The AI's later `renderToWidget` call overwrites
+`cached_output` with the finished Markdown; the widget re-paints. Slow /
+failed turns leave yesterday's content intact behind the banner.
+
+**Bounded tool query** (news brief uses this for research). The chat tool
+exposes `chat.runToolQuery({ messages, allowedTools })` — a bounded
+agentic loop with a specified tool subset (web-research's `webSearch` +
+`webFetch` for the news brief) that returns the final assistant text
+synchronously. Used when the widget needs to wait for a structured result
+rather than handing off to the user's chat session.
+
+**Legacy** (`chat.getInlineAIProvider`). Still available; canvas inline AI
+uses it. Initially used by the news brief, replaced by `runToolQuery`
+when fabrication was the observed failure mode (raw-model calls with no
+tools invented stories).
+
+**Title-addressable targets.** `renderToWidget` resolves its target by
+`instanceId` *or* by case-insensitive title via
+`DashboardDataService.findWidgetByTitle` (refuses ambiguous matches). The
+widget's own refresh auto-injects its instanceId; users and skills can
+address a widget from chat by its title.
+
+**Per-widget skills.** The `ai-custom` widget exposes a `skill` field. If
+set, the refresh prompt prepends `Use the <skill> skill for this task.`
+so the model loads the user's authored skill from
+`.parallx/skills/<name>/SKILL.md`. Rich, reusable instructions live in the
+skill; widget config stays a single field.
 
 ## Hard limits
 
@@ -311,57 +440,71 @@ These are conservative starting numbers, not contracts. We can loosen any of the
 when a real widget needs it — but we ship with them in place to prevent the
 "I configured 20 widgets and now the app is slow" failure mode.
 
-## M71 ship list
+## M71 ship list (as shipped)
 
 **Framework:**
 
 - `parallx.dashboard` built-in tool
 - Editor provider for `typeId: 'dashboard'` (one instance per page)
+- Left-ribbon icon + "Dashboards" sidebar view listing pages, with
+  active-page highlight that tracks the active editor + new / rename /
+  duplicate (copies all widgets) / delete
 - 12-column CSS Grid layout primitive
-- "Edit layout" mode with drag-to-move and drag-to-resize (snap-to-cell, commit on
-  release)
-- Widget contribution API (`registerWidgetType`) with the `refresh` / `createWidget`
-  split
-- Widget settings drawer (renders form from `configSchema` — primitives only)
-- Refresh scheduler wired into `ICronService` (cron + interval + event policies,
-  manual via header button)
-- Headless refresh path with single-flight per instance and the four hard limits
-- Two-table schema + initial migration
-- Default page auto-created on first workspace open
-- "Add widget" picker listing registered widget types
-- Per-widget header: title, status indicator, refresh button, ⋯ menu (configure,
-  remove)
+- "Edit layout" mode with drag-to-move + all-edge drag-to-resize, live
+  during drag, snap on release
+- Pane header collapsible per page, persisted to
+  `dashboard_pages.header_hidden`; reveal strip at top edge exposes
+  Add / Edit / expand when collapsed
+- Widget contribution API (`registerWidgetType`) with the `refresh` /
+  `createWidget` split + `WidgetHandle.refreshFromCache` + `renderError`
+- `WidgetChromeStyle` ('card' / 'minimal' / 'bare') on the type
+- `WidgetAppearance` per-instance (background, border, title,
+  titleHidden) edited in a dedicated Appearance drawer
+- Widget settings drawer (renders form from `configSchema`)
+- Status dot only renders when status ≠ ok
+- Refresh scheduler (manual + interval + cron), dashboard-local, not
+  coupled to `ICronService`. Single-flight per instance. Four hard limits.
+- Three-migration schema (base + appearance_json + header_hidden)
+- Default page auto-created on first workspace open (gated by a
+  workspaceState flag so it doesn't fight workspace-restore)
+- "Add widget" picker grouped by category, with chrome-aware previews
 
-**Reference widgets (prove the model — not the feature list):**
+**Shipped widgets:**
 
-1. **`parallx.dashboard.clock-and-links`** — *static.* Renders date/time +
-   user-configured quick links. No `refresh()`. Proves the render path and the
-   `configSchema` form (the links list is an enum-of-strings).
-2. **`parallx.dashboard.recent-files`** — *query-backed.* `refresh()` queries the
-   workspace filesystem index for top N recent files; click opens in the appropriate
-   editor via `ctx.api.editors.openFileEditor`. Proves data binding + cross-tool
-   navigation without AI.
-3. **`parallx.dashboard.news-brief`** — *AI-backed.* `refresh()` runs a background
-   chat request with the web-fetch tool, using a prompt template the user configures
-   (default: "top 10 news stories for {{location}}"). Manual refresh in M71. Proves
-   the headless path with AI + per-instance config.
+1. **`parallx.dashboard.clock-and-links`** — *static.* `chromeStyle:
+   'minimal'`, 12h default + 24h option, configurable seconds + greeting
+   + quick links.
+2. **`parallx.dashboard.recent-files`** — *query.* Reads workspace
+   storage `parallx:quickAccess:recentFiles`. Click opens via
+   `openFileEditor`.
+3. **`parallx.dashboard.news-brief`** — *AI, bounded tool query.* Uses
+   `chat.runToolQuery` with web-research tools (webSearch + webFetch) to
+   do real research with real cited URLs. Keeps last good brief behind a
+   "Refreshing…" banner during a refresh.
+4. **`parallx.dashboard.ai-custom` ("AI widget")** — *AI, push model.*
+   Generic. User writes a prompt + optional `skill` name; refresh
+   dispatches via `chat.submitPrompt`; AI delivers Markdown back via
+   `renderToWidget`. One widget, any task.
+5. **`parallx.dashboard.image`** — *static.* User picks / drops an image;
+   downscaled client-side to fit `MAX_CACHED_OUTPUT_BYTES`; persisted as
+   data URL in `cached_output` (no extra storage column needed).
+6. **`parallx.dashboard.autonomy-activity`** — *query.* Reads
+   `chat.getRecentAutonomyEvents` for recent background agent runs —
+   trigger, outcome, duration, tool count. Body-free projection of the
+   autonomy task rail.
 
-Three widgets cover the three lifecycle shapes — static, query-driven, AI-driven —
-which is enough to prove the contribution model holds.
+## Out of scope (still deferred)
 
-## Out of scope (deferred)
-
-- **Multi-page dashboard UI.** Schema supports multiple pages from day one but M71
-  ships UI for one default page only.
-- **Cross-extension widgets (`budget.summary`, `tasks.today`, calendar, canvas notes
-  embed).** Each lands in its owning tool's milestone once the framework is real and
-  the contribution API has survived first contact.
-- **Custom user-defined AI prompt widget** beyond the news brief's templated prompt.
-- **Widget marketplace / discovery.** Picker just lists what is registered.
-- **Sharing / export, themed widget backgrounds, custom widget styling.**
-- **Deprioritization of headless refresh when the chat is active.** Polish, not
-  correctness — landing in M71.5 if needed.
-- **Exponential backoff on consecutive refresh errors.** M71.5.
+- **Custom themed widget backgrounds beyond color choices.** Backgrounds
+  are color or transparent; image backgrounds, gradients, glass effects
+  not in scope.
+- **Cross-extension widgets** owned by other tools (`budget.summary`,
+  calendar embed, etc.). Land in their owning tool's milestone.
+- **Widget marketplace / discovery.** Picker just lists what is
+  registered.
+- **Sharing / export.**
+- **Deprioritization of headless refresh when the chat is active.**
+- **Exponential backoff on consecutive refresh errors.**
 
 ## Implementation discipline
 
@@ -378,10 +521,9 @@ infrastructure for needs we don't yet have. Concretely, at build time:
   ([canvas/main.ts:544-568](../src/built-in/canvas/main.ts#L544-L568)).
 - **Don't couple to `ICronService`.** Its `CronTurnExecutor` fires agent turns and
   there's only one executor per service ([openclawCronService.ts:162-275](../src/openclaw/openclawCronService.ts#L162-L275)).
-  Build a tiny dashboard-local scheduler — `setTimeout` for cron, `setInterval`
-  for interval — and reuse the exported `parseDuration` / `parseCronField` /
-  `computeNextCronRun` helpers from openclawCronService when we need them.
-  ~50 lines, no coupling to autonomy semantics.
+  The dashboard runs its own `setTimeout`-based scheduler and reuses the
+  exported `parseDuration` / `parseCronField` helpers from
+  openclawCronService. No coupling to autonomy semantics.
 - **`configSchema` form: render the four primitive types and that's it.** No nested
   objects, no conditionals, no validation framework. If a widget needs richer config,
   it can render its own settings UI later.
@@ -415,10 +557,12 @@ infrastructure for needs we don't yet have. Concretely, at build time:
 | DB migration runner            | `electron.database.migrate(migrationsDir)` — [canvas/main.ts:544-568](../src/built-in/canvas/main.ts#L544-L568); files at `src/built-in/<tool>/migrations/*.sql` |
 | DB query bridge                | `window.parallxElectron.database.run/get/all/runTransaction` — [canvasDataService.ts:160-173](../src/built-in/canvas/canvasDataService.ts#L160-L173)         |
 | Cron parsing helpers (reusable)| `parseDuration`, `parseCronField`, `computeNextCronRun` exported from [openclawCronService.ts](../src/openclaw/openclawCronService.ts)                       |
-| Background AI request          | `api.commands.executeCommand('chat.getInlineAIProvider')` → `{ sendChatRequest, retrieveContext? }` — [chat/main.ts:2372-2395](../src/built-in/chat/main.ts#L2372-L2395) |
-| Recent files (M71 widget)      | `workspaceStorage.get('parallx:quickAccess:recentFiles')` — [welcome/main.ts:338,357-365](../src/built-in/welcome/main.ts#L338) (JSON array of file URIs)    |
-| Workspace state per tool       | `context.workspaceState.get/update<T>(key, default?)` — [canvas/main.ts:261-269](../src/built-in/canvas/main.ts#L261-L269)                                   |
-| Web-fetch tool (for news brief)| `ext/web-research/` — referenced via prompt → tool-use; verified at Phase 4                                                                                  |
+| Push-model AI delivery         | `chat.submitPrompt({ text })` (fires the active chat session) + `renderToWidget` tool registered by the dashboard (resolves target by `instanceId` OR title via `findWidgetByTitle`) |
+| Bounded tool query             | `chat.runToolQuery({ messages, allowedTools })` — bounded agentic loop, returns final assistant text. Used by news brief with web-research tools.            |
+| Recent autonomy events         | `chat.getRecentAutonomyEvents({ sinceDays, limit })` — body-free projection of the autonomy task rail. Used by autonomy-activity widget.                     |
+| Inline AI (legacy)             | `chat.getInlineAIProvider` — still registered, still used by canvas inline AI. Replaced by `chat.runToolQuery` for the news brief.                           |
+| Recent files (widget)          | `workspaceStorage.get('parallx:quickAccess:recentFiles')` — same key the welcome page uses; JSON array of file URIs                                          |
+| Workspace state per tool       | `context.workspaceState.get/update<T>(key, default?)`                                                                                                        |
 
 ## Success criteria
 
@@ -440,16 +584,18 @@ infrastructure for needs we don't yet have. Concretely, at build time:
 - The dashboard editor participates in workspace restore — closing and reopening the
   app preserves which dashboard pages were open and which was active.
 
-## Open questions to resolve at implementation
+## Resolved during implementation
 
-- **Drag-to-move conflict with click-into-widget content.** Header-only drag region
-  is the assumption; verify with a recent-files widget where rows are clickable.
-- **Widget header customization.** Body-only render is the M71 assumption.
-- **Cached output format.** String — widgets serialize to whatever string format they
-  prefer (markdown, plain text, JSON). The dashboard does not interpret the cache;
-  widgets read their own cache in `createWidget` and render it however they choose.
-- **Headless wake when app is minimized.** Our scheduler uses `setTimeout` /
-  `setInterval` which fire on the renderer event loop. Electron throttles renderer
-  timers when the window is hidden (≥1 s minimum). Cron-policy widgets with intervals
-  ≥ 60 s are unaffected; sub-second intervals would be throttled but we already
-  enforce a 60 s floor.
+- **Drag region conflict with widget content.** Resolved: drag region is
+  the widget header in normal mode; in edit mode, the whole card is
+  draggable (resize handles take precedence on the edges). Recent-files
+  rows stay clickable because they're inside the body, not the header.
+- **Widget header customization.** Resolved via `chromeStyle` + per-instance
+  `WidgetAppearance.title` / `titleHidden`.
+- **Cached output format.** Stays string. The dashboard doesn't interpret
+  it; AI widgets that produce Markdown share a small renderer
+  (`widgets/markdownRenderer.ts`); the image widget stores a data URL;
+  recent-files stores JSON. Each widget owns its format.
+- **Headless wake when app is minimized.** Scheduler uses `setTimeout` /
+  `setInterval` on the renderer event loop. Electron throttles hidden
+  windows to ≥1 s; the 60 s minimum interval keeps us above the throttle.
