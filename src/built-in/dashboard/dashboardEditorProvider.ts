@@ -21,6 +21,7 @@ import type { DashboardRefreshScheduler } from './dashboardRefreshScheduler.js';
 import {
   DASHBOARD_GRID_COLS,
   type DashboardWidgetRow,
+  type WidgetAppearance,
   type WidgetContext,
   type WidgetHandle,
   type WidgetPlacement,
@@ -57,6 +58,10 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): 
   const node = document.createElement(tag);
   if (className) node.className = className;
   return node;
+}
+
+function isHexColor(v: string | null): v is string {
+  return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
 }
 
 const DASHBOARD_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>';
@@ -390,6 +395,7 @@ class DashboardEditorPane implements IDisposable {
     card.dataset.chrome = typeReg?.chromeStyle ?? 'card';
     card.style.gridRow = `${row.placement.row + 1} / span ${row.placement.rowSpan}`;
     card.style.gridColumn = `${row.placement.col + 1} / span ${row.placement.colSpan}`;
+    this._applyAppearance(card, row.appearance);
 
     // Header
     const header = el('header', 'dashboard-widget__header');
@@ -426,6 +432,14 @@ class DashboardEditorPane implements IDisposable {
       actions.appendChild(settingsBtn);
     }
 
+    // Appearance button — universal, available on every widget.
+    const appearanceBtn = el('button', 'dashboard-widget__btn');
+    appearanceBtn.type = 'button';
+    appearanceBtn.title = 'Appearance';
+    appearanceBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>';
+    appearanceBtn.addEventListener('click', () => this._openAppearanceDrawer(row.id));
+    actions.appendChild(appearanceBtn);
+
     const removeBtn = el('button', 'dashboard-widget__btn dashboard-widget__btn--danger');
     removeBtn.type = 'button';
     removeBtn.title = 'Remove widget';
@@ -443,7 +457,7 @@ class DashboardEditorPane implements IDisposable {
     card.appendChild(resizeHandle);
 
     // Wire drag-to-move + drag-to-resize.
-    this._installDragMove(card, drag, row.id);
+    this._installDragMove(card, row.id);
     this._installDragResize(card, resizeHandle, row.id);
 
     // Body
@@ -776,11 +790,16 @@ class DashboardEditorPane implements IDisposable {
 
   // ── Drag-to-move ───────────────────────────────────────────────────────
 
-  private _installDragMove(card: HTMLElement, handle: HTMLElement, widgetId: string): void {
-    handle.addEventListener('pointerdown', (e) => {
+  private _installDragMove(card: HTMLElement, widgetId: string): void {
+    card.addEventListener('pointerdown', (e) => {
       if (!this._editMode) return;
+      // The whole card is a drag surface in edit mode (the dedicated grip is
+      // just an affordance, and minimal/bare widgets hide it). Ignore presses
+      // on the action buttons or the resize handle so they keep working.
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('.dashboard-widget__btn, .dashboard-widget__resize')) return;
       e.preventDefault();
-      handle.setPointerCapture(e.pointerId);
+      card.setPointerCapture(e.pointerId);
 
       const gridRect = this._gridEl!.getBoundingClientRect();
       const cellWidth = gridRect.width / DASHBOARD_GRID_COLS;
@@ -798,23 +817,39 @@ class DashboardEditorPane implements IDisposable {
       this._placeAt(ghost, origPlacement);
 
       let lastTarget = origPlacement;
-      const onMove = (ev: PointerEvent) => {
-        const dx = ev.clientX - startX;
-        const dy = ev.clientY - startY;
-        const deltaCol = Math.round(dx / cellWidth);
-        const deltaRow = Math.round(dy / cellHeight);
+      // The card follows the pointer continuously via transform (GPU
+      // composited, no layout) so motion feels smooth; the ghost snaps to
+      // whole grid cells to preview where the widget will land. rAF batches
+      // updates so we touch the DOM at most once per frame.
+      let pendingDx = 0;
+      let pendingDy = 0;
+      let rafId = 0;
+      const flush = () => {
+        rafId = 0;
+        card.style.transform = `translate(${pendingDx}px, ${pendingDy}px)`;
+        const deltaCol = Math.round(pendingDx / cellWidth);
+        const deltaRow = Math.round(pendingDy / cellHeight);
         const targetCol = Math.max(0, Math.min(DASHBOARD_GRID_COLS - origPlacement.colSpan, origPlacement.col + deltaCol));
         const targetRow = Math.max(0, origPlacement.row + deltaRow);
-        lastTarget = { ...origPlacement, col: targetCol, row: targetRow };
-        this._placeAt(ghost, lastTarget);
+        if (targetCol !== lastTarget.col || targetRow !== lastTarget.row) {
+          lastTarget = { ...origPlacement, col: targetCol, row: targetRow };
+          this._placeAt(ghost, lastTarget);
+        }
+      };
+      const onMove = (ev: PointerEvent) => {
+        pendingDx = ev.clientX - startX;
+        pendingDy = ev.clientY - startY;
+        if (!rafId) rafId = requestAnimationFrame(flush);
       };
       const onUp = async (ev: PointerEvent) => {
-        handle.removeEventListener('pointermove', onMove);
-        handle.removeEventListener('pointerup', onUp);
-        handle.removeEventListener('pointercancel', onUp);
-        try { handle.releasePointerCapture(ev.pointerId); } catch { /* noop */ }
+        if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+        card.removeEventListener('pointermove', onMove);
+        card.removeEventListener('pointerup', onUp);
+        card.removeEventListener('pointercancel', onUp);
+        try { card.releasePointerCapture(ev.pointerId); } catch { /* noop */ }
         ghost.remove();
         card.classList.remove('dashboard-widget--dragging');
+        card.style.transform = '';
         if (lastTarget.col !== origPlacement.col || lastTarget.row !== origPlacement.row) {
           // Commit + visually move the card without a full re-render.
           card.style.gridRow = `${lastTarget.row + 1} / span ${lastTarget.rowSpan}`;
@@ -827,9 +862,9 @@ class DashboardEditorPane implements IDisposable {
           }
         }
       };
-      handle.addEventListener('pointermove', onMove);
-      handle.addEventListener('pointerup', onUp);
-      handle.addEventListener('pointercancel', onUp);
+      card.addEventListener('pointermove', onMove);
+      card.addEventListener('pointerup', onUp);
+      card.addEventListener('pointercancel', onUp);
     });
   }
 
@@ -904,14 +939,161 @@ class DashboardEditorPane implements IDisposable {
   }
 
   private _rowHeight(): number {
-    // CSS grid-auto-rows: minmax(72px, auto) — use the computed height of the
-    // first row if a row exists, else the 72px minimum + gap (16px).
-    const firstChild = this._gridEl?.firstElementChild as HTMLElement | undefined;
-    if (firstChild) {
-      const r = firstChild.getBoundingClientRect();
-      return r.height > 0 ? r.height + 16 : 88;
+    // Rows are a fixed, uniform track (grid-auto-rows), so the drag math has
+    // an exact px-per-row. Read it (plus the row gap) straight from the grid's
+    // computed style so JS and CSS stay in lockstep.
+    const grid = this._gridEl;
+    if (!grid) return 96;
+    const cs = getComputedStyle(grid);
+    const rowH = parseFloat(cs.gridAutoRows) || 80;
+    const gap = parseFloat(cs.rowGap) || 16;
+    return rowH + gap;
+  }
+
+  /**
+   * Apply per-instance appearance overrides as inline styles. Inline wins over
+   * the chrome classes and hover rules, so an explicit choice is consistent.
+   * Each axis left at 'default' clears the inline style and defers to chrome.
+   */
+  private _applyAppearance(card: HTMLElement, a: WidgetAppearance): void {
+    if (a.background === 'transparent') {
+      card.style.background = 'transparent';
+    } else if (a.background === 'custom' && a.backgroundColor) {
+      card.style.background = a.backgroundColor;
+    } else {
+      card.style.removeProperty('background');
     }
-    return 88;
+
+    if (a.border === 'none') {
+      card.style.border = 'none';
+    } else if (a.border === 'custom' && a.borderColor) {
+      card.style.border = `1px solid ${a.borderColor}`;
+    } else {
+      card.style.removeProperty('border');
+    }
+  }
+
+  // ── Appearance drawer ──────────────────────────────────────────────────
+
+  private async _openAppearanceDrawer(widgetId: string): Promise<void> {
+    const inst = this._instances.get(widgetId);
+    if (!inst) return;
+    const original = inst.row.appearance;
+
+    const overlay = el('div', 'dashboard-settings-overlay');
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) { this._applyAppearance(inst.cardEl, original); overlay.remove(); }
+    });
+
+    const sheet = el('aside', 'dashboard-settings');
+
+    const head = el('div', 'dashboard-settings__head');
+    const ht = el('h2', 'dashboard-settings__title');
+    ht.textContent = 'Appearance';
+    head.appendChild(ht);
+    const hint = el('p', 'dashboard-settings__hint');
+    hint.textContent = 'Background and border for this widget. Changes preview live.';
+    head.appendChild(hint);
+    sheet.appendChild(head);
+
+    const body = el('div', 'dashboard-settings__body');
+    sheet.appendChild(body);
+
+    // Working copy mutated by the controls; previewed live on the card.
+    const draft: { -readonly [K in keyof WidgetAppearance]: WidgetAppearance[K] } = { ...original };
+    const preview = () => this._applyAppearance(inst.cardEl, draft);
+
+    // ── Background ──
+    const bgBlock = el('div', 'dashboard-field');
+    const bgLabel = el('label', 'dashboard-field__label');
+    bgLabel.textContent = 'Background';
+    bgBlock.appendChild(bgLabel);
+    const bgSelect = document.createElement('select');
+    bgSelect.className = 'dashboard-field__input';
+    for (const [value, label] of [['default', 'Theme default'], ['transparent', 'Transparent'], ['custom', 'Custom color']] as const) {
+      const o = document.createElement('option');
+      o.value = value; o.textContent = label;
+      bgSelect.appendChild(o);
+    }
+    bgSelect.value = draft.background;
+    bgBlock.appendChild(bgSelect);
+    const bgColor = document.createElement('input');
+    bgColor.type = 'color';
+    bgColor.className = 'dashboard-field__color';
+    bgColor.value = isHexColor(draft.backgroundColor) ? draft.backgroundColor! : '#1e1e1e';
+    bgColor.style.display = draft.background === 'custom' ? '' : 'none';
+    bgBlock.appendChild(bgColor);
+    bgSelect.addEventListener('change', () => {
+      draft.background = bgSelect.value as WidgetAppearance['background'];
+      bgColor.style.display = draft.background === 'custom' ? '' : 'none';
+      if (draft.background === 'custom') draft.backgroundColor = bgColor.value;
+      preview();
+    });
+    bgColor.addEventListener('input', () => { draft.backgroundColor = bgColor.value; preview(); });
+    body.appendChild(bgBlock);
+
+    // ── Border ──
+    const bdBlock = el('div', 'dashboard-field');
+    const bdLabel = el('label', 'dashboard-field__label');
+    bdLabel.textContent = 'Border';
+    bdBlock.appendChild(bdLabel);
+    const bdSelect = document.createElement('select');
+    bdSelect.className = 'dashboard-field__input';
+    for (const [value, label] of [['default', 'Theme default'], ['none', 'No border'], ['custom', 'Custom color']] as const) {
+      const o = document.createElement('option');
+      o.value = value; o.textContent = label;
+      bdSelect.appendChild(o);
+    }
+    bdSelect.value = draft.border;
+    bdBlock.appendChild(bdSelect);
+    const bdColor = document.createElement('input');
+    bdColor.type = 'color';
+    bdColor.className = 'dashboard-field__color';
+    bdColor.value = isHexColor(draft.borderColor) ? draft.borderColor! : '#3c3c3c';
+    bdColor.style.display = draft.border === 'custom' ? '' : 'none';
+    bdBlock.appendChild(bdColor);
+    bdSelect.addEventListener('change', () => {
+      draft.border = bdSelect.value as WidgetAppearance['border'];
+      bdColor.style.display = draft.border === 'custom' ? '' : 'none';
+      if (draft.border === 'custom') draft.borderColor = bdColor.value;
+      preview();
+    });
+    bdColor.addEventListener('input', () => { draft.borderColor = bdColor.value; preview(); });
+    body.appendChild(bdBlock);
+
+    const foot = el('div', 'dashboard-settings__foot');
+    const cancel = el('button', 'dashboard-btn dashboard-btn--ghost');
+    cancel.type = 'button';
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => { this._applyAppearance(inst.cardEl, original); overlay.remove(); });
+    foot.appendChild(cancel);
+    const save = el('button', 'dashboard-btn dashboard-btn--primary');
+    save.type = 'button';
+    save.textContent = 'Save';
+    save.addEventListener('click', async () => {
+      const next: WidgetAppearance = {
+        background: draft.background,
+        backgroundColor: draft.background === 'custom' ? bgColor.value : null,
+        border: draft.border,
+        borderColor: draft.border === 'custom' ? bdColor.value : null,
+      };
+      try {
+        await this._data.updateWidgetAppearance(widgetId, next);
+        inst.row = { ...inst.row, appearance: next };
+        this._applyAppearance(inst.cardEl, next);
+      } catch (err) {
+        console.error('[Dashboard] updateWidgetAppearance failed:', err);
+        const msg = err instanceof Error ? err.message : String(err);
+        await this._api.window.showErrorMessage(`Could not save appearance: ${msg}`);
+        return;
+      }
+      overlay.remove();
+    });
+    foot.appendChild(save);
+    sheet.appendChild(foot);
+
+    overlay.appendChild(sheet);
+    document.body.appendChild(overlay);
   }
 
   // ── Settings drawer ────────────────────────────────────────────────────

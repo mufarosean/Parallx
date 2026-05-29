@@ -11,11 +11,12 @@ import type {
   DashboardChangeEvent,
   DashboardPageRow,
   DashboardWidgetRow,
+  WidgetAppearance,
   WidgetPlacement,
   WidgetRefreshPolicy,
   WidgetStatus,
 } from './dashboardTypes.js';
-import { DASHBOARD_LIMITS } from './dashboardTypes.js';
+import { DASHBOARD_LIMITS, DEFAULT_WIDGET_APPEARANCE } from './dashboardTypes.js';
 
 // ─── DB bridge type ──────────────────────────────────────────────────────────
 
@@ -35,6 +36,21 @@ function rowToPage(row: Record<string, unknown>): DashboardPageRow {
     createdAt: (row.created_at as number) ?? 0,
     updatedAt: (row.updated_at as number) ?? 0,
   };
+}
+
+function parseAppearance(raw: string | undefined): WidgetAppearance {
+  if (!raw) return DEFAULT_WIDGET_APPEARANCE;
+  try {
+    const p = JSON.parse(raw) as Partial<WidgetAppearance>;
+    return {
+      background: p.background === 'transparent' || p.background === 'custom' ? p.background : 'default',
+      backgroundColor: typeof p.backgroundColor === 'string' ? p.backgroundColor : null,
+      border: p.border === 'none' || p.border === 'custom' ? p.border : 'default',
+      borderColor: typeof p.borderColor === 'string' ? p.borderColor : null,
+    };
+  } catch {
+    return DEFAULT_WIDGET_APPEARANCE;
+  }
 }
 
 function rowToWidget(row: Record<string, unknown>): DashboardWidgetRow {
@@ -66,6 +82,7 @@ function rowToWidget(row: Record<string, unknown>): DashboardWidgetRow {
     position: (row.position as number) ?? 0,
     config,
     refreshPolicy: policy,
+    appearance: parseAppearance(row.appearance_json as string | undefined),
     cachedOutput: (row.cached_output as string) ?? null,
     cachedAt: (row.cached_at as number) ?? null,
     status,
@@ -183,7 +200,7 @@ export class DashboardDataService extends Disposable {
   async listWidgets(pageId: string): Promise<DashboardWidgetRow[]> {
     const res = await this._db.all(
       `SELECT id, page_id, widget_type_id, row, col, row_span, col_span, position,
-              config_json, refresh_policy_json, cached_output, cached_at, status,
+              config_json, refresh_policy_json, appearance_json, cached_output, cached_at, status,
               error_message, created_at, updated_at
          FROM dashboard_widgets
         WHERE page_id = ?
@@ -200,7 +217,7 @@ export class DashboardDataService extends Disposable {
   async getWidget(id: string): Promise<DashboardWidgetRow | null> {
     const res = await this._db.get(
       `SELECT id, page_id, widget_type_id, row, col, row_span, col_span, position,
-              config_json, refresh_policy_json, cached_output, cached_at, status,
+              config_json, refresh_policy_json, appearance_json, cached_output, cached_at, status,
               error_message, created_at, updated_at
          FROM dashboard_widgets WHERE id = ?`,
       [id],
@@ -250,6 +267,7 @@ export class DashboardDataService extends Disposable {
       position: nextPos,
       config: input.config,
       refreshPolicy: input.refreshPolicy,
+      appearance: DEFAULT_WIDGET_APPEARANCE,
       cachedOutput: null,
       cachedAt: null,
       status: 'ok',
@@ -280,6 +298,16 @@ export class DashboardDataService extends Disposable {
       [JSON.stringify(config), now, id],
     );
     if (res.error) throw new Error(`updateWidgetConfig failed: ${res.error.message}`);
+    this._onDidChange.fire({ kind: 'widget-updated', widgetId: id });
+  }
+
+  async updateWidgetAppearance(id: string, appearance: WidgetAppearance): Promise<void> {
+    const now = Date.now();
+    const res = await this._db.run(
+      `UPDATE dashboard_widgets SET appearance_json = ?, updated_at = ? WHERE id = ?`,
+      [JSON.stringify(appearance), now, id],
+    );
+    if (res.error) throw new Error(`updateWidgetAppearance failed: ${res.error.message}`);
     this._onDidChange.fire({ kind: 'widget-updated', widgetId: id });
   }
 

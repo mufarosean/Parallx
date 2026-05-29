@@ -169,6 +169,32 @@ export interface DashboardPageRow {
 
 export type WidgetStatus = 'ok' | 'error' | 'running' | 'stale';
 
+/**
+ * Per-instance visual overrides applied on top of the widget's chrome preset.
+ *
+ * Each axis defaults to 'default', which means "leave it to the chrome CSS"
+ * (so a 'minimal' widget stays transparent unless the user opts in). The
+ * editor applies non-default values as inline styles, which win over the
+ * chrome classes and hover rules.
+ */
+export interface WidgetAppearance {
+  /** 'default' = chrome default; 'transparent' = no fill; 'custom' = backgroundColor. */
+  readonly background: 'default' | 'transparent' | 'custom';
+  /** CSS color used when background === 'custom'. */
+  readonly backgroundColor: string | null;
+  /** 'default' = chrome default; 'none' = no border; 'custom' = borderColor. */
+  readonly border: 'default' | 'none' | 'custom';
+  /** CSS color used when border === 'custom'. */
+  readonly borderColor: string | null;
+}
+
+export const DEFAULT_WIDGET_APPEARANCE: WidgetAppearance = {
+  background: 'default',
+  backgroundColor: null,
+  border: 'default',
+  borderColor: null,
+};
+
 export interface DashboardWidgetRow {
   readonly id: string;
   readonly pageId: string;
@@ -177,6 +203,7 @@ export interface DashboardWidgetRow {
   readonly position: number;
   readonly config: Record<string, unknown>;
   readonly refreshPolicy: WidgetRefreshPolicy;
+  readonly appearance: WidgetAppearance;
   readonly cachedOutput: string | null;
   readonly cachedAt: number | null;
   readonly status: WidgetStatus;
