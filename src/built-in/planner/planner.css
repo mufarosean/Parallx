@@ -480,12 +480,7 @@
 .planner-popover {
   width: 360px;
   background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 88%, white);
-  /* Accent-tinted top edge — visually links the popover to the
-     selected event block underneath. */
-  border-top: 3px solid var(--vscode-button-background, #0e639c);
-  border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
-  border-right: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
   border-radius: 8px;
   box-shadow:
     0 1px 0 color-mix(in srgb, white 5%, transparent) inset,
@@ -522,6 +517,41 @@
 .planner-popover__close:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent); color: var(--vscode-editor-foreground, #d4d4d4); }
 
 .planner-popover__body { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+
+/* Event / Task kind switcher — sharp segmented pair, underline accent */
+.planner-popover__kinds {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: -4px -4px 4px;
+}
+.planner-popover__kind {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 100ms ease;
+}
+.planner-popover__kind:hover { color: var(--vscode-editor-foreground, #d4d4d4); }
+.planner-popover__kind--active { color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
+.planner-popover__kind--active::after {
+  content: '';
+  position: absolute;
+  left: 10px; right: 10px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--vscode-button-background, #0e639c);
+}
 
 .planner-popover__title-input,
 .planner-popover__field,
@@ -644,14 +674,40 @@
 
 /* ── Calendar chrome — sharp, no pills ────────────────────────────────── */
 
-/* Nav (prev / Today / next) — flat text buttons + sharp icon buttons */
-.planner-cnav { display: inline-flex; align-items: center; gap: 2px; }
+/* "Today" — standalone, outlined, distinct from the arrow pair */
+.planner-todaybtn {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 18%, transparent);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 100ms ease, border-color 100ms ease;
+}
+.planner-todaybtn:hover {
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
+  border-color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 28%, transparent);
+}
+
+/* Prev/Next — connected icon pair, distinct from Today */
+.planner-cnav {
+  display: inline-flex;
+  align-items: stretch;
+  margin-left: 4px;
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 18%, transparent);
+  border-radius: 4px;
+  overflow: hidden;
+}
 .planner-iconbtn {
   width: 28px; height: 28px;
   display: inline-flex; align-items: center; justify-content: center;
   border: 0;
   background: transparent;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
   cursor: pointer;
   transition: background 100ms ease, color 100ms ease;
 }
@@ -659,18 +715,9 @@
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
   color: var(--vscode-editor-foreground, #d4d4d4);
 }
-.planner-flatbtn {
-  height: 28px;
-  padding: 0 10px;
-  border: 0;
-  background: transparent;
-  color: var(--vscode-editor-foreground, #d4d4d4);
-  font: inherit;
-  font-size: 12.5px;
-  cursor: pointer;
-  transition: background 100ms ease;
+.planner-cnav .planner-iconbtn + .planner-iconbtn {
+  border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
 }
-.planner-flatbtn:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent); }
 
 /* View switcher — underline tabs, no pills */
 .planner-viewtabs { display: inline-flex; gap: 0; margin-left: 8px; }
@@ -799,9 +846,28 @@
 .planner-week__weekday-label { display: block; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent); }
 .planner-week__weekday-num { display: block; font-size: 16px; font-weight: 600; margin-top: 2px; color: var(--vscode-editor-foreground, #f3f3f3); }
 .planner-week__body { display: grid; grid-template-columns: 56px repeat(7, 1fr); position: relative; }
-.planner-week__hours { display: flex; flex-direction: column; }
-.planner-week__hour { height: 48px; border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); position: relative; }
-.planner-week__hourlabel { position: absolute; top: -7px; right: 8px; font-size: 9.5px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent); }
+.planner-week__hours {
+  display: flex; flex-direction: column;
+  /* Gutter has no horizontal gridlines — clean column of labels.
+     Right edge gets the divider between gutter and event grid. */
+  border-right: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
+}
+.planner-week__hour { height: 48px; position: relative; }
+.planner-week__hourlabel {
+  position: absolute;
+  top: 0;
+  right: 8px;
+  transform: translateY(-50%);
+  padding: 0 4px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+}
+/* The first label (12 AM) would escape the calendar's top border. Hide it —
+   the area above the 1 AM line is implicitly 12 AM. */
+.planner-week__hour:first-child .planner-week__hourlabel { display: none; }
 .planner-week__col { position: relative; border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
 .planner-week__cell {
   height: 48px;
@@ -882,9 +948,24 @@
   background: var(--vscode-editor-background, #1e1e1e);
   position: relative;
 }
-.planner-day__hours { display: flex; flex-direction: column; }
-.planner-day__hour { height: 56px; border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); position: relative; }
-.planner-day__hourlabel { position: absolute; top: -7px; right: 8px; font-size: 10px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); }
+.planner-day__hours {
+  display: flex; flex-direction: column;
+  border-right: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
+}
+.planner-day__hour { height: 56px; position: relative; }
+.planner-day__hourlabel {
+  position: absolute;
+  top: 0;
+  right: 8px;
+  transform: translateY(-50%);
+  padding: 0 4px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+}
+.planner-day__hour:first-child .planner-day__hourlabel { display: none; }
 .planner-day__col { position: relative; border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
 .planner-day__cell {
   height: 56px;

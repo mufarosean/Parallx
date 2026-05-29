@@ -417,7 +417,16 @@ class PlannerEditorPane implements IDisposable {
     // Sharp chrome — no pills, no rounded "bar" containers. Text-emphasized
     // active states match the underline-tab idiom most calendar apps use.
 
-    // Date nav (chevron + Today + chevron, sharp text buttons)
+    // Today stands alone — distinct action (jump to today), separated
+    // from the prev/next arrow pair. Matches Google Calendar grouping.
+    const today = el('button', 'planner-todaybtn');
+    today.type = 'button';
+    today.textContent = 'Today';
+    today.addEventListener('click', () => { this._cursorDate = startOfDay(new Date()); void this._renderTab(); });
+    actions.appendChild(today);
+
+    // Prev/Next form a connected pair so they read as "step through time"
+    // (one unit at a time), distinct from the Today reset.
     const nav = el('div', 'planner-cnav');
     const prev = el('button', 'planner-iconbtn');
     prev.type = 'button';
@@ -425,11 +434,6 @@ class PlannerEditorPane implements IDisposable {
     prev.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>';
     prev.addEventListener('click', () => { this._navigateCalendar(-1); void this._renderTab(); });
     nav.appendChild(prev);
-    const today = el('button', 'planner-flatbtn');
-    today.type = 'button';
-    today.textContent = 'Today';
-    today.addEventListener('click', () => { this._cursorDate = startOfDay(new Date()); void this._renderTab(); });
-    nav.appendChild(today);
     const next = el('button', 'planner-iconbtn');
     next.type = 'button';
     next.title = 'Next';
@@ -960,6 +964,44 @@ class PlannerEditorPane implements IDisposable {
     descInput.value = seed.description;
     body.appendChild(descInput);
 
+    // Event / Task switcher — only when creating. Tasks captured this
+    // way use the standard "+5d / reviewing" defaults if the user didn't
+    // pick a time; if they did pick one, the dueAt is that slot.
+    let kind: 'event' | 'task' = 'event';
+    let kindRow: HTMLElement | null = null;
+    if (!isEdit) {
+      kindRow = el('div', 'planner-popover__kinds');
+      const eventBtn = el('button', 'planner-popover__kind planner-popover__kind--active');
+      eventBtn.type = 'button';
+      eventBtn.dataset.kind = 'event';
+      eventBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Event</span>';
+      const taskBtn = el('button', 'planner-popover__kind');
+      taskBtn.type = 'button';
+      taskBtn.dataset.kind = 'task';
+      taskBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>Task</span>';
+      kindRow.appendChild(eventBtn);
+      kindRow.appendChild(taskBtn);
+      // Prepend to body so it sits above the title input.
+      body.insertBefore(kindRow, body.firstChild);
+
+      const updateKindUI = () => {
+        eventBtn.classList.toggle('planner-popover__kind--active', kind === 'event');
+        taskBtn.classList.toggle('planner-popover__kind--active', kind === 'task');
+        // Tasks have a single due time, not a range.
+        const taskMode = kind === 'task';
+        endTime.style.display = taskMode ? 'none' : '';
+        endDate.style.display = taskMode ? 'none' : '';
+        sep.style.display = taskMode ? 'none' : '';
+        allDayRow.style.display = taskMode ? 'none' : '';
+        locationInput.style.display = taskMode ? 'none' : '';
+        titleInput.placeholder = taskMode ? 'What needs to happen?' : 'Add a title';
+        heading.textContent = taskMode ? 'New task' : 'New event';
+        save.textContent = taskMode ? 'Create task' : 'Create';
+      };
+      eventBtn.addEventListener('click', () => { kind = 'event'; updateKindUI(); });
+      taskBtn.addEventListener('click', () => { kind = 'task'; updateKindUI(); });
+    }
+
     pop.appendChild(body);
 
     // Footer
@@ -989,16 +1031,35 @@ class PlannerEditorPane implements IDisposable {
       const title = titleInput.value.trim();
       if (!title) { titleInput.focus(); return; }
       const startMs = fromDateTimeInputs(startDate.value, startTime.value);
-      const endMs = fromDateTimeInputs(endDate.value, endTime.value);
-      if (startMs === null || endMs === null) {
+      if (startMs === null) {
         await this._api.window.showErrorMessage('Invalid date or time.');
         return;
       }
-      if (endMs < startMs) {
-        await this._api.window.showErrorMessage('End time must be after start time.');
-        return;
-      }
       try {
+        if (kind === 'task') {
+          // Task path: dueAt is the start of the dragged slot; if the
+          // user picked a slot already, respect it. Status defaults to
+          // 'planned' here (user explicitly picked a time) rather than
+          // 'reviewing' (which is the journaling default).
+          await this._data.createTask({
+            title,
+            dueAt: startMs,
+            status: 'planned',
+            description: descInput.value.trim() || null,
+          });
+          close();
+          return;
+        }
+
+        const endMs = fromDateTimeInputs(endDate.value, endTime.value);
+        if (endMs === null) {
+          await this._api.window.showErrorMessage('Invalid end date or time.');
+          return;
+        }
+        if (endMs < startMs) {
+          await this._api.window.showErrorMessage('End time must be after start time.');
+          return;
+        }
         if (isEdit && seed.eventId) {
           await this._data.updateEvent(seed.eventId, {
             title,
@@ -1021,7 +1082,7 @@ class PlannerEditorPane implements IDisposable {
         close();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        await this._api.window.showErrorMessage(`Could not save event: ${msg}`);
+        await this._api.window.showErrorMessage(`Could not save: ${msg}`);
       }
     };
     save.addEventListener('click', () => void doSave());
