@@ -120,8 +120,24 @@ class PlannerEditorPane implements IDisposable {
       if (tab === 'tasks' || tab === 'calendar') this._setTab(tab);
     };
     document.addEventListener('parallx.planner.focusTab', onFocusTab);
+
+    // planner.newTask command dispatches this; the active pane opens
+    // the dedicated task popover.
+    const onNewTask = () => {
+      if (!this._root?.isConnected) return;
+      this._setTab('tasks');
+      // Anchor in the top-left of the body, popover positioning will keep
+      // it on-screen.
+      const anchor = this._bodyEl?.getBoundingClientRect() ?? new DOMRect(120, 120, 0, 0);
+      this._openTaskPopover({ mode: 'create' }, anchor);
+    };
+    document.addEventListener('parallx.planner.newTask', onNewTask);
+
     this._disposables.push({
-      dispose() { document.removeEventListener('parallx.planner.focusTab', onFocusTab); },
+      dispose() {
+        document.removeEventListener('parallx.planner.focusTab', onFocusTab);
+        document.removeEventListener('parallx.planner.newTask', onNewTask);
+      },
     });
   }
 
@@ -202,7 +218,7 @@ class PlannerEditorPane implements IDisposable {
     const addBtn = el('button', 'planner-cta');
     addBtn.type = 'button';
     addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Create</span>';
-    addBtn.addEventListener('click', () => void this._captureNewTask());
+    addBtn.addEventListener('click', () => this._captureNewTask(addBtn.getBoundingClientRect()));
     actions.appendChild(addBtn);
 
     const all = await this._data.listTasks({
@@ -353,8 +369,8 @@ class PlannerEditorPane implements IDisposable {
     const main = el('div', 'planner-task__main');
     const titleEl = el('span', 'planner-task__title');
     titleEl.textContent = task.title;
-    titleEl.title = 'Click to rename';
-    titleEl.addEventListener('click', () => void this._promptRenameTask(task));
+    titleEl.title = 'Click to edit';
+    titleEl.addEventListener('click', () => this._openTaskPopover({ mode: 'edit', task }, titleEl.getBoundingClientRect()));
     main.appendChild(titleEl);
     if (task.description) {
       const desc = el('span', 'planner-task__desc');
@@ -368,18 +384,18 @@ class PlannerEditorPane implements IDisposable {
     if (task.dueAt) {
       const due = el('button', 'planner-task__due');
       due.type = 'button';
-      due.title = 'Click to reschedule';
+      due.title = 'Click to edit task';
       const overdue = task.dueAt < Date.now() && task.status !== 'done';
       if (overdue) due.classList.add('planner-task__due--overdue');
       due.textContent = formatDateShort(task.dueAt);
-      due.addEventListener('click', () => void this._promptReschedule(task));
+      due.addEventListener('click', () => this._openTaskPopover({ mode: 'edit', task }, due.getBoundingClientRect()));
       right.appendChild(due);
     } else {
       const setDue = el('button', 'planner-task__due planner-task__due--empty');
       setDue.type = 'button';
-      setDue.title = 'Click to set a due date';
+      setDue.title = 'Click to edit task';
       setDue.textContent = 'Set date';
-      setDue.addEventListener('click', () => void this._promptReschedule(task));
+      setDue.addEventListener('click', () => this._openTaskPopover({ mode: 'edit', task }, setDue.getBoundingClientRect()));
       right.appendChild(setDue);
     }
 
@@ -403,37 +419,6 @@ class PlannerEditorPane implements IDisposable {
     return row;
   }
 
-  private async _promptRenameTask(task: PlannerTask): Promise<void> {
-    if (!this._api.window.showInputBox) return;
-    const next = await this._api.window.showInputBox({
-      prompt: 'Rename task',
-      value: task.title,
-    });
-    if (next && next.trim() && next !== task.title) {
-      await this._data.updateTask(task.id, { title: next.trim() });
-    }
-  }
-
-  private async _promptReschedule(task: PlannerTask): Promise<void> {
-    if (!this._api.window.showInputBox) return;
-    const cur = task.dueAt ? new Date(task.dueAt).toISOString().slice(0, 10) : '';
-    const next = await this._api.window.showInputBox({
-      prompt: 'New due date',
-      value: cur,
-      placeholder: 'YYYY-MM-DD or "+5d"',
-    });
-    if (!next) return;
-    const ms = parseRelativeOrIso(next);
-    if (ms === null) {
-      await this._api.window.showErrorMessage('Could not parse that date. Use YYYY-MM-DD or "+5d".');
-      return;
-    }
-    await this._data.updateTask(task.id, {
-      dueAt: ms,
-      // Promote a "reviewing" task to "planned" if the user explicitly picks a date.
-      status: task.status === 'reviewing' ? 'planned' : undefined,
-    });
-  }
 
   private _openTaskMenu(task: PlannerTask, anchor: DOMRect): void {
     const overlay = el('div', 'planner-menu-overlay');
@@ -443,8 +428,7 @@ class PlannerEditorPane implements IDisposable {
     menu.style.position = 'fixed';
 
     const items: { label: string; action: () => void; danger?: boolean }[] = [
-      { label: 'Rename',         action: () => void this._promptRenameTask(task) },
-      { label: 'Set due date',   action: () => void this._promptReschedule(task) },
+      { label: 'Edit task',      action: () => this._openTaskPopover({ mode: 'edit', task }, anchor) },
       { label: task.status === 'reviewing' ? 'Confirm — planned' : 'Move to review', action: () => void this._data.updateTask(task.id, { status: task.status === 'reviewing' ? 'planned' : 'reviewing' }) },
       { label: 'Cancel task',    action: () => void this._data.updateTask(task.id, { status: 'cancelled' }), danger: true },
       { label: 'Delete forever', action: () => void this._data.removeTask(task.id), danger: true },
@@ -475,23 +459,9 @@ class PlannerEditorPane implements IDisposable {
     document.addEventListener('keydown', onKey);
   }
 
-  private async _captureNewTask(): Promise<void> {
-    if (!this._api.window.showInputBox) return;
-    const title = await this._api.window.showInputBox({
-      prompt: 'New task',
-      placeholder: 'What needs to happen?',
-    });
-    if (!title?.trim()) return;
-    try {
-      await this._data.createTask({
-        title: title.trim(),
-        dueAt: Date.now() + 5 * 86_400_000,
-        status: 'reviewing',
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      await this._api.window.showErrorMessage(`Could not create task: ${msg}`);
-    }
+  private _captureNewTask(anchor?: DOMRect): void {
+    const fallback = anchor ?? new DOMRect(window.innerWidth / 2 - 180, 120, 0, 0);
+    this._openTaskPopover({ mode: 'create' }, fallback);
   }
 
   // ── Calendar tab ─────────────────────────────────────────────────────
@@ -954,6 +924,301 @@ class PlannerEditorPane implements IDisposable {
     });
   }
 
+  // ── Task popover (create + edit) ────────────────────────────────────
+
+  /**
+   * Single popover for task create + edit. Comprehensive form so every
+   * task-create path goes through one place instead of degrading to
+   * "type a title and pray". Fields:
+   *
+   *   title  · due date + time · all-day toggle · reminder dropdown
+   *   tags   · notes (description) · status segmented control
+   *
+   * Save commits via createTask / updateTask; Delete only shows in edit
+   * mode. Same close() lifecycle as the event popover so cancel paths
+   * (Escape, outside click, ×, Cancel) all clean up consistently.
+   */
+  private _openTaskPopover(
+    init: { mode: 'create'; seedDueAt?: number; seedStatus?: TaskStatus; seedTitle?: string }
+        | { mode: 'edit'; task: PlannerTask },
+    anchor: DOMRect,
+  ): void {
+    const close = () => {
+      try { overlay.remove(); } catch { /* noop */ }
+      document.removeEventListener('keydown', onKey);
+    };
+
+    const overlay = el('div', 'planner-popover-overlay');
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    const pop = el('div', 'planner-popover');
+    pop.style.position = 'fixed';
+
+    const isEdit = init.mode === 'edit';
+    // Defaults on create: +5d due, 'reviewing' (the journaling flow).
+    // Calendar drags pass seedDueAt + seedStatus='planned' to override.
+    const seed: {
+      title: string;
+      dueAt: number;
+      hasReminder: boolean;
+      reminderOffsetMin: number;
+      tagsCsv: string;
+      description: string;
+      status: TaskStatus;
+      taskId: string | null;
+    } = isEdit
+      ? {
+          title: init.task.title,
+          dueAt: init.task.dueAt ?? Date.now() + 5 * 86_400_000,
+          hasReminder: init.task.reminderAt != null,
+          reminderOffsetMin: init.task.reminderAt != null && init.task.dueAt != null
+            ? Math.max(0, Math.round((init.task.dueAt - init.task.reminderAt) / 60_000))
+            : 60,
+          tagsCsv: init.task.tags.join(', '),
+          description: init.task.description ?? '',
+          status: init.task.status,
+          taskId: init.task.id,
+        }
+      : {
+          title: init.seedTitle ?? '',
+          dueAt: init.seedDueAt ?? Date.now() + 5 * 86_400_000,
+          hasReminder: false,
+          reminderOffsetMin: 60,
+          tagsCsv: '',
+          description: '',
+          status: init.seedStatus ?? 'reviewing',
+          taskId: null,
+        };
+
+    // Header
+    const head = el('div', 'planner-popover__head');
+    const heading = el('h3', 'planner-popover__title');
+    heading.textContent = isEdit ? 'Edit task' : 'New task';
+    head.appendChild(heading);
+    const closeBtn = el('button', 'planner-popover__close');
+    closeBtn.type = 'button';
+    closeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    closeBtn.addEventListener('click', () => close());
+    head.appendChild(closeBtn);
+    pop.appendChild(head);
+
+    // Body
+    const body = el('div', 'planner-popover__body');
+
+    const titleInput = el('input', 'planner-popover__title-input') as HTMLInputElement;
+    titleInput.type = 'text';
+    titleInput.placeholder = 'What needs to happen?';
+    titleInput.value = seed.title;
+    body.appendChild(titleInput);
+
+    // Due — date + time row, with an All-day toggle that hides the time field.
+    const dueRow = el('div', 'planner-popover__row planner-popover__row--labeled');
+    const dueLabel = el('span', 'planner-popover__rowlabel');
+    dueLabel.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Due</span>';
+    dueRow.appendChild(dueLabel);
+    const dueDate = el('input', 'planner-popover__field planner-popover__field--date') as HTMLInputElement;
+    dueDate.type = 'date';
+    dueDate.value = toDateInputValue(seed.dueAt);
+    dueRow.appendChild(dueDate);
+    const dueTime = el('input', 'planner-popover__field planner-popover__field--time') as HTMLInputElement;
+    dueTime.type = 'time';
+    dueTime.value = toTimeInputValue(seed.dueAt);
+    dueRow.appendChild(dueTime);
+    body.appendChild(dueRow);
+
+    const allDayRow = el('label', 'planner-popover__check');
+    const allDayInput = el('input') as HTMLInputElement;
+    allDayInput.type = 'checkbox';
+    // All-day default: true if the seeded time is midnight (the user
+    // didn't pick a time), false otherwise.
+    allDayInput.checked = new Date(seed.dueAt).getHours() === 0 && new Date(seed.dueAt).getMinutes() === 0 && !isEdit;
+    allDayRow.appendChild(allDayInput);
+    const allDayText = el('span');
+    allDayText.textContent = 'No specific time (all day)';
+    allDayRow.appendChild(allDayText);
+    body.appendChild(allDayRow);
+    const updateAllDay = () => {
+      const off = allDayInput.checked;
+      dueTime.disabled = off;
+      dueTime.style.opacity = off ? '0.4' : '';
+    };
+    allDayInput.addEventListener('change', updateAllDay);
+    updateAllDay();
+
+    // Reminder — dropdown of presets + None.
+    const remindRow = el('div', 'planner-popover__row planner-popover__row--labeled');
+    const remindLabel = el('span', 'planner-popover__rowlabel');
+    remindLabel.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span>Remind</span>';
+    remindRow.appendChild(remindLabel);
+    const remindSelect = el('select', 'planner-popover__field planner-popover__field--select') as HTMLSelectElement;
+    const REMINDER_PRESETS: { label: string; offsetMin: number | null }[] = [
+      { label: 'No reminder',         offsetMin: null },
+      { label: 'At time of due',      offsetMin: 0 },
+      { label: '5 minutes before',    offsetMin: 5 },
+      { label: '15 minutes before',   offsetMin: 15 },
+      { label: '30 minutes before',   offsetMin: 30 },
+      { label: '1 hour before',       offsetMin: 60 },
+      { label: '1 day before',        offsetMin: 1440 },
+      { label: '1 week before',       offsetMin: 10_080 },
+    ];
+    for (const preset of REMINDER_PRESETS) {
+      const opt = document.createElement('option');
+      opt.value = preset.offsetMin === null ? 'none' : String(preset.offsetMin);
+      opt.textContent = preset.label;
+      remindSelect.appendChild(opt);
+    }
+    if (seed.hasReminder) {
+      // Match the closest preset; if none matches exactly, default to "1 hour before".
+      const matching = REMINDER_PRESETS.find(p => p.offsetMin === seed.reminderOffsetMin);
+      remindSelect.value = matching ? String(matching.offsetMin) : '60';
+    } else {
+      remindSelect.value = 'none';
+    }
+    remindRow.appendChild(remindSelect);
+    body.appendChild(remindRow);
+
+    // Tags
+    const tagRow = el('div', 'planner-popover__row planner-popover__row--labeled');
+    const tagLabel = el('span', 'planner-popover__rowlabel');
+    tagLabel.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg><span>Tags</span>';
+    tagRow.appendChild(tagLabel);
+    const tagInput = el('input', 'planner-popover__field planner-popover__field--full') as HTMLInputElement;
+    tagInput.type = 'text';
+    tagInput.placeholder = 'e.g. errands, calls';
+    tagInput.value = seed.tagsCsv;
+    tagRow.appendChild(tagInput);
+    body.appendChild(tagRow);
+
+    // Notes
+    const descInput = el('textarea', 'planner-popover__textarea') as HTMLTextAreaElement;
+    descInput.placeholder = 'Notes';
+    descInput.value = seed.description;
+    body.appendChild(descInput);
+
+    // Status — segmented control (Reviewing / Planned), defaults from seed.
+    const statusRow = el('div', 'planner-popover__statusrow');
+    const statusLabel = el('span', 'planner-popover__statuslabel');
+    statusLabel.textContent = 'Status';
+    statusRow.appendChild(statusLabel);
+    const statusGroup = el('div', 'planner-popover__statusgroup');
+    let statusValue: TaskStatus = seed.status === 'cancelled' ? 'reviewing' : seed.status;
+    const statusOptions: { value: TaskStatus; label: string }[] = [
+      { value: 'reviewing', label: 'Reviewing' },
+      { value: 'planned',   label: 'Planned' },
+    ];
+    if (isEdit) statusOptions.push({ value: 'done', label: 'Done' });
+    for (const opt of statusOptions) {
+      const btn = el('button', 'planner-popover__statusbtn');
+      btn.type = 'button';
+      btn.dataset.value = opt.value;
+      btn.textContent = opt.label;
+      if (opt.value === statusValue) btn.classList.add('planner-popover__statusbtn--active');
+      btn.addEventListener('click', () => {
+        statusValue = opt.value;
+        for (const sib of Array.from(statusGroup.children)) {
+          if (!(sib instanceof HTMLElement)) continue;
+          sib.classList.toggle('planner-popover__statusbtn--active', sib.dataset.value === statusValue);
+        }
+      });
+      statusGroup.appendChild(btn);
+    }
+    statusRow.appendChild(statusGroup);
+    body.appendChild(statusRow);
+
+    pop.appendChild(body);
+
+    // Footer
+    const foot = el('div', 'planner-popover__foot');
+    if (isEdit && seed.taskId) {
+      const delBtn = el('button', 'planner-popover__btn planner-popover__btn--danger');
+      delBtn.type = 'button';
+      delBtn.textContent = 'Delete';
+      delBtn.addEventListener('click', async () => {
+        await this._data.removeTask(seed.taskId!);
+        close();
+      });
+      foot.appendChild(delBtn);
+    }
+    const spacer = el('span', 'planner-popover__spacer');
+    foot.appendChild(spacer);
+    const cancel = el('button', 'planner-popover__btn');
+    cancel.type = 'button';
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => close());
+    foot.appendChild(cancel);
+    const save = el('button', 'planner-popover__btn planner-popover__btn--primary');
+    save.type = 'button';
+    save.textContent = isEdit ? 'Save' : 'Create task';
+    const doSave = async () => {
+      const title = titleInput.value.trim();
+      if (!title) { titleInput.focus(); return; }
+      const allDay = allDayInput.checked;
+      const dueMs = allDay
+        ? fromDateTimeInputs(dueDate.value, '00:00')
+        : fromDateTimeInputs(dueDate.value, dueTime.value);
+      if (dueMs === null) {
+        await this._api.window.showErrorMessage('Invalid due date or time.');
+        return;
+      }
+      const offsetStr = remindSelect.value;
+      const reminderAt = offsetStr === 'none' ? null : dueMs - parseInt(offsetStr, 10) * 60_000;
+      const tags = tagInput.value.split(',').map(s => s.trim()).filter(Boolean);
+      const description = descInput.value.trim() || null;
+
+      try {
+        if (isEdit && seed.taskId) {
+          await this._data.updateTask(seed.taskId, {
+            title,
+            description,
+            status: statusValue,
+            dueAt: dueMs,
+            reminderAt,
+            tags,
+          });
+        } else {
+          await this._data.createTask({
+            title,
+            description,
+            status: statusValue,
+            dueAt: dueMs,
+            reminderAt: reminderAt ?? null,
+            tags,
+          });
+        }
+        close();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await this._api.window.showErrorMessage(`Could not save task: ${msg}`);
+      }
+    };
+    save.addEventListener('click', () => void doSave());
+    foot.appendChild(save);
+    pop.appendChild(foot);
+
+    overlay.appendChild(pop);
+    document.body.appendChild(overlay);
+
+    function onKey(e: KeyboardEvent): void {
+      if (e.key === 'Escape') { close(); }
+      else if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault(); void doSave();
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    overlay.addEventListener('animationend', () => titleInput.focus(), { once: true });
+    setTimeout(() => { if (document.activeElement !== titleInput) titleInput.focus(); }, 80);
+
+    // Anchor positioning — same logic as the event popover.
+    const m = pop.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let left = anchor.left;
+    let top = anchor.bottom + 6;
+    if (anchor.left + m.width > vw - 12) left = Math.max(12, vw - m.width - 12);
+    if (top + m.height > vh - 12) top = Math.max(12, anchor.top - m.height - 6);
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
+  }
+
   // ── Event popover (create + edit) ───────────────────────────────────
 
   /**
@@ -1085,44 +1350,6 @@ class PlannerEditorPane implements IDisposable {
     descInput.value = seed.description;
     body.appendChild(descInput);
 
-    // Event / Task switcher — only when creating. Tasks captured this
-    // way use the standard "+5d / reviewing" defaults if the user didn't
-    // pick a time; if they did pick one, the dueAt is that slot.
-    let kind: 'event' | 'task' = 'event';
-    let kindRow: HTMLElement | null = null;
-    if (!isEdit) {
-      kindRow = el('div', 'planner-popover__kinds');
-      const eventBtn = el('button', 'planner-popover__kind planner-popover__kind--active');
-      eventBtn.type = 'button';
-      eventBtn.dataset.kind = 'event';
-      eventBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Event</span>';
-      const taskBtn = el('button', 'planner-popover__kind');
-      taskBtn.type = 'button';
-      taskBtn.dataset.kind = 'task';
-      taskBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>Task</span>';
-      kindRow.appendChild(eventBtn);
-      kindRow.appendChild(taskBtn);
-      // Prepend to body so it sits above the title input.
-      body.insertBefore(kindRow, body.firstChild);
-
-      const updateKindUI = () => {
-        eventBtn.classList.toggle('planner-popover__kind--active', kind === 'event');
-        taskBtn.classList.toggle('planner-popover__kind--active', kind === 'task');
-        // Tasks have a single due time, not a range.
-        const taskMode = kind === 'task';
-        endTime.style.display = taskMode ? 'none' : '';
-        endDate.style.display = taskMode ? 'none' : '';
-        sep.style.display = taskMode ? 'none' : '';
-        allDayRow.style.display = taskMode ? 'none' : '';
-        locationInput.style.display = taskMode ? 'none' : '';
-        titleInput.placeholder = taskMode ? 'What needs to happen?' : 'Add a title';
-        heading.textContent = taskMode ? 'New task' : 'New event';
-        save.textContent = taskMode ? 'Create task' : 'Create';
-      };
-      eventBtn.addEventListener('click', () => { kind = 'event'; updateKindUI(); });
-      taskBtn.addEventListener('click', () => { kind = 'task'; updateKindUI(); });
-    }
-
     pop.appendChild(body);
 
     // Footer
@@ -1152,35 +1379,16 @@ class PlannerEditorPane implements IDisposable {
       const title = titleInput.value.trim();
       if (!title) { titleInput.focus(); return; }
       const startMs = fromDateTimeInputs(startDate.value, startTime.value);
-      if (startMs === null) {
+      const endMs = fromDateTimeInputs(endDate.value, endTime.value);
+      if (startMs === null || endMs === null) {
         await this._api.window.showErrorMessage('Invalid date or time.');
         return;
       }
+      if (endMs < startMs) {
+        await this._api.window.showErrorMessage('End time must be after start time.');
+        return;
+      }
       try {
-        if (kind === 'task') {
-          // Task path: dueAt is the start of the dragged slot; if the
-          // user picked a slot already, respect it. Status defaults to
-          // 'planned' here (user explicitly picked a time) rather than
-          // 'reviewing' (which is the journaling default).
-          await this._data.createTask({
-            title,
-            dueAt: startMs,
-            status: 'planned',
-            description: descInput.value.trim() || null,
-          });
-          close();
-          return;
-        }
-
-        const endMs = fromDateTimeInputs(endDate.value, endTime.value);
-        if (endMs === null) {
-          await this._api.window.showErrorMessage('Invalid end date or time.');
-          return;
-        }
-        if (endMs < startMs) {
-          await this._api.window.showErrorMessage('End time must be after start time.');
-          return;
-        }
         if (isEdit && seed.eventId) {
           await this._data.updateEvent(seed.eventId, {
             title,
@@ -1203,7 +1411,7 @@ class PlannerEditorPane implements IDisposable {
         close();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        await this._api.window.showErrorMessage(`Could not save: ${msg}`);
+        await this._api.window.showErrorMessage(`Could not save event: ${msg}`);
       }
     };
     save.addEventListener('click', () => void doSave());
@@ -1290,20 +1498,6 @@ function formatTimeRange(ev: PlannerEvent): string {
   const fmt = (ts: number) => new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   if (ev.allDay) return 'All day';
   return `${fmt(ev.startAt)} – ${fmt(ev.endAt)}`;
-}
-
-function parseRelativeOrIso(input: string): number | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-  const rel = trimmed.match(/^\+(\d+)\s*([dhm])$/i);
-  if (rel) {
-    const n = parseInt(rel[1], 10);
-    const unit = rel[2].toLowerCase();
-    const ms = unit === 'd' ? n * 86_400_000 : unit === 'h' ? n * 3_600_000 : n * 60_000;
-    return Date.now() + ms;
-  }
-  const ts = Date.parse(trimmed);
-  return Number.isFinite(ts) ? ts : null;
 }
 
 function escapeHtml(s: string): string {

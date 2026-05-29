@@ -564,10 +564,67 @@
   gap: 6px;
   flex-wrap: wrap;
 }
+.planner-popover__row--labeled {
+  flex-wrap: nowrap;
+}
+.planner-popover__rowlabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 70px;
+  font-size: 12px;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
+}
+.planner-popover__rowlabel svg {
+  flex: 0 0 13px;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+}
 .planner-popover__field--date { flex: 1 1 130px; min-width: 0; }
 .planner-popover__field--time { flex: 0 0 90px; }
 .planner-popover__field--full { flex: 1 1 100%; }
+.planner-popover__field--select { flex: 1 1 100%; }
 .planner-popover__sep { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent); font-size: 12px; }
+
+/* Status segmented control */
+.planner-popover__statusrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+.planner-popover__statuslabel {
+  flex: 0 0 70px;
+  font-size: 12px;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
+}
+.planner-popover__statusgroup {
+  display: inline-flex;
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 18%, transparent);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.planner-popover__statusbtn {
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+.planner-popover__statusbtn + .planner-popover__statusbtn {
+  border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
+}
+.planner-popover__statusbtn:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
+.planner-popover__statusbtn--active {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+}
 
 .planner-popover__check {
   display: inline-flex;

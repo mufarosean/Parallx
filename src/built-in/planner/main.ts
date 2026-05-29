@@ -229,22 +229,21 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
 
   context.subscriptions.push(
     api.commands.registerCommand('planner.newTask', async () => {
-      if (!_data || !api.window.showInputBox) return;
-      const title = await api.window.showInputBox({
-        prompt: 'New task',
-        placeholder: 'What needs to happen?',
-      });
-      if (!title?.trim()) return;
       try {
-        await _data.createTask({
-          title: title.trim(),
-          dueAt: Date.now() + 5 * 86_400_000,
-          status: 'reviewing',
+        // Open the planner editor first (so the popover has a host pane to
+        // render against), then dispatch — the active pane catches it and
+        // opens the full task popover with all fields wired up.
+        await api.editors.openEditor({
+          typeId: 'planner',
+          title: 'Planner',
+          iconHtml: PLANNER_ICON_HTML,
+          instanceId: 'main',
         });
+        document.dispatchEvent(new CustomEvent('parallx.planner.newTask'));
       } catch (err) {
         console.error('[Planner] newTask failed:', err);
         const msg = err instanceof Error ? err.message : String(err);
-        await api.window.showErrorMessage(`Could not create task: ${msg}`);
+        await api.window.showErrorMessage(`Could not open new-task form: ${msg}`);
       }
     }),
   );
