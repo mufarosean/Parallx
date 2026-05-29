@@ -82,11 +82,11 @@ export interface WidgetRefreshContext<TConfig = unknown> {
   readonly config: TConfig;
   /** Full Parallx API surface, scoped to the dashboard tool. */
   readonly api: unknown;
+  /** Last cached output for this instance, if any. */
+  readonly cachedOutput: string | null;
 }
 
 export interface WidgetContext<TConfig = unknown> extends WidgetRefreshContext<TConfig> {
-  /** Last cached output for this instance, if any. */
-  readonly cachedOutput: string | null;
   /** Last persisted error message for this instance, if the prior refresh failed. */
   readonly errorMessage: string | null;
   /** Fires when the user saves new config from the settings drawer. */

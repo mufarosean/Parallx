@@ -178,7 +178,14 @@ export const NEWS_BRIEF_WIDGET: WidgetTypeRegistration<NewsBriefConfig> = {
     const prompt = buildPrompt(cfg, ctx.instanceId);
     await api.commands.executeCommand('chat.submitPrompt', { text: prompt });
 
-    // Transient placeholder shown until renderToWidget delivers the brief.
+    // Keep the last good brief visible while the new one is researched. We
+    // prepend a subtle "Refreshing…" banner above the existing brief and
+    // return that — renderToWidget overwrites the whole thing once the fresh
+    // brief lands, so a slow or failed turn never wipes yesterday's content
+    // (worst case: the banner lingers above the still-readable old brief).
+    // Only the very first run (no prior content) shows a bare placeholder.
+    const prior = stripRefreshBanner((ctx.cachedOutput ?? '').trim());
+    if (prior) return `_Refreshing the news brief for ${cfg.location}…_\n\n${prior}`;
     return `_Researching the latest news for ${cfg.location}… the brief will appear here when ready._`;
   },
 
@@ -253,6 +260,12 @@ function normalize(raw: unknown): NewsBriefConfig {
     topN,
     extraInstructions: typeof cfg.extraInstructions === 'string' ? cfg.extraInstructions : '',
   };
+}
+
+// Remove a leading "_Refreshing…_" / "_Researching…_" banner left by a prior
+// in-flight refresh, so banners never stack across repeated refreshes.
+function stripRefreshBanner(text: string): string {
+  return text.replace(/^_(?:Refreshing|Researching)[^\n]*_\s*\n+/, '').trim();
 }
 
 function buildPrompt(cfg: NewsBriefConfig, instanceId: string): string {

@@ -678,6 +678,7 @@ class DashboardEditorPane implements IDisposable {
         pageId: inst.row.pageId,
         config: inst.row.config,
         api: this._api,
+        cachedOutput: inst.row.cachedOutput,
       });
       await this._data.setWidgetCachedOutput(widgetId, output);
       // Re-read the row to pick up the new cachedAt.
