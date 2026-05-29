@@ -494,7 +494,8 @@ class DashboardEditorPane implements IDisposable {
     header.appendChild(drag);
 
     const titleEl = el('span', 'dashboard-widget__title');
-    titleEl.textContent = typeReg?.displayName ?? row.widgetTypeId;
+    titleEl.dataset.defaultTitle = typeReg?.displayName ?? row.widgetTypeId;
+    titleEl.textContent = row.appearance.title?.trim() || titleEl.dataset.defaultTitle;
     header.appendChild(titleEl);
 
     const status = el('span', 'dashboard-widget__status');
@@ -1123,6 +1124,21 @@ class DashboardEditorPane implements IDisposable {
     } else {
       card.style.removeProperty('border');
     }
+
+    // When the outer border is gone, the inner header/footer separators look
+    // orphaned — drop them too so the card reads as a single clean surface.
+    if (a.border === 'none') card.dataset.borderless = 'true';
+    else delete card.dataset.borderless;
+
+    // Title override + hide. Title text only updates when the element already
+    // exists (it doesn't during the very first mount call — _mountWidget sets
+    // the initial text itself); this branch drives live preview in the drawer.
+    if (a.titleHidden) card.dataset.titleHidden = 'true';
+    else delete card.dataset.titleHidden;
+    const titleEl = card.querySelector<HTMLElement>('.dashboard-widget__title');
+    if (titleEl) {
+      titleEl.textContent = a.title?.trim() || titleEl.dataset.defaultTitle || '';
+    }
   }
 
   // ── Appearance drawer ──────────────────────────────────────────────────
@@ -1205,6 +1221,39 @@ class DashboardEditorPane implements IDisposable {
     bdColor.addEventListener('input', () => { draft.borderColor = bdColor.value; preview(); });
     body.appendChild(bdBlock);
 
+    // ── Title ──
+    const defaultTitle = inst.cardEl.querySelector<HTMLElement>('.dashboard-widget__title')?.dataset.defaultTitle
+      ?? inst.typeReg?.displayName ?? '';
+    const titleBlock = el('div', 'dashboard-field');
+    const titleLabel = el('label', 'dashboard-field__label');
+    titleLabel.textContent = 'Title';
+    titleBlock.appendChild(titleLabel);
+    const titleInput = document.createElement('input');
+    titleInput.type = 'text';
+    titleInput.className = 'dashboard-field__input';
+    titleInput.value = draft.title ?? '';
+    titleInput.placeholder = defaultTitle;
+    titleBlock.appendChild(titleInput);
+    titleInput.addEventListener('input', () => {
+      draft.title = titleInput.value.trim() ? titleInput.value : null;
+      preview();
+    });
+    body.appendChild(titleBlock);
+
+    // ── Hide title ──
+    const hideBlock = el('div', 'dashboard-field');
+    const hideRow = el('div', 'dashboard-field__checkbox-row');
+    const hideCheckbox = document.createElement('input');
+    hideCheckbox.type = 'checkbox';
+    hideCheckbox.checked = draft.titleHidden;
+    hideRow.appendChild(hideCheckbox);
+    const hideText = document.createElement('span');
+    hideText.textContent = 'Hide title bar';
+    hideRow.appendChild(hideText);
+    hideBlock.appendChild(hideRow);
+    hideCheckbox.addEventListener('change', () => { draft.titleHidden = hideCheckbox.checked; preview(); });
+    body.appendChild(hideBlock);
+
     const foot = el('div', 'dashboard-settings__foot');
     const cancel = el('button', 'dashboard-btn dashboard-btn--ghost');
     cancel.type = 'button';
@@ -1220,6 +1269,8 @@ class DashboardEditorPane implements IDisposable {
         backgroundColor: draft.background === 'custom' ? bgColor.value : null,
         border: draft.border,
         borderColor: draft.border === 'custom' ? bdColor.value : null,
+        title: titleInput.value.trim() ? titleInput.value.trim() : null,
+        titleHidden: hideCheckbox.checked,
       };
       try {
         await this._data.updateWidgetAppearance(widgetId, next);

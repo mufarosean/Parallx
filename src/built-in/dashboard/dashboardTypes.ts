@@ -195,6 +195,10 @@ export interface WidgetAppearance {
   readonly border: 'default' | 'none' | 'custom';
   /** CSS color used when border === 'custom'. */
   readonly borderColor: string | null;
+  /** Per-instance title override. null/empty = use the widget type's displayName. */
+  readonly title: string | null;
+  /** Hide the header title row entirely (actions still reveal on hover). */
+  readonly titleHidden: boolean;
 }
 
 export const DEFAULT_WIDGET_APPEARANCE: WidgetAppearance = {
@@ -202,6 +206,8 @@ export const DEFAULT_WIDGET_APPEARANCE: WidgetAppearance = {
   backgroundColor: null,
   border: 'default',
   borderColor: null,
+  title: null,
+  titleHidden: false,
 };
 
 export interface DashboardWidgetRow {

@@ -518,6 +518,47 @@
   display: none !important;
 }
 
+/* ── Borderless: outer border removed via appearance ────────────────────── */
+/* When the user sets "No border", drop the inner header/footer separators too
+   so the card doesn't show orphaned lines floating above/below the title. */
+.dashboard-widget[data-borderless="true"] > .dashboard-widget__header {
+  border-bottom: 0;
+}
+.dashboard-widget[data-borderless="true"] > .dashboard-widget__footer {
+  border-top: 0;
+}
+
+/* ── Hidden title: collapse the header to floating hover actions ────────── */
+/* Same treatment as minimal/bare chrome — the title row disappears and the
+   action buttons float in the top-right, revealing on hover, so the body
+   owns the full card. */
+.dashboard-widget[data-title-hidden="true"] > .dashboard-widget__header {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  left: auto;
+  z-index: 2;
+  padding: 4px 6px;
+  border-bottom: 0;
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 80%, transparent);
+  border-radius: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+.dashboard-widget[data-title-hidden="true"]:hover > .dashboard-widget__header {
+  opacity: 1;
+  pointer-events: auto;
+}
+.dashboard-widget[data-title-hidden="true"] > .dashboard-widget__header .dashboard-widget__title,
+.dashboard-widget[data-title-hidden="true"] > .dashboard-widget__header .dashboard-widget__drag {
+  display: none;
+}
+.dashboard-widget[data-title-hidden="true"] > .dashboard-widget__header .dashboard-widget__actions {
+  opacity: 1;
+  margin-left: 0;
+}
+
 .dashboard-widget__error {
   padding: 12px;
   border-radius: 8px;
@@ -1086,57 +1127,57 @@
 
 
 /* ============================================================================
-   Widget — news brief
+   Shared markdown surface — used by AI-backed widgets (news brief, custom AI)
    ========================================================================== */
 
-.nbw {
+.dashboard-md {
   height: 100%;
 }
-.nbw__surface {
+.dashboard-md__surface {
   height: 100%;
   overflow-y: auto;
 }
-.nbw__body {
+.dashboard-md__body {
   font-size: 13.5px;
   line-height: 1.62;
   color: var(--vscode-editor-foreground, #d4d4d4);
 }
-.nbw__body h1, .nbw__body h2, .nbw__body h3 {
+.dashboard-md__body h1, .dashboard-md__body h2, .dashboard-md__body h3 {
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--vscode-editor-foreground, #f3f3f3);
 }
-.nbw__body h1 { font-size: 18px; margin: 0 0 12px; }
-.nbw__body h2 { font-size: 15px; margin: 14px 0 6px; }
-.nbw__body h3 { font-size: 13.5px; margin: 12px 0 4px; }
-.nbw__body p, .nbw__body ul, .nbw__body ol { margin: 0 0 10px; }
-.nbw__body ol, .nbw__body ul { padding-left: 22px; }
-.nbw__body li { margin-bottom: 6px; }
-.nbw__body em { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent); font-style: italic; }
-.nbw__body strong { color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
-.nbw__body code {
+.dashboard-md__body h1 { font-size: 18px; margin: 0 0 12px; }
+.dashboard-md__body h2 { font-size: 15px; margin: 14px 0 6px; }
+.dashboard-md__body h3 { font-size: 13.5px; margin: 12px 0 4px; }
+.dashboard-md__body p, .dashboard-md__body ul, .dashboard-md__body ol { margin: 0 0 10px; }
+.dashboard-md__body ol, .dashboard-md__body ul { padding-left: 22px; }
+.dashboard-md__body li { margin-bottom: 6px; }
+.dashboard-md__body em { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent); font-style: italic; }
+.dashboard-md__body strong { color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
+.dashboard-md__body code {
   font-family: var(--vscode-editor-font-family, "SF Mono", monospace);
   font-size: 12.5px;
   padding: 1px 5px;
   border-radius: 4px;
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
 }
-.nbw__body a {
+.dashboard-md__body a {
   color: var(--vscode-textLink-foreground, #4daafc);
   text-decoration: none;
   border-bottom: 1px solid color-mix(in srgb, var(--vscode-textLink-foreground, #4daafc) 30%, transparent);
   transition: border-color 120ms ease;
 }
-.nbw__body a:hover { border-color: var(--vscode-textLink-foreground, #4daafc); }
+.dashboard-md__body a:hover { border-color: var(--vscode-textLink-foreground, #4daafc); }
 
-.nbw__empty {
+.dashboard-md__empty {
   padding: 16px 6px;
   font-size: 12.5px;
   color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
 }
-.nbw__empty strong { display: block; margin-bottom: 4px; color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
-.nbw__empty p { margin: 0; line-height: 1.55; }
-.nbw__error {
+.dashboard-md__empty strong { display: block; margin-bottom: 4px; color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
+.dashboard-md__empty p { margin: 0; line-height: 1.55; }
+.dashboard-md__error {
   padding: 14px;
   border-radius: 10px;
   border: 1px solid color-mix(in srgb, #e85a5a 35%, transparent);
@@ -1144,8 +1185,8 @@
   font-size: 12.5px;
   color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
 }
-.nbw__error strong { display: block; margin-bottom: 4px; color: #e85a5a; font-weight: 600; }
-.nbw__error p { margin: 0; line-height: 1.55; }
+.dashboard-md__error strong { display: block; margin-bottom: 4px; color: #e85a5a; font-weight: 600; }
+.dashboard-md__error p { margin: 0; line-height: 1.55; }
 
 
 /* ============================================================================

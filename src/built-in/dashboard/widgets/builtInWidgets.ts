@@ -8,6 +8,7 @@ import type { DashboardRegistry } from '../dashboardTypes.js';
 import { CLOCK_AND_LINKS_WIDGET } from './clockAndLinksWidget.js';
 import { RECENT_FILES_WIDGET } from './recentFilesWidget.js';
 import { NEWS_BRIEF_WIDGET } from './newsBriefWidget.js';
+import { CUSTOM_AI_WIDGET } from './customAiWidget.js';
 import { IMAGE_WIDGET } from './imageWidget.js';
 import { AUTONOMY_ACTIVITY_WIDGET } from './autonomyActivityWidget.js';
 
@@ -28,6 +29,7 @@ export function registerBuiltInDashboardWidgets(
     registry.registerWidgetType(CLOCK_AND_LINKS_WIDGET),
     registry.registerWidgetType(RECENT_FILES_WIDGET),
     registry.registerWidgetType(NEWS_BRIEF_WIDGET),
+    registry.registerWidgetType(CUSTOM_AI_WIDGET),
     registry.registerWidgetType(IMAGE_WIDGET),
     registry.registerWidgetType(AUTONOMY_ACTIVITY_WIDGET),
   ];

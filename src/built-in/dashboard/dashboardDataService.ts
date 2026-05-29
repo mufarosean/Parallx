@@ -48,6 +48,8 @@ function parseAppearance(raw: string | undefined): WidgetAppearance {
       backgroundColor: typeof p.backgroundColor === 'string' ? p.backgroundColor : null,
       border: p.border === 'none' || p.border === 'custom' ? p.border : 'default',
       borderColor: typeof p.borderColor === 'string' ? p.borderColor : null,
+      title: typeof p.title === 'string' && p.title.trim() ? p.title : null,
+      titleHidden: p.titleHidden === true,
     };
   } catch {
     return DEFAULT_WIDGET_APPEARANCE;
