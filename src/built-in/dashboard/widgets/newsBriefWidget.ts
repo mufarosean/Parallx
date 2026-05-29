@@ -105,7 +105,7 @@ function parseInlineFragment(text: string): DocumentFragment {
 
 function parseEmphasis(text: string): DocumentFragment {
   const frag = document.createDocumentFragment();
-  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/);
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|_[^_]+_|`[^`]+`)/);
   for (const part of parts) {
     if (!part) continue;
     if (part.startsWith('**') && part.endsWith('**')) {
@@ -113,6 +113,10 @@ function parseEmphasis(text: string): DocumentFragment {
       strong.textContent = part.slice(2, -2);
       frag.appendChild(strong);
     } else if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+      const em = document.createElement('em');
+      em.textContent = part.slice(1, -1);
+      frag.appendChild(em);
+    } else if (part.startsWith('_') && part.endsWith('_') && part.length > 2) {
       const em = document.createElement('em');
       em.textContent = part.slice(1, -1);
       frag.appendChild(em);
