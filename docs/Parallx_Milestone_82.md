@@ -100,22 +100,52 @@ batch-confirm or adjust.
 ## Chat tools — the AI surface
 
 Registered from `activate()` via `api.chat.registerTool(name, def)` (the
-budget pattern). All are no-confirmation reads, except `createTask` and
-`createEvent` which write but accept `status: 'reviewing'` to make
-no-friction capture safe.
+budget pattern). **Three tools, not six** — see the consolidation note
+below. Each capture tool merges create + update on id-presence; the read
+tool branches on a `what` discriminator.
 
 | Tool | Purpose | Defaults |
 | --- | --- | --- |
-| `planner.createTask` | Capture a task from any AI context (chat, skill, journaling). | `dueAt = +5 days`, `status = 'reviewing'` |
-| `planner.listTasks` | Read-only filter by status / due window / tags. | — |
-| `planner.updateTask` | Set status, due date, completion. | — |
-| `planner.createEvent` | Add a calendar event. | — |
-| `planner.listEvents` | Read events in a window. | — |
-| `planner.findFreeSlot` | Given duration + window, return the first open block. Used by the AI to *propose* a real date for a reviewing task. | — |
+| `planner.captureTask({ title, dueAt?, status?, reminderAt?, tags?, sourceUri?, taskId? })` | Create or update a task. `taskId` present = update, absent = create. `status: 'cancelled'` is the soft-delete path. | On create: `dueAt = +5 days`, `status = 'reviewing'`. |
+| `planner.captureEvent({ title, startAt, endAt?, allDay?, location?, eventId? })` | Create or update a calendar event. Same `eventId`-presence rule. | — |
+| `planner.read({ what: 'tasks' \| 'events' \| 'free-slot', ...filters })` | One reader. `'tasks'`: filter by status / due window / tags. `'events'`: time window. `'free-slot'`: returns the first open block of `durationMinutes` within `withinDays`, accounting for existing events. | — |
 
-The "+5 days, status=reviewing" defaults are what turn the journaling
-scenario into a single AI tool call. The user doesn't get pulled into a
-date picker mid-session; the captured task sits in the review queue.
+The `dueAt = +5 days, status = 'reviewing'` defaults are what turn the
+journaling scenario into a single AI tool call — the user doesn't get
+pulled into a date picker mid-session, the captured task sits in the
+review queue, and the AI can later propose a real date with
+`planner.read({ what: 'free-slot', durationMinutes: ... })` followed by
+`planner.captureTask({ taskId, dueAt })`.
+
+### Why three tools, not six
+
+The initial sketch had six tools (`createTask`, `listTasks`,
+`updateTask`, `createEvent`, `listEvents`, `findFreeSlot`). The
+consolidation:
+
+- **`createX` + `updateX` → single capture tool with optional id.**
+  Models handle "id present = update, absent = create" reliably, and the
+  AI's intent ("write a task") is the same in both cases. Splitting
+  doubles the tool count for no clarity gain. Mark-done becomes
+  `captureTask({ taskId, status: 'done' })`; soft-delete becomes
+  `captureTask({ taskId, status: 'cancelled' })`.
+- **`listTasks` + `listEvents` + `findFreeSlot` → single read tool.**
+  All three are "ask the planner for data" — different *what*, same
+  *intent*. A `what` discriminator picks the shape.
+
+What we explicitly chose **not** to consolidate further:
+
+- **`captureTask` and `captureEvent` stay separate** rather than
+  collapsing into one `planner.write({ kind, ... })`. Task fields
+  (`dueAt`, `status`, `tags`) and event fields (`startAt`, `endAt`,
+  `allDay`, `location`) are different enough that a union shape makes
+  the tool description longer and harder for the model to validate.
+  Two clean single-shape capture tools cost less prompt budget than one
+  union write tool.
+
+Each tool is no-confirmation. Capture writes are safe by default because
+new tasks land in `status = 'reviewing'` — they're visible in the review
+queue, not silently merged into the user's "real" plan.
 
 ## Surfaces
 
@@ -187,7 +217,7 @@ later does not require a schema migration.
 - Tasks + events data service (CRUD, query, find-free-slot)
 - Sidebar view with filter chips
 - Editor pane with Tasks tab + Calendar tab (month/week/day)
-- Six chat tools
+- Three chat tools (`captureTask`, `captureEvent`, `read`)
 - In-process reminder scheduler
 - Three dashboard widgets (tasks summary, calendar agenda, calendar view)
 - Sync architecture *as code shape* — interface + provider registration
@@ -210,7 +240,7 @@ Rough sizing for one developer:
 - Sidebar view: ~1 day
 - Tasks editor tab (list + grouping + Review queue): ~1 day
 - Calendar editor tab (month/week/day): ~2 days
-- Chat tools: ~0.5 day
+- Chat tools (3): ~0.5 day
 - Reminder scheduler hook: ~0.5 day
 - Three widgets: ~1.5 days
 - Sync interface + provider plumbing (no actual sync): ~0.5 day
