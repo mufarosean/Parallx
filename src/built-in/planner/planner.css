@@ -180,61 +180,62 @@
   top: 0;
   z-index: 5;
   display: flex;
-  align-items: center;
+  /* align-items: stretch lets the tabs span the full header height so
+     their bottom border can overlap the header's own bottom border —
+     the only reliable way to make the active-tab underline look like a
+     single connected element instead of a floating pseudo. */
+  align-items: stretch;
   gap: 14px;
-  padding: 7px 16px;
+  padding: 0 16px;
   min-height: 44px;
   box-sizing: border-box;
   background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 95%, white);
   border-bottom: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
   backdrop-filter: blur(8px);
 }
-.planner-pane__spacer { flex: 1 1 auto; min-width: 12px; }
+.planner-pane__spacer { flex: 1 1 auto; min-width: 12px; align-self: center; }
 
-/* Tabs — flat underline pattern, no pill chrome around them */
+/* Header is align-stretch so its children would all stretch too. Force
+   non-tab controls back to centered so they keep their fixed heights. */
+.planner-pane__header > .planner-todaybtn,
+.planner-pane__header > .planner-cnav,
+.planner-pane__header > .planner-cdate,
+.planner-pane__header > .planner-viewdrop,
+.planner-pane__header > .planner-cta,
+.planner-pane__header > .planner-iconbtn {
+  align-self: center;
+}
+
+/* Tabs — underline tabs (Linear / browser style). The underline lives
+   on the tab itself as a real border-bottom and uses margin-bottom: -1px
+   to sit ON TOP of the header's bottom border for a clean connected
+   look — no floating pseudo elements that have to be hand-aligned. */
 .planner-pane__tabs {
   display: flex;
-  align-items: center;
-  gap: 2px;
-  align-self: stretch;
-  position: relative;
-}
-.planner-pane__tabs::after {
-  content: '';
-  position: absolute;
-  left: 0; right: 0; bottom: -15px;
-  height: 1px;
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
+  align-items: stretch;
+  gap: 0;
 }
 .planner-pane__tab {
-  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  height: 32px;
   padding: 0 14px;
   border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
   background: transparent;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
   font: inherit;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: color 100ms ease;
+  transition: color 100ms ease, border-color 100ms ease;
 }
 .planner-pane__tab:hover { color: var(--vscode-editor-foreground, #d4d4d4); }
 .planner-pane__tab--active {
   color: var(--vscode-editor-foreground, #f3f3f3);
   font-weight: 600;
-}
-.planner-pane__tab--active::after {
-  content: '';
-  position: absolute;
-  left: 12px; right: 12px;
-  bottom: -16px;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--vscode-button-background, #0e639c);
+  border-bottom-color: var(--vscode-button-background, #0e639c);
 }
 
 .planner-pane__actions { display: flex; align-items: center; gap: 6px; }
