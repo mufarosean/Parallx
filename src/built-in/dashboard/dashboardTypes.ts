@@ -87,6 +87,8 @@ export interface WidgetRefreshContext<TConfig = unknown> {
 export interface WidgetContext<TConfig = unknown> extends WidgetRefreshContext<TConfig> {
   /** Last cached output for this instance, if any. */
   readonly cachedOutput: string | null;
+  /** Last persisted error message for this instance, if the prior refresh failed. */
+  readonly errorMessage: string | null;
   /** Fires when the user saves new config from the settings drawer. */
   readonly onDidChangeConfig: Event<TConfig>;
 
@@ -103,6 +105,12 @@ export interface WidgetContext<TConfig = unknown> extends WidgetRefreshContext<T
 export interface WidgetHandle extends IDisposable {
   /** Optional manual re-render hook the dashboard calls after `setCachedOutput`. */
   refreshFromCache?(cachedOutput: string | null): void;
+  /**
+   * Optional hook the dashboard calls when a refresh fails, so the widget can
+   * surface the reason in its own body instead of relying on the small header
+   * status dot. Called with `null` when the error clears.
+   */
+  renderError?(message: string | null): void;
 }
 
 /**

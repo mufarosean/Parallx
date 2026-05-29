@@ -192,6 +192,16 @@ export const RECENT_FILES_WIDGET: WidgetTypeRegistration<RecentFilesConfig> = {
       refreshFromCache(cached: string | null) {
         paintFrom(cached);
       },
+      renderError(message: string | null) {
+        if (!message) { paintFrom(ctx.cachedOutput); return; }
+        list.innerHTML = '';
+        const err = document.createElement('div');
+        err.className = 'rfw__empty';
+        err.innerHTML = `<strong>Couldn\u2019t load recent files</strong><p></p>`;
+        const p = err.querySelector('p');
+        if (p) p.textContent = message;
+        list.appendChild(err);
+      },
       dispose() {
         sub.dispose();
       },

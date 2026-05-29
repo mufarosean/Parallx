@@ -82,6 +82,7 @@ import {
   type IAutonomyPatternMemoryFs,
 } from '../../services/autonomyPatternMemoryService.js';
 import { AutonomyTaskRailService } from '../../services/autonomyTaskRailService.js';
+import type { IRailFilter, IRailRow } from '../../services/autonomyTaskRailService.js';
 import {
   createSubagentTurnExecutor,
   createSubagentAnnouncer,
@@ -2394,6 +2395,48 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           : undefined,
       };
       return provider;
+    }),
+  );
+
+  // 9a-bis. Recent autonomy events — read-only, body-free feed for the
+  // dashboard "Autonomy activity" widget (and any other surface that wants a
+  // compact view of background agent activity). Mirrors the
+  // `chat.getInlineAIProvider` pattern: the chat extension owns the autonomy
+  // log + rail, so it exposes a slim command instead of letting widgets read
+  // ndjson files directly. Returns only structured metadata — never message
+  // or tool-call bodies (§3.9 privacy posture).
+  context.subscriptions.push(
+    api.commands.registerCommand('chat.getRecentAutonomyEvents', async (...args: unknown[]) => {
+      const opts = (args[0] ?? {}) as {
+        sinceDays?: number;
+        limit?: number;
+        triggers?: readonly string[];
+        outcomes?: readonly string[];
+      };
+      const filter: IRailFilter = {
+        sinceDays: typeof opts.sinceDays === 'number' ? opts.sinceDays : 7,
+        limit: typeof opts.limit === 'number' ? opts.limit : 30,
+        triggers: opts.triggers as IRailFilter['triggers'],
+        outcomes: opts.outcomes as IRailFilter['outcomes'],
+      };
+      let rows: readonly IRailRow[] = [];
+      try {
+        rows = await autonomyTaskRail.readRows(filter);
+      } catch (err) {
+        console.warn('[chat] getRecentAutonomyEvents failed:', err);
+        return [];
+      }
+      return rows.map((r) => ({
+        id: r.id,
+        triggeredAt: r.triggeredAt,
+        trigger: r.trigger,
+        outcome: r.outcome,
+        durationMs: r.durationMs,
+        tokensIn: r.tokensIn,
+        tokensOut: r.tokensOut,
+        toolCount: r.kind === 'event' ? (r.record.toolCalls?.length ?? 0) : undefined,
+        note: r.kind === 'event' ? r.note : undefined,
+      }));
     }),
   );
 

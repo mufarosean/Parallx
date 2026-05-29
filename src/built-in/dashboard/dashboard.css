@@ -902,6 +902,93 @@
 
 
 /* ============================================================================
+   Widget — autonomy activity
+   ========================================================================== */
+
+.aaw {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.aaw__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 2px;
+}
+.aaw__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  transition: background-color 120ms ease;
+}
+.aaw__row:hover {
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 7%, transparent);
+}
+.aaw__dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--vscode-descriptionForeground, #8a8a8a);
+}
+.aaw__dot--ok { background: var(--vscode-testing-iconPassed, #4caf50); }
+.aaw__dot--error { background: var(--vscode-testing-iconFailed, #f44336); }
+.aaw__dot--cancelled { background: var(--vscode-descriptionForeground, #9e9e9e); }
+.aaw__dot--budget { background: var(--vscode-charts-orange, #e8a33d); }
+.aaw__dot--gated { background: var(--vscode-charts-purple, #b180d7); }
+.aaw__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.aaw__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.aaw__trigger {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--vscode-editor-foreground, #f3f3f3);
+}
+.aaw__outcome {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
+}
+.aaw__outcome--ok { background: color-mix(in srgb, var(--vscode-testing-iconPassed, #4caf50) 22%, transparent); color: var(--vscode-testing-iconPassed, #4caf50); }
+.aaw__outcome--error { background: color-mix(in srgb, var(--vscode-testing-iconFailed, #f44336) 22%, transparent); color: var(--vscode-testing-iconFailed, #f44336); }
+.aaw__outcome--budget { background: color-mix(in srgb, var(--vscode-charts-orange, #e8a33d) 22%, transparent); color: var(--vscode-charts-orange, #e8a33d); }
+.aaw__outcome--gated { background: color-mix(in srgb, var(--vscode-charts-purple, #b180d7) 22%, transparent); color: var(--vscode-charts-purple, #b180d7); }
+.aaw__meta {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+}
+.aaw__empty {
+  padding: 16px 4px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
+}
+.aaw__empty strong { display: block; margin-bottom: 4px; color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
+.aaw__empty p { margin: 0; line-height: 1.5; }
+
+
+/* ============================================================================
    Widget — image
    ========================================================================== */
 
@@ -1021,6 +1108,16 @@
 }
 .nbw__empty strong { display: block; margin-bottom: 4px; color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
 .nbw__empty p { margin: 0; line-height: 1.55; }
+.nbw__error {
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, #e85a5a 35%, transparent);
+  background: color-mix(in srgb, #e85a5a 10%, transparent);
+  font-size: 12.5px;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
+}
+.nbw__error strong { display: block; margin-bottom: 4px; color: #e85a5a; font-weight: 600; }
+.nbw__error p { margin: 0; line-height: 1.55; }
 
 
 /* ============================================================================

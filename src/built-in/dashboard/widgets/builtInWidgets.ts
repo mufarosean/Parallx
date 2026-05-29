@@ -9,6 +9,7 @@ import { CLOCK_AND_LINKS_WIDGET } from './clockAndLinksWidget.js';
 import { RECENT_FILES_WIDGET } from './recentFilesWidget.js';
 import { NEWS_BRIEF_WIDGET } from './newsBriefWidget.js';
 import { IMAGE_WIDGET } from './imageWidget.js';
+import { AUTONOMY_ACTIVITY_WIDGET } from './autonomyActivityWidget.js';
 
 interface ApiSurfaceUsedByWidgets {
   commands: { executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T> };
@@ -28,6 +29,7 @@ export function registerBuiltInDashboardWidgets(
     registry.registerWidgetType(RECENT_FILES_WIDGET),
     registry.registerWidgetType(NEWS_BRIEF_WIDGET),
     registry.registerWidgetType(IMAGE_WIDGET),
+    registry.registerWidgetType(AUTONOMY_ACTIVITY_WIDGET),
   ];
 
   return toDisposable(() => {

@@ -234,7 +234,26 @@ export const NEWS_BRIEF_WIDGET: WidgetTypeRegistration<NewsBriefConfig> = {
       surface.appendChild(body);
     }
 
-    paint(ctx.cachedOutput);
+    function paintError(message: string): void {
+      surface.innerHTML = '';
+      const err = document.createElement('div');
+      err.className = 'nbw__error';
+      const title = document.createElement('strong');
+      title.textContent = 'Couldn\u2019t generate the brief';
+      const detail = document.createElement('p');
+      detail.textContent = message;
+      err.appendChild(title);
+      err.appendChild(detail);
+      surface.appendChild(err);
+    }
+
+    // Surface a previously-persisted error on mount so a failed widget doesn't
+    // just look empty after a relaunch.
+    if (ctx.errorMessage && !ctx.cachedOutput) {
+      paintError(ctx.errorMessage);
+    } else {
+      paint(ctx.cachedOutput);
+    }
 
     const sub = ctx.onDidChangeConfig(() => {
       // Config changes only affect the next refresh — keep current render.
@@ -242,6 +261,10 @@ export const NEWS_BRIEF_WIDGET: WidgetTypeRegistration<NewsBriefConfig> = {
 
     return {
       refreshFromCache(cached: string | null) { paint(cached); },
+      renderError(message: string | null) {
+        if (message) paintError(message);
+        else paint(ctx.cachedOutput);
+      },
       dispose() { sub.dispose(); },
     };
   },

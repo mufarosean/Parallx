@@ -608,6 +608,7 @@ class DashboardEditorPane implements IDisposable {
       config: row.config,
       api: this._api,
       cachedOutput: row.cachedOutput,
+      errorMessage: row.errorMessage,
       onDidChangeConfig: configEmitter.event,
       requestRefresh: () => void this._triggerManualRefresh(row.id),
       setCachedOutput: (output: string) => {
@@ -665,6 +666,7 @@ class DashboardEditorPane implements IDisposable {
       const fresh = await this._data.getWidget(widgetId);
       if (fresh) {
         inst.row = fresh;
+        if (inst.handle?.renderError) inst.handle.renderError(null);
         if (inst.handle?.refreshFromCache) inst.handle.refreshFromCache(fresh.cachedOutput);
         this._updateFooter(inst);
       }
@@ -672,6 +674,7 @@ class DashboardEditorPane implements IDisposable {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       await this._data.setWidgetError(widgetId, msg);
+      if (inst.handle?.renderError) inst.handle.renderError(msg);
       if (statusEl) {
         statusEl.dataset.value = 'error';
         statusEl.title = msg;
