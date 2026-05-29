@@ -87,6 +87,8 @@ class PlannerEditorPane implements IDisposable {
   private _activeTab: Tab = 'tasks';
   private _calendarView: CalendarView = 'month';
   private _cursorDate: Date = startOfDay(new Date());
+  /** Persists the currently-selected filter inside the Tasks tab. */
+  private _tasksFilter: string = 'all';
   private _disposed = false;
   private readonly _disposables: IDisposable[] = [];
 
@@ -108,6 +110,19 @@ class PlannerEditorPane implements IDisposable {
       if (this._disposed) return;
       void this._renderTab();
     }));
+
+    // The sidebar dispatches a "focus tab" event when the user clicks
+    // Calendar / Tasks. The active pane responds by switching to that
+    // tab; non-active panes ignore it (root won't be connected).
+    const onFocusTab = (e: Event) => {
+      if (!this._root?.isConnected) return;
+      const tab = (e as CustomEvent<{ tab?: Tab }>).detail?.tab;
+      if (tab === 'tasks' || tab === 'calendar') this._setTab(tab);
+    };
+    document.addEventListener('parallx.planner.focusTab', onFocusTab);
+    this._disposables.push({
+      dispose() { document.removeEventListener('parallx.planner.focusTab', onFocusTab); },
+    });
   }
 
   // ── Shell ────────────────────────────────────────────────────────────
@@ -184,45 +199,113 @@ class PlannerEditorPane implements IDisposable {
   // ── Tasks tab ────────────────────────────────────────────────────────
 
   private async _renderTasksTab(body: HTMLElement, actions: HTMLElement): Promise<void> {
-    const addBtn = el('button', 'planner-btn planner-btn--primary');
+    const addBtn = el('button', 'planner-cta');
     addBtn.type = 'button';
-    addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>New task</span>';
+    addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Create</span>';
     addBtn.addEventListener('click', () => void this._captureNewTask());
     actions.appendChild(addBtn);
 
-    const tasks = await this._data.listTasks({
+    const all = await this._data.listTasks({
       status: ['reviewing', 'planned', 'done'],
       includeUndated: true,
       limit: 500,
     });
-    const reviewing = tasks.filter(t => t.status === 'reviewing');
-    const overdue   = tasks.filter(t => t.status === 'planned' && t.dueAt && t.dueAt < Date.now());
-    const today     = tasks.filter(t => t.status === 'planned' && t.dueAt && sameDay(new Date(t.dueAt), new Date()));
-    const upcoming  = tasks.filter(t => t.status === 'planned' && t.dueAt && t.dueAt > endOfDay(new Date()).getTime());
-    const noDate    = tasks.filter(t => t.status === 'planned' && !t.dueAt);
-    const completed = tasks.filter(t => t.status === 'done').slice(0, 12);
 
-    if (tasks.length === 0) {
+    if (all.length === 0) {
       const empty = el('div', 'planner-empty');
       empty.innerHTML = `
         <h2>Nothing planned</h2>
-        <p>Capture a task with "New task", or ask the AI in chat. New tasks land in the review queue with a default due date — no need to break flow to plan immediately.</p>
+        <p>Capture a task with "Create", or ask the AI in chat. New tasks land in the review queue with a default due date — no need to break flow to plan immediately.</p>
       `;
       body.appendChild(empty);
       return;
     }
 
-    if (reviewing.length > 0) {
-      body.appendChild(this._renderTaskSection('Review queue', reviewing, {
-        accent: 'review',
-        hint: 'Captured fast — pick a real due date or mark cancelled.',
-      }));
+    // Two-column layout: left filter nav, right filtered content.
+    const layout = el('div', 'planner-tasks');
+    body.appendChild(layout);
+
+    const nav = el('nav', 'planner-tasks__nav');
+    nav.setAttribute('aria-label', 'Filter tasks');
+    const content = el('div', 'planner-tasks__content');
+    layout.appendChild(nav);
+    layout.appendChild(content);
+
+    type Filter = { key: string; label: string; pinned?: boolean; match: (t: typeof all[number]) => boolean };
+    const filters: Filter[] = [
+      { key: 'review',  label: 'Review queue', pinned: true, match: t => t.status === 'reviewing' },
+      { key: 'today',   label: 'Today',     match: t => (t.status === 'planned' || t.status === 'reviewing') && t.dueAt != null && sameDay(new Date(t.dueAt), new Date()) },
+      { key: 'week',    label: 'This week', match: t => (t.status === 'planned' || t.status === 'reviewing') && t.dueAt != null && t.dueAt >= startOfDayMs() && t.dueAt <= startOfDayMs() + 7 * 86_400_000 },
+      { key: 'overdue', label: 'Overdue',   match: t => (t.status === 'planned' || t.status === 'reviewing') && t.dueAt != null && t.dueAt < Date.now() },
+      { key: 'all',     label: 'All tasks', match: t => t.status !== 'cancelled' },
+    ];
+
+    let activeKey = this._tasksFilter;
+
+    const renderContent = () => {
+      content.innerHTML = '';
+      const filter = filters.find(f => f.key === activeKey) ?? filters[filters.length - 1];
+      const matching = all.filter(filter.match);
+
+      if (activeKey === 'all') {
+        // "All tasks" uses the grouped section view so the user has the
+        // full overview when no specific filter is active.
+        const reviewing = matching.filter(t => t.status === 'reviewing');
+        const overdue   = matching.filter(t => t.status === 'planned' && t.dueAt != null && t.dueAt < Date.now());
+        const today     = matching.filter(t => t.status === 'planned' && t.dueAt != null && sameDay(new Date(t.dueAt), new Date()));
+        const upcoming  = matching.filter(t => t.status === 'planned' && t.dueAt != null && t.dueAt > endOfDay(new Date()).getTime());
+        const noDate    = matching.filter(t => t.status === 'planned' && !t.dueAt);
+        const completed = matching.filter(t => t.status === 'done').slice(0, 12);
+        if (reviewing.length > 0) content.appendChild(this._renderTaskSection('Review queue', reviewing, { accent: 'review', hint: 'Captured fast — pick a real due date or mark cancelled.' }));
+        if (overdue.length > 0)   content.appendChild(this._renderTaskSection('Overdue', overdue, { accent: 'overdue' }));
+        if (today.length > 0)     content.appendChild(this._renderTaskSection('Today', today, { accent: 'today' }));
+        if (upcoming.length > 0)  content.appendChild(this._renderTaskSection('Upcoming', upcoming));
+        if (noDate.length > 0)    content.appendChild(this._renderTaskSection('No date', noDate));
+        if (completed.length > 0) content.appendChild(this._renderTaskSection('Recently completed', completed, { collapsed: true }));
+      } else {
+        // Single-filter view: one flat section with the matching rows.
+        if (matching.length === 0) {
+          const empty = el('div', 'planner-empty');
+          empty.innerHTML = `<h2>Nothing here</h2><p>No tasks match this filter right now.</p>`;
+          content.appendChild(empty);
+          return;
+        }
+        const accent = activeKey === 'review' ? 'review' : activeKey === 'overdue' ? 'overdue' : activeKey === 'today' ? 'today' : undefined;
+        content.appendChild(this._renderTaskSection(filter.label, matching, { accent }));
+      }
+    };
+
+    // Build the nav.
+    let lastPinned: boolean | undefined;
+    for (const f of filters) {
+      if (lastPinned !== undefined && !!f.pinned !== !!lastPinned) {
+        nav.appendChild(el('div', 'planner-tasks__navsep'));
+      }
+      lastPinned = !!f.pinned;
+      const item = el('button', 'planner-tasks__navitem');
+      item.type = 'button';
+      item.dataset.key = f.key;
+      const label = el('span', 'planner-tasks__navlabel');
+      label.textContent = f.label;
+      const count = el('span', 'planner-tasks__navcount');
+      count.textContent = String(all.filter(f.match).length);
+      item.appendChild(label);
+      item.appendChild(count);
+      item.addEventListener('click', () => {
+        activeKey = f.key;
+        this._tasksFilter = activeKey;
+        for (const sibling of Array.from(nav.children)) {
+          if (sibling instanceof HTMLElement && sibling.classList.contains('planner-tasks__navitem')) {
+            sibling.classList.toggle('planner-tasks__navitem--active', sibling.dataset.key === activeKey);
+          }
+        }
+        renderContent();
+      });
+      if (f.key === activeKey) item.classList.add('planner-tasks__navitem--active');
+      nav.appendChild(item);
     }
-    if (overdue.length > 0)  body.appendChild(this._renderTaskSection('Overdue', overdue, { accent: 'overdue' }));
-    if (today.length > 0)    body.appendChild(this._renderTaskSection('Today', today, { accent: 'today' }));
-    if (upcoming.length > 0) body.appendChild(this._renderTaskSection('Upcoming', upcoming));
-    if (noDate.length > 0)   body.appendChild(this._renderTaskSection('No date', noDate));
-    if (completed.length > 0) body.appendChild(this._renderTaskSection('Recently completed', completed, { collapsed: true }));
+
+    renderContent();
   }
 
   private _renderTaskSection(title: string, tasks: readonly PlannerTask[], opts: { accent?: string; hint?: string; collapsed?: boolean } = {}): HTMLElement {
@@ -414,19 +497,18 @@ class PlannerEditorPane implements IDisposable {
   // ── Calendar tab ─────────────────────────────────────────────────────
 
   private async _renderCalendarTab(body: HTMLElement, actions: HTMLElement): Promise<void> {
-    // Sharp chrome — no pills, no rounded "bar" containers. Text-emphasized
-    // active states match the underline-tab idiom most calendar apps use.
+    // Goal: tight, single-row chrome where every interactive control is
+    // the same height (28px) so the eye doesn't see a stack of different
+    // button shapes. Date label moves INTO the header (no big subtitle
+    // below) — same layout Google Calendar uses.
 
-    // Today stands alone — distinct action (jump to today), separated
-    // from the prev/next arrow pair. Matches Google Calendar grouping.
+    // Today + connected prev/next pair
     const today = el('button', 'planner-todaybtn');
     today.type = 'button';
     today.textContent = 'Today';
     today.addEventListener('click', () => { this._cursorDate = startOfDay(new Date()); void this._renderTab(); });
     actions.appendChild(today);
 
-    // Prev/Next form a connected pair so they read as "step through time"
-    // (one unit at a time), distinct from the Today reset.
     const nav = el('div', 'planner-cnav');
     const prev = el('button', 'planner-iconbtn');
     prev.type = 'button';
@@ -442,24 +524,50 @@ class PlannerEditorPane implements IDisposable {
     nav.appendChild(next);
     actions.appendChild(nav);
 
-    // View switcher — underline-tab pattern, not pills
-    const views = el('div', 'planner-viewtabs');
-    for (const v of ['month', 'week', 'day'] as CalendarView[]) {
-      const vt = el('button', 'planner-viewtab');
-      vt.type = 'button';
-      vt.textContent = v[0].toUpperCase() + v.slice(1);
-      if (v === this._calendarView) vt.classList.add('planner-viewtab--active');
-      vt.addEventListener('click', () => { this._calendarView = v; void this._renderTab(); });
-      views.appendChild(vt);
-    }
-    actions.appendChild(views);
+    // Inline date label (replaces the big subtitle that used to sit below).
+    const dateLabel = el('span', 'planner-cdate');
+    dateLabel.textContent = this._calendarRangeLabel();
+    actions.appendChild(dateLabel);
 
-    // Primary CTA (kept sharp — single rounded corner instead of pill)
+    // Push the rest right.
+    const spacer = el('span', 'planner-pane__spacer');
+    actions.appendChild(spacer);
+
+    // Search (placeholder for now — opens a quick-search popover later).
+    const searchBtn = el('button', 'planner-iconbtn');
+    searchBtn.type = 'button';
+    searchBtn.title = 'Search planner';
+    searchBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+    searchBtn.addEventListener('click', () => {
+      void this._api.window.showInformationMessage('Quick search is coming soon.');
+    });
+    actions.appendChild(searchBtn);
+
+    // Settings.
+    const settingsBtn = el('button', 'planner-iconbtn');
+    settingsBtn.type = 'button';
+    settingsBtn.title = 'Planner settings';
+    settingsBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+    settingsBtn.addEventListener('click', () => {
+      void this._api.commands.executeCommand('settings.open').catch(() =>
+        this._api.window.showInformationMessage('Planner settings are coming soon.'),
+      );
+    });
+    actions.appendChild(settingsBtn);
+
+    // View dropdown — replaces the three-tab switcher.
+    const viewBtn = el('button', 'planner-viewdrop');
+    viewBtn.type = 'button';
+    const label = this._calendarView[0].toUpperCase() + this._calendarView.slice(1);
+    viewBtn.innerHTML = `<span>${label}</span><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
+    viewBtn.addEventListener('click', () => this._openViewMenu(viewBtn));
+    actions.appendChild(viewBtn);
+
+    // Primary CTA — same height as everything else.
     const addEvt = el('button', 'planner-cta');
     addEvt.type = 'button';
-    addEvt.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>New event</span>';
+    addEvt.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Create</span>';
     addEvt.addEventListener('click', () => {
-      // Anchor the popover to the CTA so users see where the new-event UI came from.
       const start = new Date(this._cursorDate);
       start.setHours(9, 0, 0, 0);
       this._openEventPopover({
@@ -470,16 +578,49 @@ class PlannerEditorPane implements IDisposable {
     });
     actions.appendChild(addEvt);
 
-    // Big date label — calendar-app focal point
-    const header = el('div', 'planner-cheader');
-    const heading = el('h2', 'planner-cheader__date');
-    heading.textContent = this._calendarRangeLabel();
-    header.appendChild(heading);
-    body.appendChild(header);
-
     if (this._calendarView === 'month') await this._renderMonthView(body);
     else if (this._calendarView === 'week') await this._renderWeekView(body);
     else await this._renderDayView(body);
+  }
+
+  /** Dropdown menu for Month / Week / Day — replaces the inline tab strip. */
+  private _openViewMenu(anchorBtn: HTMLElement): void {
+    const overlay = el('div', 'planner-menu-overlay');
+    overlay.addEventListener('click', () => overlay.remove());
+    const menu = el('div', 'planner-menu planner-menu--narrow');
+    menu.style.position = 'fixed';
+
+    for (const v of ['month', 'week', 'day'] as CalendarView[]) {
+      const item = el('button', 'planner-menu__item');
+      item.type = 'button';
+      const labelText = v[0].toUpperCase() + v.slice(1);
+      const check = v === this._calendarView ? '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="20 6 9 17 4 12"/></svg>' : '<span style="display:inline-block;width:13px"></span>';
+      item.innerHTML = `${check}<span>${labelText}</span>`;
+      item.addEventListener('click', () => {
+        overlay.remove();
+        this._calendarView = v;
+        void this._renderTab();
+      });
+      menu.appendChild(item);
+    }
+
+    overlay.appendChild(menu);
+    document.body.appendChild(overlay);
+
+    const a = anchorBtn.getBoundingClientRect();
+    const m = menu.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let left = a.left;
+    let top = a.bottom + 4;
+    if (left + m.width > vw - 8) left = Math.max(8, vw - m.width - 8);
+    if (top + m.height > vh - 8) top = Math.max(8, a.top - m.height - 4);
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); }
+    };
+    document.addEventListener('keydown', onKey);
   }
 
   private _navigateCalendar(direction: -1 | 1): void {
@@ -1134,6 +1275,10 @@ class PlannerEditorPane implements IDisposable {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function startOfDayMs(): number {
+  const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime();
+}
 
 function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();

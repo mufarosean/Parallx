@@ -1,14 +1,16 @@
-// plannerSidebar.ts — Tasks list in the workbench sidebar.
+// plannerSidebar.ts — workbench sidebar view for the planner.
 //
-// One view, several filter chips (Reviewing / Today / This week /
-// Overdue / All). Click a row to inline-toggle done; double-click to
-// open the Planner editor at that task. A "+ New" affordance creates a
-// task with the standard "+5d / reviewing" defaults so the sidebar is
-// itself a capture surface.
+// Navigation only. Three tiles: Calendar, Tasks, Settings. Clicking a
+// tile opens the planner editor at the matching tab (or invokes a
+// settings command). The task list + filter groupings live INSIDE the
+// editor's Tasks tab — the sidebar is just the way in.
+//
+// This matches every other built-in tool's sidebar role (Explorer for
+// files, Canvas for pages, Dashboards for dashboards, …) — a flat list
+// of jump-off points, not a working surface in its own right.
 
 import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
-import type { PlannerTask, TaskQuery, TaskStatus } from './plannerTypes.js';
 
 interface SidebarApi {
   editors: {
@@ -18,92 +20,27 @@ interface SidebarApi {
     executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
   };
   window: {
-    showInputBox?(options?: { prompt?: string; value?: string; placeholder?: string }): Promise<string | undefined>;
+    showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
   };
 }
 
-type FilterKey = 'reviewing' | 'today' | 'week' | 'overdue' | 'all';
-
-const FILTERS: { key: FilterKey; label: string; group?: 'pinned' | 'due' | 'all'; build: () => TaskQuery; matches: (t: PlannerTask) => boolean }[] = [
-  {
-    key: 'reviewing',
-    label: 'Review queue',
-    group: 'pinned',
-    build: () => ({ status: 'reviewing', includeUndated: true }),
-    matches: t => t.status === 'reviewing',
-  },
-  {
-    key: 'today',
-    label: 'Due today',
-    group: 'due',
-    build: () => ({ status: ['reviewing', 'planned'], dueFrom: startOfDay(), dueTo: endOfDay() }),
-    matches: t => (t.status === 'reviewing' || t.status === 'planned')
-      && t.dueAt != null && t.dueAt >= startOfDay() && t.dueAt <= endOfDay(),
-  },
-  {
-    key: 'week',
-    label: 'This week',
-    group: 'due',
-    build: () => ({ status: ['reviewing', 'planned'], dueFrom: startOfDay(), dueTo: startOfDay() + 7 * 86_400_000 }),
-    matches: t => (t.status === 'reviewing' || t.status === 'planned')
-      && t.dueAt != null && t.dueAt >= startOfDay() && t.dueAt <= startOfDay() + 7 * 86_400_000,
-  },
-  {
-    key: 'overdue',
-    label: 'Overdue',
-    group: 'due',
-    build: () => ({ status: ['reviewing', 'planned'], dueTo: Date.now() - 1 }),
-    matches: t => (t.status === 'reviewing' || t.status === 'planned')
-      && t.dueAt != null && t.dueAt < Date.now(),
-  },
-  {
-    key: 'all',
-    label: 'All tasks',
-    group: 'all',
-    build: () => ({ status: ['reviewing', 'planned', 'done'], includeUndated: true, limit: 200 }),
-    matches: t => t.status !== 'cancelled',
-  },
-];
+const ICONS = {
+  calendar: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+  tasks:    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+  settings: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+} as const;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
   if (className) node.className = className;
   return node;
 }
-function startOfDay(date = new Date()): number {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-}
-function endOfDay(date = new Date()): number {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d.getTime();
-}
-
-function formatDue(t: PlannerTask): string {
-  if (!t.dueAt) return '—';
-  const now = Date.now();
-  const diff = t.dueAt - now;
-  if (diff < 0 && t.status !== 'done') return 'Overdue';
-  const day = 86_400_000;
-  if (Math.abs(diff) < day && new Date(t.dueAt).toDateString() === new Date().toDateString()) return 'Today';
-  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-  if (new Date(t.dueAt).toDateString() === tomorrow.toDateString()) return 'Tomorrow';
-  if (diff > 0 && diff < 7 * day) {
-    return new Date(t.dueAt).toLocaleDateString(undefined, { weekday: 'short' });
-  }
-  return new Date(t.dueAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
 
 export class PlannerSidebar implements IDisposable {
   private _root: HTMLElement | null = null;
-  private _list: HTMLElement | null = null;
-  private _activeFilter: FilterKey = 'reviewing';
   private _disposed = false;
   private readonly _disposables: IDisposable[] = [];
-  private _tasks: PlannerTask[] = [];
 
   constructor(
     private readonly _data: PlannerDataService,
@@ -112,73 +49,99 @@ export class PlannerSidebar implements IDisposable {
 
   createView(container: HTMLElement): IDisposable {
     container.classList.add('planner-sidebar-host');
-    const root = el('div', 'planner-sidebar');
+    const root = el('nav', 'planner-sidebar');
+    root.setAttribute('aria-label', 'Planner navigation');
     this._root = root;
 
-    // Toolbar — "New task" + chips
-    const toolbar = el('div', 'planner-sidebar__toolbar');
+    type Item = { key: string; label: string; icon: string; subtitle?: string; onClick: () => void };
+    const items: Item[] = [
+      {
+        key: 'calendar',
+        label: 'Calendar',
+        icon: ICONS.calendar,
+        subtitle: 'Month, week, day views',
+        onClick: () => void this._openTab('calendar'),
+      },
+      {
+        key: 'tasks',
+        label: 'Tasks',
+        icon: ICONS.tasks,
+        subtitle: 'Capture, plan, complete',
+        onClick: () => void this._openTab('tasks'),
+      },
+      {
+        key: 'settings',
+        label: 'Settings',
+        icon: ICONS.settings,
+        onClick: () => {
+          this._api.commands.executeCommand('settings.open').catch(() =>
+            this._api.window.showInformationMessage('Planner settings are coming soon.'),
+          );
+        },
+      },
+    ];
 
-    const newBtn = el('button', 'planner-sidebar__newbtn');
-    newBtn.type = 'button';
-    newBtn.title = 'New task';
-    newBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>New task</span>';
-    newBtn.addEventListener('click', () => void this._captureTask());
-    toolbar.appendChild(newBtn);
+    for (const item of items) {
+      const tile = el('button', 'planner-sidebar__tile');
+      tile.type = 'button';
+      tile.dataset.key = item.key;
 
-    const openBtn = el('button', 'planner-sidebar__openbtn');
-    openBtn.type = 'button';
-    openBtn.title = 'Open Planner';
-    openBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>';
-    openBtn.addEventListener('click', () => void this._api.commands.executeCommand('planner.open'));
-    toolbar.appendChild(openBtn);
+      const iconEl = el('span', 'planner-sidebar__tile-icon');
+      iconEl.innerHTML = item.icon;
+      tile.appendChild(iconEl);
 
-    root.appendChild(toolbar);
-
-    // Vertical filter nav — replaces the chip row. Each row is label + count,
-    // grouped (pinned / due / all) with subtle separators rather than the
-    // workbench's standard sidebar idiom adapted to the planner's filters.
-    const nav = el('nav', 'planner-sidebar__nav');
-    nav.setAttribute('aria-label', 'Filter tasks');
-    let lastGroup: string | undefined;
-    for (const f of FILTERS) {
-      if (lastGroup !== undefined && f.group !== lastGroup) {
-        nav.appendChild(el('div', 'planner-sidebar__navsep'));
+      const text = el('span', 'planner-sidebar__tile-text');
+      const labelEl = el('span', 'planner-sidebar__tile-label');
+      labelEl.textContent = item.label;
+      text.appendChild(labelEl);
+      if (item.subtitle) {
+        const subEl = el('span', 'planner-sidebar__tile-sub');
+        subEl.textContent = item.subtitle;
+        text.appendChild(subEl);
       }
-      lastGroup = f.group;
+      tile.appendChild(text);
 
-      const item = el('button', 'planner-sidebar__navitem');
-      item.type = 'button';
-      item.dataset.key = f.key;
-      item.setAttribute('aria-pressed', 'false');
+      const chev = el('span', 'planner-sidebar__tile-chev');
+      chev.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>';
+      tile.appendChild(chev);
 
-      const label = el('span', 'planner-sidebar__navlabel');
-      label.textContent = f.label;
-      item.appendChild(label);
+      tile.addEventListener('click', item.onClick);
 
-      const count = el('span', 'planner-sidebar__navcount');
-      count.dataset.role = 'count';
-      count.textContent = '0';
-      item.appendChild(count);
+      // Small live badge on the Tasks tile — reviewing-queue count. It's
+      // the one piece of state the user wants visible without clicking in.
+      if (item.key === 'tasks') {
+        const badge = el('span', 'planner-sidebar__tile-badge');
+        badge.dataset.role = 'review-count';
+        badge.style.display = 'none';
+        tile.insertBefore(badge, chev);
+      }
 
-      item.addEventListener('click', () => this._setFilter(f.key));
-      nav.appendChild(item);
+      root.appendChild(tile);
     }
-    root.appendChild(nav);
-
-    const list = el('div', 'planner-sidebar__list');
-    list.setAttribute('role', 'listbox');
-    list.setAttribute('aria-label', 'Tasks');
-    this._list = list;
-    root.appendChild(list);
 
     container.appendChild(root);
 
-    this._setFilter(this._activeFilter, /*skipRender=*/ false);
-
+    // Hydrate + keep the review-queue badge live.
+    const updateReviewBadge = async () => {
+      if (this._disposed || !this._root) return;
+      let count = 0;
+      try {
+        const pending = await this._data.listTasks({ status: 'reviewing', includeUndated: true });
+        count = pending.length;
+      } catch { /* swallow — badge defaults to hidden */ }
+      const badge = this._root.querySelector('[data-role="review-count"]') as HTMLElement | null;
+      if (!badge) return;
+      if (count > 0) {
+        badge.textContent = String(count);
+        badge.style.display = '';
+      } else {
+        badge.style.display = 'none';
+      }
+    };
+    void updateReviewBadge();
     this._disposables.push(this._data.onDidChange((e) => {
-      if (this._disposed) return;
       if (e.kind === 'task-created' || e.kind === 'task-updated' || e.kind === 'task-removed') {
-        void this._refresh();
+        void updateReviewBadge();
       }
     }));
 
@@ -188,143 +151,19 @@ export class PlannerSidebar implements IDisposable {
     });
   }
 
-  // ── Filtering / rendering ─────────────────────────────────────────────
-
-  private _setFilter(key: FilterKey, skipRender = false): void {
-    this._activeFilter = key;
-    this._syncNavActive();
-    if (!skipRender) void this._refresh();
-  }
-
-  private _syncNavActive(): void {
-    const navEl = this._root?.querySelector('.planner-sidebar__nav');
-    if (!navEl) return;
-    for (const child of Array.from(navEl.children)) {
-      if (!(child instanceof HTMLElement)) continue;
-      if (!child.classList.contains('planner-sidebar__navitem')) continue;
-      const active = child.dataset.key === this._activeFilter;
-      child.classList.toggle('planner-sidebar__navitem--active', active);
-      child.setAttribute('aria-pressed', active ? 'true' : 'false');
-    }
-  }
-
-  /**
-   * One fetch, bucketed N ways. Cheaper than running each filter's query
-   * separately and gives us count + active list off the same snapshot —
-   * which is what the nav needs to be informative without flicker.
-   */
-  private async _refresh(): Promise<void> {
-    if (!this._list) return;
-    // The widest reasonable snapshot — everything visible across all filters.
-    const all = await this._data.listTasks({
-      status: ['reviewing', 'planned', 'done'],
-      includeUndated: true,
-      limit: 500,
-    });
-    // Update counts on the nav.
-    const navEl = this._root?.querySelector('.planner-sidebar__nav');
-    if (navEl) {
-      for (const f of FILTERS) {
-        const item = navEl.querySelector(`[data-key="${f.key}"]`) as HTMLElement | null;
-        const countEl = item?.querySelector('[data-role="count"]') as HTMLElement | null;
-        if (!countEl) continue;
-        const n = all.filter(f.matches).length;
-        countEl.textContent = String(n);
-        if (item) item.classList.toggle('planner-sidebar__navitem--empty', n === 0);
-      }
-    }
-    // The displayed list is the active filter's subset of the snapshot.
-    const active = FILTERS.find(f => f.key === this._activeFilter);
-    this._tasks = active ? all.filter(active.matches) : all;
-    this._renderList();
-  }
-
-  private _renderList(): void {
-    if (!this._list) return;
-    this._list.innerHTML = '';
-
-    if (this._tasks.length === 0) {
-      const empty = el('div', 'planner-sidebar__empty');
-      empty.innerHTML = `<strong>Nothing here yet</strong><p>Capture a task with the "+ New task" button above, or via chat (the AI can call <code>planner.captureTask</code>).</p>`;
-      this._list.appendChild(empty);
-      return;
-    }
-
-    for (const task of this._tasks) {
-      const row = el('div', 'planner-sidebar__row');
-      row.dataset.taskId = task.id;
-      row.setAttribute('role', 'option');
-      row.tabIndex = 0;
-      if (task.status === 'reviewing') row.classList.add('planner-sidebar__row--reviewing');
-      if (task.status === 'done') row.classList.add('planner-sidebar__row--done');
-      if (task.dueAt && task.dueAt < Date.now() && task.status !== 'done') row.classList.add('planner-sidebar__row--overdue');
-
-      const checkbox = el('button', 'planner-sidebar__check');
-      checkbox.type = 'button';
-      checkbox.title = task.status === 'done' ? 'Mark not done' : 'Mark done';
-      checkbox.innerHTML = task.status === 'done'
-        ? '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>'
-        : '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>';
-      checkbox.addEventListener('click', (e) => {
-        e.stopPropagation();
-        void this._toggleDone(task);
-      });
-      row.appendChild(checkbox);
-
-      const text = el('div', 'planner-sidebar__text');
-      const title = el('span', 'planner-sidebar__title');
-      title.textContent = task.title;
-      text.appendChild(title);
-      const meta = el('span', 'planner-sidebar__meta');
-      meta.textContent = formatDue(task);
-      text.appendChild(meta);
-      row.appendChild(text);
-
-      row.addEventListener('dblclick', () => void this._api.commands.executeCommand('planner.open'));
-      row.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          void this._toggleDone(task);
-        } else if (e.key === 'Delete') {
-          e.preventDefault();
-          void this._data.removeTask(task.id);
-        }
-      });
-
-      this._list.appendChild(row);
-    }
-  }
-
-  // ── Actions ───────────────────────────────────────────────────────────
-
-  private async _captureTask(): Promise<void> {
-    if (!this._api.window.showInputBox) return;
-    const title = await this._api.window.showInputBox({
-      prompt: 'New task',
-      placeholder: 'What needs to happen?',
-    });
-    if (!title?.trim()) return;
+  private async _openTab(tab: 'tasks' | 'calendar'): Promise<void> {
     try {
-      // Default-date capture: +5d, status='reviewing' — same flow the AI
-      // uses, so a hand-captured task lands in the same Review queue.
-      await this._data.createTask({
-        title: title.trim(),
-        dueAt: Date.now() + 5 * 86_400_000,
-        status: 'reviewing',
+      await this._api.editors.openEditor({
+        typeId: 'planner',
+        title: 'Planner',
+        instanceId: 'main',
       });
+      // After the editor mounts, the cross-pane event bus could signal
+      // which tab to focus — for now the editor remembers the last tab.
+      document.dispatchEvent(new CustomEvent('parallx.planner.focusTab', { detail: { tab } }));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      await this._api.window.showErrorMessage(`Could not create task: ${msg}`);
-    }
-  }
-
-  private async _toggleDone(task: PlannerTask): Promise<void> {
-    const nextStatus: TaskStatus = task.status === 'done' ? 'planned' : 'done';
-    try {
-      await this._data.updateTask(task.id, { status: nextStatus });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      await this._api.window.showErrorMessage(`Could not update task: ${msg}`);
+      await this._api.window.showErrorMessage(`Could not open Planner: ${msg}`);
     }
   }
 
@@ -337,6 +176,5 @@ export class PlannerSidebar implements IDisposable {
     this._disposables.length = 0;
     if (this._root && this._root.parentElement) this._root.remove();
     this._root = null;
-    this._list = null;
   }
 }

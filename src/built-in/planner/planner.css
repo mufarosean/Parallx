@@ -56,6 +56,10 @@
    Sidebar
    ========================================================================== */
 
+/* Sidebar — navigation tiles only. The filter chips + task list that
+   used to live here moved into the editor pane's Tasks tab; the
+   sidebar's job is "jump into a major view of the planner", same as
+   Explorer / Canvas / Dashboards sidebars. */
 .planner-sidebar-host { display: flex; width: 100%; height: 100%; }
 
 .planner-sidebar {
@@ -63,204 +67,94 @@
   flex-direction: column;
   width: 100%;
   height: 100%;
+  padding: 8px 6px;
+  gap: 2px;
   font-family: var(--vscode-font-family, -apple-system, "Segoe UI", sans-serif);
   color: var(--vscode-sideBar-foreground, #cccccc);
 }
 
-.planner-sidebar__toolbar {
+.planner-sidebar__tile {
   display: flex;
-  gap: 6px;
   align-items: center;
+  gap: 10px;
   padding: 8px 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
-}
-.planner-sidebar__newbtn {
-  flex: 1 1 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 10px;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--vscode-editor-foreground, #d4d4d4);
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease;
-}
-.planner-sidebar__newbtn:hover {
-  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 12%, transparent);
-  border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 40%, transparent);
-}
-.planner-sidebar__openbtn {
-  width: 28px; height: 28px;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
-  border-radius: 6px;
-  background: transparent;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
-  cursor: pointer;
-  transition: background 140ms ease, color 140ms ease;
-}
-.planner-sidebar__openbtn:hover {
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent);
-  color: var(--vscode-editor-foreground, #d4d4d4);
-}
-
-/* Filter nav — vertical, grouped, count column. No pills, no uppercase. */
-.planner-sidebar__nav {
-  display: flex;
-  flex-direction: column;
-  padding: 6px 4px 4px;
-  gap: 1px;
-}
-.planner-sidebar__navitem {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  height: 26px;
-  padding: 0 8px 0 10px;
   border: 0;
   border-radius: 5px;
   background: transparent;
   color: var(--vscode-editor-foreground, #d4d4d4);
   font: inherit;
-  font-size: 12.5px;
+  text-align: left;
   cursor: pointer;
-  user-select: none;
-  position: relative;
-  transition: background 100ms ease, color 100ms ease;
+  transition: background 100ms ease;
 }
-.planner-sidebar__navitem:hover {
+.planner-sidebar__tile:hover {
   background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 100%, transparent);
 }
-.planner-sidebar__navitem:focus-visible {
+.planner-sidebar__tile:focus-visible {
   outline: none;
   background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 100%, transparent);
   box-shadow: inset 0 0 0 1px var(--vscode-focusBorder, #5b9bd5);
 }
-.planner-sidebar__navitem--active {
-  background: var(--vscode-list-activeSelectionBackground, #094771);
-  color: var(--vscode-list-activeSelectionForeground, #ffffff);
-}
-.planner-sidebar__navitem--empty .planner-sidebar__navcount {
-  opacity: 0.4;
-}
-/* Soft left rail accent on the pinned Review queue row — its specialness
-   without leaning on a pill or uppercase. */
-.planner-sidebar__navitem[data-key="reviewing"] {
-  padding-left: 14px;
-}
-.planner-sidebar__navitem[data-key="reviewing"]::before {
-  content: '';
-  position: absolute;
-  left: 5px;
-  top: 7px;
-  bottom: 7px;
-  width: 2px;
-  border-radius: 2px;
-  background: #d2a64f;
-}
-.planner-sidebar__navitem--active[data-key="reviewing"]::before {
-  background: var(--vscode-list-activeSelectionForeground, #ffffff);
-}
 
-.planner-sidebar__navlabel {
-  flex: 1 1 auto;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  letter-spacing: 0;
-}
-.planner-sidebar__navcount {
-  font-size: 10.5px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, currentColor 60%, transparent);
-  flex: 0 0 auto;
-}
-.planner-sidebar__navsep {
-  height: 1px;
-  margin: 5px 8px;
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
-}
-
-.planner-sidebar__list {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  padding: 4px 6px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.planner-sidebar__row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: background 100ms ease, opacity 140ms ease;
-}
-.planner-sidebar__row:hover { background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 100%, transparent); }
-.planner-sidebar__row:focus-visible { outline: none; background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 100%, transparent); box-shadow: inset 0 0 0 1px var(--vscode-focusBorder, #5b9bd5); }
-.planner-sidebar__row--done { opacity: 0.55; }
-.planner-sidebar__row--done .planner-sidebar__title { text-decoration: line-through; text-decoration-thickness: 1px; }
-.planner-sidebar__row--reviewing .planner-sidebar__title { color: var(--vscode-editor-foreground, #f3f3f3); }
-.planner-sidebar__row--overdue .planner-sidebar__meta { color: #f08585; font-weight: 600; }
-
-.planner-sidebar__check {
+.planner-sidebar__tile-icon {
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px; height: 18px;
   flex: 0 0 auto;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
-  cursor: pointer;
-  transition: color 100ms ease, background 100ms ease;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 12%, transparent);
+  color: var(--vscode-button-background, #0e639c);
 }
-.planner-sidebar__row--done .planner-sidebar__check { color: #46c46f; }
-.planner-sidebar__check:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent); color: var(--vscode-editor-foreground, #d4d4d4); }
 
-.planner-sidebar__text {
+.planner-sidebar__tile-text {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  gap: 1px;
 }
-.planner-sidebar__title {
-  font-size: 12.5px;
-  color: var(--vscode-editor-foreground, #d4d4d4);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.planner-sidebar__tile-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--vscode-editor-foreground, #f3f3f3);
 }
-.planner-sidebar__meta {
-  font-size: 10.5px;
+.planner-sidebar__tile-sub {
+  font-size: 11px;
   color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
 }
 
-.planner-sidebar__empty {
-  padding: 24px 12px;
-  text-align: center;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
-}
-.planner-sidebar__empty strong { display: block; margin-bottom: 4px; color: var(--vscode-editor-foreground, #d4d4d4); font-size: 12.5px; font-weight: 600; }
-.planner-sidebar__empty p { margin: 0; font-size: 11.5px; line-height: 1.55; }
-.planner-sidebar__empty code {
-  font-family: var(--vscode-editor-font-family, "SF Mono", monospace);
+.planner-sidebar__tile-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: color-mix(in srgb, #d2a64f 80%, transparent);
+  color: #1e1500;
   font-size: 10.5px;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+.planner-sidebar__tile-chev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 30%, transparent);
+  transition: transform 120ms ease, color 120ms ease;
+}
+.planner-sidebar__tile:hover .planner-sidebar__tile-chev {
+  transform: translateX(2px);
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
 }
 
 
@@ -291,13 +185,15 @@
   z-index: 5;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 24px;
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 92%, white);
+  gap: 14px;
+  padding: 7px 16px;
+  min-height: 44px;
+  box-sizing: border-box;
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 95%, white);
   border-bottom: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
   backdrop-filter: blur(8px);
 }
+.planner-pane__spacer { flex: 1 1 auto; min-width: 12px; }
 
 /* Tabs — flat underline pattern, no pill chrome around them */
 .planner-pane__tabs {
@@ -356,6 +252,95 @@
 }
 
 /* ── Tasks ────────────────────────────────────────────────────────────── */
+
+/* Tasks tab — two-column layout: left filter nav, right content. The
+   filter rail mirrors the workbench's sidebar-list idiom (label + count,
+   list-selection treatment on active) so it reads as "navigate within
+   tasks" rather than a separate UI dialect. */
+.planner-tasks {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .planner-tasks { grid-template-columns: 1fr; gap: 16px; }
+}
+
+.planner-tasks__nav {
+  position: sticky;
+  top: 60px; /* clear the sticky header */
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 0;
+}
+
+.planner-tasks__navitem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px 0 12px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  transition: background 100ms ease, color 100ms ease;
+}
+.planner-tasks__navitem:hover {
+  background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 100%, transparent);
+}
+.planner-tasks__navitem--active {
+  background: var(--vscode-list-activeSelectionBackground, #094771);
+  color: var(--vscode-list-activeSelectionForeground, #ffffff);
+}
+.planner-tasks__navitem[data-key="review"] {
+  padding-left: 16px;
+}
+.planner-tasks__navitem[data-key="review"]::before {
+  content: '';
+  position: absolute;
+  left: 6px; top: 7px; bottom: 7px;
+  width: 2px;
+  border-radius: 2px;
+  background: #d2a64f;
+}
+.planner-tasks__navitem--active[data-key="review"]::before {
+  background: var(--vscode-list-activeSelectionForeground, #ffffff);
+}
+
+.planner-tasks__navlabel {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.planner-tasks__navcount {
+  font-size: 10.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, currentColor 60%, transparent);
+  flex: 0 0 auto;
+}
+.planner-tasks__navsep {
+  height: 1px;
+  margin: 6px 8px;
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+}
+
+.planner-tasks__content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
 
 .planner-empty {
   margin: 56px auto;
@@ -719,42 +704,48 @@
   border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
 }
 
-/* View switcher — underline tabs, no pills */
-.planner-viewtabs { display: inline-flex; gap: 0; margin-left: 8px; }
-.planner-viewtab {
-  position: relative;
+/* Inline date label — calendar focal text, sits in the header now */
+.planner-cdate {
+  margin-left: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--vscode-editor-foreground, #f3f3f3);
+  white-space: nowrap;
+}
+
+/* View dropdown — single button + chevron, opens the planner-menu */
+.planner-viewdrop {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   height: 28px;
-  padding: 0 12px;
-  border: 0;
+  padding: 0 8px 0 12px;
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 18%, transparent);
+  border-radius: 4px;
   background: transparent;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  color: var(--vscode-editor-foreground, #d4d4d4);
   font: inherit;
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: color 100ms ease;
+  transition: background 100ms ease, border-color 100ms ease;
 }
-.planner-viewtab:hover { color: var(--vscode-editor-foreground, #d4d4d4); }
-.planner-viewtab--active { color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
-.planner-viewtab--active::after {
-  content: '';
-  position: absolute;
-  left: 10px; right: 10px; bottom: 0;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--vscode-button-background, #0e639c);
+.planner-viewdrop:hover {
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
+  border-color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 28%, transparent);
 }
+.planner-viewdrop svg { opacity: 0.65; flex: 0 0 auto; }
 
-/* Primary CTA — modest rounding (not a pill), inline icon */
+/* Primary CTA — same 28px height as everything else; sharp icon button */
 .planner-cta {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
+  height: 28px;
   padding: 0 12px 0 10px;
-  margin-left: 8px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--vscode-button-background, #0e639c);
   color: var(--vscode-button-foreground, #fff);
   font: inherit;
@@ -766,15 +757,14 @@
 .planner-cta:hover { filter: brightness(1.08); }
 .planner-cta:active { transform: translateY(0.5px); }
 
-/* Big date heading */
-.planner-cheader { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
-.planner-cheader__date {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: var(--vscode-editor-foreground, #f3f3f3);
+/* Narrow variant of the planner menu — used for view dropdown */
+.planner-menu--narrow { min-width: 140px; }
+.planner-menu--narrow .planner-menu__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
+.planner-menu--narrow .planner-menu__item svg { flex: 0 0 13px; color: var(--vscode-button-background, #0e639c); }
 
 .planner-month {
   /* Sharp grid with full outer border — calendar reads as a contained frame */
