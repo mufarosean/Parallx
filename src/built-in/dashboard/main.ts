@@ -61,6 +61,17 @@ interface ParallxApi {
     has(id: { readonly id: string }): boolean;
     registerInstance<T>(id: { readonly id: string }, instance: T): void;
   };
+  chat?: {
+    registerTool(
+      name: string,
+      def: {
+        description: string;
+        parameters: Record<string, unknown>;
+        handler: (args: Record<string, unknown>, token?: unknown) => Promise<{ content: string; isError?: boolean }>;
+        requiresConfirmation: boolean;
+      },
+    ): IDisposable;
+  };
 }
 
 // ─── Module state ───────────────────────────────────────────────────────────
@@ -141,6 +152,42 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   context.subscriptions.push(
     registerBuiltInDashboardWidgets(publicRegistry, api),
   );
+
+  // 5b. Register the shared `renderToWidget` AI tool. This is the single
+  //     channel through which the AI delivers content to ANY widget surface:
+  //     an AI-backed widget's refresh sends a prompt to the active chat
+  //     session asking the model to research/compute, then call this tool with
+  //     its own instanceId and the finished content. Writing the cache fires a
+  //     `widget-cache` change event, which the open editor reconciles into a
+  //     live repaint — no widget-specific plumbing required.
+  if (api.chat?.registerTool) {
+    context.subscriptions.push(
+      api.chat.registerTool('renderToWidget', {
+        description:
+          'Deliver finished content to a dashboard widget. Call this once you have gathered and formatted the result a widget asked for. The widget instructed you which instanceId to target. Content is Markdown and replaces whatever the widget currently shows.',
+        parameters: {
+          type: 'object',
+          properties: {
+            instanceId: { type: 'string', description: 'The widget instance id provided in the request. Deliver to exactly this id.' },
+            content: { type: 'string', description: 'The finished Markdown to display in the widget.' },
+          },
+          required: ['instanceId', 'content'],
+        },
+        handler: async (args: Record<string, unknown>) => {
+          const instanceId = typeof args.instanceId === 'string' ? args.instanceId.trim() : '';
+          const content = typeof args.content === 'string' ? args.content : '';
+          if (!instanceId) return { isError: true, content: 'Error: instanceId is required.' };
+          if (!_dataService) return { isError: true, content: 'Error: dashboard is not ready.' };
+          const widget = await _dataService.getWidget(instanceId);
+          if (!widget) return { isError: true, content: `Error: no widget with instanceId "${instanceId}".` };
+          if (!content.trim()) return { isError: true, content: 'Error: content is empty.' };
+          await _dataService.setWidgetCachedOutput(instanceId, content);
+          return { isError: false, content: `Delivered ${content.length} characters to widget ${instanceId}.` };
+        },
+        requiresConfirmation: false,
+      }),
+    );
+  }
 
   // 6. Register commands the user / picker can invoke.
   _registerCommands(api, context);

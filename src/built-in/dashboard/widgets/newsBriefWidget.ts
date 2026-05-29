@@ -167,27 +167,15 @@ export const NEWS_BRIEF_WIDGET: WidgetTypeRegistration<NewsBriefConfig> = {
     }
     const cfg = normalize(ctx.config);
 
-    // Run a real, tool-enabled turn: the model uses the web-research tools
-    // (webSearch → webFetch) to pull current, citable stories rather than
-    // inventing them from memory. Routes through chat.runToolQuery, which
-    // owns the agentic tool loop.
-    const system = [
-      'You are a careful local-news researcher. You have two tools: webSearch (Brave) and webFetch.',
-      'Workflow: (1) webSearch for current top stories for the requested location and date; (2) webFetch 2-3 of the most relevant result URLs to confirm details; (3) write the brief ONLY from what those sources actually say.',
-      'Never fabricate stories, numbers, or sources. If the web tools return nothing usable, say so plainly instead of inventing news.',
-      'Output: a single Markdown brief — a top-line heading, then a numbered list. Each item is one concise sentence followed by a Markdown link to its source, e.g. "[source](https://…)". No emojis, no preamble, no closing remarks.',
-    ].join(' ');
+    // Push model: we don't compute the brief here. We ask the active chat
+    // session to do the research with its normal tools, then deliver the
+    // result back to this widget via the shared `renderToWidget` tool. The
+    // brief arrives asynchronously and repaints the widget when it lands.
+    const prompt = buildPrompt(cfg, ctx.instanceId);
+    await api.commands.executeCommand('chat.submitPrompt', { text: prompt });
 
-    const result = await api.commands.executeCommand<string>('chat.runToolQuery', {
-      system,
-      user: buildPrompt(cfg),
-      toolNames: ['webSearch', 'webFetch'],
-    });
-    const text = (result ?? '').trim();
-    if (!text) {
-      throw new Error('The model returned no brief. Check that a model is loaded and the Brave Search API key is set in AI Settings → Web Research.');
-    }
-    return text;
+    // Transient placeholder shown until renderToWidget delivers the brief.
+    return `_Researching the latest news for ${cfg.location}… the brief will appear here when ready._`;
   },
 
   createWidget(container: HTMLElement, ctx: WidgetContext<NewsBriefConfig>): WidgetHandle {
@@ -263,11 +251,19 @@ function normalize(raw: unknown): NewsBriefConfig {
   };
 }
 
-function buildPrompt(cfg: NewsBriefConfig): string {
+function buildPrompt(cfg: NewsBriefConfig, instanceId: string): string {
   const today = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-  let prompt = `Research and write a news brief for ${today} covering the top ${cfg.topN} current stories relevant to ${cfg.location}. Use webSearch to find today's stories, then webFetch the best sources to confirm the details before writing. Every item must link to a real source URL returned by the tools.`;
+  const lines = [
+    `Research today's (${today}) top ${cfg.topN} news stories relevant to ${cfg.location}, then deliver the brief to my dashboard widget.`,
+    '',
+    'Steps:',
+    `1. Use webSearch to find current stories for ${cfg.location}.`,
+    '2. webFetch 2-3 of the most relevant results to confirm the details. Use only what the sources actually say — never invent stories, numbers, or sources.',
+    `3. Write a Markdown brief: a short top heading, then a numbered list of up to ${cfg.topN} items. Each item is one concise sentence followed by a Markdown link to its source. No emojis, no preamble.`,
+    `4. Call the renderToWidget tool with instanceId "${instanceId}" and the finished Markdown as content. This is how the brief reaches the widget — do not skip it.`,
+  ];
   if (cfg.extraInstructions.trim()) {
-    prompt += `\n\nAdditional instructions: ${cfg.extraInstructions.trim()}`;
+    lines.push('', `Additional instructions: ${cfg.extraInstructions.trim()}`);
   }
-  return prompt;
+  return lines.join('\n');
 }
