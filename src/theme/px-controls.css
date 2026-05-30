@@ -1,0 +1,143 @@
+/* ============================================================================
+   Parallx Control Primitives (M83)
+   ----------------------------------------------------------------------------
+   The tactile layer. Makes every interactive element across the app AND
+   extensions feel crafted and physical — without changing layout or behavior.
+
+   Everything here is ADDITIVE and low-specificity: transitions, press feel,
+   focus, and a crafted skin for native form controls. Component-specific
+   styling always wins. Opt out on any element with the `.px-bare` class.
+
+   The brief: tech should feel like tech. Buttons should feel like buttons
+   you press; keys should feel like keys. Restraint over decoration.
+   ========================================================================== */
+
+/* ── Universal interaction feel ──────────────────────────────────────────── */
+/* Smooth, fast state changes on everything clickable, so the whole app
+   responds with the same crisp settle instead of hard snaps. */
+button,
+a,
+summary,
+[role="button"],
+[role="tab"],
+[role="option"],
+.clickable {
+  transition:
+    background-color var(--px-dur-fast) var(--px-ease),
+    border-color var(--px-dur-fast) var(--px-ease),
+    color var(--px-dur-fast) var(--px-ease),
+    box-shadow var(--px-dur-fast) var(--px-ease),
+    transform var(--px-dur-instant) var(--px-ease-spring),
+    opacity var(--px-dur-fast) var(--px-ease);
+}
+
+/* Tactile press — a real button depresses. Tiny transform on :active reads as
+   a physical key-press. Excludes inputs/text so typing surfaces don't move. */
+button:not(:disabled):not(.px-bare):active,
+[role="button"]:not(.px-bare):active,
+.clickable:not(.px-bare):active {
+  transform: var(--px-press);
+}
+
+/* ── A single, consistent focus ring ─────────────────────────────────────── */
+/* Keyboard focus reads as a crisp accent ring everywhere; pointer focus stays
+   quiet (no ring on click). */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--px-ring-accent);
+}
+/* Inputs already carry a border; give them the ring inset-free. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  box-shadow: var(--px-ring-accent);
+}
+
+/* ── Native form controls — crafted, consistent skin ─────────────────────── */
+/* Bare native inputs/selects/textareas pick up the token system: inset well
+   background, hairline border, the type ladder, a calm focus. Components with
+   their own input styling override this (higher specificity). */
+input[type="text"],
+input[type="search"],
+input[type="email"],
+input[type="url"],
+input[type="number"],
+input[type="password"],
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+textarea,
+select {
+  font: inherit;
+  font-size: var(--px-text-base);
+  color: var(--px-text);
+  background: var(--px-bg-inset);
+  border: 1px solid var(--px-border-strong);
+  border-radius: var(--px-radius-sm);
+  padding: 6px 9px;
+  transition:
+    border-color var(--px-dur-fast) var(--px-ease),
+    background-color var(--px-dur-fast) var(--px-ease),
+    box-shadow var(--px-dur-fast) var(--px-ease);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--px-text-faint);
+}
+input:hover:not(:focus),
+textarea:hover:not(:focus),
+select:hover:not(:focus) {
+  border-color: var(--px-base-35);
+}
+
+/* Native checkboxes / radios pick up the accent. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--px-accent);
+}
+
+/* ── <kbd> — render keyboard keys as physical keycaps ────────────────────── */
+/* Directly serves the "keys should feel like keys" brief. A tiny raised cap
+   with a bottom edge that reads as depth. Used in tooltips, hints, docs. */
+kbd,
+.px-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-family: var(--parallx-fontFamily-ui, inherit);
+  font-size: var(--px-text-xs);
+  font-weight: 600;
+  line-height: 1;
+  color: var(--px-text-secondary);
+  background: linear-gradient(180deg, var(--px-base-20), var(--px-base-15));
+  border: 1px solid var(--px-base-30);
+  border-radius: var(--px-radius-sm);
+  /* The bottom "throw" + top sheen that makes it read as a 3-D keycap. */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 1px 0 var(--px-base-30),
+    0 2px 0 var(--px-base-25);
+  transform: translateZ(0);
+}
+
+/* ── Links — accent, with a quiet underline that warms on hover ──────────── */
+a:not(.px-bare):not([class*="btn"]):not([class*="button"]) {
+  color: var(--px-accent);
+  text-decoration-color: var(--px-accent-soft);
+  text-underline-offset: 2px;
+}
+a:not(.px-bare):not([class*="btn"]):not([class*="button"]):hover {
+  text-decoration-color: var(--px-accent);
+}
+
+/* ── Disabled — uniform, calm ────────────────────────────────────────────── */
+button:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

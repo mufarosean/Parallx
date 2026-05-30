@@ -23,32 +23,36 @@
      A warm-neutral charcoal (Obsidian density, Notion warmth) — deliberately
      NOT VS Code's cold #1e1e1e/#d4d4d4. Base scale runs 00 (app background)
      → 100 (strongest text), mirroring Obsidian's --color-base-XX. */
-  --px-base-00: #1b1a17;   /* app background (deepest)            */
-  --px-base-05: #201e1b;   /* raised surface / tab strip          */
-  --px-base-10: #25231f;   /* elevated cards, popovers            */
-  --px-base-15: #2a2824;   /* inset wells, inputs                 */
-  --px-base-20: #302d28;   /* hover                               */
-  --px-base-25: #38352f;   /* active / selected                   */
-  --px-base-30: #45413a;   /* strong border                       */
-  --px-base-35: #524d45;   /* divider on elevated                 */
-  --px-base-40: #6b655b;   /* faint text                          */
-  --px-base-50: #877f73;   /* disabled                            */
-  --px-base-60: #a39b8d;   /* muted text                          */
-  --px-base-70: #c4bcae;   /* secondary text                      */
-  --px-base-100: #ece7dc;  /* primary text (warm off-white)       */
+  /* DEFAULT THEME: "Slate" — a cool, neutral graphite with a calm steel
+     accent. Chosen as the Parallx identity: Obsidian's density and quiet,
+     not VS Code's cold corporate blue, not slop purple. Base scale runs
+     00 (app background) → 100 (strongest text). */
+  --px-base-00: #16171a;   /* app background (deepest)            */
+  --px-base-05: #1a1c1f;   /* raised surface / tab strip          */
+  --px-base-10: #1f2125;   /* elevated cards, popovers            */
+  --px-base-15: #24262b;   /* inset wells, inputs                 */
+  --px-base-20: #2b2e34;   /* hover                               */
+  --px-base-25: #33363d;   /* active / selected                   */
+  --px-base-30: #41454d;   /* strong border                       */
+  --px-base-35: #4e525b;   /* divider on elevated                 */
+  --px-base-40: #686d77;   /* faint text                          */
+  --px-base-50: #838893;   /* disabled                            */
+  --px-base-60: #9ea3ad;   /* muted text                          */
+  --px-base-70: #c0c4cc;   /* secondary text                      */
+  --px-base-100: #e8eaee;  /* primary text                        */
 
   /* Accent as HSL components → hover/soft variants are computed, and the
-     entire identity re-hues from one number. Default: a refined cornflower
-     indigo — confident, distinct from VS Code blue and from slop purple. */
-  --px-accent-h: 226;
-  --px-accent-s: 58%;
-  --px-accent-l: 65%;
+     entire identity re-hues from one number. Slate: a confident steel blue. */
+  --px-accent-h: 205;
+  --px-accent-s: 64%;
+  --px-accent-l: 60%;
+  --px-accent-rgb: 86, 156, 214;   /* keep in rough sync with the HSL */
 
-  /* Signal hues — desaturated to live calmly on the warm base. */
-  --px-red-rgb:    217, 107, 98;    /* danger / overdue   */
+  /* Signal hues — desaturated to live calmly on the cool base. */
+  --px-red-rgb:    224, 108, 102;   /* danger / overdue   */
   --px-green-rgb:  108, 191, 143;   /* success / done     */
-  --px-yellow-rgb: 224, 176, 82;    /* warning / review   */
-  --px-blue-rgb:   122, 162, 230;   /* info               */
+  --px-yellow-rgb: 220, 170, 90;    /* warning / review   */
+  --px-blue-rgb:   110, 160, 224;   /* info               */
 
   /* ── Tier 2 · Semantic — what components reference ─────────────────────── */
 
@@ -72,11 +76,13 @@
   --px-border-strong:    var(--px-base-30);
   --px-divider:          var(--px-base-20);
 
-  /* Accent (computed from the HSL components above) */
-  --px-accent:       hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-l));
-  --px-accent-hover: hsl(var(--px-accent-h) var(--px-accent-s) calc(var(--px-accent-l) + 6%));
-  --px-accent-soft:  hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-l) / 0.15);
-  --px-accent-rgb:   122, 138, 230;   /* keep in rough sync with the HSL for rgba() */
+  /* Accent (computed from the HSL components above; --px-accent-rgb is a
+     Tier-1 primitive so it re-themes with the rest). */
+  --px-accent:        hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-l));
+  --px-accent-hover:  hsl(var(--px-accent-h) var(--px-accent-s) calc(var(--px-accent-l) + 7%));
+  --px-accent-strong: hsl(var(--px-accent-h) var(--px-accent-s) calc(var(--px-accent-l) - 8%));
+  --px-accent-soft:   hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-l) / 0.15);
+  --px-accent-faint:  hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-l) / 0.08);
 
   /* Signals */
   --px-danger:        rgb(var(--px-red-rgb));
@@ -113,15 +119,30 @@
   --px-leading-tight: 1.25;
   --px-leading-base:  1.5;
 
-  /* Elevation — borders carry structure; shadows only for true float. */
-  --px-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.20);
-  --px-shadow-md: 0 6px 16px -4px rgba(0, 0, 0, 0.40);
-  --px-shadow-lg: 0 18px 40px -8px rgba(0, 0, 0, 0.55);
+  /* Elevation — borders carry structure; shadows only for true float.
+     Each step pairs a shadow with a 1px top inset highlight so raised
+     surfaces read as physical layers catching light (the "material" feel),
+     not flat rectangles. */
+  --px-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24);
+  --px-shadow-md: 0 4px 14px -3px rgba(0, 0, 0, 0.42), 0 1px 3px rgba(0, 0, 0, 0.30);
+  --px-shadow-lg: 0 16px 36px -8px rgba(0, 0, 0, 0.58), 0 4px 10px -4px rgba(0, 0, 0, 0.40);
+  --px-edge-light: inset 0 1px 0 rgba(255, 255, 255, 0.05);   /* top sheen on raised surfaces */
+  --px-ring: 0 0 0 1px var(--px-border);                       /* hairline ring */
+  --px-ring-accent: 0 0 0 1px var(--px-accent), 0 0 0 4px var(--px-accent-faint);
 
-  /* Motion — a whisper. */
-  --px-dur-fast: 100ms;
-  --px-dur-base: 160ms;
-  --px-ease:     cubic-bezier(0.22, 1, 0.36, 1);
+  /* Motion — purposeful, tactile. fast = state flips (hover/press);
+     base = reveals; the spring ease gives interactions a crisp settle. */
+  --px-dur-instant: 70ms;
+  --px-dur-fast:    120ms;
+  --px-dur-base:    180ms;
+  --px-dur-slow:    260ms;
+  --px-ease:        cubic-bezier(0.22, 1, 0.36, 1);     /* settle (default)   */
+  --px-ease-out:    cubic-bezier(0.16, 1, 0.3, 1);      /* enter              */
+  --px-ease-spring: cubic-bezier(0.34, 1.4, 0.5, 1);    /* press / pop (subtle overshoot) */
+
+  /* Press — the physical-button feel. Controls translate + dim shadow on
+     :active so a click feels like depressing a key. */
+  --px-press: translateY(0.5px) scale(0.992);
 }
 
 /* ============================================================================
@@ -134,26 +155,26 @@
    pick it up. Activate with `document.documentElement.dataset.pxTheme`.
    ========================================================================== */
 
-/* "Slate" — cooler, more neutral, a calm steel accent. Closer to Obsidian's
-   own default mood. */
-:root[data-px-theme="slate"] {
-  --px-base-00: #17181a;
-  --px-base-05: #1c1d20;
-  --px-base-10: #212327;
-  --px-base-15: #26282c;
-  --px-base-20: #2d2f34;
-  --px-base-25: #35383e;
-  --px-base-30: #43464d;
-  --px-base-35: #50535b;
-  --px-base-40: #686c75;
-  --px-base-50: #838893;
-  --px-base-60: #9ea3ad;
-  --px-base-70: #c0c4cc;
-  --px-base-100: #e8eaee;
-  --px-accent-h: 205;
-  --px-accent-s: 64%;
-  --px-accent-l: 60%;
-  --px-accent-rgb: 86, 156, 214;
+/* "Warm" — warm-neutral charcoal + refined indigo. The original prototype
+   default, kept as an alternate. */
+:root[data-px-theme="warm"] {
+  --px-base-00: #1b1a17;
+  --px-base-05: #201e1b;
+  --px-base-10: #25231f;
+  --px-base-15: #2a2824;
+  --px-base-20: #302d28;
+  --px-base-25: #38352f;
+  --px-base-30: #45413a;
+  --px-base-35: #524d45;
+  --px-base-40: #6b655b;
+  --px-base-50: #877f73;
+  --px-base-60: #a39b8d;
+  --px-base-70: #c4bcae;
+  --px-base-100: #ece7dc;
+  --px-accent-h: 226;
+  --px-accent-s: 58%;
+  --px-accent-l: 65%;
+  --px-accent-rgb: 122, 138, 230;
 }
 
 /* "Ember" — warm graphite with a confident amber accent. Most distinctive;

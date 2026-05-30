@@ -5,13 +5,9 @@
 import './theme/px-tokens.css';   // M83: design-token foundation (load first)
 import './workbench.css';
 import './theme/px-base.css';     // M83: global presentation layer (load after workbench)
+import './theme/px-controls.css'; // M83: tactile control primitives
 import { Workbench } from './workbench/workbench.js';
 import { installGlobalTooltipDelegate } from './ui/tooltip.js';
-import { applySavedPxTheme, mountPxThemeSwitcher } from './theme/pxThemePrototypeSwitcher.js';
-
-// M83: apply the saved prototype palette before the workbench paints, so the
-// first frame is already the chosen theme (no flash).
-applySavedPxTheme();
 
 // ── Electron window controls bridge ──
 
@@ -113,10 +109,6 @@ async function bootstrap(): Promise<void> {
   const workbench = new Workbench(container);
   installGlobalTooltipDelegate();
   await workbench.initialize();
-
-  // M83 prototype: corner theme switcher (remove this line + the module to
-  // retire it once a direction is locked).
-  mountPxThemeSwitcher();
 
   // In test mode, expose the workbench instance for E2E test automation
   if (window.parallxElectron?.testMode) {
