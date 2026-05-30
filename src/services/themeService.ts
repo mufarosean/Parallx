@@ -191,6 +191,40 @@ const THEME_VSCODE_BRIDGE: ReadonlyArray<readonly [string, string]> = [
   ['--vscode-keybindingLabel-background', 'var(--px-bg-inset)'],
   ['--vscode-keybindingLabel-foreground', 'var(--px-text-secondary)'],
   ['--vscode-keybindingLabel-border', 'var(--px-border)'],
+
+  // ── M83 consistency sweep — chrome text/borders that were still falling
+  // back to stale VS Code grays/blues on surfaces across the app. ──
+  ['--vscode-titleBar-activeForeground', 'var(--px-text-secondary)'],
+  ['--vscode-titleBar-inactiveForeground', 'var(--px-text-muted)'],
+  ['--vscode-menu-border', 'var(--px-border)'],
+  ['--vscode-editorWidget-border', 'var(--px-border)'],
+  ['--vscode-editorWidget-foreground', 'var(--px-text)'],
+  ['--vscode-editorHoverWidget-foreground', 'var(--px-text)'],
+  ['--vscode-quickInput-foreground', 'var(--px-text)'],
+  ['--vscode-sideBarSectionHeader-foreground', 'var(--px-text-secondary)'],
+  ['--vscode-notifications-foreground', 'var(--px-text)'],
+  ['--vscode-list-hoverForeground', 'var(--px-text)'],
+  ['--vscode-statusBarItem-hoverForeground', 'var(--px-text)'],
+  ['--vscode-button-border', 'transparent'],
+  ['--vscode-button-secondaryBorder', 'var(--px-border-strong)'],
+  ['--vscode-inputOption-activeBorder', 'var(--px-accent)'],
+  // Inline text decorations
+  ['--vscode-textLink-activeForeground', 'var(--px-accent-hover)'],
+  ['--vscode-textPreformat-foreground', 'var(--px-accent)'],
+  ['--vscode-textBlockQuote-foreground', 'var(--px-text-secondary)'],
+  // Validation states reuse the semantic signal tokens
+  ['--vscode-inputValidation-errorBackground', 'var(--px-bg-elevated)'],
+  ['--vscode-inputValidation-errorBorder', 'var(--px-danger)'],
+  ['--vscode-inputValidation-warningBackground', 'var(--px-bg-elevated)'],
+  ['--vscode-inputValidation-warningBorder', 'var(--px-warning)'],
+  // Git decoration in the explorer — map to neutral signal tokens
+  ['--vscode-gitDecoration-modifiedResourceForeground', 'var(--px-warning)'],
+  ['--vscode-gitDecoration-addedResourceForeground', 'var(--px-success)'],
+  ['--vscode-gitDecoration-deletedResourceForeground', 'var(--px-danger)'],
+  // Editor drag-and-drop target — accent the drop zone so rearranging panes
+  // reads on-brand instead of in the old VS Code blue.
+  ['--vscode-editorGroup-dropBorder', 'var(--px-accent)'],
+  ['--vscode-editorGroup-dropBackground', 'var(--px-accent-soft)'],
 ];
 
 /**
