@@ -39,18 +39,27 @@ button:not(:disabled):not(.px-bare):active,
   transform: var(--px-press);
 }
 
-/* ── A single, consistent focus ring ─────────────────────────────────────── */
-/* Keyboard focus reads as a crisp accent ring everywhere; pointer focus stays
-   quiet (no ring on click). */
-:focus-visible {
+/* ── Focus — scoped, never universal ─────────────────────────────────────── */
+/* A box-shadow ring ONLY on discrete interactive controls. It must NOT apply
+   to every focusable element: composers/cards manage their own :focus-within
+   border, and a universal ring stacks a second border inside them (the
+   "blue box around everything" bug). Inputs get an accent *border*, not a
+   ring, so they never double up inside a styled container. */
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible,
+[role="option"]:focus-visible,
+[role="menuitem"]:focus-visible {
   outline: none;
   box-shadow: var(--px-ring-accent);
 }
-/* Inputs already carry a border; give them the ring inset-free. */
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  box-shadow: var(--px-ring-accent);
+  outline: none;
+  border-color: var(--px-accent);
 }
 
 /* ── Native form controls — crafted, consistent skin ─────────────────────── */

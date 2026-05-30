@@ -967,12 +967,14 @@ html, body {
 }
 
 .grid-sash:hover {
-  background: var(--vscode-sash-hoverBorder);
+  background: var(--px-border-strong);
   transition-delay: 0.15s;
 }
 
+/* Only while actively dragging does the handle glow accent — clear feedback
+   that you're resizing, gone the instant you release. */
 .grid-sash.active {
-  background: var(--vscode-sash-hoverBorder);
+  background: var(--px-accent);
   transition-delay: 0s;
 }
 

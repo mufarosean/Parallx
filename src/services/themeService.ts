@@ -102,6 +102,11 @@ const THEME_VSCODE_BRIDGE: ReadonlyArray<readonly [string, string]> = [
   // Elevation
   ['--vscode-widget-shadow', 'rgba(0, 0, 0, 0.40)'],
 
+  // Resize sashes — a handle is neutral chrome, never brand-colored. Was
+  // showing the old purple because sash-hoverBorder was unbridged.
+  ['--vscode-sash-hoverBorder', 'var(--px-border-strong)'],
+  ['--vscode-sash-border', 'var(--px-border)'],
+
   // ── Surfaces the first pass missed ──────────────────────────────────────
   // Activity bar (far-left icon rail)
   ['--vscode-activityBar-foreground', 'var(--px-text)'],

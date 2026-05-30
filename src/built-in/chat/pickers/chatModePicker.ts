@@ -99,15 +99,12 @@ export class ChatModePicker extends Disposable {
     const meta = MODE_META[current];
     this._button.innerHTML = '';
 
+    // M83 — icon + chevron only. The mode name lives in the dropdown (with
+    // icon + description) and in the hover title, keeping the toolbar tight.
     const icon = document.createElement('span');
     icon.className = 'parallx-chat-picker-icon';
     icon.innerHTML = meta.icon;
     this._button.appendChild(icon);
-
-    const label = document.createElement('span');
-    label.className = 'parallx-chat-picker-label';
-    label.textContent = meta.label;
-    this._button.appendChild(label);
 
     // Chevron
     const chevron = document.createElement('span');
@@ -115,7 +112,8 @@ export class ChatModePicker extends Disposable {
     chevron.innerHTML = chatIcons.chevronDown;
     this._button.appendChild(chevron);
 
-    this._button.title = meta.title;
+    this._button.title = `${meta.label} mode — ${meta.title}`;
+    this._button.setAttribute('aria-label', `Chat mode: ${meta.label}`);
   }
 
   private _openDropdown(): void {

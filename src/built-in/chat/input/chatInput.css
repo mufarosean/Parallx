@@ -10,17 +10,19 @@
 .parallx-chat-input {
   display: flex;
   flex-direction: column;
-  border: 1px solid color-mix(in srgb, var(--vscode-input-border, #3c3c3c) 70%, transparent);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--vscode-input-background, #3c3c3c) 92%, var(--vscode-editorWidget-background, #252526) 8%);
+  border: 1px solid var(--px-border-strong);
+  border-radius: var(--px-radius-lg);
+  background: var(--px-bg-elevated);
   overflow: hidden;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
-  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+  box-shadow: var(--px-shadow-md), var(--px-edge-light);
+  transition: border-color var(--px-dur-base) var(--px-ease), box-shadow var(--px-dur-base) var(--px-ease);
 }
 
+/* A single, clean accent border on focus — no nested rings (the global
+   focus ring is scoped away from inputs precisely so this reads alone). */
 .parallx-chat-input:focus-within {
-  border-color: var(--vscode-focusBorder, #007fd4);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+  border-color: var(--px-accent);
+  box-shadow: var(--px-shadow-md), 0 0 0 3px var(--px-accent-faint);
 }
 
 /* ── Text Area ── */
@@ -135,35 +137,45 @@
 
 /* ── Submit button (icon-circle, VS Code style) ── */
 
+/* Send — a prominent accent circle when ready (modern integrated send),
+   quiet when there's nothing to send. The state change as you type is the
+   "alive" feedback the composer was missing. */
 .parallx-chat-input-submit {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   border: none;
-  border-radius: var(--parallx-radius-md);
-  background: transparent;
-  color: var(--vscode-descriptionForeground, #8b8b8b);
+  border-radius: var(--px-radius-full);
+  background: var(--px-accent);
+  color: var(--px-text-on-accent);
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 100ms ease, color 100ms ease;
+  box-shadow: var(--px-edge-light);
+  transition:
+    background var(--px-dur-fast) var(--px-ease),
+    transform var(--px-dur-instant) var(--px-ease-spring),
+    opacity var(--px-dur-fast) var(--px-ease);
 }
 
 .parallx-chat-input-submit svg {
-  width: var(--parallx-icon-size-sm, 16px);
-  height: var(--parallx-icon-size-sm, 16px);
+  width: 16px;
+  height: 16px;
 }
 
-.parallx-chat-input-submit:hover {
-  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
-  color: var(--vscode-foreground, #cccccc);
+.parallx-chat-input-submit:hover:not(:disabled) {
+  background: var(--px-accent-hover);
+}
+.parallx-chat-input-submit:active:not(:disabled) {
+  transform: var(--px-press);
 }
 
 .parallx-chat-input-submit:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
+  background: var(--px-surface-active);
+  color: var(--px-text-faint);
+  cursor: default;
 }
 
 /* ── Stop button (matches submit dimensions) ── */
