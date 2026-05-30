@@ -38,10 +38,15 @@ const THEME_VSCODE_BRIDGE: ReadonlyArray<readonly [string, string]> = [
   // Core surfaces
   ['--vscode-editor-background', 'var(--px-bg)'],
   ['--vscode-editorGroupHeader-tabsBackground', 'var(--px-bg)'],
-  ['--vscode-editorGroup-border', 'var(--px-border)'],
+  // Internal separators (within a surface) use the quieter --px-divider so they
+  // read one step below a floating-surface outline. Co-planar workbench-part
+  // edges are handled directly in CSS via --px-chrome-line (lighter still).
+  ['--vscode-editorGroup-border', 'var(--px-divider)'],
+  ['--vscode-editorGroupHeader-tabsBorder', 'var(--px-divider)'],
   ['--vscode-sideBar-background', 'var(--px-bg)'],
-  ['--vscode-sideBar-border', 'var(--px-border)'],
+  ['--vscode-sideBar-border', 'var(--px-divider)'],
   ['--vscode-sideBarSectionHeader-background', 'var(--px-bg)'],
+  ['--vscode-sideBarSectionHeader-border', 'var(--px-divider)'],
   ['--vscode-activityBar-background', 'var(--px-bg)'],
   ['--vscode-panel-background', 'var(--px-bg)'],
   ['--vscode-panel-border', 'var(--px-border)'],
@@ -66,7 +71,7 @@ const THEME_VSCODE_BRIDGE: ReadonlyArray<readonly [string, string]> = [
   ['--vscode-tab-inactiveBackground', 'var(--px-bg)'],
   ['--vscode-tab-activeForeground', 'var(--px-text)'],
   ['--vscode-tab-inactiveForeground', 'var(--px-text-muted)'],
-  ['--vscode-tab-border', 'var(--px-border)'],
+  ['--vscode-tab-border', 'var(--px-divider)'],
 
   // Accent / interactive
   ['--vscode-button-background', 'var(--px-accent)'],
@@ -139,7 +144,7 @@ const THEME_VSCODE_BRIDGE: ReadonlyArray<readonly [string, string]> = [
   ['--vscode-auxiliaryBar-border', 'var(--px-border)'],
   ['--vscode-auxiliaryBarTitle-background', 'var(--px-bg)'],
   ['--vscode-editorGroupHeader-noTabsBackground', 'var(--px-bg)'],
-  ['--vscode-editorGroupHeader-border', 'var(--px-border)'],
+  ['--vscode-editorGroupHeader-border', 'var(--px-divider)'],
   // Tab active border accent
   ['--vscode-tab-activeBorderTop', 'var(--px-accent)'],
   ['--vscode-tab-activeBorder', 'var(--px-accent)'],

@@ -106,7 +106,7 @@ html, body {
 /* ── Titlebar ── */
 .part-workbench-parts-titlebar {
   background: var(--vscode-titleBar-activeBackground);
-  border-bottom: 1px solid var(--vscode-titleBar-border, var(--vscode-sideBar-border));
+  border-bottom: 1px solid var(--px-chrome-line);
   z-index: 10;
 }
 
@@ -235,7 +235,7 @@ html, body {
 /* ── Sidebar ── */
 .part-workbench-parts-sidebar {
   background: var(--vscode-sideBar-background);
-  border-right: 1px solid var(--vscode-sideBar-border);
+  border-right: 1px solid var(--px-chrome-line);
   margin-bottom: 0; /* ensure border runs full height */
   overflow: hidden;
 }
@@ -403,7 +403,7 @@ html, body {
   width: 48px;
   flex-shrink: 0;
   background: var(--vscode-activityBar-background);
-  box-shadow: inset -1px 0 0 0 var(--vscode-activityBar-border);
+  box-shadow: inset -1px 0 0 0 var(--px-chrome-line);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -640,25 +640,26 @@ html, body {
 /* ── Auxiliary Bar ── */
 .part-workbench-parts-auxiliarybar {
   background: var(--vscode-auxiliaryBar-background);
-  border-left: 1px solid var(--vscode-auxiliaryBar-border);
+  border-left: 1px solid var(--px-chrome-line);
 }
 
 .auxiliary-bar-header {
   height: 35px;
-  padding: 0 8px;
+  padding: 0 8px 0 14px;
   display: flex;
   align-items: center;
+  border-bottom: 1px solid var(--px-chrome-line);
 }
 
+/* Quiet section title — no chunky accent underline. Reads like a Notion /
+   Obsidian panel heading, letting the content below be the focus. */
 .auxiliary-bar-header-label {
-  font-size: 11px;
-  font-weight: 400;
+  font-size: var(--px-text-xs, 11px);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--vscode-foreground);
-  border-bottom: 2px solid var(--vscode-focusBorder, #007acc);
-  line-height: 35px;
-  padding: 0 10px;
+  letter-spacing: 0.07em;
+  color: var(--px-text-muted);
+  line-height: 1;
 }
 
 .parallx-chat-title-actions {
@@ -717,7 +718,7 @@ html, body {
 .part-workbench-parts-statusbar {
   background: var(--vscode-statusBar-background);
   color: var(--vscode-statusBar-foreground);
-  border-top: 1px solid var(--vscode-statusBar-border, var(--vscode-sideBar-border));
+  border-top: 1px solid var(--px-chrome-line);
   z-index: 10;
   box-sizing: border-box;
   cursor: default;

@@ -71,10 +71,19 @@
   --px-text-faint:       var(--px-base-40);
   --px-text-on-accent:   #ffffff;
 
-  /* Lines */
+  /* Lines — three deliberate roles:
+       --px-border        outline of FLOATING surfaces (menus, popovers, cards,
+                          inputs). Defined enough to read as a lifted edge.
+       --px-divider       separation WITHIN a surface (section headers, list
+                          rows, toolbars). One step down from border.
+       --px-chrome-line   the single hairline between co-planar workbench parts
+                          (sidebar↔editor, status bar, title bar). Translucent
+                          so it whispers on any base palette and never grids
+                          the layout the way a solid VS Code border does. */
   --px-border:           var(--px-base-25);
   --px-border-strong:    var(--px-base-30);
   --px-divider:          var(--px-base-20);
+  --px-chrome-line:      rgba(255, 255, 255, 0.05);
 
   /* Accent (computed from the HSL components above; --px-accent-rgb is a
      Tier-1 primitive so it re-themes with the rest). */
