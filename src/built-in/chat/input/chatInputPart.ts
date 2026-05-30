@@ -398,7 +398,7 @@ export class ChatInputPart extends Disposable {
   private _autoResize(): void {
     const ta = this._textarea;
     ta.style.height = 'auto';
-    ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+    ta.style.height = `${Math.min(ta.scrollHeight, 240)}px`;
   }
 
   // ── Command pill helpers ──
