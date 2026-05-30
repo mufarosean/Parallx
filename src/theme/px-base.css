@@ -1,0 +1,141 @@
+/* ============================================================================
+   Parallx Base Layer (M83)
+   ----------------------------------------------------------------------------
+   App-wide presentation refinements that aren't expressible as token swaps:
+   text rendering, the global selection/focus treatment, and a small number
+   of high-frequency shared classes (sidebar section headers, the workbench
+   chrome) that every surface inherits.
+
+   Loaded AFTER workbench.css so equal-specificity rules win. References only
+   Tier-2 --px-* tokens.
+   ========================================================================== */
+
+/* ── Text rendering — the single biggest "feels designed" lever ──────────── */
+html, body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  /* A hair of negative tracking gives modern sans the tight, deliberate set
+     Notion/Linear/Obsidian all use. Subtle — not noticeable as an effect,
+     only as "this looks more intentional". */
+  letter-spacing: -0.006em;
+}
+
+/* Headings sit tighter still. */
+h1, h2, h3, h4,
+.view-section-title,
+.dashboard-header__title,
+.planner-cheader__date,
+.planner-cdate {
+  letter-spacing: -0.014em;
+}
+
+/* ── Selection + focus — one consistent accent treatment everywhere ──────── */
+::selection {
+  background: var(--px-accent-soft);
+  color: var(--px-text);
+}
+
+/* A single, calm focus ring. Components with their own focus styling still
+   win (higher specificity); this is the baseline so nothing focuses with a
+   jarring default outline. */
+:focus-visible {
+  outline: 2px solid var(--px-accent);
+  outline-offset: 1px;
+  border-radius: var(--px-radius-sm);
+}
+
+/* ── Sidebar section headers (EXPLORER / SESSIONS / OPEN EDITORS / …) ─────── */
+/* These appear on every sidebar surface. Soften from the hard VS Code
+   uppercase-gray into something quieter and more editorial: lighter weight,
+   muted token color, a touch more tracking. */
+.view-section-header,
+.view-section-title {
+  color: var(--px-text-muted);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.view-section-header:hover .view-section-title {
+  color: var(--px-text-secondary);
+}
+
+/* ── Scrollbars — thin, neutral, derived from the base scale ─────────────── */
+/* (Hover-reveal behavior lives in workbench.css; this only refines the look
+   so the thumb reads as part of the surface, not VS Code chrome.) */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-thumb {
+  border-radius: var(--px-radius-full);
+  /* 3px transparent border = visual inset so the thumb looks slimmer than its
+     hit target — the trick Notion/macOS use for unobtrusive scrollbars. */
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+/* ── App chrome — title bar / activity bar / status bar feel like one piece ─ */
+/* Flatten the seams: the activity bar and title bar share the app background
+   rather than carrying their own slightly-different grays, so the left rail
+   reads as part of the canvas, Obsidian-style. */
+.part-workbench-parts-titlebar,
+.part-workbench-parts-activitybar {
+  background: var(--px-bg);
+}
+
+/* Tab strip — the active tab connects to the editor body below it instead of
+   floating as a separate colored chip. */
+.part-workbench-parts-editor .tabs-container,
+.editor-tabs {
+  background: var(--px-bg);
+}
+
+/* ── M83 prototype theme switcher (temporary — remove when locked) ───────── */
+#px-theme-switcher {
+  position: fixed;
+  right: 12px;
+  bottom: 30px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  padding: var(--px-space-1) var(--px-space-2) var(--px-space-1) var(--px-space-3);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border-strong);
+  border-radius: var(--px-radius-full);
+  box-shadow: var(--px-shadow-md);
+  font-size: var(--px-text-xs);
+  opacity: 0.55;
+  transition: opacity var(--px-dur-base) var(--px-ease);
+}
+#px-theme-switcher:hover { opacity: 1; }
+.px-theme-switcher__label {
+  color: var(--px-text-faint);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.px-theme-switcher__group { display: inline-flex; gap: 2px; }
+.px-theme-switcher__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--px-space-1);
+  height: 24px;
+  padding: 0 var(--px-space-2);
+  border: 0;
+  border-radius: var(--px-radius-full);
+  background: transparent;
+  color: var(--px-text-muted);
+  font: inherit;
+  font-size: var(--px-text-xs);
+  cursor: pointer;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
+}
+.px-theme-switcher__btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.px-theme-switcher__btn--active { background: var(--px-surface-active); color: var(--px-text); }
+.px-theme-switcher__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: var(--px-radius-full);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
