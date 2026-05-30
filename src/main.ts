@@ -2,6 +2,7 @@
 // Boots the Parallx workbench inside the Electron renderer process.
 // Delegates all orchestration to the Workbench class and its lifecycle phases.
 
+import './theme/px-tokens.css';   // M83: design-token foundation (load first)
 import './workbench.css';
 import { Workbench } from './workbench/workbench.js';
 import { installGlobalTooltipDelegate } from './ui/tooltip.js';

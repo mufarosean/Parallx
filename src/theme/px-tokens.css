@@ -1,0 +1,174 @@
+/* ============================================================================
+   Parallx Design Tokens (M83)
+   ----------------------------------------------------------------------------
+   The single source of truth for the app's visual identity. Three tiers,
+   modeled on Obsidian's foundation → semantic → component structure:
+
+     Tier 1  Primitives  — raw, theme-specific values (base scale, accent, signals)
+     Tier 2  Semantic    — what components reference (surfaces, text, borders, …)
+     Tier 3  Component    — per-surface, added during migration
+
+   Everything namespaced `--px-*`. Components must reference Tier 2, never
+   Tier 1 directly. Swapping a theme means redefining Tier 1 under a
+   `[data-px-theme="…"]` block — Tier 2 derives, the whole app re-hues.
+
+   This file is the NEW system. The `--vscode-*` variables the existing 38
+   CSS files still reference are bridged to these tokens in themeService
+   (see THEME_VSCODE_BRIDGE), so the whole app re-skins without editing
+   those files. Surfaces migrate to native `--px-*` over time.
+   ========================================================================== */
+
+:root {
+  /* ── Tier 1 · Primitives — DEFAULT THEME: "Parallx Warm Dark" ──────────────
+     A warm-neutral charcoal (Obsidian density, Notion warmth) — deliberately
+     NOT VS Code's cold #1e1e1e/#d4d4d4. Base scale runs 00 (app background)
+     → 100 (strongest text), mirroring Obsidian's --color-base-XX. */
+  --px-base-00: #1b1a17;   /* app background (deepest)            */
+  --px-base-05: #201e1b;   /* raised surface / tab strip          */
+  --px-base-10: #25231f;   /* elevated cards, popovers            */
+  --px-base-15: #2a2824;   /* inset wells, inputs                 */
+  --px-base-20: #302d28;   /* hover                               */
+  --px-base-25: #38352f;   /* active / selected                   */
+  --px-base-30: #45413a;   /* strong border                       */
+  --px-base-35: #524d45;   /* divider on elevated                 */
+  --px-base-40: #6b655b;   /* faint text                          */
+  --px-base-50: #877f73;   /* disabled                            */
+  --px-base-60: #a39b8d;   /* muted text                          */
+  --px-base-70: #c4bcae;   /* secondary text                      */
+  --px-base-100: #ece7dc;  /* primary text (warm off-white)       */
+
+  /* Accent as HSL components → hover/soft variants are computed, and the
+     entire identity re-hues from one number. Default: a refined cornflower
+     indigo — confident, distinct from VS Code blue and from slop purple. */
+  --px-accent-h: 226;
+  --px-accent-s: 58%;
+  --px-accent-l: 65%;
+
+  /* Signal hues — desaturated to live calmly on the warm base. */
+  --px-red-rgb:    217, 107, 98;    /* danger / overdue   */
+  --px-green-rgb:  108, 191, 143;   /* success / done     */
+  --px-yellow-rgb: 224, 176, 82;    /* warning / review   */
+  --px-blue-rgb:   122, 162, 230;   /* info               */
+
+  /* ── Tier 2 · Semantic — what components reference ─────────────────────── */
+
+  /* Surfaces */
+  --px-bg:               var(--px-base-00);
+  --px-bg-elevated:      var(--px-base-10);
+  --px-bg-inset:         var(--px-base-15);
+  --px-surface-hover:    var(--px-base-20);
+  --px-surface-active:   var(--px-base-25);
+  --px-surface-selected: rgba(var(--px-accent-rgb), 0.16);
+
+  /* Text */
+  --px-text:             var(--px-base-100);
+  --px-text-secondary:   var(--px-base-70);
+  --px-text-muted:       var(--px-base-60);
+  --px-text-faint:       var(--px-base-40);
+  --px-text-on-accent:   #ffffff;
+
+  /* Lines */
+  --px-border:           var(--px-base-25);
+  --px-border-strong:    var(--px-base-30);
+  --px-divider:          var(--px-base-20);
+
+  /* Accent (computed from the HSL components above) */
+  --px-accent:       hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-l));
+  --px-accent-hover: hsl(var(--px-accent-h) var(--px-accent-s) calc(var(--px-accent-l) + 6%));
+  --px-accent-soft:  hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-l) / 0.15);
+  --px-accent-rgb:   122, 138, 230;   /* keep in rough sync with the HSL for rgba() */
+
+  /* Signals */
+  --px-danger:        rgb(var(--px-red-rgb));
+  --px-danger-soft:   rgba(var(--px-red-rgb), 0.15);
+  --px-success:       rgb(var(--px-green-rgb));
+  --px-warning:       rgb(var(--px-yellow-rgb));
+  --px-warning-soft:  rgba(var(--px-yellow-rgb), 0.15);
+  --px-info:          rgb(var(--px-blue-rgb));
+
+  /* ── Tier 2 · Scales ───────────────────────────────────────────────────── */
+
+  /* Spacing — strict 4px grid. */
+  --px-space-1: 4px;
+  --px-space-2: 8px;
+  --px-space-3: 12px;
+  --px-space-4: 16px;
+  --px-space-5: 20px;
+  --px-space-6: 24px;
+  --px-space-8: 32px;
+
+  /* Radius — three steps + a full for genuine pills (counts, avatars). */
+  --px-radius-sm: 4px;
+  --px-radius-md: 6px;
+  --px-radius-lg: 10px;
+  --px-radius-full: 999px;
+
+  /* Type ladder — six steps, no more. */
+  --px-text-xs:   11px;   /* meta, counts, captions          */
+  --px-text-sm:   12px;   /* secondary UI text               */
+  --px-text-base: 13px;   /* default UI text, controls       */
+  --px-text-md:   15px;   /* emphasized labels, focal text   */
+  --px-text-lg:   18px;   /* section titles                  */
+  --px-text-xl:   22px;   /* page titles                     */
+  --px-leading-tight: 1.25;
+  --px-leading-base:  1.5;
+
+  /* Elevation — borders carry structure; shadows only for true float. */
+  --px-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.20);
+  --px-shadow-md: 0 6px 16px -4px rgba(0, 0, 0, 0.40);
+  --px-shadow-lg: 0 18px 40px -8px rgba(0, 0, 0, 0.55);
+
+  /* Motion — a whisper. */
+  --px-dur-fast: 100ms;
+  --px-dur-base: 160ms;
+  --px-ease:     cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ============================================================================
+   Prototype palettes — swap Tier-1 primitives only. The user picks one;
+   the loser blocks get deleted. Activate with <body data-px-theme="…">.
+   ========================================================================== */
+
+/* "Slate" — cooler, more neutral, a calm steel accent. Closer to Obsidian's
+   own default mood. */
+[data-px-theme="slate"] {
+  --px-base-00: #17181a;
+  --px-base-05: #1c1d20;
+  --px-base-10: #212327;
+  --px-base-15: #26282c;
+  --px-base-20: #2d2f34;
+  --px-base-25: #35383e;
+  --px-base-30: #43464d;
+  --px-base-35: #50535b;
+  --px-base-40: #686c75;
+  --px-base-50: #838893;
+  --px-base-60: #9ea3ad;
+  --px-base-70: #c0c4cc;
+  --px-base-100: #e8eaee;
+  --px-accent-h: 205;
+  --px-accent-s: 64%;
+  --px-accent-l: 60%;
+  --px-accent-rgb: 86, 156, 214;
+}
+
+/* "Ember" — warm graphite with a confident amber accent. Most distinctive;
+   feels least like any IDE. */
+[data-px-theme="ember"] {
+  --px-base-00: #1a1815;
+  --px-base-05: #201d19;
+  --px-base-10: #26221d;
+  --px-base-15: #2b2620;
+  --px-base-20: #322c25;
+  --px-base-25: #3b342b;
+  --px-base-30: #4a4136;
+  --px-base-35: #574d40;
+  --px-base-40: #71665a;
+  --px-base-50: #8d8275;
+  --px-base-60: #a89d8d;
+  --px-base-70: #c8beaf;
+  --px-base-100: #efe9dd;
+  --px-accent-h: 32;
+  --px-accent-s: 78%;
+  --px-accent-l: 58%;
+  --px-accent-rgb: 224, 158, 70;
+}

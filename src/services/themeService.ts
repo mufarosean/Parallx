@@ -19,6 +19,90 @@ import type { IThemeService } from './serviceTypes.js';
 
 const THEME_STYLE_ID = 'parallx-theme-colors';
 
+/**
+ * M83 — VS Code → Parallx token bridge.
+ *
+ * The app's 38 CSS files reference `var(--vscode-*)`. Rather than edit all
+ * of them, we remap the character-defining VS Code tokens to the new
+ * Parallx semantic tokens (`--px-*`, defined statically in
+ * src/theme/px-tokens.css). These lines are appended to the SAME generated
+ * `body {}` rule, AFTER the resolved hex values, so they win the cascade
+ * with no `!important`. Result: the whole app picks up the new palette and
+ * re-hues with the active `--px-*` theme — without touching surface CSS.
+ *
+ * Only the high-impact, identity-defining tokens are bridged. Anything not
+ * listed keeps its theme-resolved value. Surfaces migrate to native
+ * `--px-*` over the course of M83; this bridge shrinks as they do.
+ */
+const THEME_VSCODE_BRIDGE: ReadonlyArray<readonly [string, string]> = [
+  // Core surfaces
+  ['--vscode-editor-background', 'var(--px-bg)'],
+  ['--vscode-editorGroupHeader-tabsBackground', 'var(--px-bg)'],
+  ['--vscode-editorGroup-border', 'var(--px-border)'],
+  ['--vscode-sideBar-background', 'var(--px-bg)'],
+  ['--vscode-sideBar-border', 'var(--px-border)'],
+  ['--vscode-sideBarSectionHeader-background', 'var(--px-bg)'],
+  ['--vscode-activityBar-background', 'var(--px-bg)'],
+  ['--vscode-panel-background', 'var(--px-bg)'],
+  ['--vscode-panel-border', 'var(--px-border)'],
+  ['--vscode-titleBar-activeBackground', 'var(--px-bg)'],
+  ['--vscode-titleBar-inactiveBackground', 'var(--px-bg)'],
+  ['--vscode-menu-background', 'var(--px-bg-elevated)'],
+  ['--vscode-editorWidget-background', 'var(--px-bg-elevated)'],
+  ['--vscode-quickInput-background', 'var(--px-bg-elevated)'],
+  ['--vscode-dropdown-background', 'var(--px-bg-elevated)'],
+  ['--vscode-input-background', 'var(--px-bg-inset)'],
+
+  // Text
+  ['--vscode-editor-foreground', 'var(--px-text)'],
+  ['--vscode-foreground', 'var(--px-text)'],
+  ['--vscode-sideBar-foreground', 'var(--px-text-secondary)'],
+  ['--vscode-descriptionForeground', 'var(--px-text-muted)'],
+  ['--vscode-disabledForeground', 'var(--px-text-faint)'],
+  ['--vscode-icon-foreground', 'var(--px-text-muted)'],
+
+  // Tabs
+  ['--vscode-tab-activeBackground', 'var(--px-bg)'],
+  ['--vscode-tab-inactiveBackground', 'var(--px-bg)'],
+  ['--vscode-tab-activeForeground', 'var(--px-text)'],
+  ['--vscode-tab-inactiveForeground', 'var(--px-text-muted)'],
+  ['--vscode-tab-border', 'var(--px-border)'],
+
+  // Accent / interactive
+  ['--vscode-button-background', 'var(--px-accent)'],
+  ['--vscode-button-hoverBackground', 'var(--px-accent-hover)'],
+  ['--vscode-button-foreground', 'var(--px-text-on-accent)'],
+  ['--vscode-focusBorder', 'var(--px-accent)'],
+  ['--vscode-textLink-foreground', 'var(--px-accent)'],
+  ['--vscode-progressBar-background', 'var(--px-accent)'],
+
+  // Lists / selection — neutral selection, accent reserved for focus.
+  ['--vscode-list-hoverBackground', 'var(--px-surface-hover)'],
+  ['--vscode-list-activeSelectionBackground', 'var(--px-surface-selected)'],
+  ['--vscode-list-activeSelectionForeground', 'var(--px-text)'],
+  ['--vscode-list-inactiveSelectionBackground', 'var(--px-surface-active)'],
+
+  // Inputs / borders
+  ['--vscode-input-border', 'var(--px-border-strong)'],
+  ['--vscode-input-foreground', 'var(--px-text)'],
+  ['--vscode-input-placeholderForeground', 'var(--px-text-faint)'],
+  ['--vscode-contrastBorder', 'var(--px-border)'],
+  ['--vscode-widget-border', 'var(--px-border)'],
+
+  // Signals
+  ['--vscode-errorForeground', 'var(--px-danger)'],
+  ['--vscode-editorError-foreground', 'var(--px-danger)'],
+  ['--vscode-editorWarning-foreground', 'var(--px-warning)'],
+
+  // Scrollbar
+  ['--vscode-scrollbarSlider-background', 'rgba(var(--px-accent-rgb), 0.18)'],
+  ['--vscode-scrollbarSlider-hoverBackground', 'rgba(var(--px-accent-rgb), 0.30)'],
+  ['--vscode-scrollbarSlider-activeBackground', 'rgba(var(--px-accent-rgb), 0.45)'],
+
+  // Elevation
+  ['--vscode-widget-shadow', 'rgba(0, 0, 0, 0.40)'],
+];
+
 // ─── ThemeService Implementation ─────────────────────────────────────────────
 
 /**
@@ -92,6 +176,14 @@ export class ThemeService extends Disposable implements IThemeService {
         const value = themeValue ?? this._designTokenRegistry.resolveDefault(reg.id, this._activeTheme.type) ?? 'inherit';
         lines.push(`  ${varName}: ${value};`);
       }
+    }
+
+    // M83 bridge — appended LAST inside the same body{} rule so these
+    // remaps override the resolved hex values above (later wins on equal
+    // specificity). This is what makes the whole app pick up the --px-*
+    // palette without editing surface CSS.
+    for (const [vscodeVar, pxRef] of THEME_VSCODE_BRIDGE) {
+      lines.push(`  ${vscodeVar}: ${pxRef};`);
     }
 
     const css = `body {\n${lines.join('\n')}\n}`;
