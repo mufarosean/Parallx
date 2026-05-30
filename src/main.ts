@@ -9,6 +9,7 @@ import './theme/px-controls.css'; // M83: tactile control primitives
 import './theme/px-motion.css';   // M83: purposeful motion for overlays
 import { Workbench } from './workbench/workbench.js';
 import { installGlobalTooltipDelegate } from './ui/tooltip.js';
+import { applySavedAppearance } from './theme/pxAppearance.js'; // M83: restore base palette + accent
 
 // ── Electron window controls bridge ──
 
@@ -93,6 +94,10 @@ declare global {
 // ── Bootstrap ──
 
 async function bootstrap(): Promise<void> {
+  // M83: apply the saved base palette + accent before the workbench paints,
+  // so there is no flash of the default theme on launch.
+  applySavedAppearance();
+
   const container = document.getElementById('workbench');
   if (!container) {
     throw new Error('Missing #workbench element');

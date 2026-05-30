@@ -7,7 +7,7 @@ import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IStorage } from '../../platform/storage.js';
 import { IThemeService, IGlobalStorageService } from '../../services/serviceTypes.js';
-import { ThemeEditorPanel } from './themeEditorPanel.js';
+import { PxAppearancePanel } from './pxAppearancePanel.js';
 
 // ─── Local API type ──────────────────────────────────────────────────────────
 
@@ -40,7 +40,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   context.subscriptions.push(
     api.editors.registerEditorProvider(EDITOR_TYPE_ID, {
       createEditorPane(container: HTMLElement): IDisposable {
-        return new ThemeEditorPanel(container, themeService, globalStorage);
+        return new PxAppearancePanel(container, themeService, globalStorage);
       },
     }),
   );
@@ -50,9 +50,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     api.commands.registerCommand('theme-editor.open', () => {
       api.editors.openEditor({
         typeId: EDITOR_TYPE_ID,
-        title: 'Theme Editor',
+        title: 'Appearance',
         icon: 'palette',
-      }).catch(err => console.error('[ThemeEditor] Failed to open:', err));
+      }).catch(err => console.error('[Appearance] Failed to open:', err));
     }),
   );
 }
