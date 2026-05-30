@@ -1267,7 +1267,7 @@ function createGraphEditor(container, api) {
   container.style.display = 'flex';
   container.style.flexDirection = 'column';
   container.style.height = '100%';
-  container.style.background = 'var(--vscode-editor-background,#1e1e1e)';
+  container.style.background = 'var(--vscode-editor-background,var(--px-bg))';
   container.style.color = 'var(--vscode-editor-foreground,#ccc)';
   container.style.fontFamily = 'var(--parallx-fontFamily-ui)';
   container.style.overflow = 'hidden';
@@ -1278,7 +1278,7 @@ function createGraphEditor(container, api) {
   const searchInput = document.createElement('input');
   searchInput.type = 'text';
   searchInput.placeholder = 'Search nodes\u2026';
-  searchInput.style.cssText = 'background:var(--vscode-input-background,#2a2a2a);color:var(--vscode-input-foreground,#ccc);border:1px solid var(--vscode-input-border,#3c3c3c);border-radius:4px;padding:4px 8px;font-size:12px;width:200px;outline:none;font-family:var(--parallx-fontFamily-ui);';
+  searchInput.style.cssText = 'background:var(--vscode-input-background,var(--px-bg-inset));color:var(--vscode-input-foreground,#ccc);border:1px solid var(--vscode-input-border,var(--px-border));border-radius:4px;padding:4px 8px;font-size:12px;width:200px;outline:none;font-family:var(--parallx-fontFamily-ui);';
 
   const physBtn = _btn('Pause Physics');
   const edgesBtn = _btn('Hide Edges');
@@ -1572,7 +1572,7 @@ function createGraphEditor(container, api) {
               const when = _formatRelativeTime(r.startedAt);
               const sources = r.sourcesProcessed > 0 ? ` · ${r.sourcesProcessed} source${r.sourcesProcessed === 1 ? '' : 's'}` : '';
               const err = r.errorMessage ? ` <span style="color:#e08080">(${_esc(r.errorMessage)})</span>` : '';
-              return `<div style="padding:2px 0;border-bottom:1px solid var(--vscode-panel-border,#2a2a2a)">${dot} ${_esc(r.status)} · ${when}${sources}${err}</div>`;
+              return `<div style="padding:2px 0;border-bottom:1px solid var(--vscode-panel-border,var(--px-bg-inset))">${dot} ${_esc(r.status)} · ${when}${sources}${err}</div>`;
             }).join('');
           } catch (err) {
             historyEl.innerHTML = `<em>Failed to load history: ${_esc(String(err && err.message || err))}</em>`;
@@ -1652,7 +1652,7 @@ function createGraphEditor(container, api) {
         .map((other) => `<option value="${_esc(other.stableId)}">${_esc(other.label)}</option>`)
         .join('');
       return `
-        <div data-concept-id="${_esc(c.stableId)}" style="margin:2px 0;border-bottom:1px solid var(--vscode-panel-border,#2a2a2a);padding-bottom:4px;">
+        <div data-concept-id="${_esc(c.stableId)}" style="margin:2px 0;border-bottom:1px solid var(--vscode-panel-border,var(--px-bg-inset));padding-bottom:4px;">
           <div data-role="header" style="display:flex;align-items:center;gap:6px;padding:4px 2px;cursor:pointer;">
             <span style="flex:1;color:var(--vscode-editor-foreground,#ccc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
               ${_esc(c.label)}${renameMark}
@@ -2439,7 +2439,7 @@ function createGraphSidebar(container, api) {
   container.style.display = 'flex';
   container.style.flexDirection = 'column';
   container.style.height = '100%';
-  container.style.background = 'var(--vscode-editor-background,#1e1e1e)';
+  container.style.background = 'var(--vscode-editor-background,var(--px-bg))';
   container.style.overflow = 'hidden';
   container.style.position = 'relative';
 

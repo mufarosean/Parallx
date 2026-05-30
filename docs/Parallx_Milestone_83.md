@@ -1,9 +1,32 @@
 # Milestone 83 — Visual Identity & the Parallx Design System
 
-> **Status:** In progress. Foundation laid on branch `m83-visual-identity`.
-> This is a **look-and-feel** milestone. No functional/behavioral code
-> changes — only how surfaces are configured, styled, themed. The icon
-> system is explicitly out of scope and must not be touched.
+> **Status:** Identity locked = **Slate** (cool graphite, steel-blue accent).
+> Foundation + craft pass shipped on branch `m83-visual-identity`. This is a
+> **look-and-feel** milestone — no functional/behavioral changes, only how
+> surfaces are configured, styled, themed. The icon system is out of scope.
+>
+> **Done so far:**
+> - Three-tier `--px-*` token system (`px-tokens.css`); Slate the canonical
+>   default, Warm/Ember as `:root[data-px-theme]` alternates.
+> - `themeService` bridge: ~80 `--vscode-*` + the `--parallx-*` type/radius/
+>   font tokens remap to `--px-*`, so the whole app + extensions re-skin.
+> - Global base layer (`px-base.css`): text rendering, selection, section
+>   headers, flattened title/activity-bar chrome.
+> - Tactile controls (`px-controls.css`): press feel, one accent focus ring,
+>   crafted native form controls, **keycap-styled `<kbd>`**, links.
+> - Workbench chrome craft: activity-bar signature accent indicator, content-
+>   style editor tabs, status-bar chips, rounded-inset Explorer rows.
+> - Motion (`px-motion.css`): overlay pop/rise entrances + reduced-motion.
+> - Consistency: planner/dashboard signal colors → tokens; media-organizer /
+>   text-generator / workspace-graph extension chrome grays → tokens.
+>
+> **Remaining (next sessions):**
+> - Per-surface deep polish of chat, canvas chrome, settings.
+> - Budget extension token migration (was being actively edited; deferred).
+> - Collapse the dead `#hex` fallbacks; eventually retire the VS Code theme
+>   registry once nothing depends on the bridge.
+> - A proper theme setting in Settings (the prototype floating switcher was
+>   removed).
 
 ## Why
 

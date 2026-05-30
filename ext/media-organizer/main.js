@@ -4883,14 +4883,14 @@ const MO_CSS = `
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   flex-shrink: 0;
   flex-wrap: wrap;
 }
 .mo-toolbar-search {
   flex: 1;
   min-width: 120px;
-  background: var(--vscode-input-background, #3c3c3c);
+  background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #555);
   border-radius: var(--parallx-radius-sm, 3px);
@@ -4922,7 +4922,7 @@ const MO_CSS = `
 .mo-toolbar-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
 .mo-toolbar-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
 .mo-toolbar-select {
-  background: var(--vscode-input-background, #3c3c3c);
+  background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #555);
   border-radius: var(--parallx-radius-sm, 3px);
@@ -4993,7 +4993,7 @@ const MO_CSS = `
 .mo-card-thumb {
   position: relative;
   overflow: hidden;
-  background: var(--vscode-input-background, #1a1a1a);
+  background: var(--vscode-input-background, var(--px-bg));
   aspect-ratio: 4 / 3;
 }
 .mo-card-thumb img {
@@ -5049,7 +5049,7 @@ const MO_CSS = `
 }
 .mo-timeline-tile {
   position: relative; aspect-ratio: 1 / 1;
-  background: var(--vscode-input-background, #2a2a2a);
+  background: var(--vscode-input-background, var(--px-bg-inset));
   border-radius: 4px; cursor: pointer; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
   border: 1px solid transparent;
@@ -5060,7 +5060,7 @@ const MO_CSS = `
 .mo-map-dialog { width: 940px; max-width: 96vw; }
 .mo-map-canvas {
   display: block; width: 100%; height: auto;
-  background: #1e1e1e; cursor: grab;
+  background: var(--px-bg); cursor: grab;
 }
 .mo-map-canvas:active { cursor: grabbing; }
 .mo-card-rating {
@@ -5228,7 +5228,7 @@ const MO_CSS = `
   justify-content: center;
   gap: 6px;
   padding: 6px 12px;
-  border-top: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-top: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   flex-shrink: 0;
   font-size: var(--parallx-fontSize-sm, 11px);
 }
@@ -5283,7 +5283,7 @@ const MO_CSS = `
   letter-spacing: 0.5px;
   color: var(--vscode-sideBarSectionHeader-foreground, #ccc);
   background: var(--vscode-sideBarSectionHeader-background, transparent);
-  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   cursor: pointer;
   user-select: none;
 }
@@ -5304,7 +5304,7 @@ const MO_CSS = `
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.mo-sidebar-item:hover { background: var(--vscode-list-hoverBackground, #2a2d2e); }
+.mo-sidebar-item:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .mo-sidebar-item:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
 .mo-sidebar-item.mo-drop-target { background: var(--vscode-list-dropBackground, rgba(0,100,200,0.18)); outline: 1px dashed var(--vscode-focusBorder, #9333ea); }
 .mo-sidebar-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
@@ -5324,7 +5324,7 @@ const MO_CSS = `
   height: 14px;
   flex-shrink: 0;
   cursor: pointer;
-  color: var(--vscode-icon-foreground, #cccccc);
+  color: var(--vscode-icon-foreground, var(--px-text-secondary));
   transition: transform 120ms ease;
 }
 .mo-album-chevron.mo-collapsed { transform: rotate(-90deg); }
@@ -5343,7 +5343,7 @@ const MO_CSS = `
 .mo-thumb-placeholder {
   width: 100%;
   height: 100%;
-  background: var(--vscode-input-background, #2a2a2a);
+  background: var(--vscode-input-background, var(--px-bg-inset));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5369,14 +5369,14 @@ const MO_CSS = `
   align-items: center;
   gap: 10px;
   padding: 4px 12px;
-  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   cursor: pointer;
   min-height: 40px;
   /* See .mo-card for rationale: shift+click would otherwise select text. */
   user-select: none;
   -webkit-user-select: none;
 }
-.mo-list-row:hover { background: var(--vscode-list-hoverBackground, #2a2d2e); }
+.mo-list-row:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .mo-list-row:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
 .mo-list-row.mo-selected { background: var(--vscode-list-activeSelectionBackground, #094771); }
 .mo-list-thumb {
@@ -5385,7 +5385,7 @@ const MO_CSS = `
   border-radius: var(--parallx-radius-sm, 3px);
   overflow: hidden;
   flex-shrink: 0;
-  background: var(--vscode-input-background, #1a1a1a);
+  background: var(--vscode-input-background, var(--px-bg));
 }
 .mo-list-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mo-list-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--parallx-fontSize-md, 13px); }
@@ -5402,7 +5402,7 @@ const MO_CSS = `
   gap: 18px 24px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--vscode-panel-border, #333);
-  background: var(--vscode-sideBar-background, #1e1e1e);
+  background: var(--vscode-sideBar-background, var(--px-bg));
   font-size: var(--parallx-fontSize-sm, 11px);
 }
 .mo-filter-section { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -5458,7 +5458,7 @@ const MO_CSS = `
   max-width: 200px;
   font-size: var(--parallx-fontSize-sm, 11px);
   padding: 2px 4px;
-  background: var(--vscode-input-background, #3c3c3c);
+  background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #555);
   border-radius: var(--parallx-radius-sm, 3px);
@@ -5499,7 +5499,7 @@ const MO_CSS = `
 .mo-filter-date {
   font-size: var(--parallx-fontSize-sm, 11px);
   padding: 2px 4px;
-  background: var(--vscode-input-background, #3c3c3c);
+  background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #555);
   border-radius: var(--parallx-radius-sm, 3px);
@@ -5618,7 +5618,7 @@ const MO_CSS = `
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--vscode-sideBar-background, #1e1e1e);
+  background: var(--vscode-sideBar-background, var(--px-bg));
   overflow: hidden;
   min-width: 200px;
 }
@@ -5737,7 +5737,7 @@ const MO_CSS = `
 .mo-detail-field textarea {
   width: 100%;
   box-sizing: border-box;
-  background: var(--vscode-input-background, #1e1e1e);
+  background: var(--vscode-input-background, var(--px-bg));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #333);
   border-radius: var(--parallx-radius-sm, 3px);
@@ -5797,7 +5797,7 @@ const MO_CSS = `
 .mo-detail-autocomplete input {
   width: 100%;
   box-sizing: border-box;
-  background: var(--vscode-input-background, #1e1e1e);
+  background: var(--vscode-input-background, var(--px-bg));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #333);
   border-radius: var(--parallx-radius-sm, 3px);
@@ -5813,8 +5813,8 @@ const MO_CSS = `
   top: 100%;
   left: 0;
   right: 0;
-  background: var(--vscode-editorWidget-background, #252526);
-  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
+  border: 1px solid var(--vscode-editorWidget-border, var(--px-border-strong));
   border-radius: var(--parallx-radius-sm, 3px);
   max-height: 150px;
   overflow-y: auto;
@@ -5827,7 +5827,7 @@ const MO_CSS = `
 }
 .mo-detail-autocomplete-item:hover,
 .mo-detail-autocomplete-item.selected {
-  background: var(--vscode-list-hoverBackground, #2a2d2e);
+  background: var(--vscode-list-hoverBackground, var(--px-surface-hover));
 }
 .mo-detail-nav-btn {
   background: none;
@@ -5960,7 +5960,7 @@ const MO_CSS = `
   z-index: 9999;
 }
 .mo-bulk-dialog {
-  background: var(--vscode-editor-background, #1e1e1e);
+  background: var(--vscode-editor-background, var(--px-bg));
   border: 1px solid var(--vscode-panel-border, #333);
   border-radius: var(--parallx-radius-sm, 3px);
   padding: 16px;
@@ -6041,7 +6041,7 @@ const MO_CSS = `
   gap: 4px;
   min-height: 26px;
   padding: 4px;
-  background: var(--vscode-input-background, #1e1e1e);
+  background: var(--vscode-input-background, var(--px-bg));
   border: 1px solid var(--vscode-input-border, #333);
   border-radius: var(--parallx-radius-sm, 3px);
 }
@@ -6078,7 +6078,7 @@ const MO_CSS = `
   width: 100%;
   box-sizing: border-box;
   padding: 5px 8px;
-  background: var(--vscode-input-background, #1e1e1e);
+  background: var(--vscode-input-background, var(--px-bg));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #333);
   border-radius: var(--parallx-radius-sm, 3px);
@@ -6092,8 +6092,8 @@ const MO_CSS = `
 .mo-bulk-tag-browse {
   max-height: 240px;
   overflow-y: auto;
-  background: var(--vscode-editorWidget-background, #252526);
-  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
+  border: 1px solid var(--vscode-editorWidget-border, var(--px-border-strong));
   border-radius: var(--parallx-radius-sm, 3px);
 }
 .mo-bulk-tag-row {
@@ -6106,7 +6106,7 @@ const MO_CSS = `
   user-select: none;
 }
 .mo-bulk-tag-row:hover {
-  background: var(--vscode-list-hoverBackground, #2a2d2e);
+  background: var(--vscode-list-hoverBackground, var(--px-surface-hover));
 }
 .mo-bulk-tag-row.is-picked {
   background: var(--vscode-list-activeSelectionBackground, #094771);
@@ -6127,7 +6127,7 @@ const MO_CSS = `
 }
 .mo-bulk-tag-row-state-some {
   background: var(--vscode-editorWarning-foreground, #b89500);
-  color: #1e1e1e;
+  color: var(--px-bg);
   font-weight: 600;
 }
 .mo-bulk-tag-row-state-none {
@@ -6272,7 +6272,7 @@ const MO_CSS = `
   justify-content: center;
   border-radius: 3px;
   background: rgba(0, 0, 0, 0.45);
-  color: var(--vscode-icon-foreground, #cccccc);
+  color: var(--vscode-icon-foreground, var(--px-text-secondary));
   cursor: grab;
   opacity: 0;
   transition: opacity 120ms ease;
@@ -6302,8 +6302,8 @@ const MO_CSS = `
   position: fixed;
   z-index: 10000;
   min-width: 180px;
-  background: var(--vscode-menu-background, #252526);
-  border: 1px solid var(--vscode-menu-border, #454545);
+  background: var(--vscode-menu-background, var(--px-bg-elevated));
+  border: 1px solid var(--vscode-menu-border, var(--px-border-strong));
   border-radius: var(--parallx-radius-md, 6px);
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
   padding: 4px 0;
@@ -6332,7 +6332,7 @@ const MO_CSS = `
 .mo-context-menu-sep {
   height: 1px;
   margin: 4px 8px;
-  background: var(--vscode-menu-separatorBackground, var(--vscode-panel-border, #454545));
+  background: var(--vscode-menu-separatorBackground, var(--vscode-panel-border, var(--px-border-strong)));
 }
 .mo-context-menu-sub {
   position: relative;
@@ -6343,8 +6343,8 @@ const MO_CSS = `
   left: 100%;
   top: -4px;
   min-width: 120px;
-  background: var(--vscode-menu-background, #252526);
-  border: 1px solid var(--vscode-menu-border, #454545);
+  background: var(--vscode-menu-background, var(--px-bg-elevated));
+  border: 1px solid var(--vscode-menu-border, var(--px-border-strong));
   border-radius: var(--parallx-radius-md, 6px);
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
   padding: 4px 0;
@@ -6464,7 +6464,7 @@ const MO_CSS = `
 .mo-lightbox-bar .mo-dropdown__list {
   /* The dropdown list pops above the bar — give it a solid (non-translucent)
      background so option text stays readable over arbitrary media. */
-  background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background, #1e1e1e));
+  background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background, var(--px-bg)));
   border-color: var(--vscode-focusBorder, #9333ea);
 }
 .mo-lightbox-close {
@@ -6647,7 +6647,7 @@ const MO_CSS = `
   font-family: inherit;
   line-height: 20px;
   color: var(--vscode-dropdown-foreground, var(--vscode-foreground, #ccc));
-  background: var(--vscode-dropdown-background, var(--vscode-input-background, #3c3c3c));
+  background: var(--vscode-dropdown-background, var(--vscode-input-background, var(--px-border)));
   border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, #555));
   border-radius: var(--parallx-radius-sm, 3px);
   cursor: pointer;
@@ -6684,8 +6684,8 @@ const MO_CSS = `
   z-index: 1000;
   margin-top: 2px;
   padding: 4px 0;
-  background: var(--vscode-dropdown-listBackground, var(--vscode-editorWidget-background, #252526));
-  border: 1px solid var(--vscode-dropdown-border, var(--vscode-widget-border, #454545));
+  background: var(--vscode-dropdown-listBackground, var(--vscode-editorWidget-background, var(--px-bg-elevated)));
+  border: 1px solid var(--vscode-dropdown-border, var(--vscode-widget-border, var(--px-border-strong)));
   border-radius: var(--parallx-radius-sm, 3px);
   box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
   max-height: 200px;
@@ -6717,7 +6717,7 @@ const MO_CSS = `
 
 /* ═══ Styled Date Input ═══ */
 .mo-filter-date {
-  background: var(--vscode-input-background, #3c3c3c);
+  background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #555);
   border-radius: var(--parallx-radius-sm, 3px);
@@ -6754,7 +6754,7 @@ const MO_CSS = `
   height: 14px;
   border-radius: 50%;
   background: var(--vscode-button-background, #9333ea);
-  border: 2px solid var(--vscode-editor-background, #1e1e1e);
+  border: 2px solid var(--vscode-editor-background, var(--px-bg));
   box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
   cursor: pointer;
   transition: transform 0.12s ease;
@@ -7101,7 +7101,7 @@ const MO_CSS = `
 .mo-clip-scrubber {
   position: relative;
   height: 26px;
-  background: var(--vscode-input-background, #2a2a2a);
+  background: var(--vscode-input-background, var(--px-bg-inset));
   border: 1px solid var(--vscode-panel-border, #444);
   border-radius: 4px;
   cursor: pointer;
@@ -7178,7 +7178,7 @@ const MO_CSS = `
 /* M59 P2: frame strip + waveform */
 .mo-clip-stripwrap {
   position: relative;
-  background: var(--vscode-input-background, #1e1e1e);
+  background: var(--vscode-input-background, var(--px-bg));
   border: 1px solid var(--vscode-panel-border, #444);
   border-radius: 4px;
   padding: 4px;
@@ -7245,7 +7245,7 @@ const MO_CSS = `
 }
 .mo-clip-input {
   flex: 0 1 120px; padding: 4px 8px; font-size: 12px;
-  background: var(--vscode-input-background, #2a2a2a);
+  background: var(--vscode-input-background, var(--px-bg-inset));
   color: var(--vscode-input-foreground, inherit);
   border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, #444));
   border-radius: 4px;
@@ -7277,7 +7277,7 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-select-popup {
   position: fixed; z-index: 10001;
   min-width: 120px;
-  background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background, #1e1e1e));
+  background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background, var(--px-bg)));
   color: var(--vscode-foreground, #ddd);
   border: 1px solid var(--vscode-focusBorder, #9333ea);
   border-radius: 4px;
@@ -7381,7 +7381,7 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 }
 .mo-clip-queue-name {
   flex: 0 1 110px; min-width: 40px;
-  background: var(--vscode-input-background, #2a2a2a);
+  background: var(--vscode-input-background, var(--px-bg-inset));
   color: var(--vscode-input-foreground, inherit);
   border: 1px solid transparent;
   border-radius: 2px;
@@ -9622,7 +9622,7 @@ function renderGridBrowser(container, api, input) {
     const tagMap = new Map((_filterTagCache || []).map(t => [t.id, t.name]));
     const mkChip = (label, onClear) => {
       const chip = moEl('span', 'mo-filter-chip');
-      chip.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:2px 6px;font-size:11px;border-radius:10px;background:var(--vscode-badge-background,#3c3c3c);color:var(--vscode-badge-foreground,#fff);';
+      chip.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:2px 6px;font-size:11px;border-radius:10px;background:var(--vscode-badge-background,var(--px-border));color:var(--vscode-badge-foreground,#fff);';
       chip.appendChild(document.createTextNode(label));
       if (onClear) {
         const x = moEl('span', null, { textContent: '\u00D7' });
@@ -20191,7 +20191,7 @@ async function moOpenMap(api) {
 
   // Draw world graticule + points
   function draw() {
-    ctx.fillStyle = '#1e1e1e';
+    ctx.fillStyle = 'var(--px-bg)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     // Graticule lines every 30°
     ctx.strokeStyle = '#333'; ctx.lineWidth = 1;

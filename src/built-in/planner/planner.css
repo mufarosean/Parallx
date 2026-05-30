@@ -310,7 +310,7 @@
   left: 6px; top: 7px; bottom: 7px;
   width: 2px;
   border-radius: 2px;
-  background: #d2a64f;
+  background: var(--px-warning);
 }
 .planner-tasks__navitem--active[data-key="review"]::before {
   background: var(--vscode-list-activeSelectionForeground, #ffffff);
@@ -352,8 +352,8 @@
 .planner-empty p { margin: 0; font-size: 13px; line-height: 1.55; }
 
 .planner-section { border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 94%, white); overflow: hidden; }
-.planner-section--review { border-color: color-mix(in srgb, #d2a64f 38%, transparent); background: color-mix(in srgb, #d2a64f 8%, transparent); }
-.planner-section--overdue { border-color: color-mix(in srgb, #e85a5a 38%, transparent); }
+.planner-section--review { border-color: color-mix(in srgb, var(--px-warning) 38%, transparent); background: color-mix(in srgb, var(--px-warning) 8%, transparent); }
+.planner-section--overdue { border-color: color-mix(in srgb, var(--px-danger) 38%, transparent); }
 .planner-section--today { border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 40%, transparent); }
 .planner-section--collapsed .planner-section__list { display: none; }
 
@@ -403,7 +403,7 @@
   cursor: pointer;
   transition: background 100ms ease, color 100ms ease;
 }
-.planner-task--done .planner-task__check { color: #46c46f; }
+.planner-task--done .planner-task__check { color: var(--px-success); }
 .planner-task__check:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent); color: var(--vscode-editor-foreground, #d4d4d4); }
 
 .planner-task__main { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
@@ -435,7 +435,7 @@
 }
 .planner-task__due:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 12%, transparent); color: var(--vscode-button-background, #0e639c); border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 38%, transparent); }
 .planner-task__due--empty { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 45%, transparent); font-style: italic; }
-.planner-task__due--overdue { color: #f08585; border-color: color-mix(in srgb, #e85a5a 40%, transparent); }
+.planner-task__due--overdue { color: var(--px-danger); border-color: color-mix(in srgb, var(--px-danger) 40%, transparent); }
 
 .planner-task__plan,
 .planner-task__more {
@@ -451,7 +451,7 @@
 }
 .planner-task:hover .planner-task__plan,
 .planner-task:hover .planner-task__more { opacity: 1; }
-.planner-task__plan:hover { color: #46c46f; background: color-mix(in srgb, #46c46f 12%, transparent); }
+.planner-task__plan:hover { color: var(--px-success); background: color-mix(in srgb, var(--px-success) 12%, transparent); }
 .planner-task__more:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent); color: var(--vscode-editor-foreground, #d4d4d4); }
 
 /* ── Event popover (calendar quick-create + edit) ─────────────────────── */
@@ -671,12 +671,12 @@
 }
 .planner-popover__btn--primary:hover { filter: brightness(1.08); background: var(--vscode-button-background, #0e639c); }
 .planner-popover__btn--danger {
-  color: #f08585;
-  border-color: color-mix(in srgb, #e85a5a 38%, transparent);
+  color: var(--px-danger);
+  border-color: color-mix(in srgb, var(--px-danger) 38%, transparent);
 }
 .planner-popover__btn--danger:hover {
-  background: color-mix(in srgb, #e85a5a 14%, transparent);
-  color: #f3aeae;
+  background: color-mix(in srgb, var(--px-danger) 14%, transparent);
+  color: var(--px-danger);
 }
 
 /* ── Context menu (existing) ──────────────────────────────────────────── */
@@ -714,7 +714,7 @@
   transition: background 100ms ease;
 }
 .planner-menu__item:hover { background: var(--vscode-menu-selectionBackground, color-mix(in srgb, var(--vscode-button-background, #0e639c) 40%, transparent)); color: var(--vscode-menu-selectionForeground, #fff); }
-.planner-menu__item--danger:hover { background: color-mix(in srgb, #e85a5a 22%, transparent); color: #f3aeae; }
+.planner-menu__item--danger:hover { background: color-mix(in srgb, var(--px-danger) 22%, transparent); color: var(--px-danger); }
 
 
 /* ── Calendar chrome — sharp, no pills ────────────────────────────────── */
@@ -953,7 +953,7 @@
   position: absolute;
   left: 0; right: 0;
   height: 2px;
-  background: linear-gradient(90deg, #e85a5a, color-mix(in srgb, #e85a5a 75%, transparent));
+  background: linear-gradient(90deg, var(--px-danger), color-mix(in srgb, var(--px-danger) 75%, transparent));
   box-shadow: 0 0 8px rgba(232, 90, 90, 0.35);
   z-index: 2;
   pointer-events: none;
@@ -963,13 +963,13 @@
   left: -5px; top: -4px;
   width: 10px; height: 10px;
   border-radius: 50%;
-  background: #e85a5a;
-  box-shadow: 0 0 0 2px color-mix(in srgb, #e85a5a 30%, transparent);
+  background: var(--px-danger);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--px-danger) 30%, transparent);
   animation: planner-now-pulse 2.4s ease-in-out infinite;
 }
 @keyframes planner-now-pulse {
-  0%, 100% { box-shadow: 0 0 0 2px color-mix(in srgb, #e85a5a 30%, transparent); }
-  50%      { box-shadow: 0 0 0 5px color-mix(in srgb, #e85a5a 8%, transparent); }
+  0%, 100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--px-danger) 30%, transparent); }
+  50%      { box-shadow: 0 0 0 5px color-mix(in srgb, var(--px-danger) 8%, transparent); }
 }
 .planner-week__event {
   position: absolute;
@@ -1093,7 +1093,7 @@
   position: absolute;
   left: 0; right: 0;
   height: 2px;
-  background: linear-gradient(90deg, #e85a5a, color-mix(in srgb, #e85a5a 75%, transparent));
+  background: linear-gradient(90deg, var(--px-danger), color-mix(in srgb, var(--px-danger) 75%, transparent));
   box-shadow: 0 0 10px rgba(232, 90, 90, 0.4);
   z-index: 2;
   pointer-events: none;
@@ -1103,8 +1103,8 @@
   left: -5px; top: -4px;
   width: 10px; height: 10px;
   border-radius: 50%;
-  background: #e85a5a;
-  box-shadow: 0 0 0 2px color-mix(in srgb, #e85a5a 30%, transparent);
+  background: var(--px-danger);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--px-danger) 30%, transparent);
   animation: planner-now-pulse 2.4s ease-in-out infinite;
 }
 .planner-day__event {
@@ -1165,10 +1165,10 @@
 }
 .pl-ts__tile-value { font-size: 18px; font-weight: 700; line-height: 1; color: var(--vscode-editor-foreground, #f3f3f3); font-variant-numeric: tabular-nums; }
 .pl-ts__tile-label { font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); margin-top: 4px; }
-.pl-ts__tile--review { background: color-mix(in srgb, #d2a64f 18%, transparent); }
+.pl-ts__tile--review { background: color-mix(in srgb, var(--px-warning) 18%, transparent); }
 .pl-ts__tile--today { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 18%, transparent); }
-.pl-ts__tile--overdue { background: color-mix(in srgb, #e85a5a 18%, transparent); }
-.pl-ts__tile--overdue .pl-ts__tile-value { color: #f08585; }
+.pl-ts__tile--overdue { background: color-mix(in srgb, var(--px-danger) 18%, transparent); }
+.pl-ts__tile--overdue .pl-ts__tile-value { color: var(--px-danger); }
 
 .pl-ts__list {
   display: flex; flex-direction: column;
@@ -1190,7 +1190,7 @@
 }
 .pl-ts__row:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
 .pl-ts__row--review .pl-ts__row-title { color: var(--vscode-editor-foreground, #f3f3f3); }
-.pl-ts__row--overdue .pl-ts__row-meta { color: #f08585; font-weight: 600; }
+.pl-ts__row--overdue .pl-ts__row-meta { color: var(--px-danger); font-weight: 600; }
 .pl-ts__row-title { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pl-ts__row-meta { font-size: 11px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent); flex: 0 0 auto; }
 

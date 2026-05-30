@@ -379,8 +379,8 @@
   transition: background 140ms ease, transform 140ms ease, box-shadow 200ms ease;
 }
 .dashboard-widget__status[data-value="running"] { display: inline-block; background: var(--vscode-button-background, #0e639c); animation: dashboard-status-pulse 1.4s ease-in-out infinite; }
-.dashboard-widget__status[data-value="error"]   { display: inline-block; background: #e85a5a; box-shadow: 0 0 0 3px color-mix(in srgb, #e85a5a 22%, transparent); }
-.dashboard-widget__status[data-value="stale"]   { display: inline-block; background: #d2a64f; }
+.dashboard-widget__status[data-value="error"]   { display: inline-block; background: var(--px-danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--px-danger) 22%, transparent); }
+.dashboard-widget__status[data-value="stale"]   { display: inline-block; background: var(--px-warning); }
 
 @keyframes dashboard-status-pulse {
   0%, 100% { transform: scale(1);   opacity: 1; }
@@ -418,8 +418,8 @@
   color: var(--vscode-editor-foreground, #d4d4d4);
 }
 .dashboard-widget__btn--danger:hover {
-  color: #e85a5a;
-  background: color-mix(in srgb, #e85a5a 14%, transparent);
+  color: var(--px-danger);
+  background: color-mix(in srgb, var(--px-danger) 14%, transparent);
 }
 .dashboard-widget__btn:focus-visible {
   outline: 2px solid var(--vscode-focusBorder, #5b9bd5);
@@ -562,8 +562,8 @@
 .dashboard-widget__error {
   padding: 12px;
   border-radius: 8px;
-  background: color-mix(in srgb, #e85a5a 12%, transparent);
-  color: #f3aeae;
+  background: color-mix(in srgb, var(--px-danger) 12%, transparent);
+  color: var(--px-danger);
   font-size: 12.5px;
 }
 
@@ -937,7 +937,7 @@
 .rfw__icon--html { background: color-mix(in srgb, #e44d26 22%, transparent); color: #ff8e6c; }
 .rfw__icon--py   { background: color-mix(in srgb, #3776ab 22%, transparent); color: #76b2e3; }
 .rfw__icon--sql  { background: color-mix(in srgb, #c97a2c 22%, transparent); color: #f0b76a; }
-.rfw__icon--pdf  { background: color-mix(in srgb, #e85a5a 22%, transparent); color: #f3aeae; }
+.rfw__icon--pdf  { background: color-mix(in srgb, var(--px-danger) 22%, transparent); color: var(--px-danger); }
 
 .rfw__text {
   display: flex;
@@ -1180,12 +1180,12 @@
 .dashboard-md__error {
   padding: 14px;
   border-radius: 10px;
-  border: 1px solid color-mix(in srgb, #e85a5a 35%, transparent);
-  background: color-mix(in srgb, #e85a5a 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--px-danger) 35%, transparent);
+  background: color-mix(in srgb, var(--px-danger) 10%, transparent);
   font-size: 12.5px;
   color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
 }
-.dashboard-md__error strong { display: block; margin-bottom: 4px; color: #e85a5a; font-weight: 600; }
+.dashboard-md__error strong { display: block; margin-bottom: 4px; color: var(--px-danger); font-weight: 600; }
 .dashboard-md__error p { margin: 0; line-height: 1.55; }
 
 
@@ -1556,8 +1556,8 @@
   color: var(--vscode-menu-selectionForeground, #ffffff);
 }
 .dashboard-sidebar-menu__item--danger:hover {
-  background: color-mix(in srgb, #e85a5a 22%, transparent);
-  color: #f3aeae;
+  background: color-mix(in srgb, var(--px-danger) 22%, transparent);
+  color: var(--px-danger);
 }
 .dashboard-sidebar-menu__item svg {
   flex: 0 0 auto;

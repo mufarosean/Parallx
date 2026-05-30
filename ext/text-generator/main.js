@@ -55,12 +55,12 @@ function injectStyles() {
   align-items: center;
   gap: 6px;
   padding: 8px 10px;
-  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
 }
 .tg-search-wrap .tg-icon { color: var(--vscode-descriptionForeground); }
 .tg-search {
   flex: 1;
-  background: var(--vscode-input-background, #3c3c3c);
+  background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #555);
   border-radius: var(--parallx-radius-sm, 3px);
@@ -89,7 +89,7 @@ function injectStyles() {
 }
 .tg-scene-input {
   flex: 1;
-  background: var(--vscode-input-background, #1e1e1e);
+  background: var(--vscode-input-background, var(--px-bg));
   color: var(--vscode-input-foreground, #ddd);
   border: 1px solid var(--vscode-input-border, rgba(255,255,255,0.1));
   border-radius: 3px;
@@ -122,7 +122,7 @@ function injectStyles() {
   display: flex;
   flex-direction: column;
   padding: 4px 0;
-  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
 }
 .tg-nav-item {
   display: flex;
@@ -154,7 +154,7 @@ function injectStyles() {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--vscode-descriptionForeground);
-  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
 }
 .tg-chat-section-header .tg-count {
   font-weight: 400;
@@ -266,7 +266,7 @@ function injectStyles() {
   align-items: center;
   gap: 16px;
   padding: 20px 24px;
-  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   flex-shrink: 0;
 }
 .tg-page-header .tg-icon { color: var(--vscode-descriptionForeground); }
@@ -297,8 +297,8 @@ function injectStyles() {
 .tg-card {
   display: flex;
   flex-direction: column;
-  background: var(--vscode-editorWidget-background, #252526);
-  border: 1px solid var(--vscode-panel-border, #2a2a2a);
+  background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
+  border: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   border-radius: var(--parallx-radius-lg, 8px);
   padding: 16px;
   cursor: pointer;
@@ -349,7 +349,7 @@ function injectStyles() {
   gap: 4px;
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-top: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
 }
 .tg-card-action {
   display: flex;
@@ -413,9 +413,9 @@ function injectStyles() {
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  border: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   border-radius: var(--parallx-radius-md, 6px);
-  background: var(--vscode-editorWidget-background, #252526);
+  background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
   cursor: pointer;
   font-family: var(--parallx-fontFamily-ui);
   font-size: var(--parallx-fontSize-base, 12px);
@@ -465,7 +465,7 @@ function injectStyles() {
 }
 .tg-form-input {
   width: 100%;
-  background: var(--vscode-input-background, #3c3c3c);
+  background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #555);
   border-radius: var(--parallx-radius-sm, 3px);
@@ -478,7 +478,7 @@ function injectStyles() {
 .tg-form-input:focus { border-color: var(--vscode-focusBorder, #007fd4); }
 .tg-form-input[type="number"] { width: 80px; }
 .tg-form-select {
-  background: var(--vscode-input-background, #3c3c3c);
+  background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #555);
   border-radius: var(--parallx-radius-sm, 3px);
@@ -525,16 +525,16 @@ function injectStyles() {
   align-items: center;
   gap: 8px;
   padding: 6px 16px;
-  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   flex-shrink: 0;
-  background: var(--vscode-editorWidget-background, #252526);
+  background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
 }
 .tg-chat-toolbar-label {
   font-size: var(--parallx-fontSize-base, 12px);
   color: var(--vscode-descriptionForeground);
 }
 .tg-chat-toolbar-select {
-  background: var(--vscode-input-background, #3c3c3c);
+  background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #555);
   border-radius: var(--parallx-radius-sm, 3px);
@@ -620,7 +620,7 @@ function injectStyles() {
 
 /* Inline editing — Perchance-style double-click-to-edit */
 .tg-msg-body--editing {
-  background: var(--vscode-input-background, #3c3c3c);
+  background: var(--vscode-input-background, var(--px-border));
   border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.08));
   border-radius: var(--parallx-radius-sm, 3px);
   padding: 8px;
@@ -681,7 +681,7 @@ function injectStyles() {
   align-items: center;
   gap: 6px;
   padding: 6px 16px;
-  border-top: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-top: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   overflow-x: auto;
   flex-shrink: 0;
 }
@@ -750,8 +750,8 @@ function injectStyles() {
   bottom: 60px;
   right: 16px;
   min-width: 200px;
-  background: var(--vscode-editorWidget-background, #252526);
-  border: 1px solid var(--vscode-panel-border, #2a2a2a);
+  background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
+  border: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   border-radius: var(--parallx-radius-md, 6px);
   box-shadow: 0 4px 16px rgba(0,0,0,0.3);
   z-index: 50;
@@ -796,15 +796,15 @@ function injectStyles() {
 .tg-input-wrap {
   flex-shrink: 0;
   padding: 10px 16px 12px;
-  border-top: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-top: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   background: var(--vscode-editor-background);
 }
 .tg-input-card {
   display: flex;
   flex-direction: column;
-  border: 1px solid color-mix(in srgb, var(--vscode-input-border, #3c3c3c) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-input-border, var(--px-border)) 70%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--vscode-input-background, #3c3c3c) 92%, var(--vscode-editorWidget-background, #252526) 8%);
+  background: color-mix(in srgb, var(--vscode-input-background, var(--px-border)) 92%, var(--vscode-editorWidget-background, var(--px-bg-elevated)) 8%);
   overflow: hidden;
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
@@ -903,7 +903,7 @@ function injectStyles() {
   align-items: center;
   gap: 2px;
   padding: 4px 10px;
-  border-top: 1px solid color-mix(in srgb, var(--vscode-panel-border, #2a2a2a) 60%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--vscode-panel-border, var(--px-bg-inset)) 60%, transparent);
   flex-wrap: wrap;
   flex-shrink: 0;
 }
@@ -1118,7 +1118,7 @@ function injectStyles() {
 .tg-msg-edit-textarea {
   width: 100%;
   min-height: 60px;
-  background: var(--vscode-input-background, #3c3c3c);
+  background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #555);
   border-radius: var(--parallx-radius-sm, 3px);
@@ -1154,7 +1154,7 @@ function injectStyles() {
 .tg-msg-edit-cancel {
   background: transparent;
   color: var(--vscode-descriptionForeground);
-  border: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
 }
 
 /* ═══ System Prompt Modal ═══ */
@@ -1172,8 +1172,8 @@ function injectStyles() {
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  background: var(--vscode-editorWidget-background, #252526);
-  border: 1px solid var(--vscode-panel-border, #2a2a2a);
+  background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
+  border: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   border-radius: var(--parallx-radius-lg, 8px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
   overflow: hidden;
@@ -1183,7 +1183,7 @@ function injectStyles() {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
 }
 .tg-modal-title {
   font-size: var(--parallx-fontSize-lg, 14px);
@@ -1231,14 +1231,14 @@ function injectStyles() {
 .tg-modal-body .tg-prompt-content {
   padding: 8px 12px;
   margin-bottom: 8px;
-  background: color-mix(in srgb, var(--vscode-input-background, #3c3c3c) 50%, transparent);
+  background: color-mix(in srgb, var(--vscode-input-background, var(--px-border)) 50%, transparent);
   border-radius: var(--parallx-radius-sm, 3px);
   border-left: 3px solid var(--vscode-focusBorder, #007fd4);
 }
 .tg-modal-body .tg-prompt-diag {
   padding: 8px 12px;
   margin-bottom: 8px;
-  background: color-mix(in srgb, var(--vscode-editorWidget-background, #252526) 80%, transparent);
+  background: color-mix(in srgb, var(--vscode-editorWidget-background, var(--px-bg-elevated)) 80%, transparent);
   border-radius: var(--parallx-radius-sm, 3px);
   border-left: 3px solid var(--vscode-charts-yellow, #d7ba7d);
   font-size: 11.5px;
@@ -1253,7 +1253,7 @@ function injectStyles() {
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  border-top: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-top: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   font-size: var(--parallx-fontSize-sm, 11px);
   color: var(--vscode-descriptionForeground);
 }
@@ -1271,7 +1271,7 @@ function injectStyles() {
   gap: 12px;
   margin-bottom: 20px;
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
 }
 .tg-chat-settings-title {
   font-size: 16px;
@@ -1308,9 +1308,9 @@ function injectStyles() {
   flex: 1;
   max-width: 280px;
   padding: 4px 8px;
-  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border: 1px solid var(--vscode-input-border, var(--px-border));
   border-radius: var(--parallx-radius-sm, 3px);
-  background: var(--vscode-input-background, #3c3c3c);
+  background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground);
   font-family: var(--parallx-fontFamily-ui);
   font-size: var(--parallx-fontSize-base, 12px);
@@ -1319,9 +1319,9 @@ function injectStyles() {
   flex: 1;
   max-width: 280px;
   padding: 4px 8px;
-  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border: 1px solid var(--vscode-input-border, var(--px-border));
   border-radius: var(--parallx-radius-sm, 3px);
-  background: var(--vscode-input-background, #3c3c3c);
+  background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground);
   font-family: var(--parallx-fontFamily-ui);
   font-size: var(--parallx-fontSize-base, 12px);
@@ -1341,8 +1341,8 @@ function injectStyles() {
   width: 36px;
   height: 18px;
   border-radius: 9px;
-  background: var(--vscode-input-background, #3c3c3c);
-  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  background: var(--vscode-input-background, var(--px-border));
+  border: 1px solid var(--vscode-input-border, var(--px-border));
   position: relative;
   transition: background 120ms ease;
   cursor: pointer;
@@ -1374,9 +1374,9 @@ function injectStyles() {
   align-items: center;
   gap: 4px;
   padding: 3px 10px;
-  border: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   border-radius: 12px;
-  background: var(--vscode-editorWidget-background, #252526);
+  background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
   color: var(--vscode-foreground);
   font-size: var(--parallx-fontSize-sm, 11px);
 }
@@ -1392,7 +1392,7 @@ function injectStyles() {
 .tg-cs-chip-remove:hover { opacity: 1; }
 .tg-cs-add-btn {
   padding: 3px 10px;
-  border: 1px dashed var(--vscode-panel-border, #2a2a2a);
+  border: 1px dashed var(--vscode-panel-border, var(--px-bg-inset));
   border-radius: 12px;
   background: transparent;
   color: var(--vscode-foreground);
@@ -1440,7 +1440,7 @@ function injectStyles() {
   gap: 12px;
   margin-bottom: 20px;
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
 }
 .tg-ce-title {
   font-size: 18px;
@@ -1472,9 +1472,9 @@ function injectStyles() {
   width: 100%;
   box-sizing: border-box;
   padding: 6px 10px;
-  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border: 1px solid var(--vscode-input-border, var(--px-border));
   border-radius: var(--parallx-radius-sm, 3px);
-  background: var(--vscode-input-background, #1e1e1e);
+  background: var(--vscode-input-background, var(--px-bg));
   color: var(--vscode-input-foreground, #ccc);
   font-family: var(--parallx-fontFamily-ui);
   font-size: var(--parallx-fontSize-base, 12px);
@@ -1488,9 +1488,9 @@ function injectStyles() {
   box-sizing: border-box;
   min-height: 80px;
   padding: 8px 10px;
-  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border: 1px solid var(--vscode-input-border, var(--px-border));
   border-radius: var(--parallx-radius-sm, 3px);
-  background: var(--vscode-input-background, #1e1e1e);
+  background: var(--vscode-input-background, var(--px-bg));
   color: var(--vscode-input-foreground, #ccc);
   font-family: var(--parallx-fontFamily-ui);
   font-size: var(--parallx-fontSize-base, 12px);
@@ -1507,9 +1507,9 @@ function injectStyles() {
   width: 100%;
   box-sizing: border-box;
   padding: 6px 10px;
-  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border: 1px solid var(--vscode-input-border, var(--px-border));
   border-radius: var(--parallx-radius-sm, 3px);
-  background: var(--vscode-input-background, #1e1e1e);
+  background: var(--vscode-input-background, var(--px-bg));
   color: var(--vscode-input-foreground, #ccc);
   font-family: var(--parallx-fontFamily-ui);
   font-size: var(--parallx-fontSize-base, 12px);
@@ -1520,16 +1520,16 @@ function injectStyles() {
 }
 .tg-ce-separator {
   border: none;
-  border-top: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-top: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   margin: 20px 0;
 }
 .tg-ce-more-btn {
   display: block;
   margin: 12px auto;
   padding: 6px 20px;
-  border: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   border-radius: 14px;
-  background: var(--vscode-editorWidget-background, #252526);
+  background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
   color: var(--vscode-descriptionForeground);
   font-family: var(--parallx-fontFamily-ui);
   font-size: var(--parallx-fontSize-sm, 11px);
@@ -1552,11 +1552,11 @@ function injectStyles() {
   gap: 12px;
   margin-top: 20px;
   padding-top: 16px;
-  border-top: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-top: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
 }
 .tg-ce-cancel-btn {
   padding: 6px 16px;
-  border: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   border-radius: var(--parallx-radius-sm, 3px);
   background: transparent;
   color: var(--vscode-foreground);
@@ -4894,7 +4894,7 @@ function renderChatEditor(container, parallx, input) {
       lbl.appendChild(inputEl);
       return lbl;
     };
-    const inputStyle = 'padding:6px 10px; border:1px solid var(--vscode-input-border, #3c3c3c); border-radius:4px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font-size:12px; font-family:var(--parallx-fontFamily-ui); box-sizing:border-box; width:100%;';
+    const inputStyle = 'padding:6px 10px; border:1px solid var(--vscode-input-border, var(--px-border)); border-radius:4px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font-size:12px; font-family:var(--parallx-fontFamily-ui); box-sizing:border-box; width:100%;';
 
     const labelInput = el('input');
     labelInput.type = 'text';
@@ -5002,7 +5002,7 @@ function renderChatEditor(container, parallx, input) {
     const shortcuts = getThreadShortcuts();
     bulkInput.value = serializeShortcuts(shortcuts);
     bulkInput.rows = 16;
-    bulkInput.style.cssText = 'width:100%; box-sizing:border-box; padding:10px; border:1px solid var(--vscode-input-border, #3c3c3c); border-radius:4px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font-size:12px; font-family:monospace; line-height:1.5; resize:vertical; min-height:200px;';
+    bulkInput.style.cssText = 'width:100%; box-sizing:border-box; padding:10px; border:1px solid var(--vscode-input-border, var(--px-border)); border-radius:4px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font-size:12px; font-family:monospace; line-height:1.5; resize:vertical; min-height:200px;';
     body.appendChild(bulkInput);
 
     modal.appendChild(body);
@@ -6645,7 +6645,7 @@ function renderChatEditor(container, parallx, input) {
       const nameInput = el('input');
       nameInput.type = 'text';
       nameInput.value = currentName;
-      nameInput.style.cssText = 'padding:6px 10px; border:1px solid var(--vscode-input-border, #3c3c3c); border-radius:4px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font-size:12px; width:100%; box-sizing:border-box;';
+      nameInput.style.cssText = 'padding:6px 10px; border:1px solid var(--vscode-input-border, var(--px-border)); border-radius:4px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font-size:12px; width:100%; box-sizing:border-box;';
       body.appendChild(nameInput);
       modal.appendChild(body);
       const footer = el('div', 'tg-modal-footer');
