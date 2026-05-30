@@ -89,6 +89,7 @@ export class MenuBuilder extends Disposable {
     // Register dropdown items for View menu — delegates to structural commands
     this._register(this._titlebar.registerMenuBarDropdownItems('view', [
       { commandId: 'workbench.action.showCommands', title: 'Command Palette…', group: '1_nav', order: 1 },
+      { commandId: 'theme-editor.open', title: 'Appearance…', group: '2_appearance', order: 0 },
       { commandId: 'workbench.action.toggleSidebar', title: 'Toggle Sidebar', group: '2_appearance', order: 1 },
       { commandId: 'workbench.action.togglePanel', title: 'Toggle Panel', group: '2_appearance', order: 2 },
       { commandId: 'workbench.action.toggleMaximizedPanel', title: 'Maximize Panel', group: '2_appearance', order: 2.5 },
@@ -237,14 +238,10 @@ export class MenuBuilder extends Disposable {
         disabled: true,
       },
       {
-        id: 'manage.themes',
-        label: 'Themes',
+        id: 'theme-editor.open',
+        label: 'Appearance…',
+        keybinding: this.keybindingHint('theme-editor.open'),
         group: '3_themes',
-        submenu: [
-          { id: 'workbench.action.selectTheme', label: 'Color Theme', keybinding: 'Ctrl+T', group: '1_themes' },
-          { id: 'workbench.action.selectIconTheme', label: 'File Icon Theme', group: '1_themes', disabled: true },
-          { id: 'workbench.action.selectProductIconTheme', label: 'Product Icon Theme', group: '1_themes', disabled: true },
-        ],
       },
       {
         id: 'manage.checkUpdates',
