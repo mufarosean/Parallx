@@ -570,23 +570,31 @@
 }
 
 .parallx-chat-empty-state-icon {
-  margin-bottom: 16px;
-  opacity: 0.4;
-  color: var(--vscode-foreground, #cccccc);
+  margin-bottom: var(--px-space-4);
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--px-radius-lg);
+  background: var(--px-accent-soft);
+  color: var(--px-accent);
+  box-shadow: var(--px-edge-light);
 }
 
 .parallx-chat-empty-state-title {
-  font-size: var(--parallx-fontSize-lg);
-  font-weight: 500;
-  color: var(--vscode-foreground, #cccccc);
-  margin-bottom: 8px;
+  font-size: var(--px-text-lg);
+  font-weight: 600;
+  letter-spacing: -0.014em;
+  color: var(--px-text);
+  margin-bottom: var(--px-space-2);
 }
 
 .parallx-chat-empty-state-subtitle {
-  font-size: var(--parallx-fontSize-base);
-  line-height: 1.5;
-  max-width: 280px;
-  color: var(--vscode-descriptionForeground, #989898);
+  font-size: var(--px-text-base);
+  line-height: var(--px-leading-base);
+  max-width: 300px;
+  color: var(--px-text-muted);
 }
 
 .parallx-chat-empty-state-note {
@@ -2007,24 +2015,36 @@
 
 /* ── Session items ── */
 
+/* Rounded-inset session rows — same idiom as the explorer tree, with a
+   left accent rail on the active conversation. Consistent across the app. */
 .parallx-chat-session-sidebar-item {
   display: flex;
   align-items: center;
   position: relative;
-  padding: 8px 30px 8px 10px;
+  margin: 1px var(--px-space-2);
+  padding: var(--px-space-2) 28px var(--px-space-2) var(--px-space-3);
+  border-radius: var(--px-radius-md);
   cursor: pointer;
-  transition: background 100ms ease;
-  border-left: 3px solid transparent;
-  min-height: 32px;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
+  min-height: 34px;
 }
 
 .parallx-chat-session-sidebar-item:hover {
-  background: var(--vscode-list-hoverBackground, #2a2d2e);
+  background: var(--px-surface-hover);
 }
 
 .parallx-chat-session-sidebar-item--active {
-  background: var(--vscode-list-activeSelectionBackground, #04395e);
-  border-left-color: var(--vscode-focusBorder, #007fd4);
+  background: var(--px-surface-selected);
+}
+.parallx-chat-session-sidebar-item--active::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: var(--px-radius-full);
+  background: var(--px-accent);
 }
 
 .parallx-chat-session-sidebar-item-info {
@@ -2114,38 +2134,51 @@
 .parallx-chat-empty-state-hints {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  margin-top: 20px;
-  max-width: 320px;
+  gap: var(--px-space-2);
+  margin-top: var(--px-space-6);
+  max-width: 380px;
   width: 100%;
 }
 
+/* Tactile suggestion cards: left accent icon tile, clean surface, a real
+   lift on hover (translate + shadow + accent edge) so they feel pressable
+   rather than like flat menu rows. */
 .parallx-chat-hint-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--px-space-2);
   min-width: 0;
-  padding: 6px 10px;
-  border-radius: var(--parallx-radius-md);
-  border: 1px solid var(--vscode-widget-border, #2d2d2d);
-  background: var(--vscode-editorWidget-background, #252526);
+  padding: var(--px-space-2) var(--px-space-3);
+  border-radius: var(--px-radius-md);
+  border: 1px solid var(--px-border);
+  background: var(--px-bg-elevated);
+  text-align: left;
   cursor: pointer;
-  transition: background 100ms ease, border-color 100ms ease;
+  transition:
+    background var(--px-dur-fast) var(--px-ease),
+    border-color var(--px-dur-fast) var(--px-ease),
+    transform var(--px-dur-fast) var(--px-ease-spring),
+    box-shadow var(--px-dur-fast) var(--px-ease);
 }
 
 .parallx-chat-hint-item:hover {
-  background: var(--vscode-list-hoverBackground, #2a2d2e);
-  border-color: var(--vscode-focusBorder, #007fd4);
+  background: var(--px-surface-hover);
+  border-color: var(--px-border-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--px-shadow-sm);
 }
+.parallx-chat-hint-item:active { transform: translateY(0); }
 
 .parallx-chat-hint-icon {
   flex-shrink: 0;
-  width: 20px;
-  height: 16px;
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--vscode-descriptionForeground, #8b8b8b);
+  border-radius: var(--px-radius-sm);
+  background: var(--px-accent-soft);
+  color: var(--px-accent);
 }
 
 .parallx-chat-hint-icon svg {
@@ -2156,21 +2189,22 @@
 .parallx-chat-hint-text {
   display: flex;
   flex-direction: column;
+  gap: 1px;
   min-width: 0;
 }
 
 .parallx-chat-hint-label {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   font-weight: 600;
-  color: var(--vscode-foreground, #cccccc);
+  color: var(--px-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .parallx-chat-hint-desc {
-  font-size: var(--parallx-fontSize-xs);
-  color: var(--vscode-descriptionForeground, #8b8b8b);
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
