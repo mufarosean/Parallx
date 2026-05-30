@@ -10,6 +10,7 @@
 // changing one value re-skins the whole app + extensions via the bridge.
 
 const STORAGE_KEY = 'px-appearance';
+const PRESETS_KEY = 'px-appearance-presets';
 
 export type PxBaseTheme = 'slate' | 'warm' | 'ember';
 
@@ -64,6 +65,48 @@ export function readAppearance(): PxAppearanceState {
 
 export function writeAppearance(state: PxAppearanceState): void {
   try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* ignore */ }
+}
+
+// ── Saved looks (user-created themes) ───────────────────────────────────────
+// A "custom theme" at this layer is a named bookmark of base + accent. Users
+// craft a look with the controls, then save it to recall later.
+
+export interface PxThemePreset extends PxAppearanceState {
+  id: string;
+  name: string;
+}
+
+export function readPresets(): PxThemePreset[] {
+  try {
+    const raw = window.localStorage.getItem(PRESETS_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return arr.filter(p => p && typeof p.id === 'string' && typeof p.name === 'string');
+    }
+  } catch { /* ignore */ }
+  return [];
+}
+
+function writePresets(presets: PxThemePreset[]): void {
+  try { window.localStorage.setItem(PRESETS_KEY, JSON.stringify(presets)); } catch { /* ignore */ }
+}
+
+export function savePreset(name: string, state: PxAppearanceState): PxThemePreset {
+  const preset: PxThemePreset = {
+    id: `t_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e4).toString(36)}`,
+    name: name.trim() || 'Custom',
+    base: state.base,
+    accent: state.accent,
+    customHue: state.customHue,
+  };
+  const presets = readPresets();
+  presets.push(preset);
+  writePresets(presets);
+  return preset;
+}
+
+export function deletePreset(id: string): void {
+  writePresets(readPresets().filter(p => p.id !== id));
 }
 
 function hslToRgbString(h: number, s: number, l: number): string {

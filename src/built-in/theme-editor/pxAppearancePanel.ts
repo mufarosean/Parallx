@@ -18,6 +18,9 @@ import {
   readAppearance,
   writeAppearance,
   applyAppearance,
+  readPresets,
+  savePreset,
+  deletePreset,
   type PxAppearanceState,
   type PxBaseTheme,
 } from '../../theme/pxAppearance.js';
@@ -34,6 +37,7 @@ export class PxAppearancePanel implements IDisposable {
   private readonly _accentChips = new Map<string, HTMLElement>();
   private _hueRow?: HTMLElement;
   private _hueInput?: HTMLInputElement;
+  private _presetsRow?: HTMLElement;
 
   constructor(container: HTMLElement, _themeService?: IThemeService, _globalStorage?: IStorage) {
     this._container = container;
@@ -70,6 +74,7 @@ export class PxAppearancePanel implements IDisposable {
     body.appendChild(this._renderBaseSection());
     body.appendChild(this._renderAccentSection());
     body.appendChild(this._renderPreviewSection());
+    body.appendChild(this._renderSavedSection());
 
     root.appendChild(body);
     this._container.appendChild(root);
@@ -260,6 +265,108 @@ export class PxAppearancePanel implements IDisposable {
     card.querySelector('.px-pv-link')?.addEventListener('click', e => e.preventDefault());
     section.appendChild(card);
     return section;
+  }
+
+  // ── Saved looks (create / recall custom themes) ───────────────────────
+  private _renderSavedSection(): HTMLElement {
+    const section = document.createElement('section');
+    section.className = 'px-appearance-section';
+    section.appendChild(this._sectionHeading('Your themes', 'Save the current palette + accent as a named theme to recall later.'));
+
+    // Save bar — name input + save button.
+    const saveBar = document.createElement('div');
+    saveBar.className = 'px-appearance-savebar';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'px-appearance-name-input';
+    nameInput.placeholder = 'Name this look…';
+    nameInput.maxLength = 32;
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'px-appearance-save-btn';
+    saveBtn.textContent = 'Save current';
+    const doSave = () => {
+      const name = nameInput.value.trim();
+      if (!name) { nameInput.focus(); return; }
+      savePreset(name, this._state);
+      nameInput.value = '';
+      this._refreshPresets();
+    };
+    saveBtn.addEventListener('click', doSave);
+    nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSave(); });
+    saveBar.appendChild(nameInput);
+    saveBar.appendChild(saveBtn);
+    section.appendChild(saveBar);
+
+    const row = document.createElement('div');
+    row.className = 'px-appearance-presets-row';
+    this._presetsRow = row;
+    section.appendChild(row);
+    this._refreshPresets();
+
+    return section;
+  }
+
+  private _refreshPresets(): void {
+    const row = this._presetsRow;
+    if (!row) return;
+    row.replaceChildren();
+
+    const presets = readPresets();
+    if (presets.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'px-appearance-presets-empty';
+      empty.textContent = 'No saved themes yet.';
+      row.appendChild(empty);
+      return;
+    }
+
+    for (const preset of presets) {
+      const chip = document.createElement('div');
+      chip.className = 'px-preset-chip';
+
+      const apply = document.createElement('button');
+      apply.type = 'button';
+      apply.className = 'px-preset-chip-apply';
+      apply.title = `Apply ${preset.name}`;
+
+      // Swatch reflecting the preset's accent.
+      const accent = PX_ACCENTS.find(a => a.id === preset.accent);
+      const swatchColor = preset.accent === 'custom' && typeof preset.customHue === 'number'
+        ? `hsl(${preset.customHue} 58% 62%)`
+        : accent ? `hsl(${accent.h} ${accent.s}% ${accent.l}%)` : 'var(--px-accent)';
+      const dot = document.createElement('span');
+      dot.className = 'px-preset-chip-dot';
+      dot.style.background = swatchColor;
+      apply.appendChild(dot);
+
+      const label = document.createElement('span');
+      label.className = 'px-preset-chip-name';
+      label.textContent = preset.name;
+      apply.appendChild(label);
+
+      apply.addEventListener('click', () => {
+        this._state = { base: preset.base, accent: preset.accent, customHue: preset.customHue };
+        this._commit();
+        this._syncBaseSelection();
+        this._syncAccentSelection();
+      });
+      chip.appendChild(apply);
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'px-preset-chip-del';
+      del.title = `Delete ${preset.name}`;
+      del.setAttribute('aria-label', `Delete ${preset.name}`);
+      del.textContent = '×';
+      del.addEventListener('click', () => {
+        deletePreset(preset.id);
+        this._refreshPresets();
+      });
+      chip.appendChild(del);
+
+      row.appendChild(chip);
+    }
   }
 
   private _sectionHeading(title: string, hint: string): HTMLElement {
