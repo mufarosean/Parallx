@@ -190,35 +190,61 @@
   border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
 }
 
+/* M83 — content tabs, not IDE chrome. Borderless and quiet by default; a
+   subtle hairline divider only between inactive tabs; the active tab carries
+   a crisp accent top indicator and connects to the editor below. */
 .ui-tab {
   display: flex;
   align-items: center;
-  padding: 0 10px;
+  gap: 6px;
+  padding: 0 12px;
   height: 100%;
   cursor: pointer;
   white-space: nowrap;
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   user-select: none;
   max-width: 200px;
-  color: var(--vscode-tab-inactiveForeground);
-  background-color: var(--vscode-tab-inactiveBackground);
-  border-top: 1px solid transparent;
-  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
-  border-right: 1px solid var(--vscode-tab-border);
-  transition: background-color 0.1s;
+  color: var(--px-text-muted);
+  background-color: transparent;
+  border: 0;
+  transition:
+    background-color var(--px-dur-fast) var(--px-ease),
+    color var(--px-dur-fast) var(--px-ease);
   position: relative;
   box-sizing: border-box;
 }
 
+/* Hairline divider between adjacent inactive tabs (suppressed next to the
+   active tab so its accent edge reads cleanly). */
+.ui-tab:not(.ui-tab--active) + .ui-tab:not(.ui-tab--active)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 1px;
+  background: var(--px-divider);
+}
+
 .ui-tab:hover {
-  background-color: var(--vscode-tab-hoverBackground);
+  color: var(--px-text-secondary);
+  background-color: var(--px-surface-hover);
 }
 
 .ui-tab--active {
-  color: var(--vscode-tab-activeForeground);
-  background-color: var(--vscode-tab-activeBackground);
-  border-top-color: var(--vscode-tab-activeBorderTop, transparent);
-  border-bottom-color: var(--vscode-tab-activeBackground);
+  color: var(--px-text);
+  background-color: var(--px-bg);
+}
+/* Signature accent top indicator — inset from the edges, springs in. */
+.ui-tab--active::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 0;
+  height: 2px;
+  border-radius: 0 0 var(--px-radius-full) var(--px-radius-full);
+  background: var(--px-accent);
 }
 
 .ui-tab--italic .ui-tab-label {

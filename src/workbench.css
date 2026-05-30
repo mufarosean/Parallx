@@ -417,63 +417,61 @@ html, body {
 
 .activity-bar-item {
   width: 48px;
-  height: 48px;
+  height: 44px;
   background: none;
   border: none;
-  border-bottom: 1px solid transparent; /* collapsed: items share one border */
-  color: var(--vscode-activityBar-inactiveForeground);
+  color: var(--px-text-faint);
   font-size: 20px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.15s;
+  transition: color var(--px-dur-fast) var(--px-ease);
   position: relative;
   box-sizing: border-box;
 }
 
+/* M83 — hover lifts a soft rounded surface behind the icon (a tappable
+   "key" you can feel), and the icon brightens. */
+.activity-bar-item::after {
+  content: '';
+  position: absolute;
+  inset: 4px 7px;
+  border-radius: var(--px-radius-md);
+  background: transparent;
+  transition: background var(--px-dur-fast) var(--px-ease);
+  z-index: 0;
+}
 .activity-bar-item:hover {
-  color: var(--vscode-activityBar-foreground);
+  color: var(--px-text);
+}
+.activity-bar-item:hover::after {
+  background: var(--px-surface-hover);
+}
+.activity-bar-item:not(.px-bare):active {
+  transform: var(--px-press);
 }
 
+/* Active — accent icon + a signature left indicator bar (rounded, ~half
+   height, springs in). Distinctive, calm, unmistakable. */
 .activity-bar-item.active {
-  color: var(--vscode-activityBar-foreground);
-  background: var(--vscode-sideBar-background);
-  border-bottom: 1px solid var(--vscode-activityBar-border);
+  color: var(--px-accent);
 }
-
-/* Top border on active item via pseudo-element — no layout shift */
+.activity-bar-item.active::after {
+  background: var(--px-accent-faint);
+}
 .activity-bar-item.active::before {
   content: '';
   position: absolute;
-  top: 0;
   left: 0;
-  right: 0;
-  height: 1px;
-  background: var(--vscode-activityBar-border);
-}
-
-/* First icon: suppress top border — title bar already provides the edge */
-.activity-bar-icons > .activity-bar-item:first-child.active::before {
-  display: none;
-}
-
-/* Mask the container shadow at the active row so it visually connects
-   to the sidebar. Starts at 1px to avoid covering ::before top border. */
-.activity-bar-item.active::after {
-  content: '';
-  position: absolute;
-  top: 1px;
-  right: 0;
-  bottom: 0;
-  width: 1px;
-  background: var(--vscode-sideBar-background);
+  top: 50%;
+  width: 3px;
+  height: 22px;
+  border-radius: 0 var(--px-radius-full) var(--px-radius-full) 0;
+  background: var(--px-accent);
+  transform: translateY(-50%);
+  transition: height var(--px-dur-base) var(--px-ease-spring);
   z-index: 1;
-}
-
-/* First icon: no ::before top border, so mask starts flush at top */
-.activity-bar-icons > .activity-bar-item:first-child.active::after {
-  top: 0;
 }
 /* Icon label within activity bar item */
 .activity-bar-icon-label {
@@ -766,11 +764,10 @@ html, body {
 /* VS Code: .statusbar-item > .statusbar-item-label */
 .statusbar-item > .statusbar-item-label {
   display: flex;
-  gap: 3px;
-  height: 100%;
-  margin-right: 3px;
-  margin-left: 3px;
-  padding: 0 5px;
+  gap: 4px;
+  height: 18px;
+  margin: auto 1px;
+  padding: 0 7px;
   white-space: pre;
   align-items: center;
   text-overflow: ellipsis;
@@ -778,6 +775,9 @@ html, body {
   outline-width: 0px;
   text-decoration: none;
   color: inherit;
+  /* M83 — status items read as small tactile chips */
+  border-radius: var(--px-radius-sm);
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
 /* SVG icon inside status bar item */
