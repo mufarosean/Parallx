@@ -126,12 +126,17 @@
 
 /* ============================================================================
    Prototype palettes — swap Tier-1 primitives only. The user picks one;
-   the loser blocks get deleted. Activate with <body data-px-theme="…">.
+   the loser blocks get deleted.
+
+   IMPORTANT: scoped to :root (not a child like body). Semantic Tier-2
+   tokens are declared on :root and inherit their *resolved* value, so the
+   primitive override must happen on the SAME element for the derivation to
+   pick it up. Activate with `document.documentElement.dataset.pxTheme`.
    ========================================================================== */
 
 /* "Slate" — cooler, more neutral, a calm steel accent. Closer to Obsidian's
    own default mood. */
-[data-px-theme="slate"] {
+:root[data-px-theme="slate"] {
   --px-base-00: #17181a;
   --px-base-05: #1c1d20;
   --px-base-10: #212327;
@@ -153,7 +158,7 @@
 
 /* "Ember" — warm graphite with a confident amber accent. Most distinctive;
    feels least like any IDE. */
-[data-px-theme="ember"] {
+:root[data-px-theme="ember"] {
   --px-base-00: #1a1815;
   --px-base-05: #201d19;
   --px-base-10: #26221d;

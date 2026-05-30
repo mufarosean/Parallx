@@ -127,7 +127,12 @@ const THEME_VSCODE_BRIDGE: ReadonlyArray<readonly [string, string]> = [
   ['--vscode-breadcrumb-foreground', 'var(--px-text-muted)'],
   ['--vscode-breadcrumb-focusForeground', 'var(--px-text)'],
   ['--vscode-breadcrumb-background', 'var(--px-bg)'],
-  // Auxiliary bar (chat panel lives here)
+  // Auxiliary bar (the AI chat panel lives here) — was missed first pass,
+  // so the chat panel + its "CHAT" header kept the old VS Code grays.
+  ['--vscode-auxiliaryBar-background', 'var(--px-bg)'],
+  ['--vscode-auxiliaryBar-foreground', 'var(--px-text-secondary)'],
+  ['--vscode-auxiliaryBar-border', 'var(--px-border)'],
+  ['--vscode-auxiliaryBarTitle-background', 'var(--px-bg)'],
   ['--vscode-editorGroupHeader-noTabsBackground', 'var(--px-bg)'],
   ['--vscode-editorGroupHeader-border', 'var(--px-border)'],
   // Tab active border accent
@@ -153,6 +158,29 @@ const THEME_VSCODE_BRIDGE: ReadonlyArray<readonly [string, string]> = [
   ['--vscode-textBlockQuote-background', 'var(--px-bg-inset)'],
   ['--vscode-textBlockQuote-border', 'var(--px-border-strong)'],
   ['--vscode-textCodeBlock-background', 'var(--px-bg-inset)'],
+
+  // ── Interactive / hover / active states (so nothing flashes an old gray) ──
+  ['--vscode-tab-hoverBackground', 'var(--px-surface-hover)'],
+  ['--vscode-menu-selectionBackground', 'var(--px-surface-selected)'],
+  ['--vscode-menu-selectionForeground', 'var(--px-text)'],
+  ['--vscode-menu-separatorBackground', 'var(--px-divider)'],
+  ['--vscode-menu-foreground', 'var(--px-text-secondary)'],
+  ['--vscode-quickInputList-focusBackground', 'var(--px-surface-selected)'],
+  ['--vscode-quickInputList-focusForeground', 'var(--px-text)'],
+  ['--vscode-statusBarItem-hoverBackground', 'var(--px-surface-hover)'],
+  ['--vscode-statusBarItem-activeBackground', 'var(--px-surface-active)'],
+  ['--vscode-toolbar-hoverBackground', 'var(--px-surface-hover)'],
+  ['--vscode-toolbar-activeBackground', 'var(--px-surface-active)'],
+  ['--vscode-dropdown-listBackground', 'var(--px-bg-elevated)'],
+  ['--vscode-dropdown-foreground', 'var(--px-text)'],
+  ['--vscode-dropdown-border', 'var(--px-border-strong)'],
+  ['--vscode-editorHoverWidget-background', 'var(--px-bg-elevated)'],
+  ['--vscode-editorHoverWidget-border', 'var(--px-border)'],
+  ['--vscode-inputOption-activeBackground', 'var(--px-accent-soft)'],
+  ['--vscode-inputOption-activeForeground', 'var(--px-text)'],
+  ['--vscode-keybindingLabel-background', 'var(--px-bg-inset)'],
+  ['--vscode-keybindingLabel-foreground', 'var(--px-text-secondary)'],
+  ['--vscode-keybindingLabel-border', 'var(--px-border)'],
 ];
 
 /**

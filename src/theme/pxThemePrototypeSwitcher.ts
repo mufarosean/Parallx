@@ -19,10 +19,16 @@ const THEMES: { id: PxTheme; label: string; swatch: string }[] = [
 ];
 
 function applyTheme(id: PxTheme): void {
+  // Set on the documentElement (:root), NOT body. Semantic tokens
+  // (--px-bg: var(--px-base-00)) are declared on :root and inherit their
+  // already-resolved value; overriding the primitives on a child (body)
+  // would not re-derive them. Co-locating the override with the derivation
+  // on :root is what makes the swap actually take effect.
+  const root = document.documentElement;
   if (id === 'warm') {
-    document.body.removeAttribute('data-px-theme');
+    root.removeAttribute('data-px-theme');
   } else {
-    document.body.setAttribute('data-px-theme', id);
+    root.setAttribute('data-px-theme', id);
   }
 }
 
