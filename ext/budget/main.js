@@ -6093,6 +6093,8 @@ async function evalBudgetStatus(monthKey) {
 // a tight num_predict cap truncates the model mid-thought so it never reaches
 // the JSON. num_ctx is generous so the prompt + reasoning + answer all fit.
 const BUDGET_LM_NUM_CTX = 16384;
+const BUDGET_GMAIL_HARD_PAGE_LIMIT = 50;
+const BUDGET_DEFAULT_GMAIL_QUERY = 'from:chase.com';
 // Captured raw output of the first parse failure per run so we can surface
 // actionable diagnostics instead of silently classifying as "other".
 let _lastMalformedSample = null;
@@ -6296,11 +6298,103 @@ function firstSyncSinceIso(cfg) {
   return isoNDaysAgo(cfg && typeof cfg.get === 'function' ? cfg.get('syncStartDays', 90) : 90);
 }
 
-// Clamp the per-sync email cap to Gmail's 1..500 API range; default 100.
+function isValidYmdParts(y, m, d) {
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y
+    && dt.getUTCMonth() === m - 1
+    && dt.getUTCDate() === d;
+}
+
+function normalizeSyncCursorDate(value) {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+  if (!match) return null;
+
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  const d = Number(match[3]);
+  if (!isValidYmdParts(y, m, d)) return null;
+
+  if (raw.length === 10) {
+    return new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0)).toISOString();
+  }
+
+  const t = Date.parse(raw);
+  if (!Number.isFinite(t)) return null;
+  return new Date(t).toISOString();
+}
+
+// Clamp one Gmail page/batch to Gmail's 1..500 API range; default 100.
 function clampSyncMax(n) {
   const v = Math.floor(Number(n));
   if (!Number.isFinite(v)) return 100;
   return Math.max(1, Math.min(500, v));
+}
+
+function readToolText(result) {
+  if (typeof result?.content === 'string') return result.content;
+  if (Array.isArray(result?.content)) {
+    const first = result.content[0];
+    if (typeof first?.text === 'string') return first.text;
+  }
+  return '{"messages":[]}';
+}
+
+function parseGmailListResult(result) {
+  const payload = readToolText(result);
+  let parsed;
+  try { parsed = JSON.parse(payload); } catch (e) {
+    throw new Error('Gmail MCP returned non-JSON payload: ' + (e instanceof Error ? e.message : String(e)));
+  }
+  const messages = Array.isArray(parsed)
+    ? parsed
+    : (Array.isArray(parsed?.messages) ? parsed.messages : []);
+  return {
+    messages,
+    nextPageToken: (typeof parsed?.nextPageToken === 'string' && parsed.nextPageToken)
+      ? parsed.nextPageToken
+      : null,
+  };
+}
+
+async function fetchBudgetGmailMessages(api, toolName, baseArgs, opts = {}) {
+  const pageSize = clampSyncMax(baseArgs?.max ?? 100);
+  const hardPageLimit = Math.max(1, Math.min(200, Number(opts.hardPageLimit) || BUDGET_GMAIL_HARD_PAGE_LIMIT));
+  const messages = [];
+  const seenIds = new Set();
+  let nextPageToken = null;
+  let pageCount = 0;
+
+  while (pageCount < hardPageLimit) {
+    pageCount++;
+    const pageArgs = { ...baseArgs, max: pageSize };
+    if (nextPageToken) pageArgs.page_token = nextPageToken;
+
+    const result = await api.mcp.invokeTool(toolName, pageArgs);
+    if (result && result.isError) {
+      throw new Error(`Gmail MCP error: ${readToolText(result) || 'unknown'}`);
+    }
+
+    const page = parseGmailListResult(result);
+    let newInPage = 0;
+    for (const msg of page.messages) {
+      if (!msg || !msg.id || seenIds.has(msg.id)) continue;
+      seenIds.add(msg.id);
+      messages.push(msg);
+      newInPage++;
+    }
+
+    nextPageToken = page.nextPageToken;
+    if (!nextPageToken || page.messages.length === 0 || newInPage === 0) break;
+  }
+
+  messages.sort((a, b) => String(a.receivedAt || '').localeCompare(String(b.receivedAt || '')));
+  return {
+    messages,
+    pageCount,
+    pageSize,
+    hitSafetyBelt: Boolean(nextPageToken) && pageCount >= hardPageLimit,
+  };
 }
 
 async function syncLog(runId, level, stage, message, msgId) {
@@ -6384,34 +6478,29 @@ async function budgetSync(api) {
     await syncLog(runId, 'info', 'model', `Using ${modelId} with numCtx=${BUDGET_LM_NUM_CTX}`);
 
     // Issuer query is configurable so users can plug in additional banks/cards
-    // without editing the extension. Default covers the major US issuers; the
-    // upstream parsers already handle most issuer email formats interchangeably.
-    const defaultGmailQuery = 'from:(chase.com OR americanexpress.com OR capitalone.com OR discover.com OR citibank.com OR wellsfargo.com OR bankofamerica.com OR usbank.com)';
-    const gmailQuery = cfg.get('gmailQuery', defaultGmailQuery);
-    // Per-sync email cap. Gmail's API ceiling is 500; default 100 bounds the
-    // per-run LLM cost. Heavy inboxes can raise it (newest-first within the
-    // window — see firstSyncSinceIso for the start-date floor).
-    const maxEmails = clampSyncMax(cfg.get('syncMaxEmails', 100));
+    // without editing the extension. Keep the default narrow to avoid pulling
+    // unrelated financial mail.
+    const gmailQuery = cfg.get('gmailQuery', BUDGET_DEFAULT_GMAIL_QUERY);
+    // Gmail's `max` is per page (Gmail API ceiling: 500). The sync follows
+    // nextPageToken until Gmail is exhausted, so the default 100 is a batch
+    // size, not a per-run cap.
+    const pageSize = clampSyncMax(cfg.get('syncMaxEmails', 100));
 
-    const result = await api.mcp.invokeTool(toolName, {
+    const fetched = await fetchBudgetGmailMessages(api, toolName, {
       since: sinceIso,
-      max: maxEmails,
+      max: pageSize,
       read_state: 'all',
       query: gmailQuery,
       include_body: true,
     });
-    if (result && result.isError) {
-      throw new Error(`Gmail MCP error: ${result.content?.[0]?.text ?? 'unknown'}`);
-    }
-    const payload = result?.content?.[0]?.text ?? '{"messages":[]}';
-    let parsed;
-    try { parsed = JSON.parse(payload); } catch (e) {
-      throw new Error('Gmail MCP returned non-JSON payload: ' + (e instanceof Error ? e.message : String(e)));
-    }
-    // Tool envelope is { messages: [...] }; fall back to bare array for compat.
-    const messages = Array.isArray(parsed)
-      ? parsed
-      : (Array.isArray(parsed?.messages) ? parsed.messages : []);
+    const messages = fetched.messages;
+    await syncLog(
+      runId,
+      fetched.hitSafetyBelt ? 'warn' : 'info',
+      'fetch',
+      `Fetched ${messages.length} email(s) across ${fetched.pageCount} Gmail page(s), pageSize=${fetched.pageSize}` +
+        (fetched.hitSafetyBelt ? `; stopped at safety cap ${BUDGET_GMAIL_HARD_PAGE_LIMIT}` : ''),
+    );
 
     // Fetched signal — the long part starts here. The dashboard banner can
     // now switch from "starting…" to "classifying N emails…" so the user
@@ -6442,6 +6531,10 @@ async function budgetSync(api) {
     for (const msg of messages) {
       processedCount++;
       if (!msg || !msg.id) { counts.skipped++; continue; }
+      if (msg.receivedAt && msg.receivedAt > newestSeenIso) {
+        newestSeenIso = msg.receivedAt;
+        newestSeenId = msg.id;
+      }
       const already = await db.get('SELECT 1 AS x FROM email_imports WHERE gmail_message_id=?', [msg.id]);
       if (already) {
         counts.skipped++;
@@ -6472,10 +6565,11 @@ async function budgetSync(api) {
       else if (!cls.is_transaction && !cls.is_balance) counts.classifiedOther++;
 
       await db.run(
-        `INSERT INTO email_imports (gmail_message_id, received_at, raw_subject, raw_snippet, is_transaction, is_balance, classifier_model, processed_at)
-         VALUES (?,?,?,?,?,?,?,?)`,
+        `INSERT INTO email_imports (gmail_message_id, received_at, raw_subject, raw_snippet, is_transaction, is_balance, classifier_model, processed_at, malformed)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
         [msg.id, msg.receivedAt || new Date().toISOString(), msg.subject || null, msg.snippet || null,
-         cls.is_transaction ? 1 : 0, cls.is_balance ? 1 : 0, modelId, new Date().toISOString()],
+         cls.is_transaction ? 1 : 0, cls.is_balance ? 1 : 0, modelId, new Date().toISOString(),
+         cls.malformed ? 1 : 0],
       );
 
       // Stage 2 — extract transaction(s)
@@ -6598,10 +6692,6 @@ async function budgetSync(api) {
         }
       }
 
-      if (msg.receivedAt && msg.receivedAt > newestSeenIso) {
-        newestSeenIso = msg.receivedAt;
-        newestSeenId = msg.id;
-      }
     }
 
     // Recurring detection — runs after every sync; cheap (no LLM).
@@ -6820,11 +6910,49 @@ async function budgetToolGetTransaction(args = {}) {
 async function budgetToolListPendingReview(args = {}) {
   const limit = Math.max(1, Math.min(200, Number(args.limit) || 50));
   const includeResolved = Boolean(args.includeResolved);
+  const txRows = await db.all(
+    `SELECT t.id, t.gmail_message_id, t.merchant, t.amount_cents, t.currency,
+            t.card_last_four, t.transaction_date, t.category_id,
+            c.name AS category_name, t.account_id, t.tx_type, t.status,
+            t.ai_confidence, t.notes, e.raw_subject, e.raw_snippet
+       FROM transactions t
+       LEFT JOIN categories c ON c.id = t.category_id
+       LEFT JOIN email_imports e ON e.gmail_message_id = t.gmail_message_id
+      WHERE t.status = 'review'
+      ORDER BY t.transaction_date DESC, t.created_at DESC
+      LIMIT ?`,
+    [limit],
+  ).catch(() => []);
+
+  const remaining = Math.max(0, limit - txRows.length);
   const sql = includeResolved
     ? `SELECT * FROM pending_review ORDER BY created_at DESC LIMIT ?`
     : `SELECT * FROM pending_review WHERE resolved_at IS NULL ORDER BY created_at DESC LIMIT ?`;
-  const rows = await db.all(sql, [limit]);
-  return _toolOk({ pending: rows, count: rows.length });
+  const rows = remaining > 0 ? await db.all(sql, [remaining]).catch(() => []) : [];
+  const pending = [
+    ...txRows.map(r => ({
+      kind: 'transaction_review',
+      id: r.id,
+      reason: r.notes || r.ai_confidence || 'needs review',
+      transaction: r,
+      email: {
+        id: r.gmail_message_id || null,
+        subject: r.raw_subject || null,
+        snippet: r.raw_snippet || null,
+      },
+    })),
+    ...rows.map(r => ({
+      kind: 'email_review',
+      id: r.id,
+      emailId: r.email_id,
+      reason: r.reason,
+      partialData: (() => { try { return r.partial_data_json ? JSON.parse(r.partial_data_json) : null; } catch { return null; } })(),
+      createdAt: r.created_at,
+      resolvedAt: r.resolved_at || null,
+      resolution: r.resolution || null,
+    })),
+  ];
+  return _toolOk({ pending, count: pending.length });
 }
 
 async function budgetToolListTrash(args = {}) {
@@ -6862,18 +6990,21 @@ async function budgetToolPullEmails(api, args = {}) {
   if (!sinceIso) {
     const cur = await getSyncStateValue('last_synced_at');
     sinceIso = (typeof cur === 'string' && cur) ? cur : firstSyncSinceIso(cfg);
-  } else if (isYmd(sinceIso)) {
-    sinceIso = new Date(sinceIso + 'T00:00:00Z').toISOString();
+  } else {
+    sinceIso = normalizeSyncCursorDate(sinceIso) || sinceIso;
   }
-  const maxResults = Math.max(1, Math.min(500, Number(args.maxResults) || 500));
-  const defaultGmailQuery = 'from:(chase.com OR americanexpress.com OR capitalone.com OR discover.com OR citibank.com OR wellsfargo.com OR bankofamerica.com OR usbank.com)';
-  const gmailQuery = cfg.get('gmailQuery', defaultGmailQuery);
+  const maxResults = clampSyncMax(args.maxResults ?? args.max ?? 500);
+  const pageToken = typeof args.page_token === 'string' && args.page_token
+    ? args.page_token
+    : (typeof args.pageToken === 'string' && args.pageToken ? args.pageToken : null);
+  const gmailQuery = cfg.get('gmailQuery', BUDGET_DEFAULT_GMAIL_QUERY);
   const result = await api.mcp.invokeTool(toolName, {
     since: sinceIso,
     max: maxResults,
     read_state: 'all',
     query: gmailQuery,
     include_body: true,
+    ...(pageToken ? { page_token: pageToken } : {}),
   });
   if (result && result.isError) {
     return _toolErr('Gmail MCP error: ' + (result.content?.[0]?.text ?? 'unknown'));
@@ -7071,13 +7202,64 @@ async function budgetToolMarkEmailProcessed(args = {}) {
   return _toolOk({ emailId: args.emailId, reason: args.reason || 'non-financial' });
 }
 
+async function budgetToolSetSyncCursor(args = {}) {
+  const rawDate = args.date ?? args.cursorDate ?? args.lastSyncedDate ?? args.last_synced_at;
+  const nextCursor = normalizeSyncCursorDate(rawDate);
+  if (!nextCursor) return _toolErr('date must be YYYY-MM-DD or a valid ISO timestamp');
+
+  const previousCursor = await getSyncStateValue('last_synced_at');
+  const lastMessageId = args.lastMessageId ?? args.last_gmail_message_id ?? null;
+
+  await db.run(
+    `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_synced_at', ?)`,
+    [JSON.stringify(nextCursor)],
+  );
+  await db.run(
+    `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_gmail_message_id', ?)`,
+    [JSON.stringify(lastMessageId || null)],
+  );
+
+  const runId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `cursor-${Date.now()}`;
+  const reason = typeof args.reason === 'string' && args.reason.trim()
+    ? ` Reason: ${args.reason.trim().slice(0, 500)}`
+    : '';
+  await syncLog(
+    runId,
+    'warn',
+    'cursor',
+    `Manual sync cursor set from ${previousCursor || 'unset'} to ${nextCursor}.${reason}`,
+  );
+
+  return _toolOk({
+    ok: true,
+    previousLastSyncedAt: typeof previousCursor === 'string' ? previousCursor : null,
+    lastSyncedAt: nextCursor,
+    lastMessageId: lastMessageId || null,
+  });
+}
+
 async function budgetToolUpdateSyncCursor(args = {}) {
-  const lastSyncedDate = args.lastSyncedDate;
-  const lastMessageId = args.lastMessageId || null;
-  if (lastSyncedDate) {
+  const requestedDate = args.lastSyncedDate ?? args.last_synced_at;
+  const lastMessageId = args.lastMessageId ?? args.last_gmail_message_id ?? null;
+  const previousCursor = await getSyncStateValue('last_synced_at');
+  let savedCursor = typeof previousCursor === 'string' ? previousCursor : null;
+  let ignoredOlder = false;
+  if (requestedDate) {
+    const nextCursor = normalizeSyncCursorDate(requestedDate);
+    if (!nextCursor) return _toolErr('last_synced_at must be YYYY-MM-DD or a valid ISO timestamp');
+
+    const previousMs = savedCursor ? Date.parse(savedCursor) : NaN;
+    const nextMs = Date.parse(nextCursor);
+    if (!Number.isFinite(previousMs) || nextMs > previousMs) {
+      savedCursor = nextCursor;
+    } else {
+      ignoredOlder = true;
+    }
     await db.run(
       `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_synced_at', ?)`,
-      [JSON.stringify(lastSyncedDate)],
+      [JSON.stringify(savedCursor)],
     );
   }
   await db.run(
@@ -7094,7 +7276,7 @@ async function budgetToolUpdateSyncCursor(args = {}) {
       [JSON.stringify({ ok: true, ...args.counts })],
     );
   }
-  return _toolOk({ ok: true, lastSyncedDate: lastSyncedDate || null, lastMessageId });
+  return _toolOk({ ok: true, lastSyncedDate: savedCursor, lastMessageId, ignoredOlder });
 }
 
 async function budgetToolUpdateTransaction(args = {}) {
@@ -7147,11 +7329,33 @@ async function budgetToolRestoreTransaction(args = {}) {
 
 async function budgetToolResolveReview(args = {}) {
   if (!args.id) return _toolErr('id is required');
+  const id = String(args.id);
+  const tx = await db.get(`SELECT id FROM transactions WHERE id=? AND status='review'`, [id]).catch(() => null);
+  if (tx) {
+    const sets = [];
+    const params = [];
+    if (typeof args.merchant === 'string') { sets.push('merchant=?'); params.push(args.merchant); }
+    if (Number.isFinite(Number(args.amount))) { sets.push('amount_cents=?'); params.push(dollarsToCents(Number(args.amount))); }
+    if (typeof args.category === 'string' && args.category.trim()) {
+      const cat = await resolveCategoryByName(args.category.trim());
+      if (!cat) return _toolErr(`Unknown category: "${args.category}". Call budget.listCategories first.`);
+      sets.push('category_id=?'); params.push(cat.id);
+    } else if (typeof args.categoryId === 'string') {
+      sets.push('category_id=?'); params.push(args.categoryId || null);
+    }
+    const txType = args.txType ?? args.tx_type;
+    if (typeof txType === 'string') { sets.push('tx_type=?'); params.push(txType); }
+    if (typeof args.notes === 'string') { sets.push('notes=?'); params.push(args.notes); }
+    sets.push("status='confirmed'", 'user_overridden=1', 'updated_at=?');
+    params.push(new Date().toISOString(), id);
+    await db.run(`UPDATE transactions SET ${sets.join(', ')} WHERE id=?`, params);
+    return _toolOk({ id, resolved: true, kind: 'transaction_review' });
+  }
   await db.run(
     `UPDATE pending_review SET resolved_at=?, resolution=? WHERE id=?`,
-    [new Date().toISOString(), args.resolution || 'resolved', args.id],
+    [new Date().toISOString(), args.resolution || 'resolved', id],
   );
-  return _toolOk({ id: args.id, resolved: true });
+  return _toolOk({ id, resolved: true, kind: 'email_review' });
 }
 
 async function budgetToolCreateCategory(args = {}) {
@@ -7901,7 +8105,8 @@ export async function activate(api, context) {
           type: 'object',
           properties: {
             since: { type: 'string', description: 'ISO timestamp override. Defaults to the stored cursor.' },
-            max:   { type: 'integer', description: 'Hard cap on messages returned (default 100, max 500).' },
+            max:   { type: 'integer', description: 'Messages to return for this Gmail page (default 500, max 500).' },
+            page_token: { type: 'string', description: 'Optional Gmail nextPageToken from a previous pullEmails result.' },
           },
         },
         requiresConfirmation: false,
@@ -7973,6 +8178,20 @@ export async function activate(api, context) {
         },
         requiresConfirmation: false,
         handler: async (args) => budgetToolMarkEmailProcessed(args || {}),
+      }));
+      _disposables.push(api.chat.registerTool('budget.setSyncCursor', {
+        description: 'Set or rewind the Gmail budget sync cursor to a specific date/time so the next budget.runSync starts from that point. Use this when the user explicitly wants to go back and re-pull skipped emails. Date-only values start at 00:00:00 UTC for that day.',
+        parameters: {
+          type: 'object',
+          required: ['date'],
+          properties: {
+            date:                  { type: 'string', description: 'YYYY-MM-DD or ISO timestamp to store as last_synced_at.' },
+            reason:                { type: 'string', description: 'Optional short reason recorded in sync_log.' },
+            last_gmail_message_id: { type: 'string', description: 'Optional matching Gmail message id. Usually omit when rewinding by date.' },
+          },
+        },
+        requiresConfirmation: true,
+        handler: async (args) => budgetToolSetSyncCursor(args || {}),
       }));
       _disposables.push(api.chat.registerTool('budget.updateSyncCursor', {
         description: 'Advance the sync cursor (last_synced_at + last_run_at) after the agent has processed a batch. The cursor is forward-only; older values are silently ignored.',
@@ -8237,6 +8456,8 @@ export const __testables = {
   gapDays,
   addDays,
   inferCadence,
+  normalizeSyncCursorDate,
+  fetchBudgetGmailMessages,
   parseCsvLine: _parseCsvLine,
   ruleMatchesMerchant,
 };

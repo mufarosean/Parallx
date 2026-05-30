@@ -10,7 +10,7 @@ tags: [workflow, budget, gmail, finance]
 parameters:
   - name: since
     type: string
-    description: Optional ISO date (YYYY-MM-DD) to override the stored cursor. Rare — only use when the user explicitly says "resync from <date>" or "go back further than usual".
+    description: Optional date (YYYY-MM-DD) to rewind the stored cursor before syncing. Rare - only use when the user explicitly says "resync from <date>" or "go back further than usual".
     required: false
 ---
 
@@ -30,6 +30,7 @@ Treat any of these as a request to run the **full sync flow** below:
 - "import / refresh / catch up / update my budget"
 - "categorize my recent transactions" / "process my bank emails"
 - "check Gmail for new charges"
+- "resync from <date>" / "go back to <date>" / "rewind the budget cursor"
 
 Treat any of these as a request for the **edit / inspect flow** instead:
 
@@ -52,6 +53,11 @@ Treat any of these as a request for the **edit / inspect flow** instead:
 The sync is a single deterministic operation. **Do not orchestrate it
 email-by-email yourself** with `budget.pullEmails` / `budget.recordTransaction`
 — that path is unreliable on local models. Instead:
+
+0. If the user explicitly asked to go back to a date, first call
+   **`budget.setSyncCursor({ date: "YYYY-MM-DD", reason })`**. This is
+   the intentional rewind path; it records the change in `sync_log` and
+   makes the next sync re-pull emails after that point.
 
 1. Call **`budget.runSync()`** once. It does everything in-process:
    pulls recent bank/credit-card emails (since the last cursor, or the
@@ -82,9 +88,11 @@ for advanced manual corrections.
    `budget.runSync` before the model is consulted — trust it.
 3. **Report once at the end.** Summarize `budget.runSync`'s returned
    counts in a single message; don't narrate mid-run.
-4. **Never write directly to `transactions`** or any DB table. Use the
+4. **Cursor rewind is explicit.** Only call `budget.setSyncCursor` when
+   the user clearly asks to resync from, go back to, or rewind to a date.
+5. **Never write directly to `transactions`** or any DB table. Use the
    `budget.*` tools.
-5. For the **edit / inspect flow** (below), the read/write `budget.*`
+6. For the **edit / inspect flow** (below), the read/write `budget.*`
    tools are the right primitives — use them as documented.
 
 ## Transaction types
@@ -136,6 +144,8 @@ When the user wants to change a transaction:
   `budget.recordTransaction`. One sync is one `budget.runSync` call.
 - Do **not** call `budget.runSync` more than once for the same request
   — it is deterministic given the stored cursor.
+- Do **not** use `budget.updateSyncCursor` to rewind. Use
+  `budget.setSyncCursor` when the user explicitly wants to go back.
 - Do **not** call `budget.deleteTransaction` without user
   confirmation in the conversation (the tool will require an
   approval prompt anyway, but you should also say what you're

@@ -80,8 +80,8 @@
           },
           "budget.gmailQuery": {
             "type": "string",
-            "default": "from:(chase.com OR americanexpress.com OR capitalone.com OR discover.com OR citibank.com OR wellsfargo.com OR bankofamerica.com OR usbank.com)",
-            "description": "Gmail search filter applied to every sync. Defaults cover major US issuers. Use Gmail search syntax (e.g. add OR clauses for additional banks)."
+            "default": "from:chase.com",
+            "description": "Gmail search filter applied to every sync. Defaults to Chase email only. Use Gmail search syntax if you need to add other issuers later."
           },
           "budget.syncStartDays": {
             "type": "number",
@@ -100,7 +100,7 @@
             "default": 100,
             "minimum": 1,
             "maximum": 500,
-            "description": "Maximum emails to fetch and process per sync run. Gmail's API ceiling is 500. The default of 100 bounds per-run cost; raise it for heavy inboxes. Emails are fetched newest-first within the window, so on inboxes with more matching mail than this cap older messages in the window may be deferred until a later run."
+            "description": "Gmail page size for each sync batch. Gmail's API ceiling is 500. The default of 100 fetches emails in batches of 100; the sync follows Gmail nextPageToken until all matching pages are exhausted, with an internal safety cap."
           }
         }
       }

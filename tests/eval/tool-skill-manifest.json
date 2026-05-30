@@ -351,6 +351,13 @@
       "source": "ext/budget/main.js",
       "category": "budget"
     },
+    {
+      "id": "budget.setSyncCursor",
+      "description": "Set or rewind the Gmail budget sync cursor to a YYYY-MM-DD date or ISO timestamp so the next budget.runSync starts from that point.",
+      "paramsSchema": { "type": "object", "required": ["date"], "properties": { "date": { "type": "string" }, "reason": { "type": "string" }, "last_gmail_message_id": { "type": "string" } } },
+      "source": "ext/budget/main.js",
+      "category": "budget"
+    },
 
     {
       "id": "mediaOrganizer.describeSchema",

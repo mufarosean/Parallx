@@ -10,6 +10,8 @@ const {
   coefficientOfVariation,
   gapDays,
   addDays,
+  normalizeSyncCursorDate,
+  fetchBudgetGmailMessages,
   inferCadence,
   parseCsvLine,
   ruleMatchesMerchant,
@@ -72,6 +74,92 @@ describe('addDays', () => {
   });
   it('handles negative days', () => {
     expect(addDays('2026-02-02', -3)).toBe('2026-01-30');
+  });
+});
+
+describe('normalizeSyncCursorDate', () => {
+  it('normalizes YYYY-MM-DD to the start of that UTC day', () => {
+    expect(normalizeSyncCursorDate('2026-05-17')).toBe('2026-05-17T00:00:00.000Z');
+  });
+
+  it('trims date input', () => {
+    expect(normalizeSyncCursorDate(' 2026-05-17 ')).toBe('2026-05-17T00:00:00.000Z');
+  });
+
+  it('canonicalizes ISO timestamps', () => {
+    expect(normalizeSyncCursorDate('2026-05-17T10:30:04Z')).toBe('2026-05-17T10:30:04.000Z');
+  });
+
+  it('rejects malformed and impossible dates', () => {
+    expect(normalizeSyncCursorDate('')).toBeNull();
+    expect(normalizeSyncCursorDate('May 17, 2026')).toBeNull();
+    expect(normalizeSyncCursorDate('2026-02-31')).toBeNull();
+  });
+});
+
+describe('fetchBudgetGmailMessages', () => {
+  const msg = (id: string, offsetMinutes: number) => ({
+    id,
+    receivedAt: new Date(Date.parse('2026-05-17T00:00:00.000Z') + offsetMinutes * 60_000).toISOString(),
+  });
+  const page = (messages: Array<{ id: string; receivedAt: string }>, nextPageToken?: string) => ({
+    content: [{ type: 'text', text: JSON.stringify({ messages, ...(nextPageToken ? { nextPageToken } : {}) }) }],
+  });
+
+  it('follows Gmail nextPageToken beyond the first 100-message page', async () => {
+    const calls: any[] = [];
+    const pages: Record<string, any> = {
+      first: page(
+        Array.from({ length: 100 }, (_, i) => msg(`m-${i}`, i)),
+        'p2',
+      ),
+      p2: page(
+        Array.from({ length: 100 }, (_, i) => msg(`m-${100 + i}`, 100 + i)),
+        'p3',
+      ),
+      p3: page(
+        Array.from({ length: 3 }, (_, i) => msg(`m-${200 + i}`, 200 + i)),
+      ),
+    };
+    const api = {
+      mcp: {
+        invokeTool: async (_toolName: string, args: any) => {
+          calls.push(args);
+          return pages[args.page_token || 'first'];
+        },
+      },
+    };
+
+    const result = await fetchBudgetGmailMessages(api, 'mcp__gmail__list_emails', {
+      since: '2026-05-01T00:00:00.000Z',
+      max: 100,
+      read_state: 'all',
+    });
+
+    expect(result.messages).toHaveLength(203);
+    expect(result.pageCount).toBe(3);
+    expect(result.hitSafetyBelt).toBe(false);
+    expect(calls.map(c => c.page_token || null)).toEqual([null, 'p2', 'p3']);
+    expect(calls.every(c => c.max === 100)).toBe(true);
+  });
+
+  it('dedupes repeated message ids across page boundaries', async () => {
+    const pages: Record<string, any> = {
+      first: page([msg('a', 0)], 'p2'),
+      p2: page([
+        msg('a', 0),
+        msg('b', 1),
+      ]),
+    };
+    const api = {
+      mcp: {
+        invokeTool: async (_toolName: string, args: any) => pages[args.page_token || 'first'],
+      },
+    };
+
+    const result = await fetchBudgetGmailMessages(api, 'mcp__gmail__list_emails', { max: 100 });
+
+    expect(result.messages.map((m: any) => m.id)).toEqual(['a', 'b']);
   });
 });
 

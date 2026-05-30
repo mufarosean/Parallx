@@ -259,8 +259,8 @@ month, account.
 2. The **Budget** extension is bundled. Open the Budget sidebar (wallet
    icon) → click **Settings**.
 3. Confirm `budget.gmailMcpServerId = gmail` (matches the row id above).
-4. Adjust `budget.gmailQuery` if your bank isn't in the default
-   `from:(chase.com OR americanexpress.com OR …)` filter.
+4. Confirm `budget.gmailQuery = from:chase.com` or adjust it if you need
+   a different Gmail sender filter.
 5. Hit **Sync Gmail Transactions** once to backfill (default
    `budget.syncStartDays = 90`).
 6. The cron job for `budget.sync` runs automatically every
