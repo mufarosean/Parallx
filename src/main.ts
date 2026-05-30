@@ -6,6 +6,7 @@ import './theme/px-tokens.css';   // M83: design-token foundation (load first)
 import './workbench.css';
 import './theme/px-base.css';     // M83: global presentation layer (load after workbench)
 import './theme/px-controls.css'; // M83: tactile control primitives
+import './theme/px-motion.css';   // M83: purposeful motion for overlays
 import { Workbench } from './workbench/workbench.js';
 import { installGlobalTooltipDelegate } from './ui/tooltip.js';
 

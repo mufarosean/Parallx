@@ -1,0 +1,60 @@
+/* ============================================================================
+   Parallx Motion (M83)
+   ----------------------------------------------------------------------------
+   Purposeful motion that makes the app feel alive without being noisy.
+   Overlays (menus, dropdowns, the command palette, notifications) enter with
+   a quick, confident pop instead of appearing instantly. Everything respects
+   prefers-reduced-motion.
+
+   Targets real, existing class names — additive, no layout impact.
+   ========================================================================== */
+
+@keyframes px-pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+@keyframes px-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes px-rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Floating surfaces — quick confident pop, anchored to the top ─────────── */
+.context-menu,
+.ui-dropdown-list,
+.ui-dropdown__menu,
+.parallx-chat-context-menu,
+.command-palette {
+  animation: px-pop-in var(--px-dur-base) var(--px-ease-out);
+  transform-origin: top center;
+}
+
+/* The command-palette backdrop fades; the palette itself rises. */
+.command-palette-overlay {
+  animation: px-fade-in var(--px-dur-fast) var(--px-ease-out);
+}
+.command-palette {
+  animation: px-rise-in var(--px-dur-base) var(--px-ease-out);
+  transform-origin: top center;
+}
+
+/* Notifications / toasts slide up into place. */
+.notification-toast,
+.parallx-notification,
+.ui-notification {
+  animation: px-rise-in var(--px-dur-base) var(--px-ease-out);
+}
+
+/* ── Reduced motion — honor the OS setting completely ────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

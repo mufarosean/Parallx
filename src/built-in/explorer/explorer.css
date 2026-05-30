@@ -58,30 +58,48 @@
 
 /* ── Tree node ── */
 
+/* M83 — rows carry a rounded, inset highlight (Notion/Obsidian), not a
+   full-bleed IDE bar. The 4px side margin + radius turn hover/selection
+   into a soft chip; a left accent rail marks the selected row. */
 .tree-node {
-  height: 22px;
-  line-height: 22px;
+  height: 24px;
+  line-height: 24px;
   display: flex;
   align-items: center;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
+  margin: 1px 4px;
   padding-right: 8px;
-  color: var(--vscode-foreground);
+  border-radius: var(--px-radius-sm);
+  color: var(--px-text-secondary);
+  position: relative;
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
 .tree-node:hover {
-  background-color: var(--vscode-list-hoverBackground);
+  background-color: var(--px-surface-hover);
+  color: var(--px-text);
 }
 
 .tree-node--selected {
-  background-color: var(--vscode-list-activeSelectionBackground);
+  background-color: var(--px-surface-selected);
+  color: var(--px-text);
 }
-
+.tree-node--selected::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: var(--px-radius-full);
+  background: var(--px-accent);
+}
 .tree-node--selected:hover {
-  background-color: var(--vscode-list-activeSelectionBackground);
+  background-color: var(--px-surface-selected);
 }
 
 /* Flash highlight — temporary cue when revealing via breadcrumbs / Reveal in Explorer */
