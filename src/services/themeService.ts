@@ -221,7 +221,7 @@ const THEME_PX_DESIGN_BRIDGE: ReadonlyArray<readonly [string, string]> = [
   ['--parallx-radius-sm', 'var(--px-radius-sm)'],   // 3 → 4
   ['--parallx-radius-md', 'var(--px-radius-md)'],   // 6 → 6
   ['--parallx-radius-lg', 'var(--px-radius-lg)'],   // 8 → 10
-  ['--parallx-radius-xl', '14px'],                  // 12 → 14
+  ['--parallx-radius-xl', 'var(--px-radius-xl)'],   // 12 → 14
   ['--parallx-radius-full', 'var(--px-radius-full)'],
 
   // UI font — a refined modern sans stack. Inter if present, else the OS

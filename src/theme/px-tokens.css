@@ -116,6 +116,7 @@
   --px-radius-sm: 4px;
   --px-radius-md: 6px;
   --px-radius-lg: 10px;
+  --px-radius-xl: 14px;   /* large content cards (dashboard widgets) */
   --px-radius-full: 999px;
 
   /* Type ladder — six steps, no more. */
