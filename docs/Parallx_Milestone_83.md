@@ -8,7 +8,7 @@
 > **Done so far:**
 > - Three-tier `--px-*` token system (`px-tokens.css`); Slate the canonical
 >   default, Warm/Ember as `:root[data-px-theme]` alternates.
-> - `themeService` bridge: ~80 `--vscode-*` + the `--parallx-*` type/radius/
+> - `themeService` bridge: ~160 `--vscode-*` + the `--parallx-*` type/radius/
 >   font tokens remap to `--px-*`, so the whole app + extensions re-skin.
 > - Global base layer (`px-base.css`): text rendering, selection, section
 >   headers, flattened title/activity-bar chrome.
@@ -19,14 +19,30 @@
 > - Motion (`px-motion.css`): overlay pop/rise entrances + reduced-motion.
 > - Consistency: planner/dashboard signal colors → tokens; media-organizer /
 >   text-generator / workspace-graph extension chrome grays → tokens.
+> - **Working Appearance editor** (`pxAppearancePanel`, replacing the broken
+>   per-color theme editor): base palette (Slate/Warm/Ember) + accent (7
+>   curated + custom hue) + **save/recall named custom themes**, persisted to
+>   localStorage, applied on boot (`applySavedAppearance` in `main.ts`),
+>   reachable from View menu + Manage gear + Ctrl+Shift+T.
+> - **Three-tier line system**: `--px-chrome-line` (translucent hairline
+>   between co-planar workbench parts), `--px-divider` (within-surface
+>   separations — bridge now routes all internal `*-border` here and the two
+>   previously-unbridged ones), `--px-border` (floating-surface outlines).
+>   Kills the gridded "VS Code box" look.
+> - **Consistency sweep**: audited every `--vscode-*` referenced in CSS vs the
+>   bridge; the 46 unbridged chrome tokens (title-bar text, menu/widget
+>   borders, quick-input/notification/hover text, validation, git decoration,
+>   drag-drop) now map to `--px-*`. The ~47 that remain are intentional
+>   content colors (terminal/diff/syntax/charts/icons/fonts).
+> - Chat composer: auto-grow smoothed + fully tokenized; dashboard widgets →
+>   tactile token cards (`--px-radius-xl`); aux-bar header redesigned.
 >
 > **Remaining (next sessions):**
-> - Per-surface deep polish of chat, canvas chrome, settings.
+> - Per-surface deep polish of canvas chrome + settings (both already
+>   theme-consistent via the bridge; structural polish optional).
 > - Budget extension token migration (was being actively edited; deferred).
-> - Collapse the dead `#hex` fallbacks; eventually retire the VS Code theme
->   registry once nothing depends on the bridge.
-> - A proper theme setting in Settings (the prototype floating switcher was
->   removed).
+> - Eventually retire the VS Code theme registry once nothing depends on the
+>   bridge; collapse dead `#hex` fallbacks.
 
 ## Why
 
