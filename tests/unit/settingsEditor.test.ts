@@ -73,25 +73,31 @@ describe('SettingsEditor — D2', () => {
     document.body.replaceChildren();
   });
 
-  it('renders rows for every registered schema', async () => {
+  it('renders every registered schema across the category nav', async () => {
+    // Two-pane hub: each category renders its rows in the content pane when
+    // selected. Walk the nav and gather every key that appears.
     const { editor } = await setup();
-    const rows = document.querySelectorAll<HTMLElement>('.settings-editor__row');
-    expect(rows.length).toBe(4);
-    const keys = Array.from(rows).map((r) => r.getAttribute('data-key'));
-    expect(keys).toEqual(
-      expect.arrayContaining([
-        'autonomy.flag',
-        'autonomy.heartbeat.intervalMs',
-        'autonomy.subagent.approvalMode',
-        'canvas.propertyBar.collapsed',
-      ]),
-    );
+    const navItems = Array.from(document.querySelectorAll<HTMLElement>('.settings-editor__nav-item'));
+    const keys = new Set<string>();
+    for (const item of navItems) {
+      item.click();
+      document.querySelectorAll<HTMLElement>('.settings-editor__row').forEach((r) => {
+        const k = r.getAttribute('data-key');
+        if (k) keys.add(k);
+      });
+    }
+    expect(keys).toEqual(new Set([
+      'autonomy.flag',
+      'autonomy.heartbeat.intervalMs',
+      'autonomy.subagent.approvalMode',
+      'canvas.propertyBar.collapsed',
+    ]));
     editor.dispose();
   });
 
-  it('groups schemas by category', async () => {
+  it('lists schema categories in the nav', async () => {
     const { editor } = await setup();
-    const cats = Array.from(document.querySelectorAll('.settings-editor__category-title')).map(
+    const cats = Array.from(document.querySelectorAll('.settings-editor__nav-item')).map(
       (n) => n.textContent,
     );
     expect(cats).toEqual(expect.arrayContaining(['Autonomy', 'Canvas']));
