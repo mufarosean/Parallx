@@ -17,7 +17,30 @@ import {
   type PropertyType,
   type PropertyDefinitionChangeEvent,
   type PagePropertyChangeEvent,
+  type ISelectOption,
 } from './propertyTypes.js';
+
+// ─── Tag/select option colors ────────────────────────────────────────────────
+// Translucent Notion-parity palette. A promoted tag gets a stable color via a
+// deterministic hash of its value, so the same tag reads the same everywhere.
+const TAG_COLOR_PALETTE: readonly string[] = [
+  'rgba(125, 145, 235, 0.30)', // indigo
+  'rgba(95, 178, 140, 0.30)',  // sage
+  'rgba(224, 162, 78, 0.30)',  // amber
+  'rgba(222, 122, 142, 0.30)', // rose
+  'rgba(86, 156, 214, 0.30)',  // steel
+  'rgba(178, 138, 222, 0.30)', // violet
+  'rgba(120, 200, 200, 0.30)', // teal
+  'rgba(200, 170, 120, 0.30)', // tan
+];
+
+export function pickTagColor(value: string): string {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 31 + value.charCodeAt(i)) | 0;
+  }
+  return TAG_COLOR_PALETTE[Math.abs(hash) % TAG_COLOR_PALETTE.length];
+}
 
 // ─── Database Bridge Type ────────────────────────────────────────────────────
 
@@ -317,7 +340,37 @@ export class PropertyDataService extends Disposable implements IPropertyDataServ
     if (!readResult.row) throw new Error(`[PropertyDataService] Property "${key}" not found after set`);
 
     this._onDidChangePageProperty.fire({ pageId, key, kind: 'set' });
+
+    // M85 — linked tags: promote any newly-seen tag/select value into the
+    // definition's shared `options` so the vocabulary is workspace-wide (every
+    // page autocompletes the same tags). Additive only — never prunes. Best
+    // effort: a sync failure must not fail the property write.
+    if (def && (def.type === 'tags' || def.type === 'select')) {
+      try { await this._syncDefinitionOptions(def, value); } catch { /* non-fatal */ }
+    }
+
     return rowToPageProperty(readResult.row);
+  }
+
+  /** Add unseen tag/select values to the definition's shared option list. */
+  private async _syncDefinitionOptions(def: IPropertyDefinition, value: unknown): Promise<void> {
+    const existing: ISelectOption[] = Array.isArray((def.config as { options?: ISelectOption[] }).options)
+      ? (def.config as { options: ISelectOption[] }).options
+      : [];
+    const seen = new Set(existing.map((o) => o.value));
+
+    const incoming: string[] = Array.isArray(value)
+      ? value.filter((v): v is string => typeof v === 'string' && v.length > 0)
+      : (typeof value === 'string' && value.length > 0 ? [value] : []);
+
+    const additions = incoming.filter((v) => !seen.has(v));
+    if (additions.length === 0) return;
+
+    const merged: ISelectOption[] = [
+      ...existing,
+      ...additions.map((v) => ({ value: v, color: pickTagColor(v) })),
+    ];
+    await this.updateDefinition(def.name, { config: { ...def.config, options: merged } });
   }
 
   async removeProperty(pageId: string, key: string): Promise<void> {

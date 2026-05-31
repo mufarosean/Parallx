@@ -339,6 +339,39 @@ describe('PropertyDataService', () => {
         expect.arrayContaining(['42']),
       );
     });
+
+    it('M85: promotes new tag values into the shared definition options', async () => {
+      // def lookup (empty options) → page-prop readback → updateDefinition readback
+      mockDb.get
+        .mockResolvedValueOnce({ error: null, row: defRow('tags', 'tags', { config: '{}' }) })
+        .mockResolvedValueOnce({ error: null, row: propRow('pp-3', 'page-1', 'tags', '["alpha","beta"]') })
+        .mockResolvedValueOnce({ error: null, row: defRow('tags', 'tags') });
+
+      await service.setProperty('page-1', 'tags', ['alpha', 'beta']);
+
+      // An UPDATE on property_definitions carried the new tags into config.options.
+      const updateCall = mockDb.run.mock.calls.find((c) =>
+        String(c[0]).includes('UPDATE property_definitions'));
+      expect(updateCall).toBeDefined();
+      const configParam = (updateCall![1] as unknown[]).find(
+        (p): p is string => typeof p === 'string' && p.includes('alpha'));
+      expect(configParam).toBeDefined();
+      const config = JSON.parse(configParam!);
+      expect(config.options.map((o: { value: string }) => o.value).sort()).toEqual(['alpha', 'beta']);
+      expect(config.options.every((o: { color: string }) => typeof o.color === 'string')).toBe(true);
+    });
+
+    it('M85: does not re-add a tag that is already in the shared options', async () => {
+      mockDb.get
+        .mockResolvedValueOnce({ error: null, row: defRow('tags', 'tags', { config: JSON.stringify({ options: [{ value: 'alpha', color: 'x' }] }) }) })
+        .mockResolvedValueOnce({ error: null, row: propRow('pp-4', 'page-1', 'tags', '["alpha"]') });
+
+      await service.setProperty('page-1', 'tags', ['alpha']);
+
+      const updateCall = mockDb.run.mock.calls.find((c) =>
+        String(c[0]).includes('UPDATE property_definitions'));
+      expect(updateCall).toBeUndefined(); // nothing new → no definition write
+    });
   });
 
   describe('removeProperty', () => {
