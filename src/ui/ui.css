@@ -211,8 +211,12 @@
   flex: 0 0 168px;
   width: 168px;
   color: var(--px-text-muted);
-  background-color: transparent;
+  /* Inactive tabs are grey chips with rounded tops; the active tab takes the
+     bar/content color (below) so it reads as connected to the page, not raised. */
+  background-color: var(--px-bg-elevated);
   border: 0;
+  border-top-left-radius: var(--px-radius-md);
+  border-top-right-radius: var(--px-radius-md);
   transition:
     background-color var(--px-dur-fast) var(--px-ease),
     color var(--px-dur-fast) var(--px-ease);
@@ -237,34 +241,19 @@
   background-color: var(--px-surface-hover);
 }
 
-/* Active tab reads as a RAISED tab: a lighter surface than the bar, defined
-   side edges (inset box-shadows = no layout shift), brightest text, and a
-   full-width accent cap. Unmistakable which one you're on. */
+/* Active tab takes the bar/content colour so it reads as connected to the page
+   below — the inactive grey chips recede around it. No accent cap, no side
+   borders; the colour difference (content vs grey) is the signal. */
 .ui-tab--active {
   color: var(--px-text);
   font-weight: 550;
-  background-color: var(--px-bg-elevated);
+  background-color: var(--px-bg);
   border-top-left-radius: var(--px-radius-md);
   border-top-right-radius: var(--px-radius-md);
-  box-shadow:
-    inset 1px 0 0 var(--px-border),
-    inset -1px 0 0 var(--px-border),
-    var(--px-edge-light);
 }
 .ui-tab--active:hover {
-  background-color: var(--px-bg-elevated);
+  background-color: var(--px-bg);
   color: var(--px-text);
-}
-/* Signature accent top cap — full width across the raised tab. */
-.ui-tab--active::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 2px;
-  border-radius: var(--px-radius-md) var(--px-radius-md) 0 0;
-  background: var(--px-accent);
 }
 
 .ui-tab--italic .ui-tab-label {
