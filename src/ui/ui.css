@@ -196,15 +196,20 @@
 .ui-tab {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 6px;
-  padding: 0 12px;
+  /* Symmetric horizontal padding: the right 24px holds the hover-revealed
+     close ×; the equal left 24px reserves matching space so the title is
+     centered between them — not pushed left by the close button. */
+  padding: 0 24px;
   height: 100%;
   cursor: pointer;
   white-space: nowrap;
   font-size: var(--px-text-base);
   user-select: none;
-  max-width: 200px;
+  /* Uniform width so a row of tabs reads evenly instead of varying with title
+     length; overflow scrolls via the tab-bar scroll buttons. */
+  flex: 0 0 168px;
+  width: 168px;
   color: var(--px-text-muted);
   background-color: transparent;
   border: 0;
@@ -303,9 +308,9 @@
 .ui-tab-label {
   overflow: hidden;
   text-overflow: ellipsis;
-  /* Size to content (not flex:1) so the title sits centered in the tab rather
-     than being pushed left; min-width:0 keeps ellipsis working when long. */
-  flex: 0 1 auto;
+  /* Fill the space between the symmetric paddings and center the title within
+     it, so it reads centered regardless of length (long titles ellipsize). */
+  flex: 1;
   min-width: 0;
   text-align: center;
 }
