@@ -12,8 +12,10 @@ describe('ChatSessionSidebar', () => {
 
   let container: HTMLElement;
 
-  // Spread sessions across date groups for comprehensive tests
-  const NOW = Date.now();
+  // Spread sessions across date groups for comprehensive tests.
+  // Anchor "now" to local noon today so "1 hour ago" is unambiguously Today —
+  // using the raw clock made this flake near midnight (an hour ago is yesterday).
+  const NOW = (() => { const d = new Date(); d.setHours(12, 0, 0, 0); return d.getTime(); })();
   const HOUR = 3_600_000;
   const DAY = 86_400_000;
 
