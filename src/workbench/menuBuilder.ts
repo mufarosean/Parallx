@@ -89,7 +89,7 @@ export class MenuBuilder extends Disposable {
     // Register dropdown items for View menu — delegates to structural commands
     this._register(this._titlebar.registerMenuBarDropdownItems('view', [
       { commandId: 'workbench.action.showCommands', title: 'Command Palette…', group: '1_nav', order: 1 },
-      { commandId: 'theme-editor.open', title: 'Appearance…', group: '2_appearance', order: 0 },
+      { commandId: 'settings.openAppearance', title: 'Appearance…', group: '2_appearance', order: 0 },
       { commandId: 'workbench.action.toggleSidebar', title: 'Toggle Sidebar', group: '2_appearance', order: 1 },
       { commandId: 'workbench.action.togglePanel', title: 'Toggle Panel', group: '2_appearance', order: 2 },
       { commandId: 'workbench.action.toggleMaximizedPanel', title: 'Maximize Panel', group: '2_appearance', order: 2.5 },
@@ -238,9 +238,8 @@ export class MenuBuilder extends Disposable {
         disabled: true,
       },
       {
-        id: 'theme-editor.open',
+        id: 'settings.openAppearance',
         label: 'Appearance…',
-        keybinding: this.keybindingHint('theme-editor.open'),
         group: '3_themes',
       },
       {

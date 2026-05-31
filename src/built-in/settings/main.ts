@@ -30,38 +30,45 @@ let _editor: SettingsEditor | null = null;
 // ─── Activation ──────────────────────────────────────────────────────────────
 
 export function activate(api: ParallxApi, context: ToolContext): void {
-  context.subscriptions.push(
-    api.commands.registerCommand('settings.open', () => {
-      if (!api.services.has(ISettingsRegistryService)) {
-        console.warn('[settings] ISettingsRegistryService not available');
+  // Open the Settings hub, optionally deep-linked to a panel (e.g. 'appearance').
+  const openSettings = (panelId?: string): void => {
+    if (!api.services.has(ISettingsRegistryService)) {
+      console.warn('[settings] ISettingsRegistryService not available');
+      return;
+    }
+    const registry = api.services.get<import('../../services/settingsRegistryService.js').ISettingsRegistryService>(
+      ISettingsRegistryService,
+    );
+
+    // §3.8 rollback flag — bail out cleanly if the editor is disabled.
+    try {
+      const enabled = registry.getValue<boolean>('settings.editor.enabled');
+      if (enabled === false) {
+        console.info('[settings] editor disabled by settings.editor.enabled flag');
         return;
       }
-      const registry = api.services.get<import('../../services/settingsRegistryService.js').ISettingsRegistryService>(
-        ISettingsRegistryService,
-      );
+    } catch {
+      /* schema not registered — proceed (registry must have at least defaults) */
+    }
 
-      // §3.8 rollback flag — bail out cleanly if the editor is disabled.
-      try {
-        const enabled = registry.getValue<boolean>('settings.editor.enabled');
-        if (enabled === false) {
-          console.info('[settings] editor disabled by settings.editor.enabled flag');
-          return;
-        }
-      } catch {
-        /* schema not registered — proceed (registry must have at least defaults) */
-      }
+    // Lazy single-instance — re-open shows the same editor again.
+    if (_editor) {
+      _editor.dispose();
+      _editor = null;
+    }
+    _editor = new SettingsEditor(document.body, registry, {
+      executeCommand: <T>(id: string, ...args: unknown[]) =>
+        api.commands.executeCommand<T>(id, ...args),
+    }, panelId);
+    _editor.show();
+  };
 
-      // Lazy single-instance — re-open shows the same editor again.
-      if (_editor) {
-        _editor.dispose();
-        _editor = null;
-      }
-      _editor = new SettingsEditor(document.body, registry, {
-        executeCommand: <T>(id: string, ...args: unknown[]) =>
-          api.commands.executeCommand<T>(id, ...args),
-      });
-      _editor.show();
-    }),
+  context.subscriptions.push(
+    api.commands.registerCommand('settings.open', (panelId?: unknown) =>
+      openSettings(typeof panelId === 'string' ? panelId : undefined)),
+    // Deep-links so menus can drop users straight onto a hub panel.
+    api.commands.registerCommand('settings.openAppearance', () => openSettings('appearance')),
+    api.commands.registerCommand('settings.openKeyboardShortcuts', () => openSettings('keyboard')),
   );
 
   // ── M61 Phase 6 — workspace settings export / import / reset ──────────

@@ -87,7 +87,8 @@ import {
   createSubagentTurnExecutor,
   createSubagentAnnouncer,
 } from '../../openclaw/openclawSubagentExecutor.js';
-import { IEditorService } from '../../services/serviceTypes.js';
+import { IEditorService, IToolRegistryService } from '../../services/serviceTypes.js';
+import { registerManifestConfiguration } from '../../services/manifestSettings.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
 import type { IPromptFileAccess } from '../../services/promptFileService.js';
@@ -446,6 +447,21 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // Migrate any secret values that were previously stored plaintext in
     // settings.overrides JSON (e.g. mcp.gmail.clientSecret).
     void settingsRegistry.migrateSecretsFromJson().catch(() => { /* best-effort */ });
+
+    // Declarative extension settings — register every tool's
+    // contributes.configuration into the unified registry so it appears in the
+    // Settings hub. Sweep already-registered tools, then watch for new ones.
+    if (api.services.has(IToolRegistryService)) {
+      const toolRegistry = api.services.get<import('../../services/serviceTypes.js').IToolRegistryService>(IToolRegistryService);
+      for (const entry of toolRegistry.getAll()) {
+        registerManifestConfiguration(settingsRegistry, entry.description.manifest as never);
+      }
+      context.subscriptions.push(
+        toolRegistry.onDidRegisterTool((e) => {
+          registerManifestConfiguration(settingsRegistry, e.description.manifest as never);
+        }),
+      );
+    }
   }
 
   // §3.10 event log — writes ndjson to per-workspace

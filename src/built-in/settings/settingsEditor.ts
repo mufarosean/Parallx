@@ -71,8 +71,15 @@ export class SettingsEditor extends Disposable {
     parent: HTMLElement,
     private readonly _registry: ISettingsRegistryService,
     private readonly _commands?: IEditorCommandRunner,
+    initialPanelId?: string,
   ) {
     super();
+
+    // Deep-link target (e.g. open Settings straight to Appearance). Accept a
+    // bare panel id or a full nav id ('panel:appearance' / 'schema:General').
+    if (initialPanelId) {
+      this._selectedId = initialPanelId.includes(':') ? initialPanelId : `panel:${initialPanelId}`;
+    }
 
     this._overlay = this._register(new Overlay(parent, {
       closeOnClickOutside: true,
