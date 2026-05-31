@@ -34,6 +34,7 @@ one-click jump to where it lives.
 | A **keybinding** | Registered, conflict-guarded, and user-rebindable | Settings → Keyboard Shortcuts |
 | A **view / view container** | A panel in the sidebar / auxiliary bar | Activity bar + sidebar |
 | A **dashboard widget** | A card users can add to any dashboard page | Dashboard widget picker |
+| An **AI tool** | The chat agent can call it; attributed to your tool | Agent tool list + AI Settings → Tools |
 | An **editor** | Opens as a tab via the editor provider API | Editor groups |
 
 See [project memory: unified settings + commands] for the architecture. The
@@ -82,6 +83,26 @@ declares a `configSchema` (form fields), a `refreshPolicy`
 (manual/interval/cron), an optional `refresh(ctx)` that returns a string, and
 `createWidget(container, ctx)`. `ctx.api` is the full Parallx API — e.g. an
 AI widget's refresh is just `api.commands.executeCommand('chat.submitPrompt', { text })`.
+
+### AI tools (the agent's hands)
+A tool **owns the AI tools it exposes** — register them from your own
+`activate()`, the same way you own commands and views. Don't graft them into
+the chat module. Get the (core, always-present) `ILanguageModelToolsService`
+and call `registerTool({ name, description, parameters, handler, requiresConfirmation, ownerToolId })`
+— or, for an extension, `api.chat.registerTool(name, { … })`. Setting
+`ownerToolId` to your tool id attributes the tool to you in the agent's tool
+list and the Tool Gallery membership view. Example: canvas registers its
+page/block tools in [canvasAITools.ts](../src/built-in/canvas/ai/canvasAITools.ts).
+
+**Naming — snake_case, always.** Tool names must match `^[A-Za-z0-9_-]{1,64}$`
+(function-calling schemas reject `.` and other punctuation). The host
+normalizes any name to snake_case at registration
+([normalizeToolName](../src/services/languageModelToolsService.ts)), so
+`budget.pullEmails` becomes `budget_pull_emails` everywhere — schema, prompt,
+and dispatch stay in sync — but **name them in snake_case yourself**: a mix of
+separators makes small models invent the wrong one. Namespace an extension's
+tools with a shared prefix (`budget_pull_emails`, `budget_record_transaction`)
+so they group together for the model.
 
 ### Editors
 Imperative — `api.editors.registerEditorProvider(typeId, { createEditorPane(container) })`,
