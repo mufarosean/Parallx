@@ -409,7 +409,9 @@ export const PLANNER_MANIFEST: IToolManifest = {
         aiInvocable: true, aiDescription: 'Create a new calendar event via an input prompt.' },
     ],
     keybindings: [
-      { command: 'planner.open', key: 'Ctrl+Shift+P' },
+      // NOTE: Ctrl+Shift+P is reserved for the Command Palette
+      // (workbench.action.showCommands) and must never be reassigned.
+      { command: 'planner.open', key: 'Ctrl+Shift+K' },
     ],
     viewContainers: [
       { id: 'planner-container', title: 'Planner', icon: 'list-checks', location: 'sidebar' as const },

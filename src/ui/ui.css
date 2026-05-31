@@ -231,19 +231,33 @@
   background-color: var(--px-surface-hover);
 }
 
+/* Active tab reads as a RAISED tab: a lighter surface than the bar, defined
+   side edges (inset box-shadows = no layout shift), brightest text, and a
+   full-width accent cap. Unmistakable which one you're on. */
 .ui-tab--active {
   color: var(--px-text);
-  background-color: var(--px-bg);
+  font-weight: 550;
+  background-color: var(--px-bg-elevated);
+  border-top-left-radius: var(--px-radius-md);
+  border-top-right-radius: var(--px-radius-md);
+  box-shadow:
+    inset 1px 0 0 var(--px-border),
+    inset -1px 0 0 var(--px-border),
+    var(--px-edge-light);
 }
-/* Signature accent top indicator — inset from the edges, springs in. */
+.ui-tab--active:hover {
+  background-color: var(--px-bg-elevated);
+  color: var(--px-text);
+}
+/* Signature accent top cap — full width across the raised tab. */
 .ui-tab--active::after {
   content: '';
   position: absolute;
-  left: 6px;
-  right: 6px;
+  left: 0;
+  right: 0;
   top: 0;
   height: 2px;
-  border-radius: 0 0 var(--px-radius-full) var(--px-radius-full);
+  border-radius: var(--px-radius-md) var(--px-radius-md) 0 0;
   background: var(--px-accent);
 }
 
@@ -293,7 +307,7 @@
 
 .ui-tab-dirty {
   margin-left: 4px;
-  color: var(--vscode-tab-modifiedBorder);
+  color: var(--px-text-secondary);
   font-size: var(--parallx-fontSize-base);
 }
 
