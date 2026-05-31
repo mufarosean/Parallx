@@ -111,6 +111,29 @@ export class BubbleMenuController implements ICanvasMenu {
         active: () => this._registry.isAIChatVisible(),
       },
       {
+        // Seamless canvas → main chat for any selection, matching the
+        // "Add Selection to Chat" affordance the text/markdown/pdf editors
+        // already expose. Routes through the unified M48 selection-action
+        // dispatcher (the same CustomEvent the inline AI's "Send to Chat" uses).
+        label: svgIcon('comment'), title: 'Add to Chat',
+        command: (e) => {
+          const { from, to } = e.state.selection;
+          const selectedText = e.state.doc.textBetween(from, to, '\n');
+          if (!selectedText.trim()) return;
+          document.dispatchEvent(new CustomEvent('parallx-selection-action', {
+            bubbles: true,
+            detail: {
+              actionId: 'add-to-chat',
+              selectedText,
+              surface: 'canvas',
+              source: { fileName: 'Canvas Page', filePath: 'canvas' },
+            },
+          }));
+          this.hide();
+        },
+        active: () => false,
+      },
+      {
         label: svgIcon('math'), title: 'Inline equation',
         command: (e) => {
           const { from, to } = e.state.selection;
