@@ -45,6 +45,7 @@ interface ParallxApi {
   };
   commands: {
     registerCommand(id: string, handler: (...args: unknown[]) => unknown): IDisposable;
+    executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
   };
   editors: {
     registerEditorProvider(typeId: string, provider: { createEditorPane(container: HTMLElement, input?: { id: string; name: string }): IDisposable }): IDisposable;
@@ -585,6 +586,11 @@ function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: strin
   header.appendChild(headerDetails);
   container.appendChild(header);
 
+  // ── Membership banner ──
+  // Makes "this tool is part of the family" concrete: a live summary of what
+  // it adds to Parallx's shared surfaces, each chip a one-click jump there.
+  renderMembershipBanner(container, api, tool);
+
   // ── Tab bar ──
   const tabs = ['Details', 'Feature Contributions', 'Runtime Status'] as const;
   type TabId = typeof tabs[number];
@@ -622,7 +628,7 @@ function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: strin
         renderDetailsTab(content, tool);
         break;
       case 'Feature Contributions':
-        renderContributionsTab(content, tool);
+        renderContributionsTab(content, tool, api);
         break;
       case 'Runtime Status':
         renderStatusTab(content, tool);
@@ -650,6 +656,69 @@ function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: strin
 }
 
 // ─── Details Tab ─────────────────────────────────────────────────────────────
+
+// ─── Membership banner ───────────────────────────────────────────────────────
+
+function renderMembershipBanner(container: HTMLElement, api: ParallxApi, tool: ToolInfo): void {
+  const c = tool.contributes ?? {};
+  const cmdCount = c.commands?.length ?? 0;
+  const settingCount = (c.configuration ?? []).reduce(
+    (n, sec) => n + Object.keys(sec.properties ?? {}).length, 0,
+  );
+  const viewCount = c.views?.length ?? 0;
+  const kbCount = c.keybindings?.length ?? 0;
+  const firstViewId = c.views?.[0]?.id;
+  const settingsCategory = c.configuration?.[0]?.title || tool.name;
+
+  const banner = $('div');
+  banner.classList.add('tool-editor-membership');
+
+  const lead = $('div');
+  lead.classList.add('tool-editor-membership-lead');
+  lead.innerHTML =
+    '<span class="tool-editor-membership-badge">Part of Parallx</span>' +
+    '<span class="tool-editor-membership-text">Everything this tool adds lives in the shared surfaces — same theme, same Settings, same Command Palette.</span>';
+  banner.appendChild(lead);
+
+  const chipsRow = $('div');
+  chipsRow.classList.add('tool-editor-membership-chips');
+
+  const addChip = (count: number, noun: string, onClick: (() => void) | null) => {
+    if (count <= 0) return;
+    const chip = $('button');
+    chip.classList.add('tool-editor-membership-chip');
+    if (!onClick) chip.classList.add('tool-editor-membership-chip--static');
+    chip.innerHTML =
+      `<span class="tool-editor-membership-num">${count}</span>` +
+      `<span class="tool-editor-membership-noun">${noun}${count === 1 ? '' : 's'}</span>`;
+    if (onClick) {
+      chip.addEventListener('click', onClick);
+    } else {
+      (chip as HTMLButtonElement).disabled = true;
+    }
+    chipsRow.appendChild(chip);
+  };
+
+  const run = (id: string, ...args: unknown[]) =>
+    api.commands.executeCommand(id, ...args).catch((e: unknown) =>
+      console.warn(`[ToolGallery] ${id} failed:`, e));
+
+  addChip(cmdCount, 'command', () => run('workbench.action.showCommands'));
+  addChip(settingCount, 'setting', () => run('settings.open', `schema:${settingsCategory}`));
+  addChip(viewCount, 'view', firstViewId ? () => run('workbench.view.show', firstViewId) : null);
+  addChip(kbCount, 'shortcut', () => run('settings.openKeyboardShortcuts'));
+
+  // A tool with no declared contributions still belongs — say so plainly.
+  if (cmdCount + settingCount + viewCount + kbCount === 0) {
+    const none = $('span');
+    none.classList.add('tool-editor-membership-none');
+    none.textContent = 'No declared contributions yet.';
+    chipsRow.appendChild(none);
+  }
+
+  banner.appendChild(chipsRow);
+  container.appendChild(banner);
+}
 
 function renderDetailsTab(container: HTMLElement, tool: ToolInfo): void {
   const section = $('div');
@@ -696,33 +765,43 @@ function renderDetailsTab(container: HTMLElement, tool: ToolInfo): void {
 
 // ─── Feature Contributions Tab ───────────────────────────────────────────────
 
-function renderContributionsTab(container: HTMLElement, tool: ToolInfo): void {
+function renderContributionsTab(container: HTMLElement, tool: ToolInfo, api: ParallxApi): void {
   const contrib = tool.contributes;
   if (!contrib) {
     renderEmptyMessage(container, 'No contributions declared.');
     return;
   }
 
+  const run = (id: string, ...args: unknown[]) =>
+    api.commands.executeCommand(id, ...args).catch((e: unknown) =>
+      console.warn(`[ToolGallery] ${id} failed:`, e));
+
   let hasAny = false;
 
-  // Commands
+  // Commands — each row runnable.
   if (contrib.commands && contrib.commands.length > 0) {
     hasAny = true;
     renderContributionSection(container, 'Commands', contrib.commands.length, () => {
-      return createTable(
+      return createActionTable(
         ['Title', 'Command ID', 'Category'],
-        contrib.commands!.map(c => [c.title, c.id, c.category ?? '']),
+        contrib.commands!.map(c => ({
+          cells: [c.title, c.id, c.category ?? ''],
+          action: { label: 'Run', onClick: () => run(c.id) },
+        })),
       );
     });
   }
 
-  // Views
+  // Views — each row openable.
   if (contrib.views && contrib.views.length > 0) {
     hasAny = true;
     renderContributionSection(container, 'Views', contrib.views.length, () => {
-      return createTable(
+      return createActionTable(
         ['Name', 'View ID', 'Container'],
-        contrib.views!.map(v => [v.name, v.id, v.defaultContainerId ?? '']),
+        contrib.views!.map(v => ({
+          cells: [v.name, v.id, v.defaultContainerId ?? ''],
+          action: { label: 'Open', onClick: () => run('workbench.view.show', v.id) },
+        })),
       );
     });
   }
@@ -738,7 +817,7 @@ function renderContributionsTab(container: HTMLElement, tool: ToolInfo): void {
     });
   }
 
-  // Configuration
+  // Configuration — links into the unified Settings hub (these live there too).
   if (contrib.configuration && contrib.configuration.length > 0) {
     hasAny = true;
     for (const config of contrib.configuration) {
@@ -754,11 +833,11 @@ function renderContributionsTab(container: HTMLElement, tool: ToolInfo): void {
             prop.description ?? '',
           ]),
         );
-      });
+      }, { label: 'Open in Settings', onClick: () => run('settings.open', `schema:${config.title}`) });
     }
   }
 
-  // Keybindings
+  // Keybindings — links into the Keyboard Shortcuts hub panel.
   if (contrib.keybindings && contrib.keybindings.length > 0) {
     hasAny = true;
     renderContributionSection(container, 'Keybindings', contrib.keybindings.length, () => {
@@ -766,7 +845,7 @@ function renderContributionsTab(container: HTMLElement, tool: ToolInfo): void {
         ['Command', 'Key', 'When'],
         contrib.keybindings!.map(k => [k.command, k.key, k.when ?? '']),
       );
-    });
+    }, { label: 'Manage shortcuts', onClick: () => run('settings.openKeyboardShortcuts') });
   }
 
   // Menus
@@ -863,6 +942,7 @@ function renderContributionSection(
   title: string,
   count: number,
   buildContent: () => HTMLElement,
+  headerAction?: { label: string; onClick: () => void },
 ): void {
   const section = $('div');
   section.classList.add('tool-editor-contrib-section');
@@ -879,6 +959,17 @@ function renderContributionSection(
   label.classList.add('tool-editor-contrib-label');
   label.textContent = `${title} (${count})`;
   header.appendChild(label);
+
+  if (headerAction) {
+    const btn = $('button');
+    btn.classList.add('tool-editor-contrib-action');
+    btn.textContent = headerAction.label;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation(); // don't toggle collapse
+      headerAction.onClick();
+    });
+    header.appendChild(btn);
+  }
 
   section.appendChild(header);
 
@@ -920,6 +1011,47 @@ function createTable(headers: string[], rows: string[][]): HTMLElement {
       td.textContent = cell;
       tr.appendChild(td);
     }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+
+  return table;
+}
+
+/** Like createTable, but each row carries a trailing action button. */
+function createActionTable(
+  headers: string[],
+  rows: { cells: string[]; action: { label: string; onClick: () => void } }[],
+): HTMLElement {
+  const table = $('table');
+  table.classList.add('tool-editor-table');
+
+  const thead = $('thead');
+  const headerRow = $('tr');
+  for (const h of [...headers, '']) {
+    const th = $('th');
+    th.textContent = h;
+    headerRow.appendChild(th);
+  }
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  const tbody = $('tbody');
+  for (const row of rows) {
+    const tr = $('tr');
+    for (const cell of row.cells) {
+      const td = $('td');
+      td.textContent = cell;
+      tr.appendChild(td);
+    }
+    const actionTd = $('td');
+    actionTd.classList.add('tool-editor-table-action-cell');
+    const btn = $('button');
+    btn.classList.add('tool-editor-row-action');
+    btn.textContent = row.action.label;
+    btn.addEventListener('click', row.action.onClick);
+    actionTd.appendChild(btn);
+    tr.appendChild(actionTd);
     tbody.appendChild(tr);
   }
   table.appendChild(tbody);
