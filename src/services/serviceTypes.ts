@@ -1141,6 +1141,15 @@ export interface IKeybindingService extends IDisposable {
    */
   getAllKeybindings(): readonly { key: string; commandId: string; when?: string; source?: string }[];
 
+  /** Command ids currently triggered by `key` (single-key, normalized). */
+  getCommandsForKey(key: string): string[];
+
+  /** User rebind: make `commandId` respond to `key` only (source 'user'). */
+  setUserKeybinding(commandId: string, key: string): void;
+
+  /** Clear a command's bindings; optionally restore `defaultKey`. */
+  clearUserKeybinding(commandId: string, defaultKey?: string): void;
+
   /** Fires when a keybinding is successfully dispatched. */
   readonly onDidDispatch: Event<{ key: string; commandId: string }>;
 

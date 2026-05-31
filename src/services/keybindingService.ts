@@ -177,6 +177,45 @@ export class KeybindingService extends Disposable implements IKeybindingService 
     }));
   }
 
+  /** Command ids currently triggered by `key` (single-key match, normalized). */
+  getCommandsForKey(key: string): string[] {
+    const norm = normalizeKeybinding(key.trim());
+    return this._entries.filter(e => !e.isChord && e.firstPart === norm).map(e => e.commandId);
+  }
+
+  /** Remove every binding currently mapped to `commandId`. Returns them. */
+  private _removeByCommand(commandId: string): KeybindingEntry[] {
+    const removed: KeybindingEntry[] = [];
+    for (let i = this._entries.length - 1; i >= 0; i--) {
+      if (this._entries[i].commandId === commandId) {
+        const e = this._entries[i];
+        this._entries.splice(i, 1);
+        this._removeFromFirstPartMap(e);
+        removed.push(e);
+      }
+    }
+    return removed;
+  }
+
+  /**
+   * User rebind: make `commandId` respond to `key` and nothing else. Replaces
+   * any existing bindings for that command (source 'user'). Reserved keys are
+   * refused — see RESERVED_KEYBINDINGS.
+   */
+  setUserKeybinding(commandId: string, key: string): void {
+    this._removeByCommand(commandId);
+    this.registerKeybinding(key, commandId, undefined, 'user');
+  }
+
+  /**
+   * Clear a command's bindings and, if a default is supplied, restore it.
+   * Used by the Keyboard Shortcuts editor's Reset action.
+   */
+  clearUserKeybinding(commandId: string, defaultKey?: string): void {
+    this._removeByCommand(commandId);
+    if (defaultKey) this.registerKeybinding(defaultKey, commandId, undefined, 'builtin');
+  }
+
   // ── Entry creation ──
 
   private _createEntry(key: string, commandId: string, when?: string, source?: string): KeybindingEntry {

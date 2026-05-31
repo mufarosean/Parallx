@@ -25,6 +25,26 @@ interface IKeybindingServiceLike {
   removeKeybindingsBySource(source: string): void;
 }
 
+// ─── Reserved keybindings ────────────────────────────────────────────────────
+
+/**
+ * Keys that may only be bound by their canonical owner command. Contributions
+ * (and user rebinds) that try to point one of these at a different command are
+ * rejected, so core shortcuts can't be silently shadowed — the failure mode
+ * that let Planner steal Ctrl+Shift+P from the Command Palette.
+ *
+ * Keys are stored in normalized form (see normalizeKeybinding).
+ */
+export const RESERVED_KEYBINDINGS: ReadonlyMap<string, string> = new Map([
+  ['ctrl+shift+p', 'workbench.action.showCommands'],
+  ['f1', 'workbench.action.showCommands'],
+]);
+
+/** Returns the owner command if `key` (any form) is reserved, else undefined. */
+export function reservedKeyOwner(key: string): string | undefined {
+  return RESERVED_KEYBINDINGS.get(normalizeKeybinding(key));
+}
+
 // ─── Key Normalization ───────────────────────────────────────────────────────
 
 /**
@@ -239,6 +259,17 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
       }
 
       const normalizedKey = normalizeKeybinding(kb.key);
+
+      // Reserved-key guard — a contribution may not point a reserved key at a
+      // command other than its canonical owner.
+      const reservedOwner = RESERVED_KEYBINDINGS.get(normalizedKey);
+      if (reservedOwner && reservedOwner !== kb.command) {
+        console.warn(
+          `[KeybindingContribution] Ignoring "${kb.key}" from tool "${toolId}" → "${kb.command}": ` +
+          `that key is reserved for "${reservedOwner}".`,
+        );
+        continue;
+      }
 
       const contributed: IContributedKeybinding = {
         commandId: kb.command,

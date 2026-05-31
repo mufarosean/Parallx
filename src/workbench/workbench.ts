@@ -125,6 +125,7 @@ import type { MenuContributionProcessor } from '../contributions/menuContributio
 
 // Keybinding Service (M3 Capability 0.3)
 import type { KeybindingService } from '../services/keybindingService.js';
+import { applyKbOverrides } from '../services/keybindingOverrides.js';
 
 // View Contribution (M2 Capability 6)
 import { ViewContributionProcessor } from '../contributions/viewContribution.js';
@@ -2534,6 +2535,13 @@ export class Workbench extends Layout {
 
     // Fire startup finished — triggers * and onStartupFinished activation events
     activationEvents.fireStartupFinished();
+
+    // ── Re-apply persisted keyboard-shortcut overrides ──
+    // Tool keybindings have now registered (last-registered wins), so user
+    // rebinds from the Keyboard Shortcuts editor are applied on top.
+    if (this._services.has(IKeybindingService)) {
+      applyKbOverrides(this._services.get(IKeybindingService) as unknown as KeybindingService);
+    }
 
     // ── Post-activation layout pass ──
     // Built-in tools (Chat, etc.) may have contributed new view containers

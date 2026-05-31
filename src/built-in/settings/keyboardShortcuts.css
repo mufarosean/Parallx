@@ -1,0 +1,137 @@
+/* keyboardShortcuts.css — Keyboard Shortcuts panel (embedded in Settings). */
+
+.kbs {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.kbs__search { max-width: 420px; }
+.kbs__search .ui-input-box { width: 100%; }
+
+.kbs__list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md, 6px);
+  overflow: hidden;
+}
+
+.kbs__row {
+  display: grid;
+  grid-template-columns: 1fr 220px 40px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--px-divider);
+}
+.kbs__row:last-child { border-bottom: none; }
+.kbs__row:not(.kbs__row--head):hover { background: var(--px-surface-hover); }
+
+.kbs__row--head {
+  background: var(--px-bg-elevated);
+  font-size: var(--px-text-xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--px-text-muted);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.kbs__c-cmd { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.kbs__cmd-title {
+  font-size: var(--px-text-base, 13px);
+  color: var(--px-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kbs__cmd-id {
+  font-family: var(--px-font-mono, monospace);
+  font-size: var(--px-text-xs, 11px);
+  color: var(--px-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kbs__c-key { display: flex; }
+.kbs__keybtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--px-radius-sm, 4px);
+  cursor: pointer;
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-sm, 12px);
+  transition: border-color var(--px-dur-fast, 90ms) var(--px-ease, ease),
+              background var(--px-dur-fast, 90ms) var(--px-ease, ease);
+}
+.kbs__keybtn:hover { border-color: var(--px-border-strong); background: var(--px-surface-hover); }
+.kbs__keybtn--unset { color: var(--px-text-faint); font-style: italic; }
+.kbs__keybtn--capturing {
+  border-color: var(--px-accent);
+  background: var(--px-accent-soft);
+  color: var(--px-text);
+}
+
+/* Keycaps — match the tactile <kbd> language. */
+.kbs__cap {
+  display: inline-block;
+  font-family: var(--px-font-ui, inherit);
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  color: var(--px-text-secondary);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+}
+
+.kbs__c-actions { display: flex; justify-content: flex-end; }
+.kbs__reset {
+  width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--px-radius-sm, 4px);
+  color: var(--px-text-muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+.kbs__reset:hover { background: var(--px-surface-hover); color: var(--px-text); }
+
+.kbs__empty {
+  padding: 28px;
+  text-align: center;
+  color: var(--px-text-muted);
+}
+
+/* Toast */
+.kbs__toast {
+  position: sticky;
+  bottom: 0;
+  align-self: center;
+  margin-top: 8px;
+  padding: 7px 14px;
+  border-radius: var(--px-radius-full, 999px);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  color: var(--px-text);
+  font-size: var(--px-text-sm, 12px);
+  box-shadow: var(--px-shadow-md);
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity var(--px-dur-base, 160ms) var(--px-ease, ease),
+              transform var(--px-dur-base, 160ms) var(--px-ease, ease);
+}
+.kbs__toast--show { opacity: 1; transform: translateY(0); }
+.kbs__toast--error { border-color: var(--px-danger); color: var(--px-danger); }
