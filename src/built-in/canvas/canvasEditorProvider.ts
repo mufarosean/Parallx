@@ -437,6 +437,10 @@ class CanvasEditorPane implements IDisposable {
         propService,
         this._dataService,
         this._provider.window,
+        // M85 — let tag chips navigate to other pages sharing the tag.
+        (pageId, title) => {
+          void this._openEditor?.({ typeId: 'canvas', title: title || 'Untitled', instanceId: pageId });
+        },
       );
       this._propertyBar.init().catch(err => {
         console.warn('[CanvasEditorPane] PropertyBar init failed:', err);

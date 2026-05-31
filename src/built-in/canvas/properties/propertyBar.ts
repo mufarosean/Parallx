@@ -86,7 +86,72 @@ export class PropertyBar implements IDisposable {
     private readonly _propertyService: IPropertyDataService,
     private readonly _dataService?: ICanvasDataService,
     private readonly _window?: PropertyBarWindowApi,
+    private readonly _onOpenPage?: (pageId: string, title: string) => void,
   ) {}
+
+  /** Floating "pages tagged X" popover, dismissed on outside click / Escape. */
+  private _valuePopover: { el: HTMLElement; cleanup: () => void } | null = null;
+
+  private _dismissValuePopover(): void {
+    this._valuePopover?.cleanup();
+    this._valuePopover?.el.remove();
+    this._valuePopover = null;
+  }
+
+  /**
+   * M85 — tags that link pages: show the other pages sharing this tag/select
+   * value, anchored to the clicked chip. Clicking one navigates to it.
+   */
+  private async _showPagesForValue(propertyName: string, value: string, anchor: HTMLElement): Promise<void> {
+    this._dismissValuePopover();
+
+    let pages: { pageId: string; title: string }[] = [];
+    try {
+      const found = await this._propertyService.findPagesByProperty(propertyName, 'contains', value);
+      pages = found.filter((p) => p.pageId !== this._pageId).map((p) => ({ pageId: p.pageId, title: p.title }));
+    } catch (err) {
+      console.warn('[PropertyBar] findPagesByProperty failed:', err);
+    }
+
+    const pop = document.createElement('div');
+    pop.className = 'canvas-prop-value-popover';
+    const header = document.createElement('div');
+    header.className = 'canvas-prop-value-popover__header';
+    header.textContent = pages.length
+      ? `${pages.length} other page${pages.length === 1 ? '' : 's'} tagged "${value}"`
+      : `No other pages tagged "${value}"`;
+    pop.appendChild(header);
+
+    for (const page of pages) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'canvas-prop-value-popover__item';
+      item.textContent = page.title || 'Untitled';
+      item.addEventListener('click', () => {
+        this._dismissValuePopover();
+        this._onOpenPage?.(page.pageId, page.title);
+      });
+      pop.appendChild(item);
+    }
+
+    document.body.appendChild(pop);
+    const rect = anchor.getBoundingClientRect();
+    pop.style.left = `${Math.round(rect.left)}px`;
+    pop.style.top = `${Math.round(rect.bottom + 4)}px`;
+
+    // Dismiss on outside click / Escape.
+    const onDocClick = (e: MouseEvent) => { if (!pop.contains(e.target as Node)) this._dismissValuePopover(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') this._dismissValuePopover(); };
+    setTimeout(() => document.addEventListener('mousedown', onDocClick), 0);
+    document.addEventListener('keydown', onKey);
+    this._valuePopover = {
+      el: pop,
+      cleanup: () => {
+        document.removeEventListener('mousedown', onDocClick);
+        document.removeEventListener('keydown', onKey);
+      },
+    };
+  }
 
   // ── Initialise & Render ─────────────────────────────────────────────────
 
@@ -251,6 +316,8 @@ export class PropertyBar implements IDisposable {
       this._propertyService.setProperty(this._pageId, prop.key, newValue).catch(err => {
         console.error(`[PropertyBar] Failed to save property "${prop.key}":`, err);
       });
+    }, {
+      onValueClick: (propertyName, tagValue, anchor) => this._showPagesForValue(propertyName, tagValue, anchor),
     });
     value.appendChild(editor);
     row.appendChild(value);
@@ -380,6 +447,7 @@ export class PropertyBar implements IDisposable {
     if (this._disposed) return;
     this._disposed = true;
 
+    this._dismissValuePopover();
     for (const d of this._eventDisposables) d.dispose();
     this._eventDisposables.length = 0;
 

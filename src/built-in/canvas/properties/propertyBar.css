@@ -843,3 +843,46 @@
 .canvas-property-picker__new-form button:hover {
   background: var(--vscode-button-hoverBackground, #1a6fcc);
 }
+
+/* ── M85: tags that link pages ─────────────────────────────────────────── */
+
+.canvas-prop-tag--clickable { cursor: pointer; }
+.canvas-prop-tag--clickable:hover {
+  filter: brightness(1.15);
+  box-shadow: inset 0 0 0 1px var(--px-border-strong, rgba(255, 255, 255, 0.25));
+}
+
+.canvas-prop-value-popover {
+  position: fixed;
+  z-index: 1000;
+  min-width: 200px;
+  max-width: 320px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--px-bg-elevated, #1f2125);
+  border: 1px solid var(--px-border, #33363d);
+  border-radius: var(--px-radius-md, 6px);
+  box-shadow: var(--px-shadow-lg, 0 12px 32px rgba(0, 0, 0, 0.45));
+}
+.canvas-prop-value-popover__header {
+  padding: 4px 8px 6px;
+  font-size: var(--px-text-xs, 11px);
+  color: var(--px-text-muted, rgba(255, 255, 255, 0.5));
+}
+.canvas-prop-value-popover__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  color: var(--px-text, #e8eaee);
+  font-size: var(--px-text-sm, 12px);
+  border-radius: var(--px-radius-sm, 4px);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.canvas-prop-value-popover__item:hover { background: var(--px-surface-hover, rgba(255, 255, 255, 0.06)); }

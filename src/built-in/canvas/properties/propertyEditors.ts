@@ -49,10 +49,17 @@ function wireInputCommit(input: HTMLInputElement, commit: () => void): void {
   });
 }
 
+/** Optional cross-page affordances the host (PropertyBar) can provide. */
+export interface IPropertyEditorContext {
+  /** Show pages sharing a tag/select value (M85 — tags that link pages). */
+  onValueClick?: (propertyName: string, value: string, anchor: HTMLElement) => void;
+}
+
 export function createPropertyEditor(
   definition: IPropertyDefinition,
   value: unknown,
   onChange: (value: unknown) => void,
+  context?: IPropertyEditorContext,
 ): HTMLElement {
   switch (definition.type) {
     case 'text': return _createTextEditor(value as string | null, onChange);
@@ -60,7 +67,7 @@ export function createPropertyEditor(
     case 'checkbox': return _createCheckboxEditor(value as boolean, onChange);
     case 'date': return _createDateEditor(value as string | null, onChange);
     case 'datetime': return _createDatetimeEditor(value as string | null, onChange);
-    case 'tags': return _createTagsEditor(value as string[] | null, definition, onChange);
+    case 'tags': return _createTagsEditor(value as string[] | null, definition, onChange, context);
     case 'select': return _createSelectEditor(value as string | null, definition, onChange);
     case 'url': return _createUrlEditor(value as string | null, onChange);
     default: return _createTextEditor(value as string | null, onChange);
@@ -193,6 +200,7 @@ function _createTagsEditor(
   value: string[] | null,
   definition: IPropertyDefinition,
   onChange: (v: unknown) => void,
+  context?: IPropertyEditorContext,
 ): HTMLElement {
   const tags: string[] = Array.isArray(value) ? [...value] : [];
   const options: ISelectOption[] = (definition.config as { options?: ISelectOption[] }).options ?? [];
@@ -220,6 +228,17 @@ function _createTagsEditor(
       chip.className = 'canvas-prop-tag';
       chip.style.background = getTagColor(tag);
       chip.textContent = tag;
+
+      // M85 — click a tag to see the other pages that share it (tags that link
+      // pages). The host provides the navigation; the × still removes.
+      if (context?.onValueClick) {
+        chip.classList.add('canvas-prop-tag--clickable');
+        chip.title = `Show pages tagged "${tag}"`;
+        chip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          context.onValueClick!(definition.name, tag, chip);
+        });
+      }
 
       const remove = document.createElement('span');
       remove.className = 'canvas-prop-tag__remove';
