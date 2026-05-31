@@ -196,6 +196,7 @@
 .ui-tab {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 0 12px;
   height: 100%;
@@ -302,43 +303,49 @@
 .ui-tab-label {
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
+  /* Size to content (not flex:1) so the title sits centered in the tab rather
+     than being pushed left; min-width:0 keeps ellipsis working when long. */
+  flex: 0 1 auto;
+  min-width: 0;
+  text-align: center;
 }
 
 .ui-tab-dirty {
-  margin-left: 4px;
+  /* Shares the close button's right slot (out of flow) so the title stays
+     centered whether or not the tab is dirty; swapped for the × on hover. */
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
   color: var(--px-text-secondary);
   font-size: var(--parallx-fontSize-base);
 }
 
 .ui-tab-close {
-  margin-left: 6px;
+  /* Out of layout flow so it never reserves space — the title stays centered
+     and balanced. Revealed only on tab hover (or while the tab is dirty). */
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
   font-size: var(--parallx-fontSize-lg);
   line-height: 1;
-  opacity: 0.6;
+  opacity: 0;
+  pointer-events: none;
   cursor: pointer;
   border-radius: var(--parallx-radius-sm);
   padding: 0 2px;
+  transition: opacity var(--px-dur-fast) var(--px-ease);
 }
 
-/* Hide close button on inactive non-dirty tabs — show on hover (VS Code parity) */
-.ui-tab:not(.ui-tab--active) .ui-tab-close {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.ui-tab:not(.ui-tab--active):hover .ui-tab-close {
+/* Reveal the close affordance on hover for every tab (active included). */
+.ui-tab:hover .ui-tab-close {
   opacity: 0.6;
   pointer-events: auto;
 }
 
-/* Dirty inactive tabs: hide close until hover, then swap dirty dot for close */
-.ui-tab:not(.ui-tab--active):not(:hover) .ui-tab-close {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.ui-tab:not(.ui-tab--active):hover .ui-tab-dirty {
+/* On hover, swap the dirty dot for the close affordance (any tab). */
+.ui-tab:hover .ui-tab-dirty {
   display: none;
 }
 
