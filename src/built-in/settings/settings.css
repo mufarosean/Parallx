@@ -138,6 +138,25 @@
   padding: 18px 24px 28px;
 }
 
+/* Fill mode — for panels that bring their own scroll/sub-nav (AI Settings).
+   The content pane stops scrolling; the panel host fills and scrolls inside. */
+.settings-editor__content--fill {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 0 0 0;
+}
+.settings-editor__content--fill .settings-editor__content-title,
+.settings-editor__content--fill .settings-editor__content-desc {
+  padding-left: 24px;
+  padding-right: 24px;
+}
+.settings-editor__content--fill .settings-editor__panel-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .settings-editor__content-title {
   font-size: var(--px-text-lg, 18px);
   font-weight: 650;

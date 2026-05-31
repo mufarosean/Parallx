@@ -25,6 +25,12 @@ export interface ISettingsPanel {
   /** Optional one-line description shown under the panel heading. */
   readonly description?: string;
   /**
+   * When true, the panel fills the content pane and scrolls internally (for
+   * panels that bring their own scroll/sub-nav, like AI Settings). When false
+   * (default) the panel flows and the hub provides the single scroll.
+   */
+  readonly fill?: boolean;
+  /**
    * Render the panel body into `container`. Called each time the panel is
    * shown; return a disposable to tear down listeners/instances when the user
    * navigates away or closes Settings.

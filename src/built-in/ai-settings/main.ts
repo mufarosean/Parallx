@@ -10,6 +10,7 @@ import { ILanguageModelsService, ILanguageModelToolsService } from '../../servic
 import type { IToolPickerServices } from '../../services/chatTypes.js';
 import { AISettingsPanel } from '../../aiSettings/ui/aiSettingsPanel.js';
 import { ICronService } from '../../openclaw/openclawCronService.js';
+import { settingsPanelRegistry } from '../../services/settingsPanelRegistry.js';
 
 // ─── Local API type ──────────────────────────────────────────────────────────
 
@@ -139,6 +140,30 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   context.subscriptions.push(
     api.commands.registerCommand('ai-settings.open', () => {
       api.commands.executeCommand('workbench.view.show', 'view.aiSettings');
+    }),
+  );
+
+  // Contribute AI as a panel inside the unified Settings hub. This is a
+  // self-contained, internally-scrolling panel (its own sub-nav), so it fills
+  // the hub content pane. It's an independent instance — we deliberately do
+  // NOT assign module `_panel` here (that belongs to the sidebar view, which
+  // ai-settings.scrollToSection targets).
+  context.subscriptions.push(
+    settingsPanelRegistry.register({
+      id: 'ai',
+      label: 'AI & Models',
+      order: 20,
+      description: 'Models, agent behavior, scheduled jobs, tools, MCP servers, and web research.',
+      fill: true,
+      render: (container) => {
+        const cronService = api.services.has(ICronService)
+          ? api.services.get<import('../../openclaw/openclawCronService.js').CronService>(ICronService)
+          : undefined;
+        return new AISettingsPanel(
+          container, aiSettingsService, languageModelsService, unifiedConfigService,
+          toolPickerServices, mcpClientService, autonomyFlagsService, globalStorage, cronService,
+        );
+      },
     }),
   );
 

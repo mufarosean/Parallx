@@ -248,6 +248,7 @@ export class SettingsEditor extends Disposable {
     this._disposeActivePanel();
     this._disposeControls();
     this._contentEl.replaceChildren();
+    this._contentEl.classList.remove('settings-editor__content--fill');
     this._contentEl.scrollTop = 0;
 
     // Search overrides category navigation with a flat, cross-category result.
@@ -265,6 +266,7 @@ export class SettingsEditor extends Disposable {
     }
 
     if (entry.kind === 'panel') {
+      if (entry.panel.fill) this._contentEl.classList.add('settings-editor__content--fill');
       const heading = $('h3.settings-editor__content-title');
       heading.textContent = entry.label;
       this._contentEl.appendChild(heading);
