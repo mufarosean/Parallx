@@ -15,7 +15,9 @@ import 'katex/dist/katex.min.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { LinksApi } from '../../links/linksApi.js';
-import { ICanvasPageQueryService, IIndexingPipelineService, IVectorStoreService } from '../../services/serviceTypes.js';
+import { ICanvasPageQueryService, IIndexingPipelineService, IVectorStoreService, IDatabaseService, IEditorService } from '../../services/serviceTypes.js';
+import { ILanguageModelToolsService } from '../../services/chatTypes.js';
+import { registerCanvasAITools, canvasPageIdFromEditorId } from './ai/canvasAITools.js';
 import { CanvasDataService } from './canvasDataService.js';
 import type { ICanvasDataService } from './canvasTypes.js';
 import { PageChangeKind } from './canvasTypes.js';
@@ -206,6 +208,31 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // 2a. Publish read-only page query service to DI for cross-tool access (M56)
   api.services.registerInstance(ICanvasPageQueryService, _dataService);
+
+  // 2a2. M84 — register canvas's AI tools. Canvas owns the page/block tools it
+  // exposes to the chat agent (they were previously created inside the chat
+  // module). The tools service is a core boot service, so it is always present.
+  if (api.services.has(ILanguageModelToolsService)) {
+    const toolsService = api.services.get<import('../../services/chatTypes.js').ILanguageModelToolsService>(ILanguageModelToolsService);
+    const db = api.services.has(IDatabaseService)
+      ? api.services.get<import('../../services/serviceTypes.js').IDatabaseService>(IDatabaseService)
+      : undefined;
+    const editorService = api.services.has(IEditorService)
+      ? api.services.get<import('../../services/serviceTypes.js').IEditorService>(IEditorService)
+      : undefined;
+    const canvasToolDisposables = registerCanvasAITools({
+      toolsService,
+      db,
+      getCurrentPageId: () => canvasPageIdFromEditorId(editorService?.activeEditor?.id),
+      workspaceRoot: api.workspace.workspaceFolders?.[0]?.uri,
+      pageMutationNotifier: (pageId, kind) => {
+        void _dataService?.notifyExternalPageMutation(pageId, kind);
+        // Surface what the AI did: focus/open the affected page (not on delete).
+        if (kind !== 'deleted') void openPageInEditor(pageId);
+      },
+    });
+    for (const d of canvasToolDisposables) context.subscriptions.push(d);
+  }
 
   // 2b. Create PropertyDataService and seed defaults
   _propertyService = new PropertyDataService();

@@ -1,4 +1,6 @@
-// pageTools.ts — Page/canvas tool registrations (M13 Phase 5)
+// pageTools.ts — Canvas page AI tools. Owned by the canvas tool: registered
+// from canvas/main.ts activate() via canvasAITools.ts (M84 — moved out of the
+// chat module so the extension that owns the data model also owns its tools).
 
 import type {
   IChatTool,
@@ -10,13 +12,13 @@ import type {
   IBuiltInToolDatabase,
   CurrentPageIdGetter,
   PageMutationNotifier,
-} from '../chatTypes.js';
-import { extractSnippet, extractTextContent } from './builtInTools.js';
-import { markdownToTiptapJson } from '../../canvas/markdownImport.js';
+} from '../../chat/chatTypes.js';
+import { extractSnippet, extractTextContent } from '../../chat/tools/builtInTools.js';
+import { markdownToTiptapJson } from '../markdownImport.js';
 import {
   decodeCanvasContent,
   encodeCanvasContentFromDoc,
-} from '../../canvas/contentSchema.js';
+} from '../contentSchema.js';
 import { filterToSubquery, type IPropertyFilter, type IPropertySort } from './blockApi.js';
 
 // ── Tool helpers ──

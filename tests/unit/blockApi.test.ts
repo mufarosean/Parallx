@@ -13,7 +13,7 @@ import {
   nodeToPlainText,
   paragraphFromText,
   replaceAt,
-} from '../../src/built-in/chat/tools/blockApi';
+} from '../../src/built-in/canvas/ai/blockApi';
 
 function makeDoc(): { type: 'doc'; content: any[] } {
   return {

@@ -24,7 +24,7 @@ import type {
   ICancellationToken,
   ToolPermissionLevel,
 } from '../../../services/chatTypes.js';
-import type { IBuiltInToolDatabase, PageMutationNotifier } from '../chatTypes.js';
+import type { IBuiltInToolDatabase, PageMutationNotifier } from '../../chat/chatTypes.js';
 import {
   decodeDocContent,
   encodeDocContent,

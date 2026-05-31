@@ -66,6 +66,10 @@ const EXEMPT_FILES = new Set([
   'properties/propertyEditors.ts', // Type-specific editors (M55 D3)
   'properties/propertyPicker.ts',  // Add-property picker (M55 D3)
   'surfaces/canvasSurface.ts',     // M58 W6 — CanvasSurfacePlugin (read-only stub; no canvas-internal imports)
+  'ai/canvasAITools.ts',           // M84 — AI tool registration (takes DB as a dependency)
+  'ai/pageTools.ts',               // M84 — canvas page AI tools (moved from chat)
+  'ai/blockTools.ts',              // M84 — canvas block AI tools (moved from chat)
+  'ai/blockApi.ts',                // M84 — block manipulation helpers for the AI tools
   'canvasSidebarDragState.ts',     // M77 Phase 7 — pure DnD state machine (no canvas-internal imports)
   'canvasTemplates.ts',            // M77 Phase 11.4 — pure data, no canvas imports
   'canvasTemplatePicker.ts',       // M77 Phase 11.4 — standalone modal, only imports its own template data

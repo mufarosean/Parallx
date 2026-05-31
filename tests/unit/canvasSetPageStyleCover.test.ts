@@ -9,7 +9,7 @@
 // These tests verify each accepted input shape behaves as expected.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createSetPageStyleTool } from '../../src/built-in/chat/tools/pageTools';
+import { createSetPageStyleTool } from '../../src/built-in/canvas/ai/pageTools';
 import type { IBuiltInToolDatabase } from '../../src/built-in/chat/chatTypes';
 import type { ICancellationToken, IChatTool } from '../../src/services/chatTypes';
 

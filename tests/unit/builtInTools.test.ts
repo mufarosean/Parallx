@@ -2,6 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerBuiltInTools } from '../../src/built-in/chat/tools/builtInTools';
+import { registerCanvasAITools } from '../../src/built-in/canvas/ai/canvasAITools';
 import type { IBuiltInToolDatabase } from '../../src/built-in/chat/tools/builtInTools';
 import type { IBuiltInToolCanonicalMemorySearch, IBuiltInToolFileSystem, IBuiltInToolRetrieval, IBuiltInToolTranscriptSearch } from '../../src/built-in/chat/chatTypes';
 import type {
@@ -81,6 +82,41 @@ function createMockTranscriptSearch(overrides: Partial<IBuiltInToolTranscriptSea
   };
 }
 
+// M84 test shim — registration split into canvas-owned tools (page/block) +
+// workspace tools. This preserves the pre-split call shape so the existing
+// suite keeps exercising the same combined tool set without rewriting every
+// call. Canvas tools come first (registered by the canvas tool in production).
+function registerToolsForTest(
+  toolsService: ILanguageModelToolsService,
+  db?: IBuiltInToolDatabase,
+  fs?: IBuiltInToolFileSystem,
+  getCurrentPageId?: () => string | undefined,
+  retrieval?: IBuiltInToolRetrieval,
+  canonicalMemorySearch?: IBuiltInToolCanonicalMemorySearch,
+  transcriptSearch?: IBuiltInToolTranscriptSearch,
+  writer?: any,
+  terminal?: any,
+  workspaceRoot?: string,
+  surfaceRouter?: any,
+  cronHost?: any,
+  subagentSpawner?: any,
+  autonomyLog?: any,
+  pageMutationNotifier?: any,
+  workspaceMemory?: any,
+) {
+  const canvas = registerCanvasAITools({
+    toolsService, db,
+    getCurrentPageId: getCurrentPageId ?? (() => undefined),
+    workspaceRoot, pageMutationNotifier,
+  });
+  const workspace = registerBuiltInTools(
+    toolsService, fs, retrieval, canonicalMemorySearch, transcriptSearch,
+    writer, terminal, workspaceRoot, surfaceRouter, cronHost, subagentSpawner,
+    autonomyLog, workspaceMemory,
+  );
+  return [...canvas, ...workspace];
+}
+
 // ── Tests ──
 
 describe('registerBuiltInTools', () => {
@@ -92,7 +128,7 @@ describe('registerBuiltInTools', () => {
     const canonicalMemorySearch = createMockCanonicalMemorySearch();
     const transcriptSearch = createMockTranscriptSearch();
 
-    const disposables = registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
+    const disposables = registerToolsForTest(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
     // M58 W6: surface_send + surface_list bring the total to 24.
     // M58 W4: 8 cron tools bring the total to 32.
@@ -158,7 +194,7 @@ describe('registerBuiltInTools', () => {
     const canonicalMemorySearch = createMockCanonicalMemorySearch();
     const transcriptSearch = createMockTranscriptSearch();
 
-    registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
+    registerToolsForTest(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
     for (const tool of toolsService.registeredTools) {
       expect(tool.category, `${tool.name} should have a category`).toBeTruthy();
@@ -174,7 +210,7 @@ describe('registerBuiltInTools', () => {
     const canonicalMemorySearch = createMockCanonicalMemorySearch();
     const transcriptSearch = createMockTranscriptSearch();
 
-    registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
+    registerToolsForTest(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
     const readOnly = ['canvas_find_pages', 'canvas_read_page', 'list_files', 'read_file', 'search_files', 'grep_search', 'search_knowledge', 'memory_get', 'memory_search', 'transcript_get', 'transcript_search', 'canvas_list_property_definitions', 'canvas_read_block'];
     for (const name of readOnly) {
@@ -185,7 +221,7 @@ describe('registerBuiltInTools', () => {
 
   it('create_page requires confirmation', () => {
     const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, createMockDb());
+    registerToolsForTest(toolsService, createMockDb());
 
     const tool = toolsService.registeredTools.find(t => t.name === 'canvas_create_page');
     expect(tool?.requiresConfirmation).toBe(true);
@@ -193,7 +229,7 @@ describe('registerBuiltInTools', () => {
 
   it('edit_page requires confirmation', () => {
     const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, createMockDb());
+    registerToolsForTest(toolsService, createMockDb());
 
     const tool = toolsService.registeredTools.find(t => t.name === 'canvas_edit_page');
     expect(tool?.requiresConfirmation).toBe(true);
@@ -202,7 +238,7 @@ describe('registerBuiltInTools', () => {
 
   it('set_page_property requires confirmation', () => {
     const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, createMockDb());
+    registerToolsForTest(toolsService, createMockDb());
 
     const tool = toolsService.registeredTools.find(t => t.name === 'canvas_set_page_property');
     expect(tool?.requiresConfirmation).toBe(true);
@@ -210,7 +246,7 @@ describe('registerBuiltInTools', () => {
 
   it('set_page_style requires confirmation', () => {
     const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, createMockDb());
+    registerToolsForTest(toolsService, createMockDb());
 
     const tool = toolsService.registeredTools.find(t => t.name === 'canvas_set_page_style');
     expect(tool?.requiresConfirmation).toBe(true);
@@ -225,7 +261,7 @@ describe('set_page_style tool', () => {
   beforeEach(() => {
     db = createMockDb();
     const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, db);
+    registerToolsForTest(toolsService, db);
     tool = toolsService.registeredTools.find(t => t.name === 'canvas_set_page_style')!;
   });
 
@@ -295,7 +331,7 @@ describe('find_pages tool', () => {
   beforeEach(() => {
     db = createMockDb();
     const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, db);
+    registerToolsForTest(toolsService, db);
     tool = toolsService.registeredTools.find(t => t.name === 'canvas_find_pages')!;
   });
 
@@ -363,7 +399,7 @@ describe('read_page tool (M81 Phase 9: merged body + metadata + properties)', ()
   beforeEach(() => {
     db = createMockDb();
     const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, db);
+    registerToolsForTest(toolsService, db);
     tool = toolsService.registeredTools.find(t => t.name === 'canvas_read_page')!;
   });
 
@@ -476,7 +512,7 @@ describe('transcript tools', () => {
       }),
     });
 
-    registerBuiltInTools(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch(), createMockTranscriptSearch());
+    registerToolsForTest(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch(), createMockTranscriptSearch());
     const tool = toolsService.registeredTools.find(t => t.name === 'transcript_get')!;
 
     const result = await tool.handler({ sessionId: 'session-1' }, createToken());
@@ -489,7 +525,7 @@ describe('transcript tools', () => {
 
   it('transcript_search reports disabled state until transcript indexing is enabled', async () => {
     const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, createMockDb(), createMockFs(), undefined, createMockRetrieval(), createMockCanonicalMemorySearch(), createMockTranscriptSearch());
+    registerToolsForTest(toolsService, createMockDb(), createMockFs(), undefined, createMockRetrieval(), createMockCanonicalMemorySearch(), createMockTranscriptSearch());
     const tool = toolsService.registeredTools.find(t => t.name === 'transcript_search')!;
 
     const result = await tool.handler({ query: 'hello' }, createToken());
@@ -508,7 +544,7 @@ describe('transcript tools', () => {
         sessionId: 'session-1',
       }]),
     });
-    registerBuiltInTools(toolsService, createMockDb(), createMockFs(), undefined, createMockRetrieval(), createMockCanonicalMemorySearch(), transcriptSearch);
+    registerToolsForTest(toolsService, createMockDb(), createMockFs(), undefined, createMockRetrieval(), createMockCanonicalMemorySearch(), transcriptSearch);
     const tool = toolsService.registeredTools.find(t => t.name === 'transcript_search')!;
 
     const result = await tool.handler({ query: 'hello there' }, createToken());
@@ -529,7 +565,7 @@ describe('create_page tool', () => {
   beforeEach(() => {
     db = createMockDb();
     const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, db);
+    registerToolsForTest(toolsService, db);
     tool = toolsService.registeredTools.find(t => t.name === 'canvas_create_page')!;
   });
 
@@ -584,7 +620,7 @@ describe('edit_page tool (M81 Phase 9: renamed from compose_page)', () => {
   beforeEach(() => {
     db = createMockDb();
     const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, db);
+    registerToolsForTest(toolsService, db);
     tool = toolsService.registeredTools.find(t => t.name === 'canvas_edit_page')!;
   });
 
@@ -668,7 +704,7 @@ describe('edit_page tool (M81 Phase 9: renamed from compose_page)', () => {
 describe('built-in tools with no database', () => {
   it('db-backed tools return an error when db is undefined', async () => {
     const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, undefined);
+    registerToolsForTest(toolsService, undefined);
 
     const dbBackedToolNames = new Set([
       'canvas_find_pages',
@@ -706,7 +742,7 @@ describe('memory_get tool', () => {
       readFileContent: vi.fn(async () => ({ content: '# Durable Memory\n\nRemember this', type: 'text' as const, totalChars: 33 })),
     });
 
-    registerBuiltInTools(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch());
+    registerToolsForTest(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch());
     const tool = toolsService.registeredTools.find(t => t.name === 'memory_get')!;
 
     const result = await tool.handler({}, createToken());
@@ -721,7 +757,7 @@ describe('memory_get tool', () => {
       readFileContent: vi.fn(async () => ({ content: '# 2026-03-12\n\nDaily note', type: 'text' as const, totalChars: 25 })),
     });
 
-    registerBuiltInTools(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch());
+    registerToolsForTest(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch());
     const tool = toolsService.registeredTools.find(t => t.name === 'memory_get')!;
 
     const result = await tool.handler({ layer: 'daily', date: '2026-03-12' }, createToken());
@@ -745,7 +781,7 @@ describe('memory_search tool', () => {
       ]),
     });
 
-    registerBuiltInTools(toolsService, createMockDb(), createMockFs(), undefined, createMockRetrieval(), canonicalMemorySearch);
+    registerToolsForTest(toolsService, createMockDb(), createMockFs(), undefined, createMockRetrieval(), canonicalMemorySearch);
     const tool = toolsService.registeredTools.find(t => t.name === 'memory_search')!;
 
     const result = await tool.handler({ query: 'user preferences', layer: 'durable' }, createToken());
@@ -755,7 +791,7 @@ describe('memory_search tool', () => {
 
   it('returns a friendly message when no memory results match', async () => {
     const toolsService = createMockToolsService();
-    registerBuiltInTools(
+    registerToolsForTest(
       toolsService,
       createMockDb(),
       createMockFs(),
@@ -778,7 +814,7 @@ describe('search_knowledge tool', () => {
       ]),
     });
     const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, createMockDb(), createMockFs(), undefined, retrieval, createMockCanonicalMemorySearch());
+    registerToolsForTest(toolsService, createMockDb(), createMockFs(), undefined, retrieval, createMockCanonicalMemorySearch());
     const tool = toolsService.registeredTools.find(t => t.name === 'search_knowledge')!;
 
     const result = await tool.handler({ query: 'test query', folder_path: 'RF Guides' }, createToken());
@@ -794,7 +830,7 @@ describe('search_knowledge tool', () => {
       ]),
     });
     const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, createMockDb(), createMockFs(), undefined, retrieval, createMockCanonicalMemorySearch());
+    registerToolsForTest(toolsService, createMockDb(), createMockFs(), undefined, retrieval, createMockCanonicalMemorySearch());
     const tool = toolsService.registeredTools.find(t => t.name === 'search_knowledge')!;
 
     await tool.handler({ query: 'test query' }, createToken());
@@ -817,7 +853,7 @@ describe('list_property_definitions tool', () => {
   beforeEach(() => {
     db = createMockDb();
     const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, db);
+    registerToolsForTest(toolsService, db);
     tool = toolsService.registeredTools.find(t => t.name === 'canvas_list_property_definitions')!;
   });
 
@@ -848,7 +884,7 @@ describe('set_page_property tool', () => {
   beforeEach(() => {
     db = createMockDb();
     const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, db);
+    registerToolsForTest(toolsService, db);
     tool = toolsService.registeredTools.find(t => t.name === 'canvas_set_page_property')!;
   });
 
@@ -976,7 +1012,7 @@ describe('read_file tool (workspace tree)', () => {
       }),
       readFileContent: vi.fn(async () => ({ content: 'line one\nline two\nline three', type: 'text' as const, totalChars: 28 })),
     });
-    registerBuiltInTools(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch());
+    registerToolsForTest(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch());
     const tool = toolsService.registeredTools.find(t => t.name === 'read_file')!;
 
     const result = await tool.handler({ path: 'README.md' }, createToken());
@@ -997,7 +1033,7 @@ describe('read_file tool (workspace tree)', () => {
       readdir: vi.fn(async () => { throw new Error('permission denied'); }),
       readFileContent: vi.fn(async () => ({ content: 'content here', type: 'text' as const, totalChars: 12 })),
     });
-    registerBuiltInTools(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch());
+    registerToolsForTest(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch());
     const tool = toolsService.registeredTools.find(t => t.name === 'read_file')!;
 
     const result = await tool.handler({ path: 'test.txt' }, createToken());

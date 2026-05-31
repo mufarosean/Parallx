@@ -18,7 +18,6 @@ import type {
   ILanguageModelToolsService,
 } from '../../../services/chatTypes.js';
 import type {
-  IBuiltInToolDatabase,
   IBuiltInToolCanonicalMemorySearch,
   IBuiltInToolFileSystem,
   IBuiltInToolFileWriter,
@@ -26,8 +25,6 @@ import type {
   IBuiltInToolTranscriptSearch,
   IBuiltInToolTerminal,
   IBuiltInToolWorkspaceMemory,
-  CurrentPageIdGetter,
-  PageMutationNotifier,
 } from '../chatTypes.js';
 
 // Re-export for backward compatibility (M13 Phase 1)
@@ -45,15 +42,9 @@ export type {
 } from '../chatTypes.js';
 
 // ── Domain tool factories ──
-import {
-  createFindPagesTool,
-  createReadPageTool,
-  createCreatePageTool,
-  createEditPageTool,
-  createListPropertyDefinitionsTool,
-  createSetPagePropertyTool,
-  createSetPageStyleTool,
-} from './pageTools.js';
+// NOTE (M84): canvas page + block tools moved to src/built-in/canvas/ai/ and
+// are now registered by the canvas tool itself (canvas owns the tools it
+// exposes to the agent).
 import {
   createListFilesTool,
   createReadFileTool,
@@ -77,7 +68,6 @@ import {
 } from './writeTools.js';
 import { createRunCommandTool } from './terminalTools.js';
 import { createSurfaceSendTool, createSurfaceListTool } from './surfaceTools.js';
-import { createBlockTools } from './blockTools.js';
 import type { ISurfaceRouterService } from '../../../services/surfaceRouterService.js';
 import type { IAutonomyLogReader } from '../../../services/autonomyLogService.js';
 import { createCronTools, type ICronToolHost } from './cronTools.js';
@@ -95,9 +85,7 @@ import type { SubagentSpawner } from '../../../openclaw/openclawSubagentSpawn.js
  */
 export function registerBuiltInTools(
   toolsService: ILanguageModelToolsService,
-  db: IBuiltInToolDatabase | undefined,
   fs: IBuiltInToolFileSystem | undefined,
-  getCurrentPageId?: CurrentPageIdGetter,
   retrieval?: IBuiltInToolRetrieval,
   canonicalMemorySearch?: IBuiltInToolCanonicalMemorySearch,
   transcriptSearch?: IBuiltInToolTranscriptSearch,
@@ -108,21 +96,15 @@ export function registerBuiltInTools(
   cronHost?: ICronToolHost,
   subagentSpawner?: SubagentSpawner,
   autonomyLog?: IAutonomyLogReader,
-  pageMutationNotifier?: PageMutationNotifier,
   workspaceMemory?: IBuiltInToolWorkspaceMemory,
 ): IDisposable[] {
   const disposables: IDisposable[] = [];
 
+  // Canvas page/block tools are no longer registered here — the canvas tool
+  // owns them (src/built-in/canvas/ai/). This module keeps the workspace-level
+  // tools: files, memory, transcripts, write, terminal, RAG, surface, cron,
+  // subagent, autonomy.
   const tools: IChatTool[] = [
-    // ── Canvas/Database tools (M64 Iter 3 + M81 Phase 9: consolidated) ──
-    // M81 Phase 9: get_page folded into read_page; compose_page renamed to edit_page.
-    createFindPagesTool(db),
-    createReadPageTool(db, getCurrentPageId ?? (() => undefined)),
-    createCreatePageTool(db, pageMutationNotifier),
-    createEditPageTool(db, pageMutationNotifier),
-    createListPropertyDefinitionsTool(db),
-    createSetPagePropertyTool(db),
-    createSetPageStyleTool(db, pageMutationNotifier, workspaceRoot),
     // ── File system tools ──
     createListFilesTool(fs),
     createReadFileTool(fs),
@@ -145,8 +127,6 @@ export function registerBuiltInTools(
     // ── Surface routing tools (M58 W6) ──
     createSurfaceSendTool(surfaceRouter),
     createSurfaceListTool(surfaceRouter),
-    // ── Canvas block-level + property-query tools (M60 §6.2 / Phase δ) ──
-    ...createBlockTools(db, pageMutationNotifier),
     // ── Cron scheduling tools (M58 W4) ──
     ...createCronTools(cronHost),
     // ── Subagent spawn tool (M58 W5) ──

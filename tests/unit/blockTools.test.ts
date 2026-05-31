@@ -10,8 +10,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   createBlockTools,
   BLOCK_TOOL_NAMES,
-} from '../../src/built-in/chat/tools/blockTools';
-import { encodeDocContent } from '../../src/built-in/chat/tools/blockApi';
+} from '../../src/built-in/canvas/ai/blockTools';
+import { encodeDocContent } from '../../src/built-in/canvas/ai/blockApi';
 import type { IBuiltInToolDatabase } from '../../src/built-in/chat/chatTypes';
 import type { ICancellationToken } from '../../src/services/chatTypes';
 

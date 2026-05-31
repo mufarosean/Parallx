@@ -13,6 +13,7 @@ import {
   registerBuiltInTools,
   extractTextContent,
 } from '../../src/built-in/chat/tools/builtInTools';
+import { registerCanvasAITools } from '../../src/built-in/canvas/ai/canvasAITools';
 import { buildFileSystemAccessor } from '../../src/built-in/chat/data/chatDataService';
 import type { IBuiltInToolDatabase } from '../../src/built-in/chat/tools/builtInTools';
 import type {
@@ -20,6 +21,24 @@ import type {
   IChatTool,
   ICancellationToken,
 } from '../../src/services/chatTypes';
+
+// M84 test shim — canvas page/block tools are now owned by the canvas tool.
+// This bridges the pre-split registration call shape used throughout this file.
+function registerToolsForTest(
+  toolsService: ILanguageModelToolsService,
+  db?: IBuiltInToolDatabase,
+  fs?: any,
+  getCurrentPageId?: () => string | undefined,
+  ...rest: any[]
+) {
+  const canvas = registerCanvasAITools({
+    toolsService, db,
+    getCurrentPageId: getCurrentPageId ?? (() => undefined),
+    workspaceRoot: undefined, pageMutationNotifier: undefined,
+  });
+  const workspace = registerBuiltInTools(toolsService, fs, ...rest);
+  return [...canvas, ...workspace];
+}
 import { WorkspaceService } from '../../src/services/workspaceService';
 import { Workspace } from '../../src/workspace/workspace';
 import { Emitter } from '../../src/platform/events';
@@ -237,7 +256,7 @@ describe('read_page tool with pageId=current (end-to-end with fake data)', () =>
     const toolsService = createMockToolsService();
     // Simulate what chatTool.ts does AFTER the fix: extractCanvasPageId returns bare UUID
     const getCurrentPageId = () => 'uuid-page-1';
-    registerBuiltInTools(toolsService, db, undefined, getCurrentPageId);
+    registerToolsForTest(toolsService, db, undefined, getCurrentPageId);
 
     const tool = getTool('canvas_read_page', toolsService);
     const result = await tool.handler({ pageId: 'current' }, createToken());
@@ -253,7 +272,7 @@ describe('read_page tool with pageId=current (end-to-end with fake data)', () =>
     const toolsService = createMockToolsService();
     // Simulate the OLD broken behavior: raw editor ID passed through
     const getCurrentPageId = () => 'parallx.canvas:canvas:uuid-page-1';
-    registerBuiltInTools(toolsService, db, undefined, getCurrentPageId);
+    registerToolsForTest(toolsService, db, undefined, getCurrentPageId);
 
     const tool = getTool('canvas_read_page', toolsService);
     const result = await tool.handler({ pageId: 'current' }, createToken());
@@ -267,7 +286,7 @@ describe('read_page tool with pageId=current (end-to-end with fake data)', () =>
     const db = createRealisticDb();
     const toolsService = createMockToolsService();
     const getCurrentPageId = () => undefined;
-    registerBuiltInTools(toolsService, db, undefined, getCurrentPageId);
+    registerToolsForTest(toolsService, db, undefined, getCurrentPageId);
 
     const tool = getTool('canvas_read_page', toolsService);
     const result = await tool.handler({ pageId: 'current' }, createToken());
@@ -280,7 +299,7 @@ describe('read_page tool with pageId=current (end-to-end with fake data)', () =>
     const db = createRealisticDb();
     const toolsService = createMockToolsService();
     const getCurrentPageId = () => 'uuid-page-3';
-    registerBuiltInTools(toolsService, db, undefined, getCurrentPageId);
+    registerToolsForTest(toolsService, db, undefined, getCurrentPageId);
 
     const tool = getTool('canvas_read_page', toolsService);
     const result = await tool.handler({ pageId: 'current' }, createToken());
@@ -301,7 +320,7 @@ describe('read_page tool (3-level fallback with fake data)', () => {
   function setup() {
     const db = createRealisticDb();
     const toolsService = createMockToolsService();
-    registerBuiltInTools(toolsService, db);
+    registerToolsForTest(toolsService, db);
     return getTool('canvas_read_page', toolsService);
   }
 

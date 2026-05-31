@@ -95,7 +95,7 @@ import type { IPromptFileAccess } from '../../services/promptFileService.js';
 import { PermissionService } from '../../services/permissionService.js';
 import type { IPermissionCheckResult } from '../../services/permissionService.js';
 import type { ToolGrantDecision } from '../../services/chatTypes.js';
-import { ChatDataService, buildFileSystemAccessor, extractCanvasPageId } from './data/chatDataService.js';
+import { ChatDataService, buildFileSystemAccessor } from './data/chatDataService.js';
 import { URI } from '../../platform/uri.js';
 import type { AgentPlanStepInput, DelegatedTaskInput, AgentApprovalResolution } from '../../agent/agentTypes.js';
 import { searchWorkspaceTranscripts } from '../../services/transcriptSearch.js';
@@ -1313,8 +1313,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // ── 3d. Register built-in tools (Cap 6 Task 6.3) ──
 
   if (languageModelToolsService) {
-    const getCurrentPageId = () => extractCanvasPageId(editorService?.activeEditor?.id);
-
     // ── Wire permission service (M11 Task 2.1) ──
     _permissionService = new PermissionService();
     context.subscriptions.push(_permissionService);
@@ -1809,23 +1807,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       context.subscriptions.push(subagentSpawner);
     }
 
-    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, canonicalMemorySearchAccessor, transcriptSearchAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath, surfaceRouter, cronService, subagentSpawner, autonomyLog, (pageId, kind) => {
-      // Lazy import — avoids hard dependency cycle and silently no-ops if
-      // the canvas extension is not loaded.
-      void import('../canvas/main.js').then((mod) => {
-        const ds = mod.getDataService?.();
-        if (!ds) return;
-        // (1) Refresh sidebar tree + reload any already-open editor.
-        void ds.notifyExternalPageMutation(pageId, kind);
-        // (2) End-to-end UX: surface the new/edited page in the editor
-        // so the user immediately sees what the AI did. Same instanceId
-        // semantics — focuses existing tab if open, opens a new tab if
-        // not. Skipped for deletes (no page to show).
-        if (kind !== 'deleted') {
-          void mod.openPageInEditor?.(pageId);
-        }
-      }).catch(() => { /* canvas not present — no-op */ });
-    }, workspaceMemoryAccessor);
+    // M84: canvas page/block tools are registered by the canvas tool itself
+    // (src/built-in/canvas/ai/), so the DB / current-page / page-mutation
+    // wiring no longer threads through here. This registers the workspace-level
+    // tools (files, memory, transcripts, write, terminal, RAG, surface, cron,
+    // subagent, autonomy).
+    const toolDisposables = registerBuiltInTools(languageModelToolsService, fsAccessor, retrievalAccessor, canonicalMemorySearchAccessor, transcriptSearchAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath, surfaceRouter, cronService, subagentSpawner, autonomyLog, workspaceMemoryAccessor);
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }
