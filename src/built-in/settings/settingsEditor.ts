@@ -32,7 +32,16 @@ import type {
   ISettingSchema,
   SettingScope,
 } from '../../services/settingsRegistryService.js';
+import { settingsPanelRegistry, type ISettingsPanel } from '../../services/settingsPanelRegistry.js';
 import './settings.css';
+
+// ─── Nav model ───────────────────────────────────────────────────────────────
+
+/** One entry in the left navigation: either a schema-driven category or a
+ *  custom-rendered panel contributed via settingsPanelRegistry. */
+type NavEntry =
+  | { kind: 'schema'; id: string; label: string; order: number; category: string }
+  | { kind: 'panel'; id: string; label: string; order: number; panel: ISettingsPanel };
 
 /** Optional command runner — registry action rows fire commands when present. */
 export interface IEditorCommandRunner {
@@ -48,10 +57,15 @@ type ScopeFilter = 'all' | SettingScope;
 export class SettingsEditor extends Disposable {
   private readonly _overlay: Overlay;
   private readonly _root: HTMLElement;
-  private readonly _listEl: HTMLElement;
+  private _navEl!: HTMLElement;
+  private _contentEl!: HTMLElement;
   private _searchValue = '';
   private _scopeFilter: ScopeFilter = 'all';
   private readonly _controlDisposables: IDisposable[] = [];
+  /** Currently selected nav id (e.g. 'schema:General' or 'panel:appearance'). */
+  private _selectedId: string | null = null;
+  /** Cleanup for the mounted custom panel, if any. */
+  private _activePanelDisposable: IDisposable | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -96,7 +110,8 @@ export class SettingsEditor extends Disposable {
     this._register(search);
     this._register(search.onDidChange((value) => {
       this._searchValue = value.trim().toLowerCase();
-      this._render();
+      this._renderNav();
+      this._renderContent();
     }));
     filterBar.appendChild(searchHost);
 
@@ -113,29 +128,41 @@ export class SettingsEditor extends Disposable {
     this._register(scopeControl);
     this._register(scopeControl.onDidChange((id) => {
       this._scopeFilter = id as ScopeFilter;
-      this._render();
+      this._renderContent();
     }));
     filterBar.appendChild(scopeHost);
 
     this._root.appendChild(filterBar);
 
-    // ── Settings list ────────────────────────────────────
-    this._listEl = $('div.settings-editor__list');
-    this._listEl.setAttribute('role', 'list');
-    this._root.appendChild(this._listEl);
+    // ── Body: left nav + right content ───────────────────
+    const body = $('div.settings-editor__body');
+    this._navEl = $('nav.settings-editor__nav');
+    this._navEl.setAttribute('aria-label', 'Settings categories');
+    this._contentEl = $('div.settings-editor__content');
+    this._contentEl.setAttribute('role', 'region');
+    body.appendChild(this._navEl);
+    body.appendChild(this._contentEl);
+    this._root.appendChild(body);
 
     // ── Live external-mutation re-render ──
     this._register(this._registry.onDidChange(() => {
       // External mutations (e.g. another extension calls setValue) — re-render
-      // so input controls reflect new values. Cheap because rendering is
-      // bounded by registry size (~20 schemas in M60).
-      this._render();
+      // the content (controls reflect new values). Cheap: bounded by registry
+      // size. Nav rebuild is also cheap.
+      this._renderNav();
+      this._renderContent();
+    }));
+    // Rebuild when a tool registers/removes a custom panel.
+    this._register(settingsPanelRegistry.onDidChange(() => {
+      this._renderNav();
+      this._renderContent();
     }));
 
     // Focus search on open
     queueMicrotask(() => search.inputElement.focus());
 
-    this._render();
+    this._renderNav();
+    this._renderContent();
   }
 
   show(): void {
@@ -147,6 +174,7 @@ export class SettingsEditor extends Disposable {
   }
 
   override dispose(): void {
+    this._disposeActivePanel();
     this._disposeControls();
     super.dispose();
   }
@@ -158,6 +186,11 @@ export class SettingsEditor extends Disposable {
     this._controlDisposables.length = 0;
   }
 
+  private _disposeActivePanel(): void {
+    this._activePanelDisposable?.dispose();
+    this._activePanelDisposable = null;
+  }
+
   private _matches(schema: ISettingSchema): boolean {
     if (this._scopeFilter !== 'all' && schema.scope !== this._scopeFilter) return false;
     if (!this._searchValue) return true;
@@ -165,39 +198,126 @@ export class SettingsEditor extends Disposable {
     return haystack.includes(this._searchValue);
   }
 
-  private _render(): void {
+  /** Build the merged nav: custom panels + schema-derived categories. */
+  private _buildNav(): NavEntry[] {
+    const entries: NavEntry[] = [];
+
+    for (const panel of settingsPanelRegistry.getPanels()) {
+      entries.push({ kind: 'panel', id: `panel:${panel.id}`, label: panel.label, order: panel.order ?? 50, panel });
+    }
+
+    const cats = new Set<string>();
+    for (const s of this._registry.getAllSchemas()) cats.add(s.category ?? 'General');
+    for (const cat of cats) {
+      entries.push({ kind: 'schema', id: `schema:${cat}`, label: cat, order: 50, category: cat });
+    }
+
+    entries.sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
+    return entries;
+  }
+
+  private _renderNav(): void {
+    const entries = this._buildNav();
+    this._navEl.replaceChildren();
+
+    // Ensure a valid selection.
+    if (!this._selectedId || !entries.some((e) => e.id === this._selectedId)) {
+      this._selectedId = entries[0]?.id ?? null;
+    }
+
+    for (const entry of entries) {
+      const item = $('button.settings-editor__nav-item');
+      item.setAttribute('type', 'button');
+      item.textContent = entry.label;
+      if (entry.id === this._selectedId && !this._searchValue) {
+        item.classList.add('settings-editor__nav-item--active');
+      }
+      this._register(addDisposableListener(item, 'click', () => {
+        if (this._selectedId === entry.id && !this._searchValue) return;
+        this._selectedId = entry.id;
+        this._searchValue = '';
+        this._renderNav();
+        this._renderContent();
+      }));
+      this._navEl.appendChild(item);
+    }
+  }
+
+  /** Render the right pane for the current selection (or search results). */
+  private _renderContent(): void {
+    this._disposeActivePanel();
     this._disposeControls();
-    this._listEl.replaceChildren();
+    this._contentEl.replaceChildren();
+    this._contentEl.scrollTop = 0;
+
+    // Search overrides category navigation with a flat, cross-category result.
+    if (this._searchValue) {
+      this._renderSearchResults();
+      return;
+    }
+
+    const entry = this._buildNav().find((e) => e.id === this._selectedId);
+    if (!entry) {
+      const empty = $('div.settings-editor__empty');
+      empty.textContent = 'No settings available.';
+      this._contentEl.appendChild(empty);
+      return;
+    }
+
+    if (entry.kind === 'panel') {
+      const heading = $('h3.settings-editor__content-title');
+      heading.textContent = entry.label;
+      this._contentEl.appendChild(heading);
+      if (entry.panel.description) {
+        const d = $('p.settings-editor__content-desc');
+        d.textContent = entry.panel.description;
+        this._contentEl.appendChild(d);
+      }
+      const host = $('div.settings-editor__panel-host');
+      this._contentEl.appendChild(host);
+      const disp = entry.panel.render(host);
+      this._activePanelDisposable = disp ?? null;
+      return;
+    }
+
+    // Schema category — render its rows.
+    const heading = $('h3.settings-editor__content-title');
+    heading.textContent = entry.label;
+    this._contentEl.appendChild(heading);
+
+    const rows = this._registry
+      .getAllSchemas()
+      .filter((s) => (s.category ?? 'General') === entry.category && this._matches(s));
+    for (const schema of rows) {
+      this._contentEl.appendChild(this._renderRow(schema));
+    }
+  }
+
+  private _renderSearchResults(): void {
+    const heading = $('h3.settings-editor__content-title');
+    heading.textContent = 'Search results';
+    this._contentEl.appendChild(heading);
 
     const schemas = this._registry.getAllSchemas().filter((s) => this._matches(s));
     if (schemas.length === 0) {
       const empty = $('div.settings-editor__empty');
       empty.textContent = 'No settings match the current filter.';
-      this._listEl.appendChild(empty);
+      this._contentEl.appendChild(empty);
       return;
     }
-
-    // Group by category
+    // Group by category so results stay readable.
     const byCategory = new Map<string, ISettingSchema[]>();
     for (const s of schemas) {
       const cat = s.category ?? 'General';
-      const list = byCategory.get(cat) ?? [];
-      list.push(s);
-      byCategory.set(cat, list);
+      (byCategory.get(cat) ?? byCategory.set(cat, []).get(cat)!).push(s);
     }
-
-    const categories = Array.from(byCategory.keys()).sort();
-    for (const cat of categories) {
-      const catEl = $('div.settings-editor__category');
-      const catHeader = $('h3.settings-editor__category-title');
+    for (const cat of Array.from(byCategory.keys()).sort()) {
+      const catHeader = $('h4.settings-editor__category-title');
       catHeader.textContent = cat;
-      catEl.appendChild(catHeader);
-
+      this._contentEl.appendChild(catHeader);
       for (const schema of byCategory.get(cat)!) {
-        catEl.appendChild(this._renderRow(schema));
+        this._contentEl.appendChild(this._renderRow(schema));
       }
-
-      this._listEl.appendChild(catEl);
     }
   }
 

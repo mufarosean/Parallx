@@ -7,6 +7,7 @@ import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IStorage } from '../../platform/storage.js';
 import { IThemeService, IGlobalStorageService } from '../../services/serviceTypes.js';
+import { settingsPanelRegistry } from '../../services/settingsPanelRegistry.js';
 import { PxAppearancePanel } from './pxAppearancePanel.js';
 
 // ─── Local API type ──────────────────────────────────────────────────────────
@@ -53,6 +54,18 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         title: 'Appearance',
         icon: 'palette',
       }).catch(err => console.error('[Appearance] Failed to open:', err));
+    }),
+  );
+
+  // Contribute Appearance as a panel inside the unified Settings hub, so
+  // "themes are accessed through Settings" per the app-wide settings model.
+  context.subscriptions.push(
+    settingsPanelRegistry.register({
+      id: 'appearance',
+      label: 'Appearance',
+      order: 10,
+      description: 'Base palette, accent color, and your saved themes.',
+      render: (container) => new PxAppearancePanel(container, themeService, globalStorage),
     }),
   );
 }

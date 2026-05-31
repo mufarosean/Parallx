@@ -4,14 +4,14 @@
  */
 
 .settings-editor-overlay {
-  width: min(820px, 92vw);
-  max-height: min(86vh, 720px);
-  height: 86vh;
-  background: var(--vscode-editor-background, #1e1e1e);
-  color: var(--vscode-foreground);
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.18)));
-  border-radius: var(--parallx-radius-md, 6px);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  width: min(980px, 94vw);
+  max-height: min(88vh, 760px);
+  height: 88vh;
+  background: var(--px-bg);
+  color: var(--px-text);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg, 10px);
+  box-shadow: var(--px-shadow-lg, 0 12px 32px rgba(0, 0, 0, 0.45));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -85,26 +85,94 @@
   flex: 0 0 auto;
 }
 
-/* ── List ────────────────────────────────────────────── */
+/* ── Body: left nav + right content ──────────────────── */
 
-.settings-editor__list {
+.settings-editor__body {
   flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+
+.settings-editor__nav {
+  flex: 0 0 200px;
+  width: 200px;
   overflow-y: auto;
-  padding: 8px 18px 18px;
+  padding: 10px 8px;
+  border-right: 1px solid var(--px-divider);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--px-bg);
+}
+
+.settings-editor__nav-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 12px;
+  border: none;
+  background: transparent;
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-base, 13px);
+  font-weight: 500;
+  border-radius: var(--px-radius-md, 6px);
+  cursor: pointer;
+  transition: background var(--px-dur-fast, 90ms) var(--px-ease, ease),
+              color var(--px-dur-fast, 90ms) var(--px-ease, ease);
+}
+.settings-editor__nav-item:hover {
+  background: var(--px-surface-hover);
+  color: var(--px-text);
+}
+.settings-editor__nav-item--active {
+  background: var(--px-surface-selected, var(--px-surface-active));
+  color: var(--px-text);
+  font-weight: 600;
+}
+.settings-editor__nav-item:active { transform: var(--px-press, translateY(0.5px)); }
+
+.settings-editor__content {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 18px 24px 28px;
+}
+
+.settings-editor__content-title {
+  font-size: var(--px-text-lg, 18px);
+  font-weight: 650;
+  letter-spacing: -0.012em;
+  color: var(--px-text);
+  margin: 0 0 4px;
+}
+.settings-editor__content-desc {
+  font-size: var(--px-text-sm, 12px);
+  color: var(--px-text-muted);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+/* Host for an embedded custom panel (Appearance, AI, Keyboard Shortcuts). */
+.settings-editor__panel-host {
+  position: relative;
+  min-height: 200px;
+}
+
+/* Embedded Appearance editor: flow within the settings scroll instead of
+   forcing its own full-height inner scroll, and drop its duplicate header
+   (the settings content-title already names the section). */
+.settings-editor__panel-host .px-appearance { height: auto; background: transparent; }
+.settings-editor__panel-host .px-appearance-header { display: none; }
+.settings-editor__panel-host .px-appearance-body {
+  overflow: visible;
+  padding: 0;
+  max-width: none;
 }
 
 .settings-editor__empty {
   padding: 24px 8px;
   text-align: center;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
-}
-
-.settings-editor__category {
-  margin-top: 18px;
-}
-
-.settings-editor__category:first-child {
-  margin-top: 6px;
+  color: var(--px-text-muted);
 }
 
 .settings-editor__category-title {
@@ -112,10 +180,10 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.6));
-  margin: 8px 0 8px;
+  color: var(--px-text-muted);
+  margin: 18px 0 8px;
   padding-bottom: 4px;
-  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.12));
+  border-bottom: 1px solid var(--px-divider);
 }
 
 /* ── Row ─────────────────────────────────────────────── */
