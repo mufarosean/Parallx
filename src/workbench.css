@@ -693,6 +693,44 @@ html, body {
   flex-direction: column;
 }
 
+/* ════════════════════════════════════════════════════════════════════════
+   Floating panels (M86) — the content parts inset + round into soft cards on a
+   darker "window" frame, so the app reads as crafted panels instead of flush
+   VS Code tiles. Only `.part-content` (inside each part) insets, so the part
+   containers — and the JS-positioned resize sashes that track them — are
+   untouched. Tunable: the 5px margin (gap) and the radius.
+   ════════════════════════════════════════════════════════════════════════ */
+.workbench-middle { background: var(--px-window); }
+
+/* The chrome rails/bars become the window tone; content floats on them. */
+.part-workbench-parts-titlebar,
+.part-workbench-parts-statusbar {
+  background: var(--px-window);
+  border: 0;
+}
+.part-workbench-parts-activitybar {
+  background: var(--px-window);
+  box-shadow: none;
+}
+
+/* Content parts: container is the gap colour; the inner content is the card. */
+.part-workbench-parts-sidebar,
+.part-workbench-parts-editor,
+.part-workbench-parts-auxiliarybar,
+.part-workbench-parts-panel {
+  background: var(--px-window);
+  border: 0;
+}
+.part-workbench-parts-sidebar .part-content,
+.part-workbench-parts-editor .part-content,
+.part-workbench-parts-auxiliarybar .part-content,
+.part-workbench-parts-panel .part-content {
+  margin: 5px;
+  border-radius: var(--px-radius-lg);
+  background: var(--px-bg);
+  overflow: hidden;
+}
+
 /* Panel tab bar is provided by ViewContainer — no separate .panel-tab-bar needed */
 
 .panel-views {

@@ -58,6 +58,9 @@
 
   /* Surfaces */
   --px-bg:               var(--px-base-00);
+  /* The recessed "window" tone behind the floating panels — a touch darker
+     than the deepest surface, so inset gaps read. Derived per-theme. */
+  --px-window:           color-mix(in srgb, var(--px-base-00) 80%, #000);
   --px-bg-elevated:      var(--px-base-10);
   --px-bg-inset:         var(--px-base-15);
   --px-surface-hover:    var(--px-base-20);
