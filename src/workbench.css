@@ -728,7 +728,10 @@ html, body {
   margin: 5px;
   border-radius: var(--px-radius-lg);
   background: var(--px-bg);
+  /* A defining border so each floating card reads as its own surface. */
+  border: 1px solid var(--px-border);
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 /* Panel tab bar is provided by ViewContainer — no separate .panel-tab-bar needed */
