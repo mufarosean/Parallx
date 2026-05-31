@@ -134,6 +134,7 @@ const GATE_RULES: Record<string, string[]> = {
   'plugins/columnAutoDissolve.ts':         ['config/blockStateRegistry/blockStateRegistry'],
   'plugins/columnDropPlugin.ts':           ['config/blockStateRegistry/blockStateRegistry'],
   'plugins/columnResizePlugin.ts':         [],  // zero canvas imports
+  'plugins/structuralRepair.ts':           [],  // M85 — zero canvas imports (PM only)
 
   // ── HandleRegistry children ─────────────────────────────────────────────
   'handles/blockHandles.ts':               ['handles/handleRegistry'],

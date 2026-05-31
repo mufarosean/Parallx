@@ -18,6 +18,7 @@ import { DetailsEnterHandler } from '../extensions/detailsEnterHandler.js';
 import { BlockKeyboardShortcuts } from '../extensions/blockKeyboardShortcuts.js';
 import { Dataview } from '../extensions/dataviewNode.js';
 import { structuralInvariantPlugin } from '../plugins/structuralInvariantPlugin.js';
+import { structuralRepairPlugin } from '../plugins/structuralRepair.js';
 import {
   getNodePlaceholder,
   getBlockExtensions,
@@ -320,7 +321,9 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
       name: 'structuralInvariantGuard',
       priority: 1000,
       addProseMirrorPlugins() {
-        return [structuralInvariantPlugin()];
+        // Repair runs first (production: heals malformed composite blocks),
+        // then the dev-only detector asserts on whatever's left.
+        return [structuralRepairPlugin(), structuralInvariantPlugin()];
       },
     }),
     BlockBackgroundColor,
