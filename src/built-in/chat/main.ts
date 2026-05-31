@@ -2407,11 +2407,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // automations) uses to ask the AI to do work. It reveals the chat panel,
   // ensures a session exists, drops the prompt into the active session, and
   // submits it. From there it runs through regular chat — same model, same
-  // registered tools (webSearch/webFetch/renderToWidget/…), same defaults.
+  // registered tools (webSearch/webFetch/render_to_widget/…), same defaults.
   //
   // Fire-and-forget: it returns once the prompt is submitted. The AI's output
   // streams visibly in chat; surfaces that want results delivered back to a
-  // widget instruct the model (in the prompt) to call the `renderToWidget`
+  // widget instruct the model (in the prompt) to call the `render_to_widget`
   // tool with their instanceId.
   //
   // Contract: { text: string, reveal?: boolean } → void.

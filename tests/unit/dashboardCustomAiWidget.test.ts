@@ -17,10 +17,10 @@ describe('customAiWidget config + prompt', () => {
     expect(normalizeCustomAiConfig({ prompt: 42, skill: ['x'] })).toEqual({ prompt: '', skill: '' });
   });
 
-  it('embeds the widget instanceId and the renderToWidget directive', () => {
+  it('embeds the widget instanceId and the render_to_widget directive', () => {
     const prompt = buildCustomAiPrompt({ prompt: 'Summarize my unread email.', skill: '' }, 'widget_abc');
     expect(prompt).toContain('Summarize my unread email.');
-    expect(prompt).toContain('renderToWidget tool with instanceId "widget_abc"');
+    expect(prompt).toContain('render_to_widget tool with instanceId "widget_abc"');
   });
 
   it('prepends a skill directive when a skill is set', () => {
