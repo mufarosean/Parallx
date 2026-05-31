@@ -172,7 +172,6 @@ export type IOpenclawContextEngineServices = Pick<
   | 'retrieveContext'
   | 'recallMemories'
   | 'recallTranscripts'
-  | 'getCurrentPageContent'
   | 'storeSessionMemory'
   | 'sendSummarizationRequest'
 >;
@@ -198,7 +197,6 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
   private _ragReady = true;
   private _memoryReady = true;
   private _transcriptsReady = true;
-  private _pageReady = true;
 
   constructor(private readonly services: IOpenclawContextEngineServices) {}
 
@@ -213,7 +211,6 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     this._ragReady = !!this.services.retrieveContext && (_params.autoRag !== false);
     this._memoryReady = !!this.services.recallMemories;
     this._transcriptsReady = !!this.services.recallTranscripts;
-    this._pageReady = !!this.services.getCurrentPageContent;
 
     return {
       ragReady: this._ragReady,
@@ -252,21 +249,22 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     // M81 Phase 3 Stage 2: the concept retrieval lane was removed — its 5%
     // moved to RAG, which now also picks up agent-curated MEMORY.md content
     // via the standard vector index.
-    const ragLaneBudget = Math.floor(budget.rag * 0.60);     // 60% — primary retrieval
-    const pageLaneBudget = Math.floor(budget.rag * 0.15);    // 15% — open page
+    // M84: the "currently open page" lane was removed — passively injecting the
+    // open editor page every turn spent budget on content the user often didn't
+    // mean to include. To bring a page/file into context, attach it explicitly;
+    // the agent can also pull any page on demand via the canvas read tools. Its
+    // 15% folded back into RAG.
+    const ragLaneBudget = Math.floor(budget.rag * 0.75);     // 75% — primary retrieval
     const memoryLaneBudget = Math.floor(budget.rag * 0.15);  // 15% — recalled memories
     const transcriptLaneBudget = Math.floor(budget.rag * 0.10); // 10% — transcripts
 
     // ── C1: Parallel loading — fire all retrieval services concurrently ──
-    const [ragResult, memoryResult, pageResult, transcriptResult] = await Promise.all([
+    const [ragResult, memoryResult, transcriptResult] = await Promise.all([
       (this._ragReady && this.services.retrieveContext)
         ? this.services.retrieveContext(params.prompt).catch(() => undefined)
         : Promise.resolve(undefined),
       (this._memoryReady && this.services.recallMemories)
         ? this.services.recallMemories(params.prompt, params.sessionId).catch(() => undefined)
-        : Promise.resolve(undefined),
-      (this._pageReady && this.services.getCurrentPageContent)
-        ? this.services.getCurrentPageContent().catch(() => undefined)
         : Promise.resolve(undefined),
       (this._transcriptsReady && this.services.recallTranscripts)
         ? this.services.recallTranscripts(params.prompt).catch(() => undefined)
@@ -278,16 +276,6 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     // delivery channel for context. systemPromptAddition is for lightweight metadata only.
     const contextSections: string[] = [];
     let usedRagTokens = 0;
-
-    // ── C2: Page content — inject currently open editor page ──
-    if (pageResult?.textContent) {
-      const pageTokens = estimateTokens(pageResult.textContent);
-      if (pageTokens <= pageLaneBudget) {
-        const section = `## Currently Open Page: "${pageResult.title}" (id: ${pageResult.pageId})\n${pageResult.textContent}`;
-        contextSections.push(section);
-        usedRagTokens += pageTokens;
-      }
-    }
 
     // ── RAG: retrieve workspace context relevant to prompt ──
     if (ragResult?.text) {

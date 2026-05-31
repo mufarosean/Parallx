@@ -358,7 +358,7 @@ describe('openclaw default participant', () => {
     expect(response.markdown).toHaveBeenCalledWith('Grounded OpenClaw answer');
   });
 
-  it('injects current canvas page context into default grounded turns (C2)', async () => {
+  it('does NOT passively inject the open canvas page into grounded turns (M84 removal)', async () => {
     const sendChatRequest = vi.fn(() => streamChunks([
       { content: 'Vehicle answer', done: true },
     ]));
@@ -403,14 +403,14 @@ describe('openclaw default participant', () => {
       history: [],
     } as IChatParticipantContext, response, createToken());
 
-    expect(getCurrentPageContent).toHaveBeenCalled();
+    // M84: the open editor page is no longer pulled into grounded turns. Users
+    // attach a page/file explicitly (#activeFile / attachment) when they want it.
+    expect(getCurrentPageContent).not.toHaveBeenCalled();
     const sentMessages = sendChatRequest.mock.calls[0][0];
-    // Page content is now delivered via a user-role context message (F8-3 fix),
-    // not systemPromptAddition, matching upstream AssembleResult.messages pattern.
     const contextMsg = sentMessages.find((m: any) =>
       m.role === 'user' && m.content.includes('Currently Open Page')
     );
-    expect(contextMsg).toBeDefined();
+    expect(contextMsg).toBeUndefined();
   });
 
   it('seeds prior conversation turns into the default OpenClaw model prompt', async () => {

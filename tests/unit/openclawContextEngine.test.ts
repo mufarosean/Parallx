@@ -160,7 +160,8 @@ describe('OpenclawContextEngine', () => {
       expect(services.retrieveContext).toHaveBeenCalledWith('What is my deductible?');
       expect(services.recallMemories).toHaveBeenCalledWith('What is my deductible?', 's1');
       expect(services.recallTranscripts).toHaveBeenCalledWith('What is my deductible?');
-      expect(services.getCurrentPageContent).toHaveBeenCalled();
+      // M84: the engine no longer passively pulls the open page (getCurrentPageContent).
+      expect(services.getCurrentPageContent).not.toHaveBeenCalled();
     });
 
     it('delivers retrieval content via messages, not systemPromptAddition', async () => {
