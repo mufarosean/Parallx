@@ -32,6 +32,23 @@ import {
   resolveColorGate,
 } from '../openclaw/openclawToolPolicy.js';
 
+/**
+ * Canonical tool-name form: snake_case, `^[a-zA-Z0-9_-]{1,64}$`.
+ *
+ * Function-calling schemas (OpenAI / Ollama) reject names containing `.` or
+ * other punctuation, and a workspace that MIXES separators (`read_file` vs
+ * `budget.pullEmails`) reliably makes small models invent the wrong separator.
+ * So every tool name is normalized to one separator at the single registration
+ * chokepoint — schema, prompt summaries, and dispatch then all agree, and
+ * extensions don't have to know the rule (a warning tells the author to fix it
+ * at the source).
+ */
+export function normalizeToolName(name: string): string {
+  // Replace any disallowed char (notably `.`) with `_`, collapse repeats, trim.
+  const cleaned = name.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_{2,}/g, '_').replace(/^_+|_+$/g, '');
+  return cleaned.slice(0, 64) || 'tool';
+}
+
 export interface ILanguageModelToolsRuntimeMetadata {
   readonly name: string;
   readonly permissionLevel: ToolPermissionLevel;
@@ -196,16 +213,29 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   // ── Registration ──
 
   registerTool(tool: IChatTool): { dispose(): void } {
-    if (this._tools.has(tool.name)) {
-      throw new Error(`Tool "${tool.name}" is already registered`);
+    // Enforce the canonical snake_case name at the boundary so the schema sent
+    // to the model, the prompt's tool summaries, and dispatch all use the same
+    // string. An extension that registers `budget.pullEmails` is silently fixed
+    // to `budget_pullEmails` (and warned), instead of the model guessing.
+    const canonical = normalizeToolName(tool.name);
+    if (canonical !== tool.name) {
+      console.warn(
+        `[Tools] Tool name "${tool.name}" (owner: ${tool.ownerToolId ?? 'unknown'}) is not a valid ` +
+        `function name; registering as "${canonical}". Use snake_case (a-z, 0-9, _) for tool names.`,
+      );
+    }
+    const registered: IChatTool = canonical === tool.name ? tool : { ...tool, name: canonical };
+
+    if (this._tools.has(canonical)) {
+      throw new Error(`Tool "${canonical}" is already registered`);
     }
 
-    this._tools.set(tool.name, tool);
+    this._tools.set(canonical, registered);
     this._onDidChangeTools.fire();
 
     return {
       dispose: () => {
-        this._tools.delete(tool.name);
+        this._tools.delete(canonical);
         this._onDidChangeTools.fire();
       },
     };

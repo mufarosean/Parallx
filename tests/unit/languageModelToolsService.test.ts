@@ -44,6 +44,19 @@ describe('LanguageModelToolsService', () => {
       expect(service.getTool('my_tool')!.name).toBe('my_tool');
     });
 
+    it('normalizes a dotted tool name to snake_case so schema/prompt/dispatch agree', () => {
+      // The budget extension registered `budget.pullEmails`; the model can only
+      // call `^[A-Za-z0-9_-]+$` names, so it must be canonicalized.
+      service.registerTool(createTool({ name: 'budget.pullEmails' }));
+      // Stored + dispatchable under the canonical name only.
+      expect(service.getTool('budget_pullEmails')).toBeDefined();
+      expect(service.getTool('budget_pullEmails')!.name).toBe('budget_pullEmails');
+      expect(service.getTool('budget.pullEmails')).toBeUndefined();
+      // The provider schema also carries the canonical name.
+      const def = service.getToolDefinitions().find(d => d.name === 'budget_pullEmails');
+      expect(def).toBeDefined();
+    });
+
     it('fires onDidChangeTools on registration', () => {
       const listener = vi.fn();
       service.onDidChangeTools(listener);

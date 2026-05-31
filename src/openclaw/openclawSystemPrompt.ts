@@ -362,7 +362,7 @@ ${entries}
 export function buildToolSummariesSection(tools: readonly IToolSummary[]): string {
   const lines: string[] = [
     '## Tooling',
-    'Tool definitions (name, description, parameters) are provided in the function-calling schema for this turn. Each tool\'s description states what it does and when to use it — read it before calling. Tool names are case-sensitive, and you must copy each name exactly as written below — including its punctuation. Some tools use a dot (e.g. `budget.pullEmails`) and others an underscore (e.g. `read_file`); never swap one for the other or invent a separator.',
+    'Tool definitions (name, description, parameters) are provided in the function-calling schema for this turn. Each tool\'s description states what it does and when to use it — read it before calling. Tool names are case-sensitive snake_case (lowercase words joined by underscores, e.g. `read_file`, `canvas_read_page`, `budget_pull_emails`); copy each name exactly as written in the schema.',
   ];
 
   const categoryMap = groupToolsByCategory(tools);
@@ -463,24 +463,29 @@ function orderCategoryEntries(
   for (const [category, names] of map.entries()) {
     if (category === 'other') {
       // Extension tools rarely declare a `ToolCategory`, so they'd otherwise
-      // pile into one undifferentiated "other" blob — which is exactly where
-      // small models start hallucinating names (e.g. `budget_pullEmails` for
-      // `budget.pullEmails`). Split the bucket by tool-name namespace (the
-      // segment before the first `.`) so each extension's family reads as its
-      // own labelled group with the exact dotted names intact. Tools with no
+      // pile into one undifferentiated "other" blob. Split the bucket by
+      // tool-name namespace (the segment before the first underscore) so each
+      // extension's family reads as its own labelled group. Names are
+      // snake_case (normalized at registration), so `budget_pull_emails` and
+      // `budget_record_transaction` group under `budget`. Tools with no
       // namespace fall through to a residual "other" group.
-      const namespaced = new Map<string, string[]>();
-      const dotless: string[] = [];
+      // Snake_case is universal, so splitting on the first underscore would
+      // make every lone tool its own one-item "namespace". Only form a group
+      // when at least two tools share the prefix (a real extension family);
+      // otherwise the tool stays in the residual "other" bucket.
+      const byPrefix = new Map<string, string[]>();
       for (const name of names) {
-        const dot = name.indexOf('.');
-        if (dot > 0) {
-          const ns = name.slice(0, dot);
-          const bucket = namespaced.get(ns) ?? [];
-          bucket.push(name);
-          namespaced.set(ns, bucket);
-        } else {
-          dotless.push(name);
-        }
+        const sep = name.indexOf('_');
+        const ns = sep > 0 ? name.slice(0, sep) : '';
+        const bucket = byPrefix.get(ns) ?? [];
+        bucket.push(name);
+        byPrefix.set(ns, bucket);
+      }
+      const namespaced = new Map<string, string[]>();
+      const bare: string[] = [];
+      for (const [ns, bucket] of byPrefix) {
+        if (ns && bucket.length >= 2) namespaced.set(ns, bucket);
+        else bare.push(...bucket);
       }
       // Namespaced groups, alphabetised, after the known categories.
       const nsList = [...namespaced.keys()].sort();
@@ -488,18 +493,18 @@ function orderCategoryEntries(
         entries.push({
           category: 'other',
           label: ns,
-          blurb: `\`${ns}.*\` extension tools — names use a dot separator; copy them exactly.`,
+          blurb: `\`${ns}_*\` extension tools — copy each name exactly.`,
           toolNames: namespaced.get(ns)!.slice().sort(),
           order: 1000 + i,
         });
       });
       // Residual tools with no namespace go last.
-      if (dotless.length > 0) {
+      if (bare.length > 0) {
         entries.push({
           category: 'other',
           label: 'other',
           blurb: 'tools without a declared category — read each tool\'s description for usage.',
-          toolNames: dotless.slice().sort(),
+          toolNames: bare.slice().sort(),
           order: 9999,
         });
       }
