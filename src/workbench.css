@@ -145,6 +145,40 @@ html, body {
   background: var(--vscode-toolbar-hoverBackground);
 }
 
+/* ── Titlebar layout controls (toggle side bars + panel) ── */
+.titlebar-layout-controls {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin-right: 8px;
+}
+.titlebar-layout-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--px-text-muted);
+  cursor: pointer;
+  border-radius: var(--px-radius-sm);
+  transition: background var(--px-dur-fast, 120ms) ease, color var(--px-dur-fast, 120ms) ease;
+}
+.titlebar-layout-btn:hover {
+  background: var(--px-surface-hover);
+  color: var(--px-text);
+}
+.titlebar-layout-btn.is-on { color: var(--px-text); }
+/* The filled pane region only shows when that pane is visible. */
+.titlebar-layout-btn .titlebar-layout-fill {
+  opacity: 0;
+  transition: opacity var(--px-dur-fast, 120ms) ease;
+}
+.titlebar-layout-btn.is-on .titlebar-layout-fill { opacity: 0.85; }
+
 /* ── Titlebar menu bar ── */
 .titlebar-menubar {
   display: flex;
@@ -1439,6 +1473,8 @@ html, body {
 .titlebar-center,
 .titlebar-right {
   position: relative; /* must be positioned to stack above .titlebar-drag-region (position: absolute) via DOM order */
+  display: flex;
+  align-items: center;
 }
 
 /* The center slot stays an in-flow flex:1 spacer (this is what pushes the window

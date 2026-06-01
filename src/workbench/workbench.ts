@@ -1713,6 +1713,46 @@ export class Workbench extends Layout {
       this.toggleCommandPalette();
     }));
 
+    // ── Title-bar layout controls — toggle the side bars + bottom panel ──
+    // The titlebar's right slot is created in TitlebarPart.createContent, which
+    // can run AFTER this wiring — so wait (retry per frame) until the slot
+    // exists, then prepend the three glyph buttons left of the window controls.
+    // `is-on` (filled pane region) tracks live visibility.
+    {
+      const ICON_SIDEBAR = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="3.25" width="12" height="9.5" rx="1.6" stroke="currentColor" stroke-width="1.1"/><path d="M6 3.75v8.5" stroke="currentColor" stroke-width="1.1"/><rect class="titlebar-layout-fill" x="2.7" y="3.95" width="2.6" height="8.1" rx="0.6" fill="currentColor"/></svg>';
+      const ICON_PANEL = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="3.25" width="12" height="9.5" rx="1.6" stroke="currentColor" stroke-width="1.1"/><path d="M2.5 9.4h11" stroke="currentColor" stroke-width="1.1"/><rect class="titlebar-layout-fill" x="2.7" y="9.8" width="10.6" height="2.25" rx="0.6" fill="currentColor"/></svg>';
+      const ICON_AUX = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="3.25" width="12" height="9.5" rx="1.6" stroke="currentColor" stroke-width="1.1"/><path d="M10 3.75v8.5" stroke="currentColor" stroke-width="1.1"/><rect class="titlebar-layout-fill" x="10.7" y="3.95" width="2.6" height="8.1" rx="0.6" fill="currentColor"/></svg>';
+      const addLayoutControls = (attempt = 0): void => {
+        const slot = this._titlebar.rightSlot;
+        if (!slot) {
+          if (attempt < 60) requestAnimationFrame(() => addLayoutControls(attempt + 1));
+          return;
+        }
+        if (slot.querySelector('.titlebar-layout-controls')) return; // idempotent
+        const layoutGroup = document.createElement('div');
+        layoutGroup.className = 'titlebar-layout-controls';
+        const makeToggle = (svg: string, label: string, partId: string, run: () => void): void => {
+          const btn = document.createElement('button');
+          btn.className = 'titlebar-layout-btn';
+          btn.type = 'button';
+          btn.title = label;
+          btn.setAttribute('aria-label', label);
+          btn.innerHTML = svg;
+          btn.addEventListener('click', (e) => { e.stopPropagation(); run(); });
+          const syncState = () => btn.classList.toggle('is-on', this.isPartVisible(partId));
+          syncState();
+          this._register(this.onDidChangePartVisibility((e) => { if (e.partId === partId) syncState(); }));
+          layoutGroup.appendChild(btn);
+        };
+        makeToggle(ICON_SIDEBAR, 'Toggle Primary Side Bar', PartId.Sidebar, () => this.toggleSidebar());
+        makeToggle(ICON_PANEL, 'Toggle Panel', PartId.Panel, () => this.togglePanel());
+        makeToggle(ICON_AUX, 'Toggle Secondary Side Bar', PartId.AuxiliaryBar, () => this.toggleAuxiliaryBar());
+        // Prepend so the toggles land to the LEFT of the min/max/close controls.
+        slot.prepend(layoutGroup);
+      };
+      addLayoutControls();
+    }
+
     // P1.5: Window inactive state — toggle `.inactive` on titlebar when window loses/gains focus
     // VS Code dims titlebar text and window controls when the window is not focused.
     const titlebarEl = this._titlebar.element;
