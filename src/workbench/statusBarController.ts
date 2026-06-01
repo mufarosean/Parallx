@@ -12,6 +12,7 @@ import { URI } from '../platform/uri.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { ICommandService, INotificationService } from '../services/serviceTypes.js';
 import { StatusBarPart, StatusBarAlignment } from '../parts/statusBarPart.js';
+import type { StatusBarEntryAccessor } from '../services/serviceTypes.js';
 import { EditorPart } from '../parts/editorPart.js';
 import { ContextMenu } from '../ui/contextMenu.js';
 import { $ } from '../ui/dom.js';
@@ -42,6 +43,7 @@ export class StatusBarController extends Disposable {
   private readonly _toggleStatusBar: () => void;
   private readonly _getWorkspace: () => Workspace;
   private readonly _getWorkbenchContext: () => WorkbenchContextManager | undefined;
+  private _workspaceAccessor: StatusBarEntryAccessor | undefined;
 
   constructor(deps: StatusBarControllerDeps) {
     super();
@@ -92,6 +94,20 @@ export class StatusBarController extends Disposable {
         }
       });
     }));
+
+    // Workspace name — moved here from the title bar (which now hosts the
+    // command center). Left-aligned, leftmost; click opens Quick Open.
+    const folderSvg = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M1.5 3.5h4l1.4 1.6h7.6v7.4a1 1 0 0 1-1 1h-12a1 1 0 0 1-1-1z" stroke-linejoin="round"/></svg>';
+    this._workspaceAccessor = sb.addEntry({
+      id: 'status.workspace',
+      text: this._getWorkspace()?.displayName ?? 'Parallx',
+      iconSvg: folderSvg,
+      alignment: StatusBarAlignment.Left,
+      priority: 1100,
+      tooltip: 'Current workspace — click to search files',
+      command: 'workbench.action.quickOpen',
+      name: 'Workspace',
+    });
 
     // Notification Center Badge
     this._setupNotificationBadge(sb);
@@ -247,6 +263,8 @@ export class StatusBarController extends Disposable {
     const workspace = this._getWorkspace();
     if (workspace) {
       parts.push(workspace.displayName);
+      // Keep the status-bar workspace entry in sync with renames/switches.
+      this._workspaceAccessor?.update({ text: workspace.displayName });
     }
 
     parts.push('Parallx');

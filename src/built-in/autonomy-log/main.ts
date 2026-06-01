@@ -17,12 +17,17 @@ import './autonomyLog.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
+import { getIcon } from '../../ui/iconRegistry.js';
 import {
   IAutonomyLogService,
   IAutonomyTaskRailService,
   IAutonomyPatternMemoryService,
   IAutonomyFeatureFlagsService,
+  IUnifiedAIConfigService,
 } from '../../services/serviceTypes.js';
+import { ICronService } from '../../openclaw/openclawCronService.js';
+import type { CronService, ICronJob } from '../../openclaw/openclawCronService.js';
+import type { IUnifiedAIConfigService as IUnifiedConfig } from '../../aiSettings/unifiedConfigTypes.js';
 import type {
   AutonomyLogService,
   AutonomyOrigin,
@@ -38,6 +43,8 @@ import type {
 } from '../../services/autonomyPatternMemoryService.js';
 import {
   FLAG_PAUSED_GLOBAL,
+  FLAG_HEARTBEAT_ENABLED,
+  FLAG_CRON_ENABLED,
   type AutonomyFeatureFlagsService,
 } from '../../services/autonomyFeatureFlags.js';
 
@@ -53,6 +60,7 @@ interface ParallxApi {
   };
   commands: {
     registerCommand(commandId: string, handler: (...args: unknown[]) => unknown): IDisposable;
+    executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
   };
   services: {
     has(id: unknown): boolean;
@@ -89,6 +97,29 @@ let logService: AutonomyLogService | undefined;
 let railService: IRail | undefined;
 let patternMemory: IPatternMemory | undefined;
 let flagsService: AutonomyFeatureFlagsService | undefined;
+let cronService: CronService | undefined;
+let configService: IUnifiedConfig | undefined;
+/** Run a workbench command (wake agent, deep-link into settings, …). */
+let runCommand: (<T = unknown>(id: string, ...args: unknown[]) => Promise<T>) | undefined;
+let apiRef: ParallxApi | undefined;
+
+/**
+ * (Re)resolve the autonomy services from DI. The autonomy-log built-in can
+ * activate BEFORE the chat extension registers the flags / cron / rail
+ * services, so resolving once at `activate()` leaves them `undefined` (status
+ * stuck "Off", Enable a no-op). We resolve lazily — at activate AND at view
+ * render (+ a one-shot heal) — and only overwrite with a found instance, never
+ * clobber a good one with undefined.
+ */
+function resolveServices(api: ParallxApi): void {
+  if (api.services.has(IAutonomyLogService)) logService = api.services.get<AutonomyLogService>(IAutonomyLogService);
+  if (api.services.has(IAutonomyTaskRailService)) railService = api.services.get<IRail>(IAutonomyTaskRailService);
+  if (api.services.has(IAutonomyPatternMemoryService)) patternMemory = api.services.get<IPatternMemory>(IAutonomyPatternMemoryService);
+  if (api.services.has(IAutonomyFeatureFlagsService)) flagsService = api.services.get<AutonomyFeatureFlagsService>(IAutonomyFeatureFlagsService);
+  if (api.services.has(ICronService)) cronService = api.services.get<CronService>(ICronService);
+  if (api.services.has(IUnifiedAIConfigService)) configService = api.services.get<IUnifiedConfig>(IUnifiedAIConfigService);
+  runCommand = (id, ...args) => api.commands.executeCommand(id, ...args);
+}
 
 let currentMode: Mode = 'live';
 let currentLiveFilter: LiveFilter = 'all';
@@ -105,19 +136,8 @@ function formatTime(ts: number): string {
 // ── Activation ───────────────────────────────────────────────────────────────
 
 export function activate(api: ParallxApi, context: ToolContext): void {
-  const svc = api.services.has(IAutonomyLogService)
-    ? api.services.get<AutonomyLogService>(IAutonomyLogService)
-    : undefined;
-  logService = svc;
-  railService = api.services.has(IAutonomyTaskRailService)
-    ? api.services.get<IRail>(IAutonomyTaskRailService)
-    : undefined;
-  patternMemory = api.services.has(IAutonomyPatternMemoryService)
-    ? api.services.get<IPatternMemory>(IAutonomyPatternMemoryService)
-    : undefined;
-  flagsService = api.services.has(IAutonomyFeatureFlagsService)
-    ? api.services.get<AutonomyFeatureFlagsService>(IAutonomyFeatureFlagsService)
-    : undefined;
+  apiRef = api;
+  resolveServices(api);
 
   const viewDisposable = api.views.registerViewProvider('view.autonomyLog', {
     createView(container: HTMLElement): IDisposable {
@@ -142,12 +162,53 @@ export function deactivate(): void {
   railService = undefined;
   patternMemory = undefined;
   flagsService = undefined;
+  cronService = undefined;
+  configService = undefined;
+  runCommand = undefined;
+  apiRef = undefined;
+}
+
+// ── Status helpers ─────────────────────────────────────────────────────────────
+
+/** Compact "in 2h 5m" / "in 40s" / "now" formatter for a future timestamp. */
+function formatUntil(ts: number): string {
+  const ms = ts - Date.now();
+  if (ms <= 0) return 'now';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `in ${s}s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `in ${m}m`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  if (h < 24) return rem ? `in ${h}h ${rem}m` : `in ${h}h`;
+  const d = Math.floor(h / 24);
+  return `in ${d}d`;
+}
+
+/** Compact interval label, e.g. 300000 → "5m". */
+function formatInterval(ms: number): string {
+  const m = Math.round(ms / 60000);
+  if (m >= 60 && m % 60 === 0) return `${m / 60}h`;
+  if (m >= 1) return `${m}m`;
+  return `${Math.round(ms / 1000)}s`;
+}
+
+/** The cron job firing soonest (enabled, has a nextRunAt). */
+function nextCronJob(jobs: readonly ICronJob[]): ICronJob | undefined {
+  let best: ICronJob | undefined;
+  for (const j of jobs) {
+    if (!j.enabled || j.nextRunAt == null) continue;
+    if (!best || (best.nextRunAt != null && j.nextRunAt < best.nextRunAt)) best = j;
+  }
+  return best;
 }
 
 // ── View renderer ────────────────────────────────────────────────────────────
 
 function renderAutonomyLogView(container: HTMLElement): IDisposable {
   container.classList.add('autonomy-log-container');
+  // Re-resolve in case services registered after we activated (see resolveServices).
+  if (apiRef) resolveServices(apiRef);
 
   // ── Header ──
   const header = $('div.autonomy-log-header');
@@ -229,13 +290,172 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
 
   container.appendChild(header);
 
-  // ── Body ──
+  // ── Status board (live mode) — answers "is autonomy on / is it doing anything?" ──
+  const statusBoard = $('div.autonomy-status');
+  container.appendChild(statusBoard);
+
+  // ── Body — a single scrollable region (the status board above stays pinned).
+  // The list AND the empty/guide both live here so either can scroll. ──
+  const body = $('div.autonomy-log-body');
   const listEl = $('div.autonomy-log-list');
   const emptyEl = $('div.autonomy-log-empty');
-  emptyEl.textContent =
-    'No autonomy activity yet. Heartbeat, cron, and subagent results will appear here.';
-  container.appendChild(listEl);
-  container.appendChild(emptyEl);
+  body.appendChild(listEl);
+  body.appendChild(emptyEl);
+  container.appendChild(body);
+
+  // A registered-icon span (Parallx uses the Lucide icon set — never emojis).
+  function iconSpan(name: string, cls: string): HTMLElement {
+    const span = $(`span.${cls}`);
+    span.innerHTML = getIcon(name);
+    return span;
+  }
+
+  type StateKind = 'on' | 'off' | 'paused';
+
+  // One engine row: icon tile · name + state badge over a detail line · action.
+  function statusRow(
+    iconName: string,
+    badge: { label: string; kind: StateKind },
+    title: string,
+    detail: string,
+    action?: { label: string; icon?: string; run: () => void; primary?: boolean },
+  ): HTMLElement {
+    const row = $('div.autonomy-status__row');
+
+    const tile = $(`div.autonomy-status__icon.is-${badge.kind}`);
+    tile.innerHTML = getIcon(iconName);
+    row.appendChild(tile);
+
+    const main = $('div.autonomy-status__main');
+    const top = $('div.autonomy-status__top');
+    const name = $('span.autonomy-status__name');
+    name.textContent = title;
+    top.appendChild(name);
+    const b = $(`span.autonomy-status__badge.is-${badge.kind}`);
+    b.textContent = badge.label;
+    top.appendChild(b);
+    main.appendChild(top);
+    const det = $('div.autonomy-status__detail');
+    det.textContent = detail;
+    main.appendChild(det);
+    row.appendChild(main);
+
+    if (action) {
+      const btn = $('button.autonomy-status__btn') as HTMLButtonElement;
+      if (action.primary) btn.classList.add('is-primary');
+      if (action.icon) btn.appendChild(iconSpan(action.icon, 'autonomy-status__btn-ic'));
+      const t = document.createElement('span');
+      t.textContent = action.label;
+      btn.appendChild(t);
+      btn.addEventListener('click', action.run);
+      row.appendChild(btn);
+    }
+    return row;
+  }
+
+  function paintStatus(): void {
+    statusBoard.innerHTML = '';
+    if (currentMode !== 'live') { statusBoard.style.display = 'none'; return; }
+    statusBoard.style.display = '';
+
+    const paused = flagsService?.isEnabled(FLAG_PAUSED_GLOBAL) ?? false;
+
+    // Heartbeat — needs BOTH the feature flag and the config master switch.
+    const hbFlag = flagsService?.isEnabled(FLAG_HEARTBEAT_ENABLED) ?? false;
+    const hbCfg = configService?.getEffectiveConfig().heartbeat;
+    const hbOn = hbFlag && (hbCfg?.enabled ?? false);
+    if (paused) {
+      statusBoard.appendChild(statusRow('heart-pulse', { label: 'Paused', kind: 'paused' },
+        'Heartbeat', 'Globally paused — nothing fires.'));
+    } else if (hbOn) {
+      const iv = hbCfg ? formatInterval(hbCfg.intervalMs) : '5m';
+      statusBoard.appendChild(statusRow('heart-pulse', { label: 'Armed', kind: 'on' },
+        'Heartbeat', `Reacts to file changes · checks every ${iv}`,
+        { label: 'Wake now', icon: 'zap', primary: true, run: () => { void runCommand?.('parallx.wakeAgent'); } }));
+    } else {
+      statusBoard.appendChild(statusRow('heart-pulse', { label: 'Off', kind: 'off' },
+        'Heartbeat', 'Proactive check-ins are disabled.',
+        { label: 'Enable', icon: 'power', run: () => {
+            // Flip BOTH gates at once — the flag AND the config master switch.
+            void flagsService?.setEnabled(FLAG_HEARTBEAT_ENABLED, true);
+            void configService?.updateActivePreset({ heartbeat: { enabled: true } });
+          } }));
+    }
+
+    // Cron — gated by the cron flag; the scheduler timer runs regardless.
+    const cronFlag = flagsService?.isEnabled(FLAG_CRON_ENABLED) ?? false;
+    if (paused) {
+      statusBoard.appendChild(statusRow('calendar-clock', { label: 'Paused', kind: 'paused' },
+        'Cron', 'Globally paused — no jobs fire.'));
+    } else if (!cronFlag) {
+      statusBoard.appendChild(statusRow('calendar-clock', { label: 'Off', kind: 'off' },
+        'Cron', 'Scheduled jobs won’t fire.',
+        { label: 'Enable', icon: 'power', run: () => { void flagsService?.setEnabled(FLAG_CRON_ENABLED, true); } }));
+    } else {
+      const jobs = cronService?.jobs ?? [];
+      const next = nextCronJob(jobs);
+      const detail = jobs.length === 0
+        ? 'On · no jobs scheduled yet.'
+        : next
+          ? `${jobs.length} job${jobs.length === 1 ? '' : 's'} · next: ${next.name} ${formatUntil(next.nextRunAt!)}`
+          : `${jobs.length} job${jobs.length === 1 ? '' : 's'} scheduled.`;
+      statusBoard.appendChild(statusRow('calendar-clock', { label: 'On', kind: 'on' },
+        'Cron', detail,
+        { label: jobs.length === 0 ? 'Schedule' : 'Manage', icon: 'alarm-clock', run: () => { void runCommand?.('aiSettings.manageCron'); } }));
+    }
+
+    // Footer: autonomy level + a deep-link into the unified config.
+    const level = configService?.getEffectiveConfig().heartbeat.autonomy ?? 'allow-safe-actions';
+    const foot = $('div.autonomy-status__foot');
+    foot.appendChild(iconSpan('sliders-horizontal', 'autonomy-status__foot-ic'));
+    const lvl = $('span.autonomy-status__level');
+    lvl.textContent = `Autonomy level · ${level}`;
+    foot.appendChild(lvl);
+    const link = $('button.autonomy-status__link') as HTMLButtonElement;
+    const linkText = document.createElement('span');
+    linkText.textContent = 'Full settings';
+    link.appendChild(linkText);
+    link.appendChild(iconSpan('arrow-up-right', 'autonomy-status__link-ic'));
+    link.addEventListener('click', () => { void runCommand?.('aiSettings.manageAgents'); });
+    foot.appendChild(link);
+    statusBoard.appendChild(foot);
+  }
+
+  // Rich guide shown in the live list when there's no activity yet.
+  function buildLiveGuide(): void {
+    emptyEl.innerHTML = '';
+    emptyEl.classList.add('autonomy-log-empty--guide');
+
+    const head = $('div.autonomy-guide__head');
+    head.appendChild(iconSpan('sparkles', 'autonomy-guide__head-ic'));
+    const title = $('div.autonomy-guide__title');
+    title.textContent = 'Nothing has run yet';
+    head.appendChild(title);
+    emptyEl.appendChild(head);
+
+    const body = $('div.autonomy-guide__body');
+    body.textContent =
+      'Heartbeat reacts to your workspace — a file you save, indexing finishing. Cron runs on a schedule you set. ' +
+      'Both work quietly in the background and log their turns right here. Try one:';
+    emptyEl.appendChild(body);
+
+    const chips = $('div.autonomy-guide__chips');
+    const examples: { label: string; icon: string; run: () => void }[] = [
+      { label: 'Wake the agent now', icon: 'zap', run: () => { void runCommand?.('parallx.wakeAgent'); } },
+      { label: 'Schedule a job', icon: 'calendar-clock', run: () => { void runCommand?.('aiSettings.manageCron'); } },
+      { label: 'Ask in chat', icon: 'message-circle', run: () => { void runCommand?.('chat.show'); } },
+    ];
+    for (const e of examples) {
+      const chip = $('button.autonomy-guide__chip') as HTMLButtonElement;
+      chip.appendChild(iconSpan(e.icon, 'autonomy-guide__chip-ic'));
+      const t = document.createElement('span');
+      t.textContent = e.label;
+      chip.appendChild(t);
+      chip.addEventListener('click', e.run);
+      chips.appendChild(chip);
+    }
+    emptyEl.appendChild(chips);
+  }
 
   // ── Render helpers ──
   const liveChipKeys: readonly LiveFilter[] = ['all', 'heartbeat', 'cron', 'subagent'];
@@ -311,6 +531,10 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     const entries = logService.getEntries({ limit: 200, origin: originFilter });
     listEl.innerHTML = '';
     if (entries.length === 0) {
+      // Filtered-out vs genuinely empty: only show the onboarding guide for the
+      // unfiltered "all" view; a filter with no hits gets a plain note.
+      if (currentLiveFilter === 'all') buildLiveGuide();
+      else setPlainEmpty(`No ${currentLiveFilter} activity yet.`);
       emptyEl.style.display = '';
       return;
     }
@@ -333,6 +557,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       triggers: triggers as never,
     });
     if (rows.length === 0) {
+      setPlainEmpty('No autonomy history in the last 30 days.');
       emptyEl.style.display = '';
       return;
     }
@@ -350,8 +575,9 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     }
     const patterns = patternMemory.list();
     if (patterns.length === 0) {
-      emptyEl.textContent =
-        'No approved sub-agent patterns yet. When you approve a spawn and choose "remember", it will appear here.';
+      setPlainEmpty(
+        'No approved sub-agent patterns yet. When you approve a spawn and choose "remember", it will appear here.',
+      );
       emptyEl.style.display = '';
       return;
     }
@@ -460,7 +686,13 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     return row;
   }
 
+  function setPlainEmpty(text: string): void {
+    emptyEl.classList.remove('autonomy-log-empty--guide');
+    emptyEl.textContent = text;
+  }
+
   function paintAll(): void {
+    paintStatus();
     paintSummary();
     paintList();
   }
@@ -484,15 +716,41 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       paintAll();
     });
   };
-  const subLog = logService?.onDidChange(schedule);
-  const subRail = railService?.onDidChange(schedule);
-  const subFlags = flagsService?.onDidChange(schedule);
+  let subLog = logService?.onDidChange(schedule);
+  let subRail = railService?.onDidChange(schedule);
+  let subFlags = flagsService?.onDidChange(schedule);
+  let subCron = cronService?.onDidChangeJobs(schedule);
+  let subConfig = configService?.onDidChangeConfig(schedule);
+  // Relative "next: in 2h" timers drift between events — refresh the board
+  // on a slow tick so the countdown stays honest without a firehose of repaints.
+  const refreshTimer = setInterval(() => { if (currentMode === 'live') paintStatus(); }, 30_000);
+
+  // Self-heal: if the view mounted before the chat extension registered the
+  // flags / cron services, re-resolve shortly after, wire up the now-available
+  // subscriptions, and repaint — so the panel goes live without a reopen.
+  let healTimer: ReturnType<typeof setTimeout> | undefined;
+  if (apiRef && (!flagsService || !cronService)) {
+    healTimer = setTimeout(() => {
+      healTimer = undefined;
+      if (apiRef) resolveServices(apiRef);
+      if (!subLog && logService) subLog = logService.onDidChange(schedule);
+      if (!subRail && railService) subRail = railService.onDidChange(schedule);
+      if (!subFlags && flagsService) subFlags = flagsService.onDidChange(schedule);
+      if (!subCron && cronService) subCron = cronService.onDidChangeJobs(schedule);
+      if (!subConfig && configService) subConfig = configService.onDidChangeConfig(schedule);
+      paintAll();
+    }, 800);
+  }
 
   return {
     dispose(): void {
       subLog?.dispose();
       subRail?.dispose();
       subFlags?.dispose();
+      subCron?.dispose();
+      subConfig?.dispose();
+      clearInterval(refreshTimer);
+      if (healTimer) clearTimeout(healTimer);
     },
   };
 }

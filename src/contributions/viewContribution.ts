@@ -411,7 +411,6 @@ export class ViewContributionProcessor extends Disposable implements IContributi
     let _providerDisposable: IDisposable | undefined;
     let _disposed = false;
     let _resolved = false;
-    let _width = 0;
     let _height = 0;
 
     const _onDidChangeConstraints = new Emitter<void>();
@@ -434,8 +433,11 @@ export class ViewContributionProcessor extends Disposable implements IContributi
         _contentEl.className = 'tool-view-content';
         _element.appendChild(_contentEl);
 
-        if (_width > 0 || _height > 0) {
-          _contentEl.style.width = `${_width}px`;
+        // Height is JS-driven (views need a definite height to scroll); WIDTH is
+        // left to CSS (100%) so the view always fills its real container width.
+        // Setting an explicit pixel width = the part's full width overflowed the
+        // margin-inset .part-content and got clipped, shifting centred content.
+        if (_height > 0) {
           _contentEl.style.height = `${_height}px`;
         }
 
@@ -510,15 +512,13 @@ export class ViewContributionProcessor extends Disposable implements IContributi
         _element?.focus();
       },
 
-      layout(width: number, height: number): void {
-        _width = width;
+      layout(_width: number, height: number): void {
         _height = height;
+        // Width follows the container via CSS (100%); only height is pinned in JS.
         if (_element) {
-          _element.style.width = `${width}px`;
           _element.style.height = `${height}px`;
         }
         if (_contentEl) {
-          _contentEl.style.width = `${width}px`;
           _contentEl.style.height = `${height}px`;
         }
       },

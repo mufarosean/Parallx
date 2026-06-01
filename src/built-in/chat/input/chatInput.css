@@ -89,17 +89,45 @@
 
 /* ── Toolbar (inside the container, below textarea) ── */
 
+/* Context row: + button + attachment chips, above the textarea. */
+.parallx-chat-input-context-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px 0;
+}
+/* The ribbon flows after the + button (the row supplies the padding). */
+.parallx-chat-input-context-row .parallx-chat-context-ribbon {
+  padding: 2px 0 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .parallx-chat-input-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px 12px;
+  gap: 4px;
+  padding: 6px 12px 12px;
 }
 
 .parallx-chat-input-toolbar-pickers {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  /* Allow the pickers to shrink and truncate (model name ellipsises) rather
+     than overflowing/clipping the send button in a narrow chat. */
+  min-width: 0;
+  overflow: hidden;
+}
+/* Model name truncates before it can push the send button off the edge. */
+.parallx-chat-input-toolbar-pickers .parallx-chat-picker-btn--model {
+  min-width: 0;
+}
+.parallx-chat-input-toolbar-pickers .parallx-chat-picker-btn--model .parallx-chat-picker-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
 }
 
 .parallx-chat-input-toolbar-spacer {

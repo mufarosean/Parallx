@@ -112,6 +112,10 @@ export class TitlebarPart extends Part {
   private readonly _onDidClickWorkspaceName = this._register(new Emitter<void>());
   readonly onDidClickWorkspaceName: Event<void> = this._onDidClickWorkspaceName.event;
 
+  /** Fires when the title-bar command center (the search box) is activated. */
+  private readonly _onDidClickCommandCenter = this._register(new Emitter<void>());
+  readonly onDidClickCommandCenter: Event<void> = this._onDidClickCommandCenter.event;
+
   constructor() {
     super(
       PartId.Titlebar,
@@ -582,26 +586,31 @@ export class TitlebarPart extends Part {
 
     this._menuBarContainer = this._leftSlot;
 
-    // Center slot: workspace name label
+    // Center slot: command center (search box). The workspace name moved to the
+    // status bar; this top-center space is now a quick command/search affordance
+    // (VS Code's command center), always at hand.
     this._centerSlot = $('div');
     this._centerSlot.classList.add('titlebar-center');
     rootContainer.appendChild(this._centerSlot);
 
-    this._workspaceLabel = $('span');
-    this._workspaceLabel.classList.add('titlebar-workspace-label');
-    this._workspaceLabel.textContent = this._workspaceName;
-    this._workspaceLabel.setAttribute('role', 'button');
-    this._workspaceLabel.setAttribute('tabindex', '0');
-    this._workspaceLabel.addEventListener('click', () => {
-      this._onDidClickWorkspaceName.fire();
+    const commandCenter = $('div');
+    // `px-bare` opts out of the global control press/focus chrome — it's a text
+    // surface, not a button to depress, so it must never shift on click.
+    commandCenter.classList.add('titlebar-command-center', 'px-bare');
+    commandCenter.setAttribute('role', 'button');
+    commandCenter.setAttribute('tabindex', '0');
+    commandCenter.title = 'Search & run commands';
+    commandCenter.innerHTML = `<span class="titlebar-command-center-icon" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.2"/><line x1="10.3" y1="10.3" x2="14" y2="14" stroke-linecap="round"/></svg></span><span class="titlebar-command-center-label">Search commands</span><span class="titlebar-command-center-kbd" aria-hidden="true"><kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>P</kbd></span>`;
+    commandCenter.addEventListener('click', () => {
+      this._onDidClickCommandCenter.fire();
     });
-    this._workspaceLabel.addEventListener('keydown', (e) => {
+    commandCenter.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        this._onDidClickWorkspaceName.fire();
+        this._onDidClickCommandCenter.fire();
       }
     });
-    this._centerSlot.appendChild(this._workspaceLabel);
+    this._centerSlot.appendChild(commandCenter);
 
     // Right slot: window controls
     this._rightSlot = $('div');

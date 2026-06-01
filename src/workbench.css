@@ -215,6 +215,103 @@ html, body {
   outline-offset: -1px;
 }
 
+/* ── Title-bar command center (search box) ──
+ *  Opens the command palette. A crafted search pill: a recessed well with a
+ *  faint top sheen, an accent-tinted lens, and a keycap hint that lifts on
+ *  hover. Inspired by Spotlight/Raycast more than VS Code's flat field. */
+.titlebar-command-center {
+  -webkit-app-region: no-drag;
+  /* Centre at the true viewport centre (resolves to .titlebar-container, which is
+     position:relative + full width) so it lines up with the command palette.
+     Centred via inset:0 + margin:auto on a fixed width/height — NOT a transform —
+     so the global [role=button]:active press transform can't knock it out of
+     place on click (that was the "it jumps when I click it" bug). */
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: clamp(220px, 30vw, 360px);
+  height: 24px;
+  padding: 0 5px 0 11px;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  /* Recessed well: a hair darker than the frame, with a 1px top sheen. */
+  background:
+    linear-gradient(var(--px-bg-inset), color-mix(in srgb, var(--px-bg-inset) 88%, #000));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 2px rgba(0, 0, 0, 0.18);
+  color: var(--px-text-muted);
+  font-size: var(--px-text-sm);
+  cursor: text;
+  user-select: none;
+  transition:
+    border-color var(--px-dur-fast) var(--px-ease),
+    box-shadow var(--px-dur-base) var(--px-ease),
+    color var(--px-dur-fast) var(--px-ease);
+}
+
+.titlebar-command-center:hover {
+  border-color: var(--px-border-strong);
+  color: var(--px-text-secondary);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 0 0 3px var(--px-accent-faint);
+}
+
+.titlebar-command-center:focus-visible {
+  outline: none;
+  border-color: var(--px-accent);
+  box-shadow: 0 0 0 3px var(--px-accent-soft);
+  color: var(--px-text-secondary);
+}
+
+.titlebar-command-center-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--px-accent);
+  opacity: 0.9;
+}
+
+.titlebar-command-center-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Keycap hint — a little stack of caps, dimmed until you hover the pill. */
+.titlebar-command-center-kbd {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0.55;
+  transition: opacity var(--px-dur-fast) var(--px-ease);
+}
+.titlebar-command-center:hover .titlebar-command-center-kbd {
+  opacity: 0.85;
+}
+.titlebar-command-center-kbd kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--px-radius-sm);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-bottom-color: var(--px-border-strong);
+  color: var(--px-text-faint);
+  font-family: var(--parallx-fontFamily-ui);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+}
+
 /* ── Titlebar dropdown menus (M3 Cap 1.2) ──
  *  Titlebar dropdowns use the ContextMenu component (`.context-menu` base
  *  styles live in ui/ui.css).  This class is applied via the `className`
@@ -249,9 +346,12 @@ html, body {
   transform: translateX(-12px);
 }
 
+/* Standard horizontal inset for all sidebar/aux chrome — keep L and R equal so
+   nothing hugs the card border. Header padding + a tiny action-button trim land
+   the title (left) and the action glyphs (right) at the same distance in. */
 .sidebar-header {
   height: 35px;
-  padding: 0 8px;
+  padding: 0 var(--px-sidebar-inset, 10px);
   display: flex;
   align-items: center;
 }
@@ -278,6 +378,8 @@ html, body {
   display: flex;
   align-items: center;
   gap: 2px;
+  /* Glyphs land at the same inset as the title on the left. */
+  margin-right: -4px;
 }
 
 .sidebar-header-action-btn {
@@ -319,7 +421,7 @@ html, body {
   height: 22px;
   min-height: 22px;
   flex-shrink: 0;
-  padding: 0 8px;
+  padding: 0 var(--px-sidebar-inset, 10px);
   cursor: pointer;
   user-select: none;
   background: var(--vscode-sideBarSectionHeader-background);
@@ -365,6 +467,9 @@ html, body {
   align-items: center;
   gap: 2px;
   margin-left: auto;
+  /* Pull the action glyphs out by the button's own inner padding so they land at
+     the same inset as the section title on the left (consistent L/R edge gap). */
+  margin-right: -4px;
   flex-shrink: 0;
   opacity: 0;
   transition: opacity 0.1s;
@@ -645,7 +750,7 @@ html, body {
 
 .auxiliary-bar-header {
   height: 35px;
-  padding: 0 8px 0 14px;
+  padding: 0 var(--px-sidebar-inset, 10px);
   display: flex;
   align-items: center;
   border-bottom: 1px solid var(--px-chrome-line);
@@ -667,6 +772,8 @@ html, body {
   align-items: center;
   gap: 2px;
   margin-left: auto;
+  /* Glyphs land at the same inset as the header label on the left. */
+  margin-right: -4px;
   flex-shrink: 0;
 }
 
@@ -722,15 +829,56 @@ html, body {
   border: 0;
 }
 
-/* Editor + panel: the whole part wraps in .part-content (tabs included), so a
-   single card covers it. */
-.part-workbench-parts-editor .part-content,
+/* Panel: the whole part wraps in .part-content, so a single card covers it. */
 .part-workbench-parts-panel .part-content {
   margin: 5px;
   border: 1px solid var(--px-border);
   border-radius: var(--px-radius-sm);
   background: var(--px-bg);
   overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* Editor: the part fills its slot with NO outer margin — the editor grid is
+   sized in JS to the full part, so a margin here pushes the JS-sized pane past
+   the clip edge and eats its bottom border. Instead the float gap + border live
+   on the inner pieces:
+     · the tab strip floats on the window tone, so the empty area past the last
+       tab reads as the frame (the grey chips + editor-coloured active tab pop);
+     · the ribbon + pane form the bordered content card — inset L/R/B, square top
+       (the active tab's own hairline is the top), rounded + bordered bottom. */
+.part-workbench-parts-editor .part-content {
+  background: var(--px-window);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.part-workbench-parts-editor .editor-tab-bar {
+  /* Top 5px matches the sidebar/aux cards' gap below the title bar so the tab
+     strip floats the same distance down. (Must match TAB_STRIP_TOP_GAP in
+     editorGroupView.ts, which subtracts it from the pane height.) */
+  margin: 5px 5px 0 5px;
+  background: var(--px-window);
+}
+/* The inner TabBar paints tabsBackground over the strip — make it transparent
+   in the editor so the window tone shows through the empty area past the tabs. */
+.part-workbench-parts-editor .ui-tab-bar {
+  background-color: transparent;
+}
+.part-workbench-parts-editor .editor-ribbon:not(.hidden) {
+  margin: 0 5px;
+  border-left: 1px solid var(--px-border);
+  border-right: 1px solid var(--px-border);
+  background: var(--px-bg);
+  box-sizing: border-box;
+}
+.part-workbench-parts-editor .editor-pane-container {
+  margin: 0 5px 5px;
+  border-left: 1px solid var(--px-border);
+  border-right: 1px solid var(--px-border);
+  border-bottom: 1px solid var(--px-border);
+  border-bottom-left-radius: var(--px-radius-sm);
+  border-bottom-right-radius: var(--px-radius-sm);
+  background: var(--px-bg);
   box-sizing: border-box;
 }
 
@@ -943,11 +1091,16 @@ html, body {
 }
 
 /* ── View Container ── */
+/* Fills its slot via CSS (no JS-stamped pixel width) so it always matches the
+   real, margin-inset content box — view sizing is then measured from this in JS
+   (ViewContainer._doLayout), keeping the two layout systems from ever drifting. */
 .view-container {
   display: flex;
   flex-direction: column;
   overflow: hidden;
   position: relative;
+  width: 100%;
+  height: 100%;
 }
 
 .view-container-tabs {
@@ -1051,13 +1204,10 @@ html, body {
   cursor: col-resize;
   margin-left: -2px;
   margin-right: -2px;
-  background: linear-gradient(
-    to right,
-    transparent calc(50% - 0.5px),
-    var(--vscode-editorGroup-border, rgba(255, 255, 255, 0.06)) calc(50% - 0.5px),
-    var(--vscode-editorGroup-border, rgba(255, 255, 255, 0.06)) calc(50% + 0.5px),
-    transparent calc(50% + 0.5px)
-  );
+  /* Floating-panel layout owns the seam between parts (the window gap + each
+     card's own border). The sash stays invisible at rest — no resting line —
+     and only lights up on hover/drag. */
+  background: transparent;
 }
 
 .grid-sash-horizontal {
@@ -1066,13 +1216,7 @@ html, body {
   cursor: row-resize;
   margin-top: -2px;
   margin-bottom: -2px;
-  background: linear-gradient(
-    to bottom,
-    transparent calc(50% - 0.5px),
-    var(--vscode-editorGroup-border, rgba(255, 255, 255, 0.06)) calc(50% - 0.5px),
-    var(--vscode-editorGroup-border, rgba(255, 255, 255, 0.06)) calc(50% + 0.5px),
-    transparent calc(50% + 0.5px)
-  );
+  background: transparent;
 }
 
 /* Hover / active overrides the resting 1px line with the full-width highlight */
@@ -1297,10 +1441,16 @@ html, body {
   position: relative; /* must be positioned to stack above .titlebar-drag-region (position: absolute) via DOM order */
 }
 
+/* The center slot stays an in-flow flex:1 spacer (this is what pushes the window
+   controls to the far right). It is NOT a positioning context (static), so the
+   command center inside it anchors to .titlebar-container (the full-width root)
+   instead of the off-centre slot — landing at the TRUE viewport centre, where
+   the viewport-centred command palette drops straight under it. */
 .titlebar-center {
   flex: 1;
   display: flex;
   justify-content: center;
+  position: static;
 }
 
 /* ── Status Bar content (legacy compat — now handled by .left-items/.right-items) ── */

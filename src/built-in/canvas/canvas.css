@@ -2431,7 +2431,7 @@
   justify-content: space-between;
   padding: 0 12px;
   box-sizing: border-box;
-  height: 28px;
+  height: 32px;
   flex-shrink: 0;
   /* Stick to top of scroll container so the ribbon stays visible on scroll */
   position: sticky;
@@ -2730,7 +2730,9 @@
 }
 
 .canvas-breadcrumb-label {
-  line-height: 1;
+  /* Was line-height:1, which clipped descenders (g, p, y) against the ribbon's
+     overflow:hidden. Give the glyph box room to breathe. */
+  line-height: 1.5;
 }
 
 /* ── Page Icon ── */

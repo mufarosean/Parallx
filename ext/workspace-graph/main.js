@@ -2450,7 +2450,7 @@ function createGraphSidebar(container, api) {
   container.appendChild(cvs);
 
   // Overlay buttons (top-right, over canvas)
-  const btnBar = _el('div', 'position:absolute;top:4px;right:6px;display:flex;gap:4px;z-index:2;');
+  const btnBar = _el('div', 'position:absolute;top:8px;right:12px;display:flex;gap:6px;z-index:2;');
   const refreshBtn = _miniBtn('\u27f3');
   refreshBtn.title = 'Refresh';
   refreshBtn.addEventListener('click', () => m.refresh());

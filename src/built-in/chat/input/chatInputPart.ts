@@ -76,8 +76,28 @@ export class ChatInputPart extends Disposable {
     this._root = $('div.parallx-chat-input');
     container.appendChild(this._root);
 
-    // Context attachment ribbon (ABOVE the textarea, VS Code style)
-    this._contextRibbon = this._register(new ChatContextAttachments(this._root, onRequestVisionModel));
+    // Context row (ABOVE the textarea): the "Add Context" (+) affordance lives
+    // here at the start, with attachment chips flowing after it. Pulling + out of
+    // the bottom toolbar keeps that toolbar from crowding / clipping in a narrow
+    // chat. The row is always present; the ribbon hides itself when empty.
+    const contextRow = $('div.parallx-chat-input-context-row');
+    this._root.appendChild(contextRow);
+
+    // Add Context button (VS Code-style attach) — first item in the context row
+    this._attachBtn = document.createElement('button');
+    this._attachBtn.className = 'parallx-chat-input-attach';
+    this._attachBtn.type = 'button';
+    this._attachBtn.title = 'Add Context...';
+    this._attachBtn.setAttribute('aria-label', 'Add Context');
+    this._attachBtn.innerHTML = chatIcons.newChat;
+    this._attachLabel = document.createElement('span');
+    this._attachLabel.className = 'parallx-chat-input-attach-label';
+    this._attachLabel.textContent = '';
+    this._attachBtn.appendChild(this._attachLabel);
+    contextRow.appendChild(this._attachBtn);
+
+    // Context attachment ribbon (chips flow after the + button)
+    this._contextRibbon = this._register(new ChatContextAttachments(contextRow, onRequestVisionModel));
     this._register(this._contextRibbon.onDidChange(() => {
       this._updateAttachBtnLabel();
       this._onDidChangeAttachments.fire();
@@ -103,20 +123,8 @@ export class ChatInputPart extends Disposable {
     this._toolbar = $('div.parallx-chat-input-toolbar');
     this._root.appendChild(this._toolbar);
 
-    // Add Context button (VS Code-style attach)
-    this._attachBtn = document.createElement('button');
-    this._attachBtn.className = 'parallx-chat-input-attach';
-    this._attachBtn.type = 'button';
-    this._attachBtn.title = 'Add Context...';
-    this._attachBtn.setAttribute('aria-label', 'Add Context');
-    this._attachBtn.innerHTML = chatIcons.newChat;
-    this._attachLabel = document.createElement('span');
-    this._attachLabel.className = 'parallx-chat-input-attach-label';
-    this._attachLabel.textContent = '';
-    this._attachBtn.appendChild(this._attachLabel);
-    this._toolbar.appendChild(this._attachBtn);
-
-    // Picker slot (mode/model pickers will be appended here)
+    // Picker slot (mode/model pickers will be appended here). The + attach
+    // button now lives in the context row above, so the toolbar stays lean.
     this._pickerSlot = $('div.parallx-chat-input-toolbar-pickers');
     this._toolbar.appendChild(this._pickerSlot);
 

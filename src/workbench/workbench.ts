@@ -1029,7 +1029,7 @@ export class Workbench extends Layout {
     this._register(registerBuiltinCommands(cmdService));
 
     // Quick Access — unified overlay for commands + workspace switching
-    this._commandPalette = new QuickAccessWidget(cmdService, this._container, this._storage);
+    this._commandPalette = new QuickAccessWidget(cmdService, this._storage);
     this._register(this._commandPalette);
 
     // Wire editor group service for Go to Line provider
@@ -1706,6 +1706,11 @@ export class Workbench extends Layout {
     // Task 1.1: Clicking workspace name opens Quick Access in general mode
     this._register(this._titlebar.onDidClickWorkspaceName(() => {
       this.showQuickOpen();
+    }));
+
+    // The title-bar command center (search box) opens the command palette.
+    this._register(this._titlebar.onDidClickCommandCenter(() => {
+      this.toggleCommandPalette();
     }));
 
     // P1.5: Window inactive state — toggle `.inactive` on titlebar when window loses/gains focus

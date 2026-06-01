@@ -33,6 +33,11 @@ import { setupTooltip } from '../ui/tooltip.js';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const TAB_HEIGHT = 35;
+/** Gap above the tab strip so the editor floats the same distance below the
+ *  title bar as the sidebar / aux cards. MUST match the editor `.editor-tab-bar`
+ *  margin-top in workbench.css — the pane-height calc subtracts it so the JS
+ *  layout stays in step with that CSS margin (no bottom clip). */
+const TAB_STRIP_TOP_GAP = 5;
 const MIN_GROUP_WIDTH = 200;
 const MIN_GROUP_HEIGHT = 120;
 
@@ -164,9 +169,9 @@ export class EditorGroupView extends Disposable implements IGridView {
       this._element.style.height = `${height}px`;
     }
 
-    // Layout pane: subtract tab bar height and ribbon height
+    // Layout pane: subtract the tab strip's top gap, tab bar height, and ribbon
     const ribbonH = this._getRibbonHeight();
-    const paneH = Math.max(0, height - TAB_HEIGHT - ribbonH);
+    const paneH = Math.max(0, height - TAB_STRIP_TOP_GAP - TAB_HEIGHT - ribbonH);
     if (this._paneContainer) {
       this._paneContainer.style.height = `${paneH}px`;
     }
@@ -752,7 +757,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     // Layout BEFORE restore so the scroll container has its final size
     // (otherwise scrollTop = N clamps against an empty viewport).
     const ribbonH = this._getRibbonHeight();
-    const paneH = Math.max(0, this._height - TAB_HEIGHT - ribbonH);
+    const paneH = Math.max(0, this._height - TAB_STRIP_TOP_GAP - TAB_HEIGHT - ribbonH);
     pane.layout(this._width, paneH);
 
     // Restore cached view state for this input, if any. setInput has already

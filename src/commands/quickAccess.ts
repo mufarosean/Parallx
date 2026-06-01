@@ -810,7 +810,6 @@ export class QuickAccessWidget extends Disposable {
 
   constructor(
     private readonly _commandService: CommandService,
-    private readonly _container: HTMLElement,
     private readonly _workspaceStorage?: IStorage,
   ) {
     super();
@@ -1091,7 +1090,12 @@ export class QuickAccessWidget extends Disposable {
     palette.appendChild(input);
     palette.appendChild(list);
     overlay.appendChild(palette);
-    this._container.appendChild(overlay);
+    // Mount the fixed overlay on <body>, NOT the workbench container. Workbench
+    // parts set `contain: layout` (+ overflow:hidden), which turns them into
+    // containing blocks that clip position:fixed descendants — that's what was
+    // cropping the palette. <body> carries the full theme var set (injected as a
+    // `body {}` rule), so it still themes correctly.
+    document.body.appendChild(overlay);
 
     this._overlay = overlay;
     this._input = input;

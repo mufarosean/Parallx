@@ -186,7 +186,9 @@
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  padding: 0 4px;
+  /* Extra right room so the split-editor icon clears the floating editor card's
+     inset edge instead of hugging it. */
+  padding: 0 10px 0 4px;
   border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
 }
 
@@ -211,10 +213,14 @@
   flex: 0 0 168px;
   width: 168px;
   color: var(--px-text-muted);
-  /* Inactive tabs are grey chips with rounded tops; the active tab takes the
-     bar/content color (below) so it reads as connected to the page, not raised. */
+  /* Inactive tabs are grey chips with rounded tops sitting on the strip's base
+     hairline; the active tab (below) takes the page colour, gets a real outline,
+     and erases its slice of that hairline so it reads as joined to the editor. */
   background-color: var(--px-bg-elevated);
-  border: 0;
+  /* Transparent top/side borders reserve the 1px the active tab will make
+     visible — so promoting a tab to active never shifts the layout. */
+  border: 1px solid transparent;
+  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
   border-top-left-radius: var(--px-radius-md);
   border-top-right-radius: var(--px-radius-md);
   transition:
@@ -241,13 +247,16 @@
   background-color: var(--px-surface-hover);
 }
 
-/* Active tab takes the bar/content colour so it reads as connected to the page
-   below — the inactive grey chips recede around it. No accent cap, no side
-   borders; the colour difference (content vs grey) is the signal. */
+/* Active tab takes the page colour AND a crisp outline (top + sides), then
+   erases its slice of the strip hairline at the bottom — so the tab and the
+   editor below read as one bordered surface. This is the "selected tab connects
+   to its content" seam from the pre-overhaul tabs, the signal that it's open. */
 .ui-tab--active {
   color: var(--px-text);
   font-weight: 550;
   background-color: var(--px-bg);
+  border: 1px solid var(--px-border);
+  border-bottom-color: var(--px-bg);
   border-top-left-radius: var(--px-radius-md);
   border-top-right-radius: var(--px-radius-md);
 }

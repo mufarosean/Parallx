@@ -99,6 +99,9 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private readonly _inputPart: ChatInputPart;
   private readonly _listRenderer: ChatListRenderer;
   private readonly _sessionSidebar: ChatSessionSidebar;
+  /** The history toggle in the title actions — referenced so click-away
+   *  dismissal of the history popout doesn't fight the toggle itself. */
+  private _historyBtn: HTMLElement | undefined;
 
   // ── Services ──
 
@@ -187,14 +190,23 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     };
     this._sessionSidebar = this._register(new ChatSessionSidebar(this._root, sidebarServices));
 
-    // Wire sash drag AFTER sidebar is created (it references _sessionSidebar)
+    // History is a popout overlay now (not a docked column): start it closed so
+    // the chat owns the full width, then dismiss on click-away / Esc / select.
+    this._sessionSidebar.hide();
+
+    // Wire sash drag AFTER sidebar is created (it references _sessionSidebar).
+    // The sash is hidden in the popout layout, so this is now inert, but kept
+    // wired for the toggle bookkeeping it registers.
     this._setupSashDrag();
+    this._setupHistoryPopoutDismiss();
 
     this._register(this._sessionSidebar.onDidSelectSession((sessionId) => {
       const session = this._services.getSession?.(sessionId);
       if (session) {
         this.setSession(session);
       }
+      // Picking a session dismisses the popout (menu semantics).
+      this._sessionSidebar.hide();
     }));
     this._register(this._sessionSidebar.onDidRequestNewSession(() => {
       this._handleNewChat();
@@ -1006,23 +1018,37 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       document.addEventListener('mouseup', onMouseUp);
     }));
 
-    // When sidebar is toggled on, restore last width
-    this._register(this._sessionSidebar.onDidToggle((visible) => {
-      if (visible) {
-        this._sessionSidebar.rootElement.style.width = `${this._sidebarWidth}px`;
-        this._sessionSidebar.rootElement.style.flexBasis = `${this._sidebarWidth}px`;
-        this._sash.classList.add('parallx-chat-sidebar-sash--visible');
-      } else {
-        this._sash.classList.remove('parallx-chat-sidebar-sash--visible');
-      }
-    }));
+    // Popout layout: width is CSS-driven, and the sash stays hidden — so the
+    // toggle handler no longer sizes the panel. (Left as a hook for the sash
+    // class in case the docked layout is ever restored.)
+    this._register(this._sessionSidebar.onDidToggle(() => { /* no-op in popout layout */ }));
+  }
 
-    // Initial sash visibility reflects sidebar default state
-    if (this._sessionSidebar.isVisible) {
-      this._sash.classList.add('parallx-chat-sidebar-sash--visible');
-      this._sessionSidebar.rootElement.style.width = `${this._sidebarWidth}px`;
-      this._sessionSidebar.rootElement.style.flexBasis = `${this._sidebarWidth}px`;
-    }
+  /**
+   * The history sidebar is a popout overlay: clicking anywhere outside it (and
+   * not on the history toggle) dismisses it, as does Escape. Capture-phase so it
+   * runs before in-popout handlers without swallowing their clicks.
+   */
+  private _setupHistoryPopoutDismiss(): void {
+    const onDocPointerDown = (e: MouseEvent) => {
+      if (!this._sessionSidebar.isVisible) return;
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (this._sessionSidebar.rootElement.contains(target)) return;
+      if (this._historyBtn?.contains(target)) return;
+      this._sessionSidebar.hide();
+    };
+    document.addEventListener('mousedown', onDocPointerDown, true);
+    this._register(toDisposable(() => document.removeEventListener('mousedown', onDocPointerDown, true)));
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && this._sessionSidebar.isVisible) {
+        this._sessionSidebar.hide();
+        e.stopPropagation();
+      }
+    };
+    this._root.addEventListener('keydown', onKeyDown);
+    this._register(toDisposable(() => this._root.removeEventListener('keydown', onKeyDown)));
   }
 
   private async _restoreSidebarWidth(): Promise<void> {
@@ -1074,6 +1100,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const historyBtn = createBtn(chatIcons.history, 'Chat History', 'parallx-chat-title-action--history');
     historyBtn.addEventListener('click', (e) => { e.stopPropagation(); this._sessionSidebar.toggle(); });
     container.appendChild(historyBtn);
+    this._historyBtn = historyBtn;
 
     // System prompt viewer button (Task 4.10)
     if (this._services.getSystemPrompt) {

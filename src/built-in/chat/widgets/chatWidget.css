@@ -877,9 +877,9 @@
 
 .parallx-chat-input-area {
   flex-shrink: 0;
-  /* Bottom breathing room so the composer floats above the panel's rounded
-     bottom edge instead of sitting flush against it. */
-  padding: 14px 16px 16px;
+  /* Equal gap on every side so the composer reads as a centered floating card —
+     same space left, right, and underneath. */
+  padding: 14px;
   background: var(--vscode-sideBar-background, #1e1e1e);
 }
 
@@ -1843,41 +1843,42 @@
 
 /* ── Sidebar sash (resize handle) ── */
 
-.parallx-chat-sidebar-sash {
-  width: 4px;
-  flex-shrink: 0;
-  cursor: col-resize;
-  background: transparent;
-  display: none; /* shown when sidebar visible */
-  z-index: 10;
-  transition: background-color 0.15s;
-}
-
+/* Session history is a popout overlay now, not a docked column — there is no
+   resize sash to show. Kept in the DOM (toggle bookkeeping) but never visible. */
+.parallx-chat-sidebar-sash,
 .parallx-chat-sidebar-sash--visible {
-  display: block;
+  display: none !important;
 }
 
-.parallx-chat-sidebar-sash:hover,
-.parallx-chat-sidebar-sash--active {
-  background: var(--vscode-sash-hoverBorder, #007fd4);
-}
-
-/* Root: hidden by default, shown/hidden via --visible modifier */
+/* History popout — a floating panel that slides in over the right of the chat.
+   The chat keeps its full width underneath; click-away / Esc / picking a session
+   dismisses it (wired in chatWidget.ts). No layout border between chat & history. */
 .parallx-chat-session-sidebar {
-  display: none;
+  display: flex;
   flex-direction: column;
-  flex-shrink: 0;
-  min-width: 0;
-  max-width: 100%;
-  width: 200px;
-  height: 100%;
-  border-left: 1px solid var(--vscode-sideBarSectionHeader-border, #2d2d2d);
-  background: var(--vscode-sideBar-background, #1e1e1e);
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 280px;
+  max-width: 88%;
+  z-index: 40;
+  border-left: 1px solid var(--px-border);
+  background: var(--px-bg-elevated);
+  box-shadow: var(--px-shadow-lg);
   overflow: hidden;
+  transform: translateX(101%);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--px-dur-base) var(--px-ease),
+    opacity var(--px-dur-base) var(--px-ease);
 }
 
 .parallx-chat-session-sidebar--visible {
-  display: flex;
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* ── Header ── */

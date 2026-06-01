@@ -54,6 +54,7 @@ export class ViewContainer extends Disposable implements IGridView {
   private _width = 0;
   private _height = 0;
   private _tabBarHeight = 35;
+  private _resizeObserver: ResizeObserver | undefined;
 
   // ── Stacked mode ──
 
@@ -163,6 +164,18 @@ export class ViewContainer extends Disposable implements IGridView {
     this._contentArea = $('div');
     this._contentArea.classList.add('view-container-content');
     this._element.appendChild(this._contentArea);
+
+    // Size views from the element's ACTUAL measured box — never a pixel width
+    // handed down by the part, which is blind to the floating-card margin (and
+    // scrollbars, and anything else CSS does). The element fills its slot via
+    // CSS (.view-container { width/height: 100% }); this observer re-lays out the
+    // views on every real size change, from any source, so the JS layout and the
+    // CSS can never drift out of sync again — the root cause of off-centre cards.
+    if (typeof ResizeObserver !== 'undefined') {
+      this._resizeObserver = new ResizeObserver(() => this._doLayout());
+      this._resizeObserver.observe(this._element);
+      this._register({ dispose: () => { this._resizeObserver?.disconnect(); this._resizeObserver = undefined; } });
+    }
   }
 
   // ── IGridView ──
@@ -228,21 +241,34 @@ export class ViewContainer extends Disposable implements IGridView {
     return viewMax === Number.POSITIVE_INFINITY ? viewMax : viewMax + this._tabBarHeight;
   }
 
-  layout(width: number, height: number, _orientation: Orientation): void {
-    this._width = width;
-    this._height = height;
+  layout(_width: number, _height: number, _orientation: Orientation): void {
+    // Ignore the JS-handed pixel size; the element fills its slot via CSS and we
+    // size views from its MEASURED box (see _doLayout). The ResizeObserver keeps
+    // this current on its own, but the grid still calls layout() on sash drags.
+    this._doLayout();
+  }
 
-    this._element.style.width = `${width}px`;
-    this._element.style.height = `${height}px`;
+  /**
+   * Lay out the active (or stacked) views to the container's ACTUAL rendered
+   * size. Measuring `clientWidth/clientHeight` — instead of trusting a width the
+   * part computed — is what keeps view sizing locked to the CSS that actually
+   * draws the panel (floating-card margins, scrollbars). This is the single
+   * place sizing crosses the CSS-inset boundary, so it must measure, not assume.
+   */
+  private _doLayout(): void {
+    const w = this._element.clientWidth;
+    const h = this._element.clientHeight;
+    if (w <= 0 || h <= 0) return; // not rendered yet — the observer will re-fire
+    this._width = w;
+    this._height = h;
 
     if (this._mode === 'stacked') {
       this._layoutStacked();
     } else {
-      // Layout the active view within the content area
-      const contentH = height - this._tabBarHeight;
+      const contentH = h - this._tabBarHeight;
       const active = this._getActiveView();
       if (active) {
-        active.layout(width, contentH);
+        active.layout(w, contentH);
       }
     }
   }

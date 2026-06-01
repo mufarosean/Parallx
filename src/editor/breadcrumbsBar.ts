@@ -26,7 +26,7 @@ import { getFileTypeIcon, getFolderIcon } from '../ui/iconRegistry.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-export const BREADCRUMBS_HEIGHT = 28; // Aligned with canvas ribbon height (was 22)
+export const BREADCRUMBS_HEIGHT = 32; // Aligned with canvas ribbon height (was 28)
 
 const FOLDER_ICON_SVG = getFolderIcon();
 
