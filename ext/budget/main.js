@@ -6412,6 +6412,23 @@ async function getSyncStateValue(key) {
   try { return JSON.parse(row.value); } catch { return undefined; }
 }
 
+// The sync cursor (`last_synced_at`) is DERIVED from durable state, never from
+// what was merely *seen* or from a caller-supplied date. `email_imports` holds
+// exactly one row per Gmail message we have durably handled — recorded as a
+// transaction, a balance snapshot, classified non-financial, or parked as
+// malformed — in BOTH the deterministic loop and the AI-orchestrated tools.
+// Its MAX(received_at) is therefore a safe, monotonic high-water mark: every
+// message at or before it is captured (and dedup-protected via the
+// gmail_message_id check), while anything after it has not been handled and
+// must stay fetchable. A message that was fetched but never recorded does not
+// appear here, so it cannot raise the cursor — it remains in the next fetch
+// window. Returns null when nothing has been recorded yet (don't move the
+// cursor).
+async function computeSettledCursor() {
+  const row = await db.get('SELECT MAX(received_at) AS m FROM email_imports');
+  return row && typeof row.m === 'string' && row.m ? row.m : null;
+}
+
 // Pick the model for the sync. M82: budget shares the chat model rather than a
 // separate `preferredModelId` (dropped in M80) so there is one AI surface and
 // no second Ollama slot contending with chat. Falls back to the first installed
@@ -6710,13 +6727,21 @@ async function budgetSync(api) {
     }
 
     // Cursor write — last step (no transaction wrapper needed; KV upserts).
+    // The cursor is derived from durable committed state (email_imports), not
+    // from the newest message merely *seen* this run. A throw before this point
+    // leaves the cursor untouched (the next run re-fetches and dedup skips the
+    // rows already recorded), and a message that was fetched but failed to be
+    // recorded cannot advance the cursor past itself. computeSettledCursor() is
+    // a global, monotonic high-water mark; fall back to the per-run seen value
+    // only when the table is still empty (e.g. a first run that matched nothing).
+    const settledCursor = (await computeSettledCursor()) || newestSeenIso;
     await db.run(
       `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_gmail_message_id', ?)`,
       [JSON.stringify(newestSeenId)],
     );
     await db.run(
       `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_synced_at', ?)`,
-      [JSON.stringify(newestSeenIso)],
+      [JSON.stringify(settledCursor)],
     );
     await db.run(
       `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_run_status', ?)`,
@@ -7241,27 +7266,49 @@ async function budgetToolSetSyncCursor(args = {}) {
 }
 
 async function budgetToolUpdateSyncCursor(args = {}) {
-  const requestedDate = args.lastSyncedDate ?? args.last_synced_at;
   const lastMessageId = args.lastMessageId ?? args.last_gmail_message_id ?? null;
   const previousCursor = await getSyncStateValue('last_synced_at');
-  let savedCursor = typeof previousCursor === 'string' ? previousCursor : null;
-  let ignoredOlder = false;
-  if (requestedDate) {
-    const nextCursor = normalizeSyncCursorDate(requestedDate);
-    if (!nextCursor) return _toolErr('last_synced_at must be YYYY-MM-DD or a valid ISO timestamp');
+  const savedPrev = typeof previousCursor === 'string' ? previousCursor : null;
 
-    const previousMs = savedCursor ? Date.parse(savedCursor) : NaN;
-    const nextMs = Date.parse(nextCursor);
-    if (!Number.isFinite(previousMs) || nextMs > previousMs) {
-      savedCursor = nextCursor;
-    } else {
-      ignoredOlder = true;
+  // The cursor VALUE is derived from durable committed state (email_imports),
+  // never from the agent-supplied date. Trusting the agent's date is what let a
+  // failed/partial attempt "register" a cursor that skipped unrecorded emails.
+  // We also only advance when the agent reports the batch fully settled (no
+  // errors and no unprocessed remainder), so an out-of-order failure on an
+  // older email can't be stepped over by a newer success — if anything failed
+  // we hold the cursor and the failed emails are re-offered on the next pull
+  // (dedup skips the ones already in email_imports).
+  const counts = (args.counts && typeof args.counts === 'object') ? args.counts : null;
+  const errorCount = counts ? Number(counts.errors || 0) : 0;
+  const unprocessedCount = counts ? Number(counts.unprocessed || counts.pending || 0) : 0;
+  const batchComplete = args.batchComplete === true || args.complete === true;
+  const batchClean = batchComplete && errorCount === 0 && unprocessedCount === 0;
+
+  let savedCursor = savedPrev;
+  let advanced = false;
+  let heldBecause = null;
+
+  if (batchClean) {
+    const settled = await computeSettledCursor();
+    if (settled) {
+      const previousMs = savedPrev ? Date.parse(savedPrev) : NaN;
+      const nextMs = Date.parse(settled);
+      if (!Number.isFinite(previousMs) || nextMs > previousMs) {
+        savedCursor = settled;
+        advanced = true;
+      }
     }
     await db.run(
       `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_synced_at', ?)`,
       [JSON.stringify(savedCursor)],
     );
+  } else {
+    // Hold the cursor. Surface why so the agent/sync log is honest about it.
+    heldBecause = !batchComplete
+      ? 'batch not reported complete'
+      : `batch had ${errorCount} error(s) / ${unprocessedCount} unprocessed`;
   }
+
   await db.run(
     `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_gmail_message_id', ?)`,
     [JSON.stringify(lastMessageId)],
@@ -7270,13 +7317,13 @@ async function budgetToolUpdateSyncCursor(args = {}) {
     `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_run_at', ?)`,
     [JSON.stringify(new Date().toISOString())],
   );
-  if (args.counts) {
+  if (counts) {
     await db.run(
       `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_run_status', ?)`,
-      [JSON.stringify({ ok: true, ...args.counts })],
+      [JSON.stringify({ ok: errorCount === 0, ...counts })],
     );
   }
-  return _toolOk({ ok: true, lastSyncedDate: savedCursor, lastMessageId, ignoredOlder });
+  return _toolOk({ ok: true, lastSyncedDate: savedCursor, lastMessageId, advanced, heldBecause });
 }
 
 async function budgetToolUpdateTransaction(args = {}) {
@@ -8194,13 +8241,13 @@ export async function activate(api, context) {
         handler: async (args) => budgetToolSetSyncCursor(args || {}),
       }));
       _disposables.push(api.chat.registerTool('budget.updateSyncCursor', {
-        description: 'Advance the sync cursor (last_synced_at + last_run_at) after the agent has processed a batch. The cursor is forward-only; older values are silently ignored.',
+        description: 'Call AFTER processing a pulled batch to advance the Gmail sync cursor. The cursor VALUE is derived automatically from what you have durably recorded (it is NOT taken from a date you supply), and only moves when you report the batch fully complete with no errors. If any email failed or is still unprocessed, set batchComplete=false (or report errors in counts) and the cursor is held so those emails are re-offered on the next pull. To deliberately rewind/re-pull, use budget.setSyncCursor instead.',
         parameters: {
           type: 'object',
           properties: {
-            last_synced_at:        { type: 'string', description: 'ISO timestamp of the newest message processed.' },
-            last_gmail_message_id: { type: 'string' },
-            counts:                { type: 'object', description: 'Optional summary {confirmed, review, snapshot, skipped, errors}.' },
+            batchComplete:         { type: 'boolean', description: 'True only when every email in the pulled batch was recorded, queued for review, or marked non-financial. False (default) holds the cursor.' },
+            counts:                { type: 'object', description: 'Batch summary {confirmed, review, snapshot, skipped, errors, unprocessed}. Any errors>0 or unprocessed>0 holds the cursor.' },
+            last_gmail_message_id: { type: 'string', description: 'Optional: id of the newest message handled (bookkeeping only; does not affect the cursor value).' },
           },
         },
         requiresConfirmation: false,
