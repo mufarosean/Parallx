@@ -44,8 +44,20 @@ import {
  * at the source).
  */
 export function normalizeToolName(name: string): string {
-  // Replace any disallowed char (notably `.`) with `_`, collapse repeats, trim.
-  const cleaned = name.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_{2,}/g, '_').replace(/^_+|_+$/g, '');
+  // Replace any disallowed char (notably `.`) with `_`, then trim leading and
+  // trailing underscores.
+  //
+  // We deliberately do NOT collapse internal runs of underscores. The MCP
+  // bridge namespaces every tool as `mcp__<serverId>__<toolName>` (see
+  // openclaw/mcp/mcpToolBridge.ts and the api.mcp contract documented in
+  // src/api/parallx.d.ts), and `__` is valid in OpenAI/Anthropic/Ollama
+  // function names (^[A-Za-z0-9_-]{1,64}$), so the collapse was never required
+  // for API compliance. Collapsing `__`→`_` silently rewrote every MCP tool
+  // name (e.g. `mcp__gmail__list_emails` → `mcp_gmail_list_emails`), which
+  // broke exact-name lookups in extensions that follow the documented
+  // convention — the Budget Gmail sync could never find its tool even when the
+  // server was connected.
+  const cleaned = name.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/^_+|_+$/g, '');
   return cleaned.slice(0, 64) || 'tool';
 }
 

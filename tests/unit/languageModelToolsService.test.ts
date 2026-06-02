@@ -57,6 +57,19 @@ describe('LanguageModelToolsService', () => {
       expect(def).toBeDefined();
     });
 
+    it('preserves the double underscores in MCP-namespaced tool names', () => {
+      // Regression: the MCP bridge registers tools as `mcp__<serverId>__<tool>`
+      // (mcpToolBridge.ts) and the api.mcp contract (src/api/parallx.d.ts)
+      // promises that exact shape to extensions. normalizeToolName must not
+      // collapse `__`→`_`, or exact-name lookups (e.g. the Budget Gmail sync)
+      // break even when the server is connected.
+      service.registerTool(createTool({ name: 'mcp__gmail__list_emails' }));
+      expect(service.getTool('mcp__gmail__list_emails')).toBeDefined();
+      expect(service.getTool('mcp__gmail__list_emails')!.name).toBe('mcp__gmail__list_emails');
+      // The collapsed form must NOT be what got registered.
+      expect(service.getTool('mcp_gmail_list_emails')).toBeUndefined();
+    });
+
     it('fires onDidChangeTools on registration', () => {
       const listener = vi.fn();
       service.onDidChangeTools(listener);
