@@ -441,6 +441,34 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   }
 
   /**
+   * Return the bound session, creating and binding one if none exists.
+   *
+   * A session created here inherits the context-window override currently
+   * shown in this chat (the picker's active value). The user can pick a
+   * context window on an empty chat *before* any session exists — that choice
+   * otherwise lives only in the provider's global override + the picker label,
+   * so a programmatic first message (e.g. a dashboard widget refresh) would
+   * create a fresh override-less session and reset "Ctx: 32K" back to auto.
+   * Carrying the value onto the new session and persisting it keeps the choice.
+   */
+  ensureSession(): IChatSession {
+    if (this._session) return this._session;
+
+    const session = this._services.createSession();
+    // Persist the pending choice onto the session BEFORE setSession reads it
+    // back to drive the provider + picker label. (updateSessionContextWindow
+    // early-returns if unchanged, so we must not pre-mutate the field here.)
+    const pendingContextWindow = this._contextPicker?.getActiveContextWindow() ?? 0;
+    if (pendingContextWindow > 0) {
+      this._services.updateSessionContextWindow?.(session.id, pendingContextWindow);
+    }
+    this.setSession(session);
+    this._sessionSidebar.setActiveSession(session.id);
+    this._sessionSidebar.refresh();
+    return session;
+  }
+
+  /**
    * Read input text, send to the chat service, clear input.
    * Called by Enter key or submit button.
    */
@@ -521,14 +549,10 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       return;
     }
 
-    // Ensure we have a session
-    if (!this._session) {
-      this._session = this._services.createSession();
-      this._sessionSidebar.setActiveSession(this._session.id);
-      this._sessionSidebar.refresh();
-    }
-
-    const sessionId = this._session.id;
+    // Ensure we have a session (created sessions inherit the chosen context
+    // window, so a first message never resets "Ctx" back to auto).
+    const session = this.ensureSession();
+    const sessionId = session.id;
 
     // Collect attachments before clearing (must be before early-return branch)
     const rawAttachments = this._inputPart.getAttachments();
@@ -540,7 +564,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const attachments = await this._resolveFileAttachmentContent(rawAttachments);
 
     // If a request is already in progress, queue the message
-    if (this._session.requestInProgress) {
+    if (session.requestInProgress) {
       if (this._services.queueRequest) {
         this._inputPart.clear();
         const pending = this._services.queueRequest(

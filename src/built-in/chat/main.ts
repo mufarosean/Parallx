@@ -2428,10 +2428,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       if (!_activeWidget) {
         throw new Error('submitPrompt: the chat panel is not mounted.');
       }
-      // Ensure a session is bound — acceptInput() no-ops without one.
-      if (!_activeWidget.getSession()) {
-        _activeWidget.setSession(chatService.createSession());
-      }
+      // Ensure a session is bound — acceptInput() no-ops without one. Routed
+      // through ensureSession() so a session created for this programmatic
+      // prompt inherits the user's chosen context window instead of resetting
+      // it to auto.
+      _activeWidget.ensureSession();
       _activeWidget.setInputValue(text);
       _activeWidget.acceptInput();
     }),

@@ -79,6 +79,15 @@ export class ChatContextWindowPicker extends Disposable {
     this._renderLabel();
   }
 
+  /**
+   * The currently-selected context window (0 = auto). Reflects the user's
+   * choice even before a session exists, so a session created later can
+   * inherit it instead of resetting to auto.
+   */
+  getActiveContextWindow(): number {
+    return this._activeValue;
+  }
+
   private _renderLabel(): void {
     this._label.textContent = this._activeValue > 0
       ? `Ctx: ${this._formatTokens(this._activeValue)}`
