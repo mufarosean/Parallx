@@ -1570,3 +1570,276 @@
   flex: 0 0 auto;
   opacity: 0.7;
 }
+
+
+/* ============================================================================
+   Widget — notes (freeform sticky note)
+   ========================================================================== */
+
+.ntw {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+}
+.ntw__view {
+  height: 100%;
+  overflow-y: auto;
+  cursor: text;
+  line-height: 1.55;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+.ntw__view > h1, .ntw__view > h2, .ntw__view > h3,
+.ntw__view > h4, .ntw__view > h5, .ntw__view > h6 {
+  margin: 0 0 6px;
+  line-height: 1.25;
+  color: var(--vscode-editor-foreground, #f3f3f3);
+}
+.ntw__view > h1 { font-size: 1.35em; }
+.ntw__view > h2 { font-size: 1.2em; }
+.ntw__view > h3 { font-size: 1.08em; }
+.ntw__view > p { margin: 0 0 8px; }
+.ntw__view > ul, .ntw__view > ol { margin: 0 0 8px; padding-left: 20px; }
+.ntw__view > ul > li, .ntw__view > ol > li { margin: 2px 0; }
+.ntw__view a { color: var(--vscode-textLink-foreground, #4daafc); }
+
+/* Text-size variants apply to both the rendered view and the editor. */
+.ntw--sm .ntw__view, .ntw--sm .ntw__editor { font-size: 11.5px; }
+.ntw--md .ntw__view, .ntw--md .ntw__editor { font-size: 13px; }
+.ntw--lg .ntw__view, .ntw--lg .ntw__editor { font-size: 15.5px; }
+
+.ntw__editor {
+  display: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--vscode-editor-foreground, #f3f3f3);
+  font-family: var(--vscode-font-family, -apple-system, "Segoe UI", sans-serif);
+  line-height: 1.55;
+}
+.ntw--editing .ntw__view { visibility: hidden; }
+.ntw--editing .ntw__editor { display: block; }
+
+.ntw__empty {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+}
+.ntw__empty strong { display: block; margin-bottom: 4px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 75%, transparent); font-weight: 600; }
+.ntw__empty p { margin: 0; line-height: 1.5; }
+
+
+/* ============================================================================
+   Widget — task list (checklist)
+   ========================================================================== */
+
+.tkw {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: 8px;
+}
+.tkw__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  margin: 0 -4px;
+}
+.tkw__summary {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 45%, transparent);
+  padding: 0 8px 4px;
+}
+.tkw__row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  transition: background 120ms ease;
+}
+.tkw__row:hover {
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
+}
+.tkw__row:hover .tkw__del { opacity: 0.7; }
+
+.tkw__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1.5px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 30%, transparent);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--vscode-button-foreground, #fff);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.tkw__check:hover { border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 70%, transparent); }
+.tkw__row--done .tkw__check {
+  background: var(--vscode-button-background, #0e639c);
+  border-color: var(--vscode-button-background, #0e639c);
+}
+
+.tkw__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--vscode-editor-foreground, #f3f3f3);
+  word-break: break-word;
+}
+.tkw__row--done .tkw__label {
+  text-decoration: line-through;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 45%, transparent);
+}
+
+.tkw__del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+}
+.tkw__del:hover {
+  background: color-mix(in srgb, var(--px-danger, #e44d4d) 18%, transparent);
+  color: var(--px-danger, #e44d4d);
+  opacity: 1 !important;
+}
+
+.tkw__add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.tkw__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 60%, transparent);
+  color: var(--vscode-editor-foreground, #f3f3f3);
+  font: inherit;
+  font-size: 12.5px;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+.tkw__input:focus {
+  border-color: var(--vscode-focusBorder, #5b9bd5);
+}
+.tkw__add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 22%, transparent);
+  color: var(--vscode-button-background, #4daafc);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.tkw__add-btn:hover {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+}
+
+.tkw__empty {
+  padding: 16px 8px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+}
+.tkw__empty strong { display: block; margin-bottom: 4px; color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
+.tkw__empty p { margin: 0; line-height: 1.5; }
+
+
+/* ============================================================================
+   Widget — countdown
+   ========================================================================== */
+
+.cdw {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+}
+.cdw__title {
+  font-size: 12px;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
+  letter-spacing: -0.01em;
+}
+.cdw__body {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.cdw__unit {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.cdw__num {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--vscode-editor-foreground, #f3f3f3);
+  font-variant-numeric: tabular-nums;
+}
+.cdw__lbl {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+}
+.cdw__caption {
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+}
+.cdw__empty {
+  font-size: 12px;
+  font-style: italic;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+}
+.cdw__done-text {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--vscode-button-background, #4daafc);
+}
+.cdw--done .cdw__title { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent); }

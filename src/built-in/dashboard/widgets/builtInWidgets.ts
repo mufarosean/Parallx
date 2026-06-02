@@ -11,6 +11,11 @@ import { NEWS_BRIEF_WIDGET } from './newsBriefWidget.js';
 import { CUSTOM_AI_WIDGET } from './customAiWidget.js';
 import { IMAGE_WIDGET } from './imageWidget.js';
 import { AUTONOMY_ACTIVITY_WIDGET } from './autonomyActivityWidget.js';
+import { NOTES_WIDGET } from './notesWidget.js';
+import { TASKS_WIDGET } from './tasksWidget.js';
+import { COUNTDOWN_WIDGET } from './countdownWidget.js';
+import { WEATHER_WIDGET } from './weatherWidget.js';
+import { MARKET_WIDGET } from './marketWidget.js';
 
 interface ApiSurfaceUsedByWidgets {
   commands: { executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T> };
@@ -32,6 +37,11 @@ export function registerBuiltInDashboardWidgets(
     registry.registerWidgetType(CUSTOM_AI_WIDGET),
     registry.registerWidgetType(IMAGE_WIDGET),
     registry.registerWidgetType(AUTONOMY_ACTIVITY_WIDGET),
+    registry.registerWidgetType(NOTES_WIDGET),
+    registry.registerWidgetType(TASKS_WIDGET),
+    registry.registerWidgetType(COUNTDOWN_WIDGET),
+    registry.registerWidgetType(WEATHER_WIDGET),
+    registry.registerWidgetType(MARKET_WIDGET),
   ];
 
   return toDisposable(() => {
