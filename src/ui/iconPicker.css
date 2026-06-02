@@ -71,6 +71,21 @@
   gap: 2px;
 }
 
+.ui-icon-picker-section-label {
+  font-size: var(--parallx-fontSize-sm, 11px);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground);
+  padding: 8px 2px 4px;
+}
+
+/* The first label (when recents are shown) sits right under the search box —
+   trim its top padding so the section doesn't float. */
+.ui-icon-picker-content > .ui-icon-picker-section-label:first-child {
+  padding-top: 2px;
+}
+
 .ui-icon-picker-btn {
   background: none;
   border: none;

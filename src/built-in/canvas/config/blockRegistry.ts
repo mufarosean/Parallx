@@ -1126,6 +1126,13 @@ export function renderPageIconHtml(icon: string | null | undefined): string {
 /** @see {@link import('./iconRegistry.js').ALL_PAGE_SELECTABLE_ICONS} — full Lucide catalog for search */
 export const ALL_PAGE_SELECTABLE_ICONS: readonly string[] = _ir_ALL_PAGE_SELECTABLE_ICONS;
 
+/**
+ * localStorage key for the page-icon picker's "Recently used" list. Shared by
+ * every page-icon picker (sidebar page options, page chrome, page block,
+ * callout) so the recents follow the user regardless of where they pick from.
+ */
+export const PAGE_ICON_RECENT_STORAGE_KEY = 'parallx.iconPicker.recent.pageIcon';
+
 // ── Block State Access (registry gate) ───────────────────────────────────────
 // Block extensions (columnNodes, pageBlockNode) get state helpers through
 // blockRegistry — their single entry point — instead of reaching into

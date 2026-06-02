@@ -36,6 +36,53 @@ export interface IIconPickerOptions {
   readonly showRemove?: boolean;
   /** Icon size in pixels passed to `renderIcon`. Default: `22`. */
   readonly iconSize?: number;
+  /**
+   * When set, the picker shows a "Recently used" section above the grid
+   * (only while not searching) and records each pick under this localStorage
+   * key, so frequently-used icons surface without searching. The same key
+   * shared across pickers gives one unified recents list; different keys keep
+   * separate ones. No-op when localStorage is unavailable.
+   */
+  readonly recentStorageKey?: string;
+  /** Max recent icons to keep and show. Default: `14` (two rows of 7). */
+  readonly maxRecent?: number;
+}
+
+// ─── Recently-used persistence ─────────────────────────────────────────────────
+
+/** Default cap on recent icons (two rows in the 7-column grid). */
+const DEFAULT_MAX_RECENT = 14;
+
+/**
+ * Load recently-used icon IDs (most-recent first) from localStorage.
+ * Defensive: returns `[]` if storage is unavailable or the value is malformed.
+ */
+export function loadRecentIcons(storageKey: string, cap: number = DEFAULT_MAX_RECENT): string[] {
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === 'string' && x.length > 0).slice(0, cap);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Record `iconId` as most-recently-used: prepend, de-duplicate, cap, persist.
+ * Defensive no-op if localStorage throws (private mode, quota, etc.) —
+ * recents are a convenience and must never block icon selection.
+ */
+export function recordRecentIcon(storageKey: string, iconId: string, cap: number = DEFAULT_MAX_RECENT): void {
+  if (!iconId) return;
+  try {
+    const current = loadRecentIcons(storageKey, cap);
+    const next = [iconId, ...current.filter((id) => id !== iconId)].slice(0, cap);
+    window.localStorage.setItem(storageKey, JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
 }
 
 // ─── IconPicker ──────────────────────────────────────────────────────────────
@@ -132,47 +179,77 @@ export class IconPicker extends Disposable {
     contentArea.classList.add('ui-icon-picker-content');
     this._el.appendChild(contentArea);
 
-    // Render icon grid
+    const recentStorageKey = _options.recentStorageKey;
+    const maxRecent = _options.maxRecent ?? DEFAULT_MAX_RECENT;
+    const pool = _options.searchPool ?? _options.icons;
+    const poolSet = new Set(pool);
+
+    // One icon button. Records the pick as recent (when enabled) on click.
+    const buildButton = (id: string): HTMLButtonElement => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.classList.add('ui-icon-picker-btn');
+      btn.title = id;
+      btn.innerHTML = _options.renderIcon(id, iconSize);
+      const svg = btn.querySelector('svg');
+      if (svg) {
+        svg.setAttribute('width', String(iconSize));
+        svg.setAttribute('height', String(iconSize));
+      }
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (recentStorageKey) recordRecentIcon(recentStorageKey, id, maxRecent);
+        this._onDidSelectIcon.fire(id);
+        this.dismiss();
+      });
+      return btn;
+    };
+
+    const buildGrid = (ids: readonly string[]): HTMLElement => {
+      const grid = document.createElement('div');
+      grid.classList.add('ui-icon-picker-grid');
+      for (const id of ids) grid.appendChild(buildButton(id));
+      return grid;
+    };
+
+    const buildSectionLabel = (text: string): HTMLElement => {
+      const label = document.createElement('div');
+      label.classList.add('ui-icon-picker-section-label');
+      label.textContent = text;
+      return label;
+    };
+
+    // Render the content area. While searching, show a single grid of matches
+    // from the full pool. Otherwise show the "Recently used" section (when
+    // enabled and non-empty) above the default grid.
     const renderGrid = (filter?: string) => {
       contentArea.innerHTML = '';
 
-      const grid = document.createElement('div');
-      grid.classList.add('ui-icon-picker-grid');
-
       const normalized = filter?.toLowerCase();
-      const pool = _options.searchPool ?? _options.icons;
-      const ids: readonly string[] = normalized
-        ? pool.filter(id => id.includes(normalized))
-        : _options.icons;
-
-      for (const id of ids) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.classList.add('ui-icon-picker-btn');
-        btn.title = id;
-        btn.innerHTML = _options.renderIcon(id, iconSize);
-        const svg = btn.querySelector('svg');
-        if (svg) {
-          svg.setAttribute('width', String(iconSize));
-          svg.setAttribute('height', String(iconSize));
+      if (normalized) {
+        const matches = pool.filter(id => id.includes(normalized));
+        if (matches.length === 0) {
+          const empty = document.createElement('div');
+          empty.classList.add('ui-icon-picker-empty');
+          empty.textContent = 'No matching icons';
+          contentArea.appendChild(empty);
+          return;
         }
-        btn.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          this._onDidSelectIcon.fire(id);
-          this.dismiss();
-        });
-        grid.appendChild(btn);
+        contentArea.appendChild(buildGrid(matches));
+        return;
       }
 
-      if (ids.length === 0) {
-        const empty = document.createElement('div');
-        empty.classList.add('ui-icon-picker-empty');
-        empty.textContent = 'No matching icons';
-        grid.appendChild(empty);
+      if (recentStorageKey) {
+        // Drop any recents no longer in the catalog so stale IDs don't render.
+        const recents = loadRecentIcons(recentStorageKey, maxRecent).filter(id => poolSet.has(id));
+        if (recents.length > 0) {
+          contentArea.appendChild(buildSectionLabel('Recently used'));
+          contentArea.appendChild(buildGrid(recents));
+          contentArea.appendChild(buildSectionLabel('All icons'));
+        }
       }
-
-      contentArea.appendChild(grid);
+      contentArea.appendChild(buildGrid(_options.icons));
     };
 
     renderGrid();

@@ -20,7 +20,7 @@ import { $, layoutPopup, attachPopupDismiss } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
 import { IconPicker } from '../../ui/iconPicker.js';
 import { ContextMenu } from '../../ui/contextMenu.js';
-import { createIconElement, ALL_PAGE_SELECTABLE_ICONS, resolvePageIcon, svgIcon, renderPageIconHtml } from './config/blockRegistry.js';
+import { createIconElement, ALL_PAGE_SELECTABLE_ICONS, PAGE_ICON_RECENT_STORAGE_KEY, resolvePageIcon, svgIcon, renderPageIconHtml } from './config/blockRegistry.js';
 import { CanvasSidebarDragState } from './canvasSidebarDragState.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -1008,6 +1008,7 @@ export class CanvasSidebar {
         showSearch: true,
         showRemove: !!currentIcon,
         iconSize: 20,
+        recentStorageKey: PAGE_ICON_RECENT_STORAGE_KEY,
       });
       this._pageOptionsIconPicker.onDidSelectIcon((iconId) => {
         currentIcon = iconId;
