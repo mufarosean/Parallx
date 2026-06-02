@@ -38,10 +38,16 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): 
   return node;
 }
 
-// Editor input id format for dashboard pages — matches what the editor
-// bridge builds: `${ownerToolId}:${typeId}:${instanceId}`.
+// The dashboard editor's id IS the page id. The sidebar opens dashboards with
+// `instanceId: page.id`, and the editor bridge uses that instanceId verbatim as
+// the editor input id (editorsBridge.ts openEditor: `inputId = options.instanceId
+// ?? ...`), which is what editorService.focusEditor / getOpenEditors match on.
+// The old `${toolId}:${typeId}:${instanceId}` form never matched any open
+// editor — so focusEditor missed and fell through to openEditor, spawning a
+// duplicate tab (and the active-row highlight + close-on-remove silently
+// no-op'd too).
 function dashboardEditorIdForPage(pageId: string): string {
-  return `parallx.dashboard:dashboard:${pageId}`;
+  return pageId;
 }
 
 export class DashboardSidebar implements IDisposable {
