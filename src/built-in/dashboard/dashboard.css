@@ -534,6 +534,14 @@
 .dashboard-widget[data-borderless="true"] > .dashboard-widget__footer {
   border-top: 0;
 }
+/* The raised-card box-shadow (edge highlight + drop shadow) reads as faint
+   lines along the top and bottom once the border is gone — `border: none`
+   doesn't clear box-shadow. Drop it so a borderless card sits visually flat,
+   including on hover. */
+.dashboard-widget[data-borderless="true"],
+.dashboard-widget[data-borderless="true"]:hover {
+  box-shadow: none;
+}
 
 /* ── Hidden title: collapse the header to floating hover actions ────────── */
 /* Same treatment as minimal/bare chrome — the title row disappears and the
