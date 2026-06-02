@@ -2138,92 +2138,167 @@ html, body {
 
 .parallx-notification-center {
   position: fixed;
-  bottom: 28px;            /* just above status bar */
-  left: 8px;
+  bottom: 32px;            /* just above status bar */
+  left: 12px;
   width: 380px;
-  max-height: 400px;
+  max-height: 440px;
   display: flex;
   flex-direction: column;
-  background-color: var(--vscode-notifications-background);
-  border: 1px solid var(--vscode-notifications-border);
-  border-radius: var(--parallx-radius-md);
-  box-shadow: 0 8px 24px var(--vscode-widget-shadow);
+  background-color: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  box-shadow: var(--px-shadow-lg), var(--px-edge-light);
   overflow: hidden;
+  animation: px-notif-center-in var(--px-dur-base) var(--px-ease-out);
+}
+
+@keyframes px-notif-center-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .parallx-notification-center { animation: none; }
 }
 
 .parallx-notification-center-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--vscode-notifications-border);
-  font-size: var(--parallx-fontSize-base);
+  padding: var(--px-space-3) var(--px-space-3) var(--px-space-3) var(--px-space-4);
+  border-bottom: 1px solid var(--px-divider);
+}
+
+.parallx-notification-center-title {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  font-size: var(--px-text-base);
   font-weight: 600;
-  color: var(--vscode-notifications-foreground);
+  color: var(--px-text);
+}
+.parallx-notification-center-title-icon {
+  display: inline-flex;
+  color: var(--px-text-secondary);
+}
+.parallx-notification-center-title-icon svg { width: 15px; height: 15px; }
+
+.parallx-notification-center-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--px-radius-full);
+  background-color: var(--px-accent-soft);
+  color: var(--px-accent);
+  font-size: var(--px-text-xs);
+  font-weight: 600;
 }
 
 .parallx-notification-center-clear {
   background: transparent;
-  border: 1px solid var(--vscode-input-border);
-  color: var(--vscode-notifications-foreground);
-  font-size: var(--parallx-fontSize-sm);
-  padding: 2px 8px;
-  border-radius: var(--parallx-radius-sm);
+  border: 1px solid var(--px-border);
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-sm);
+  font-weight: 500;
+  font-family: inherit;
+  padding: 3px 10px;
+  border-radius: var(--px-radius-md);
   cursor: pointer;
+  transition: background-color var(--px-dur-fast) var(--px-ease),
+              color var(--px-dur-fast) var(--px-ease);
 }
 .parallx-notification-center-clear:hover {
-  background-color: var(--vscode-toolbar-hoverBackground);
+  background-color: var(--px-surface-hover);
+  color: var(--px-text);
 }
 
 .parallx-notification-center-list {
   overflow-y: auto;
   flex: 1;
-  padding: 4px 0;
+  padding: var(--px-space-1);
 }
 
 .parallx-notification-center-empty {
-  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--px-space-1);
+  padding: var(--px-space-6) var(--px-space-4);
   text-align: center;
-  color: var(--vscode-descriptionForeground);
-  font-size: var(--parallx-fontSize-base);
+}
+.parallx-notification-center-empty-icon {
+  display: inline-flex;
+  color: var(--px-success);
+  margin-bottom: var(--px-space-1);
+}
+.parallx-notification-center-empty-icon svg { width: 24px; height: 24px; }
+.parallx-notification-center-empty-text {
+  font-size: var(--px-text-base);
+  font-weight: 600;
+  color: var(--px-text);
+}
+.parallx-notification-center-empty-sub {
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
 }
 
 .parallx-notification-center-item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 6px 12px;
-  font-size: var(--parallx-fontSize-base);
-  color: var(--vscode-notifications-foreground);
-  border-left: 3px solid transparent;
+  gap: var(--px-space-3);
+  padding: var(--px-space-2) var(--px-space-3);
+  border-radius: var(--px-radius-md);
+  font-size: var(--px-text-base);
+  color: var(--px-text);
 }
 .parallx-notification-center-item:hover {
-  background-color: var(--vscode-list-hoverBackground);
-}
-.parallx-notification-center-item-information {
-  border-left-color: var(--vscode-notificationsInfoIcon-foreground);
-}
-.parallx-notification-center-item-warning {
-  border-left-color: var(--vscode-notificationsWarningIcon-foreground);
-}
-.parallx-notification-center-item-error {
-  border-left-color: var(--vscode-notificationsErrorIcon-foreground);
+  background-color: var(--px-surface-hover);
 }
 
 .parallx-notification-center-icon {
   flex-shrink: 0;
-  line-height: 18px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--px-radius-sm);
+}
+.parallx-notification-center-icon svg { width: 15px; height: 15px; }
+.parallx-notification-center-icon-information {
+  color: var(--px-info);
+  background-color: rgba(var(--px-blue-rgb), 0.14);
+}
+.parallx-notification-center-icon-warning {
+  color: var(--px-warning);
+  background-color: var(--px-warning-soft);
+}
+.parallx-notification-center-icon-error {
+  color: var(--px-danger);
+  background-color: var(--px-danger-soft);
+}
+
+.parallx-notification-center-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 2px;
 }
 .parallx-notification-center-message {
-  flex: 1;
-  line-height: 18px;
+  line-height: var(--px-leading-base);
   word-break: break-word;
 }
 .parallx-notification-center-source {
-  flex-shrink: 0;
-  color: var(--vscode-descriptionForeground);
-  font-size: var(--parallx-fontSize-sm);
-  line-height: 18px;
+  align-self: flex-start;
+  color: var(--px-text-muted);
+  font-size: var(--px-text-xs);
+  background-color: var(--px-bg-inset);
+  padding: 1px 7px;
+  border-radius: var(--px-radius-full);
 }
 
 /* ── Zen Mode ── */

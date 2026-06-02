@@ -16,6 +16,7 @@ import type { StatusBarEntryAccessor } from '../services/serviceTypes.js';
 import { EditorPart } from '../parts/editorPart.js';
 import { ContextMenu } from '../ui/contextMenu.js';
 import { $ } from '../ui/dom.js';
+import { getIcon } from '../ui/iconRegistry.js';
 import type { IEditorInput } from '../editor/editorInput.js';
 import type { Workspace } from '../workspace/workspace.js';
 import type { WorkbenchContextManager } from '../context/workbenchContext.js';
@@ -169,34 +170,62 @@ export class StatusBarController extends Disposable {
       const panel = $('div');
       panel.className = 'parallx-notification-center';
 
-      // Header
+      const history = notifService.history;
+
+      // Header — bell + title + live count, and a ghost "Clear all".
       const header = $('div');
       header.className = 'parallx-notification-center-header';
+
+      const titleWrap = $('div');
+      titleWrap.className = 'parallx-notification-center-title';
+      const titleIcon = $('span');
+      titleIcon.className = 'parallx-notification-center-title-icon';
+      titleIcon.innerHTML = getIcon('bell');
+      titleWrap.appendChild(titleIcon);
       const title = $('span');
       title.textContent = 'Notifications';
-      header.appendChild(title);
+      titleWrap.appendChild(title);
+      if (history.length > 0) {
+        const count = $('span');
+        count.className = 'parallx-notification-center-count';
+        count.textContent = String(history.length);
+        titleWrap.appendChild(count);
+      }
+      header.appendChild(titleWrap);
 
-      const clearBtn = $('button');
-      clearBtn.className = 'parallx-notification-center-clear';
-      clearBtn.textContent = 'Clear All';
-      clearBtn.title = 'Clear all notifications';
-      clearBtn.addEventListener('click', () => {
-        notifService.dismissAll();
-        notifService.clearHistory();
-        hideCenter();
-      });
-      header.appendChild(clearBtn);
+      if (history.length > 0) {
+        const clearBtn = $('button');
+        clearBtn.className = 'parallx-notification-center-clear';
+        clearBtn.textContent = 'Clear all';
+        clearBtn.title = 'Clear all notifications';
+        clearBtn.addEventListener('click', () => {
+          notifService.dismissAll();
+          notifService.clearHistory();
+          hideCenter();
+        });
+        header.appendChild(clearBtn);
+      }
       panel.appendChild(header);
 
       // List
       const list = $('div');
       list.className = 'parallx-notification-center-list';
 
-      const history = notifService.history;
       if (history.length === 0) {
         const empty = $('div');
         empty.className = 'parallx-notification-center-empty';
-        empty.textContent = 'No notifications';
+        const emptyIcon = $('span');
+        emptyIcon.className = 'parallx-notification-center-empty-icon';
+        emptyIcon.innerHTML = getIcon('check-circle');
+        empty.appendChild(emptyIcon);
+        const emptyText = $('span');
+        emptyText.className = 'parallx-notification-center-empty-text';
+        emptyText.textContent = "You're all caught up";
+        empty.appendChild(emptyText);
+        const emptySub = $('span');
+        emptySub.className = 'parallx-notification-center-empty-sub';
+        emptySub.textContent = 'No notifications right now';
+        empty.appendChild(emptySub);
         list.appendChild(empty);
       } else {
         for (const notif of history) {
@@ -204,21 +233,28 @@ export class StatusBarController extends Disposable {
           row.className = `parallx-notification-center-item parallx-notification-center-item-${notif.severity}`;
 
           const icon = $('span');
-          icon.className = 'parallx-notification-center-icon';
-          icon.textContent = notif.severity === 'information' ? 'ℹ' : notif.severity === 'warning' ? '⚠' : '✕';
+          icon.className = `parallx-notification-center-icon parallx-notification-center-icon-${notif.severity}`;
+          icon.innerHTML = getIcon(
+            notif.severity === 'information' ? 'info'
+              : notif.severity === 'warning' ? 'triangle-alert'
+                : 'octagon-alert',
+          );
           row.appendChild(icon);
 
+          const body = $('div');
+          body.className = 'parallx-notification-center-body';
           const msg = $('span');
           msg.className = 'parallx-notification-center-message';
           msg.textContent = notif.message;
-          row.appendChild(msg);
+          body.appendChild(msg);
 
           if (notif.source) {
             const src = $('span');
             src.className = 'parallx-notification-center-source';
             src.textContent = notif.source;
-            row.appendChild(src);
+            body.appendChild(src);
           }
+          row.appendChild(body);
 
           list.appendChild(row);
         }

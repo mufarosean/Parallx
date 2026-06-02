@@ -10,6 +10,7 @@ import './notificationService.css';
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { $ } from '../ui/dom.js';
+import { getIcon } from '../ui/iconRegistry.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -242,11 +243,12 @@ export class NotificationService extends Disposable {
       clearTimeout(entry.timer);
     }
 
-    // Animate out
+    // Animate out — prompts settle downward; corner toasts slide out toward
+    // the left edge they're anchored to.
     entry.element.style.opacity = '0';
     entry.element.style.transform = entry.element.classList.contains('parallx-notification--prompt')
       ? 'translateY(8px)'
-      : 'translateX(20px)';
+      : 'translateX(-20px)';
 
     setTimeout(() => {
       entry.element.remove();
@@ -272,10 +274,11 @@ export class NotificationService extends Disposable {
     const content = $('div');
     content.className = 'parallx-notification-content';
 
-    // Severity icon
+    // Severity icon — a registered Lucide glyph in a tinted tile (never a
+    // text symbol). Colour comes from the severity class on the root element.
     const icon = $('span');
     icon.className = 'parallx-notification-icon';
-    icon.textContent = this._getSeverityIcon(notification.severity);
+    icon.innerHTML = getIcon(this._getSeverityIconId(notification.severity));
     content.appendChild(icon);
 
     // Message
@@ -332,15 +335,17 @@ export class NotificationService extends Disposable {
     // Close button
     const closeBtn = $('button');
     closeBtn.className = 'parallx-notification-close';
-    closeBtn.textContent = '×';
+    closeBtn.innerHTML = getIcon('x');
+    closeBtn.title = 'Dismiss';
+    closeBtn.setAttribute('aria-label', 'Dismiss notification');
     closeBtn.addEventListener('click', () => {
       this._dismiss(notification.id, undefined);
     });
     el.appendChild(closeBtn);
 
-    // Entrance animation
+    // Entrance animation — toasts slide in from the left edge they hug.
     el.style.opacity = '0';
-    el.style.transform = notification.actions.length > 0 ? 'translateY(8px)' : 'translateX(20px)';
+    el.style.transform = notification.actions.length > 0 ? 'translateY(8px)' : 'translateX(-20px)';
     requestAnimationFrame(() => {
       el.style.opacity = '1';
       el.style.transform = notification.actions.length > 0 ? 'translateY(0)' : 'translateX(0)';
@@ -349,11 +354,12 @@ export class NotificationService extends Disposable {
     return el;
   }
 
-  private _getSeverityIcon(severity: NotificationSeverity): string {
+  /** Registered Lucide icon ID for a severity level. */
+  private _getSeverityIconId(severity: NotificationSeverity): string {
     switch (severity) {
-      case NotificationSeverity.Information: return 'ℹ';
-      case NotificationSeverity.Warning: return '!';
-      case NotificationSeverity.Error: return '✕';
+      case NotificationSeverity.Information: return 'info';
+      case NotificationSeverity.Warning: return 'triangle-alert';
+      case NotificationSeverity.Error: return 'octagon-alert';
     }
   }
 

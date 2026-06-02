@@ -1,25 +1,30 @@
-/* ── Notification Service ─────────────────────────────────────────────────── */
+/* ── Notification Service ─────────────────────────────────────────────────────
+   Toasts (corner), action prompts (modal centre), and the input / quick-pick
+   modals. Built entirely on the --px design tokens so the surface shares the
+   app's material language: elevated cards, hairline borders, soft elevation,
+   tinted severity icon tiles, and registered Lucide glyphs (never text
+   symbols). */
 
-/* Passive toast container (fixed bottom-right) */
+/* Passive toast container — fixed bottom-LEFT, above the status bar, anchored
+ * to the same corner as the notification-center bell that lives on the left of
+ * the status bar. Toasts and their history therefore share one corner. */
 .parallx-notifications-container {
   position: fixed;
-  bottom: 40px; /* above status bar */
-  right: 16px;
+  bottom: 36px;
+  left: 12px;
   z-index: 10000;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-width: 420px;
+  gap: var(--px-space-2);
+  max-width: 400px;
   pointer-events: none; /* container is transparent to clicks */
 }
 
 /*
- * Prompt container — semi-transparent backdrop covers the workbench so
- * the dialog reads as modal. Pointer events ARE enabled on the
- * container (unlike the passive toasts container) so clicks on the
- * backdrop are caught by the dim layer instead of falling through to
- * editor / sidebar elements behind it. The prompt itself sits centered
- * with a generous top offset so it doesn't crowd the workbench.
+ * Prompt container — a dimmed, blurred backdrop covers the workbench so the
+ * dialog reads as modal. Pointer events ARE enabled here (unlike the passive
+ * toasts) so a backdrop click is caught by the dim layer instead of falling
+ * through to the editor / sidebar behind it.
  */
 .parallx-notification-prompts-container {
   position: fixed;
@@ -29,221 +34,223 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  gap: 12px;
-  padding-top: 20vh;
-  padding-left: 16px;
-  padding-right: 16px;
+  gap: var(--px-space-3);
+  padding: 20vh var(--px-space-4) 0;
   pointer-events: auto;
-  background-color: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(2px);
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(3px);
 }
 
 .parallx-notification-prompts-container:empty {
   display: none;
 }
 
-/* ── Individual notification toast ────────────────────────────────────── */
+/* ── Individual toast ─────────────────────────────────────────────────────── */
 
 .parallx-notification {
   position: relative;
   display: flex;
   flex-direction: column;
-  padding: 10px 32px 10px 12px;
-  background-color: var(--vscode-notifications-background, #252526);
-  color: var(--vscode-notifications-foreground, #cccccc);
-  font-size: var(--parallx-fontSize-md);
-  font-family: var(--parallx-fontFamily-ui);
-  border-radius: 4px;
-  box-shadow: 0 4px 12px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.5));
-  border-left: 3px solid transparent;
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  gap: var(--px-space-2);
+  padding: var(--px-space-3) 38px var(--px-space-3) var(--px-space-3);
+  background-color: var(--px-bg-elevated);
+  color: var(--px-text);
+  font-family: inherit;
+  font-size: var(--px-text-base);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  box-shadow: var(--px-shadow-lg), var(--px-edge-light);
+  transition: opacity var(--px-dur-base) var(--px-ease),
+              transform var(--px-dur-base) var(--px-ease);
   pointer-events: auto;
   min-width: 280px;
-}
-
-/*
- * Prompt-shaped notification — promoted to a proper dialog when
- * actions are present. Dropped the left-border stripe (it made the
- * dialog look like a toast that drifted into the middle of the
- * screen). The severity icon inside `.parallx-notification-content`
- * now carries the colour cue instead.
- */
-.parallx-notification--prompt {
-  width: min(480px, calc(100vw - 32px));
-  padding: 18px 20px 16px;
-  border-left: none;
-  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.08));
-  border-radius: 8px;
-  box-shadow: 0 12px 32px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.6));
-}
-
-/* Severity border colours — toasts only (prompts drop the stripe). */
-.parallx-notification-information:not(.parallx-notification--prompt) {
-  border-left-color: var(--vscode-notificationsInfoIcon-foreground, #3794ff);
-}
-
-.parallx-notification-warning:not(.parallx-notification--prompt) {
-  border-left-color: var(--vscode-notificationsWarningIcon-foreground, #cca700);
-}
-
-.parallx-notification-error:not(.parallx-notification--prompt) {
-  border-left-color: var(--vscode-notificationsErrorIcon-foreground, #f14c4c);
 }
 
 /* Content row */
 .parallx-notification-content {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: var(--px-space-3);
   flex: 1;
 }
 
-/* Severity icon */
+/* Severity icon — a tinted rounded tile carrying the level's hue. */
 .parallx-notification-icon {
   flex-shrink: 0;
+  width: 26px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--parallx-fontSize-lg);
-  line-height: 20px;
+  border-radius: var(--px-radius-md);
 }
 
-.parallx-notification--prompt .parallx-notification-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1;
+.parallx-notification-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
-/* Colour the prompt's severity badge per level. */
-.parallx-notification--prompt.parallx-notification-information .parallx-notification-icon {
-  color: var(--vscode-notificationsInfoIcon-foreground, #3794ff);
-  background-color: rgba(55, 148, 255, 0.15);
+.parallx-notification-information .parallx-notification-icon {
+  color: var(--px-info);
+  background-color: rgba(var(--px-blue-rgb), 0.14);
 }
 
-.parallx-notification--prompt.parallx-notification-warning .parallx-notification-icon {
-  color: var(--vscode-notificationsWarningIcon-foreground, #cca700);
-  background-color: rgba(204, 167, 0, 0.18);
+.parallx-notification-warning .parallx-notification-icon {
+  color: var(--px-warning);
+  background-color: var(--px-warning-soft);
 }
 
-.parallx-notification--prompt.parallx-notification-error .parallx-notification-icon {
-  color: var(--vscode-notificationsErrorIcon-foreground, #f14c4c);
-  background-color: rgba(241, 76, 76, 0.18);
+.parallx-notification-error .parallx-notification-icon {
+  color: var(--px-danger);
+  background-color: var(--px-danger-soft);
 }
 
 /* Message text */
 .parallx-notification-message {
   flex: 1;
-  line-height: 20px;
+  line-height: var(--px-leading-base);
   word-break: break-word;
+  padding-top: 3px; /* optical-centre against the icon tile */
+}
+
+/* ── Prompt-shaped dialog (actions present) ───────────────────────────────── */
+
+.parallx-notification--prompt {
+  width: min(480px, calc(100vw - 32px));
+  padding: var(--px-space-5) var(--px-space-5) var(--px-space-4);
+  border-radius: var(--px-radius-lg);
+}
+
+.parallx-notification--prompt .parallx-notification-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.parallx-notification--prompt .parallx-notification-icon svg {
+  width: 18px;
+  height: 18px;
 }
 
 .parallx-notification--prompt .parallx-notification-message {
-  font-size: var(--parallx-fontSize-md);
-  line-height: 1.5;
-  padding-top: 4px;
+  font-size: var(--px-text-md);
+  line-height: var(--px-leading-base);
+  padding-top: 6px;
 }
 
-/* Actions row */
+/* ── Actions row ──────────────────────────────────────────────────────────── */
+
 .parallx-notification-actions {
   display: flex;
-  gap: 8px;
-  margin-top: 6px;
-  margin-left: 22px;
+  gap: var(--px-space-2);
   justify-content: flex-end;
+  margin-left: 38px; /* align under the message, clear of the icon tile */
 }
 
 .parallx-notification--prompt .parallx-notification-actions {
-  margin-top: 16px;
+  margin-top: var(--px-space-2);
   margin-left: 0;
-  justify-content: flex-end;
 }
 
 /*
  * Action button — three flavours.
- *  - .--primary: standard "go" action (Confirm / Save / Apply)
- *  - .--danger:  destructive primary, used for Warning/Error prompts
- *               so "Delete All" reads visibly different from Cancel.
- *  - .--secondary: cancel-style, low-emphasis.
- * The bare `.parallx-notification-action-btn` selector still works
- * for toast notifications whose buttons don't carry a flavour class.
+ *  - .--primary:  standard "go" action (Confirm / Save / Apply)
+ *  - .--danger:   destructive primary, used for Warning/Error prompts so
+ *                 "Delete All" reads visibly different from Cancel.
+ *  - .--secondary: cancel-style, low-emphasis ghost.
  */
 .parallx-notification-action-btn {
   padding: 5px 14px;
-  font-size: var(--parallx-fontSize-base);
-  background-color: var(--vscode-button-background, #0e639c);
-  color: var(--vscode-button-foreground, #ffffff);
+  font-size: var(--px-text-base);
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--px-text);
+  background-color: transparent;
   border: 1px solid transparent;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-md);
   cursor: pointer;
   line-height: 18px;
-  font-weight: 500;
-  transition: background-color 0.12s ease, border-color 0.12s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease),
+              border-color var(--px-dur-fast) var(--px-ease),
+              transform var(--px-dur-instant) var(--px-ease);
+}
+
+.parallx-notification-action-btn:active {
+  transform: var(--px-press);
 }
 
 .parallx-notification-action-btn--primary {
-  background-color: var(--vscode-button-background, #0e639c);
-  color: var(--vscode-button-foreground, #ffffff);
+  background-color: var(--px-accent);
+  color: var(--px-text-on-accent);
 }
 
 .parallx-notification-action-btn--primary:hover {
-  background-color: var(--vscode-button-hoverBackground, #1177bb);
+  background-color: var(--px-accent-hover);
 }
 
 .parallx-notification-action-btn--danger {
-  background-color: var(--vscode-notificationsErrorIcon-foreground, #c8423b);
+  background-color: var(--px-danger);
   color: #ffffff;
 }
 
 .parallx-notification-action-btn--danger:hover {
-  background-color: var(--vscode-notificationsErrorIcon-foreground, #f14c4c);
   filter: brightness(1.08);
 }
 
 .parallx-notification-action-btn--secondary {
   background-color: transparent;
-  color: var(--vscode-foreground, #cccccc);
-  border-color: var(--vscode-widget-border, rgba(255, 255, 255, 0.18));
+  color: var(--px-text-secondary);
+  border-color: var(--px-border);
 }
 
 .parallx-notification-action-btn--secondary:hover {
-  background-color: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+  background-color: var(--px-surface-hover);
+  color: var(--px-text);
 }
 
-/* Close button */
+/* ── Close button ─────────────────────────────────────────────────────────── */
+
 .parallx-notification-close {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 20px;
-  height: 20px;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   border: none;
-  color: var(--vscode-descriptionForeground, #999999);
+  color: var(--px-text-muted);
   cursor: pointer;
-  font-size: var(--parallx-fontSize-xl);
-  line-height: 1;
   padding: 0;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
+  transition: background-color var(--px-dur-fast) var(--px-ease),
+              color var(--px-dur-fast) var(--px-ease);
 }
 
-/* Prompts have explicit action buttons — the × close is redundant
- * and visually competes with the primary action. Hide it. */
+.parallx-notification-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+.parallx-notification-close:hover {
+  background-color: var(--px-surface-hover);
+  color: var(--px-text);
+}
+
+/* Prompts have explicit action buttons — the close affordance is redundant
+ * and competes with the primary action. Hide it. */
 .parallx-notification--prompt .parallx-notification-close {
   display: none;
 }
 
-/* ── Modal overlay ────────────────────────────────────────────────────── */
+/* ── Modal overlay ────────────────────────────────────────────────────────── */
 
 .parallx-modal-overlay {
   position: fixed;
   inset: 0;
-  background-color: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(3px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -251,110 +258,128 @@
   z-index: 20000;
 }
 
-/* ── Input box modal ──────────────────────────────────────────────────── */
+/* ── Input box modal ──────────────────────────────────────────────────────── */
 
 .parallx-modal-box {
-  background-color: var(--vscode-editorWidget-background, #252526);
-  border-radius: var(--parallx-radius-md);
-  padding: 16px;
+  background-color: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  padding: var(--px-space-4);
   min-width: 400px;
   max-width: 500px;
-  box-shadow: 0 8px 24px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.6));
+  box-shadow: var(--px-shadow-lg), var(--px-edge-light);
 }
 
 .parallx-modal-label {
-  color: var(--vscode-foreground, #cccccc);
-  font-size: var(--parallx-fontSize-md);
-  margin-bottom: 8px;
+  color: var(--px-text);
+  font-size: var(--px-text-base);
+  margin-bottom: var(--px-space-2);
 }
 
 .parallx-modal-input {
   width: 100%;
-  padding: 6px 8px;
-  font-size: var(--parallx-fontSize-md);
-  background-color: var(--vscode-input-background, #3c3c3c);
-  color: var(--vscode-input-foreground, #cccccc);
-  border: 1px solid var(--vscode-input-border, #474747);
-  border-radius: var(--parallx-radius-sm);
+  padding: 6px 10px;
+  font-size: var(--px-text-base);
+  font-family: inherit;
+  background-color: var(--px-bg-inset);
+  color: var(--px-text);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
   outline: none;
   box-sizing: border-box;
+  transition: border-color var(--px-dur-fast) var(--px-ease),
+              box-shadow var(--px-dur-fast) var(--px-ease);
 }
 
 .parallx-modal-input:focus {
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--px-accent);
+  box-shadow: 0 0 0 3px var(--px-accent-faint);
 }
 
 .parallx-modal-error {
-  color: var(--vscode-notificationsErrorIcon-foreground, #f14c4c);
-  font-size: var(--parallx-fontSize-base);
-  margin-top: 4px;
+  color: var(--px-danger);
+  font-size: var(--px-text-sm);
+  margin-top: var(--px-space-1);
   min-height: 16px;
 }
 
-/* ── Modal buttons ────────────────────────────────────────────────────── */
+/* ── Modal buttons ────────────────────────────────────────────────────────── */
 
 .parallx-modal-buttons {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 12px;
+  gap: var(--px-space-2);
+  margin-top: var(--px-space-3);
 }
 
 .parallx-modal-btn {
-  padding: 4px 14px;
-  font-size: var(--parallx-fontSize-md);
-  border-radius: var(--parallx-radius-sm);
+  padding: 5px 14px;
+  font-size: var(--px-text-base);
+  font-weight: 500;
+  font-family: inherit;
+  border-radius: var(--px-radius-md);
   border: 1px solid transparent;
   cursor: pointer;
   outline: none;
   -webkit-app-region: no-drag;
+  transition: background-color var(--px-dur-fast) var(--px-ease),
+              border-color var(--px-dur-fast) var(--px-ease),
+              transform var(--px-dur-instant) var(--px-ease);
+}
+
+.parallx-modal-btn:active {
+  transform: var(--px-press);
 }
 
 .parallx-modal-btn:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline: 2px solid var(--px-accent);
   outline-offset: 1px;
 }
 
 .parallx-modal-btn--primary {
-  background-color: var(--vscode-button-background, #0e639c);
-  color: var(--vscode-button-foreground, #ffffff);
+  background-color: var(--px-accent);
+  color: var(--px-text-on-accent);
 }
 
 .parallx-modal-btn--primary:hover {
-  background-color: var(--vscode-button-hoverBackground, #1177bb);
+  background-color: var(--px-accent-hover);
 }
 
 .parallx-modal-btn--secondary {
-  background-color: var(--vscode-button-secondaryBackground, #3a3d41);
-  color: var(--vscode-button-secondaryForeground, #cccccc);
+  background-color: transparent;
+  color: var(--px-text-secondary);
+  border-color: var(--px-border);
 }
 
 .parallx-modal-btn--secondary:hover {
-  background-color: var(--vscode-button-secondaryHoverBackground, #45494e);
+  background-color: var(--px-surface-hover);
+  color: var(--px-text);
 }
 
-/* ── Quick pick modal ─────────────────────────────────────────────────── */
+/* ── Quick pick modal ─────────────────────────────────────────────────────── */
 
 .parallx-quickpick-box {
-  background-color: var(--vscode-editorWidget-background, #252526);
-  border-radius: var(--parallx-radius-md);
+  background-color: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
   min-width: 400px;
   max-width: 500px;
   max-height: 400px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 8px 24px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.6));
+  box-shadow: var(--px-shadow-lg), var(--px-edge-light);
   overflow: hidden;
 }
 
 .parallx-quickpick-input {
   width: 100%;
-  padding: 8px 12px;
-  font-size: var(--parallx-fontSize-md);
-  background-color: var(--vscode-input-background, #3c3c3c);
-  color: var(--vscode-input-foreground, #cccccc);
+  padding: var(--px-space-2) var(--px-space-3);
+  font-size: var(--px-text-base);
+  font-family: inherit;
+  background-color: transparent;
+  color: var(--px-text);
   border: none;
-  border-bottom: 1px solid var(--vscode-input-border, #474747);
+  border-bottom: 1px solid var(--px-divider);
   outline: none;
   box-sizing: border-box;
 }
@@ -362,21 +387,21 @@
 .parallx-quickpick-list {
   overflow-y: auto;
   flex: 1;
-  padding: 4px 0;
+  padding: var(--px-space-1) 0;
 }
 
 .parallx-quickpick-row {
-  padding: 4px 12px;
+  padding: 5px var(--px-space-3);
   cursor: pointer;
-  font-size: var(--parallx-fontSize-md);
-  color: var(--vscode-foreground, #cccccc);
+  font-size: var(--px-text-base);
+  color: var(--px-text);
 }
 
 .parallx-quickpick-row--active {
-  background-color: var(--vscode-quickInputList-focusBackground, #04395e);
+  background-color: var(--px-surface-selected);
 }
 
 .parallx-quickpick-desc {
-  color: var(--vscode-descriptionForeground, #888888);
-  font-size: var(--parallx-fontSize-base);
+  color: var(--px-text-muted);
+  font-size: var(--px-text-sm);
 }
