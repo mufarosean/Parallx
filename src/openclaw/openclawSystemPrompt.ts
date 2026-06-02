@@ -146,21 +146,42 @@ export interface IOpenclawSystemPromptParams {
 /**
  * Build the structured system prompt.
  *
- * Sections follow upstream buildAgentSystemPrompt structure:
- *   1. Skills (XML-tagged, mandatory scan instruction)
- *   2. Tool summaries (name + one-line description)
- *   3. Workspace context (bootstrap files + digest)
- *   4. Context engine addition (from AssembleResult)
- *   5. Preferences & overlays
- *   6. Runtime metadata
- *   7. Conditional guidance (small model, no-tools, vision, attachments)
+ * Section order — stable prefix first, the single volatile section last:
+ *   0. Identity / persona (SOUL.md), emitted first so the model anchors on
+ *      who it is.
+ *   1. Workspace context (remaining bootstrap files + digest) — the grounding
+ *      block (user + project), kept next to identity.
+ *   2. Skills (XML-tagged, mandatory scan instruction)
+ *   3. Tooling (category map + routing)
+ *   4. Memory, then Linking
+ *   5. Context engine addition, preferences, agent overlays
+ *   6. Conditional guidance (small model, no-tools, vision, attachments)
+ *   7. Runtime metadata — LAST. It holds the only volatile content (the live
+ *      clock), so everything above stays a byte-stable, cache-reusable prefix.
  *
- * Identity, safety, and response guidelines are now in SOUL.md (bootstrap).
+ * Persona/identity content lives in SOUL.md (bootstrap), surfaced at the top.
  */
 export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): string {
   const sections: string[] = [];
 
-  // 1. Skills (upstream: agents/system-prompt.ts buildSkillsSection)
+  // 0. Identity / persona — lead with SOUL.md so the model anchors on who it
+  //    is before tooling or workspace detail. Pulled out of the bootstrap file
+  //    list so it is NOT also rendered inside Workspace Context further down.
+  const soulFile = params.bootstrapFiles.find((f) => /(^|\/)SOUL\.md$/i.test(f.name));
+  const workspaceBootstrapFiles = soulFile
+    ? params.bootstrapFiles.filter((f) => f !== soulFile)
+    : params.bootstrapFiles;
+  if (soulFile && soulFile.content) {
+    sections.push(`## Identity\n${soulFile.content}`);
+  }
+
+  // 1. Workspace context — the grounding block (who the user is, what the
+  //    project is) sits right after identity so the model has its framing
+  //    before any capability detail. All stable content, so it stays in the
+  //    cache prefix.
+  sections.push(buildWorkspaceSection(workspaceBootstrapFiles, params.workspaceDigest));
+
+  // 2. Skills (upstream: agents/system-prompt.ts buildSkillsSection)
   if (params.skills.length > 0) {
     sections.push(buildSkillsSection(params.skills, {
       compact: params.skillsCompact,
@@ -188,14 +209,10 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
     sections.push(buildLinkingSection(params.linkContracts));
   }
 
-  // 4. Workspace context (upstream: bootstrap files + context files)
-  sections.push(buildWorkspaceSection(params.bootstrapFiles, params.workspaceDigest));
-
-  // 5. Context engine addition (upstream: systemPromptAddition from AssembleResult)
-  //    Parallx adaptation: kept at position 5 (after workspace context, before preferences)
-  //    rather than upstream's end-of-prompt position. Context engine output is semantically
-  //    closest to workspace context, and placing it here keeps the prompt flow coherent
-  //    for local models that weight earlier prompt content more heavily.
+  // 5. Context engine addition (upstream: systemPromptAddition from AssembleResult).
+  //    Holds retrieved/assembled context for the turn. Placed after the
+  //    capability sections and before preferences so it reads as supporting
+  //    detail, not core framing.
   if (params.systemPromptAddition) {
     sections.push(params.systemPromptAddition);
   }
@@ -230,9 +247,6 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
     sections.push(`## Agent Instructions\n${params.agentSystemPromptOverlay}`);
   }
 
-  // 7. Runtime metadata (upstream: runtimeInfo section)
-  sections.push(buildRuntimeSection(params.runtimeInfo));
-
   // 8. M42: Model-tier-specific guidance
   if (params.modelTier === 'small') {
     sections.push(buildSmallModelGuidance());
@@ -252,6 +266,13 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
   if (params.hasExplicitAttachments) {
     sections.push(buildAttachmentGuidanceSection());
   }
+
+  // 12. Runtime metadata — emitted LAST. It carries the only volatile content
+  //     (the live wall clock), so keeping it at the tail leaves every section
+  //     above byte-stable across turns, letting local runtimes reuse the prompt
+  //     prefix instead of re-prefilling the whole system message each turn.
+  //     Everything above this point is the stable cache prefix.
+  sections.push(buildRuntimeSection(params.runtimeInfo));
 
   let result = sections.join('\n\n');
 

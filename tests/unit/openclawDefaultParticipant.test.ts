@@ -104,8 +104,12 @@ describe('openclaw default participant', () => {
     expect(sentMessages[0].content).toContain('## Workspace Context');
     expect(sentMessages[0].content).toContain('### .parallx/AGENTS.md');
     expect(sentMessages[0].content).toContain('workspace instructions');
-    expect(sentMessages[0].content).toContain('### .parallx/SOUL.md');
+    // SOUL.md is now surfaced as the top-level `## Identity` section (persona
+    // first), not as a `### .parallx/SOUL.md` entry inside Workspace Context.
+    expect(sentMessages[0].content).toContain('## Identity');
     expect(sentMessages[0].content).toContain('persona');
+    expect(sentMessages[0].content.indexOf('## Identity'))
+      .toBeLessThan(sentMessages[0].content.indexOf('## Workspace Context'));
     expect(sentMessages[0].content).not.toContain('should not be injected');
     expect(sentMessages.at(-1)).toEqual(expect.objectContaining({
       role: 'user',

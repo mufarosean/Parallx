@@ -71,11 +71,14 @@ function createBaseParams(overrides?: Partial<IOpenclawSystemPromptParams>): IOp
 // ---------------------------------------------------------------------------
 
 describe('buildOpenclawSystemPrompt', () => {
-  it('starts with skills section (identity now in SOUL.md bootstrap)', () => {
+  it('starts with the persona/identity section (SOUL.md), then skills', () => {
     const prompt = buildOpenclawSystemPrompt(createBaseParams());
-    // M65b parity: heading is `## Skills` (upstream agents/system-prompt.ts buildSkillsSection),
-    // not `## Skills (mandatory)`.
-    expect(prompt.startsWith('## Skills\n')).toBe(true);
+    // Persona leads: SOUL.md is pulled out of Workspace Context and emitted
+    // first as `## Identity`, before Skills/Tooling/etc.
+    expect(prompt.startsWith('## Identity\n')).toBe(true);
+    expect(prompt).toContain('You are a helpful assistant.');
+    // Skills still present, just after identity.
+    expect(prompt.indexOf('## Skills')).toBeGreaterThan(prompt.indexOf('## Identity'));
   });
 
   it('includes skills section with scan instruction', () => {
@@ -113,10 +116,12 @@ describe('buildOpenclawSystemPrompt', () => {
     expect(prompt).not.toContain('## Tooling');
   });
 
-  it('includes workspace context section', () => {
+  it('includes workspace context section (persona split out to Identity)', () => {
     const prompt = buildOpenclawSystemPrompt(createBaseParams());
     expect(prompt).toContain('## Workspace Context');
-    expect(prompt).toContain('### SOUL.md');
+    // SOUL.md is now the top-level `## Identity` section, not a Workspace file.
+    expect(prompt).not.toContain('### SOUL.md');
+    expect(prompt).toContain('### AGENTS.md');
     expect(prompt).toContain('### Workspace Overview');
   });
 
@@ -226,12 +231,13 @@ describe('buildOpenclawSystemPrompt', () => {
     expect(prompt2).not.toContain('## Tool Calling Not Available');
   });
 
-  it('section order: Skills → Tools → Workspace → Runtime', () => {
+  it('section order: Identity → Workspace → Skills → Tools → Runtime', () => {
     const prompt = buildOpenclawSystemPrompt(createBaseParams());
     const order = [
+      prompt.indexOf('## Identity'),
+      prompt.indexOf('## Workspace Context'),
       prompt.indexOf('## Skills\n'),
       prompt.indexOf('## Tooling'),
-      prompt.indexOf('## Workspace Context'),
       prompt.indexOf('## Runtime'),
     ];
     for (let i = 1; i < order.length; i++) {
