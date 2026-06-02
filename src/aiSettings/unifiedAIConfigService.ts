@@ -169,6 +169,10 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
 
   private readonly _onDidChangeLegacy: Emitter<AISettingsProfile>;
 
+  /** Fires when workspace overrides are (re)loaded from disk (hydration). */
+  private readonly _onDidLoadWorkspace: Emitter<void>;
+  readonly onDidLoadWorkspaceConfig: Event<void>;
+
   /** Fires when a built-in preset is cloned on write. */
   private readonly _onDidCloneBuiltInEmitter: Emitter<{ originalName: string; cloneName: string }>;
   readonly onDidCloneBuiltIn: Event<{ originalName: string; cloneName: string }>;
@@ -182,6 +186,8 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
     this.onDidChangeConfig = this._onDidChangeUnified.event;
     this._onDidChangeLegacy = this._register(new Emitter<AISettingsProfile>());
     this.onDidChange = this._onDidChangeLegacy.event;
+    this._onDidLoadWorkspace = this._register(new Emitter<void>());
+    this.onDidLoadWorkspaceConfig = this._onDidLoadWorkspace.event;
     this._onDidCloneBuiltInEmitter = this._register(new Emitter<{ originalName: string; cloneName: string }>());
     this.onDidCloneBuiltIn = this._onDidCloneBuiltInEmitter.event;
   }
@@ -211,6 +217,9 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
    */
   async loadWorkspaceConfig(): Promise<void> {
     await this._loadWorkspaceOverride();
+    // Signal hydration BEFORE the change event so listeners can re-baseline
+    // and not mistake a saved override loaded from disk for a fresh save.
+    this._onDidLoadWorkspace.fire();
     this._onDidChangeUnified.fire(this.getEffectiveConfig());
     this._onDidChangeLegacy.fire(this.getActiveProfile());
   }

@@ -232,10 +232,22 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     });
     context.subscriptions.push(presetSwitchListener);
 
-    // Workspace override toasts
+    // Workspace override toasts. These confirm a *user* save/reset — never the
+    // startup hydration. loadWorkspaceConfig() reads the persisted override from
+    // disk and fires onDidChangeConfig, which (with no guard) looks identical to
+    // a fresh 0→N save and pops "Workspace override saved" on every launch.
     if (unifiedConfigService) {
       let _lastOverrideCount = unifiedConfigService.getOverriddenKeys().length;
       let _hadOverride = !!unifiedConfigService.getWorkspaceOverride();
+
+      // Re-baseline silently whenever overrides are (re)loaded from disk. This
+      // fires before the accompanying onDidChangeConfig, so the diff below then
+      // sees no change and stays quiet.
+      const hydrateListener = unifiedConfigService.onDidLoadWorkspaceConfig(() => {
+        _lastOverrideCount = unifiedConfigService.getOverriddenKeys().length;
+        _hadOverride = !!unifiedConfigService.getWorkspaceOverride();
+      });
+      context.subscriptions.push(hydrateListener);
 
       const overrideListener = unifiedConfigService.onDidChangeConfig(() => {
         const currentCount = unifiedConfigService.getOverriddenKeys().length;

@@ -457,6 +457,14 @@ export interface IUnifiedAIConfigService extends IDisposable {
   /** Fires whenever the effective config changes (preset switch, override, field edit). */
   readonly onDidChangeConfig: Event<IUnifiedAIConfig>;
 
+  /**
+   * Fires when workspace overrides are (re)loaded from disk — i.e. hydration,
+   * not a user edit. Fired BEFORE the accompanying onDidChangeConfig so
+   * listeners can re-establish a baseline and not mistake a saved override
+   * loaded on startup for a fresh save.
+   */
+  readonly onDidLoadWorkspaceConfig: Event<void>;
+
   /** Fires when a built-in preset is cloned on write (D.3). */
   readonly onDidCloneBuiltIn: Event<{ originalName: string; cloneName: string }>;
 }
