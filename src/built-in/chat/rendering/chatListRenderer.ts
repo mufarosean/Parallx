@@ -24,6 +24,114 @@ import type { OpenAttachmentHandler, RegenerateMessageHandler } from '../chatTyp
 // OpenAttachmentHandler — now defined in chatTypes.ts (M13 Phase 1)
 export type { OpenAttachmentHandler } from '../chatTypes.js';
 
+// ── User-message "safe markdown" subset ──────────────────────────────────────
+//
+// User turns render a deliberately tiny subset of markdown: fenced code blocks
+// (```) and inline code (`…`). Headings, lists, emphasis, links, etc. are left
+// literal — user prompts are full of identifiers (snake_case, file_name.ts,
+// *globs*) that a full markdown pass would mangle. Line breaks are preserved by
+// CSS (white-space: pre-wrap on the paragraph).
+
+type UserSafeBlock =
+  | { readonly type: 'text'; value: string }
+  | { readonly type: 'code'; readonly lang: string; readonly value: string };
+
+/** Split text into plain-text and fenced-code blocks (``` … ```). */
+function parseUserSafeBlocks(text: string): UserSafeBlock[] {
+  const blocks: UserSafeBlock[] = [];
+  const fenceRe = /```([^\n`]*)\n?([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = fenceRe.exec(text)) !== null) {
+    if (m.index > lastIndex) {
+      blocks.push({ type: 'text', value: text.slice(lastIndex, m.index) });
+    }
+    blocks.push({ type: 'code', lang: m[1].trim(), value: m[2].replace(/\n$/, '') });
+    lastIndex = fenceRe.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    blocks.push({ type: 'text', value: text.slice(lastIndex) });
+  }
+
+  // Trim newlines where a text block butts against a code fence so the fence's
+  // own spacing isn't doubled by a stray blank line.
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    if (b.type !== 'text') continue;
+    if (i > 0 && blocks[i - 1].type === 'code') b.value = b.value.replace(/^\n+/, '');
+    if (i < blocks.length - 1 && blocks[i + 1].type === 'code') b.value = b.value.replace(/\n+$/, '');
+  }
+  return blocks;
+}
+
+/** Append text with inline `code` spans (single backticks) into a parent. */
+function appendInlineCode(text: string, parent: HTMLElement): void {
+  const inlineRe = /`([^`\n]+)`/g;
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = inlineRe.exec(text)) !== null) {
+    if (m.index > lastIndex) {
+      parent.appendChild(document.createTextNode(text.slice(lastIndex, m.index)));
+    }
+    const code = document.createElement('code');
+    code.className = 'parallx-chat-user-inline-code';
+    code.textContent = m[1];
+    parent.appendChild(code);
+    lastIndex = inlineRe.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parent.appendChild(document.createTextNode(text.slice(lastIndex)));
+  }
+}
+
+/**
+ * Render a user message body: an optional leading /command pill, then the
+ * safe-markdown subset of `text`. Stacks text paragraphs and code blocks as
+ * siblings (a <pre> can't live inside the <p>).
+ */
+function renderUserSafeMarkdown(text: string, body: HTMLElement, pill?: HTMLElement): void {
+  const blocks = parseUserSafeBlocks(text);
+  let pillPlaced = !pill;
+
+  const placePill = (p: HTMLElement, withSpace: boolean): void => {
+    if (pillPlaced) return;
+    p.appendChild(pill!);
+    if (withSpace) p.appendChild(document.createTextNode(' '));
+    pillPlaced = true;
+  };
+
+  for (const block of blocks) {
+    if (block.type === 'code') {
+      if (!pillPlaced) {
+        const lead = document.createElement('p');
+        placePill(lead, false);
+        body.appendChild(lead);
+      }
+      const pre = document.createElement('pre');
+      pre.className = 'parallx-chat-user-code';
+      const code = document.createElement('code');
+      if (block.lang) code.dataset.lang = block.lang;
+      code.textContent = block.value;
+      pre.appendChild(code);
+      body.appendChild(pre);
+    } else {
+      if (block.value === '' && pillPlaced) continue; // skip empty text runs
+      const p = document.createElement('p');
+      placePill(p, block.value !== '');
+      appendInlineCode(block.value, p);
+      body.appendChild(p);
+    }
+  }
+
+  // Nothing produced (e.g. empty message, or command-only) — keep a paragraph
+  // so the bubble still has body. A pending pill goes here.
+  if (body.childElementCount === 0) {
+    const p = document.createElement('p');
+    placePill(p, false);
+    body.appendChild(p);
+  }
+}
+
 /**
  * Renders the conversation message list.
  *
@@ -373,23 +481,22 @@ export class ChatListRenderer extends Disposable {
     const root = $('div.parallx-chat-message.parallx-chat-message--user');
 
     const body = $('div.parallx-chat-message-body');
-    const p = $('p');
 
-    // Detect leading /command and render as a pill badge (VS Code style)
-    const cmdMatch = request.text.match(/^(\/[a-zA-Z_]\w*)\s*([\s\S]*)$/);
+    // Detect leading /command and render as a pill badge (VS Code style).
+    let text = request.text;
+    let pill: HTMLElement | undefined;
+    const cmdMatch = text.match(/^(\/[a-zA-Z_]\w*)\s*([\s\S]*)$/);
     if (cmdMatch) {
-      const pill = document.createElement('span');
+      pill = document.createElement('span');
       pill.className = 'parallx-chat-command-pill';
       pill.textContent = cmdMatch[1];
-      p.appendChild(pill);
-      const rest = cmdMatch[2];
-      if (rest) {
-        p.appendChild(document.createTextNode(' ' + rest));
-      }
-    } else {
-      p.textContent = request.text;
+      text = cmdMatch[2];
     }
-    body.appendChild(p);
+
+    // Render a SAFE markdown subset — fenced code blocks + inline code only.
+    // Everything else stays literal so prose and identifiers (snake_case,
+    // file_name.ts) are never accidentally formatted.
+    renderUserSafeMarkdown(text, body, pill);
 
     root.appendChild(body);
 
