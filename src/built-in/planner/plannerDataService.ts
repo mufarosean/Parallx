@@ -501,6 +501,26 @@ export class PlannerDataService extends Disposable {
     return { ok: true };
   }
 
+  /**
+   * Raw rows for one calendar, for iCalendar (.ics) export. Events are the
+   * base rows (recurrence kept as the stored RRULE — NOT expanded into
+   * instances), so a recurring series exports as a single VEVENT + RRULE.
+   * Cancelled tasks are excluded.
+   */
+  async getCalendarExport(calendarId: string): Promise<{ events: PlannerEvent[]; tasks: PlannerTask[] }> {
+    const evRes = await this._db.all(
+      `SELECT * FROM planner_events WHERE calendar_id = ? ORDER BY start_at ASC`,
+      [calendarId],
+    );
+    const events = evRes.error ? [] : (evRes.rows ?? []).map(rowToEvent);
+    const tkRes = await this._db.all(
+      `SELECT * FROM planner_tasks WHERE calendar_id = ? AND status != 'cancelled' ORDER BY (due_at IS NULL), due_at ASC`,
+      [calendarId],
+    );
+    const tasks = tkRes.error ? [] : (tkRes.rows ?? []).map(rowToTask);
+    return { events, tasks };
+  }
+
   // ── Free-slot scheduling ──────────────────────────────────────────────
 
   /**

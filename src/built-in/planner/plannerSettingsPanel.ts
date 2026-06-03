@@ -9,6 +9,8 @@
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import type { ISettingsPanel } from '../../services/settingsPanelRegistry.js';
 import type { PlannerDataService } from './plannerDataService.js';
+import type { PlannerCalendar } from './plannerTypes.js';
+import { buildICalendar } from './plannerICal.js';
 
 const PALETTE = ['#4c8bf5', '#3fb950', '#e3b341', '#f0883e', '#db61a2', '#a371f7', '#39c5cf', '#f85149'];
 
@@ -21,6 +23,47 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): 
 const EYE_ON = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
 const EYE_OFF = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-10-7-10-7a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
 const TRASH = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+const DOWNLOAD = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+
+/** Export a calendar's events + tasks as an .ics file the user can save. */
+async function exportCalendar(data: PlannerDataService, cal: PlannerCalendar): Promise<void> {
+  const { events, tasks } = await data.getCalendarExport(cal.id);
+  const ics = buildICalendar({ events, tasks, calendarName: cal.name, calendarColor: cal.color });
+  const slug = cal.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'calendar';
+  await saveTextFile(ics, `${slug}.ics`, 'text/calendar', 'iCalendar', '.ics');
+}
+
+/**
+ * Save text to disk. Prefers the File System Access save dialog; falls back to
+ * an anchor download on older Electron builds (mirrors the Settings export).
+ */
+async function saveTextFile(content: string, filename: string, mime: string, typeDesc: string, ext: string): Promise<void> {
+  const fsApi = (window as unknown as { showSaveFilePicker?: (opts: {
+    suggestedName: string;
+    types: { description: string; accept: Record<string, string[]> }[];
+  }) => Promise<{ createWritable: () => Promise<{ write: (data: string) => Promise<void>; close: () => Promise<void> }> }> }).showSaveFilePicker;
+  if (fsApi) {
+    try {
+      const handle = await fsApi({ suggestedName: filename, types: [{ description: typeDesc, accept: { [mime]: [ext] } }] });
+      const writable = await handle.createWritable();
+      await writable.write(content);
+      await writable.close();
+      return;
+    } catch (err: unknown) {
+      if ((err as { name?: string }).name === 'AbortError') return;
+      // Fall through to anchor-download.
+    }
+  }
+  const blob = new Blob([content], { type: `${mime};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 export function createPlannerSettingsPanel(data: PlannerDataService): ISettingsPanel {
   return {
@@ -99,7 +142,13 @@ export function createPlannerSettingsPanel(data: PlannerDataService): ISettingsP
           vis.innerHTML = cal.visible ? EYE_ON : EYE_OFF;
           vis.addEventListener('click', () => void data.updateCalendar(cal.id, { visible: !cal.visible }));
 
-          row.append(color, name, vis);
+          const exportBtn = el('button', 'planner-settings__cal-export');
+          exportBtn.type = 'button';
+          exportBtn.title = 'Export as .ics (import into Google / Apple / Outlook)';
+          exportBtn.innerHTML = DOWNLOAD;
+          exportBtn.addEventListener('click', () => void exportCalendar(data, cal));
+
+          row.append(color, name, vis, exportBtn);
 
           if (!cal.isDefault) {
             const del = el('button', 'planner-settings__cal-del');

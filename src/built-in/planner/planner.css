@@ -1000,6 +1000,7 @@
   flex-direction: column;
   align-items: flex-start;
   padding: 4px 7px;
+  box-sizing: border-box;
   border: 0;
   border-left: 3px solid color-mix(in srgb, var(--cal-color, var(--vscode-button-background, #0e639c)) 90%, white);
   border-radius: 4px;
@@ -1133,6 +1134,7 @@
   left: 8px;
   right: 8px;
   padding: 7px 12px;
+  box-sizing: border-box;
   border: 0;
   border-left: 4px solid color-mix(in srgb, var(--cal-color, var(--vscode-button-background, #0e639c)) 95%, white);
   border-radius: 6px;
@@ -1171,6 +1173,7 @@
   align-items: center;
   gap: 5px;
   padding: 1px 6px;
+  box-sizing: border-box;
   border: 0;
   border-left: 3px solid var(--cal-color, #4c8bf5);
   border-radius: 4px;
@@ -1362,13 +1365,13 @@
 }
 .planner-settings__cal-name:hover { border-color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent); }
 .planner-settings__cal-name:focus { outline: none; background: var(--vscode-input-background, rgba(255,255,255,0.04)); border-color: var(--vscode-focusBorder, #5b9bd5); }
-.planner-settings__cal-vis, .planner-settings__cal-del {
+.planner-settings__cal-vis, .planner-settings__cal-del, .planner-settings__cal-export {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
   width: 26px; height: 26px; padding: 0; background: none; border: none;
   border-radius: 5px; cursor: pointer;
   color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
 }
-.planner-settings__cal-vis:hover, .planner-settings__cal-del:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent); color: var(--vscode-foreground, #ddd); }
+.planner-settings__cal-vis:hover, .planner-settings__cal-del:hover, .planner-settings__cal-export:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent); color: var(--vscode-foreground, #ddd); }
 .planner-settings__cal-vis.is-off { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 30%, transparent); }
 .planner-settings__cal-del:hover { color: var(--px-danger, #f85149); }
 .planner-settings__cal-badge {

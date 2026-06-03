@@ -8,6 +8,7 @@ import type { PlannerDataService } from './plannerDataService.js';
 import type { PlannerCalendar, PlannerEvent, PlannerTask, TaskStatus, UpdateEventInput } from './plannerTypes.js';
 import { takePendingPlannerTab } from './plannerNavState.js';
 import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurrence.js';
+import { packLanes } from './plannerLayout.js';
 
 interface PlannerEditorInput {
   readonly id: string;          // === instanceId; only one ('main') for M82
@@ -782,6 +783,83 @@ class PlannerEditorPane implements IDisposable {
     return pill;
   }
 
+  /** Absolutely-positioned event bar for week / day columns. */
+  private _buildEventBar(
+    ev: PlannerEvent,
+    variant: 'week' | 'day',
+    dayStart: number,
+    dayEnd: number,
+    colorOf: (calendarId: string | null, override: string | null) => string,
+  ): HTMLElement {
+    const DAY_MS = 24 * 3_600_000;
+    const evStart = Math.max(ev.startAt, dayStart);
+    const evEnd = Math.min(ev.endAt, dayEnd);
+    const topPct = ((evStart - dayStart) / DAY_MS) * 100;
+    const heightPct = Math.max(variant === 'day' ? 3 : 2, ((evEnd - evStart) / DAY_MS) * 100);
+    const bar = el('button', `planner-${variant}__event`);
+    bar.type = 'button';
+    bar.style.top = `${topPct}%`;
+    bar.style.height = `${heightPct}%`;
+    bar.style.setProperty('--cal-color', colorOf(ev.calendarId, ev.color));
+    bar.title = `${ev.title}\n${formatTimeRange(ev)}`;
+    bar.innerHTML = variant === 'day'
+      ? `
+        <span class="planner-day__event-time">${escapeHtml(formatTimeRange(ev))}</span>
+        <strong class="planner-day__event-title">${escapeHtml(ev.title)}</strong>
+        ${ev.location ? `<span class="planner-day__event-loc">${escapeHtml(ev.location)}</span>` : ''}
+      `
+      : `<strong>${escapeHtml(ev.title)}</strong><span>${escapeHtml(formatTimeRange(ev))}</span>`;
+    bar.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._openEventPopover({ mode: 'edit', event: ev }, bar.getBoundingClientRect());
+    });
+    return bar;
+  }
+
+  /**
+   * Lay out a day's events + dated tasks into the time column. Items that
+   * overlap in time are packed into side-by-side lanes (Google-style) so
+   * nothing renders on top of anything else; a task is treated as a short
+   * nominal block for collision purposes while keeping its thin pill shape.
+   */
+  private _layoutTimedItems(
+    container: HTMLElement,
+    variant: 'week' | 'day',
+    dayStart: number,
+    dayEnd: number,
+    events: readonly PlannerEvent[],
+    tasks: readonly PlannerTask[],
+    colorOf: (calendarId: string | null, override: string | null) => string,
+  ): void {
+    const TASK_NOMINAL_MS = 30 * 60_000;
+    type Entry =
+      | { kind: 'event'; ev: PlannerEvent; startMs: number; endMs: number }
+      | { kind: 'task'; task: PlannerTask; startMs: number; endMs: number };
+
+    const entries: Entry[] = [];
+    for (const ev of events) {
+      if (!(ev.startAt <= dayEnd && ev.endAt >= dayStart)) continue;
+      entries.push({ kind: 'event', ev, startMs: Math.max(ev.startAt, dayStart), endMs: Math.min(ev.endAt, dayEnd) });
+    }
+    for (const t of tasks) {
+      if (t.dueAt == null || !(t.dueAt >= dayStart && t.dueAt <= dayEnd)) continue;
+      entries.push({ kind: 'task', task: t, startMs: t.dueAt, endMs: Math.min(dayEnd, t.dueAt + TASK_NOMINAL_MS) });
+    }
+
+    for (const { item, lane, laneCount } of packLanes(entries)) {
+      const node = item.kind === 'event'
+        ? this._buildEventBar(item.ev, variant, dayStart, dayEnd, colorOf)
+        : this._renderCalTaskPill(item.task, colorOf(item.task.calendarId, item.task.color), variant, dayStart);
+      if (laneCount > 1) {
+        // Split the column; 2px inset on each side keeps a hairline gutter.
+        node.style.left = `calc(${(lane / laneCount) * 100}% + 2px)`;
+        node.style.width = `calc(${100 / laneCount}% - 4px)`;
+        node.style.right = 'auto';
+      }
+      container.appendChild(node);
+    }
+  }
+
   private async _renderMonthView(body: HTMLElement): Promise<void> {
     const from = startOfMonth(this._cursorDate).getTime();
     const to = endOfMonth(this._cursorDate).getTime();
@@ -930,32 +1008,8 @@ class PlannerEditorPane implements IDisposable {
         dayCol.appendChild(nowLine);
       }
 
-      // Events as absolutely-positioned bars
-      const dayEvents = events.filter(ev => ev.startAt <= dayEnd && ev.endAt >= dayStart);
-      for (const ev of dayEvents) {
-        const evStart = Math.max(ev.startAt, dayStart);
-        const evEnd = Math.min(ev.endAt, dayEnd);
-        const topPct = ((evStart - dayStart) / (24 * 3_600_000)) * 100;
-        const heightPct = Math.max(2, ((evEnd - evStart) / (24 * 3_600_000)) * 100);
-        const bar = el('button', 'planner-week__event');
-        bar.type = 'button';
-        bar.style.top = `${topPct}%`;
-        bar.style.height = `${heightPct}%`;
-        bar.style.setProperty('--cal-color', colorOf(ev.calendarId, ev.color));
-        bar.title = `${ev.title}\n${formatTimeRange(ev)}`;
-        bar.innerHTML = `<strong>${escapeHtml(ev.title)}</strong><span>${escapeHtml(formatTimeRange(ev))}</span>`;
-        bar.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this._openEventPopover({ mode: 'edit', event: ev }, bar.getBoundingClientRect());
-        });
-        dayCol.appendChild(bar);
-      }
-
-      // Dated tasks as thin pills at their due time.
-      const dayTasks = tasks.filter(t => t.dueAt! >= dayStart && t.dueAt! <= dayEnd);
-      for (const t of dayTasks) {
-        dayCol.appendChild(this._renderCalTaskPill(t, colorOf(t.calendarId, t.color), 'week', dayStart));
-      }
+      // Events + dated tasks, packed into side-by-side lanes where they overlap.
+      this._layoutTimedItems(dayCol, 'week', dayStart, dayEnd, events, tasks, colorOf);
 
       body2.appendChild(dayCol);
     }
@@ -1001,33 +1055,8 @@ class PlannerEditorPane implements IDisposable {
       col.appendChild(nowLine);
     }
 
-    for (const ev of events) {
-      const evStart = Math.max(ev.startAt, dayStart);
-      const evEnd = Math.min(ev.endAt, dayEnd);
-      const topPct = ((evStart - dayStart) / (24 * 3_600_000)) * 100;
-      const heightPct = Math.max(3, ((evEnd - evStart) / (24 * 3_600_000)) * 100);
-      const bar = el('button', 'planner-day__event');
-      bar.type = 'button';
-      bar.style.top = `${topPct}%`;
-      bar.style.height = `${heightPct}%`;
-      bar.style.setProperty('--cal-color', colorOf(ev.calendarId, ev.color));
-      bar.title = `${ev.title}\n${formatTimeRange(ev)}`;
-      bar.innerHTML = `
-        <span class="planner-day__event-time">${escapeHtml(formatTimeRange(ev))}</span>
-        <strong class="planner-day__event-title">${escapeHtml(ev.title)}</strong>
-        ${ev.location ? `<span class="planner-day__event-loc">${escapeHtml(ev.location)}</span>` : ''}
-      `;
-      bar.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this._openEventPopover({ mode: 'edit', event: ev }, bar.getBoundingClientRect());
-      });
-      col.appendChild(bar);
-    }
-
-    // Dated tasks as thin pills at their due time.
-    for (const t of tasks) {
-      col.appendChild(this._renderCalTaskPill(t, colorOf(t.calendarId, t.color), 'day', dayStart));
-    }
+    // Events + dated tasks, packed into side-by-side lanes where they overlap.
+    this._layoutTimedItems(col, 'day', dayStart, dayEnd, events, tasks, colorOf);
 
     body.appendChild(grid);
   }
