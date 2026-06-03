@@ -8079,36 +8079,6 @@ export async function activate(api, context) {
       // an MCP-shaped result (`_toolOk` / `_toolErr`).
 
       // Read tools — no confirmation, no writes.
-      _disposables.push(api.chat.registerTool('budget.getLastSyncCursor', {
-        description: 'Return the email-cursor + last-run timestamp the next sync should start from. Read-only.',
-        parameters: { type: 'object', properties: {} },
-        requiresConfirmation: false,
-        handler: async () => budgetToolGetLastSyncCursor(),
-      }));
-      _disposables.push(api.chat.registerTool('budget.listAccounts', {
-        description: 'List known financial accounts (id, last_four, kind, current balance). Read-only.',
-        parameters: { type: 'object', properties: {} },
-        requiresConfirmation: false,
-        handler: async () => budgetToolListAccounts(),
-      }));
-      _disposables.push(api.chat.registerTool('budget.listCategories', {
-        description: 'List active expense + income categories (id, name, kind, sort_order). Read-only.',
-        parameters: { type: 'object', properties: {} },
-        requiresConfirmation: false,
-        handler: async () => budgetToolListCategories(),
-      }));
-      _disposables.push(api.chat.registerTool('budget.listCategorizationRules', {
-        description: 'List active merchant→category rules. The agent should consult these before asking the user to categorize a transaction. Read-only.',
-        parameters: { type: 'object', properties: {} },
-        requiresConfirmation: false,
-        handler: async () => budgetToolListCategorizationRules(),
-      }));
-      _disposables.push(api.chat.registerTool('budget.listRecurringSeries', {
-        description: 'List detected recurring transaction series (merchant, cadence, last seen). Read-only.',
-        parameters: { type: 'object', properties: {} },
-        requiresConfirmation: false,
-        handler: async () => budgetToolListRecurringSeries(),
-      }));
       _disposables.push(api.chat.registerTool('budget.queryTransactions', {
         description: 'Query the transactions ledger with optional filters: from, to (YYYY-MM-DD), merchant substring, category name, status, tx_type, limit.',
         parameters: {
@@ -8144,87 +8114,11 @@ export async function activate(api, context) {
         requiresConfirmation: false,
         handler: async (args) => budgetToolListTrash(args || {}),
       }));
-
-      // Email fetch — read from Gmail MCP. No DB writes.
-      _disposables.push(api.chat.registerTool('budget.pullEmails', {
-        description: 'Fetch unread/recent emails from Gmail (via the Gmail MCP server) that match the issuer query, since the last cursor. Returns an array of {id, subject, snippet, body, receivedAt} skipping any gmail_message_id already in email_imports. The agent classifies each email and calls budget.recordTransaction / budget.recordBalance / budget.markEmailProcessed.',
-        parameters: {
-          type: 'object',
-          properties: {
-            since: { type: 'string', description: 'ISO timestamp override. Defaults to the stored cursor.' },
-            max:   { type: 'integer', description: 'Messages to return for this Gmail page (default 500, max 500).' },
-            page_token: { type: 'string', description: 'Optional Gmail nextPageToken from a previous pullEmails result.' },
-          },
-        },
+      _disposables.push(api.chat.registerTool('budget.listCategories', {
+        description: 'List active expense + income categories (id, name, kind, sort_order). Read-only.',
+        parameters: { type: 'object', properties: {} },
         requiresConfirmation: false,
-        handler: async (args) => budgetToolPullEmails(api_ref, args || {}),
-      }));
-
-      // Write tools — agent records its decisions.
-      _disposables.push(api.chat.registerTool('budget.recordTransaction', {
-        description: 'Insert a transaction row the agent extracted from an email. Required: gmail_message_id, amount (dollars, positive=outflow), transaction_date (YYYY-MM-DD), tx_type (purchase/deposit/transfer/fee/other). Optional: merchant, card_last_four, category (name), status (confirmed|review), notes.',
-        parameters: {
-          type: 'object',
-          required: ['gmail_message_id', 'amount', 'transaction_date', 'tx_type'],
-          properties: {
-            gmail_message_id: { type: 'string' },
-            merchant:         { type: 'string' },
-            amount:           { type: 'number' },
-            card_last_four:   { type: 'string' },
-            transaction_date: { type: 'string' },
-            tx_type:          { type: 'string', enum: ['purchase', 'deposit', 'transfer', 'fee', 'other'] },
-            category:         { type: 'string' },
-            status:           { type: 'string', enum: ['confirmed', 'review'] },
-            notes:            { type: 'string' },
-          },
-        },
-        requiresConfirmation: false,
-        handler: async (args) => budgetToolRecordTransaction(args || {}),
-      }));
-      _disposables.push(api.chat.registerTool('budget.recordBalance', {
-        description: 'Insert a balance snapshot the agent extracted from a statement email. Required: gmail_message_id, account_last_four, account_kind, balance (dollars), snapshot_date (YYYY-MM-DD).',
-        parameters: {
-          type: 'object',
-          required: ['gmail_message_id', 'account_last_four', 'account_kind', 'balance', 'snapshot_date'],
-          properties: {
-            gmail_message_id:  { type: 'string' },
-            account_last_four: { type: 'string' },
-            account_kind:      { type: 'string' },
-            balance:           { type: 'number' },
-            snapshot_date:     { type: 'string' },
-          },
-        },
-        requiresConfirmation: false,
-        handler: async (args) => budgetToolRecordBalance(args || {}),
-      }));
-      _disposables.push(api.chat.registerTool('budget.flagForReview', {
-        description: 'Mark an email/transaction as needing user review (the agent could not parse it cleanly). Required: gmail_message_id, reason. Optional: tx_type guess.',
-        parameters: {
-          type: 'object',
-          required: ['gmail_message_id', 'reason'],
-          properties: {
-            gmail_message_id: { type: 'string' },
-            reason:           { type: 'string' },
-            tx_type:          { type: 'string' },
-          },
-        },
-        requiresConfirmation: false,
-        handler: async (args) => budgetToolFlagForReview(args || {}),
-      }));
-      _disposables.push(api.chat.registerTool('budget.markEmailProcessed', {
-        description: 'Mark a gmail message as processed (not a transaction, not a balance — but the agent looked at it and is moving on). Prevents it from being re-fetched next sync.',
-        parameters: {
-          type: 'object',
-          required: ['gmail_message_id'],
-          properties: {
-            gmail_message_id: { type: 'string' },
-            subject:          { type: 'string' },
-            snippet:          { type: 'string' },
-            received_at:      { type: 'string' },
-          },
-        },
-        requiresConfirmation: false,
-        handler: async (args) => budgetToolMarkEmailProcessed(args || {}),
+        handler: async () => budgetToolListCategories(),
       }));
       _disposables.push(api.chat.registerTool('budget.setSyncCursor', {
         description: 'Set or rewind the Gmail budget sync cursor to a specific date/time so the next budget.runSync starts from that point. Use this when the user explicitly wants to go back and re-pull skipped emails. Date-only values start at 00:00:00 UTC for that day.',
@@ -8240,20 +8134,6 @@ export async function activate(api, context) {
         requiresConfirmation: true,
         handler: async (args) => budgetToolSetSyncCursor(args || {}),
       }));
-      _disposables.push(api.chat.registerTool('budget.updateSyncCursor', {
-        description: 'Call AFTER processing a pulled batch to advance the Gmail sync cursor. The cursor VALUE is derived automatically from what you have durably recorded (it is NOT taken from a date you supply), and only moves when you report the batch fully complete with no errors. If any email failed or is still unprocessed, set batchComplete=false (or report errors in counts) and the cursor is held so those emails are re-offered on the next pull. To deliberately rewind/re-pull, use budget.setSyncCursor instead.',
-        parameters: {
-          type: 'object',
-          properties: {
-            batchComplete:         { type: 'boolean', description: 'True only when every email in the pulled batch was recorded, queued for review, or marked non-financial. False (default) holds the cursor.' },
-            counts:                { type: 'object', description: 'Batch summary {confirmed, review, snapshot, skipped, errors, unprocessed}. Any errors>0 or unprocessed>0 holds the cursor.' },
-            last_gmail_message_id: { type: 'string', description: 'Optional: id of the newest message handled (bookkeeping only; does not affect the cursor value).' },
-          },
-        },
-        requiresConfirmation: false,
-        handler: async (args) => budgetToolUpdateSyncCursor(args || {}),
-      }));
-
       // Edit / delete (write) — soft-deletes to transactions_trash, recoverable.
       _disposables.push(api.chat.registerTool('budget.updateTransaction', {
         description: 'Edit fields on a transaction (merchant, amount, category, status, notes, tx_type, transaction_date).',

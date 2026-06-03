@@ -46,14 +46,14 @@ describe('research-topic default skill (M65 Iter 3)', () => {
     expect(body!).toMatch(/Citations are mandatory/i);
   });
 
-  it('references the getResearchHub / setResearchHub / logResearchEvent tools', () => {
-    expect(body!).toContain('getResearchHub');
-    expect(body!).toContain('setResearchHub');
-    expect(body!).toContain('logResearchEvent');
-  });
-
-  it('references canvas_create_page for Hub + draft creation', () => {
+  it('uses the canvas page workflow (create then edit), not the removed hub tools', () => {
+    // Output is a plain canvas page: create it, then edit the same page across
+    // rounds. The dedicated Research Hub / history tools were removed (2026-06).
     expect(body!).toContain('canvas_create_page');
+    expect(body!).toContain('canvas_edit_page');
+    expect(body!).not.toContain('getResearchHub');
+    expect(body!).not.toContain('setResearchHub');
+    expect(body!).not.toContain('logResearchEvent');
   });
 
   it('states the per-turn budget caps so the LLM plans accordingly', () => {

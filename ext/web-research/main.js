@@ -741,49 +741,13 @@ function _registerTools(api) {
     requiresConfirmation: false,
   }));
 
-  // Iter 3 — Research Hub state. Green tools (no untrusted-content read,
-  // no consequential write to existing canvas pages). The research-topic
-  // skill uses these to lazy-create the Hub page on first use.
-  _commandDisposables.push(api.chat.registerTool('getResearchHub', {
-    description: 'Return the current Research Hub page id and title as JSON, or null if the Hub has not been created yet. Call this BEFORE drafting a research summary — if it returns null, ask the user for a Hub title, call create_page (parent_id null), then call setResearchHub with the new page id.',
-    parameters: { type: 'object', properties: {} },
-    handler: async () => getResearchHubTool(),
-    requiresConfirmation: false,
-  }));
-
-  _commandDisposables.push(api.chat.registerTool('setResearchHub', {
-    description: 'Persist the Research Hub page id and title to extension storage so future research turns reuse the same Hub. Call this once, immediately after create_page returns the Hub page id.',
-    parameters: {
-      type: 'object',
-      properties: {
-        pageId: { type: 'string', description: 'Canvas page id returned by create_page.' },
-        title:  { type: 'string', description: 'Hub title. Defaults to "Research Hub" if omitted.' },
-      },
-      required: ['pageId'],
-    },
-    handler: async (args) => setResearchHubTool(args || {}),
-    requiresConfirmation: false,
-  }));
-
-  _commandDisposables.push(api.chat.registerTool('logResearchEvent', {
-    description: 'Append one line to the workspace research history ndjson (.parallx/data/web-research-history.<date>.ndjson). Use after each webSearch/webFetch and after creating a Hub child draft. Allowed kinds: search, fetch, hub-create, draft-create. NEVER include response bodies, page content, or secrets — only topic/query/url/page-id metadata.',
-    parameters: {
-      type: 'object',
-      properties: {
-        kind: { type: 'string', enum: ['search', 'fetch', 'hub-create', 'draft-create'] },
-        query:       { type: 'string' },
-        url:         { type: 'string' },
-        hubPageId:   { type: 'string' },
-        draftPageId: { type: 'string' },
-        urlCount:    { type: 'number' },
-      },
-      required: ['kind'],
-    },
-    handler: async (args) => logResearchEventTool(args || {}),
-    requiresConfirmation: false,
-  }));
-
-  console.log('[web-research] Registered webSearch + webFetch + Research Hub tools');
+  // Research output is plain canvas now: the research-topic skill creates a
+  // page with create_page and edits it across rounds with edit_page, tracking
+  // the page id from the create_page result. The dedicated Research Hub /
+  // history tools (getResearchHub / setResearchHub / logResearchEvent) were
+  // removed (2026-06) to keep the model's tool surface minimal. Their helper
+  // functions remain below for back-compat / unit tests but are not registered.
+  console.log('[web-research] Registered webSearch + webFetch tools');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

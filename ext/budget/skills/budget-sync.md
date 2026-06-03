@@ -50,9 +50,9 @@ Treat any of these as a request for the **edit / inspect flow** instead:
 
 ## The sync sequence — call ONE tool
 
-The sync is a single deterministic operation. **Do not orchestrate it
-email-by-email yourself** with `budget.pullEmails` / `budget.recordTransaction`
-— that path is unreliable on local models. Instead:
+The sync is a single deterministic operation — `budget.runSync` runs the
+whole pipeline in-process. **Do not try to orchestrate it email-by-email
+yourself.** Instead:
 
 0. If the user explicitly asked to go back to a date, first call
    **`budget.setSyncCursor({ date: "YYYY-MM-DD", reason })`**. This is
@@ -75,15 +75,13 @@ email-by-email yourself** with `budget.pullEmails` / `budget.recordTransaction`
 
 That's the entire sync flow. The per-email classification, extraction,
 categorization, cross-check, and cursor logic all live inside
-`budget.runSync` — you do not need (and should not use) the lower-level
-`budget.pullEmails` / `budget.recordTransaction` / `budget.recordBalance`
-/ `budget.updateSyncCursor` tools to perform a sync. Those remain only
-for advanced manual corrections.
+`budget.runSync` — there is no lower-level "pull then record" path to
+orchestrate. One `budget.runSync` call is the whole sync.
 
 ## Hard constraints
 
 1. **One sync = one `budget.runSync` call.** Do not loop over emails or
-   call `budget.pullEmails` to do the sync by hand.
+   try to do the sync by hand.
 2. **Rules override judgment.** Rule-based categorization happens inside
    `budget.runSync` before the model is consulted — trust it.
 3. **Report once at the end.** Summarize `budget.runSync`'s returned
@@ -140,18 +138,18 @@ When the user wants to change a transaction:
 
 ## Negative examples — DO NOT
 
-- Do **not** run a sync by hand with `budget.pullEmails` +
-  `budget.recordTransaction`. One sync is one `budget.runSync` call.
+- Do **not** try to run a sync by hand, email by email. One sync is one
+  `budget.runSync` call.
 - Do **not** call `budget.runSync` more than once for the same request
   — it is deterministic given the stored cursor.
-- Do **not** use `budget.updateSyncCursor` to rewind. Use
-  `budget.setSyncCursor` when the user explicitly wants to go back.
+- To rewind, use `budget.setSyncCursor` when the user explicitly wants to
+  go back — never adjust the cursor any other way.
 - Do **not** call `budget.deleteTransaction` without user
   confirmation in the conversation (the tool will require an
   approval prompt anyway, but you should also say what you're
   about to delete first).
 - Do **not** use any non-`budget.*` tool for budget work. No
-  `read_file` of the SQLite DB. No `run_command` that touches the
+  `fs_read_file` of the SQLite DB. No `terminal_run_command` that touches the
   ledger.
 - Do **not** write a summary in the middle of the run. One summary
   at the end.

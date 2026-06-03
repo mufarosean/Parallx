@@ -21704,8 +21704,13 @@ export async function activate(api, context) {
   _resumePendingErase(api).catch(() => {});
   // One-shot sweep for phantom folder-backed albums left over from earlier sessions.
   moPruneOrphanFolderAlbums().catch(() => {});
-  // M59 P8: register AI chat tools
-  moRegisterAITools(api);
+  // M59 P8: register AI chat tools — INTENTIONALLY DISABLED (2026-06).
+  // The 19 mediaOrganizer.* chat tools were a large, low-value slice of the
+  // model's tool schema and are removed pending a rethink of how media
+  // management should be exposed to the AI. moRegisterAITools + its handlers
+  // are left intact below for that future rework — they are simply not
+  // registered. Re-enable by uncommenting the call.
+  // moRegisterAITools(api);
 
   // M66 — register the media-organizer link contract. Iter A: open the grid;
   // Iter B will deepen to per-item focus (photo lightbox, video clip).
