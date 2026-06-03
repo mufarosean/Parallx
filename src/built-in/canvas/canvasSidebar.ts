@@ -968,6 +968,24 @@ export class CanvasSidebar {
         }
       },
     });
+    addAction({
+      id: 'save-as-template',
+      label: 'Save as template',
+      iconId: 'layout-template',
+      action: async () => {
+        try {
+          // Mirrors the page-header ⋯ menu. The empty-templates hint
+          // (canvas/main.ts: canvas.manageTemplates) tells users to
+          // "Right-click a page and choose 'Save as template'" — this is
+          // the action that hint points at. The command snapshots the
+          // page by the id we pass, so it works on any row, not just the
+          // page currently open in the editor.
+          await this._api.commands.executeCommand('canvas.saveAsTemplate', page.id);
+        } catch (err) {
+          console.error('[CanvasSidebar] Save as template failed:', err);
+        }
+      },
+    });
     // When the user right-clicks a row that's part of an active
     // multi-selection containing 2+ pages, offer "Delete N pages" so the
     // batch confirm path is reachable from the mouse, not just the Delete
