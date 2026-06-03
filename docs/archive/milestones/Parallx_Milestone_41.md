@@ -753,8 +753,8 @@ type OpenclawToolProfile = 'readonly' | 'standard' | 'full';
 
 // Upstream: resolveToolProfilePolicy from tool-policy-shared.ts
 const TOOL_PROFILES: Record<OpenclawToolProfile, { allow: string[]; deny: string[] }> = {
-  readonly:  { allow: ['search_knowledge', 'list_files', 'read_file'], deny: ['write_file', 'edit_file', 'delete_file', 'run_command'] },
-  standard:  { allow: ['*'], deny: ['run_command'] },
+  readonly:  { allow: ['fs_search_knowledge', 'fs_list_files', 'fs_read_file'], deny: ['fs_write_file', 'fs_edit_file', 'fs_delete_file', 'terminal_run_command'] },
+  standard:  { allow: ['*'], deny: ['terminal_run_command'] },
   full:      { allow: ['*'], deny: [] },
 };
 

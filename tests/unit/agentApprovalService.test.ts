@@ -79,7 +79,7 @@ describe('AgentApprovalService', () => {
       taskId: 'task-1',
       stepId: 'step-1',
       actionClass: 'delete',
-      toolName: 'delete_file',
+      toolName: 'fs_delete_file',
       summary: 'Delete an obsolete file',
       scope: 'single-action',
       reason: 'Deletion requires approval.',

@@ -77,20 +77,20 @@ describe('resolveAgentConfig', () => {
 
   it('tools merge: agent deny + defaults deny = combined deny list', () => {
     const registry = createAgentRegistry([
-      agent('a', { tools: { deny: ['write_file'] } }),
+      agent('a', { tools: { deny: ['fs_write_file'] } }),
     ]);
-    const defaults: IAgentDefaults = { tools: { deny: ['run_command'] } };
+    const defaults: IAgentDefaults = { tools: { deny: ['terminal_run_command'] } };
     const resolved = resolveAgentConfig(registry, 'a', GLOBAL, defaults);
-    expect(resolved.tools.deny).toEqual(['run_command', 'write_file']);
+    expect(resolved.tools.deny).toEqual(['terminal_run_command', 'fs_write_file']);
   });
 
   it('tools merge: agent allow overrides defaults allow', () => {
     const registry = createAgentRegistry([
-      agent('a', { tools: { allow: ['read_file'] } }),
+      agent('a', { tools: { allow: ['fs_read_file'] } }),
     ]);
-    const defaults: IAgentDefaults = { tools: { allow: ['read_file', 'write_file'] } };
+    const defaults: IAgentDefaults = { tools: { allow: ['fs_read_file', 'fs_write_file'] } };
     const resolved = resolveAgentConfig(registry, 'a', GLOBAL, defaults);
-    expect(resolved.tools.allow).toEqual(['read_file']);
+    expect(resolved.tools.allow).toEqual(['fs_read_file']);
   });
 
   it('resolveAgentConfig preserves identity and systemPromptOverlay from agent', () => {
@@ -110,16 +110,16 @@ describe('resolveAgentConfig', () => {
     const registry = createAgentRegistry([
       agent('a', { tools: { deny: [] } }),
     ]);
-    const defaults: IAgentDefaults = { tools: { deny: ['run_command'] } };
+    const defaults: IAgentDefaults = { tools: { deny: ['terminal_run_command'] } };
     const resolved = resolveAgentConfig(registry, 'a', GLOBAL, defaults);
-    expect(resolved.tools.deny).toEqual(['run_command']);
+    expect(resolved.tools.deny).toEqual(['terminal_run_command']);
   });
 
   it('tools merge: agent with empty allow + defaults with allow = agent empty wins', () => {
     const registry = createAgentRegistry([
       agent('a', { tools: { allow: [] } }),
     ]);
-    const defaults: IAgentDefaults = { tools: { allow: ['read_file', 'write_file'] } };
+    const defaults: IAgentDefaults = { tools: { allow: ['fs_read_file', 'fs_write_file'] } };
     const resolved = resolveAgentConfig(registry, 'a', GLOBAL, defaults);
     // Agent allow is [] — not null/undefined, so ?? does NOT fall through to defaults.
     // An explicit empty allow means "allow nothing from agent perspective".

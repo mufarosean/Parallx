@@ -857,7 +857,7 @@ describe('D6: auditCompactionQuality', () => {
 
 // M81 Phase 3 Stage 2 — extractConceptsFromTranscript test block removed
 // alongside the regex extractor. Concept curation now happens through the
-// agent's `memory_edit` tool (see tests/unit/memoryEditTool.test.ts).
+// agent's `memory_write` tool (see tests/unit/memoryEditTool.test.ts).
 
 describe('D6: compact quality retry', () => {
   it('retries with stronger prompt when quality audit fails', async () => {

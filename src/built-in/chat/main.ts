@@ -1407,7 +1407,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       _lmts.setPolicyDecisionPoint(pdp);
     }
 
-    // Build retrieval accessor for the search_knowledge tool (M10 Phase 3)
+    // Build retrieval accessor for the fs_search_knowledge tool (M10 Phase 3)
     const retrievalAccessor = retrievalService && indexingPipelineService
       ? {
         isReady: () => indexingPipelineService!.isInitialIndexComplete,
@@ -1439,7 +1439,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         })()
       : undefined;
 
-    // M81 Phase 2 — workspace memory write accessor for the `memory_edit` tool.
+    // M81 Phase 2 — workspace memory write accessor for the `memory_write` tool.
     // Thin wrapper around IWorkspaceMemoryService that exposes only the methods
     // the tool needs (USER.md / MEMORY.md / daily file read+write). Lets the
     // tool stay decoupled from the full service interface.
@@ -1485,7 +1485,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         }
       : undefined;
 
-    // Build file writer accessor for write_file / edit_file tools (M11 Task 2.2 + 2.3)
+    // Build file writer accessor for fs_write_file / fs_edit_file tools (M11 Task 2.2 + 2.3)
     //
     // The writer accessor has two concerns:
     //   1. writeFile — resolves against workspaceService.folders[0].uri
@@ -1547,7 +1547,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       })()
       : undefined;
 
-    // M11 Task 4.3 — Terminal accessor for run_command tool
+    // M11 Task 4.3 — Terminal accessor for terminal_run_command tool
     const terminalAccessor: import('./tools/builtInTools.js').IBuiltInToolTerminal | undefined = (() => {
       const electron = (globalThis as Record<string, unknown>).parallxElectron as Record<string, unknown> | undefined;
       const termBridge = electron?.terminal as {
@@ -1817,7 +1817,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       context.subscriptions.push(d);
     }
 
-    // M66 §4a — `parallx_link` chat tool. Registered separately so it can
+    // M66 §4a — `link_create` chat tool. Registered separately so it can
     // close over the `api.links` snapshot without threading it through the
     // big `registerBuiltInTools(...)` signature. The tool's prompt
     // visibility is gated by the `## Linking` section in the system prompt,
@@ -2407,11 +2407,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // automations) uses to ask the AI to do work. It reveals the chat panel,
   // ensures a session exists, drops the prompt into the active session, and
   // submits it. From there it runs through regular chat — same model, same
-  // registered tools (webSearch/webFetch/render_to_widget/…), same defaults.
+  // registered tools (webSearch/webFetch/dashboard_render_widget/…), same defaults.
   //
   // Fire-and-forget: it returns once the prompt is submitted. The AI's output
   // streams visibly in chat; surfaces that want results delivered back to a
-  // widget instruct the model (in the prompt) to call the `render_to_widget`
+  // widget instruct the model (in the prompt) to call the `dashboard_render_widget`
   // tool with their instanceId.
   //
   // Contract: { text: string, reveal?: boolean } → void.

@@ -147,19 +147,19 @@ OpenClaw has 20 built-in tools organized into 6 categories.
 
 | Tool | What it does | Needs approval? |
 |------|-------------|----------------|
-| `list_files` | Lists files and directories at a path | No |
-| `read_file` | Reads a file's content (text ≤ 50 KB, or PDFs/DOCX/XLSX via extraction) | No |
-| `search_files` | Searches file/directory names by glob pattern | No |
-| `grep_search` | Searches inside files by regex or literal string | No |
-| `search_knowledge` | Searches indexed workspace content using hybrid RAG | No |
+| `fs_list_files` | Lists files and directories at a path | No |
+| `fs_read_file` | Reads a file's content (text ≤ 50 KB, or PDFs/DOCX/XLSX via extraction) | No |
+| `fs_search_files` | Searches file/directory names by glob pattern | No |
+| `fs_grep_search` | Searches inside files by regex or literal string | No |
+| `fs_search_knowledge` | Searches indexed workspace content using hybrid RAG | No |
 
 ### Write Tools
 
 | Tool | What it does | Needs approval? |
 |------|-------------|----------------|
-| `write_file` | Creates or overwrites a file | **Yes** |
-| `edit_file` | Makes a search-and-replace edit in a file | **Yes** |
-| `delete_file` | Deletes a file | **Yes** |
+| `fs_write_file` | Creates or overwrites a file | **Yes** |
+| `fs_edit_file` | Makes a search-and-replace edit in a file | **Yes** |
+| `fs_delete_file` | Deletes a file | **Yes** |
 
 ### Page Tools
 
@@ -177,7 +177,7 @@ OpenClaw has 20 built-in tools organized into 6 categories.
 
 | Tool | What it does | Needs approval? |
 |------|-------------|----------------|
-| `run_command` | Runs a shell command in the workspace directory | **Yes** |
+| `terminal_run_command` | Runs a shell command in the workspace directory | **Yes** |
 
 **Important details:**
 - 30-second default timeout (configurable per invocation)
@@ -189,7 +189,7 @@ OpenClaw has 20 built-in tools organized into 6 categories.
 
 | Tool | What it does | Needs approval? |
 |------|-------------|----------------|
-| `memory_get` | Retrieves memory entries | No |
+| `memory_read` | Retrieves memory entries | No |
 | `memory_search` | Searches memory by keyword | No |
 
 ### Transcript Tools
@@ -234,7 +234,7 @@ Tool profiles are configurations that control which tools are available:
 | Profile | Description |
 |---------|-------------|
 | `readonly` | Only read operations — no writing, no commands, no page creation |
-| `standard` | All tools except `run_command` |
+| `standard` | All tools except `terminal_run_command` |
 | `full` | All tools enabled |
 
 ### Autonomy Levels
@@ -396,7 +396,7 @@ Rich documents are automatically extracted to text during indexing.
 If the AI seems to miss relevant content:
 1. **Rephrase with specific terms** that appear in the target document
 2. **Use `@file:` mentions** for files you know are relevant
-3. **Use `search_knowledge` directly** by asking the AI: "Search the knowledge base for X"
+3. **Use `fs_search_knowledge` directly** by asking the AI: "Search the knowledge base for X"
 4. **Check indexing status** with `/status` — the file might not be indexed yet
 
 ---
@@ -527,7 +527,7 @@ Typical files:
 **Memory architecture:** Two layers — `durable` (long-term memory in `MEMORY.md`) and `daily` (date-stamped entries in `YYYY-MM-DD.md`). Memory root is `.parallx/memory/`, with `MEMORY.md` as the durable file.
 
 The AI can access memory through:
-- `memory_get` — retrieve specific entries
+- `memory_read` — retrieve specific entries
 - `memory_search` — search by keyword
 
 ---

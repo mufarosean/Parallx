@@ -36,7 +36,7 @@ import {
  * Canonical tool-name form: snake_case, `^[a-zA-Z0-9_-]{1,64}$`.
  *
  * Function-calling schemas (OpenAI / Ollama) reject names containing `.` or
- * other punctuation, and a workspace that MIXES separators (`read_file` vs
+ * other punctuation, and a workspace that MIXES separators (`fs_read_file` vs
  * `budget.pullEmails`) reliably makes small models invent the wrong separator.
  * So every tool name is normalized to one separator at the single registration
  * chokepoint — schema, prompt summaries, and dispatch then all agree, and

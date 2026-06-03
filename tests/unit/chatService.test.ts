@@ -955,7 +955,7 @@ describe('default participant integration helpers', () => {
     const sendChatRequest = vi.fn()
       .mockImplementationOnce(() => (async function* () {
         yield {
-          toolCalls: [{ function: { name: 'read_file', arguments: { path: 'Claims Guide.md' } } }],
+          toolCalls: [{ function: { name: 'fs_read_file', arguments: { path: 'Claims Guide.md' } } }],
           done: true,
         };
       })())
@@ -973,7 +973,7 @@ describe('default participant integration helpers', () => {
       getPageCount: async () => 5,
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [],
-      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      getReadOnlyToolDefinitions: () => [{ name: 'fs_read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
       invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;
@@ -1088,7 +1088,7 @@ describe('default participant integration helpers', () => {
     const sendChatRequest = vi.fn()
       .mockImplementationOnce(() => (async function* () {
         yield {
-          toolCalls: [{ function: { name: 'read_file', arguments: { path: 'Claims Guide.md' } } }],
+          toolCalls: [{ function: { name: 'fs_read_file', arguments: { path: 'Claims Guide.md' } } }],
           done: true,
         };
       })())
@@ -1103,7 +1103,7 @@ describe('default participant integration helpers', () => {
       getPageCount: async () => 5,
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [],
-      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      getReadOnlyToolDefinitions: () => [{ name: 'fs_read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
       invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       retrieveContext: vi.fn(async () => ({
         text: [
@@ -1166,7 +1166,7 @@ describe('default participant integration helpers', () => {
       getPageCount: async () => 5,
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [],
-      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      getReadOnlyToolDefinitions: () => [{ name: 'fs_read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
       invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       retrieveContext: vi.fn(async () => ({
         text: [
@@ -1232,8 +1232,8 @@ describe('default participant integration helpers', () => {
       getWorkspaceName: () => 'Test Workspace',
       getPageCount: async () => 5,
       getCurrentPageTitle: () => undefined,
-      getToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
-      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      getToolDefinitions: () => [{ name: 'fs_read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      getReadOnlyToolDefinitions: () => [{ name: 'fs_read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
       invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;
@@ -1290,8 +1290,8 @@ describe('default participant integration helpers', () => {
       getWorkspaceName: () => 'Test Workspace',
       getPageCount: async () => 5,
       getCurrentPageTitle: () => undefined,
-      getToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
-      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      getToolDefinitions: () => [{ name: 'fs_read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      getReadOnlyToolDefinitions: () => [{ name: 'fs_read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
       invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;
@@ -1342,8 +1342,8 @@ describe('default participant integration helpers', () => {
       getWorkspaceName: () => 'Test Workspace',
       getPageCount: async () => 5,
       getCurrentPageTitle: () => undefined,
-      getToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
-      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      getToolDefinitions: () => [{ name: 'fs_read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      getReadOnlyToolDefinitions: () => [{ name: 'fs_read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
       invokeToolWithRuntimeControl: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     } as any;

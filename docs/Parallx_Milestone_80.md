@@ -58,7 +58,7 @@ The web-research extension is the model. It does exactly this:
   drives the agent: trigger phrases, hard rules, sequence, citations.
 - The AI sees the skill listed in every system prompt via
   `buildSkillsSection` (M65b). When the user says "research X", the
-  AI reads the skill body via `read_file`, then orchestrates the
+  AI reads the skill body via `fs_read_file`, then orchestrates the
   `webSearch` / `webFetch` tools to do the work — all visible in the
   chat surface the user is already watching.
 
@@ -97,7 +97,7 @@ Confirmed before Phase 1 by reading actual code. Use these as the contract.
 - `buildSkillsSection` (M65b, [src/openclaw/openclawSystemPrompt.ts](../src/openclaw/openclawSystemPrompt.ts))
   emits `<skill><name/><location/><description/></skill>` for every
   discovered skill into every system prompt. The AI sees `budget-sync`
-  listed alongside `research-topic` and reads the body via `read_file`
+  listed alongside `research-topic` and reads the body via `fs_read_file`
   when the user's intent matches.
 - Default skills get seeded into `.parallx/skills/` either via the
   legacy `/init` command ([initCommand.ts](../src/built-in/chat/commands/initCommand.ts))
@@ -459,7 +459,7 @@ Each phase verified independently before the next begins.
 
 | Phase | Verification |
 |---|---|
-| 1 | `node --check ext/budget/main.js`; restart Parallx; in chat, `@budget` does not exist (correct — no participant), but `read_file ext/budget/main.js` and grepping for `registerTool` shows all the new names; manually call one read tool via chat ("list my budget accounts") and confirm it returns. |
+| 1 | `node --check ext/budget/main.js`; restart Parallx; in chat, `@budget` does not exist (correct — no participant), but `fs_read_file ext/budget/main.js` and grepping for `registerTool` shows all the new names; manually call one read tool via chat ("list my budget accounts") and confirm it returns. |
 | 2 | `ext/budget/skills/budget-sync.md` exists and validates against `parseSkillManifest` (run a quick node script that loads `src/services/skillLoaderService.ts` parseFrontmatter on it). |
 | 3 | Restart Parallx. Confirm `.parallx/skills/budget-sync/SKILL.md` is created. Confirm `buildSkillsSection` output includes `budget-sync` (check by opening any chat, inspecting the system prompt — Settings → AI → Prompt Inspector, or via `console.log` in dev mode). |
 | 4 | No `lmRunJson` / `LmTransportError` / `aiStageN` references remain in `ext/budget/main.js`. `npx tsc --noEmit` clean (TypeScript only cares about `src/`, but rebuild check). `node scripts/build.mjs` clean. |
@@ -515,7 +515,7 @@ audit trail:
 - **Soft vs hard delete:** Soft, with 30-day trash.
 - **Skill auto-attach:** None needed. System prompt skill listing
   (M65b) makes the AI aware; trigger phrases in the skill body
-  + `read_file` on demand is how all skills work today.
+  + `fs_read_file` on demand is how all skills work today.
 - **Tool exposure scope:** All tools registered globally (any chat).
   Skill drives the sync workflow specifically; read tools are useful
   for any "how much did I spend on X" question.

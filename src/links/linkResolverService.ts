@@ -9,7 +9,7 @@
 //      and the active-extensions list (Iteration C).
 //   3. The canvas `link` block renderer — calls `resolveMetadata()` for
 //      title/icon (Iteration A — click interception today, full chips later).
-//   4. The future `parallx_link` chat tool — validates the AI's target URI
+//   4. The future `link_create` chat tool — validates the AI's target URI
 //      against the union of registered segments (Iteration C).
 //
 // This is the ONLY integration point. Reviewers should reject any PR that

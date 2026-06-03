@@ -22,7 +22,7 @@ describe('AgentTraceService', () => {
       message: 'Planned step: Inspect workspace',
       stepId: 'step-1',
       planIntent: 'Inspect workspace',
-      selectedTool: 'read_file',
+      selectedTool: 'fs_read_file',
       outputSummary: 'Read README.md',
     }, '2026-03-08T15:31:00.000Z');
 

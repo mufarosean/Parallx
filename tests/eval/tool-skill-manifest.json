@@ -2,7 +2,7 @@
   "tools": [
     {
       "id": "canvas_find_pages",
-      "description": "Find or list CANVAS PAGES (canvas page DB). Full-text, property-filter, sort, group, limit. For files on disk use list_files/grep_search.",
+      "description": "Find or list CANVAS PAGES (canvas page DB). Full-text, property-filter, sort, group, limit. For files on disk use fs_list_files/fs_grep_search.",
       "paramsSchema": { "type": "object", "properties": { "query": { "type": "string" }, "filters": { "type": "array" }, "sort": { "type": "object" }, "group": { "type": "string" }, "limit": { "type": "number" } } },
       "source": "src/built-in/chat/tools/pageTools.ts",
       "category": "canvas"
@@ -16,7 +16,7 @@
     },
     {
       "id": "canvas_create_page",
-      "description": "Create a NEW canvas page (canvas page DB). UUID is auto-assigned. Use canvas_edit_page to modify an existing page. For files on disk use write_file.",
+      "description": "Create a NEW canvas page (canvas page DB). UUID is auto-assigned. Use canvas_edit_page to modify an existing page. For files on disk use fs_write_file.",
       "paramsSchema": { "type": "object", "required": ["title"], "properties": { "title": { "type": "string" }, "markdown": { "type": "string" }, "content": { "type": "string" }, "icon": { "type": "string" }, "parent_id": { "type": "string" } } },
       "source": "src/built-in/chat/tools/pageTools.ts",
       "category": "canvas"
@@ -79,35 +79,35 @@
     },
 
     {
-      "id": "list_files",
+      "id": "fs_list_files",
       "description": "List files and directories on disk at a workspace path. Filesystem only — for canvas pages use canvas_find_pages.",
       "paramsSchema": { "type": "object", "properties": { "path": { "type": "string" } } },
       "source": "src/built-in/chat/tools/fileTools.ts",
       "category": "file"
     },
     {
-      "id": "read_file",
+      "id": "fs_read_file",
       "description": "Read a workspace FILE on disk (.md, .txt, code, PDF, DOCX, EPUB, XLSX). Optional start_line/end_line range.",
       "paramsSchema": { "type": "object", "required": ["path"], "properties": { "path": { "type": "string" }, "start_line": { "type": "number" }, "end_line": { "type": "number" } } },
       "source": "src/built-in/chat/tools/fileTools.ts",
       "category": "file"
     },
     {
-      "id": "write_file",
+      "id": "fs_write_file",
       "description": "Create or overwrite a workspace FILE on disk. For canvas pages use canvas_create_page or canvas_edit_page.",
       "paramsSchema": { "type": "object", "required": ["path", "content"], "properties": { "path": { "type": "string" }, "content": { "type": "string" } } },
       "source": "src/built-in/chat/tools/writeTools.ts",
       "category": "file"
     },
     {
-      "id": "edit_file",
+      "id": "fs_edit_file",
       "description": "Edit a workspace FILE on disk by exact find-and-replace. old_content must match exactly (whitespace-sensitive).",
       "paramsSchema": { "type": "object", "required": ["path", "old_content", "new_content"], "properties": { "path": { "type": "string" }, "old_content": { "type": "string" }, "new_content": { "type": "string" } } },
       "source": "src/built-in/chat/tools/writeTools.ts",
       "category": "file"
     },
     {
-      "id": "delete_file",
+      "id": "fs_delete_file",
       "description": "Delete a workspace FILE on disk (moves to trash when possible). Canvas pages cannot be deleted via chat tools.",
       "paramsSchema": { "type": "object", "required": ["path"], "properties": { "path": { "type": "string" } } },
       "source": "src/built-in/chat/tools/writeTools.ts",
@@ -115,21 +115,21 @@
     },
 
     {
-      "id": "search_files",
+      "id": "fs_search_files",
       "description": "Find files on disk by name pattern (case-insensitive substring).",
       "paramsSchema": { "type": "object", "required": ["pattern"], "properties": { "pattern": { "type": "string" }, "path": { "type": "string" } } },
       "source": "src/built-in/chat/tools/fileTools.ts",
       "category": "search"
     },
     {
-      "id": "grep_search",
+      "id": "fs_grep_search",
       "description": "Search file contents on disk by text or regex. For canvas page contents use canvas_find_pages.",
       "paramsSchema": { "type": "object", "required": ["pattern"], "properties": { "pattern": { "type": "string" }, "path": { "type": "string" }, "is_regex": { "type": "boolean" }, "case_sensitive": { "type": "boolean" } } },
       "source": "src/built-in/chat/tools/fileTools.ts",
       "category": "search"
     },
     {
-      "id": "search_knowledge",
+      "id": "fs_search_knowledge",
       "description": "Semantic (vector) search across BOTH canvas pages and workspace files (PDF/DOCX/EPUB/XLSX). Use source_filter for one surface.",
       "paramsSchema": { "type": "object", "required": ["query"], "properties": { "query": { "type": "string" }, "source_filter": { "type": "string", "enum": ["page_block", "file_chunk"] }, "scope": { "type": "string" } } },
       "source": "src/built-in/chat/tools/fileTools.ts",
@@ -137,7 +137,7 @@
     },
 
     {
-      "id": "run_command",
+      "id": "terminal_run_command",
       "description": "Run a shell command in the workspace directory. Dangerous commands are blocked.",
       "paramsSchema": { "type": "object", "required": ["command"], "properties": { "command": { "type": "string" }, "timeout": { "type": "number" } } },
       "source": "src/built-in/chat/tools/terminalTools.ts",
@@ -145,7 +145,7 @@
     },
 
     {
-      "id": "memory_get",
+      "id": "memory_read",
       "description": "Read workspace memory. layer=durable for MEMORY.md; layer=daily for a date-stamped log.",
       "paramsSchema": { "type": "object", "properties": { "layer": { "type": "string", "enum": ["durable", "daily"] }, "date": { "type": "string" } } },
       "source": "src/built-in/chat/tools/memoryTools.ts",
@@ -273,7 +273,7 @@
     },
 
     {
-      "id": "parallx_link",
+      "id": "link_create",
       "description": "Validate and mint a parallx:// citation URI. target must follow a template from the system-prompt '## Linking' section. anchor for deep-linking.",
       "paramsSchema": { "type": "object", "required": ["target"], "properties": { "target": { "type": "string" }, "anchor": { "type": "string" }, "label": { "type": "string" } } },
       "source": "src/built-in/chat/tools/parallxLinkTool.ts",
@@ -504,25 +504,25 @@
     {
       "id": "document-comparison",
       "description": "Compare two or more documents in detail across structure, content, claims, and data; produce a structured similarities/differences/contradictions output.",
-      "expectedToolChain": ["search_knowledge", "list_files", "read_file"],
+      "expectedToolChain": ["fs_search_knowledge", "fs_list_files", "fs_read_file"],
       "source": "src/built-in/chat/skills/document-comparison/SKILL.md"
     },
     {
       "id": "exhaustive-summary",
       "description": "Summarize every file in a folder or workspace. Per-file summaries combined into a comprehensive overview with no omissions.",
-      "expectedToolChain": ["list_files", "read_file"],
+      "expectedToolChain": ["fs_list_files", "fs_read_file"],
       "source": "src/built-in/chat/skills/exhaustive-summary/SKILL.md"
     },
     {
       "id": "folder-overview",
       "description": "Structural overview of a folder: file count, types, hierarchy, brief per-file purpose. Organization, not deep content.",
-      "expectedToolChain": ["list_files", "read_file"],
+      "expectedToolChain": ["fs_list_files", "fs_read_file"],
       "source": "src/built-in/chat/skills/folder-overview/SKILL.md"
     },
     {
       "id": "scoped-extraction",
       "description": "Extract specific facts/values from every file in a scope and aggregate into a structured result. Exhaustive coverage.",
-      "expectedToolChain": ["list_files", "read_file"],
+      "expectedToolChain": ["fs_list_files", "fs_read_file"],
       "source": "src/built-in/chat/skills/scoped-extraction/SKILL.md"
     },
     {

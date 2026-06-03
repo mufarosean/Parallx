@@ -54,7 +54,7 @@ export function createFindPagesTool(db: IBuiltInToolDatabase | undefined): IChat
       'Use when you do NOT already know which page to read — e.g. "pages tagged X", "pages mentioning Y", ' +
       '"all status=open pages". ' +
       'If you already know the page title or UUID, call `canvas_read_page` directly — skip this tool. ' +
-      'For files on disk use `search_files` (name) or `grep_search` (contents). ' +
+      'For files on disk use `fs_search_files` (name) or `fs_grep_search` (contents). ' +
       'Filter ops: equals, not_equals, contains, is_empty, is_not_empty, greater_than, less_than.',
     parameters: {
       type: 'object',
@@ -234,7 +234,7 @@ export function createReadPageTool(
       'Returns the page body, metadata (title, id, icon, timestamps, archived state, block count), and any custom properties. ' +
       '`pageId` accepts a page UUID, a case-insensitive page title, or the literal "current" for the page open in the editor. ' +
       'Use this directly when you know the page title — do NOT call `canvas_find_pages` first to resolve a known title. ' +
-      'For files on disk use `read_file`. ' +
+      'For files on disk use `fs_read_file`. ' +
       'For workspace-wide property definitions use `canvas_list_property_definitions`.',
     parameters: {
       type: 'object',
@@ -524,7 +524,7 @@ export function createCreatePageTool(
       'CREATE a NEW canvas page in the canvas page DB. The UUID is generated automatically — do NOT pass one. ' +
       'Use this only when the page does not yet exist. ' +
       'To edit an EXISTING page (you have its UUID), use `canvas_edit_page`. ' +
-      'For files on disk (.md, .txt, code, etc.) use `write_file` instead.',
+      'For files on disk (.md, .txt, code, etc.) use `fs_write_file` instead.',
     parameters: {
       type: 'object',
       required: ['title'],
@@ -618,7 +618,7 @@ export function createEditPageTool(
       'Use `canvas_create_page` to make a new page (which auto-assigns the UUID). ' +
       'Use `canvas_read_page` or `canvas_find_pages` first if you only have a title and need the UUID. ' +
       '`mode` controls how `markdown` combines with the existing body: `replace` (default) wipes and rewrites; `append` adds after; `prepend` adds before. ' +
-      'For files on disk use `write_file` or `edit_file` instead.',
+      'For files on disk use `fs_write_file` or `fs_edit_file` instead.',
     parameters: {
       type: 'object',
       required: ['pageId', 'markdown'],

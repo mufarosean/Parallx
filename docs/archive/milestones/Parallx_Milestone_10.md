@@ -62,9 +62,9 @@ The user should be able to "brain dump" into chat and have the AI create pages, 
 | `read_current_page` | Read | Read the currently open page |
 | `list_pages` | Read | List all pages with titles and IDs |
 | `get_page_properties` | Read | Get page metadata and database properties |
-| `list_files` | Read | List files/directories at a path |
-| `read_file` | Read | Read text content of a workspace file |
-| `search_files` | Read | Find files matching a name pattern |
+| `fs_list_files` | Read | List files/directories at a path |
+| `fs_read_file` | Read | Read text content of a workspace file |
+| `fs_search_files` | Read | Find files matching a name pattern |
 | `create_page` | Write | Create a new page (Agent mode only) |
 
 #### Context Injection
@@ -74,7 +74,7 @@ The user should be able to "brain dump" into chat and have the AI create pages, 
 | System prompt file list | Root-level file/folder names | Only root level, no content, no subdirectories |
 | Implicit context | Active page content auto-injected | Only 1 page — the currently open one |
 | Attachments | User manually attaches files/pages | Requires user to know what to attach |
-| Tool calls | Model calls read_page, read_file etc. | Requires model to know what to look for |
+| Tool calls | Model calls read_page, fs_read_file etc. | Requires model to know what to look for |
 
 #### Data Sources
 | Source | Storage | Access Method |
@@ -472,7 +472,7 @@ Architecture walkthrough:
 | Answer questions about a specific page | ⚠️ Requires tool call chain | ✅ Auto-retrieved | P0 |
 | Answer questions about workspace-wide topics | ❌ Must know which page to read | ✅ Semantic retrieval | P0 |
 | Find related content across pages | ❌ No semantic understanding | ✅ Vector similarity | P0 |
-| Understand workspace files (code, docs) | ⚠️ Must call read_file explicitly | ✅ Indexed and retrievable | P0 |
+| Understand workspace files (code, docs) | ⚠️ Must call fs_read_file explicitly | ✅ Indexed and retrievable | P0 |
 | Read PDFs, Word docs, Excel files | ❌ Not supported | ✅ Via MarkItDown conversion | P1 |
 | Remember past conversations | ❌ Each session starts fresh | ✅ Conversation memory index | P1 |
 | Auto-tag and categorize new content | ❌ Not implemented | ✅ On-save AI processing | P2 |
@@ -535,8 +535,8 @@ The AI assistant must be aware of:
 │ SQLite +     │  │ ┌───────────────────┐ │  │ read_page          │
 │ sqlite-vec   │  │ │ Content Watchers  │ │  │ create_page        │
 │ (embeddings) │  │ │ (save, change)    │ │  │ edit_block         │
-│              │  │ └────────┬──────────┘ │  │ read_file          │
-│ Chunks:      │  │          ▼            │  │ search_files       │
+│              │  │ └────────┬──────────┘ │  │ fs_read_file          │
+│ Chunks:      │  │          ▼            │  │ fs_search_files       │
 │ - pages      │  │ ┌───────────────────┐ │  │ ... (extensible)   │
 │ - blocks     │  │ │ Chunking Engine   │ │  │                    │
 │ - files      │  │ │ (block, semantic) │ │  │                    │
@@ -780,10 +780,10 @@ interface IMemoryService {
 - **Estimate**: 1 session
 
 #### Task 3.3: RAG as a Tool (Agentic RAG) ✅ `4fed27a`
-- **What**: Add `search_knowledge` tool so the model can explicitly search when needed
+- **What**: Add `fs_search_knowledge` tool so the model can explicitly search when needed
 - **File**: `src/built-in/chat/tools/builtInTools.ts`
 - **Details**:
-  - New tool: `search_knowledge(query: string, sourceFilter?: string)` → semantic search
+  - New tool: `fs_search_knowledge(query: string, sourceFilter?: string)` → semantic search
   - This complements automatic retrieval — the model can search for additional context mid-conversation
   - Different from `search_workspace` (keyword) — this is semantic
 - **Depends on**: Task 3.1
@@ -893,7 +893,7 @@ interface IMemoryService {
 Phase 1 (Foundation)     →  Phase 2 (Indexing)      →  Phase 3 (Retrieval)
   1.1 EmbeddingService       2.1 Page indexing           3.1 RetrievalService
   1.2 VectorIndex             2.2 File indexing           3.2 RAG in participant
-  1.3 ChunkingService         2.3 Binary files            3.3 search_knowledge tool
+  1.3 ChunkingService         2.3 Binary files            3.3 fs_search_knowledge tool
                                                       →  Phase 4 (Prompts)
                                                           4.1 Dynamic system prompt
                                                           4.2 AI self-awareness
@@ -1367,7 +1367,7 @@ With Ollama + 8K context model (e.g., llama3.2):
 | Copilot ships a local embedding model | Parallx uses Ollama nomic-embed-text |
 | `workspace.findTextInFiles` | FTS5 BM25 search |
 | Symbol-aware chunking (functions, classes) | Block-aware chunking (canvas blocks = natural chunks) |
-| `workspace.findFiles` by name | Existing `search_files` tool |
+| `workspace.findFiles` by name | Existing `fs_search_files` tool |
 | Incremental re-index on save | Compare `content_hash` column |
 
 ### DR-8: Chunking Strategy — Detailed Technical Plan

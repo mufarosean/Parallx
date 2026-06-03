@@ -3,7 +3,7 @@
 // Same push model as the news brief / weather widget: on refresh it asks the
 // active chat session to look up the latest quotes for the configured symbols
 // with its web-research tools, then deliver a compact Markdown table back via
-// the shared `render_to_widget` tool. No invented prices — the AI fetches real
+// the shared `dashboard_render_widget` tool. No invented prices — the AI fetches real
 // numbers and reports only what the sources show, with their as-of time.
 
 import type {
@@ -158,7 +158,7 @@ function buildPrompt(cfg: MarketConfig, instanceId: string): string {
     '1. Use webSearch / webFetch to find the latest quote for each symbol from a reliable financial source.',
     '2. Report only what the source actually shows — never invent or estimate a price. If a symbol can\u2019t be found, mark it as "n/a".',
     '3. Format as a Markdown bullet list, one line per symbol: `**SYMBOL** — price (change with % and a + / − sign)`. Do not use a Markdown table. Add one short italic line beneath the list noting the as-of time and source. No preamble, no emojis.',
-    `4. Call the render_to_widget tool with instanceId "${instanceId}" and the finished Markdown as content. This is how the snapshot reaches the widget — do not skip it.`,
+    `4. Call the dashboard_render_widget tool with instanceId "${instanceId}" and the finished Markdown as content. This is how the snapshot reaches the widget — do not skip it.`,
   ];
   if (cfg.extraInstructions.trim()) {
     lines.push('', `Additional instructions: ${cfg.extraInstructions.trim()}`);

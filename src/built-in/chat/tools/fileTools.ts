@@ -17,9 +17,9 @@ const MAX_SEARCH_RESULTS = 50;
 const MAX_SEARCH_DEPTH = 5;
 const MAX_GREP_MATCHES = 100;
 const GREP_CONTEXT_LINES = 2;
-/** Maximum file size (bytes) to search inside for grep_search. */
+/** Maximum file size (bytes) to search inside for fs_grep_search. */
 const MAX_GREP_FILE_SIZE = 512_000; // 512 KB
-/** Maximum characters returned by read_file for extracted rich document text. */
+/** Maximum characters returned by fs_read_file for extracted rich document text. */
 const MAX_DOC_TEXT_CHARS = 50_000;
 
 // ── Tool helpers ──
@@ -86,13 +86,13 @@ async function buildWorkspaceTree(fs: IBuiltInToolFileSystem): Promise<string> {
 
 export function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
-    name: 'list_files',
+    name: 'fs_list_files',
     displaySummary: 'List files / directories on disk.',
     description:
       'Lists files and directories on disk at a workspace path. ' +
       'Use when exploring filesystem structure or confirming a file exists before reading it. ' +
       'For canvas pages (the page DB) use `canvas_find_pages`. ' +
-      'For finding files by name pattern use `search_files`; for content search use `grep_search` or `search_knowledge`.',
+      'For finding files by name pattern use `fs_search_files`; for content search use `fs_grep_search` or `fs_search_knowledge`.',
     parameters: {
       type: 'object',
       properties: {
@@ -129,14 +129,14 @@ export function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): ICh
 
 export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
-    name: 'read_file',
+    name: 'fs_read_file',
     displaySummary: 'Read a workspace file on disk.',
     description:
       'Reads a workspace file on disk — text (.md, .txt, source code) or rich documents (PDF, DOCX, EPUB, XLSX, extracted to text). ' +
       'Use `start_line`/`end_line` to read a range of a large file. ' +
       'Use when the user references a file by path, or when you need exact source for citation/quotation. ' +
       'For canvas pages (page DB) use `canvas_read_page`. ' +
-      'For conceptual search across many files use `search_knowledge`.',
+      'For conceptual search across many files use `fs_search_knowledge`.',
     parameters: {
       type: 'object',
       required: ['path'],
@@ -183,7 +183,7 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
               content: treePrefix +
                 `**${relPath}** (${ext} file — showing first ${MAX_DOC_TEXT_CHARS} characters, full document is indexed)\n\n` +
                 `\`\`\`\n${truncated}\n\`\`\`\n\n` +
-                `*Content truncated. Use search_knowledge to search across the full document.*`,
+                `*Content truncated. Use fs_search_knowledge to search across the full document.*`,
             };
           }
           return { content: treePrefix + `**${relPath}** (${ext} file)\n\n\`\`\`\n${result.content}\n\`\`\`` };
@@ -213,12 +213,12 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
 
 export function createSearchFilesTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
-    name: 'search_files',
+    name: 'fs_search_files',
     displaySummary: 'Find files on disk by name pattern.',
     description:
       'Finds files on disk by NAME pattern (case-insensitive substring of the filename). ' +
       'Use when locating a file by its name — e.g. "find the README", "any .csv files". ' +
-      'For file CONTENT search use `grep_search` (exact text/regex) or `search_knowledge` (semantic). ' +
+      'For file CONTENT search use `fs_grep_search` (exact text/regex) or `fs_search_knowledge` (semantic). ' +
       'For canvas pages use `canvas_find_pages`.',
     parameters: {
       type: 'object',
@@ -259,17 +259,17 @@ export function createSearchFilesTool(fs: IBuiltInToolFileSystem | undefined): I
   };
 }
 
-// ── grep_search tool (M41 Phase 8) ──
+// ── fs_grep_search tool (M41 Phase 8) ──
 
 export function createGrepSearchTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
-    name: 'grep_search',
+    name: 'fs_grep_search',
     displaySummary: 'Search file contents on disk by pattern.',
     description:
       'Searches file CONTENTS on disk for an EXACT text or regex pattern. ' +
       'Use when the user wants literal matches — symbol names, exact phrases, code patterns. ' +
-      'For conceptual/semantic search ("anything about X") use `search_knowledge`. ' +
-      'For filename matching use `search_files`. For canvas page contents use `canvas_find_pages`.',
+      'For conceptual/semantic search ("anything about X") use `fs_search_knowledge`. ' +
+      'For filename matching use `fs_search_files`. For canvas page contents use `canvas_find_pages`.',
     parameters: {
       type: 'object',
       required: ['pattern'],
@@ -480,12 +480,12 @@ function formatSize(bytes: number): string {
 
 export function createSearchKnowledgeTool(retrieval: IBuiltInToolRetrieval | undefined): IChatTool {
   return {
-    name: 'search_knowledge',
+    name: 'fs_search_knowledge',
     displaySummary: 'Semantic search across pages AND files.',
     description:
       'Semantic (embedding) search across BOTH canvas pages and workspace files, including rich documents (PDF, DOCX, EPUB, XLSX). ' +
       'Use when the query is conceptual or open-ended — "what does X mean", "find anything about Y", "documents related to Z". ' +
-      'For exact literal matches use `grep_search`; for filename matches use `search_files`; ' +
+      'For exact literal matches use `fs_grep_search`; for filename matches use `fs_search_files`; ' +
       'for canvas-only discovery use `canvas_find_pages`. ' +
       'Set `source_filter=page_block` for canvas-only, `file_chunk` for filesystem-only.',
     parameters: {

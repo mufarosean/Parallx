@@ -78,7 +78,7 @@
 **Findings:**
 | ID | Severity | Finding | Status |
 |---|---|---|---|
-| F4-R2-01 | MEDIUM | `getToolFilteredReason` hardcoded only `standard`+`run_command` for `tool-profile-deny` — all `readonly` denies misreported | FIXED ✅ |
+| F4-R2-01 | MEDIUM | `getToolFilteredReason` hardcoded only `standard`+`terminal_run_command` for `tool-profile-deny` — all `readonly` denies misreported | FIXED ✅ |
 | F4-R2-02 | LOW | `resolveToolProfile` comments contradicted code behavior | FIXED ✅ |
 | F4-R2-03 | LOW | `modelCapabilities` parameter + `model-unsupported` reason were dead code | FIXED ✅ |
 | F4-R2-04 | MEDIUM | Zero direct unit tests for `applyOpenclawToolPolicy`, `resolveToolProfile`, tool state | FIXED ✅ |

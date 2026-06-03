@@ -100,7 +100,7 @@ Parallx is already strong in the following non-autonomous AI areas:
      the user-facing memory source of truth.
 
 4. **Explicit memory and transcript tools**
-   - `memory_search`, `memory_get`, `transcript_search`, and `transcript_get`
+   - `memory_search`, `memory_read`, `transcript_search`, and `transcript_get`
      exist as explicit product surfaces.
 
 5. **Rich IDE-like product surface**

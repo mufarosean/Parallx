@@ -12,7 +12,7 @@
 | ID | Capability | Iteration 1 | Iteration 2 | Iteration 3 |
 |----|-----------|-------------|-------------|-------------|
 | F12-1 | Tool call parts persist after stream close | MISALIGNED | ALIGNED | ALIGNED |
-| F12-2 | Skill prompt names `read_file` tool explicitly | MISALIGNED | ALIGNED | ALIGNED |
+| F12-2 | Skill prompt names `fs_read_file` tool explicitly | MISALIGNED | ALIGNED | ALIGNED |
 | F12-3 | Skill prompt includes fabrication guard | MISSING | ALIGNED | ALIGNED |
 | F12-4 | Skill prompt handles explicit user naming | MISSING | ALIGNED | ALIGNED |
 | F12-5 | Pipeline and UI prompt synchronized | MISALIGNED | ALIGNED | ALIGNED |
@@ -67,13 +67,13 @@
 | Gap | File(s) Changed | What Changed |
 |-----|-----------------|--------------|
 | F12-1 | `chatService.ts` | Removed `ToolInvocation` from strip list in `close()` — tool cards persist |
-| F12-2 | `openclawSystemPrompt.ts` | Added "using read_file" to skill match instruction |
+| F12-2 | `openclawSystemPrompt.ts` | Added "using fs_read_file" to skill match instruction |
 | F12-3 | `openclawSystemPrompt.ts` | Added fabrication guard: "NEVER describe from memory" |
 | F12-4 | `openclawSystemPrompt.ts` | Added explicit user naming case |
 | F12-5 | `chatSystemPrompts.ts` | Added constraints + rate-limit guidance to match pipeline |
 
 ### Tests Added
-- `'names read_file tool explicitly'` — verifies `using read_file` in skill prompt
+- `'names fs_read_file tool explicitly'` — verifies `using fs_read_file` in skill prompt
 - `'includes fabrication guard'` — verifies `NEVER describe a skill` in prompt
 - `'includes explicit user naming case'` — verifies user naming instruction
 

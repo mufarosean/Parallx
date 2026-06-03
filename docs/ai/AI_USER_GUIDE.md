@@ -604,18 +604,18 @@ Typical files include:
 
 ### How memory gets written (M81 Phase 8)
 
-The AI writes to memory itself via the `memory_edit` tool. There is no
+The AI writes to memory itself via the `memory_write` tool. There is no
 hidden regex or background process — every write is an explicit, visible
 tool call. Three actions on four files:
 
 | Tool call | When the AI uses it |
 |-----------|---------------------|
-| `memory_edit file=USER action=add` | The user states a preference or reveals a stable fact about themselves |
-| `memory_edit file=lesson action=add slug=<x> description=<y>` | The user corrects you, you notice a tool-use gotcha, or a workaround emerges that future sessions need |
-| `memory_edit file=MEMORY action=add` | Free-form addition to the index header (rare — most durable writes go through `file=lesson`) |
-| `memory_edit file=daily action=add` | Something noteworthy happened today |
-| `memory_edit ... action=replace` | An existing entry needs updating (lesson body, preference value, etc.) |
-| `memory_edit ... action=remove` | An entry is no longer accurate; lessons are archived, not deleted |
+| `memory_write file=USER action=add` | The user states a preference or reveals a stable fact about themselves |
+| `memory_write file=lesson action=add slug=<x> description=<y>` | The user corrects you, you notice a tool-use gotcha, or a workaround emerges that future sessions need |
+| `memory_write file=MEMORY action=add` | Free-form addition to the index header (rare — most durable writes go through `file=lesson`) |
+| `memory_write file=daily action=add` | Something noteworthy happened today |
+| `memory_write ... action=replace` | An existing entry needs updating (lesson body, preference value, etc.) |
+| `memory_write ... action=remove` | An entry is no longer accurate; lessons are archived, not deleted |
 
 USER.md (~1,500 chars) and MEMORY.md (~2,500 chars, the index) are bounded — if an
 `add` would exceed the cap, the tool returns the current contents and the AI must
@@ -628,7 +628,7 @@ archive an old lesson before adding a new one.
 
 Daily logs are unbounded.
 
-The AI reads memory via `memory_get` (specific file, date, or lesson by `name=<slug>`)
+The AI reads memory via `memory_read` (specific file, date, or lesson by `name=<slug>`)
 and `memory_search` (semantic search across all of `.parallx/memory/`).
 
 ### `/init` and memory consolidation (M81 Phase 8)
@@ -970,8 +970,8 @@ That is the fastest path to getting real value from Parallx AI.
 Edit `.parallx/permissions.json` to promote or demote any tool:
 ```json
 {
-  "write_file": "always-allowed",
-  "read_file": "requires-approval"
+  "fs_write_file": "always-allowed",
+  "fs_read_file": "requires-approval"
 }
 ```
 
@@ -995,7 +995,7 @@ build/
 
 Files matching these patterns are:
 1. **Not indexed** — the AI can't find them via search
-2. **Not readable** — tools like `read_file` and `search_files` are blocked
+2. **Not readable** — tools like `fs_read_file` and `fs_search_files` are blocked
 3. **Not attachable** — "Add Context" won't let you attach them
 
 ### Workspace Sandbox

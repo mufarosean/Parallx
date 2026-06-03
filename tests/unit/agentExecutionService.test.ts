@@ -72,7 +72,7 @@ describe('AgentExecutionService', () => {
         description: 'Read workspace files',
         kind: 'read',
         proposedAction: {
-          toolName: 'read_file',
+          toolName: 'fs_read_file',
           summary: 'Read README.md',
           targetUris: [URI.file('/workspace/README.md')],
           interactionMode: 'operator',
@@ -160,7 +160,7 @@ describe('AgentExecutionService', () => {
         description: 'Try reading outside workspace',
         kind: 'read',
         proposedAction: {
-          toolName: 'read_file',
+          toolName: 'fs_read_file',
           summary: 'Read outside file',
           targetUris: [URI.file('/outside/secret.txt')],
           interactionMode: 'operator',
@@ -186,7 +186,7 @@ describe('AgentExecutionService', () => {
         description: 'Read workspace files',
         kind: 'read',
         proposedAction: {
-          toolName: 'read_file',
+          toolName: 'fs_read_file',
           summary: 'Read README.md',
           targetUris: [URI.file('/workspace/README.md')],
           interactionMode: 'operator',
@@ -226,7 +226,7 @@ describe('AgentExecutionService', () => {
         description: 'Try reading outside workspace',
         kind: 'read',
         proposedAction: {
-          toolName: 'read_file',
+          toolName: 'fs_read_file',
           summary: 'Read outside file',
           targetUris: [URI.file('/outside/secret.txt')],
           interactionMode: 'operator',

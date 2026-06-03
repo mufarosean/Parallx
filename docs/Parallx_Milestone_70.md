@@ -20,7 +20,7 @@ AI's existing task tools.
 
 ### Gate 1 — Deduplication audit
 
-Every existing AI tool (`read_file`, `write_file`, `create_page`, `run_command`,
+Every existing AI tool (`fs_read_file`, `fs_write_file`, `create_page`, `terminal_run_command`,
 `webSearch`, etc.) must be cross-checked against the full command palette. Any
 command that duplicates an existing tool's action is **not** exposed as an app
 command — the existing tool is the canonical path.
@@ -137,6 +137,6 @@ ID hallucination.
 
 - User can say "switch to dark theme" and the AI does it in one exchange
 - User can say "open the workspace graph" and the AI does it
-- Saying "read my settings file" does NOT trigger `app__find_commands` — existing `read_file` tool handles it
+- Saying "read my settings file" does NOT trigger `app__find_commands` — existing `fs_read_file` tool handles it
 - A hallucinated command ID produces a clear error, not a silent no-op
 - Context window overhead when feature is enabled: two small schemas only

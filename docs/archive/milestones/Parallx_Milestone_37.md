@@ -144,7 +144,7 @@ as a retrieval-first system, not a deterministic workspace-processing system.
    set coverage.
 4. `chatDataService.ts:listFolderFiles()` truncates file reads, caps file count,
    and is best-effort rather than coverage-accounted.
-5. `fileTools.ts:read_file` explicitly nudges the model to trust retrieved
+5. `fileTools.ts:fs_read_file` explicitly nudges the model to trust retrieved
    context and avoid re-reading files unless necessary.
 6. `chatTurnContextPreparation.ts` assembles evidence for answering, but not a
    ledger of what requested sources were fully processed.
@@ -201,7 +201,7 @@ Its key pattern is **search is separate from read**.
 
 Observed OpenClaw-aligned properties:
 
-1. explicit `memory_search` and `memory_get` separation;
+1. explicit `memory_search` and `memory_read` separation;
 2. session/session-history access as explicit tools;
 3. search returns snippets, not a false promise of full-file understanding;
 4. file and tool operations are treated as the actual execution substrate;

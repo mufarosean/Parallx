@@ -364,7 +364,7 @@ describe('MemoryService', () => {
 
   // M81 Phase 3 Stage 2 — storeConcepts / recallConcepts / formatConceptContext
   // test blocks removed alongside the methods. Concept curation is now agent-
-  // driven via the `memory_edit` tool (see tests/unit/memoryEditTool.test.ts).
+  // driven via the `memory_write` tool (see tests/unit/memoryEditTool.test.ts).
 
   // ── M17 P1.3 Task 1.3.7: Decay & eviction tests ──
 
@@ -460,7 +460,7 @@ describe('MemoryService', () => {
 
   // ── Task 5.2: User Preference Learning ──
   // M81 Phase 4 — extractAndStorePreferences regex pipeline removed.
-  // Preferences are now agent-authored via `memory_edit` (tests in
+  // Preferences are now agent-authored via `memory_write` (tests in
   // tests/unit/memoryEditTool.test.ts). getPreferences/formatPreferencesForPrompt
   // tests below still exercise the read side of the `user_preferences` SQL
   // table, which remains for legacy DBs.
@@ -504,7 +504,7 @@ describe('MemoryService', () => {
     it('is a no-op when the preference does not exist', async () => {
       // M81 Phase 4 — the regex extraction that seeded preferences via this
       // service was removed. The deletePreference method stays for legacy
-      // SQL-backed callers, but new code seeds preferences via memory_edit
+      // SQL-backed callers, but new code seeds preferences via memory_write
       // → MEMORY.md instead. The narrow contract this test covers: calling
       // delete on an absent key should not throw.
       await expect(service.deletePreference('preference_missing')).resolves.toBeUndefined();

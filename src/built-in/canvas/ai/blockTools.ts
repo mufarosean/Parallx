@@ -124,7 +124,7 @@ export function createEditBlockTool(
   return {
     name: 'canvas_edit_block',
     displaySummary: 'Replace a block on a canvas page (approval).',
-    description: 'Replace the plain-text content of a single block inside a CANVAS PAGE. Operates on the canvas page DB. For file edits use `edit_file`. The block becomes a paragraph; markdown formatting is NOT parsed — pass plain text. For richer edits use canvas_edit_page (which accepts markdown).',
+    description: 'Replace the plain-text content of a single block inside a CANVAS PAGE. Operates on the canvas page DB. For file edits use `fs_edit_file`. The block becomes a paragraph; markdown formatting is NOT parsed — pass plain text. For richer edits use canvas_edit_page (which accepts markdown).',
     parameters: {
       type: 'object',
       required: ['pageId', 'blockId', 'newContent'],

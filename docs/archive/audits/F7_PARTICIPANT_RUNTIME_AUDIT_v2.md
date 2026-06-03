@@ -86,8 +86,8 @@ Three new gaps surfaced in this deeper pass — primarily around error handling 
 - **Classification**: ALIGNED
 - **Parallx file**: `src/openclaw/openclawToolPolicy.ts`
 - **Upstream reference**: `tool-policy.ts` 4-stage filtering, `tool-policy-match.ts` deny-first
-- **Divergence**: Minor — `resolveToolProfile` has a misleading comment (`case 'edit': return 'standard'; // Edit mode: read-only tools only` — 'standard' allows all tools except `run_command`, which is not "read-only")
-- **Evidence**: 3 profiles (readonly/standard/full), deny-first pattern, M11 3-tier permissions (`never-allowed` removed), M42 model capability check. Readonly profile correctly denies write_file/edit_file/delete_file/run_command/create_page.
+- **Divergence**: Minor — `resolveToolProfile` has a misleading comment (`case 'edit': return 'standard'; // Edit mode: read-only tools only` — 'standard' allows all tools except `terminal_run_command`, which is not "read-only")
+- **Evidence**: 3 profiles (readonly/standard/full), deny-first pattern, M11 3-tier permissions (`never-allowed` removed), M42 model capability check. Readonly profile correctly denies fs_write_file/fs_edit_file/fs_delete_file/terminal_run_command/create_page.
 - **Severity**: LOW (comment-only issue)
 
 ### F7-08: Runtime Support
@@ -218,7 +218,7 @@ Three new gaps surfaced in this deeper pass — primarily around error handling 
 
 1. **Duplicate constant**: `OPENCLAW_MAX_READONLY_ITERATIONS = 3` is defined in both `openclawParticipantRuntime.ts:30` and `openclawDefaultParticipant.ts:238`. The default participant defines its own copy for Edit mode budget rather than importing from the runtime. Maintenance risk if values diverge.
 
-2. **Misleading comment in `resolveToolProfile`**: `case 'edit': return 'standard'; // Edit mode: read-only tools only` — the `standard` profile allows all tools except `run_command`, which is not "read-only". The comment should say "Edit mode: standard tools (no command execution)".
+2. **Misleading comment in `resolveToolProfile`**: `case 'edit': return 'standard'; // Edit mode: read-only tools only` — the `standard` profile allows all tools except `terminal_run_command`, which is not "read-only". The comment should say "Edit mode: standard tools (no command execution)".
 
 3. **Dead parameter**: `_commandRegistry` in `runOpenclawDefaultTurn` is created and passed but never used (prefixed `_`). The command registry is consumed only for the slash command definitions in the participant object, not during turn execution.
 

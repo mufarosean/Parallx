@@ -24,11 +24,11 @@ OpenClaw exposes 20 built-in tools across 6 categories, registered in [src/built
 
 | Tool | Permission | Description |
 |------|-----------|-------------|
-| `list_files` | always-allowed | List files and directories at a workspace path |
-| `read_file` | always-allowed | Read text files (≤50 KB) or rich docs (PDF, DOCX, XLSX via extraction) |
-| `search_files` | always-allowed | Search file/directory names by glob pattern (depth ≤ 5, max 50 results) |
-| `grep_search` | always-allowed | Regex or literal search inside files (max 100 matches, 512 KB per file) |
-| `search_knowledge` | always-allowed | Hybrid RAG search across indexed workspace content |
+| `fs_list_files` | always-allowed | List files and directories at a workspace path |
+| `fs_read_file` | always-allowed | Read text files (≤50 KB) or rich docs (PDF, DOCX, XLSX via extraction) |
+| `fs_search_files` | always-allowed | Search file/directory names by glob pattern (depth ≤ 5, max 50 results) |
+| `fs_grep_search` | always-allowed | Regex or literal search inside files (max 100 matches, 512 KB per file) |
+| `fs_search_knowledge` | always-allowed | Hybrid RAG search across indexed workspace content |
 
 **Capabilities:**
 - Can read any text file within workspace boundary
@@ -50,9 +50,9 @@ OpenClaw exposes 20 built-in tools across 6 categories, registered in [src/built
 
 | Tool | Permission | Description |
 |------|-----------|-------------|
-| `write_file` | requires-approval | Create or overwrite a workspace file |
-| `edit_file` | requires-approval | Search-and-replace edit within an existing file |
-| `delete_file` | requires-approval | Delete a workspace file |
+| `fs_write_file` | requires-approval | Create or overwrite a workspace file |
+| `fs_edit_file` | requires-approval | Search-and-replace edit within an existing file |
+| `fs_delete_file` | requires-approval | Delete a workspace file |
 
 **Capabilities:**
 - Full create/overwrite/edit/delete lifecycle
@@ -92,7 +92,7 @@ OpenClaw exposes 20 built-in tools across 6 categories, registered in [src/built
 
 | Tool | Permission | Description |
 |------|-----------|-------------|
-| `run_command` | requires-approval | Execute a shell command in the workspace directory |
+| `terminal_run_command` | requires-approval | Execute a shell command in the workspace directory |
 
 Detailed in [Section 3](#3-terminal-interaction-capabilities).
 
@@ -102,7 +102,7 @@ Detailed in [Section 3](#3-terminal-interaction-capabilities).
 
 | Tool | Permission | Description |
 |------|-----------|-------------|
-| `memory_get` | always-allowed | Retrieve memory entries by layer (`durable` or `daily`) and optional date (YYYY-MM-DD) |
+| `memory_read` | always-allowed | Retrieve memory entries by layer (`durable` or `daily`) and optional date (YYYY-MM-DD) |
 | `memory_search` | always-allowed | Search memory by keyword; filterable by layer (`all`/`durable`/`daily`) and date |
 
 ### 2.6 Transcript Tools
@@ -122,11 +122,11 @@ Detailed in [Section 3](#3-terminal-interaction-capabilities).
 
 **Source:** [src/built-in/chat/tools/terminalTools.ts](src/built-in/chat/tools/terminalTools.ts)
 
-OpenClaw's terminal access is mediated through a single `run_command` tool that executes shell commands in the workspace directory via the Electron main process.
+OpenClaw's terminal access is mediated through a single `terminal_run_command` tool that executes shell commands in the workspace directory via the Electron main process.
 
 ```
 ┌──────────────┐     ┌─────────────────┐     ┌──────────────────┐
-│   OpenClaw   │────▶│  run_command     │────▶│  Electron Main   │
+│   OpenClaw   │────▶│  terminal_run_command     │────▶│  Electron Main   │
 │   Agent      │     │  (tool handler)  │     │  (child_process)  │
 │              │◀────│                  │◀────│                  │
 │              │     │  stdout/stderr   │     │  exec result     │
@@ -150,7 +150,7 @@ OpenClaw's terminal access is mediated through a single `run_command` tool that 
 
 | Constraint | Implementation |
 |-----------|---------------|
-| **User approval required** | Every `run_command` invocation needs explicit user approval |
+| **User approval required** | Every `terminal_run_command` invocation needs explicit user approval |
 | **30-second timeout** | Default timeout; configurable via `timeout` parameter |
 | **50,000 character output cap** | Output truncated beyond this limit |
 | **Command blocklist** | Hard-coded list of dangerous commands that are unconditionally rejected |
@@ -200,13 +200,13 @@ OpenClaw interacts with the computer through **structured tools** — programmat
 
 | Operation | Tool | Notes |
 |-----------|------|-------|
-| Read files | `read_file` | Text ≤ 50 KB, rich docs via extraction |
-| Write files | `write_file` | Creates or overwrites (requires approval) |
-| Edit files | `edit_file` | Search-and-replace (requires approval) |
-| Delete files | `delete_file` | Requires approval |
-| List directories | `list_files` | Returns names, types, sizes |
-| Search by name | `search_files` | Glob pattern, depth-limited |
-| Search content | `grep_search` | Regex or literal, context lines |
+| Read files | `fs_read_file` | Text ≤ 50 KB, rich docs via extraction |
+| Write files | `fs_write_file` | Creates or overwrites (requires approval) |
+| Edit files | `fs_edit_file` | Search-and-replace (requires approval) |
+| Delete files | `fs_delete_file` | Requires approval |
+| List directories | `fs_list_files` | Returns names, types, sizes |
+| Search by name | `fs_search_files` | Glob pattern, depth-limited |
+| Search content | `fs_grep_search` | Regex or literal, context lines |
 
 **Path sanitization** (from [writeTools.ts](src/built-in/chat/tools/writeTools.ts#L34-L62)):
 - Normalizes separators (`\` → `/`)
@@ -237,7 +237,7 @@ OpenClaw interacts with the computer through **structured tools** — programmat
 | Vector store | sqlite-vec (WASM extension for SQLite) |
 | Keyword index | FTS5 (SQLite full-text search) |
 | Fusion method | Reciprocal Rank Fusion (RRF) — merges vector + BM25 |
-| Access via | `search_knowledge` tool + automatic RAG context injection |
+| Access via | `fs_search_knowledge` tool + automatic RAG context injection |
 
 **How RAG works in practice:**
 
@@ -342,8 +342,8 @@ This is a test/demo server — not a production capability.
 
 | Tier | Description | Examples |
 |------|-------------|---------|
-| `always-allowed` | No approval needed | `list_files`, `read_file`, `search_files`, `grep_search`, `search_knowledge`, `read_page`, `memory_get` |
-| `requires-approval` | User must approve each invocation | `write_file`, `edit_file`, `delete_file`, `run_command`, `create_page` |
+| `always-allowed` | No approval needed | `fs_list_files`, `fs_read_file`, `fs_search_files`, `fs_grep_search`, `fs_search_knowledge`, `read_page`, `memory_read` |
+| `requires-approval` | User must approve each invocation | `fs_write_file`, `fs_edit_file`, `fs_delete_file`, `terminal_run_command`, `create_page` |
 | `never-allowed` | Tool blocked entirely | (configurable per-tool override) |
 
 ### 6.2 Tool Profiles
@@ -352,8 +352,8 @@ This is a test/demo server — not a production capability.
 
 | Profile | Allowed | Denied |
 |---------|---------|--------|
-| `readonly` | All except denied | `write_file`, `edit_file`, `delete_file`, `run_command`, `create_page` |
-| `standard` | All except denied | `run_command` |
+| `readonly` | All except denied | `fs_write_file`, `fs_edit_file`, `fs_delete_file`, `terminal_run_command`, `create_page` |
+| `standard` | All except denied | `terminal_run_command` |
 | `full` | Everything | Nothing |
 
 Tool profiles are **deny-first** — the deny list is checked before the allow list.
@@ -514,7 +514,7 @@ For the full Claude capabilities reference, see [CLAUDE_CAPABILITIES_RESEARCH.md
 | Scope | Workspace boundary | Full desktop (Computer Use) or sandboxed container (Code Execution) |
 | Browser / Web | No built-in access | Web search + web fetch (server-side) |
 | Terminal | Limited (30s, blocklist) | Bash tool (persistent session, developer-controlled) |
-| Code execution | `run_command` tool (workspace dir) | Sandboxed container (Python 3.11 + Bash, 5GiB RAM) |
+| Code execution | `terminal_run_command` tool (workspace dir) | Sandboxed container (Python 3.11 + Bash, 5GiB RAM) |
 | File editing | Reliable (search-replace) | Text editor tool (str_replace) or Code execution |
 | Vision | Model-dependent | JPEG, PNG, GIF, WebP; up to 8000×8000 px |
 | Privacy | Everything stays local | Data sent to Anthropic (ZDR optional) |

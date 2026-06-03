@@ -38,7 +38,7 @@ describe('chat autonomy UI', () => {
             stepId: 'step-2',
             stepIds: ['step-2'],
             actionClass: 'write',
-            toolName: 'write_file',
+            toolName: 'fs_write_file',
             summary: 'Write the updated guide',
             explanation: 'This will modify a workspace document.',
             affectedTargets: ['docs/Claims Guide.md'],
@@ -91,7 +91,7 @@ describe('chat autonomy UI', () => {
               taskId: 'task-1',
               phase: 'approval',
               event: 'approval-requested',
-              message: 'Approval requested for write_file.',
+              message: 'Approval requested for fs_write_file.',
               createdAt: '2026-03-08T00:00:00.000Z',
             },
           ],
@@ -106,7 +106,7 @@ describe('chat autonomy UI', () => {
     expect(rail.textContent).toContain('Waiting for approval before the next workspace action can run: Write the updated guide.');
     expect(rail.textContent).toContain('Approve once only allows this single action.');
     expect(rail.textContent).toContain('Review the pending approval below. Approve once to allow only this action, or deny it to keep the task blocked.');
-    expect(rail.textContent).toContain('Approval requested for write_file.');
+    expect(rail.textContent).toContain('Approval requested for fs_write_file.');
     expect(rail.querySelector('.parallx-chat-agent-task-details')).toBeTruthy();
   });
 
@@ -247,7 +247,7 @@ describe('chat autonomy UI', () => {
             stepId: 'step-3',
             stepIds: ['step-3'],
             actionClass: 'write',
-            toolName: 'edit_file',
+            toolName: 'fs_edit_file',
             summary: 'Edit the note',
             explanation: 'This changes a file.',
             affectedTargets: [],

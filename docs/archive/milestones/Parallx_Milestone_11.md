@@ -175,7 +175,7 @@ Before defining what to build, here's what M10 already shipped. This is critical
 |---|---|---|---|
 | **Agentic loop** | `defaultParticipant.ts` | 10-iteration tool call → execute → feed back cycle | **Keep** — this IS our agent runtime |
 | **Tool registry** | `languageModelToolsService.ts` | Register, invoke, confirm tools. `getToolDefinitions()` for Ollama | **Extend** — becomes the skill executor |
-| **11 built-in tools** | `builtInTools.ts` | `search_workspace`, `read_page`, `read_file`, `list_files`, `create_page`, etc. | **Wrap** — each becomes a skill with `SKILL.md` |
+| **11 built-in tools** | `builtInTools.ts` | `search_workspace`, `read_page`, `fs_read_file`, `fs_list_files`, `create_page`, etc. | **Wrap** — each becomes a skill with `SKILL.md` |
 | **Confirmation gates** | `chatTypes.ts` → `requiresConfirmation` | Binary per-tool confirmation prompts | **Upgrade** — to 3-tier permission model |
 | **Workspace sandbox** | `workspaceBoundaryService.ts` | `assertUriWithinWorkspace()` path validation | **Keep** — already enforces our security boundary |
 | **File service** | `fileService.ts` | Full CRUD: `readFile`, `writeFile`, `stat`, `readdir`, `exists`, `rename`, `delete`, `mkdir`, `copy`, `watch` | **Keep** — has everything we need for file tools |
@@ -204,13 +204,13 @@ Before defining what to build, here's what M10 already shipped. This is critical
 | **`.parallx/` directory structure** | `AGENTS.md`, `SOUL.md`, `TOOLS.md` at workspace root; `.parallx/` for skills, rules, commands, config | Medium |
 | **Skill loader** | Reads `skills/<name>/SKILL.md` manifests, registers as tools | Medium |
 | **Prompt file loader** | Reads and layers `AGENTS.md` → `SOUL.md` → `TOOLS.md` → `rules/*.md` | Low |
-| **`write_file` tool/skill** | Write content to file with diff preview + approval | High |
-| **`edit_file` tool/skill** | Search-replace or line-range edits with diff preview | High |
+| **`fs_write_file` tool/skill** | Write content to file with diff preview + approval | High |
+| **`fs_edit_file` tool/skill** | Search-replace or line-range edits with diff preview | High |
 | **Diff review UI** | Accept/reject overlay for file write proposals | High |
 | **`@file` / `@folder` mentions** | Parse `@` syntax in chat input, inject content | Medium |
 | **`/init` command** | Scan workspace, auto-generate `AGENTS.md` | Medium |
 | **`/compact` command** | Summarize conversation, free context window | Low (summarization exists) |
-| **Terminal integration** | xterm.js panel + `run_command` tool/skill | High |
+| **Terminal integration** | xterm.js panel + `terminal_run_command` tool/skill | High |
 | **Context pills UI** | Visual chips showing what's in the prompt + token counts | Medium |
 
 ---
@@ -387,11 +387,11 @@ You help the user understand and work with their project files.
 
 ## Workspace Skills
 - **search_workspace** — Full-text search across all workspace files
-- **search_knowledge** — Semantic (RAG) search using embeddings
-- **read_file** — Read file contents (supports line ranges)
-- **list_files** — List directory contents
-- **write_file** — Write content to a file (requires approval)
-- **edit_file** — Edit specific sections of a file (requires approval)
+- **fs_search_knowledge** — Semantic (RAG) search using embeddings
+- **fs_read_file** — Read file contents (supports line ranges)
+- **fs_list_files** — List directory contents
+- **fs_write_file** — Write content to a file (requires approval)
+- **fs_edit_file** — Edit specific sections of a file (requires approval)
 
 ## Canvas Skills
 - **read_page** — Read a canvas page by ID
@@ -401,7 +401,7 @@ You help the user understand and work with their project files.
 
 ## Tool Usage Guidelines
 - Always read a file before editing it
-- Use search_knowledge for conceptual questions ("how does auth work?")
+- Use fs_search_knowledge for conceptual questions ("how does auth work?")
 - Use search_workspace for exact string matches ("where is handleLogin defined?")
 - When editing files, make the smallest change necessary
 - Explain what you're changing and why before proposing edits
@@ -421,7 +421,7 @@ Each skill lives in a folder with a `SKILL.md` manifest file. The manifest descr
 **Manifest format:**
 ```markdown
 ---
-name: write_file
+name: fs_write_file
 description: Write content to a file within the workspace
 version: 1.0.0
 author: parallx
@@ -443,7 +443,7 @@ parameters:
 tags: [filesystem, write]
 ---
 
-# write_file
+# fs_write_file
 
 Write content to a file within the workspace. The file will be created if it
 doesn't exist, or overwritten if it does.
@@ -453,7 +453,7 @@ doesn't exist, or overwritten if it does.
 - Replacing entire file content when most of the file is changing
 
 ## When NOT to Use
-- For small edits to existing files — use `edit_file` instead
+- For small edits to existing files — use `fs_edit_file` instead
 - For files outside the workspace — this is forbidden
 - For binary files — only text files are supported
 
@@ -490,20 +490,20 @@ These are the existing 11 tools, re-packaged as skills. They live in Parallx's s
 | Skill | Permission Tier | Current Tool | Transform Needed |
 |-------|----------------|--------------|------------------|
 | `search_workspace` | always-allowed | ✅ Exists | Add `SKILL.md` manifest |
-| `search_knowledge` | always-allowed | ✅ Exists | Add `SKILL.md` manifest |
-| `read_file` | always-allowed | ✅ Exists | Add `SKILL.md` manifest |
-| `list_files` | always-allowed | ✅ Exists | Add `SKILL.md` manifest |
+| `fs_search_knowledge` | always-allowed | ✅ Exists | Add `SKILL.md` manifest |
+| `fs_read_file` | always-allowed | ✅ Exists | Add `SKILL.md` manifest |
+| `fs_list_files` | always-allowed | ✅ Exists | Add `SKILL.md` manifest |
 | `read_page` | always-allowed | ✅ Exists | Add `SKILL.md` manifest |
 | `read_page_by_title` | always-allowed | ✅ Exists | Add `SKILL.md` manifest |
 | `read_current_page` | always-allowed | ✅ Exists | Add `SKILL.md` manifest |
 | `list_pages` | always-allowed | ✅ Exists | Add `SKILL.md` manifest |
 | `get_page_properties` | always-allowed | ✅ Exists | Add `SKILL.md` manifest |
 | `create_page` | requires-approval | ✅ Exists | Add `SKILL.md` manifest |
-| `write_file` | requires-approval | ❌ New | Build tool + manifest |
-| `edit_file` | requires-approval | ❌ New | Build tool + manifest |
-| `delete_file` | requires-approval | ❌ New | Build tool + manifest |
-| `run_command` | requires-approval | ❌ New | Build tool + manifest |
-| `search_files` | always-allowed | ✅ Exists | Add `SKILL.md` manifest |
+| `fs_write_file` | requires-approval | ❌ New | Build tool + manifest |
+| `fs_edit_file` | requires-approval | ❌ New | Build tool + manifest |
+| `fs_delete_file` | requires-approval | ❌ New | Build tool + manifest |
+| `terminal_run_command` | requires-approval | ❌ New | Build tool + manifest |
+| `fs_search_files` | always-allowed | ✅ Exists | Add `SKILL.md` manifest |
 
 ### Skill Loader Architecture
 
@@ -658,15 +658,15 @@ The AI model MUST NOT:
 ```
 ┌─────────────────────────────────────────────────┐
 │         ALWAYS ALLOWED (no prompt)              │
-│  Skills: search_workspace, search_knowledge,    │
-│          read_file, list_files, read_page,      │
+│  Skills: search_workspace, fs_search_knowledge,    │
+│          fs_read_file, fs_list_files, read_page,      │
 │          list_pages, get_page_properties,       │
 │          read_current_page, read_page_by_title  │
 │  Actions: Read files, search, list, RAG query   │
 ├─────────────────────────────────────────────────┤
 │       REQUIRES APPROVAL (per action)            │
-│  Skills: write_file, edit_file, delete_file,    │
-│          create_page, run_command               │
+│  Skills: fs_write_file, fs_edit_file, fs_delete_file,    │
+│          create_page, terminal_run_command               │
 │  Actions: Write/edit/delete files, terminal cmd │
 │  UI: Diff preview → "Allow once" / "Allow for  │
 │       session" / "Always allow"                 │
@@ -745,7 +745,7 @@ Every file operation passes through `WorkspaceBoundaryService.assertUriWithinWor
 | **Status** | ⬜ Not started |
 | **Priority** | P0 |
 | **Complexity** | Low |
-| **Current state** | `read_file` tool exists ✅, `FileService.readFile()` exists ✅, `readFileContent()` helper exists in defaultParticipant ✅ |
+| **Current state** | `fs_read_file` tool exists ✅, `FileService.readFile()` exists ✅, `readFileContent()` helper exists in defaultParticipant ✅ |
 | **Transform** | Ensure "Add Context" button in chat UI fully reads file content (not just filename), inject with path header, show as removable pill |
 
 ---
@@ -757,8 +757,8 @@ Every file operation passes through `WorkspaceBoundaryService.assertUriWithinWor
 | **Status** | ⬜ Not started |
 | **Priority** | P0 |
 | **Complexity** | High |
-| **Current state** | `FileService.writeFile()` exists ✅, `WorkspaceBoundaryService` exists ✅, no `write_file` or `edit_file` tools |
-| **Transform** | Build `write_file` and `edit_file` skills with diff preview UI and 3-tier permission approval |
+| **Current state** | `FileService.writeFile()` exists ✅, `WorkspaceBoundaryService` exists ✅, no `fs_write_file` or `fs_edit_file` tools |
+| **Transform** | Build `fs_write_file` and `fs_edit_file` skills with diff preview UI and 3-tier permission approval |
 
 ---
 
@@ -812,7 +812,7 @@ Every file operation passes through `WorkspaceBoundaryService.assertUriWithinWor
 | **Status** | ⬜ Not started |
 | **Priority** | P1 |
 | **Complexity** | High |
-| **Transform** | Phase 1: xterm.js terminal panel. Phase 2: `run_command` skill with approval dialog. |
+| **Transform** | Phase 1: xterm.js terminal panel. Phase 2: `terminal_run_command` skill with approval dialog. |
 
 ##### C9: Streaming Token-by-Token Display
 
@@ -846,11 +846,11 @@ Rather than hardcoding capabilities, implement a **skill system** where each too
                     │   (LanguageModelToolsService)        │
                     │                                      │
                     │  ┌── Built-in Skills ──────────┐    │
-                    │  │ search_workspace  read_file  │    │
-                    │  │ list_files  read_page         │    │
-                    │  │ search_knowledge  create_page │    │
-                    │  │ write_file  edit_file          │    │
-                    │  │ delete_file  run_command       │    │
+                    │  │ search_workspace  fs_read_file  │    │
+                    │  │ fs_list_files  read_page         │    │
+                    │  │ fs_search_knowledge  create_page │    │
+                    │  │ fs_write_file  fs_edit_file          │    │
+                    │  │ fs_delete_file  terminal_run_command       │    │
                     │  └───────────────────────────────┘    │
                     │                                      │
                     │  ┌── Workspace Skills ─────────┐    │
@@ -958,7 +958,7 @@ workspace-root/
 | **1.6** | **Implement `/init` command** | ✅ | 3h | 1.1, 1.2 | `src/built-in/chat/participants/defaultParticipant.ts`, `src/services/promptFileService.ts` | Scan workspace: file tree structure, README, package.json, common config files. Generate `AGENTS.md` via LLM. Create `.parallx/` directory structure. Show notification. |
 | **1.7** | **Wire RAG context into every message** | ✅ | 2h | — | `src/built-in/chat/participants/defaultParticipant.ts` | Ensure `retrieveContext()` is called for every user message in the agentic loop. Format results with source paths. De-duplicate against attachments. |
 | **1.8** | **Token budget manager** | ✅ | 3h | 1.4 | New: `src/services/tokenBudgetService.ts`, `src/services/serviceTypes.ts` | Service that allocates context window: system 10%, RAG 30%, history 30%, user 30%. Takes prioritized content, trims overflow (history first, then RAG). |
-| **1.9** | **`.parallxignore` file support** | ✅ | 2h | — | `src/services/indexingPipeline.ts`, `src/services/fileService.ts`, New: `.parallxignore` parser | Parse git-style ignore patterns from workspace-root `.parallxignore`. Apply to: indexing pipeline (skip files), `read_file` tool (block access), "Add Context" (block). Replace hardcoded `SKIP_DIRS`. |
+| **1.9** | **`.parallxignore` file support** | ✅ | 2h | — | `src/services/indexingPipeline.ts`, `src/services/fileService.ts`, New: `.parallxignore` parser | Parse git-style ignore patterns from workspace-root `.parallxignore`. Apply to: indexing pipeline (skip files), `fs_read_file` tool (block access), "Add Context" (block). Replace hardcoded `SKIP_DIRS`. |
 | **1.10** | **Context pills UI** | ✅ | 3h | 1.7 | Chat widget CSS/HTML, `src/built-in/canvas/chat/` | Visual chips above chat input showing: auto-retrieved files (from RAG), attached files, token count per item. Removable by clicking X. |
 
 **Phase 1 Total:** ~22h
@@ -970,15 +970,15 @@ workspace-root/
 | # | Task | Status | Est. | Depends On | Files to Change | What to Do |
 |---|------|--------|------|------------|-----------------|------------|
 | **2.1** | **3-tier permission system** | ✅ | 4h | — | `src/services/languageModelToolsService.ts`, `src/services/chatTypes.ts`, New: `src/services/permissionService.ts` | Replace binary `requiresConfirmation` with 3 tiers: always-allowed, requires-approval, never-allowed. Add "Allow once" / "Allow for session" / "Always allow" to confirmation UI. Session-level grant cache. |
-| **2.2** | **`write_file` skill** | ✅ | 4h | 2.1 | `src/built-in/chat/tools/builtInTools.ts`, New: `src/built-in/chat/skills/write-file/SKILL.md` | New tool: takes `path` + `content`, validates against sandbox + `.parallxignore`, shows diff preview, requires approval, writes via `FileService.writeFile()`. |
-| **2.3** | **`edit_file` skill** | ✅ | 5h | 2.1 | `src/built-in/chat/tools/builtInTools.ts`, New: `src/built-in/chat/skills/edit-file/SKILL.md` | New tool: takes `path` + `oldContent` + `newContent` (search-replace), validates path, computes diff, shows preview, requires approval. Supports line-range edits. |
+| **2.2** | **`fs_write_file` skill** | ✅ | 4h | 2.1 | `src/built-in/chat/tools/builtInTools.ts`, New: `src/built-in/chat/skills/write-file/SKILL.md` | New tool: takes `path` + `content`, validates against sandbox + `.parallxignore`, shows diff preview, requires approval, writes via `FileService.writeFile()`. |
+| **2.3** | **`fs_edit_file` skill** | ✅ | 5h | 2.1 | `src/built-in/chat/tools/builtInTools.ts`, New: `src/built-in/chat/skills/edit-file/SKILL.md` | New tool: takes `path` + `oldContent` + `newContent` (search-replace), validates path, computes diff, shows preview, requires approval. Supports line-range edits. |
 | **2.4** | **Diff computation engine** | ✅ | 4h | — | New: `src/services/diffService.ts` | Compute unified diff between two strings. Support line-level and word-level diffs. Output format usable by both the diff UI and the LLM. |
 | **2.5** | **Diff review UI** | ✅ | 5h | 2.4 | Chat widget, New: diff viewer component | Inline or modal diff view: red (removed) / green (added) lines. "Accept" and "Reject" buttons. File path header. Shows token/line counts. |
 | **2.6** | **Code action buttons on responses** | ✅ | 3h | 2.2 | Chat response rendering code | Parse code blocks for `// filepath:` headers. Add "Apply to File" button (triggers diff flow). Add "Create File" button. Add "Copy" button (already exists). |
 | **2.7** | **SKILL.md manifests for existing tools** | ✅ | 3h | — | New: 11 `SKILL.md` files for each existing built-in tool | Write `SKILL.md` manifest for each of the 11 existing tools. Update `TOOLS.md` auto-generation to read from manifests. |
 | **2.8** | **Skill loader service** | ✅ | 4h | 2.7 | New: `src/services/skillLoaderService.ts`, `src/services/serviceTypes.ts` | Scan `.parallx/skills/*/SKILL.md` on workspace open. Parse frontmatter. Register with tool service. Watch for changes. Re-generate `TOOLS.md` when skills change. |
 | **2.9** | **`.parallx/config.json` loader** | ✅ | 2h | — | New: `src/services/parallxConfigService.ts` | Read and validate `.parallx/config.json`. Provide typed access to all settings. Watch for changes. Fall back to defaults. |
-| **2.10** | **`.parallx/permissions.json` integration** | ✅ | 2h | 2.1, 2.9 | `src/services/permissionService.ts`, `src/services/parallxConfigService.ts` | Per-skill permission overrides. User can promote `write_file` to "always-allow" or demote `read_file` to "requires-approval". |
+| **2.10** | **`.parallx/permissions.json` integration** | ✅ | 2h | 2.1, 2.9 | `src/services/permissionService.ts`, `src/services/parallxConfigService.ts` | Per-skill permission overrides. User can promote `fs_write_file` to "always-allow" or demote `fs_read_file` to "requires-approval". |
 
 **Phase 2 Total:** ~36h
 
@@ -1009,8 +1009,8 @@ workspace-root/
 |---|------|--------|------|------------|-----------------|------------|
 | **4.1** | **Terminal panel (xterm.js)** | ✅ | 6h | — | New: terminal built-in tool, panel component | Add xterm.js terminal panel to bottom panel area. IPC bridge to spawn shell in Electron main process. Capture output. |
 | **4.2** | **`@terminal` mention** | ✅ | 2h | 4.1, 3.1 | Chat input, terminal service | `@terminal` injects last N lines of terminal output into context. |
-| **4.3** | **`run_command` skill** | ✅ | 4h | 4.1, 2.1 | `src/built-in/chat/tools/builtInTools.ts`, New: `SKILL.md` | AI suggests a command → approval dialog → execute in terminal → capture output → feed back to LLM. Allowlist/blocklist in config. Timeout. |
-| **4.4** | **`delete_file` skill** | ✅ | 2h | 2.1 | `src/built-in/chat/tools/builtInTools.ts`, New: `SKILL.md` | Delete file with confirmation. Move to trash if OS supports it. |
+| **4.3** | **`terminal_run_command` skill** | ✅ | 4h | 4.1, 2.1 | `src/built-in/chat/tools/builtInTools.ts`, New: `SKILL.md` | AI suggests a command → approval dialog → execute in terminal → capture output → feed back to LLM. Allowlist/blocklist in config. Timeout. |
+| **4.4** | **`fs_delete_file` skill** | ✅ | 2h | 2.1 | `src/built-in/chat/tools/builtInTools.ts`, New: `SKILL.md` | Delete file with confirmation. Move to trash if OS supports it. |
 | **4.5** | **Cross-session search** | ✅ | 4h | — | New: session search UI, `src/services/chatSessionPersistence.ts` | Full-text search across all past sessions. Results show session title + matching message preview + date. Click to open session. |
 | **4.6** | **Semantic session search** | ✅ | 4h | 4.5 | `src/services/memoryService.ts`, search UI | Embed search query, find similar session summaries in vector store. "Find conversations about auth" → returns relevant sessions. |
 | **4.7** | **Multi-file picker** | ✅ | 3h | Phase 1 | "Add Context" dialog | Multi-select file/folder picker. Token budget indicator per file. Drag-and-drop from explorer. |
@@ -1044,7 +1044,7 @@ Phase 1 — "The LLM Can See" (1.1 → 1.10)
           auto-retrieves relevant context on every message.
 
 Phase 2 — "The LLM Can Act" (2.1 → 2.10)
-  Permission system → write_file → edit_file → Diff engine → Diff UI → Code actions
+  Permission system → fs_write_file → fs_edit_file → Diff engine → Diff UI → Code actions
   → SKILL.md manifests → Skill loader → Config service → Permission config
 
   Result: Agent can suggest AND apply code changes with user approval.
@@ -1057,7 +1057,7 @@ Phase 3 — "The User Has Control" (3.1 → 3.10)
   Result: User can precisely control context and trigger structured intents.
 
 Phase 4 — "Full Jarvis" (4.1 → 4.10)
-  Terminal → @terminal → run_command → delete_file → Session search → Semantic search
+  Terminal → @terminal → terminal_run_command → fs_delete_file → Session search → Semantic search
   → Multi-file picker → Token transparency → Progress → System prompt viewer
 
   Result: Complete second brain experience.
@@ -1075,7 +1075,7 @@ A full audit of the M11 codebase identified ~30 issues across 13 categories. All
 
 | # | Fix | Files Changed | What Was Wrong |
 |---|-----|---------------|----------------|
-| **H1** | **Pass `workspaceRoot` to `registerBuiltInTools()`** | `chatTool.ts`, `builtInTools.ts` | `delete_file` and `run_command` tools received `undefined` for workspace root — sandbox validation would fail |
+| **H1** | **Pass `workspaceRoot` to `registerBuiltInTools()`** | `chatTool.ts`, `builtInTools.ts` | `fs_delete_file` and `terminal_run_command` tools received `undefined` for workspace root — sandbox validation would fail |
 | **H2** | **Wire code-action event listener in `chatWidget`** | `chatWidget.ts` | "Apply to File" buttons on code blocks dispatched `parallx-code-action` events, but nothing caught them — the diff flow never triggered |
 | **H3** | **Wire mention and command providers in `setActiveWidget()`** | `chatTool.ts` | Mention provider (workspace file autocomplete) and slash command provider were never connected to the widget |
 | **H4** | **Implement `listFolderFiles` helper** | `chatTool.ts` | `@folder:` mentions called `listFolderFiles()` which didn't exist — would crash at runtime |
@@ -1108,12 +1108,12 @@ A full audit of the M11 codebase identified ~30 issues across 13 categories. All
 
 ### Tool Chaining Prompt Guidance (commit `5b6ebde`)
 
-**Problem:** The AI would call `list_files` and return filenames to the user instead of following up with `read_file` to actually read content. Small local models take the path of least resistance — one tool call, then stop.
+**Problem:** The AI would call `fs_list_files` and return filenames to the user instead of following up with `fs_read_file` to actually read content. Small local models take the path of least resistance — one tool call, then stop.
 
 **Changes:**
 - Added "ALWAYS READ CONTENT" rules to Ask and Agent mode system prompts
-- Updated `list_files` tool description: *"This only lists names — must follow up with read_file to see content"*
-- Updated `read_file` tool description: *"Always read files before summarizing or explaining them"*
+- Updated `fs_list_files` tool description: *"This only lists names — must follow up with fs_read_file to see content"*
+- Updated `fs_read_file` tool description: *"Always read files before summarizing or explaining them"*
 - These explicit instructions are necessary because small local models (unlike cloud GPT-4/Claude) don't infer multi-step workflows from context alone
 
 ### Workspace Digest Architecture (commit `4a6ddc9`)

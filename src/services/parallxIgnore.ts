@@ -2,7 +2,7 @@
 //
 // Git-style ignore patterns for excluding files from:
 //   - Indexing pipeline (RAG embedding)
-//   - AI file access tools (read_file, list_files)
+//   - AI file access tools (fs_read_file, fs_list_files)
 //   - "Add Context" attachment picker
 //
 // Pattern syntax (subset of .gitignore):

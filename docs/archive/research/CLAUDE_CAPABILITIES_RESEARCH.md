@@ -693,7 +693,7 @@ This section compares Claude's API capabilities with OpenClaw, Parallx's local-f
 | **Context window** | Up to 1,000,000 tokens | Model-dependent (typically 4K–128K) |
 | **Tools** | 7 built-in + unlimited custom | 20 built-in + MCP extension |
 | **Tool execution** | Server-side + client-side | All local (workspace-sandboxed) |
-| **Code execution** | Sandboxed container (Python 3.11) | Terminal tool (`run_command`) in workspace directory |
+| **Code execution** | Sandboxed container (Python 3.11) | Terminal tool (`terminal_run_command`) in workspace directory |
 | **Web search** | Built-in server tool | Not built-in; available via MCP |
 | **Web fetch** | Built-in server tool | Not built-in; available via MCP |
 | **Computer Use** | Screenshot + mouse/keyboard (beta) | None (no GUI interaction) |

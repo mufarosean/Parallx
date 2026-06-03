@@ -78,14 +78,14 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
   readonly: {
     allow: [
       // Workspace files (read-only)
-      'list_files', 'read_file', 'search_files', 'grep_search',
+      'fs_list_files', 'fs_read_file', 'fs_search_files', 'fs_grep_search',
       // Canvas pages (read-only) — canvas_* prefix per Parallx tool-namespace
       // convention so filesystem and canvas tools never collide in the model's
       // attention.
       'canvas_find_pages', 'canvas_read_page',
       'canvas_list_property_definitions', 'canvas_read_block',
       // Knowledge & memory & transcripts (read-only)
-      'search_knowledge', 'memory_get', 'memory_search',
+      'fs_search_knowledge', 'memory_read', 'memory_search',
       'transcript_get', 'transcript_search',
       // Cron & surface (read-only introspection)
       'cron_status', 'cron_list', 'cron_runs', 'surface_list',
@@ -99,15 +99,15 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
   standard: {
     allow: [
       // All of readonly:
-      'list_files', 'read_file', 'search_files', 'grep_search',
+      'fs_list_files', 'fs_read_file', 'fs_search_files', 'fs_grep_search',
       'canvas_find_pages', 'canvas_read_page',
       'canvas_list_property_definitions', 'canvas_read_block',
-      'search_knowledge', 'memory_get', 'memory_search',
+      'fs_search_knowledge', 'memory_read', 'memory_search',
       'transcript_get', 'transcript_search',
       'cron_status', 'cron_list', 'cron_runs', 'surface_list',
       'autonomy_log',
       // Safe writes:
-      'write_file', 'edit_file',
+      'fs_write_file', 'fs_edit_file',
       'canvas_create_page', 'canvas_edit_page', 'canvas_set_page_property', 'canvas_set_page_style',
       'canvas_edit_block', 'canvas_insert_block_after', 'canvas_link_block',
     ],
@@ -405,7 +405,7 @@ export type ToolColor = 'red' | 'blue' | 'green';
  * one is "tainted" and subsequent blue tool calls require explicit user approval.
  *
  * Scope is deliberately narrow: web fetch/search are external by definition.
- * `read_file` was considered for inclusion (workspace files could in theory
+ * `fs_read_file` was considered for inclusion (workspace files could in theory
  * embed injected instructions) but rejected — the user owns the workspace, and
  * tainting every read-then-edit workflow would make routine work require an
  * approval on every write. The threat is real but the mitigation cost is too
@@ -431,11 +431,11 @@ const RED_TOOLS: ReadonlySet<string> = new Set<string>([
  */
 const BLUE_TOOLS: ReadonlySet<string> = new Set<string>([
   // File ops
-  'write_file',
-  'edit_file',
-  'delete_file',
+  'fs_write_file',
+  'fs_edit_file',
+  'fs_delete_file',
   // Shell execution — destructive, irreversible side effects
-  'run_command',
+  'terminal_run_command',
   // Canvas page writes (canvas_* prefix per Parallx tool-namespace convention)
   'canvas_create_page',
   'canvas_edit_page',

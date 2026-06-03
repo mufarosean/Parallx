@@ -58,7 +58,7 @@ What the engine does:
 3. But `loadChatContextSources()` in `chatContextSourceLoader.ts` (L49) takes a
    plain query string — `retrieveContext(userText)` at L59 — with **no** path
    scoping. If RAG were enabled, it would search the entire workspace.
-4. The model must use `list_files` and `read_file` tools to answer, but:
+4. The model must use `fs_list_files` and `fs_read_file` tools to answer, but:
    - No scope object tells the model which folder to look at.
    - No entity resolver maps "RF Guides" to its actual workspace path.
    - `inferExhaustiveFolderPath()` in `chatTurnPrelude.ts` (L13) is a single
@@ -95,7 +95,7 @@ The remodel moves these responsibilities out of the model and into the engine.
 
 | Source | Key finding |
 |--------|-------------|
-| OpenClaw architecture | Zero RAG. Fixed bootstrap injection + tool-driven knowledge. Model calls `memory_search`, `memory_get`, `read`, `exec` for everything. No embeddings, no vector DB. |
+| OpenClaw architecture | Zero RAG. Fixed bootstrap injection + tool-driven knowledge. Model calls `memory_search`, `memory_read`, `read`, `exec` for everything. No embeddings, no vector DB. |
 | ChatGPT Projects | Project-scoped knowledge, file-identity-aware retrieval, scored chunks with source attribution. |
 | Claude Projects | Project-first knowledge base with automatic RAG scaling. User expectation: "Claude knows this project." |
 
@@ -118,8 +118,8 @@ The raw ingredients exist:
 2. Hybrid vector + FTS5 BM25 retrieval merged via RRF (k=60).
 3. File-backed canonical memory layers (workspace memory + session transcripts).
 4. Transcript recall lane and explicit tools.
-5. Read-only Ask-mode tools (`list_files`, `read_file`, `search_files`,
-   `search_knowledge`).
+5. Read-only Ask-mode tools (`fs_list_files`, `fs_read_file`, `fs_search_files`,
+   `fs_search_knowledge`).
 6. Prompt layering and workspace-aware chat routing.
 7. Answer repair pipeline for domain-specific fixups.
 8. `coverageMode` field on routes and retrieval plans (M37 scaffolding).
@@ -161,7 +161,7 @@ handleChatTurn()                 — defaultParticipant.ts
 | Context assembly merges all sources into flat string parts | `chatContextAssembly.ts` | L109 |
 | Coverage contracts are informal prompt text, not engine-enforced | `chatUserContentComposer.ts` | L30 |
 | `listFolderFiles()` is flat, max 50 files, no recursion | `chatDataService.ts` | L1606 |
-| `search_knowledge` has type-level `source_filter` only, no path scoping | `fileTools.ts` | L193, L244 |
+| `fs_search_knowledge` has type-level `source_filter` only, no path scoping | `fileTools.ts` | L193, L244 |
 | `sourceIds` exists in `RetrievalOptions` but is never passed by the chat pipeline | `retrievalService.ts` | L578 |
 | System prompt has no dynamic per-turn execution plan injection | `chatSystemPrompts.ts` | L41 |
 | No `chatKnowledgeTaskExecutor.ts` exists | — | — |
@@ -218,7 +218,7 @@ Requires: target enumeration → deterministic reads → per-source state tracki
 → fail-closed completion → per-item grounding.
 
 **Current code path:** `chatTurnRouter` → `coverageMode: 'exhaustive'` → RAG
-suppressed → model must self-chain `list_files` + `read_file` tools without
+suppressed → model must self-chain `fs_list_files` + `fs_read_file` tools without
 scope guidance. No coverage manifest. No fail-closed logic.
 
 ### Task class C — Scope-dependent questions (new in M38)
@@ -288,11 +288,11 @@ These gather information within a resolved scope.
 
 | Mode | What it does | Current state |
 |------|-------------|---------------|
-| **Structural inspection** | List files, count docs, inspect folders | `list_files` tool (L35, fileTools.ts), `listFolderFiles()` (L1606, chatDataService.ts) — model-driven, not engine-driven |
-| **Metadata retrieval** | File names, types, dates, sizes, index state | Partial: `list_files` returns name/type/size |
+| **Structural inspection** | List files, count docs, inspect folders | `fs_list_files` tool (L35, fileTools.ts), `listFolderFiles()` (L1606, chatDataService.ts) — model-driven, not engine-driven |
+| **Metadata retrieval** | File names, types, dates, sizes, index state | Partial: `fs_list_files` returns name/type/size |
 | **Scoped semantic retrieval** | RAG within a scope (folder, document set) | Not implemented. `retrieveContext()` is always workspace-wide. `sourceIds` exists in `RetrievalOptions` (L578) but unused by chat. |
-| **Exhaustive read** | Full-coverage reading of a source set | Model self-chains `read_file` — no engine batching |
-| **Parser-specific read** | Type-aware extraction (PDF sections, spreadsheet sheets) | `read_file` supports rich docs via Docling (L66, fileTools.ts) but no type-aware strategies |
+| **Exhaustive read** | Full-coverage reading of a source set | Model self-chains `fs_read_file` — no engine batching |
+| **Parser-specific read** | Type-aware extraction (PDF sections, spreadsheet sheets) | `fs_read_file` supports rich docs via Docling (L66, fileTools.ts) but no type-aware strategies |
 
 **Where scoped retrieval lives:** `sourceIds` on `RetrievalOptions` (L578,
 retrievalService.ts) already exists. The chat pipeline must start passing it.
@@ -340,9 +340,9 @@ resolve scope → structural inspection → answer
 No semantic retrieval. Engine-answered where possible.
 
 **Current path:** `coverageMode: 'enumeration'` → RAG suppressed → model must
-call `list_files` → no scope provided to model. Partially working.
+call `fs_list_files` → no scope provided to model. Partially working.
 
-**M38 change:** Engine resolves "RF Guides" → path. Engine calls `list_files`
+**M38 change:** Engine resolves "RF Guides" → path. Engine calls `fs_list_files`
 → injects structural evidence → model formats the answer.
 
 #### Workflow 2 — Scoped Topic Answer
@@ -619,7 +619,7 @@ before any retrieval or tool use occurs.
      `chatScopeResolver.ts`). This function:
      - Extracts natural entity references from the user message.
      - Matches them against the workspace file tree using fuzzy matching
-       (already available via `search_files` patterns and workspace digest).
+       (already available via `fs_search_files` patterns and workspace digest).
      - Attaches `@mentions` as explicit entities.
      - Falls back to `level: 'workspace'` when no scope is detectable.
      - Subsumes `inferExhaustiveFolderPath()` — that function becomes a
@@ -650,7 +650,7 @@ the resolved scope instead of the entire workspace.
 **Files affected:**
 - `retrievalService.ts` — add `pathPrefixes` filter to `RetrievalOptions` and candidate collection
 - `chatContextSourceLoader.ts` — pass scope through to retrieval calls
-- `fileTools.ts` — add `folder_path` parameter to `search_knowledge`
+- `fileTools.ts` — add `folder_path` parameter to `fs_search_knowledge`
 
 **Tasks:**
 
@@ -725,7 +725,7 @@ typed evidence bundles with source identity.
 3.2. Create `chatEvidenceGatherer.ts` with function `gatherEvidence()` that
      takes an `IExecutionPlan` and produces an `IEvidenceBundle`:
      - For `'enumerate'` steps: calls `listFolderFiles()` on the scope path.
-     - For `'structural-inspect'` steps: calls `list_files` equivalent.
+     - For `'structural-inspect'` steps: calls `fs_list_files` equivalent.
      - For `'scoped-retrieve'` steps: calls scoped retrieval from Phase 1.
      - For `'deterministic-read'` steps: reads each target file via
        `chatDataService`.
@@ -838,7 +838,7 @@ evidence pipeline is active.
 |------|---------|
 | `src/services/retrievalService.ts` | Add `pathPrefixes` to `RetrievalOptions` (near L572). Filter candidates in `_collectCandidates()` by path prefix. |
 | `src/built-in/chat/utilities/chatContextSourceLoader.ts` | Accept `IQueryScope`, pass `pathPrefixes` to `retrieveContext()`. |
-| `src/built-in/chat/tools/fileTools.ts` | Add `folder_path` param to `search_knowledge` tool (L193). |
+| `src/built-in/chat/tools/fileTools.ts` | Add `folder_path` param to `fs_search_knowledge` tool (L193). |
 
 ### D. Workflow planning
 

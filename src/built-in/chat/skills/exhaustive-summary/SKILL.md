@@ -28,7 +28,7 @@ file.
 
 ## Step 1: Enumerate all files
 
-Use `list_files` to enumerate every file in the target scope ($ARGUMENTS or
+Use `fs_list_files` to enumerate every file in the target scope ($ARGUMENTS or
 the entire workspace root if no scope is specified).
 
 - If the scope is a folder, list only that folder (recursively).
@@ -39,7 +39,7 @@ the entire workspace root if no scope is specified).
 
 For **every** file in the coverage checklist:
 
-1. Use `read_file` to read the file's full content.
+1. Use `fs_read_file` to read the file's full content.
 2. Write a brief summary (2-4 sentences) of the file's content.
 3. Note the file's relative path.
 

@@ -34,14 +34,14 @@ If the scope is unclear, default to the entire workspace.
 
 ## Step 2: Enumerate files in scope
 
-Use `list_files` to enumerate all files in the target scope.
+Use `fs_list_files` to enumerate all files in the target scope.
 Record the complete file list as your coverage checklist.
 
 ## Step 3: Read and extract from each file
 
 For **every** file in the coverage checklist:
 
-1. Use `read_file` to read the file's content.
+1. Use `fs_read_file` to read the file's content.
 2. Search for instances of the target information.
 3. If found, record:
    - The extracted value(s)

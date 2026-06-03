@@ -327,7 +327,7 @@ export class PermissionService extends Disposable {
 
   /**
    * Load persistent overrides from content of `.parallx/permissions.json`.
-   * Format: `{ "tools": { "write_file": "always-allowed", "run_command": "never-allowed" } }`
+   * Format: `{ "tools": { "fs_write_file": "always-allowed", "terminal_run_command": "never-allowed" } }`
    */
   loadPersistentOverrides(json: string): void {
     this._persistentOverrides.clear();
@@ -589,8 +589,8 @@ export class PermissionService extends Disposable {
  * (that is stricter, not looser).
  */
 export const ALWAYS_REQUIRE_CONFIRMATION: ReadonlySet<string> = new Set([
-  'run_command',
-  'delete_file',
+  'terminal_run_command',
+  'fs_delete_file',
 ]);
 
 function isValidPermissionLevel(value: unknown): value is ToolPermissionLevel {

@@ -3,7 +3,7 @@
 // Uses the same push model as the news brief: on refresh it asks the active
 // chat session to look up the current conditions + short forecast for the
 // configured location with its web-research tools, then deliver clean Markdown
-// back to this widget via the shared `render_to_widget` tool. We never invent
+// back to this widget via the shared `dashboard_render_widget` tool. We never invent
 // weather here — the AI fetches it and reports only what the sources say.
 
 import type {
@@ -71,7 +71,7 @@ export const WEATHER_WIDGET: WidgetTypeRegistration<WeatherConfig> = {
     const cfg = normalize(ctx.config);
 
     // Push model: hand the lookup to the active chat session and let it fetch
-    // real data with its tools; the result lands via render_to_widget.
+    // real data with its tools; the result lands via dashboard_render_widget.
     const prompt = buildPrompt(cfg, ctx.instanceId);
     await api.commands.executeCommand('chat.submitPrompt', { text: prompt });
 
@@ -171,7 +171,7 @@ function buildPrompt(cfg: WeatherConfig, instanceId: string): string {
   }
   lines.push(
     `${cfg.forecastDays > 0 ? '4' : '3'}. Format as Markdown: a one-line heading with the location and the current temperature + condition, then a compact bullet list (feels-like, wind, humidity, high/low)${cfg.forecastDays > 0 ? ', then a short forecast list (one line per day)' : ''}. No preamble, no emojis.`,
-    `${cfg.forecastDays > 0 ? '5' : '4'}. Call the render_to_widget tool with instanceId "${instanceId}" and the finished Markdown as content. This is how the report reaches the widget — do not skip it.`,
+    `${cfg.forecastDays > 0 ? '5' : '4'}. Call the dashboard_render_widget tool with instanceId "${instanceId}" and the finished Markdown as content. This is how the report reaches the widget — do not skip it.`,
   );
   return lines.join('\n');
 }

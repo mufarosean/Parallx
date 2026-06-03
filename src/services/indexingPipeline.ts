@@ -948,7 +948,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     // Prior to this fix, sourceIds were stored as full absolute filesystem paths
     // (e.g., "C:\Users\...\Books\Zimbabwe\file.pdf"). Now we store workspace-
     // relative paths ("Books/Zimbabwe/file.pdf") so the LLM can use them directly
-    // with read_file. Purge any old absolute-path entries to avoid duplicates.
+    // with fs_read_file. Purge any old absolute-path entries to avoid duplicates.
     const staleAbsoluteIds = [...indexedAtMap.keys()].filter(k => /^[A-Za-z]:[\\\/]|^\//.test(k));
     if (staleAbsoluteIds.length > 0) {
       console.log(
@@ -1179,7 +1179,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       return false;
     }
 
-    // Store — workspace-relative sourceId so retrieval context matches read_file paths
+    // Store — workspace-relative sourceId so retrieval context matches fs_read_file paths
     // Generate a content summary from the first ~200 chars for the workspace digest.
     const summary = _generateSummary(content);
     await this._commitSource({
@@ -1439,7 +1439,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   /**
    * Convert an absolute filesystem path to a workspace-relative path.
    * Used for storing sourceIds and building contextPrefixes that the LLM
-   * can use directly with workspace-relative tool calls (read_file, etc.).
+   * can use directly with workspace-relative tool calls (fs_read_file, etc.).
    */
   private _toRelativePath(absolutePath: string): string {
     const normalized = absolutePath.replace(/\\/g, '/');

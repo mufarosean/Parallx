@@ -577,9 +577,9 @@ case 'search_<thing>': {
 
 Use T1. Required env var: `<SERVER_ID_UPPER>_FS_ROOT`. Use `safeResolve` from Section 5.5 in every tool.
 
-Example `read_file` tool body:
+Example `fs_read_file` tool body:
 ```js
-case 'read_file': {
+case 'fs_read_file': {
   const root = process.env.<SERVER_ID_UPPER>_FS_ROOT;
   if (!root) throw Object.assign(new Error('FS root not configured'), { code: -32000 });
   const path = await safeResolve(root, String(args.path ?? ''));

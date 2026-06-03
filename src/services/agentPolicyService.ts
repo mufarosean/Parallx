@@ -20,8 +20,8 @@ interface IAgentPreferenceConfigProvider {
 
 const READ_TOOLS = ['read', 'list', 'schema', 'cell', 'rows', 'output'];
 const SEARCH_TOOLS = ['search', 'grep', 'semantic', 'retrieval', 'usage'];
-const EDIT_TOOLS = ['apply_patch', 'edit_file', 'rename'];
-const WRITE_TOOLS = ['create_file', 'write_file', 'insert', 'replace'];
+const EDIT_TOOLS = ['apply_patch', 'fs_edit_file', 'rename'];
+const WRITE_TOOLS = ['create_file', 'fs_write_file', 'insert', 'replace'];
 const DELETE_TOOLS = ['delete'];
 const COMMAND_TOOLS = ['terminal', 'command', 'task'];
 

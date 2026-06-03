@@ -1,4 +1,4 @@
-// parallxLinkTool.ts — M66 §4a — `parallx_link` chat tool.
+// parallxLinkTool.ts — M66 §4a — `link_create` chat tool.
 //
 // The system prompt's `## Linking` section lists every registered
 // `parallx://` template; this tool is the safe minter the AI calls when it
@@ -54,7 +54,7 @@ function readString(v: unknown): string | undefined {
  */
 export function createParallxLinkTool(getContracts: LinkContractSnapshot): IChatTool {
   return {
-    name: 'parallx_link',
+    name: 'link_create',
     displaySummary: 'Mint a validated parallx:// citation URI.',
     description:
       'Validate and mint a parallx:// citation URI. target must follow a template from the ## Linking section. Use anchor for deep-linking.',

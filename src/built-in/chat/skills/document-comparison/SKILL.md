@@ -30,10 +30,10 @@ summaries or memory.
 
 Parse $ARGUMENTS to determine which documents to compare.
 
-- If specific filenames are given, use `search_knowledge` or `list_files`
+- If specific filenames are given, use `fs_search_knowledge` or `fs_list_files`
   to locate them.
 - If the user refers to documents by description (e.g. "the two policy
-  files"), use `list_files` and `search_knowledge` to identify them.
+  files"), use `fs_list_files` and `fs_search_knowledge` to identify them.
 - If the same filename exists in multiple folders, identify ALL instances
   and ask the user to clarify, or compare all instances.
 
@@ -41,7 +41,7 @@ Record the full paths of all documents to compare.
 
 ## Step 2: Read each document
 
-Use `read_file` to read the **complete content** of each target document.
+Use `fs_read_file` to read the **complete content** of each target document.
 Do not truncate or skip sections.
 
 For each document, note:

@@ -215,9 +215,9 @@ You help the user understand and work with their project files and canvas pages.
 
 ## Workspace Skills
 - **search_workspace** — Full-text search across all workspace files
-- **search_knowledge** — Semantic (RAG) search using embeddings. Covers all indexed content including PDFs, DOCX, XLSX, and other rich documents. Best tool for searching large documents.
-- **read_file** — Read file contents (supports text files and rich documents like PDF, DOCX, XLSX)
-- **list_files** — List directory contents
+- **fs_search_knowledge** — Semantic (RAG) search using embeddings. Covers all indexed content including PDFs, DOCX, XLSX, and other rich documents. Best tool for searching large documents.
+- **fs_read_file** — Read file contents (supports text files and rich documents like PDF, DOCX, XLSX)
+- **fs_list_files** — List directory contents
 
 ## Canvas Skills
 - **read_page** — Read a canvas page by ID
@@ -229,9 +229,9 @@ You help the user understand and work with their project files and canvas pages.
 
 ## Tool Usage Guidelines
 - When context from files is already in the message (via automatic retrieval), use it directly — do not re-read the file
-- Use search_knowledge for conceptual questions ("how does auth work?") and for large documents (books, reports)
+- Use fs_search_knowledge for conceptual questions ("how does auth work?") and for large documents (books, reports)
 - Use search_workspace for exact string matches ("where is handleLogin defined?")
-- Use read_file for small files or when you need the full content of a specific file
+- Use fs_read_file for small files or when you need the full content of a specific file
 - When editing files, make the smallest change necessary
 - Explain what you're changing and why before proposing edits`],
 ]);
@@ -426,9 +426,9 @@ You help the user understand and work with their project files and canvas pages.
 
 ## Workspace Skills
 - **search_workspace** — Full-text search across all workspace files
-- **search_knowledge** — Semantic (RAG) search using embeddings. Covers all indexed content including PDFs, DOCX, XLSX, and other rich documents. Best tool for searching large documents.
-- **read_file** — Read file contents (supports text files and rich documents like PDF, DOCX, XLSX)
-- **list_files** — List directory contents
+- **fs_search_knowledge** — Semantic (RAG) search using embeddings. Covers all indexed content including PDFs, DOCX, XLSX, and other rich documents. Best tool for searching large documents.
+- **fs_read_file** — Read file contents (supports text files and rich documents like PDF, DOCX, XLSX)
+- **fs_list_files** — List directory contents
 
 ## Canvas Skills
 - **read_page** — Read a canvas page by ID
@@ -440,9 +440,9 @@ You help the user understand and work with their project files and canvas pages.
 
 ## Tool Usage Guidelines
 - When context from files is already in the message (via automatic retrieval), use it directly — do not re-read the file
-- Use search_knowledge for conceptual questions ("how does auth work?") and for large documents (books, reports)
+- Use fs_search_knowledge for conceptual questions ("how does auth work?") and for large documents (books, reports)
 - Use search_workspace for exact string matches ("where is handleLogin defined?")
-- Use read_file for small files or when you need the full content of a specific file
+- Use fs_read_file for small files or when you need the full content of a specific file
 - When editing files, make the smallest change necessary
 - Explain what you're changing and why before proposing edits
 `,

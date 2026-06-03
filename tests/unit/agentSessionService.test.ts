@@ -173,7 +173,7 @@ describe('AgentSessionService', () => {
       id: 'approval-1',
       stepId: 'step-1',
       actionClass: 'delete',
-      toolName: 'delete_file',
+      toolName: 'fs_delete_file',
       summary: 'Delete docs/old.md',
       explanation: 'The agent wants to remove an obsolete documentation file.',
       affectedTargets: ['docs/old.md'],

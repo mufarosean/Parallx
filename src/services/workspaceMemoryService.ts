@@ -8,7 +8,7 @@ const PREFERENCES_SECTION_HEADING = '## Preferences';
 const LEGACY_IMPORT_SECTION_HEADING = '## Legacy Import';
 // M81 Phase 3 Stage 2 — `## Concepts` section was an auto-extracted index of
 // file paths / URIs / capitalized entities. Removed in favor of agent-curated
-// MEMORY.md content via the `memory_edit` tool.
+// MEMORY.md content via the `memory_write` tool.
 
 // M81 Phase 8 — lessons + index. MEMORY.md becomes a bounded INDEX of pointers
 // to per-topic lesson files at `.parallx/memory/lessons/<slug>.md`. Archived
@@ -45,7 +45,7 @@ const LEGACY_CONCEPTS_SIGNATURE_PATTERNS: readonly RegExp[] = [
  * not a memory file. It lives at `.parallx/USER.md`, not under `.parallx/memory/`.
  * Scaffolding to disk is owned by `/init` (the single workspace-setup command),
  * matching how SOUL.md and TOOLS.md behave. We keep the path segments here so
- * the read/write methods used by `memory_edit` can resolve the file URI.
+ * the read/write methods used by `memory_write` can resolve the file URI.
  */
 const USER_FILE_SEGMENTS = ['.parallx', 'USER.md'] as const;
 
@@ -297,7 +297,7 @@ export class WorkspaceMemoryService extends Disposable implements IWorkspaceMemo
    * M81 — Overwrite the daily memory file for a date with the given body.
    * The date header (`# YYYY-MM-DD`) is re-applied at the top so callers
    * passing pure body content don't need to know the header convention.
-   * Used by `memory_edit` action=replace/remove on daily files.
+   * Used by `memory_write` action=replace/remove on daily files.
    */
   async writeDailyMemory(body: string, date: Date = new Date()): Promise<void> {
     await this.ensureScaffold();
@@ -670,7 +670,7 @@ export class WorkspaceMemoryService extends Disposable implements IWorkspaceMemo
   // M81 Phase 3 Stage 2 — syncConcepts / readConcepts / upsertConcepts /
   // searchConcepts were the substrate for the auto-extracted `## Concepts`
   // section in MEMORY.md. Removed; concept curation now flows through the
-  // agent's `memory_edit` tool, which writes free-form markdown that the
+  // agent's `memory_write` tool, which writes free-form markdown that the
   // RAG retrieval layer surfaces in context per-turn.
 
   async getPreferencesPromptBlock(): Promise<string | undefined> {

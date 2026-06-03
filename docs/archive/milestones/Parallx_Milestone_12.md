@@ -80,7 +80,7 @@ User: "I got into a fender bender on the highway"
 |---------|--------------------|--------------------|
 | **Multi-strategy parallel retrieval** | Runs GitHub code search + local semantic search + text grep + IntelliSense in parallel for the same query | We should run multiple search queries in parallel, not just one |
 | **Agent-driven iterative search** | After initial search, agent evaluates results and issues follow-up targeted searches | Our planning call replaces this (we can't afford iterative LLM calls) |
-| **`#codebase` as a tool, not a participant** | LLM can invoke codebase search *multiple times* with different queries | Our `search_knowledge` tool should accept the planning call's queries |
+| **`#codebase` as a tool, not a participant** | LLM can invoke codebase search *multiple times* with different queries | Our `fs_search_knowledge` tool should accept the planning call's queries |
 | **Plan agent (4-phase)** | Discovery → Alignment → Design → Refinement — explicit planning before action | Our pre-retrieval planning call is the lightweight version of this |
 | **Intent detection** | Determines if a message needs workspace context before searching | Our planning call classifies intent as part of the same LLM call |
 

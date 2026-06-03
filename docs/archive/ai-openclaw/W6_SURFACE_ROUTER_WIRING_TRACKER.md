@@ -120,7 +120,7 @@ changes to the audit-closed `openclawSurfacePlugin.ts`.
   ∈ `info|warn|error` (default info). No new styling.
 - **Approval flow**: `surface_send` is `permissionLevel: 'requires-approval'`,
   so every agent invocation surfaces through the existing confirmation UI
-  (same path as `write_file` / `run_command`). `surface_list` is
+  (same path as `fs_write_file` / `terminal_run_command`). `surface_list` is
   always-allowed (read-only). No new approval dialog introduced.
 - **Filesystem writes**: `FilesystemSurfacePlugin` respects the existing
   `IFileService` boundary checker (.parallxignore / workspace sandbox) via

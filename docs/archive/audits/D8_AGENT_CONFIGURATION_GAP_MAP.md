@@ -292,7 +292,7 @@ Phase 6: Integration  (D8-4, D8-8)  — Config-driven definitions, subagent cont
   3. Update `buildOpenclawRuntimeToolState` in `openclawToolState.ts` to accept and pass through `agentTools`.
   4. In `buildOpenclawTurnContext()`, pass `resolvedAgentConfig.tools` to tool state builder.
 - **Remove**: Nothing (existing 2 stages preserved, new stage inserted between them).
-- **Verify**: Agent with `tools: { deny: ['run_command'] }` on `full` profile still blocks `run_command`. Agent with `tools: { allow: ['read_file', 'search'] }` only sees those tools. Existing tool policy tests still pass (no `agentTools` = no change).
+- **Verify**: Agent with `tools: { deny: ['terminal_run_command'] }` on `full` profile still blocks `terminal_run_command`. Agent with `tools: { allow: ['fs_read_file', 'search'] }` only sees those tools. Existing tool policy tests still pass (no `agentTools` = no change).
 - **Risk**: LOW — additive filter stage. Existing tests cover stages 1 and 2. New tests cover stage 1.5.
 
 ### D8-10: Agent Lifecycle Hooks (Per-Turn Config Binding)

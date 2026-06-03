@@ -121,7 +121,7 @@ export function _detectHallucinatedToolCall(
 ): string | null {
   if (!markdown || availableToolNames.length === 0) return null;
   const namesAlt = availableToolNames.map(_escapeRegExp).join('|');
-  // `\\b` word boundaries on both ends keep `read_file` from matching
+  // `\\b` word boundaries on both ends keep `fs_read_file` from matching
   // inside `pre_read_filefoo`; the alternation captures the tool name.
   const verbsPast = '(?:called|ran|just\\s+ran|invoked|executed|just\\s+used|queried|queries)';
   const patternA = new RegExp(
@@ -404,7 +404,7 @@ export async function executeOpenclawAttempt(
       // Local models with weak tool-use training sometimes narrate a tool
       // call in their text response WITHOUT actually emitting a tool_call
       // structure. The runner sees zero tool_calls and exits; the user
-      // reads "I called read_file and got…" and believes a tool actually
+      // reads "I called fs_read_file and got…" and believes a tool actually
       // ran. Claude almost never does this (strong native tool-use
       // training); smaller/quantized OSS models do. The system-prompt
       // rule in SOUL.md tells the model not to do this, but the rule is

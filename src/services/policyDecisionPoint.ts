@@ -10,7 +10,7 @@
 //   5. permissionService   heartbeat / subagent autonomy=manual blocking
 //
 // Decision rule order (first match wins — see decide()):
-//   Rule 1 — run_command with a hard-blocked pattern → deny
+//   Rule 1 — terminal_run_command with a hard-blocked pattern → deny
 //   Rule 2 — managed session (heartbeat/subagent) with autonomy=manual → deny
 //   Rule 3 — permission service says never-allowed → deny
 //   Rule 4 — ALWAYS_REQUIRE_CONFIRMATION safety belt → require-approval
@@ -105,7 +105,7 @@ export class PolicyDecisionPoint {
    *
    * Rules evaluated in order — first match wins:
    *
-   *   1. run_command with a hard-blocked string → deny (no override)
+   *   1. terminal_run_command with a hard-blocked string → deny (no override)
    *   2. Heartbeat/subagent session with autonomy=manual → deny
    *   3. Permission service: never-allowed → deny
    *   4. ALWAYS_REQUIRE_CONFIRMATION safety belt → require-approval
@@ -121,7 +121,7 @@ export class PolicyDecisionPoint {
     const reasons: string[] = [];
 
     // Rule 1 — command hard-deny
-    if (name === 'run_command') {
+    if (name === 'terminal_run_command') {
       const cmd = typeof args['command'] === 'string' ? args['command'] : '';
       if (_isCommandBlocked(cmd)) {
         reasons.push('command-blocklist');

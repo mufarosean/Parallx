@@ -47,7 +47,7 @@ The renderer at `chatListRenderer.ts` lines 152-163 detects the part-count decre
 
 **Expected state:** Completed tool invocations should persist in the response parts after stream close. The user should see which tools were called, their arguments, status, and results. This is essential for:
 1. **Traceability** — user can see exactly what the AI did
-2. **Skill reads** — the `read_file` call to load a SKILL.md should be visible
+2. **Skill reads** — the `fs_read_file` call to load a SKILL.md should be visible
 3. **Debugging** — when tool calls fail or produce unexpected results, the user needs to see them
 4. **Trust** — silent tool execution with no visible artifact makes the AI a black box
 
@@ -57,7 +57,7 @@ The renderer already has a full `_renderToolInvocation()` function at `chatConte
 
 ---
 
-### F12-2: Skill prompt explicitly instructs model to use `read_file` tool — **MISALIGNED** (HIGH)
+### F12-2: Skill prompt explicitly instructs model to use `fs_read_file` tool — **MISALIGNED** (HIGH)
 
 **Parallx file:** `src/openclaw/openclawSystemPrompt.ts` lines 181-189 — `buildSkillsSection()`
 **Upstream reference:** `agents/system-prompt.ts:20-37` — model must read the skill file
@@ -69,17 +69,17 @@ The renderer already has a full `_renderToolInvocation()` function at `chatConte
 - If multiple could apply: choose the most specific one, then read/follow it.
 ```
 
-Does NOT name the `read_file` tool.
+Does NOT name the `fs_read_file` tool.
 
 **Expected state (UI path has it right at `chatSystemPrompts.ts` line 241):**
 
 ```
-- If exactly one skill clearly applies: read its SKILL.md at <location> using read_file, then follow its instructions step by step.
+- If exactly one skill clearly applies: read its SKILL.md at <location> using fs_read_file, then follow its instructions step by step.
 ```
 
 Explicitly names the tool.
 
-**Gap analysis:** A 20B parameter model does not reliably infer tool names from abstract verbs. "Read its SKILL.md" is ambiguous — the model could hallucinate instructions, call a different tool, or ask the user. Without explicit `read_file` naming, skill loading is probabilistic, not deterministic.
+**Gap analysis:** A 20B parameter model does not reliably infer tool names from abstract verbs. "Read its SKILL.md" is ambiguous — the model could hallucinate instructions, call a different tool, or ask the user. Without explicit `fs_read_file` naming, skill loading is probabilistic, not deterministic.
 
 ---
 
@@ -113,7 +113,7 @@ No case for user explicitly naming a skill.
 **Expected state (UI path at `chatSystemPrompts.ts` line 242):**
 
 ```
-- If the user explicitly names a skill (e.g. "use the X skill"): read that skill's SKILL.md at <location> using read_file, then follow its instructions.
+- If the user explicitly names a skill (e.g. "use the X skill"): read that skill's SKILL.md at <location> using fs_read_file, then follow its instructions.
 ```
 
 **Gap analysis:** When a user types "use the document-comparison skill", the model must map this to the three existing rules. Explicit naming is a deterministic signal — the user has already done the selection. The pipeline forces re-derivation, adding a failure path.
@@ -130,7 +130,7 @@ No case for user explicitly naming a skill.
 
 | Aspect | Pipeline (`buildSkillsSection`) | UI (`appendSkillCatalog`) | Impact |
 |---|---|---|---|
-| Explicit `read_file` tool naming | **Missing** | Present ("using read_file") | Model may not call the right tool |
+| Explicit `fs_read_file` tool naming | **Missing** | Present ("using fs_read_file") | Model may not call the right tool |
 | Step-by-step instruction | "then follow it" | "then follow its instructions step by step" | Model may skim rather than execute sequentially |
 | Explicit user naming | **Missing** | Present (dedicated bullet) | User "use skill X" may fail |
 | Fabrication guard | **Missing** | Present ("NEVER describe from memory") | Model may hallucinate skill instructions |

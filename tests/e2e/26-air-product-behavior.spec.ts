@@ -278,7 +278,7 @@ test.describe('AIR Product Behavior', () => {
           description: 'Refresh the claims guide content.',
           kind: 'edit',
           proposedAction: {
-            toolName: 'edit_file',
+            toolName: 'fs_edit_file',
             actionClass: 'edit',
             summary: 'Edit the claims guide',
             targetPaths: ['docs/Claims Guide.md'],
@@ -339,7 +339,7 @@ test.describe('AIR Product Behavior', () => {
           description: 'Update the claims guide in docs.',
           kind: 'write',
           proposedAction: {
-            toolName: 'write_file',
+            toolName: 'fs_write_file',
             actionClass: 'write',
             summary: 'Write the updated claims guide',
             targetPaths: ['docs/Claims Guide.md'],
@@ -385,7 +385,7 @@ test.describe('AIR Product Behavior', () => {
           description: 'Refresh the claims guide content.',
           kind: 'edit',
           proposedAction: {
-            toolName: 'edit_file',
+            toolName: 'fs_edit_file',
             actionClass: 'edit',
             summary: 'Edit the claims guide',
             targetPaths: ['docs/Claims Guide.md'],
@@ -428,7 +428,7 @@ test.describe('AIR Product Behavior', () => {
           description: 'Inspect the workspace README file.',
           kind: 'read',
           proposedAction: {
-            toolName: 'read_file',
+            toolName: 'fs_read_file',
             actionClass: 'read',
             summary: 'Read the workspace README',
             targetPaths: ['README.md'],
@@ -471,7 +471,7 @@ test.describe('AIR Product Behavior', () => {
           description: 'Try to edit a file beyond the active workspace root.',
           kind: 'edit',
           proposedAction: {
-            toolName: 'edit_file',
+            toolName: 'fs_edit_file',
             actionClass: 'edit',
             summary: 'Edit a file outside the workspace',
             targetPaths: [outsidePath],

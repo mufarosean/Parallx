@@ -67,10 +67,10 @@ function formatSearchResults(results: Array<{ sourceId: string; contextPrefix: s
 }
 
 /**
- * `memory_get` — read a canonical workspace-memory file.
+ * `memory_read` — read a canonical workspace-memory file.
  *
  * Reads are routed through `IBuiltInToolWorkspaceMemory` when available so the
- * tool sees the same scaffold/normalization as `memory_edit`. The raw
+ * tool sees the same scaffold/normalization as `memory_write`. The raw
  * `IBuiltInToolFileSystem` is kept as a fallback for legacy callers that
  * activate the tool before `WorkspaceMemoryService` is bound (and for unit
  * tests that exercise the read path without the full service surface).
@@ -83,7 +83,7 @@ export function createMemoryGetTool(
   workspaceMemory?: IBuiltInToolWorkspaceMemory,
 ): IChatTool {
   return {
-    name: 'memory_get',
+    name: 'memory_read',
     displaySummary: 'Read canonical workspace memory.',
     description:
       'Reads from `.parallx/memory/`. Three modes: ' +
@@ -174,7 +174,7 @@ export function createMemorySearchTool(memorySearch: IBuiltInToolCanonicalMemory
       '(both the durable MEMORY.md and all daily logs). ' +
       'Use when looking for stored facts by topic rather than by date/layer — e.g. "what do we know about X", ' +
       '"have we discussed Y before". ' +
-      'For reading a specific memory layer directly use `memory_get`.',
+      'For reading a specific memory layer directly use `memory_read`.',
     parameters: {
       type: 'object',
       required: ['query'],
@@ -222,7 +222,7 @@ export function createMemorySearchTool(memorySearch: IBuiltInToolCanonicalMemory
   };
 }
 
-// ─── memory_edit (M81 Phase 2 + Phase 8) ─────────────────────────────────────
+// ─── memory_write (M81 Phase 2 + Phase 8) ─────────────────────────────────────
 
 type MemoryEditFile = 'USER' | 'MEMORY' | 'daily' | 'lesson';
 type MemoryEditAction = 'add' | 'replace' | 'remove';
@@ -401,7 +401,7 @@ function formatBoundedRejection(file: MemoryEditBodyFile, current: string, cap: 
 }
 
 /**
- * memory_edit — single tool the agent uses to mutate workspace memory.
+ * memory_write — single tool the agent uses to mutate workspace memory.
  *
  * Design (M81 Phase 2):
  *   - Three files: USER (identity), MEMORY (durable facts), daily (date log).
@@ -421,7 +421,7 @@ export function createMemoryEditTool(
   workspaceMemory: IBuiltInToolWorkspaceMemory | undefined,
 ): IChatTool {
   return {
-    name: 'memory_edit',
+    name: 'memory_write',
     displaySummary: 'Add, replace, or remove an entry in workspace memory.',
     description:
       'Adds, replaces, or removes an entry in one of the workspace memory files. ' +
@@ -441,7 +441,7 @@ export function createMemoryEditTool(
       'Daily logs are unbounded. ' +
       'Use this tool when the user states a durable preference, when a project decision is made, ' +
       'when the user corrects a tool-use mistake (use `file=lesson`), or when a fact emerges that should carry across future sessions. ' +
-      'Read the file first with `memory_get` (or `memory_get name=<slug>` for a lesson) if you are unsure what is already there.',
+      'Read the file first with `memory_read` (or `memory_read name=<slug>` for a lesson) if you are unsure what is already there.',
     parameters: {
       type: 'object',
       required: ['file', 'action'],
@@ -483,7 +483,7 @@ export function createMemoryEditTool(
     category: 'memory',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       if (!workspaceMemory) {
-        return { content: 'memory_edit is not available — no workspace folder is open.', isError: true };
+        return { content: 'memory_write is not available — no workspace folder is open.', isError: true };
       }
 
       const file = args['file'];

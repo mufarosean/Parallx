@@ -218,7 +218,7 @@ runtime yet.
 The useful retrieval lessons from current OpenClaw are:
 
 1. memory retrieval is explicit and tool-shaped (`memory_search`,
-   `memory_get`), not a hidden global prompt tax;
+   `memory_read`), not a hidden global prompt tax;
 2. transcript/session recall is optional, bounded, and explicitly isolated from
    default memory behavior;
 3. hybrid retrieval is configurable, but the result surface remains narrow:

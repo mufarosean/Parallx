@@ -19,25 +19,25 @@ export const SKILL_CHAIN_CASES: ChainEvalCase[] = [
   {
     id: 'skill-folder-overview',
     prompt: 'Give me a quick overview of what is in this workspace.',
-    expectedChain: ['list_files', 'read_file'],
+    expectedChain: ['fs_list_files', 'fs_read_file'],
     unordered: false,
   },
   {
     id: 'skill-exhaustive-summary',
     prompt: 'Summarise the README in detail — exhaustively, no missing sections.',
-    expectedChain: ['read_file'],
+    expectedChain: ['fs_read_file'],
     unordered: false,
   },
   {
     id: 'skill-document-comparison',
     prompt: 'Compare README.md and docs/guide.md side by side.',
-    expectedChain: ['read_file', 'read_file'],
+    expectedChain: ['fs_read_file', 'fs_read_file'],
     unordered: false,
   },
   {
     id: 'skill-scoped-extraction',
     prompt: 'Pull out every TODO comment from the src folder.',
-    expectedChain: ['grep_search'],
+    expectedChain: ['fs_grep_search'],
     unordered: true,
   },
   {

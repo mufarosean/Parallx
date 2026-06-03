@@ -247,7 +247,7 @@ OpenClaw exposes explicit memory tools:
 
 1. `memory_search`
    - semantic recall over indexed snippets;
-2. `memory_get`
+2. `memory_read`
    - targeted read of a specific markdown file or line range.
 
 This is a major product difference from Parallx.
@@ -545,7 +545,7 @@ Instead, Parallx should move toward:
 - [x] Define canonical Parallx memory file layout
 - [x] Implement file-backed memory primitives
 - [x] Implement initial `.parallx/memory/` indexing allowlist
-- [x] Implement initial explicit memory tools (`memory_get`, `memory_search`)
+- [x] Implement initial explicit memory tools (`memory_read`, `memory_search`)
 - [x] Teach the base system prompt where canonical memory lives
 - [x] Add focused unit tests for canonical memory tools and path primitives
 - [x] Add a Playwright AI-eval spec for canonical memory layer access
@@ -579,7 +579,7 @@ Completed implementation work in this session:
    rest of `.parallx/` stays effectively internal by default;
 6. added focused unit coverage for canonical path resolution, scaffold creation,
    and daily-log append behavior.
-7. added explicit built-in memory tools: `memory_get` and `memory_search`.
+7. added explicit built-in memory tools: `memory_read` and `memory_search`.
 8. updated the base chat system prompt to tell the AI to prefer those memory
    tools for canonical workspace memory.
 9. added focused unit coverage for memory tool registration and behavior.

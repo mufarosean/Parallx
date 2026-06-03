@@ -402,7 +402,7 @@ function transientDelay(attempt: number): number {
 
 Add new tools as workspace-compatible SKILL.md manifests in
 `src/built-in/chat/skills/`. These use existing tool infrastructure
-(run_command, read_file) but provide guided prompts:
+(terminal_run_command, fs_read_file) but provide guided prompts:
 
 | Skill | Name | What it does | Implementation |
 |-------|------|-------------|----------------|
@@ -413,7 +413,7 @@ Add new tools as workspace-compatible SKILL.md manifests in
 **Note:** `fetch-url` requires a new tool implementation in `src/built-in/chat/tools/`.
 The Docling bridge (`electron/doclingBridge.cjs`) already exists but isn't
 wired as a chat tool. `git-status` can be a pure workflow skill that chains
-existing `run_command` tool.
+existing `terminal_run_command` tool.
 
 ### Verification
 

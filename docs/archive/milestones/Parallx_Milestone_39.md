@@ -51,7 +51,7 @@ What happens today:
    cover 18 files).
 3. The model enters the agentic loop (`chatGroundedExecutor.ts`) with no
    guidance on approach.
-4. It calls `search_knowledge` once with a broad query.
+4. It calls `fs_search_knowledge` once with a broad query.
 5. Retrieval returns chunks from ~8–10 files (K=20, maxPerSource=5).
 6. The model produces summaries for those files and silently skips the rest.
 7. The user sees an incomplete answer with no indication of missing coverage.
@@ -282,7 +282,7 @@ works* for this class of problem.
 | Capability | File(s) | Status |
 |-----------|---------|--------|
 | Skill manifest system | `skillLoaderService.ts` | Mature (M11). Scans `.parallx/skills/*/SKILL.md`, parses YAML, validates, converts to `IChatTool`. |
-| 13 built-in skill manifests | `.parallx/skills/*/SKILL.md` | Shipped. `read_file`, `write_file`, `edit_file`, `list_files`, `search_files`, `search_knowledge`, `search_workspace`, `create_page`, `read_page`, `read_page_by_title`, `list_pages`, `get_page_properties`, `read_current_page`. |
+| 13 built-in skill manifests | `.parallx/skills/*/SKILL.md` | Shipped. `fs_read_file`, `fs_write_file`, `fs_edit_file`, `fs_list_files`, `fs_search_files`, `fs_search_knowledge`, `search_workspace`, `create_page`, `read_page`, `read_page_by_title`, `list_pages`, `get_page_properties`, `read_current_page`. |
 | YAML frontmatter parser | `skillLoaderService.ts` L56–130 | Custom lightweight parser. Handles flat KV, lists, inline arrays. |
 | Tool-from-manifest conversion | `skillLoaderService.ts` L200 | Converts manifest → `IChatTool` with JSON Schema parameters. |
 | TOOLS.md auto-generation | `promptFileService.ts` L211 | System generates markdown doc from all registered skill manifests. |
@@ -328,8 +328,8 @@ playbooks.
 M38's execution planner (`chatExecutionPlanner.ts`) produces typed
 `IExecutionPlan` objects for 7 workflow types. The evidence gatherer
 (`chatEvidenceGatherer.ts`) pre-gathers evidence per the plan. But the plan
-steps are **engine-executed** — the code directly calls `list_files`,
-`read_file`, and retrieval APIs.
+steps are **engine-executed** — the code directly calls `fs_list_files`,
+`fs_read_file`, and retrieval APIs.
 
 This works for pre-defined workflows the engine knows about, but:
 
@@ -429,8 +429,8 @@ Users don't need to understand the internals. Three steps:
 
    When the user asks to [do X]:
 
-   1. **Step one**: Call `list_files` to enumerate the scope
-   2. **Step two**: For each file, call `read_file` and extract [Y]
+   1. **Step one**: Call `fs_list_files` to enumerate the scope
+   2. **Step two**: For each file, call `fs_read_file` and extract [Y]
    3. **Step three**: Combine results into a structured answer
    4. **Verify**: Confirm no items were skipped
    ```
@@ -443,8 +443,8 @@ Users don't need to understand the internals. Three steps:
   step.
 - Include a verification step so the model checks its own work.
 - Keep `SKILL.md` under 500 lines (~5000 tokens).
-- Use tool names the model already knows (`list_files`, `read_file`,
-  `search_knowledge`, etc.).
+- Use tool names the model already knows (`fs_list_files`, `fs_read_file`,
+  `fs_search_knowledge`, etc.).
 
 ---
 
@@ -466,7 +466,7 @@ Differentiated by frontmatter:
 ```yaml
 # Tool skill (M11 — existing)
 ---
-name: read_file
+name: fs_read_file
 description: Read the contents of a file within the workspace.
 version: 1.0.0
 permission: always-allowed
@@ -497,11 +497,11 @@ tags: [workflow, summary, exhaustive]
 
 When the user asks to summarize all/each/every file:
 
-1. **Enumerate**: Call `list_files` to get the complete file list
+1. **Enumerate**: Call `fs_list_files` to get the complete file list
    - If a folder was specified, pass the folder path
    - Record the total file count — this is your coverage target
 2. **Iterate**: For each file in the list:
-   - Call `read_file` with the file path
+   - Call `fs_read_file` with the file path
    - Produce a 2–3 sentence summary of that file's content
    - Note the key topics covered
 3. **Combine**: Present all summaries in a structured format:
@@ -556,9 +556,9 @@ User message: "Summarize each file in the RF Guides folder"
                 ▼
 ┌─ executeChatGrounded() — agentic loop ─────────────────┐
 │  Model reads skill instructions + scope                 │
-│  Iteration 1: calls list_files("RF Guides/")            │
-│  Iteration 2: calls read_file("RF Guides/file1.pdf")    │
-│  Iteration 3: calls read_file("RF Guides/file2.pdf")    │
+│  Iteration 1: calls fs_list_files("RF Guides/")            │
+│  Iteration 2: calls fs_read_file("RF Guides/file1.pdf")    │
+│  Iteration 3: calls fs_read_file("RF Guides/file2.pdf")    │
 │  ...                                                    │
 │  Final: produces structured summary with coverage check │
 └─────────────────────────────────────────────────────────┘

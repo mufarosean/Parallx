@@ -31,14 +31,14 @@
 - **Line(s):** 140–160
 - **Issue:** The function reconstructs the filter reason after the fact with a hardcoded check:
   ```typescript
-  if (mode === 'standard' && tool.name === 'run_command') {
+  if (mode === 'standard' && tool.name === 'terminal_run_command') {
     return 'tool-profile-deny';
   }
   return 'tool-profile-not-allowed';
   ```
-  This only returns `'tool-profile-deny'` for exactly one case: `standard` mode + `run_command`.
+  This only returns `'tool-profile-deny'` for exactly one case: `standard` mode + `terminal_run_command`.
   
-  For `readonly` mode, all 5 denied tools (`write_file`, `edit_file`, `delete_file`, `run_command`, `create_page`) are reported as `'tool-profile-not-allowed'` instead of the correct `'tool-profile-deny'`. The two reasons have different meanings:
+  For `readonly` mode, all 5 denied tools (`fs_write_file`, `fs_edit_file`, `fs_delete_file`, `terminal_run_command`, `create_page`) are reported as `'tool-profile-not-allowed'` instead of the correct `'tool-profile-deny'`. The two reasons have different meanings:
   - `'tool-profile-deny'` = tool is explicitly on the deny list
   - `'tool-profile-not-allowed'` = tool is not on the allow list
   
@@ -58,8 +58,8 @@
 - **File:** `src/openclaw/openclawToolPolicy.ts`
 - **Line(s):** 124–134
 - **Issue:** Two comment/code contradictions:
-  1. **Line 126–127:** Comment says "All modes get full tool access" but the function returns `'standard'` for `edit` mode. `standard` is not `full` — it denies `run_command`.
-  2. **Line 131:** Comment says `// Edit mode: read-only tools only` but the `standard` profile allows ALL tools except `run_command`. That's not "read-only" — it allows `write_file`, `edit_file`, `delete_file`, `create_page`.
+  1. **Line 126–127:** Comment says "All modes get full tool access" but the function returns `'standard'` for `edit` mode. `standard` is not `full` — it denies `terminal_run_command`.
+  2. **Line 131:** Comment says `// Edit mode: read-only tools only` but the `standard` profile allows ALL tools except `terminal_run_command`. That's not "read-only" — it allows `fs_write_file`, `fs_edit_file`, `fs_delete_file`, `create_page`.
 - **Impact:** Code behavior is correct (`edit` → `standard` is reasonable). Comments are misleading for future developers.
 - **Fix:** Update comments:
   ```typescript

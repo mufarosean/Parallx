@@ -43,8 +43,8 @@ describe('mcpTypes — type assignability', () => {
   });
 
   it('IMcpToolSchema accepts valid schema', () => {
-    const schema: IMcpToolSchema = { name: 'read_file', description: 'Read a file', inputSchema: { type: 'object', properties: { path: { type: 'string' } } } };
-    expect(schema.name).toBe('read_file');
+    const schema: IMcpToolSchema = { name: 'fs_read_file', description: 'Read a file', inputSchema: { type: 'object', properties: { path: { type: 'string' } } } };
+    expect(schema.name).toBe('fs_read_file');
   });
 
   it('IMcpToolCallResult with text content', () => {
@@ -55,8 +55,8 @@ describe('mcpTypes — type assignability', () => {
   });
 
   it('IMcpToolCallParams accepts valid params', () => {
-    const params: IMcpToolCallParams = { name: 'read_file', arguments: { path: '/tmp/test' } };
-    expect(params.name).toBe('read_file');
+    const params: IMcpToolCallParams = { name: 'fs_read_file', arguments: { path: '/tmp/test' } };
+    expect(params.name).toBe('fs_read_file');
   });
 
   it('IMcpInitializeParams accepts valid handshake', () => {

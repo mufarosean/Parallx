@@ -108,7 +108,7 @@ Verified upstream behavior:
 OpenClaw exposes explicit memory tools:
 
 1. `memory_search`;
-2. `memory_get`.
+2. `memory_read`.
 
 Its system prompt guidance treats memory recall as an explicit step before
 answering questions about prior work, decisions, dates, preferences, or todos.

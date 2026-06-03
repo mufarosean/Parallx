@@ -253,7 +253,7 @@ lines.push(
 - "For greetings, respond naturally" — the planner gates tools away for conversational messages, so the model won't have tools to misuse.
 - "WHEN TO USE TOOLS" section — when the model receives tools, it should use them as needed. When it doesn't (conversational), it can't. No rules needed.
 - "NEVER just list file or page names" — good guidance but belongs in tool descriptions, not system prompt.
-- "When asked to summarize: read_file or read_page..." — overly prescriptive. The model knows how to summarize.
+- "When asked to summarize: fs_read_file or read_page..." — overly prescriptive. The model knows how to summarize.
 
 #### 5b. Agent Mode — New RULES section
 

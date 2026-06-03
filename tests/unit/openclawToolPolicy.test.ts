@@ -44,30 +44,30 @@ function skill(name: string, kind: 'tool' | 'prompt' = 'tool'): ISkillCatalogEnt
 
 describe('applyOpenclawToolPolicy', () => {
   it('full profile allows all tools', () => {
-    const tools = [tool('read_file'), tool('write_file'), tool('run_command')];
+    const tools = [tool('fs_read_file'), tool('fs_write_file'), tool('terminal_run_command')];
     const result = applyOpenclawToolPolicy({ tools, mode: 'full' });
     expect(result).toHaveLength(3);
   });
 
-  it('standard profile denies run_command', () => {
-    const tools = [tool('read_file'), tool('run_command'), tool('write_file')];
+  it('standard profile denies terminal_run_command', () => {
+    const tools = [tool('fs_read_file'), tool('terminal_run_command'), tool('fs_write_file')];
     const result = applyOpenclawToolPolicy({ tools, mode: 'standard' });
-    expect(result.map(t => t.name)).toEqual(['read_file', 'write_file']);
+    expect(result.map(t => t.name)).toEqual(['fs_read_file', 'fs_write_file']);
   });
 
   it('readonly profile excludes write/edit/delete/run/create (allowlist semantics)', () => {
     // M65 parity fix: profiles are now allowlists, not deny-lists.
-    // `read_file` is on the readonly allow list; `write_file`, `edit_file`,
-    // `delete_file`, `run_command`, `canvas_create_page` are not — they are
+    // `fs_read_file` is on the readonly allow list; `fs_write_file`, `fs_edit_file`,
+    // `fs_delete_file`, `terminal_run_command`, `canvas_create_page` are not — they are
     // excluded by absence from the allowlist (mirrors upstream
     // tool-policy-shared.ts). A bare `search` name is also excluded.
     const tools = [
-      tool('read_file'), tool('write_file'), tool('edit_file'),
-      tool('delete_file'), tool('run_command'), tool('canvas_create_page'),
+      tool('fs_read_file'), tool('fs_write_file'), tool('fs_edit_file'),
+      tool('fs_delete_file'), tool('terminal_run_command'), tool('canvas_create_page'),
       tool('canvas_find_pages'),
     ];
     const result = applyOpenclawToolPolicy({ tools, mode: 'readonly' });
-    expect(result.map(t => t.name)).toEqual(['read_file', 'canvas_find_pages']);
+    expect(result.map(t => t.name)).toEqual(['fs_read_file', 'canvas_find_pages']);
   });
 
   it('returns empty array for empty input', () => {
@@ -76,68 +76,68 @@ describe('applyOpenclawToolPolicy', () => {
   });
 
   it('never-allowed permission overrides profile allow', () => {
-    const tools = [tool('read_file'), tool('search')];
+    const tools = [tool('fs_read_file'), tool('search')];
     const result = applyOpenclawToolPolicy({
       tools,
       mode: 'full',
       permissions: { search: 'never-allowed' },
     });
-    expect(result.map(t => t.name)).toEqual(['read_file']);
+    expect(result.map(t => t.name)).toEqual(['fs_read_file']);
   });
 
   it('requires-approval tools are NOT removed (approval handled elsewhere)', () => {
-    const tools = [tool('write_file')];
+    const tools = [tool('fs_write_file')];
     const result = applyOpenclawToolPolicy({
       tools,
       mode: 'full',
-      permissions: { write_file: 'requires-approval' },
+      permissions: { fs_write_file: 'requires-approval' },
     });
     expect(result).toHaveLength(1);
   });
 
   it('always-allowed tools pass through', () => {
-    const tools = [tool('read_file')];
+    const tools = [tool('fs_read_file')];
     const result = applyOpenclawToolPolicy({
       tools,
       mode: 'full',
-      permissions: { read_file: 'always-allowed' },
+      permissions: { fs_read_file: 'always-allowed' },
     });
     expect(result).toHaveLength(1);
   });
 
   // D8-6: Agent tool policy filter stage
   it('agentTools deny removes tool even in full profile', () => {
-    const tools = [tool('read_file'), tool('write_file'), tool('search')];
+    const tools = [tool('fs_read_file'), tool('fs_write_file'), tool('search')];
     const result = applyOpenclawToolPolicy({
       tools,
       mode: 'full',
-      agentTools: { deny: ['write_file'] },
+      agentTools: { deny: ['fs_write_file'] },
     });
-    expect(result.map(t => t.name)).toEqual(['read_file', 'search']);
+    expect(result.map(t => t.name)).toEqual(['fs_read_file', 'search']);
   });
 
   it('agentTools allow restricts to listed tools only', () => {
-    const tools = [tool('read_file'), tool('write_file'), tool('search')];
+    const tools = [tool('fs_read_file'), tool('fs_write_file'), tool('search')];
     const result = applyOpenclawToolPolicy({
       tools,
       mode: 'full',
-      agentTools: { allow: ['read_file', 'search'] },
+      agentTools: { allow: ['fs_read_file', 'search'] },
     });
-    expect(result.map(t => t.name)).toEqual(['read_file', 'search']);
+    expect(result.map(t => t.name)).toEqual(['fs_read_file', 'search']);
   });
 
   it('agentTools deny + allow combined: deny takes priority', () => {
-    const tools = [tool('read_file'), tool('write_file'), tool('search')];
+    const tools = [tool('fs_read_file'), tool('fs_write_file'), tool('search')];
     const result = applyOpenclawToolPolicy({
       tools,
       mode: 'full',
-      agentTools: { allow: ['read_file', 'write_file'], deny: ['write_file'] },
+      agentTools: { allow: ['fs_read_file', 'fs_write_file'], deny: ['fs_write_file'] },
     });
-    expect(result.map(t => t.name)).toEqual(['read_file']);
+    expect(result.map(t => t.name)).toEqual(['fs_read_file']);
   });
 
   it('agentTools with empty allow array has no filtering effect', () => {
-    const tools = [tool('read_file'), tool('write_file')];
+    const tools = [tool('fs_read_file'), tool('fs_write_file')];
     const result = applyOpenclawToolPolicy({
       tools,
       mode: 'full',
@@ -147,7 +147,7 @@ describe('applyOpenclawToolPolicy', () => {
   });
 
   it('agentTools with empty deny array has no filtering effect', () => {
-    const tools = [tool('read_file'), tool('write_file')];
+    const tools = [tool('fs_read_file'), tool('fs_write_file')];
     const result = applyOpenclawToolPolicy({
       tools,
       mode: 'full',
@@ -157,7 +157,7 @@ describe('applyOpenclawToolPolicy', () => {
   });
 
   it('agentTools undefined has no filtering effect', () => {
-    const tools = [tool('read_file'), tool('write_file')];
+    const tools = [tool('fs_read_file'), tool('fs_write_file')];
     const result = applyOpenclawToolPolicy({
       tools,
       mode: 'full',
@@ -167,17 +167,17 @@ describe('applyOpenclawToolPolicy', () => {
   });
 
   it('profile deny takes priority over permission level', () => {
-    const tools = [tool('run_command')];
+    const tools = [tool('terminal_run_command')];
     const result = applyOpenclawToolPolicy({
       tools,
       mode: 'standard',
-      permissions: { run_command: 'always-allowed' },
+      permissions: { terminal_run_command: 'always-allowed' },
     });
     expect(result).toHaveLength(0);
   });
 
   it('does not mutate input array', () => {
-    const tools = Object.freeze([tool('run_command'), tool('read_file')]);
+    const tools = Object.freeze([tool('terminal_run_command'), tool('fs_read_file')]);
     const result = applyOpenclawToolPolicy({ tools, mode: 'standard' });
     expect(result).toHaveLength(1);
     expect(tools).toHaveLength(2);
@@ -190,16 +190,16 @@ describe('applyOpenclawToolPolicy', () => {
 
 describe('isToolDeniedByProfile', () => {
   it('returns true for denied tools in readonly', () => {
-    expect(isToolDeniedByProfile('write_file', 'readonly')).toBe(true);
-    expect(isToolDeniedByProfile('edit_file', 'readonly')).toBe(true);
-    expect(isToolDeniedByProfile('delete_file', 'readonly')).toBe(true);
-    expect(isToolDeniedByProfile('run_command', 'readonly')).toBe(true);
+    expect(isToolDeniedByProfile('fs_write_file', 'readonly')).toBe(true);
+    expect(isToolDeniedByProfile('fs_edit_file', 'readonly')).toBe(true);
+    expect(isToolDeniedByProfile('fs_delete_file', 'readonly')).toBe(true);
+    expect(isToolDeniedByProfile('terminal_run_command', 'readonly')).toBe(true);
     expect(isToolDeniedByProfile('canvas_create_page', 'readonly')).toBe(true);
   });
 
   it('returns false for tools on the readonly allowlist', () => {
     // M65 parity fix: readonly is now an allowlist. Tools on the list pass.
-    expect(isToolDeniedByProfile('read_file', 'readonly')).toBe(false);
+    expect(isToolDeniedByProfile('fs_read_file', 'readonly')).toBe(false);
     expect(isToolDeniedByProfile('canvas_find_pages', 'readonly')).toBe(false);
   });
 
@@ -209,17 +209,17 @@ describe('isToolDeniedByProfile', () => {
     expect(isToolDeniedByProfile('some_random_mcp_tool', 'readonly')).toBe(true);
   });
 
-  it('returns true for run_command in standard', () => {
-    expect(isToolDeniedByProfile('run_command', 'standard')).toBe(true);
+  it('returns true for terminal_run_command in standard', () => {
+    expect(isToolDeniedByProfile('terminal_run_command', 'standard')).toBe(true);
   });
 
-  it('returns false for write_file in standard', () => {
-    expect(isToolDeniedByProfile('write_file', 'standard')).toBe(false);
+  it('returns false for fs_write_file in standard', () => {
+    expect(isToolDeniedByProfile('fs_write_file', 'standard')).toBe(false);
   });
 
   it('returns false for any tool in full', () => {
-    expect(isToolDeniedByProfile('run_command', 'full')).toBe(false);
-    expect(isToolDeniedByProfile('write_file', 'full')).toBe(false);
+    expect(isToolDeniedByProfile('terminal_run_command', 'full')).toBe(false);
+    expect(isToolDeniedByProfile('fs_write_file', 'full')).toBe(false);
   });
 });
 
@@ -256,7 +256,7 @@ describe('resolveToolProfile', () => {
 describe('buildOpenclawRuntimeToolState', () => {
   it('counts are consistent: total = available + filtered', () => {
     const state = buildOpenclawRuntimeToolState({
-      platformTools: [tool('read_file'), tool('write_file'), tool('run_command')],
+      platformTools: [tool('fs_read_file'), tool('fs_write_file'), tool('terminal_run_command')],
       skillCatalog: [],
       mode: 'standard',
     });
@@ -265,7 +265,7 @@ describe('buildOpenclawRuntimeToolState', () => {
 
   it('deduplicates platform tools', () => {
     const state = buildOpenclawRuntimeToolState({
-      platformTools: [tool('read_file'), tool('read_file'), tool('read_file')],
+      platformTools: [tool('fs_read_file'), tool('fs_read_file'), tool('fs_read_file')],
       skillCatalog: [],
       mode: 'full',
     });
@@ -275,7 +275,7 @@ describe('buildOpenclawRuntimeToolState', () => {
 
   it('includes skill-derived tools in exposed definitions', () => {
     const state = buildOpenclawRuntimeToolState({
-      platformTools: [tool('read_file')],
+      platformTools: [tool('fs_read_file')],
       skillCatalog: [skill('custom_search')],
       mode: 'full',
     });
@@ -285,8 +285,8 @@ describe('buildOpenclawRuntimeToolState', () => {
 
   it('marks skill with name collision as not exposed', () => {
     const state = buildOpenclawRuntimeToolState({
-      platformTools: [tool('read_file')],
-      skillCatalog: [skill('read_file')],
+      platformTools: [tool('fs_read_file')],
+      skillCatalog: [skill('fs_read_file')],
       mode: 'full',
     });
     expect(state.exposedDefinitions).toHaveLength(1);
@@ -307,11 +307,11 @@ describe('buildOpenclawRuntimeToolState', () => {
 
   it('filteredReason is tool-profile-deny for denied tools', () => {
     const state = buildOpenclawRuntimeToolState({
-      platformTools: [tool('write_file')],
+      platformTools: [tool('fs_write_file')],
       skillCatalog: [],
       mode: 'readonly',
     });
-    const entry = state.reportEntries.find(e => e.name === 'write_file');
+    const entry = state.reportEntries.find(e => e.name === 'fs_write_file');
     expect(entry?.filteredReason).toBe('tool-profile-deny');
     expect(entry?.available).toBe(false);
   });
@@ -381,8 +381,8 @@ describe('getToolColor (M65 Iter 2)', () => {
   });
 
   it('classifies consequential writes as blue', () => {
-    expect(getToolColor('write_file')).toBe('blue');
-    expect(getToolColor('edit_file')).toBe('blue');
+    expect(getToolColor('fs_write_file')).toBe('blue');
+    expect(getToolColor('fs_edit_file')).toBe('blue');
     expect(getToolColor('canvas_create_page')).toBe('blue');
     expect(getToolColor('canvas_edit_page')).toBe('blue');
     expect(getToolColor('canvas_set_page_property')).toBe('blue');
@@ -394,9 +394,9 @@ describe('getToolColor (M65 Iter 2)', () => {
   });
 
   it('classifies read-only tools as green (uncolored)', () => {
-    expect(getToolColor('read_file')).toBe('green');
+    expect(getToolColor('fs_read_file')).toBe('green');
     expect(getToolColor('canvas_find_pages')).toBe('green');
-    expect(getToolColor('search_knowledge')).toBe('green');
+    expect(getToolColor('fs_search_knowledge')).toBe('green');
   });
 
   it('classifies unknown tool names as green', () => {
@@ -452,12 +452,12 @@ describe('resolveColorGate (M65 Iter 2)', () => {
   beforeEach(() => _resetColorGateRegistryForTests());
 
   it('blue tool in untainted turn ? no gate (null)', () => {
-    expect(resolveColorGate('write_file', 'session-a')).toBeNull();
+    expect(resolveColorGate('fs_write_file', 'session-a')).toBeNull();
   });
 
   it('blue tool in tainted turn ? requires-approval', () => {
     markTurnTainted('session-a');
-    expect(resolveColorGate('write_file', 'session-a')).toBe('requires-approval');
+    expect(resolveColorGate('fs_write_file', 'session-a')).toBe('requires-approval');
   });
 
   it('red tool returns null (its own permission posture applies)', () => {
@@ -468,23 +468,23 @@ describe('resolveColorGate (M65 Iter 2)', () => {
 
   it('green tool returns null even in tainted turn', () => {
     markTurnTainted('session-a');
-    expect(resolveColorGate('read_file', 'session-a')).toBeNull();
+    expect(resolveColorGate('fs_read_file', 'session-a')).toBeNull();
   });
 
   it('blue tool with no sessionId returns null (no gate)', () => {
     markTurnTainted('session-a');
-    expect(resolveColorGate('write_file', undefined)).toBeNull();
+    expect(resolveColorGate('fs_write_file', undefined)).toBeNull();
   });
 
   it('beginNewTurn re-opens blue tools (taint resets per turn)', () => {
     markTurnTainted('session-a');
-    expect(resolveColorGate('write_file', 'session-a')).toBe('requires-approval');
+    expect(resolveColorGate('fs_write_file', 'session-a')).toBe('requires-approval');
     beginNewTurn('session-a');
-    expect(resolveColorGate('write_file', 'session-a')).toBeNull();
+    expect(resolveColorGate('fs_write_file', 'session-a')).toBeNull();
   });
 
   it('taint of session-a does not affect session-b', () => {
     markTurnTainted('session-a');
-    expect(resolveColorGate('write_file', 'session-b')).toBeNull();
+    expect(resolveColorGate('fs_write_file', 'session-b')).toBeNull();
   });
 });

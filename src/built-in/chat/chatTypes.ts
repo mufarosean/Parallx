@@ -635,7 +635,7 @@ export interface IBuiltInToolCanonicalMemorySearch {
 /**
  * Workspace memory write accessor for built-in tools (M81 Phase 2).
  *
- * Surfaces the subset of `IWorkspaceMemoryService` that `memory_edit` needs.
+ * Surfaces the subset of `IWorkspaceMemoryService` that `memory_write` needs.
  * Keeps the tool factory decoupled from the full service interface so we can
  * mock it in unit tests and so the tool can't reach methods outside its
  * contract.

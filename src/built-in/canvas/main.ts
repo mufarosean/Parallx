@@ -407,7 +407,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // 5d. M66 — register the canvas link contract. Makes
   // `parallx://canvas/page/<pageId>` clickable from anywhere in the app
-  // (chat markdown, canvas link chips, future parallx_link AI tool).
+  // (chat markdown, canvas link chips, future link_create AI tool).
   context.subscriptions.push(
     api.links.register({
       segment: 'canvas',

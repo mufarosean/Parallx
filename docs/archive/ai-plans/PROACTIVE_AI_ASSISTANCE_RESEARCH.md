@@ -62,7 +62,7 @@ Neither project validates the idea of a pre-LLM intent classifier. Both rely on 
 
 ### Implication for Parallx
 
-If Parallx wants multi-query RAG (e.g., decomposing "how does our canvas handle drag-and-drop?" into sub-queries about canvas architecture, DnD service, drop overlay, etc.), it would need to be a **novel addition** — neither reference project implements this. The simplest approach would be to let the LLM call `search_knowledge` multiple times with different queries (OpenClaw-style model-directed expansion), rather than building an application-level query decomposer.
+If Parallx wants multi-query RAG (e.g., decomposing "how does our canvas handle drag-and-drop?" into sub-queries about canvas architecture, DnD service, drop overlay, etc.), it would need to be a **novel addition** — neither reference project implements this. The simplest approach would be to let the LLM call `fs_search_knowledge` multiple times with different queries (OpenClaw-style model-directed expansion), rather than building an application-level query decomposer.
 
 ---
 
@@ -118,7 +118,7 @@ OpenClaw's skills system is directly analogous to Parallx M11's skill-based tool
 
 ### Implication for Parallx
 
-Parallx M11 already has a hybrid approach: workspace digest (~2000 tokens) is always injected, while `search_knowledge` is model-initiated. The key insight from OpenClaw is the **prompt instruction pattern** — telling the model *when* to search rather than trying to programmatically determine relevance. The insight from Continue is that **user-directed context attachment** (`@mentions`) is valuable for power users who know what context they need.
+Parallx M11 already has a hybrid approach: workspace digest (~2000 tokens) is always injected, while `fs_search_knowledge` is model-initiated. The key insight from OpenClaw is the **prompt instruction pattern** — telling the model *when* to search rather than trying to programmatically determine relevance. The insight from Continue is that **user-directed context attachment** (`@mentions`) is valuable for power users who know what context they need.
 
 ---
 
@@ -172,7 +172,7 @@ The system prompt's tool sections explicitly instruct the model to use **context
 
 - **Context-gathering tools** (called before responding):
   - `memory_search` — semantic search over MEMORY.md + memory/*.md files
-  - `memory_get` — read a specific memory file
+  - `memory_read` — read a specific memory file
   - `read` — read files from the workspace
   - `web_search` — search the web for current information
   - Skills `read` — load SKILL.md before using a skill's tools
@@ -197,12 +197,12 @@ The system prompt's tool sections explicitly instruct the model to use **context
 ### Continue.dev
 
 - **Tool definition structure** (`Tool` interface):
-  - `readonly` property marks tools that don't modify state (e.g., `read_file`, `list_dir`)
+  - `readonly` property marks tools that don't modify state (e.g., `fs_read_file`, `list_dir`)
   - `isInstant` property marks tools that execute without streaming
   - `defaultToolPolicy` and `evaluateToolCallPolicy` control approval requirements
 
 - **Built-in tool groups**:
-  - `BUILT_IN_GROUP_NAME` — core file/codebase operations: `read_file`, `edit_file`, `list_dir`
+  - `BUILT_IN_GROUP_NAME` — core file/codebase operations: `fs_read_file`, `fs_edit_file`, `list_dir`
   - Plan group — multi-step planning: `create_plan`, `commit_plan_item`
   - Experimental — feature-flagged tools
 
@@ -213,7 +213,7 @@ The system prompt's tool sections explicitly instruct the model to use **context
 ### Implication for Parallx
 
 OpenClaw's explicit "gather context first" pattern via system prompt instructions is directly applicable to Parallx. M11's `TOOLS.md` prompt file should include instructions like:
-- "Before answering questions about the workspace, call `search_knowledge` to find relevant context."
+- "Before answering questions about the workspace, call `fs_search_knowledge` to find relevant context."
 - "Before using a skill's tools, load its `SKILL.md` manifest."
 - "Before modifying files, read the current content."
 
@@ -259,7 +259,7 @@ For Parallx's "Jarvis" vision, situational awareness comes from:
 | Always-inject project context files | OpenClaw | ✅ Workspace digest + prompt files | Keep as-is |
 | Skills scan → load → respond | OpenClaw | ✅ SKILL.md manifest system | Keep as-is |
 | Hybrid retrieval (vector + BM25) | Both | ✅ sqlite-vec + FTS5 via RRF | Keep as-is |
-| Model-directed multi-call search | OpenClaw | ⚠️ Model can call search_knowledge | Add prompt instructions encouraging multi-call |
+| Model-directed multi-call search | OpenClaw | ⚠️ Model can call fs_search_knowledge | Add prompt instructions encouraging multi-call |
 | "Gather first, act second" prompt pattern | OpenClaw | ⚠️ Partially in TOOLS.md | Strengthen with explicit instructions |
 | Reasoning depth control (/think levels) | OpenClaw | ❌ Not implemented | Consider for future milestone |
 | Compaction on context overflow | OpenClaw | ❌ Not implemented | Consider — important for long sessions |
@@ -280,7 +280,7 @@ For Parallx's "Jarvis" vision, situational awareness comes from:
 - `src/agents/pi-embedded-runner/run/attempt.ts` — Full execution environment
 - `src/agents/system-prompt.ts` — `buildAgentSystemPrompt` (189-664), prompt modes, section assembly
 - `src/agents/pi-tools.ts` — `createOpenClawCodingTools`, 9-layer policy pipeline
-- `src/agents/tools/memory-tool.ts` — `memory_search` / `memory_get` agent-facing tools
+- `src/agents/tools/memory-tool.ts` — `memory_search` / `memory_read` agent-facing tools
 - `src/memory/manager.ts` — `MemorySearchManager` interface
 - `src/memory/hybrid.ts` — Hybrid vector+BM25 search (vector 0.7 / BM25 0.3)
 - `src/agents/subagent-spawn.ts` — Subagent spawning, depth limits

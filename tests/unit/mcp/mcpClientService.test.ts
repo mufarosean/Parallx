@@ -190,12 +190,12 @@ describe('McpClientService', () => {
     const sendCalls = (mockTransport.send as ReturnType<typeof vi.fn>).mock.calls;
     const listReq = JSON.parse(sendCalls[sendCalls.length - 1][0]);
     mockTransport.fireMessage(jsonRpcResponse(listReq.id, {
-      tools: [{ name: 'read_file', description: 'Reads a file', inputSchema: { type: 'object' } }],
+      tools: [{ name: 'fs_read_file', description: 'Reads a file', inputSchema: { type: 'object' } }],
     }));
 
     const tools = await listPromise;
     expect(tools).toHaveLength(1);
-    expect(tools[0].name).toBe('read_file');
+    expect(tools[0].name).toBe('fs_read_file');
   });
 
   it('listTools returns empty when response has no tools', async () => {
@@ -222,7 +222,7 @@ describe('McpClientService', () => {
 
   it('callTool returns result from server', async () => {
     await connectWithHandshake();
-    const callPromise = service.callTool('srv-1', 'read_file', { path: '/tmp/x' });
+    const callPromise = service.callTool('srv-1', 'fs_read_file', { path: '/tmp/x' });
 
     await vi.waitFor(() => {
       const calls = (mockTransport.send as ReturnType<typeof vi.fn>).mock.calls;

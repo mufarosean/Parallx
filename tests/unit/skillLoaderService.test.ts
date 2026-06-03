@@ -16,7 +16,7 @@ import type { ISkillManifest, ISkillFileSystem } from '../../src/services/skillL
 describe('parseSkillFrontmatter', () => {
   it('parses basic tool skill frontmatter', () => {
     const content = `---
-name: read_file
+name: fs_read_file
 description: Read the contents of a file
 version: 1.0.0
 author: parallx
@@ -24,15 +24,15 @@ permission: always-allowed
 tags: [filesystem, read]
 ---
 
-# read_file
+# fs_read_file
 Some body content.`;
 
     const result = parseSkillFrontmatter(content);
     expect(result).not.toBeNull();
-    expect(result!.frontmatter['name']).toBe('read_file');
+    expect(result!.frontmatter['name']).toBe('fs_read_file');
     expect(result!.frontmatter['description']).toBe('Read the contents of a file');
     expect(result!.frontmatter['tags']).toEqual(['filesystem', 'read']);
-    expect(result!.body).toContain('# read_file');
+    expect(result!.body).toContain('# fs_read_file');
   });
 
   it('parses workflow skill with kind field', () => {
@@ -119,7 +119,7 @@ Body.`;
 
   it('parses parameters list', () => {
     const content = `---
-name: read_file
+name: fs_read_file
 description: Read a file
 parameters:
   - name: path
@@ -257,7 +257,7 @@ describe('validateSkillManifest', () => {
 describe('manifestToToolDefinition', () => {
   it('converts a tool manifest to IChatTool', () => {
     const manifest: ISkillManifest = {
-      name: 'read_file',
+      name: 'fs_read_file',
       description: 'Read a file',
       version: '1.0.0',
       author: 'parallx',
@@ -265,14 +265,14 @@ describe('manifestToToolDefinition', () => {
       parameters: [{ name: 'path', type: 'string', description: 'File path', required: true }],
       tags: ['filesystem'],
       body: '',
-      relativePath: '.parallx/skills/read_file/SKILL.md',
+      relativePath: '.parallx/skills/fs_read_file/SKILL.md',
       kind: 'tool',
       disableModelInvocation: false,
       userInvocable: true,
     };
 
     const tool = manifestToToolDefinition(manifest);
-    expect(tool.name).toBe('read_file');
+    expect(tool.name).toBe('fs_read_file');
     expect(tool.requiresConfirmation).toBe(false);
     expect((tool.parameters as any).properties['path']).toBeDefined();
   });
@@ -287,7 +287,7 @@ describe('SkillLoaderService', () => {
   let mockFs: ISkillFileSystem;
 
   const TOOL_SKILL = `---
-name: read_file
+name: fs_read_file
 description: Read a file
 version: 1.0.0
 permission: always-allowed
@@ -306,19 +306,19 @@ tags: [workflow, summary, exhaustive]
 
 # Exhaustive Summary Workflow
 
-1. Call list_files
-2. For each file, call read_file
+1. Call fs_list_files
+2. For each file, call fs_read_file
 3. Produce a summary`;
 
   beforeEach(() => {
     service = new SkillLoaderService();
     mockFs = {
       readFile: vi.fn(async (path: string) => {
-        if (path.includes('read_file')) { return TOOL_SKILL; }
+        if (path.includes('fs_read_file')) { return TOOL_SKILL; }
         if (path.includes('exhaustive-summary')) { return WORKFLOW_SKILL; }
         return '';
       }),
-      listDirs: vi.fn(async () => ['read_file', 'exhaustive-summary']),
+      listDirs: vi.fn(async () => ['fs_read_file', 'exhaustive-summary']),
       exists: vi.fn(async () => true),
     };
     service.setFileSystem(mockFs);
@@ -328,7 +328,7 @@ tags: [workflow, summary, exhaustive]
     await service.scanSkills();
     expect(service.skills).toHaveLength(2);
 
-    const toolSkill = service.getSkill('read_file');
+    const toolSkill = service.getSkill('fs_read_file');
     expect(toolSkill).toBeDefined();
     expect(toolSkill!.kind).toBe('tool');
 
@@ -377,10 +377,10 @@ tags: [workflow]
 Private instructions.`;
 
     (mockFs.listDirs as ReturnType<typeof vi.fn>).mockResolvedValue([
-      'read_file', 'exhaustive-summary', 'private-workflow',
+      'fs_read_file', 'exhaustive-summary', 'private-workflow',
     ]);
     (mockFs.readFile as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
-      if (path.includes('read_file')) { return TOOL_SKILL; }
+      if (path.includes('fs_read_file')) { return TOOL_SKILL; }
       if (path.includes('exhaustive-summary')) { return WORKFLOW_SKILL; }
       if (path.includes('private-workflow')) { return PRIVATE_WF; }
       return '';
@@ -402,10 +402,10 @@ Private instructions.`;
     const listener = vi.fn();
     service.onDidChangeSkills(listener);
 
-    await service.reloadSkill('read_file');
+    await service.reloadSkill('fs_read_file');
 
-    expect(service.getSkill('read_file')).toBeUndefined();
-    expect(listener).toHaveBeenCalledWith({ added: [], removed: ['read_file'] });
+    expect(service.getSkill('fs_read_file')).toBeUndefined();
+    expect(listener).toHaveBeenCalledWith({ added: [], removed: ['fs_read_file'] });
   });
 
   // M81 Phase 6 — bundled scripts/references/assets discovery
@@ -515,8 +515,8 @@ tags: [workflow, summary, exhaustive]
 
 When the user asks to summarize all/each/every file:
 
-1. **Enumerate**: Call list_files to get the complete file list
-2. **Iterate**: For each file, call read_file
+1. **Enumerate**: Call fs_list_files to get the complete file list
+2. **Iterate**: For each file, call fs_read_file
 3. **Combine**: Present all summaries
 4. **Verify coverage**: Count your summaries against the file list`;
 

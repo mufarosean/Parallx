@@ -156,7 +156,7 @@ const noopToken: ICancellationToken = {
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-describe('memory_edit tool (M81 Phase 2)', () => {
+describe('memory_write tool (M81 Phase 2)', () => {
   let memory: ReturnType<typeof createMemoryMock>;
   const tool = createMemoryEditTool(undefined as any); // placeholder, overridden per-test
 
@@ -228,9 +228,9 @@ describe('memory_edit tool (M81 Phase 2)', () => {
 
     it('appends to MEMORY.md', async () => {
       const t = createMemoryEditTool(memory);
-      const result = await t.handler({ file: 'MEMORY', action: 'add', entry: '- M81 ships memory_edit' }, noopToken);
+      const result = await t.handler({ file: 'MEMORY', action: 'add', entry: '- M81 ships memory_write' }, noopToken);
       expect(result.isError).toBeFalsy();
-      expect(memory.files.get('.parallx/memory/MEMORY.md')).toContain('M81 ships memory_edit');
+      expect(memory.files.get('.parallx/memory/MEMORY.md')).toContain('M81 ships memory_write');
     });
 
     it('appends to daily log via appendDailyMemory', async () => {
@@ -558,9 +558,9 @@ describe('memory_edit tool (M81 Phase 2)', () => {
   });
 });
 
-// ─── memory_get name=<slug> (M81 Phase 8) ─────────────────────────────────────
+// ─── memory_read name=<slug> (M81 Phase 8) ─────────────────────────────────────
 
-describe('memory_get name=<slug> (M81 Phase 8)', () => {
+describe('memory_read name=<slug> (M81 Phase 8)', () => {
   let memory: ReturnType<typeof createMemoryMock>;
 
   beforeEach(() => {

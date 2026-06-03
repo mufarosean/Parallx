@@ -47,7 +47,7 @@ export interface ISkillManifest {
    * Workspace-relative paths of files discovered under the skill's
    * `scripts/`, `references/`, and `assets/` subfolders (one level deep).
    * Empty array when the skill has no such subfolders. The agent can
-   * `read_file` these paths on demand (Execution stage of progressive
+   * `fs_read_file` these paths on demand (Execution stage of progressive
    * disclosure).
    */
   readonly bundledFiles: readonly string[];

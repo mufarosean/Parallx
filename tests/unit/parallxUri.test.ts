@@ -2,7 +2,7 @@
 //
 // Locks the pure parse/mint contract for `parallx://` URIs. Every other
 // piece of the linking system (LinkResolverService, LinksBridge, canvas
-// link block, future parallx_link tool) depends on this round-trip shape
+// link block, future link_create tool) depends on this round-trip shape
 // being stable.
 
 import { describe, it, expect } from 'vitest';

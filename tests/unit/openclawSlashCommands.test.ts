@@ -285,16 +285,16 @@ describe('/tools command', () => {
     const response = createMockResponse();
     const services = createMinimalServices({
       getToolDefinitions: () => [
-        { name: 'read_file', description: 'Read a file from workspace', parameters: { type: 'object' as const, properties: {} } },
+        { name: 'fs_read_file', description: 'Read a file from workspace', parameters: { type: 'object' as const, properties: {} } },
         { name: 'search', description: 'Search workspace content', parameters: { type: 'object' as const, properties: {} } },
       ],
-      getToolPermissions: () => ({ read_file: 'always-allowed' as const, search: 'requires-approval' as const }),
+      getToolPermissions: () => ({ fs_read_file: 'always-allowed' as const, search: 'requires-approval' as const }),
     });
     const result = await tryHandleOpenclawToolsCommand(services, 'tools', response);
     expect(result).toBe(true);
     const text = response._chunks[0];
     expect(text).toContain('Available Tools');
-    expect(text).toContain('read_file');
+    expect(text).toContain('fs_read_file');
     expect(text).toContain('search');
     expect(text).toContain('2 total capabilities');
   });
@@ -537,7 +537,7 @@ describe('/tools edge cases', () => {
     const response = createMockResponse();
     const services = createMinimalServices({
       getToolDefinitions: () => [
-        { name: 'read_file', description: 'Read a file', parameters: { type: 'object' as const, properties: {} } },
+        { name: 'fs_read_file', description: 'Read a file', parameters: { type: 'object' as const, properties: {} } },
       ],
       getSkillCatalog: () => [
         { name: 'web-search', description: 'Search the web', kind: 'builtin', tags: [] },

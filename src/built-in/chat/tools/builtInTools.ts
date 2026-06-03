@@ -4,11 +4,11 @@
 //   pageTools.ts — search_workspace, read_page, read_page_by_title, read_current_page,
 //                  list_pages, get_page_properties, create_page,
 //                  list_property_definitions, set_page_property, find_pages_by_property
-//   fileTools.ts — list_files, read_file, search_files, grep_search, search_knowledge
-//   memoryTools.ts — memory_get, memory_search
+//   fileTools.ts — fs_list_files, fs_read_file, fs_search_files, fs_grep_search, fs_search_knowledge
+//   memoryTools.ts — memory_read, memory_search
 //   transcriptTools.ts — transcript_get, transcript_search
-//   writeTools.ts — write_file, edit_file, delete_file
-//   terminalTools.ts — run_command
+//   writeTools.ts — fs_write_file, fs_edit_file, fs_delete_file
+//   terminalTools.ts — terminal_run_command
 //
 // Shared text helpers (extractSnippet, extractTextContent) remain here.
 

@@ -1180,12 +1180,12 @@ The system supports tool invocation in Agent mode. The AI model can request tool
   | `list_pages` | List all pages with titles and IDs | Uses `IDatabaseService` to list pages |
   | `get_page_properties` | Get database properties of a page | Uses `IDatabaseService` for property values |
   | `create_page` | Create a new page with title and optional content | Uses `IDatabaseService` to create page |
-  | `list_files` | List files and directories at a workspace path | Uses `IFileService.readdir()` to enumerate entries. Returns name, type (file/dir), size. Path is relative to workspace root. |
-  | `read_file` | Read the text content of a workspace file | Uses `IFileService.readFile()` to return file content. Path relative to workspace root. Max 50 KB guard. |
-  | `search_files` | Find files matching a name/glob pattern | Uses `IFileService.readdir()` recursively to find files matching a pattern. Returns matching paths relative to workspace root. Max depth 5, max 50 results. |
+  | `fs_list_files` | List files and directories at a workspace path | Uses `IFileService.readdir()` to enumerate entries. Returns name, type (file/dir), size. Path is relative to workspace root. |
+  | `fs_read_file` | Read the text content of a workspace file | Uses `IFileService.readFile()` to return file content. Path relative to workspace root. Max 50 KB guard. |
+  | `fs_search_files` | Find files matching a name/glob pattern | Uses `IFileService.readdir()` recursively to find files matching a pattern. Returns matching paths relative to workspace root. Max depth 5, max 50 results. |
 
   - Each tool has: name, description, JSON Schema `parameters`, handler function, `requiresConfirmation: true` (except read-only tools)
-  - Read-only tools (`search_workspace`, `read_page`, `list_pages`, `get_page_properties`, `list_files`, `read_file`, `search_files`) can be auto-approved
+  - Read-only tools (`search_workspace`, `read_page`, `list_pages`, `get_page_properties`, `fs_list_files`, `fs_read_file`, `fs_search_files`) can be auto-approved
   - Write tools (`create_page`) always require confirmation
   - Tool results are formatted as concise text (not raw JSON dumps)
 - **Notes / Constraints:**
@@ -1219,7 +1219,7 @@ The system supports tool invocation in Agent mode. The AI model can request tool
 - [ ] Agentic loop feeds tool results back to model
 - [ ] Loop stops at max iterations
 - [ ] Built-in tools (search, read, list, create) functional for canvas pages
-- [ ] File system tools (list_files, read_file, search_files) functional for workspace files
+- [ ] File system tools (fs_list_files, fs_read_file, fs_search_files) functional for workspace files
 - [ ] Auto-approve setting bypasses confirmation for read-only tools
 - [ ] All existing tests pass
 - [ ] New unit tests for: tool registration, tool invocation, agentic loop, confirmation flow, built-in tool handlers

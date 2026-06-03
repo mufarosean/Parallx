@@ -26,7 +26,7 @@ precisely.
 
 ## Step 1: Enumerate the folder
 
-Use `list_files` to list all files and subfolders in the target folder
+Use `fs_list_files` to list all files and subfolders in the target folder
 ($ARGUMENTS or the workspace root if no folder is specified).
 
 Record:
@@ -41,7 +41,7 @@ For each file, determine:
 - **Size category**: stub (< 3 lines), small, medium, large (estimated from content)
 - **Purpose**: brief description based on filename and a quick read
 
-Use `read_file` to read the first ~20 lines of each file to understand its purpose.
+Use `fs_read_file` to read the first ~20 lines of each file to understand its purpose.
 For very short files, read the entire content.
 
 ## Step 3: Build the overview

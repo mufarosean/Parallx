@@ -8,7 +8,7 @@
 //   - It went stale the moment a page was created/renamed/deleted.
 //   - It ate hundreds of tokens of prompt budget per turn.
 //   - It duplicated information the agent's own tools (`canvas_find_pages`,
-//     `list_files`, `read_file`, `search_knowledge`) already surface
+//     `fs_list_files`, `fs_read_file`, `fs_search_knowledge`) already surface
 //     on demand, with current content.
 //   - It encouraged the model to answer from the listing instead of
 //     actually reading anything ("I see Bugs 3.0 in your workspace —
@@ -43,7 +43,7 @@ export interface IChatWorkspaceDigestDeps {
 
 /**
  * Always returns `undefined`. See file-level comment. The AI explores the
- * workspace via tools (`canvas_find_pages`, `list_files`, `read_file`, etc.) —
+ * workspace via tools (`canvas_find_pages`, `fs_list_files`, `fs_read_file`, etc.) —
  * never via an inline prompt listing.
  */
 export async function computeChatWorkspaceDigest(

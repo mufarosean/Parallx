@@ -127,8 +127,8 @@ describe('openclaw default participant', () => {
       getWorkspaceName: () => 'Demo Workspace',
       getPageCount: vi.fn(async () => 0),
       getCurrentPageTitle: () => undefined,
-      getToolDefinitions: () => [{ name: 'read_file', description: 'Read file', parameters: { type: 'object', properties: { path: { type: 'string' } } } }],
-      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read file', parameters: { type: 'object', properties: { path: { type: 'string' } } } }],
+      getToolDefinitions: () => [{ name: 'fs_read_file', description: 'Read file', parameters: { type: 'object', properties: { path: { type: 'string' } } } }],
+      getReadOnlyToolDefinitions: () => [{ name: 'fs_read_file', description: 'Read file', parameters: { type: 'object', properties: { path: { type: 'string' } } } }],
       readFileRelative: vi.fn(async (path: string) => (path === '.parallx/AGENTS.md' ? 'workspace instructions' : null)),
       unifiedConfigService: {
         getEffectiveConfig: () => ({
@@ -256,7 +256,7 @@ describe('openclaw default participant', () => {
       getWorkspaceName: () => 'Demo Workspace',
       getPageCount: vi.fn(async () => 0),
       getCurrentPageTitle: () => undefined,
-      getToolDefinitions: () => [{ name: 'run_command', description: 'Run command', parameters: { type: 'object', properties: { command: { type: 'string' } } } }],
+      getToolDefinitions: () => [{ name: 'terminal_run_command', description: 'Run command', parameters: { type: 'object', properties: { command: { type: 'string' } } } }],
       getReadOnlyToolDefinitions: () => [],
       getSkillCatalog: () => [
         {
@@ -270,7 +270,7 @@ describe('openclaw default participant', () => {
           body: '# Policy Playbook',
         },
       ],
-      getToolPermissions: () => ({ run_command: 'never-allowed' }),
+      getToolPermissions: () => ({ terminal_run_command: 'never-allowed' }),
       readFileRelative: vi.fn(async () => null),
       reportSystemPromptReport,
       invokeToolWithRuntimeControl: vi.fn(async (name: string) => ({ content: `invoked ${name}` })),
@@ -308,7 +308,7 @@ describe('openclaw default participant', () => {
         skillDerivedCount: 1,
         entries: expect.arrayContaining([
           expect.objectContaining({ name: 'policy_playbook', source: 'skill', available: true }),
-          expect.objectContaining({ name: 'run_command', source: 'platform', available: false, filteredReason: 'permission-never-allowed' }),
+          expect.objectContaining({ name: 'terminal_run_command', source: 'platform', available: false, filteredReason: 'permission-never-allowed' }),
         ]),
       }),
     }));
@@ -320,7 +320,7 @@ describe('openclaw default participant', () => {
         {
           content: '',
           done: true,
-          toolCalls: [{ function: { name: 'read_file', arguments: { path: 'Policy.md' } } }],
+          toolCalls: [{ function: { name: 'fs_read_file', arguments: { path: 'Policy.md' } } }],
         },
       ]))
       .mockReturnValueOnce(streamChunks([
@@ -333,8 +333,8 @@ describe('openclaw default participant', () => {
       getWorkspaceName: () => 'Demo Workspace',
       getPageCount: vi.fn(async () => 0),
       getCurrentPageTitle: () => undefined,
-      getToolDefinitions: () => [{ name: 'read_file', description: 'Read file', parameters: {} }],
-      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read file', parameters: {} }],
+      getToolDefinitions: () => [{ name: 'fs_read_file', description: 'Read file', parameters: {} }],
+      getReadOnlyToolDefinitions: () => [{ name: 'fs_read_file', description: 'Read file', parameters: {} }],
       invokeToolWithRuntimeControl,
       readFileRelative: vi.fn(async () => null),
       unifiedConfigService: {
@@ -358,7 +358,7 @@ describe('openclaw default participant', () => {
 
     const firstMessages = sendChatRequest.mock.calls[0][0];
     expect(firstMessages[0].content).toContain('## Workspace Context');
-    expect(invokeToolWithRuntimeControl).toHaveBeenCalledWith('read_file', { path: 'Policy.md' }, expect.objectContaining({ isCancellationRequested: false }), undefined, 'session-2');
+    expect(invokeToolWithRuntimeControl).toHaveBeenCalledWith('fs_read_file', { path: 'Policy.md' }, expect.objectContaining({ isCancellationRequested: false }), undefined, 'session-2');
     expect(response.markdown).toHaveBeenCalledWith('Grounded OpenClaw answer');
   });
 

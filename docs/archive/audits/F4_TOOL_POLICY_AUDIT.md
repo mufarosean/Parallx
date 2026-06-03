@@ -28,7 +28,7 @@
 
 **Parallx state:** `applyOpenclawToolPolicy()` implements deny-first, allow-second with 3 profiles:
 - `readonly` → deny write/delete/run tools (maps to upstream `minimal`)
-- `standard` → deny `run_command` only (maps to upstream `coding`)
+- `standard` → deny `terminal_run_command` only (maps to upstream `coding`)
 - `full` → allow everything (maps to upstream `full`)
 
 `messaging` profile N/A for desktop workbench.

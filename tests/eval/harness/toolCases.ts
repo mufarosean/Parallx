@@ -14,14 +14,14 @@ import type { SingleToolEvalCase } from '../harness/scorer.js';
 
 export const TOOL_EVAL_CASES: SingleToolEvalCase[] = [
   // ── File tools ─────────────────────────────────────────────────────────────
-  { id: 'file-list-1', prompt: 'What files are in the src folder?', expectedTool: 'list_files' },
-  { id: 'file-read-1', prompt: 'Open README.md and tell me what it says.', expectedTool: 'read_file' },
-  { id: 'file-write-1', prompt: 'Create a new file called notes.md with the heading "TODOs".', expectedTool: 'write_file', allowedTools: ['edit_file'] },
-  { id: 'file-edit-1', prompt: 'In src/index.ts, change the log message to "ready".', expectedTool: 'edit_file' },
+  { id: 'file-list-1', prompt: 'What files are in the src folder?', expectedTool: 'fs_list_files' },
+  { id: 'file-read-1', prompt: 'Open README.md and tell me what it says.', expectedTool: 'fs_read_file' },
+  { id: 'file-write-1', prompt: 'Create a new file called notes.md with the heading "TODOs".', expectedTool: 'fs_write_file', allowedTools: ['fs_edit_file'] },
+  { id: 'file-edit-1', prompt: 'In src/index.ts, change the log message to "ready".', expectedTool: 'fs_edit_file' },
 
   // ── Search ─────────────────────────────────────────────────────────────────
-  { id: 'search-grep-1', prompt: 'Where is the word "openclaw" used in the codebase?', expectedTool: 'grep_search', allowedTools: ['search_files'] },
-  { id: 'search-find-1', prompt: 'Find every .ts file under src/services.', expectedTool: 'search_files', allowedTools: ['list_files', 'grep_search'] },
+  { id: 'search-grep-1', prompt: 'Where is the word "openclaw" used in the codebase?', expectedTool: 'fs_grep_search', allowedTools: ['fs_search_files'] },
+  { id: 'search-find-1', prompt: 'Find every .ts file under src/services.', expectedTool: 'fs_search_files', allowedTools: ['fs_list_files', 'fs_grep_search'] },
 
   // ── Canvas pages (vs. files — easy to confuse) ──────────────────────────────
   { id: 'canvas-find-1', prompt: 'Show me my canvas pages about exam prep.', expectedTool: 'canvas_find_pages' },
@@ -29,10 +29,10 @@ export const TOOL_EVAL_CASES: SingleToolEvalCase[] = [
   { id: 'canvas-create-1', prompt: 'Make a new canvas page called "Meeting Notes" with a few starter bullets.', expectedTool: 'canvas_create_page' },
 
   // ── Terminal ───────────────────────────────────────────────────────────────
-  { id: 'terminal-1', prompt: 'Run the test suite for me.', expectedTool: 'run_command' },
+  { id: 'terminal-1', prompt: 'Run the test suite for me.', expectedTool: 'terminal_run_command' },
 
   // ── Workspace memory / transcript ──────────────────────────────────────────
-  { id: 'memory-1', prompt: 'What do you remember about my preferences?', expectedTool: 'memory_get', allowedTools: ['memory_search'] },
+  { id: 'memory-1', prompt: 'What do you remember about my preferences?', expectedTool: 'memory_read', allowedTools: ['memory_search'] },
   { id: 'transcript-1', prompt: 'Did we talk about pricing last week?', expectedTool: 'transcript_search', allowedTools: ['transcript_get'] },
 
   // ── Autonomy / cron — user flagged this surface ────────────────────────────

@@ -44,7 +44,7 @@ const MEMORY_SOURCE_TYPE = 'memory';
 
 // M81 Phase 3 Stage 2 — CONCEPT_SOURCE_TYPE / DEFAULT_CONCEPT_TOP_K /
 // DEFAULT_CONCEPT_TOKEN_BUDGET removed. Concept curation now flows through
-// the agent's `memory_edit` tool writing free-form markdown to MEMORY.md.
+// the agent's `memory_write` tool writing free-form markdown to MEMORY.md.
 
 /** Decay rate constant — half-life ≈ 23 days. */
 const DECAY_LAMBDA = 0.03;
@@ -59,7 +59,7 @@ function estimateTokens(text: string): number {
 
 // M81 Phase 4 — detectPreferences regex extractor removed alongside the
 // extractPreferences pipeline. Preferences are now agent-authored via
-// `memory_edit` (USER.md for user-scoped, MEMORY.md for project-scoped).
+// `memory_write` (USER.md for user-scoped, MEMORY.md for project-scoped).
 
 // M81 Phase 3 Stage 2 — formatConceptContextBlock removed; concepts no longer
 // have a structured retrieval lane. Agent-curated facts in MEMORY.md surface
@@ -114,7 +114,7 @@ export interface UserPreference {
 }
 
 // M81 Phase 3 Stage 2 — LearningConcept interface removed; the regex-based
-// concept extraction it backed was replaced by agent-curated `memory_edit`.
+// concept extraction it backed was replaced by agent-curated `memory_write`.
 
 /** Options for memory retrieval. */
 export interface MemoryRetrievalOptions {
@@ -165,7 +165,7 @@ CREATE TABLE IF NOT EXISTS user_preferences (
  *   3. `formatMemoryContext()` produces a readable block for injection.
  *
  * Preference flow (M81 Phase 4):
- *   - Preference writes are agent-driven via `memory_edit` (USER.md / MEMORY.md).
+ *   - Preference writes are agent-driven via `memory_write` (USER.md / MEMORY.md).
  *   - This service still owns the `user_preferences` SQL table for legacy
  *     callers; `getPreferences()` and `formatPreferencesForPrompt()` read from
  *     it. The regex `extractAndStorePreferences` writer was removed.
@@ -426,14 +426,14 @@ export class MemoryService extends Disposable implements IMemoryService {
 
   // M81 Phase 3 Stage 2 — storeConcepts / recallConcepts / formatConceptContext
   // removed. These backed the auto-extraction pipeline that's been replaced by
-  // agent-curated `memory_edit` writes. The `learning_concepts` SQL table and
+  // agent-curated `memory_write` writes. The `learning_concepts` SQL table and
   // 'concept' vector-store source type are also gone.
 
   // ── User Preference Learning (Task 5.2) ──
   // M81 Phase 4 — extractAndStorePreferences removed. The regex pipeline that
   // backed it (detectPreferences + the chatDataService.extractPreferences
   // wrapper + the queueMemoryWriteBack caller) is gone in favor of agent-
-  // authored writes through `memory_edit`. The read methods (getPreferences /
+  // authored writes through `memory_write`. The read methods (getPreferences /
   // formatPreferencesForPrompt / deletePreference) stay because the
   // `user_preferences` SQL table is still consulted by the legacy SQLite
   // memory path for older workspaces that haven't migrated to MEMORY.md.

@@ -845,7 +845,7 @@ function queueOpenclawMemoryWriteBack(
   }
 
   // M81 Phase 4 — regex preference extraction removed. Agent now writes
-  // preferences explicitly via `memory_edit` on USER.md (and MEMORY.md for
+  // preferences explicitly via `memory_write` on USER.md (and MEMORY.md for
   // project-level facts). No invisible regex path.
 
   if (!deps.storeSessionMemory || !deps.isSessionEligibleForSummary || !deps.getSessionMemoryMessageCount || options.history.length === 0) {

@@ -92,7 +92,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'tools/autonomyLogTool.ts': [],              // M58-real post-ship UX reshape — autonomy_log
   'tools/blockApi.ts':      [],                // M60 Phase δ — pure helpers for property query + block walking
   'tools/blockTools.ts':    ['tools/'],        // M60 Phase δ — query_pages_by_property + read/edit/insert/link block
-  'tools/parallxLinkTool.ts': [],              // M66 §4a — parallx_link URI minter
+  'tools/parallxLinkTool.ts': [],              // M66 §4a — link_create URI minter
   'tools/appCommandTools.ts': [],              // M70 — app__find_commands + app__run_command
   'surfaces/chatSurface.ts': [],                // M58 W6 — ChatSurfacePlugin (trace logger)
 

@@ -20,7 +20,7 @@ describe('AgentPolicyService', () => {
   it('allows workspace reads inside the boundary', () => {
     const service = createPolicyService();
     const decision = service.evaluateAction({
-      toolName: 'read_file',
+      toolName: 'fs_read_file',
       targetUris: [URI.file('/workspace/README.md')],
       interactionMode: 'operator',
     });
@@ -45,7 +45,7 @@ describe('AgentPolicyService', () => {
   it('tightens read policy when approval strictness is strict', () => {
     const service = createPolicyService(['/workspace'], { approvalStrictness: 'strict' });
     const decision = service.evaluateAction({
-      toolName: 'read_file',
+      toolName: 'fs_read_file',
       targetUris: [URI.file('/workspace/README.md')],
       interactionMode: 'operator',
     });
@@ -67,7 +67,7 @@ describe('AgentPolicyService', () => {
   it('denies boundary-violating actions', () => {
     const service = createPolicyService();
     const decision = service.evaluateAction({
-      toolName: 'read_file',
+      toolName: 'fs_read_file',
       targetUris: [URI.file('/outside/secret.txt')],
       interactionMode: 'operator',
     });
@@ -101,7 +101,7 @@ describe('AgentPolicyService', () => {
   it('denies path-bearing non-file uris', () => {
     const service = createPolicyService();
     const decision = service.evaluateAction({
-      toolName: 'read_file',
+      toolName: 'fs_read_file',
       targetUris: [URI.parse('untitled:Untitled-1')],
       interactionMode: 'operator',
     });

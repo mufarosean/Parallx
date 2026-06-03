@@ -70,14 +70,14 @@ export const NEWS_BRIEF_WIDGET: WidgetTypeRegistration<NewsBriefConfig> = {
 
     // Push model: we don't compute the brief here. We ask the active chat
     // session to do the research with its normal tools, then deliver the
-    // result back to this widget via the shared `render_to_widget` tool. The
+    // result back to this widget via the shared `dashboard_render_widget` tool. The
     // brief arrives asynchronously and repaints the widget when it lands.
     const prompt = buildPrompt(cfg, ctx.instanceId);
     await api.commands.executeCommand('chat.submitPrompt', { text: prompt });
 
     // Keep the last good brief visible while the new one is researched. We
     // prepend a subtle "Refreshing…" banner above the existing brief and
-    // return that — render_to_widget overwrites the whole thing once the fresh
+    // return that — dashboard_render_widget overwrites the whole thing once the fresh
     // brief lands, so a slow or failed turn never wipes yesterday's content
     // (worst case: the banner lingers above the still-readable old brief).
     // Only the very first run (no prior content) shows a bare placeholder.
@@ -174,7 +174,7 @@ function buildPrompt(cfg: NewsBriefConfig, instanceId: string): string {
     `1. Use webSearch to find current stories for ${cfg.location}.`,
     '2. webFetch 2-3 of the most relevant results to confirm the details. Use only what the sources actually say — never invent stories, numbers, or sources.',
     `3. Write a Markdown brief: a short top heading, then a numbered list of up to ${cfg.topN} items. Each item is one concise sentence followed by a Markdown link to its source. No emojis, no preamble.`,
-    `4. Call the render_to_widget tool with instanceId "${instanceId}" and the finished Markdown as content. This is how the brief reaches the widget — do not skip it.`,
+    `4. Call the dashboard_render_widget tool with instanceId "${instanceId}" and the finished Markdown as content. This is how the brief reaches the widget — do not skip it.`,
   ];
   if (cfg.extraInstructions.trim()) {
     lines.push('', `Additional instructions: ${cfg.extraInstructions.trim()}`);

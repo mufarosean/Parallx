@@ -965,8 +965,8 @@ export type ToolGrantDecision = 'allow-once' | 'allow-session' | 'always-allow' 
  *   1. Settings UI sub-grouping inside the "Built-In" bucket (so users see
  *      Canvas / File System / Memory / etc. instead of one flat list).
  *   2. System prompt category map (so the model has a clear mental model of
- *      "canvas_* operates on canvas pages; read_file / write_file operate on
- *      files on disk"). Closes the routing gap where the AI calls `read_file`
+ *      "canvas_* operates on canvas pages; fs_read_file / fs_write_file operate on
+ *      files on disk"). Closes the routing gap where the AI calls `fs_read_file`
  *      on a canvas page or `canvas_read_page` on a file path.
  *
  * One source of truth — the category lives on `IChatTool`. The eval manifest's
@@ -985,9 +985,9 @@ export type ToolCategory =
   | 'surface'        // UI surface routing (surface_send, surface_list)
   | 'subagent'       // agent spawning (sessions_spawn)
   | 'autonomy'       // autonomy log read
-  | 'linking'        // parallx_link
+  | 'linking'        // link_create
   | 'app-control'    // workbench command execution
-  | 'terminal';      // shell execution (run_command)
+  | 'terminal';      // shell execution (terminal_run_command)
 
 /**
  * A registered chat tool — definition + handler.

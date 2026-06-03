@@ -153,7 +153,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     registerBuiltInDashboardWidgets(publicRegistry, api),
   );
 
-  // 5b. Register the shared `render_to_widget` AI tool. This is the single
+  // 5b. Register the shared `dashboard_render_widget` AI tool. This is the single
   //     channel through which the AI delivers content to ANY widget surface:
   //     an AI-backed widget's refresh sends a prompt to the active chat
   //     session asking the model to research/compute, then call this tool with
@@ -162,7 +162,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   //     live repaint — no widget-specific plumbing required.
   if (api.chat?.registerTool) {
     context.subscriptions.push(
-      api.chat.registerTool('render_to_widget', {
+      api.chat.registerTool('dashboard_render_widget', {
         description:
           'Deliver finished content to a dashboard widget. Call this once you have gathered and formatted the result a widget asked for. Identify the target either by the instanceId the widget gave you, or by its title (the name shown on the widget) — supply at least one. Content is Markdown and replaces whatever the widget currently shows.',
         parameters: {

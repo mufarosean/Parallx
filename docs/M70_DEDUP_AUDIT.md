@@ -14,7 +14,7 @@ Each command is assigned exactly one bucket:
 | Bucket | Meaning | Action |
 |---|---|---|
 | **OPT-IN** | Safe to surface to the AI. Zero-arg or single-string-arg. No duplication with existing tools. | `aiInvocable: true` + `aiDescription` |
-| **DUPLICATE** | Covered by an existing AI tool (`read_file`, `write_file`, `create_page`, etc.). The existing tool is canonical. | Stay invisible to the AI |
+| **DUPLICATE** | Covered by an existing AI tool (`fs_read_file`, `fs_write_file`, `create_page`, etc.). The existing tool is canonical. | Stay invisible to the AI |
 | **OUT_OF_MVP** | Needs complex args (file path, page ID, position, content). MVP supports zero-arg / single-string-arg only — these come back in a phase two. | Stay invisible to the AI (for now) |
 | **EXCLUDED** | Permanently excluded per Gate 2 (AI settings, secrets, install, workspace destruction) regardless of opt-in. | Hardcoded denylist enforced in `app__run_command` |
 
@@ -238,11 +238,11 @@ local models.
 
 | ID | Duplicates |
 |---|---|
-| `file.openFile` | `read_file`, plus existing context-attach tools |
-| `file.newTextFile` | `write_file` (creates new files) |
-| `file.save` | implicit in `write_file`; no save-as-command needed |
-| `file.saveAs` | `write_file` with a new path |
-| `explorer.newFile` | `write_file` |
+| `file.openFile` | `fs_read_file`, plus existing context-attach tools |
+| `file.newTextFile` | `fs_write_file` (creates new files) |
+| `file.save` | implicit in `fs_write_file`; no save-as-command needed |
+| `file.saveAs` | `fs_write_file` with a new path |
+| `explorer.newFile` | `fs_write_file` |
 | `explorer.newFolder` | `create_directory` (or equivalent) |
 | `explorer.rename` | `rename_file` / move tool |
 | `explorer.revealInExplorer` | not actionable in headless agent context |

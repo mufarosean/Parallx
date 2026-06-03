@@ -29,7 +29,7 @@ that don't share state and don't share enforcement:
 The result: any *new* tool, *new* extension, or *new* IPC handler must
 re-implement the right subset of these checks from memory. The mechanism is
 strong where it has been thought through (M65 web fetch is genuinely good) and
-absent where it hasn't (the `run_command` blocklist is security theater).
+absent where it hasn't (the `terminal_run_command` blocklist is security theater).
 
 This milestone is **not "rewrite security from scratch."** It is:
 
@@ -63,22 +63,22 @@ from the initial scan have been corrected.
 `RED_TOOLS` and `BLUE_TOOLS` per [openclawToolPolicy.ts:404-434](../src/openclaw/openclawToolPolicy.ts#L404-L434):
 
 - **Red (untrusted-content sources):** `webSearch`, `webFetch`
-- **Blue (consequential writes; gated after red fires this turn):** `write_file`,
-  `edit_file`, `create_page`, `compose_page`, `set_page_property`,
+- **Blue (consequential writes; gated after red fires this turn):** `fs_write_file`,
+  `fs_edit_file`, `create_page`, `compose_page`, `set_page_property`,
   `set_page_style`, `edit_block`, `insert_block_after`, `link_block`,
   `surface_send`
 
 **Notable absences from BLUE_TOOLS:**
 
-- `run_command` — arbitrary shell execution. After a `webFetch` taints the
+- `terminal_run_command` — arbitrary shell execution. After a `webFetch` taints the
   turn, a prompt-injected response can direct the model to run
-  `run_command "powershell -c '...'"` and the color gate does not fire.
-- `delete_file` — destructive write; also not blue.
+  `terminal_run_command "powershell -c '...'"` and the color gate does not fire.
+- `fs_delete_file` — destructive write; also not blue.
 - `sessions_spawn` — can spawn a subagent that itself runs blue tools.
 - MCP tools generically — M65 §F4 was explicitly deferred; the explicit
   blue-name list is the current contract.
 
-### C. `run_command` specifically
+### C. `terminal_run_command` specifically
 
 [terminalTools.ts:14-31](../src/built-in/chat/tools/terminalTools.ts#L14-L31):
 
@@ -163,7 +163,7 @@ present:
 - ⚠️ No IDN (punycode/homoglyph) normalization before blocklist check.
 - ⚠️ MCP server processes do **not** route through this chokepoint — they have
   unrestricted network access at user privilege.
-- ⚠️ Local file reads (`read_file`) and MCP tool outputs are **not** tainted;
+- ⚠️ Local file reads (`fs_read_file`) and MCP tool outputs are **not** tainted;
   M65 taint only tracks web content.
 
 ### H. Renderer / Electron posture
@@ -252,16 +252,16 @@ to `useTrash: 'auto'`:
 | Adversary | Capabilities today | Plausibility |
 |---|---|---|
 | **Malicious prompt-injected web page** | Can talk to LLM via webFetch result; constrained to text only; cannot construct URLs (M65 Layer 2); cannot bypass body cap | High plausibility, **partially mitigated** by M65 |
-| **Malicious file in workspace** (downloaded, cloned, gifted) | `read_file` is `always-allowed` and content is fed verbatim to model with no taint mark | High plausibility, **unmitigated** |
+| **Malicious file in workspace** (downloaded, cloned, gifted) | `fs_read_file` is `always-allowed` and content is fed verbatim to model with no taint mark | High plausibility, **unmitigated** |
 | **Malicious MCP server** (user-installed) | Inherits user privilege; unrestricted network; full filesystem at user level | Medium plausibility (user picks the server), **unmitigated** |
 | **Malicious .plx extension** | Same renderer, same `api.workspace.fs`, can read entire workspace | Medium plausibility, **unmitigated** |
-| **Compromised LLM response** (provider breach, model jailbreak) | Can request `run_command`; blocked behind approval gate today | Medium plausibility, **mitigated only by approval prompt + bypassable blocklist** |
+| **Compromised LLM response** (provider breach, model jailbreak) | Can request `terminal_run_command`; blocked behind approval gate today | Medium plausibility, **mitigated only by approval prompt + bypassable blocklist** |
 | **Local user with disk access** (theft, multi-user PC) | Plaintext LLM API keys, plaintext Gmail token (mode 0600 only), plaintext autonomy log | Low-medium plausibility, **partially mitigated** |
 | **Network attacker** (rogue Wi-Fi, MITM) | HTTPS-only + DNS pin defeat passive eavesdropping; cert pinning absent | Low plausibility (HTTPS sufficient) |
 
 ## Top findings, ranked
 
-1. **🔴 `run_command` is approval-gated only.** Blocklist is theater. Once
+1. **🔴 `terminal_run_command` is approval-gated only.** Blocklist is theater. Once
    approved, full PowerShell on the user's box. Not in `BLUE_TOOLS` so the
    M65 taint gate does not fire after web fetch.
 2. **🔴 `_autoApprove` mechanism exists with no production caller.** Not a live
@@ -270,7 +270,7 @@ to `useTrash: 'auto'`:
 3. **🟠 IPC `fs:*` handlers don't re-validate paths.** Single-layer boundary;
    only the tool layer enforces workspace scope. An extension or any future
    renderer code that constructs an absolute path is unconstrained.
-4. **🟠 `read_file` is `always-allowed` and untainted.** Prompt injection via
+4. **🟠 `fs_read_file` is `always-allowed` and untainted.** Prompt injection via
    workspace file (Markdown, PDF text, etc.) is unmitigated.
 5. **🟠 MCP server processes have unrestricted network and filesystem.** The
    egress chokepoint does not apply to them.
@@ -325,7 +325,7 @@ interface PolicyDecision {
 }
 ```
 
-**Closes findings:** #1 (run_command color + blocklist replaced), #2
+**Closes findings:** #1 (terminal_run_command color + blocklist replaced), #2
 (autoApprove gated through PDP can never override deny), #3 (path-check
 becomes one function called from IPC AND tools), #4 (file-read taint added
 as a first-class concept).
@@ -371,7 +371,7 @@ Extend the M65 turn-taint registry to track:
 
 A tainted turn forces re-approval for any blue tool, just like M65 today.
 
-**Closes findings:** #4 (read_file taint), part of #5 (MCP output taint).
+**Closes findings:** #4 (fs_read_file taint), part of #5 (MCP output taint).
 
 **Effort:** ~1 week. Builds directly on M65 plumbing.
 
@@ -381,8 +381,8 @@ A tainted turn forces re-approval for any blue tool, just like M65 today.
 
 | # | Change | File | Effort | Status |
 |---|---|---|---|---|
-| 1 | Add `run_command` and `delete_file` to `BLUE_TOOLS` | `openclawToolPolicy.ts` | 5 min | ✅ Shipped |
-| 2 | `run_command` hard-coded to ignore `_autoApprove` and `streamlined` | `permissionService.ts` | 30 min | ✅ Shipped via `ALWAYS_REQUIRE_CONFIRMATION` |
+| 1 | Add `terminal_run_command` and `fs_delete_file` to `BLUE_TOOLS` | `openclawToolPolicy.ts` | 5 min | ✅ Shipped |
+| 2 | `terminal_run_command` hard-coded to ignore `_autoApprove` and `streamlined` | `permissionService.ts` | 30 min | ✅ Shipped via `ALWAYS_REQUIRE_CONFIRMATION` |
 | 3 | Move Gmail creds to `<workspace>/.parallx/mcp/gmail-mcp/credentials.json` + migration shim | `mcpBridge.cjs`, Gmail MCP server | 2 h | ⏳ Deferred — needs gmail-mcp server change |
 | 4 | Set `TMPDIR`/`TEMP`/`TMP` to `<app_root>/data/temp/` before spawning docling/ffmpeg/MCP | `doclingBridge.cjs`, `mcpBridge.cjs`, ffmpeg spawn site | 1 h | ✅ Shipped |
 | 5 | Heuristic redaction in autonomy log writes (`sk-...`, `ghp_...`, `Authorization:` headers) | `autonomyLogService.ts` | 2 h | ✅ Shipped |
@@ -452,9 +452,9 @@ regression.
     key+signature and the check still passes. A publisher key registry or
     pinned trust anchor is required for true author authentication and is
     deferred to a later milestone.
-- 4.4 ~~Add taint propagation for `read_file` and MCP outputs~~ (M65 §F4
-  follow-up). **Partially shipped — read_file reverted, MCP outputs kept.**
-  Tainting all `read_file` calls red made every read-then-edit workflow
+- 4.4 ~~Add taint propagation for `fs_read_file` and MCP outputs~~ (M65 §F4
+  follow-up). **Partially shipped — fs_read_file reverted, MCP outputs kept.**
+  Tainting all `fs_read_file` calls red made every read-then-edit workflow
   require explicit approval on the edit step, which broke routine work.
   Workspace files are owned by the user; treating them as untrusted by
   default does not match the trust model. MCP-prefixed tools (`mcp__*`) are
@@ -481,7 +481,7 @@ regression.
 
 ## Open questions for the user
 
-1. **`run_command` shape:** keep raw shell string + better gating, or move to
+1. **`terminal_run_command` shape:** keep raw shell string + better gating, or move to
    argv mode (`{ command, args[] }`) and lose pipeline syntax?
 2. **`streamlined` strictness:** keep it (advanced user feature), or remove it
    along with `_autoApprove` so the only approval-bypass route is per-tool

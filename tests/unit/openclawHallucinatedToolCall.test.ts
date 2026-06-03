@@ -9,42 +9,42 @@
 import { describe, expect, it } from 'vitest';
 import { _detectHallucinatedToolCall } from '../../src/openclaw/openclawAttempt';
 
-const TOOLS = ['read_file', 'list_files', 'canvas_read_page', 'search_knowledge', 'budget.sync'];
+const TOOLS = ['fs_read_file', 'fs_list_files', 'canvas_read_page', 'fs_search_knowledge', 'budget.sync'];
 
 describe('_detectHallucinatedToolCall', () => {
   describe('pattern A — "I called X" / "I ran X" / etc.', () => {
-    it('flags "I called read_file"', () => {
-      expect(_detectHallucinatedToolCall('I called read_file and found the answer.', TOOLS)).toBe('read_file');
+    it('flags "I called fs_read_file"', () => {
+      expect(_detectHallucinatedToolCall('I called fs_read_file and found the answer.', TOOLS)).toBe('fs_read_file');
     });
 
-    it('flags "I just ran list_files"', () => {
-      expect(_detectHallucinatedToolCall('I just ran list_files in the docs directory.', TOOLS)).toBe('list_files');
+    it('flags "I just ran fs_list_files"', () => {
+      expect(_detectHallucinatedToolCall('I just ran fs_list_files in the docs directory.', TOOLS)).toBe('fs_list_files');
     });
 
     it('flags "I invoked canvas_read_page"', () => {
       expect(_detectHallucinatedToolCall('I invoked canvas_read_page to fetch the page.', TOOLS)).toBe('canvas_read_page');
     });
 
-    it('flags backtick-wrapped tool name: "I called `read_file`"', () => {
-      expect(_detectHallucinatedToolCall('I called `read_file` against your README.', TOOLS)).toBe('read_file');
+    it('flags backtick-wrapped tool name: "I called `fs_read_file`"', () => {
+      expect(_detectHallucinatedToolCall('I called `fs_read_file` against your README.', TOOLS)).toBe('fs_read_file');
     });
 
     it('case-insensitive verb', () => {
-      expect(_detectHallucinatedToolCall('I Called read_file.', TOOLS)).toBe('read_file');
+      expect(_detectHallucinatedToolCall('I Called fs_read_file.', TOOLS)).toBe('fs_read_file');
     });
   });
 
   describe('pattern B — "used the X tool"', () => {
-    it('flags "I used the read_file tool"', () => {
-      expect(_detectHallucinatedToolCall('I used the read_file tool to peek inside.', TOOLS)).toBe('read_file');
+    it('flags "I used the fs_read_file tool"', () => {
+      expect(_detectHallucinatedToolCall('I used the fs_read_file tool to peek inside.', TOOLS)).toBe('fs_read_file');
     });
 
-    it('flags "using the search_knowledge tool"', () => {
-      expect(_detectHallucinatedToolCall('Now using the search_knowledge tool.', TOOLS)).toBe('search_knowledge');
+    it('flags "using the fs_search_knowledge tool"', () => {
+      expect(_detectHallucinatedToolCall('Now using the fs_search_knowledge tool.', TOOLS)).toBe('fs_search_knowledge');
     });
 
     it('flags backtick-wrapped tool name', () => {
-      expect(_detectHallucinatedToolCall('I used the `list_files` tool earlier.', TOOLS)).toBe('list_files');
+      expect(_detectHallucinatedToolCall('I used the `fs_list_files` tool earlier.', TOOLS)).toBe('fs_list_files');
     });
   });
 
@@ -65,12 +65,12 @@ describe('_detectHallucinatedToolCall', () => {
       expect(_detectHallucinatedToolCall('Following your existing approach.', TOOLS)).toBeNull();
     });
 
-    it('"I\'ll call read_file next" (future-tense intent) does NOT match', () => {
-      expect(_detectHallucinatedToolCall("I'll call read_file next.", TOOLS)).toBeNull();
+    it('"I\'ll call fs_read_file next" (future-tense intent) does NOT match', () => {
+      expect(_detectHallucinatedToolCall("I'll call fs_read_file next.", TOOLS)).toBeNull();
     });
 
-    it('"Let me call read_file" (intent, not past) does NOT match', () => {
-      expect(_detectHallucinatedToolCall('Let me call read_file to find out.', TOOLS)).toBeNull();
+    it('"Let me call fs_read_file" (intent, not past) does NOT match', () => {
+      expect(_detectHallucinatedToolCall('Let me call fs_read_file to find out.', TOOLS)).toBeNull();
     });
   });
 
@@ -88,7 +88,7 @@ describe('_detectHallucinatedToolCall', () => {
     });
 
     it('returns null for empty tool list', () => {
-      expect(_detectHallucinatedToolCall('I called read_file.', [])).toBeNull();
+      expect(_detectHallucinatedToolCall('I called fs_read_file.', [])).toBeNull();
     });
 
     it('returns null when no narration pattern is present', () => {
@@ -97,8 +97,8 @@ describe('_detectHallucinatedToolCall', () => {
   });
 
   describe('multi-tool catalog — picks the named tool, not another', () => {
-    it('"I called list_files" only flags list_files, even if read_file is also in the catalog', () => {
-      expect(_detectHallucinatedToolCall('I called list_files yesterday.', TOOLS)).toBe('list_files');
+    it('"I called fs_list_files" only flags fs_list_files, even if fs_read_file is also in the catalog', () => {
+      expect(_detectHallucinatedToolCall('I called fs_list_files yesterday.', TOOLS)).toBe('fs_list_files');
     });
   });
 });

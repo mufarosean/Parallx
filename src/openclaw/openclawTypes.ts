@@ -195,7 +195,7 @@ export interface ISkillCatalogEntry {
  * package types from the openclaw layer.
  *
  * Wired by `chat/main.ts` from the same `WorkspaceMemoryService` instance
- * that backs `memory_edit`. Optional — when undefined (workspace closed,
+ * that backs `memory_write`. Optional — when undefined (workspace closed,
  * tests), `/init` skips the new Phase 8 steps and runs the existing
  * AGENTS.md generation only.
  */
@@ -261,7 +261,7 @@ export interface IDefaultParticipantServices {
    * M81 Phase 8 — workspace memory accessor used by `/init` for the legacy
    * concept archive migration and the lessons-consolidation pass. Wired by
    * `chat/main.ts` from the same WorkspaceMemoryService instance that backs
-   * the `memory_edit` tool. Undefined when no workspace is open or in tests
+   * the `memory_write` tool. Undefined when no workspace is open or in tests
    * that don't exercise memory.
    */
   workspaceMemory?: IInitWorkspaceMemoryAccessor;

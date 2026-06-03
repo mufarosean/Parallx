@@ -13,7 +13,7 @@
 | Gap ID | Severity | Classification | Summary | Dependency |
 |--------|----------|----------------|---------|------------|
 | F12-1 | HIGH | MISALIGNED → ALIGNED | Remove ToolInvocation from strip list in `close()` | None |
-| F12-2 | HIGH | MISALIGNED → ALIGNED | Add explicit `read_file` tool naming to skill prompt | None |
+| F12-2 | HIGH | MISALIGNED → ALIGNED | Add explicit `fs_read_file` tool naming to skill prompt | None |
 | F12-3 | HIGH | MISSING → ALIGNED | Add fabrication guard to skill prompt | None |
 | F12-4 | MEDIUM | MISSING → ALIGNED | Add explicit user naming case to skill prompt | None |
 | F12-5 | HIGH | MISALIGNED → ALIGNED | Synchronize pipeline and UI skill prompts | Depends on F12-2/3/4 |
@@ -66,7 +66,7 @@ for (let i = parts.length - 1; i >= 0; i--) {
 ## Change Plan: F12-2 + F12-3 + F12-4 — Pipeline Skill Prompt Alignment
 
 ### Gap
-`buildSkillsSection()` is missing: explicit `read_file` naming (F12-2), fabrication guard (F12-3), explicit user naming handler (F12-4).
+`buildSkillsSection()` is missing: explicit `fs_read_file` naming (F12-2), fabrication guard (F12-3), explicit user naming handler (F12-4).
 
 ### Upstream citation
 `agents/system-prompt.ts:20-37` — model must read skill file. The canonical correct version is the UI path at `chatSystemPrompts.ts` line 238-248 which already has all three.
@@ -91,8 +91,8 @@ ${entries}
 ```typescript
 return `## Skills (mandatory)
 Before replying: scan <available_skills> <description> entries.
-- If exactly one skill clearly applies: read its SKILL.md at <location> using read_file, then follow its instructions step by step.
-- If the user explicitly names a skill (e.g. "use the X skill"): read that skill's SKILL.md at <location> using read_file, then follow its instructions.
+- If exactly one skill clearly applies: read its SKILL.md at <location> using fs_read_file, then follow its instructions step by step.
+- If the user explicitly names a skill (e.g. "use the X skill"): read that skill's SKILL.md at <location> using fs_read_file, then follow its instructions.
 - If multiple could apply: choose the most specific one.
 - If none clearly apply: do not read any SKILL.md.
 - NEVER describe a skill's instructions from memory or the description alone — always read the actual SKILL.md file first.
@@ -132,7 +132,7 @@ After F12-2/3/4, the pipeline path gains 4 instructions. The UI path is still mi
 
 | Instruction | Pipeline | UI |
 |---|---|---|
-| Explicit `read_file` tool naming | ✓ | ✓ |
+| Explicit `fs_read_file` tool naming | ✓ | ✓ |
 | Step-by-step instruction | ✓ | ✓ |
 | Explicit user naming case | ✓ | ✓ |
 | Fabrication guard | ✓ | ✓ |
@@ -147,7 +147,7 @@ After F12-2/3/4, the pipeline path gains 4 instructions. The UI path is still mi
 
 | Test | Type | Location |
 |------|------|----------|
-| `'names read_file tool explicitly'` | Unit | `tests/unit/openclawSystemPrompt.test.ts` |
+| `'names fs_read_file tool explicitly'` | Unit | `tests/unit/openclawSystemPrompt.test.ts` |
 | `'includes fabrication guard'` | Unit | `tests/unit/openclawSystemPrompt.test.ts` |
 | `'includes explicit user naming case'` | Unit | `tests/unit/openclawSystemPrompt.test.ts` |
 | Existing assertions unchanged | Unit | `tests/unit/openclawSystemPrompt.test.ts` |

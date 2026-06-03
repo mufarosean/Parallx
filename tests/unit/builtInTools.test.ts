@@ -139,7 +139,7 @@ describe('registerBuiltInTools', () => {
     // M64 Iter 2: compose_page brings the total to 40.
     // M64 Iter 3: consolidated find_pages + get_page (-6 +2) = 36.
     // M64 Iter 4: set_page_style = 37.
-    // M81 Phase 2: memory_edit = 38.
+    // M81 Phase 2: memory_write = 38.
     // M81 Phase 9: canvas_get_page folded into canvas_read_page; canvas_compose_page renamed to canvas_edit_page. Net -1 = 37.
     expect(toolsService.registeredTools).toHaveLength(37);
     expect(disposables).toHaveLength(37);
@@ -166,24 +166,24 @@ describe('registerBuiltInTools', () => {
       'cron_status',
       'cron_update',
       'cron_wake',
-      'delete_file',
-      'edit_file',
-      'grep_search',
-      'list_files',
-      'memory_edit',
-      'memory_get',
+      'fs_delete_file',
+      'fs_edit_file',
+      'fs_grep_search',
+      'fs_list_files',
+      'memory_write',
+      'memory_read',
       'memory_search',
-      'read_file',
-      'run_command',
-      'search_files',
-      'search_knowledge',
+      'fs_read_file',
+      'terminal_run_command',
+      'fs_search_files',
+      'fs_search_knowledge',
       'sessions_spawn',
       'surface_list',
       'surface_send',
       'transcript_get',
       'transcript_search',
-      'write_file',
-    ]);
+      'fs_write_file',
+    ].sort());
   });
 
   it('every built-in tool has a category', () => {
@@ -212,7 +212,7 @@ describe('registerBuiltInTools', () => {
 
     registerToolsForTest(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
-    const readOnly = ['canvas_find_pages', 'canvas_read_page', 'list_files', 'read_file', 'search_files', 'grep_search', 'search_knowledge', 'memory_get', 'memory_search', 'transcript_get', 'transcript_search', 'canvas_list_property_definitions', 'canvas_read_block'];
+    const readOnly = ['canvas_find_pages', 'canvas_read_page', 'fs_list_files', 'fs_read_file', 'fs_search_files', 'fs_grep_search', 'fs_search_knowledge', 'memory_read', 'memory_search', 'transcript_get', 'transcript_search', 'canvas_list_property_definitions', 'canvas_read_block'];
     for (const name of readOnly) {
       const tool = toolsService.registeredTools.find(t => t.name === name);
       expect(tool?.requiresConfirmation, `${name} should not require confirmation`).toBe(false);
@@ -734,7 +734,7 @@ describe('built-in tools with no database', () => {
   });
 });
 
-describe('memory_get tool', () => {
+describe('memory_read tool', () => {
   it('reads durable memory by default', async () => {
     const toolsService = createMockToolsService();
     const fs = createMockFs({
@@ -743,7 +743,7 @@ describe('memory_get tool', () => {
     });
 
     registerToolsForTest(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch());
-    const tool = toolsService.registeredTools.find(t => t.name === 'memory_get')!;
+    const tool = toolsService.registeredTools.find(t => t.name === 'memory_read')!;
 
     const result = await tool.handler({}, createToken());
     expect(result.content).toContain('.parallx/memory/MEMORY.md');
@@ -758,7 +758,7 @@ describe('memory_get tool', () => {
     });
 
     registerToolsForTest(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch());
-    const tool = toolsService.registeredTools.find(t => t.name === 'memory_get')!;
+    const tool = toolsService.registeredTools.find(t => t.name === 'memory_read')!;
 
     const result = await tool.handler({ layer: 'daily', date: '2026-03-12' }, createToken());
     expect(result.content).toContain('.parallx/memory/2026-03-12.md');
@@ -806,7 +806,7 @@ describe('memory_search tool', () => {
   });
 });
 
-describe('search_knowledge tool', () => {
+describe('fs_search_knowledge tool', () => {
   it('passes folder_path as pathPrefixes to the retrieval function', async () => {
     const retrieval = createMockRetrieval({
       retrieve: vi.fn(async () => [
@@ -815,7 +815,7 @@ describe('search_knowledge tool', () => {
     });
     const toolsService = createMockToolsService();
     registerToolsForTest(toolsService, createMockDb(), createMockFs(), undefined, retrieval, createMockCanonicalMemorySearch());
-    const tool = toolsService.registeredTools.find(t => t.name === 'search_knowledge')!;
+    const tool = toolsService.registeredTools.find(t => t.name === 'fs_search_knowledge')!;
 
     const result = await tool.handler({ query: 'test query', folder_path: 'RF Guides' }, createToken());
 
@@ -831,7 +831,7 @@ describe('search_knowledge tool', () => {
     });
     const toolsService = createMockToolsService();
     registerToolsForTest(toolsService, createMockDb(), createMockFs(), undefined, retrieval, createMockCanonicalMemorySearch());
-    const tool = toolsService.registeredTools.find(t => t.name === 'search_knowledge')!;
+    const tool = toolsService.registeredTools.find(t => t.name === 'fs_search_knowledge')!;
 
     await tool.handler({ query: 'test query' }, createToken());
 
@@ -992,8 +992,8 @@ describe('set_page_property tool', () => {
   });
 });
 
-describe('read_file tool (workspace tree)', () => {
-  it('includes workspace tree and line count in read_file output', async () => {
+describe('fs_read_file tool (workspace tree)', () => {
+  it('includes workspace tree and line count in fs_read_file output', async () => {
     const toolsService = createMockToolsService();
     const fs = createMockFs({
       readdir: vi.fn(async (path: string) => {
@@ -1013,7 +1013,7 @@ describe('read_file tool (workspace tree)', () => {
       readFileContent: vi.fn(async () => ({ content: 'line one\nline two\nline three', type: 'text' as const, totalChars: 28 })),
     });
     registerToolsForTest(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch());
-    const tool = toolsService.registeredTools.find(t => t.name === 'read_file')!;
+    const tool = toolsService.registeredTools.find(t => t.name === 'fs_read_file')!;
 
     const result = await tool.handler({ path: 'README.md' }, createToken());
 
@@ -1034,7 +1034,7 @@ describe('read_file tool (workspace tree)', () => {
       readFileContent: vi.fn(async () => ({ content: 'content here', type: 'text' as const, totalChars: 12 })),
     });
     registerToolsForTest(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch());
-    const tool = toolsService.registeredTools.find(t => t.name === 'read_file')!;
+    const tool = toolsService.registeredTools.find(t => t.name === 'fs_read_file')!;
 
     const result = await tool.handler({ path: 'test.txt' }, createToken());
 

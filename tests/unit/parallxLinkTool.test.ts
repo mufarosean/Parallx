@@ -32,7 +32,7 @@ async function call(args: Record<string, unknown>, contracts: readonly IParallxL
   return { result, parsed };
 }
 
-describe('M66 parallx_link tool', () => {
+describe('M66 link_create tool', () => {
   it('mints a valid URI when target parses and segment is registered', async () => {
     const { result, parsed } = await call(
       { target: 'parallx://canvas/page/01HZX' },

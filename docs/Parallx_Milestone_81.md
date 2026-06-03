@@ -13,7 +13,7 @@
 >
 > **Shipped scope (7 phases):**
 > 1. ✅ USER.md as a bootstrap layer. Scaffolded via `/init` (single activation path, matches SOUL.md / TOOLS.md). In-memory fallback in `OPENCLAW_BOOTSTRAP_DEFAULTS` so the prompt always has it.
-> 2. ✅ `memory_edit` tool with add/replace/remove on USER.md / MEMORY.md / daily. Bounded files (USER 1,500 / MEMORY 2,500 chars) with error-on-full → consolidate-then-add discipline.
+> 2. ✅ `memory_write` tool with add/replace/remove on USER.md / MEMORY.md / daily. Bounded files (USER 1,500 / MEMORY 2,500 chars) with error-on-full → consolidate-then-add discipline.
 > 3. ✅ Concept auto-extraction **removed entirely** (Stage 2 cleanup — three-layer verification revealed the original "wire it up" premise was wrong; the extraction was already wired but competed with bounded curation).
 > 4. ✅ Preference auto-extraction **removed entirely** (the same regex-vs-agent-curation conflict; subagent caught that `detectPreferences` was live, not dead as the milestone draft assumed, and we deleted the full chain including the `queueMemoryWriteBack` caller).
 > 5. ✅ `buildMemorySection` rewritten as one coherent surface: identity files (always loaded), curated memory store (read/write tools), explicit write triggers.
@@ -36,7 +36,7 @@ What exists today (verified):
 - **Section-aware writers** for MEMORY.md: `syncPreferences`, `syncConcepts`,
   `upsertPreferences`, `upsertConcepts`, `appendSessionSummary`,
   `appendDailyMemory` ([workspaceMemoryService.ts L267-L423](../src/services/workspaceMemoryService.ts#L267-L423)).
-- **Read tools for the AI**: `memory_get` and `memory_search`
+- **Read tools for the AI**: `memory_read` and `memory_search`
   ([memoryTools.ts](../src/built-in/chat/tools/memoryTools.ts)).
 - **SQLite memory** with vector retrieval: conversation summaries, learning
   concepts, decay scoring, eviction ([memoryService.ts](../src/services/memoryService.ts)).
@@ -65,7 +65,7 @@ What is broken or missing (verified):
   → SQLite + vector store. `WorkspaceMemoryService.syncConcepts` exists
   to write the `## Concepts` section in MEMORY.md but is never called
   from the chat path. Result: the AI can semantically retrieve concepts
-  via `recallConcepts`, but `memory_get` on MEMORY.md never shows them.
+  via `recallConcepts`, but `memory_read` on MEMORY.md never shows them.
 - **No USER.md.** SOUL.md is the agent's identity. AGENTS.md is the
   project's context. There is no equivalent file for the user as a
   person — preferences, role, focus, constraints. Hermes ships this as
@@ -124,7 +124,7 @@ milestone is to reduce surface count, not grow it.
 
 - No new console, no new panel, no new event bus.
 - USER.md ships scaffolded with a starter template, like SOUL.md.
-- `memory_edit` is a single tool with `action ∈ {add, replace, remove}`
+- `memory_write` is a single tool with `action ∈ {add, replace, remove}`
   and `file ∈ {USER, MEMORY, daily}`. Mirrors the Hermes `memory` tool
   shape because that shape is the load-bearing pattern: full-file →
   error → agent consolidates.
@@ -234,12 +234,12 @@ milestones don't relitigate:
   files vs full snapshots). Separate milestone.
 - **Background curation agent.** Hermes does not actually have one
   either (verified); the chat agent itself does the curation via
-  `memory_edit`'s error-on-full loop. Revisit only if the in-line
+  `memory_write`'s error-on-full loop. Revisit only if the in-line
   curation proves insufficient after this milestone ships.
 - **Replacing SQLite memory entirely.** Concepts still benefit from
   vector retrieval for `recallConcepts`-style semantic lookup. This
   milestone makes the two paths consistent, not collapsed.
-- **Removing `memory_get` / `memory_search`.** They stay. They are
+- **Removing `memory_read` / `memory_search`.** They stay. They are
   the read half of the surface and they work.
 
 ---
@@ -281,7 +281,7 @@ file change like the others.
 
 This file tells the AI who you are, what you're working on, and how
 you like to work. The AI reads this every turn and can update it via
-the `memory_edit` tool when you confirm a preference or fact.
+the `memory_write` tool when you confirm a preference or fact.
 
 ## About
 - (Replace this with: your name, role, what you do)
@@ -305,7 +305,7 @@ budget review needed.
 
 ---
 
-## Phase 2 — `memory_edit` tool
+## Phase 2 — `memory_write` tool
 
 **Goal:** A single chat tool the agent can call to add, replace, or
 remove entries in USER.md, MEMORY.md, or today's daily log. Routes
@@ -317,7 +317,7 @@ cap so the agent must consolidate.
 **Tool shape:**
 
 ```ts
-memory_edit({
+memory_write({
   file: 'USER' | 'MEMORY' | 'daily',
   action: 'add' | 'replace' | 'remove',
   entry: string,        // for add and replace: the new content
@@ -371,11 +371,11 @@ Semantics by file:
   in git), but the approval rail teaches the user what's being saved.
 
 **Verification before close:**
-- AI can call `memory_edit` and the change shows up in the .md file
+- AI can call `memory_write` and the change shows up in the .md file
   immediately.
 - Bounded write rejection shows the current file content in the tool
   result.
-- After a `memory_edit` to USER.md, the next turn's system prompt
+- After a `memory_write` to USER.md, the next turn's system prompt
   reflects the change (depends on file-watcher → `invalidate()`).
 - `MEMORY.md` `## Preferences` section is now writable by the agent
   via the same path that `syncPreferences` uses internally.
@@ -409,7 +409,7 @@ the structured record on file errors.
   section reflects the extracted concepts.
 - The same concepts are also queryable via `recallConcepts` from
   SQLite.
-- `memory_get` on MEMORY.md and `memory_search` on the concepts
+- `memory_read` on MEMORY.md and `memory_search` on the concepts
   section return the same conceptual content.
 
 ---
@@ -418,7 +418,7 @@ the structured record on file errors.
 
 **Goal:** Delete `extractAndStorePreferences` and `detectPreferences`
 from MemoryService and the corresponding interface declaration. The
-agent now writes preferences explicitly via `memory_edit` (phase 2),
+agent now writes preferences explicitly via `memory_write` (phase 2),
 so the regex path is both unused and undesirable (agent has better
 signal than regex for what's actually a preference).
 
@@ -462,8 +462,8 @@ verbs. The agent stops seeing memory as three disconnected boxes.
     automatically every turn — read them via your context."
   - "You have a bounded memory at `MEMORY.md` and daily logs at
     `<date>.md` under `.parallx/memory/`."
-  - "Use `memory_get` to read a specific layer, `memory_search` for
-    topic-based recall across all memory, and `memory_edit` to add,
+  - "Use `memory_read` to read a specific layer, `memory_search` for
+    topic-based recall across all memory, and `memory_write` to add,
     replace, or remove entries when you've learned something durable.
     MEMORY.md and USER.md are bounded — when full, you'll get an
     error listing current entries; consolidate before adding."
@@ -497,13 +497,13 @@ future milestone) can bundle helper scripts or reference files.
   `references/`, `assets/` (the three standard names).
 - [src/openclaw/openclawSystemPrompt.ts L271-L306](../src/openclaw/openclawSystemPrompt.ts#L271-L306):
   the `<skill>` XML emission gains an optional `<bundle>` child
-  listing bundled file paths so the agent knows to `read_file` them
+  listing bundled file paths so the agent knows to `fs_read_file` them
   on demand (Execution stage of progressive disclosure).
 
 **Verification:**
 - Drop a skill folder with `SKILL.md` + `scripts/foo.py` into
   `.parallx/skills/`. The skill catalog reports the script path. The
-  agent's system prompt mentions the bundled file. `read_file` works
+  agent's system prompt mentions the bundled file. `fs_read_file` works
   on the path.
 - Existing default skills (without subfolders) load unchanged.
 
@@ -517,7 +517,7 @@ a clean upgrade.
 
 **Files touched:**
 - [docs/ai/AI_USER_GUIDE.md](../docs/ai/AI_USER_GUIDE.md): add
-  USER.md to the prompt-files section; document `memory_edit`.
+  USER.md to the prompt-files section; document `memory_write`.
 - [docs/Future_Improvements.md](../docs/Future_Improvements.md):
   remove any entries this milestone closes.
 - [ARCHITECTURE.md](../ARCHITECTURE.md): update the prompt-file
@@ -526,7 +526,7 @@ a clean upgrade.
 **Migration:** for existing workspaces — `ensureScaffold` is
 idempotent and creates USER.md only if missing. No destructive
 change. The dead preference code deletion (phase 4) has no runtime
-effect since it was never called. The `memory_edit` tool is purely
+effect since it was never called. The `memory_write` tool is purely
 additive. The skill subfolder loader is purely additive.
 
 ---
@@ -535,8 +535,8 @@ additive. The skill subfolder loader is purely additive.
 
 **Status:** ✅ Shipped 2026-05-26. Three subagents in coordinated parallel:
 Agent A delivered the service foundation (lesson CRUD + index helpers +
-archive migration); Agent B extended `memory_edit` with `file=lesson` and
-`memory_get` with `name=<slug>`; Agent C rewrote `buildMemorySection` and
+archive migration); Agent B extended `memory_write` with `file=lesson` and
+`memory_read` with `name=<slug>`; Agent C rewrote `buildMemorySection` and
 wired the legacy-archive + LLM consolidation pass into `/init`. Supervisor
 verified each agent's claims via 3-layer code-checking, integrated the
 results, ran the full test suite (3,185 passed / 1 skipped / 0 failed),
@@ -556,7 +556,7 @@ budget with skills, identity files, and RAG.
 The fix is structural, not janitorial: model memory exactly like the
 skill catalog already works. The catalog injects `<name>/<description>/
 <location>` per skill into the prompt; the body is read on demand via
-`read_file`. Apply the same shape to memory.
+`fs_read_file`. Apply the same shape to memory.
 
 **Goal:** Restructure `.parallx/memory/MEMORY.md` from a single content
 file into a bounded INDEX of topic-file pointers. Topic files (called
@@ -616,7 +616,7 @@ particular tool in a particular way."*
 
 2. **`IBuiltInToolWorkspaceMemory` accessor** extended in [chatTypes.ts](../src/built-in/chat/chatTypes.ts) to expose the new lesson methods.
 
-3. **`memory_edit` tool extension** ([memoryTools.ts](../src/built-in/chat/tools/memoryTools.ts)):
+3. **`memory_write` tool extension** ([memoryTools.ts](../src/built-in/chat/tools/memoryTools.ts)):
    - New `file: 'lesson'` value.
    - For `file=lesson`:
      - `add`: requires `slug` (kebab-case, ≤40 chars), `entry` (body), `description` (≤120 chars). Creates `lessons/<slug>.md`, adds index entry. Enforces index cap; on full returns current index + error.
@@ -624,7 +624,7 @@ particular tool in a particular way."*
      - `remove`: requires `slug`. Archives the file via `archiveLessonFile`, removes the index entry.
    - Existing `USER` / `MEMORY` / `daily` actions stay (additive change).
 
-4. **`memory_get` tool extension** ([memoryTools.ts](../src/built-in/chat/tools/memoryTools.ts)):
+4. **`memory_read` tool extension** ([memoryTools.ts](../src/built-in/chat/tools/memoryTools.ts)):
    - New optional `name: <slug>` parameter to fetch a specific lesson body.
    - Existing `layer=durable|daily` behavior unchanged.
 
@@ -636,9 +636,9 @@ particular tool in a particular way."*
 
 6. **`buildMemorySection` rewrite** ([openclawSystemPrompt.ts](../src/openclaw/openclawSystemPrompt.ts)):
    - Explain the index model: MEMORY.md is an INDEX, not content.
-   - Tell the agent: read the index every turn; when a description matches, call `memory_get name=<slug>` (or `read_file lessons/<slug>.md`) to load the body.
+   - Tell the agent: read the index every turn; when a description matches, call `memory_read name=<slug>` (or `fs_read_file lessons/<slug>.md`) to load the body.
    - Update write triggers to explicitly mention:
-     - The user corrected you about a tool or fact ("don't use X, use Y instead", "you got Z wrong") → `memory_edit file=lesson add`.
+     - The user corrected you about a tool or fact ("don't use X, use Y instead", "you got Z wrong") → `memory_write file=lesson add`.
      - You noticed a recurring tool-use mistake you should not repeat.
      - A workaround / gotcha emerges that future sessions will need.
    - Reinforce cap discipline (remove an old lesson before adding when index is full).
@@ -650,7 +650,7 @@ particular tool in a particular way."*
 
 **Cohesion guarantees:**
 - Memory and skills become structurally identical: `<name>/<description>/<location>` in the prompt, body loaded on demand.
-- One `memory_edit` tool covers everything; one new `file=lesson` value, no separate tool.
+- One `memory_write` tool covers everything; one new `file=lesson` value, no separate tool.
 - Archive-don't-delete throughout — no data loss on migration or on lesson removal.
 - `/init` is the single command that scaffolds + consolidates (matches the M81 Phase 1 decision to keep `/init` as the single activation path).
 
@@ -688,7 +688,7 @@ canvas-tool redundancies that small models routinely fumble:
 
 2. **Rename `canvas_compose_page` → `canvas_edit_page`** to mirror the
    `create / edit` mental model used elsewhere in the codebase
-   (`write_file` / `edit_file`). The factory becomes `createEditPageTool`;
+   (`fs_write_file` / `fs_edit_file`). The factory becomes `createEditPageTool`;
    the wire-protocol name is `canvas_edit_page`.
 
 3. **Sharpen `canvas_create_page` description** to explicitly state the
@@ -718,13 +718,13 @@ canvas-tool redundancies that small models routinely fumble:
 - `tests/eval/tool-skill-manifest.json` — drop canvas_get_page entry;
   rename canvas_compose_page entry to canvas_edit_page; update the
   research-topic skill's expectedToolChain; update cross-references in
-  canvas_edit_block + write_file descriptions.
+  canvas_edit_block + fs_write_file descriptions.
 - `tests/e2e/23-chat-context.spec.ts` — expectation flipped from
   "toolNames toContain 'canvas_get_page'" to "toolNames NOT toContain
   'canvas_get_page'" so the test enforces the consolidation.
 
 **Cohesion guarantees:**
-- create_page and edit_page now mirror write_file / edit_file naming.
+- create_page and edit_page now mirror fs_write_file / fs_edit_file naming.
   Single mental model across file + canvas writes.
 - read_page returns everything the agent typically wants about a page in
   one call — no chained tool dance.
@@ -748,7 +748,7 @@ canvas-tool redundancies that small models routinely fumble:
 
 **Why this phase exists:** Real-workspace evidence — the AI repeatedly
 misroutes between similar tool families. Example reported by the user:
-calling `read_file` on a canvas page UUID instead of `canvas_read_page`.
+calling `fs_read_file` on a canvas page UUID instead of `canvas_read_page`.
 The existing defense is anti-routing prose inside each tool description
 ("For canvas pages use `canvas_read_page`"), which small models ignore.
 The settings UI lumps all 37 built-in tools under one flat "Built-In"
@@ -783,17 +783,17 @@ export interface IChatTool {
 2. **Populate `category` on every built-in tool factory** (Agent A
    territory — mechanical work across ~13 files):
    - `canvas` → all `canvas_*` factories in `pageTools.ts` + `blockTools.ts`
-   - `file-system` → `list_files`, `read_file`, `search_files`, `grep_search`,
-     `search_knowledge` in `fileTools.ts`; `write_file`, `edit_file`,
-     `delete_file` in `writeTools.ts`
+   - `file-system` → `fs_list_files`, `fs_read_file`, `fs_search_files`, `fs_grep_search`,
+     `fs_search_knowledge` in `fileTools.ts`; `fs_write_file`, `fs_edit_file`,
+     `fs_delete_file` in `writeTools.ts`
    - `memory` → all three memory tools in `memoryTools.ts`
    - `transcript` → both transcript tools in `transcriptTools.ts`
-   - `terminal` → `run_command` in `terminalTools.ts`
+   - `terminal` → `terminal_run_command` in `terminalTools.ts`
    - `surface` → both surface tools in `surfaceTools.ts`
    - `cron` → all 8 cron tools in `cronTools.ts`
    - `subagent` → `sessions_spawn` in `subagentTools.ts`
    - `autonomy` → `autonomy_log` in `autonomyLogTool.ts`
-   - `linking` → `parallx_link` in `parallxLinkTool.ts`
+   - `linking` → `link_create` in `parallxLinkTool.ts`
    - `app-control` → any `app_*` tools in `appCommandTools.ts`
 
 3. **Settings UI sub-grouping** ([toolsSection.ts](../src/aiSettings/ui/sections/toolsSection.ts)):
@@ -813,17 +813,17 @@ export interface IChatTool {
    - canvas — canvas page DB (titles, IDs, blocks, properties).
      Tools: canvas_*
    - file-system — workspace files on disk (paths under the workspace root).
-     Tools: read_file, write_file, edit_file, delete_file, list_files,
-     search_files, grep_search, search_knowledge
+     Tools: fs_read_file, fs_write_file, fs_edit_file, fs_delete_file, fs_list_files,
+     fs_search_files, fs_grep_search, fs_search_knowledge
    - memory — .parallx/memory/ index + lessons + daily logs.
-     Tools: memory_get, memory_search, memory_edit
+     Tools: memory_read, memory_search, memory_write
    - transcript — session transcripts. Tools: transcript_get, transcript_search
    - cron — scheduled tasks. Tools: cron_*
-   - terminal — shell execution. Tools: run_command
+   - terminal — shell execution. Tools: terminal_run_command
    - surface — UI surface routing. Tools: surface_send, surface_list
    - subagent — child agent runs. Tools: sessions_spawn
    - autonomy — autonomy log read. Tools: autonomy_log
-   - linking — parallx:// URIs. Tools: parallx_link
+   - linking — parallx:// URIs. Tools: link_create
    - app-control — workbench commands.
 
    If the user asks about a "page" or names something that looks like a
@@ -853,7 +853,7 @@ export interface IChatTool {
   require category on extension tools too.
 
 **Out of scope:**
-- Cross-cutting consolidation (e.g. unifying memory_get + memory_search).
+- Cross-cutting consolidation (e.g. unifying memory_read + memory_search).
   Categories make the structure visible; consolidation is a separate
   decision per pair.
 - Reorganizing tool descriptions to be more compact now that the
@@ -865,14 +865,14 @@ export interface IChatTool {
 
 ```
 Phase 1 (USER.md)  ─┐
-                    ├─→ Phase 2 (memory_edit) ─→ Phase 5 (prompt rewrite) ─→ Phase 7 (docs)
+                    ├─→ Phase 2 (memory_write) ─→ Phase 5 (prompt rewrite) ─→ Phase 7 (docs)
 Phase 3 (concepts) ─┤
 Phase 4 (dead code) ┘
 Phase 6 (skill subfolders)  — independent, can ship any time after Phase 2
 ```
 
 Phases 1, 3, 4, and 6 are independent and can land in parallel commits
-if convenient. Phase 2 depends on Phase 1 because `memory_edit`
+if convenient. Phase 2 depends on Phase 1 because `memory_write`
 references USER.md. Phase 5 depends on Phases 1–4 because the prompt
 rewrite describes the new unified surface. Phase 7 is last.
 

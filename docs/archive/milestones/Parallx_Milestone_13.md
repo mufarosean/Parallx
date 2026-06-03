@@ -308,9 +308,9 @@ src/built-in/chat/
 ├── tools/                      ← Built-in tools
 │   ├── builtInTools.ts         ← Tool registration orchestrator (~100 lines)
 │   ├── pageTools.ts            ← search_workspace, read_page, list_pages, etc.
-│   ├── fileTools.ts            ← list_files, read_file, search_files, search_knowledge
-│   ├── writeTools.ts           ← write_file, edit_file, delete_file
-│   └── terminalTools.ts        ← run_command
+│   ├── fileTools.ts            ← fs_list_files, fs_read_file, fs_search_files, fs_search_knowledge
+│   ├── writeTools.ts           ← fs_write_file, fs_edit_file, fs_delete_file
+│   └── terminalTools.ts        ← terminal_run_command
 │
 ├── defaults/                   ← Default prompt files (keep existing)
 │   ├── SOUL.md
@@ -595,16 +595,16 @@ export class ChatDataService {
 | New File | Tools | Lines (approx) |
 |----------|-------|-----------------|
 | `tools/pageTools.ts` | `search_workspace`, `read_page`, `read_page_by_title`, `read_current_page`, `list_pages`, `get_page_properties`, `create_page` | ~300 |
-| `tools/fileTools.ts` | `list_files`, `read_file`, `search_files`, `search_knowledge` | ~250 |
-| `tools/writeTools.ts` | `write_file`, `edit_file`, `delete_file` | ~200 |
-| `tools/terminalTools.ts` | `run_command` + blocklist | ~100 |
+| `tools/fileTools.ts` | `fs_list_files`, `fs_read_file`, `fs_search_files`, `fs_search_knowledge` | ~250 |
+| `tools/writeTools.ts` | `fs_write_file`, `fs_edit_file`, `fs_delete_file` | ~200 |
+| `tools/terminalTools.ts` | `terminal_run_command` + blocklist | ~100 |
 | `tools/builtInTools.ts` | `registerBuiltInTools()` orchestrator + `extractTextContent()` shared helper | ~100 |
 
 **Strategy:**
 1. Create `pageTools.ts` — move page-related tool registration functions
 2. Create `fileTools.ts` — move file-related tool registration functions
 3. Create `writeTools.ts` — move write/edit/delete tool registration functions
-4. Create `terminalTools.ts` — move run_command + blocklist
+4. Create `terminalTools.ts` — move terminal_run_command + blocklist
 5. Update `builtInTools.ts` to import from per-domain files and call each domain's registration
 6. Shared interfaces already live in `chatTypes.ts` (from Phase 1)
 7. Shared utilities (`extractTextContent`, `extractSnippet`, etc.) stay in `builtInTools.ts`
@@ -845,7 +845,7 @@ Additionally, `_teardownWorkspaceContent()` does not dispose old folder watchers
 
 ### Symptom
 
-After switching workspaces, the Explorer shows the correct folders but Chat AI responds with files from the **old** workspace. The workspace digest, `list_files` tool, `read_file` tool, `@file:` mention provider, prompt file reads (SOUL.md/AGENTS.md/TOOLS.md), and `.parallxignore` checks all resolve against the previous workspace root.
+After switching workspaces, the Explorer shows the correct folders but Chat AI responds with files from the **old** workspace. The workspace digest, `fs_list_files` tool, `fs_read_file` tool, `@file:` mention provider, prompt file reads (SOUL.md/AGENTS.md/TOOLS.md), and `.parallxignore` checks all resolve against the previous workspace root.
 
 ### Root Cause
 
@@ -855,7 +855,7 @@ After switching workspaces, the Explorer shows the correct folders but Chat AI r
 - `ChatDataService._d.fsAccessor` → workspace digest
 - `PromptFileService._fileAccess` closures → SOUL.md, AGENTS.md, TOOLS.md
 - Module-level `_fsAccessor` → `@file:` mention provider
-- Built-in tools (`list_files`, `read_file`, `search_files`) → tool output
+- Built-in tools (`fs_list_files`, `fs_read_file`, `fs_search_files`) → tool output
 - `SkillLoaderService`, `ParallxConfigService`, `PermissionsFileService` → skill/config reads
 - Writer accessor `.parallxignore` → path permission checks
 

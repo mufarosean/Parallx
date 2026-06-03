@@ -1386,7 +1386,7 @@ export class ChatDataService {
   }
 
   // M81 Phase 3 Stage 2 — storeConceptsFromSession + recallConcepts removed.
-  // Concept curation now happens through the agent's `memory_edit` tool,
+  // Concept curation now happens through the agent's `memory_write` tool,
   // which writes high-signal entries to MEMORY.md. The auto-extraction path
   // is gone; per-turn recall comes from the standard RAG lane over MEMORY.md.
 
@@ -1415,7 +1415,7 @@ export class ChatDataService {
   }
 
   // M81 Phase 4 — extractPreferences removed. Preferences are now written
-  // explicitly by the agent via `memory_edit` (USER.md for user-facing,
+  // explicitly by the agent via `memory_write` (USER.md for user-facing,
   // MEMORY.md for project-level). No invisible regex extraction.
 
   async getPreferencesForPrompt(): Promise<string | undefined> {

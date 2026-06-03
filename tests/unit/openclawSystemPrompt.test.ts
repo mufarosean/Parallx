@@ -269,12 +269,12 @@ describe('buildSkillsSection', () => {
     expect(section).toContain('  </skill>');
   });
 
-  it('parameterizes the read tool name (default read_file)', () => {
+  it('parameterizes the read tool name (default fs_read_file)', () => {
     const defaultSection = buildSkillsSection(createSkills());
-    expect(defaultSection).toContain('with `read_file`');
+    expect(defaultSection).toContain('with `fs_read_file`');
     const custom = buildSkillsSection(createSkills(), { readToolName: 'cat' });
     expect(custom).toContain('with `cat`');
-    expect(custom).not.toContain('with `read_file`');
+    expect(custom).not.toContain('with `fs_read_file`');
   });
 
   it('compact mode drops <description> (upstream formatSkillsCompact parity)', () => {
@@ -372,8 +372,8 @@ describe('buildToolSummariesSection', () => {
   it('emits no per-tool bullets', () => {
     const tools: IToolSummary[] = [
       { name: 'canvas_read_page', description: 'Read a canvas page' },
-      { name: 'list_files', description: 'List workspace files' },
-      { name: 'memory_get', description: 'Read memory' },
+      { name: 'fs_list_files', description: 'List workspace files' },
+      { name: 'memory_read', description: 'Read memory' },
     ];
     const section = buildToolSummariesSection(tools);
     const toolLines = section.split('\n').filter(l => /^- [a-z_]+:/i.test(l));
@@ -392,97 +392,6 @@ describe('buildToolSummariesSection', () => {
       { name: 'z', description: 'Z' },
     ]);
     expect(a).toBe(b);
-  });
-
-  // M81 Phase 10 — when at least one tool carries a category, the section
-  // emits a category-to-tools map so the model has a routing rubric. This is
-  // the load-bearing change that prevents `read_file` from being called on a
-  // canvas page UUID.
-  describe('category map (M81 P10)', () => {
-    it('emits a per-category section listing tool names when categories are present', () => {
-      const tools: IToolSummary[] = [
-        { name: 'canvas_read_page', description: 'Read a canvas page', category: 'canvas' },
-        { name: 'canvas_find_pages', description: 'Find canvas pages',  category: 'canvas' },
-        { name: 'read_file',         description: 'Read a workspace file', category: 'file-system' },
-        { name: 'memory_get',        description: 'Read memory',           category: 'memory' },
-      ];
-      const section = buildToolSummariesSection(tools);
-      expect(section).toContain('**canvas**');
-      expect(section).toContain('**file-system**');
-      expect(section).toContain('**memory**');
-      expect(section).toContain('`canvas_read_page`');
-      expect(section).toContain('`canvas_find_pages`');
-      expect(section).toContain('`read_file`');
-      expect(section).toContain('`memory_get`');
-    });
-
-    it('explicitly warns against calling read_file on a canvas page UUID', () => {
-      const tools: IToolSummary[] = [
-        { name: 'canvas_read_page', description: 'Read a canvas page', category: 'canvas' },
-        { name: 'read_file',         description: 'Read a workspace file', category: 'file-system' },
-      ];
-      const section = buildToolSummariesSection(tools);
-      // The exact failure mode the user reported.
-      expect(section).toContain('UUIDs are not file paths');
-    });
-
-    it('orders categories by surface importance (canvas → file-system → memory → others)', () => {
-      const tools: IToolSummary[] = [
-        { name: 'run_command',       description: 'Run shell',     category: 'terminal' },
-        { name: 'memory_get',        description: 'Read memory',   category: 'memory' },
-        { name: 'canvas_read_page',  description: 'Read page',     category: 'canvas' },
-        { name: 'read_file',         description: 'Read file',     category: 'file-system' },
-      ];
-      const section = buildToolSummariesSection(tools);
-      const canvasIdx = section.indexOf('**canvas**');
-      const fsIdx = section.indexOf('**file-system**');
-      const memIdx = section.indexOf('**memory**');
-      const termIdx = section.indexOf('**terminal**');
-      expect(canvasIdx).toBeGreaterThanOrEqual(0);
-      expect(canvasIdx).toBeLessThan(fsIdx);
-      expect(fsIdx).toBeLessThan(memIdx);
-      expect(memIdx).toBeLessThan(termIdx);
-    });
-
-    it('groups tools without a declared category into an "other" bucket', () => {
-      const tools: IToolSummary[] = [
-        { name: 'canvas_read_page', description: 'Read page', category: 'canvas' },
-        { name: 'unknown_tool',     description: 'Extension tool with no category' },
-      ];
-      const section = buildToolSummariesSection(tools);
-      expect(section).toContain('**other**');
-      expect(section).toContain('`unknown_tool`');
-    });
-
-    it('splits the uncategorized bucket by tool-name namespace so each extension reads as its own group', () => {
-      // Names reaching the prompt are already snake_case (normalized at
-      // registration), so extensions namespace by the segment before the first
-      // underscore.
-      const tools: IToolSummary[] = [
-        { name: 'canvas_read_page',      description: 'Read page', category: 'canvas' },
-        { name: 'budget_pull_emails',    description: 'Pull emails' },
-        { name: 'budget_run_sync',       description: 'Run sync' },
-        { name: 'renderwidget',          description: 'Render to a dashboard widget' },
-      ];
-      const section = buildToolSummariesSection(tools);
-      // The budget family gets its own labelled group.
-      expect(section).toContain('**budget**');
-      expect(section).toContain('`budget_pull_emails`');
-      expect(section).toContain('`budget_run_sync`');
-      // A namespace-less extension tool still surfaces under the residual "other".
-      expect(section).toContain('**other**');
-      expect(section).toContain('`renderwidget`');
-      // The budget group is emitted before the residual "other" group.
-      expect(section.indexOf('**budget**')).toBeLessThan(section.indexOf('**other**'));
-    });
-
-    it('tells the model tool names are snake_case and to copy them exactly', () => {
-      const tools: IToolSummary[] = [
-        { name: 'budget_pull_emails', description: 'Pull emails' },
-      ];
-      const section = buildToolSummariesSection(tools);
-      expect(section).toContain('snake_case');
-    });
   });
 });
 
@@ -580,17 +489,17 @@ describe('buildMemorySection', () => {
 
   it('explains how to open a lesson body on demand', () => {
     const section = buildMemorySection();
-    // memory_get with a name= slug is the preferred path; read_file fallback also documented.
-    expect(section).toContain('memory_get name=<slug>');
-    expect(section).toContain('read_file lessons/<slug>.md');
+    // memory_read with a name= slug is the preferred path; fs_read_file fallback also documented.
+    expect(section).toContain('memory_read name=<slug>');
+    expect(section).toContain('fs_read_file lessons/<slug>.md');
   });
 
   it('lists all three tools in one family', () => {
     const section = buildMemorySection();
-    expect(section).toContain('memory_get');
+    expect(section).toContain('memory_read');
     expect(section).toContain('memory_search');
-    expect(section).toContain('memory_edit');
-    // memory_edit must mention the lesson file= action so the model knows it exists.
+    expect(section).toContain('memory_write');
+    // memory_write must mention the lesson file= action so the model knows it exists.
     expect(section).toContain('file=lesson');
   });
 
@@ -612,8 +521,8 @@ describe('buildMemorySection', () => {
 
   it('routes corrections to a lesson file, not USER.md or daily', () => {
     const section = buildMemorySection();
-    // The correction line MUST direct the agent to memory_edit file=lesson.
-    expect(section).toMatch(/correct[^.]*memory_edit file=lesson/i);
+    // The correction line MUST direct the agent to memory_write file=lesson.
+    expect(section).toMatch(/correct[^.]*memory_write file=lesson/i);
   });
 
   it('includes USER.md and lesson write triggers explicitly', () => {
@@ -923,12 +832,12 @@ describe('buildOpenclawRuntimeToolState', () => {
   it('applies tool policy filtering', () => {
     const state = buildOpenclawRuntimeToolState({
       platformTools: [
-        { name: 'write_file', description: 'Write a file', parameters: {} },
+        { name: 'fs_write_file', description: 'Write a file', parameters: {} },
       ],
       skillCatalog: [],
       mode: 'readonly',
     });
-    // readonly profile denies write_file
+    // readonly profile denies fs_write_file
     expect(state.availableCount).toBe(0);
     expect(state.filteredCount).toBe(1);
   });

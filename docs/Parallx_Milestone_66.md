@@ -110,7 +110,7 @@ parallx.links: {
 
   /**
    * Snapshot of every contract registered in this workspace.
-   * The prompt builder, the canvas link block, and the `parallx_link`
+   * The prompt builder, the canvas link block, and the `link_create`
    * tool ALL consume this. Adding a new extension contract makes the
    * extension citable everywhere automatically.
    */
@@ -157,11 +157,11 @@ implemented per-segment) and persist the result back to the block.
 
 Two parts:
 
-**a. New chat tool `parallx_link`:**
+**a. New chat tool `link_create`:**
 
 ```ts
 {
-  name: 'parallx_link',
+  name: 'link_create',
   description: 'Mint a parallx:// link to cite a Parallx resource. Use this anytime you reference a file, page, PDF, photo, or transaction so the user can click through.',
   parameters: {
     target: { description: 'parallx:// URI built via the format shown in the system context. Required.' },
@@ -213,7 +213,7 @@ AI-citation support for free the moment they publish their contract.
 Every extension that wants to be cite-able publishes one contract through
 `api.links.register(...)`. The contract is **fully self-describing** —
 the prompt builder, the chat markdown renderer, the link-block resolver,
-and `parallx_link`'s parameter schema all read from these registrations.
+and `link_create`'s parameter schema all read from these registrations.
 Nothing about a new extension is hardcoded anywhere else in the app.
 
 ```ts
@@ -242,7 +242,7 @@ interface LinkContract {
       /**
        * OPTIONAL: lets an extension expose a "mint a link to the currently
        * focused thing" command so the user can copy a link via UI.
-       * The chat tool `parallx_link` also calls this when the AI asks
+       * The chat tool `link_create` also calls this when the AI asks
        * "give me a link to the currently selected media-organizer photo."
        */
       mintFromContext?(ctx: ExtensionContextSnapshot): string | null;
@@ -293,7 +293,7 @@ That's it. The extension is now fully citable:
   the title/icon returned by `resolveMetadata()`.
 - The tools settings panel automatically shows it in the notes-app
   section (already grouped by `extensionId`).
-- `parallx_link` automatically accepts notes-app URIs since the chat tool
+- `link_create` automatically accepts notes-app URIs since the chat tool
   validates against the union of all registered segments.
 
 #### The contracts at launch (built-ins + bundled extensions)
@@ -323,7 +323,7 @@ The contract is read by exactly four consumers:
    prompt. No hardcoded extension list anywhere.
 3. **Canvas `link` block renderer** — calls `kinds[kind].resolveMetadata`
    on first paint.
-4. **`parallx_link` chat tool** — uses `allContracts()` to build its
+4. **`link_create` chat tool** — uses `allContracts()` to build its
    `target` parameter description (so the AI sees an up-to-date list of
    what's mintable in the current workspace) and to validate input.
 
@@ -347,7 +347,7 @@ function buildLinkingPromptSection() {
   return [
     '## Linking',
     'You can cite anything in Parallx via parallx:// links. ' +
-    'Use the `parallx_link` tool to mint a link.',
+    'Use the `link_create` tool to mint a link.',
     '',
     'URI templates available in this workspace:',
     ...contracts.flatMap(c =>
@@ -461,11 +461,11 @@ testable on its own.
 
 ### Iteration C — AI awareness + citation tool
 
-1. Add `parallx_link` chat tool.
+1. Add `link_create` chat tool.
 2. Generate "About Parallx + extensions + linking templates" system-context
    block in `promptBuilder.ts`.
 3. Update `create_page` / `compose_page` / `insert_block` tool descriptions
-   to mention "use `parallx_link` to cite sources."
+   to mention "use `link_create` to cite sources."
 4. End-to-end verification: open a PDF, chat about it, ask AI to save notes
    and link the source; click citations → land on correct page+quote.
 
@@ -480,7 +480,7 @@ testable on its own.
 
 ## Open decisions
 
-- Should `parallx_link` return the block payload (current plan) or auto-insert
+- Should `link_create` return the block payload (current plan) or auto-insert
   into the active page? Current plan keeps the AI in control of where the
   citation lands.
 - Should the chat renderer show `parallx://` URLs as chips inline (like the

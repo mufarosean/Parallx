@@ -65,7 +65,7 @@ export function createWriteFileTool(
   writer: IBuiltInToolFileWriter | undefined,
 ): IChatTool {
   return {
-    name: 'write_file',
+    name: 'fs_write_file',
     displaySummary: 'Create or overwrite a workspace file on disk (approval).',
     description: 'Create or overwrite a workspace FILE on disk. Path is relative to workspace root, forward slashes, no `./` or `..`. For canvas pages (the canvas page DB) use `canvas_create_page` or `canvas_edit_page` instead.',
     parameters: {
@@ -116,7 +116,7 @@ export function createEditFileTool(
   writer: IBuiltInToolFileWriter | undefined,
 ): IChatTool {
   return {
-    name: 'edit_file',
+    name: 'fs_edit_file',
     displaySummary: 'Edit a workspace file on disk (approval).',
     description: 'Edit a workspace FILE on disk by exact find-and-replace. old_content must match exactly (whitespace-sensitive). For canvas pages use `canvas_edit_block` or `canvas_edit_page` instead.',
     parameters: {
@@ -158,7 +158,7 @@ export function createEditFileTool(
           return {
             content: `Could not find the specified old_content in "${cleanPath}". ` +
               `Make sure it matches exactly (including whitespace and indentation). ` +
-              `Use read_file to see the current content.`,
+              `Use fs_read_file to see the current content.`,
             isError: true,
           };
         }
@@ -200,7 +200,7 @@ export function createDeleteFileTool(
   workspaceRoot?: string,
 ): IChatTool {
   return {
-    name: 'delete_file',
+    name: 'fs_delete_file',
     displaySummary: 'Delete a workspace file on disk (approval).',
     description: 'Delete a workspace FILE on disk (moves to trash when possible). For canvas pages, deletion isn\'t exposed through chat tools — direct the user to delete from the canvas sidebar.',
     parameters: {

@@ -240,7 +240,7 @@ describe('ChatDataService.recallMemories', () => {
   });
 
   // M81 Phase 4 — extractPreferences/extractAndStorePreferences regex pipeline
-  // was removed. Preferences are now agent-authored via `memory_edit`. Tests
+  // was removed. Preferences are now agent-authored via `memory_write`. Tests
   // for that path live in tests/unit/memoryEditTool.test.ts.
 
   it('prefers canonical durable markdown preferences for prompt injection', async () => {

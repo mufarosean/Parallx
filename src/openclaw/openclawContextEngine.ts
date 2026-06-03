@@ -476,7 +476,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
   async afterTurn(_params: IOpenclawAfterTurnParams): Promise<void> {
     // M81 Phase 3 Stage 2 — the regex-based concept extraction that used to
     // run here was removed. Agent-curated memory writes happen via the
-    // `memory_edit` tool during the turn itself, which is higher-signal
+    // `memory_write` tool during the turn itself, which is higher-signal
     // and avoids unconditional writes that compete with the agent for
     // MEMORY.md's bounded space.
   }
@@ -707,8 +707,8 @@ export function auditCompactionQuality(
 // M81 Phase 3 Stage 2 — extractConceptsFromTranscript was a regex-based pull
 // of file paths, URIs, and capitalized multi-word terms from chat transcripts.
 // It auto-wrote these to MEMORY.md's `## Concepts` section, competing with
-// agent-driven `memory_edit` writes for the bounded curation surface. Removed
-// in favor of agent-authored curation via `memory_edit`.
+// agent-driven `memory_write` writes for the bounded curation surface. Removed
+// in favor of agent-authored curation via `memory_write`.
 
 // ---------------------------------------------------------------------------
 // Helpers

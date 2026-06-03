@@ -42,7 +42,7 @@ describe('M66 link contract — auto-wire guardrail', () => {
     const disposable = svc.register(contract);
 
     // The registry must now expose this contract via the same surface that
-    // future consumers (prompt builder, canvas chips, parallx_link tool)
+    // future consumers (prompt builder, canvas chips, link_create tool)
     // read from. No special-casing for built-ins.
     expect(svc.allContracts().some((c) => c.segment === 'fake-ext')).toBe(true);
 

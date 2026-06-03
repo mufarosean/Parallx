@@ -4,7 +4,7 @@
 // a 3-bullet market snapshot", …) and a title via the appearance drawer. On
 // refresh it routes that prompt through the active chat session using the same
 // push model as the news brief: the AI does the work with its normal tools and
-// delivers the finished Markdown back via the shared `render_to_widget` tool.
+// delivers the finished Markdown back via the shared `dashboard_render_widget` tool.
 //
 // One widget, any task — wire a cron policy and it becomes a self-updating
 // panel for whatever the user can describe in a prompt.
@@ -74,13 +74,13 @@ export const CUSTOM_AI_WIDGET: WidgetTypeRegistration<CustomAiConfig> = {
 
     // Push model: we don't compute anything here. We ask the active chat
     // session to do the work with its normal tools, then deliver the finished
-    // Markdown back via the shared `render_to_widget` tool. It arrives
+    // Markdown back via the shared `dashboard_render_widget` tool. It arrives
     // asynchronously and repaints the widget when it lands.
     const prompt = buildCustomAiPrompt(cfg, ctx.instanceId);
     await api.commands.executeCommand('chat.submitPrompt', { text: prompt });
 
     // Keep the last good output visible while the new one is produced — prepend
-    // a subtle banner above it. render_to_widget overwrites the whole thing once
+    // a subtle banner above it. dashboard_render_widget overwrites the whole thing once
     // the fresh result lands, so a slow or failed turn never wipes good content.
     const prior = stripRefreshBanner((ctx.cachedOutput ?? '').trim());
     if (prior) return `_Refreshing\u2026_\n\n${prior}`;
@@ -171,7 +171,7 @@ export function buildCustomAiPrompt(cfg: CustomAiConfig, instanceId: string): st
     '',
     'Then deliver the result to my dashboard widget:',
     '- Format the result as clean Markdown (a short heading, then lists or short paragraphs). No preamble, no emojis. Use only information you can actually verify with your tools — never invent facts, numbers, or sources.',
-    `- Call the render_to_widget tool with instanceId "${instanceId}" and the finished Markdown as content. This is how the result reaches the widget — do not skip it.`,
+    `- Call the dashboard_render_widget tool with instanceId "${instanceId}" and the finished Markdown as content. This is how the result reaches the widget — do not skip it.`,
   );
   return lines.join('\n');
 }
