@@ -9,6 +9,7 @@
 
 import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
+import { setPendingPlannerTab } from './plannerNavState.js';
 
 interface SidebarApi {
   editors: {
@@ -73,8 +74,10 @@ export class PlannerSidebar implements IDisposable {
         label: 'Settings',
         onClick: () => {
           this._setActive('settings');
-          this._api.commands.executeCommand('settings.open').catch(() =>
-            this._api.window.showInformationMessage('Planner settings are coming soon.'),
+          // Deep-link the Settings hub straight to the planner panel
+          // (registered in main.ts via settingsPanelRegistry).
+          this._api.commands.executeCommand('settings.open', 'planner').catch(() =>
+            this._api.window.showInformationMessage('Could not open Planner settings.'),
           );
         },
       },
@@ -142,6 +145,10 @@ export class PlannerSidebar implements IDisposable {
   private async _openTab(tab: Exclude<NavKey, 'settings'>): Promise<void> {
     try {
       this._setActive(tab);
+      // Record the target tab BEFORE opening so a first-open pane initialises to
+      // it deterministically (the focusTab event below only catches panes that
+      // already exist — on first open it races pane creation and was lost).
+      setPendingPlannerTab(tab);
       await this._api.editors.openEditor({
         typeId: 'planner',
         title: 'Planner',

@@ -21,6 +21,8 @@ import { PlannerEditorProvider } from './plannerEditorProvider.js';
 import { PlannerReminderScheduler } from './plannerReminderScheduler.js';
 import { registerPlannerChatTools } from './plannerChatTools.js';
 import { registerPlannerDashboardWidgets } from './widgets/registerPlannerWidgets.js';
+import { createPlannerSettingsPanel } from './plannerSettingsPanel.js';
+import { settingsPanelRegistry } from '../../services/settingsPanelRegistry.js';
 
 // ─── API surface ────────────────────────────────────────────────────────────
 
@@ -87,6 +89,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 2. Data service.
   _data = new PlannerDataService();
   context.subscriptions.push(_data);
+
+  // 2b. Settings panel in the unified Settings hub. The sidebar's Settings row
+  //     deep-links straight here via settings.open('planner').
+  context.subscriptions.push(settingsPanelRegistry.register(createPlannerSettingsPanel(_data)));
 
   // 3. Sidebar view (lists tasks with filter chips).
   const sidebar = new PlannerSidebar(_data, {
@@ -262,7 +268,6 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
         await _data.createEvent({
           title: title.trim(),
           startAt: now.getTime(),
-          endAt: now.getTime() + 60 * 60 * 1000,
         });
       } catch (err) {
         console.error('[Planner] newEvent failed:', err);

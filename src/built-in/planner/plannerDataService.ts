@@ -250,6 +250,34 @@ export class PlannerDataService extends Disposable {
     );
   }
 
+  // ── Settings (planner_settings KV — backs the Settings hub panel) ─────
+
+  async getSetting(key: string): Promise<string | null> {
+    const res = await this._db.get(`SELECT value FROM planner_settings WHERE key = ?`, [key]);
+    if (res.error || !res.row) return null;
+    return typeof res.row.value === 'string' ? res.row.value : null;
+  }
+
+  async setSetting(key: string, value: string): Promise<void> {
+    const res = await this._db.run(
+      `INSERT INTO planner_settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [key, value],
+    );
+    if (res.error) throw new Error(`setSetting failed: ${res.error.message}`);
+  }
+
+  /** Default length (minutes) for a new event when no explicit end is given. */
+  async getDefaultEventMinutes(): Promise<number> {
+    const raw = await this.getSetting('defaultEventMinutes');
+    const n = raw != null ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : 60;
+  }
+
+  async setDefaultEventMinutes(minutes: number): Promise<void> {
+    await this.setSetting('defaultEventMinutes', String(Math.max(5, Math.round(minutes))));
+  }
+
   // ── Events ───────────────────────────────────────────────────────────
 
   async listEvents(query: EventQuery): Promise<PlannerEvent[]> {
@@ -277,7 +305,7 @@ export class PlannerDataService extends Disposable {
     const id = generateId('event');
     const now = Date.now();
     const startAt = input.startAt;
-    const endAt = input.endAt ?? startAt + 60 * 60 * 1000; // default 1h
+    const endAt = input.endAt ?? startAt + (await this.getDefaultEventMinutes()) * 60 * 1000;
     if (endAt < startAt) throw new Error('createEvent: endAt must be >= startAt');
 
     const res = await this._db.run(

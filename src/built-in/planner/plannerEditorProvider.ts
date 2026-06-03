@@ -6,6 +6,7 @@
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { PlannerEvent, PlannerTask, TaskStatus } from './plannerTypes.js';
+import { takePendingPlannerTab } from './plannerNavState.js';
 
 interface PlannerEditorInput {
   readonly id: string;          // === instanceId; only one ('main') for M82
@@ -101,6 +102,10 @@ class PlannerEditorPane implements IDisposable {
 
   async init(): Promise<void> {
     if (this._disposed) return;
+    // Honour a tab the sidebar requested before this pane existed (deterministic
+    // first-open). The focusTab event below handles re-clicks while already open.
+    const pendingTab = takePendingPlannerTab();
+    if (pendingTab) this._activeTab = pendingTab;
     this._input?.setName?.('Planner');
     this._input?.setIconHtml?.(PLANNER_ICON_SVG);
     this._buildShell();
@@ -335,6 +340,7 @@ class PlannerEditorPane implements IDisposable {
       { key: 'week',    label: 'This week', match: t => (t.status === 'planned' || t.status === 'reviewing') && t.dueAt != null && t.dueAt >= startOfDayMs() && t.dueAt <= startOfDayMs() + 7 * 86_400_000 },
       { key: 'overdue', label: 'Overdue',   match: t => (t.status === 'planned' || t.status === 'reviewing') && t.dueAt != null && t.dueAt < Date.now() },
       { key: 'all',     label: 'All tasks', match: t => t.status !== 'cancelled' },
+      { key: 'completed', label: 'Completed', match: t => t.status === 'done' },
     ];
 
     let activeKey = this._tasksFilter;
@@ -367,8 +373,12 @@ class PlannerEditorPane implements IDisposable {
           content.appendChild(empty);
           return;
         }
+        // Completed reads best newest-first (by completion time).
+        const rows = activeKey === 'completed'
+          ? [...matching].sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
+          : matching;
         const accent = activeKey === 'review' ? 'review' : activeKey === 'overdue' ? 'overdue' : activeKey === 'today' ? 'today' : undefined;
-        content.appendChild(this._renderTaskSection(filter.label, matching, { accent }));
+        content.appendChild(this._renderTaskSection(filter.label, rows, { accent }));
       }
     };
 
@@ -411,6 +421,23 @@ class PlannerEditorPane implements IDisposable {
     if (opts.collapsed) section.classList.add('planner-section--collapsed');
 
     const head = el('header', 'planner-section__head');
+    if (opts.collapsed) {
+      // Collapsible sections (e.g. "Recently completed") get a clickable header
+      // + caret so the tasks are actually reachable, not just a count behind a
+      // permanently-hidden list.
+      head.classList.add('planner-section__head--toggle');
+      head.setAttribute('role', 'button');
+      head.tabIndex = 0;
+      head.title = 'Show / hide';
+      const caret = el('span', 'planner-section__caret');
+      caret.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+      head.appendChild(caret);
+      const toggle = () => section.classList.toggle('planner-section--collapsed');
+      head.addEventListener('click', toggle);
+      head.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+      });
+    }
     const titleEl = el('h2', 'planner-section__title');
     titleEl.textContent = title;
     head.appendChild(titleEl);
