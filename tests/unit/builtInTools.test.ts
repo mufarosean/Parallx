@@ -141,8 +141,9 @@ describe('registerBuiltInTools', () => {
     // M64 Iter 4: set_page_style = 37.
     // M81 Phase 2: memory_write = 38.
     // M81 Phase 9: canvas_get_page folded into canvas_read_page; canvas_compose_page renamed to canvas_edit_page. Net -1 = 37.
-    expect(toolsService.registeredTools).toHaveLength(37);
-    expect(disposables).toHaveLength(37);
+    // M83: canvas_list_templates (Save-as-template surface) brings the total to 38.
+    expect(toolsService.registeredTools).toHaveLength(38);
+    expect(disposables).toHaveLength(38);
 
     const names = toolsService.registeredTools.map(t => t.name).sort();
     expect(names).toEqual([
@@ -154,6 +155,7 @@ describe('registerBuiltInTools', () => {
       'canvas_insert_block_after',
       'canvas_link_block',
       'canvas_list_property_definitions',
+      'canvas_list_templates',
       'canvas_read_block',
       'canvas_read_page',
       'canvas_set_page_property',

@@ -20,6 +20,8 @@ import {
   encodeCanvasContentFromDoc,
 } from '../contentSchema.js';
 import { filterToSubquery, type IPropertyFilter, type IPropertySort } from './blockApi.js';
+import type { CanvasTemplateApi } from '../canvasTemplates.js';
+import { getAllCanvasTemplates } from '../canvasTemplates.js';
 
 // ── Tool helpers ──
 
@@ -513,24 +515,85 @@ function inferPropertyType(value: unknown): string {
   return 'text';
 }
 
+/**
+ * canvas_list_templates — enumerate all available canvas page templates.
+ *
+ * Returns built-in and user templates with their id, name, description, and
+ * a structural snapshot of headings. The AI uses this to decide whether a
+ * template fits the user's request before calling canvas_create_page with a
+ * templateId.
+ */
+export function createListTemplatesTool(templateApi: CanvasTemplateApi | undefined): IChatTool {
+  return {
+    name: 'canvas_list_templates',
+    displaySummary: 'List available canvas page templates.',
+    description:
+      'List all available canvas page templates (built-in and user-created). ' +
+      'Call this BEFORE creating a page when the user\'s request might match an existing template ' +
+      '(e.g. "meeting notes", "daily journal", "project plan"). ' +
+      'Each entry has an `id` to pass as `templateId` to `canvas_create_page`, a `name`, `description`, ' +
+      'and a structural `snapshot` listing the template\'s key sections. ' +
+      'If no template fits the request, create a blank page with `canvas_create_page` (omit `templateId`).',
+    parameters: { type: 'object', properties: {} },
+    requiresConfirmation: false,
+    permissionLevel: 'always-allowed' as ToolPermissionLevel,
+    category: 'canvas',
+    async handler(_args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      if (!templateApi) {
+        return { content: 'Template API unavailable.', isError: true };
+      }
+      const templates = await getAllCanvasTemplates(templateApi);
+      if (templates.length === 0) {
+        return { content: 'No templates available.' };
+      }
+      const builtins = templates.filter((t) => t.source === 'builtin');
+      const userTpls = templates.filter((t) => t.source === 'user');
+      const lines: string[] = [];
+      if (builtins.length > 0) {
+        lines.push('**Built-in templates:**');
+        for (const t of builtins) {
+          const snap = t.snapshot ? ` | ${t.snapshot}` : '';
+          lines.push(`- \`${t.id}\` — ${t.name}: ${t.description}${snap}`);
+        }
+      }
+      if (userTpls.length > 0) {
+        lines.push('**User templates:**');
+        for (const t of userTpls) {
+          const snap = t.snapshot ? ` | ${t.snapshot}` : '';
+          lines.push(`- \`${t.id}\` — ${t.name}: ${t.description}${snap}`);
+        }
+      } else {
+        lines.push('*No user templates saved yet.*');
+      }
+      return { content: lines.join('\n') };
+    },
+  };
+}
+
 export function createCreatePageTool(
   db: IBuiltInToolDatabase | undefined,
   notifyPageMutated?: PageMutationNotifier,
+  templateApi?: CanvasTemplateApi,
 ): IChatTool {
   return {
     name: 'canvas_create_page',
-    displaySummary: 'Create a NEW canvas page (auto-assigns UUID).',
+    displaySummary: 'Create a NEW canvas page (blank or from template).',
     description:
       'CREATE a NEW canvas page in the canvas page DB. The UUID is generated automatically — do NOT pass one. ' +
       'Use this only when the page does not yet exist. ' +
       'To edit an EXISTING page (you have its UUID), use `canvas_edit_page`. ' +
-      'For files on disk (.md, .txt, code, etc.) use `fs_write_file` instead.',
+      'For files on disk (.md, .txt, code, etc.) use `fs_write_file` instead.\n\n' +
+      'TEMPLATE GUIDANCE: Before creating a blank page, call `canvas_list_templates` to check whether an existing template matches the request. ' +
+      'If a template fits (e.g. meeting notes, daily journal, project brief), pass its `id` as `templateId` to seed the page with that structure. ' +
+      'After creating from a template, fill in specific data with `canvas_edit_page`. ' +
+      'Omit `templateId` for a blank or markdown-seeded page.',
     parameters: {
       type: 'object',
       required: ['title'],
       properties: {
         title: { type: 'string', description: 'Page title.' },
-        markdown: { type: 'string', description: 'Markdown body.' },
+        templateId: { type: 'string', description: 'Template id from `canvas_list_templates`. Seeds the new page with that template\'s structure. When provided, `markdown` is ignored.' },
+        markdown: { type: 'string', description: 'Markdown body. Used only when `templateId` is not provided.' },
         content: { type: 'string', description: 'Deprecated: plain text body (use markdown instead).' },
         icon: { type: 'string', description: 'Icon emoji.' },
       },
@@ -547,27 +610,46 @@ export function createCreatePageTool(
 
       const id = generateId();
       const icon = args['icon'] ? String(args['icon']) : null;
-      const markdown = typeof args['markdown'] === 'string' ? args['markdown'] : '';
-      const plainContent = typeof args['content'] === 'string' ? args['content'] : '';
+      const templateId = args['templateId'] ? String(args['templateId']) : '';
       const now = new Date().toISOString();
 
-      // Build TipTap doc: markdown → JSON if provided, plain text → single paragraph,
-      // otherwise empty paragraph (matches canvasDataService.createPage initial doc).
       let doc: { type: 'doc'; content: unknown[] };
-      if (markdown.trim()) {
-        doc = markdownToTiptapJson(markdown) as { type: 'doc'; content: unknown[] };
-        if (!doc.content || doc.content.length === 0) {
+      let fromTemplate = false;
+
+      if (templateId && templateApi) {
+        // Resolve template by id and seed doc from its structure.
+        const templates = await getAllCanvasTemplates(templateApi);
+        const tpl = templates.find((t) => t.id === templateId);
+        if (!tpl) {
+          return {
+            content: `Template "${templateId}" not found. Call \`canvas_list_templates\` to see available template ids.`,
+            isError: true,
+          };
+        }
+        const built = tpl.buildDoc();
+        doc = (built && typeof built === 'object' && (built as any).type === 'doc' && Array.isArray((built as any).content))
+          ? built as { type: 'doc'; content: unknown[] }
+          : { type: 'doc', content: [{ type: 'paragraph' }] };
+        fromTemplate = true;
+      } else {
+        // Blank or markdown-seeded page.
+        const markdown = typeof args['markdown'] === 'string' ? args['markdown'] : '';
+        const plainContent = typeof args['content'] === 'string' ? args['content'] : '';
+        if (markdown.trim()) {
+          doc = markdownToTiptapJson(markdown) as { type: 'doc'; content: unknown[] };
+          if (!doc.content || doc.content.length === 0) {
+            doc = { type: 'doc', content: [{ type: 'paragraph' }] };
+          }
+        } else if (plainContent.trim()) {
+          doc = {
+            type: 'doc',
+            content: [
+              { type: 'paragraph', content: [{ type: 'text', text: plainContent }] },
+            ],
+          };
+        } else {
           doc = { type: 'doc', content: [{ type: 'paragraph' }] };
         }
-      } else if (plainContent.trim()) {
-        doc = {
-          type: 'doc',
-          content: [
-            { type: 'paragraph', content: [{ type: 'text', text: plainContent }] },
-          ],
-        };
-      } else {
-        doc = { type: 'doc', content: [{ type: 'paragraph' }] };
       }
 
       const encoded = encodeCanvasContentFromDoc(doc as Parameters<typeof encodeCanvasContentFromDoc>[0]);
@@ -583,7 +665,8 @@ export function createCreatePageTool(
       try { notifyPageMutated?.(id, 'created'); } catch { /* never block the tool result on notifier errors */ }
 
       const blockCount = doc.content.length;
-      return { content: `Created page "${title}" (id: ${id}) with ${blockCount} block${blockCount === 1 ? '' : 's'}.` };
+      const source = fromTemplate ? `from template "${templateId}"` : 'blank';
+      return { content: `Created page "${title}" (id: ${id}) ${source} with ${blockCount} block${blockCount === 1 ? '' : 's'}.` };
     },
   };
 }

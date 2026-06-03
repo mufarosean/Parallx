@@ -12,9 +12,11 @@ import type {
   CurrentPageIdGetter,
   PageMutationNotifier,
 } from '../../chat/chatTypes.js';
+import type { CanvasTemplateApi } from '../canvasTemplates.js';
 import {
   createFindPagesTool,
   createReadPageTool,
+  createListTemplatesTool,
   createCreatePageTool,
   createEditPageTool,
   createListPropertyDefinitionsTool,
@@ -45,6 +47,7 @@ export interface ICanvasAIToolDeps {
   readonly getCurrentPageId: CurrentPageIdGetter;
   readonly workspaceRoot: string | undefined;
   readonly pageMutationNotifier?: PageMutationNotifier;
+  readonly templateApi?: CanvasTemplateApi;
 }
 
 /**
@@ -52,12 +55,13 @@ export interface ICanvasAIToolDeps {
  * Returns disposables that deregister them.
  */
 export function registerCanvasAITools(deps: ICanvasAIToolDeps): IDisposable[] {
-  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier } = deps;
+  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier, templateApi } = deps;
 
   const tools: IChatTool[] = [
     createFindPagesTool(db),
     createReadPageTool(db, getCurrentPageId),
-    createCreatePageTool(db, pageMutationNotifier),
+    createListTemplatesTool(templateApi),
+    createCreatePageTool(db, pageMutationNotifier, templateApi),
     createEditPageTool(db, pageMutationNotifier),
     createListPropertyDefinitionsTool(db),
     createSetPagePropertyTool(db),

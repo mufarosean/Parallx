@@ -54,6 +54,13 @@ export interface CanvasPageTemplate {
   readonly source: CanvasTemplateSource;
   /** Path on disk for user templates (omitted for built-ins). */
   readonly filePath?: string;
+  /**
+   * Compact structural snapshot for AI template selection: lists the
+   * headings / key sections so the AI can decide whether this template
+   * fits the user's request without reading the full doc.
+   * e.g. "Sections: Goal | Scope | Deliverables | Timeline"
+   */
+  readonly snapshot?: string;
   /** TipTap doc JSON for the page body. */
   buildDoc(): unknown;
   /** Default title applied to the new page. */
@@ -70,11 +77,43 @@ function todayLabel(): string {
   return `${y}-${m}-${day}`;
 }
 
+/**
+ * Walk a TipTap doc JSON tree and collect heading texts as a compact
+ * structural snapshot, e.g. "Sections: Focus today | Notes | Reflection".
+ * Exported so the AI tools layer can compute snapshots for user templates
+ * at list-time without re-importing the full template catalog.
+ */
+export function extractTemplateSnapshot(doc: unknown, maxChars = 120): string {
+  const headings: string[] = [];
+  const walk = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    const n = node as Record<string, unknown>;
+    if (n['type'] === 'heading') {
+      const texts: string[] = [];
+      const collectText = (child: unknown): void => {
+        if (!child || typeof child !== 'object') return;
+        const c = child as Record<string, unknown>;
+        if (c['type'] === 'text' && typeof c['text'] === 'string') texts.push(c['text'] as string);
+        if (Array.isArray(c['content'])) (c['content'] as unknown[]).forEach(collectText);
+      };
+      if (Array.isArray(n['content'])) (n['content'] as unknown[]).forEach(collectText);
+      const heading = texts.join('').trim();
+      if (heading) headings.push(heading);
+    }
+    if (Array.isArray(n['content'])) (n['content'] as unknown[]).forEach(walk);
+  };
+  walk(doc);
+  if (headings.length === 0) return '';
+  const result = 'Sections: ' + headings.join(' | ');
+  return result.length > maxChars ? result.slice(0, maxChars - 1) + '…' : result;
+}
+
 const BUILTIN_CANVAS_TEMPLATES: CanvasPageTemplate[] = [
   {
     id: 'daily-note',
     name: 'Daily note',
     description: 'Date-stamped journal with three quick sections.',
+    snapshot: 'Sections: Focus today | Notes | Reflection',
     icon: 'calendar-days',
     source: 'builtin',
     defaultTitle: `${todayLabel()} — Daily note`,
@@ -98,6 +137,7 @@ const BUILTIN_CANVAS_TEMPLATES: CanvasPageTemplate[] = [
     id: 'meeting-notes',
     name: 'Meeting notes',
     description: 'Attendees, agenda, decisions, and action items.',
+    snapshot: 'Sections: Agenda | Decisions | Action items (checklist)',
     icon: 'users',
     source: 'builtin',
     defaultTitle: 'Meeting — ',
@@ -127,6 +167,7 @@ const BUILTIN_CANVAS_TEMPLATES: CanvasPageTemplate[] = [
     id: 'project-brief',
     name: 'Project brief',
     description: 'Goal, scope, deliverables, and timeline outline.',
+    snapshot: 'Sections: Goal | Scope | Deliverables | Timeline',
     icon: 'target',
     source: 'builtin',
     defaultTitle: 'Project: ',
@@ -228,6 +269,7 @@ export async function loadUserCanvasTemplates(api: CanvasTemplateApi): Promise<r
         icon: parsed.icon || 'file-text',
         source: 'user',
         filePath: fileUri,
+        snapshot: extractTemplateSnapshot(doc) || undefined,
         defaultTitle: parsed.defaultTitle ?? parsed.name,
         buildDoc: (): unknown => doc,
       });

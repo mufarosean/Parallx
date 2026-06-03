@@ -225,7 +225,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       db,
       getCurrentPageId: () => canvasPageIdFromEditorId(editorService?.activeEditor?.id),
       workspaceRoot: api.workspace.workspaceFolders?.[0]?.uri,
+      templateApi: api,
       pageMutationNotifier: (pageId, kind) => {
+        // Cancel any pending auto-save before the reload fires. The debounced
+        // save holds pre-AI content; if it fires after notifyExternalPageMutation
+        // updates _knownRevisions to the AI's new revision it silently succeeds
+        // and overwrites the AI's write. Cancelling it here eliminates the race.
+        if (kind === 'updated') _dataService?.cancelPendingSave(pageId);
         void _dataService?.notifyExternalPageMutation(pageId, kind);
         // Surface what the AI did: focus/open the affected page (not on delete).
         if (kind !== 'deleted') void openPageInEditor(pageId);

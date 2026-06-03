@@ -50,12 +50,13 @@ describe('registerCanvasAITools', () => {
       'canvas_insert_block_after',
       'canvas_link_block',
       'canvas_list_property_definitions',
+      'canvas_list_templates',
       'canvas_read_block',
       'canvas_read_page',
       'canvas_set_page_property',
       'canvas_set_page_style',
     ]);
-    expect(disposables).toHaveLength(11);
+    expect(disposables).toHaveLength(12);
 
     // Every canvas tool is attributed to canvas, not to chat.
     for (const tool of toolsService.registeredTools) {
