@@ -5,8 +5,9 @@
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
-import type { PlannerEvent, PlannerTask, TaskStatus } from './plannerTypes.js';
+import type { PlannerCalendar, PlannerEvent, PlannerTask, TaskStatus, UpdateEventInput } from './plannerTypes.js';
 import { takePendingPlannerTab } from './plannerNavState.js';
+import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurrence.js';
 
 interface PlannerEditorInput {
   readonly id: string;          // === instanceId; only one ('main') for M82
@@ -33,6 +34,14 @@ type Tab = 'tasks' | 'calendar';
 type CalendarView = 'month' | 'week' | 'day';
 
 const PLANNER_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>';
+
+// Small task glyphs for calendar entries (open circle / filled check).
+const TASK_DOT_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/></svg>';
+const TASK_DONE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
+
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const CALENDAR_LABEL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Calendar</span>';
+const REPEAT_LABEL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span>Repeats</span>';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
@@ -712,10 +721,73 @@ class PlannerEditorPane implements IDisposable {
     return this._cursorDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   }
 
+  // ── Calendar colour + visibility context ────────────────────────────
+  //
+  // Resolves which calendars are currently shown and each item's display
+  // colour (event/task override → calendar colour → fallback). Loaded once
+  // per render so every view filters + colours consistently. Tolerates an
+  // empty / missing calendars table (treats everything as visible).
+  private async _loadCalCtx(): Promise<{
+    isVisible: (calendarId: string | null) => boolean;
+    colorOf: (calendarId: string | null, override: string | null) => string;
+  }> {
+    let cals: PlannerCalendar[] = [];
+    try { cals = await this._data.listCalendars(); } catch { /* table may be empty */ }
+    const byId = new Map(cals.map(c => [c.id, c] as const));
+    const visibleIds = new Set(cals.filter(c => c.visible).map(c => c.id));
+    const isVisible = (calendarId: string | null): boolean => {
+      // Unknown / unset calendar → always show (never silently swallow an item).
+      if (calendarId == null || !byId.has(calendarId)) return true;
+      return visibleIds.has(calendarId);
+    };
+    const colorOf = (calendarId: string | null, override: string | null): string =>
+      override || (calendarId != null ? byId.get(calendarId)?.color : undefined) || '#4c8bf5';
+    return { isVisible, colorOf };
+  }
+
+  /** Dated, visible tasks intersecting [from, to] — rendered alongside events. */
+  private async _tasksInWindow(from: number, to: number, isVisible: (calendarId: string | null) => boolean): Promise<PlannerTask[]> {
+    const tasks = await this._data.listTasks({ status: ['reviewing', 'planned', 'done'], dueFrom: from, dueTo: to, limit: 500 });
+    return tasks.filter(t => t.dueAt != null && isVisible(t.calendarId));
+  }
+
+  /** Month-cell chip for a task — colour-coded, check glyph, opens the task popover. */
+  private _renderCalTaskChip(task: PlannerTask, color: string): HTMLElement {
+    const chip = el('button', 'planner-month__chip planner-month__chip--task');
+    chip.type = 'button';
+    chip.style.setProperty('--cal-color', color);
+    if (task.status === 'done') chip.classList.add('planner-month__chip--done');
+    const icon = el('span', 'planner-month__chipcheck');
+    icon.innerHTML = task.status === 'done' ? TASK_DONE_SVG : TASK_DOT_SVG;
+    chip.appendChild(icon);
+    const label = el('span', 'planner-month__chiptext');
+    label.textContent = task.title;
+    chip.appendChild(label);
+    chip.title = task.dueAt ? `${task.title}\nDue ${formatTimeShort(task.dueAt)}` : task.title;
+    chip.addEventListener('click', (e) => { e.stopPropagation(); this._openTaskPopover({ mode: 'edit', task }, chip.getBoundingClientRect()); });
+    return chip;
+  }
+
+  /** Thin time-column pill for a dated task in week / day views. */
+  private _renderCalTaskPill(task: PlannerTask, color: string, variant: 'week' | 'day', dayStart: number): HTMLElement {
+    const topPct = ((task.dueAt! - dayStart) / (24 * 3_600_000)) * 100;
+    const pill = el('button', `planner-${variant}__task`);
+    pill.type = 'button';
+    pill.style.top = `${topPct}%`;
+    pill.style.setProperty('--cal-color', color);
+    if (task.status === 'done') pill.classList.add(`planner-${variant}__task--done`);
+    pill.title = `${task.title}\nDue ${formatTimeShort(task.dueAt!)}`;
+    pill.innerHTML = `<span class="planner-${variant}__task-check">${task.status === 'done' ? TASK_DONE_SVG : TASK_DOT_SVG}</span><span class="planner-${variant}__task-title">${escapeHtml(task.title)}</span>`;
+    pill.addEventListener('click', (e) => { e.stopPropagation(); this._openTaskPopover({ mode: 'edit', task }, pill.getBoundingClientRect()); });
+    return pill;
+  }
+
   private async _renderMonthView(body: HTMLElement): Promise<void> {
     const from = startOfMonth(this._cursorDate).getTime();
     const to = endOfMonth(this._cursorDate).getTime();
-    const events = await this._data.listEvents({ from, to, limit: 500 });
+    const { isVisible, colorOf } = await this._loadCalCtx();
+    const events = (await this._data.listEvents({ from, to, limit: 500 })).filter(ev => isVisible(ev.calendarId));
+    const tasks = await this._tasksInWindow(from, to, isVisible);
 
     const grid = el('div', 'planner-month');
     // Weekday header
@@ -740,6 +812,7 @@ class PlannerEditorPane implements IDisposable {
       const dayStart = startOfDay(day).getTime();
       const dayEnd = endOfDay(day).getTime();
       const dayEvents = events.filter(ev => ev.startAt <= dayEnd && ev.endAt >= dayStart);
+      const dayTasks = tasks.filter(t => t.dueAt! >= dayStart && t.dueAt! <= dayEnd);
 
       const cell = el('div', 'planner-month__cell');
       if (day.getMonth() !== this._cursorDate.getMonth()) cell.classList.add('planner-month__cell--other-month');
@@ -751,17 +824,31 @@ class PlannerEditorPane implements IDisposable {
 
       const evWrap = el('div', 'planner-month__cellevents');
       const MAX_SHOWN = 3;
-      for (const ev of dayEvents.slice(0, MAX_SHOWN)) {
+      const total = dayEvents.length + dayTasks.length;
+      let shown = 0;
+      for (const ev of dayEvents) {
+        if (shown >= MAX_SHOWN) break;
         const chip = el('button', 'planner-month__chip');
         chip.type = 'button';
-        chip.textContent = ev.title;
+        chip.style.setProperty('--cal-color', colorOf(ev.calendarId, ev.color));
+        const dot = el('span', 'planner-month__chipdot');
+        chip.appendChild(dot);
+        const label = el('span', 'planner-month__chiptext');
+        label.textContent = ev.title;
+        chip.appendChild(label);
         chip.title = `${ev.title}\n${formatTimeRange(ev)}`;
         chip.addEventListener('click', (e) => { e.stopPropagation(); this._openEventPopover({ mode: 'edit', event: ev }, chip.getBoundingClientRect()); });
         evWrap.appendChild(chip);
+        shown++;
       }
-      if (dayEvents.length > MAX_SHOWN) {
+      for (const t of dayTasks) {
+        if (shown >= MAX_SHOWN) break;
+        evWrap.appendChild(this._renderCalTaskChip(t, colorOf(t.calendarId, t.color)));
+        shown++;
+      }
+      if (total > MAX_SHOWN) {
         const more = el('span', 'planner-month__more');
-        more.textContent = `+${dayEvents.length - MAX_SHOWN} more`;
+        more.textContent = `+${total - MAX_SHOWN} more`;
         evWrap.appendChild(more);
       }
       cell.appendChild(evWrap);
@@ -783,7 +870,9 @@ class PlannerEditorPane implements IDisposable {
   private async _renderWeekView(body: HTMLElement): Promise<void> {
     const start = startOfWeek(this._cursorDate);
     const end = addDays(start, 7);
-    const events = await this._data.listEvents({ from: start.getTime(), to: end.getTime(), limit: 500 });
+    const { isVisible, colorOf } = await this._loadCalCtx();
+    const events = (await this._data.listEvents({ from: start.getTime(), to: end.getTime(), limit: 500 })).filter(ev => isVisible(ev.calendarId));
+    const tasks = await this._tasksInWindow(start.getTime(), end.getTime(), isVisible);
 
     const grid = el('div', 'planner-week');
     const headerRow = el('div', 'planner-week__header');
@@ -852,6 +941,7 @@ class PlannerEditorPane implements IDisposable {
         bar.type = 'button';
         bar.style.top = `${topPct}%`;
         bar.style.height = `${heightPct}%`;
+        bar.style.setProperty('--cal-color', colorOf(ev.calendarId, ev.color));
         bar.title = `${ev.title}\n${formatTimeRange(ev)}`;
         bar.innerHTML = `<strong>${escapeHtml(ev.title)}</strong><span>${escapeHtml(formatTimeRange(ev))}</span>`;
         bar.addEventListener('click', (e) => {
@@ -859,6 +949,12 @@ class PlannerEditorPane implements IDisposable {
           this._openEventPopover({ mode: 'edit', event: ev }, bar.getBoundingClientRect());
         });
         dayCol.appendChild(bar);
+      }
+
+      // Dated tasks as thin pills at their due time.
+      const dayTasks = tasks.filter(t => t.dueAt! >= dayStart && t.dueAt! <= dayEnd);
+      for (const t of dayTasks) {
+        dayCol.appendChild(this._renderCalTaskPill(t, colorOf(t.calendarId, t.color), 'week', dayStart));
       }
 
       body2.appendChild(dayCol);
@@ -870,7 +966,9 @@ class PlannerEditorPane implements IDisposable {
   private async _renderDayView(body: HTMLElement): Promise<void> {
     const dayStart = startOfDay(this._cursorDate).getTime();
     const dayEnd = endOfDay(this._cursorDate).getTime();
-    const events = await this._data.listEvents({ from: dayStart, to: dayEnd, limit: 500 });
+    const { isVisible, colorOf } = await this._loadCalCtx();
+    const events = (await this._data.listEvents({ from: dayStart, to: dayEnd, limit: 500 })).filter(ev => isVisible(ev.calendarId));
+    const tasks = await this._tasksInWindow(dayStart, dayEnd, isVisible);
 
     const grid = el('div', 'planner-day');
     const hours = el('div', 'planner-day__hours');
@@ -912,6 +1010,7 @@ class PlannerEditorPane implements IDisposable {
       bar.type = 'button';
       bar.style.top = `${topPct}%`;
       bar.style.height = `${heightPct}%`;
+      bar.style.setProperty('--cal-color', colorOf(ev.calendarId, ev.color));
       bar.title = `${ev.title}\n${formatTimeRange(ev)}`;
       bar.innerHTML = `
         <span class="planner-day__event-time">${escapeHtml(formatTimeRange(ev))}</span>
@@ -923,6 +1022,11 @@ class PlannerEditorPane implements IDisposable {
         this._openEventPopover({ mode: 'edit', event: ev }, bar.getBoundingClientRect());
       });
       col.appendChild(bar);
+    }
+
+    // Dated tasks as thin pills at their due time.
+    for (const t of tasks) {
+      col.appendChild(this._renderCalTaskPill(t, colorOf(t.calendarId, t.color), 'day', dayStart));
     }
 
     body.appendChild(grid);
@@ -1189,6 +1293,27 @@ class PlannerEditorPane implements IDisposable {
     remindRow.appendChild(remindSelect);
     body.appendChild(remindRow);
 
+    // Calendar — groups + colour-codes the task on the calendar views.
+    const calRow = el('div', 'planner-popover__row planner-popover__row--labeled');
+    const calLabel = el('span', 'planner-popover__rowlabel');
+    calLabel.innerHTML = CALENDAR_LABEL_SVG;
+    calRow.appendChild(calLabel);
+    const calSelect = el('select', 'planner-popover__field planner-popover__field--select') as HTMLSelectElement;
+    calRow.appendChild(calSelect);
+    body.appendChild(calRow);
+    const seedCalId = isEdit ? (init.task.calendarId ?? null) : null;
+    void this._data.listCalendars().then((cals) => {
+      calSelect.innerHTML = '';
+      for (const c of cals) {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.name;
+        calSelect.appendChild(opt);
+      }
+      const want = seedCalId ?? cals.find(c => c.id === 'cal-tasks')?.id ?? cals.find(c => c.isDefault)?.id ?? (cals[0]?.id ?? '');
+      if (want) calSelect.value = want;
+    });
+
     // Tags
     const tagRow = el('div', 'planner-popover__row planner-popover__row--labeled');
     const tagLabel = el('span', 'planner-popover__rowlabel');
@@ -1286,6 +1411,7 @@ class PlannerEditorPane implements IDisposable {
             dueAt: dueMs,
             reminderAt,
             tags,
+            calendarId: calSelect.value || null,
           });
         } else {
           await this._data.createTask({
@@ -1295,6 +1421,7 @@ class PlannerEditorPane implements IDisposable {
             dueAt: dueMs,
             reminderAt: reminderAt ?? null,
             tags,
+            calendarId: calSelect.value || null,
           });
         }
         close();
@@ -1451,6 +1578,64 @@ class PlannerEditorPane implements IDisposable {
     allDayInput.addEventListener('change', updateAllDayUI);
     updateAllDayUI();
 
+    // Calendar picker — colour + grouping come from the chosen calendar.
+    const calRow = el('div', 'planner-popover__row planner-popover__row--labeled');
+    const calLabel = el('span', 'planner-popover__rowlabel');
+    calLabel.innerHTML = CALENDAR_LABEL_SVG;
+    calRow.appendChild(calLabel);
+    const calSelect = el('select', 'planner-popover__field planner-popover__field--select') as HTMLSelectElement;
+    calRow.appendChild(calSelect);
+    body.appendChild(calRow);
+    const seedCalId = isEdit ? (init.event.calendarId ?? null) : null;
+    void this._data.listCalendars().then((cals) => {
+      calSelect.innerHTML = '';
+      for (const c of cals) {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.name;
+        calSelect.appendChild(opt);
+      }
+      const want = seedCalId ?? cals.find(c => c.id === 'cal-personal')?.id ?? cals.find(c => c.isDefault)?.id ?? (cals[0]?.id ?? '');
+      if (want) calSelect.value = want;
+    });
+
+    // Repeats — simple RRULE presets; the "Weekly on X" label tracks the start date.
+    const repeatRow = el('div', 'planner-popover__row planner-popover__row--labeled');
+    const repeatLabel = el('span', 'planner-popover__rowlabel');
+    repeatLabel.innerHTML = REPEAT_LABEL_SVG;
+    repeatRow.appendChild(repeatLabel);
+    const repeatSelect = el('select', 'planner-popover__field planner-popover__field--select') as HTMLSelectElement;
+    const seedRecurrence = isEdit ? (init.event.recurrence ?? null) : null;
+    const seedPreset = rruleToPreset(seedRecurrence);
+    const repeatDefs: { value: string; label: () => string }[] = [
+      { value: 'none',    label: () => 'Does not repeat' },
+      { value: 'daily',   label: () => 'Daily' },
+      { value: 'weekly',  label: () => `Weekly on ${WEEKDAY_NAMES[new Date(fromDateTimeInputs(startDate.value, '12:00') ?? seed.startAt).getDay()]}` },
+      { value: 'monthly', label: () => 'Monthly' },
+      { value: 'yearly',  label: () => 'Yearly' },
+    ];
+    const buildRepeatOptions = (): void => {
+      const keep = repeatSelect.value || seedPreset;
+      repeatSelect.innerHTML = '';
+      for (const def of repeatDefs) {
+        const opt = document.createElement('option');
+        opt.value = def.value;
+        opt.textContent = def.label();
+        repeatSelect.appendChild(opt);
+      }
+      if (seedPreset === 'custom') {
+        const opt = document.createElement('option');
+        opt.value = 'custom';
+        opt.textContent = describeRRule(seedRecurrence);
+        repeatSelect.appendChild(opt);
+      }
+      repeatSelect.value = keep;
+    };
+    buildRepeatOptions();
+    startDate.addEventListener('change', buildRepeatOptions);
+    repeatRow.appendChild(repeatSelect);
+    body.appendChild(repeatRow);
+
     const locationInput = el('input', 'planner-popover__field planner-popover__field--full') as HTMLInputElement;
     locationInput.type = 'text';
     locationInput.placeholder = 'Add location';
@@ -1500,16 +1685,30 @@ class PlannerEditorPane implements IDisposable {
         await this._api.window.showErrorMessage('End time must be after start time.');
         return;
       }
+      const calendarId = calSelect.value || null;
+      const presetVal = repeatSelect.value;
+      // 'custom' → leave the stored RRULE untouched; otherwise rebuild from the
+      // preset against the current start weekday.
+      const recurrence = presetVal === 'custom'
+        ? undefined
+        : buildSimpleRRule(presetVal as 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly', new Date(startMs).getDay());
+      const isSeries = isEdit && init.mode === 'edit' && !!init.event.seriesId;
       try {
         if (isEdit && seed.eventId) {
-          await this._data.updateEvent(seed.eventId, {
+          // For a recurring instance, only move the series anchor when the user
+          // actually changed the time — otherwise a title edit would drag the
+          // whole series forward to this occurrence.
+          const patch: UpdateEventInput = {
             title,
-            startAt: startMs,
-            endAt: endMs,
             allDay: allDayInput.checked,
             location: locationInput.value.trim() || null,
             description: descInput.value.trim() || null,
-          });
+            calendarId,
+            ...((!isSeries || startMs !== seed.startAt) ? { startAt: startMs } : {}),
+            ...((!isSeries || endMs !== seed.endAt) ? { endAt: endMs } : {}),
+            ...(recurrence !== undefined ? { recurrence } : {}),
+          };
+          await this._data.updateEvent(seed.eventId, patch);
         } else {
           await this._data.createEvent({
             title,
@@ -1518,6 +1717,8 @@ class PlannerEditorPane implements IDisposable {
             allDay: allDayInput.checked,
             location: locationInput.value.trim() || null,
             description: descInput.value.trim() || null,
+            calendarId,
+            recurrence: recurrence ?? null,
           });
         }
         close();

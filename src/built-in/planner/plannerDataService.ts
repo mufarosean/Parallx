@@ -5,19 +5,23 @@
 import { Disposable } from '../../platform/lifecycle.js';
 import { Emitter, type Event } from '../../platform/events.js';
 import type {
+  CreateCalendarInput,
   CreateEventInput,
   CreateTaskInput,
   EventQuery,
   FreeSlot,
   FreeSlotRequest,
+  PlannerCalendar,
   PlannerChangeEvent,
   PlannerEvent,
   PlannerTask,
   TaskQuery,
   TaskStatus,
+  UpdateCalendarInput,
   UpdateEventInput,
   UpdateTaskInput,
 } from './plannerTypes.js';
+import { expandRecurrence } from './plannerRecurrence.js';
 
 interface DatabaseBridge {
   run(sql: string, params?: unknown[]): Promise<{ error: { code: string; message: string } | null; changes?: number }>;
@@ -43,6 +47,8 @@ function rowToTask(row: Record<string, unknown>): PlannerTask {
     reminderFired: ((row.reminder_fired as number) ?? 0) !== 0,
     completedAt: typeof row.completed_at === 'number' ? row.completed_at : null,
     tags,
+    calendarId: (row.calendar_id as string) ?? null,
+    color: (row.color as string) ?? null,
     sourceUri: (row.source_uri as string) ?? null,
     sourceProvider: (row.source_provider as string) ?? null,
     sourceId: (row.source_id as string) ?? null,
@@ -60,6 +66,24 @@ function rowToEvent(row: Record<string, unknown>): PlannerEvent {
     endAt: (row.end_at as number) ?? 0,
     allDay: ((row.all_day as number) ?? 0) !== 0,
     location: (row.location as string) ?? null,
+    calendarId: (row.calendar_id as string) ?? null,
+    color: (row.color as string) ?? null,
+    recurrence: (row.recurrence as string) ?? null,
+    sourceProvider: (row.source_provider as string) ?? null,
+    sourceId: (row.source_id as string) ?? null,
+    createdAt: (row.created_at as number) ?? 0,
+    updatedAt: (row.updated_at as number) ?? 0,
+  };
+}
+
+function rowToCalendar(row: Record<string, unknown>): PlannerCalendar {
+  return {
+    id: row.id as string,
+    name: (row.name as string) ?? 'Calendar',
+    color: (row.color as string) ?? '#4c8bf5',
+    visible: ((row.visible as number) ?? 1) !== 0,
+    isDefault: ((row.is_default as number) ?? 0) !== 0,
+    sortOrder: (row.sort_order as number) ?? 0,
     sourceProvider: (row.source_provider as string) ?? null,
     sourceId: (row.source_id as string) ?? null,
     createdAt: (row.created_at as number) ?? 0,
@@ -71,6 +95,13 @@ function generateId(prefix: string): string {
   const cryptoApi = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
   if (cryptoApi?.randomUUID) return `${prefix}-${cryptoApi.randomUUID()}`;
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Expanded recurring instances carry an id of `${baseId}::${startMs}`; edits
+ *  and deletes resolve to the base series row. */
+function baseEventId(id: string): string {
+  const i = id.indexOf('::');
+  return i >= 0 ? id.slice(0, i) : id;
 }
 
 // ─── Service ─────────────────────────────────────────────────────────────────
@@ -153,9 +184,9 @@ export class PlannerDataService extends Disposable {
     const res = await this._db.run(
       `INSERT INTO planner_tasks
          (id, title, description, status, due_at, reminder_at, reminder_fired,
-          completed_at, tags_json, source_uri, source_provider, source_id,
+          completed_at, tags_json, calendar_id, color, source_uri, source_provider, source_id,
           created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.title,
@@ -165,6 +196,8 @@ export class PlannerDataService extends Disposable {
         input.reminderAt ?? null,
         status === 'done' ? now : null,
         JSON.stringify(input.tags ?? []),
+        input.calendarId ?? 'cal-tasks',
+        input.color ?? null,
         input.sourceUri ?? null,
         input.sourceProvider ?? null,
         input.sourceId ?? null,
@@ -208,6 +241,8 @@ export class PlannerDataService extends Disposable {
       sets.push('reminder_fired = 0');
     }
     if (patch.tags !== undefined) { sets.push('tags_json = ?'); params.push(JSON.stringify(patch.tags)); }
+    if (patch.calendarId !== undefined) { sets.push('calendar_id = ?'); params.push(patch.calendarId); }
+    if (patch.color !== undefined) { sets.push('color = ?'); params.push(patch.color); }
     if (patch.completedAt !== undefined) { sets.push('completed_at = ?'); params.push(patch.completedAt); }
 
     if (sets.length === 1) return existing; // only updated_at would change — skip
@@ -281,22 +316,51 @@ export class PlannerDataService extends Disposable {
   // ── Events ───────────────────────────────────────────────────────────
 
   async listEvents(query: EventQuery): Promise<PlannerEvent[]> {
-    const limit = query.limit && query.limit > 0 ? `LIMIT ${Math.min(500, Math.floor(query.limit))}` : '';
-    const res = await this._db.all(
+    const cap = query.limit && query.limit > 0 ? Math.min(500, Math.floor(query.limit)) : 500;
+
+    // 1. Concrete (non-recurring) events overlapping the window.
+    const baseRes = await this._db.all(
       `SELECT * FROM planner_events
-        WHERE end_at >= ? AND start_at <= ?
-        ORDER BY start_at ASC ${limit}`,
+        WHERE (recurrence IS NULL OR recurrence = '')
+          AND end_at >= ? AND start_at <= ?
+        ORDER BY start_at ASC`,
       [query.from, query.to],
     );
-    if (res.error) {
-      console.error('[PlannerDataService] listEvents failed:', res.error.message);
+    if (baseRes.error) {
+      console.error('[PlannerDataService] listEvents failed:', baseRes.error.message);
       return [];
     }
-    return (res.rows ?? []).map(rowToEvent);
+    const events: PlannerEvent[] = (baseRes.rows ?? []).map(rowToEvent);
+
+    // 2. Recurring base rows whose series could reach the window, expanded.
+    const recRes = await this._db.all(
+      `SELECT * FROM planner_events
+        WHERE recurrence IS NOT NULL AND recurrence != '' AND start_at <= ?`,
+      [query.to],
+    );
+    if (!recRes.error) {
+      for (const row of recRes.rows ?? []) {
+        const baseEvent = rowToEvent(row);
+        if (!baseEvent.recurrence) continue;
+        const durationMs = Math.max(0, baseEvent.endAt - baseEvent.startAt);
+        for (const occ of expandRecurrence(baseEvent.startAt, durationMs, baseEvent.recurrence, query.from, query.to)) {
+          events.push({
+            ...baseEvent,
+            id: `${baseEvent.id}::${occ.startAt}`,
+            startAt: occ.startAt,
+            endAt: occ.endAt,
+            seriesId: baseEvent.id,
+          });
+        }
+      }
+    }
+
+    events.sort((a, b) => a.startAt - b.startAt);
+    return events.length > cap ? events.slice(0, cap) : events;
   }
 
   async getEvent(id: string): Promise<PlannerEvent | null> {
-    const res = await this._db.get(`SELECT * FROM planner_events WHERE id = ?`, [id]);
+    const res = await this._db.get(`SELECT * FROM planner_events WHERE id = ?`, [baseEventId(id)]);
     if (res.error || !res.row) return null;
     return rowToEvent(res.row);
   }
@@ -311,8 +375,8 @@ export class PlannerDataService extends Disposable {
     const res = await this._db.run(
       `INSERT INTO planner_events
          (id, title, description, start_at, end_at, all_day, location,
-          source_provider, source_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          calendar_id, color, recurrence, source_provider, source_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.title,
@@ -321,6 +385,9 @@ export class PlannerDataService extends Disposable {
         endAt,
         input.allDay ? 1 : 0,
         input.location ?? null,
+        input.calendarId ?? 'cal-personal',
+        input.color ?? null,
+        input.recurrence ?? null,
         input.sourceProvider ?? null,
         input.sourceId ?? null,
         now,
@@ -348,23 +415,90 @@ export class PlannerDataService extends Disposable {
     if (patch.endAt !== undefined) { sets.push('end_at = ?'); params.push(patch.endAt); }
     if (patch.allDay !== undefined) { sets.push('all_day = ?'); params.push(patch.allDay ? 1 : 0); }
     if (patch.location !== undefined) { sets.push('location = ?'); params.push(patch.location); }
+    if (patch.calendarId !== undefined) { sets.push('calendar_id = ?'); params.push(patch.calendarId); }
+    if (patch.color !== undefined) { sets.push('color = ?'); params.push(patch.color); }
+    if (patch.recurrence !== undefined) { sets.push('recurrence = ?'); params.push(patch.recurrence); }
 
     if (sets.length === 1) return existing;
 
-    params.push(id);
+    params.push(baseEventId(id));
     const res = await this._db.run(
       `UPDATE planner_events SET ${sets.join(', ')} WHERE id = ?`,
       params,
     );
     if (res.error) throw new Error(`updateEvent failed: ${res.error.message}`);
-    this._onDidChange.fire({ kind: 'event-updated', eventId: id });
+    this._onDidChange.fire({ kind: 'event-updated', eventId: baseEventId(id) });
     return this.getEvent(id);
   }
 
   async removeEvent(id: string): Promise<void> {
-    const res = await this._db.run(`DELETE FROM planner_events WHERE id = ?`, [id]);
+    const res = await this._db.run(`DELETE FROM planner_events WHERE id = ?`, [baseEventId(id)]);
     if (res.error) throw new Error(`removeEvent failed: ${res.error.message}`);
-    this._onDidChange.fire({ kind: 'event-removed', eventId: id });
+    this._onDidChange.fire({ kind: 'event-removed', eventId: baseEventId(id) });
+  }
+
+  // ── Calendars ─────────────────────────────────────────────────────────
+
+  async listCalendars(): Promise<PlannerCalendar[]> {
+    const res = await this._db.all(`SELECT * FROM planner_calendars ORDER BY sort_order ASC, name ASC`);
+    if (res.error) { console.error('[PlannerDataService] listCalendars failed:', res.error.message); return []; }
+    return (res.rows ?? []).map(rowToCalendar);
+  }
+
+  async getCalendar(id: string): Promise<PlannerCalendar | null> {
+    const res = await this._db.get(`SELECT * FROM planner_calendars WHERE id = ?`, [id]);
+    if (res.error || !res.row) return null;
+    return rowToCalendar(res.row);
+  }
+
+  async createCalendar(input: CreateCalendarInput): Promise<PlannerCalendar> {
+    const id = generateId('cal');
+    const now = Date.now();
+    const max = await this._db.get(`SELECT MAX(sort_order) AS m FROM planner_calendars`);
+    const order = (max.row && typeof max.row.m === 'number') ? max.row.m + 1 : 100;
+    const res = await this._db.run(
+      `INSERT INTO planner_calendars (id, name, color, visible, is_default, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 0, ?, ?, ?)`,
+      [id, input.name, input.color ?? '#4c8bf5', input.visible === false ? 0 : 1, order, now, now],
+    );
+    if (res.error) throw new Error(`createCalendar failed: ${res.error.message}`);
+    this._onDidChange.fire({ kind: 'calendar-changed', calendarId: id });
+    const cal = await this.getCalendar(id);
+    if (!cal) throw new Error('createCalendar: row not found after insert');
+    return cal;
+  }
+
+  async updateCalendar(id: string, patch: UpdateCalendarInput): Promise<void> {
+    const sets: string[] = ['updated_at = ?'];
+    const params: unknown[] = [Date.now()];
+    if (patch.name !== undefined) { sets.push('name = ?'); params.push(patch.name); }
+    if (patch.color !== undefined) { sets.push('color = ?'); params.push(patch.color); }
+    if (patch.visible !== undefined) { sets.push('visible = ?'); params.push(patch.visible ? 1 : 0); }
+    if (patch.sortOrder !== undefined) { sets.push('sort_order = ?'); params.push(patch.sortOrder); }
+    if (sets.length === 1) return;
+    params.push(id);
+    const res = await this._db.run(`UPDATE planner_calendars SET ${sets.join(', ')} WHERE id = ?`, params);
+    if (res.error) throw new Error(`updateCalendar failed: ${res.error.message}`);
+    this._onDidChange.fire({ kind: 'calendar-changed', calendarId: id });
+  }
+
+  /**
+   * Delete a calendar. Its events and tasks are reassigned to the default
+   * calendar (never deleted with it). The default calendar can't be removed.
+   */
+  async deleteCalendar(id: string): Promise<{ ok: boolean; reason?: string }> {
+    const cal = await this.getCalendar(id);
+    if (!cal) return { ok: false, reason: 'Calendar not found.' };
+    if (cal.isDefault) return { ok: false, reason: 'The default calendar can’t be deleted.' };
+    const all = await this.listCalendars();
+    const fallback = all.find(c => c.isDefault && c.id !== id) ?? all.find(c => c.id !== id);
+    const fallbackId = fallback ? fallback.id : null;
+    await this._db.run(`UPDATE planner_events SET calendar_id = ? WHERE calendar_id = ?`, [fallbackId, id]);
+    await this._db.run(`UPDATE planner_tasks SET calendar_id = ? WHERE calendar_id = ?`, [fallbackId, id]);
+    const res = await this._db.run(`DELETE FROM planner_calendars WHERE id = ?`, [id]);
+    if (res.error) throw new Error(`deleteCalendar failed: ${res.error.message}`);
+    this._onDidChange.fire({ kind: 'calendar-changed', calendarId: id });
+    return { ok: true };
   }
 
   // ── Free-slot scheduling ──────────────────────────────────────────────

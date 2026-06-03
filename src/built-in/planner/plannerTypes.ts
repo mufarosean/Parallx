@@ -26,6 +26,8 @@ export interface PlannerTask {
   readonly reminderFired: boolean;
   readonly completedAt: number | null;
   readonly tags: readonly string[];
+  readonly calendarId: string | null;
+  readonly color: string | null;
   readonly sourceUri: string | null;
   readonly sourceProvider: string | null;
   readonly sourceId: string | null;
@@ -40,6 +42,8 @@ export interface CreateTaskInput {
   readonly dueAt?: number | null;
   readonly reminderAt?: number | null;
   readonly tags?: readonly string[];
+  readonly calendarId?: string | null;
+  readonly color?: string | null;
   readonly sourceUri?: string | null;
   readonly sourceProvider?: string | null;
   readonly sourceId?: string | null;
@@ -52,6 +56,8 @@ export interface UpdateTaskInput {
   readonly dueAt?: number | null;
   readonly reminderAt?: number | null;
   readonly tags?: readonly string[];
+  readonly calendarId?: string | null;
+  readonly color?: string | null;
   readonly completedAt?: number | null;
 }
 
@@ -80,6 +86,11 @@ export interface PlannerEvent {
   readonly endAt: number;               // ms epoch (>= startAt)
   readonly allDay: boolean;
   readonly location: string | null;
+  readonly calendarId: string | null;
+  readonly color: string | null;
+  readonly recurrence: string | null;
+  /** Present on expanded recurring instances — the base event row id. */
+  readonly seriesId?: string;
   readonly sourceProvider: string | null;
   readonly sourceId: string | null;
   readonly createdAt: number;
@@ -93,6 +104,9 @@ export interface CreateEventInput {
   readonly endAt?: number;
   readonly allDay?: boolean;
   readonly location?: string | null;
+  readonly calendarId?: string | null;
+  readonly color?: string | null;
+  readonly recurrence?: string | null;
   readonly sourceProvider?: string | null;
   readonly sourceId?: string | null;
 }
@@ -104,12 +118,43 @@ export interface UpdateEventInput {
   readonly endAt?: number;
   readonly allDay?: boolean;
   readonly location?: string | null;
+  readonly calendarId?: string | null;
+  readonly color?: string | null;
+  readonly recurrence?: string | null;
 }
 
 export interface EventQuery {
   readonly from: number;
   readonly to: number;
   readonly limit?: number;
+}
+
+// ─── Calendars ───────────────────────────────────────────────────────────────
+
+export interface PlannerCalendar {
+  readonly id: string;
+  readonly name: string;
+  readonly color: string;
+  readonly visible: boolean;
+  readonly isDefault: boolean;
+  readonly sortOrder: number;
+  readonly sourceProvider: string | null;
+  readonly sourceId: string | null;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
+export interface CreateCalendarInput {
+  readonly name: string;
+  readonly color?: string;
+  readonly visible?: boolean;
+}
+
+export interface UpdateCalendarInput {
+  readonly name?: string;
+  readonly color?: string;
+  readonly visible?: boolean;
+  readonly sortOrder?: number;
 }
 
 // ─── Free-slot scheduling ────────────────────────────────────────────────────
@@ -166,10 +211,11 @@ export interface ICalendarSyncProvider {
 
 // ─── Change events ───────────────────────────────────────────────────────────
 
-export type PlannerChangeKind = 'task-created' | 'task-updated' | 'task-removed' | 'event-created' | 'event-updated' | 'event-removed';
+export type PlannerChangeKind = 'task-created' | 'task-updated' | 'task-removed' | 'event-created' | 'event-updated' | 'event-removed' | 'calendar-changed';
 
 export interface PlannerChangeEvent {
   readonly kind: PlannerChangeKind;
   readonly taskId?: string;
   readonly eventId?: string;
+  readonly calendarId?: string;
 }
