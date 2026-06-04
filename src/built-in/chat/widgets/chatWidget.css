@@ -493,6 +493,35 @@
   box-shadow: none;
 }
 
+/* ── Assistant turn identity — a breathing "● Parallx" anchor ── */
+.parallx-chat-turn-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 6px;
+}
+.parallx-chat-turn-core {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: radial-gradient(circle at 35% 30%,
+    color-mix(in srgb, var(--px-accent, #569cd6) 82%, white), var(--px-accent, #569cd6));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--px-accent, #569cd6) 8%, transparent);
+}
+.parallx-chat-turn-header--active .parallx-chat-turn-core {
+  animation: parallx-presence 1.9s var(--px-ease, cubic-bezier(0.22, 1, 0.36, 1)) infinite;
+}
+.parallx-chat-turn-name {
+  font-size: var(--px-text-xs, 11px);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--px-text-secondary, var(--vscode-descriptionForeground, #9ea3ad));
+}
+@media (prefers-reduced-motion: reduce) {
+  .parallx-chat-turn-header--active .parallx-chat-turn-core { animation: none; }
+}
+
 .parallx-chat-message-body p {
   margin: 0 0 8px;
 }

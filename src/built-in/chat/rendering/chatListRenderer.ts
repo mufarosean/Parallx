@@ -405,6 +405,8 @@ export class ChatListRenderer extends Disposable {
       }
     } else if (existingCursor) {
       existingCursor.remove();
+      // Turn finished — calm the identity core.
+      lastPair.assistantEl.querySelector('.parallx-chat-turn-header')?.classList.remove('parallx-chat-turn-header--active');
 
       // Streaming → complete transition: force a full body re-render so ALL
       // parts reflect their final state (citations, stripped transients, etc.).
@@ -598,6 +600,15 @@ export class ChatListRenderer extends Disposable {
   ): HTMLElement {
     const root = $('div.parallx-chat-message.parallx-chat-message--assistant');
     const parts = response.parts;
+
+    // Persistent agent identity — a "● Parallx" header whose core breathes while
+    // the turn is active and settles when done. Gives the assistant a presence
+    // (the user turn is a bubble; the assistant was just bare text).
+    const header = $('div.parallx-chat-turn-header');
+    if (isStreaming && !response.isComplete) header.classList.add('parallx-chat-turn-header--active');
+    header.appendChild($('span.parallx-chat-turn-core'));
+    header.appendChild($('span.parallx-chat-turn-name', 'Parallx'));
+    root.appendChild(header);
 
     // Body — render each content part
     const body = $('div.parallx-chat-message-body');
