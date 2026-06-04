@@ -3743,6 +3743,28 @@ function _acctClause(state, alias) {
 // is INDEPENDENT of the dashboard's month scope, because cash flow is by
 // definition a multi-month comparison. Every other widget on the page
 // follows the dashboard's single month.
+// "Nice" axis numbers so gridlines land on round, human intervals
+// (Heckbert's loose-label algorithm) instead of arbitrary data fractions.
+function niceNum(range, round) {
+  if (!(range > 0)) return 1;
+  const exp = Math.floor(Math.log10(range));
+  const f = range / Math.pow(10, exp);
+  let nf;
+  if (round) nf = f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10;
+  else       nf = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10;
+  return nf * Math.pow(10, exp);
+}
+function niceTicks(min, max, maxTicks) {
+  if (min === max) max = min + 1;
+  const range = niceNum(max - min, false);
+  const step = niceNum(range / Math.max(1, maxTicks - 1), true);
+  const niceMin = Math.floor(min / step) * step;
+  const niceMax = Math.ceil(max / step) * step;
+  const ticks = [];
+  for (let v = niceMin; v <= niceMax + step * 0.5; v += step) ticks.push(Math.round(v));
+  return ticks;
+}
+
 function buildCashFlowChart(api, state, refresh) {
   const wrap = document.createElement('div');
   wrap.className = 'budget-cashflow-wrap';
@@ -3844,12 +3866,14 @@ function buildCashFlowChart(api, state, refresh) {
     const groupW = innerW / groupCount;
     const barW = Math.max(6, Math.min(28, (groupW - 8) / 2));
 
-    const allValues = [...incomes, ...spends.map(v => -v), ...nets, 0];
-    const dataMin = Math.min(...allValues);
-    const dataMax = Math.max(...allValues);
-    const span = Math.max(dataMax - dataMin, 100);
-    const minV = dataMin - span * 0.08;
-    const maxV = dataMax + span * 0.08;
+    // Bars are both POSITIVE — colour distinguishes income (green) from
+    // expenses (red). The axis is 0-based with round, standard intervals; the
+    // floor drops below 0 only when a month is genuinely net-negative.
+    const maxData = Math.max(0, ...incomes, ...spends, ...nets) || 100000; // ≥ $1k floor for an empty chart
+    const minData = Math.min(0, ...nets);
+    const ticks = niceTicks(minData, maxData, 5);
+    const minV = ticks[0];
+    const maxV = ticks[ticks.length - 1];
     const vRange = (maxV - minV) || 1;
     function yFor(v) { return padT + innerH - ((v - minV) / vRange) * innerH; }
     const yZero = yFor(0);
@@ -3859,10 +3883,9 @@ function buildCashFlowChart(api, state, refresh) {
     svg.classList.add('budget-trend-chart');
     chartHost.appendChild(svg);
 
-    // Gridlines.
-    for (let i = 0; i <= 4; i++) {
-      const y = padT + (innerH * i / 4);
-      const v = maxV - (vRange * i / 4);
+    // Gridlines at round tick values.
+    for (const tv of ticks) {
+      const y = yFor(tv);
       const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
       line.setAttribute('x1', String(padL)); line.setAttribute('x2', String(W - padR));
       line.setAttribute('y1', String(y));    line.setAttribute('y2', String(y));
@@ -3873,7 +3896,7 @@ function buildCashFlowChart(api, state, refresh) {
       lbl.setAttribute('y', String(y + 4));
       lbl.setAttribute('text-anchor', 'end');
       lbl.classList.add('budget-chart-axis');
-      lbl.textContent = fmtAxisMoney(v);
+      lbl.textContent = fmtAxisMoney(tv);
       svg.appendChild(lbl);
     }
     // Zero baseline (slightly heavier).
@@ -3888,10 +3911,10 @@ function buildCashFlowChart(api, state, refresh) {
       const cx = padL + i * groupW + groupW / 2;
       const incY  = yFor(incomes[i]);
       const incH  = Math.max(0, yZero - incY);
-      const spdY  = yZero;
-      const spdH  = Math.max(0, yFor(-spends[i]) - yZero);
+      const spdY  = yFor(spends[i]);
+      const spdH  = Math.max(0, yZero - spdY);
 
-      // Income bar (above zero).
+      // Income bar (green, left).
       if (incomes[i] > 0) {
         const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         r.setAttribute('x', String(cx - barW - 1));
@@ -3913,7 +3936,7 @@ function buildCashFlowChart(api, state, refresh) {
         r.appendChild(t);
         svg.appendChild(r);
       }
-      // Expense bar (below zero).
+      // Expense bar (red, right).
       if (spends[i] > 0) {
         const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         r.setAttribute('x', String(cx + 1));
