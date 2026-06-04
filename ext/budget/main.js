@@ -1184,6 +1184,8 @@ function injectStyles() {
 .budget-attn-row.is-error .budget-attn-dot { background: var(--vscode-charts-red, #f87171); }
 .budget-attn-row.is-warn  .budget-attn-dot { background: var(--vscode-charts-orange, #f97316); }
 .budget-attn-row.is-info  .budget-attn-dot { background: var(--vscode-charts-blue, #3b82f6); }
+.budget-attn-h { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.budget-attn-hint { font-size: var(--px-text-xs, 11px); font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--px-text-faint, var(--vscode-descriptionForeground, #777)); }
 .budget-attn-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .budget-attn-title {
   font-size: 12px; font-weight: 600;
@@ -3191,8 +3193,6 @@ function renderDashboardSection(body, api) {
     }
 
     // ── Needs attention (replaces the dead "Recent transactions" list).
-    const aH = document.createElement('h3'); aH.className = 'budget-section-h'; aH.textContent = 'Needs Attention';
-    attentionSection.appendChild(aH);
     attentionSection.appendChild(await buildNeedsAttention(api, _state));
   }
   void refresh();
@@ -4290,24 +4290,37 @@ async function buildNeedsAttention(api, scope) {
     return wrap;
   }
 
-  // Sort: errors first, then warnings, then info.
-  const order = { error: 0, warn: 1, info: 2 };
-  items.sort((a, b) => (order[a.kind] || 9) - (order[b.kind] || 9));
+  // Two distinct buckets so the user knows what to *do* vs what's just FYI:
+  //   alerts   — over/near budget, review queue → action recommended.
+  //   insights — new merchant, largest charge   → awareness only, no action.
+  const order = { error: 0, warn: 1 };
+  const alerts = items.filter(it => it.kind === 'error' || it.kind === 'warn').sort((a, b) => order[a.kind] - order[b.kind]);
+  const insights = items.filter(it => it.kind === 'info');
 
-  for (const it of items) {
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = `budget-attn-row is-${it.kind}`;
-    row.innerHTML = `
-      <span class="budget-attn-dot"${it.color ? ` style="background:${escHtml(it.color)}"` : ''}></span>
-      <span class="budget-attn-text">
-        <span class="budget-attn-title">${escHtml(it.title)}</span>
-        <span class="budget-attn-sub">${escHtml(it.sub || '')}</span>
-      </span>
-      <span class="budget-attn-action">${escHtml(it.action || 'Open')} →</span>`;
-    if (it.onClick) row.addEventListener('click', it.onClick);
-    wrap.appendChild(row);
+  function renderGroup(heading, hint, list) {
+    if (!list.length) return;
+    const h = document.createElement('h3');
+    h.className = 'budget-section-h budget-attn-h';
+    h.innerHTML = `${escHtml(heading)}<span class="budget-attn-hint">${escHtml(hint)}</span>`;
+    wrap.appendChild(h);
+    for (const it of list) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = `budget-attn-row is-${it.kind}`;
+      row.innerHTML = `
+        <span class="budget-attn-dot"${it.color ? ` style="background:${escHtml(it.color)}"` : ''}></span>
+        <span class="budget-attn-text">
+          <span class="budget-attn-title">${escHtml(it.title)}</span>
+          <span class="budget-attn-sub">${escHtml(it.sub || '')}</span>
+        </span>
+        <span class="budget-attn-action">${escHtml(it.action || 'View')} →</span>`;
+      if (it.onClick) row.addEventListener('click', it.onClick);
+      wrap.appendChild(row);
+    }
   }
+
+  renderGroup('Needs attention', 'Action recommended', alerts);
+  renderGroup('Insights', 'Awareness only — nothing to do', insights);
   return wrap;
 }
 
