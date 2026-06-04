@@ -579,8 +579,8 @@
 
 .parallx-chat-presence {
   position: relative;
-  width: 14px;
-  height: 14px;
+  width: 9px;
+  height: 9px;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -592,25 +592,24 @@
   height: 8px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%,
-    color-mix(in srgb, var(--px-accent, #569cd6) 80%, white),
+    color-mix(in srgb, var(--px-accent, #569cd6) 82%, white),
     var(--px-accent, #569cd6));
-  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--px-accent, #569cd6) 55%, transparent);
-  animation: parallx-breathe 2.4s var(--px-ease, cubic-bezier(0.22, 1, 0.36, 1)) infinite;
+  animation: parallx-presence 1.9s var(--px-ease, cubic-bezier(0.22, 1, 0.36, 1)) infinite;
 }
 
-.parallx-chat-presence-ring {
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--px-accent, #569cd6) 50%, transparent);
-  opacity: 0;
-  animation: parallx-ring-bloom 2.4s var(--px-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) infinite;
+/* A single core that breathes with a soft expanding halo — no sharp rings. */
+@keyframes parallx-presence {
+  0%, 100% {
+    transform: scale(0.9);
+    box-shadow: 0 0 4px 0 color-mix(in srgb, var(--px-accent, #569cd6) 40%, transparent),
+                0 0 0 0 color-mix(in srgb, var(--px-accent, #569cd6) 26%, transparent);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 0 11px 1px color-mix(in srgb, var(--px-accent, #569cd6) 55%, transparent),
+                0 0 0 5px color-mix(in srgb, var(--px-accent, #569cd6) 7%, transparent);
+  }
 }
-
-.parallx-chat-presence-ring--2 { animation-delay: 1.2s; }
 
 .parallx-chat-presence-label {
   font-size: var(--px-text-sm, 12px);
@@ -1236,9 +1235,9 @@
 }
 
 .parallx-chat-thinking {
-  margin: 2px 0 6px;
-  border-left: 2px solid color-mix(in srgb, var(--vscode-widget-border, rgba(127,127,127,0.3)) 60%, transparent);
-  padding-left: 10px;
+  margin: 2px 0 8px;
+  border-left: 2px solid color-mix(in srgb, var(--px-accent, #569cd6) 30%, transparent);
+  padding-left: 12px;
 }
 
 .parallx-chat-thinking--streaming {
@@ -1266,18 +1265,20 @@
 
 .parallx-chat-thinking-toggle {
   cursor: pointer;
-  font-size: var(--parallx-fontSize-sm);
-  color: var(--vscode-descriptionForeground, #868686);
+  font-size: var(--px-text-sm, 12px);
+  color: var(--px-text-muted, var(--vscode-descriptionForeground, #868686));
   user-select: none;
-  padding: 2px 0;
+  padding: 3px 0;
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-style: italic;
+  gap: 6px;
+  font-style: normal;
+  letter-spacing: 0.01em;
+  transition: color 120ms ease;
 }
 
 .parallx-chat-thinking-toggle:hover {
-  color: var(--vscode-foreground, #cccccc);
+  color: var(--px-text, var(--vscode-foreground, #cccccc));
 }
 
 .parallx-chat-thinking-arrow {
@@ -1311,17 +1312,18 @@
 }
 
 .parallx-chat-thinking-content {
-  padding: 4px 0 2px;
-  font-size: var(--parallx-fontSize-sm);
-  color: var(--vscode-descriptionForeground, #868686);
-  line-height: 1.5;
+  padding: 5px 0 3px;
+  font-size: var(--px-text-sm, 12px);
+  color: var(--px-text-muted, var(--vscode-descriptionForeground, #868686));
+  line-height: var(--px-leading-base, 1.55);
 }
 
 .parallx-chat-thinking-text {
   white-space: pre-wrap;
-  font-size: var(--parallx-fontSize-sm);
-  line-height: 1.5;
-  font-style: italic;
+  font-size: var(--px-text-sm, 12px);
+  line-height: var(--px-leading-base, 1.55);
+  font-style: normal;
+  color: var(--px-text-secondary, var(--vscode-descriptionForeground, #9ea3ad));
 }
 
 .parallx-chat-thinking--collapsed .parallx-chat-thinking-content {

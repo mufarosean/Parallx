@@ -392,12 +392,16 @@ export class ChatListRenderer extends Disposable {
       }
     }
 
-    // Update streaming cursor
+    // Update streaming cursor — the "pen tip" only shows while text is actually
+    // streaming, never during the thinking phase (the presence is the signal,
+    // otherwise you get a double dot).
     const existingCursor = body.querySelector('.parallx-chat-streaming-cursor');
+    const hasTyping = !!body.querySelector('.parallx-chat-typing-indicator');
     if (requestInProgress) {
-      if (!existingCursor) {
-        const cursor = $('span.parallx-chat-streaming-cursor');
-        body.appendChild(cursor);
+      if (hasTyping) {
+        if (existingCursor) existingCursor.remove();
+      } else if (!existingCursor) {
+        body.appendChild($('span.parallx-chat-streaming-cursor'));
       }
     } else if (existingCursor) {
       existingCursor.remove();
@@ -469,8 +473,10 @@ export class ChatListRenderer extends Disposable {
           const typing = this._createTypingIndicator();
           lastAssistant.appendChild(typing);
         }
-        const cursor = $('span.parallx-chat-streaming-cursor');
-        lastAssistant.appendChild(cursor);
+        // Pen-tip cursor only while text streams — not during the thinking phase.
+        if (lastResponse.parts.length > 0) {
+          lastAssistant.appendChild($('span.parallx-chat-streaming-cursor'));
+        }
       }
     }
   }

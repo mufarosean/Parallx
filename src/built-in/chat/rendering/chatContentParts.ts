@@ -906,11 +906,6 @@ export function createAgentPresence(label?: string): HTMLElement {
   const wrap = $('div.parallx-chat-typing-indicator');
   const presence = $('span.parallx-chat-presence');
   presence.appendChild($('span.parallx-chat-presence-core'));
-  const ring1 = $('span.parallx-chat-presence-ring');
-  const ring2 = $('span.parallx-chat-presence-ring');
-  ring2.classList.add('parallx-chat-presence-ring--2');
-  presence.appendChild(ring1);
-  presence.appendChild(ring2);
   wrap.appendChild(presence);
   if (label) wrap.appendChild($('span.parallx-chat-presence-label', label));
   return wrap;
