@@ -1550,6 +1550,24 @@ function injectStyles() {
 .budget-donut-leg-pct { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); width: 34px; text-align: right; }
 .budget-donut-leg-amt { font-size: var(--px-text-sm, 12px); font-weight: 600; font-variant-numeric: tabular-nums; width: 80px; text-align: right; }
 
+/* ═══ Recurring / subscriptions list ═══ */
+.budget-recur { display: flex; flex-direction: column; margin-top: 14px; border: 1px solid var(--px-border, var(--vscode-panel-border, #2a2a2a)); border-radius: var(--px-radius-md, 6px); overflow: hidden; }
+.budget-recur-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--px-chrome-line, rgba(255, 255, 255, 0.04)); }
+.budget-recur-row:last-child { border-bottom: none; }
+.budget-recur-row:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04))); }
+.budget-recur-row.is-cancelled { opacity: 0.5; }
+.budget-recur-main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.budget-recur-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+.budget-recur-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.budget-recur-name { font-size: var(--px-text-base, 13px); font-weight: 500; color: var(--px-text, inherit); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.budget-recur-sub { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
+.budget-recur-low { color: var(--px-warning, #dcaa5a); }
+.budget-recur-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: 0 0 auto; min-width: 92px; }
+.budget-recur-amt { font-size: var(--px-text-base, 13px); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--px-text, inherit); }
+.budget-recur-due { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
+.budget-recur-acts { display: flex; gap: 6px; flex: 0 0 auto; opacity: 0; transition: opacity 120ms ease; }
+.budget-recur-row:hover .budget-recur-acts, .budget-recur-row:focus-within .budget-recur-acts { opacity: 1; }
+
 `;
   document.head.appendChild(style);
 }
@@ -5423,20 +5441,30 @@ function renderRecurringSection(body, api) {
   body.appendChild(toolbar);
 
   const summary = document.createElement('div'); summary.className = 'budget-cards'; body.appendChild(summary);
-  const upcomingWrap = document.createElement('div'); upcomingWrap.className = 'budget-section'; body.appendChild(upcomingWrap);
-  const tableWrap = document.createElement('div'); body.appendChild(tableWrap);
+  const listWrap = document.createElement('div'); listWrap.className = 'budget-recur'; body.appendChild(listWrap);
+
+  // Relative due label: "Today" / "in 4 days" / "overdue · date" / plain date.
+  function dueLabel(ymd, today) {
+    if (!ymd) return '—';
+    const d = Math.round((new Date(ymd + 'T00:00:00').getTime() - new Date(today + 'T00:00:00').getTime()) / 86400000);
+    if (d < 0) return `overdue · ${fmtDate(ymd)}`;
+    if (d === 0) return 'Today';
+    if (d === 1) return 'Tomorrow';
+    if (d <= 30) return `in ${d} days`;
+    return fmtDate(ymd);
+  }
 
   let alive = true;
   async function refresh() {
     if (!alive) return;
-    summary.innerHTML = ''; upcomingWrap.innerHTML = ''; tableWrap.innerHTML = '';
+    summary.innerHTML = ''; listWrap.innerHTML = '';
 
     const all = await db.all(`
       SELECT r.*, c.name AS category_name, c.color AS category_color
         FROM recurring_series r
         LEFT JOIN categories c ON c.id = r.category_id
        ${showCancelled ? '' : 'WHERE r.cancelled = 0'}
-       ORDER BY r.cancelled ASC, r.next_due_date ASC, r.merchant_pattern ASC`);
+       ORDER BY r.cancelled ASC, (r.next_due_date IS NULL), r.next_due_date ASC, r.merchant_pattern ASC`);
 
     const active = all.filter(r => !r.cancelled);
     const totalMonthly = active.reduce((acc, r) => {
@@ -5453,67 +5481,54 @@ function renderRecurringSection(body, api) {
 
     const today = todayYmd();
     const next30 = active.filter(r => r.next_due_date && r.next_due_date <= addDays(today, 30));
+    const next30Total = next30.reduce((s, r) => s + (Number(r.avg_amount_cents) || 0), 0);
 
-    summary.appendChild(makeCard('Active Subscriptions', String(active.length), ''));
-    summary.appendChild(makeCard('Estimated Monthly Burn', fmtMoney(Math.round(totalMonthly)), 'Sum of Average/Cadence-Normalized'));
-    summary.appendChild(makeCard('Due in Next 30 Days', String(next30.length), ''));
-
-    if (next30.length > 0) {
-      const h = document.createElement('h3'); h.textContent = 'Upcoming'; upcomingWrap.appendChild(h);
-      const ul = document.createElement('div');
-      for (const r of next30) {
-        const card = document.createElement('div'); card.className = 'budget-card';
-        card.style.maxWidth = '320px'; card.style.display = 'inline-block'; card.style.marginRight = '8px'; card.style.marginBottom = '8px';
-        card.innerHTML = `
-          <div class="budget-card-label">${escHtml(r.next_due_date || '?')} • ${escHtml(r.cadence)}</div>
-          <div class="budget-card-value">${escHtml(r.display_name || r.merchant_pattern)}</div>
-          <div class="budget-card-sub">~${escHtml(fmtMoney(r.avg_amount_cents))} ${r.category_name ? '• ' + escHtml(r.category_name) : ''}</div>`;
-        ul.appendChild(card);
-      }
-      upcomingWrap.appendChild(ul);
-    }
+    summary.appendChild(makeCard('Active subscriptions', String(active.length), 'Detected recurring charges'));
+    summary.appendChild(makeCard('Monthly burn', fmtMoney(Math.round(totalMonthly)), 'Cadence-normalized average'));
+    summary.appendChild(makeCard('Due in 30 days', String(next30.length), next30.length ? `~${fmtMoney(Math.round(next30Total))} upcoming` : 'Nothing due soon'));
 
     if (all.length === 0) {
-      tableWrap.appendChild(emptyState('No recurring series detected yet — sync more transactions, then click Detect Now.'));
+      listWrap.appendChild(emptyState('No recurring series detected yet — sync more transactions, then click Detect Now.'));
       return;
     }
 
-    const table = document.createElement('table'); table.className = 'budget-table';
-    table.innerHTML = `<thead><tr><th>Merchant</th><th>Cadence</th><th>Avg</th><th>Last seen</th><th>Next due</th><th>Hits</th><th>Conf.</th><th>Actions</th></tr></thead>`;
-    const tb = document.createElement('tbody');
+    // One clean list, soonest due first. Actions reveal on hover.
     for (const r of all) {
-      const tr = document.createElement('tr');
-      if (r.cancelled) tr.style.opacity = '0.5';
-      tr.innerHTML = `
-        <td>${escHtml(r.display_name || r.merchant_pattern)}</td>
-        <td><span class="budget-pill">${escHtml(r.cadence)}</span></td>
-        <td class="budget-amount">${escHtml(fmtMoney(r.avg_amount_cents))}</td>
-        <td>${escHtml(r.last_seen_date || '—')}</td>
-        <td>${escHtml(r.next_due_date || '—')}</td>
-        <td class="budget-amount">${r.occurrence_count}</td>
-        <td>${r.detection_confidence ? `<span class="budget-pill ${escHtml(r.detection_confidence)}">${escHtml(r.detection_confidence)}</span>` : ''}</td>
-      `;
-      const tdAct = document.createElement('td'); tdAct.style.display = 'flex'; tdAct.style.gap = '4px';
-      tdAct.appendChild(makeButton(r.cancelled ? 'Reactivate' : 'Cancel', {
+      const row = document.createElement('div');
+      row.className = 'budget-recur-row' + (r.cancelled ? ' is-cancelled' : '');
+
+      const main = document.createElement('div'); main.className = 'budget-recur-main';
+      const lowHint = (!r.cancelled && r.detection_confidence === 'low') ? ' · <span class="budget-recur-low">unsure</span>' : '';
+      main.innerHTML =
+        `<span class="budget-recur-dot" style="background:${escHtml(r.category_color || '#6b7280')}"></span>` +
+        `<span class="budget-recur-text"><span class="budget-recur-name">${escHtml(r.display_name || r.merchant_pattern)}</span>` +
+        `<span class="budget-recur-sub">${escHtml(titleCaseToken(r.cadence))}${r.category_name ? ' · ' + escHtml(r.category_name) : ''}${lowHint}</span></span>`;
+
+      const right = document.createElement('div'); right.className = 'budget-recur-right';
+      right.innerHTML =
+        `<span class="budget-recur-amt">${escHtml(fmtMoney(r.avg_amount_cents))}</span>` +
+        `<span class="budget-recur-due">${escHtml(r.cancelled ? 'Cancelled' : dueLabel(r.next_due_date, today))}</span>`;
+
+      const acts = document.createElement('div'); acts.className = 'budget-recur-acts';
+      acts.appendChild(makeButton(r.cancelled ? 'Reactivate' : 'Cancel', {
         onClick: async () => {
           await db.run('UPDATE recurring_series SET cancelled=?, updated_at=? WHERE id=?', [r.cancelled ? 0 : 1, new Date().toISOString(), r.id]);
           await refresh();
         },
       }));
-      if (!r.cancelled) {
-        tdAct.appendChild(makeButton(r.user_confirmed ? 'Confirmed' : 'Confirm', {
-          primary: !r.user_confirmed,
+      if (!r.cancelled && !r.user_confirmed) {
+        acts.appendChild(makeButton('Confirm', {
+          primary: true,
           onClick: async () => {
             await db.run('UPDATE recurring_series SET user_confirmed=1, updated_at=? WHERE id=?', [new Date().toISOString(), r.id]);
             await refresh();
           },
         }));
       }
-      tr.appendChild(tdAct);
-      tb.appendChild(tr);
+
+      row.appendChild(main); row.appendChild(right); row.appendChild(acts);
+      listWrap.appendChild(row);
     }
-    table.appendChild(tb);
-    tableWrap.appendChild(table);
   }
   void refresh();
   return () => { alive = false; };
