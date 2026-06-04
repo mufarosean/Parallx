@@ -21,7 +21,7 @@ import { registerCanvasAITools, canvasPageIdFromEditorId } from './ai/canvasAITo
 import { CanvasDataService } from './canvasDataService.js';
 import type { ICanvasDataService } from './canvasTypes.js';
 import { PageChangeKind } from './canvasTypes.js';
-import type { PageChangeEvent, PageMutationField } from './canvasTypes.js';
+import type { IPage, IPageTreeNode, PageChangeEvent, PageMutationField } from './canvasTypes.js';
 import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockRegistry.js';
@@ -896,6 +896,55 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
         console.error('[Canvas] Failed to duplicate page:', err);
         await api.window.showErrorMessage('Failed to duplicate page.');
       }
+    }),
+  );
+
+  // canvas.pickPageLink — open a quick pick of all pages and return a
+  // `parallx://canvas/page/<id>` link for the chosen one. Used by other
+  // surfaces (the Planner notes field) to attach a canvas page without
+  // coupling them to the canvas schema. Returns null if cancelled/empty.
+  context.subscriptions.push(
+    api.commands.registerCommand('canvas.pickPageLink', async (): Promise<{ uri: string; title: string; icon: string | null } | null> => {
+      if (!_dataService) return null;
+      let tree: IPageTreeNode[];
+      try {
+        tree = await _dataService.getPageTree();
+      } catch (err) {
+        console.error('[Canvas] pickPageLink: getPageTree failed:', err);
+        return null;
+      }
+
+      // Flatten the tree depth-first, indenting nested pages so the
+      // hierarchy reads naturally in the flat quick-pick list.
+      const flat: { page: IPage; depth: number }[] = [];
+      const walk = (nodes: readonly IPageTreeNode[], depth: number): void => {
+        for (const node of nodes) {
+          flat.push({ page: node, depth });
+          if (node.children.length) walk(node.children, depth + 1);
+        }
+      };
+      walk(tree, 0);
+
+      if (flat.length === 0) {
+        await api.window.showInformationMessage('No canvas pages yet. Create one first.');
+        return null;
+      }
+
+      const items = flat.map(({ page, depth }) => ({
+        label: `${'\u2003'.repeat(depth)}${page.icon ? page.icon + ' ' : ''}${page.title || 'Untitled'}`,
+        _pageId: page.id,
+        _title: page.title || 'Untitled',
+        _icon: page.icon,
+      }));
+
+      const picked = await api.window.showQuickPick(items, { placeholder: 'Link a canvas page\u2026' }) as (typeof items)[number] | undefined;
+      if (!picked) return null;
+
+      return {
+        uri: api.links.mint('canvas', ['page', picked._pageId]),
+        title: picked._title,
+        icon: picked._icon,
+      };
     }),
   );
 }

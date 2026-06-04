@@ -23,6 +23,10 @@ interface PlannerEditorApi {
   commands: {
     executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
   };
+  links: {
+    open(uri: string): Promise<boolean>;
+    resolveMetadata(uri: string): Promise<{ title: string; icon?: string } | null>;
+  };
   window: {
     showInputBox?(options?: { prompt?: string; value?: string; placeholder?: string }): Promise<string | undefined>;
     showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
@@ -43,6 +47,11 @@ const TASK_DONE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const CALENDAR_LABEL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Calendar</span>';
 const REPEAT_LABEL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span>Repeats</span>';
+
+// Link-chip glyphs: web (anchor/chain) vs internal (document).
+const LINK_WEB_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+const LINK_DOC_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+const LINK_PLUS_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
@@ -809,11 +818,127 @@ class PlannerEditorPane implements IDisposable {
         ${ev.location ? `<span class="planner-day__event-loc">${escapeHtml(ev.location)}</span>` : ''}
       `
       : `<strong>${escapeHtml(ev.title)}</strong><span>${escapeHtml(formatTimeRange(ev))}</span>`;
-    bar.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._openEventPopover({ mode: 'edit', event: ev }, bar.getBoundingClientRect());
-    });
+    // Direct manipulation: drag the body to move (and, in week view, change
+    // day), drag the top / bottom edge to resize. A bare click (no drag)
+    // opens the edit popover. Recurring instances stay click-only — dragging
+    // one occurrence would shift the whole series, which would surprise.
+    if (ev.seriesId) {
+      bar.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._openEventPopover({ mode: 'edit', event: ev }, bar.getBoundingClientRect());
+      });
+    } else {
+      this._installEventInteractions(bar, ev, variant);
+    }
     return bar;
+  }
+
+  /**
+   * Drag-to-move + drag-to-resize for a timed event bar. Mirrors Google /
+   * Apple / Outlook: grab the body to reposition (vertical = time, and in
+   * week view horizontal = day), grab the thin top / bottom edges to
+   * change just the start or end. Snaps to 15 minutes. A movement under the
+   * threshold is treated as a click and opens the editor instead.
+   */
+  private _installEventInteractions(bar: HTMLElement, ev: PlannerEvent, variant: 'week' | 'day'): void {
+    const SNAP_MS = 15 * 60_000;
+    const DAY_MS = 24 * 3_600_000;
+    const MIN_MS = 15 * 60_000;
+    const THRESHOLD_PX = 4;
+
+    const topHandle = el('div', 'planner-evt-handle planner-evt-handle--top');
+    const botHandle = el('div', 'planner-evt-handle planner-evt-handle--bottom');
+    bar.appendChild(topHandle);
+    bar.appendChild(botHandle);
+
+    bar.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const target = e.target as HTMLElement;
+      const mode: 'move' | 'resize-start' | 'resize-end' =
+        target === topHandle ? 'resize-start' : target === botHandle ? 'resize-end' : 'move';
+
+      const originCol = bar.parentElement as HTMLElement | null;
+      if (!originCol) return;
+      const colRect = originCol.getBoundingClientRect();
+      const pxPerMs = colRect.height / DAY_MS;
+      const duration = ev.endAt - ev.startAt;
+      const originDayStart = Number(originCol.dataset.dayStart) || startOfDay(new Date(ev.startAt)).getTime();
+
+      // Week view can move across day columns; collect them once.
+      const body = variant === 'week' ? bar.closest('.planner-week__body') as HTMLElement | null : null;
+      const cols = body ? (Array.from(body.querySelectorAll('.planner-week__col')) as HTMLElement[]) : [originCol];
+
+      const startClientX = e.clientX;
+      const startClientY = e.clientY;
+      let dragging = false;
+      let targetCol = originCol;
+      let curStart = ev.startAt;
+      let curEnd = ev.endAt;
+
+      const snap = (ms: number) => Math.round(ms / SNAP_MS) * SNAP_MS;
+
+      const apply = (pe: PointerEvent) => {
+        const deltaMs = (pe.clientY - startClientY) / pxPerMs;
+        if (mode === 'move') {
+          let dayDeltaMs = 0;
+          if (variant === 'week' && cols.length > 1) {
+            const hit = cols.find(c => {
+              const r = c.getBoundingClientRect();
+              return pe.clientX >= r.left && pe.clientX <= r.right;
+            });
+            if (hit && hit.dataset.dayStart) {
+              dayDeltaMs = Number(hit.dataset.dayStart) - originDayStart;
+              targetCol = hit;
+            }
+          }
+          curStart = snap(ev.startAt + deltaMs + dayDeltaMs);
+          curEnd = curStart + duration;
+        } else if (mode === 'resize-start') {
+          curStart = Math.min(ev.endAt - MIN_MS, snap(ev.startAt + deltaMs));
+          curEnd = ev.endAt;
+        } else {
+          curEnd = Math.max(ev.startAt + MIN_MS, snap(ev.endAt + deltaMs));
+          curStart = ev.startAt;
+        }
+
+        const tcStart = Number(targetCol.dataset.dayStart) || originDayStart;
+        if (targetCol !== bar.parentElement) targetCol.appendChild(bar);
+        bar.style.top = `${((curStart - tcStart) / DAY_MS) * 100}%`;
+        bar.style.height = `${((curEnd - curStart) / DAY_MS) * 100}%`;
+        bar.classList.add('planner-evt--dragging');
+        bar.title = `${formatTimeShort(curStart)} – ${formatTimeShort(curEnd)}`;
+      };
+
+      const onMove = (pe: PointerEvent) => {
+        if (!dragging) {
+          if (Math.abs(pe.clientX - startClientX) > THRESHOLD_PX || Math.abs(pe.clientY - startClientY) > THRESHOLD_PX) {
+            dragging = true;
+          } else return;
+        }
+        apply(pe);
+      };
+      const onUp = (pe: PointerEvent) => {
+        bar.removeEventListener('pointermove', onMove);
+        bar.removeEventListener('pointerup', onUp);
+        bar.removeEventListener('pointercancel', onUp);
+        try { bar.releasePointerCapture(pe.pointerId); } catch { /* ok */ }
+        bar.classList.remove('planner-evt--dragging');
+        if (!dragging) {
+          this._openEventPopover({ mode: 'edit', event: ev }, bar.getBoundingClientRect());
+          return;
+        }
+        if (curStart !== ev.startAt || curEnd !== ev.endAt) {
+          void this._data.updateEvent(ev.id, { startAt: curStart, endAt: curEnd });
+        }
+      };
+
+      try { bar.setPointerCapture(e.pointerId); } catch { /* ok */ }
+      bar.addEventListener('pointermove', onMove);
+      bar.addEventListener('pointerup', onUp);
+      bar.addEventListener('pointercancel', onUp);
+    });
   }
 
   /**
@@ -858,6 +983,366 @@ class PlannerEditorPane implements IDisposable {
       }
       container.appendChild(node);
     }
+  }
+
+  // ── All-day band (Outlook-style) ────────────────────────────────────
+
+  /**
+   * An event belongs in the all-day band when it's flagged all-day or when
+   * it spans more than one calendar day (a multi-day event). Keeping these
+   * out of the timed grid is what stops a several-day event from crowding
+   * every hour of every column.
+   */
+  private _isAllDayLike(ev: PlannerEvent): boolean {
+    if (ev.allDay) return true;
+    return !sameDay(new Date(ev.startAt), new Date(ev.endAt));
+  }
+
+  /** Inclusive day index (0-6) of a timestamp within the visible week. */
+  private _weekDayIndex(ms: number, weekStartMs: number): number {
+    return Math.floor((startOfDay(new Date(ms)).getTime() - weekStartMs) / 86_400_000);
+  }
+
+  /**
+   * The horizontal all-day band that sits between the weekday header and the
+   * time grid. Multi-day events render as bars spanning their day range,
+   * stacked into rows so they never overlap. Dragging across empty cells
+   * creates a new all-day event; existing bars can be dragged to move or
+   * resized from either edge.
+   */
+  private _renderWeekAllDayBand(
+    host: HTMLElement,
+    weekStart: Date,
+    allDayEvents: readonly PlannerEvent[],
+    colorOf: (calendarId: string | null, override: string | null) => string,
+  ): void {
+    const ROW_H = 22;
+    const weekStartMs = weekStart.getTime();
+    const weekEndMs = addDays(weekStart, 7).getTime();
+
+    const band = el('div', 'planner-week__allday');
+    const gutter = el('div', 'planner-week__allday-gutter');
+    gutter.textContent = 'all-day';
+    band.appendChild(gutter);
+
+    const grid = el('div', 'planner-week__allday-grid');
+    band.appendChild(grid);
+
+    // Background day cells — these are the drag-create surface.
+    for (let i = 0; i < 7; i++) {
+      const cell = el('div', 'planner-week__allday-cell');
+      cell.dataset.dayIndex = String(i);
+      if (sameDay(addDays(weekStart, i), new Date())) cell.classList.add('planner-week__allday-cell--today');
+      grid.appendChild(cell);
+    }
+
+    // Lane-pack the bars by day-range overlap.
+    const visible = allDayEvents
+      .filter(ev => ev.startAt < weekEndMs && ev.endAt >= weekStartMs)
+      .sort((a, b) => a.startAt - b.startAt);
+    const laneEnds: number[] = []; // last endCol occupied per lane
+    let maxLane = 0;
+    for (const ev of visible) {
+      const startCol = Math.max(0, this._weekDayIndex(ev.startAt, weekStartMs));
+      const endCol = Math.min(6, this._weekDayIndex(ev.endAt, weekStartMs));
+      let lane = laneEnds.findIndex(end => startCol > end);
+      if (lane === -1) { lane = laneEnds.length; laneEnds.push(endCol); }
+      else laneEnds[lane] = endCol;
+      maxLane = Math.max(maxLane, lane);
+
+      const span = endCol - startCol + 1;
+      const bar = el('button', 'planner-week__alldaybar');
+      bar.type = 'button';
+      bar.style.left = `calc(${(startCol / 7) * 100}% + 2px)`;
+      bar.style.width = `calc(${(span / 7) * 100}% - 4px)`;
+      bar.style.top = `${lane * ROW_H + 2}px`;
+      bar.style.setProperty('--cal-color', colorOf(ev.calendarId, ev.color));
+      const continuesLeft = ev.startAt < weekStartMs;
+      const continuesRight = ev.endAt >= weekEndMs;
+      if (continuesLeft) bar.classList.add('planner-week__alldaybar--clip-left');
+      if (continuesRight) bar.classList.add('planner-week__alldaybar--clip-right');
+      bar.innerHTML = `<span class="planner-week__alldaybar-title">${escapeHtml(ev.title)}</span>`;
+      bar.title = ev.title;
+      if (ev.seriesId) {
+        bar.addEventListener('click', () => this._openEventPopover({ mode: 'edit', event: ev }, bar.getBoundingClientRect()));
+      } else {
+        this._installAllDayBarInteractions(bar, ev, grid, weekStartMs);
+      }
+      grid.appendChild(bar);
+    }
+
+    grid.style.minHeight = `${(maxLane + 1) * ROW_H + 6}px`;
+    this._installAllDayDragCreate(grid, weekStart);
+    host.appendChild(band);
+  }
+
+  /** Drag across empty all-day cells to create a multi-day all-day event. */
+  private _installAllDayDragCreate(grid: HTMLElement, weekStart: Date): void {
+    const THRESHOLD_PX = 3;
+    grid.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      if (!(e.target instanceof HTMLElement) || !e.target.classList.contains('planner-week__allday-cell')) return;
+      e.preventDefault();
+
+      const gridRect = grid.getBoundingClientRect();
+      const colW = gridRect.width / 7;
+      const xToCol = (x: number) => Math.max(0, Math.min(6, Math.floor((x - gridRect.left) / colW)));
+      const startCol = xToCol(e.clientX);
+      let endCol = startCol;
+      let moved = false;
+
+      const ghost = el('div', 'planner-week__allday-ghost');
+      grid.appendChild(ghost);
+      const drawGhost = () => {
+        const a = Math.min(startCol, endCol), b = Math.max(startCol, endCol);
+        ghost.style.left = `calc(${(a / 7) * 100}% + 2px)`;
+        ghost.style.width = `calc(${((b - a + 1) / 7) * 100}% - 4px)`;
+      };
+      drawGhost();
+
+      try { grid.setPointerCapture(e.pointerId); } catch { /* ok */ }
+      const onMove = (pe: PointerEvent) => {
+        if (Math.abs(pe.clientX - e.clientX) > THRESHOLD_PX) moved = true;
+        endCol = xToCol(pe.clientX);
+        drawGhost();
+      };
+      const onUp = (pe: PointerEvent) => {
+        grid.removeEventListener('pointermove', onMove);
+        grid.removeEventListener('pointerup', onUp);
+        grid.removeEventListener('pointercancel', onUp);
+        try { grid.releasePointerCapture(pe.pointerId); } catch { /* ok */ }
+        const a = Math.min(startCol, endCol), b = Math.max(startCol, endCol);
+        const startMs = startOfDay(addDays(weekStart, a)).getTime();
+        const endMs = endOfDay(addDays(weekStart, b)).getTime();
+        const anchor = ghost.getBoundingClientRect();
+        this._openEventPopover({ mode: 'create', startAt: startMs, endAt: endMs, allDay: true, pendingGhost: ghost }, anchor);
+        void moved;
+      };
+      grid.addEventListener('pointermove', onMove);
+      grid.addEventListener('pointerup', onUp);
+      grid.addEventListener('pointercancel', onUp);
+    });
+  }
+
+  /** Move / resize an existing all-day bar by whole-day steps. */
+  private _installAllDayBarInteractions(bar: HTMLElement, ev: PlannerEvent, grid: HTMLElement, weekStartMs: number): void {
+    const DAY_MS = 86_400_000;
+    const THRESHOLD_PX = 4;
+    const leftHandle = el('div', 'planner-evt-handle planner-evt-handle--left');
+    const rightHandle = el('div', 'planner-evt-handle planner-evt-handle--right');
+    bar.appendChild(leftHandle);
+    bar.appendChild(rightHandle);
+
+    bar.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const target = e.target as HTMLElement;
+      const mode: 'move' | 'resize-start' | 'resize-end' =
+        target === leftHandle ? 'resize-start' : target === rightHandle ? 'resize-end' : 'move';
+
+      const gridRect = grid.getBoundingClientRect();
+      const colW = gridRect.width / 7;
+      const startClientX = e.clientX;
+      let dragging = false;
+      let curStart = ev.startAt;
+      let curEnd = ev.endAt;
+
+      const apply = (pe: PointerEvent) => {
+        const dayDelta = Math.round((pe.clientX - startClientX) / colW);
+        if (mode === 'move') {
+          curStart = ev.startAt + dayDelta * DAY_MS;
+          curEnd = ev.endAt + dayDelta * DAY_MS;
+        } else if (mode === 'resize-start') {
+          const ns = startOfDay(new Date(ev.startAt + dayDelta * DAY_MS)).getTime();
+          curStart = Math.min(ns, startOfDay(new Date(ev.endAt)).getTime());
+          curEnd = ev.endAt;
+        } else {
+          const ne = endOfDay(new Date(ev.endAt + dayDelta * DAY_MS)).getTime();
+          curEnd = Math.max(ne, endOfDay(new Date(ev.startAt)).getTime());
+          curStart = ev.startAt;
+        }
+        const startCol = Math.max(0, this._weekDayIndex(curStart, weekStartMs));
+        const endCol = Math.min(6, this._weekDayIndex(curEnd, weekStartMs));
+        bar.style.left = `calc(${(startCol / 7) * 100}% + 2px)`;
+        bar.style.width = `calc(${((endCol - startCol + 1) / 7) * 100}% - 4px)`;
+        bar.classList.add('planner-evt--dragging');
+      };
+      const onMove = (pe: PointerEvent) => {
+        if (!dragging) {
+          if (Math.abs(pe.clientX - startClientX) > THRESHOLD_PX) dragging = true;
+          else return;
+        }
+        apply(pe);
+      };
+      const onUp = (pe: PointerEvent) => {
+        bar.removeEventListener('pointermove', onMove);
+        bar.removeEventListener('pointerup', onUp);
+        bar.removeEventListener('pointercancel', onUp);
+        try { bar.releasePointerCapture(pe.pointerId); } catch { /* ok */ }
+        bar.classList.remove('planner-evt--dragging');
+        if (!dragging) {
+          this._openEventPopover({ mode: 'edit', event: ev }, bar.getBoundingClientRect());
+          return;
+        }
+        if (curStart !== ev.startAt || curEnd !== ev.endAt) {
+          void this._data.updateEvent(ev.id, { startAt: curStart, endAt: curEnd, allDay: true });
+        }
+      };
+      try { bar.setPointerCapture(e.pointerId); } catch { /* ok */ }
+      bar.addEventListener('pointermove', onMove);
+      bar.addEventListener('pointerup', onUp);
+      bar.addEventListener('pointercancel', onUp);
+    });
+  }
+
+  /** Compact all-day strip for the single-day view. */
+  private _renderDayAllDaySection(
+    host: HTMLElement,
+    day: Date,
+    allDayEvents: readonly PlannerEvent[],
+    colorOf: (calendarId: string | null, override: string | null) => string,
+  ): void {
+    const dayStart = startOfDay(day).getTime();
+    const dayEnd = endOfDay(day).getTime();
+    const todays = allDayEvents.filter(ev => ev.startAt <= dayEnd && ev.endAt >= dayStart);
+
+    const band = el('div', 'planner-day__allday');
+    const gutter = el('div', 'planner-day__allday-gutter');
+    gutter.textContent = 'all-day';
+    band.appendChild(gutter);
+    const list = el('div', 'planner-day__allday-list');
+    band.appendChild(list);
+
+    for (const ev of todays) {
+      const chip = el('button', 'planner-day__alldaybar');
+      chip.type = 'button';
+      chip.style.setProperty('--cal-color', colorOf(ev.calendarId, ev.color));
+      chip.innerHTML = `<span class="planner-week__alldaybar-title">${escapeHtml(ev.title)}</span>`;
+      chip.title = ev.title;
+      chip.addEventListener('click', () => this._openEventPopover({ mode: 'edit', event: ev }, chip.getBoundingClientRect()));
+      list.appendChild(chip);
+    }
+    // Click the empty strip to add an all-day event for this day.
+    list.addEventListener('click', (e) => {
+      if (e.target !== list) return;
+      this._openEventPopover({ mode: 'create', startAt: dayStart, endAt: dayEnd, allDay: true }, list.getBoundingClientRect());
+    });
+    host.appendChild(band);
+  }
+
+  // ── Description links (notes + clickable links) ─────────────────────
+
+  /**
+   * Render any links found in a description as clickable chips below the
+   * notes field, live-updating as the user types. Lets a description double
+   * as a notes scratchpad with real, openable references — external study
+   * URLs as well as internal `parallx://` links (e.g. a canvas page with
+   * review notes), which resolve to the page's title + icon.
+   */
+  private _attachDescriptionLinks(body: HTMLElement, descInput: HTMLTextAreaElement): void {
+    const row = el('div', 'planner-popover__links');
+    body.appendChild(row);
+    const render = () => {
+      row.innerHTML = '';
+      const links = extractLinks(descInput.value);
+      if (links.length === 0) { row.style.display = 'none'; return; }
+      row.style.display = '';
+      for (const link of links) {
+        const chip = el('button', 'planner-popover__linkchip');
+        if (link.kind === 'internal') chip.classList.add('planner-popover__linkchip--internal');
+        chip.type = 'button';
+        chip.title = link.href;
+        const labelSpan = el('span', 'planner-popover__linkchip-label');
+        labelSpan.textContent = link.label;
+        chip.innerHTML = link.kind === 'internal' ? LINK_DOC_SVG : LINK_WEB_SVG;
+        chip.appendChild(labelSpan);
+        if (link.kind === 'internal') {
+          chip.addEventListener('click', () => void this._api.links.open(link.href));
+          // Resolve the page title/icon lazily so the chip reads naturally.
+          void this._labelInternalChip(chip, labelSpan, link.href);
+        } else {
+          chip.addEventListener('click', () => void this._openExternalLink(link.href));
+        }
+        row.appendChild(chip);
+      }
+    };
+    descInput.addEventListener('input', render);
+    render();
+  }
+
+  /** Replace a raw internal-link chip label with the target's title + icon. */
+  private async _labelInternalChip(chip: HTMLElement, labelSpan: HTMLElement, uri: string): Promise<void> {
+    try {
+      const meta = await this._api.links.resolveMetadata(uri);
+      if (!meta) { chip.classList.add('planner-popover__linkchip--missing'); return; }
+      labelSpan.textContent = meta.title;
+      chip.title = meta.title;
+      if (meta.icon) {
+        const iconSpan = el('span', 'planner-popover__linkchip-icon');
+        iconSpan.textContent = meta.icon;
+        chip.querySelector('svg')?.replaceWith(iconSpan);
+      }
+    } catch {
+      // Leave the raw label in place on failure — chip is still clickable.
+    }
+  }
+
+  /** Open an http/https link in the user's external browser, safely. */
+  private async _openExternalLink(rawUrl: string): Promise<void> {
+    const url = normalizeWebLink(rawUrl);
+    if (!url) return;
+    try {
+      const shell = (window as { parallxElectron?: { shell?: { openExternal?: (u: string) => Promise<{ ok?: boolean; error?: string } | void> } } }).parallxElectron?.shell;
+      if (shell?.openExternal) {
+        const result = await shell.openExternal(url);
+        if (result && typeof result === 'object' && result.ok === false) throw new Error(result.error || 'openExternal failed');
+        return;
+      }
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      console.error('[PlannerEditorPane] open link failed:', err);
+      await this._api.window.showErrorMessage('Failed to open link.');
+    }
+  }
+
+  /**
+   * A compact toolbar below the notes field. Currently offers "Link canvas
+   * page" — the bridge between study notes (canvas) and the plan (events
+   * and tasks). Kept minimal so notes stay lightweight.
+   */
+  private _appendNotesToolbar(body: HTMLElement, descInput: HTMLTextAreaElement): void {
+    const bar = el('div', 'planner-popover__notesbar');
+    const linkBtn = el('button', 'planner-popover__notesbtn');
+    linkBtn.type = 'button';
+    linkBtn.innerHTML = `${LINK_PLUS_SVG}<span>Link canvas page</span>`;
+    linkBtn.title = 'Attach a canvas page to these notes';
+    linkBtn.addEventListener('click', () => void this._linkCanvasPage(descInput));
+    bar.appendChild(linkBtn);
+    body.appendChild(bar);
+  }
+
+  /**
+   * Open the canvas page picker and append the chosen page's link to the
+   * notes field. Decoupled from the canvas schema — the link contract and
+   * the `canvas.pickPageLink` command do the resolution.
+   */
+  private async _linkCanvasPage(descInput: HTMLTextAreaElement): Promise<void> {
+    let result: { uri: string; title: string; icon: string | null } | null = null;
+    try {
+      result = await this._api.commands.executeCommand('canvas.pickPageLink');
+    } catch (err) {
+      console.error('[PlannerEditorPane] canvas.pickPageLink failed:', err);
+      await this._api.window.showErrorMessage('Could not open the canvas page picker.');
+      return;
+    }
+    if (!result) return;
+    const current = descInput.value;
+    const sep = current.length === 0 ? '' : (current.endsWith('\n') ? '' : '\n');
+    descInput.value = `${current}${sep}${result.uri}`;
+    // Fire input so the link chips re-render and any caller-bound listeners run.
+    descInput.dispatchEvent(new Event('input', { bubbles: true }));
+    descInput.focus();
   }
 
   private async _renderMonthView(body: HTMLElement): Promise<void> {
@@ -949,7 +1434,9 @@ class PlannerEditorPane implements IDisposable {
     const start = startOfWeek(this._cursorDate);
     const end = addDays(start, 7);
     const { isVisible, colorOf } = await this._loadCalCtx();
-    const events = (await this._data.listEvents({ from: start.getTime(), to: end.getTime(), limit: 500 })).filter(ev => isVisible(ev.calendarId));
+    const allEvents = (await this._data.listEvents({ from: start.getTime(), to: end.getTime(), limit: 500 })).filter(ev => isVisible(ev.calendarId));
+    const allDayEvents = allEvents.filter(ev => this._isAllDayLike(ev));
+    const events = allEvents.filter(ev => !this._isAllDayLike(ev));
     const tasks = await this._tasksInWindow(start.getTime(), end.getTime(), isVisible);
 
     const grid = el('div', 'planner-week');
@@ -969,6 +1456,9 @@ class PlannerEditorPane implements IDisposable {
     }
     grid.appendChild(headerRow);
 
+    // Outlook-style all-day band — multi-day events live here, not in the grid.
+    this._renderWeekAllDayBand(grid, start, allDayEvents, colorOf);
+
     const body2 = el('div', 'planner-week__body');
     const HOURS_START = 0, HOURS_END = 24;
     const hourScale = el('div', 'planner-week__hours');
@@ -986,6 +1476,7 @@ class PlannerEditorPane implements IDisposable {
       const day = addDays(start, i);
       const dayStart = day.getTime();
       const dayEnd = endOfDay(day).getTime();
+      dayCol.dataset.dayStart = String(dayStart);
 
       // Hour gridlines (visual only — interaction is on the column itself).
       for (let h = HOURS_START; h < HOURS_END; h++) {
@@ -1021,12 +1512,18 @@ class PlannerEditorPane implements IDisposable {
     const dayStart = startOfDay(this._cursorDate).getTime();
     const dayEnd = endOfDay(this._cursorDate).getTime();
     const { isVisible, colorOf } = await this._loadCalCtx();
-    const events = (await this._data.listEvents({ from: dayStart, to: dayEnd, limit: 500 })).filter(ev => isVisible(ev.calendarId));
+    const allEvents = (await this._data.listEvents({ from: dayStart, to: dayEnd, limit: 500 })).filter(ev => isVisible(ev.calendarId));
+    const allDayEvents = allEvents.filter(ev => this._isAllDayLike(ev));
+    const events = allEvents.filter(ev => !this._isAllDayLike(ev));
     const tasks = await this._tasksInWindow(dayStart, dayEnd, isVisible);
+
+    // All-day strip above the time grid, mirroring the week view.
+    this._renderDayAllDaySection(body, this._cursorDate, allDayEvents, colorOf);
 
     const grid = el('div', 'planner-day');
     const hours = el('div', 'planner-day__hours');
     const col = el('div', 'planner-day__col');
+    col.dataset.dayStart = String(dayStart);
     const HOURS_START = 0, HOURS_END = 24;
     for (let h = HOURS_START; h < HOURS_END; h++) {
       const hourCell = el('div', 'planner-day__hour');
@@ -1357,9 +1854,11 @@ class PlannerEditorPane implements IDisposable {
 
     // Notes
     const descInput = el('textarea', 'planner-popover__textarea') as HTMLTextAreaElement;
-    descInput.placeholder = 'Notes';
+    descInput.placeholder = 'Notes & links';
     descInput.value = seed.description;
     body.appendChild(descInput);
+    this._appendNotesToolbar(body, descInput);
+    this._attachDescriptionLinks(body, descInput);
 
     // Status — segmented control (Reviewing / Planned), defaults from seed.
     const statusRow = el('div', 'planner-popover__statusrow');
@@ -1497,7 +1996,7 @@ class PlannerEditorPane implements IDisposable {
    * navigates away.
    */
   private _openEventPopover(
-    init: { mode: 'create'; startAt: number; endAt: number; pendingGhost?: HTMLElement | null }
+    init: { mode: 'create'; startAt: number; endAt: number; allDay?: boolean; pendingGhost?: HTMLElement | null }
         | { mode: 'edit'; event: PlannerEvent },
     anchor: DOMRect,
   ): void {
@@ -1539,7 +2038,7 @@ class PlannerEditorPane implements IDisposable {
           title: '',
           startAt: init.startAt,
           endAt: init.endAt,
-          allDay: false,
+          allDay: init.allDay ?? false,
           location: '',
           description: '',
           eventId: null,
@@ -1672,9 +2171,11 @@ class PlannerEditorPane implements IDisposable {
     body.appendChild(locationInput);
 
     const descInput = el('textarea', 'planner-popover__textarea') as HTMLTextAreaElement;
-    descInput.placeholder = 'Add description';
+    descInput.placeholder = 'Add notes & links';
     descInput.value = seed.description;
     body.appendChild(descInput);
+    this._appendNotesToolbar(body, descInput);
+    this._attachDescriptionLinks(body, descInput);
 
     pop.appendChild(body);
 
@@ -1844,6 +2345,49 @@ function formatTimeRange(ev: PlannerEvent): string {
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
+/** Normalize a raw href to a safe http/https URL, or null if not web-openable. */
+function normalizeWebLink(rawHref: string): string | null {
+  const trimmed = rawHref.trim();
+  if (!trimmed) return null;
+  const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(trimmed);
+  const candidate = hasScheme ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+/** Pull links out of free-form notes for the popover chip row.
+ *  Recognizes internal `parallx://` URIs as well as web (http/https/www.)
+ *  links. Internal links render as rich page chips; web links open the
+ *  external browser. */
+function extractLinks(text: string): { label: string; href: string; kind: 'web' | 'internal' }[] {
+  if (!text) return [];
+  const out: { label: string; href: string; kind: 'web' | 'internal' }[] = [];
+  const seen = new Set<string>();
+  const re = /(?:parallx:\/\/[^\s<>]+|(?:https?:\/\/|www\.)[^\s<>()]+)/gi;
+  for (const match of text.matchAll(re)) {
+    const raw = match[0].replace(/[.,;:!?]+$/, '');
+    if (/^parallx:\/\//i.test(raw)) {
+      if (seen.has(raw)) continue;
+      seen.add(raw);
+      out.push({ label: raw, href: raw, kind: 'internal' });
+      continue;
+    }
+    const url = normalizeWebLink(raw);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    let label = url;
+    try { const u = new URL(url); label = u.hostname.replace(/^www\./, '') + (u.pathname !== '/' ? u.pathname : ''); } catch { /* keep url */ }
+    if (label.length > 42) label = label.slice(0, 41) + '\u2026';
+    out.push({ label, href: url, kind: 'web' });
+  }
+  return out;
 }
 
 function toDateInputValue(ms: number): string {

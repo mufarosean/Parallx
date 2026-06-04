@@ -48,6 +48,10 @@ interface ParallxApi {
     showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
   };
+  links: {
+    open(uri: string): Promise<boolean>;
+    resolveMetadata(uri: string): Promise<{ title: string; icon?: string } | null>;
+  };
   chat?: {
     registerTool(toolId: string, def: {
       description: string;
@@ -113,6 +117,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   const editorProvider = new PlannerEditorProvider(_data, {
     editors: api.editors,
     commands: api.commands,
+    links: api.links,
     window: api.window,
   });
   context.subscriptions.push(
