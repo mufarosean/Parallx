@@ -50,6 +50,8 @@
         "aiInvocable": true, "aiDescription": "Open the Budget cash flow view." },
       { "id": "budget.openReports",       "title": "Open Reports",             "category": "Budget",
         "aiInvocable": true, "aiDescription": "Open the Budget reports view." },
+      { "id": "budget.openGoals",         "title": "Open Goals",               "category": "Budget",
+        "aiInvocable": true, "aiDescription": "Open the Budget goals view (savings & debt goals with progress)." },
       { "id": "budget.openRules",         "title": "Open Rules",               "category": "Budget",
         "aiInvocable": true, "aiDescription": "Open the Budget categorization rules view." },
       { "id": "budget.openReconcile",     "title": "Open Reconcile",           "category": "Budget",

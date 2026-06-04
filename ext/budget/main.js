@@ -281,6 +281,7 @@ const SECTIONS = [
   { id: 'accounts',     title: 'Net Worth',    icon: 'trending-up',      commandId: 'budget.openAccounts',     blurb: 'Net worth: accounts, investments, real estate, vehicles, and liabilities.', nav: true },
   { id: 'transactions', title: 'Transactions', icon: 'list',             commandId: 'budget.openTransactions', blurb: 'Searchable, filterable ledger of every imported transaction.', nav: true },
   { id: 'plan',         title: 'Plan',         icon: 'target',           commandId: 'budget.openPlan',         blurb: 'Budgets, recurring, reconcile, and trends.', nav: true },
+  { id: 'goals',        title: 'Goals',        icon: 'flag',             commandId: 'budget.openGoals',        blurb: 'Savings targets and debt payoff with progress and a projected finish date.', nav: true },
   { id: 'settings',     title: 'Settings',     icon: 'settings',         commandId: 'budget.openSettings',     blurb: 'Categories, rules, review queue, sync log, import/export.', nav: true },
 
   // Hidden sections — kept registered so the editor router and palette commands
@@ -1513,6 +1514,42 @@ function injectStyles() {
 .budget-nw-row-pct { font-size: var(--px-text-xs, 11px); color: var(--px-text-faint, var(--vscode-descriptionForeground, #777)); }
 .budget-nw-mgmt-head { font-size: var(--px-text-xs, 11px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); margin: 4px 2px 8px; }
 
+/* ═══ Goals ═══ */
+.budget-goals { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.budget-goal-card {
+  display: flex; flex-direction: column; gap: 8px; width: 100%; box-sizing: border-box; text-align: left;
+  padding: 14px 16px; border: 1px solid var(--px-border, var(--vscode-panel-border, #2a2a2a)); border-radius: var(--px-radius-md, 6px);
+  background: var(--px-bg-elevated, var(--vscode-input-background, rgba(255, 255, 255, 0.03))); color: inherit; font: inherit; cursor: pointer;
+  transition: border-color 120ms ease;
+}
+.budget-goal-card:hover { border-color: var(--px-border-strong, var(--vscode-focusBorder, #5b9bd5)); }
+.budget-goal-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.budget-goal-name { font-size: var(--px-text-md, 15px); font-weight: 600; color: var(--px-text, inherit); }
+.budget-goal-kind { font-size: var(--px-text-xs, 11px); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--px-accent, #569cd6); }
+.budget-goal-kind.is-debt { color: var(--px-warning, #dcaa5a); }
+.budget-goal-bar { height: 8px; border-radius: 999px; background: var(--px-bg-inset, rgba(255, 255, 255, 0.07)); overflow: hidden; }
+.budget-goal-fill { height: 100%; border-radius: 999px; background: var(--px-success, #6cbf8f); transition: width 320ms cubic-bezier(0.16, 1, 0.3, 1); }
+.budget-goal-fill.is-debt { background: var(--px-warning, #dcaa5a); }
+.budget-goal-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.budget-goal-amt { font-size: var(--px-text-sm, 12px); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--px-text, inherit); }
+.budget-goal-proj { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
+
+/* ═══ Spending donut ═══ */
+.budget-donut-wrap { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; padding: 8px 0; }
+.budget-donut { width: 180px; height: 180px; flex: 0 0 auto; font-family: var(--vscode-font-family, inherit); }
+.budget-donut-seg { transition: opacity 120ms ease; }
+.budget-donut-seg:hover { opacity: 0.85; }
+.budget-donut-total { fill: var(--px-text, var(--vscode-editor-foreground, #eee)); font-size: 22px; font-weight: 700; }
+.budget-donut-clabel { fill: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); font-size: 11px; }
+.budget-donut-legend { flex: 1 1 240px; min-width: 220px; display: flex; flex-direction: column; gap: 2px; }
+.budget-donut-leg { display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; text-align: left; padding: 5px 6px; border: none; background: transparent; color: inherit; font: inherit; border-radius: var(--px-radius-sm, 4px); }
+.budget-donut-leg.is-click { cursor: pointer; }
+.budget-donut-leg.is-click:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05))); }
+.budget-donut-sw { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
+.budget-donut-leg-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--px-text-sm, 12px); }
+.budget-donut-leg-pct { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); width: 34px; text-align: right; }
+.budget-donut-leg-amt { font-size: var(--px-text-sm, 12px); font-weight: 600; font-variant-numeric: tabular-nums; width: 80px; text-align: right; }
+
 `;
   document.head.appendChild(style);
 }
@@ -1631,6 +1668,7 @@ function renderEditorPane(container, api, input) {
   else if (sectionId === 'plan')          cleanup = renderPlanSection(body, api);
   else if (sectionId === 'settings')      cleanup = renderSettingsSection(body, api);
   else if (sectionId === 'accounts')      cleanup = renderAccountsSection(body, api);
+  else if (sectionId === 'goals')         cleanup = renderGoalsSection(body, api);
   else if (sectionId === 'transactions')  cleanup = renderTransactionsSection(body, api);
   else if (sectionId === 'budgets')       cleanup = renderBudgetsSection(body, api);
   else if (sectionId === 'recurring')     cleanup = renderRecurringSection(body, api);
@@ -3138,6 +3176,19 @@ function renderDashboardSection(body, api) {
         },
       }));
 
+    // ── Goals progress card (only when goals exist).
+    try {
+      const goals = await db.all('SELECT target_cents, current_cents FROM goals WHERE archived=0').catch(() => []);
+      if (goals && goals.length) {
+        const tt = goals.reduce((s, g) => s + (Number(g.target_cents) || 0), 0);
+        const tc = goals.reduce((s, g) => s + (Number(g.current_cents) || 0), 0);
+        const pct = tt > 0 ? Math.round(tc / tt * 100) : 0;
+        cards.appendChild(makeCard('Goals', `${pct}%`,
+          `${goals.length} goal${goals.length > 1 ? 's' : ''} · ${fmtMoney(tc)} of ${fmtMoney(tt)}`,
+          { title: 'Open Goals', onClick: () => api.commands.executeCommand('budget.openGoals').catch(() => {}) }));
+      }
+    } catch { /* goals table may not exist on older DBs */ }
+
     // ── Cash flow chart (PRIMARY CHART — replaces the old balance-trend
     // line as the dashboard's headline visualization). Bars per month,
     // income above zero, spend below zero, net line overlay. The canonical
@@ -3145,8 +3196,12 @@ function renderDashboardSection(body, api) {
     cashflowSection.appendChild(buildCashFlowChart(api, _state, refresh));
 
     // ── Top categories (full width, sorted desc by spend).
-    const catH = document.createElement('h3'); catH.className = 'budget-section-h'; catH.textContent = 'Top Categories';
+    const catH = document.createElement('h3'); catH.className = 'budget-section-h'; catH.textContent = 'Where it went';
     catSection.appendChild(catH);
+    catSection.appendChild(buildSpendDonut(catRows, totalSpend, range.label.split(' ')[0], (slice) => {
+      _navState.txFilter = { categoryId: slice.id, monthKey, type: 'spend' };
+      api.commands.executeCommand('budget.openTransactions').catch(() => {});
+    }));
     catSection.appendChild(buildCategoryBars(catRows, prevByCatId, (slice) => {
       _navState.txFilter = { categoryId: slice.id, monthKey, type: 'spend' };
       api.commands.executeCommand('budget.openTransactions').catch(() => {});
@@ -4220,6 +4275,39 @@ async function buildNeedsAttention(api, scope) {
     }
   } catch { /* ignore */ }
 
+  // 5. Largest single expense this month — flags an unusually big hit when it
+  // is a meaningful share of the month's spend.
+  try {
+    const acct = _acctClause(scope, '');
+    const big = await db.get(
+      `SELECT merchant, amount_cents FROM transactions
+        WHERE status='confirmed' AND tx_type IN ('purchase','fee')
+          AND transaction_date >= ? AND transaction_date <= ?${acct.clause}
+        ORDER BY amount_cents DESC LIMIT 1`,
+      [scope.range.start, scope.range.end, ...acct.params]);
+    const amt = big ? Number(big.amount_cents) || 0 : 0;
+    if (big && amt > 0) {
+      const totalRow = await db.get(
+        `SELECT COALESCE(SUM(amount_cents),0) AS s FROM transactions
+          WHERE status='confirmed' AND tx_type IN ('purchase','fee')
+            AND transaction_date >= ? AND transaction_date <= ?${acct.clause}`,
+        [scope.range.start, scope.range.end, ...acct.params]);
+      const total = Number(totalRow?.s) || 0;
+      if (total > 0 && amt / total >= 0.15) {
+        items.push({
+          kind: 'info',
+          title: `Largest charge: ${big.merchant || 'Unknown'}`,
+          sub: `${fmtMoney(amt)} · ${Math.round(amt / total * 100)}% of this month's spend`,
+          action: 'View',
+          onClick: () => {
+            _navState.txFilter = { monthKey: scope.monthKey, type: 'spend', merchant: big.merchant || undefined };
+            api.commands.executeCommand('budget.openTransactions').catch(() => {});
+          },
+        });
+      }
+    }
+  } catch { /* ignore */ }
+
   if (items.length === 0) {
     wrap.appendChild(emptyState('Nothing needs your attention this month. Nice.'));
     return wrap;
@@ -4705,6 +4793,252 @@ function renderAccountsSection(body, api) {
   }
   void refresh();
   return () => { alive = false; };
+}
+
+// ─── Savings & debt goals ──────────────────────────────────────────────────
+
+// Average monthly net surplus (income − spend) over the last 3 months — drives
+// goal projections.
+async function estimateMonthlySurplus() {
+  try {
+    const months = monthsBack(3);
+    let netSum = 0, n = 0;
+    for (const m of months) {
+      const r = await db.get(
+        `SELECT COALESCE(SUM(CASE WHEN tx_type='deposit' THEN ABS(amount_cents) ELSE 0 END),0) AS income,
+                COALESCE(SUM(CASE WHEN tx_type IN ('purchase','fee') THEN amount_cents ELSE 0 END),0) AS spend
+           FROM transactions WHERE status='confirmed' AND transaction_date >= ? AND transaction_date <= ?`,
+        [m.start, m.end]);
+      const income = Number(r?.income) || 0, spend = Number(r?.spend) || 0;
+      if (income > 0 || spend > 0) { netSum += (income - spend); n++; }
+    }
+    return n > 0 ? Math.round(netSum / n) : 0;
+  } catch { return 0; }
+}
+
+function buildGoalCard(g, monthlySurplus, api, refresh) {
+  const target = Number(g.target_cents) || 0;
+  const current = Math.max(0, Number(g.current_cents) || 0);
+  const pct = target > 0 ? Math.min(100, Math.round(current / target * 100)) : 0;
+  const remaining = Math.max(0, target - current);
+
+  const card = document.createElement('button'); card.type = 'button'; card.className = 'budget-goal-card';
+  card.addEventListener('click', () => void openGoalEditor(api, { id: g.id, onSaved: refresh }));
+
+  const top = document.createElement('div'); top.className = 'budget-goal-top';
+  top.innerHTML = `<span class="budget-goal-name">${escHtml(g.name)}</span>` +
+    `<span class="budget-goal-kind${g.kind === 'debt' ? ' is-debt' : ''}">${g.kind === 'debt' ? 'Debt payoff' : 'Savings'}</span>`;
+  card.appendChild(top);
+
+  const bar = document.createElement('div'); bar.className = 'budget-goal-bar';
+  const fill = document.createElement('div'); fill.className = 'budget-goal-fill' + (g.kind === 'debt' ? ' is-debt' : '');
+  fill.style.width = pct + '%'; bar.appendChild(fill); card.appendChild(bar);
+
+  // Projection: prefer the explicit target-date pace check; else project from
+  // the recent monthly surplus.
+  let detail = '';
+  if (remaining <= 0) {
+    detail = 'Complete 🎉';
+  } else if (g.target_date) {
+    const days = Math.ceil((new Date(g.target_date).getTime() - Date.now()) / 86400000);
+    if (days < 0) detail = `Past target date · ${fmtMoney(remaining)} to go`;
+    else {
+      const monthsLeft = Math.max(0.5, days / 30.4);
+      const needed = Math.ceil(remaining / monthsLeft);
+      const onPace = monthlySurplus >= needed;
+      detail = `Need ${fmtMoney(needed)}/mo by ${fmtDate(g.target_date)} · ${onPace ? 'on pace' : 'behind'}`;
+    }
+  } else if (monthlySurplus > 0) {
+    const months = Math.ceil(remaining / monthlySurplus);
+    const dt = new Date(); dt.setMonth(dt.getMonth() + months);
+    detail = `~${dt.toLocaleString('en-US', { month: 'short', year: 'numeric' })} at ${fmtMoney(monthlySurplus)}/mo`;
+  } else {
+    detail = `${fmtMoney(remaining)} to go`;
+  }
+
+  const meta = document.createElement('div'); meta.className = 'budget-goal-meta';
+  meta.innerHTML = `<span class="budget-goal-amt">${escHtml(fmtMoney(current))} / ${escHtml(fmtMoney(target))} · ${pct}%</span>` +
+    `<span class="budget-goal-proj">${escHtml(detail)}</span>`;
+  card.appendChild(meta);
+  return card;
+}
+
+// Drawer to add / edit / delete a savings or debt goal.
+async function openGoalEditor(api, opts = {}) {
+  const isCreate = !opts.id;
+  let row = null;
+  if (!isCreate) {
+    row = await db.get('SELECT * FROM goals WHERE id=?', [opts.id]).catch(() => null);
+    if (!row) { await api.window?.showErrorMessage?.('Goal not found.'); return; }
+  }
+  const overlay = document.createElement('div'); overlay.className = 'budget-drawer-overlay';
+  const drawer = document.createElement('div'); drawer.className = 'budget-drawer'; overlay.appendChild(drawer);
+  function close() { overlay.remove(); document.removeEventListener('keydown', onKey); }
+  function onKey(e) { if (e.key === 'Escape') close(); }
+  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', onKey);
+
+  const head = document.createElement('div'); head.className = 'budget-drawer-head';
+  const title = document.createElement('h3'); title.className = 'budget-drawer-title'; title.style.flex = '1';
+  title.textContent = isCreate ? 'New goal' : 'Edit goal';
+  head.appendChild(title);
+  const closeBtn = document.createElement('button'); closeBtn.className = 'budget-drawer-close'; closeBtn.type = 'button';
+  closeBtn.innerHTML = makeIcon(api, 'x', 16) || '✕'; closeBtn.addEventListener('click', close); head.appendChild(closeBtn);
+  drawer.appendChild(head);
+
+  const form = document.createElement('div'); form.className = 'budget-drawer-body';
+  function field(labelText, control, hint) {
+    const f = document.createElement('label'); f.className = 'budget-field';
+    const l = document.createElement('span'); l.className = 'budget-field-label'; l.textContent = labelText;
+    f.appendChild(l); f.appendChild(control);
+    if (hint) { const h = document.createElement('span'); h.className = 'budget-field-hint'; h.textContent = hint; f.appendChild(h); }
+    return f;
+  }
+  const nameInput = document.createElement('input'); nameInput.className = 'budget-input'; nameInput.type = 'text';
+  nameInput.placeholder = 'e.g. Emergency fund, Pay off Visa'; nameInput.value = row?.name || '';
+  const kindSel = document.createElement('select'); kindSel.className = 'budget-select';
+  for (const [v, lbl] of [['savings', 'Savings target'], ['debt', 'Debt payoff']]) {
+    const o = document.createElement('option'); o.value = v; o.textContent = lbl; if ((row?.kind || 'savings') === v) o.selected = true; kindSel.appendChild(o);
+  }
+  const targetInput = document.createElement('input'); targetInput.className = 'budget-input'; targetInput.type = 'number'; targetInput.step = '0.01'; targetInput.min = '0';
+  targetInput.placeholder = '0.00'; targetInput.value = row ? ((Number(row.target_cents) || 0) / 100).toFixed(2) : '';
+  const currentInput = document.createElement('input'); currentInput.className = 'budget-input'; currentInput.type = 'number'; currentInput.step = '0.01'; currentInput.min = '0';
+  currentInput.placeholder = '0.00'; currentInput.value = row ? ((Number(row.current_cents) || 0) / 100).toFixed(2) : '0.00';
+  const dateInput = document.createElement('input'); dateInput.className = 'budget-input'; dateInput.type = 'date';
+  dateInput.value = row?.target_date ? String(row.target_date).slice(0, 10) : '';
+  const notesInput = document.createElement('textarea'); notesInput.className = 'budget-drawer-textarea'; notesInput.placeholder = 'Notes (optional)'; notesInput.value = row?.notes || '';
+
+  form.appendChild(field('Name', nameInput));
+  form.appendChild(field('Type', kindSel));
+  const r1 = document.createElement('div'); r1.className = 'budget-field-row';
+  r1.appendChild(field('Target', targetInput, 'Amount to reach'));
+  r1.appendChild(field('Saved so far', currentInput, 'Or paid off'));
+  form.appendChild(r1);
+  form.appendChild(field('Target date', dateInput, 'Optional — drives the on-pace check'));
+  form.appendChild(field('Notes', notesInput));
+  drawer.appendChild(form);
+
+  const foot = document.createElement('div'); foot.className = 'budget-drawer-foot';
+  if (!isCreate) {
+    let armed = false, armTimer = null;
+    const delBtn = makeButton('Delete', { onClick: async () => {
+      if (!armed) { armed = true; delBtn.querySelector('span:last-child').textContent = 'Click again to delete'; delBtn.classList.add('budget-btn-danger'); armTimer = setTimeout(() => { armed = false; delBtn.querySelector('span:last-child').textContent = 'Delete'; delBtn.classList.remove('budget-btn-danger'); }, 3000); return; }
+      if (armTimer) clearTimeout(armTimer);
+      try { await db.run('DELETE FROM goals WHERE id=?', [opts.id]); close(); opts.onSaved?.(); }
+      catch (e) { await api.window?.showErrorMessage?.('Delete failed: ' + (e instanceof Error ? e.message : String(e))); }
+    } });
+    foot.appendChild(delBtn);
+  }
+  const spacer = document.createElement('div'); spacer.className = 'spacer'; foot.appendChild(spacer);
+  foot.appendChild(makeButton('Cancel', { onClick: close }));
+  async function save() {
+    const name = nameInput.value.trim(); if (!name) { nameInput.focus(); return; }
+    const target = parseFloat(targetInput.value); if (!Number.isFinite(target) || target <= 0) { targetInput.focus(); return; }
+    const current = parseFloat(currentInput.value); const cur = Number.isFinite(current) ? Math.max(0, current) : 0;
+    const now = new Date().toISOString();
+    try {
+      if (isCreate) {
+        await db.run(`INSERT INTO goals (id, name, kind, target_cents, current_cents, target_date, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)`,
+          [crypto.randomUUID(), name, kindSel.value, dollarsToCents(target), dollarsToCents(cur), dateInput.value || null, notesInput.value.trim() || null, now, now]);
+      } else {
+        await db.run(`UPDATE goals SET name=?, kind=?, target_cents=?, current_cents=?, target_date=?, notes=?, updated_at=? WHERE id=?`,
+          [name, kindSel.value, dollarsToCents(target), dollarsToCents(cur), dateInput.value || null, notesInput.value.trim() || null, now, opts.id]);
+      }
+      close(); opts.onSaved?.();
+    } catch (e) { await api.window?.showErrorMessage?.('Save failed: ' + (e instanceof Error ? e.message : String(e))); }
+  }
+  foot.appendChild(makeButton(isCreate ? 'Create goal' : 'Save', { primary: true, onClick: () => void save() }));
+  drawer.appendChild(foot);
+  document.body.appendChild(overlay);
+  nameInput.focus();
+}
+
+function renderGoalsSection(body, api) {
+  const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
+  toolbar.appendChild(makeButton('New goal', { iconHtml: makeIcon(api, 'plus', 12), onClick: () => void openGoalEditor(api, { onSaved: refresh }) }));
+  const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
+  toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
+  body.appendChild(toolbar);
+
+  const headEl = document.createElement('div'); headEl.className = 'budget-section'; body.appendChild(headEl);
+  const listEl = document.createElement('div'); listEl.className = 'budget-goals'; body.appendChild(listEl);
+
+  let alive = true;
+  async function refresh() {
+    if (!alive) return;
+    headEl.innerHTML = ''; listEl.innerHTML = '';
+    const [goals, monthlySurplus] = await Promise.all([
+      db.all('SELECT * FROM goals WHERE archived=0 ORDER BY sort_order, created_at').catch(() => []),
+      estimateMonthlySurplus(),
+    ]);
+    if (!goals.length) {
+      listEl.appendChild(emptyState('No goals yet. Create a savings target (emergency fund, a trip) or a debt-payoff goal to track progress and a projected finish date.'));
+      return;
+    }
+    const totalTarget = goals.reduce((s, g) => s + (Number(g.target_cents) || 0), 0);
+    const totalCurrent = goals.reduce((s, g) => s + (Number(g.current_cents) || 0), 0);
+    const sub = document.createElement('div'); sub.className = 'budget-networth-sub';
+    sub.innerHTML = `<span class="budget-nw-chip">${goals.length} goal${goals.length > 1 ? 's' : ''}</span>` +
+      `<span class="budget-nw-chip">${escHtml(fmtMoney(totalCurrent))} of ${escHtml(fmtMoney(totalTarget))}</span>` +
+      (monthlySurplus > 0 ? `<span class="budget-nw-chip is-up">~${escHtml(fmtMoney(monthlySurplus))}/mo surplus</span>` : `<span class="budget-nw-chip is-down">No monthly surplus</span>`);
+    headEl.appendChild(sub);
+    for (const g of goals) listEl.appendChild(buildGoalCard(g, monthlySurplus, api, refresh));
+  }
+  void refresh();
+  const offBus = onSyncEvent((evt) => { if (evt.kind === 'complete') void refresh(); });
+  return () => { alive = false; offBus(); };
+}
+
+// ─── Spending donut (category breakdown ring for the Overview) ──────────────
+
+function buildSpendDonut(catRows, totalSpend, centerLabel, onSlice) {
+  const wrap = document.createElement('div'); wrap.className = 'budget-donut-wrap';
+  let slices = (catRows || []).map(r => ({ id: r.id, name: r.name, color: r.color || '#6b7280', spend: Number(r.spend) || 0 })).filter(s => s.spend > 0).sort((a, b) => b.spend - a.spend);
+  const total = totalSpend || slices.reduce((s, x) => s + x.spend, 0);
+  if (!slices.length || total <= 0) { wrap.appendChild(emptyState('No spending in this period yet.')); return wrap; }
+
+  // Collapse a long tail into "Other" so the ring stays legible.
+  const MAXSEG = 8;
+  if (slices.length > MAXSEG) {
+    const head = slices.slice(0, MAXSEG - 1);
+    const otherSpend = slices.slice(MAXSEG - 1).reduce((s, x) => s + x.spend, 0);
+    slices = [...head, { id: null, name: 'Other', color: '#6b7280', spend: otherSpend }];
+  }
+
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const size = 180, stroke = 22, r = (size - stroke) / 2, cx = size / 2, cy = size / 2, C = 2 * Math.PI * r;
+  const svg = document.createElementNS(svgNS, 'svg'); svg.setAttribute('viewBox', `0 0 ${size} ${size}`); svg.classList.add('budget-donut');
+  const track = document.createElementNS(svgNS, 'circle');
+  track.setAttribute('cx', cx); track.setAttribute('cy', cy); track.setAttribute('r', r);
+  track.setAttribute('fill', 'none'); track.setAttribute('stroke', 'var(--px-bg-inset, rgba(255,255,255,0.06))'); track.setAttribute('stroke-width', stroke);
+  svg.appendChild(track);
+  const g = document.createElementNS(svgNS, 'g'); g.setAttribute('transform', `rotate(-90 ${cx} ${cy})`); svg.appendChild(g);
+  let acc = 0;
+  for (const s of slices) {
+    const len = (s.spend / total) * C;
+    const c = document.createElementNS(svgNS, 'circle');
+    c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', r);
+    c.setAttribute('fill', 'none'); c.setAttribute('stroke', s.color); c.setAttribute('stroke-width', stroke);
+    c.setAttribute('stroke-dasharray', `${len} ${C - len}`); c.setAttribute('stroke-dashoffset', `${-acc}`);
+    c.classList.add('budget-donut-seg'); g.appendChild(c); acc += len;
+  }
+  const t1 = document.createElementNS(svgNS, 'text'); t1.setAttribute('x', cx); t1.setAttribute('y', cy - 2); t1.setAttribute('text-anchor', 'middle'); t1.classList.add('budget-donut-total'); t1.textContent = fmtMoney(total);
+  const t2 = document.createElementNS(svgNS, 'text'); t2.setAttribute('x', cx); t2.setAttribute('y', cy + 16); t2.setAttribute('text-anchor', 'middle'); t2.classList.add('budget-donut-clabel'); t2.textContent = centerLabel || 'spent';
+  svg.appendChild(t1); svg.appendChild(t2);
+
+  const legend = document.createElement('div'); legend.className = 'budget-donut-legend';
+  for (const s of slices) {
+    const pct = Math.round(s.spend / total * 100);
+    const rowEl = document.createElement(s.id ? 'button' : 'div'); rowEl.className = 'budget-donut-leg' + (s.id ? ' is-click' : '');
+    if (s.id) { rowEl.type = 'button'; rowEl.addEventListener('click', () => onSlice && onSlice(s)); }
+    rowEl.innerHTML = `<span class="budget-donut-sw" style="background:${escHtml(s.color)}"></span>` +
+      `<span class="budget-donut-leg-name">${escHtml(s.name)}</span>` +
+      `<span class="budget-donut-leg-pct">${pct}%</span>` +
+      `<span class="budget-donut-leg-amt">${escHtml(fmtMoney(s.spend))}</span>`;
+    legend.appendChild(rowEl);
+  }
+  wrap.appendChild(svg); wrap.appendChild(legend);
+  return wrap;
 }
 
 // ─── Section: Cash Flow ────────────────────────────────────────────────────
