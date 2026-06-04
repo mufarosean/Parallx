@@ -13,7 +13,7 @@
 
 import { Disposable } from '../../../platform/lifecycle.js';
 import { $ } from '../../../ui/dom.js';
-import { renderContentPart } from './chatContentParts.js';
+import { renderContentPart, createAgentPresence } from './chatContentParts.js';
 import { chatIcons } from '../chatIcons.js';
 import { getFileTypeIcon } from '../../../ui/iconRegistry.js';
 import { isChatImageAttachment, isChatSelectionAttachment } from '../../../services/chatTypes.js';
@@ -656,13 +656,9 @@ export class ChatListRenderer extends Disposable {
     root.appendChild(actions);
   }
 
-  /** Create the typing indicator (compact dot pulse). */
+  /** Create the "working" indicator — a breathing agent presence (Living System). */
   private _createTypingIndicator(): HTMLElement {
-    const indicator = $('div.parallx-chat-typing-indicator');
-    for (let i = 0; i < 3; i++) {
-      indicator.appendChild($('span.parallx-chat-typing-dot'));
-    }
-    return indicator;
+    return createAgentPresence('Thinking');
   }
 
   override dispose(): void {

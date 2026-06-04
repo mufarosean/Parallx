@@ -896,14 +896,31 @@ function _renderCodeBlock(part: IChatCodeBlockContent): HTMLElement {
   return root;
 }
 
+// ── Agent presence (the "Living System" working signal) ──
+//
+// A breathing accent core with energy rings blooming outward + an optional
+// shimmering status word. Shared by the typing indicator and progress parts so
+// every "the agent is working" moment reads as one living organism, not a
+// spinner. Motion is defined in chatWidget.css and honours reduced-motion.
+export function createAgentPresence(label?: string): HTMLElement {
+  const wrap = $('div.parallx-chat-typing-indicator');
+  const presence = $('span.parallx-chat-presence');
+  presence.appendChild($('span.parallx-chat-presence-core'));
+  const ring1 = $('span.parallx-chat-presence-ring');
+  const ring2 = $('span.parallx-chat-presence-ring');
+  ring2.classList.add('parallx-chat-presence-ring--2');
+  presence.appendChild(ring1);
+  presence.appendChild(ring2);
+  wrap.appendChild(presence);
+  if (label) wrap.appendChild($('span.parallx-chat-presence-label', label));
+  return wrap;
+}
+
 // ── Progress ──
 
 function _renderProgress(part: IChatProgressContent): HTMLElement {
-  const root = $('div.parallx-chat-progress');
-  const spinner = $('div.parallx-chat-progress-spinner');
-  const text = $('span', part.message);
-  root.appendChild(spinner);
-  root.appendChild(text);
+  const root = createAgentPresence(part.message || 'Working');
+  root.classList.add('parallx-chat-progress');
   return root;
 }
 

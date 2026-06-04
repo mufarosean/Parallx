@@ -562,35 +562,91 @@
   50% { opacity: 0.15; }
 }
 
-/* ── Typing Indicator — compact dot pulse ── */
+/* ── Agent presence — the "Living System" working signal ──
+   A breathing accent core, energy rings blooming outward, and a shimmering
+   status word. Motion tokens (breathe / ring-bloom / shimmer) are the shared
+   vocabulary for every "alive" moment in the chat. */
 
 .parallx-chat-typing-indicator {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 6px 0 2px;
+  gap: 9px;
+  padding: 6px 0 4px;
 }
 
-.parallx-chat-typing-dot {
-  width: 6px;
-  height: 6px;
+.parallx-chat-presence {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.parallx-chat-presence-core {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: var(--vscode-descriptionForeground, #888);
-  opacity: 0.35;
-  animation: parallx-dot-pulse 1.4s ease-in-out infinite;
+  background: radial-gradient(circle at 35% 30%,
+    color-mix(in srgb, var(--px-accent, #569cd6) 80%, white),
+    var(--px-accent, #569cd6));
+  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--px-accent, #569cd6) 55%, transparent);
+  animation: parallx-breathe 2.4s var(--px-ease, cubic-bezier(0.22, 1, 0.36, 1)) infinite;
 }
 
-.parallx-chat-typing-dot:nth-child(2) {
-  animation-delay: 0.2s;
+.parallx-chat-presence-ring {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--px-accent, #569cd6) 50%, transparent);
+  opacity: 0;
+  animation: parallx-ring-bloom 2.4s var(--px-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) infinite;
 }
 
-.parallx-chat-typing-dot:nth-child(3) {
-  animation-delay: 0.4s;
+.parallx-chat-presence-ring--2 { animation-delay: 1.2s; }
+
+.parallx-chat-presence-label {
+  font-size: var(--px-text-sm, 12px);
+  font-style: italic;
+  letter-spacing: 0.01em;
+  background: linear-gradient(100deg,
+    var(--px-text-muted, #888) 28%,
+    var(--px-text, #e8eaee) 50%,
+    var(--px-text-muted, #888) 72%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: parallx-shimmer 2.6s linear infinite;
 }
 
-@keyframes parallx-dot-pulse {
-  0%, 80%, 100% { opacity: 0.35; transform: scale(1); }
-  40% { opacity: 1; transform: scale(1.25); }
+@keyframes parallx-breathe {
+  0%, 100% { transform: scale(0.82); opacity: 0.7; }
+  50% { transform: scale(1.16); opacity: 1; }
+}
+
+@keyframes parallx-ring-bloom {
+  0% { transform: scale(0.55); opacity: 0.7; }
+  70% { opacity: 0; }
+  100% { transform: scale(3.4); opacity: 0; }
+}
+
+@keyframes parallx-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .parallx-chat-presence-core,
+  .parallx-chat-presence-ring,
+  .parallx-chat-presence-label { animation: none; }
+  .parallx-chat-presence-core { opacity: 1; transform: none; }
+  .parallx-chat-presence-ring { display: none; }
+  .parallx-chat-presence-label { color: var(--px-text-muted, #888); -webkit-text-fill-color: currentColor; }
 }
 
 /* ── Empty State ── */
