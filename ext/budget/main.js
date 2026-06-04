@@ -304,7 +304,7 @@ const SECTIONS = [
 // When the user (or any code) executes one of these, M64 routes it to the
 // wrapper section and pre-selects the named tab.
 const PLAN_TABS     = ['budgets', 'recurring', 'reconcile', 'cashflow', 'reports'];
-const SETTINGS_TABS = ['accounts', 'categories', 'rules', 'reviewQueue', 'syncLog', 'importExport'];
+const SETTINGS_TABS = ['categories', 'rules', 'reviewQueue', 'syncLog', 'importExport'];
 function wrapperForSection(sectionId) {
   if (PLAN_TABS.includes(sectionId))     return { wrapper: 'plan',     tab: sectionId };
   if (SETTINGS_TABS.includes(sectionId)) return { wrapper: 'settings', tab: sectionId };
@@ -4013,7 +4013,6 @@ function buildCategoryBars(catRows, prevByCatId, onClick) {
     const over = hasBudget && actual > budget;
     const near = hasBudget && !over && ratio >= 0.8;
     const fillPct = hasBudget ? Math.min(100, Math.round(ratio * 100)) : 0;
-    const delta = actual - prior;
 
     const row = document.createElement('button');
     row.type = 'button';
@@ -4033,15 +4032,8 @@ function buildCategoryBars(catRows, prevByCatId, onClick) {
     const ofBudget = hasBudget
       ? `of ${escHtml(fmtMoney(budget))}${defaulted ? '<span class="budget-catrow-tag">last mo</span>' : ''}`
       : 'no target';
-    let trend = '';
-    if (prior > 0) {
-      const cls = delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : '';
-      const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '·';
-      trend = `<div class="budget-catrow-trend ${cls}">${arrow} ${escHtml(fmtMoney(Math.abs(delta)))} vs last mo</div>`;
-    }
     meta.innerHTML =
-      `<div class="budget-catrow-amtline"><span class="budget-catrow-amt${over ? ' is-over' : ''}">${escHtml(fmtMoney(actual))}</span> <span class="budget-catrow-of">${ofBudget}</span></div>` +
-      trend;
+      `<div class="budget-catrow-amtline"><span class="budget-catrow-amt${over ? ' is-over' : ''}">${escHtml(fmtMoney(actual))}</span> <span class="budget-catrow-of">${ofBudget}</span></div>`;
 
     row.appendChild(left); row.appendChild(barWrap); row.appendChild(meta);
     row.addEventListener('click', () => onClick && onClick(r));
