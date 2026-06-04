@@ -206,13 +206,27 @@ function titleCaseToken(value) {
     .join(' ');
 }
 
+// ─── Transaction types — single source of truth ───────────────────────────
+//
+// `value` is what's stored in transactions.tx_type (the AI pipeline's
+// vocabulary); `label` is what every UI surface shows; `kind` is the matching
+// category kind. txTypeLabel(), categoryKindForTxType(), the editor dropdown,
+// and the sync / AI-tool validators all derive from this list, so a label can
+// never again drift from its stored value. (refund and cc_payment were
+// collapsed into purchase / transfer in migration 004; a negative-amount
+// purchase still displays as "Refund".)
+const TX_TYPES = [
+  { value: 'purchase', label: 'Expense',  kind: 'expense'  },
+  { value: 'fee',      label: 'Fee',      kind: 'expense'  },
+  { value: 'deposit',  label: 'Income',   kind: 'income'   },
+  { value: 'transfer', label: 'Transfer', kind: 'transfer' },
+];
+const TX_TYPE_VALUES = TX_TYPES.map(t => t.value);
+
 function txTypeLabel(txType, amountCents = 0) {
   if (txType === 'purchase' && Number(amountCents) < 0) return 'Refund';
-  if (txType === 'purchase') return 'Expense';
-  if (txType === 'fee') return 'Fee';
-  if (txType === 'deposit') return 'Income';
-  if (txType === 'transfer') return 'Transfer';
-  return titleCaseToken(txType || 'Unknown');
+  const t = TX_TYPES.find(x => x.value === txType);
+  return t ? t.label : titleCaseToken(txType || 'Unknown');
 }
 
 function statusLabel(status) {
@@ -224,9 +238,8 @@ function confidenceLabel(confidence) {
 }
 
 function categoryKindForTxType(txType) {
-  if (txType === 'deposit') return 'income';
-  if (txType === 'transfer') return 'transfer';
-  return 'expense';
+  const t = TX_TYPES.find(x => x.value === txType);
+  return t ? t.kind : 'expense';
 }
 
 function appendCategoryOptions(select, categories, selectedId, txType = null) {
@@ -2125,12 +2138,14 @@ async function openTxEditor(api, opts = {}) {
   amountInput.placeholder = '0.00';
   amountInput.value = row ? ((Number(row.amount_cents) || 0) / 100).toFixed(2) : '';
 
-  // Labels match txTypeLabel() — what the ledger shows — not the raw stored
-  // values (purchase→Expense, deposit→Income; refund/cc_payment were collapsed
-  // into purchase/transfer in migration 004).
-  const typeSel = makeDropdown(
-    [['purchase', 'Expense'], ['fee', 'Fee'], ['deposit', 'Income'], ['transfer', 'Transfer']].map(([value, label]) => ({ value, label })),
-    row?.tx_type || 'purchase');
+  // Options come straight from the TX_TYPES source of truth (same labels the
+  // ledger shows). If a row carries an out-of-set type (e.g. the AI's 'other'),
+  // surface it so it stays representable instead of showing blank.
+  const typeOpts = TX_TYPES.map(t => ({ value: t.value, label: t.label }));
+  if (row?.tx_type && !TX_TYPE_VALUES.includes(row.tx_type)) {
+    typeOpts.push({ value: row.tx_type, label: txTypeLabel(row.tx_type) });
+  }
+  const typeSel = makeDropdown(typeOpts, row?.tx_type || 'purchase');
 
   const acctSel = makeDropdown(
     [{ value: '', label: '— No account —' }].concat(accounts.map(a => ({ value: a.id, label: a.display_name || defaultAccountName(a.kind, a.last_four) }))),
@@ -7076,12 +7091,12 @@ async function aiStage1(api, modelId, msg) {
   // tells the story). CC payments are transfers between the user's own accounts.
   if (eventType === 'refund') eventType = 'purchase';
   if (eventType === 'cc_payment') eventType = 'transfer';
-  const valid = new Set(['purchase','deposit','transfer','fee','balance_summary','other']);
+  const valid = new Set([...TX_TYPE_VALUES, 'balance_summary', 'other']);
   return {
     event_type: valid.has(eventType) ? eventType : 'other',
     account_kind_hint: normalizeAccountKind(r.account_kind_hint),
     // Backwards-compat: callers previously used these booleans.
-    is_transaction: ['purchase','deposit','transfer','fee'].includes(eventType),
+    is_transaction: TX_TYPE_VALUES.includes(eventType),
     is_balance:     eventType === 'balance_summary',
     malformed: false,
   };
@@ -7968,7 +7983,7 @@ async function budgetToolPullEmails(api, args = {}) {
 async function budgetToolRecordTransaction(args = {}) {
   if (!args.emailId || typeof args.emailId !== 'string') return _toolErr('emailId is required');
   const txType = String(args.txType || 'purchase').toLowerCase();
-  const validTypes = new Set(['purchase','deposit','transfer','fee','refund','other']);
+  const validTypes = new Set([...TX_TYPE_VALUES, 'refund', 'other']);
   if (!validTypes.has(txType)) return _toolErr('txType must be one of: ' + Array.from(validTypes).join(', '));
   const amountDollars = Number(args.amount);
   if (!Number.isFinite(amountDollars)) return _toolErr('amount must be a number (dollars)');
@@ -8987,7 +9002,7 @@ export async function activate(api, context) {
             merchant: { type: 'string' },
             category: { type: 'string' },
             status:   { type: 'string', enum: ['confirmed', 'review', 'all'] },
-            txType:   { type: 'string', enum: ['purchase', 'deposit', 'transfer', 'fee', 'other'] },
+            txType:   { type: 'string', enum: [...TX_TYPE_VALUES, 'other'] },
             limit:    { type: 'integer' },
           },
         },
