@@ -988,20 +988,28 @@
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
+  gap: 8px;
+  padding: 7px 10px;
   margin: 4px 0;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md, 6px);
   background: var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.08));
-  border: 1px dashed var(--vscode-widget-border, rgba(127, 127, 127, 0.25));
-  opacity: 0.6;
-  font-size: var(--parallx-fontSize-base);
-  color: var(--vscode-descriptionForeground, #989898);
-  transition: opacity 150ms ease;
+  border: 1px dashed var(--px-border, var(--vscode-widget-border, rgba(127, 127, 127, 0.25)));
+  opacity: 0.82;
+  font-size: var(--px-text-base, 13px);
+  color: var(--px-text-secondary, var(--vscode-descriptionForeground, #989898));
+  animation: parallx-node-bloom 0.42s var(--px-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+  transition: opacity 150ms ease, border-color 200ms ease, box-shadow 200ms ease;
 }
 
-.parallx-chat-pending-message:hover {
-  opacity: 0.9;
+.parallx-chat-pending-message:hover { opacity: 1; }
+
+/* Queued marker — a small "waiting" ring. */
+.parallx-chat-pending-marker {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--px-text-faint, #686d77) 90%, transparent);
 }
 
 .parallx-chat-pending-message-text {
@@ -1014,18 +1022,36 @@
 }
 
 .parallx-chat-pending-message-actions {
-  display: none;
+  display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   margin-left: 8px;
   flex-shrink: 0;
 }
 
-.parallx-chat-pending-message:hover .parallx-chat-pending-message-actions {
-  display: flex;
+/* Steer — a labelled accent pill (first-class peer to the queue). */
+.parallx-chat-pending-action-steer {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px 0 7px;
+  border: 1px solid color-mix(in srgb, var(--px-accent, #569cd6) 55%, transparent);
+  border-radius: var(--px-radius-full, 999px);
+  background: var(--px-accent-soft, rgba(86, 156, 214, 0.15));
+  color: var(--px-accent, #569cd6);
+  cursor: pointer;
+  font-size: var(--px-text-xs, 11px);
+  font-weight: 600;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
+.parallx-chat-pending-action-steer:hover {
+  background: var(--px-accent, #569cd6);
+  color: var(--px-text-on-accent, #fff);
+  border-color: transparent;
+}
+.parallx-chat-pending-action-steer svg { width: 12px; height: 12px; }
 
-.parallx-chat-pending-action-steer,
 .parallx-chat-pending-action-remove {
   display: flex;
   align-items: center;
@@ -1033,28 +1059,44 @@
   width: 22px;
   height: 22px;
   border: none;
-  border-radius: 4px;
+  border-radius: 50%;
   background: transparent;
-  color: var(--vscode-descriptionForeground, #989898);
+  color: var(--px-text-muted, var(--vscode-descriptionForeground, #989898));
   cursor: pointer;
   padding: 0;
-  font-size: var(--parallx-fontSize-lg);
+  font-size: 15px;
+  line-height: 1;
   transition: background 120ms ease, color 120ms ease;
 }
-
-.parallx-chat-pending-action-steer:hover {
-  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
-  color: var(--vscode-foreground, #cccccc);
-}
-
 .parallx-chat-pending-action-remove:hover {
-  background: var(--vscode-inputValidation-errorBackground, rgba(255, 0, 0, 0.15));
-  color: var(--vscode-errorForeground, #f48771);
+  background: var(--px-danger-soft, rgba(224, 108, 102, 0.15));
+  color: var(--px-danger, #e06c66);
 }
 
-.parallx-chat-pending-action-steer svg {
-  width: 12px;
-  height: 12px;
+/* Steering — the living redirect beat. */
+.parallx-chat-pending-message--steering {
+  opacity: 1;
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--px-accent, #569cd6) 60%, transparent);
+  box-shadow: 0 0 0 1px var(--px-accent-faint, rgba(86, 156, 214, 0.08)),
+              0 0 14px -2px color-mix(in srgb, var(--px-accent, #569cd6) 45%, transparent);
+  color: var(--px-accent, #569cd6);
+}
+.parallx-chat-pending-message--steering .parallx-chat-pending-marker {
+  border: none;
+  background: radial-gradient(circle at 35% 30%,
+    color-mix(in srgb, var(--px-accent, #569cd6) 85%, white), var(--px-accent, #569cd6));
+  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--px-accent, #569cd6) 60%, transparent);
+  animation: parallx-breathe 1.4s var(--px-ease, ease-in-out) infinite;
+}
+.parallx-chat-pending-message--steering .parallx-chat-pending-message-text {
+  font-style: normal;
+  font-weight: 500;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .parallx-chat-pending-message { animation: none; }
+  .parallx-chat-pending-message--steering .parallx-chat-pending-marker { animation: none; }
 }
 
 /* ── Content Part Styles ── */

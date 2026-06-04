@@ -709,6 +709,9 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const el = $('div.parallx-chat-pending-message');
     el.dataset.pendingId = pending.id;
 
+    // Queued marker (a "waiting" ring; becomes the steering pulse on steer).
+    el.appendChild($('span.parallx-chat-pending-marker'));
+
     // Message text (truncated)
     const textEl = $('span.parallx-chat-pending-message-text');
     textEl.textContent = pending.text.length > 80
@@ -716,23 +719,20 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       : pending.text;
     el.appendChild(textEl);
 
-    // Hover actions container
+    // Actions — always visible so Steer is a first-class peer to the queue.
     const actions = $('div.parallx-chat-pending-message-actions');
 
-    // Arrow (steer/send now) button
+    // Steer = interrupt + redirect the agent now (labelled accent pill).
     const steerBtn = $('button.parallx-chat-pending-action-steer');
-    steerBtn.innerHTML = chatIcons.send;
-    steerBtn.title = 'Send now (interrupts current response)';
+    steerBtn.innerHTML = `${chatIcons.send}<span>Steer</span>`;
+    steerBtn.title = 'Steer now — interrupt and redirect the agent with this message';
     steerBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (this._session && this._services.removePendingRequest) {
-        // Remove from queue and re-submit as a steering request
+      if (this._session && this._services.removePendingRequest && this._services.queueRequest) {
+        // Drop the queued copy and re-queue as steering (yields + jumps to front).
         this._services.removePendingRequest(this._session.id, pending.id);
-        // Re-queue as steering (will signal yield + go to front)
-        if (this._services.queueRequest) {
-          this._services.queueRequest(this._session.id, pending.text, ChatRequestQueueKind.Steering, pending.options);
-        }
-        this._removePendingMessageEl(pending.id);
+        this._services.queueRequest(this._session.id, pending.text, ChatRequestQueueKind.Steering, pending.options);
+        this._markPendingSteering(el, pending.id);
       }
     });
     actions.appendChild(steerBtn);
@@ -754,6 +754,16 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     this._pendingMessageEls.set(pending.id, el);
     this._pendingMessagesContainer.appendChild(el);
+  }
+
+  /** Transition a queued bubble into the living "steering" state, then clear it. */
+  private _markPendingSteering(el: HTMLElement, pendingId: string): void {
+    el.classList.add('parallx-chat-pending-message--steering');
+    el.querySelector('.parallx-chat-pending-message-actions')?.remove();
+    const textEl = el.querySelector('.parallx-chat-pending-message-text');
+    if (textEl) textEl.textContent = 'Steering the agent…';
+    // The redirect takes effect immediately; this beat is just feedback.
+    setTimeout(() => this._removePendingMessageEl(pendingId), 1400);
   }
 
   private _removePendingMessageEl(pendingId: string): void {
