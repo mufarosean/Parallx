@@ -1425,6 +1425,8 @@ function injectStyles() {
 .budget-btn-danger:hover { background: var(--px-danger, #e06c66); color: #fff; }
 .budget-table tbody tr.budget-row-clickable { cursor: pointer; }
 .budget-table tbody tr.budget-row-clickable:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255,255,255,0.05))); }
+.budget-row-edit { opacity: 0; transition: opacity 120ms ease; }
+.budget-table tbody tr:hover .budget-row-edit, .budget-table tbody tr:focus-within .budget-row-edit { opacity: 1; }
 
 /* ═══ Net Worth ═══ */
 .budget-networth-head { padding: 6px 2px 16px; }
@@ -2403,8 +2405,12 @@ function renderTransactionsSection(body, api) {
         tdActions.appendChild(confirmBtn);
         tdActions.appendChild(hideBtn);
       } else {
-        tdActions.textContent = '-';
-        tdActions.style.color = 'var(--vscode-descriptionForeground, #888)';
+        // Confirmed / hidden rows have no pending action — offer a quiet Edit
+        // affordance (revealed on hover) instead of a meaningless dash. The
+        // whole row is clickable too; this just makes it discoverable.
+        const editBtn = makeButton('Edit', { onClick: () => void openTxEditor(api, { id: r.id, onSaved: refresh }) });
+        editBtn.classList.add('budget-row-edit');
+        tdActions.appendChild(editBtn);
       }
 
       tr.appendChild(tdDate); tr.appendChild(tdMerch); tr.appendChild(tdType); tr.appendChild(tdAcct);
