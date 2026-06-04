@@ -1182,10 +1182,12 @@
   color: var(--vscode-testing-iconFailed, #f14c4c);
 }
 
-/* Thinking block */
+/* Thinking block — living treatment: an accent spine that breathes while
+   streaming, and a shimmering "Thinking…" label (shared vocabulary with the
+   agent presence). */
 @keyframes parallx-thinking-pulse {
-  0%, 100% { border-left-color: var(--vscode-progressBar-background, #0e70c0); }
-  50% { border-left-color: color-mix(in srgb, var(--vscode-progressBar-background, #0e70c0) 35%, transparent); }
+  0%, 100% { border-left-color: color-mix(in srgb, var(--px-accent, #569cd6) 72%, transparent); }
+  50% { border-left-color: color-mix(in srgb, var(--px-accent, #569cd6) 16%, transparent); }
 }
 
 .parallx-chat-thinking {
@@ -1195,7 +1197,26 @@
 }
 
 .parallx-chat-thinking--streaming {
-  animation: parallx-thinking-pulse 1.4s ease-in-out infinite;
+  animation: parallx-thinking-pulse 2.4s var(--px-ease, ease-in-out) infinite;
+}
+
+.parallx-chat-thinking--streaming .parallx-chat-thinking-label {
+  background: linear-gradient(100deg,
+    var(--px-text-muted, #888) 28%,
+    var(--px-text, #e8eaee) 50%,
+    var(--px-text-muted, #888) 72%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: parallx-shimmer 2.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .parallx-chat-thinking--streaming { animation: none; }
+  .parallx-chat-thinking--streaming .parallx-chat-thinking-label {
+    animation: none; color: var(--px-text-muted, #888); -webkit-text-fill-color: currentColor;
+  }
 }
 
 .parallx-chat-thinking-toggle {
