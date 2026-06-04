@@ -557,6 +557,43 @@ function injectStyles() {
   color: var(--vscode-dropdown-foreground, var(--vscode-foreground, #ddd));
   font: inherit;
 }
+
+/* ═══ Custom dropdown (Parallx-native <select> replacement) ═══ */
+.budget-dd { position: relative; display: inline-block; }
+.budget-dd-btn {
+  display: inline-flex; align-items: center; gap: 6px; width: 100%; box-sizing: border-box;
+  min-height: 26px; padding: 4px 8px; cursor: pointer; text-align: left;
+  background: var(--px-bg-inset, var(--vscode-input-background, rgba(255, 255, 255, 0.04)));
+  color: var(--px-text, var(--vscode-input-foreground, #ddd));
+  border: 1px solid var(--px-border, var(--vscode-input-border, var(--vscode-panel-border, #555)));
+  border-radius: var(--px-radius-sm, 4px); font: inherit; font-size: var(--px-text-sm, 12px);
+  transition: border-color 120ms ease;
+}
+.budget-dd-btn:hover { border-color: var(--px-border-strong, var(--vscode-focusBorder, #5b9bd5)); }
+.budget-dd-btn[aria-expanded="true"] { border-color: var(--px-accent, var(--vscode-focusBorder, #5b9bd5)); }
+.budget-dd-btn:focus-visible { outline: none; border-color: var(--px-accent, #5b9bd5); box-shadow: 0 0 0 2px var(--px-accent-faint, rgba(91, 143, 214, 0.25)); }
+.budget-dd-label { display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 0; overflow: hidden; }
+.budget-dd-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.budget-dd-txt.is-placeholder { color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
+.budget-dd-caret { display: inline-flex; flex: 0 0 auto; color: var(--px-text-muted, var(--vscode-descriptionForeground, #999)); }
+.budget-dd-sw { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; display: inline-block; }
+.budget-dd-menu {
+  z-index: 1100; min-width: 160px; max-height: 320px; overflow-y: auto; padding: 4px;
+  background: var(--px-bg-elevated, var(--vscode-menu-background, #1f2125));
+  border: 1px solid var(--px-border, var(--vscode-menu-border, #333));
+  border-radius: var(--px-radius-md, 6px);
+  box-shadow: var(--px-shadow-lg, 0 14px 34px -8px rgba(0, 0, 0, 0.55), 0 4px 10px -4px rgba(0, 0, 0, 0.4));
+}
+.budget-dd-opt {
+  display: flex; align-items: center; gap: 8px; width: 100%; box-sizing: border-box; text-align: left;
+  padding: 6px 8px; border: none; background: transparent; color: var(--px-text, var(--vscode-foreground, #ddd));
+  font: inherit; font-size: var(--px-text-sm, 12px); border-radius: var(--px-radius-sm, 4px); cursor: pointer;
+}
+.budget-dd-opt:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06))); }
+.budget-dd-opt.is-active { background: var(--px-surface-selected, rgba(91, 143, 214, 0.14)); }
+.budget-dd-opt-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.budget-dd-check { display: inline-flex; flex: 0 0 auto; width: 13px; color: var(--px-accent, #5b9bd5); }
+.budget-table .budget-dd { min-width: 150px; }
 .budget-select option:checked {
   background: var(--vscode-list-activeSelectionBackground, rgba(147,51,234,0.35));
   color: var(--vscode-list-activeSelectionForeground, #fff);
@@ -1401,7 +1438,7 @@ function injectStyles() {
 .budget-field { display: flex; flex-direction: column; gap: 5px; }
 .budget-field-label { font-size: var(--px-text-xs, 11px); font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
 .budget-field-hint { font-size: var(--px-text-xs, 11px); color: var(--px-text-faint, var(--vscode-descriptionForeground, #777)); }
-.budget-field .budget-input, .budget-field .budget-select, .budget-field .budget-drawer-textarea { width: 100%; box-sizing: border-box; }
+.budget-field .budget-input, .budget-field .budget-select, .budget-field .budget-drawer-textarea, .budget-field .budget-dd { width: 100%; box-sizing: border-box; }
 .budget-field-row { display: flex; gap: 10px; }
 .budget-field-row > .budget-field { flex: 1; min-width: 0; }
 .budget-drawer-textarea {
@@ -1744,6 +1781,94 @@ function emptyState(msg) {
   return div;
 }
 
+// ─── Custom dropdown (Parallx-native replacement for <select>) ──────────────
+//
+// Native <select> popups are rendered by the OS and can't be themed — they
+// ignore the --px design language. This is a fully styled dropdown: a trigger
+// button + a positioned popover with optional colour swatches, a checkmark on
+// the current value, hover states, click-outside + Escape to close, and
+// viewport-aware placement. Exposes a `.value` get/set so call sites read it
+// just like a <select>.
+const DD_CARET = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+const DD_CHECK = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
+function makeDropdown(options, value, onChange, opts = {}) {
+  // options: [{ value, label, color? }]
+  const root = document.createElement('div');
+  root.className = 'budget-dd' + (opts.className ? ' ' + opts.className : '');
+  let current = value == null ? '' : value;
+
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'budget-dd-btn'; btn.setAttribute('aria-haspopup', 'listbox'); btn.setAttribute('aria-expanded', 'false');
+  const labelEl = document.createElement('span'); labelEl.className = 'budget-dd-label';
+  const caret = document.createElement('span'); caret.className = 'budget-dd-caret'; caret.innerHTML = DD_CARET;
+  btn.appendChild(labelEl); btn.appendChild(caret);
+  root.appendChild(btn);
+
+  const optOf = (v) => options.find(o => o.value === v);
+  function syncLabel() {
+    const o = optOf(current);
+    labelEl.innerHTML = '';
+    if (o && o.color) { const sw = document.createElement('span'); sw.className = 'budget-dd-sw'; sw.style.background = o.color; labelEl.appendChild(sw); }
+    const t = document.createElement('span'); t.className = 'budget-dd-txt';
+    t.textContent = o ? o.label : (opts.placeholder || 'Select…');
+    if (!o) t.classList.add('is-placeholder');
+    labelEl.appendChild(t);
+  }
+  syncLabel();
+
+  let menu = null;
+  function onDoc(e) { if (menu && !menu.contains(e.target) && !root.contains(e.target)) close(); }
+  function onKey(e) { if (e.key === 'Escape') { close(); btn.focus(); } }
+  function close() {
+    if (!menu) return;
+    menu.remove(); menu = null;
+    document.removeEventListener('mousedown', onDoc, true);
+    document.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('resize', close); window.removeEventListener('scroll', close, true);
+    btn.setAttribute('aria-expanded', 'false');
+  }
+  function open() {
+    if (menu) { close(); return; }
+    menu = document.createElement('div'); menu.className = 'budget-dd-menu'; menu.setAttribute('role', 'listbox');
+    for (const o of options) {
+      const item = document.createElement('button');
+      item.type = 'button'; item.className = 'budget-dd-opt' + (o.value === current ? ' is-active' : '');
+      item.setAttribute('role', 'option');
+      if (o.color) { const sw = document.createElement('span'); sw.className = 'budget-dd-sw'; sw.style.background = o.color; item.appendChild(sw); }
+      const t = document.createElement('span'); t.className = 'budget-dd-opt-label'; t.textContent = o.label; item.appendChild(t);
+      const ck = document.createElement('span'); ck.className = 'budget-dd-check'; if (o.value === current) ck.innerHTML = DD_CHECK; item.appendChild(ck);
+      item.addEventListener('click', () => { const changed = o.value !== current; current = o.value; syncLabel(); close(); btn.focus(); if (changed && onChange) onChange(current); });
+      menu.appendChild(item);
+    }
+    document.body.appendChild(menu);
+    const r = btn.getBoundingClientRect();
+    menu.style.position = 'fixed';
+    menu.style.minWidth = r.width + 'px';
+    menu.style.left = Math.min(r.left, window.innerWidth - menu.offsetWidth - 8) + 'px';
+    const mh = menu.offsetHeight;
+    menu.style.top = (r.bottom + 4 + mh > window.innerHeight - 8 ? Math.max(8, r.top - 4 - mh) : r.bottom + 4) + 'px';
+    btn.setAttribute('aria-expanded', 'true');
+    document.addEventListener('mousedown', onDoc, true);
+    document.addEventListener('keydown', onKey, true);
+    window.addEventListener('resize', close); window.addEventListener('scroll', close, true);
+  }
+  btn.addEventListener('click', (e) => { e.stopPropagation(); open(); });
+
+  Object.defineProperty(root, 'value', {
+    get() { return current; },
+    set(v) { current = v == null ? '' : v; syncLabel(); },
+  });
+  return root;
+}
+
+// Category options for makeDropdown, with the category colour as a swatch.
+function categoryOptions(categories, placeholder) {
+  return [{ value: '', label: placeholder || '— Uncategorized —' }].concat(
+    (categories || []).map(c => ({ value: c.id, label: c.name, color: c.color })),
+  );
+}
+
 // ─── Month / date math ─────────────────────────────────────────────────────
 //
 // Everything user-facing in this extension is anchored to American Central
@@ -1994,34 +2119,19 @@ async function openTxEditor(api, opts = {}) {
   amountInput.placeholder = '0.00';
   amountInput.value = row ? ((Number(row.amount_cents) || 0) / 100).toFixed(2) : '';
 
-  const typeSel = document.createElement('select'); typeSel.className = 'budget-select';
-  for (const [v, lbl] of [['purchase', 'Purchase'], ['fee', 'Fee'], ['deposit', 'Deposit'], ['transfer', 'Transfer']]) {
-    const o = document.createElement('option'); o.value = v; o.textContent = lbl;
-    if ((row?.tx_type || 'purchase') === v) o.selected = true;
-    typeSel.appendChild(o);
-  }
+  const typeSel = makeDropdown(
+    [['purchase', 'Purchase'], ['fee', 'Fee'], ['deposit', 'Deposit'], ['transfer', 'Transfer']].map(([value, label]) => ({ value, label })),
+    row?.tx_type || 'purchase');
 
-  const acctSel = document.createElement('select'); acctSel.className = 'budget-select';
-  const acctBlank = document.createElement('option'); acctBlank.value = ''; acctBlank.textContent = '— No account —';
-  acctSel.appendChild(acctBlank);
-  for (const a of accounts) {
-    const o = document.createElement('option'); o.value = a.id;
-    o.textContent = a.display_name || defaultAccountName(a.kind, a.last_four);
-    if (row?.account_id === a.id) o.selected = true;
-    acctSel.appendChild(o);
-  }
+  const acctSel = makeDropdown(
+    [{ value: '', label: '— No account —' }].concat(accounts.map(a => ({ value: a.id, label: a.display_name || defaultAccountName(a.kind, a.last_four) }))),
+    row?.account_id || '');
 
-  const catSel = document.createElement('select'); catSel.className = 'budget-select';
-  const catBlank = document.createElement('option'); catBlank.value = ''; catBlank.textContent = '— Uncategorized —';
-  catSel.appendChild(catBlank);
-  appendCategoryOptions(catSel, categories, row?.category_id || null);
+  const catSel = makeDropdown(categoryOptions(categories), row?.category_id || '');
 
-  const statusSel = document.createElement('select'); statusSel.className = 'budget-select';
-  for (const [v, lbl] of [['confirmed', 'Confirmed'], ['review', 'Needs review'], ['hidden', 'Hidden']]) {
-    const o = document.createElement('option'); o.value = v; o.textContent = lbl;
-    if ((row?.status || 'confirmed') === v) o.selected = true;
-    statusSel.appendChild(o);
-  }
+  const statusSel = makeDropdown(
+    [['confirmed', 'Confirmed'], ['review', 'Needs review'], ['hidden', 'Hidden']].map(([value, label]) => ({ value, label })),
+    row?.status || 'confirmed');
 
   const notesInput = document.createElement('textarea');
   notesInput.className = 'budget-drawer-textarea'; notesInput.placeholder = 'Notes (optional)';
@@ -2148,27 +2258,19 @@ function renderTransactionsSection(body, api) {
   toolbar.appendChild(searchInput);
 
   // Type filter
-  const typeSel = document.createElement('select');
-  typeSel.className = 'budget-select';
-  for (const [v, lbl] of [
-    ['all', 'All Types'],
-    ['spend', 'Expenses (Purchases + Fees)'],
-    ['purchase', 'Purchases & Refunds'],
+  const typeSel = makeDropdown([
+    ['all', 'All types'],
+    ['spend', 'Expenses (purchases + fees)'],
+    ['purchase', 'Purchases & refunds'],
     ['deposit', 'Deposits'],
     ['transfer', 'Transfers'],
     ['fee', 'Fees'],
-  ]) {
-    const o = document.createElement('option'); o.value = v; o.textContent = lbl;
-    if (v === typeFilter) o.selected = true;
-    typeSel.appendChild(o);
-  }
-  typeSel.addEventListener('change', () => { typeFilter = typeSel.value; void refresh(); });
+  ].map(([value, label]) => ({ value, label })), typeFilter, (v) => { typeFilter = v; void refresh(); });
   toolbar.appendChild(typeSel);
 
-  // Account filter (populated async)
-  const acctSel = document.createElement('select');
-  acctSel.className = 'budget-select';
-  toolbar.appendChild(acctSel);
+  // Account filter (populated async into this slot)
+  const acctSlot = document.createElement('span'); acctSlot.className = 'budget-dd-slot';
+  toolbar.appendChild(acctSlot);
 
   // Status filter buttons
   const statusFilters = document.createElement('div');
@@ -2217,18 +2319,10 @@ function renderTransactionsSection(body, api) {
 
   async function populateAccountSelect() {
     accountsList = await db.all('SELECT id, last_four, kind, display_name FROM accounts WHERE archived=0 ORDER BY kind, last_four').catch(() => []);
-    acctSel.innerHTML = '';
-    const allOpt = document.createElement('option'); allOpt.value = ''; allOpt.textContent = 'All Accounts';
-    acctSel.appendChild(allOpt);
-    for (const a of accountsList) {
-      const o = document.createElement('option');
-      o.value = a.id;
-      o.textContent = (a.display_name || defaultAccountName(a.kind, a.last_four));
-      if (accountId === a.id) o.selected = true;
-      acctSel.appendChild(o);
-    }
-    acctSel.value = accountId || '';
-    acctSel.onchange = () => { accountId = acctSel.value || null; void refresh(); };
+    const opts = [{ value: '', label: 'All accounts' }].concat(
+      accountsList.map(a => ({ value: a.id, label: a.display_name || defaultAccountName(a.kind, a.last_four) })));
+    acctSlot.innerHTML = '';
+    acctSlot.appendChild(makeDropdown(opts, accountId || '', (v) => { accountId = v || null; void refresh(); }));
   }
 
   function rebuildPills() {
@@ -2322,11 +2416,7 @@ function renderTransactionsSection(body, api) {
 
       const tdCat = document.createElement('td');
       tdCat.addEventListener('click', (e) => e.stopPropagation());
-      const sel = document.createElement('select'); sel.className = 'budget-select';
-      const blank = document.createElement('option'); blank.value = ''; blank.textContent = '— Uncategorized —';
-      sel.appendChild(blank);
-      appendCategoryOptions(sel, categoriesList, r.category_id);
-      sel.addEventListener('change', async () => {
+      const sel = makeDropdown(categoryOptions(categoriesList), r.category_id || '', async (val) => {
         try {
           await db.run(
             `UPDATE transactions
@@ -2334,10 +2424,10 @@ function renderTransactionsSection(body, api) {
                     categorization_source='manual', matched_rule_id=NULL,
                     updated_at=?
               WHERE id=?`,
-            [sel.value || null, new Date().toISOString(), r.id],
+            [val || null, new Date().toISOString(), r.id],
           );
           // Learn from override: future imports for this merchant skip the LLM.
-          await learnExpenseRuleFromOverride(r.merchant, sel.value || null);
+          await learnExpenseRuleFromOverride(r.merchant, val || null);
         } catch (e) {
           await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e)));
           await refresh();
@@ -2508,11 +2598,7 @@ function renderReviewQueueSection(body, api) {
 
       const tdCat = document.createElement('td');
       tdCat.addEventListener('click', (e) => e.stopPropagation());
-      const sel = document.createElement('select');
-      sel.className = 'budget-select';
-      const blank = document.createElement('option'); blank.value = ''; blank.textContent = '— Pick Category —';
-      sel.appendChild(blank);
-      appendCategoryOptions(sel, categories, r.category_id, r.tx_type);
+      const sel = makeDropdown(categoryOptions(categories, '— Pick category —'), r.category_id || '');
       tdCat.appendChild(sel);
       tr.appendChild(tdCat);
 
