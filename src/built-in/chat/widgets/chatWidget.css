@@ -1644,6 +1644,34 @@
   .parallx-chat-tool-node--complete .parallx-chat-tool-node-marker { animation: none; }
 }
 
+/* Tool result — collapsed by default behind a compact toggle. */
+.parallx-chat-tool-result { margin-top: 4px; }
+.parallx-chat-tool-result-toggle {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 1px 0; border: none; background: transparent; cursor: pointer;
+  font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888));
+  font-family: var(--vscode-editor-font-family, monospace);
+  transition: color 120ms ease;
+}
+.parallx-chat-tool-result-toggle:hover { color: var(--px-text, var(--vscode-foreground, #ccc)); }
+.parallx-chat-tool-result-caret { font-size: 8px; opacity: 0.7; }
+.parallx-chat-tool-result--error .parallx-chat-tool-result-toggle { color: var(--px-danger, #e06c66); }
+.parallx-chat-tool-result-body {
+  margin: 5px 0 0;
+  padding: 7px 9px;
+  max-height: 240px;
+  overflow: auto;
+  background: var(--px-bg-inset, rgba(255, 255, 255, 0.03));
+  border-radius: var(--px-radius-sm, 4px);
+  font-size: var(--px-text-xs, 11px);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--px-text-secondary, var(--vscode-descriptionForeground, #9ea3ad));
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+.parallx-chat-tool-result--error .parallx-chat-tool-result-body { color: var(--px-danger, #e06c66); }
+
 /* ── Status Badge ── */
 
 .parallx-chat-tool-status-badge {

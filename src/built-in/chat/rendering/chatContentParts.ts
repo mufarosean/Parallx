@@ -1203,44 +1203,38 @@ function _renderToolInvocation(part: IChatToolInvocationContent): HTMLElement {
     root.appendChild(argsContainer);
   }
 
-  // Result (shown when complete)
+  // Result — collapsed by default so tool dumps don't dominate the transcript;
+  // errors stay expanded because they matter.
   if (part.isComplete && part.result) {
-    const resultContainer = $('div.parallx-chat-tool-invocation-result');
+    const resultText = part.result.content || '';
+    if (resultText.trim()) {
+      const isErr = !!(part.isError || part.result.isError);
+      const wrap = $('div.parallx-chat-tool-result');
+      if (isErr) wrap.classList.add('parallx-chat-tool-result--error');
 
-    if (part.isError || part.result.isError) {
-      resultContainer.classList.add('parallx-chat-tool-invocation-result--error');
-    }
-
-    // Collapsible result content
-    const resultText = part.result.content;
-    if (resultText.length > 300) {
-      const preview = $('div.parallx-chat-tool-invocation-result-preview');
-      preview.textContent = resultText.slice(0, 300) + '…';
-
+      const lineCount = resultText.split('\n').length;
       const toggle = document.createElement('button');
-      toggle.className = 'parallx-chat-tool-invocation-result-toggle';
-      toggle.textContent = 'Show more';
       toggle.type = 'button';
+      toggle.className = 'parallx-chat-tool-result-toggle';
+      const caret = $('span.parallx-chat-tool-result-caret', '▸');
+      const label = $('span.parallx-chat-tool-result-label',
+        isErr ? 'Error output' : `Output · ${lineCount} line${lineCount !== 1 ? 's' : ''}`);
+      toggle.appendChild(caret);
+      toggle.appendChild(label);
 
-      const full = $('div.parallx-chat-tool-invocation-result-full');
-      full.textContent = resultText;
-      full.style.display = 'none';
+      const out = document.createElement('pre');
+      out.className = 'parallx-chat-tool-result-body';
+      out.textContent = resultText;
 
-      toggle.addEventListener('click', () => {
-        const isHidden = full.style.display === 'none';
-        full.style.display = isHidden ? 'block' : 'none';
-        preview.style.display = isHidden ? 'none' : 'block';
-        toggle.textContent = isHidden ? 'Show less' : 'Show more';
-      });
+      let open = isErr;
+      const sync = (): void => { out.style.display = open ? 'block' : 'none'; caret.textContent = open ? '▾' : '▸'; };
+      sync();
+      toggle.addEventListener('click', () => { open = !open; sync(); });
 
-      resultContainer.appendChild(preview);
-      resultContainer.appendChild(toggle);
-      resultContainer.appendChild(full);
-    } else {
-      resultContainer.textContent = resultText;
+      wrap.appendChild(toggle);
+      wrap.appendChild(out);
+      root.appendChild(wrap);
     }
-
-    root.appendChild(resultContainer);
   }
 
   // (No spinner — the breathing node marker carries the running state.)
