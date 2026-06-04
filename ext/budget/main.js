@@ -2125,8 +2125,11 @@ async function openTxEditor(api, opts = {}) {
   amountInput.placeholder = '0.00';
   amountInput.value = row ? ((Number(row.amount_cents) || 0) / 100).toFixed(2) : '';
 
+  // Labels match txTypeLabel() — what the ledger shows — not the raw stored
+  // values (purchase→Expense, deposit→Income; refund/cc_payment were collapsed
+  // into purchase/transfer in migration 004).
   const typeSel = makeDropdown(
-    [['purchase', 'Purchase'], ['fee', 'Fee'], ['deposit', 'Deposit'], ['transfer', 'Transfer']].map(([value, label]) => ({ value, label })),
+    [['purchase', 'Expense'], ['fee', 'Fee'], ['deposit', 'Income'], ['transfer', 'Transfer']].map(([value, label]) => ({ value, label })),
     row?.tx_type || 'purchase');
 
   const acctSel = makeDropdown(
