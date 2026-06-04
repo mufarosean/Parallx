@@ -1859,6 +1859,12 @@ function makeDropdown(options, value, onChange, opts = {}) {
     get() { return current; },
     set(v) { current = v == null ? '' : v; syncLabel(); },
   });
+  // Swap the option set (and optionally the value) — for dependent dropdowns.
+  root.setOptions = (newOptions, newValue) => {
+    options = Array.isArray(newOptions) ? newOptions : [];
+    if (newValue !== undefined) current = newValue == null ? '' : newValue;
+    syncLabel();
+  };
   return root;
 }
 
@@ -2810,14 +2816,8 @@ function renderCategoriesSection(body, api) {
 
       // Kind
       const tdKind = document.createElement('td');
-      const kindSel = document.createElement('select'); kindSel.className = 'budget-select';
-      for (const kind of CATEGORY_KIND_OPTIONS) {
-        const o = document.createElement('option'); o.value = kind.value; o.textContent = kind.label;
-        if (r.kind === kind.value) o.selected = true;
-        kindSel.appendChild(o);
-      }
-      kindSel.addEventListener('change', async () => {
-        try { await db.run(`UPDATE categories SET kind=? WHERE id=?`, [kindSel.value, r.id]); }
+      const kindSel = makeDropdown(CATEGORY_KIND_OPTIONS.map(k => ({ value: k.value, label: k.label })), r.kind, async (val) => {
+        try { await db.run(`UPDATE categories SET kind=? WHERE id=?`, [val, r.id]); }
         catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
       });
       tdKind.appendChild(kindSel);
@@ -3299,25 +3299,18 @@ function buildAccountCard(a, api, onChanged) {
   // the auto-classifier guessed wrong from a daily-summary email and there
   // was no UI to correct it.
   const kindHeader = document.createElement('div'); kindHeader.className = 'acct-kind-row';
-  const kindSel = document.createElement('select');
-  kindSel.className = 'acct-kind-select';
-  kindSel.setAttribute('aria-label', 'Account Kind');
-  for (const [v, lbl] of Object.entries(ACCOUNT_KIND_LABELS)) {
-    const o = document.createElement('option'); o.value = v; o.textContent = lbl;
-    if (a.kind === v) o.selected = true;
-    kindSel.appendChild(o);
-  }
-  kindSel.addEventListener('click', (e) => e.stopPropagation());
-  kindSel.addEventListener('change', async (e) => {
-    e.stopPropagation();
-    try {
-      await db.run('UPDATE accounts SET kind=?, updated_at=? WHERE id=?',
-        [kindSel.value, new Date().toISOString(), a.account_id || a.id]);
-      if (typeof onChanged === 'function') await onChanged();
-    } catch (err) {
-      await api.window?.showErrorMessage?.('Could not update account kind: ' + (err instanceof Error ? err.message : String(err)));
-    }
-  });
+  const kindSel = makeDropdown(
+    Object.entries(ACCOUNT_KIND_LABELS).map(([value, label]) => ({ value, label })),
+    a.kind,
+    async (val) => {
+      try {
+        await db.run('UPDATE accounts SET kind=?, updated_at=? WHERE id=?',
+          [val, new Date().toISOString(), a.account_id || a.id]);
+        if (typeof onChanged === 'function') await onChanged();
+      } catch (err) {
+        await api.window?.showErrorMessage?.('Could not update account kind: ' + (err instanceof Error ? err.message : String(err)));
+      }
+    });
   kindHeader.appendChild(kindSel);
 
   const name = document.createElement('div'); name.className = 'acct-name';
@@ -4624,22 +4617,18 @@ async function openManualBalanceEditor(api, opts = {}) {
   const nameInput = document.createElement('input'); nameInput.className = 'budget-input'; nameInput.type = 'text';
   nameInput.placeholder = 'e.g. 401(k), House, Car loan'; nameInput.value = row?.name || '';
 
-  const kindSel = document.createElement('select'); kindSel.className = 'budget-select';
-  for (const [v, lbl] of [['asset', 'Asset (you own)'], ['liability', 'Liability (you owe)']]) {
-    const o = document.createElement('option'); o.value = v; o.textContent = lbl;
-    if ((row?.kind || 'asset') === v) o.selected = true; kindSel.appendChild(o);
-  }
+  const kindSel = makeDropdown(
+    [['asset', 'Asset (you own)'], ['liability', 'Liability (you owe)']].map(([value, label]) => ({ value, label })),
+    row?.kind || 'asset',
+    () => fillClasses());
 
-  const classSel = document.createElement('select'); classSel.className = 'budget-select';
+  const classSel = makeDropdown([], '');
   function fillClasses() {
     const list = kindSel.value === 'liability' ? MANUAL_LIABILITY_CLASSES : MANUAL_ASSET_CLASSES;
     const keep = classSel.value;
-    classSel.innerHTML = '';
-    for (const [v, lbl] of list) { const o = document.createElement('option'); o.value = v; o.textContent = lbl; classSel.appendChild(o); }
-    const want = (list.some(x => x[0] === keep)) ? keep : (row && list.some(x => x[0] === row.asset_class) ? row.asset_class : list[0][0]);
-    classSel.value = want;
+    const want = list.some(x => x[0] === keep) ? keep : (row && list.some(x => x[0] === row.asset_class) ? row.asset_class : list[0][0]);
+    classSel.setOptions(list.map(([value, label]) => ({ value, label })), want);
   }
-  kindSel.addEventListener('change', fillClasses);
   fillClasses();
 
   const valueInput = document.createElement('input'); valueInput.className = 'budget-input'; valueInput.type = 'number'; valueInput.step = '0.01'; valueInput.min = '0';
@@ -4847,15 +4836,13 @@ function renderAccountsSection(body, api) {
         });
         tdName.appendChild(inp); tr.appendChild(tdName);
         const tdKind = document.createElement('td');
-        const kindSel = document.createElement('select'); kindSel.className = 'budget-select';
-        for (const k of ACCOUNT_KINDS) {
-          const o = document.createElement('option'); o.value = k; o.textContent = ACCOUNT_KIND_LABELS[k] || titleCaseToken(k);
-          if (a.kind === k) o.selected = true; kindSel.appendChild(o);
-        }
-        kindSel.addEventListener('change', async () => {
-          try { await db.run('UPDATE accounts SET kind=?, updated_at=? WHERE id=?', [kindSel.value, new Date().toISOString(), a.id]); await refresh(); }
-          catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
-        });
+        const kindSel = makeDropdown(
+          ACCOUNT_KINDS.map(k => ({ value: k, label: ACCOUNT_KIND_LABELS[k] || titleCaseToken(k) })),
+          a.kind,
+          async (val) => {
+            try { await db.run('UPDATE accounts SET kind=?, updated_at=? WHERE id=?', [val, new Date().toISOString(), a.id]); await refresh(); }
+            catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
+          });
         tdKind.appendChild(kindSel); tr.appendChild(tdKind);
         const td4 = document.createElement('td'); td4.textContent = a.last_four ? '••' + a.last_four : '—'; tr.appendChild(td4);
         const tdTx = document.createElement('td'); tdTx.className = 'budget-amount'; tdTx.textContent = String(a.tx_count || 0); tr.appendChild(tdTx);
@@ -4978,10 +4965,9 @@ async function openGoalEditor(api, opts = {}) {
   }
   const nameInput = document.createElement('input'); nameInput.className = 'budget-input'; nameInput.type = 'text';
   nameInput.placeholder = 'e.g. Emergency fund, Pay off Visa'; nameInput.value = row?.name || '';
-  const kindSel = document.createElement('select'); kindSel.className = 'budget-select';
-  for (const [v, lbl] of [['savings', 'Savings target'], ['debt', 'Debt payoff']]) {
-    const o = document.createElement('option'); o.value = v; o.textContent = lbl; if ((row?.kind || 'savings') === v) o.selected = true; kindSel.appendChild(o);
-  }
+  const kindSel = makeDropdown(
+    [['savings', 'Savings target'], ['debt', 'Debt payoff']].map(([value, label]) => ({ value, label })),
+    row?.kind || 'savings');
   const targetInput = document.createElement('input'); targetInput.className = 'budget-input'; targetInput.type = 'number'; targetInput.step = '0.01'; targetInput.min = '0';
   targetInput.placeholder = '0.00'; targetInput.value = row ? ((Number(row.target_cents) || 0) / 100).toFixed(2) : '';
   const currentInput = document.createElement('input'); currentInput.className = 'budget-input'; currentInput.type = 'number'; currentInput.step = '0.01'; currentInput.min = '0';
@@ -5129,12 +5115,10 @@ function renderCashFlowSection(body, api) {
   let monthsBackN = 6;
 
   const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
-  const rangeSel = document.createElement('select'); rangeSel.className = 'budget-select';
-  for (const [v, lbl] of [[3,'Last 3 months'],[6,'Last 6 months'],[12,'Last 12 months']]) {
-    const o = document.createElement('option'); o.value = String(v); o.textContent = lbl;
-    if (v === monthsBackN) o.selected = true; rangeSel.appendChild(o);
-  }
-  rangeSel.addEventListener('change', () => { monthsBackN = Number(rangeSel.value) || 6; void refresh(); });
+  const rangeSel = makeDropdown(
+    [[3, 'Last 3 months'], [6, 'Last 6 months'], [12, 'Last 12 months']].map(([v, label]) => ({ value: String(v), label })),
+    String(monthsBackN),
+    (val) => { monthsBackN = Number(val) || 6; void refresh(); });
   toolbar.appendChild(rangeSel);
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
   toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
@@ -5228,12 +5212,10 @@ function renderReportsSection(body, api) {
   let monthsBackN = 3;
 
   const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
-  const rangeSel = document.createElement('select'); rangeSel.className = 'budget-select';
-  for (const [v, lbl] of [[1,'This month'],[3,'Last 3 months'],[6,'Last 6 months'],[12,'Last 12 months']]) {
-    const o = document.createElement('option'); o.value = String(v); o.textContent = lbl;
-    if (v === monthsBackN) o.selected = true; rangeSel.appendChild(o);
-  }
-  rangeSel.addEventListener('change', () => { monthsBackN = Number(rangeSel.value) || 3; void refresh(); });
+  const rangeSel = makeDropdown(
+    [[1, 'This month'], [3, 'Last 3 months'], [6, 'Last 6 months'], [12, 'Last 12 months']].map(([v, label]) => ({ value: String(v), label })),
+    String(monthsBackN),
+    (val) => { monthsBackN = Number(val) || 3; void refresh(); });
   toolbar.appendChild(rangeSel);
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
   toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
@@ -5630,21 +5612,11 @@ function renderRulesSection(body, api) {
     const patternInp = document.createElement('input'); patternInp.className = 'budget-input'; patternInp.placeholder = 'STARBUCKS';
     patternInp.value = rule ? rule.pattern : '';
 
-    const matchSel = document.createElement('select'); matchSel.className = 'budget-select';
-    for (const v of ['contains','exact','regex']) {
-      const o = document.createElement('option'); o.value = v; o.textContent = v;
-      if (rule && rule.match_type === v) o.selected = true;
-      matchSel.appendChild(o);
-    }
-    if (!rule) matchSel.value = 'contains';
+    const matchSel = makeDropdown(
+      ['contains', 'exact', 'regex'].map(v => ({ value: v, label: v })),
+      rule ? rule.match_type : 'contains');
 
-    const catSel = document.createElement('select'); catSel.className = 'budget-select';
-    const blank = document.createElement('option'); blank.value = ''; blank.textContent = '— Pick Category —'; catSel.appendChild(blank);
-    for (const c of categoriesList) {
-      const o = document.createElement('option'); o.value = c.id; o.textContent = c.name;
-      if (rule && rule.category_id === c.id) o.selected = true;
-      catSel.appendChild(o);
-    }
+    const catSel = makeDropdown(categoryOptions(categoriesList, '— Pick category —'), rule ? (rule.category_id || '') : '');
 
     const prioInp = document.createElement('input'); prioInp.type = 'number'; prioInp.className = 'budget-input';
     prioInp.value = rule ? String(rule.priority) : '100';
@@ -5756,8 +5728,8 @@ function renderReconcileSection(body, api) {
   let selectedAccountId = null;
 
   const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
-  const acctSel = document.createElement('select'); acctSel.className = 'budget-select';
-  toolbar.appendChild(acctSel);
+  const acctSlot = document.createElement('span'); acctSlot.className = 'budget-dd-slot';
+  toolbar.appendChild(acctSlot);
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
   toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
   body.appendChild(toolbar);
@@ -5770,20 +5742,16 @@ function renderReconcileSection(body, api) {
 
   async function loadAccounts() {
     const accounts = await db.all('SELECT id, last_four, kind, display_name FROM accounts WHERE archived=0 ORDER BY kind, last_four');
-    acctSel.innerHTML = '';
+    acctSlot.innerHTML = '';
     if (accounts.length === 0) {
-      const o = document.createElement('option'); o.textContent = '— No Accounts —'; acctSel.appendChild(o);
+      acctSlot.appendChild(makeDropdown([{ value: '', label: '— No accounts —' }], ''));
       return [];
     }
-    for (const a of accounts) {
-      const o = document.createElement('option');
-      o.value = a.id;
-      o.textContent = (a.display_name || defaultAccountName(a.kind, a.last_four));
-      acctSel.appendChild(o);
-    }
     selectedAccountId = selectedAccountId && accounts.find(a => a.id === selectedAccountId) ? selectedAccountId : accounts[0].id;
-    acctSel.value = selectedAccountId;
-    acctSel.onchange = () => { selectedAccountId = acctSel.value; void refresh(); };
+    acctSlot.appendChild(makeDropdown(
+      accounts.map(a => ({ value: a.id, label: a.display_name || defaultAccountName(a.kind, a.last_four) })),
+      selectedAccountId,
+      (v) => { selectedAccountId = v; void refresh(); }));
     return accounts;
   }
 
