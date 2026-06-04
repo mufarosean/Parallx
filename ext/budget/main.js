@@ -2900,10 +2900,6 @@ function renderDashboardSection(body, api) {
     cashFlowRange: '6m',
   };
 
-  // Headline narrative (the takeaway sentence).
-  const headlineEl = document.createElement('div');
-  body.appendChild(headlineEl);
-
   // Filter row (account multi-select).
   const filterRow = document.createElement('div');
   filterRow.className = 'budget-filter-row';
@@ -2999,7 +2995,6 @@ function renderDashboardSection(body, api) {
   async function refresh() {
     if (!alive) return;
     _state.monthKey = monthKey;
-    headlineEl.innerHTML = '';
     filterRow.innerHTML = '';
     cards.innerHTML = '';
     cashflowSection.innerHTML = '';
@@ -3142,13 +3137,6 @@ function renderDashboardSection(body, api) {
     } else {
       lastSyncMeta.textContent = 'Never Synced';
     }
-
-    // ── Headline narrative (lead with the takeaway).
-    headlineEl.appendChild(buildHeadlineNarrative({
-      totalSpend, prevSpend, totalIncome, prevIncome,
-      topCatName, topCatDelta,
-      monthLabel: range.label.split(' ')[0], // "May" out of "May 2026"
-    }));
 
     // ── KPI strip — every card carries a comparison anchor.
     function pctDelta(cur, prev) {
