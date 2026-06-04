@@ -522,6 +522,17 @@
   .parallx-chat-turn-header--active .parallx-chat-turn-core { animation: none; }
 }
 
+/* Rhythm — give the answer breathing room after the process (thinking/tools),
+   so a turn reads: identity → what I did → answer. */
+.parallx-chat-thinking + .parallx-chat-markdown,
+.parallx-chat-tool-invocation + .parallx-chat-markdown {
+  margin-top: 10px;
+}
+.parallx-chat-thinking + .parallx-chat-tool-invocation,
+.parallx-chat-tool-invocation + .parallx-chat-tool-invocation {
+  margin-top: 5px;
+}
+
 .parallx-chat-message-body p {
   margin: 0 0 8px;
 }
