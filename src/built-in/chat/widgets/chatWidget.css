@@ -546,20 +546,23 @@
 
 /* ── Streaming Cursor ── */
 
+/* Streaming cursor — a glowing accent "pen tip" that breathes as the agent
+   writes, instead of a blinking bar. */
 .parallx-chat-streaming-cursor {
   display: inline-block;
-  width: 2px;
-  height: 1.1em;
-  margin-left: 1px;
-  vertical-align: text-bottom;
-  border-radius: 1px;
-  background: var(--vscode-editorCursor-foreground, var(--vscode-foreground, #cccccc));
-  animation: parallx-chat-cursor-pulse 1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  width: 7px;
+  height: 7px;
+  margin-left: 3px;
+  vertical-align: baseline;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%,
+    color-mix(in srgb, var(--px-accent, #569cd6) 80%, white), var(--px-accent, #569cd6));
+  box-shadow: 0 0 7px 1px color-mix(in srgb, var(--px-accent, #569cd6) 55%, transparent);
+  animation: parallx-breathe 1.4s var(--px-ease, cubic-bezier(0.22, 1, 0.36, 1)) infinite;
 }
 
-@keyframes parallx-chat-cursor-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.15; }
+@media (prefers-reduced-motion: reduce) {
+  .parallx-chat-streaming-cursor { animation: none; }
 }
 
 /* ── Agent presence — the "Living System" working signal ──
