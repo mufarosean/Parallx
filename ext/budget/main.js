@@ -278,14 +278,14 @@ async function hideReviewedTransaction(txId) {
 
 const SECTIONS = [
   { id: 'dashboard',    title: 'Overview',     icon: 'layout-dashboard', commandId: 'budget.openDashboard',    blurb: 'Tracked Balances, Month-to-Date Expenses & Income, Top Categories.', nav: true },
+  { id: 'accounts',     title: 'Net Worth',    icon: 'trending-up',      commandId: 'budget.openAccounts',     blurb: 'Net worth: accounts, investments, real estate, vehicles, and liabilities.', nav: true },
   { id: 'transactions', title: 'Transactions', icon: 'list',             commandId: 'budget.openTransactions', blurb: 'Searchable, filterable ledger of every imported transaction.', nav: true },
   { id: 'plan',         title: 'Plan',         icon: 'target',           commandId: 'budget.openPlan',         blurb: 'Budgets, recurring, reconcile, and trends.', nav: true },
-  { id: 'settings',     title: 'Settings',     icon: 'settings',         commandId: 'budget.openSettings',     blurb: 'Accounts, categories, rules, review queue, sync log, import/export.', nav: true },
+  { id: 'settings',     title: 'Settings',     icon: 'settings',         commandId: 'budget.openSettings',     blurb: 'Categories, rules, review queue, sync log, import/export.', nav: true },
 
   // Hidden sections — kept registered so the editor router and palette commands
   // continue to work. Sidebar suppresses them via `nav: false`. They are
   // rendered inside the Plan / Settings wrappers as tabs.
-  { id: 'accounts',     title: 'Accounts',     icon: 'wallet',           commandId: 'budget.openAccounts',     blurb: 'Every checking, savings, and credit-card account with its current balance.', nav: false },
   { id: 'budgets',      title: 'Budgets',      icon: 'target',           commandId: 'budget.openBudgets',      blurb: 'Per-category monthly limits with alerts and rollover.', nav: false },
   { id: 'recurring',    title: 'Recurring',    icon: 'repeat',           commandId: 'budget.openRecurring',    blurb: 'Detected subscriptions and recurring bills with upcoming-due dates.', nav: false },
   { id: 'cashflow',     title: 'Cash Flow',    icon: 'trending-up',      commandId: 'budget.openCashFlow',     blurb: 'Monthly Income vs Expenses with Savings Rate Over Time.', nav: false },
@@ -1472,6 +1472,46 @@ function injectStyles() {
 .budget-btn-danger:hover { background: var(--px-danger, #e06c66); color: #fff; }
 .budget-table tbody tr.budget-row-clickable { cursor: pointer; }
 .budget-table tbody tr.budget-row-clickable:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255,255,255,0.05))); }
+
+/* ═══ Net Worth ═══ */
+.budget-networth-head { padding: 6px 2px 16px; }
+.budget-networth-label { font-size: var(--px-text-xs, 11px); text-transform: uppercase; letter-spacing: 0.05em; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
+.budget-networth-value { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; margin-top: 2px; color: var(--px-text, var(--vscode-editor-foreground, #eee)); font-variant-numeric: tabular-nums; }
+.budget-networth-sub { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.budget-nw-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: var(--px-radius-full, 999px);
+  font-size: var(--px-text-xs, 11px); font-weight: 600;
+  background: var(--px-bg-inset, var(--vscode-input-background, rgba(255, 255, 255, 0.05)));
+  color: var(--px-text-secondary, var(--vscode-descriptionForeground, #bbb));
+  border: 1px solid var(--px-border, transparent);
+}
+.budget-nw-chip.is-liab { color: var(--px-danger, #e06c66); }
+.budget-nw-chip.is-up { color: var(--px-success, #6cbf8f); }
+.budget-nw-chip.is-down { color: var(--px-danger, #e06c66); }
+.budget-nw-groups { display: flex; flex-direction: column; gap: 18px; }
+.budget-nw-group { display: flex; flex-direction: column; }
+.budget-nw-group-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 0 2px 6px; border-bottom: 1px solid var(--px-divider, var(--vscode-panel-border, #2a2a2a));
+}
+.budget-nw-group-title { font-size: var(--px-text-xs, 11px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
+.budget-nw-group-total { font-size: var(--px-text-base, 13px); font-weight: 600; color: var(--px-text, inherit); font-variant-numeric: tabular-nums; }
+.budget-nw-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  width: 100%; box-sizing: border-box; text-align: left;
+  padding: 9px 2px; border: none; border-bottom: 1px solid var(--px-chrome-line, rgba(255, 255, 255, 0.04));
+  background: transparent; color: inherit; font: inherit;
+}
+.budget-nw-row-clickable { cursor: pointer; border-radius: var(--px-radius-sm, 4px); }
+.budget-nw-row-clickable:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05))); }
+.budget-nw-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.budget-nw-row-name { font-size: var(--px-text-base, 13px); font-weight: 500; color: var(--px-text, inherit); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.budget-nw-row-sub { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
+.budget-nw-row-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: 0 0 auto; }
+.budget-nw-row-amt { font-size: var(--px-text-base, 13px); font-weight: 600; font-variant-numeric: tabular-nums; }
+.budget-nw-row-pct { font-size: var(--px-text-xs, 11px); color: var(--px-text-faint, var(--vscode-descriptionForeground, #777)); }
+.budget-nw-mgmt-head { font-size: var(--px-text-xs, 11px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); margin: 4px 2px 8px; }
 
 `;
   document.head.appendChild(style);
@@ -2933,7 +2973,13 @@ function renderDashboardSection(body, api) {
       const bal = Number(a.latest_balance_cents) || 0;
       if (a.kind === 'credit_card') credit += bal; else cash += bal;
     }
-    const netWorth = cash + credit;
+    // Fold in manual assets/liabilities so the headline is true net worth.
+    let manualNet = 0;
+    try {
+      const mr = await db.get("SELECT COALESCE(SUM(CASE WHEN kind='asset' THEN value_cents ELSE -value_cents END),0) AS net FROM manual_balances WHERE archived=0");
+      manualNet = Number(mr?.net) || 0;
+    } catch { /* table may not exist on older DBs */ }
+    const netWorth = cash + credit + manualNet;
 
     // ── Filter chip row (account multi-select).
     if (allAccounts.length > 0) {
@@ -3056,15 +3102,14 @@ function renderDashboardSection(body, api) {
     const spendPct = pctDelta(totalSpend, prevSpend);
     const incomePct = pctDelta(totalIncome, prevIncome);
 
-    const netWorthCard = makeCard('Tracked Balance', fmtMoney(netWorth),
+    const netWorthCard = makeCard('Net Worth', fmtMoney(netWorth),
       netDelta30
         ? `${netDelta30 >= 0 ? '+' : '-'}${fmtMoney(Math.abs(netDelta30))} Over 30 Days`
-        : (acctRows.length ? `${acctRows.length} accounts` : 'No Accounts Yet'),
+        : (acctRows.length ? `${acctRows.length} accounts` : 'Add accounts or holdings'),
       {
-        title: 'Open Accounts',
+        title: 'Open Net Worth',
         onClick: () => {
-          _navState.settingsTab = 'accounts';
-          api.commands.executeCommand('budget.openSettings').catch(() => {});
+          api.commands.executeCommand('budget.openAccounts').catch(() => {});
         },
       });
     cards.appendChild(netWorthCard);
@@ -4353,12 +4398,158 @@ function makeCard(label, value, sub, opts) {
   return c;
 }
 
-// ─── Section: Accounts ─────────────────────────────────────────────────────
+// ─── Net Worth: manual assets & liabilities ────────────────────────────────
+
+const MANUAL_ASSET_CLASSES = [
+  ['cash', 'Cash'],
+  ['investment', 'Investments'],
+  ['real_estate', 'Real estate'],
+  ['vehicle', 'Vehicle'],
+  ['other_asset', 'Other asset'],
+];
+const MANUAL_LIABILITY_CLASSES = [
+  ['credit', 'Credit card'],
+  ['loan', 'Loan'],
+  ['other_liability', 'Other liability'],
+];
+function manualClassLabel(cls) {
+  const f = [...MANUAL_ASSET_CLASSES, ...MANUAL_LIABILITY_CLASSES].find(x => x[0] === cls);
+  return f ? f[1] : cls;
+}
+
+// Drawer to add / edit / delete a manual holding (house, 401k, car loan, …).
+async function openManualBalanceEditor(api, opts = {}) {
+  const isCreate = !opts.id;
+  let row = null;
+  if (!isCreate) {
+    row = await db.get('SELECT * FROM manual_balances WHERE id=?', [opts.id]).catch(() => null);
+    if (!row) { await api.window?.showErrorMessage?.('Holding not found.'); return; }
+  }
+
+  const overlay = document.createElement('div'); overlay.className = 'budget-drawer-overlay';
+  const drawer = document.createElement('div'); drawer.className = 'budget-drawer'; overlay.appendChild(drawer);
+  function close() { overlay.remove(); document.removeEventListener('keydown', onKey); }
+  function onKey(e) { if (e.key === 'Escape') close(); }
+  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', onKey);
+
+  const head = document.createElement('div'); head.className = 'budget-drawer-head';
+  const title = document.createElement('h3'); title.className = 'budget-drawer-title'; title.style.flex = '1';
+  title.textContent = isCreate ? 'Add asset / liability' : 'Edit holding';
+  head.appendChild(title);
+  const closeBtn = document.createElement('button'); closeBtn.className = 'budget-drawer-close'; closeBtn.type = 'button';
+  closeBtn.innerHTML = makeIcon(api, 'x', 16) || '✕'; closeBtn.addEventListener('click', close);
+  head.appendChild(closeBtn);
+  drawer.appendChild(head);
+
+  const form = document.createElement('div'); form.className = 'budget-drawer-body';
+  function field(labelText, control, hint) {
+    const f = document.createElement('label'); f.className = 'budget-field';
+    const l = document.createElement('span'); l.className = 'budget-field-label'; l.textContent = labelText;
+    f.appendChild(l); f.appendChild(control);
+    if (hint) { const h = document.createElement('span'); h.className = 'budget-field-hint'; h.textContent = hint; f.appendChild(h); }
+    return f;
+  }
+
+  const nameInput = document.createElement('input'); nameInput.className = 'budget-input'; nameInput.type = 'text';
+  nameInput.placeholder = 'e.g. 401(k), House, Car loan'; nameInput.value = row?.name || '';
+
+  const kindSel = document.createElement('select'); kindSel.className = 'budget-select';
+  for (const [v, lbl] of [['asset', 'Asset (you own)'], ['liability', 'Liability (you owe)']]) {
+    const o = document.createElement('option'); o.value = v; o.textContent = lbl;
+    if ((row?.kind || 'asset') === v) o.selected = true; kindSel.appendChild(o);
+  }
+
+  const classSel = document.createElement('select'); classSel.className = 'budget-select';
+  function fillClasses() {
+    const list = kindSel.value === 'liability' ? MANUAL_LIABILITY_CLASSES : MANUAL_ASSET_CLASSES;
+    const keep = classSel.value;
+    classSel.innerHTML = '';
+    for (const [v, lbl] of list) { const o = document.createElement('option'); o.value = v; o.textContent = lbl; classSel.appendChild(o); }
+    const want = (list.some(x => x[0] === keep)) ? keep : (row && list.some(x => x[0] === row.asset_class) ? row.asset_class : list[0][0]);
+    classSel.value = want;
+  }
+  kindSel.addEventListener('change', fillClasses);
+  fillClasses();
+
+  const valueInput = document.createElement('input'); valueInput.className = 'budget-input'; valueInput.type = 'number'; valueInput.step = '0.01'; valueInput.min = '0';
+  valueInput.placeholder = '0.00'; valueInput.value = row ? ((Number(row.value_cents) || 0) / 100).toFixed(2) : '';
+
+  const dateInput = document.createElement('input'); dateInput.className = 'budget-input'; dateInput.type = 'date';
+  dateInput.value = row?.as_of_date ? String(row.as_of_date).slice(0, 10) : todayYmd();
+
+  const notesInput = document.createElement('textarea'); notesInput.className = 'budget-drawer-textarea';
+  notesInput.placeholder = 'Notes (optional)'; notesInput.value = row?.notes || '';
+
+  form.appendChild(field('Name', nameInput));
+  const r1 = document.createElement('div'); r1.className = 'budget-field-row';
+  r1.appendChild(field('Type', kindSel)); r1.appendChild(field('Class', classSel));
+  form.appendChild(r1);
+  const r2 = document.createElement('div'); r2.className = 'budget-field-row';
+  r2.appendChild(field('Value', valueInput, 'Current value (positive)'));
+  r2.appendChild(field('As of', dateInput));
+  form.appendChild(r2);
+  form.appendChild(field('Notes', notesInput));
+  drawer.appendChild(form);
+
+  const foot = document.createElement('div'); foot.className = 'budget-drawer-foot';
+  if (!isCreate) {
+    let armed = false, armTimer = null;
+    const delBtn = makeButton('Delete', { onClick: async () => {
+      if (!armed) {
+        armed = true; delBtn.querySelector('span:last-child').textContent = 'Click again to delete';
+        delBtn.classList.add('budget-btn-danger');
+        armTimer = setTimeout(() => { armed = false; delBtn.querySelector('span:last-child').textContent = 'Delete'; delBtn.classList.remove('budget-btn-danger'); }, 3000);
+        return;
+      }
+      if (armTimer) clearTimeout(armTimer);
+      try { await db.run('DELETE FROM manual_balances WHERE id=?', [opts.id]); close(); opts.onSaved?.(); }
+      catch (e) { await api.window?.showErrorMessage?.('Delete failed: ' + (e instanceof Error ? e.message : String(e))); }
+    } });
+    foot.appendChild(delBtn);
+  }
+  const spacer = document.createElement('div'); spacer.className = 'spacer'; foot.appendChild(spacer);
+  foot.appendChild(makeButton('Cancel', { onClick: close }));
+  async function save() {
+    const name = nameInput.value.trim();
+    if (!name) { nameInput.focus(); return; }
+    const val = parseFloat(valueInput.value);
+    if (!Number.isFinite(val) || val < 0) { valueInput.focus(); return; }
+    const cents = dollarsToCents(val);
+    const kind = kindSel.value; const cls = classSel.value;
+    const asOf = dateInput.value || null; const notes = notesInput.value.trim() || null;
+    const now = new Date().toISOString();
+    try {
+      if (isCreate) {
+        await db.run(
+          `INSERT INTO manual_balances (id, name, kind, asset_class, value_cents, as_of_date, notes, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?)`,
+          [crypto.randomUUID(), name, kind, cls, cents, asOf, notes, now, now]);
+      } else {
+        await db.run(
+          `UPDATE manual_balances SET name=?, kind=?, asset_class=?, value_cents=?, as_of_date=?, notes=?, updated_at=? WHERE id=?`,
+          [name, kind, cls, cents, asOf, notes, now, opts.id]);
+      }
+      close(); opts.onSaved?.();
+    } catch (e) { await api.window?.showErrorMessage?.('Save failed: ' + (e instanceof Error ? e.message : String(e))); }
+  }
+  foot.appendChild(makeButton(isCreate ? 'Add holding' : 'Save', { primary: true, onClick: () => void save() }));
+  drawer.appendChild(foot);
+
+  document.body.appendChild(overlay);
+  nameInput.focus();
+}
+
+// ─── Section: Net Worth (accounts + manual holdings) ───────────────────────
 
 function renderAccountsSection(body, api) {
   const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
-  toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
+  toolbar.appendChild(makeButton('Add asset / liability', {
+    iconHtml: makeIcon(api, 'plus', 12),
+    onClick: () => void openManualBalanceEditor(api, { onSaved: refresh }),
+  }));
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
+  toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
   toolbar.appendChild(makeButton('Sync Now', {
     primary: true,
     iconHtml: makeIcon(api, 'refresh-cw', 12),
@@ -4366,37 +4557,100 @@ function renderAccountsSection(body, api) {
   }));
   body.appendChild(toolbar);
 
-  const summaryRow = document.createElement('div'); summaryRow.className = 'budget-cards'; body.appendChild(summaryRow);
-  const cardsRow = document.createElement('div'); cardsRow.className = 'budget-accounts-row'; body.appendChild(cardsRow);
-  const tableWrap = document.createElement('div'); body.appendChild(tableWrap);
+  const headEl = document.createElement('div'); headEl.className = 'budget-networth-head'; body.appendChild(headEl);
+  const groupsEl = document.createElement('div'); groupsEl.className = 'budget-nw-groups'; body.appendChild(groupsEl);
+  const mgmtEl = document.createElement('div'); mgmtEl.className = 'budget-section'; body.appendChild(mgmtEl);
 
   let alive = true;
   async function refresh() {
     if (!alive) return;
-    summaryRow.innerHTML = ''; cardsRow.innerHTML = ''; tableWrap.innerHTML = '';
+    headEl.innerHTML = ''; groupsEl.innerHTML = ''; mgmtEl.innerHTML = '';
 
-    let acctRows = [];
-    try { acctRows = await db.all('SELECT * FROM v_account_latest_balance WHERE latest_balance_cents IS NOT NULL ORDER BY kind, last_four'); } catch { acctRows = []; }
+    const [acctRows, manualRows, delta30row] = await Promise.all([
+      db.all('SELECT * FROM v_account_latest_balance WHERE latest_balance_cents IS NOT NULL ORDER BY kind, last_four').catch(() => []),
+      db.all("SELECT * FROM manual_balances WHERE archived=0 ORDER BY kind, asset_class, name").catch(() => []),
+      db.get(`WITH d_now AS (SELECT a.id, (SELECT bs.balance_cents FROM balance_snapshots bs WHERE bs.account_id=a.id ORDER BY bs.snapshot_date DESC, bs.created_at DESC LIMIT 1) AS bal FROM accounts a WHERE a.archived=0),
+                   d_then AS (SELECT a.id, (SELECT bs.balance_cents FROM balance_snapshots bs WHERE bs.account_id=a.id AND bs.snapshot_date <= date('now','-30 days') ORDER BY bs.snapshot_date DESC, bs.created_at DESC LIMIT 1) AS bal FROM accounts a WHERE a.archived=0)
+              SELECT (SELECT COALESCE(SUM(bal),0) FROM d_now) - (SELECT COALESCE(SUM(bal),0) FROM d_then) AS delta`).catch(() => null),
+    ]);
 
-    if (acctRows.length === 0) {
-      tableWrap.appendChild(emptyState('No accounts detected yet — run a sync to import balances from your daily account summary emails.'));
+    // ── Group synced accounts + manual holdings into asset classes.
+    const groups = {
+      cash:        { label: 'Cash', items: [] },
+      investment:  { label: 'Investments', items: [] },
+      real_estate: { label: 'Real Estate', items: [] },
+      vehicle:     { label: 'Vehicles', items: [] },
+      other_asset: { label: 'Other Assets', items: [] },
+      liability:   { label: 'Liabilities', items: [] },
+    };
+    let assetTotal = 0, liabilityTotal = 0;
+
+    for (const a of acctRows) {
+      const bal = Number(a.latest_balance_cents) || 0;
+      const name = a.display_name || defaultAccountName(a.kind, a.last_four);
+      if (a.kind === 'credit_card' && bal < 0) {
+        liabilityTotal += -bal;
+        groups.liability.items.push({ name, amount: -bal, side: 'liability', sub: 'Credit card' });
+      } else {
+        assetTotal += bal;
+        groups.cash.items.push({ name, amount: bal, side: 'asset', sub: a.kind === 'savings' ? 'Savings' : a.kind === 'credit_card' ? 'Credit card' : 'Checking' });
+      }
+    }
+    for (const m of manualRows) {
+      const val = Number(m.value_cents) || 0;
+      if (m.kind === 'liability') {
+        liabilityTotal += val;
+        groups.liability.items.push({ name: m.name, amount: val, side: 'liability', sub: manualClassLabel(m.asset_class), id: m.id });
+      } else {
+        assetTotal += val;
+        const g = groups[m.asset_class] ? m.asset_class : 'other_asset';
+        groups[g].items.push({ name: m.name, amount: val, side: 'asset', sub: manualClassLabel(m.asset_class), id: m.id });
+      }
+    }
+    const netWorth = assetTotal - liabilityTotal;
+
+    // ── Net-worth headline.
+    const lbl = document.createElement('div'); lbl.className = 'budget-networth-label'; lbl.textContent = 'Net worth';
+    const big = document.createElement('div'); big.className = 'budget-networth-value'; big.textContent = fmtMoney(netWorth);
+    headEl.appendChild(lbl); headEl.appendChild(big);
+    const sub = document.createElement('div'); sub.className = 'budget-networth-sub';
+    const d = delta30row ? Number(delta30row.delta) || 0 : 0;
+    sub.innerHTML =
+      `<span class="budget-nw-chip">Assets ${escHtml(fmtMoney(assetTotal))}</span>` +
+      `<span class="budget-nw-chip is-liab">Liabilities ${escHtml(fmtMoney(liabilityTotal))}</span>` +
+      (d ? `<span class="budget-nw-chip ${d >= 0 ? 'is-up' : 'is-down'}">${d >= 0 ? '▲' : '▼'} ${escHtml(fmtMoney(Math.abs(d)))} · 30d tracked</span>` : '');
+    headEl.appendChild(sub);
+
+    if (acctRows.length === 0 && manualRows.length === 0) {
+      groupsEl.appendChild(emptyState('No accounts or holdings yet. Run a sync to import account balances, or add an asset / liability manually.'));
       return;
     }
 
-    let cash = 0, credit = 0;
-    for (const a of acctRows) {
-      const bal = Number(a.latest_balance_cents) || 0;
-      if (a.kind === 'credit_card') credit += bal; else cash += bal;
-    }
-    summaryRow.appendChild(makeCard('Tracked Balance', fmtMoney(cash + credit), `${acctRows.length} Accounts`));
-    summaryRow.appendChild(makeCard('Cash', fmtMoney(cash), 'Checking + Savings'));
-    if (acctRows.some(a => a.kind === 'credit_card' && a.latest_balance_cents != null)) {
-      summaryRow.appendChild(makeCard('Credit Balance', fmtMoney(credit), credit < 0 ? 'Owed' : 'No Balance'));
+    // ── Grouped holdings (Cash / Investments / Real Estate / … / Liabilities).
+    for (const key of ['cash', 'investment', 'real_estate', 'vehicle', 'other_asset', 'liability']) {
+      const g = groups[key];
+      if (!g.items.length) continue;
+      const subtotal = g.items.reduce((s, i) => s + i.amount, 0);
+      const sec = document.createElement('div'); sec.className = 'budget-nw-group';
+      const gh = document.createElement('div'); gh.className = 'budget-nw-group-head';
+      gh.innerHTML = `<span class="budget-nw-group-title">${escHtml(g.label)}</span><span class="budget-nw-group-total">${escHtml(fmtMoney(subtotal))}</span>`;
+      sec.appendChild(gh);
+      for (const it of g.items.sort((a, b) => b.amount - a.amount)) {
+        const rowEl = document.createElement(it.id ? 'button' : 'div');
+        rowEl.className = 'budget-nw-row' + (it.id ? ' budget-nw-row-clickable' : '');
+        if (it.id) { rowEl.type = 'button'; rowEl.addEventListener('click', () => void openManualBalanceEditor(api, { id: it.id, onSaved: refresh })); }
+        const pct = (it.side === 'asset' && assetTotal > 0) ? Math.round(it.amount / assetTotal * 100) : null;
+        rowEl.innerHTML =
+          `<span class="budget-nw-row-main"><span class="budget-nw-row-name">${escHtml(it.name)}</span>` +
+          `<span class="budget-nw-row-sub">${escHtml(it.sub || '')}${it.id ? ' · manual' : ''}</span></span>` +
+          `<span class="budget-nw-row-right"><span class="budget-nw-row-amt">${escHtml(fmtMoney(it.amount))}</span>` +
+          (pct != null ? `<span class="budget-nw-row-pct">${pct}% of assets</span>` : '') + `</span>`;
+        sec.appendChild(rowEl);
+      }
+      groupsEl.appendChild(sec);
     }
 
-    for (const a of acctRows) cardsRow.appendChild(buildAccountCard(a, api));
-
-    // Detail table — also lets the user rename / archive an account.
+    // ── Synced-account management (rename / kind / archive).
     let allRows;
     try {
       allRows = await db.all(`
@@ -4407,52 +4661,47 @@ function renderAccountsSection(body, api) {
           FROM accounts a
          ORDER BY a.archived ASC, a.kind ASC, a.last_four ASC`);
     } catch { allRows = []; }
-
-    const table = document.createElement('table'); table.className = 'budget-table';
-    table.innerHTML = `<thead><tr><th>Name</th><th>Kind</th><th>Last 4</th><th>Tx</th><th style="text-align:right">Latest balance</th><th>As of</th><th>Actions</th></tr></thead>`;
-    const tb = document.createElement('tbody');
-    for (const a of allRows) {
-      const tr = document.createElement('tr');
-      const tdName = document.createElement('td');
-      const inp = document.createElement('input'); inp.type = 'text'; inp.value = a.display_name || ''; inp.className = 'budget-input';
-      inp.style.width = '160px';
-      inp.addEventListener('change', async () => {
-        try { await db.run('UPDATE accounts SET display_name=?, updated_at=? WHERE id=?', [inp.value || null, new Date().toISOString(), a.id]); }
-        catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
-      });
-      tdName.appendChild(inp);
-      tr.appendChild(tdName);
-
-      const tdKind = document.createElement('td');
-      const kindSel = document.createElement('select'); kindSel.className = 'budget-select';
-      for (const k of ACCOUNT_KINDS) {
-        const o = document.createElement('option'); o.value = k; o.textContent = ACCOUNT_KIND_LABELS[k] || titleCaseToken(k);
-        if (a.kind === k) o.selected = true; kindSel.appendChild(o);
-      }
-      kindSel.addEventListener('change', async () => {
-        try { await db.run('UPDATE accounts SET kind=?, updated_at=? WHERE id=?', [kindSel.value, new Date().toISOString(), a.id]); await refresh(); }
-        catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
-      });
-      tdKind.appendChild(kindSel);
-      tr.appendChild(tdKind);
-
-      const td4 = document.createElement('td'); td4.textContent = a.last_four ? '••' + a.last_four : '—'; tr.appendChild(td4);
-      const tdTx = document.createElement('td'); tdTx.className = 'budget-amount'; tdTx.textContent = String(a.tx_count || 0); tr.appendChild(tdTx);
-      const tdBal = document.createElement('td'); tdBal.className = 'budget-amount';
-      tdBal.textContent = a.bal != null ? fmtMoney(a.bal) : '—'; tr.appendChild(tdBal);
-      const tdDate = document.createElement('td'); tdDate.textContent = a.bal_date || '—'; tr.appendChild(tdDate);
-      const tdAct = document.createElement('td'); tdAct.style.display = 'flex'; tdAct.style.gap = '4px';
-      tdAct.appendChild(makeButton(a.archived ? 'Unarchive' : 'Archive', {
-        onClick: async () => {
-          try { await db.run('UPDATE accounts SET archived=?, updated_at=? WHERE id=?', [a.archived ? 0 : 1, new Date().toISOString(), a.id]); await refresh(); }
+    if (allRows.length) {
+      const h = document.createElement('div'); h.className = 'budget-nw-mgmt-head'; h.textContent = 'Synced accounts'; mgmtEl.appendChild(h);
+      const table = document.createElement('table'); table.className = 'budget-table';
+      table.innerHTML = `<thead><tr><th>Name</th><th>Kind</th><th>Last 4</th><th>Tx</th><th style="text-align:right">Latest balance</th><th>As of</th><th>Actions</th></tr></thead>`;
+      const tb = document.createElement('tbody');
+      for (const a of allRows) {
+        const tr = document.createElement('tr');
+        const tdName = document.createElement('td');
+        const inp = document.createElement('input'); inp.type = 'text'; inp.value = a.display_name || ''; inp.className = 'budget-input';
+        inp.style.width = '160px';
+        inp.addEventListener('change', async () => {
+          try { await db.run('UPDATE accounts SET display_name=?, updated_at=? WHERE id=?', [inp.value || null, new Date().toISOString(), a.id]); }
           catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
-        },
-      }));
-      tr.appendChild(tdAct);
-      tb.appendChild(tr);
+        });
+        tdName.appendChild(inp); tr.appendChild(tdName);
+        const tdKind = document.createElement('td');
+        const kindSel = document.createElement('select'); kindSel.className = 'budget-select';
+        for (const k of ACCOUNT_KINDS) {
+          const o = document.createElement('option'); o.value = k; o.textContent = ACCOUNT_KIND_LABELS[k] || titleCaseToken(k);
+          if (a.kind === k) o.selected = true; kindSel.appendChild(o);
+        }
+        kindSel.addEventListener('change', async () => {
+          try { await db.run('UPDATE accounts SET kind=?, updated_at=? WHERE id=?', [kindSel.value, new Date().toISOString(), a.id]); await refresh(); }
+          catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
+        });
+        tdKind.appendChild(kindSel); tr.appendChild(tdKind);
+        const td4 = document.createElement('td'); td4.textContent = a.last_four ? '••' + a.last_four : '—'; tr.appendChild(td4);
+        const tdTx = document.createElement('td'); tdTx.className = 'budget-amount'; tdTx.textContent = String(a.tx_count || 0); tr.appendChild(tdTx);
+        const tdBal = document.createElement('td'); tdBal.className = 'budget-amount'; tdBal.textContent = a.bal != null ? fmtMoney(a.bal) : '—'; tr.appendChild(tdBal);
+        const tdDate = document.createElement('td'); tdDate.textContent = a.bal_date || '—'; tr.appendChild(tdDate);
+        const tdAct = document.createElement('td'); tdAct.style.display = 'flex'; tdAct.style.gap = '4px';
+        tdAct.appendChild(makeButton(a.archived ? 'Unarchive' : 'Archive', {
+          onClick: async () => {
+            try { await db.run('UPDATE accounts SET archived=?, updated_at=? WHERE id=?', [a.archived ? 0 : 1, new Date().toISOString(), a.id]); await refresh(); }
+            catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
+          },
+        }));
+        tr.appendChild(tdAct); tb.appendChild(tr);
+      }
+      table.appendChild(tb); mgmtEl.appendChild(table);
     }
-    table.appendChild(tb);
-    tableWrap.appendChild(table);
   }
   void refresh();
   return () => { alive = false; };
@@ -8012,9 +8261,8 @@ function renderPlanSection(body, api) {
 function renderSettingsSection(body, api) {
   return renderTabbedWrapper(body, api, {
     navStateKey: 'settingsTab',
-    defaultTab: 'accounts',
+    defaultTab: 'categories',
     tabs: [
-      { id: 'accounts',     title: 'Accounts',        renderer: renderAccountsSection     },
       { id: 'categories',   title: 'Categories',      renderer: renderCategoriesSection   },
       { id: 'rules',        title: 'Rules',           renderer: renderRulesSection        },
       { id: 'reviewQueue',  title: 'Review Queue',    renderer: renderReviewQueueSection  },
