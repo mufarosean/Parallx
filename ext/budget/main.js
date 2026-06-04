@@ -1093,71 +1093,7 @@ function injectStyles() {
 }
 .budget-filter-chip-item input { margin: 0; }
 
-/* ═══ Category bars (replaces donut) ═══ */
-.budget-catbars {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-family: var(--vscode-font-family, inherit);
-}
-.budget-catbar-row {
-  appearance: none;
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--vscode-foreground, #ddd);
-  display: grid;
-  grid-template-columns: 140px 1fr 130px;
-  gap: 12px;
-  align-items: center;
-  padding: 6px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  text-align: left;
-  font-family: inherit;
-}
-.budget-catbar-row:hover {
-  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05));
-  border-color: var(--vscode-panel-border, rgba(255,255,255,0.10));
-}
-.budget-catbar-left {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.budget-catbar-track {
-  position: relative;
-  height: 16px;
-  background: var(--vscode-input-background, rgba(255,255,255,0.04));
-  border-radius: 3px;
-  overflow: hidden;
-}
-.budget-catbar-limit {
-  position: absolute;
-  top: 0; left: 0; bottom: 0;
-  background: var(--vscode-panel-border, rgba(255,255,255,0.10));
-  border-right: 1px dashed var(--vscode-descriptionForeground, rgba(255,255,255,0.28));
-}
-.budget-catbar-fill {
-  position: relative;
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.18s;
-}
-.budget-catbar-amt {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.budget-catbar-amt .amt-main { font-weight: 600; font-size: 12px; }
-.budget-catbar-amt .amt-sub  { font-size: 10px; color: var(--vscode-descriptionForeground, #888); }
-.budget-catbar-amt .amt-sub.is-up   { color: var(--vscode-charts-red,   #f87171); }
-.budget-catbar-amt .amt-sub.is-down { color: var(--vscode-charts-green, #22c55e); }
+/* (Category budget bars styled further down — see "Category budget bars".) */
 
 /* ═══ Allocation bar (single stacked bar over Accounts) ═══ */
 .budget-alloc {
@@ -1567,6 +1503,34 @@ function injectStyles() {
 .budget-recur-due { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
 .budget-recur-acts { display: flex; gap: 6px; flex: 0 0 auto; opacity: 0; transition: opacity 120ms ease; }
 .budget-recur-row:hover .budget-recur-acts, .budget-recur-row:focus-within .budget-recur-acts { opacity: 1; }
+
+/* ═══ Category budget bars (actual vs target vs prior) ═══ */
+.budget-catbars { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; }
+.budget-catrow {
+  display: grid; grid-template-columns: 150px 1fr auto; align-items: center; gap: 16px;
+  width: 100%; box-sizing: border-box; text-align: left; padding: 9px 8px;
+  border: none; background: transparent; color: inherit; font: inherit; cursor: pointer;
+  border-radius: var(--px-radius-sm, 4px);
+}
+.budget-catrow:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04))); }
+.budget-catrow-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.budget-catrow-left .budget-cat-swatch { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; display: inline-block; }
+.budget-catrow-name { font-size: var(--px-text-base, 13px); color: var(--px-text, inherit); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.budget-catrow-barwrap { min-width: 0; }
+.budget-catrow-track { position: relative; height: 8px; border-radius: 999px; background: var(--px-bg-inset, rgba(255, 255, 255, 0.07)); overflow: hidden; }
+.budget-catrow-track.is-untracked { background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.06) 0 5px, transparent 5px 10px); }
+.budget-catrow-fill { height: 100%; border-radius: 999px; background: var(--px-text-faint, rgba(255, 255, 255, 0.42)); transition: width 320ms cubic-bezier(0.16, 1, 0.3, 1); }
+.budget-catrow-fill.is-near { background: var(--px-warning, #dcaa5a); }
+.budget-catrow-fill.is-over { background: var(--px-danger, #e06c66); }
+.budget-catrow-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; min-width: 150px; }
+.budget-catrow-amtline { display: flex; align-items: baseline; gap: 5px; }
+.budget-catrow-amt { font-size: var(--px-text-base, 13px); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--px-text, inherit); }
+.budget-catrow-amt.is-over { color: var(--px-danger, #e06c66); }
+.budget-catrow-of { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
+.budget-catrow-tag { font-size: 9px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--px-text-faint, #777); border: 1px solid var(--px-border, rgba(255, 255, 255, 0.12)); border-radius: 3px; padding: 0 3px; margin-left: 4px; }
+.budget-catrow-trend { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
+.budget-catrow-trend.is-up { color: var(--px-danger, #e06c66); }
+.budget-catrow-trend.is-down { color: var(--px-success, #6cbf8f); }
 
 `;
   document.head.appendChild(style);
@@ -3138,30 +3102,25 @@ function renderDashboardSection(body, api) {
       lastSyncMeta.textContent = 'Never Synced';
     }
 
-    // ── KPI strip — every card carries a comparison anchor.
-    function pctDelta(cur, prev) {
-      if (!prev) return null;
-      return Math.round(((cur - prev) / prev) * 100);
-    }
-    const spendPct = pctDelta(totalSpend, prevSpend);
-    const incomePct = pctDelta(totalIncome, prevIncome);
+    // ── KPI strip — Income · Expenses · Net Income (this month vs last).
+    // Net worth lives on its own view; it would be misleading here because the
+    // dashboard only sees synced (e.g. Chase) transactions, not 401k / IRA /
+    // mortgage / HSA.
+    const netIncome = totalIncome - totalSpend;
+    const prevNet = prevIncome - prevSpend;
 
-    const netWorthCard = makeCard('Net Worth', fmtMoney(netWorth),
-      netDelta30
-        ? `${netDelta30 >= 0 ? '+' : '-'}${fmtMoney(Math.abs(netDelta30))} Over 30 Days`
-        : (acctRows.length ? `${acctRows.length} accounts` : 'Add accounts or holdings'),
+    cards.appendChild(makeCard('Income', fmtMoney(totalIncome),
+      (prevIncome ? `vs ${fmtMoney(prevIncome)} last month` : (totalIncome > 0 ? 'Deposits this month' : 'No income yet')),
       {
-        title: 'Open Net Worth',
+        title: 'View Deposits',
         onClick: () => {
-          api.commands.executeCommand('budget.openAccounts').catch(() => {});
+          _navState.txFilter = { monthKey, type: 'deposit' };
+          api.commands.executeCommand('budget.openTransactions').catch(() => {});
         },
-      });
-    cards.appendChild(netWorthCard);
+      }));
 
     cards.appendChild(makeCard('Expenses', fmtMoney(totalSpend),
-      spendPct !== null
-        ? `vs ${fmtMoney(prevSpend)} Last Month (${spendPct >= 0 ? '+' : ''}${spendPct}%)`
-        : `${sumRow.n} transactions`,
+      (prevSpend ? `vs ${fmtMoney(prevSpend)} last month` : `${sumRow.n} transactions`),
       {
         title: 'View Expense Transactions',
         onClick: () => {
@@ -3170,17 +3129,8 @@ function renderDashboardSection(body, api) {
         },
       }));
 
-    cards.appendChild(makeCard('Income', fmtMoney(totalIncome),
-      incomePct !== null
-        ? `vs ${fmtMoney(prevIncome)} Last Month (${incomePct >= 0 ? '+' : ''}${incomePct}%)`
-        : (totalIncome > 0 ? 'Deposits This Month' : 'No Income Yet'),
-      {
-        title: 'View Deposits',
-        onClick: () => {
-          _navState.txFilter = { monthKey, type: 'deposit' };
-          api.commands.executeCommand('budget.openTransactions').catch(() => {});
-        },
-      }));
+    cards.appendChild(makeCard('Net Income', fmtMoney(netIncome),
+      ((prevIncome || prevSpend) ? `vs ${fmtMoney(prevNet)} last month` : 'Income − expenses')));
 
     // ── Goals progress card (only when goals exist).
     try {
@@ -3208,6 +3158,8 @@ function renderDashboardSection(body, api) {
       _navState.txFilter = { categoryId: slice.id, monthKey, type: 'spend' };
       api.commands.executeCommand('budget.openTransactions').catch(() => {});
     }));
+    const budH = document.createElement('h3'); budH.className = 'budget-section-h'; budH.textContent = 'Spending vs budget'; budH.style.marginTop = '22px';
+    catSection.appendChild(budH);
     catSection.appendChild(buildCategoryBars(catRows, prevByCatId, (slice) => {
       _navState.txFilter = { categoryId: slice.id, monthKey, type: 'spend' };
       api.commands.executeCommand('budget.openTransactions').catch(() => {});
@@ -4036,72 +3988,62 @@ function buildCategoryBars(catRows, prevByCatId, onClick) {
   const wrap = document.createElement('div');
   wrap.className = 'budget-catbars';
 
-  if (!catRows || catRows.length === 0) {
-    wrap.appendChild(emptyState('No category data yet.'));
+  // The bar's track is the BUDGET TARGET; the fill is actual spend so far.
+  // Target = the category's monthly limit, or (when none is set) last month's
+  // spend as a sensible default. Categories with no spend, no target, and no
+  // history are dropped so the list stays informative.
+  const items = (catRows || []).map(r => {
+    const actual = Number(r.spend) || 0;
+    const explicit = Number(r.monthly_limit_cents) || 0;
+    const prior = Number((prevByCatId && prevByCatId.get(r.id)) || 0);
+    const budget = explicit > 0 ? explicit : prior;
+    return { r, actual, prior, budget, defaulted: explicit <= 0 && prior > 0 };
+  }).filter(x => x.actual > 0 || x.budget > 0)
+    .sort((a, b) => b.actual - a.actual || b.budget - a.budget);
+
+  if (items.length === 0) {
+    wrap.appendChild(emptyState('No category spending or budgets yet.'));
     return wrap;
   }
 
-  const max = Math.max(1,
-    ...catRows.map(r => Math.max(Number(r.spend) || 0, Number(r.monthly_limit_cents) || 0)));
-
-  for (const r of catRows) {
-    const spend = Number(r.spend) || 0;
-    const limit = Number(r.monthly_limit_cents) || 0;
-    const overLimit = limit > 0 && spend > limit;
-    const nearLimit = limit > 0 && !overLimit && spend >= limit * 0.8;
-    const spendPct  = Math.round((spend / max) * 100);
-    const limitPct  = limit > 0 ? Math.round((limit / max) * 100) : 0;
-    const prev = Number((prevByCatId && prevByCatId.get(r.id)) || 0);
-    const delta = spend - prev;
+  for (const x of items) {
+    const { r, actual, prior, budget, defaulted } = x;
+    const hasBudget = budget > 0;
+    const ratio = hasBudget ? actual / budget : 0;
+    const over = hasBudget && actual > budget;
+    const near = hasBudget && !over && ratio >= 0.8;
+    const fillPct = hasBudget ? Math.min(100, Math.round(ratio * 100)) : 0;
+    const delta = actual - prior;
 
     const row = document.createElement('button');
     row.type = 'button';
-    row.className = 'budget-catbar-row';
+    row.className = 'budget-catrow';
     row.title = `Open ${r.name} transactions`;
 
-    const left = document.createElement('div');
-    left.className = 'budget-catbar-left';
-    left.innerHTML = `<span class="budget-cat-swatch" style="background:${escHtml(r.color || '#888')}"></span>${escHtml(r.name)}`;
-    row.appendChild(left);
+    const left = document.createElement('div'); left.className = 'budget-catrow-left';
+    left.innerHTML = `<span class="budget-cat-swatch" style="background:${escHtml(r.color || '#888')}"></span><span class="budget-catrow-name">${escHtml(r.name)}</span>`;
 
-    const track = document.createElement('div');
-    track.className = 'budget-catbar-track';
-    if (limitPct > 0) {
-      const limFill = document.createElement('div');
-      limFill.className = 'budget-catbar-limit';
-      limFill.style.width = limitPct + '%';
-      track.appendChild(limFill);
+    const barWrap = document.createElement('div'); barWrap.className = 'budget-catrow-barwrap';
+    const track = document.createElement('div'); track.className = 'budget-catrow-track' + (hasBudget ? '' : ' is-untracked');
+    const fill = document.createElement('div'); fill.className = 'budget-catrow-fill' + (over ? ' is-over' : near ? ' is-near' : '');
+    fill.style.width = fillPct + '%';
+    track.appendChild(fill); barWrap.appendChild(track);
+
+    const meta = document.createElement('div'); meta.className = 'budget-catrow-meta';
+    const ofBudget = hasBudget
+      ? `of ${escHtml(fmtMoney(budget))}${defaulted ? '<span class="budget-catrow-tag">last mo</span>' : ''}`
+      : 'no target';
+    let trend = '';
+    if (prior > 0) {
+      const cls = delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : '';
+      const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '·';
+      trend = `<div class="budget-catrow-trend ${cls}">${arrow} ${escHtml(fmtMoney(Math.abs(delta)))} vs last mo</div>`;
     }
-    const fill = document.createElement('div');
-    fill.className = 'budget-catbar-fill';
-    fill.style.width = spendPct + '%';
-    // Color discipline: bars are a single neutral fill so length encodes
-    // magnitude, not identity. Color earns its place ONLY when it carries
-    // meaning (over budget = red, near budget = orange). The category's own
-    // color shows up as the small swatch dot to the left of the name.
-    fill.style.background = overLimit
-      ? 'var(--vscode-charts-red, #f87171)'
-      : (nearLimit
-          ? 'var(--vscode-charts-orange, #f97316)'
-          : 'var(--vscode-foreground, rgba(255,255,255,0.55))');
-    fill.style.opacity = (overLimit || nearLimit) ? '1' : '0.55';
-    track.appendChild(fill);
-    row.appendChild(track);
+    meta.innerHTML =
+      `<div class="budget-catrow-amtline"><span class="budget-catrow-amt${over ? ' is-over' : ''}">${escHtml(fmtMoney(actual))}</span> <span class="budget-catrow-of">${ofBudget}</span></div>` +
+      trend;
 
-    const amt = document.createElement('div');
-    amt.className = 'budget-catbar-amt';
-    let sub = '';
-    if (limit > 0) {
-      const pctOfLim = Math.round((spend / limit) * 100);
-      sub = `${pctOfLim}% of ${fmtMoney(limit)}`;
-    } else if (prev > 0) {
-      const sign = delta >= 0 ? '+' : '−';
-      sub = `${sign}${fmtMoney(Math.abs(delta))} vs Last Month`;
-    }
-    amt.innerHTML = `<span class="amt-main">${escHtml(fmtMoney(spend))}</span>` +
-      (sub ? `<span class="amt-sub ${delta > 0 && limit === 0 ? 'is-up' : (delta < 0 && limit === 0 ? 'is-down' : '')}">${escHtml(sub)}</span>` : '');
-    row.appendChild(amt);
-
+    row.appendChild(left); row.appendChild(barWrap); row.appendChild(meta);
     row.addEventListener('click', () => onClick && onClick(r));
     wrap.appendChild(row);
   }
