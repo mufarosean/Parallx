@@ -139,18 +139,18 @@ async function ensureDatabase(api) {
 // Idempotent: only runs when categories table is empty. User may rename,
 // recolour, archive, or delete these freely — re-sync never re-creates them.
 const DEFAULT_CATEGORIES = [
-  { name: 'Groceries',     color: '#22c55e', icon: 'shopping-cart',     kind: 'expense',  sort: 10 },
-  { name: 'Dining',        color: '#f97316', icon: 'utensils',          kind: 'expense',  sort: 20 },
-  { name: 'Transport',     color: '#3b82f6', icon: 'car',               kind: 'expense',  sort: 30 },
-  { name: 'Utilities',     color: '#eab308', icon: 'zap',               kind: 'expense',  sort: 40 },
-  { name: 'Shopping',      color: '#ec4899', icon: 'shopping-bag',      kind: 'expense',  sort: 50 },
-  { name: 'Health',        color: '#ef4444', icon: 'heart-pulse',       kind: 'expense',  sort: 60 },
-  { name: 'Entertainment', color: '#a855f7', icon: 'film',              kind: 'expense',  sort: 70 },
-  { name: 'Subscriptions', color: '#06b6d4', icon: 'repeat',            kind: 'expense',  sort: 80 },
-  { name: 'Travel',        color: '#0ea5e9', icon: 'plane',             kind: 'expense',  sort: 90 },
-  { name: 'Other',         color: '#94a3b8', icon: 'circle-help',       kind: 'expense',  sort: 100 },
-  { name: 'Income',        color: '#16a34a', icon: 'banknote-arrow-up', kind: 'income',   sort: 110 },
-  { name: 'Transfer',      color: '#64748b', icon: 'arrow-right-left',  kind: 'transfer', sort: 120 },
+  { name: 'Groceries',     color: '#7ed6a5', icon: 'shopping-cart',     kind: 'expense',  sort: 10 },
+  { name: 'Dining',        color: '#f0b07e', icon: 'utensils',          kind: 'expense',  sort: 20 },
+  { name: 'Transport',     color: '#8fb3e8', icon: 'car',               kind: 'expense',  sort: 30 },
+  { name: 'Utilities',     color: '#e6cb7a', icon: 'zap',               kind: 'expense',  sort: 40 },
+  { name: 'Shopping',      color: '#e8a3c4', icon: 'shopping-bag',      kind: 'expense',  sort: 50 },
+  { name: 'Health',        color: '#e89595', icon: 'heart-pulse',       kind: 'expense',  sort: 60 },
+  { name: 'Entertainment', color: '#c2a3e6', icon: 'film',              kind: 'expense',  sort: 70 },
+  { name: 'Subscriptions', color: '#84cdd6', icon: 'repeat',            kind: 'expense',  sort: 80 },
+  { name: 'Travel',        color: '#93c2ea', icon: 'plane',             kind: 'expense',  sort: 90 },
+  { name: 'Other',         color: '#b3bccb', icon: 'circle-help',       kind: 'expense',  sort: 100 },
+  { name: 'Income',        color: '#7fcf9b', icon: 'banknote-arrow-up', kind: 'income',   sort: 110 },
+  { name: 'Transfer',      color: '#9aa7b8', icon: 'arrow-right-left',  kind: 'transfer', sort: 120 },
 ];
 
 async function seedDefaultCategoriesIfEmpty() {
@@ -328,6 +328,19 @@ function injectStyles() {
   const style = document.createElement('style');
   style.id = 'budget-extension-styles';
   style.textContent = `
+/* ═══ Pastel chart palette ═══
+   Charts read the theme's --vscode-charts-* variables. Override them for the
+   whole budget surface so every chart, legend, and pill renders soft instead
+   of neon. Category swatches store their own (now pastel) hex in the DB. */
+.budget-editor, .budget-nav {
+  --vscode-charts-green:  #7ed6a5;
+  --vscode-charts-red:    #e89595;
+  --vscode-charts-blue:   #8fb3e8;
+  --vscode-charts-orange: #f0b07e;
+  --vscode-charts-yellow: #e6cb7a;
+  --vscode-charts-purple: #c2a3e6;
+}
+
 /* ═══ Sidebar nav ═══ */
 .budget-nav {
   display: flex;
@@ -4956,7 +4969,7 @@ function renderGoalsSection(body, api) {
 
 function buildSpendDonut(catRows, totalSpend, centerLabel, onSlice) {
   const wrap = document.createElement('div'); wrap.className = 'budget-donut-wrap';
-  let slices = (catRows || []).map(r => ({ id: r.id, name: r.name, color: r.color || '#6b7280', spend: Number(r.spend) || 0 })).filter(s => s.spend > 0).sort((a, b) => b.spend - a.spend);
+  let slices = (catRows || []).map(r => ({ id: r.id, name: r.name, color: r.color || '#aab4c2', spend: Number(r.spend) || 0 })).filter(s => s.spend > 0).sort((a, b) => b.spend - a.spend);
   const total = totalSpend || slices.reduce((s, x) => s + x.spend, 0);
   if (!slices.length || total <= 0) { wrap.appendChild(emptyState('No spending in this period yet.')); return wrap; }
 
@@ -4965,7 +4978,7 @@ function buildSpendDonut(catRows, totalSpend, centerLabel, onSlice) {
   if (slices.length > MAXSEG) {
     const head = slices.slice(0, MAXSEG - 1);
     const otherSpend = slices.slice(MAXSEG - 1).reduce((s, x) => s + x.spend, 0);
-    slices = [...head, { id: null, name: 'Other', color: '#6b7280', spend: otherSpend }];
+    slices = [...head, { id: null, name: 'Other', color: '#aab4c2', spend: otherSpend }];
   }
 
   const svgNS = 'http://www.w3.org/2000/svg';
@@ -5445,7 +5458,7 @@ function renderRecurringSection(body, api) {
       const main = document.createElement('div'); main.className = 'budget-recur-main';
       const lowHint = (!r.cancelled && r.detection_confidence === 'low') ? ' · <span class="budget-recur-low">unsure</span>' : '';
       main.innerHTML =
-        `<span class="budget-recur-dot" style="background:${escHtml(r.category_color || '#6b7280')}"></span>` +
+        `<span class="budget-recur-dot" style="background:${escHtml(r.category_color || '#aab4c2')}"></span>` +
         `<span class="budget-recur-text"><span class="budget-recur-name">${escHtml(r.display_name || r.merchant_pattern)}</span>` +
         `<span class="budget-recur-sub">${escHtml(titleCaseToken(r.cadence))}${r.category_name ? ' · ' + escHtml(r.category_name) : ''}${lowHint}</span></span>`;
 
