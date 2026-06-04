@@ -1166,15 +1166,28 @@ const TOOL_STATUS_LABELS: Record<string, { label: string; modifier: string }> = 
   error:     { label: 'Error',     modifier: 'rejected' },
 };
 
-function _renderToolInvocation(part: IChatToolInvocationContent): HTMLElement {
-  const root = $('div.parallx-chat-tool-invocation');
+// Living tool-node status-marker glyphs.
+const TOOL_NODE_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+const TOOL_NODE_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
-  // Header: tool icon + name
+function _renderToolInvocation(part: IChatToolInvocationContent): HTMLElement {
+  // Living node: a marker on a vertical spine that breathes while running and
+  // settles (with a spring) into a check / × on completion.
+  const nodeStatus = (part.isError || part.result?.isError) ? 'error'
+    : part.isComplete ? 'complete'
+    : part.status === 'running' ? 'running'
+    : 'pending';
+
+  const root = $('div.parallx-chat-tool-invocation');
+  root.classList.add('parallx-chat-tool-node', `parallx-chat-tool-node--${nodeStatus}`);
+
+  // Header: living status marker + tool name + status badge
   const header = $('div.parallx-chat-tool-invocation-header');
-  const icon = $('span.parallx-chat-tool-invocation-icon');
-  icon.innerHTML = chatIcons.wrench;
+  const marker = $('span.parallx-chat-tool-node-marker');
+  if (nodeStatus === 'complete') marker.innerHTML = TOOL_NODE_CHECK;
+  else if (nodeStatus === 'error') marker.innerHTML = TOOL_NODE_X;
+  header.appendChild(marker);
   const name = $('span.parallx-chat-tool-invocation-name', part.toolName);
-  header.appendChild(icon);
   header.appendChild(name);
 
   // Status badge
@@ -1235,12 +1248,7 @@ function _renderToolInvocation(part: IChatToolInvocationContent): HTMLElement {
     root.appendChild(resultContainer);
   }
 
-  // Running spinner
-  if (part.status === 'running') {
-    const spinner = $('div.parallx-chat-progress-spinner');
-    root.appendChild(spinner);
-  }
-
+  // (No spinner — the breathing node marker carries the running state.)
   return root;
 }
 

@@ -1476,43 +1476,96 @@
 
 /* ── Tool Invocation Card ── */
 
+/* ── Living tool node ──
+   Each tool call is a node on a vertical spine: it blooms in, its marker
+   breathes while running, and settles (spring) into a check / × on completion.
+   Consecutive nodes share one continuous spine. */
 .parallx-chat-tool-invocation {
-  margin: 3px 0;
-  border-left: 2px solid color-mix(in srgb, var(--vscode-widget-border, rgba(127,127,127,0.3)) 60%, transparent);
-  padding-left: 10px;
-  transition: border-left-color 150ms ease;
+  position: relative;
+  margin: 0;
+  padding: 5px 0 5px 22px;
+  animation: parallx-node-bloom 0.42s var(--px-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
 }
 
-.parallx-chat-tool-invocation:hover {
-  border-left-color: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 60%, transparent);
+.parallx-chat-tool-invocation::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 0;
+  bottom: 0;
+  width: 1.5px;
+  background: color-mix(in srgb, var(--px-border-strong, #41454d) 75%, transparent);
 }
 
 .parallx-chat-tool-invocation-header {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   cursor: pointer;
   user-select: none;
   padding: 1px 0;
 }
 
-.parallx-chat-tool-invocation-icon {
+.parallx-chat-tool-node-marker {
+  position: absolute;
+  left: 0;
+  top: 6px;
+  width: 13px;
+  height: 13px;
   display: inline-flex;
   align-items: center;
-  flex-shrink: 0;
-  opacity: 0.65;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--px-bg-elevated, var(--vscode-editor-background, #1f2125));
+  box-shadow: 0 0 0 3px var(--px-bg, var(--vscode-editor-background, #16171a));
+  z-index: 1;
 }
+.parallx-chat-tool-node-marker svg { width: 9px; height: 9px; }
 
-.parallx-chat-tool-invocation-icon svg {
-  width: 12px;
-  height: 12px;
+.parallx-chat-tool-node-marker::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.parallx-chat-tool-node--pending .parallx-chat-tool-node-marker::after {
+  background: var(--px-text-faint, #686d77);
+}
+.parallx-chat-tool-node--running .parallx-chat-tool-node-marker::after {
+  background: radial-gradient(circle at 35% 30%,
+    color-mix(in srgb, var(--px-accent, #569cd6) 80%, white), var(--px-accent, #569cd6));
+  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--px-accent, #569cd6) 60%, transparent);
+  animation: parallx-breathe 1.8s var(--px-ease, ease-in-out) infinite;
+}
+.parallx-chat-tool-node--complete .parallx-chat-tool-node-marker {
+  color: var(--px-success, #6cbf8f);
+  animation: parallx-node-settle 0.4s var(--px-ease-spring, cubic-bezier(0.34, 1.4, 0.5, 1)) both;
+}
+.parallx-chat-tool-node--complete .parallx-chat-tool-node-marker::after,
+.parallx-chat-tool-node--error .parallx-chat-tool-node-marker::after { display: none; }
+.parallx-chat-tool-node--error .parallx-chat-tool-node-marker { color: var(--px-danger, #e06c66); }
+
+@keyframes parallx-node-bloom {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes parallx-node-settle {
+  0% { transform: scale(0.55); }
+  60% { transform: scale(1.2); }
+  100% { transform: scale(1); }
 }
 
 .parallx-chat-tool-invocation-name {
   font-weight: 400;
-  font-size: var(--parallx-fontSize-sm);
-  color: var(--vscode-descriptionForeground, #868686);
+  font-size: var(--px-text-sm, 12px);
+  color: var(--vscode-foreground, #cccccc);
   font-family: var(--vscode-editor-font-family, monospace);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .parallx-chat-tool-invocation,
+  .parallx-chat-tool-node--running .parallx-chat-tool-node-marker::after,
+  .parallx-chat-tool-node--complete .parallx-chat-tool-node-marker { animation: none; }
 }
 
 /* ── Status Badge ── */
