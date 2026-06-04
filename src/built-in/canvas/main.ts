@@ -106,6 +106,15 @@ function doesPageChangeAffectIndexMetadata(event: PageChangeEvent): boolean {
 
 // â”€â”€â”€ Module State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+/** Payload for capturing a PDF/other-surface selection into a canvas page. */
+interface CaptureDetail {
+  text?: string;
+  imageDataUrl?: string;
+  fileName?: string;
+  page?: number;
+  sourceUri?: string;
+}
+
 let _api: ParallxApi;
 let _dataService: CanvasDataService | null = null;
 let _sidebar: CanvasSidebar | null = null;
@@ -330,6 +339,35 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // 5. Register command handlers
   _registerCommands(api, context);
+
+  // 5z. Capture-to-canvas. Other surfaces (e.g. the PDF viewer's selection
+  //     actions) send a passage of text or a cropped image; we append it to a
+  //     chosen/new page. Two entry points share one implementation:
+  //       • window event `parallx:capture-to-canvas` — fire-and-forget, and
+  //       • command `canvas.captureSelection` — awaitable, returns the target
+  //         page so the caller can record a bidirectional link (M84).
+  const onCaptureToCanvas = (ev: Event): void => {
+    const detail = (ev as CustomEvent).detail as CaptureDetail | undefined;
+    if (!detail?.text && !detail?.imageDataUrl) return;
+    void captureNoteToCanvas(api, detail);
+  };
+  window.addEventListener('parallx:capture-to-canvas', onCaptureToCanvas);
+  context.subscriptions.push({
+    dispose: () => window.removeEventListener('parallx:capture-to-canvas', onCaptureToCanvas),
+  });
+  context.subscriptions.push(
+    api.commands.registerCommand('canvas.captureSelection', (...args: unknown[]) =>
+      captureNoteToCanvas(api, (args[0] ?? {}) as CaptureDetail),
+    ),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('canvas.openPage', async (...args: unknown[]) => {
+      const pageId = typeof args[0] === 'string' ? args[0] : '';
+      if (!pageId) return false;
+      await openPageInEditor(pageId);
+      return true;
+    }),
+  );
 
   // 5a. When a page-linked block (pageBlock, databaseInline) is deleted from
   //     editor content, run the normal page deletion process (same as sidebar).
@@ -959,6 +997,86 @@ export function getDataService(): ICanvasDataService | null {
 /** Access the API from other Canvas modules. */
 export function getApi(): ParallxApi {
   return _api;
+}
+
+/**
+ * Append a captured selection (from the PDF viewer or other surfaces) to a
+ * canvas page as text or an image block, then open the page. Lets the user
+ * pick an existing page or create a fresh "Study Notes" page.
+ *
+ * M84: returns the target page `{ pageId, title }` so callers (the PDF reader)
+ * can record a bidirectional link back to the highlight. Returns null if the
+ * user cancelled or the capture was empty.
+ */
+async function captureNoteToCanvas(
+  api: ParallxApi,
+  detail: CaptureDetail,
+): Promise<{ pageId: string; title: string } | null> {
+  if (!_dataService) return null;
+  const text = (detail.text ?? '').trim();
+  const imageDataUrl = detail.imageDataUrl ?? '';
+  if (!text && !imageDataUrl) return null;
+
+  // Build the target picker: a "new page" option plus every existing page.
+  let tree: IPageTreeNode[] = [];
+  try {
+    tree = await _dataService.getPageTree();
+  } catch (err) {
+    console.error('[Canvas] captureNote: getPageTree failed:', err);
+  }
+  const flat: { page: IPage; depth: number }[] = [];
+  const walk = (nodes: readonly IPageTreeNode[], depth: number): void => {
+    for (const node of nodes) {
+      flat.push({ page: node, depth });
+      if (node.children.length) walk(node.children, depth + 1);
+    }
+  };
+  walk(tree, 0);
+
+  const NEW_PAGE = '\u0000new-page';
+  const items = [
+    { label: '\u2795  New study-notes page', _pageId: NEW_PAGE },
+    ...flat.map(({ page, depth }) => ({
+      label: `${'\u2003'.repeat(depth)}${page.icon ? page.icon + ' ' : ''}${page.title || 'Untitled'}`,
+      _pageId: page.id,
+    })),
+  ];
+
+  const picked = await api.window.showQuickPick(items, {
+    placeholder: 'Add selection to a canvas page\u2026',
+  }) as (typeof items)[number] | undefined;
+  if (!picked) return null;
+
+  let targetId: string;
+  let targetTitle: string;
+  if (picked._pageId === NEW_PAGE) {
+    const page = await _dataService.createPage(null, 'Study Notes');
+    targetId = page.id;
+    targetTitle = page.title || 'Study Notes';
+  } else {
+    targetId = picked._pageId;
+    targetTitle = flat.find((f) => f.page.id === targetId)?.page.title || 'Untitled';
+  }
+
+  const attribution = `\u2014 ${detail.fileName ?? 'Source'}${detail.page ? `, page ${detail.page}` : ''}`;
+  const appendedNodes = [
+    imageDataUrl
+      ? { type: 'image', attrs: { src: imageDataUrl } }
+      : { type: 'paragraph', content: [{ type: 'text', text }] },
+    { type: 'paragraph', content: [{ type: 'text', text: attribution, marks: [{ type: 'italic' }] }] },
+  ];
+
+  try {
+    await _dataService.appendBlocksToPage(targetId, appendedNodes);
+    _dataService.fireContentReload(targetId);
+  } catch (err) {
+    console.error('[Canvas] captureNote: append failed:', err);
+    await api.window.showErrorMessage('Could not add the note to the canvas page.');
+    return null;
+  }
+
+  await openPageInEditor(targetId);
+  return { pageId: targetId, title: targetTitle };
 }
 
 /**

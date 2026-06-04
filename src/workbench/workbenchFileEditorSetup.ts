@@ -116,6 +116,9 @@ function _initFileEditorResolver(
     if (services.has(IGlobalStorageService)) {
       pane.setGlobalStorage(services.get(IGlobalStorageService));
     }
+    if (services.has(ICommandService)) {
+      pane.setCommandService(services.get(ICommandService));
+    }
     return pane;
   };
 

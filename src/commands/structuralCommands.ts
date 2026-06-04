@@ -108,12 +108,25 @@ const layoutReset: CommandDescriptor = {
 
 //  Edit Commands (browser-native delegates) 
 
+// Undo/redo first offer the action to the focused editor pane via a cancelable
+// DOM event. Panes that manage their own history (e.g. the PDF reader's
+// highlight overlay, which isn't an editable surface) handle it and call
+// preventDefault. If no pane claims it, fall back to the browser-native
+// execCommand path that drives undo/redo inside editable inputs/contenteditable.
+function delegateEditHistory(eventName: string, nativeCommand: 'undo' | 'redo'): void {
+  const target = (document.activeElement as HTMLElement | null) ?? document.body;
+  const claimed = !target.dispatchEvent(
+    new CustomEvent(eventName, { bubbles: true, cancelable: true }),
+  );
+  if (!claimed) document.execCommand(nativeCommand);
+}
+
 const editUndo: CommandDescriptor = {
   id: 'edit.undo',
   title: 'Undo',
   category: 'Edit',
   keybinding: 'Ctrl+Z',
-  handler: () => { document.execCommand('undo'); },
+  handler: () => { delegateEditHistory('parallx:edit-undo', 'undo'); },
 };
 
 const editRedo: CommandDescriptor = {
@@ -121,7 +134,7 @@ const editRedo: CommandDescriptor = {
   title: 'Redo',
   category: 'Edit',
   keybinding: 'Ctrl+Shift+Z',
-  handler: () => { document.execCommand('redo'); },
+  handler: () => { delegateEditHistory('parallx:edit-redo', 'redo'); },
 };
 
 const editCut: CommandDescriptor = {

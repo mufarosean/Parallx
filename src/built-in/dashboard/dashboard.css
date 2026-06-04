@@ -19,16 +19,7 @@
   display: block;
   width: 100%;
   height: 100%;
-  /* The first layer is a solid editor-background band at the very top that fades
-     out by ~110px — it guarantees the seam where the active tab meets the
-     dashboard is ONE flat colour (= the tab colour), with the ambient glows
-     blooming only below it. (Radial glows bleed to the top edge on their own;
-     this overlay is what actually pins the top to the editor background.) */
-  background:
-    linear-gradient(var(--vscode-editor-background, #1e1e1e), transparent 110px),
-    radial-gradient(1200px 600px at 20% 22%, color-mix(in srgb, var(--vscode-focusBorder, #5b9bd5) 7%, transparent), transparent 50%),
-    radial-gradient(800px 500px at 110% 26%, color-mix(in srgb, var(--vscode-button-background, #007acc) 6%, transparent), transparent 55%),
-    var(--vscode-editor-background, #1e1e1e);
+  background: var(--vscode-editor-background, #1e1e1e);
   overflow: auto;
   /* Smooth scroll for in-page anchors. */
   scroll-behavior: smooth;
