@@ -334,8 +334,8 @@ function injectStyles() {
   height: 100%;
   background: var(--vscode-sideBar-background, var(--vscode-editor-background));
   color: var(--vscode-sideBar-foreground, var(--vscode-editor-foreground));
-  font-family: var(--parallx-fontFamily-ui, system-ui, sans-serif);
-  font-size: var(--parallx-fontSize-md, 13px);
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
+  font-size: var(--px-text-base, 13px);
   overflow: hidden;
 }
 .budget-nav-list {
@@ -396,9 +396,9 @@ function injectStyles() {
   background: var(--vscode-button-secondaryBackground, #3a3a3a);
   color: var(--vscode-button-secondaryForeground, #ccc);
   border: 1px solid var(--vscode-panel-border, #555);
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm, 3px);
   font-family: inherit;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-xs, 11px);
   cursor: pointer;
 }
 .budget-sync-btn:hover {
@@ -418,8 +418,8 @@ function injectStyles() {
   overflow: auto;
   background: var(--vscode-editor-background);
   color: var(--vscode-editor-foreground);
-  font-family: var(--parallx-fontFamily-ui, system-ui, sans-serif);
-  font-size: var(--parallx-fontSize-md, 13px);
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
+  font-size: var(--px-text-base, 13px);
   box-sizing: border-box;
 }
 .budget-editor-header {
@@ -450,7 +450,7 @@ function injectStyles() {
 }
 .budget-editor-blurb {
   margin: 0;
-  font-size: var(--parallx-fontSize-md, 13px);
+  font-size: var(--px-text-base, 13px);
   color: var(--vscode-descriptionForeground, #888);
   line-height: 1.55;
   max-width: 680px;
@@ -462,8 +462,8 @@ function injectStyles() {
   padding: 4px 8px;
   background: var(--vscode-input-background, rgba(255,255,255,0.04));
   border: 1px solid var(--vscode-panel-border, #2a2a2a);
-  border-radius: var(--parallx-radius-sm, 3px);
-  font-size: var(--parallx-fontSize-sm, 11px);
+  border-radius: var(--px-radius-sm, 3px);
+  font-size: var(--px-text-xs, 11px);
   color: var(--vscode-descriptionForeground, #888);
   width: fit-content;
 }
@@ -484,9 +484,9 @@ function injectStyles() {
   background: var(--vscode-button-secondaryBackground, #3a3a3a);
   color: var(--vscode-button-secondaryForeground, #ccc);
   border: 1px solid var(--vscode-panel-border, #555);
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm, 3px);
   font-family: inherit;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-xs, 11px);
   cursor: pointer;
 }
 .budget-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
@@ -511,10 +511,10 @@ function injectStyles() {
   background: var(--vscode-input-background, rgba(255,255,255,0.04));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, #555));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm, 3px);
   padding: 4px 8px;
   font: inherit;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-xs, 11px);
 }
 .budget-select {
   appearance: none;
@@ -555,14 +555,14 @@ function injectStyles() {
   padding: 40px 20px;
   text-align: center;
   color: var(--vscode-descriptionForeground, #888);
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-xs, 11px);
 }
 
 /* Tables */
 .budget-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-xs, 11px);
 }
 .budget-table th, .budget-table td {
   text-align: left;
@@ -628,7 +628,7 @@ function injectStyles() {
 .budget-card {
   padding: 12px 14px;
   border: 1px solid var(--vscode-panel-border, #2a2a2a);
-  border-radius: var(--parallx-radius-md, 4px);
+  border-radius: var(--px-radius-md, 4px);
   background: var(--vscode-input-background, rgba(255,255,255,0.02));
   transition: border-color 80ms ease, background 80ms ease, transform 80ms ease;
 }
@@ -671,7 +671,7 @@ function injectStyles() {
   align-items: center;
   gap: 10px;
   padding: 5px 0;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-xs, 11px);
 }
 .budget-cat-bar .bar-track {
   height: 6px;
@@ -706,7 +706,7 @@ function injectStyles() {
 }
 
 .budget-log-row {
-  font-family: var(--parallx-fontFamily-mono, ui-monospace, Consolas, monospace);
+  font-family: var(--vscode-editor-font-family, ui-monospace, Consolas, monospace);
   font-size: 11px;
 }
 .budget-log-row.warn  td { color: #f59e0b; }
@@ -720,8 +720,8 @@ function injectStyles() {
   padding: 2px 4px;
   background: var(--vscode-input-background, rgba(255,255,255,0.04));
   border: 1px solid var(--vscode-panel-border, #2a2a2a);
-  border-radius: var(--parallx-radius-sm, 3px);
-  font-size: var(--parallx-fontSize-sm, 11px);
+  border-radius: var(--px-radius-sm, 3px);
+  font-size: var(--px-text-xs, 11px);
 }
 .budget-month-picker .label {
   min-width: 110px;
@@ -750,7 +750,7 @@ function injectStyles() {
   gap: 4px;
   padding: 12px 14px;
   border: 1px solid var(--vscode-panel-border, #2a2a2a);
-  border-radius: var(--parallx-radius-md, 4px);
+  border-radius: var(--px-radius-md, 4px);
   background: var(--vscode-input-background, rgba(255,255,255,0.02));
   min-width: 200px;
   flex: 1 1 220px;
@@ -4984,7 +4984,7 @@ function renderImportExportSection(body, api) {
   importWrap.appendChild(importHdr);
 
   const importHelp = document.createElement('div');
-  importHelp.style.fontSize = 'var(--parallx-fontSize-sm, 11px)';
+  importHelp.style.fontSize = 'var(--px-text-xs, 11px)';
   importHelp.style.color = 'var(--vscode-descriptionForeground, #888)';
   importHelp.style.lineHeight = '1.5';
   importHelp.innerHTML =
@@ -4998,8 +4998,8 @@ function renderImportExportSection(body, api) {
   ta.spellcheck = false;
   ta.style.width = '100%';
   ta.style.boxSizing = 'border-box';
-  ta.style.fontFamily = 'var(--parallx-fontFamily-mono, ui-monospace, Consolas, monospace)';
-  ta.style.fontSize = 'var(--parallx-fontSize-sm, 11px)';
+  ta.style.fontFamily = 'var(--vscode-editor-font-family, ui-monospace, Consolas, monospace)';
+  ta.style.fontSize = 'var(--px-text-xs, 11px)';
   ta.style.lineHeight = '1.5';
   ta.style.resize = 'vertical';
   ta.style.minHeight = '160px';
@@ -5019,13 +5019,13 @@ function renderImportExportSection(body, api) {
   importBar.appendChild(spacer);
 
   const preview = document.createElement('div');
-  preview.style.fontSize = 'var(--parallx-fontSize-sm, 11px)';
+  preview.style.fontSize = 'var(--px-text-xs, 11px)';
   preview.style.color = 'var(--vscode-descriptionForeground, #888)';
   preview.style.fontVariantNumeric = 'tabular-nums';
   importBar.appendChild(preview);
 
   const status = document.createElement('div');
-  status.style.fontSize = 'var(--parallx-fontSize-sm, 11px)';
+  status.style.fontSize = 'var(--px-text-xs, 11px)';
   status.style.color = 'var(--vscode-descriptionForeground, #888)';
   status.style.minHeight = '1.4em';
   importWrap.appendChild(status);
@@ -5077,7 +5077,7 @@ function renderImportExportSection(body, api) {
   exportWrap.appendChild(exportHdr);
 
   const exportHelp = document.createElement('div');
-  exportHelp.style.fontSize = 'var(--parallx-fontSize-sm, 11px)';
+  exportHelp.style.fontSize = 'var(--px-text-xs, 11px)';
   exportHelp.style.color = 'var(--vscode-descriptionForeground, #888)';
   exportHelp.style.lineHeight = '1.5';
   exportHelp.innerHTML = 'Writes <code>budget-export-YYYY-MM-DD.csv</code> to your workspace root, including every confirmed and review-queue row. Falls back to your clipboard if no workspace folder is open.';
@@ -5088,7 +5088,7 @@ function renderImportExportSection(body, api) {
   exportWrap.appendChild(exportBar);
 
   const exportStatus = document.createElement('div');
-  exportStatus.style.fontSize = 'var(--parallx-fontSize-sm, 11px)';
+  exportStatus.style.fontSize = 'var(--px-text-xs, 11px)';
   exportStatus.style.color = 'var(--vscode-descriptionForeground, #888)';
   exportStatus.style.minHeight = '1.4em';
 
@@ -5361,7 +5361,7 @@ function buildLine(points, opts) {
   const padL = 40, padR = 10, padT = 10, padB = 22;
   const innerW = width - padL - padR;
   const innerH = height - padT - padB;
-  const stroke = (opts && opts.color) || 'var(--parallx-color-accent, #9333ea)';
+  const stroke = (opts && opts.color) || 'var(--px-accent, #9333ea)';
 
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('width', String(width));
