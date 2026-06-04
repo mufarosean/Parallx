@@ -1413,6 +1413,66 @@ function injectStyles() {
   vertical-align: middle;
 }
 
+/* ═══ Transaction editor drawer ═══ */
+.budget-drawer-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex; justify-content: flex-end;
+  animation: budget-fade 120ms ease;
+}
+.budget-drawer {
+  width: 440px; max-width: 92vw; height: 100%;
+  display: flex; flex-direction: column;
+  background: var(--px-bg-elevated, var(--vscode-editor-background, #1e1e1e));
+  color: var(--px-text, var(--vscode-editor-foreground, #ddd));
+  border-left: 1px solid var(--px-border, var(--vscode-panel-border, #2a2a2a));
+  box-shadow: var(--px-shadow-lg, -8px 0 30px rgba(0, 0, 0, 0.45));
+  animation: budget-slide-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes budget-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes budget-slide-in { from { transform: translateX(24px); opacity: 0.5; } to { transform: none; opacity: 1; } }
+.budget-drawer-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--px-divider, var(--vscode-panel-border, #2a2a2a));
+}
+.budget-drawer-title { margin: 0; font-size: var(--px-text-md, 15px); font-weight: 600; flex: 1; }
+.budget-drawer-sub { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
+.budget-drawer-close {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0; border: none; border-radius: var(--px-radius-sm, 4px);
+  background: transparent; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); cursor: pointer;
+}
+.budget-drawer-close:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255,255,255,0.06))); color: var(--px-text, inherit); }
+.budget-drawer-body { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.budget-field { display: flex; flex-direction: column; gap: 5px; }
+.budget-field-label { font-size: var(--px-text-xs, 11px); font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
+.budget-field-hint { font-size: var(--px-text-xs, 11px); color: var(--px-text-faint, var(--vscode-descriptionForeground, #777)); }
+.budget-field .budget-input, .budget-field .budget-select, .budget-field .budget-drawer-textarea { width: 100%; box-sizing: border-box; }
+.budget-field-row { display: flex; gap: 10px; }
+.budget-field-row > .budget-field { flex: 1; min-width: 0; }
+.budget-drawer-textarea {
+  background: var(--px-bg-inset, var(--vscode-input-background, rgba(255,255,255,0.04)));
+  color: var(--px-text, var(--vscode-input-foreground, #ccc));
+  border: 1px solid var(--px-border, var(--vscode-input-border, #555));
+  border-radius: var(--px-radius-sm, 4px); padding: 7px 9px; font: inherit; font-size: var(--px-text-sm, 12px);
+  min-height: 58px; resize: vertical;
+}
+.budget-drawer-foot {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--px-divider, var(--vscode-panel-border, #2a2a2a));
+}
+.budget-drawer-foot .spacer { flex: 1; }
+.budget-btn-danger {
+  background: var(--px-danger-soft, rgba(224, 108, 102, 0.15));
+  color: var(--px-danger, #e06c66);
+  border-color: transparent;
+}
+.budget-btn-danger:hover { background: var(--px-danger, #e06c66); color: #fff; }
+.budget-table tbody tr.budget-row-clickable { cursor: pointer; }
+.budget-table tbody tr.budget-row-clickable:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255,255,255,0.05))); }
+
 `;
   document.head.appendChild(style);
 }
@@ -1781,6 +1841,200 @@ async function reconcileAccountKindsFromSnapshots() {
   return changed;
 }
 
+// ─── Transaction editor drawer (create / edit / delete) ────────────────────
+//
+// One human-editing surface for the whole ledger: fix a misparsed merchant,
+// amount, date, type, account, or category; add notes; confirm a review row;
+// add a manual (cash) transaction; or move one to trash. Reuses the same DB
+// ops the AI tools use (learnExpenseRuleFromOverride, budgetToolDeleteTransaction)
+// so the human and AI paths stay consistent.
+async function openTxEditor(api, opts = {}) {
+  const isCreate = !opts.id;
+  let row = null;
+  if (!isCreate) {
+    row = await db.get('SELECT * FROM transactions WHERE id=?', [opts.id]).catch(() => null);
+    if (!row) { await api.window?.showErrorMessage?.('Transaction not found.'); return; }
+  }
+  const [categories, accounts] = await Promise.all([
+    db.all(`SELECT id, name, color, kind FROM categories WHERE archived=0 ORDER BY kind, sort_order, name`).catch(() => []),
+    db.all(`SELECT id, last_four, kind, display_name FROM accounts WHERE archived=0 ORDER BY kind, last_four`).catch(() => []),
+  ]);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'budget-drawer-overlay';
+  const drawer = document.createElement('div');
+  drawer.className = 'budget-drawer';
+  overlay.appendChild(drawer);
+
+  function close() { overlay.remove(); document.removeEventListener('keydown', onKey); }
+  function onKey(e) { if (e.key === 'Escape') close(); }
+  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', onKey);
+
+  // Header
+  const head = document.createElement('div'); head.className = 'budget-drawer-head';
+  const titleWrap = document.createElement('div'); titleWrap.style.flex = '1';
+  const title = document.createElement('h3'); title.className = 'budget-drawer-title';
+  title.textContent = isCreate ? 'Add transaction' : 'Edit transaction';
+  titleWrap.appendChild(title);
+  if (!isCreate && row.gmail_message_id) {
+    const sub = document.createElement('div'); sub.className = 'budget-drawer-sub';
+    sub.textContent = 'Imported from email';
+    titleWrap.appendChild(sub);
+  } else if (!isCreate) {
+    const sub = document.createElement('div'); sub.className = 'budget-drawer-sub';
+    sub.textContent = 'Manual entry';
+    titleWrap.appendChild(sub);
+  }
+  head.appendChild(titleWrap);
+  const closeBtn = document.createElement('button'); closeBtn.className = 'budget-drawer-close'; closeBtn.type = 'button';
+  closeBtn.innerHTML = makeIcon(api, 'x', 16) || '✕';
+  closeBtn.addEventListener('click', close);
+  head.appendChild(closeBtn);
+  drawer.appendChild(head);
+
+  // Body / form
+  const form = document.createElement('div'); form.className = 'budget-drawer-body';
+  function field(labelText, control, hint) {
+    const f = document.createElement('label'); f.className = 'budget-field';
+    const l = document.createElement('span'); l.className = 'budget-field-label'; l.textContent = labelText;
+    f.appendChild(l); f.appendChild(control);
+    if (hint) { const h = document.createElement('span'); h.className = 'budget-field-hint'; h.textContent = hint; f.appendChild(h); }
+    return f;
+  }
+
+  const merchantInput = document.createElement('input');
+  merchantInput.className = 'budget-input'; merchantInput.type = 'text';
+  merchantInput.placeholder = 'e.g. Starbucks'; merchantInput.value = row?.merchant || '';
+
+  const dateInput = document.createElement('input');
+  dateInput.className = 'budget-input'; dateInput.type = 'date';
+  dateInput.value = row?.transaction_date ? String(row.transaction_date).slice(0, 10) : todayYmd();
+
+  const amountInput = document.createElement('input');
+  amountInput.className = 'budget-input'; amountInput.type = 'number'; amountInput.step = '0.01';
+  amountInput.placeholder = '0.00';
+  amountInput.value = row ? ((Number(row.amount_cents) || 0) / 100).toFixed(2) : '';
+
+  const typeSel = document.createElement('select'); typeSel.className = 'budget-select';
+  for (const [v, lbl] of [['purchase', 'Purchase'], ['fee', 'Fee'], ['deposit', 'Deposit'], ['transfer', 'Transfer']]) {
+    const o = document.createElement('option'); o.value = v; o.textContent = lbl;
+    if ((row?.tx_type || 'purchase') === v) o.selected = true;
+    typeSel.appendChild(o);
+  }
+
+  const acctSel = document.createElement('select'); acctSel.className = 'budget-select';
+  const acctBlank = document.createElement('option'); acctBlank.value = ''; acctBlank.textContent = '— No account —';
+  acctSel.appendChild(acctBlank);
+  for (const a of accounts) {
+    const o = document.createElement('option'); o.value = a.id;
+    o.textContent = a.display_name || defaultAccountName(a.kind, a.last_four);
+    if (row?.account_id === a.id) o.selected = true;
+    acctSel.appendChild(o);
+  }
+
+  const catSel = document.createElement('select'); catSel.className = 'budget-select';
+  const catBlank = document.createElement('option'); catBlank.value = ''; catBlank.textContent = '— Uncategorized —';
+  catSel.appendChild(catBlank);
+  appendCategoryOptions(catSel, categories, row?.category_id || null);
+
+  const statusSel = document.createElement('select'); statusSel.className = 'budget-select';
+  for (const [v, lbl] of [['confirmed', 'Confirmed'], ['review', 'Needs review'], ['hidden', 'Hidden']]) {
+    const o = document.createElement('option'); o.value = v; o.textContent = lbl;
+    if ((row?.status || 'confirmed') === v) o.selected = true;
+    statusSel.appendChild(o);
+  }
+
+  const notesInput = document.createElement('textarea');
+  notesInput.className = 'budget-drawer-textarea'; notesInput.placeholder = 'Notes (optional)';
+  notesInput.value = row?.notes || '';
+
+  form.appendChild(field('Merchant', merchantInput));
+  const row1 = document.createElement('div'); row1.className = 'budget-field-row';
+  row1.appendChild(field('Date', dateInput));
+  row1.appendChild(field('Amount', amountInput, 'Positive = money out · negative = money in'));
+  form.appendChild(row1);
+  const row2 = document.createElement('div'); row2.className = 'budget-field-row';
+  row2.appendChild(field('Type', typeSel));
+  row2.appendChild(field('Account', acctSel));
+  form.appendChild(row2);
+  form.appendChild(field('Category', catSel));
+  form.appendChild(field('Status', statusSel));
+  form.appendChild(field('Notes', notesInput));
+  drawer.appendChild(form);
+
+  // Footer
+  const foot = document.createElement('div'); foot.className = 'budget-drawer-foot';
+  if (!isCreate) {
+    let armed = false; let armTimer = null;
+    const delBtn = makeButton('Delete', { onClick: async () => {
+      if (!armed) {
+        armed = true; delBtn.querySelector('span:last-child').textContent = 'Click again to delete';
+        delBtn.classList.add('budget-btn-danger');
+        armTimer = setTimeout(() => { armed = false; delBtn.querySelector('span:last-child').textContent = 'Delete'; delBtn.classList.remove('budget-btn-danger'); }, 3000);
+        return;
+      }
+      if (armTimer) clearTimeout(armTimer);
+      try {
+        await budgetToolDeleteTransaction({ id: opts.id, reason: 'deleted from editor' });
+        close(); opts.onSaved?.();
+      } catch (e) { await api.window?.showErrorMessage?.('Delete failed: ' + (e instanceof Error ? e.message : String(e))); }
+    } });
+    foot.appendChild(delBtn);
+  }
+  const spacer = document.createElement('div'); spacer.className = 'spacer'; foot.appendChild(spacer);
+  foot.appendChild(makeButton('Cancel', { onClick: close }));
+
+  async function save(forceStatus) {
+    const merchant = merchantInput.value.trim();
+    const dateYmd = dateInput.value;
+    const amt = parseFloat(amountInput.value);
+    if (!Number.isFinite(amt)) { amountInput.focus(); return; }
+    if (!dateYmd) { dateInput.focus(); return; }
+    const cents = dollarsToCents(amt);
+    const txType = typeSel.value;
+    const categoryId = catSel.value || null;
+    const accountId = acctSel.value || null;
+    const notes = notesInput.value.trim() || null;
+    const status = forceStatus || statusSel.value || 'confirmed';
+    const now = new Date().toISOString();
+    const categoryChanged = (categoryId !== (row?.category_id || null));
+    try {
+      if (isCreate) {
+        await db.run(
+          `INSERT INTO transactions
+             (id, gmail_message_id, merchant, amount_cents, transaction_date, tx_type,
+              category_id, account_id, notes, status, categorization_source, user_overridden,
+              created_at, updated_at)
+           VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', 1, ?, ?)`,
+          [crypto.randomUUID(), merchant || null, cents, dateYmd, txType, categoryId, accountId, notes, status, now, now],
+        );
+      } else {
+        const sets = ['merchant=?', 'amount_cents=?', 'transaction_date=?', 'tx_type=?', 'category_id=?', 'account_id=?', 'notes=?', 'status=?', 'user_overridden=1', 'updated_at=?'];
+        const params = [merchant || null, cents, dateYmd, txType, categoryId, accountId, notes, status, now];
+        if (categoryChanged) sets.push("categorization_source='manual'", 'matched_rule_id=NULL');
+        params.push(opts.id);
+        await db.run(`UPDATE transactions SET ${sets.join(', ')} WHERE id=?`, params);
+      }
+      if (categoryChanged && categoryId && merchant) await learnExpenseRuleFromOverride(merchant, categoryId);
+      close(); opts.onSaved?.();
+    } catch (e) {
+      await api.window?.showErrorMessage?.('Save failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  if (!isCreate && row.status === 'review') {
+    foot.appendChild(makeButton('Confirm', { primary: true, onClick: () => save('confirmed') }));
+    foot.appendChild(makeButton('Save', { onClick: () => save() }));
+  } else {
+    foot.appendChild(makeButton(isCreate ? 'Add transaction' : 'Save', { primary: true, onClick: () => save() }));
+  }
+  drawer.appendChild(foot);
+
+  document.body.appendChild(overlay);
+  merchantInput.focus();
+}
+
 function renderTransactionsSection(body, api) {
   // Pop any nav-state that Dashboard may have set so this view filters
   // immediately on open. Cleared after first read.
@@ -1856,6 +2110,10 @@ function renderTransactionsSection(body, api) {
 
   toolbar.appendChild(statusFilters);
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
+  toolbar.appendChild(makeButton('Add', {
+    iconHtml: makeIcon(api, 'plus', 12),
+    onClick: () => void openTxEditor(api, { onSaved: refresh }),
+  }));
   toolbar.appendChild(makeButton('Refresh', {
     iconHtml: makeIcon(api, 'refresh-cw', 12),
     onClick: () => void refresh(),
@@ -1967,6 +2225,8 @@ function renderTransactionsSection(body, api) {
     const tbody = document.createElement('tbody');
     for (const r of rows) {
       const tr = document.createElement('tr');
+      tr.classList.add('budget-row-clickable');
+      tr.addEventListener('click', () => void openTxEditor(api, { id: r.id, onSaved: refresh }));
       const cents = Number(r.amount_cents) || 0;
       const amtCls = cents < 0 ? 'positive' : (cents > 0 ? 'negative' : '');
 
@@ -1983,6 +2243,7 @@ function renderTransactionsSection(body, api) {
       tdAcct.style.color = 'var(--vscode-descriptionForeground, #aaa)';
 
       const tdCat = document.createElement('td');
+      tdCat.addEventListener('click', (e) => e.stopPropagation());
       const sel = document.createElement('select'); sel.className = 'budget-select';
       const blank = document.createElement('option'); blank.value = ''; blank.textContent = '— Uncategorized —';
       sel.appendChild(blank);
@@ -2040,6 +2301,7 @@ function renderTransactionsSection(body, api) {
       tdConf.innerHTML = r.ai_confidence ? `<span class="budget-pill ${escHtml(r.ai_confidence)}">${escHtml(confidenceLabel(r.ai_confidence))}</span>` : '';
       const tdActions = document.createElement('td');
       tdActions.className = 'budget-row-actions';
+      tdActions.addEventListener('click', (e) => e.stopPropagation());
       if (r.status === 'review') {
         const confirmBtn = makeButton('Confirm', {
           primary: true,
@@ -2142,6 +2404,8 @@ function renderReviewQueueSection(body, api) {
     const tbody = document.createElement('tbody');
     for (const r of rows) {
       const tr = document.createElement('tr');
+      tr.classList.add('budget-row-clickable');
+      tr.addEventListener('click', () => void openTxEditor(api, { id: r.id, onSaved: refresh }));
       const tdDate = document.createElement('td'); tdDate.textContent = fmtDate(r.transaction_date); tr.appendChild(tdDate);
       const tdMerch = document.createElement('td');
       const mTitle = document.createElement('div'); mTitle.textContent = r.merchant || '— (parse failed)'; tdMerch.appendChild(mTitle);
@@ -2161,6 +2425,7 @@ function renderReviewQueueSection(body, api) {
       tr.appendChild(tdAmt);
 
       const tdCat = document.createElement('td');
+      tdCat.addEventListener('click', (e) => e.stopPropagation());
       const sel = document.createElement('select');
       sel.className = 'budget-select';
       const blank = document.createElement('option'); blank.value = ''; blank.textContent = '— Pick Category —';
@@ -2171,6 +2436,7 @@ function renderReviewQueueSection(body, api) {
 
       const tdAct = document.createElement('td');
       tdAct.className = 'budget-row-actions';
+      tdAct.addEventListener('click', (e) => e.stopPropagation());
       const confirmBtn = makeButton('Confirm', {
         primary: true,
         onClick: async () => {
