@@ -11,6 +11,14 @@ export function renderMarkdownToDom(markdown: string): DocumentFragment {
   const frag = document.createDocumentFragment();
   // Block-level: split on double newline.
   const blocks = markdown.split(/\n\s*\n/);
+
+  // A list whose items are separated by blank lines arrives here as several
+  // adjacent blocks (CommonMark calls this a "loose" list). To keep the
+  // numbering continuous — rather than restarting every block at "1." — we
+  // track the list opened by the previous block and append into it when the
+  // next block is a list of the same kind. Any non-list block closes it.
+  let openList: { el: HTMLUListElement | HTMLOListElement; kind: 'ul' | 'ol' } | null = null;
+
   for (const block of blocks) {
     const trimmed = block.trim();
     if (!trimmed) continue;
@@ -18,6 +26,7 @@ export function renderMarkdownToDom(markdown: string): DocumentFragment {
     // Heading
     const headingMatch = trimmed.match(/^(#{1,6})\s+(.*)$/);
     if (headingMatch) {
+      openList = null;
       const level = Math.min(6, headingMatch[1].length);
       const h = document.createElement(`h${level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6');
       h.textContent = headingMatch[2];
@@ -28,27 +37,44 @@ export function renderMarkdownToDom(markdown: string): DocumentFragment {
     // Numbered or bullet list
     const lines = trimmed.split(/\n/);
     if (lines.every(l => /^\s*[-*•]\s+/.test(l))) {
-      const ul = document.createElement('ul');
+      let ul: HTMLUListElement;
+      if (openList?.kind === 'ul') {
+        ul = openList.el as HTMLUListElement;
+      } else {
+        ul = document.createElement('ul');
+        frag.appendChild(ul);
+      }
       for (const ln of lines) {
         const li = document.createElement('li');
         li.appendChild(parseInlineFragment(ln.replace(/^\s*[-*•]\s+/, '')));
         ul.appendChild(li);
       }
-      frag.appendChild(ul);
+      openList = { el: ul, kind: 'ul' };
       continue;
     }
     if (lines.every(l => /^\s*\d+\.\s+/.test(l))) {
-      const ol = document.createElement('ol');
+      let ol: HTMLOListElement;
+      if (openList?.kind === 'ol') {
+        ol = openList.el as HTMLOListElement;
+      } else {
+        ol = document.createElement('ol');
+        // Honor a list that doesn't begin at 1 (CommonMark takes the start
+        // from the first item's number); the browser numbers the rest.
+        const startNum = Number.parseInt(lines[0].match(/^\s*(\d+)\./)?.[1] ?? '1', 10);
+        if (startNum !== 1) ol.start = startNum;
+        frag.appendChild(ol);
+      }
       for (const ln of lines) {
         const li = document.createElement('li');
         li.appendChild(parseInlineFragment(ln.replace(/^\s*\d+\.\s+/, '')));
         ol.appendChild(li);
       }
-      frag.appendChild(ol);
+      openList = { el: ol, kind: 'ol' };
       continue;
     }
 
     // Paragraph (preserving inline emphasis + links)
+    openList = null;
     const p = document.createElement('p');
     p.appendChild(parseInlineFragment(lines.join(' ')));
     frag.appendChild(p);
