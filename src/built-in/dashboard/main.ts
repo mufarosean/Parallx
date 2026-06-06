@@ -164,7 +164,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     context.subscriptions.push(
       api.chat.registerTool('dashboard_render_widget', {
         description:
-          'Deliver finished content to a dashboard widget. Call this once you have gathered and formatted the result a widget asked for. Identify the target either by the instanceId the widget gave you, or by its title (the name shown on the widget) — supply at least one. Content is Markdown and replaces whatever the widget currently shows.',
+          'Deliver finished content to a dashboard widget. Call this once you have gathered and formatted the result a widget asked for. Identify the target either by the instanceId the widget gave you, or by its title (the name shown on the widget) — supply at least one. Content replaces whatever the widget currently shows: send Markdown for a normal widget, or a self-contained HTML fragment for a Live (HTML) widget — follow the format the widget’s request asked for.',
         parameters: {
           type: 'object',
           properties: {

@@ -1194,6 +1194,22 @@
 .dashboard-md__error strong { display: block; margin-bottom: 4px; color: var(--px-danger); font-weight: 600; }
 .dashboard-md__error p { margin: 0; line-height: 1.55; }
 
+/* ── Live (AI HTML) widget ──────────────────────────────────────────────────
+   The model's HTML renders inside a jailed iframe that fills the cell and
+   handles its own scrolling, so the surface itself doesn't scroll. */
+.dashboard-live .dashboard-md__surface { overflow: hidden; }
+.dashboard-live__frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  /* Dark base behind the frame so there's never a white flash before the
+     sandboxed document paints. */
+  background: var(--px-bg);
+  border-radius: inherit;
+  color-scheme: dark;
+}
+
 
 /* ============================================================================
    Settings drawer (Phase 5)
