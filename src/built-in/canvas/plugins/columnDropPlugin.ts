@@ -37,6 +37,27 @@ import {
   addColumnToLayoutFromDrop,
 } from '../config/blockStateRegistry/blockStateRegistry.js';
 
+/**
+ * Viewport-Y for the horizontal drop guide at a block boundary.
+ *
+ * At a boundary between two stacked blocks the cursor can resolve to either the
+ * upper block's bottom edge ("below A") or the lower block's top edge
+ * ("above B"). Centering the line in the gap makes BOTH resolve to the same Y,
+ * so the guide shows one stable line per boundary instead of jiggling between
+ * two near-identical edges. With no neighbor (a container's first/last block)
+ * it sits just outside the block edge. Exported for tests.
+ */
+export function gapGuideViewportTop(
+  blockRect: { readonly top: number; readonly bottom: number },
+  neighborRect: { readonly top: number; readonly bottom: number } | null,
+  pos: 'above' | 'below',
+): number {
+  if (pos === 'above') {
+    return neighborRect ? (neighborRect.bottom + blockRect.top) / 2 : blockRect.top - 1;
+  }
+  return neighborRect ? (blockRect.bottom + neighborRect.top) / 2 : blockRect.bottom + 1;
+}
+
 export function columnDropPlugin(): Plugin {
   const pluginKey = new PluginKey('columnDrop');
 
@@ -119,6 +140,20 @@ export function columnDropPlugin(): Plugin {
     if (horzIndicator) horzIndicator.style.display = 'none';
   }
 
+  /**
+   * Bounding rect of the nearest sibling block in the given direction,
+   * skipping the guide elements. Returns null at a container's first/last
+   * block (no neighbor).
+   */
+  function adjacentBlockRect(blockEl: HTMLElement, dir: 'prev' | 'next'): DOMRect | null {
+    let sib = dir === 'next' ? blockEl.nextElementSibling : blockEl.previousElementSibling;
+    while (sib) {
+      if (!isGuideElement(sib as HTMLElement)) return (sib as HTMLElement).getBoundingClientRect();
+      sib = dir === 'next' ? sib.nextElementSibling : sib.previousElementSibling;
+    }
+    return null;
+  }
+
   function showHorz(
     container: HTMLElement,
     blockEl: HTMLElement,
@@ -134,9 +169,17 @@ export function columnDropPlugin(): Plugin {
     const spanRect = (parent && parent !== proseMirrorRoot)
       ? parent.getBoundingClientRect()
       : bRect;
-    el.style.top = pos === 'above'
-      ? `${bRect.top - cRect.top + sT - 1}px`
-      : `${bRect.bottom - cRect.top + sT + 1}px`;
+
+    // A boundary between two stacked blocks has two near-identical drop spots:
+    // the upper block's bottom edge ("below A") and the lower block's top edge
+    // ("above B"). Snapping the guide to the CENTER of the gap collapses both
+    // to one stable line, so it no longer jiggles between the two edges as the
+    // cursor crosses the midpoint — most visible in columns, where the gap is
+    // larger. Falls back to the block edge at a container's first/last block.
+    const GUIDE_HALF = el.offsetHeight / 2 || 1.5;
+    const neighbor = adjacentBlockRect(blockEl, pos === 'above' ? 'prev' : 'next');
+    const viewportTop = gapGuideViewportTop(bRect, neighbor, pos);
+    el.style.top = `${viewportTop - cRect.top + sT - GUIDE_HALF}px`;
     el.style.left = `${spanRect.left - cRect.left + sL}px`;
     el.style.width = `${spanRect.width}px`;
     el.style.display = 'block';
