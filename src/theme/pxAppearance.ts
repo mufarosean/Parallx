@@ -13,6 +13,7 @@ const STORAGE_KEY = 'px-appearance';
 const PRESETS_KEY = 'px-appearance-presets';
 
 export type PxBaseTheme = 'slate' | 'warm' | 'ember';
+export type PxMode = 'light' | 'dark';
 
 export interface PxAccent {
   readonly id: string;
@@ -24,7 +25,9 @@ export interface PxAccent {
 }
 
 export interface PxAppearanceState {
-  base: PxBaseTheme;
+  /** Light or dark — drives both the --px chrome and the VS Code editor base theme. */
+  mode: PxMode;
+  base: PxBaseTheme;     // the "mood": slate / warm / ember (applies in both modes)
   accent: string;        // accent id, or 'custom'
   customHue?: number;    // 0-360 when accent === 'custom'
 }
@@ -46,7 +49,7 @@ export const PX_ACCENTS: PxAccent[] = [
   { id: 'mono',   label: 'Graphite', h: 220, s: 8, l: 62, rgb: '150, 156, 168' },
 ];
 
-const DEFAULT_STATE: PxAppearanceState = { base: 'slate', accent: 'steel' };
+const DEFAULT_STATE: PxAppearanceState = { mode: 'dark', base: 'slate', accent: 'steel' };
 
 export function readAppearance(): PxAppearanceState {
   try {
@@ -54,6 +57,7 @@ export function readAppearance(): PxAppearanceState {
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<PxAppearanceState>;
       return {
+        mode: parsed.mode === 'light' ? 'light' : 'dark',
         base: (parsed.base === 'warm' || parsed.base === 'ember') ? parsed.base : 'slate',
         accent: typeof parsed.accent === 'string' ? parsed.accent : 'steel',
         customHue: typeof parsed.customHue === 'number' ? parsed.customHue : undefined,
@@ -95,6 +99,7 @@ export function savePreset(name: string, state: PxAppearanceState): PxThemePrese
   const preset: PxThemePreset = {
     id: `t_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e4).toString(36)}`,
     name: name.trim() || 'Custom',
+    mode: state.mode,
     base: state.base,
     accent: state.accent,
     customHue: state.customHue,
@@ -124,9 +129,16 @@ function hslToRgbString(h: number, s: number, l: number): string {
   return `${Math.round((r + m) * 255)}, ${Math.round((g + m) * 255)}, ${Math.round((b + m) * 255)}`;
 }
 
-/** Apply a state to :root (base via data-attr, accent via inline vars). */
+/** Apply a state to :root (mode + base via data-attrs, accent via inline vars). */
 export function applyAppearance(state: PxAppearanceState): void {
   const root = document.documentElement;
+
+  // Mode — dark is the bare-:root default (no attribute), so existing dark
+  // themes are untouched; light is opt-in via data-px-mode. Also set
+  // color-scheme so native scrollbars / inputs / controls match.
+  if (state.mode === 'light') root.setAttribute('data-px-mode', 'light');
+  else root.removeAttribute('data-px-mode');
+  root.style.colorScheme = state.mode;
 
   // Base palette — slate is the :root default (no attribute).
   if (state.base === 'slate') root.removeAttribute('data-px-theme');

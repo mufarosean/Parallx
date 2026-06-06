@@ -23,31 +23,58 @@ import {
   deletePreset,
   type PxAppearanceState,
   type PxBaseTheme,
+  type PxMode,
 } from '../../theme/pxAppearance.js';
+import { applyThemeById } from '../../theme/themeApply.js';
 
 import './pxAppearance.css';
+
+/** VS Code base theme ids paired to each --px mode (both ship in the catalog). */
+const EDITOR_THEME_FOR_MODE: Record<PxMode, string> = {
+  dark: 'parallx-dark-modern',
+  light: 'parallx-light-modern',
+};
+
+const MOON_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+const SUN_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>';
 
 export class PxAppearancePanel implements IDisposable {
   private readonly _container: HTMLElement;
   private _state: PxAppearanceState;
   private _disposed = false;
 
+  // Services for switching the VS Code editor base theme (dark/light) in lockstep
+  // with the --px mode. Optional so the panel still renders in isolation/tests.
+  private readonly _themeService?: IThemeService;
+  private readonly _globalStorage?: IStorage;
+
   // Re-render hooks for selection rings.
+  private readonly _modeButtons = new Map<PxMode, HTMLElement>();
   private readonly _baseCards = new Map<PxBaseTheme, HTMLElement>();
   private readonly _accentChips = new Map<string, HTMLElement>();
   private _hueRow?: HTMLElement;
   private _hueInput?: HTMLInputElement;
   private _presetsRow?: HTMLElement;
 
-  constructor(container: HTMLElement, _themeService?: IThemeService, _globalStorage?: IStorage) {
+  constructor(container: HTMLElement, themeService?: IThemeService, globalStorage?: IStorage) {
     this._container = container;
+    this._themeService = themeService;
+    this._globalStorage = globalStorage;
     this._state = readAppearance();
     this._render();
   }
 
+  /** Apply + persist the --px chrome (mode/base/accent). */
   private _commit(): void {
     applyAppearance(this._state);
     writeAppearance(this._state);
+  }
+
+  /** Switch the VS Code editor/terminal/syntax base theme to match the mode. */
+  private _syncEditorTheme(): void {
+    if (this._themeService && this._globalStorage) {
+      applyThemeById(EDITOR_THEME_FOR_MODE[this._state.mode], this._themeService, this._globalStorage);
+    }
   }
 
   private _render(): void {
@@ -71,6 +98,7 @@ export class PxAppearancePanel implements IDisposable {
     const body = document.createElement('div');
     body.className = 'px-appearance-body';
 
+    body.appendChild(this._renderModeSection());
     body.appendChild(this._renderBaseSection());
     body.appendChild(this._renderAccentSection());
     body.appendChild(this._renderPreviewSection());
@@ -78,6 +106,56 @@ export class PxAppearancePanel implements IDisposable {
 
     root.appendChild(body);
     this._container.appendChild(root);
+  }
+
+  // ── Mode (light / dark) ───────────────────────────────────────────────
+  private _renderModeSection(): HTMLElement {
+    const section = document.createElement('section');
+    section.className = 'px-appearance-section';
+    section.appendChild(this._sectionHeading('Mode', 'Light or dark — applies to the whole app, including the code editor.'));
+
+    const toggle = document.createElement('div');
+    toggle.className = 'px-mode-toggle';
+    toggle.setAttribute('role', 'group');
+    toggle.setAttribute('aria-label', 'Light or dark mode');
+
+    const MODES: { id: PxMode; label: string; icon: string }[] = [
+      { id: 'dark',  label: 'Dark',  icon: MOON_SVG },
+      { id: 'light', label: 'Light', icon: SUN_SVG },
+    ];
+    for (const m of MODES) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'px-mode-btn';
+      btn.dataset.mode = m.id;
+      btn.setAttribute('aria-pressed', String(this._state.mode === m.id));
+      if (this._state.mode === m.id) btn.classList.add('is-selected');
+      btn.innerHTML = `${m.icon}<span>${m.label}</span>`;
+      btn.addEventListener('click', () => {
+        if (this._state.mode === m.id) return;
+        this._state.mode = m.id;
+        this._commit();         // --px chrome + persist
+        this._syncEditorTheme(); // VS Code editor base theme
+        this._syncModeSelection();
+      });
+      this._modeButtons.set(m.id, btn);
+      toggle.appendChild(btn);
+    }
+    section.appendChild(toggle);
+    return section;
+  }
+
+  /** Reflect the active mode on the toggle and re-tint the base-card previews. */
+  private _syncModeSelection(): void {
+    for (const [id, btn] of this._modeButtons) {
+      const on = this._state.mode === id;
+      btn.classList.toggle('is-selected', on);
+      btn.setAttribute('aria-pressed', String(on));
+    }
+    const light = this._state.mode === 'light';
+    for (const card of this._baseCards.values()) {
+      card.querySelector('.px-base-card-preview')?.classList.toggle('is-light', light);
+    }
   }
 
   // ── Base palette ──────────────────────────────────────────────────────
@@ -97,9 +175,9 @@ export class PxAppearancePanel implements IDisposable {
       card.dataset.theme = theme.id;
       if (this._state.base === theme.id) card.classList.add('is-selected');
 
-      // Mini surface preview rendered in the theme's own colors.
+      // Mini surface preview rendered in the theme's own colors (light/dark aware).
       const preview = document.createElement('div');
-      preview.className = `px-base-card-preview px-theme-${theme.id}`;
+      preview.className = `px-base-card-preview px-theme-${theme.id}${this._state.mode === 'light' ? ' is-light' : ''}`;
       preview.innerHTML =
         '<span class="px-bc-side"></span>' +
         '<span class="px-bc-main"><span class="px-bc-bar"></span><span class="px-bc-line"></span><span class="px-bc-line short"></span></span>';
@@ -346,8 +424,10 @@ export class PxAppearancePanel implements IDisposable {
       apply.appendChild(label);
 
       apply.addEventListener('click', () => {
-        this._state = { base: preset.base, accent: preset.accent, customHue: preset.customHue };
+        this._state = { mode: preset.mode, base: preset.base, accent: preset.accent, customHue: preset.customHue };
         this._commit();
+        this._syncEditorTheme();
+        this._syncModeSelection();
         this._syncBaseSelection();
         this._syncAccentSelection();
       });
@@ -386,6 +466,7 @@ export class PxAppearancePanel implements IDisposable {
   dispose(): void {
     if (this._disposed) return;
     this._disposed = true;
+    this._modeButtons.clear();
     this._baseCards.clear();
     this._accentChips.clear();
     this._container.replaceChildren();

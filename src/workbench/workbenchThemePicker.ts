@@ -18,8 +18,8 @@ import {
   getAvailableThemes,
   findThemeById,
   resolveTheme,
-  THEME_STORAGE_KEY,
 } from '../theme/themeCatalog.js';
+import { applyThemeById } from '../theme/themeApply.js';
 import { $ } from '../ui/dom.js';
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -177,9 +177,7 @@ export function showColorThemePicker(
   };
 
   const applyAndConfirm = (entry: ThemeCatalogEntry): void => {
-    const td = resolveTheme(entry, colorRegistry, designTokenRegistry);
-    themeService.applyTheme(td);
-    globalStorage.set(THEME_STORAGE_KEY, entry.id);  // fire-and-forget
+    applyThemeById(entry.id, themeService, globalStorage);
     cleanup();
   };
 

@@ -131,6 +131,48 @@
 .px-theme-warm  { --bc-bg:#1b1a17; --bc-side:#201e1b; --bc-elevated:#25231f; --bc-text:#ece7dc; --bc-accent:hsl(226 58% 65%); }
 .px-theme-ember { --bc-bg:#1a1815; --bc-side:#201d19; --bc-elevated:#26221d; --bc-text:#efe9dd; --bc-accent:hsl(32 78% 58%); }
 
+/* Light-mode mini-preview palettes — mirror the data-px-mode="light" blocks. */
+.px-theme-slate.is-light { --bc-bg:#f4f5f7; --bc-side:#eceef1; --bc-elevated:#ffffff; --bc-text:#1b1d21; --bc-accent:hsl(205 64% 52%); }
+.px-theme-warm.is-light  { --bc-bg:#f6f4f0; --bc-side:#efece6; --bc-elevated:#fffefb; --bc-text:#201c16; --bc-accent:hsl(226 58% 56%); }
+.px-theme-ember.is-light { --bc-bg:#f7f4ef; --bc-side:#f0ebe3; --bc-elevated:#fffdf9; --bc-text:#221d15; --bc-accent:hsl(32 78% 50%); }
+/* On light previews the text bars need more presence than the dark 0.5 alpha. */
+.px-base-card-preview.is-light .px-bc-line { opacity: 0.65; }
+.px-base-card-preview.is-light .px-bc-line.short { opacity: 0.4; }
+
+/* ── Mode toggle (segmented light / dark) ──────────────────────────────── */
+.px-mode-toggle {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 3px;
+  background: var(--px-bg-inset);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md, 6px);
+}
+.px-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: var(--px-radius-sm, 4px);
+  background: transparent;
+  color: var(--px-text-muted);
+  font-size: var(--px-text-sm, 12px);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--px-dur-fast, 90ms) var(--px-ease, ease),
+              color var(--px-dur-fast, 90ms) var(--px-ease, ease);
+}
+.px-mode-btn svg { display: block; }
+.px-mode-btn:hover { color: var(--px-text); }
+.px-mode-btn.is-selected {
+  background: var(--px-bg-elevated);
+  color: var(--px-text);
+  box-shadow: var(--px-shadow-sm), var(--px-edge-light);
+}
+.px-mode-btn:active { transform: var(--px-press, translateY(0.5px)); }
+
 .px-base-card-meta {
   display: flex;
   flex-direction: column;

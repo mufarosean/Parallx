@@ -216,3 +216,83 @@
   --px-accent-l: 58%;
   --px-accent-rgb: 224, 158, 70;
 }
+
+/* ============================================================================
+   LIGHT MODE — opt-in via data-px-mode="light" on :root (set by pxAppearance).
+   ----------------------------------------------------------------------------
+   The base scale inverts (00 = paper, 100 = ink) so the Tier-2 semantic tokens
+   (--px-bg, --px-text, …) re-derive light without any other change. We also
+   override the handful of tokens that ASSUME a dark canvas and so don't fix
+   themselves on a primitive swap: the white hairline + top sheen, the heavy
+   shadows, the recessed-window mix, and the signal hues (which need more
+   contrast on white). Mood-specific light primitives follow; the bare block
+   carries Light Slate (the default mood).
+
+   Additive only — the dark blocks above are untouched. The two-attribute
+   selectors out-specify the single-attribute dark mood blocks, so a light
+   mood wins cleanly while inheriting the shared overrides from here.
+   ========================================================================== */
+:root[data-px-mode="light"] {
+  /* Tier 1 — Light Slate primitives (00 lightest surface → 100 ink). */
+  --px-base-00: #f4f5f7;   /* app background (paper)               */
+  --px-base-05: #eceef1;   /* raised surface / tab strip           */
+  --px-base-10: #ffffff;   /* elevated cards, popovers, menus      */
+  --px-base-15: #eaecf0;   /* inset wells, inputs                  */
+  --px-base-20: #e2e5ea;   /* hover / divider                      */
+  --px-base-25: #d6dae1;   /* active / selected / border           */
+  --px-base-30: #c3c9d2;   /* strong border                        */
+  --px-base-35: #b1b8c2;   /* divider on elevated                  */
+  --px-base-40: #888f9b;   /* faint text                           */
+  --px-base-50: #6e757f;   /* disabled                             */
+  --px-base-60: #555b64;   /* muted text                           */
+  --px-base-70: #3c414a;   /* secondary text                       */
+  --px-base-100: #1b1d21;  /* primary text (ink)                   */
+
+  /* Signals — darkened/saturated for legibility on a light canvas. */
+  --px-red-rgb:    200, 64, 58;
+  --px-green-rgb:  38, 140, 92;
+  --px-yellow-rgb: 173, 122, 26;
+  --px-blue-rgb:   46, 110, 200;
+
+  /* Semantic tokens that assume dark — overridden for light. */
+  --px-window:       color-mix(in srgb, var(--px-base-00) 93%, #000);  /* subtle recess */
+  --px-chrome-line:  rgba(0, 0, 0, 0.08);     /* dark hairline, not white */
+  --px-edge-light:   none;                     /* white top-sheen is invisible on light */
+  --px-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --px-shadow-md: 0 4px 14px -3px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
+  --px-shadow-lg: 0 16px 36px -8px rgba(0, 0, 0, 0.18), 0 4px 10px -4px rgba(0, 0, 0, 0.12);
+}
+
+/* Light Warm — warm-tinted paper. */
+:root[data-px-mode="light"][data-px-theme="warm"] {
+  --px-base-00: #f6f4f0;
+  --px-base-05: #efece6;
+  --px-base-10: #fffefb;
+  --px-base-15: #ece7e0;
+  --px-base-20: #e4ded4;
+  --px-base-25: #d8d0c4;
+  --px-base-30: #c5bcab;
+  --px-base-35: #b4aa96;
+  --px-base-40: #8c8475;
+  --px-base-50: #726a5c;
+  --px-base-60: #585145;
+  --px-base-70: #403a30;
+  --px-base-100: #201c16;
+}
+
+/* Light Ember — warmer still, a hint of amber paper. */
+:root[data-px-mode="light"][data-px-theme="ember"] {
+  --px-base-00: #f7f4ef;
+  --px-base-05: #f0ebe3;
+  --px-base-10: #fffdf9;
+  --px-base-15: #ece6dd;
+  --px-base-20: #e5ddd0;
+  --px-base-25: #dacfbf;
+  --px-base-30: #c8bba6;
+  --px-base-35: #b7a890;
+  --px-base-40: #8f8472;
+  --px-base-50: #756a58;
+  --px-base-60: #5b5142;
+  --px-base-70: #423a2e;
+  --px-base-100: #221d15;
+}
