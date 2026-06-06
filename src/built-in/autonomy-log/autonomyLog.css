@@ -93,6 +93,15 @@
   background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.06));
   color: var(--vscode-foreground, #ccc);
 }
+/* Primary action (heartbeat "Do it") — accent-tinted so it reads as the
+   affirmative choice next to the neutral Tell me more / Dismiss. */
+.autonomy-log-action--primary {
+  color: var(--px-accent, #569cd6);
+}
+.autonomy-log-action--primary:hover {
+  background: color-mix(in srgb, var(--px-accent, #569cd6) 14%, transparent);
+  color: var(--px-accent-hover, #6cabe0);
+}
 
 /* ── List ── */
 .autonomy-log-body {

@@ -125,6 +125,35 @@ let currentMode: Mode = 'live';
 let currentLiveFilter: LiveFilter = 'all';
 let currentRailFilter: RailTriggerFilter = 'all';
 
+/**
+ * Heartbeat suggestion ids the user has already acted on or dismissed this
+ * session. Heartbeat 'ACT' results are the one autonomous output that asks for
+ * a decision; we let the user respond from the log (Do it / Tell me more /
+ * Dismiss) instead of the dead end of a purged ephemeral session. Log entries
+ * are immutable apart from `read`, so we track "handled" here so the buttons
+ * don't reappear on the next repaint. Session-scoped — a relaunch drops it,
+ * by which point the suggestion is stale anyway.
+ */
+const handledHeartbeat = new Set<string>();
+
+/** Whether a live log entry is an actionable heartbeat suggestion (test seam). */
+export function _isActionableHeartbeat(
+  entry: Pick<IAutonomyLogEntry, 'id' | 'origin' | 'content' | 'metadata'>,
+  handled: ReadonlySet<string>,
+): boolean {
+  return (
+    entry.origin === 'heartbeat'
+    && entry.content.trim().length > 0
+    && entry.metadata?.error !== true
+    && !handled.has(entry.id)
+  );
+}
+
+/** Seed prompt sent to the main chat when the user acts on a suggestion (test seam). */
+export function _heartbeatSeedPrompt(content: string, instruction: string): string {
+  return `A background heartbeat check flagged this:\n\n${content.trim()}\n\n${instruction}`;
+}
+
 function formatTime(ts: number): string {
   const d = new Date(ts);
   const hh = String(d.getHours()).padStart(2, '0');
@@ -611,11 +640,66 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     body.textContent = entry.content;
     row.appendChild(body);
 
+    // Heartbeat 'ACT' results are actionable: let the user respond from here
+    // rather than the dead end of a one-way card. (Skip error deliveries and
+    // anything already handled this session.)
+    if (_isActionableHeartbeat(entry, handledHeartbeat)) {
+      row.appendChild(renderHeartbeatActions(entry));
+    }
+
     row.addEventListener('click', () => {
       if (!entry.read) logService?.markRead([entry.id]);
     });
 
     return row;
+  }
+
+  /**
+   * Do it / Tell me more / Dismiss for a heartbeat suggestion. "Do it" and
+   * "Tell me more" open a real, repliable turn in the main chat seeded with
+   * the finding (via the same `chat.submitPrompt` command the dashboard AI
+   * widgets use); "Dismiss" just retires the card.
+   */
+  function renderHeartbeatActions(entry: IAutonomyLogEntry): HTMLElement {
+    const actions = $('div.autonomy-log-entry__actions');
+
+    const handle = (seededPrompt: string | null): void => {
+      handledHeartbeat.add(entry.id);
+      if (seededPrompt) void runCommand?.('chat.submitPrompt', { text: seededPrompt });
+      logService?.markRead([entry.id]);
+      actions.remove();
+    };
+
+    const seed = (instruction: string): string => _heartbeatSeedPrompt(entry.content, instruction);
+
+    const doIt = $('button.autonomy-log-action.autonomy-log-action--primary') as HTMLButtonElement;
+    doIt.textContent = 'Do it';
+    doIt.title = 'Open the chat and have the agent act on this';
+    doIt.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handle(seed('Please go ahead and handle it.'));
+    });
+
+    const more = $('button.autonomy-log-action') as HTMLButtonElement;
+    more.textContent = 'Tell me more';
+    more.title = 'Open the chat and ask the agent to explain before deciding';
+    more.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handle(seed('Tell me more about this before I decide what to do.'));
+    });
+
+    const dismiss = $('button.autonomy-log-action') as HTMLButtonElement;
+    dismiss.textContent = 'Dismiss';
+    dismiss.title = 'Retire this suggestion';
+    dismiss.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handle(null);
+    });
+
+    actions.appendChild(doIt);
+    actions.appendChild(more);
+    actions.appendChild(dismiss);
+    return actions;
   }
 
   function renderRailRow(rrow: IRailRow): HTMLElement {
