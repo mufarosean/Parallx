@@ -351,6 +351,12 @@ class ChatResponseStream implements IChatResponseStream {
     if (thinkingPart) {
       thinkingPart.progressMessage = undefined;
       thinkingPart.isCollapsed = true;
+      // Freeze the thinking duration at the real completion moment so the
+      // "Thought for Xs" label reflects actual reasoning time (and never
+      // inflates on later expand/collapse clicks).
+      if (thinkingPart.startTime != null && thinkingPart.endTime == null) {
+        thinkingPart.endTime = Date.now();
+      }
     }
 
     // Ensure thinking is first in the parts list (before markdown)

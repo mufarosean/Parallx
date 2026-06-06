@@ -24,6 +24,25 @@ import type { OpenAttachmentHandler, RegenerateMessageHandler } from '../chatTyp
 // OpenAttachmentHandler — now defined in chatTypes.ts (M13 Phase 1)
 export type { OpenAttachmentHandler } from '../chatTypes.js';
 
+/**
+ * Mark a settled turn's thinking part as done by freezing its endTime. The
+ * "Thought for Xs" label and the live-vs-done toggle key off endTime; turns
+ * that finished streaming (or were restored from a saved session that predates
+ * the field) must have it set so they don't read as perpetually "Thinking…".
+ */
+function _settleThinkingPart(response: IChatAssistantResponse): void {
+  for (const part of response.parts) {
+    if (part.kind !== ChatContentPartKind.Thinking) { continue; }
+    const thinking = part as { startTime?: number; endTime?: number; progressMessage?: unknown };
+    thinking.progressMessage = undefined;
+    if (thinking.endTime == null) {
+      // No recorded finish — fall back to startTime so elapsed reads as 0
+      // ("Thought") rather than inflating against the current clock.
+      thinking.endTime = thinking.startTime ?? Date.now();
+    }
+  }
+}
+
 // ── User-message "safe markdown" subset ──────────────────────────────────────
 //
 // User turns render a deliberately tiny subset of markdown: fenced code blocks
@@ -443,6 +462,16 @@ export class ChatListRenderer extends Disposable {
 
     for (let i = 0; i < messages.length; i++) {
       const pair = messages[i];
+      const isLast = i === messages.length - 1;
+      const isStreamingTurn = requestInProgress && isLast;
+
+      // Backfill endTime on any thinking part that belongs to a settled turn
+      // (restored sessions, or any turn that isn't the one actively streaming).
+      // Old saved sessions predate the endTime field; without this they'd read
+      // as "still thinking" and pulse forever.
+      if (!isStreamingTurn) {
+        _settleThinkingPart(pair.response);
+      }
 
       // User message
       const userEl = this._renderUserMessage(pair.request);

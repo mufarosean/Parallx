@@ -475,6 +475,12 @@ export interface IChatThinkingContent {
   provenance?: IChatProvenanceEntry[];
   /** Unix ms when thinking started — used to compute "Thought for Xs" label. */
   startTime?: number;
+  /**
+   * Unix ms when thinking finished — captured ONCE the moment the part first
+   * renders in its done state. The elapsed label is `endTime - startTime`, so
+   * it stays frozen and never inflates on subsequent expand/collapse clicks.
+   */
+  endTime?: number;
 }
 
 export interface IChatReferenceContent {

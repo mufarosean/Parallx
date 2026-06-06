@@ -794,7 +794,7 @@
 
 .parallx-chat-markdown {
   line-height: 1.6;
-  font-size: var(--px-text-md);
+  font-size: 13px;
   color: var(--vscode-foreground, #cccccc);
 }
 

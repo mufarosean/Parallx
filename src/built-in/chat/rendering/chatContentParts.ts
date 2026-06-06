@@ -933,23 +933,28 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
     toggle.textContent = '';
 
     const hasRefs = sourceEntries.length > 0;
-    const hasProgress = !!part.progressMessage;
+    // "Done" is signalled by endTime being frozen at turn completion — NOT by
+    // the absence of a progress message. Pure reasoning streams never set a
+    // progressMessage, so keying off it made the label jump straight to "Thought"
+    // (elapsed 0) on the very first token. While streaming (no endTime yet) we
+    // show the live "Thinking…" label.
+    const isDone = part.endTime != null;
 
     // Arrow (CSS rotates when expanded)
     const arrowEl = $('span.parallx-chat-thinking-arrow', '▶');
     toggle.appendChild(arrowEl);
 
-    if (hasProgress) {
+    if (!isDone) {
       // Streaming: pulse the left border, show "Thinking…"
       root.classList.add('parallx-chat-thinking--streaming');
       const labelEl = $('span.parallx-chat-thinking-label', 'Thinking…');
       toggle.appendChild(labelEl);
     } else {
       root.classList.remove('parallx-chat-thinking--streaming');
-      // Done: "Thought for Xs"
+      // Done: "Thought for Xs", using the duration frozen at completion.
       let doneLabel = 'Thought';
-      if (part.startTime) {
-        const elapsed = Math.round((Date.now() - part.startTime) / 1000);
+      if (part.startTime != null) {
+        const elapsed = Math.round((part.endTime! - part.startTime) / 1000);
         doneLabel = elapsed > 0 ? `Thought for ${elapsed}s` : 'Thought';
       }
       const labelEl = $('span.parallx-chat-thinking-label', doneLabel);
@@ -967,7 +972,13 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
 
   _rebuildToggle();
 
-  toggle.addEventListener('click', () => {
+  // Bind on mousedown, not click: while the model is thinking the whole element
+  // is replaced on every stream tick, and a click (mousedown+mouseup on the same
+  // node) is lost if a tick swaps the node mid-gesture. mousedown fires before
+  // any replacement, so the user can always expand/collapse — even mid-stream.
+  toggle.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
     part.isCollapsed = !part.isCollapsed;
     root.classList.toggle('parallx-chat-thinking--collapsed', part.isCollapsed);
     _rebuildToggle();
