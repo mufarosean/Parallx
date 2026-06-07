@@ -125,10 +125,14 @@ fsSync.mkdirSync(path.join(APP_ROOT, 'data', 'tmp'), { recursive: true });
 //
 // Must run before `app.whenReady()` AND before any code calls `app.getPath`
 // for these keys \u2014 hence the position at module top level.
-app.setPath('userData', path.join(APP_ROOT, 'data', 'chromium-cache'));
+// `PARALLX_USER_DATA` lets tests/CI point userData (and thus localStorage —
+// where the last-opened workspace lives) at a throwaway dir, so an automated
+// launch never touches a real workspace or collides with a running instance.
+const USER_DATA_DIR = process.env.PARALLX_USER_DATA || path.join(APP_ROOT, 'data', 'chromium-cache');
+app.setPath('userData', USER_DATA_DIR);
 // `sessionData` was split out from `userData` in Electron 26+. Defaults to
 // userData so this is mostly belt-and-suspenders, but pin it explicitly.
-try { app.setPath('sessionData', path.join(APP_ROOT, 'data', 'chromium-cache')); } catch { /* older electron */ }
+try { app.setPath('sessionData', USER_DATA_DIR); } catch { /* older electron */ }
 // Crash dumps would otherwise land in %LOCALAPPDATA%\Temp\<AppName> Crashes.
 // We don't enable the crash reporter, but if anything ever does, redirect it.
 try { app.setPath('crashDumps', path.join(APP_ROOT, 'data', 'crash-dumps')); } catch { /* ignore */ }
