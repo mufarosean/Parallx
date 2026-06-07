@@ -86,6 +86,27 @@ describe('MindService — the loop seam', () => {
     expect(await svc.auditOk()).toEqual({ ok: true });
   });
 
+  it('the conscience meter counts human vs agent actions, surfaces in snapshot, and persists', async () => {
+    const storage = new FakeStorage();
+    const mk = () => new MindService(new MindStore(storage), new ActionLedger(storage), { now: () => clock, genId: () => `id${++ids}`, capabilityStorage: storage });
+    const svc = mk();
+    await svc.init();
+    await svc.recordHuman(0);
+    await svc.recordHuman(0);
+    await svc.record('act', 'did substantive work', 'heartbeat:wake'); // agent action
+    await svc.record('noop', 'nothing', 'heartbeat:interval'); // NOT counted as agent work
+
+    expect(svc.capability().humanActions).toBe(2);
+    expect(svc.capability().agentActions).toBe(1); // only the 'act'
+    expect((await svc.snapshot()).capability.humanActions).toBe(2);
+
+    // persisted across a fresh service (restart)
+    const svc2 = mk();
+    await svc2.init();
+    expect(svc2.capability().humanActions).toBe(2);
+    expect(svc2.capability().agentActions).toBe(1);
+  });
+
   it('snapshot exposes the whole MIND for the panel (beliefs, predictions, fidelity, audit, ledger)', async () => {
     const { svc } = build();
     await svc.init();

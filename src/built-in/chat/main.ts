@@ -1986,7 +1986,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         ? api.services.get<import('../../platform/storage.js').IStorage>(IWorkspaceStorageService)
         : undefined;
       if (_mindStorage) {
-        mindService = new MindService(new MindStore(_mindStorage), new ActionLedger(_mindStorage));
+        mindService = new MindService(new MindStore(_mindStorage), new ActionLedger(_mindStorage), { capabilityStorage: _mindStorage });
         mindService.init().catch(() => { /* first-tick seed is simply empty */ });
       }
     }
@@ -2012,6 +2012,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     const observeForPrediction = (path: string): void => {
       if (!predictionLoop) return;
       _predictChain = _predictChain.then(async () => {
+        // The human just did work — the denominator of the conscience meter.
+        void mindService?.recordHuman(Date.now());
         const res = await predictionLoop.observe(path);
         if (res.surprised && typeof res.brier === 'number') {
           const t = Date.now();

@@ -22,6 +22,8 @@ import {
 } from './agentMindModel.js';
 import type { IMindStore } from './mindStore.js';
 import { ActionLedger, type AgentActionKind, type IAgentActionRecord } from './actionLedger.js';
+import { CapabilityMeter, type ICapabilityReading } from './capabilityMeter.js';
+import type { IStorage } from '../../platform/storage.js';
 
 /** A serializable, UI-facing view of the whole MIND — for the Mind panel. */
 export interface IMindSnapshot {
@@ -32,6 +34,8 @@ export interface IMindSnapshot {
   readonly predictions: readonly { readonly subject: string; readonly top: string; readonly resolved?: { readonly actual: string; readonly brier: number } }[];
   readonly audit: { readonly ok: boolean; readonly brokenAt?: number };
   readonly recentActions: readonly { readonly kind: string; readonly summary: string; readonly origin: string; readonly ts: number }[];
+  /** The conscience: is the human getting stronger, or is the agent taking over? */
+  readonly capability: ICapabilityReading;
 }
 
 function defaultGenId(): string {
@@ -46,13 +50,19 @@ function defaultGenId(): string {
 export interface IMindServiceOptions {
   readonly now?: () => number;
   readonly genId?: () => string;
+  /** Optional storage for the persistent capability meter (the conscience). */
+  readonly capabilityStorage?: IStorage;
 }
+
+const CAPABILITY_KEY = 'autonomy.capability.v1';
 
 export class MindService {
   private _entries: readonly IMindEntry[] = [];
   private _loaded = false;
   private readonly _now: () => number;
   private readonly _genId: () => string;
+  private readonly _meter = new CapabilityMeter();
+  private readonly _capStorage?: IStorage;
 
   constructor(
     private readonly _store: IMindStore,
@@ -61,13 +71,42 @@ export class MindService {
   ) {
     this._now = opts.now ?? Date.now;
     this._genId = opts.genId ?? defaultGenId;
+    this._capStorage = opts.capabilityStorage;
   }
 
   /** Load the persisted MIND once at loop start. Idempotent. */
   async init(): Promise<void> {
     if (this._loaded) return;
     this._entries = await this._store.load();
+    await this._loadMeter();
     this._loaded = true;
+  }
+
+  private async _loadMeter(): Promise<void> {
+    if (!this._capStorage) return;
+    try {
+      const raw = await this._capStorage.get(CAPABILITY_KEY);
+      if (!raw) return;
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) this._meter.restore(parsed as { key: number; human: number; agent: number }[]);
+    } catch { /* corrupt → fresh meter */ }
+  }
+
+  private async _saveMeter(): Promise<void> {
+    if (!this._capStorage) return;
+    try { await this._capStorage.set(CAPABILITY_KEY, JSON.stringify(this._meter.snapshotBuckets())); }
+    catch { /* best-effort */ }
+  }
+
+  /** Record a HUMAN action (their own work) — the denominator of the conscience. */
+  async recordHuman(nowMs = this._now()): Promise<void> {
+    this._meter.recordHuman(nowMs);
+    await this._saveMeter();
+  }
+
+  /** The conscience reading: assistance share, trend, and the deskilling alarm. */
+  capability(): ICapabilityReading {
+    return this._meter.read();
   }
 
   /** The live MIND (for the mind panel / inspection). */
@@ -151,7 +190,14 @@ export class MindService {
 
   /** Record an action to the audit ledger (review/note/act/noop/deferred/...). */
   async record(kind: AgentActionKind, summary: string, origin: string, detail?: string, reversible?: boolean): Promise<IAgentActionRecord> {
-    return this._ledger.append({ kind, summary, origin, detail, reversible }, this._now());
+    const rec = await this._ledger.append({ kind, summary, origin, detail, reversible }, this._now());
+    // An 'act' is the agent doing substantive work on the user's behalf — the
+    // numerator of the conscience. (note/noop/review are not "doing the work".)
+    if (kind === 'act') {
+      this._meter.recordAgent(this._now());
+      await this._saveMeter();
+    }
+    return rec;
   }
 
   /** Audit: is the action ledger intact? (for the mind panel). */
@@ -188,6 +234,7 @@ export class MindService {
       predictions,
       audit,
       recentActions: recent.map(r => ({ kind: r.kind, summary: r.summary, origin: r.origin, ts: r.ts })),
+      capability: this._meter.read(),
     };
   }
 }

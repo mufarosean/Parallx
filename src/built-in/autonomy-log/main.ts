@@ -470,6 +470,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       beliefs?: { content: string; confidence: number }[];
       predictions?: { resolved?: unknown }[];
       audit?: { ok: boolean };
+      capability?: { assistanceShare: number | null; deskillingRisk: boolean };
     }>('parallx.mind.status').then((s) => {
       const badge = mindRow.querySelector('.autonomy-status__badge');
       const det = mindRow.querySelector('.autonomy-status__detail');
@@ -487,6 +488,11 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
         const parts = [`${beliefs} belief${beliefs === 1 ? '' : 's'}`];
         if (pending) parts.push(`${pending} prediction${pending === 1 ? '' : 's'} pending`);
         if (resolved && typeof s.fidelity === 'number') parts.push(`fidelity ${s.fidelity.toFixed(2)} (brier · lower better)`);
+        const cap = s.capability;
+        if (cap && typeof cap.assistanceShare === 'number') {
+          parts.push(`you ${Math.round((1 - cap.assistanceShare) * 100)}% · agent ${Math.round(cap.assistanceShare * 100)}%`);
+          if (cap.deskillingRisk) parts.push('⚠ deskilling — you’re offloading more over time');
+        }
         parts.push(s.audit?.ok ? 'audit ✓' : 'audit ✗ TAMPERED');
         det.textContent = parts.join(' · ');
       }

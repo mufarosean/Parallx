@@ -57,6 +57,20 @@ export class CapabilityMeter {
   recordHuman(nowMs: number): void { this._bucket(nowMs).human += 1; }
   recordAgent(nowMs: number): void { this._bucket(nowMs).agent += 1; }
 
+  /** Serializable bucket state (for persistence across restarts). */
+  snapshotBuckets(): { key: number; human: number; agent: number }[] {
+    return this._buckets.map(b => ({ key: b.key, human: b.human, agent: b.agent }));
+  }
+
+  /** Restore persisted buckets (validated, capped to the window). */
+  restore(buckets: readonly { key: number; human: number; agent: number }[]): void {
+    this._buckets = buckets
+      .filter(b => b && typeof b.key === 'number' && typeof b.human === 'number' && typeof b.agent === 'number')
+      .map(b => ({ key: b.key, human: b.human, agent: b.agent }))
+      .sort((a, c) => a.key - c.key)
+      .slice(-this._windowBuckets);
+  }
+
   private _bucket(nowMs: number): IBucket {
     const key = Math.floor(nowMs / this._bucketMs);
     let b = this._buckets.find(x => x.key === key);
