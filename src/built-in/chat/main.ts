@@ -57,6 +57,7 @@ import { CanvasSurfacePlugin } from '../canvas/surfaces/canvasSurface.js';
 import { HeartbeatRunner, type IHeartbeatConfig } from '../../openclaw/openclawHeartbeatRunner.js';
 import { createHeartbeatTurnExecutor } from '../../openclaw/openclawHeartbeatExecutor.js';
 import { risingFailures } from '../../openclaw/openclawHeartbeatContext.js';
+import { normalizeAutonomySignal, signalToSystemEvent } from '../../openclaw/openclawAutonomySignal.js';
 import { shouldHeartbeatAcceptPath } from '../../openclaw/openclawHeartbeatFileFilter.js';
 import { CronService, ICronService, type HeartbeatWaker } from '../../openclaw/openclawCronService.js';
 import {
@@ -2115,6 +2116,20 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     context.subscriptions.push(
       api.commands.registerCommand('parallx.wakeAgent', () => {
         heartbeatRunner.wake('wake');
+      }),
+    );
+
+    // ── Phase 3 · Extension signal channel ──
+    // Any extension/background process can surface something it noticed in the
+    // data it processes by calling this command; it lands on the heartbeat's
+    // system-event queue and is reviewed like any other signal. Malformed
+    // payloads are dropped (normalizeAutonomySignal returns null). The runner's
+    // own input dedup + the kill switch still apply.
+    context.subscriptions.push(
+      api.commands.registerCommand('parallx.autonomy.signal', (raw: unknown) => {
+        const sig = normalizeAutonomySignal(raw);
+        if (sig) heartbeatRunner.pushEvent(signalToSystemEvent(sig));
+        return !!sig;
       }),
     );
   }

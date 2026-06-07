@@ -69,10 +69,14 @@ One pulse, many senses, one voice:
 planner/tasks due-items sense; canvas recent-activity sense; a `HEARTBEAT.md`-equivalent
 user checklist (a designated canvas page or workspace file).
 
-**Phase 3 — extension signal API.** A first-class `api.autonomy.signal({...})` surface so
-any extension/background process publishes noteworthy events into the heartbeat queue —
-restoring OpenClaw's per-extension `system-events`. Includes a registry + dedup + the
-settings to enable/disable each source.
+**Phase 3 — extension signal channel. [DONE]** Any extension/background process publishes
+noteworthy events into the heartbeat queue by calling the `parallx.autonomy.signal`
+command with `{ source, kind, title, detail?, severity? }` — restoring OpenClaw's
+per-extension `system-events`. Payloads are normalized (`openclawAutonomySignal.ts`,
+pure + tested); malformed ones are dropped; the runner's input-dedup + kill switch
+still apply. (Shipped as a command rather than an `api.autonomy.signal(...)` surface to
+keep the change additive and low-risk; a typed `api.autonomy` wrapper over the command
+is a safe future sugar once verified live.)
 
 **Phase 4 — run without an open chat.** Today real turns need an active parent chat
 session. Give the periodic review a standalone session so it runs even when the user is on
