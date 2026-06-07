@@ -61,6 +61,7 @@ import { MindStore } from '../../openclaw/mind/mindStore.js';
 import { ActionLedger } from '../../openclaw/mind/actionLedger.js';
 import { PredictionLoop } from '../../openclaw/mind/predictionLoop.js';
 import { SequencePredictor } from '../../openclaw/mind/sequencePredictor.js';
+import { SurpriseAccumulator } from '../../openclaw/mind/surpriseAccumulator.js';
 import { risingFailures } from '../../openclaw/openclawHeartbeatContext.js';
 import { signalToSystemEvent } from '../../openclaw/openclawAutonomySignal.js';
 import { IAutonomySignalService } from '../../services/autonomySignalService.js';
@@ -1995,10 +1996,28 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // surprise is what later justifies a review, not the other way round.
     // Serialized so the loop's pending-prediction state stays consistent.
     const predictionLoop = mindService ? new PredictionLoop(mindService, new SequencePredictor()) : undefined;
+    // Surprise → attention (Build-4): sustained divergence from the agent's model
+    // accumulates pressure and, past a threshold (rate-limited by a cooldown),
+    // asks the heartbeat to review — the impasse that justifies the model.
+    const surpriseAttention = new SurpriseAccumulator();
     let _predictChain: Promise<unknown> = Promise.resolve();
     const observeForPrediction = (path: string): void => {
       if (!predictionLoop) return;
-      _predictChain = _predictChain.then(() => predictionLoop.observe(path)).catch(() => { /* best-effort; never break the bus */ });
+      _predictChain = _predictChain.then(async () => {
+        const res = await predictionLoop.observe(path);
+        if (res.surprised && typeof res.brier === 'number') {
+          const t = Date.now();
+          surpriseAttention.add(res.brier, t);
+          if (surpriseAttention.shouldReview(t)) {
+            const pressure = Number(surpriseAttention.pressure(t).toFixed(2));
+            surpriseAttention.markReviewed(t);
+            // Naturally gated by the kill switch + heartbeat.enabled in the runner,
+            // and rate-limited by the accumulator cooldown. The review sees the
+            // remembered surprises (MIND continuity) plus this trigger.
+            heartbeatRunner.pushEvent({ type: 'prediction-surprise', payload: { path, pressure }, timestamp: t });
+          }
+        }
+      }).catch(() => { /* best-effort; never break the bus */ });
     };
 
     const executor = createHeartbeatTurnExecutor(

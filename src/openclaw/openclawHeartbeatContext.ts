@@ -96,6 +96,11 @@ export function formatEventLine(ev: IHeartbeatSystemEvent): string {
       const checks = Array.isArray(p.checks) ? p.checks.join(', ') : 'unknown';
       return `diagnostic now failing: ${checks}`;
     }
+    case 'prediction-surprise': {
+      const path = typeof p.path === 'string' ? p.path : '(unknown)';
+      const pressure = typeof p.pressure === 'number' ? ` (accumulated surprise ${p.pressure})` : '';
+      return `prediction surprise${pressure}: reality diverged from my forecast — you touched ${path}. Review what's changed in the user's focus; update beliefs if the pattern has shifted.`;
+    }
     case 'file-change':
       return `file changed: ${typeof p.path === 'string' ? p.path : '(unknown)'}`;
     default: {

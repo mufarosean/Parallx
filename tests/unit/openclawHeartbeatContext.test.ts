@@ -73,6 +73,13 @@ describe('formatEventLine', () => {
     expect(formatEventLine(mk('file-change', { path: '/a/b.ts' }))).toBe('file changed: /a/b.ts');
   });
 
+  it('renders a prediction-surprise with the diverging path and pressure', () => {
+    const line = formatEventLine(mk('prediction-surprise', { path: '/x/new.ts', pressure: 1.8 }));
+    expect(line).toContain('prediction surprise');
+    expect(line).toContain('/x/new.ts');
+    expect(line).toContain('1.8');
+  });
+
   it('falls back to type + JSON for unknown kinds', () => {
     expect(formatEventLine(mk('mystery', { x: 1 }))).toBe('mystery · {"x":1}');
   });
