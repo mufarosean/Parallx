@@ -59,6 +59,8 @@ import { createHeartbeatTurnExecutor } from '../../openclaw/openclawHeartbeatExe
 import { MindService } from '../../openclaw/mind/mindService.js';
 import { MindStore } from '../../openclaw/mind/mindStore.js';
 import { ActionLedger } from '../../openclaw/mind/actionLedger.js';
+import { PredictionLoop } from '../../openclaw/mind/predictionLoop.js';
+import { SequencePredictor } from '../../openclaw/mind/sequencePredictor.js';
 import { risingFailures } from '../../openclaw/openclawHeartbeatContext.js';
 import { signalToSystemEvent } from '../../openclaw/openclawAutonomySignal.js';
 import { IAutonomySignalService } from '../../services/autonomySignalService.js';
@@ -1987,6 +1989,18 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       }
     }
 
+    // Active-inference loop (Build-2): predicts the next file the user will touch
+    // and grades itself against reality (Brier), remembering surprises as
+    // continuity. Fed from the live file-change stream (below). No model call —
+    // surprise is what later justifies a review, not the other way round.
+    // Serialized so the loop's pending-prediction state stays consistent.
+    const predictionLoop = mindService ? new PredictionLoop(mindService, new SequencePredictor()) : undefined;
+    let _predictChain: Promise<unknown> = Promise.resolve();
+    const observeForPrediction = (path: string): void => {
+      if (!predictionLoop) return;
+      _predictChain = _predictChain.then(() => predictionLoop.observe(path)).catch(() => { /* best-effort; never break the bus */ });
+    };
+
     const executor = createHeartbeatTurnExecutor(
       surfaceRouter,
       () => ({ reasons: unifiedConfigService.getEffectiveConfig().heartbeat.reasons }),
@@ -2096,6 +2110,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
               payload: { path: uri, changeType: ev.type },
               timestamp: Date.now(),
             });
+            // Feed the same (filtered) stream to the active-inference loop so it
+            // forecasts the user's next file and grades itself against reality.
+            observeForPrediction(uri);
           }
         }),
       );
