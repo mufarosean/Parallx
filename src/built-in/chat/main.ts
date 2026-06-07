@@ -62,6 +62,7 @@ import { ActionLedger } from '../../openclaw/mind/actionLedger.js';
 import { PredictionLoop } from '../../openclaw/mind/predictionLoop.js';
 import { SequencePredictor } from '../../openclaw/mind/sequencePredictor.js';
 import { SurpriseAccumulator } from '../../openclaw/mind/surpriseAccumulator.js';
+import { createMindRememberTool } from './tools/mindTools.js';
 import { risingFailures } from '../../openclaw/openclawHeartbeatContext.js';
 import { signalToSystemEvent } from '../../openclaw/openclawAutonomySignal.js';
 import { IAutonomySignalService } from '../../services/autonomySignalService.js';
@@ -1988,6 +1989,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         mindService = new MindService(new MindStore(_mindStorage), new ActionLedger(_mindStorage));
         mindService.init().catch(() => { /* first-tick seed is simply empty */ });
       }
+    }
+
+    // Build-5: give the model a tool to deliberately curate its own MIND during
+    // reviews (governed + audited, so always-allowed). Without storage there is
+    // no MIND to write to, so the tool is only registered when one exists.
+    if (mindService && languageModelToolsService) {
+      context.subscriptions.push(languageModelToolsService.registerTool(createMindRememberTool(mindService)));
     }
 
     // Active-inference loop (Build-2): predicts the next file the user will touch

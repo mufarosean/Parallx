@@ -248,6 +248,7 @@ function buildSeedSystemMessage(reason: HeartbeatReason, events: readonly IHeart
   lines.push('  1. IGNORE — the event is routine and warrants no action. Respond with exactly `NOOP` on its own line and nothing else. Do not narrate, do not acknowledge, do not announce readiness. This is the correct response for the vast majority of file saves and routine workspace activity.');
   lines.push('  2. NOTE — the event is mildly noteworthy but does not warrant action. Respond with one line beginning with `NOTE: ` followed by a single short sentence. Do not call tools. Do not elaborate. The user will see this in the autonomy log only.');
   lines.push('  3. ACT — the event clearly warrants investigation or action. Use your tools, then summarize what you did concisely. Reserve this for events with unambiguous signals (errors, broken files, requested follow-ups).');
+  lines.push('Independently of the three modes: if this review gave you a durable insight about the user or their work, record it with the `mind_remember` tool so future reviews build on it — this is separate from your response mode (you may answer NOOP and still remember). Record understanding worth carrying forward, never raw content or secrets.');
   lines.push('When in doubt, choose IGNORE. Background chatter erodes user trust faster than missed minor events.');
   return lines.join(' ');
 }
