@@ -107,6 +107,25 @@ describe('MindService — the loop seam', () => {
     expect(svc2.capability().agentActions).toBe(1);
   });
 
+  it('daily reflection: reflectionDue gates it; reflect() prunes stale beliefs, marks, ledgers, persists', async () => {
+    const storage = new FakeStorage();
+    const mk = () => new MindService(new MindStore(storage), new ActionLedger(storage), { now: () => clock, genId: () => `id${++ids}`, capabilityStorage: storage });
+    const svc = mk();
+    await svc.init();
+    expect(svc.reflectionDue(0)).toBe(true); // a fresh mind reflects once early
+    await svc.remember('belief', 'a stale belief', 0.5, ['r']); // updatedMs = clock (1000)
+
+    const YEAR = 365 * 24 * 60 * 60 * 1000;
+    const { pruned } = await svc.reflect(YEAR); // far future → the belief has fully decayed
+    expect(pruned).toBeGreaterThanOrEqual(1);
+    expect(svc.reflectionDue(YEAR)).toBe(false); // marked reflected
+    expect((await svc.snapshot()).recentActions.some(a => a.origin === 'heartbeat:reflection')).toBe(true);
+
+    const svc2 = mk(); // restart
+    await svc2.init();
+    expect(svc2.reflectionDue(YEAR)).toBe(false); // persisted
+  });
+
   it('the human can forget a belief (a correction), ledgered as a user action', async () => {
     const { svc } = build();
     await svc.init();

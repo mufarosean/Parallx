@@ -126,6 +126,10 @@ export interface IHeartbeatMind {
   record(kind: AgentActionKind, summary: string, origin: string, detail?: string): Promise<{ readonly hash: string }>;
   /** Nag governor: may the agent surface an interruption now? (Consumes budget.) */
   allowInterruption?(): Promise<boolean>;
+  /** Slow loop: is a daily reflection due? */
+  reflectionDue?(): boolean;
+  /** Slow loop: mark reflected + run deliberate consolidation (prune stale beliefs). */
+  reflect?(): Promise<unknown>;
 }
 
 /** Optional deps enabling real-turn execution. Absent → thin fallback. */
@@ -253,6 +257,26 @@ function buildSeedSystemMessage(reason: HeartbeatReason, events: readonly IHeart
   lines.push('Independently of the three modes: if this review gave you a durable insight about the user or their work, record it with the `mind_remember` tool so future reviews build on it — this is separate from your response mode (you may answer NOOP and still remember). Record understanding worth carrying forward, never raw content or secrets.');
   lines.push('When in doubt, choose IGNORE. Background chatter erodes user trust faster than missed minor events.');
   return lines.join(' ');
+}
+
+/** System seed for the DAILY REFLECTION (Build-10): consolidate, don't react. */
+function buildReflectionSeedSystem(): string {
+  return [
+    'This is your DAILY REFLECTION — an internal trigger, not a user message; the user is not waiting on you.',
+    'Step back from reacting and CONSOLIDATE. Review the continuity block below — your beliefs about the user and their work, your open threads, and how your recent predictions did.',
+    'Your job: (1) consolidate — if several notes point to one durable understanding, record it as a single clear belief with the mind_remember tool; (2) correct — if a belief now looks wrong, record a corrected belief (stale ones fade on their own); (3) stay quiet — reflection is silent: respond with NOOP unless something genuinely needs the user right now.',
+    'Record only durable understanding worth carrying forward. Do not record raw content or secrets.',
+  ].join(' ');
+}
+
+/** User seed for the daily reflection. */
+function buildReflectionSeedUser(mindBlock: string | undefined, appContext: string): string {
+  const lines = ['[heartbeat reflection] — daily consolidation of your model.'];
+  lines.push('', appContext);
+  if (mindBlock && mindBlock.trim() && !mindBlock.includes('(empty')) {
+    lines.push('', 'Your current model — consolidate and correct it:', mindBlock);
+  }
+  return lines.join('\n');
 }
 
 function buildSeedUserMessage(
@@ -412,15 +436,20 @@ export function createHeartbeatTurnExecutor(
     // fresh each turn, and fold it into the seed so the model reviews app state,
     // not just the triggering event.
     const snapshot = buildHeartbeatSnapshot(realTurnDeps.getDiagnostics?.(), events);
+    const mind = realTurnDeps.mind;
+
+    // Slow loop (Build-10): once a day the interval tick becomes a REFLECTION —
+    // the agent consolidates its model instead of reacting. Reflection runs
+    // regardless of the idle gate (it's the daily cadence, not event-driven).
+    let reflecting = false;
+    try { reflecting = reason === 'interval' && mind?.reflectionDue?.() === true; } catch { reflecting = false; }
 
     // ── Idle gate (Build-1e): idle must be FREE. Running a full model turn on
     // every periodic `interval` just to decide NOOP is the #1 reason an always-on
     // local agent gets disabled (it heats the machine — pre-mortem #1). So skip
     // the model entirely when the cheap snapshot shows nothing noteworthy, or
-    // nothing has changed since the last review. wake / system-event / hook are
-    // explicit triggers and always run. (Periodic *reflection* even when idle is
-    // a separate, slower, budgeted loop — not this 30-minute tick.)
-    if (reason === 'interval') {
+    // nothing has changed since the last review — UNLESS a daily reflection is due.
+    if (reason === 'interval' && !reflecting) {
       const key = snapshotKey(snapshot);
       if (!hasNoteworthySignals(snapshot) || key === lastReviewedKey) {
         await resetStatus('idle-gated');
@@ -430,15 +459,16 @@ export function createHeartbeatTurnExecutor(
     }
 
     const appContext = formatAppContext(snapshot);
-    const systemMessage = buildSeedSystemMessage(reason, events);
 
     // MIND — continuity (its prior beliefs seed the review) + audit (outcomes are
     // ledgered). EVERY MIND call is best-effort: a failing MIND must never break
     // the heartbeat, so even reading the seed block is guarded.
-    const mind = realTurnDeps.mind;
     let mindSeed: string | undefined;
     try { mindSeed = mind?.seedBlock(); } catch { mindSeed = undefined; }
-    const userMessage = buildSeedUserMessage(reason, events, appContext, mindSeed);
+    const systemMessage = reflecting ? buildReflectionSeedSystem() : buildSeedSystemMessage(reason, events);
+    const userMessage = reflecting
+      ? buildReflectionSeedUser(mindSeed, appContext)
+      : buildSeedUserMessage(reason, events, appContext, mindSeed);
     const recordOutcome = async (kind: AgentActionKind, summary: string, detail?: string): Promise<{ hash: string } | undefined> => {
       if (!mind) return undefined;
       try { return await mind.record(kind, summary.slice(0, 300), `heartbeat:${reason}`, detail); }
@@ -540,6 +570,8 @@ export function createHeartbeatTurnExecutor(
           await rememberThread(`Acted: ${resultText}`, 0.6, rec?.hash);
         }
       }
+      // Daily reflection: consolidate (prune stale beliefs) + mark reflected.
+      if (reflecting) await mind?.reflect?.().catch(() => { /* best-effort */ });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       await recordOutcome('error', `heartbeat turn error: ${msg}`);

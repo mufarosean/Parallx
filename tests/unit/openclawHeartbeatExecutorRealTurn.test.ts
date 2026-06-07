@@ -387,6 +387,35 @@ describe('HeartbeatTurnExecutor — idle gate (Build-1e: idle must be free)', ()
     expect(h.chat_.calls.sendRequest).toHaveLength(2);
   });
 
+  it('daily reflection runs even when idle (bypasses the gate) and consolidates', async () => {
+    let reflected = false;
+    const mind: IHeartbeatMind = {
+      seedBlock: () => 'What I believe: ...',
+      async remember() { return true; },
+      async record() { return { hash: 'h' }; },
+      reflectionDue: () => true,
+      reflect: async () => { reflected = true; },
+    };
+    const h = buildHarness({ mind, respondWith: 'NOOP' }); // idle: no diagnostics → normally gated
+    await h.executor([], 'interval');
+    expect(h.chat_.calls.sendRequest).toHaveLength(1); // ran despite idle
+    expect(h.chat_.calls.sendRequest[0].message).toContain('[heartbeat reflection]'); // reflection seed
+    expect(reflected).toBe(true); // consolidation ran
+  });
+
+  it('reflection does NOT fire when not due (normal idle gating applies)', async () => {
+    const mind: IHeartbeatMind = {
+      seedBlock: () => '',
+      async remember() { return true; },
+      async record() { return { hash: 'h' }; },
+      reflectionDue: () => false,
+      reflect: async () => { /* should not be called */ },
+    };
+    const h = buildHarness({ mind, respondWith: 'NOOP' }); // idle + not due → gated
+    await h.executor([], 'interval');
+    expect(h.chat_.calls.sendRequest).toHaveLength(0);
+  });
+
   it('wake is never gated — it always runs even when idle', async () => {
     const h = buildHarness(); // idle
     await h.executor([], 'wake');

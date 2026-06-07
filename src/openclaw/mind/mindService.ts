@@ -16,10 +16,12 @@ import {
   meanBrier,
   resolvePrediction,
   decayedConfidence,
+  compact,
   type IMindEntry,
   type IMindPrediction,
   type IMindPredictionOption,
 } from './agentMindModel.js';
+import { ReflectionScheduler, type IReflectionState } from './reflectionScheduler.js';
 import type { IMindStore } from './mindStore.js';
 import { ActionLedger, type AgentActionKind, type IAgentActionRecord } from './actionLedger.js';
 import { CapabilityMeter, type ICapabilityReading } from './capabilityMeter.js';
@@ -63,6 +65,7 @@ export interface IMindServiceOptions {
 const CAPABILITY_KEY = 'autonomy.capability.v1';
 const SKILLPROBE_KEY = 'autonomy.skillprobe.v1';
 const NAG_KEY = 'autonomy.nag.v1';
+const REFLECTION_KEY = 'autonomy.reflection.v1';
 
 export class MindService {
   private _entries: readonly IMindEntry[] = [];
@@ -72,6 +75,7 @@ export class MindService {
   private readonly _meter = new CapabilityMeter();
   private readonly _probe = new SkillProbe();
   private readonly _nag = new NagGovernor();
+  private readonly _reflection = new ReflectionScheduler();
   private readonly _capStorage?: IStorage;
 
   constructor(
@@ -91,7 +95,48 @@ export class MindService {
     await this._loadMeter();
     await this._loadProbe();
     await this._loadNag();
+    await this._loadReflection();
     this._loaded = true;
+  }
+
+  private async _loadReflection(): Promise<void> {
+    if (!this._capStorage) return;
+    try {
+      const raw = await this._capStorage.get(REFLECTION_KEY);
+      if (raw) this._reflection.restore(JSON.parse(raw) as IReflectionState);
+    } catch { /* corrupt → fresh */ }
+  }
+
+  private async _saveReflection(): Promise<void> {
+    if (!this._capStorage) return;
+    try { await this._capStorage.set(REFLECTION_KEY, JSON.stringify(this._reflection.toState())); }
+    catch { /* best-effort */ }
+  }
+
+  /** Slow loop (Build-10): is a daily reflection due? */
+  reflectionDue(nowMs = this._now()): boolean {
+    return this._reflection.isDue(nowMs);
+  }
+
+  /**
+   * Run the daily consolidation: deliberately prune stale/decayed beliefs (not
+   * just at the save boundary), mark reflected, and ledger it. The agent's own
+   * higher-level consolidation happens in the reflection LLM turn (via
+   * mind_remember); this is the housekeeping half.
+   */
+  async reflect(nowMs = this._now()): Promise<{ pruned: number }> {
+    const before = this._entries.length;
+    const { kept } = compact(this._entries, nowMs);
+    const pruned = before - kept.length;
+    this._entries = kept;
+    await this._store.save(this._entries, nowMs);
+    this._reflection.markReflected(nowMs);
+    await this._saveReflection();
+    await this._ledger.append(
+      { kind: 'review', summary: `daily reflection — consolidated; pruned ${pruned} stale belief(s)`, origin: 'heartbeat:reflection' },
+      nowMs,
+    );
+    return { pruned };
   }
 
   private async _loadNag(): Promise<void> {
