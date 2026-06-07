@@ -85,4 +85,22 @@ describe('MindService — the loop seam', () => {
     await svc.record('noop', 'nothing warranted action', 'heartbeat:interval');
     expect(await svc.auditOk()).toEqual({ ok: true });
   });
+
+  it('snapshot exposes the whole MIND for the panel (beliefs, predictions, fidelity, audit, ledger)', async () => {
+    const { svc } = build();
+    await svc.init();
+    await svc.remember('belief', 'User ships on Fridays', 0.9, ['t1']);
+    const pred = await svc.predict('next file', [{ label: 'a.ts', prob: 0.7 }], 1000, ['t1']);
+    await svc.resolve(pred!.id, 'a.ts');
+
+    const snap = await svc.snapshot();
+    expect(snap.available).toBe(true);
+    expect(snap.beliefs[0].content).toContain('Fridays');
+    expect(snap.beliefs[0].confidence).toBeGreaterThan(0);
+    expect(snap.predictions[0].resolved?.actual).toBe('a.ts');
+    expect(snap.fidelity).toBeCloseTo(0.09, 5); // (0.7-1)^2
+    expect(snap.audit.ok).toBe(true);
+    expect(snap.recentActions.length).toBeGreaterThan(0);
+    expect(snap.recentActions[0].kind).toBe('prediction-resolved'); // most recent first
+  });
 });

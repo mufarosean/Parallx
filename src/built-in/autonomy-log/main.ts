@@ -457,6 +457,41 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
         { label: jobs.length === 0 ? 'Schedule' : 'Manage', icon: 'alarm-clock', run: () => { void runCommand?.('aiSettings.manageCron'); } }));
     }
 
+    // Mind — the agent's persistent inner model (the continuity keystone). Shown
+    // so the human can SEE what it believes, how accurate its predictions have
+    // been, and that the tamper-evident audit ledger is intact. Transparency =
+    // trust; the mind is the agent's, but none of it is hidden.
+    const mindRow = statusRow('brain', { label: '…', kind: 'on' }, 'Mind',
+      'Loading the agent’s inner model…');
+    statusBoard.appendChild(mindRow);
+    void runCommand?.<{
+      available?: boolean;
+      fidelity?: number | null;
+      beliefs?: { content: string; confidence: number }[];
+      predictions?: { resolved?: unknown }[];
+      audit?: { ok: boolean };
+    }>('parallx.mind.status').then((s) => {
+      const badge = mindRow.querySelector('.autonomy-status__badge');
+      const det = mindRow.querySelector('.autonomy-status__detail');
+      if (!s || s.available === false) {
+        if (badge) badge.textContent = 'Empty';
+        if (det) det.textContent = 'No inner model yet — runs once the heartbeat reviews a workspace.';
+        return;
+      }
+      const beliefs = s.beliefs?.length ?? 0;
+      const preds = s.predictions ?? [];
+      const pending = preds.filter(p => !p.resolved).length;
+      const resolved = preds.filter(p => p.resolved).length;
+      if (badge) badge.textContent = s.audit?.ok ? 'Intact' : 'Tampered';
+      if (det) {
+        const parts = [`${beliefs} belief${beliefs === 1 ? '' : 's'}`];
+        if (pending) parts.push(`${pending} prediction${pending === 1 ? '' : 's'} pending`);
+        if (resolved && typeof s.fidelity === 'number') parts.push(`fidelity ${s.fidelity.toFixed(2)} (brier · lower better)`);
+        parts.push(s.audit?.ok ? 'audit ✓' : 'audit ✗ TAMPERED');
+        det.textContent = parts.join(' · ');
+      }
+    }).catch(() => { /* mind unavailable — leave the loading line */ });
+
     // Footer: autonomy level + a deep-link into the unified config.
     const level = configService?.getEffectiveConfig().heartbeat.autonomy ?? 'allow-safe-actions';
     const foot = $('div.autonomy-status__foot');

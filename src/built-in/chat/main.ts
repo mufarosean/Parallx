@@ -2201,6 +2201,14 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     context.subscriptions.push(
       api.commands.registerCommand('parallx.heartbeat.status', () => ({ ...heartbeatRunner.state })),
     );
+
+    // MIND snapshot for the Mind panel (transparency: the human can see what the
+    // agent believes, what it predicted, how accurate it's been, and the audit).
+    context.subscriptions.push(
+      api.commands.registerCommand('parallx.mind.status', async () =>
+        mindService ? await mindService.snapshot() : { available: false },
+      ),
+    );
   }
 
   // ── M60 §3.10: dev-only autonomy:replay command ──

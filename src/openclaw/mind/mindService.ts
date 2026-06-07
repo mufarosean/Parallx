@@ -15,12 +15,24 @@ import {
   summarizeMind,
   meanBrier,
   resolvePrediction,
+  decayedConfidence,
   type IMindEntry,
   type IMindPrediction,
   type IMindPredictionOption,
 } from './agentMindModel.js';
 import type { IMindStore } from './mindStore.js';
 import { ActionLedger, type AgentActionKind, type IAgentActionRecord } from './actionLedger.js';
+
+/** A serializable, UI-facing view of the whole MIND — for the Mind panel. */
+export interface IMindSnapshot {
+  readonly available: true;
+  /** Mean Brier over resolved predictions (lower better); null if none yet. */
+  readonly fidelity: number | null;
+  readonly beliefs: readonly { readonly kind: string; readonly content: string; readonly confidence: number; readonly provenance: readonly string[] }[];
+  readonly predictions: readonly { readonly subject: string; readonly top: string; readonly resolved?: { readonly actual: string; readonly brier: number } }[];
+  readonly audit: { readonly ok: boolean; readonly brokenAt?: number };
+  readonly recentActions: readonly { readonly kind: string; readonly summary: string; readonly origin: string; readonly ts: number }[];
+}
 
 function defaultGenId(): string {
   try {
@@ -145,5 +157,37 @@ export class MindService {
   /** Audit: is the action ledger intact? (for the mind panel). */
   auditOk(): Promise<{ ok: boolean; brokenAt?: number }> {
     return this._ledger.verify();
+  }
+
+  /**
+   * A serializable view of the whole MIND for the Mind panel — beliefs (with
+   * live decayed confidence), predictions (pending + graded), the fidelity
+   * meter, the audit verdict, and recent ledger actions. Read-only; the mind is
+   * the agent's, but the human can SEE all of it (transparency = trust).
+   */
+  async snapshot(nowMs = this._now()): Promise<IMindSnapshot> {
+    const entries = this._entries;
+    const beliefs = entries
+      .filter(e => e.kind !== 'prediction')
+      .map(e => ({ kind: e.kind, content: e.content, confidence: decayedConfidence(e, nowMs), provenance: e.provenance }))
+      .sort((a, b) => b.confidence - a.confidence);
+    const predictions = entries
+      .filter((e): e is IMindPrediction => e.kind === 'prediction')
+      .map(p => ({
+        subject: p.subject,
+        top: [...p.options].sort((a, b) => b.prob - a.prob)[0]?.label ?? '(none)',
+        resolved: p.resolved ? { actual: p.resolved.actual, brier: p.resolved.brier } : undefined,
+      }));
+    const audit = await this._ledger.verify();
+    const recent = (await this._ledger.load()).slice(-20).reverse();
+    const fid = meanBrier(entries);
+    return {
+      available: true,
+      fidelity: Number.isNaN(fid) ? null : fid,
+      beliefs,
+      predictions,
+      audit,
+      recentActions: recent.map(r => ({ kind: r.kind, summary: r.summary, origin: r.origin, ts: r.ts })),
+    };
   }
 }

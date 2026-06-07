@@ -116,10 +116,16 @@ test.describe('Autonomy / Heartbeat (live)', () => {
       const logCountAfter = await window.locator('.autonomy-log-entry').count().catch(() => 0);
       const newEntries = await window.locator('.autonomy-log-entry').allTextContents().catch(() => []);
 
+      // The Mind row — the visible inner model (Build-3): beliefs / predictions /
+      // fidelity / audit, pulled from parallx.mind.status.
+      const mindBadge = (await statusRow(window, 'Mind').locator('.autonomy-status__badge').first().textContent().catch(() => '')) ?? '';
+      const mindDetail = (await statusRow(window, 'Mind').locator('.autonomy-status__detail').first().textContent().catch(() => '')) ?? '';
+
       const observation = {
         workspace: ws,
         chatStarted,
         woke,
+        mind: { badge: mindBadge.trim(), detail: mindDetail.trim() },
         heartbeat: { badgeBefore, badgeAfter, detailAfter },
         log: { before: logCountBefore, after: logCountAfter, entries: newEntries.slice(0, 20) },
         heartbeatConsole: consoleLines.slice(0, 80),
