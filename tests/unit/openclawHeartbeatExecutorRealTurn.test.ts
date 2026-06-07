@@ -174,18 +174,20 @@ describe('HeartbeatTurnExecutor — real-turn retrofit (M58-real W2)', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('interval reason: status-only pulse, no ephemeral session created', async () => {
+  it('interval reason: runs a real periodic review seeded with the app-context snapshot', async () => {
+    // The interval is now the app-awareness review, not a status-only pulse: it
+    // runs a real turn and hands the model the workspace status snapshot.
     const h = buildHarness();
     await h.executor([], 'interval');
 
-    expect(h.chat_.calls.createEphemeralSession).toHaveLength(0);
-    expect(h.chat_.calls.sendRequest).toHaveLength(0);
-    expect(h.chat.deliveries).toHaveLength(0);
-    // status flash + idle = 2 deliveries
-    expect(h.status.deliveries.length).toBe(2);
-    for (const d of h.status.deliveries) {
-      expect(getDeliveryOrigin(d)).toBe(ORIGIN_HEARTBEAT);
-    }
+    expect(h.chat_.calls.createEphemeralSession).toHaveLength(1);
+    expect(h.chat_.calls.createEphemeralSession[0].parentId).toBe('parent-1');
+    expect(h.chat_.calls.sendRequest).toHaveLength(1);
+    expect(h.chat_.calls.sendRequest[0].message).toContain('[heartbeat interval]');
+    expect(h.chat_.calls.sendRequest[0].message).toContain('Workspace status snapshot');
+    expect(h.chat_.calls.purgeEphemeralSession).toHaveLength(1);
+    expect((h.chat.deliveries[0].metadata as Record<string, unknown>).reason).toBe('interval');
+    expect(getDeliveryOrigin(h.chat.deliveries[0])).toBe(ORIGIN_HEARTBEAT);
   });
 
   it('cron reason: complete no-op (delegated)', async () => {

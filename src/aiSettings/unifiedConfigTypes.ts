@@ -547,7 +547,10 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
   },
   heartbeat: {
     enabled: false, // M58 W2: non-negotiable default — user opts in explicitly
-    intervalMs: 5 * 60 * 1000, // 5 minutes (runtime-clamped in HeartbeatRunner)
+    // 30 min: the interval now runs a REAL periodic app-awareness review (not a
+    // status flash), so the cadence matches OpenClaw's default rather than the
+    // old 5-min reflex. Runtime-clamped to [15s, 1h]; user-configurable.
+    intervalMs: 30 * 60 * 1000,
     reasons: [...HEARTBEAT_REASON_OPTIONS], // allow all 5 by default
     watchIncludeExtensions: [
       // Source

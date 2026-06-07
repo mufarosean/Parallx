@@ -66,7 +66,7 @@ import { SubagentSpawner } from '../../openclaw/openclawSubagentSpawn.js';
 import { AutonomyLogService } from '../../services/autonomyLogService.js';
 import {
   AutonomyFeatureFlagsService,
-  FLAG_HEARTBEAT_ENABLED,
+  FLAG_PAUSED_GLOBAL,
   FLAG_CRON_ENABLED,
   FLAG_SUBAGENT_ENABLED,
   FLAG_PATTERN_MEMORY_ENABLED,
@@ -1914,6 +1914,17 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // The runner is guarded on surfaceRouter + unifiedConfigService availability.
   // Missing either → heartbeat is inert (no timer, no event queue growth).
   if (surfaceRouter && unifiedConfigService) {
+    // The background diagnostics service — the heartbeat's first app-wide sense.
+    const _heartbeatDiagnostics = api.services.has(IDiagnosticsService)
+      ? api.services.get<import('../../services/serviceTypes.js').IDiagnosticsService>(IDiagnosticsService)
+      : undefined;
+    // Human-readable autonomy-log note for a heartbeat tick. Describes the tick
+    // itself; the model's actual findings (NOTE/ACT) surface as their own log
+    // entries, so we never overclaim "all clear" here.
+    const heartbeatTickNote = (reason: string, events: number): string => {
+      const evs = events > 0 ? ` · ${events} event${events === 1 ? '' : 's'}` : '';
+      return reason === 'interval' ? `periodic review${evs}` : `${reason}${evs}`;
+    };
     const readHeartbeatConfig = (): IHeartbeatConfig => {
       const hb = unifiedConfigService.getEffectiveConfig().heartbeat;
       return {
@@ -1932,9 +1943,14 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           if (!sid) return false;
           return chatService.getSession(sid)?.requestInProgress === true;
         },
-        // M60 Phase γ §3.8 — autonomy.heartbeat.enabled flag gate.
-        // Closure picks up live flag changes; no restart required.
-        isFlagEnabled: () => isAutonomyTriggerAllowed(autonomyFlags, FLAG_HEARTBEAT_ENABLED),
+        // Single global gate: the per-workspace `heartbeat.enabled` config
+        // (above) is the on/off switch users actually toggle; the only global
+        // override is the `paused.global` kill switch. Previously this ALSO
+        // required the separate, default-OFF `autonomy.heartbeat.enabled` flag,
+        // which silently blocked anyone who enabled heartbeat from AI settings
+        // — the "I turned it on but nothing happens" trap. Closure picks up
+        // live changes; no restart required.
+        isFlagEnabled: () => !autonomyFlags.isEnabled(FLAG_PAUSED_GLOBAL),
         // M60 Phase γ §3.10 — emit a structured autonomy event per tick.
         onAutonomyEvent: autonomyEventLog
           ? (info) => {
@@ -1942,7 +1958,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
                 trigger: { kind: 'heartbeat', ref: _activeWidget?.getSession()?.id },
                 outcome: info.outcome,
                 durationMs: info.durationMs,
-                note: info.note ?? `reason=${info.reason} events=${info.eventsProcessed}`,
+                note: info.note ?? heartbeatTickNote(info.reason, info.eventsProcessed),
               });
             }
           : undefined,
@@ -1975,6 +1991,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             }
           : undefined,
         getAutonomyLevel: () => unifiedConfigService.getEffectiveConfig().heartbeat.autonomy,
+        // The heartbeat's first non-file "sense": the background diagnostics the
+        // app already runs. Read fresh each review (cheap, cached) and folded
+        // into the app-context snapshot the model sees.
+        getDiagnostics: () => _heartbeatDiagnostics?.getLastResults(),
       },
     );
 

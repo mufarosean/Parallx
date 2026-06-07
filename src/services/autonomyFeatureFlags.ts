@@ -92,7 +92,12 @@ export const AUTONOMY_FLAG_DEFAULTS: Readonly<Record<AutonomyFlagId, boolean>> =
   [FLAG_SURFACE_STATUSBAR_ENABLED]: true,
   [FLAG_SURFACE_CANVAS_ENABLED]: false,
   [FLAG_SURFACE_FILESYSTEM_ENABLED]: false,
-  [FLAG_HEARTBEAT_ENABLED]: false,
+  // Heartbeat is now gated by ONE user control — the per-workspace
+  // `heartbeat.enabled` config — plus the global `paused.global` kill switch.
+  // This flag is retained for back-compat but no longer gates the runner
+  // (see src/built-in/chat/main.ts), so it defaults ON to avoid silently
+  // blocking a user who enabled heartbeat from the AI settings panel.
+  [FLAG_HEARTBEAT_ENABLED]: true,
   [FLAG_CRON_ENABLED]: false,
   [FLAG_SUBAGENT_ENABLED]: false,
   [FLAG_CANVAS_BLOCKIDS_ENABLED]: true,

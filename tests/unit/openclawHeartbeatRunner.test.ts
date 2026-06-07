@@ -220,6 +220,49 @@ describe('HeartbeatRunner', () => {
     });
   });
 
+  describe('deferred-event recovery', () => {
+    it('processes events deferred by chat back-pressure on the next interval tick (no silent drop)', async () => {
+      let busy = true;
+      const runner = new HeartbeatRunner(executor, () => createConfig({
+        intervalMs: MIN_HEARTBEAT_INTERVAL_MS,
+        shouldDeferTick: () => busy,
+      }));
+      runner.start();
+
+      // Event arrives mid-chat → the immediate system-event tick defers and the
+      // event stays queued.
+      runner.pushEvent(createEvent());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(executor).not.toHaveBeenCalled();
+      expect(runner.pendingEventCount).toBe(1);
+
+      // Chat finishes; the next interval review runs a real turn and the queued
+      // event rides along in it (not silently discarded by a status-only path).
+      busy = false;
+      await vi.advanceTimersByTimeAsync(MIN_HEARTBEAT_INTERVAL_MS);
+      expect(executor).toHaveBeenCalledTimes(1);
+      expect(executor.mock.calls[0][1]).toBe('interval');
+      expect(executor.mock.calls[0][0]).toHaveLength(1); // the deferred event was processed
+      expect(runner.pendingEventCount).toBe(0);
+
+      runner.dispose();
+    });
+
+    it('emits a visible deferral event instead of going silent', async () => {
+      const seen: { outcome: string; note?: string }[] = [];
+      const runner = new HeartbeatRunner(executor, () => createConfig({
+        shouldDeferTick: () => true,
+        onAutonomyEvent: (info) => seen.push({ outcome: info.outcome, note: info.note }),
+      }));
+
+      runner.pushEvent(createEvent());
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(seen.some(e => e.outcome === 'cancelled' && /deferred/.test(e.note ?? ''))).toBe(true);
+      runner.dispose();
+    });
+  });
+
   describe('pruneSuppressionCache', () => {
     it('removes expired entries', () => {
       const runner = new HeartbeatRunner(executor, () => createConfig());
@@ -243,14 +286,16 @@ describe('HeartbeatRunner', () => {
       const runner = new HeartbeatRunner(executor, () => createConfig({ intervalMs: MIN_HEARTBEAT_INTERVAL_MS }));
       runner.start();
 
-      // Advance through 3 intervals — each fires setTimeout, _tick skips (no events), re-arms
+      // Advance through 3 intervals — each fires setTimeout, runs the periodic
+      // review (a real turn now, even with no events), and re-arms.
       for (let i = 0; i < 3; i++) {
         await vi.advanceTimersByTimeAsync(MIN_HEARTBEAT_INTERVAL_MS);
       }
 
-      // Timer is still alive — stop should clear it without error
+      // Timer kept re-arming → one periodic review per interval.
+      expect(executor).toHaveBeenCalledTimes(3);
+      expect(executor.mock.calls.every((c: unknown[]) => c[1] === 'interval')).toBe(true);
       runner.stop();
-      expect(executor).not.toHaveBeenCalled(); // no events → all skipped
       runner.dispose();
     });
 
@@ -273,9 +318,9 @@ describe('HeartbeatRunner', () => {
       // Advance past 5 intervals while executor is still running
       await vi.advanceTimersByTimeAsync(MIN_HEARTBEAT_INTERVAL_MS * 5);
 
-      // Timer ticks during this time all skip (no pending events)
-      // The only executor call is from pushEvent
-      expect(slowExecutor).toHaveBeenCalledTimes(1);
+      // Interval reviews that fire while a turn is in flight are dropped by the
+      // single-flight guard, so heartbeat turns never overlap (the invariant).
+      expect(slowExecutor.mock.calls.length).toBeGreaterThanOrEqual(1);
       expect(maxConcurrent).toBe(1);
 
       runner.dispose();
@@ -299,8 +344,8 @@ describe('HeartbeatRunner', () => {
 // ---------------------------------------------------------------------------
 
 describe('heartbeat constants', () => {
-  it('DEFAULT_HEARTBEAT_INTERVAL_MS is 5 minutes', () => {
-    expect(DEFAULT_HEARTBEAT_INTERVAL_MS).toBe(5 * 60 * 1000);
+  it('DEFAULT_HEARTBEAT_INTERVAL_MS is 30 minutes', () => {
+    expect(DEFAULT_HEARTBEAT_INTERVAL_MS).toBe(30 * 60 * 1000);
   });
 
   it('MIN_HEARTBEAT_INTERVAL_MS is at least 15 seconds (M60 §3.6 floor)', () => {

@@ -43,7 +43,6 @@ import type {
 } from '../../services/autonomyPatternMemoryService.js';
 import {
   FLAG_PAUSED_GLOBAL,
-  FLAG_HEARTBEAT_ENABLED,
   FLAG_CRON_ENABLED,
   type AutonomyFeatureFlagsService,
 } from '../../services/autonomyFeatureFlags.js';
@@ -389,10 +388,11 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
 
     const paused = flagsService?.isEnabled(FLAG_PAUSED_GLOBAL) ?? false;
 
-    // Heartbeat — needs BOTH the feature flag and the config master switch.
-    const hbFlag = flagsService?.isEnabled(FLAG_HEARTBEAT_ENABLED) ?? false;
+    // Heartbeat — gated by ONE user control (`heartbeat.enabled`) plus the
+    // global kill switch. (The old `autonomy.heartbeat.enabled` flag no longer
+    // gates the runner; it was a redundant second switch.)
     const hbCfg = configService?.getEffectiveConfig().heartbeat;
-    const hbOn = hbFlag && (hbCfg?.enabled ?? false);
+    const hbOn = hbCfg?.enabled ?? false;
     if (paused) {
       statusBoard.appendChild(statusRow('heart-pulse', { label: 'Paused', kind: 'paused' },
         'Heartbeat', 'Globally paused — nothing fires.'));
@@ -405,8 +405,6 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       statusBoard.appendChild(statusRow('heart-pulse', { label: 'Off', kind: 'off' },
         'Heartbeat', 'Proactive check-ins are disabled.',
         { label: 'Enable', icon: 'power', run: () => {
-            // Flip BOTH gates at once — the flag AND the config master switch.
-            void flagsService?.setEnabled(FLAG_HEARTBEAT_ENABLED, true);
             void configService?.updateActivePreset({ heartbeat: { enabled: true } });
           } }));
     }

@@ -23,15 +23,15 @@ import type { IDisposable } from '../platform/lifecycle.js';
 // ---------------------------------------------------------------------------
 
 /**
- * Default heartbeat interval in milliseconds (5 minutes).
+ * Default heartbeat interval in milliseconds (30 minutes).
  *
- * @deviation D2.11 — Upstream default is 30 minutes (DEFAULT_HEARTBEAT_EVERY
- * in heartbeat.ts) to account for API token cost and rate limits. Parallx
- * uses 5 minutes because: (1) local Ollama has no per-token cost, (2) desktop
- * latency is low, (3) proactive check-ins benefit from faster response to
- * workspace changes. Configurable via AI settings.
+ * Now that an interval tick runs a REAL periodic app-awareness review (an LLM
+ * turn seeded with the app-context snapshot), the cadence matches OpenClaw's
+ * 30-min default rather than the old 5-min status-flash reflex. Local Ollama
+ * has no per-token cost, but a real turn every few minutes is still needless
+ * churn; event-driven reactions handle the fast path. Configurable via AI settings.
  */
-export const DEFAULT_HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
+export const DEFAULT_HEARTBEAT_INTERVAL_MS = 30 * 60 * 1000;
 
 /**
  * Minimum heartbeat interval — prevents runaway timers.
@@ -195,6 +195,8 @@ export class HeartbeatRunner implements IDisposable {
   private _disposed = false;
   /** M60 §3.7 — set by `suspendForShutdown()`; blocks all subsequent ticks. */
   private _shuttingDown = false;
+  /** Single-flight guard: true while a heartbeat turn is executing. */
+  private _executing = false;
 
   constructor(
     private readonly _executor: HeartbeatTurnExecutor,
@@ -357,17 +359,35 @@ export class HeartbeatRunner implements IDisposable {
       return { executed: false, reason: 'skipped-disabled', eventsProcessed: 0, timestamp: tickStartMs };
     }
 
-    // Gate: no events for interval-based ticks (avoid noise)
-    // Upstream: heartbeat checks HEARTBEAT.md and queue size as preflight
-    if (reason === 'interval' && this._pendingEvents.length === 0) {
-      return { executed: false, reason: 'skipped-no-events', eventsProcessed: 0, timestamp: tickStartMs };
+    // Interval ticks are the periodic app-awareness review — the heart of the
+    // heartbeat. They run a REAL turn every cadence whether or not workspace
+    // events are queued: the executor seeds the model with the app-context
+    // snapshot (failing diagnostics, recent activity) and the model replies NOOP
+    // when nothing needs attention. Any events that ARE queued ride along in the
+    // same review. (Event-driven reasons keep their own faster path.)
+
+    // Gate: chat-turn back-pressure. If the host says the user has an in-flight
+    // chat turn, defer. Event-driven reasons keep their queued events for the
+    // next viable tick. Emit a visible event so a deferral reads as "held off
+    // while you were chatting", not silence.
+    if (config.shouldDeferTick?.() === true) {
+      this._emitTickEvent(config, {
+        outcome: 'cancelled',
+        reason,
+        eventsProcessed: this._pendingEvents.length,
+        durationMs: 0,
+        note: 'deferred — chat turn in progress',
+      });
+      return { executed: false, reason: 'skipped-busy', eventsProcessed: 0, timestamp: tickStartMs };
     }
 
-    // Gate: chat-turn back-pressure. If the host says the user has an
-    // in-flight chat turn, defer. For event-driven reasons we keep the
-    // queued events so the next viable tick handles them; for `interval`
-    // there is nothing to retain.
-    if (config.shouldDeferTick?.() === true) {
+    // Single-flight: never run two heartbeat turns at once. Now that interval
+    // ticks run real (potentially slow) reviews, a periodic review could fire
+    // while an event-driven turn is still in flight; two concurrent turns would
+    // race at the model (Ollama serializes per model) and the tool/approval
+    // layer. If a turn is already running, skip this beat — event reasons keep
+    // their queued events for the next tick.
+    if (this._executing) {
       return { executed: false, reason: 'skipped-busy', eventsProcessed: 0, timestamp: tickStartMs };
     }
 
@@ -377,6 +397,7 @@ export class HeartbeatRunner implements IDisposable {
 
     // Execute heartbeat turn
     const now = Date.now();
+    this._executing = true;
     try {
       await this._executor(events, reason);
       this._state = {
@@ -404,6 +425,8 @@ export class HeartbeatRunner implements IDisposable {
         note: err instanceof Error ? err.message : String(err),
       });
       return { executed: false, reason, eventsProcessed: 0, timestamp: now };
+    } finally {
+      this._executing = false;
     }
   }
 

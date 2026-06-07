@@ -75,6 +75,8 @@ import type {
   IHeartbeatSystemEvent,
 } from './openclawHeartbeatRunner.js';
 import { extractFinalAssistantText } from './openclawSubagentExecutor.js';
+import { buildHeartbeatSnapshot, formatAppContext } from './openclawHeartbeatContext.js';
+import type { IDiagnosticResult } from '../services/serviceTypes.js';
 import type {
   IEphemeralSessionHandle,
   IEphemeralSessionSeed,
@@ -137,6 +139,12 @@ export interface IHeartbeatRealTurnDeps {
     unmarkHeartbeatSession(sessionId: string): void;
   };
   readonly getAutonomyLevel?: () => import('../agent/agentTypes.js').AgentAutonomyLevel | undefined;
+  /**
+   * Latest background diagnostics, read fresh each review and folded into the
+   * app-context snapshot the model sees. Optional — absent → snapshot reports
+   * diagnostics as unavailable, the review still runs on workspace activity.
+   */
+  readonly getDiagnostics?: () => readonly IDiagnosticResult[] | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,8 +192,13 @@ function computeDebounceKey(event: IHeartbeatSystemEvent): string {
 function buildSeedSystemMessage(reason: HeartbeatReason, events: readonly IHeartbeatSystemEvent[]): string {
   const lines: string[] = [];
   lines.push(`You were woken by a heartbeat event (reason: ${reason}).`);
-  lines.push('This is NOT a user message. It is an internal reactive trigger. The user did not address you and is not waiting for a reply.');
-  if (reason === 'system-event') {
+  lines.push('This is NOT a user message. It is an internal trigger. The user did not address you and is not waiting for a reply.');
+  if (reason === 'interval') {
+    // The periodic "heartbeat" review — the app's awareness loop. The model is
+    // handed a status snapshot of the whole app (below) and decides if anything
+    // needs the user. The vast majority of reviews are routine → IGNORE.
+    lines.push('This is a periodic check-in: review the workspace status snapshot below — failing background diagnostics, recent activity — and decide whether anything genuinely needs the user’s attention right now.');
+  } else if (reason === 'system-event') {
     lines.push('A workspace event occurred that may or may not warrant attention.');
     const firstType = events[0]?.type;
     if (firstType) {
@@ -205,11 +218,15 @@ function buildSeedSystemMessage(reason: HeartbeatReason, events: readonly IHeart
   return lines.join(' ');
 }
 
-function buildSeedUserMessage(reason: HeartbeatReason, events: readonly IHeartbeatSystemEvent[]): string {
+function buildSeedUserMessage(
+  reason: HeartbeatReason,
+  events: readonly IHeartbeatSystemEvent[],
+  appContext: string,
+): string {
   const lines: string[] = [];
   lines.push(`[heartbeat ${reason}]`);
   if (events.length === 0) {
-    lines.push('(no events)');
+    lines.push('(no new events)');
   } else {
     lines.push(`${events.length} event${events.length === 1 ? '' : 's'}:`);
     for (const ev of events.slice(0, 10)) {
@@ -225,6 +242,8 @@ function buildSeedUserMessage(reason: HeartbeatReason, events: readonly IHeartbe
       lines.push(`... (${events.length - 10} more events truncated)`);
     }
   }
+  // App-wide situational snapshot — the heartbeat's "senses".
+  lines.push('', appContext);
   return lines.join('\n');
 }
 
@@ -313,14 +332,17 @@ export function createHeartbeatTurnExecutor(
       );
     };
 
-    // Interval is intentionally status-only — a periodic timer firing real
-    // LLM turns with no trigger event is a token-burn trap.
-    if (reason === 'interval' || realTurnDeps === undefined) {
+    // Without real-turn deps we can only flash status (safe during early
+    // activation). The periodic `interval` review now runs a real turn like the
+    // event-driven reasons — it is the app's awareness loop, not a token-burn
+    // trap, because it is seeded with the app-context snapshot and replies NOOP
+    // when nothing needs attention.
+    if (realTurnDeps === undefined) {
       await resetStatus('idle');
       return;
     }
 
-    // Real-turn path: system-event / wake / hook
+    // Real-turn path: interval (periodic review) / system-event / wake / hook
     const parentId = realTurnDeps.getParentSessionId();
     if (!parentId) {
       // No active chat — skip real turn cleanly. Heartbeat must never error.
@@ -346,8 +368,13 @@ export function createHeartbeatTurnExecutor(
       for (const k of keys) lastFiredByKey.set(k, current);
     }
 
+    // Assemble the app-wide situational snapshot (the heartbeat's "senses")
+    // fresh each turn, and fold it into the seed so the model reviews app state,
+    // not just the triggering event.
+    const snapshot = buildHeartbeatSnapshot(realTurnDeps.getDiagnostics?.(), events);
+    const appContext = formatAppContext(snapshot);
     const systemMessage = buildSeedSystemMessage(reason, events);
-    const userMessage = buildSeedUserMessage(reason, events);
+    const userMessage = buildSeedUserMessage(reason, events, appContext);
 
     const handle = realTurnDeps.chatService.createEphemeralSession(parentId, {
       systemMessage,
