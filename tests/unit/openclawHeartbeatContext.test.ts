@@ -4,6 +4,7 @@ import {
   buildHeartbeatSnapshot,
   formatAppContext,
   hasNoteworthySignals,
+  risingFailures,
 } from '../../src/openclaw/openclawHeartbeatContext';
 
 const diag = (name: string, status: 'pass' | 'warn' | 'fail', detail = '') => ({
@@ -47,6 +48,20 @@ describe('hasNoteworthySignals', () => {
   });
   it('is true when there are pending events', () => {
     expect(hasNoteworthySignals(buildHeartbeatSnapshot([], [ev('file-change')]))).toBe(true);
+  });
+});
+
+describe('risingFailures', () => {
+  it('returns only checks that newly fail (rising edge)', () => {
+    const prev = new Set(['A']);
+    const results = [diag('A', 'fail'), diag('B', 'fail'), diag('C', 'pass')];
+    expect(risingFailures(prev, results)).toEqual(['B']); // A was already failing
+  });
+  it('is empty when nothing new fails', () => {
+    expect(risingFailures(new Set(['A']), [diag('A', 'fail'), diag('C', 'pass')])).toEqual([]);
+  });
+  it('is empty when there are no failures', () => {
+    expect(risingFailures(new Set(), [diag('A', 'pass'), diag('B', 'warn')])).toEqual([]);
   });
 });
 

@@ -56,6 +56,7 @@ import { FilesystemSurfacePlugin } from '../../services/surfaces/filesystemSurfa
 import { CanvasSurfacePlugin } from '../canvas/surfaces/canvasSurface.js';
 import { HeartbeatRunner, type IHeartbeatConfig } from '../../openclaw/openclawHeartbeatRunner.js';
 import { createHeartbeatTurnExecutor } from '../../openclaw/openclawHeartbeatExecutor.js';
+import { risingFailures } from '../../openclaw/openclawHeartbeatContext.js';
 import { shouldHeartbeatAcceptPath } from '../../openclaw/openclawHeartbeatFileFilter.js';
 import { CronService, ICronService, type HeartbeatWaker } from '../../openclaw/openclawCronService.js';
 import {
@@ -2083,6 +2084,29 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             payload: { added: e.added.length, removed: e.removed.length },
             timestamp: Date.now(),
           });
+        }),
+      );
+    }
+
+    // ── Phase 2 · Reactive diagnostics ──
+    // The periodic review already reads diagnostics from the snapshot, but a
+    // newly-FAILING background check is worth a prompt reaction rather than
+    // waiting up to a full cadence. Push a system-event only on the rising edge
+    // (a check that wasn't failing before), so a persistent failure doesn't
+    // re-fire every 30s auto-refresh.
+    if (_heartbeatDiagnostics) {
+      let prevFailed = new Set<string>();
+      context.subscriptions.push(
+        _heartbeatDiagnostics.onDidChange((results) => {
+          const newlyFailed = risingFailures(prevFailed, results);
+          prevFailed = new Set(results.filter(r => r.status === 'fail').map(r => r.name));
+          if (newlyFailed.length > 0) {
+            heartbeatRunner.pushEvent({
+              type: 'diagnostic-fail',
+              payload: { checks: newlyFailed },
+              timestamp: Date.now(),
+            });
+          }
         }),
       );
     }

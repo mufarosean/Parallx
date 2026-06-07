@@ -64,6 +64,20 @@ export function hasNoteworthySignals(s: IHeartbeatAppSnapshot): boolean {
 }
 
 /**
+ * Names of checks failing now that were NOT failing in `prevFailed` — the
+ * rising edge. Used to push a heartbeat reaction only when a check newly
+ * breaks, not on every diagnostics auto-refresh while it stays broken.
+ */
+export function risingFailures(
+  prevFailed: ReadonlySet<string>,
+  results: readonly IDiagnosticResult[],
+): string[] {
+  return results
+    .filter(r => r.status === 'fail' && !prevFailed.has(r.name))
+    .map(r => r.name);
+}
+
+/**
  * Render the snapshot as a compact block for the heartbeat seed. Kept terse —
  * the model gets state, not prose. Always communicates the diagnostics posture
  * (even "all clear") so the model can confidently report nothing-to-do.
