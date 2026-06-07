@@ -149,6 +149,7 @@ function buildHarness(overrides?: {
   debounceMs?: number;
   nowRef?: { value: number };
   mind?: IHeartbeatMind;
+  getDiagnostics?: () => readonly { name: string; status: string; detail: string; category?: string }[] | undefined;
 }) {
   const router = new SurfaceRouterService();
   const status = new FakeSurfacePlugin(SURFACE_STATUS);
@@ -175,6 +176,7 @@ function buildHarness(overrides?: {
       debounceMs: overrides?.debounceMs,
       now: () => nowRef.value,
       mind: overrides?.mind,
+      getDiagnostics: overrides?.getDiagnostics as (() => readonly never[] | undefined) | undefined,
     },
   );
 
@@ -193,10 +195,11 @@ describe('HeartbeatTurnExecutor — real-turn retrofit (M58-real W2)', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('interval reason: runs a real periodic review seeded with the app-context snapshot', async () => {
-    // The interval is now the app-awareness review, not a status-only pulse: it
-    // runs a real turn and hands the model the workspace status snapshot.
-    const h = buildHarness();
+  it('interval reason: runs a real periodic review when the snapshot is noteworthy', async () => {
+    // The interval is the app-awareness review: when something is noteworthy
+    // (here, a failing diagnostic) it runs a real turn with the status snapshot.
+    // (An *idle* interval is gated — see the idle-gate suite below.)
+    const h = buildHarness({ getDiagnostics: () => [{ name: 'Ollama', status: 'fail', detail: 'down', category: 'llm' }] });
     await h.executor([], 'interval');
 
     expect(h.chat_.calls.createEphemeralSession).toHaveLength(1);
@@ -349,13 +352,61 @@ describe('HeartbeatTurnExecutor — real-turn retrofit (M58-real W2)', () => {
   });
 });
 
+describe('HeartbeatTurnExecutor — idle gate (Build-1e: idle must be free)', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  const failing = () => [{ name: 'Ollama', status: 'fail', detail: 'down', category: 'llm' }];
+
+  it('an idle interval (nothing noteworthy) runs NO model turn', async () => {
+    const h = buildHarness(); // no diagnostics, no events → idle
+    await h.executor([], 'interval');
+    expect(h.chat_.calls.createEphemeralSession).toHaveLength(0);
+    expect(h.chat_.calls.sendRequest).toHaveLength(0);
+  });
+
+  it('an interval with a noteworthy snapshot runs the model', async () => {
+    const h = buildHarness({ getDiagnostics: failing });
+    await h.executor([], 'interval');
+    expect(h.chat_.calls.sendRequest).toHaveLength(1);
+  });
+
+  it('an unchanged noteworthy snapshot is not re-reviewed on the next interval', async () => {
+    const h = buildHarness({ getDiagnostics: failing });
+    await h.executor([], 'interval'); // first time: reviews
+    await h.executor([], 'interval'); // same snapshot: gated
+    expect(h.chat_.calls.sendRequest).toHaveLength(1);
+  });
+
+  it('a NEWLY changed snapshot reopens the interval review', async () => {
+    let diag = [{ name: 'Ollama', status: 'fail', detail: 'down', category: 'llm' }];
+    const h = buildHarness({ getDiagnostics: () => diag });
+    await h.executor([], 'interval'); // reviews (fail)
+    diag = [{ name: 'Index', status: 'warn', detail: 'stale', category: 'rag' }]; // changed
+    await h.executor([], 'interval'); // reviews again (different key)
+    expect(h.chat_.calls.sendRequest).toHaveLength(2);
+  });
+
+  it('wake is never gated — it always runs even when idle', async () => {
+    const h = buildHarness(); // idle
+    await h.executor([], 'wake');
+    expect(h.chat_.calls.sendRequest).toHaveLength(1);
+  });
+
+  it('system-event is never gated by the idle rule', async () => {
+    const h = buildHarness(); // no diagnostics, but a real event
+    await h.executor([mkEvent('/x.ts')], 'system-event');
+    expect(h.chat_.calls.sendRequest).toHaveLength(1);
+  });
+});
+
 describe('HeartbeatTurnExecutor — MIND continuity wiring (Build-1d)', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
 
   it('injects the MIND seed block into the review so the agent reads its own continuity', async () => {
     const { mind, calls } = buildFakeMind('What I currently believe:\n- [belief · 90%] User ships on Fridays');
-    const h = buildHarness({ mind, respondWith: 'NOOP' });
+    const h = buildHarness({ mind, respondWith: 'NOOP', getDiagnostics: () => [{ name: 'X', status: 'fail', detail: 'd' }] });
     await h.executor([], 'interval');
     expect(calls.seedCalls).toBe(1);
     const msg = h.chat_.calls.sendRequest[0].message;
@@ -365,14 +416,14 @@ describe('HeartbeatTurnExecutor — MIND continuity wiring (Build-1d)', () => {
 
   it('omits the continuity block when the MIND is empty', async () => {
     const { mind } = buildFakeMind('MIND: (empty — no durable beliefs yet)');
-    const h = buildHarness({ mind, respondWith: 'NOOP' });
+    const h = buildHarness({ mind, respondWith: 'NOOP', getDiagnostics: () => [{ name: 'X', status: 'fail', detail: 'd' }] });
     await h.executor([], 'interval');
     expect(h.chat_.calls.sendRequest[0].message).not.toContain('Your continuity');
   });
 
   it('records a NOOP outcome to the audit ledger', async () => {
     const { mind, calls } = buildFakeMind();
-    const h = buildHarness({ mind, respondWith: 'NOOP' });
+    const h = buildHarness({ mind, respondWith: 'NOOP', getDiagnostics: () => [{ name: 'X', status: 'fail', detail: 'd' }] });
     await h.executor([], 'interval');
     expect(calls.records.map(r => r.kind)).toContain('noop');
     expect(calls.records[0].origin).toBe('heartbeat:interval');

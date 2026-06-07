@@ -75,7 +75,8 @@ import type {
   IHeartbeatSystemEvent,
 } from './openclawHeartbeatRunner.js';
 import { extractFinalAssistantText } from './openclawSubagentExecutor.js';
-import { buildHeartbeatSnapshot, formatAppContext, formatEventLine } from './openclawHeartbeatContext.js';
+import { buildHeartbeatSnapshot, formatAppContext, formatEventLine, hasNoteworthySignals } from './openclawHeartbeatContext.js';
+import type { IHeartbeatAppSnapshot } from './openclawHeartbeatContext.js';
 import type { AgentActionKind } from './mind/actionLedger.js';
 import type { IDiagnosticResult } from '../services/serviceTypes.js';
 import type {
@@ -195,6 +196,17 @@ function formatTickText(reason: HeartbeatReason, eventCount: number): string {
 }
 
 /**
+ * Cheap, stable key over the *noteworthy* content of a snapshot. The idle gate
+ * uses it to skip an interval review when nothing has changed since the last one
+ * (so a standing diagnostic failure isn't re-reviewed by the model every tick).
+ */
+function snapshotKey(s: IHeartbeatAppSnapshot): string {
+  const d = s.diagnosticsAttention.map(a => `${a.name}:${a.status}`).join('|');
+  const e = s.events.map(ev => `${ev.type}:${ev.count}`).join('|');
+  return `${d}#${e}`;
+}
+
+/**
  * Debounce key for an event. We prefer the event's payload.path (file
  * changes), otherwise fall back to `type|json(payload)` so distinct events
  * of the same kind don't collapse into one bucket.
@@ -296,6 +308,10 @@ export function createHeartbeatTurnExecutor(
   const outputDedupMs = realTurnDeps?.outputDedupWindowMs ?? DEFAULT_OUTPUT_DEDUP_WINDOW_MS;
   const now = realTurnDeps?.now ?? (() => Date.now());
   const lastFiredByKey = new Map<string, number>();
+  // Idle gate state (Build-1e): the noteworthy-snapshot key of the last interval
+  // review we actually ran a model turn for. An interval whose snapshot is empty
+  // OR unchanged from this is skipped — idle costs no model tokens.
+  let lastReviewedKey = '';
   // Output-dedup ring: normalized text → last delivery timestamp. Upstream
   // parity: openclaw `isDuplicateMain` (heartbeat-runner.ts L798-833).
   const deliveredOutputs = new Map<string, number>();
@@ -393,6 +409,23 @@ export function createHeartbeatTurnExecutor(
     // fresh each turn, and fold it into the seed so the model reviews app state,
     // not just the triggering event.
     const snapshot = buildHeartbeatSnapshot(realTurnDeps.getDiagnostics?.(), events);
+
+    // ── Idle gate (Build-1e): idle must be FREE. Running a full model turn on
+    // every periodic `interval` just to decide NOOP is the #1 reason an always-on
+    // local agent gets disabled (it heats the machine — pre-mortem #1). So skip
+    // the model entirely when the cheap snapshot shows nothing noteworthy, or
+    // nothing has changed since the last review. wake / system-event / hook are
+    // explicit triggers and always run. (Periodic *reflection* even when idle is
+    // a separate, slower, budgeted loop — not this 30-minute tick.)
+    if (reason === 'interval') {
+      const key = snapshotKey(snapshot);
+      if (!hasNoteworthySignals(snapshot) || key === lastReviewedKey) {
+        await resetStatus('idle-gated');
+        return;
+      }
+      lastReviewedKey = key;
+    }
+
     const appContext = formatAppContext(snapshot);
     const systemMessage = buildSeedSystemMessage(reason, events);
 
