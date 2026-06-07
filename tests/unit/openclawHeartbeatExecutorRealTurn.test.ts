@@ -16,6 +16,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import {
   createHeartbeatTurnExecutor,
   type IHeartbeatChatService,
+  type IHeartbeatMind,
 } from '../../src/openclaw/openclawHeartbeatExecutor';
 import {
   SurfaceRouterService,
@@ -124,6 +125,22 @@ function buildFakeChatService(opts: {
   return { chatService, calls, sessions };
 }
 
+interface IFakeMindCalls {
+  records: { kind: string; summary: string; origin: string }[];
+  remembers: { kind: string; content: string; confidence: number; provenance: readonly string[] }[];
+  seedCalls: number;
+}
+function buildFakeMind(seed = ''): { mind: IHeartbeatMind; calls: IFakeMindCalls } {
+  const calls: IFakeMindCalls = { records: [], remembers: [], seedCalls: 0 };
+  let h = 0;
+  const mind: IHeartbeatMind = {
+    seedBlock() { calls.seedCalls += 1; return seed; },
+    async record(kind, summary, origin) { calls.records.push({ kind, summary, origin }); return { hash: `h${++h}` }; },
+    async remember(kind, content, confidence, provenance) { calls.remembers.push({ kind, content, confidence, provenance }); return true; },
+  };
+  return { mind, calls };
+}
+
 function buildHarness(overrides?: {
   parentId?: string | undefined;
   respondWith?: string;
@@ -131,6 +148,7 @@ function buildHarness(overrides?: {
   reasons?: HeartbeatReason[];
   debounceMs?: number;
   nowRef?: { value: number };
+  mind?: IHeartbeatMind;
 }) {
   const router = new SurfaceRouterService();
   const status = new FakeSurfacePlugin(SURFACE_STATUS);
@@ -156,6 +174,7 @@ function buildHarness(overrides?: {
       getParentSessionId: () => parentId ?? undefined,
       debounceMs: overrides?.debounceMs,
       now: () => nowRef.value,
+      mind: overrides?.mind,
     },
   );
 
@@ -327,5 +346,73 @@ describe('HeartbeatTurnExecutor — real-turn retrofit (M58-real W2)', () => {
     await h.executor([mkEvent('/x.ts')], 'system-event');
     expect(h.chat_.calls.createEphemeralSession).toHaveLength(0);
     expect(h.status.deliveries).toHaveLength(0);
+  });
+});
+
+describe('HeartbeatTurnExecutor — MIND continuity wiring (Build-1d)', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('injects the MIND seed block into the review so the agent reads its own continuity', async () => {
+    const { mind, calls } = buildFakeMind('What I currently believe:\n- [belief · 90%] User ships on Fridays');
+    const h = buildHarness({ mind, respondWith: 'NOOP' });
+    await h.executor([], 'interval');
+    expect(calls.seedCalls).toBe(1);
+    const msg = h.chat_.calls.sendRequest[0].message;
+    expect(msg).toContain('User ships on Fridays');
+    expect(msg).toContain('Your continuity');
+  });
+
+  it('omits the continuity block when the MIND is empty', async () => {
+    const { mind } = buildFakeMind('MIND: (empty — no durable beliefs yet)');
+    const h = buildHarness({ mind, respondWith: 'NOOP' });
+    await h.executor([], 'interval');
+    expect(h.chat_.calls.sendRequest[0].message).not.toContain('Your continuity');
+  });
+
+  it('records a NOOP outcome to the audit ledger', async () => {
+    const { mind, calls } = buildFakeMind();
+    const h = buildHarness({ mind, respondWith: 'NOOP' });
+    await h.executor([], 'interval');
+    expect(calls.records.map(r => r.kind)).toContain('noop');
+    expect(calls.records[0].origin).toBe('heartbeat:interval');
+  });
+
+  it('records a NOTE and remembers it as continuity (with non-empty provenance)', async () => {
+    const { mind, calls } = buildFakeMind();
+    const h = buildHarness({ mind, respondWith: 'NOTE: the file index looks stale' });
+    await h.executor([mkEvent('/x.ts')], 'system-event');
+    expect(calls.records.find(r => r.kind === 'note')?.summary).toContain('file index looks stale');
+    expect(calls.remembers[0].kind).toBe('thread');
+    expect(calls.remembers[0].content).toContain('Noted: the file index looks stale');
+    expect(calls.remembers[0].provenance[0]).toBeTruthy(); // governance: provenance never empty
+  });
+
+  it('records an ACT and remembers what it did', async () => {
+    const { mind, calls } = buildFakeMind();
+    const h = buildHarness({ mind, respondWith: 'Investigated and fixed the broken link.' });
+    await h.executor([mkEvent('/x.ts')], 'system-event');
+    expect(calls.records.find(r => r.kind === 'act')).toBeTruthy();
+    expect(calls.remembers[0].content).toContain('Acted:');
+  });
+
+  it('records an error outcome when the turn throws', async () => {
+    const { mind, calls } = buildFakeMind();
+    const h = buildHarness({ mind, throwOnSend: new Error('model offline') });
+    await h.executor([mkEvent('/x.ts')], 'system-event');
+    expect(calls.records.find(r => r.kind === 'error')?.summary).toContain('model offline');
+  });
+
+  it('a throwing MIND never breaks the heartbeat (seed + record both guarded)', async () => {
+    const brokenMind: IHeartbeatMind = {
+      seedBlock() { throw new Error('mind boom'); },
+      async remember() { throw new Error('boom'); },
+      async record() { throw new Error('boom'); },
+    };
+    const h = buildHarness({ mind: brokenMind, respondWith: 'Investigated. All clear.' });
+    await h.executor([], 'wake');
+    // The turn still ran and delivered despite the MIND throwing everywhere.
+    expect(h.chat_.calls.sendRequest).toHaveLength(1);
+    expect(h.chat.deliveries).toHaveLength(1);
   });
 });

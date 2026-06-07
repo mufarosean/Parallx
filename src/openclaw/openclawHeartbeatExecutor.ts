@@ -76,6 +76,7 @@ import type {
 } from './openclawHeartbeatRunner.js';
 import { extractFinalAssistantText } from './openclawSubagentExecutor.js';
 import { buildHeartbeatSnapshot, formatAppContext, formatEventLine } from './openclawHeartbeatContext.js';
+import type { AgentActionKind } from './mind/actionLedger.js';
 import type { IDiagnosticResult } from '../services/serviceTypes.js';
 import type {
   IEphemeralSessionHandle,
@@ -110,9 +111,30 @@ export interface IHeartbeatChatService {
   getSession(sessionId: string): { messages: readonly { response: { parts: readonly IChatContentPart[] } }[] } | undefined;
 }
 
+/**
+ * Narrow MIND surface the executor uses (structurally satisfied by MindService).
+ * Optional — when absent, the loop runs stateless exactly as before, so this is
+ * a pure additive capability, not a behavior change.
+ */
+export interface IHeartbeatMind {
+  /** Continuity block for the seed: the agent's prior beliefs and open threads. */
+  seedBlock(): string;
+  /** Persist a noteworthy observation (continuity). Provenance must be non-empty. */
+  remember(kind: 'belief' | 'thread', content: string, confidence: number, provenance: readonly string[]): Promise<boolean>;
+  /** Record an action to the tamper-evident audit ledger; returns a receipt. */
+  record(kind: AgentActionKind, summary: string, origin: string, detail?: string): Promise<{ readonly hash: string }>;
+}
+
 /** Optional deps enabling real-turn execution. Absent → thin fallback. */
 export interface IHeartbeatRealTurnDeps {
   readonly chatService: IHeartbeatChatService;
+  /**
+   * Optional MIND. Gives the loop CONTINUITY — its prior beliefs/threads are
+   * injected into the seed so it builds on past reviews instead of starting
+   * amnesiac — and an AUDIT ledger: every review outcome (noop/note/act/error)
+   * is recorded as tamper-evident ground truth. Absent → stateless as before.
+   */
+  readonly mind?: IHeartbeatMind;
   /** Returns the id of the active parent chat session, or undefined if none. */
   readonly getParentSessionId: () => string | undefined;
   /** Debounce window for `system-event` per event key (ms). Default: 30_000. */
@@ -222,6 +244,7 @@ function buildSeedUserMessage(
   reason: HeartbeatReason,
   events: readonly IHeartbeatSystemEvent[],
   appContext: string,
+  mindBlock?: string,
 ): string {
   const lines: string[] = [];
   lines.push(`[heartbeat ${reason}]`);
@@ -238,6 +261,10 @@ function buildSeedUserMessage(
   }
   // App-wide situational snapshot — the heartbeat's "senses".
   lines.push('', appContext);
+  // Continuity — the agent's own prior beliefs/threads (omitted when empty).
+  if (mindBlock && mindBlock.trim() && !mindBlock.includes('(empty')) {
+    lines.push('', 'Your continuity — what you already believe and are tracking. Build on it; do not re-report what you have already noted:', mindBlock);
+  }
   return lines.join('\n');
 }
 
@@ -368,7 +395,24 @@ export function createHeartbeatTurnExecutor(
     const snapshot = buildHeartbeatSnapshot(realTurnDeps.getDiagnostics?.(), events);
     const appContext = formatAppContext(snapshot);
     const systemMessage = buildSeedSystemMessage(reason, events);
-    const userMessage = buildSeedUserMessage(reason, events, appContext);
+
+    // MIND — continuity (its prior beliefs seed the review) + audit (outcomes are
+    // ledgered). EVERY MIND call is best-effort: a failing MIND must never break
+    // the heartbeat, so even reading the seed block is guarded.
+    const mind = realTurnDeps.mind;
+    let mindSeed: string | undefined;
+    try { mindSeed = mind?.seedBlock(); } catch { mindSeed = undefined; }
+    const userMessage = buildSeedUserMessage(reason, events, appContext, mindSeed);
+    const recordOutcome = async (kind: AgentActionKind, summary: string, detail?: string): Promise<{ hash: string } | undefined> => {
+      if (!mind) return undefined;
+      try { return await mind.record(kind, summary.slice(0, 300), `heartbeat:${reason}`, detail); }
+      catch { return undefined; }
+    };
+    const rememberThread = async (content: string, confidence: number, receiptHash?: string): Promise<void> => {
+      if (!mind) return;
+      try { await mind.remember('thread', content.slice(0, 280), confidence, [receiptHash ?? `heartbeat:${reason}:${now()}`]); }
+      catch { /* continuity is best-effort; never throw into the loop */ }
+    };
 
     const handle = realTurnDeps.chatService.createEphemeralSession(parentId, {
       systemMessage,
@@ -392,10 +436,12 @@ export function createHeartbeatTurnExecutor(
       const trimmed = resultText.trim();
       const noteMatch = trimmed.match(NOTE_MARKER);
       if (trimmed.length === 0) {
-        // Empty — nothing to deliver.
+        // Empty — nothing to deliver, but the review still ran.
+        await recordOutcome('noop', 'reviewed; model returned nothing');
       } else if (NOOP_MARKER.test(trimmed)) {
         // Agent explicitly said "no action warranted" — drop delivery.
         console.debug('[HeartbeatExecutor] NOOP — skipping delivery');
+        await recordOutcome('noop', 'reviewed; no action warranted');
       } else if (noteMatch) {
         // NOTE: agent observed something but did not act. Route to the
         // autonomy log as a quiet annotation; do not deliver to chat.
@@ -422,6 +468,8 @@ export function createHeartbeatTurnExecutor(
             },
             ORIGIN_HEARTBEAT,
           );
+          const rec = await recordOutcome('note', noteText);
+          await rememberThread(`Noted: ${noteText}`, 0.5, rec?.hash);
         }
       } else {
         const normalized = normalizeForDedup(trimmed);
@@ -446,10 +494,13 @@ export function createHeartbeatTurnExecutor(
             },
             ORIGIN_HEARTBEAT,
           );
+          const rec = await recordOutcome('act', resultText);
+          await rememberThread(`Acted: ${resultText}`, 0.6, rec?.hash);
         }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      await recordOutcome('error', `heartbeat turn error: ${msg}`);
       await router.sendWithOrigin(
         {
           surfaceId: SURFACE_CHAT,
