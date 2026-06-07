@@ -399,7 +399,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     } else if (hbOn) {
       const iv = hbCfg ? formatInterval(hbCfg.intervalMs) : '5m';
       statusBoard.appendChild(statusRow('heart-pulse', { label: 'Armed', kind: 'on' },
-        'Heartbeat', `Reacts to file changes · checks every ${iv}`,
+        'Heartbeat', `Reviews the app every ${iv} · reacts to changes, diagnostics & signals`,
         { label: 'Wake now', icon: 'zap', primary: true, run: () => { void runCommand?.('parallx.wakeAgent'); } }));
     } else {
       statusBoard.appendChild(statusRow('heart-pulse', { label: 'Off', kind: 'off' },

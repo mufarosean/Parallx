@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildHeartbeatSnapshot,
   formatAppContext,
+  formatEventLine,
   hasNoteworthySignals,
   risingFailures,
 } from '../../src/openclaw/openclawHeartbeatContext';
@@ -48,6 +49,32 @@ describe('hasNoteworthySignals', () => {
   });
   it('is true when there are pending events', () => {
     expect(hasNoteworthySignals(buildHeartbeatSnapshot([], [ev('file-change')]))).toBe(true);
+  });
+});
+
+describe('formatEventLine', () => {
+  const mk = (type: string, payload: Record<string, unknown>) => ({ type, payload, timestamp: 0 });
+
+  it('renders an extension signal in human form with source + detail + severity', () => {
+    const line = formatEventLine(mk('extension-signal', { source: 'budget', title: 'Over cap', detail: '$5 left', severity: 'urgent' }));
+    expect(line).toBe('signal from budget [urgent]: Over cap — $5 left');
+  });
+
+  it('omits severity tag for info signals', () => {
+    expect(formatEventLine(mk('extension-signal', { source: 's', title: 't', severity: 'info' }))).toBe('signal from s: t');
+  });
+
+  it('renders a diagnostic-fail with the check names', () => {
+    expect(formatEventLine(mk('diagnostic-fail', { checks: ['Ollama Connection', 'RAG Engine'] })))
+      .toBe('diagnostic now failing: Ollama Connection, RAG Engine');
+  });
+
+  it('renders a file-change with its path', () => {
+    expect(formatEventLine(mk('file-change', { path: '/a/b.ts' }))).toBe('file changed: /a/b.ts');
+  });
+
+  it('falls back to type + JSON for unknown kinds', () => {
+    expect(formatEventLine(mk('mystery', { x: 1 }))).toBe('mystery · {"x":1}');
   });
 });
 

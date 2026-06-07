@@ -85,8 +85,12 @@ recent real session — the periodic review runs and its findings land in a real
 even when the user is on canvas/dashboard. Only a brand-new workspace with no chat at all
 still skips. (A fully headless background session is a possible later refinement.)
 
-**Phase 5 — UX polish.** Status-bar pulse, "last reviewed N ago / next in N", a heartbeat
-activity timeline, and per-sense settings.
+**Phase 5 — UX polish. [partial]** Done: the autonomy-log status board now describes the
+real model ("Reviews the app every 30m · reacts to changes, diagnostics & signals"), and
+review-seed events render in human form (`formatEventLine` — "signal from budget: over
+cap") instead of raw JSON, so both the model and the log read cleanly. Deferred (needs
+live UI verification): a status-bar pulse and a live "last reviewed N ago / next in N"
+readout, and per-sense enable toggles.
 
 ## UX principles (hold equal to code)
 

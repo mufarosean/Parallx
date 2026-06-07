@@ -75,7 +75,7 @@ import type {
   IHeartbeatSystemEvent,
 } from './openclawHeartbeatRunner.js';
 import { extractFinalAssistantText } from './openclawSubagentExecutor.js';
-import { buildHeartbeatSnapshot, formatAppContext } from './openclawHeartbeatContext.js';
+import { buildHeartbeatSnapshot, formatAppContext, formatEventLine } from './openclawHeartbeatContext.js';
 import type { IDiagnosticResult } from '../services/serviceTypes.js';
 import type {
   IEphemeralSessionHandle,
@@ -230,13 +230,7 @@ function buildSeedUserMessage(
   } else {
     lines.push(`${events.length} event${events.length === 1 ? '' : 's'}:`);
     for (const ev of events.slice(0, 10)) {
-      let payloadStr: string;
-      try {
-        payloadStr = JSON.stringify(ev.payload);
-      } catch {
-        payloadStr = '[unserializable payload]';
-      }
-      lines.push(`- ${ev.type} @ ${new Date(ev.timestamp).toISOString()} · ${payloadStr}`);
+      lines.push(`- ${formatEventLine(ev)}`);
     }
     if (events.length > 10) {
       lines.push(`... (${events.length - 10} more events truncated)`);

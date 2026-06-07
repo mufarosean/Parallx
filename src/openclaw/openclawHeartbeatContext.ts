@@ -78,6 +78,35 @@ export function risingFailures(
 }
 
 /**
+ * Render one pending event as a human line for the review seed — so the model
+ * reads "signal from budget: over monthly cap", not a raw JSON blob. Falls back
+ * to type + JSON for event kinds without a friendly form.
+ */
+export function formatEventLine(ev: IHeartbeatSystemEvent): string {
+  const p = (ev.payload ?? {}) as Record<string, unknown>;
+  switch (ev.type) {
+    case 'extension-signal': {
+      const src = typeof p.source === 'string' ? p.source : 'extension';
+      const title = typeof p.title === 'string' ? p.title : 'signal';
+      const detail = typeof p.detail === 'string' && p.detail ? ` — ${p.detail}` : '';
+      const sev = p.severity === 'urgent' || p.severity === 'warn' ? ` [${p.severity}]` : '';
+      return `signal from ${src}${sev}: ${title}${detail}`;
+    }
+    case 'diagnostic-fail': {
+      const checks = Array.isArray(p.checks) ? p.checks.join(', ') : 'unknown';
+      return `diagnostic now failing: ${checks}`;
+    }
+    case 'file-change':
+      return `file changed: ${typeof p.path === 'string' ? p.path : '(unknown)'}`;
+    default: {
+      let json: string;
+      try { json = JSON.stringify(ev.payload); } catch { json = '[unserializable]'; }
+      return `${ev.type} · ${json}`;
+    }
+  }
+}
+
+/**
  * Render the snapshot as a compact block for the heartbeat seed. Kept terse —
  * the model gets state, not prose. Always communicates the diagnostics posture
  * (even "all clear") so the model can confidently report nothing-to-do.
