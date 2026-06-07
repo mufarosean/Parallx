@@ -213,6 +213,19 @@ function formatUntil(ts: number): string {
   return `in ${d}d`;
 }
 
+/** Compact "5m ago" / "40s ago" / "just now" formatter for a past timestamp. */
+function formatAgo(ts: number): string {
+  const s = Math.round((Date.now() - ts) / 1000);
+  if (s < 10) return 'just now';
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  if (h < 24) return rem ? `${h}h ${rem}m ago` : `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
 /** Compact interval label, e.g. 300000 → "5m". */
 function formatInterval(ms: number): string {
   const m = Math.round(ms / 60000);
@@ -397,10 +410,23 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       statusBoard.appendChild(statusRow('heart-pulse', { label: 'Paused', kind: 'paused' },
         'Heartbeat', 'Globally paused — nothing fires.'));
     } else if (hbOn) {
-      const iv = hbCfg ? formatInterval(hbCfg.intervalMs) : '5m';
-      statusBoard.appendChild(statusRow('heart-pulse', { label: 'Armed', kind: 'on' },
-        'Heartbeat', `Reviews the app every ${iv} · reacts to changes, diagnostics & signals`,
-        { label: 'Wake now', icon: 'zap', primary: true, run: () => { void runCommand?.('parallx.wakeAgent'); } }));
+      const iv = hbCfg ? formatInterval(hbCfg.intervalMs) : '30m';
+      const baseDetail = `Reviews the app every ${iv} · reacts to changes, diagnostics & signals`;
+      const hbRow = statusRow('heart-pulse', { label: 'Armed', kind: 'on' },
+        'Heartbeat', baseDetail,
+        { label: 'Wake now', icon: 'zap', primary: true, run: () => { void runCommand?.('parallx.wakeAgent'); } });
+      statusBoard.appendChild(hbRow);
+      // One-shot enrichment: show when it last reviewed / when the next is due,
+      // pulled from the live runner state. Updates on the next board repaint.
+      void runCommand?.<{ lastRunMs?: number; nextDueMs?: number }>('parallx.heartbeat.status').then((s) => {
+        if (!s) return;
+        const det = hbRow.querySelector('.autonomy-status__detail');
+        if (!det) return;
+        const parts = [`Reviews every ${iv}`];
+        if (typeof s.lastRunMs === 'number' && s.lastRunMs > 0) parts.push(`last ${formatAgo(s.lastRunMs)}`);
+        if (typeof s.nextDueMs === 'number' && s.nextDueMs > Date.now()) parts.push(`next ${formatUntil(s.nextDueMs)}`);
+        det.textContent = `${parts.join(' · ')} · reacts to changes, diagnostics & signals`;
+      }).catch(() => { /* status unavailable — keep base detail */ });
     } else {
       statusBoard.appendChild(statusRow('heart-pulse', { label: 'Off', kind: 'off' },
         'Heartbeat', 'Proactive check-ins are disabled.',

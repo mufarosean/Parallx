@@ -2157,6 +2157,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         _autonomySignals?.signal(raw) ?? false,
       ),
     );
+
+    // Heartbeat state snapshot for UI (autonomy-log "last reviewed / next in").
+    context.subscriptions.push(
+      api.commands.registerCommand('parallx.heartbeat.status', () => ({ ...heartbeatRunner.state })),
+    );
   }
 
   // ── M60 §3.10: dev-only autonomy:replay command ──
