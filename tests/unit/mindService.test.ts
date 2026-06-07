@@ -107,6 +107,25 @@ describe('MindService — the loop seam', () => {
     expect(svc2.capability().agentActions).toBe(1);
   });
 
+  it('recordHuman with a skill feeds the held-out fluency probe, surfaces in snapshot, and persists', async () => {
+    const storage = new FakeStorage();
+    const mk = () => new MindService(new MindStore(storage), new ActionLedger(storage), { now: () => clock, genId: () => `id${++ids}`, capabilityStorage: storage });
+    const svc = mk();
+    await svc.init();
+    await svc.recordHuman(0, 'a.ts');
+    await svc.recordHuman(1000, 'a.ts');
+    await svc.recordHuman(2000, 'a.ts'); // recurring → probe-eligible; a probe is issued
+
+    const snap = await svc.snapshot();
+    expect(snap.fluency).toBeDefined();
+    expect(snap.fluency.issued).toBeGreaterThanOrEqual(1);
+
+    // persists across restart
+    const svc2 = mk();
+    await svc2.init();
+    expect(svc2.fluency().issued).toBe(snap.fluency.issued);
+  });
+
   it('snapshot exposes the whole MIND for the panel (beliefs, predictions, fidelity, audit, ledger)', async () => {
     const { svc } = build();
     await svc.init();

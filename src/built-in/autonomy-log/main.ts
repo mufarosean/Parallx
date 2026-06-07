@@ -471,6 +471,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       predictions?: { resolved?: unknown }[];
       audit?: { ok: boolean };
       capability?: { assistanceShare: number | null; deskillingRisk: boolean };
+      fluency?: { trend: string; completed: number };
     }>('parallx.mind.status').then((s) => {
       const badge = mindRow.querySelector('.autonomy-status__badge');
       const det = mindRow.querySelector('.autonomy-status__detail');
@@ -492,6 +493,9 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
         if (cap && typeof cap.assistanceShare === 'number') {
           parts.push(`you ${Math.round((1 - cap.assistanceShare) * 100)}% · agent ${Math.round(cap.assistanceShare * 100)}%`);
           if (cap.deskillingRisk) parts.push('⚠ deskilling — you’re offloading more over time');
+        }
+        if (s.fluency && s.fluency.completed > 0 && s.fluency.trend !== 'insufficient') {
+          parts.push(`your fluency ${s.fluency.trend}`);
         }
         parts.push(s.audit?.ok ? 'audit ✓' : 'audit ✗ TAMPERED');
         det.textContent = parts.join(' · ');

@@ -23,6 +23,7 @@ import {
 import type { IMindStore } from './mindStore.js';
 import { ActionLedger, type AgentActionKind, type IAgentActionRecord } from './actionLedger.js';
 import { CapabilityMeter, type ICapabilityReading } from './capabilityMeter.js';
+import { SkillProbe, type ISkillProbeReading, type ISkillProbeState } from './skillProbe.js';
 import type { IStorage } from '../../platform/storage.js';
 
 /** A serializable, UI-facing view of the whole MIND — for the Mind panel. */
@@ -36,6 +37,8 @@ export interface IMindSnapshot {
   readonly recentActions: readonly { readonly kind: string; readonly summary: string; readonly origin: string; readonly ts: number }[];
   /** The conscience: is the human getting stronger, or is the agent taking over? */
   readonly capability: ICapabilityReading;
+  /** The active conscience: the human's unaided fluency on held-out recurring tasks. */
+  readonly fluency: ISkillProbeReading;
 }
 
 function defaultGenId(): string {
@@ -55,6 +58,7 @@ export interface IMindServiceOptions {
 }
 
 const CAPABILITY_KEY = 'autonomy.capability.v1';
+const SKILLPROBE_KEY = 'autonomy.skillprobe.v1';
 
 export class MindService {
   private _entries: readonly IMindEntry[] = [];
@@ -62,6 +66,7 @@ export class MindService {
   private readonly _now: () => number;
   private readonly _genId: () => string;
   private readonly _meter = new CapabilityMeter();
+  private readonly _probe = new SkillProbe();
   private readonly _capStorage?: IStorage;
 
   constructor(
@@ -79,6 +84,7 @@ export class MindService {
     if (this._loaded) return;
     this._entries = await this._store.load();
     await this._loadMeter();
+    await this._loadProbe();
     this._loaded = true;
   }
 
@@ -98,15 +104,43 @@ export class MindService {
     catch { /* best-effort */ }
   }
 
-  /** Record a HUMAN action (their own work) — the denominator of the conscience. */
-  async recordHuman(nowMs = this._now()): Promise<void> {
+  private async _loadProbe(): Promise<void> {
+    if (!this._capStorage) return;
+    try {
+      const raw = await this._capStorage.get(SKILLPROBE_KEY);
+      if (raw) this._probe.restore(JSON.parse(raw) as ISkillProbeState);
+    } catch { /* corrupt → fresh probe */ }
+  }
+
+  private async _saveProbe(): Promise<void> {
+    if (!this._capStorage) return;
+    try { await this._capStorage.set(SKILLPROBE_KEY, JSON.stringify(this._probe.toState())); }
+    catch { /* best-effort */ }
+  }
+
+  /**
+   * Record a HUMAN action (their own work) — the denominator of the conscience.
+   * When the action names a recurring `skill` (e.g. a file path), it also feeds
+   * the held-out skills probe (unaided-fluency measurement).
+   */
+  async recordHuman(nowMs = this._now(), skill?: string): Promise<void> {
     this._meter.recordHuman(nowMs);
+    if (skill) {
+      this._probe.observe(skill, nowMs);
+      this._probe.maybeIssue(nowMs); // rate-limited internally; may hold a skill out
+      await this._saveProbe();
+    }
     await this._saveMeter();
   }
 
   /** The conscience reading: assistance share, trend, and the deskilling alarm. */
   capability(): ICapabilityReading {
     return this._meter.read();
+  }
+
+  /** The active conscience reading: unaided-fluency on held-out recurring tasks. */
+  fluency(): ISkillProbeReading {
+    return this._probe.reading();
   }
 
   /** The live MIND (for the mind panel / inspection). */
@@ -235,6 +269,7 @@ export class MindService {
       audit,
       recentActions: recent.map(r => ({ kind: r.kind, summary: r.summary, origin: r.origin, ts: r.ts })),
       capability: this._meter.read(),
+      fluency: this._probe.reading(),
     };
   }
 }

@@ -2012,8 +2012,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     const observeForPrediction = (path: string): void => {
       if (!predictionLoop) return;
       _predictChain = _predictChain.then(async () => {
-        // The human just did work — the denominator of the conscience meter.
-        void mindService?.recordHuman(Date.now());
+        // The human just did work — the conscience denominator, and (with the
+        // file as the recurring "skill") the held-out fluency probe.
+        void mindService?.recordHuman(Date.now(), path);
         const res = await predictionLoop.observe(path);
         if (res.surprised && typeof res.brier === 'number') {
           const t = Date.now();
