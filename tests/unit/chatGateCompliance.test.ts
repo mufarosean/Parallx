@@ -82,6 +82,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'tools/builtInTools.ts':  ['tools/'],
   'tools/fileTools.ts':     [],
   'tools/memoryTools.ts':   [],
+  'tools/mindTools.ts':     [],                // living-system — mind_remember (the agent curates its own MIND)
   'tools/pageTools.ts':     ['tools/'],
   'tools/terminalTools.ts': [],
   'tools/transcriptTools.ts': [],
