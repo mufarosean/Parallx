@@ -56,6 +56,9 @@ import { FilesystemSurfacePlugin } from '../../services/surfaces/filesystemSurfa
 import { CanvasSurfacePlugin } from '../canvas/surfaces/canvasSurface.js';
 import { HeartbeatRunner, type IHeartbeatConfig } from '../../openclaw/openclawHeartbeatRunner.js';
 import { createHeartbeatTurnExecutor } from '../../openclaw/openclawHeartbeatExecutor.js';
+import { MindService } from '../../openclaw/mind/mindService.js';
+import { MindStore } from '../../openclaw/mind/mindStore.js';
+import { ActionLedger } from '../../openclaw/mind/actionLedger.js';
 import { risingFailures } from '../../openclaw/openclawHeartbeatContext.js';
 import { signalToSystemEvent } from '../../openclaw/openclawAutonomySignal.js';
 import { IAutonomySignalService } from '../../services/autonomySignalService.js';
@@ -1968,6 +1971,22 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       };
     };
 
+    // MIND — the continuity keystone (Build-1d.3). A workspace-scoped persistent
+    // inner model + tamper-evident audit ledger, composed into the loop seam and
+    // handed to the executor. Optional: if workspace storage is unavailable the
+    // heartbeat runs stateless exactly as before. init() loads any prior MIND in
+    // the background — the first tick before it resolves simply sees an empty MIND.
+    let mindService: MindService | undefined;
+    {
+      const _mindStorage = api.services.has(IWorkspaceStorageService)
+        ? api.services.get<import('../../platform/storage.js').IStorage>(IWorkspaceStorageService)
+        : undefined;
+      if (_mindStorage) {
+        mindService = new MindService(new MindStore(_mindStorage), new ActionLedger(_mindStorage));
+        mindService.init().catch(() => { /* first-tick seed is simply empty */ });
+      }
+    }
+
     const executor = createHeartbeatTurnExecutor(
       surfaceRouter,
       () => ({ reasons: unifiedConfigService.getEffectiveConfig().heartbeat.reasons }),
@@ -2013,6 +2032,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         getDiagnostics: () => unifiedConfigService.getEffectiveConfig().heartbeat.senseDiagnostics
           ? _heartbeatDiagnostics?.getLastResults()
           : undefined,
+        // Continuity + audit (Build-1d.3). The loop reads its prior beliefs into
+        // the seed and ledgers every outcome. Best-effort: never breaks the tick.
+        mind: mindService,
       },
     );
 
