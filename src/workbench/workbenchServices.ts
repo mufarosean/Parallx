@@ -45,6 +45,7 @@ import { ConceptNodeService } from '../services/conceptNodeService.js';
 import { DocumentExtractionService } from '../services/documentExtractionService.js';
 import { UnifiedAIConfigService } from '../aiSettings/unifiedAIConfigService.js';
 import { DiagnosticsService } from '../services/diagnosticsService.js';
+import { AutonomySignalService, IAutonomySignalService } from '../services/autonomySignalService.js';
 import { ObservabilityService } from '../services/observabilityService.js';
 import { RuntimeHookRegistry } from '../services/runtimeHookRegistry.js';
 import { McpClientService } from '../openclaw/mcp/mcpClientService.js';
@@ -351,6 +352,10 @@ export function registerIndexingServices(
     ALL_DIAGNOSTIC_CHECKS,
   );
   services.registerInstance(IDiagnosticsService, diagnosticsService);
+
+  // ── Autonomy signal bus (heartbeat senses) ──
+  const autonomySignalService = new AutonomySignalService();
+  services.registerInstance(IAutonomySignalService, autonomySignalService);
 
   // ── D7: Observability Service ──
   const observabilityService = new ObservabilityService();

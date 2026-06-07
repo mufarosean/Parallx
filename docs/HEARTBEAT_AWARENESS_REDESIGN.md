@@ -69,14 +69,13 @@ One pulse, many senses, one voice:
 planner/tasks due-items sense; canvas recent-activity sense; a `HEARTBEAT.md`-equivalent
 user checklist (a designated canvas page or workspace file).
 
-**Phase 3 — extension signal channel. [DONE]** Any extension/background process publishes
-noteworthy events into the heartbeat queue by calling the `parallx.autonomy.signal`
-command with `{ source, kind, title, detail?, severity? }` — restoring OpenClaw's
-per-extension `system-events`. Payloads are normalized (`openclawAutonomySignal.ts`,
-pure + tested); malformed ones are dropped; the runner's input-dedup + kill switch
-still apply. (Shipped as a command rather than an `api.autonomy.signal(...)` surface to
-keep the change additive and low-risk; a typed `api.autonomy` wrapper over the command
-is a safe future sugar once verified live.)
+**Phase 3 — extension signal API. [DONE]** A first-class `api.autonomy.signal({ source,
+kind, title, detail?, severity? })` surface (plus the `parallx.autonomy.signal` command,
+which delegates to it) lets any extension/background process publish what it noticed in
+the data it processes — restoring OpenClaw's per-extension `system-events`. Both flow
+through the DI `AutonomySignalService` (`src/services/autonomySignalService.ts`, pure
+normalize + tested); the chat extension subscribes its `onDidSignal` onto the heartbeat
+queue. Malformed payloads are dropped; the runner's input-dedup + kill switch still apply.
 
 **Phase 4 — run without a focused chat. [DONE]** Real turns need a parent session, but
 `createEphemeralSession`'s parent is only informational (model/mode have fallbacks). So

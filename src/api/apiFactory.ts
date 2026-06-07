@@ -25,6 +25,7 @@ import type { IToolDescription } from '../tools/toolManifest.js';
 import type { ToolRegistry, IToolEntry } from '../tools/toolRegistry.js';
 import type { StatusBarEntryAccessor } from '../services/serviceTypes.js';
 import { StatusBarAlignment } from '../services/serviceTypes.js';
+import { IAutonomySignalService } from '../services/autonomySignalService.js';
 import { PARALLX_VERSION } from './apiVersionValidation.js';
 import type { INotificationService } from '../services/serviceTypes.js';
 import { CommandsBridge } from './bridges/commandsBridge.js';
@@ -111,6 +112,15 @@ export interface ParallxApiObject {
     registerCommand(id: string, handler: (...args: unknown[]) => unknown | Promise<unknown>): IDisposable;
     executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
     getCommands(): Promise<string[]>;
+  };
+  /**
+   * Autonomy surface. `signal(...)` lets an extension surface something it
+   * noticed in the data it processes (a budget exceeded, a sync failed) to the
+   * heartbeat, which folds it into its next app-awareness review. Returns true
+   * if the signal was accepted, false if it was malformed/empty (dropped).
+   */
+  readonly autonomy: {
+    signal(signal: { source?: string; kind?: string; title: string; detail?: string; severity?: 'info' | 'warn' | 'urgent' }): boolean;
   };
   readonly window: {
     showInformationMessage(message: string, ...actions: { title: string; isCloseAffordance?: boolean }[]): Promise<{ title: string } | undefined>;
@@ -353,6 +363,10 @@ export function createToolApi(
     ? deps.services.get(IWorkspaceBoundaryService)
     : undefined;
 
+  const autonomySignalService = deps.services.has(IAutonomySignalService)
+    ? deps.services.get(IAutonomySignalService)
+    : undefined;
+
   // ── Create bridges ──
   const commandsBridge = commandService
     ? new CommandsBridge(toolId, commandService as any, subscriptions, deps.commandContributionProcessor)
@@ -458,6 +472,12 @@ export function createToolApi(
         if (!commandsBridge) throw new Error('CommandService not available');
         return commandsBridge.getCommands();
       },
+    }),
+
+    autonomy: Object.freeze({
+      // Drops cleanly (returns false) when the autonomy bus isn't present, so
+      // extensions can call this unconditionally.
+      signal: (signal) => autonomySignalService?.signal(signal) ?? false,
     }),
 
     window: Object.freeze({

@@ -57,7 +57,8 @@ import { CanvasSurfacePlugin } from '../canvas/surfaces/canvasSurface.js';
 import { HeartbeatRunner, type IHeartbeatConfig } from '../../openclaw/openclawHeartbeatRunner.js';
 import { createHeartbeatTurnExecutor } from '../../openclaw/openclawHeartbeatExecutor.js';
 import { risingFailures } from '../../openclaw/openclawHeartbeatContext.js';
-import { normalizeAutonomySignal, signalToSystemEvent } from '../../openclaw/openclawAutonomySignal.js';
+import { signalToSystemEvent } from '../../openclaw/openclawAutonomySignal.js';
+import { IAutonomySignalService } from '../../services/autonomySignalService.js';
 import { shouldHeartbeatAcceptPath } from '../../openclaw/openclawHeartbeatFileFilter.js';
 import { CronService, ICronService, type HeartbeatWaker } from '../../openclaw/openclawCronService.js';
 import {
@@ -2132,17 +2133,24 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     );
 
     // ── Phase 3 · Extension signal channel ──
-    // Any extension/background process can surface something it noticed in the
-    // data it processes by calling this command; it lands on the heartbeat's
-    // system-event queue and is reviewed like any other signal. Malformed
-    // payloads are dropped (normalizeAutonomySignal returns null). The runner's
-    // own input dedup + the kill switch still apply.
+    // Both api.autonomy.signal(...) and the parallx.autonomy.signal command flow
+    // through the shared AutonomySignalService; we subscribe its output onto the
+    // heartbeat's review queue here. Malformed payloads are dropped by the
+    // service; the runner's input dedup + the kill switch still apply.
+    const _autonomySignals = api.services.has(IAutonomySignalService)
+      ? api.services.get<import('../../services/autonomySignalService.js').IAutonomySignalService>(IAutonomySignalService)
+      : undefined;
+    if (_autonomySignals) {
+      context.subscriptions.push(
+        _autonomySignals.onDidSignal((sig) => {
+          heartbeatRunner.pushEvent(signalToSystemEvent(sig));
+        }),
+      );
+    }
     context.subscriptions.push(
-      api.commands.registerCommand('parallx.autonomy.signal', (raw: unknown) => {
-        const sig = normalizeAutonomySignal(raw);
-        if (sig) heartbeatRunner.pushEvent(signalToSystemEvent(sig));
-        return !!sig;
-      }),
+      api.commands.registerCommand('parallx.autonomy.signal', (raw: unknown) =>
+        _autonomySignals?.signal(raw) ?? false,
+      ),
     );
   }
 
