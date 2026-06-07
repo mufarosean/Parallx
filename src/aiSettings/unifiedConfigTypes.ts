@@ -573,6 +573,11 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
       '.json', '.yaml', '.yml', '.toml', '.xml', '.html', '.css', '.scss',
     ],
     watchExcludeGlobs: [
+      // Parallx's own internal workspace state — workspace-state/storage JSON,
+      // the memory store + daily logs, the search index, etc. These churn from
+      // routine housekeeping (and the heartbeat's OWN memory writes), so watching
+      // them is pure noise and risks the heartbeat self-triggering on its work.
+      '**/.parallx/**',
       '**/node_modules/**',
       '**/.git/**',
       '**/dist/**',

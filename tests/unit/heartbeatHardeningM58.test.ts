@@ -11,6 +11,7 @@ import {
   shouldHeartbeatAcceptPath,
   globToRegex,
 } from '../../src/openclaw/openclawHeartbeatFileFilter';
+import { DEFAULT_UNIFIED_CONFIG } from '../../src/aiSettings/unifiedConfigTypes';
 import {
   HeartbeatRunner,
   type IHeartbeatConfig,
@@ -85,11 +86,18 @@ describe('shouldHeartbeatAcceptPath (Fix 3)', () => {
     expect(globToRegex('**/*.log').test('a/foo.log')).toBe(true);
   });
 
-  it('user can add .parallx/** to exclude list to suppress app-internal writes', () => {
-    const excludes = [...DEFAULT_EXCLUDE, '**/.parallx/**'];
-    expect(shouldHeartbeatAcceptPath('/proj/.parallx/AGENTS.md', DEFAULT_INCLUDE, excludes)).toBe(false);
-    expect(shouldHeartbeatAcceptPath('/proj/.parallx/memory/2026.md', DEFAULT_INCLUDE, excludes)).toBe(false);
-    expect(shouldHeartbeatAcceptPath('/proj/src/main.ts', DEFAULT_INCLUDE, excludes)).toBe(true);
+  it('excludes Parallx internal .parallx/ housekeeping BY DEFAULT', () => {
+    // Regression: app-internal state (workspace JSON, memory store + daily logs,
+    // the index) churns constantly and must not wake the heartbeat — including
+    // the heartbeat's own memory writes, which would otherwise self-trigger.
+    const excludes = DEFAULT_UNIFIED_CONFIG.heartbeat.watchExcludeGlobs;
+    const include = DEFAULT_UNIFIED_CONFIG.heartbeat.watchIncludeExtensions;
+    expect(shouldHeartbeatAcceptPath('/proj/.parallx/workspace-state.json', include, excludes)).toBe(false);
+    expect(shouldHeartbeatAcceptPath('/proj/.parallx/MEMORY.md', include, excludes)).toBe(false);
+    expect(shouldHeartbeatAcceptPath('/proj/.parallx/memory/2026-06-06.md', include, excludes)).toBe(false);
+    // Real workspace content is still watched.
+    expect(shouldHeartbeatAcceptPath('/proj/src/main.ts', include, excludes)).toBe(true);
+    expect(shouldHeartbeatAcceptPath('/proj/notes.md', include, excludes)).toBe(true);
   });
 });
 
