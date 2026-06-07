@@ -1,293 +1,317 @@
-# The Living System — Founding Systems Design
+# The Living System — Founding Systems Design (v2)
 
-**Branch:** `living-system` · **Status:** design (no implementation yet) · **Date:** 2026-06-07
+**Branch:** `living-system` · **Status:** design (no implementation) · **Date:** 2026-06-07
 
-> This is the system model the autonomy work must trace to. It is deliberately
-> not a manifesto and not code. It is the stock-flow / feedback / Viable-System
-> analysis that earlier hype skipped — and which, when applied, *revises* the
-> vision. Read it before proposing any feature; check every proposal against
-> §7 (Invariants) and §8 (Leverage).
+> v2 follows a three-agent red-team of v1 (ground-truth codebase audit · a
+> cybernetics critic + pre-mortem · a prior-art scan). It cut three pillars that
+> were *labels wearing equations* and added the loops most likely to kill the
+> project. **The discipline of this doc:** anything not yet a *falsifiable
+> mechanism with a named sensor* is marked **[HYPOTHESIS]**, not "design." Every
+> invariant must name the sensor that detects its violation — *from outside the
+> loop it governs* — or it isn't an invariant, it's a slogan.
 
 ---
 
-## 0. The central reframe: nested viable systems
+## 0. The reframe: nested viable systems — and who is which
 
-The mistake is to model "the autonomy agent" as a thing inside "the Parallx app."
-Beer's **Viable System Model** is recursive: every viable system is composed of
-viable systems and is itself a subsystem of a larger one, each needing the same
-five functions (S1 operations · S2 coordination · S3 regulation · S4 intelligence ·
-S5 policy/identity). So we design **one model at five nested levels**:
+Beer's Viable System Model is recursive: every viable system is built from viable
+systems and nested in a larger one, each needing S1 operations · S2 coordination ·
+S3 regulation · S4 intelligence · S5 policy/identity. We design **one model at
+four nested levels** (v1 had five — *the AI landscape is not a viable system; it
+has no boundary, operations, or identity. It is the motivation, §9, not a level.*):
 
 ```
-  L4  AI landscape            centralized superintelligence  ⟷  distributed sovereign intelligence
-   └ L3  The Commons          a federation of dyads (peer, private, governed)
-      └ L2  The Dyad          one human + their Parallx, as one cognitive system
-         └ L1  Parallx        the workbench as a (currently incomplete) viable system
-            └ L0  The Loop    the heartbeat cognition: perceive → predict → act → learn
+  L3  The Commons   a federation of dyads — peer, private, governed
+   └ L2  The Dyad   one human + their Parallx, as one cognitive system
+      └ L1  Parallx the workbench as a viable system
+         └ L0  The Loop  the cognitive cycle
 ```
 
-The thesis in one line: **the "living system" is Parallx acquiring the S4
-(intelligence) and S5 (identity) it currently lacks — and the human supplying
-the requisite variety it can never have alone.** Everything below is that claim,
-made rigorous.
+**The correction v1 got wrong (and it changes the build order):** v1 called the
+agent "Parallx's S4/S5." That contradicts the Ashby argument in §6 — by requisite
+variety the agent *cannot* be the apex intelligence/identity. The honest mapping:
+
+- **L2 (the dyad): the *human* is S5 (identity/policy) and the apex of S4 (where
+  the future and meaning are judged).** This is structural, not deferential.
+- **L1 (Parallx): the agent is S3 (the here-and-now homeostat that keeps the
+  system stable and in-budget) plus a *bounded* S4 (environment scanning +
+  prediction) operating *under* the human's S5.**
+- What v1 called "the agent's S5" is really the **constraint + algedonic channel**:
+  the human's policy injected downward as hard limits, plus the pain/pleasure
+  signal (do-it / dismiss / alarm) flowing up. The agent doesn't *have* an identity;
+  it *carries* the human's.
+
+So the thesis, corrected: **the living system is Parallx growing a real S3 homeostat
+and a bounded S4 predictor under the human's sovereign S5 — with the human
+supplying the variety neither can.** Build order falls out as **S3 + bounded-S4
+under human policy**, not "build the agent's identity first."
 
 ---
 
-## 1. Parallx as a system (L1) — what actually exists today
+## 1. Parallx as a system (L1) — verified against the code
 
-**Purpose (de facto, read from behaviour):** a local-first place to write, store,
-and query an AI over your work. Powerful, but *passive* — it acts only when asked.
+**Purpose (de facto):** a passive, local-first place to write/store/query AI. It
+acts only when asked. **Intended:** measurably increase what one person can know,
+make, and do — *while increasing their own capability and sovereignty* (the dual
+objective; the source of the central tension, §3 R2).
 
-**Purpose (intended):** to measurably increase what one person can know, make, and
-do — *while increasing their own capability and sovereignty* (the dual objective;
-see §3, it is the source of the central tension).
+**Boundary (the political choice):** beneficiary and decision-maker is the
+**individual** (Critical Systems Heuristics) — never the developer, never a cloud.
+v1 assumed the agent may *expand* its perception across the user's work-life;
+correction: **perception scope is a graduated, consented stock, exactly like
+autonomy** (pre-mortem #4: "nobody wants a watcher").
 
-**Boundary (a choice, and the political one):** today Parallx draws its edge at
-"the workbench." The living-system design *pushes the boundary outward* (perceive
-and act across the user's whole work-life) and *upward* (federate). Per Critical
-Systems Heuristics the load-bearing decision is: the **beneficiary and the
-decision-maker are the individual** — not the developer, not a cloud. That is
-what "sovereign" means structurally, and it is the one boundary we never cross.
+**The organs already exist — verified.** The ground-truth audit confirmed these are
+real and largely usable:
 
-**Elements (the real subsystems, and which VSM role each already plays):**
+| Organ | reality (file) | verdict |
+|---|---|---|
+| Indexing (pages+files, extraction, incremental) | `indexingPipeline.ts` | **ready** |
+| Semantic graph (similarity/reference/co-occurrence edges, concepts, in SQLite) | `semanticGraphService.ts` | **ready** |
+| Hybrid retrieval (vector + FTS, RRF, centroids) | `vectorStoreService.ts`, `retrievalService.ts` | **ready** |
+| Output bus (origin-tagged, loop-break, logged) | `surfaceRouterService.ts` | **ready** |
+| Signal bus (extension perception) | `autonomySignalService.ts` | partial |
+| Diagnostics (interoception) | `diagnosticsService.ts` | thin |
+| Memory (decay-ranked recall, agent-writable MEMORY.md) | `memoryService.ts`, `workspaceMemoryService.ts` | needs-work |
+| Heartbeat loop (timer + events, governors) | `openclawHeartbeat*.ts` | needs-work |
 
-| Parallx subsystem | today's VSM role |
-|---|---|
-| Canvas (pages in SQLite), files, Planner | **S1** — operations / the body of work |
-| Chat + the openclaw turn runtime + tools | **S1** effectors (acts only on request) |
-| Surface Router (`SurfaceRouterService`) | the nervous system / output bus |
-| Signal bus (`AutonomySignalService`, `api.autonomy.signal`) | proto-**afferent** nerves (perception intake) |
-| File watcher · indexing pipeline · semantic graph · vector store | proto-**perception + world-model** (latent, unintegrated) |
-| `DiagnosticsService` (background checks) | proto-**interoception** (sense of its own health) |
-| Memory service · `MEMORY.md` · SQLite | proto-**long-term memory** |
-| Heartbeat runner/executor/context | proto-**S3 regulation** (a bare tick) + the seed of **S4** |
-| Settings registry · DI container · command system | the wiring / connective tissue |
-
-**The diagnosis.** Parallx is a strong **S1** with rich latent organs, but the
-human is currently its entire **S3 + S4 + S5** — the user does all the regulating,
-sensing-of-the-whole, and goal-setting. The autonomy runtime is a thin S3 tick
-with no real S4 and no S5. *The organs of intelligence already exist, scattered
-and disconnected.* This is the highest-leverage fact in the document:
-
-> **We are not building senses, memory, or a world model from scratch. They exist
-> (indexing, semantic graph, diagnostics, memory service). The work is to
-> *integrate latent organs into a loop* and add the two missing functions: S4
-> (a model that predicts) and S5 (an identity that aligns).**
+**The diagnosis stands, sharpened:** Parallx is a strong **S1** (the body of work)
+where the human is currently *all* of S3/S4/S5. The integration thesis is **~65%
+true** — but three things are **missing pieces, not wiring** (§2). So "close the
+loop by integration" gets you ~65% of a *reflex*; the gaps are what make it S4.
 
 ---
 
-## 2. The autonomy runtime as Parallx's S4/S5 (L1 → the build target)
+## 2. The three hard gaps (the real work — confirmed by the audit)
 
-Mapping VSM onto what we must complete:
+1. **Persistent agent-owned world model — "MIND" (CRITICAL).** Today there is *no*
+   agent-curated predictive model. `MEMORY.md` holds facts/lessons *for the human*;
+   it is not the agent's internal `P(you)` — "you usually work 9–5 on design;
+   current project blocked on stakeholder feedback; you'll likely open X next."
+   Without it, fidelity can't compound and the flywheel never spins. **This is the
+   keystone.** Lineage: it is the *declarative memory* of ACT-R and the persistent
+   self of Generative Agents / MemGPT — adopt those mechanics, do not reinvent.
+2. **Turn-to-turn agent state — continuity (HIGH).** Every heartbeat turn is born,
+   runs on an ephemeral session, and is purged. The agent cannot carry a
+   hypothesis ("I think X; testing next tick") or a correction ("I was wrong about
+   Y") across ticks. Today continuity ≈ 0. Need a machine-only agent-state store
+   (a `heartbeat_turn_state` table or a non-user-facing `AGENT_STATE`), distinct
+   from MEMORY.
+3. **Unified, salience-ranked perception stream (MEDIUM-HIGH).** Senses are siloed
+   (signals, diagnostics, file-watch, index events, canvas mutations each separate).
+   Need one normalizer → a single **competition for a scarce "attention" slot per
+   cycle** (LIDA's global-workspace gate — this *is* the §6 attenuator, and the
+   anti-bloat/anti-nag mechanism).
 
-- **S1 Operations** — the tool/command system + surface router. *Exists.* The agent's hands.
-- **S2 Coordination** — *missing, and non-obvious.* Two controllers act on one
-  workspace: the human (direct edits) and the agent. Without coordination they
-  oscillate and fight (the agent "tidies" what you're mid-editing). S2 is the
-  anti-oscillation layer: shared attention, locks/deference, "don't touch what
-  the human is touching." (The `.parallx` self-trigger I found is an S2/S3 failure.)
-- **S3 Regulation / homeostasis** — the heartbeat loop + resource/attention
-  budgets + the **governors** on every loop. *Exists only as a bare tick.* This is
-  the "here-and-now" controller keeping the system stable and within budget.
-- **S4 Intelligence** — *the big gap.* The persistent **world model** + **prediction**
-  (active inference) + environment scanning. The "outside-and-future" organ.
-  Today: absent (ephemeral, amnesiac turns; a stale snapshot). This is the mind.
-- **S5 Policy / identity** — *absent beyond a kill switch.* The agent's alignment
-  to *this* human, the invariant set (§7), the sense of "who I am and whom I serve."
-
-**Build order falls directly out of VSM:** a system missing S4 and S5 is not
-viable — it is a reflex. So: **S5 first** (identity + invariants — cheap, and it
-constrains everything after), **then S4** (the persistent model + loop — the
-mind), wiring the already-present latent senses (§1) and the existing S1 tools
-into it, with **S2/S3 governors** built *alongside*, never after.
+These three are the build, not the heartbeat tick we already have.
 
 ---
 
-## 3. Dynamics — the causal-loop model (the heart)
+## 3. Dynamics — the causal-loop model (now with the loops that kill it)
 
-**Master stocks** (accumulations that determine behaviour over time):
-1. **Model fidelity** — how well S4 models *this* user/work.
-2. **Trust / granted-autonomy** — how much rope the human has given.
-3. **Human capability** — the user's *own* competence (the stock that must grow).
-4. **Continuity** — persistent memory of self/threads (today ≈ 0; purged each tick).
-5. **Workspace coherence** — order/health of the actual work (canvas, files, tasks).
+**Master stocks:** model-fidelity · trust/granted-autonomy · **human-capability** ·
+continuity · workspace-coherence · **compute-headroom** (new) · **perception-scope**
+(new).
 
-**R1 — the trust flywheel (the engine):**
-`fidelity↑ → usefulness↑ → trust↑ → autonomy + feedback↑ → fidelity↑`. Fragile:
-break any link and it spins down. *Continuity is the hidden multiplier* — without
-it, fidelity can't compound, so the flywheel never spins. Hence S4 + continuity first.
+**R1 — the trust flywheel (engine):** fidelity↑ → usefulness↑ → trust↑ → autonomy +
+feedback↑ → fidelity↑. *Continuity is the hidden multiplier* — without it fidelity
+can't compound, so the flywheel can't spin. Hence the MIND + continuity gaps first.
 
-**The loops that kill it — each needs a designed governor (a balancing loop):**
+**Governors — and v2's rule: each names a sensor OUTSIDE the loop it governs**
+(v1's were autodependent — sensed by the faculty that was failing):
 
-- **R-runaway (self-trigger):** agent activity → events → more activity. *Observed
-  literally* (heartbeat waking on its own `.parallx` writes). **Governor:** the
-  agent's own effects are excluded from its perception; single-flight; rate limits.
-- **Nag-spiral:** proactivity without restraint → annoyance → distrust → disabled →
-  blind → worse. **Governor:** an attention/interruption budget tied to the trust
-  stock; silence is the default (NOOP).
-- **R2 — deskilling (Shifting the Burden — *existential*):** agent does more →
-  human does less → human capability↓ → reliance↑ → agent does more. This archetype
-  **destroys purpose #2 and the whole mission**: "extended mind" becomes "replaced
-  mind." **Governor:** optimise the *human-capability* stock, not output — *teach,
-  don't just do*; surface reasoning; hand back the controls. Measured (§9), or it
-  wins silently.
-- **Value-drift:** self-modification + learning with no anchor → goals drift from
-  the human's. **Governor:** S5 invariants + co-authored, inspectable goals + the
-  human as the value oracle.
-- **Complexity-collapse (L1 archetype):** more senses/skills → more noise/bloat →
-  the workbench becomes unusable. **Governor:** attenuate to *salient* subsets (§6).
-- **Human-agent oscillation (S2):** see §2. **Governor:** deference to live human action.
+| Pathology loop | governor | **independent sensor** (the v2 fix) |
+|---|---|---|
+| **Self-trigger** (agent's acts → events → more acts; *observed live* on `.parallx`) | exclude own effects from perception; single-flight; rate-limit | the action ledger (§ below) excludes own-origin events structurally |
+| **Nag-spiral** (proactivity → annoyance → distrust → disabled → blind) | interruption budget shrinks as dismissals rise | **dismiss-ratio measured by the event bus**, no LLM in the loop |
+| **Deskilling / Shifting-the-Burden** (*existential* — kills purpose #2) | optimise human-capability; *teach don't do* | **held-out skills probe** (a task the agent refuses to help on, timed over months) + **assistance-fade ratio** from the ledger |
+| **Value-drift** (self-edits → goals drift from human) | human is value oracle | a **reserved, agent-*blind* check-in channel** the agent cannot attenuate (VSM algedonic) |
+| **Compute/thermal** (NEW — *the #1 abandonment cause*) | idle must be *free* | a **cheap non-LLM gate** decides whether to even wake the model; loop activity governed by measured **compute-headroom** |
+| **Memory bloat** (NEW — continuity treated as monotonically good) | forgetting/compaction is first-class | governed-memory layer: decay + provenance + explicit forgetting outflow |
+| **Asymmetric trust** (NEW — one bad act zeroes trust) | probation state | **fast outflow / slow capped inflow**; irreversible/external actions gated by class regardless of trust level |
+| **Human-agent oscillation** (S2) | human-priority reversible merge (§4) | live-edit detection in the event bus |
 
-**Delays cause instability.** The stale-diagnostics finding generalises:
-perception, action, and learning each lag. A control loop with delay overshoots
-and oscillates. Therefore loops must run at a rate matched to what they track, and
-*different stocks need different clocks* — see §4.
+**Delays cause instability** (the stale-diagnostics finding generalizes): each loop
+runs at the rate of what it tracks; nested clocks; no stale "now."
 
 ---
 
-## 4. L0 — the cognitive loop: active inference across nested time
+## 4. L0 — the cognitive cycle (honest about what it is)
 
-S4's engine is the principle living cognition actually runs on (Friston): **hold a
-generative model of the world; predict; act to minimise surprise (prediction
-error); update the model on surprise.** Mapped:
+**[MECHANISM]** The engine is, plainly, the **Generative-Agents cycle**: a
+memory-stream + retrieval (recency·importance·relevance) + periodic **reflection** +
+planning — proven to produce "it remembered / it knew" behavior. Parallx's loop is
+a near-isomorph; adopt it directly.
 
-- **World model** = a generative model of *you* (next actions, needs, struggles),
-  *your projects*, and *open threads* — persistent, agent-curated, human-inspectable.
-- **Attention** = prediction error. Salience is *surprise*, not "a file changed."
-- **Proactivity** = acting to reduce *expected future* surprise — i.e. removing
-  friction before it lands. The "it knew" effect, derived rather than guessed.
-- **Learning** = model update when surprised. Every Do-it/Dismiss is a gradient.
+**[HYPOTHESIS — labeled, not claimed] "active inference."** The *analogy* is apt
+(predict → act to reduce future surprise → learn on error) and a file/LLM
+realization has been prototyped externally. But an LLM asked "were you surprised?"
+emits a *narrative* of surprise, not a calibrated free-energy quantity. v1's §10
+("write a note, compare, the gap is the agenda") is **an LLM grading its own
+homework** — sycophantic, miscalibrated, and the single most dangerous failure mode
+(pre-mortem #3): a *confabulated dashboard that feels alive and learns nothing.*
 
-**Recursion in time** (the dimension everyone omits): nested loops, each a viable
-S3/S4 at its timescale — reflex (seconds: react to an edit), reflection (daily:
-review), planning (weekly: advance goals), arc (months/years: who you're becoming).
-A loop that lives only in minutes can never be a life companion.
+**The fix — make exactly one prediction real, demote the rest to analogy:**
+- Pick a **narrow, countable, externally-grounded** prediction: *the next file the
+  user opens* / *the next N commands invoked*.
+- Store it as a ranked list with explicit probabilities.
+- **Score it against what actually happened — observed by the event bus, not the
+  LLM** — with Brier / log-loss. That is a real, falsifiable, calibratable error
+  signal, buildable on the existing bus.
+- Surprise (that error) becomes the **impasse** (SOAR) that justifies spending an
+  LLM deliberation. Everything else stays *analogy in the prose* until there is a
+  real probabilistic model.
+
+**Reflection must be grounded** (Reflexion + memory-governance research): every MIND
+update **cites the episodic receipt** that justifies it — which also discharges
+Invariant 5 (receipts) and is the antidote to memory drift (the documented failure
+of self-summarizing memory).
+
+**Nested timescales:** reflex (seconds) · reflection (daily) · planning (weekly) ·
+arc (months) — each its own S3/S4 at its clock.
 
 ---
 
-## 5. The outer recursion (L2–L4) — designed, not deferred
+## 5. S2 and S3* — the two organs v1 hand-waved
 
-- **L2 The Dyad (human + Parallx).** The unit of intelligence is the *coupled
-  pair*, not either alone (extended-mind thesis). Boundary pushes out: perception
-  and action span the user's whole work-life (with consent, locally). The human is
-  inside the system, as its S-anything-it-lacks (see §6).
-- **L3 The Commons.** Sovereign dyads federate peer-to-peer, encrypted, no center:
-  agents negotiate for their humans and trade self-built skills *without raw data
-  leaving a machine*. This is S2 (coordination) at the inter-dyad level — and it is
-  the move the centralized labs structurally cannot make. **Risk: Tragedy of the
-  Commons** — a shared skill-space is polluted/free-ridden without a center.
-  Requires *decentralized reputation/governance before any sharing* (§7.7). Not
-  built until governed.
-- **L4 The AI landscape.** The paradigm (Meadows leverage #2): centralized,
-  extractive superintelligence *vs* distributed, sovereign, amplifying intelligence.
-  Parallx is a stake for the second future — the PC against the mainframe. This is
-  the *why*, and it is the argument that converts AI skeptics: AI that gives power
-  *to* people, not *over* them.
+**S2 — coordination (the part most likely to make it hateful day-one).** Two
+controllers act on one workspace (human + agent). v1 said "locks / deference" —
+a slogan. **The dissolve:** model it as **human-priority reversible merge**, not
+locking. The agent only ever writes **reversible proposals against a snapshot;
+the human's direct edits are authoritative commits, never blocked.** On conflict
+(agent acted on a stale snapshot — the §3 delay problem), the agent's diff is
+auto-rebased or discarded and re-proposed. (Local-first/CRDT thinking — Ink &
+Switch / Automerge — is the right substrate; don't invent sync.) This makes S2 a
+restatement of Invariant 5 (reversible + receipts), so it falls out for free.
+
+**S3\* — the audit channel (absent in v1, and the only real defense against
+confabulation).** A **tamper-evident, append-only action ledger** of *actual tool
+calls and diffs* — separate from the agent's self-described "what I did." The human
+(or a watchdog) audits ground truth, not narration. This is the sensor that
+backstops several governors above and the §6 confabulation risk.
 
 ---
 
 ## 6. Requisite variety (Ashby) — why the human is *inside* the system
 
-Ashby's Law: a regulator needs variety ≥ the disturbance it regulates. A human
-work-life's variety is effectively unbounded; S4's model **cannot** match it.
-Therefore **full autonomy is impossible in principle** — not hard, impossible.
-Two consequences, both structural design mandates, not preferences:
-
-1. **Attenuate** the environment's variety: the agent must focus on *salient*
-   subsets (surprise-ranked), never try to model everything. (Also the
-   complexity-collapse governor.)
-2. **Amplify** the agent's variety: self-built tools, the federation's shared
-   skills, and — above all — **the human in the loop as the variety source.**
-
-So "keep the human in the loop" is not UX courtesy; it is the cybernetic law that
-makes the system viable *and* the thing that keeps purpose #2 (capability) alive.
-This is the rigorous death of "replace the human"; the design is *couple and steer*.
+A regulator needs variety ≥ the disturbance. A human work-life's variety is
+effectively unbounded; the agent's model cannot match it → **full autonomy is
+impossible in principle.** Two structural mandates: **attenuate** (focus on the
+scarce-slot salient subset — the LIDA gate) and **amplify** (self-built tools,
+federation, and above all the human-in-the-loop as the variety source). "Keep the
+human in the loop" is the cybernetic law that makes the system viable *and* keeps
+purpose #2 alive. This is the rigorous death of "replace the human."
 
 ---
 
-## 7. The Invariants (S5 — the constitution, holds at every level)
+## 7. The Invariants (S5 — each names its independent sensor, or it's a slogan)
 
-Every design decision is checked against these. They are the policy that makes a
-*local, autonomous* system safe enough to actually run with real power.
-
-1. **Sovereignty** — beneficiary and decision-maker is the individual; data never
-   leaves the machine without explicit, revocable consent. (The boundary, §1.)
-2. **Human-in-the-loop as variety source** — no fully-headless replacement of human judgement (§6).
-3. **Optimise the human-capability stock** — teach, don't just do; the metric is the
-   *human getting stronger* (§3 R2, §9).
-4. **Every loop has a governor** — no reinforcing loop ships without its balancing
-   loop (self-trigger, nag, drift, oscillation).
-5. **Trust is the binding constraint** — autonomy is earned and graduated; every
-   action legible, explainable, and reversible. Receipts for everything.
-6. **Matched clocks** — each loop runs at the rate of what it tracks; nested
-   timescales; no stale "now."
-7. **Governed commons** — no federation/skill-sharing without decentralized
-   reputation + the sovereignty invariant intact.
-8. **Co-authored, inspectable goals** — the objective function is set *with* the
-   human and visible/editable, or "optimise your flourishing" becomes manipulation.
-
----
-
-## 8. Leverage-ranked roadmap (Meadows — work the top, never the bottom)
-
-The in-app agent's instinct — "tune the heartbeat interval" — is leverage point
-**#12 (a parameter): the weakest possible intervention.** We work the top of the lever:
-
-1. **#2 Paradigm** — commit to sovereign/distributed (the frame, already chosen).
-2. **#3 Goals** — set the system goal to *capability + sovereignty*, not output
-   (this is where most leverage *and* most danger live: wrong goal = efficient harm).
-3. **#4 Self-organization** — the agent builds its own tools/skills; the federation
-   evolves them. Highest capability leverage; pair with §7.4 governors.
-4. **#5 Rules** — the Invariants (§7).
-5. **#6 Information flows** — *close the loop* (wire the latent senses → world model
-   → deliberation → action → memory) and make the model **visible + editable** to
-   the human (the "mind panel"). Cheapest high-leverage move; do it first.
-
-**Build sequence (each step green + verified before the next):**
-1. **Close the loop with continuity** — replace the amnesiac ephemeral tick with a
-   persistent agent state (a `MIND` world-model the loop reads and rewrites), wiring
-   the already-present senses (diagnostics ✓ done; indexing; semantic graph; signal
-   bus ✓ done). Turns the reflex into S4.
-2. **S5 + governors** — identity/invariants, the trust ledger (earned autonomy),
-   the loop governors (§3). Makes it safe.
-3. **Active inference** — predict → surprise → act → learn (§4). Makes it *alive*.
-4. **The mind panel** — visible/editable model + reasoning (#6). Makes it *trusted*.
-5. **Self-construction** — agent writes its own tools (the Live AI widget is the seed).
-6. **Federation** — only after §7.7 governance. Makes it a *commons*.
+1. **Sovereignty** — individual is beneficiary + decision-maker; no data egress
+   without explicit revocable consent. *Sensor:* network/egress audit in the ledger.
+2. **Perception is consented + graduated** — scope expands only by per-domain
+   revocable grant. *Sensor:* the perception-scope grant registry.
+3. **Human-in-the-loop as variety source** — no headless replacement of judgement.
+   *Sensor:* the held-out skills probe (#5 below) must not trend down.
+4. **Optimise human-capability, not output** — teach, don't just do. *Sensor:*
+   **skills probe + assistance-fade ratio** (the conscience meter, §9).
+5. **Every loop has a governor with an external sensor** (the table in §3).
+6. **Trust is binding and earned** — graduated; every act legible, reversible,
+   ledgered; asymmetric recovery + probation. *Sensor:* the action ledger.
+7. **Reversible-by-default** — agent writes are proposals (S2). *Sensor:* ledger
+   shows undo-availability per action.
+8. **Co-authored, inspectable goals** — the objective is set with the human and
+   visible/editable (else "optimise your flourishing" = manipulation). *Sensor:*
+   the goal registry is human-editable and diffed.
+9. **Idle is free** — the loop must not consume an LLM turn to do nothing. *Sensor:*
+   compute-cost meter (§9).
+10. **Governed commons** — no federation/skill-sharing without decentralized
+    reputation + sovereignty intact; **imported skills are treated as hostile code.**
 
 ---
 
-## 9. How we'll know it's working (measurement — usually skipped, decisive here)
+## 8. Prior art — the lineage (borrow the wheels; the novelty is the synthesis)
 
-Define a meter per master stock; instrument from day one (the live e2e harness on
-this branch already lets us observe the system from the user's seat):
+| Strand | borrow | avoid |
+|---|---|---|
+| **Generative Agents** | memory-stream + retrieval triple + reflection cadence (the L0 cycle) | — |
+| **MemGPT / Letta** | small self-edited core + paged store for continuity | "if it fails to save, it's gone" — make saves robust |
+| **Voyager** | NL-described, embedding-indexed **executable code** skill library, stored on self-verified success (self-construction §end) | unverified skills; treat shared ones as supply-chain attacks |
+| **ACT-R / SOAR / LIDA** | procedural/declarative split (skills vs MIND); impasse→subgoal (=surprise→deliberate); global-workspace attention gate (=attenuator) | hand-authored symbolic models (the knowledge bottleneck); the *utility problem* — perf can **degrade** with accreted learning ⇒ pruning/forgetting first-class |
+| **Active inference (file/LLM realization)** | the reframe (files not distributions, LLM not matrices) — validation, not just aspiration | promising *calibrated* surprise; bootstrapping the error-handler with the same fallible loop |
+| **Memory-governance (SSGM, Reflexion-grounding)** | provenance + validation + decay + human veto on every MIND edit | self-summarizing memory (the drift/poisoning engine) |
+| **Local-first / Ink & Switch / Automerge** | CRDT substrate for S2 merge and L3 federation | reinventing P2P sync; coupling federation to blockchain/tokens |
 
-- **Model fidelity** — prediction hit-rate: of what S4 predicted you'd need, how
-  much you actually used. (Active inference gives this for free.)
-- **Trust** — granted-autonomy level over time; intervention/undo rate trending down.
-- **Human capability (the one that matters)** — is the human doing *harder* things,
-  *faster*, and *learning*? If usefulness rises while capability falls, R2
-  (deskilling) is winning and the design has failed its purpose, regardless of how
-  "alive" it feels. This meter is the conscience of the project.
-- **Continuity** — does the agent correctly recall and build on its own prior threads?
-- **Workspace coherence** — order/health of the actual work over time.
-
----
-
-## 10. The first build (the proof of the whole thesis)
-
-One experiment validates the model: **close the loop with continuity + prediction.**
-Each cycle the persistent agent writes *what it expects you to do next*; next cycle
-it checks itself; **the gap is its agenda**, and it remembers what it learned. The
-morning it greets you with *"you usually start X about now — I staged it; I was
-wrong about Y yesterday, here's what I changed,"* the reflex has become S4, and
-every other organ (panel, self-construction, federation) has something to attach to.
-
-Verification: drive it through the e2e harness from the user's seat (as we now
-can), and watch the §9 meters — especially human-capability.
+**Honest novelty (what's actually new is the constraints, not the parts):**
+1. **VSM-as-design-discipline** — prior agents build *capability*; this derives the
+   build order from *missing viability functions*. Nobody reasons this way.
+2. **Governors as a first-class, non-optional rule** — the field *reacts* to drift
+   (SSGM) after the fact; here the balancing loop ships with the reinforcing one.
+3. **Optimising the human-capability stock** — essentially no agent work measures
+   whether the *human* gets stronger; it's the most original and least gameable claim.
+4. **Surprise as the one currency** for attention + proactivity + the learning
+   signal.
+The synthesis (sovereign + continuity + surprise-driven + capability-optimising +
+VSM-governed) is, as surveyed, **unbuilt.**
 
 ---
 
-*Engine: active inference + continuity. Body: self-construction + earned autonomy
-(S1–S3). Mind: the persistent world model (S4). Conscience: the Invariants (S5).
-World: the governed Commons. All recursive; all sovereign; the human always inside.*
+## 9. Leverage (Meadows) + the re-scoped first build
+
+Work the top of the lever, never #12 (the in-app agent's "tune the interval"):
+**#2 paradigm** (sovereign/distributed — the motivation, *not* a recursion level) →
+**#3 goal** (capability+sovereignty, not output — most leverage, most danger) →
+**#4 self-organization** (self-built tools; governed) → **#5 rules** (the invariants)
+→ **#6 information flows** (close the loop + the visible/editable mind).
+
+**Build sequence (each step green + an *external* meter before the next):**
+1. **Continuity + the MIND keystone + the action ledger.** Persistent agent state +
+   a governed (provenance/decay/veto) MIND world-model; the tamper-evident ledger.
+   *This is ~80% of the real risk* (drift, the utility problem) — so governed memory
+   ships *with* it, not after.
+2. **One real prediction, externally graded** (next-file / next-commands, Brier-scored
+   by the bus) → surprise as the deliberation trigger. Demote the rest of "active
+   inference" to analogy.
+3. **The cheap idle gate + compute-headroom governor** (idle is free) and the
+   nag/asymmetric-trust governors — all event-bus-sensed.
+4. **The mind panel** — visible/editable MIND + the ledger (radical transparency =
+   trust + the human's S3* audit).
+5. **Self-construction** (Voyager-style verified skill library — the Live AI widget
+   is the seed).
+6. **Federation** — *only* after decentralized reputation + hostile-skill sandboxing.
+
+---
+
+## 10. Measurement — the conscience (operationalized, not a slogan)
+
+Per master stock, instrumented from day one (the live e2e harness on this branch
+already lets us observe from the user's seat):
+
+- **Fidelity** — Brier/log-loss of the *externally-graded* prediction (§9.2), **not**
+  the LLM's self-grade.
+- **Trust** — granted-autonomy level + falling intervention/undo rate (from the ledger).
+- **Human-capability (the conscience)** — **held-out skills probe** (unaided human
+  performance on a withheld task, tracked over months) + **assistance-fade ratio**
+  (is the agent's share of recurring work going *down*?). If usefulness rises while
+  capability falls, deskilling is winning and the design has failed *regardless of
+  how alive it feels.* Measured independently of the agent, or it doesn't count.
+- **Continuity** — does the agent correctly recall/build on its own prior threads?
+- **Compute-cost** — "agent cost today" as a first-class, user-visible meter.
+- **Coherence** — order/health of the actual work over time.
+
+---
+
+## Pre-mortem (kept in view — the 5 deaths to design against)
+
+1. **Laptop got hot/slow → turned off, never back on.** → idle free; govern by headroom; show cost.
+2. **One early error zeroed trust forever.** → asymmetric trust + earned-irreversibility (reversible/low-blast-radius until fidelity is *measured*).
+3. **Confabulator — felt alive, learned nothing.** → one externally-graded prediction + the action ledger.
+4. **Nobody wanted a watcher.** → perception scope is graduated/consented like autonomy.
+5. **Deskilling won silently, dashboard stayed green.** → the capability meter is instrumented *before* any "do-it" ships.
+
+---
+
+*Engine: the Generative-Agents cycle, surprise as currency. Body: reversible
+proposals + governed self-built skills (S1–S3). Mind: the persistent, governed MIND
+(bounded S4). Conscience: the human-capability meter + the invariants, each with an
+external sensor (S5 = the human). World: the governed Commons. All recursive; all
+sovereign; the human always inside, and always the apex.*
