@@ -24,6 +24,7 @@ import type { IMindStore } from './mindStore.js';
 import { ActionLedger, type AgentActionKind, type IAgentActionRecord } from './actionLedger.js';
 import { CapabilityMeter, type ICapabilityReading } from './capabilityMeter.js';
 import { SkillProbe, type ISkillProbeReading, type ISkillProbeState } from './skillProbe.js';
+import { NagGovernor, type INagState, type NagOutcome } from './nagGovernor.js';
 import type { IStorage } from '../../platform/storage.js';
 
 /** A serializable, UI-facing view of the whole MIND — for the Mind panel. */
@@ -39,6 +40,8 @@ export interface IMindSnapshot {
   readonly capability: ICapabilityReading;
   /** The active conscience: the human's unaided fluency on held-out recurring tasks. */
   readonly fluency: ISkillProbeReading;
+  /** The nag governor: how often the user dismisses, and whether it's throttled. */
+  readonly nag: { readonly dismissRatio: number | null; readonly throttled: boolean };
 }
 
 function defaultGenId(): string {
@@ -59,6 +62,7 @@ export interface IMindServiceOptions {
 
 const CAPABILITY_KEY = 'autonomy.capability.v1';
 const SKILLPROBE_KEY = 'autonomy.skillprobe.v1';
+const NAG_KEY = 'autonomy.nag.v1';
 
 export class MindService {
   private _entries: readonly IMindEntry[] = [];
@@ -67,6 +71,7 @@ export class MindService {
   private readonly _genId: () => string;
   private readonly _meter = new CapabilityMeter();
   private readonly _probe = new SkillProbe();
+  private readonly _nag = new NagGovernor();
   private readonly _capStorage?: IStorage;
 
   constructor(
@@ -85,7 +90,39 @@ export class MindService {
     this._entries = await this._store.load();
     await this._loadMeter();
     await this._loadProbe();
+    await this._loadNag();
     this._loaded = true;
+  }
+
+  private async _loadNag(): Promise<void> {
+    if (!this._capStorage) return;
+    try {
+      const raw = await this._capStorage.get(NAG_KEY);
+      if (raw) this._nag.restore(JSON.parse(raw) as INagState);
+    } catch { /* corrupt → fresh governor */ }
+  }
+
+  private async _saveNag(): Promise<void> {
+    if (!this._capStorage) return;
+    try { await this._capStorage.set(NAG_KEY, JSON.stringify(this._nag.toState())); }
+    catch { /* best-effort */ }
+  }
+
+  /**
+   * Record the user's response to a surfaced suggestion — the nag governor's
+   * EXTERNAL sensor (their own Do-it/Dismiss clicks). 'act' keeps the agent
+   * chatty; sustained 'dismiss' throttles it.
+   */
+  async recordFeedback(outcome: NagOutcome, nowMs = this._now()): Promise<void> {
+    this._nag.recordOutcome(outcome, nowMs);
+    await this._saveNag();
+  }
+
+  /** May the agent surface an interruption now? (Consumes from the nag budget.) */
+  async allowInterruption(nowMs = this._now()): Promise<boolean> {
+    const ok = this._nag.allowInterruption(nowMs);
+    await this._saveNag();
+    return ok;
   }
 
   private async _loadMeter(): Promise<void> {
@@ -270,6 +307,7 @@ export class MindService {
       recentActions: recent.map(r => ({ kind: r.kind, summary: r.summary, origin: r.origin, ts: r.ts })),
       capability: this._meter.read(),
       fluency: this._probe.reading(),
+      nag: (() => { const r = this._nag.reading(this._now()); return { dismissRatio: r.dismissRatio, throttled: r.throttled }; })(),
     };
   }
 }

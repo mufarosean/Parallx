@@ -472,6 +472,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       audit?: { ok: boolean };
       capability?: { assistanceShare: number | null; deskillingRisk: boolean };
       fluency?: { trend: string; completed: number };
+      nag?: { dismissRatio: number | null; throttled: boolean };
     }>('parallx.mind.status').then((s) => {
       const badge = mindRow.querySelector('.autonomy-status__badge');
       const det = mindRow.querySelector('.autonomy-status__detail');
@@ -496,6 +497,9 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
         }
         if (s.fluency && s.fluency.completed > 0 && s.fluency.trend !== 'insufficient') {
           parts.push(`your fluency ${s.fluency.trend}`);
+        }
+        if (s.nag && s.nag.throttled) {
+          parts.push('quieting down — you’ve been dismissing');
         }
         parts.push(s.audit?.ok ? 'audit ✓' : 'audit ✗ TAMPERED');
         det.textContent = parts.join(' · ');
@@ -735,6 +739,9 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     const handle = (seededPrompt: string | null): void => {
       handledHeartbeat.add(entry.id);
       if (seededPrompt) void runCommand?.('chat.submitPrompt', { text: seededPrompt });
+      // Feed the nag governor's external sensor: acting (Do it / Tell me more)
+      // keeps the agent chatty; dismissing throttles it.
+      void runCommand?.('parallx.mind.feedback', { outcome: seededPrompt ? 'act' : 'dismiss' });
       logService?.markRead([entry.id]);
       actions.remove();
     };

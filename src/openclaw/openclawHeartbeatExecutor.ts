@@ -124,6 +124,8 @@ export interface IHeartbeatMind {
   remember(kind: 'belief' | 'thread', content: string, confidence: number, provenance: readonly string[]): Promise<boolean>;
   /** Record an action to the tamper-evident audit ledger; returns a receipt. */
   record(kind: AgentActionKind, summary: string, origin: string, detail?: string): Promise<{ readonly hash: string }>;
+  /** Nag governor: may the agent surface an interruption now? (Consumes budget.) */
+  allowInterruption?(): Promise<boolean>;
 }
 
 /** Optional deps enabling real-turn execution. Absent → thin fallback. */
@@ -484,6 +486,12 @@ export function createHeartbeatTurnExecutor(
         const ts = now();
         if (isDuplicateOutput(normalized, ts)) {
           console.debug('[HeartbeatExecutor] duplicate NOTE within dedup window — skipping');
+        } else if (mind?.allowInterruption && !(await mind.allowInterruption().catch(() => true))) {
+          // Nag governor throttled this NOTE (the user has been dismissing) —
+          // ledger it and keep it as continuity, but DON'T interrupt them.
+          console.debug('[HeartbeatExecutor] NOTE throttled by nag budget — not surfaced');
+          await recordOutcome('deferred', `note throttled (nag budget): ${noteText}`);
+          await rememberThread(`Noted (held back — not surfaced): ${noteText}`, 0.4);
         } else {
           recordDelivery(normalized, ts);
           await router.sendWithOrigin(

@@ -2239,6 +2239,20 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         mindService ? await mindService.snapshot() : { available: false },
       ),
     );
+
+    // Nag governor's external sensor: the user's response to a surfaced
+    // suggestion. 'act' (Do it / Tell me more) keeps the agent chatty; sustained
+    // 'dismiss' throttles its interruptions.
+    context.subscriptions.push(
+      api.commands.registerCommand('parallx.mind.feedback', (raw: unknown) => {
+        const outcome = (raw as { outcome?: unknown } | undefined)?.outcome;
+        if ((outcome === 'act' || outcome === 'dismiss') && mindService) {
+          void mindService.recordFeedback(outcome);
+          return true;
+        }
+        return false;
+      }),
+    );
   }
 
   // ── M60 §3.10: dev-only autonomy:replay command ──

@@ -107,6 +107,22 @@ describe('MindService — the loop seam', () => {
     expect(svc2.capability().agentActions).toBe(1);
   });
 
+  it('nag governor: feedback drives the dismiss-ratio + interruption budget, surfaced + persisted', async () => {
+    const storage = new FakeStorage();
+    const mk = () => new MindService(new MindStore(storage), new ActionLedger(storage), { now: () => clock, genId: () => `id${++ids}`, capabilityStorage: storage });
+    const svc = mk();
+    await svc.init();
+    for (let i = 0; i < 6; i++) await svc.recordFeedback('dismiss');
+    const snap = await svc.snapshot();
+    expect(snap.nag.dismissRatio).toBe(1);
+    expect(snap.nag.throttled).toBe(true);
+
+    // persisted across restart
+    const svc2 = mk();
+    await svc2.init();
+    expect((await svc2.snapshot()).nag.dismissRatio).toBe(1);
+  });
+
   it('recordHuman with a skill feeds the held-out fluency probe, surfaces in snapshot, and persists', async () => {
     const storage = new FakeStorage();
     const mk = () => new MindService(new MindStore(storage), new ActionLedger(storage), { now: () => clock, genId: () => `id${++ids}`, capabilityStorage: storage });

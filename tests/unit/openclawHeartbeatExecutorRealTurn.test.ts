@@ -439,6 +439,34 @@ describe('HeartbeatTurnExecutor — MIND continuity wiring (Build-1d)', () => {
     expect(calls.remembers[0].provenance[0]).toBeTruthy(); // governance: provenance never empty
   });
 
+  it('nag governor: a NOTE is NOT surfaced when interruption is denied (but is ledgered)', async () => {
+    const calls: { kind: string }[] = [];
+    const mind: IHeartbeatMind = {
+      seedBlock: () => '',
+      async remember() { return true; },
+      async record(kind) { calls.push({ kind }); return { hash: 'h' }; },
+      async allowInterruption() { return false; }, // throttled
+    };
+    const h = buildHarness({ mind, respondWith: 'NOTE: something minor', getDiagnostics: () => [{ name: 'X', status: 'fail', detail: 'd' }] });
+    await h.executor([], 'interval');
+    const noteCards = h.status.deliveries.filter(d => (d.metadata as Record<string, unknown>)?.heartbeatNote);
+    expect(noteCards).toHaveLength(0); // not surfaced
+    expect(calls.some(c => c.kind === 'deferred')).toBe(true); // but ledgered as deferred
+  });
+
+  it('nag governor: a NOTE IS surfaced when interruption is allowed', async () => {
+    const mind: IHeartbeatMind = {
+      seedBlock: () => '',
+      async remember() { return true; },
+      async record() { return { hash: 'h' }; },
+      async allowInterruption() { return true; },
+    };
+    const h = buildHarness({ mind, respondWith: 'NOTE: worth a look', getDiagnostics: () => [{ name: 'X', status: 'fail', detail: 'd' }] });
+    await h.executor([], 'interval');
+    const noteCards = h.status.deliveries.filter(d => (d.metadata as Record<string, unknown>)?.heartbeatNote);
+    expect(noteCards).toHaveLength(1);
+  });
+
   it('records an ACT and remembers what it did', async () => {
     const { mind, calls } = buildFakeMind();
     const h = buildHarness({ mind, respondWith: 'Investigated and fixed the broken link.' });
