@@ -2008,8 +2008,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         getAutonomyLevel: () => unifiedConfigService.getEffectiveConfig().heartbeat.autonomy,
         // The heartbeat's first non-file "sense": the background diagnostics the
         // app already runs. Read fresh each review (cheap, cached) and folded
-        // into the app-context snapshot the model sees.
-        getDiagnostics: () => _heartbeatDiagnostics?.getLastResults(),
+        // into the app-context snapshot the model sees. Gated by the
+        // senseDiagnostics setting.
+        getDiagnostics: () => unifiedConfigService.getEffectiveConfig().heartbeat.senseDiagnostics
+          ? _heartbeatDiagnostics?.getLastResults()
+          : undefined,
       },
     );
 
@@ -2114,7 +2117,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         _heartbeatDiagnostics.onDidChange((results) => {
           const newlyFailed = risingFailures(prevFailed, results);
           prevFailed = new Set(results.filter(r => r.status === 'fail').map(r => r.name));
-          if (newlyFailed.length > 0) {
+          if (newlyFailed.length > 0 && unifiedConfigService.getEffectiveConfig().heartbeat.senseDiagnostics) {
             heartbeatRunner.pushEvent({
               type: 'diagnostic-fail',
               payload: { checks: newlyFailed },
@@ -2143,7 +2146,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     if (_autonomySignals) {
       context.subscriptions.push(
         _autonomySignals.onDidSignal((sig) => {
-          heartbeatRunner.pushEvent(signalToSystemEvent(sig));
+          if (unifiedConfigService.getEffectiveConfig().heartbeat.senseExtensionSignals) {
+            heartbeatRunner.pushEvent(signalToSystemEvent(sig));
+          }
         }),
       );
     }

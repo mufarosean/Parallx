@@ -378,6 +378,30 @@ const SCHEMAS: readonly IBoundSchema[] = ([
     read: (c) => c.heartbeat.outputDedupWindowMs,
     write: (v) => ({ heartbeat: { outputDedupWindowMs: v as number } }),
   } as IBoundSchema<number>,
+  {
+    schema: {
+      key: 'autonomy.heartbeat.senseDiagnostics',
+      type: 'boolean',
+      default: true,
+      scope: 'workspace',
+      description: 'Let the heartbeat review background diagnostics (and react when a check newly fails). Turn off if you don’t want app-health checks to drive proactive check-ins.',
+      category: 'Autonomy',
+    },
+    read: (c) => c.heartbeat.senseDiagnostics,
+    write: (v) => ({ heartbeat: { senseDiagnostics: v as boolean } }),
+  } as IBoundSchema<boolean>,
+  {
+    schema: {
+      key: 'autonomy.heartbeat.senseExtensionSignals',
+      type: 'boolean',
+      default: true,
+      scope: 'workspace',
+      description: 'Let extensions surface signals to the heartbeat via api.autonomy.signal(...). Turn off to ignore extension-published signals.',
+      category: 'Autonomy',
+    },
+    read: (c) => c.heartbeat.senseExtensionSignals,
+    write: (v) => ({ heartbeat: { senseExtensionSignals: v as boolean } }),
+  } as IBoundSchema<boolean>,
 ] as readonly IBoundSchema<unknown>[]);
 
 // ─── Registration ──────────────────────────────────────────────────────────
