@@ -82,14 +82,22 @@ queue. Malformed payloads are dropped; the runner's input-dedup + kill switch st
 `getParentSessionId` now prefers the focused chat session and falls back to the most
 recent real session — the periodic review runs and its findings land in a real transcript
 even when the user is on canvas/dashboard. Only a brand-new workspace with no chat at all
-still skips. (A fully headless background session is a possible later refinement.)
+still skips. A *fully* headless session (no chat ever opened) is a deliberate follow-up,
+not a cut: ACT deliveries route to the chat surface, which needs a real session to display,
+so doing it right means a persistent background "heartbeat" session with its own transcript
+— real session-lifecycle work rather than a synthetic parent that would silently drop ACT
+output. The fallback covers everyone who has opened chat once (i.e. essentially all use).
 
-**Phase 5 — UX polish. [partial]** Done: the autonomy-log status board now describes the
-real model ("Reviews the app every 30m · reacts to changes, diagnostics & signals"), and
-review-seed events render in human form (`formatEventLine` — "signal from budget: over
-cap") instead of raw JSON, so both the model and the log read cleanly. Deferred (needs
-live UI verification): a status-bar pulse and a live "last reviewed N ago / next in N"
-readout, and per-sense enable toggles.
+**Phase 5 — UX polish. [DONE]**
+- Status board describes the real model and renders review-seed events in human form
+  (`formatEventLine`) instead of raw JSON.
+- **5a — per-sense settings:** `senseDiagnostics` / `senseExtensionSignals` workspace-scoped
+  toggles via the schema registry, gated in the wiring.
+- **5b — last reviewed / next due:** `parallx.heartbeat.status` command + the status board's
+  "Armed" row now shows "last 5m ago · next in 25m" from live runner state.
+- **5c — status-bar pulse:** already provided by `StatusSurfacePlugin` (the executor flashes
+  `⏺ heartbeat` to the persistent "Agent Status" entry on every review). No new item added —
+  a second one would duplicate it; the persistent state lives in the status board (5b).
 
 ## UX principles (hold equal to code)
 
