@@ -334,4 +334,107 @@ describe('M58-real integration scenarios', () => {
     runner.dispose();
     chatService.dispose();
   });
+
+  // ── Redesign (heartbeat awareness loop) — end-to-end through real services ──
+
+  /** ChatService whose mocked turn records every seed it's sent, for assertion. */
+  function buildCapturingChatService(respondWith: string): { svc: ChatService; seeds: string[] } {
+    const seeds: string[] = [];
+    const svc = new ChatService(buildFakeAgentService(), buildFakeModeService(), buildFakeLanguageModels());
+    (svc as unknown as { sendRequest: (sid: string, msg: string) => Promise<unknown> }).sendRequest =
+      async (sessionId: string, message: string) => {
+        seeds.push(message);
+        const session = svc.getSession(sessionId);
+        if (!session) throw new Error(`no session ${sessionId}`);
+        const part: IChatContentPart = { kind: ChatContentPartKind.Markdown, content: respondWith };
+        (session.messages as unknown as { request: unknown; response: unknown }[]).push({
+          request: { requestId: 'r', text: message },
+          response: { parts: [part] },
+        });
+        return { participant: 'test', requestId: 'r' };
+      };
+    return { svc, seeds };
+  }
+
+  function wireExecutor(
+    chatService: ChatService,
+    router: SurfaceRouterService,
+    parentId: string,
+    getDiagnostics?: () => readonly { name: string; status: 'pass' | 'warn' | 'fail'; detail: string; timestamp: number }[],
+  ) {
+    return createHeartbeatTurnExecutor(
+      router,
+      () => ({ reasons: ['interval', 'system-event', 'cron', 'wake', 'hook'] }),
+      {
+        chatService: {
+          createEphemeralSession: (pid, seed) => chatService.createEphemeralSession(pid, seed),
+          purgeEphemeralSession: (h) => chatService.purgeEphemeralSession(h),
+          sendRequest: (sid, msg, opts) => chatService.sendRequest(sid, msg, opts),
+          getSession: (sid) => chatService.getSession(sid),
+        },
+        getParentSessionId: () => parentId,
+        getDiagnostics,
+      },
+    );
+  }
+
+  it('periodic interval review assembles the app snapshot (incl. a failing diagnostic) and delivers an ACT result', async () => {
+    const { svc: chatService, seeds } = buildCapturingChatService('Ollama is unreachable — restart it to restore the model.');
+    const parent = chatService.createSession();
+    const router = new SurfaceRouterService();
+    const chat = new FakeSurfacePlugin(SURFACE_CHAT);
+    router.registerSurface(new FakeSurfacePlugin(SURFACE_STATUS));
+    router.registerSurface(chat);
+
+    const executor = wireExecutor(chatService, router, parent.id, () => [
+      { name: 'Ollama Connection', status: 'fail', detail: 'Cannot reach Ollama at localhost:11434', timestamp: 0 },
+      { name: 'RAG Engine', status: 'pass', detail: 'idle', timestamp: 0 },
+    ]);
+    const runner = new HeartbeatRunner(executor, () => ({ enabled: true, intervalMs: 60_000 }));
+    runner.start();
+
+    // A periodic review — NO file events; the app-context snapshot drives it.
+    runner.wake('interval');
+    await new Promise((r) => setTimeout(r, 10));
+
+    // The model was seeded with the app snapshot, including the failing check.
+    expect(seeds).toHaveLength(1);
+    expect(seeds[0]).toContain('Workspace status snapshot');
+    expect(seeds[0]).toContain('[FAIL] Ollama Connection');
+
+    // Its ACT response was delivered as a heartbeatResult for reason=interval.
+    const deliveries = chat.deliveries.filter((d) => getDeliveryOrigin(d) === ORIGIN_HEARTBEAT);
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0].content).toContain('Ollama is unreachable');
+    expect((deliveries[0].metadata as Record<string, unknown>).reason).toBe('interval');
+
+    expect(chatService.getSessions().map((s) => s.id)).toEqual([parent.id]); // no ephemeral leak
+    runner.dispose();
+    chatService.dispose();
+  });
+
+  it('an extension signal reaches the review seed in human-readable form', async () => {
+    const { svc: chatService, seeds } = buildCapturingChatService('Noted the budget signal.');
+    const parent = chatService.createSession();
+    const router = new SurfaceRouterService();
+    router.registerSurface(new FakeSurfacePlugin(SURFACE_STATUS));
+    router.registerSurface(new FakeSurfacePlugin(SURFACE_CHAT));
+
+    const executor = wireExecutor(chatService, router, parent.id);
+    const runner = new HeartbeatRunner(executor, () => ({ enabled: true, intervalMs: 60_000 }));
+    runner.start();
+
+    // An extension publishes a signal (as chat/main.ts forwards it onto the queue).
+    runner.pushEvent({
+      type: 'extension-signal',
+      payload: { source: 'budget', kind: 'over', title: 'Over monthly cap', severity: 'urgent' },
+      timestamp: Date.now(),
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(seeds).toHaveLength(1);
+    expect(seeds[0]).toContain('signal from budget [urgent]: Over monthly cap');
+    runner.dispose();
+    chatService.dispose();
+  });
 });
