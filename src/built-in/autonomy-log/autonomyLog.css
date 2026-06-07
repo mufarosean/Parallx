@@ -459,3 +459,54 @@
   gap: 4px;
   margin-top: 4px;
 }
+
+/* ── Mind panel (the editable inner model) ───────────────────────────── */
+.autonomy-status__row--clickable {
+  cursor: pointer;
+}
+.autonomy-status__row--clickable:hover {
+  background: color-mix(in srgb, var(--px-accent, #569cd6) 6%, transparent);
+}
+
+.autonomy-mind-panel {
+  padding: 6px 12px 10px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--px-border, #33363d) 50%, transparent);
+  background: var(--px-bg-inset, #24262b);
+}
+.autonomy-mind-panel__hint,
+.autonomy-mind-panel__empty {
+  color: var(--px-text-muted, #9ea3ad);
+  font-size: var(--parallx-fontSize-xs);
+  margin-bottom: 6px;
+}
+.autonomy-mind-belief {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+}
+.autonomy-mind-belief + .autonomy-mind-belief {
+  border-top: 1px solid color-mix(in srgb, var(--px-border, #33363d) 35%, transparent);
+}
+.autonomy-mind-belief__text {
+  color: var(--px-text, #d4d4d4);
+  font-size: var(--parallx-fontSize-xs);
+  line-height: 1.4;
+}
+.autonomy-mind-belief__forget {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--px-radius-md, 6px);
+  border: 1px solid var(--px-border, #33363d);
+  background: transparent;
+  color: var(--px-text-muted, #9ea3ad);
+  cursor: pointer;
+  line-height: 1;
+}
+.autonomy-mind-belief__forget:hover {
+  background: color-mix(in srgb, var(--px-danger, #d36b6b) 16%, transparent);
+  color: var(--px-danger, #d36b6b);
+  border-color: color-mix(in srgb, var(--px-danger, #d36b6b) 40%, transparent);
+}

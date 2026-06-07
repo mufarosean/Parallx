@@ -121,11 +121,28 @@ test.describe('Autonomy / Heartbeat (live)', () => {
       const mindBadge = (await statusRow(window, 'Mind').locator('.autonomy-status__badge').first().textContent().catch(() => '')) ?? '';
       const mindDetail = (await statusRow(window, 'Mind').locator('.autonomy-status__detail').first().textContent().catch(() => '')) ?? '';
 
+      // Build-9: the EDITABLE mind — click the Mind row to open the beliefs panel,
+      // then forget a belief and confirm it's gone.
+      const mindEditable = { panelOpened: false, beliefsBefore: 0, beliefsAfter: 0 };
+      const mindRow = statusRow(window, 'Mind');
+      if (await mindRow.isVisible().catch(() => false)) {
+        await mindRow.click();
+        await window.waitForTimeout(900);
+        mindEditable.panelOpened = await window.locator('.autonomy-mind-panel').isVisible().catch(() => false);
+        mindEditable.beliefsBefore = await window.locator('.autonomy-mind-belief').count().catch(() => 0);
+        if (mindEditable.beliefsBefore > 0) {
+          await window.locator('.autonomy-mind-belief').first().locator('.autonomy-mind-belief__forget').click();
+          await window.waitForTimeout(700);
+          mindEditable.beliefsAfter = await window.locator('.autonomy-mind-belief').count().catch(() => 0);
+        }
+      }
+
       const observation = {
         workspace: ws,
         chatStarted,
         woke,
         mind: { badge: mindBadge.trim(), detail: mindDetail.trim() },
+        mindEditable,
         heartbeat: { badgeBefore, badgeAfter, detailAfter },
         log: { before: logCountBefore, after: logCountAfter, entries: newEntries.slice(0, 20) },
         heartbeatConsole: consoleLines.slice(0, 80),

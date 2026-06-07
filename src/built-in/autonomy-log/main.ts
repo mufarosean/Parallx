@@ -334,6 +334,44 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
   // ── Status board (live mode) — answers "is autonomy on / is it doing anything?" ──
   const statusBoard = $('div.autonomy-status');
   container.appendChild(statusBoard);
+  // Whether the Mind row is expanded into its editable belief list (persists
+  // across repaints so the panel doesn't collapse when the board refreshes).
+  let mindExpanded = false;
+
+  /** The editable Mind panel: the agent's beliefs, each with a "forget" (✕). */
+  function buildMindPanel(): HTMLElement {
+    const panel = $('div.autonomy-mind-panel');
+    panel.textContent = 'Loading the agent’s beliefs…';
+    void runCommand?.<{ available?: boolean; beliefs?: { id: string; content: string; confidence: number }[] }>('parallx.mind.status').then((s) => {
+      panel.innerHTML = '';
+      const beliefs = s && s.available !== false ? (s.beliefs ?? []) : [];
+      if (beliefs.length === 0) {
+        const empty = $('div.autonomy-mind-panel__empty');
+        empty.textContent = 'No beliefs yet — the agent forms them as it reviews your work.';
+        panel.appendChild(empty);
+        return;
+      }
+      const hint = $('div.autonomy-mind-panel__hint');
+      hint.textContent = 'What the agent believes about you & your work. Forget (✕) anything wrong — you steer the mind.';
+      panel.appendChild(hint);
+      for (const b of beliefs) {
+        const row = $('div.autonomy-mind-belief');
+        const text = $('span.autonomy-mind-belief__text');
+        text.textContent = `${Math.round((b.confidence ?? 0) * 100)}% · ${b.content}`;
+        const forget = $('button.autonomy-mind-belief__forget') as HTMLButtonElement;
+        forget.textContent = '✕';
+        forget.title = 'Forget this — tell the agent it’s wrong';
+        forget.addEventListener('click', (e) => {
+          e.stopPropagation();
+          void runCommand?.('parallx.mind.forget', { id: b.id }).then(() => { row.remove(); }).catch(() => {});
+        });
+        row.appendChild(text);
+        row.appendChild(forget);
+        panel.appendChild(row);
+      }
+    }).catch(() => { panel.textContent = 'Mind unavailable.'; });
+    return panel;
+  }
 
   // ── Body — a single scrollable region (the status board above stays pinned).
   // The list AND the empty/guide both live here so either can scroll. ──
@@ -463,7 +501,11 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     // trust; the mind is the agent's, but none of it is hidden.
     const mindRow = statusRow('brain', { label: '…', kind: 'on' }, 'Mind',
       'Loading the agent’s inner model…');
+    mindRow.classList.add('autonomy-status__row--clickable');
+    mindRow.title = 'Show what the agent believes — and forget anything wrong';
+    mindRow.addEventListener('click', () => { mindExpanded = !mindExpanded; paintStatus(); });
     statusBoard.appendChild(mindRow);
+    if (mindExpanded) statusBoard.appendChild(buildMindPanel());
     void runCommand?.<{
       available?: boolean;
       fidelity?: number | null;

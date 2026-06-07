@@ -2240,6 +2240,15 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       ),
     );
 
+    // The human steering the mind: forget a belief by id (a correction). The
+    // mind is the agent's, but the human can always overrule it.
+    context.subscriptions.push(
+      api.commands.registerCommand('parallx.mind.forget', async (raw: unknown) => {
+        const id = (raw as { id?: unknown } | undefined)?.id;
+        return (typeof id === 'string' && mindService) ? await mindService.forget(id) : false;
+      }),
+    );
+
     // Nag governor's external sensor: the user's response to a surfaced
     // suggestion. 'act' (Do it / Tell me more) keeps the agent chatty; sustained
     // 'dismiss' throttles its interruptions.

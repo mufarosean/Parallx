@@ -32,7 +32,7 @@ export interface IMindSnapshot {
   readonly available: true;
   /** Mean Brier over resolved predictions (lower better); null if none yet. */
   readonly fidelity: number | null;
-  readonly beliefs: readonly { readonly kind: string; readonly content: string; readonly confidence: number; readonly provenance: readonly string[] }[];
+  readonly beliefs: readonly { readonly id: string; readonly kind: string; readonly content: string; readonly confidence: number; readonly provenance: readonly string[] }[];
   readonly predictions: readonly { readonly subject: string; readonly top: string; readonly resolved?: { readonly actual: string; readonly brier: number } }[];
   readonly audit: { readonly ok: boolean; readonly brokenAt?: number };
   readonly recentActions: readonly { readonly kind: string; readonly summary: string; readonly origin: string; readonly ts: number }[];
@@ -277,6 +277,23 @@ export class MindService {
   }
 
   /**
+   * The human corrects the agent's model: forget a belief by id. Ledgered with
+   * origin 'user' so the correction itself is auditable. Returns false if not
+   * found. This is the human steering the mind — the highest-trust affordance.
+   */
+  async forget(id: string): Promise<boolean> {
+    const target = this._entries.find(e => e.id === id);
+    if (!target) return false;
+    this._entries = this._entries.filter(e => e.id !== id);
+    await this._store.save(this._entries, this._now());
+    await this._ledger.append(
+      { kind: 'belief-update', summary: `forgot (user correction): ${target.content.slice(0, 120)}`, origin: 'user' },
+      this._now(),
+    );
+    return true;
+  }
+
+  /**
    * A serializable view of the whole MIND for the Mind panel — beliefs (with
    * live decayed confidence), predictions (pending + graded), the fidelity
    * meter, the audit verdict, and recent ledger actions. Read-only; the mind is
@@ -286,7 +303,7 @@ export class MindService {
     const entries = this._entries;
     const beliefs = entries
       .filter(e => e.kind !== 'prediction')
-      .map(e => ({ kind: e.kind, content: e.content, confidence: decayedConfidence(e, nowMs), provenance: e.provenance }))
+      .map(e => ({ id: e.id, kind: e.kind, content: e.content, confidence: decayedConfidence(e, nowMs), provenance: e.provenance }))
       .sort((a, b) => b.confidence - a.confidence);
     const predictions = entries
       .filter((e): e is IMindPrediction => e.kind === 'prediction')

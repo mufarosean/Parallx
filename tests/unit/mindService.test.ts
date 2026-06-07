@@ -107,6 +107,20 @@ describe('MindService — the loop seam', () => {
     expect(svc2.capability().agentActions).toBe(1);
   });
 
+  it('the human can forget a belief (a correction), ledgered as a user action', async () => {
+    const { svc } = build();
+    await svc.init();
+    await svc.remember('belief', 'User hates dark mode', 0.7, ['a guess']);
+    const id = (await svc.snapshot()).beliefs[0].id;
+    expect(typeof id).toBe('string');
+
+    expect(await svc.forget(id)).toBe(true);
+    const snap = await svc.snapshot();
+    expect(snap.beliefs).toHaveLength(0);
+    expect(snap.recentActions.some(a => a.origin === 'user' && a.summary.includes('forgot'))).toBe(true);
+    expect(await svc.forget('nope')).toBe(false); // missing id → no-op
+  });
+
   it('nag governor: feedback drives the dismiss-ratio + interruption budget, surfaced + persisted', async () => {
     const storage = new FakeStorage();
     const mk = () => new MindService(new MindStore(storage), new ActionLedger(storage), { now: () => clock, genId: () => `id${++ids}`, capabilityStorage: storage });
