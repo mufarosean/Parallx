@@ -78,9 +78,12 @@ still apply. (Shipped as a command rather than an `api.autonomy.signal(...)` sur
 keep the change additive and low-risk; a typed `api.autonomy` wrapper over the command
 is a safe future sugar once verified live.)
 
-**Phase 4 — run without an open chat.** Today real turns need an active parent chat
-session. Give the periodic review a standalone session so it runs even when the user is on
-canvas/dashboard. UX: a persistent "heartbeat" thread in the autonomy log.
+**Phase 4 — run without a focused chat. [DONE]** Real turns need a parent session, but
+`createEphemeralSession`'s parent is only informational (model/mode have fallbacks). So
+`getParentSessionId` now prefers the focused chat session and falls back to the most
+recent real session — the periodic review runs and its findings land in a real transcript
+even when the user is on canvas/dashboard. Only a brand-new workspace with no chat at all
+still skips. (A fully headless background session is a possible later refinement.)
 
 **Phase 5 — UX polish.** Status-bar pulse, "last reviewed N ago / next in N", a heartbeat
 activity timeline, and per-sense settings.

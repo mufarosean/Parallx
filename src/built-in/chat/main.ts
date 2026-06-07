@@ -1984,7 +1984,19 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           sendRequest: (sid, msg, opts) => chatService.sendRequest(sid, msg, opts),
           getSession: (sid) => chatService.getSession(sid),
         },
-        getParentSessionId: () => _activeWidget?.getSession()?.id,
+        getParentSessionId: () => {
+          // Prefer the focused chat session. If the user is on canvas/dashboard
+          // (no focused chat widget), fall back to the most recent real session
+          // so the periodic review still runs and any finding lands in a real
+          // transcript. The ephemeral parent is informational (model/mode have
+          // fallbacks in createEphemeralSession), so this is safe. Only a
+          // brand-new workspace with no chat at all yields undefined → the
+          // review status-flashes and skips cleanly.
+          const active = _activeWidget?.getSession()?.id;
+          if (active) return active;
+          const sessions = chatService.getSessions();
+          return sessions.length > 0 ? sessions[sessions.length - 1].id : undefined;
+        },
         outputDedupWindowMs: unifiedConfigService.getEffectiveConfig().heartbeat.outputDedupWindowMs,
         permissionService: _permissionService
           ? {
