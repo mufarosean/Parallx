@@ -2215,9 +2215,17 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     if (_autonomySignals) {
       context.subscriptions.push(
         _autonomySignals.onDidSignal((sig) => {
-          if (unifiedConfigService.getEffectiveConfig().heartbeat.senseExtensionSignals) {
+          // Only warn/urgent signals WAKE a review — routine 'info' signals (a
+          // widget refresh, a sync completing) are perception, not interruption,
+          // so they never spin up the model. (Keeps "idle is free" honest.)
+          const salient = sig.severity === 'warn' || sig.severity === 'urgent';
+          if (salient && unifiedConfigService.getEffectiveConfig().heartbeat.senseExtensionSignals) {
             heartbeatRunner.pushEvent(signalToSystemEvent(sig));
           }
+          // But EVERY signal feeds habit detection, so the agent can learn "you do
+          // this every morning" and offer to automate it — without ever nagging.
+          const action = [sig.source, sig.title].filter(Boolean).join(':');
+          if (action) void mindService?.observeAction(action, Date.now());
         }),
       );
     }

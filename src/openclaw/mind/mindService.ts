@@ -22,6 +22,7 @@ import {
   type IMindPredictionOption,
 } from './agentMindModel.js';
 import { ReflectionScheduler, type IReflectionState } from './reflectionScheduler.js';
+import { HabitDetector, type IHabitState, type IHabitReading } from './habitDetector.js';
 import type { IMindStore } from './mindStore.js';
 import { ActionLedger, type AgentActionKind, type IAgentActionRecord } from './actionLedger.js';
 import { CapabilityMeter, type ICapabilityReading } from './capabilityMeter.js';
@@ -44,6 +45,8 @@ export interface IMindSnapshot {
   readonly fluency: ISkillProbeReading;
   /** The nag governor: how often the user dismisses, and whether it's throttled. */
   readonly nag: { readonly dismissRatio: number | null; readonly throttled: boolean };
+  /** Daily habits detected — recurring actions the agent could offer to automate. */
+  readonly habits: readonly IHabitReading[];
 }
 
 function defaultGenId(): string {
@@ -66,6 +69,7 @@ const CAPABILITY_KEY = 'autonomy.capability.v1';
 const SKILLPROBE_KEY = 'autonomy.skillprobe.v1';
 const NAG_KEY = 'autonomy.nag.v1';
 const REFLECTION_KEY = 'autonomy.reflection.v1';
+const HABIT_KEY = 'autonomy.habits.v1';
 
 export class MindService {
   private _entries: readonly IMindEntry[] = [];
@@ -76,6 +80,7 @@ export class MindService {
   private readonly _probe = new SkillProbe();
   private readonly _nag = new NagGovernor();
   private readonly _reflection = new ReflectionScheduler();
+  private readonly _habits = new HabitDetector();
   private readonly _capStorage?: IStorage;
 
   constructor(
@@ -96,7 +101,38 @@ export class MindService {
     await this._loadProbe();
     await this._loadNag();
     await this._loadReflection();
+    await this._loadHabits();
     this._loaded = true;
+  }
+
+  private async _loadHabits(): Promise<void> {
+    if (!this._capStorage) return;
+    try {
+      const raw = await this._capStorage.get(HABIT_KEY);
+      if (raw) this._habits.restore(JSON.parse(raw) as IHabitState);
+    } catch { /* corrupt → fresh */ }
+  }
+
+  private async _saveHabits(): Promise<void> {
+    if (!this._capStorage) return;
+    try { await this._capStorage.set(HABIT_KEY, JSON.stringify(this._habits.toState())); }
+    catch { /* best-effort */ }
+  }
+
+  /**
+   * Record a discrete user ACTION (e.g. "dashboard:refresh AI News") for habit
+   * detection — distinct from recordHuman (file edits, for the conscience). This
+   * is how the agent learns "you do X every morning" and can offer to automate it.
+   */
+  async observeAction(action: string, nowMs = this._now()): Promise<void> {
+    if (!action) return;
+    this._habits.observe(action, nowMs);
+    await this._saveHabits();
+  }
+
+  /** Confirmed daily habits — recurring actions the agent could offer to automate. */
+  habits(nowMs = this._now()): IHabitReading[] {
+    return this._habits.habits(nowMs);
   }
 
   private async _loadReflection(): Promise<void> {
@@ -233,7 +269,11 @@ export class MindService {
   /** The compact block injected into the heartbeat seed so the agent reads its
    *  own prior beliefs and open predictions — the substance of continuity. */
   seedBlock(): string {
-    return summarizeMind(this._entries, this._now());
+    const base = summarizeMind(this._entries, this._now());
+    const habits = this._habits.habits(this._now());
+    if (habits.length === 0) return base;
+    const lines = habits.slice(0, 5).map(h => `- "${h.action}" — most days around ${h.typicalTime} (${h.daysObserved} days seen)`);
+    return `${base}\n\nDaily habits I've noticed — you may OFFER to automate one with cron_create (propose via NOTE/ACT; never schedule without the user's yes):\n${lines.join('\n')}`;
   }
 
   /** Fidelity meter: mean Brier over resolved predictions (NaN if none). */
@@ -370,6 +410,7 @@ export class MindService {
       capability: this._meter.read(),
       fluency: this._probe.reading(),
       nag: (() => { const r = this._nag.reading(this._now()); return { dismissRatio: r.dismissRatio, throttled: r.throttled }; })(),
+      habits: this._habits.habits(this._now()),
     };
   }
 }

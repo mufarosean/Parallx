@@ -68,6 +68,13 @@ export const NEWS_BRIEF_WIDGET: WidgetTypeRegistration<NewsBriefConfig> = {
     }
     const cfg = normalize(ctx.config);
 
+    // Tell the agent's perception that the user refreshed this — a low-severity
+    // 'info' signal that feeds habit detection (so it can learn "they refresh AI
+    // News every morning" and offer to automate it) WITHOUT waking a review.
+    void api.commands.executeCommand('parallx.autonomy.signal', {
+      source: 'dashboard', title: 'refresh AI News', severity: 'info',
+    }).catch(() => { /* signal bus optional — never block a refresh */ });
+
     // Push model: we don't compute the brief here. We ask the active chat
     // session to do the research with its normal tools, then deliver the
     // result back to this widget via the shared `dashboard_render_widget` tool. The

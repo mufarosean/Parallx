@@ -107,6 +107,33 @@ describe('MindService — the loop seam', () => {
     expect(svc2.capability().agentActions).toBe(1);
   });
 
+  it('habit detection: observeAction learns a daily habit and surfaces an automation offer in the seed + snapshot', async () => {
+    const storage = new FakeStorage();
+    const DAY = 24 * 60 * 60 * 1000;
+    const HM = (d: number, h: number, m = 0) => d * DAY + (h * 60 + m) * 60000;
+    const t = HM(3, 12);
+    const svc = new MindService(new MindStore(storage), new ActionLedger(storage), { now: () => t, genId: () => `id${++ids}`, capabilityStorage: storage });
+    await svc.init();
+    // the user refreshes AI News ~8am four mornings in a row
+    await svc.observeAction('dashboard:refresh AI News', HM(0, 8, 2));
+    await svc.observeAction('dashboard:refresh AI News', HM(1, 8, 10));
+    await svc.observeAction('dashboard:refresh AI News', HM(2, 7, 55));
+    await svc.observeAction('dashboard:refresh AI News', HM(3, 8, 5));
+
+    expect(svc.habits(t).some(h => h.action === 'dashboard:refresh AI News' && h.isDailyHabit)).toBe(true);
+    // the agent SEES it in its review seed, told it may offer to automate via cron
+    const seed = svc.seedBlock();
+    expect(seed).toContain('refresh AI News');
+    expect(seed).toContain('cron_create');
+    // and it surfaces in the snapshot
+    expect((await svc.snapshot()).habits.length).toBeGreaterThan(0);
+
+    // persists across restart
+    const svc2 = new MindService(new MindStore(storage), new ActionLedger(storage), { now: () => t, genId: () => `x${++ids}`, capabilityStorage: storage });
+    await svc2.init();
+    expect(svc2.habits(t).length).toBeGreaterThan(0);
+  });
+
   it('daily reflection: reflectionDue gates it; reflect() prunes stale beliefs, marks, ledgers, persists', async () => {
     const storage = new FakeStorage();
     const mk = () => new MindService(new MindStore(storage), new ActionLedger(storage), { now: () => clock, genId: () => `id${++ids}`, capabilityStorage: storage });
