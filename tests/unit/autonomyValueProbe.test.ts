@@ -128,19 +128,26 @@ describe('Autonomy live value probe (real model, real context)', () => {
       buildWorkspaceContext(pages),
     ].join('\n');
 
-    // The candidate tool we'd wire into production — does the model use it correctly?
+    // The ACTUAL production tool (name + description verbatim from
+    // createRelatePagesTool) — does the model call THIS one correctly?
     const tools = [{
       type: 'function',
       function: {
-        name: 'relate_pages',
-        description: 'Link related canvas pages to a hub page so they are connected. Use when the user creates a page that clearly belongs with existing pages.',
+        name: 'canvas_relate_pages',
+        description:
+          'Connect related canvas pages by nesting them as sub-pages under a hub page. ' +
+          'Use when several existing pages clearly belong together — e.g. the user just ' +
+          'created a hub page ("Q3 Planning") and related pages already exist ("Q3 Budget", ' +
+          '"Q3 Goals"). Pass EXACT page titles as shown in the workspace context. The change ' +
+          'is structural and reversible. Do NOT use this to create pages — only to relate ' +
+          'ones that already exist.',
         parameters: {
           type: 'object',
-          properties: {
-            hub: { type: 'string', description: 'The page everything relates to (its exact title).' },
-            related: { type: 'array', items: { type: 'string' }, description: 'Exact titles of the pages to link to the hub.' },
-          },
           required: ['hub', 'related'],
+          properties: {
+            hub: { type: 'string', description: 'Exact title of the hub page that everything relates to.' },
+            related: { type: 'array', items: { type: 'string' }, description: 'Exact titles of the existing pages to nest under the hub.' },
+          },
         },
       },
     }];

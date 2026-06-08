@@ -245,6 +245,35 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         // Surface what the AI did: focus/open the affected page (not on delete).
         if (kind !== 'deleted') void openPageInEditor(pageId);
       },
+      // canvas_relate_pages — nest related pages (by title) under a hub page via
+      // the integrity-preserving movePageWithBlocks. Makes the agent's most common
+      // useful review intent ("link these related pages") an actual, reversible op.
+      relatePages: async (hubTitle, relatedTitles) => {
+        const ds = _dataService;
+        if (!ds) return { linked: [], missing: [...relatedTitles] };
+        const flat: { id: string; title: string }[] = [];
+        const walk = (nodes: readonly IPageTreeNode[]) => {
+          for (const n of nodes) {
+            flat.push({ id: n.id, title: n.title });
+            if (n.children?.length) walk(n.children);
+          }
+        };
+        try { walk(await ds.getPageTree()); } catch { return { linked: [], missing: [...relatedTitles] }; }
+        const norm = (s: string) => s.trim().toLowerCase();
+        const find = (t: string) => flat.find((p) => norm(p.title) === norm(t));
+        const hub = find(hubTitle);
+        if (!hub) return { linked: [], missing: [...relatedTitles] };
+        const linked: string[] = [];
+        const missing: string[] = [];
+        for (const rt of relatedTitles) {
+          const r = find(rt);
+          if (!r) { missing.push(rt); continue; }
+          if (r.id === hub.id) continue; // never nest the hub under itself
+          try { await ds.movePageWithBlocks({ pageId: r.id, newParentId: hub.id }); linked.push(r.title); }
+          catch { missing.push(rt); }
+        }
+        return { hub: hub.title, linked, missing };
+      },
     });
     for (const d of canvasToolDisposables) context.subscriptions.push(d);
   }

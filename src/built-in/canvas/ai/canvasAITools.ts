@@ -24,6 +24,7 @@ import {
   createSetPageStyleTool,
 } from './pageTools.js';
 import { createBlockTools } from './blockTools.js';
+import { createRelatePagesTool, type RelatePagesFn } from './relatePagesTool.js';
 
 /** Canvas's stable tool id — attributes the tools to canvas in the AI tool
  *  picker and the Tool Gallery membership view. */
@@ -48,6 +49,9 @@ export interface ICanvasAIToolDeps {
   readonly workspaceRoot: string | undefined;
   readonly pageMutationNotifier?: PageMutationNotifier;
   readonly templateApi?: CanvasTemplateApi;
+  /** Nest related pages under a hub (canvas_relate_pages). Omitted → tool not
+   *  registered. Implemented over the live data service in canvas/main.ts. */
+  readonly relatePages?: RelatePagesFn;
 }
 
 /**
@@ -55,7 +59,7 @@ export interface ICanvasAIToolDeps {
  * Returns disposables that deregister them.
  */
 export function registerCanvasAITools(deps: ICanvasAIToolDeps): IDisposable[] {
-  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier, templateApi } = deps;
+  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier, templateApi, relatePages } = deps;
 
   const tools: IChatTool[] = [
     createFindPagesTool(db),
@@ -67,6 +71,7 @@ export function registerCanvasAITools(deps: ICanvasAIToolDeps): IDisposable[] {
     createSetPagePropertyTool(db),
     createSetPageStyleTool(db, pageMutationNotifier, workspaceRoot),
     ...createBlockTools(db, pageMutationNotifier),
+    ...(relatePages ? [createRelatePagesTool(relatePages)] : []),
   ];
 
   return tools.map((tool) =>
