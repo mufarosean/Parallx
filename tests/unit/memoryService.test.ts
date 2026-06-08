@@ -280,6 +280,31 @@ describe('MemoryService', () => {
     });
   });
 
+  describe('deleteMemory', () => {
+    it('removes the conversation row AND the vector embedding for the session', async () => {
+      await service.storeMemory('session-del', 'a sensitive conversation summary', 4);
+      expect(await service.hasMemory('session-del')).toBe(true);
+      expect(vectorStore._storedChunks.some((c) => c.sourceId === 'session-del')).toBe(true);
+
+      await service.deleteMemory('session-del');
+
+      // Both the DB row and the searchable embedding are gone — the AI can no
+      // longer recall the deleted chat.
+      expect(await service.hasMemory('session-del')).toBe(false);
+      expect(vectorStore._storedChunks.some((c) => c.sourceId === 'session-del')).toBe(false);
+    });
+
+    it('does not disturb OTHER sessions\' memory', async () => {
+      await service.storeMemory('keep-me', 'summary to keep', 3);
+      await service.storeMemory('drop-me', 'summary to drop', 3);
+
+      await service.deleteMemory('drop-me');
+
+      expect(await service.hasMemory('keep-me')).toBe(true);
+      expect(await service.hasMemory('drop-me')).toBe(false);
+    });
+  });
+
   describe('hasMemory', () => {
     it('returns false when no memory exists', async () => {
       expect(await service.hasMemory('nonexistent')).toBe(false);

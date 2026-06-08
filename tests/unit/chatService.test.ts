@@ -147,6 +147,17 @@ describe('ChatService', () => {
       expect(transcriptService.deleteSessionTranscript).toHaveBeenCalledWith(session.id);
     });
 
+    it('cleans up session-derived memory when a session is deleted', () => {
+      const memoryCleanup = vi.fn();
+      chatService.setMemoryCleanup(memoryCleanup);
+
+      const session = chatService.createSession();
+      chatService.deleteSession(session.id);
+
+      // deleteSession now removes the AI's memory of the chat, not just the file/row.
+      expect(memoryCleanup).toHaveBeenCalledWith(session.id);
+    });
+
     it('sends a message and invokes the default agent', async () => {
       const session = chatService.createSession();
       const result = await chatService.sendRequest(session.id, 'Hello');

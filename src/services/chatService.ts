@@ -646,6 +646,10 @@ export class ChatService extends Disposable implements IChatService {
   /** Session manager for stale session detection. */
   private _sessionManager: ISessionManager | undefined;
   private _transcriptService: IWorkspaceTranscriptService | undefined;
+  /** Cleanup hook for memory derived from a session (conversation summary + its
+   *  vector embedding). Called on deleteSession so a deleted chat doesn't leave
+   *  the AI still "remembering" it. Late-bound like the other persistence deps. */
+  private _memoryCleanup: ((sessionId: string) => void | Promise<void>) | undefined;
   private _turnPreparationServices: IChatTurnPreparationServices | undefined;
   private _runtimeTraceReporter: ((trace: unknown) => void) | undefined;
   private _runtimeParticipantResolver: ((participantId: string) => string) | undefined;
@@ -712,6 +716,12 @@ export class ChatService extends Disposable implements IChatService {
 
   setTranscriptService(transcriptService: IWorkspaceTranscriptService): void {
     this._transcriptService = transcriptService;
+  }
+
+  /** Bind the memory-cleanup hook (e.g. `memoryService.deleteMemory`) invoked
+   *  when a session is deleted, so its derived memory is removed too. */
+  setMemoryCleanup(cleanup: (sessionId: string) => void | Promise<void>): void {
+    this._memoryCleanup = cleanup;
   }
 
   setTurnPreparationServices(services: IChatTurnPreparationServices): void {
@@ -929,6 +939,13 @@ export class ChatService extends Disposable implements IChatService {
       // Remove from database
       if (this._database) {
         deletePersistedSession(this._database, sessionId).catch((e) => { console.error('[ChatService] deletePersistedSession failed:', e); });
+      }
+      // Remove the AI's memory derived from this session (conversation summary +
+      // its vector embedding), so a deleted chat isn't still recalled. The
+      // transcript file's index entries are cleaned by the indexer's file-delete
+      // watcher; durable curated memory (MEMORY.md) is workspace-level and kept.
+      if (this._memoryCleanup) {
+        Promise.resolve(this._memoryCleanup(sessionId)).catch((e) => { console.error('[ChatService] session memory cleanup failed:', e); });
       }
       this._onDidDeleteSession.fire(sessionId);
     }

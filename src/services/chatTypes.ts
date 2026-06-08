@@ -1151,6 +1151,9 @@ export interface IChatService extends IDisposable {
   setSessionManager(sessionManager: import('./serviceTypes.js').ISessionManager): void;
   /** Late-bind a workspace transcript service for canonical transcript persistence. */
   setTranscriptService(transcriptService: import('./serviceTypes.js').IWorkspaceTranscriptService): void;
+  /** Late-bind a memory-cleanup hook invoked on deleteSession so a deleted chat's
+   *  derived memory (conversation summary + embedding) is removed too. */
+  setMemoryCleanup(cleanup: (sessionId: string) => void | Promise<void>): void;
   /** Late-bind workspace-aware turn preparation helpers used before agent dispatch. */
   setTurnPreparationServices(services: IChatTurnPreparationServices): void;
   /** Late-bind a runtime trace reporter shared by all participant surfaces. */

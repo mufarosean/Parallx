@@ -665,6 +665,14 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     ? api.services.get<import('../../services/serviceTypes.js').IMemoryService>(IMemoryService)
     : undefined;
 
+  // Deleting a chat session must also delete the AI's memory derived from it
+  // (the conversation summary + its vector embedding) — otherwise the AI keeps
+  // recalling a chat you deleted. Wire the cleanup into ChatService.deleteSession.
+  if (memoryService) {
+    const _memoryForCleanup = memoryService;
+    chatService.setMemoryCleanup((id) => _memoryForCleanup.deleteMemory(id));
+  }
+
   // Phase 7: Advanced Feature services
   const relatedContentService = api.services.has(IRelatedContentService)
     ? api.services.get<import('../../services/serviceTypes.js').IRelatedContentService>(IRelatedContentService)
