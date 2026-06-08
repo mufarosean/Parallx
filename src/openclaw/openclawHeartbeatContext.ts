@@ -63,6 +63,27 @@ export function hasNoteworthySignals(s: IHeartbeatAppSnapshot): boolean {
   return s.diagnosticsAttention.length > 0 || s.eventCount > 0;
 }
 
+export interface IWorkspacePageInfo {
+  readonly title: string;
+  readonly updatedAt?: string;
+}
+
+/**
+ * Render the user's ACTUAL canvas pages so a review knows their real work — not
+ * just that "an event happened." Most-recently-edited first. This is the
+ * difference between an agent that can say "you have Q3 Planning and Q3 Budget —
+ * link them?" and one that's blind to everything but diagnostics.
+ */
+export function buildWorkspaceContext(pages: readonly IWorkspacePageInfo[], maxPages = 15): string {
+  if (pages.length === 0) return '';
+  const sorted = [...pages]
+    .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
+    .slice(0, maxPages);
+  const lines = [`The user's workspace has ${pages.length} canvas page(s) (most recently worked-on first):`];
+  for (const p of sorted) lines.push(`- ${p.title?.trim() || 'Untitled'}`);
+  return lines.join('\n');
+}
+
 /**
  * Names of checks failing now that were NOT failing in `prevFailed` — the
  * rising edge. Used to push a heartbeat reaction only when a check newly

@@ -75,8 +75,8 @@ import type {
   IHeartbeatSystemEvent,
 } from './openclawHeartbeatRunner.js';
 import { extractFinalAssistantText } from './openclawSubagentExecutor.js';
-import { buildHeartbeatSnapshot, formatAppContext, formatEventLine, hasNoteworthySignals } from './openclawHeartbeatContext.js';
-import type { IHeartbeatAppSnapshot } from './openclawHeartbeatContext.js';
+import { buildHeartbeatSnapshot, formatAppContext, formatEventLine, hasNoteworthySignals, buildWorkspaceContext } from './openclawHeartbeatContext.js';
+import type { IHeartbeatAppSnapshot, IWorkspacePageInfo } from './openclawHeartbeatContext.js';
 import type { AgentActionKind } from './mind/actionLedger.js';
 import type { IDiagnosticResult } from '../services/serviceTypes.js';
 import type {
@@ -174,6 +174,13 @@ export interface IHeartbeatRealTurnDeps {
    * diagnostics as unavailable, the review still runs on workspace activity.
    */
   readonly getDiagnostics?: () => readonly IDiagnosticResult[] | undefined;
+  /**
+   * The user's actual canvas pages (lightweight metadata), so the review knows
+   * their real work instead of only events + diagnostics. This is what lets the
+   * agent give substantive help ("you have X and Y — link them?") rather than
+   * reporting status the user can already see.
+   */
+  readonly getWorkspacePages?: () => Promise<readonly IWorkspacePageInfo[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -269,9 +276,12 @@ function buildReflectionSeedSystem(): string {
 }
 
 /** User seed for the daily reflection. */
-function buildReflectionSeedUser(mindBlock: string | undefined, appContext: string): string {
+function buildReflectionSeedUser(mindBlock: string | undefined, appContext: string, workspaceBlock?: string): string {
   const lines = ['[heartbeat reflection] — daily consolidation of your model.'];
   lines.push('', appContext);
+  if (workspaceBlock && workspaceBlock.trim()) {
+    lines.push('', workspaceBlock);
+  }
   if (mindBlock && mindBlock.trim() && !mindBlock.includes('(empty')) {
     lines.push('', 'Your current model — consolidate and correct it:', mindBlock);
   }
@@ -283,6 +293,7 @@ function buildSeedUserMessage(
   events: readonly IHeartbeatSystemEvent[],
   appContext: string,
   mindBlock?: string,
+  workspaceBlock?: string,
 ): string {
   const lines: string[] = [];
   lines.push(`[heartbeat ${reason}]`);
@@ -299,6 +310,10 @@ function buildSeedUserMessage(
   }
   // App-wide situational snapshot — the heartbeat's "senses".
   lines.push('', appContext);
+  // The user's ACTUAL work — their canvas pages — so help can be substantive.
+  if (workspaceBlock && workspaceBlock.trim()) {
+    lines.push('', workspaceBlock);
+  }
   // Continuity — the agent's own prior beliefs/threads (omitted when empty).
   if (mindBlock && mindBlock.trim() && !mindBlock.includes('(empty')) {
     lines.push('', 'Your continuity — what you already believe and are tracking. Build on it; do not re-report what you have already noted:', mindBlock);
@@ -459,6 +474,12 @@ export function createHeartbeatTurnExecutor(
 
     const appContext = formatAppContext(snapshot);
 
+    // The user's ACTUAL canvas pages — so the review knows their real work, not
+    // just that an event fired. Best-effort: never break the loop on a failure.
+    let workspaceBlock = '';
+    try { workspaceBlock = buildWorkspaceContext(await realTurnDeps.getWorkspacePages?.() ?? []); }
+    catch { workspaceBlock = ''; }
+
     // MIND — continuity (its prior beliefs seed the review) + audit (outcomes are
     // ledgered). EVERY MIND call is best-effort: a failing MIND must never break
     // the heartbeat, so even reading the seed block is guarded.
@@ -466,8 +487,8 @@ export function createHeartbeatTurnExecutor(
     try { mindSeed = mind?.seedBlock(); } catch { mindSeed = undefined; }
     const systemMessage = reflecting ? buildReflectionSeedSystem() : buildSeedSystemMessage(reason, events);
     const userMessage = reflecting
-      ? buildReflectionSeedUser(mindSeed, appContext)
-      : buildSeedUserMessage(reason, events, appContext, mindSeed);
+      ? buildReflectionSeedUser(mindSeed, appContext, workspaceBlock)
+      : buildSeedUserMessage(reason, events, appContext, mindSeed, workspaceBlock);
     const recordOutcome = async (kind: AgentActionKind, summary: string, detail?: string): Promise<{ hash: string } | undefined> => {
       if (!mind) return undefined;
       try { return await mind.record(kind, summary.slice(0, 300), `heartbeat:${reason}`, detail); }

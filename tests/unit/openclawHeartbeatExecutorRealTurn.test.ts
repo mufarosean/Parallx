@@ -150,6 +150,7 @@ function buildHarness(overrides?: {
   nowRef?: { value: number };
   mind?: IHeartbeatMind;
   getDiagnostics?: () => readonly { name: string; status: string; detail: string; category?: string }[] | undefined;
+  getWorkspacePages?: () => Promise<readonly { title: string; updatedAt?: string }[]>;
 }) {
   const router = new SurfaceRouterService();
   const status = new FakeSurfacePlugin(SURFACE_STATUS);
@@ -177,6 +178,7 @@ function buildHarness(overrides?: {
       now: () => nowRef.value,
       mind: overrides?.mind,
       getDiagnostics: overrides?.getDiagnostics as (() => readonly never[] | undefined) | undefined,
+      getWorkspacePages: overrides?.getWorkspacePages,
     },
   );
 
@@ -358,6 +360,21 @@ describe('HeartbeatTurnExecutor — real-turn retrofit (M58-real W2)', () => {
     expect(msg).toContain('created page "Q3 Planning"'); // the agent SEES the canvas activity
     expect(msg).not.toMatch(/checks passing/);           // no redundant diagnostics echo
     expect(msg).not.toMatch(/all \d+ checks/);           // diagnostics aren't the headline
+  });
+
+  it('VALUE: the review is given the user\'s ACTUAL canvas pages (real workspace awareness)', async () => {
+    // The agent can only help if it knows the user's real work. The review's
+    // prompt must include the actual pages, so it can offer substantive help
+    // ("you have Q3 Planning and Q3 Budget — link them?") instead of status.
+    const h = buildHarness({
+      respondWith: 'NOOP',
+      getWorkspacePages: async () => [{ title: 'Q3 Planning' }, { title: 'Q3 Budget' }],
+    });
+    await h.executor([], 'wake');
+    const msg = h.chat_.calls.sendRequest[0].message;
+    expect(msg).toContain('Q3 Planning');
+    expect(msg).toContain('Q3 Budget');
+    expect(msg).toContain('canvas page');
   });
 
   it('reasons allowlist blocks all paths (including real turn reasons)', async () => {

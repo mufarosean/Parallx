@@ -6,6 +6,7 @@ import {
   formatEventLine,
   hasNoteworthySignals,
   risingFailures,
+  buildWorkspaceContext,
 } from '../../src/openclaw/openclawHeartbeatContext';
 
 const diag = (name: string, status: 'pass' | 'warn' | 'fail', detail = '') => ({
@@ -132,5 +133,22 @@ describe('formatAppContext', () => {
     const out = formatAppContext(buildHeartbeatSnapshot(undefined, []));
     expect(out).toContain('Recent activity');
     expect(out).not.toContain('Diagnostics');
+  });
+});
+
+describe('buildWorkspaceContext — the agent sees the user\'s actual work', () => {
+  it('renders the pages, most recently worked-on first', () => {
+    const out = buildWorkspaceContext([
+      { title: 'Q3 Budget', updatedAt: '2026-06-07T09:00:00Z' },
+      { title: 'Q3 Planning', updatedAt: '2026-06-07T10:00:00Z' },
+    ]);
+    expect(out).toContain('Q3 Planning');
+    expect(out).toContain('Q3 Budget');
+    expect(out.indexOf('Q3 Planning')).toBeLessThan(out.indexOf('Q3 Budget')); // newer first
+    expect(out).toContain('2 canvas page');
+  });
+
+  it('is empty when there are no pages', () => {
+    expect(buildWorkspaceContext([])).toBe('');
   });
 });
