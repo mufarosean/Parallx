@@ -631,6 +631,13 @@ export class ChatService extends Disposable implements IChatService {
   /** Active cancellation source for the in-progress request, keyed by sessionId. */
   private readonly _activeCancellations = new Map<string, CancellationTokenSource>();
 
+  /**
+   * Per-ephemeral-session system-prompt override (the autonomy layer's own
+   * contract — e.g. the heartbeat NOOP/NOTE/ACT framing). Appended to the base
+   * system prompt for that session only; regular chat is never touched.
+   */
+  private readonly _ephemeralSystemPrompts = new Map<string, string>();
+
   // ── Dependencies ──
 
   private readonly _agentService: IChatAgentService;
@@ -966,8 +973,9 @@ export class ChatService extends Disposable implements IChatService {
    *   on the handle for loop-safety context; the ephemeral session never
    *   mutates the parent's messages[]).
    * @param seed Optional turn seeding:
-   *   - `systemMessage`: future system-prompt override (captured on handle
-   *     for M59; M58 executor doesn't consume it yet)
+   *   - `systemMessage`: the session's system-prompt override — APPENDED to the
+   *     base system prompt for this ephemeral session (e.g. the heartbeat's
+   *     NOOP/NOTE/ACT autonomy contract). Consumed in `sendRequest`.
    *   - `firstUserMessage`: informational — the caller decides when/how to
    *     drive `sendRequest`
    *   - `toolsEnabled`: future tool allowlist (captured for M59)
@@ -993,6 +1001,12 @@ export class ChatService extends Disposable implements IChatService {
     };
 
     this._sessions.set(id, session);
+    // Apply the seed's system-prompt override for this session (consumed in
+    // sendRequest's prompt assembly). This is what gives the autonomy layer its
+    // own system prompt instead of running on the bare chat default.
+    if (typeof seed.systemMessage === 'string' && seed.systemMessage.trim().length > 0) {
+      this._ephemeralSystemPrompts.set(id, seed.systemMessage);
+    }
     // Deliberately DO NOT fire onDidCreateSession: ephemeral sessions must
     // not trigger chat-list re-renders or sidebar updates.
     return {
@@ -1023,6 +1037,7 @@ export class ChatService extends Disposable implements IChatService {
     }
     this._sessions.delete(sessionId);
     this._pendingPersistIds.delete(sessionId);
+    this._ephemeralSystemPrompts.delete(sessionId);
     // No onDidDeleteSession event — listeners never saw this session created.
   }
 
@@ -1136,9 +1151,17 @@ export class ChatService extends Disposable implements IChatService {
     const turnState = await this._buildTurnState(parsed.text, options?.command ?? parsed.command, history, participantSurface);
 
     // 9. Build context
+    // The autonomy layer's own system prompt: for an ephemeral session seeded
+    // with a systemMessage (e.g. the heartbeat's NOOP/NOTE/ACT contract), append
+    // it to the base system prompt so the model is actually told the rules where
+    // they carry weight. Regular chat has no override → unchanged.
+    const ephemeralSystemPrompt = this._ephemeralSystemPrompts.get(sessionId);
+    const withAutonomyContract = (systemPrompt: string): string =>
+      ephemeralSystemPrompt ? `${systemPrompt}\n\n${ephemeralSystemPrompt}` : systemPrompt;
+
     const buildRuntimePromptEnvelope = (systemPrompt: string, userContent: string): readonly IChatMessage[] => {
       const seedMessages = buildRuntimePromptSeedMessages({
-        systemPrompt,
+        systemPrompt: withAutonomyContract(systemPrompt),
         history,
       });
       const promptTraceContext: IChatParticipantContext = { sessionId, history };
@@ -1184,7 +1207,7 @@ export class ChatService extends Disposable implements IChatService {
           ? (trace) => this._runtimeTraceReporter?.(trace)
           : undefined,
         buildPromptSeed: (systemPrompt: string) => buildRuntimePromptSeedMessages({
-          systemPrompt,
+          systemPrompt: withAutonomyContract(systemPrompt),
           history,
         }),
         buildPromptEnvelope: buildRuntimePromptEnvelope,

@@ -460,6 +460,50 @@ describe('ChatService', () => {
       }));
     });
 
+    it('ephemeral session APPENDS its systemMessage to the model system prompt (the autonomy layer gets its OWN prompt)', async () => {
+      const captured: Array<Array<{ role: string; content: string }>> = [];
+      vi.spyOn(lmService, 'sendChatRequest').mockImplementation(async function* (messages) {
+        captured.push(messages as Array<{ role: string; content: string }>);
+        yield { content: 'ok', done: true } as any;
+      });
+      const capture = vi.fn(async (_req: any, context: IChatParticipantContext, response: IChatResponseStream) => {
+        for await (const _ of context.runtime!.sendPrompt!('BASE PROMPT', 'review now', { think: false })) { /* drain */ }
+        response.markdown('done');
+        return {};
+      });
+      const bridge = new ChatBridge('tool.autonomy', agentService, undefined, []);
+      bridge.createChatParticipant('tool.autonomy.prompt.participant', capture as any);
+
+      const parent = chatService.createSession();
+      const handle = chatService.createEphemeralSession(parent.id, { systemMessage: 'AUTONOMY-CONTRACT-XYZ: respond NOOP if nothing is needed.' });
+      await chatService.sendRequest(handle.sessionId, 'review now', { participantId: 'tool.autonomy.prompt.participant' });
+
+      const sys = captured.at(-1)?.find((m) => m.role === 'system');
+      expect(sys?.content).toContain('BASE PROMPT');             // base prompt preserved
+      expect(sys?.content).toContain('AUTONOMY-CONTRACT-XYZ');   // ← the autonomy contract actually reaches the model
+    });
+
+    it('a REGULAR session gets no autonomy override (the fix has no blast radius)', async () => {
+      const captured: Array<Array<{ role: string; content: string }>> = [];
+      vi.spyOn(lmService, 'sendChatRequest').mockImplementation(async function* (messages) {
+        captured.push(messages as Array<{ role: string; content: string }>);
+        yield { content: 'ok', done: true } as any;
+      });
+      const capture = vi.fn(async (_req: any, context: IChatParticipantContext, response: IChatResponseStream) => {
+        for await (const _ of context.runtime!.sendPrompt!('BASE PROMPT', 'hi', { think: false })) { /* drain */ }
+        response.markdown('done');
+        return {};
+      });
+      const bridge = new ChatBridge('tool.plain', agentService, undefined, []);
+      bridge.createChatParticipant('tool.plain.prompt.participant', capture as any);
+
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'hi', { participantId: 'tool.plain.prompt.participant' });
+
+      const sys = captured.at(-1)?.find((m) => m.role === 'system');
+      expect(sys?.content).toBe('BASE PROMPT'); // unchanged — exactly the base prompt
+    });
+
     it('stores replay metadata for regenerated requests', async () => {
       const session = chatService.createSession();
       await chatService.sendRequest(session.id, 'Hello');
