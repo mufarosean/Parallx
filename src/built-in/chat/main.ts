@@ -44,9 +44,7 @@ import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManage
 import { SettingsRegistryService, setGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import { createSecretStorageService } from '../../services/secretStorageService.js';
 import { PolicyDecisionPoint as _PolicyDecisionPoint } from '../../services/policyDecisionPoint.js';
-import {
-  registerAutonomyFlagSettings,
-  registerAutonomySubstrateSettings,} from '../../services/autonomySettingsSchemas.js';
+import { registerAutonomyFlagSettings } from '../../services/autonomySettingsSchemas.js';
 import {
   registerAIProfileSettings,
   registerSettingsActions,
@@ -370,10 +368,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       category: 'General',
     });
 
-    // Bind 11 autonomy flags + register substrate (heartbeat / followup /
-    // subagent / cron / indexing) and Canvas property-bar collapsed state.
+    // Bind the autonomy flags. (The non-flag autonomy settings the runtime reads
+    // live in the unified AI config — the old unwired substrate schemas were removed.)
     registerAutonomyFlagSettings(settingsRegistry, autonomyFlags);
-    registerAutonomySubstrateSettings(settingsRegistry);
 
     // Canvas property-bar collapsed state (D3 migration target).
     settingsRegistry.register({
@@ -2288,16 +2285,15 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     );
   }
 
-  // ── M60 §3.10: dev-only autonomy:replay command ──
-  // Reconstructs (stub) a previous autonomous turn from the event log.
-  // Read-only by default; pass --apply to execute (not implemented in α).
+  // ── M60 §3.10: dev-only autonomy.replay command ──
+  // Inspects a past autonomous turn from the event log — read-only; it summarizes
+  // what the event did and never re-executes anything.
   if (autonomyEventLog) {
     context.subscriptions.push(
       api.commands.registerCommand('autonomy.replay', async (...args: unknown[]) => {
         const eventId = typeof args[0] === 'string' ? (args[0] as string) : '';
-        const apply = args.includes('--apply') || args.includes('apply');
         const { executeAutonomyReplay } = await import('../../commands/autonomyReplayCommand.js');
-        return executeAutonomyReplay(autonomyEventLog, eventId, { apply });
+        return executeAutonomyReplay(autonomyEventLog, eventId);
       }),
     );
   }

@@ -13,7 +13,7 @@ import {
   type AutonomyFlagId,
   type IAutonomyFeatureFlagsService,
 } from './autonomyFeatureFlags.js';
-import type { ISettingsRegistryService, ISettingSchema } from './settingsRegistryService.js';
+import type { ISettingsRegistryService } from './settingsRegistryService.js';
 import { Emitter } from '../platform/events.js';
 
 // ─── Per-flag descriptions ─────────────────────────────────────────────────
@@ -74,60 +74,13 @@ const FLAG_CATEGORY: Readonly<Record<AutonomyFlagId, string>> = Object.freeze({
   'indexing.worker.enabled': 'Indexing',
 });
 
-// ─── Substrate (non-flag) autonomy settings ────────────────────────────────
-//
-// Per the M60 §7.2 acceptance criteria: heartbeat cadence, max followup
-// depth, cron persistence, sub-agent approval mode are all editable here.
-// These are NOT yet wired to a runtime consumer in Phase ε — they are
-// schema-only stubs that the runners will read in T1 polish (Phase ζ).
-
-const SUBSTRATE_SCHEMAS: readonly ISettingSchema[] = [
-  {
-    key: 'autonomy.heartbeat.intervalMs',
-    type: 'number',
-    default: 60_000,
-    scope: 'workspace',
-    description:
-      'Heartbeat tick interval in milliseconds. Minimum 15 000 ms per M60 §3.6 floor; default 60 000 ms.',
-    category: 'Autonomy',
-    min: 15_000,
-    max: 3_600_000,
-  },
-  {
-    key: 'autonomy.followup.maxDepth',
-    type: 'number',
-    default: 5,
-    scope: 'workspace',
-    description:
-      'Maximum follow-up chain depth before the runner refuses to continue. Existing MAX_FOLLOWUP_DEPTH constant.',
-    category: 'Autonomy',
-    min: 1,
-    max: 10,
-  },
-  {
-    key: 'autonomy.subagent.approvalMode',
-    type: 'enum',
-    default: 'always-ask',
-    scope: 'workspace',
-    description:
-      'How sub-agent spawn requests are gated. always-ask = prompt every time; session-allow = remember for the session; remember = persist across sessions (T5.E3).',
-    category: 'Autonomy',
-    enumValues: ['always-ask', 'session-allow', 'remember'],
-  },
-  {
-    key: 'autonomy.cron.persistencePath',
-    type: 'string',
-    default: '<workspace>/.parallx/cron.json',
-    scope: 'workspace',
-    description:
-      'Filesystem path used to persist cron jobs across restarts. Stored per-workspace so jobs in one workspace do not fire in another (M61 Phase 2). Use the literal token <workspace> for the active workspace folder.',
-    category: 'Autonomy',
-  },
-  // T2 toggles per §7.2 acceptance criteria are now flag-bound via
-  // `registerAutonomyFlagSettings` (`indexing.worker.enabled`,
-  // `indexing.lazyMtime.enabled`). Old schema-only stubs were removed when
-  // the flags landed in Phase θ.
-];
+// NOTE: the non-flag autonomy settings the runtime ACTUALLY reads (heartbeat
+// cadence/reasons, autonomy level, the per-sense toggles) live in the unified AI
+// config — the single source of truth (see aiProfileSettingsSchemas.ts). The old
+// `autonomy.*` substrate schemas here (heartbeat.intervalMs, followup.maxDepth,
+// subagent.approvalMode, cron.persistencePath) were registered but read by NO
+// runtime consumer — settings that did nothing — so they were removed rather than
+// leave knobs wired to nothing.
 
 // ─── Registration helpers ──────────────────────────────────────────────────
 
@@ -166,14 +119,3 @@ export function registerAutonomyFlagSettings(
   }
 }
 
-/**
- * Register the non-flag autonomy substrate schemas (heartbeat cadence,
- * followup depth, subagent approval, cron path) plus T2 indexing toggles.
- */
-export function registerAutonomySubstrateSettings(
-  registry: ISettingsRegistryService,
-): void {
-  for (const schema of SUBSTRATE_SCHEMAS) {
-    registry.register(schema);
-  }
-}

@@ -2737,12 +2737,11 @@ export class Workbench extends Layout {
     const firstFolder = folders[0];
     const folderPath = firstFolder.uri.fsPath;
 
-    // Resolve the migrations directory — bundled with the app
-    // Canvas migrations live in src/built-in/canvas/migrations/ at dev time.
-    // At runtime, we need the absolute path. We'll use the electron IPC
-    // to resolve the app path plus relative migrations path.
-    // For now, migrations are passed as undefined — they'll be wired
-    // when Canvas tool activates and provides its migration path.
+    // Open the base workspace database. Schema migrations are intentionally NOT
+    // applied here: the Canvas extension owns its schema and applies its own
+    // migrations when it activates (via the `database:open` IPC with its own
+    // migrations dir). So this workbench-level open passes no migrations by
+    // design — they're handled by the extension that owns them, not duplicated.
     try {
       await this._databaseService.openForWorkspace(folderPath);
       console.log('[Workbench] Database opened for workspace folder: %s', folderPath);

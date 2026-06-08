@@ -81,21 +81,18 @@ const CHAT_SESSION_SCHEME = 'parallx-chat-session';
 /**
  * Seed passed to `ChatService.createEphemeralSession`.
  *
- * Every field is optional by design — M58 captures all four fields on the
- * handle so M59 can adopt them without widening the substrate API. The
- * current subagent executor consumes `firstUserMessage` (via the caller
- * deciding when to invoke sendRequest) and inherits loop-safety through
- * the per-turn ChatToolLoopSafety instance.
+ * `systemMessage` is the session's own system prompt (appended to the base — e.g.
+ * the heartbeat's NOOP/NOTE/ACT contract); `firstUserMessage` is informational
+ * (the caller decides when to call sendRequest). Tool scoping for autonomous turns
+ * is handled by the permission gate + autonomy level (markHeartbeatSession), and
+ * iteration is bounded per-turn by ChatToolLoopSafety — so no separate tool
+ * allowlist or loop-safety field is needed here.
  */
 export interface IEphemeralSessionSeed {
-  /** Optional system-prompt override captured for M59 retrofits. */
+  /** The session's system-prompt override — APPENDED to the base system prompt. */
   readonly systemMessage?: string;
   /** Informational: the first user message the caller plans to send. */
   readonly firstUserMessage?: string;
-  /** Optional tool allowlist (M59). */
-  readonly toolsEnabled?: readonly string[];
-  /** Parent loop-safety context snapshot (M59 shared-counter hook). */
-  readonly loopSafetyContext?: Readonly<Record<string, unknown>>;
 }
 
 /**
@@ -978,10 +975,6 @@ export class ChatService extends Disposable implements IChatService {
    *     NOOP/NOTE/ACT autonomy contract). Consumed in `sendRequest`.
    *   - `firstUserMessage`: informational — the caller decides when/how to
    *     drive `sendRequest`
-   *   - `toolsEnabled`: future tool allowlist (captured for M59)
-   *   - `loopSafetyContext`: parent's loop safety snapshot (captured for
-   *     future shared-counter wiring; per-turn ChatToolLoopSafety already
-   *     provides bounded iteration today)
    */
   createEphemeralSession(parentId: string, seed: IEphemeralSessionSeed = {}): IEphemeralSessionHandle {
     const id = EPHEMERAL_SESSION_ID_PREFIX + generateUUID();
