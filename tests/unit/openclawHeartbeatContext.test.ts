@@ -80,6 +80,16 @@ describe('formatEventLine', () => {
     expect(line).toContain('1.8');
   });
 
+  it('renders a habit-confirmed as a focused decision the model judges (with cron rail)', () => {
+    const line = formatEventLine(mk('habit-confirmed', { action: 'dashboard:refresh AI News', typicalTime: '08:00', cron: '0 8 * * *' }));
+    expect(line).toContain('habit just confirmed');
+    expect(line).toContain('refresh AI News');
+    expect(line).toContain('08:00');
+    expect(line).toContain('cron_create');
+    expect(line).toContain('0 8 * * *');
+    expect(line).toContain('NOOP'); // it can decline — judgment is the model's
+  });
+
   it('falls back to type + JSON for unknown kinds', () => {
     expect(formatEventLine(mk('mystery', { x: 1 }))).toBe('mystery · {"x":1}');
   });

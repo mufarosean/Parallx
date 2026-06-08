@@ -40,10 +40,18 @@ export interface IHabitReading {
 
 export interface IHabitState {
   readonly events: [string, number[]][];
+  readonly proposed?: string[];
+}
+
+/** A 5-field cron expression that fires daily at the given minute-of-day. */
+export function cronForMinuteOfDay(minute: number): string {
+  const m = ((Math.round(minute) % MIN_PER_DAY) + MIN_PER_DAY) % MIN_PER_DAY;
+  return `${m % 60} ${Math.floor(m / 60)} * * *`;
 }
 
 export class HabitDetector {
   private _events = new Map<string, number[]>();
+  private _proposed = new Set<string>();
   private readonly _windowDays: number;
   private readonly _minDays: number;
   private readonly _toleranceMin: number;
@@ -104,11 +112,16 @@ export class HabitDetector {
       .sort((a, b) => b.confidence - a.confidence);
   }
 
-  toState(): IHabitState { return { events: [...this._events.entries()] }; }
+  /** Whether this habit has already been proposed for automation (propose once). */
+  wasProposed(action: string): boolean { return this._proposed.has(action); }
+  markProposed(action: string): void { this._proposed.add(action); }
+
+  toState(): IHabitState { return { events: [...this._events.entries()], proposed: [...this._proposed] }; }
   restore(state: IHabitState | undefined): void {
     if (state && Array.isArray(state.events)) {
       this._events = new Map(state.events.filter(e => Array.isArray(e) && typeof e[0] === 'string' && Array.isArray(e[1])));
     }
+    if (state && Array.isArray(state.proposed)) this._proposed = new Set(state.proposed.filter(x => typeof x === 'string'));
   }
 }
 

@@ -62,6 +62,7 @@ import { ActionLedger } from '../../openclaw/mind/actionLedger.js';
 import { PredictionLoop } from '../../openclaw/mind/predictionLoop.js';
 import { SequencePredictor } from '../../openclaw/mind/sequencePredictor.js';
 import { SurpriseAccumulator } from '../../openclaw/mind/surpriseAccumulator.js';
+import { cronForMinuteOfDay } from '../../openclaw/mind/habitDetector.js';
 import { createMindRememberTool } from './tools/mindTools.js';
 import { risingFailures } from '../../openclaw/openclawHeartbeatContext.js';
 import { signalToSystemEvent } from '../../openclaw/openclawAutonomySignal.js';
@@ -2222,10 +2223,25 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           if (salient && unifiedConfigService.getEffectiveConfig().heartbeat.senseExtensionSignals) {
             heartbeatRunner.pushEvent(signalToSystemEvent(sig));
           }
-          // But EVERY signal feeds habit detection, so the agent can learn "you do
-          // this every morning" and offer to automate it — without ever nagging.
+          // EVERY signal feeds habit detection. When a habit newly CONFIRMS, we
+          // deterministically hand the agent a FOCUSED decision (guaranteed — not a
+          // hint buried in a general review) and trust its JUDGMENT on whether and
+          // how to offer automation. Code guarantees the shot + the rails (cron);
+          // the model decides. Deduped to once per habit so it never nags.
           const action = [sig.source, sig.title].filter(Boolean).join(':');
-          if (action) void mindService?.observeAction(action, Date.now());
+          if (action && mindService) {
+            const mind = mindService;
+            void (async () => {
+              await mind.observeAction(action, Date.now());
+              for (const h of await mind.takePendingHabitProposals(Date.now())) {
+                heartbeatRunner.pushEvent({
+                  type: 'habit-confirmed',
+                  payload: { action: h.action, typicalTime: h.typicalTime, cron: cronForMinuteOfDay(h.typicalMinuteOfDay ?? 0) },
+                  timestamp: Date.now(),
+                });
+              }
+            })();
+          }
         }),
       );
     }

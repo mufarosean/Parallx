@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { HabitDetector } from '../../src/openclaw/mind/habitDetector';
+import { HabitDetector, cronForMinuteOfDay } from '../../src/openclaw/mind/habitDetector';
 
 const DAY = 24 * 60 * 60 * 1000;
 const HM = (day: number, hour: number, min = 0) => day * DAY + (hour * 60 + min) * 60000;
@@ -69,5 +69,21 @@ describe('HabitDetector — "you do this every morning"', () => {
     const h2 = new HabitDetector({ minDays: 3 });
     h2.restore(state);
     expect(h2.reading('x', HM(3, 12)).isDailyHabit).toBe(true);
+  });
+
+  it('cronForMinuteOfDay builds a daily cron at the time', () => {
+    expect(cronForMinuteOfDay(8 * 60 + 5)).toBe('5 8 * * *');
+    expect(cronForMinuteOfDay(0)).toBe('0 0 * * *');
+    expect(cronForMinuteOfDay(13 * 60 + 30)).toBe('30 13 * * *');
+  });
+
+  it('tracks proposed habits (propose once) across serialize/restore', () => {
+    const h = new HabitDetector();
+    expect(h.wasProposed('x')).toBe(false);
+    h.markProposed('x');
+    expect(h.wasProposed('x')).toBe(true);
+    const h2 = new HabitDetector();
+    h2.restore(JSON.parse(JSON.stringify(h.toState())));
+    expect(h2.wasProposed('x')).toBe(true);
   });
 });

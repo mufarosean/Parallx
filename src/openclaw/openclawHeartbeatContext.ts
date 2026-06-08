@@ -101,6 +101,14 @@ export function formatEventLine(ev: IHeartbeatSystemEvent): string {
       const pressure = typeof p.pressure === 'number' ? ` (accumulated surprise ${p.pressure})` : '';
       return `prediction surprise${pressure}: reality diverged from my forecast — you touched ${path}. Review what's changed in the user's focus; update beliefs if the pattern has shifted.`;
     }
+    case 'habit-confirmed': {
+      // A focused decision the agent is GUARANTEED to make — code routes it here;
+      // the JUDGMENT (whether/how to offer automation) is the model's, and trusted.
+      const action = typeof p.action === 'string' ? p.action : 'a recurring action';
+      const when = typeof p.typicalTime === 'string' ? ` around ${p.typicalTime}` : '';
+      const cron = typeof p.cron === 'string' ? p.cron : '';
+      return `A daily habit just confirmed: "${action}"${when}. Decide, with judgment, whether to OFFER to automate it for the user — and if so, what automation actually helps (a straight repeat? a digest? a reminder?). If it's worth it, propose it in one clear sentence and, on their approval, schedule it with cron_create (a sensible daily schedule is "${cron}"). If automating it would be unhelpful, intrusive, or premature, just respond NOOP. Your call.`;
+    }
     case 'file-change':
       return `file changed: ${typeof p.path === 'string' ? p.path : '(unknown)'}`;
     default: {

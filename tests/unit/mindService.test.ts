@@ -128,10 +128,17 @@ describe('MindService — the loop seam', () => {
     // and it surfaces in the snapshot
     expect((await svc.snapshot()).habits.length).toBeGreaterThan(0);
 
-    // persists across restart
+    // takePendingHabitProposals is deterministic + propose-once
+    const first = await svc.takePendingHabitProposals(t);
+    expect(first.some(h => h.action === 'dashboard:refresh AI News')).toBe(true);
+    const second = await svc.takePendingHabitProposals(t);
+    expect(second).toHaveLength(0); // never proposes the same habit twice
+
+    // persists across restart (incl. the "already proposed" mark)
     const svc2 = new MindService(new MindStore(storage), new ActionLedger(storage), { now: () => t, genId: () => `x${++ids}`, capabilityStorage: storage });
     await svc2.init();
     expect(svc2.habits(t).length).toBeGreaterThan(0);
+    expect(await svc2.takePendingHabitProposals(t)).toHaveLength(0); // still proposed
   });
 
   it('daily reflection: reflectionDue gates it; reflect() prunes stale beliefs, marks, ledgers, persists', async () => {

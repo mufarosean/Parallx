@@ -135,6 +135,19 @@ export class MindService {
     return this._habits.habits(nowMs);
   }
 
+  /**
+   * Deterministically pull habits that are newly confirmed and not yet proposed,
+   * marking them proposed (once). This is the LLM-FREE path: the caller surfaces a
+   * concrete "Automate it?" card for each, so the proposal reliably appears the
+   * moment a habit confirms — it never depends on the model choosing to mention it.
+   */
+  async takePendingHabitProposals(nowMs = this._now()): Promise<IHabitReading[]> {
+    const pending = this._habits.habits(nowMs).filter(h => !this._habits.wasProposed(h.action));
+    for (const h of pending) this._habits.markProposed(h.action);
+    if (pending.length > 0) await this._saveHabits();
+    return pending;
+  }
+
   private async _loadReflection(): Promise<void> {
     if (!this._capStorage) return;
     try {
