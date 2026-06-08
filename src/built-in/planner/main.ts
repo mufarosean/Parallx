@@ -15,6 +15,7 @@ import './planner.css';
 import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import { PlannerDataService } from './plannerDataService.js';
+import { IPlannerQueryService } from '../../services/serviceTypes.js';
 import type { ICalendarSyncProvider } from './plannerTypes.js';
 import { PlannerSidebar } from './plannerSidebar.js';
 import { PlannerEditorProvider } from './plannerEditorProvider.js';
@@ -93,6 +94,20 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 2. Data service.
   _data = new PlannerDataService();
   context.subscriptions.push(_data);
+
+  // 2a. Expose a narrow read surface cross-extension so the autonomy review (and
+  //     anything else) can see the user's open tasks — real workspace awareness.
+  {
+    const data = _data;
+    api.services.registerInstance(IPlannerQueryService, {
+      listOpenTasks: async () => {
+        try {
+          const tasks = await data.listTasks({ status: ['reviewing', 'planned'] });
+          return tasks.map((t) => ({ title: t.title, dueAt: t.dueAt }));
+        } catch { return []; }
+      },
+    });
+  }
 
   // 2b. Settings panel in the unified Settings hub. The sidebar's Settings row
   //     deep-links straight here via settings.open('planner').

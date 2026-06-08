@@ -7,6 +7,7 @@ import {
   hasNoteworthySignals,
   risingFailures,
   buildWorkspaceContext,
+  buildTasksContext,
 } from '../../src/openclaw/openclawHeartbeatContext';
 
 const diag = (name: string, status: 'pass' | 'warn' | 'fail', detail = '') => ({
@@ -150,5 +151,22 @@ describe('buildWorkspaceContext — the agent sees the user\'s actual work', () 
 
   it('is empty when there are no pages', () => {
     expect(buildWorkspaceContext([])).toBe('');
+  });
+});
+
+describe('buildTasksContext — the agent sees the user\'s commitments', () => {
+  it('lists open tasks and flags how many are due within a day', () => {
+    const now = 1_000_000_000_000;
+    const out = buildTasksContext([
+      { title: 'File the Q3 report', dueAt: now + 60 * 60 * 1000 }, // due soon
+      { title: 'Refactor the planner', dueAt: now + 10 * 24 * 60 * 60 * 1000 },
+    ], now);
+    expect(out).toContain('File the Q3 report');
+    expect(out).toContain('2 open task');
+    expect(out).toContain('1 due within a day');
+  });
+
+  it('is empty when there are no open tasks', () => {
+    expect(buildTasksContext([])).toBe('');
   });
 });

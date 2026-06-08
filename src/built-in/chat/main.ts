@@ -40,7 +40,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, IGlobalStorageService, ISurfaceRouterService, IAutonomyLogService, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator, ICanvasPageQueryService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, IGlobalStorageService, ISurfaceRouterService, IAutonomyLogService, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator, ICanvasPageQueryService, IPlannerQueryService } from '../../services/serviceTypes.js';
 import { SettingsRegistryService, setGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import { createSecretStorageService } from '../../services/secretStorageService.js';
 import { PolicyDecisionPoint as _PolicyDecisionPoint } from '../../services/policyDecisionPoint.js';
@@ -2090,6 +2090,15 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             : undefined;
           if (!canvas) return [];
           try { return (await canvas.getRootPages()).map((p) => ({ title: p.title, updatedAt: p.updatedAt })); }
+          catch { return []; }
+        },
+        // The user's open planner tasks — the second surface the review knows.
+        getWorkspaceTasks: async () => {
+          const planner = api.services.has(IPlannerQueryService)
+            ? api.services.get<import('../../services/serviceTypes.js').IPlannerQueryService>(IPlannerQueryService)
+            : undefined;
+          if (!planner) return [];
+          try { return await planner.listOpenTasks(); }
           catch { return []; }
         },
         // Continuity + audit (Build-1d.3). The loop reads its prior beliefs into

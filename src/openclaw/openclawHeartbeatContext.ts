@@ -84,6 +84,26 @@ export function buildWorkspaceContext(pages: readonly IWorkspacePageInfo[], maxP
   return lines.join('\n');
 }
 
+export interface IWorkspaceTaskInfo {
+  readonly title: string;
+  readonly dueAt?: number | null;
+}
+
+/**
+ * Render the user's OPEN planner tasks so the review knows their commitments —
+ * the second surface the agent should help with ("4 tasks due today, no time
+ * blocks — schedule them?").
+ */
+export function buildTasksContext(tasks: readonly IWorkspaceTaskInfo[], nowMs = Date.now(), maxTasks = 12): string {
+  if (tasks.length === 0) return '';
+  const soon = nowMs + 24 * 60 * 60 * 1000;
+  const dueSoon = tasks.filter(t => typeof t.dueAt === 'number' && (t.dueAt as number) <= soon).length;
+  const header = `The user has ${tasks.length} open task(s)${dueSoon > 0 ? ` (${dueSoon} due within a day)` : ''}:`;
+  const lines = [header];
+  for (const t of tasks.slice(0, maxTasks)) lines.push(`- ${t.title?.trim() || 'Untitled task'}`);
+  return lines.join('\n');
+}
+
 /**
  * Names of checks failing now that were NOT failing in `prevFailed` — the
  * rising edge. Used to push a heartbeat reaction only when a check newly

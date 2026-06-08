@@ -179,6 +179,7 @@ function buildHarness(overrides?: {
       mind: overrides?.mind,
       getDiagnostics: overrides?.getDiagnostics as (() => readonly never[] | undefined) | undefined,
       getWorkspacePages: overrides?.getWorkspacePages,
+      getWorkspaceTasks: overrides?.getWorkspaceTasks,
     },
   );
 
@@ -369,12 +370,16 @@ describe('HeartbeatTurnExecutor — real-turn retrofit (M58-real W2)', () => {
     const h = buildHarness({
       respondWith: 'NOOP',
       getWorkspacePages: async () => [{ title: 'Q3 Planning' }, { title: 'Q3 Budget' }],
+      getWorkspaceTasks: async () => [{ title: 'File the Q3 report', dueAt: Date.now() + 3_600_000 }],
     });
     await h.executor([], 'wake');
     const msg = h.chat_.calls.sendRequest[0].message;
     expect(msg).toContain('Q3 Planning');
     expect(msg).toContain('Q3 Budget');
     expect(msg).toContain('canvas page');
+    // ...and the user's open tasks (the second surface)
+    expect(msg).toContain('File the Q3 report');
+    expect(msg).toContain('open task');
   });
 
   it('reasons allowlist blocks all paths (including real turn reasons)', async () => {

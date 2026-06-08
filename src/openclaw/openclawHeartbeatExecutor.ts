@@ -75,8 +75,8 @@ import type {
   IHeartbeatSystemEvent,
 } from './openclawHeartbeatRunner.js';
 import { extractFinalAssistantText } from './openclawSubagentExecutor.js';
-import { buildHeartbeatSnapshot, formatAppContext, formatEventLine, hasNoteworthySignals, buildWorkspaceContext } from './openclawHeartbeatContext.js';
-import type { IHeartbeatAppSnapshot, IWorkspacePageInfo } from './openclawHeartbeatContext.js';
+import { buildHeartbeatSnapshot, formatAppContext, formatEventLine, hasNoteworthySignals, buildWorkspaceContext, buildTasksContext } from './openclawHeartbeatContext.js';
+import type { IHeartbeatAppSnapshot, IWorkspacePageInfo, IWorkspaceTaskInfo } from './openclawHeartbeatContext.js';
 import type { AgentActionKind } from './mind/actionLedger.js';
 import type { IDiagnosticResult } from '../services/serviceTypes.js';
 import type {
@@ -181,6 +181,8 @@ export interface IHeartbeatRealTurnDeps {
    * reporting status the user can already see.
    */
   readonly getWorkspacePages?: () => Promise<readonly IWorkspacePageInfo[]>;
+  /** The user's open planner tasks — the second surface the review should know. */
+  readonly getWorkspaceTasks?: () => Promise<readonly IWorkspaceTaskInfo[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -474,11 +476,17 @@ export function createHeartbeatTurnExecutor(
 
     const appContext = formatAppContext(snapshot);
 
-    // The user's ACTUAL canvas pages — so the review knows their real work, not
-    // just that an event fired. Best-effort: never break the loop on a failure.
+    // The user's ACTUAL work — canvas pages + open tasks — so the review knows
+    // their real surfaces, not just that an event fired. Best-effort: never break
+    // the loop on a failure.
     let workspaceBlock = '';
-    try { workspaceBlock = buildWorkspaceContext(await realTurnDeps.getWorkspacePages?.() ?? []); }
-    catch { workspaceBlock = ''; }
+    try {
+      const [pages, tasks] = await Promise.all([
+        realTurnDeps.getWorkspacePages?.() ?? Promise.resolve([]),
+        realTurnDeps.getWorkspaceTasks?.() ?? Promise.resolve([]),
+      ]);
+      workspaceBlock = [buildWorkspaceContext(pages), buildTasksContext(tasks)].filter((b) => b).join('\n\n');
+    } catch { workspaceBlock = ''; }
 
     // MIND — continuity (its prior beliefs seed the review) + audit (outcomes are
     // ledgered). EVERY MIND call is best-effort: a failing MIND must never break

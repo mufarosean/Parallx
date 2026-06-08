@@ -1660,6 +1660,14 @@ export interface ICanvasPageQueryService {
 
 export const ICanvasPageQueryService = createServiceIdentifier<ICanvasPageQueryService>('ICanvasPageQueryService');
 
+/** Narrow, cross-extension read surface for the planner — lets the autonomy
+ *  review (and anything else) see the user's open tasks. */
+export interface IPlannerQueryService {
+  /** Open tasks (not done/cancelled), lightweight. */
+  listOpenTasks(): Promise<{ title: string; dueAt: number | null }[]>;
+}
+export const IPlannerQueryService = createServiceIdentifier<IPlannerQueryService>('IPlannerQueryService');
+
 export const IIndexingPipelineService = createServiceIdentifier<IIndexingPipelineService>('IIndexingPipelineService');
 
 // ─── ISemanticGraphService (M68) ───────────────────────────────────────────
