@@ -234,12 +234,11 @@ function buildSeedSystemMessage(reason: HeartbeatReason, events: readonly IHeart
   lines.push(`You were woken by a heartbeat event (reason: ${reason}).`);
   lines.push('This is NOT a user message. It is an internal trigger. The user did not address you and is not waiting for a reply.');
   if (reason === 'interval') {
-    // The periodic "heartbeat" review — the app's awareness loop. The model is
-    // handed a status snapshot of the whole app (below) and decides if anything
-    // needs the user. The vast majority of reviews are routine → IGNORE.
-    lines.push('This is a periodic check-in: review the workspace status snapshot below — failing background diagnostics, recent activity — and decide whether anything genuinely needs the user’s attention right now.');
+    // The periodic review. Look at what the USER has been doing and decide if you
+    // can genuinely help — not whether to report status.
+    lines.push('This is a periodic check-in. Look at what the user has actually been DOING (the recent activity below) and decide whether you can genuinely HELP with it — e.g. connect related work they just created, tee up an obvious next step, or surface something they would want to know. Do NOT report diagnostics or status they can already see for themselves. If nothing genuinely needs you, that is the normal answer → NOOP.');
   } else if (reason === 'system-event') {
-    lines.push('A workspace event occurred that may or may not warrant attention.');
+    lines.push('The user just did something in the app (see the event below). Decide whether you can genuinely HELP with what they did — connect it to related work, offer an obvious next step, or surface something useful. The goal is to help with their action, NOT to report it back to them.');
     const firstType = events[0]?.type;
     if (firstType) {
       lines.push(`Event kind: ${firstType}.`);

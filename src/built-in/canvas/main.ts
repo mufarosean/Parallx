@@ -275,6 +275,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       void propertyService.setProperty(event.pageId, 'modified', nowIso).catch((err) => {
         console.warn('[Canvas] Failed to seed `modified` property for', event.pageId, err);
       });
+      // Feed canvas activity into the agent's perception, so autonomy can actually
+      // SEE you create pages (the core surface) instead of being blind to it.
+      // Routed via the autonomy-signal command (the API the news widget uses too).
+      const pageTitle = event.page?.title?.trim() || 'Untitled';
+      void api.commands?.executeCommand?.('parallx.autonomy.signal', {
+        source: 'canvas', title: `created page "${pageTitle}"`, severity: 'info',
+      }).catch(() => { /* perception is best-effort; never block page creation */ });
     }),
   );
   // M78 Phase 4 — the on-save write to the `modified` property was a

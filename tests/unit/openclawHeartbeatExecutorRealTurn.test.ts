@@ -206,7 +206,7 @@ describe('HeartbeatTurnExecutor — real-turn retrofit (M58-real W2)', () => {
     expect(h.chat_.calls.createEphemeralSession[0].parentId).toBe('parent-1');
     expect(h.chat_.calls.sendRequest).toHaveLength(1);
     expect(h.chat_.calls.sendRequest[0].message).toContain('[heartbeat interval]');
-    expect(h.chat_.calls.sendRequest[0].message).toContain('Workspace status snapshot');
+    expect(h.chat_.calls.sendRequest[0].message).toContain('Recent activity');
     expect(h.chat_.calls.purgeEphemeralSession).toHaveLength(1);
     expect((h.chat.deliveries[0].metadata as Record<string, unknown>).reason).toBe('interval');
     expect(getDeliveryOrigin(h.chat.deliveries[0])).toBe(ORIGIN_HEARTBEAT);
@@ -342,6 +342,22 @@ describe('HeartbeatTurnExecutor — real-turn retrofit (M58-real W2)', () => {
     expect(hb.length).toBeGreaterThan(0);
     // Nothing else in history.
     expect(hb.length).toBe(h.router.deliveryHistory.length);
+  });
+
+  it('VALUE: a review triggered by a canvas page the user created is ABOUT that activity, not diagnostics', async () => {
+    // The whole point: the agent must respond to what the user actually did, and
+    // NOT regurgitate the 15 diagnostics they can already see. With all checks
+    // passing and a real canvas page-creation event, the model's prompt must lead
+    // with the page activity and never echo the diagnostics.
+    const h = buildHarness({ respondWith: 'NOOP', getDiagnostics: () => [{ name: 'Ollama', status: 'pass', detail: 'ok' }] });
+    const pageCreated = { type: 'extension-signal', payload: { source: 'canvas', title: 'created page "Q3 Planning"' }, timestamp: Date.now() } as IHeartbeatSystemEvent;
+
+    await h.executor([pageCreated], 'system-event');
+
+    const msg = h.chat_.calls.sendRequest[0].message;
+    expect(msg).toContain('created page "Q3 Planning"'); // the agent SEES the canvas activity
+    expect(msg).not.toMatch(/checks passing/);           // no redundant diagnostics echo
+    expect(msg).not.toMatch(/all \d+ checks/);           // diagnostics aren't the headline
   });
 
   it('reasons allowlist blocks all paths (including real turn reasons)', async () => {

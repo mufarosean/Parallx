@@ -110,22 +110,27 @@ describe('risingFailures', () => {
 });
 
 describe('formatAppContext', () => {
-  it('reports the all-clear posture so the model can confidently NOOP', () => {
+  it('demotes diagnostics: when all checks pass it says NOTHING about them (no redundant echo)', () => {
     const out = formatAppContext(buildHeartbeatSnapshot([diag('A', 'pass'), diag('B', 'pass')], []));
-    expect(out).toContain('all 2 checks passing');
-    expect(out).toContain('none since the last review');
+    expect(out).toContain('Recent activity: nothing new');
+    expect(out).not.toMatch(/checks passing/);  // the noise the user can already see is gone
+    expect(out).not.toContain('Background health');
   });
 
-  it('surfaces failing diagnostics with detail', () => {
+  it('leads with recent activity; surfaces failing diagnostics only as a footnote below it', () => {
     const out = formatAppContext(buildHeartbeatSnapshot(
       [diag('Ollama Connection', 'fail', 'Cannot reach Ollama')],
       [ev('file-change')],
     ));
-    expect(out).toContain('[FAIL] Ollama Connection: Cannot reach Ollama');
     expect(out).toContain('1 file-change');
+    expect(out).toContain('[FAIL] Ollama Connection: Cannot reach Ollama');
+    // activity comes BEFORE the diagnostics footnote
+    expect(out.indexOf('Recent activity')).toBeLessThan(out.indexOf('Background health'));
   });
 
-  it('notes when diagnostics are unavailable', () => {
-    expect(formatAppContext(buildHeartbeatSnapshot(undefined, []))).toContain('Diagnostics: unavailable');
+  it('says nothing about diagnostics when they are unavailable (no noise)', () => {
+    const out = formatAppContext(buildHeartbeatSnapshot(undefined, []));
+    expect(out).toContain('Recent activity');
+    expect(out).not.toContain('Diagnostics');
   });
 });

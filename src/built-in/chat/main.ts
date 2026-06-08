@@ -2221,10 +2221,14 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     if (_autonomySignals) {
       context.subscriptions.push(
         _autonomySignals.onDidSignal((sig) => {
-          // Only warn/urgent signals WAKE a review — routine 'info' signals (a
-          // widget refresh, a sync completing) are perception, not interruption,
-          // so they never spin up the model. (Keeps "idle is free" honest.)
-          const salient = sig.severity === 'warn' || sig.severity === 'urgent';
+          // A signal reaches a REVIEW when it's a warning/urgent OR a meaningful
+          // user ACTION in a surface the agent should respond to (e.g. creating a
+          // canvas page or a planner item). Pure status pings (a news refresh, a
+          // sync completing) stay perception-only — they feed habits but never
+          // spin up the model. This is what lets the agent see + respond to the
+          // surfaces you actually touch, instead of only its own diagnostics.
+          const isUserAction = sig.source === 'canvas' || sig.source === 'planner';
+          const salient = sig.severity === 'warn' || sig.severity === 'urgent' || isUserAction;
           if (salient && unifiedConfigService.getEffectiveConfig().heartbeat.senseExtensionSignals) {
             heartbeatRunner.pushEvent(signalToSystemEvent(sig));
           }

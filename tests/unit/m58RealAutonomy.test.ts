@@ -397,9 +397,10 @@ describe('M58-real integration scenarios', () => {
     runner.wake('interval');
     await new Promise((r) => setTimeout(r, 10));
 
-    // The model was seeded with the app snapshot, including the failing check.
+    // The model was seeded with the app snapshot (now activity-led), with the
+    // failing check demoted to the health footnote.
     expect(seeds).toHaveLength(1);
-    expect(seeds[0]).toContain('Workspace status snapshot');
+    expect(seeds[0]).toContain('Recent activity');
     expect(seeds[0]).toContain('[FAIL] Ollama Connection');
 
     // Its ACT response was delivered as a heartbeatResult for reason=interval.

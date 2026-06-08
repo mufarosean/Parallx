@@ -125,24 +125,26 @@ export function formatEventLine(ev: IHeartbeatSystemEvent): string {
  * (even "all clear") so the model can confidently report nothing-to-do.
  */
 export function formatAppContext(s: IHeartbeatAppSnapshot): string {
-  const lines: string[] = ['Workspace status snapshot:'];
+  const lines: string[] = [];
 
-  if (!s.diagnosticsAvailable) {
-    lines.push('- Diagnostics: unavailable this tick.');
-  } else if (s.diagnosticsAttention.length === 0) {
-    lines.push(`- Diagnostics: all ${s.diagnosticsTotal} checks passing.`);
+  // LEAD with what the user has actually been doing — that's what you can help
+  // with. (The detailed, human-readable event lines are added by the seed via
+  // formatEventLine; this is the at-a-glance summary.)
+  if (s.eventCount === 0) {
+    lines.push('Recent activity: nothing new since the last review.');
   } else {
-    lines.push(`- Diagnostics: ${s.diagnosticsAttention.length} need attention —`);
+    const parts = s.events.map(e => `${e.count} ${e.type}`).join(', ');
+    lines.push(`Recent activity: ${parts}.`);
+  }
+
+  // DEMOTE diagnostics to a footnote, and ONLY when something is actually wrong.
+  // The user has a dedicated AI Diagnostics tab; echoing "all 15 checks passing"
+  // every review is noise they can already see — so when all is well, say nothing.
+  if (s.diagnosticsAvailable && s.diagnosticsAttention.length > 0) {
+    lines.push(`Background health — ${s.diagnosticsAttention.length} check(s) need attention:`);
     for (const d of s.diagnosticsAttention) {
       lines.push(`    [${d.status.toUpperCase()}] ${d.name}: ${d.detail}`);
     }
-  }
-
-  if (s.eventCount === 0) {
-    lines.push('- Recent activity: none since the last review.');
-  } else {
-    const parts = s.events.map(e => `${e.count} ${e.type}`).join(', ');
-    lines.push(`- Recent activity: ${parts}.`);
   }
 
   return lines.join('\n');
