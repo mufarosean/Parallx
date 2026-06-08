@@ -105,4 +105,71 @@ describe('Autonomy live value probe (real model, real context)', () => {
 
     expect(reply.length).toBeGreaterThan(0);
   }, 130_000);
+
+  it('GIVEN a relate_pages tool, does the model CALL it with the right pages (not just narrate)?', async () => {
+    if (!(await ollamaUp())) {
+      console.log('\n[probe] Ollama not reachable — skipping.\n');
+      return;
+    }
+    const now = Date.now();
+    const DAY = 24 * 60 * 60 * 1000;
+    const pages = [
+      { title: 'Q3 Planning', updatedAt: new Date(now).toISOString() },
+      { title: 'Q3 Budget', updatedAt: new Date(now - DAY).toISOString() },
+      { title: 'Q3 Goals', updatedAt: new Date(now - 3 * DAY).toISOString() },
+    ];
+    const userMessage = [
+      '[heartbeat system-event]',
+      '1 event:',
+      '- signal from canvas: created page "Q3 Planning"',
+      '',
+      'Recent activity: 1 extension-signal.',
+      '',
+      buildWorkspaceContext(pages),
+    ].join('\n');
+
+    // The candidate tool we'd wire into production — does the model use it correctly?
+    const tools = [{
+      type: 'function',
+      function: {
+        name: 'relate_pages',
+        description: 'Link related canvas pages to a hub page so they are connected. Use when the user creates a page that clearly belongs with existing pages.',
+        parameters: {
+          type: 'object',
+          properties: {
+            hub: { type: 'string', description: 'The page everything relates to (its exact title).' },
+            related: { type: 'array', items: { type: 'string' }, description: 'Exact titles of the pages to link to the hub.' },
+          },
+          required: ['hub', 'related'],
+        },
+      },
+    }];
+
+    let json: { message?: { content?: string; tool_calls?: unknown[] } };
+    try {
+      const res = await fetch(`${OLLAMA}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: MODEL,
+          stream: false,
+          options: { temperature: 0.2 },
+          messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: userMessage }],
+          tools,
+        }),
+        signal: AbortSignal.timeout(110_000),
+      });
+      json = await res.json();
+    } catch (e) {
+      console.log(`\n[probe] model call failed/timed out (${(e as Error).message}) — skipping.\n`);
+      return;
+    }
+
+    const toolCalls = json?.message?.tool_calls ?? [];
+    console.log('\n========== GIVEN A TOOL: WHAT THE MODEL DID ==========\n');
+    console.log('tool_calls:', JSON.stringify(toolCalls, null, 2));
+    console.log('content:', json?.message?.content ?? '(none)');
+    console.log('\n=====================================================\n');
+    // Observation only — reports whether it called the tool and with what args.
+  }, 130_000);
 });
