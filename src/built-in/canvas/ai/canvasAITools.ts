@@ -25,6 +25,7 @@ import {
 } from './pageTools.js';
 import { createBlockTools } from './blockTools.js';
 import { createRelatePagesTool, type RelatePagesFn } from './relatePagesTool.js';
+import { createComposePageTool, type ComposePageFn } from './composePageTool.js';
 
 /** Canvas's stable tool id — attributes the tools to canvas in the AI tool
  *  picker and the Tool Gallery membership view. */
@@ -52,6 +53,9 @@ export interface ICanvasAIToolDeps {
   /** Nest related pages under a hub (canvas_relate_pages). Omitted → tool not
    *  registered. Implemented over the live data service in canvas/main.ts. */
   readonly relatePages?: RelatePagesFn;
+  /** Stream-compose a page body live into the open editor
+   *  (canvas_compose_page). Omitted → tool not registered. */
+  readonly composePage?: ComposePageFn;
 }
 
 /**
@@ -59,7 +63,7 @@ export interface ICanvasAIToolDeps {
  * Returns disposables that deregister them.
  */
 export function registerCanvasAITools(deps: ICanvasAIToolDeps): IDisposable[] {
-  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier, templateApi, relatePages } = deps;
+  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier, templateApi, relatePages, composePage } = deps;
 
   const tools: IChatTool[] = [
     createFindPagesTool(db),
@@ -72,6 +76,7 @@ export function registerCanvasAITools(deps: ICanvasAIToolDeps): IDisposable[] {
     createSetPageStyleTool(db, pageMutationNotifier, workspaceRoot),
     ...createBlockTools(db, pageMutationNotifier),
     ...(relatePages ? [createRelatePagesTool(relatePages)] : []),
+    ...(composePage ? [createComposePageTool(composePage)] : []),
   ];
 
   return tools.map((tool) =>

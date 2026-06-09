@@ -701,6 +701,7 @@ export function createEditPageTool(
       'Use `canvas_create_page` to make a new page (which auto-assigns the UUID). ' +
       'Use `canvas_read_page` or `canvas_find_pages` first if you only have a title and need the UUID. ' +
       '`mode` controls how `markdown` combines with the existing body: `replace` (default) wipes and rewrites; `append` adds after; `prepend` adds before. ' +
+      'For SUBSTANTIAL writes or full rewrites prefer `canvas_compose_page` — it streams the body into the page live so the user watches it being written. ' +
       'For files on disk use `fs_write_file` or `fs_edit_file` instead.',
     parameters: {
       type: 'object',

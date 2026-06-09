@@ -4507,3 +4507,25 @@
   border-radius: 2px;
   transition: background-color 0.4s ease-out, outline-color 0.4s ease-out;
 }
+
+/* ── Live AI compose (canvas_compose_page streaming into the open editor) ── */
+/* The pane is read-only while the AI writes; a soft accent pulse on the left
+   edge signals "being written" without obscuring the typing content. */
+.canvas-ai-writing {
+  position: relative;
+  cursor: progress;
+}
+.canvas-ai-writing::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: var(--vscode-progressBar-background, #0e70c0);
+  animation: canvas-ai-writing-pulse 1.2s ease-in-out infinite;
+  z-index: 10;
+  pointer-events: none;
+}
+@keyframes canvas-ai-writing-pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}

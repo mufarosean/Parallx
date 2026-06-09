@@ -29,6 +29,8 @@
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import type { ICanvasDataService } from './canvasTypes.js';
+import { diffTopLevel, computeReplaceRange } from './canvasDocDiff.js';
+import { ComposeStreamSession } from './composeStreamSession.js';
 import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
@@ -99,6 +101,22 @@ async function writeClipboardText(text: string): Promise<boolean> {
   }
 }
 
+/**
+ * A pane's live-compose sink — lets canvas_compose_page type the model's
+ * streamed markdown into the visible editor block-by-block.
+ */
+export interface IPageStreamSink {
+  /** Enter compose mode (snapshot + read-only). False if a stream is already active. */
+  begin(): boolean;
+  /** Ingest a raw model content delta; applies the minimal block patch live. */
+  push(delta: string): void;
+  /** Leave compose mode. Commit persists the streamed doc through the standard
+   *  save path; revert restores the pre-stream snapshot. Returns false when the
+   *  pane could not commit (e.g. closed mid-stream) — caller must persist the
+   *  accumulated markdown itself. */
+  end(commit: boolean): Promise<boolean>;
+}
+
 export class CanvasEditorProvider {
   private _openEditor: OpenEditorFn | undefined;
 
@@ -113,6 +131,9 @@ export class CanvasEditorProvider {
    * The ribbon's ⋯ button invokes these to show the full PageChromeController menu.
    */
   private readonly _pageMenuHandlers = new Map<string, () => void>();
+
+  /** Live-compose stream sinks registered by open panes (keyed by pageId). */
+  private readonly _streamSinks = new Map<string, IPageStreamSink>();
 
   /** Inline AI provider functions (set after chat tool activation). */
   private _inlineAISendChat: SendChatRequestFn | undefined;
@@ -211,6 +232,26 @@ export class CanvasEditorProvider {
   /** Get the page-menu handler (called by ribbon ⋯ button). */
   getPageMenuHandler(pageId: string): (() => void) | undefined {
     return this._pageMenuHandlers.get(pageId);
+  }
+
+  /** Whether a live editor pane exists for this page (panes register their
+   *  page-menu handler on init and remove it on dispose). Used to skip the
+   *  redundant focus-steal when an AI edit targets an already-open page. */
+  isPageOpen(pageId: string): boolean {
+    return this._pageMenuHandlers.has(pageId);
+  }
+
+  /** Register a pane's live-compose stream sink (called by pane after init). */
+  registerStreamSink(pageId: string, sink: IPageStreamSink): IDisposable {
+    this._streamSinks.set(pageId, sink);
+    return { dispose: () => { this._streamSinks.delete(pageId); } };
+  }
+
+  /** The live-compose sink for an OPEN page, if any. canvas_compose_page uses
+   *  this to type the model's output into the visible editor; absent (page not
+   *  open) it falls back to a plain DB write. */
+  getStreamSink(pageId: string): IPageStreamSink | undefined {
+    return this._streamSinks.get(pageId);
   }
 
   get window(): CanvasWindowApi | undefined {
@@ -657,6 +698,16 @@ class CanvasEditorPane implements IDisposable {
       }),
     );
 
+    // Register the live-compose stream sink so canvas_compose_page can type the
+    // model's output into this pane block-by-block (removed on dispose).
+    this._saveDisposables.add(
+      this._provider.registerStreamSink(this._pageId, {
+        begin: () => this._beginAIStream(),
+        push: (delta) => this._pushAIStreamDelta(delta),
+        end: (commit) => this._endAIStream(commit),
+      }),
+    );
+
     this._initComplete = true;
 
     // M66 Iter B — Listen for `parallx:canvas-reveal-block` events emitted
@@ -785,7 +836,16 @@ class CanvasEditorPane implements IDisposable {
         try {
           const decoded = await this._dataService.decodePageContentForEditor(page);
           if (!isCurrent()) return;
-          this._editor!.commands.setContent(decoded.doc);
+          // Reloads (external writers — AI tools, sidebar ops) apply SURGICALLY:
+          // only the changed top-level blocks are replaced, so the user's
+          // cursor/scroll/selection survive and nothing flickers. The full
+          // setContent rebuild is reserved for the initial open (no user state
+          // to preserve yet) and as the fallback when the surgical path can't
+          // represent the change.
+          const surgical = this._initialContentLoaded && this._applyExternalDoc(decoded.doc as { type: string; content?: unknown[] });
+          if (!surgical) {
+            this._editor!.commands.setContent(decoded.doc);
+          }
           if (decoded.recovered) {
             console.warn(`[CanvasEditorPane] Recovered and normalized content for page "${this._pageId}"`);
           }
@@ -813,7 +873,178 @@ class CanvasEditorPane implements IDisposable {
     }
   }
 
+  /**
+   * Surgically reconcile the live editor with an externally written doc (AI
+   * tools, sidebar ops) — the live co-authoring core. Instead of rebuilding the
+   * whole document (which resets cursor/scroll/selection and flickers), diff the
+   * top-level blocks by content/UniqueID, and replace only the changed span in
+   * ONE history-free transaction, mapping the user's selection through it.
+   *
+   * Focused-block protection: when the user's cursor sits INSIDE the changed
+   * span and the editor has focus, their in-progress block is kept verbatim
+   * (the AI never clobbers the block you're typing in); everything around it
+   * still updates.
+   *
+   * Returns false when the change can't be applied surgically (schema mismatch,
+   * unexpected shape) — the caller falls back to a full setContent.
+   */
+  private _applyExternalDoc(newDocJson: { type: string; content?: unknown[] }): boolean {
+    const editor = this._editor;
+    if (!editor) return false;
+    try {
+      const view = editor.view;
+      const state = view.state;
+      const oldChildren = ((state.doc.toJSON() as { content?: unknown[] }).content ?? []);
+      const newChildren = (newDocJson.content ?? []);
+      if (newChildren.length === 0) return false; // empty doc → let setContent normalize
 
+      const diff = diffTopLevel(oldChildren, newChildren);
+      if (!diff) return true; // identical — nothing to apply
+
+      const schema = state.schema;
+      const buildNodes = (jsons: readonly unknown[]) => jsons.map((j) => schema.nodeFromJSON(j));
+
+      // Block-index → doc-position helper (top-level children start at 0).
+      const posOf = (index: number): number => {
+        let pos = 0;
+        for (let i = 0; i < index; i++) pos += state.doc.child(i).nodeSize;
+        return pos;
+      };
+
+      // Focused-block protection — only when the user is actually in the span.
+      const sel = state.selection;
+      const cursorBlock = sel.$from.depth > 0 ? sel.$from.index(0) : -1;
+      const userInSpan = view.hasFocus() && cursorBlock >= diff.start && cursorBlock < diff.oldEnd;
+
+      const tr = state.tr;
+      if (userInSpan) {
+        const curId = (state.doc.child(cursorBlock).attrs as { id?: string } | null)?.id;
+        // Locate the user's block in the incoming span by its stable id.
+        let ni = -1;
+        if (typeof curId === 'string' && curId) {
+          for (let i = diff.start; i < diff.newEnd; i++) {
+            const attrs = (newChildren[i] as { attrs?: { id?: string } })?.attrs;
+            if (attrs?.id === curId) { ni = i; break; }
+          }
+        }
+        // Keep the user's block verbatim; update everything around it. Apply
+        // the LATER range first so the earlier range's positions stay valid.
+        const before = buildNodes(newChildren.slice(diff.start, ni >= 0 ? ni : diff.newEnd));
+        const after = ni >= 0 ? buildNodes(newChildren.slice(ni + 1, diff.newEnd)) : [];
+        const pStart = posOf(diff.start);
+        const pCur = posOf(cursorBlock);
+        const pCurEnd = pCur + state.doc.child(cursorBlock).nodeSize;
+        const pOldEnd = posOf(diff.oldEnd);
+        if (pCurEnd < pOldEnd || after.length > 0) tr.replaceWith(pCurEnd, pOldEnd, after);
+        if (pStart < pCur || before.length > 0) tr.replaceWith(pStart, pCur, before);
+      } else {
+        const { from, to } = computeReplaceRange(state.doc, diff);
+        tr.replaceWith(from, to, buildNodes(newChildren.slice(diff.start, diff.newEnd)));
+      }
+      if (!tr.docChanged) return true;
+
+      tr.setMeta('addToHistory', false);
+      tr.setSelection(sel.map(tr.doc, tr.mapping));
+      view.dispatch(tr);
+      return true;
+    } catch (err) {
+      // Schema mismatch / unexpected shape — let the caller do a full reload.
+      console.warn(`[CanvasEditorPane] Surgical apply failed for "${this._pageId}", falling back to full reload:`, err);
+      return false;
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Live compose stream (canvas_compose_page types into the open editor)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /** Active compose-stream state; null when no stream is running. */
+  private _streamState: {
+    session: ComposeStreamSession;
+    snapshot: unknown;          // pre-stream doc JSON for revert
+    wasEditable: boolean;
+  } | null = null;
+
+  /** Enter compose mode: snapshot the doc, lock editing, mark the pane. */
+  private _beginAIStream(): boolean {
+    const editor = this._editor;
+    if (!editor || this._disposed || this._streamState) return false;
+    this._streamState = {
+      session: new ComposeStreamSession(),
+      snapshot: editor.getJSON(),
+      wasEditable: editor.isEditable,
+    };
+    editor.setEditable(false);
+    this._editorContainer?.classList.add('canvas-ai-writing');
+    return true;
+  }
+
+  /**
+   * Ingest a model content delta: parse, diff against the previous parse, and
+   * replace only the changed block span — completed blocks sit still while the
+   * tail visibly grows. Index-based positions stay valid because the editor is
+   * read-only during the stream (only these patches mutate the doc).
+   */
+  private _pushAIStreamDelta(delta: string): void {
+    const editor = this._editor;
+    const st = this._streamState;
+    if (!editor || !st || this._disposed) return;
+    const patch = st.session.push(delta);
+    if (!patch) return;
+    this._suppressUpdate = true;
+    try {
+      const state = editor.view.state;
+      const posOf = (index: number): number => {
+        let pos = 0;
+        for (let i = 0; i < index; i++) pos += state.doc.child(i).nodeSize;
+        return pos;
+      };
+      const from = posOf(patch.start);
+      const to = posOf(Math.min(patch.oldEnd, state.doc.childCount));
+      const nodes = patch.blocks.map((j) => state.schema.nodeFromJSON(j));
+      const tr = state.tr.replaceWith(from, to, nodes);
+      tr.setMeta('addToHistory', false);
+      editor.view.dispatch(tr);
+      // Keep the growing tail in view so the user watches it type.
+      const last = this._editorContainer?.querySelector('.ProseMirror')?.lastElementChild;
+      last?.scrollIntoView({ block: 'nearest' });
+    } catch (err) {
+      // A partial parse the schema rejects — recover with a full set of the
+      // session's current children; the next delta resumes surgical patches.
+      console.warn(`[CanvasEditorPane] Stream patch failed for "${this._pageId}", resyncing:`, err);
+      try { editor.commands.setContent({ type: 'doc', content: [...this._streamState!.session.children] } as never); }
+      catch { /* keep streaming; commit still persists the full markdown */ }
+    } finally {
+      this._suppressUpdate = false;
+    }
+  }
+
+  /** Leave compose mode. Commit persists via the standard revision-checked save
+   *  path; revert restores the pre-stream snapshot. */
+  private async _endAIStream(commit: boolean): Promise<boolean> {
+    const st = this._streamState;
+    if (!st) return false;
+    this._streamState = null;
+    const editor = this._editor;
+    this._editorContainer?.classList.remove('canvas-ai-writing');
+    if (!editor || this._disposed) return false; // pane died mid-stream — caller persists
+    try {
+      if (commit) {
+        await this._dataService.flushContentSave(this._pageId, editor.getJSON());
+        this._pageBlockIds = this._collectPageBlockIds(editor);
+      } else {
+        this._suppressUpdate = true;
+        try { editor.commands.setContent(st.snapshot as never); }
+        finally { this._suppressUpdate = false; }
+      }
+      return true;
+    } catch (err) {
+      console.error(`[CanvasEditorPane] Stream ${commit ? 'commit' : 'revert'} failed for "${this._pageId}":`, err);
+      return false;
+    } finally {
+      editor.setEditable(st.wasEditable);
+    }
+  }
 
   // ══════════════════════════════════════════════════════════════════════════════  // Dispose
   // ══════════════════════════════════════════════════════════════════════════

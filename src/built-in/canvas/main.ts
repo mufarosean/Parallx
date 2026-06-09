@@ -16,8 +16,12 @@ import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { LinksApi } from '../../links/linksApi.js';
 import { ICanvasPageQueryService, IIndexingPipelineService, IVectorStoreService, IDatabaseService, IEditorService } from '../../services/serviceTypes.js';
-import { ILanguageModelToolsService } from '../../services/chatTypes.js';
+import { ILanguageModelToolsService, ILanguageModelsService } from '../../services/chatTypes.js';
 import { registerCanvasAITools, canvasPageIdFromEditorId } from './ai/canvasAITools.js';
+import { createComposePageRuntime } from './ai/composePageRuntime.js';
+import { tiptapJsonToMarkdown } from './markdownExport.js';
+import { markdownToTiptapJson } from './markdownImport.js';
+import { decodeCanvasContent, encodeCanvasContentFromDoc } from './contentSchema.js';
 import { CanvasDataService } from './canvasDataService.js';
 import type { ICanvasDataService } from './canvasTypes.js';
 import { PageChangeKind } from './canvasTypes.js';
@@ -119,6 +123,7 @@ let _api: ParallxApi;
 let _dataService: CanvasDataService | null = null;
 let _sidebar: CanvasSidebar | null = null;
 let _propertyService: PropertyDataService | null = null;
+let _editorProvider: CanvasEditorProvider | null = null;
 
 // â”€â”€â”€ Activation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -235,15 +240,24 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       getCurrentPageId: () => canvasPageIdFromEditorId(editorService?.activeEditor?.id),
       workspaceRoot: api.workspace.workspaceFolders?.[0]?.uri,
       templateApi: api,
-      pageMutationNotifier: (pageId, kind) => {
+      pageMutationNotifier: async (pageId, kind) => {
         // Cancel any pending auto-save before the reload fires. The debounced
         // save holds pre-AI content; if it fires after notifyExternalPageMutation
         // updates _knownRevisions to the AI's new revision it silently succeeds
         // and overwrites the AI's write. Cancelling it here eliminates the race.
         if (kind === 'updated') _dataService?.cancelPendingSave(pageId);
-        void _dataService?.notifyExternalPageMutation(pageId, kind);
-        // Surface what the AI did: focus/open the affected page (not on delete).
-        if (kind !== 'deleted') void openPageInEditor(pageId);
+        // Deterministic ordering: AWAIT the mutation notification (which drives
+        // the open editor's surgical reload) before any focus side-effect. The
+        // old fire-and-forget raced openPageInEditor on the same tick — the
+        // open-editor path could re-read + focus mid-reload and the update never
+        // visibly landed.
+        try { await _dataService?.notifyExternalPageMutation(pageId, kind); }
+        catch (err) { console.warn('[Canvas] notifyExternalPageMutation failed for', pageId, err); }
+        // Surface what the AI did: open the page — but DON'T re-open/steal focus
+        // when it's already open; the surgical reload above has updated it live.
+        if (kind !== 'deleted' && !_editorProvider?.isPageOpen(pageId)) {
+          void openPageInEditor(pageId);
+        }
       },
       // canvas_relate_pages — nest related pages (by title) under a hub page via
       // the integrity-preserving movePageWithBlocks. Makes the agent's most common
@@ -274,6 +288,35 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         }
         return { hub: hub.title, linked, missing };
       },
+      // canvas_compose_page — stream a model-composed body into the open editor
+      // (live typing); falls back to a direct write when the page isn't open.
+      composePage: createComposePageRuntime({
+        getPage: async (pageId) => {
+          const page = await _dataService?.getPage(pageId);
+          if (!page) return null;
+          let bodyMarkdown = '';
+          try { bodyMarkdown = tiptapJsonToMarkdown(decodeCanvasContent(page.content).doc); }
+          catch { bodyMarkdown = ''; }
+          return { title: page.title, bodyMarkdown };
+        },
+        getSink: (pageId) => _editorProvider?.getStreamSink(pageId),
+        sendChatRequest: (messages, signal) => {
+          if (!api.services.has(ILanguageModelsService)) {
+            throw new Error('No language model service available.');
+          }
+          const lm = api.services.get<import('../../services/chatTypes.js').ILanguageModelsService>(ILanguageModelsService);
+          return lm.sendChatRequest(messages, undefined, signal);
+        },
+        writeBody: async (pageId, markdown) => {
+          const ds = _dataService;
+          if (!ds) throw new Error('Canvas data service unavailable.');
+          const doc = markdownToTiptapJson(markdown);
+          const encoded = encodeCanvasContentFromDoc(doc as Parameters<typeof encodeCanvasContentFromDoc>[0]);
+          await ds.updatePage(pageId, { content: encoded.storedContent, contentSchemaVersion: encoded.schemaVersion });
+          // Ensure any (re)opened editor reloads the committed body.
+          await ds.notifyExternalPageMutation(pageId, 'updated');
+        },
+      }),
     });
     for (const d of canvasToolDisposables) context.subscriptions.push(d);
   }
@@ -348,6 +391,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // 4. Register editor provider for Canvas panes (Cap 5)
   const editorProvider = new CanvasEditorProvider(_dataService, api.window);
+  _editorProvider = editorProvider;
   editorProvider.setOpenEditor((opts) => api.editors.openEditor(opts));
   if (_propertyService) {
     editorProvider.setPropertyService(_propertyService);
