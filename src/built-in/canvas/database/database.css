@@ -1,0 +1,223 @@
+/* ════════════════════════════════════════════════════════════════════════
+   Database editor (Notion-parity) — table/board views, pills, popovers.
+   Anatomy researched against Notion's help-center docs: hairline gridlines,
+   typed column headers, pinned title column with hover-OPEN, view tabs +
+   Filter/Sort/New toolbar, board columns headed by colored option pills.
+   ════════════════════════════════════════════════════════════════════════ */
+.canvas-db-pane {
+  height: 100%;
+  overflow: auto;
+  padding: 24px 48px 80px;
+  color: var(--vscode-editor-foreground, #ddd);
+  font-size: 14px;
+}
+.canvas-db-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.canvas-db-header__icon svg { width: 28px; height: 28px; }
+.canvas-db-header__title {
+  font-size: 28px; font-weight: 700; outline: none; min-width: 120px;
+}
+.canvas-db-tabbar {
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.25));
+  margin-bottom: 0;
+}
+.canvas-db-tabs { display: flex; align-items: center; gap: 2px; }
+.canvas-db-tab {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: none; border: none; color: var(--vscode-descriptionForeground, #999);
+  padding: 6px 8px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;
+}
+.canvas-db-tab:hover { color: var(--vscode-editor-foreground, #ddd); }
+.canvas-db-tab--active {
+  color: var(--vscode-editor-foreground, #ddd);
+  border-bottom-color: var(--vscode-editor-foreground, #ddd);
+  font-weight: 600;
+}
+.canvas-db-tab--add { font-size: 15px; }
+.canvas-db-toolbar { display: flex; align-items: center; gap: 4px; }
+.canvas-db-toolbtn {
+  background: none; border: none; color: var(--vscode-descriptionForeground, #999);
+  padding: 4px 8px; font-size: 13px; cursor: pointer; border-radius: 4px;
+}
+.canvas-db-toolbtn:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.15)); color: var(--vscode-editor-foreground, #ddd); }
+.canvas-db-newbtn {
+  background: var(--vscode-button-background, #0e70c0);
+  color: var(--vscode-button-foreground, #fff);
+  border: none; border-radius: 4px; padding: 4px 12px; font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.canvas-db-newbtn:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
+.canvas-db-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 0; }
+.canvas-db-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; padding: 2px 8px; border-radius: 10px;
+  background: var(--vscode-badge-background, rgba(128,128,128,0.2));
+  color: var(--vscode-badge-foreground, #ddd);
+}
+.canvas-db-chip__x { background: none; border: none; color: inherit; cursor: pointer; padding: 0 0 0 2px; font-size: 13px; opacity: 0.7; }
+.canvas-db-chip__x:hover { opacity: 1; }
+.canvas-db-body { margin-top: 0; }
+
+/* ── Table view ── */
+.canvas-db-table { border-collapse: collapse; table-layout: fixed; min-width: 100%; }
+.canvas-db-th {
+  position: relative; text-align: left; font-weight: 500; font-size: 13px;
+  color: var(--vscode-descriptionForeground, #999);
+  padding: 7px 8px; border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.25));
+  border-right: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.12));
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; user-select: none;
+}
+.canvas-db-th > span { margin-left: 5px; }
+.canvas-db-th--add { text-align: center; color: var(--vscode-descriptionForeground, #999); font-size: 15px; }
+.canvas-db-th--title { cursor: default; }
+.canvas-db-resize {
+  position: absolute; top: 0; right: -3px; width: 6px; height: 100%;
+  cursor: col-resize; z-index: 2;
+}
+.canvas-db-resize:hover { background: var(--vscode-focusBorder, #0e70c0); opacity: 0.5; }
+.canvas-db-cell {
+  padding: 6px 8px; vertical-align: top; font-size: 14px;
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.12));
+  border-right: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.08));
+  overflow: hidden;
+}
+.canvas-db-cell--title { font-weight: 500; }
+.canvas-db-cell__titlewrap { display: flex; align-items: center; gap: 6px; min-height: 20px; }
+.canvas-db-cell__icon svg { width: 16px; height: 16px; }
+.canvas-db-cell__titletext { cursor: text; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-db-openbtn {
+  visibility: hidden; font-size: 10px; letter-spacing: 0.04em;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.3));
+  color: var(--vscode-descriptionForeground, #999);
+  border-radius: 4px; padding: 2px 7px; cursor: pointer;
+}
+.canvas-db-row:hover .canvas-db-openbtn { visibility: visible; }
+.canvas-db-openbtn:hover { color: var(--vscode-editor-foreground, #ddd); }
+.canvas-db-row:hover .canvas-db-cell { background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.06)); }
+.canvas-db-cell__value { min-height: 20px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; cursor: pointer; }
+.canvas-db-cell__link { color: var(--vscode-textLink-foreground, #4daafc); text-decoration: none; }
+.canvas-db-cell__link:hover { text-decoration: underline; }
+.canvas-db-cell__editor input { width: 100%; }
+.canvas-db-titleinput {
+  width: 100%; background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #ddd);
+  border: 1px solid var(--vscode-focusBorder, #0e70c0); border-radius: 3px;
+  font-size: 14px; padding: 1px 5px; outline: none;
+}
+.canvas-db-newrow__cell {
+  padding: 7px 8px; color: var(--vscode-descriptionForeground, #999);
+  cursor: pointer; font-size: 13px;
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.12));
+}
+.canvas-db-newrow__cell:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.06)); color: var(--vscode-editor-foreground, #ddd); }
+.canvas-db-count { padding: 6px 8px; font-size: 12px; color: var(--vscode-descriptionForeground, #888); }
+.canvas-db-check {
+  width: 16px; height: 16px; border-radius: 3px; cursor: pointer;
+  border: 1.5px solid var(--vscode-descriptionForeground, #999);
+}
+.canvas-db-check--on {
+  background: var(--vscode-button-background, #0e70c0);
+  border-color: var(--vscode-button-background, #0e70c0);
+  position: relative;
+}
+.canvas-db-check--on::after {
+  content: ''; position: absolute; left: 4.5px; top: 1px;
+  width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+
+/* ── Option pills (Notion's named palette, theme-tinted) ── */
+.canvas-db-pill {
+  display: inline-block; padding: 1px 8px; border-radius: 10px;
+  font-size: 12.5px; line-height: 18px; white-space: nowrap;
+  background: rgba(128,128,128,0.22); color: var(--vscode-editor-foreground, #ddd);
+}
+.canvas-db-pill--gray,
+.canvas-db-pill--default { background: rgba(128,128,128,0.22); }
+.canvas-db-pill--brown   { background: rgba(159,107,74,0.32); }
+.canvas-db-pill--orange  { background: rgba(217,115,13,0.32); }
+.canvas-db-pill--yellow  { background: rgba(203,148,51,0.32); }
+.canvas-db-pill--green   { background: rgba(68,131,97,0.35); }
+.canvas-db-pill--blue    { background: rgba(51,126,169,0.35); }
+.canvas-db-pill--purple  { background: rgba(144,101,176,0.35); }
+.canvas-db-pill--pink    { background: rgba(193,76,138,0.32); }
+.canvas-db-pill--red     { background: rgba(212,76,71,0.32); }
+
+/* ── Board view ── */
+.canvas-db-board { display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; padding-top: 12px; }
+.canvas-db-board__col {
+  min-width: 240px; max-width: 280px; flex: 0 0 auto;
+  background: var(--vscode-sideBar-background, rgba(128,128,128,0.05));
+  border-radius: 6px; padding: 8px;
+}
+.canvas-db-board__col--over { outline: 2px solid var(--vscode-focusBorder, #0e70c0); }
+.canvas-db-board__head { display: flex; align-items: center; gap: 6px; padding: 2px 2px 8px; }
+.canvas-db-board__count { font-size: 12px; color: var(--vscode-descriptionForeground, #999); flex: 1; }
+.canvas-db-board__add { background: none; border: none; color: var(--vscode-descriptionForeground, #999); cursor: pointer; font-size: 15px; }
+.canvas-db-board__add:hover { color: var(--vscode-editor-foreground, #ddd); }
+.canvas-db-board__cards { display: flex; flex-direction: column; gap: 6px; min-height: 24px; }
+.canvas-db-card {
+  background: var(--vscode-editorWidget-background, #2d2d30);
+  border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.18));
+  border-radius: 6px; padding: 8px 10px; cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.18);
+}
+.canvas-db-card:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.1)); }
+.canvas-db-card--dragging { opacity: 0.5; }
+.canvas-db-card__title { font-size: 13.5px; font-weight: 500; margin-bottom: 4px; }
+.canvas-db-card__prop { display: flex; flex-wrap: wrap; gap: 4px; font-size: 12px; color: var(--vscode-descriptionForeground, #999); margin-top: 2px; }
+.canvas-db-board-empty { padding: 24px; color: var(--vscode-descriptionForeground, #999); font-size: 13px; }
+
+/* ── Popovers & menus ── */
+.canvas-db-popover {
+  position: fixed; z-index: 1000; min-width: 220px; max-width: 320px;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.3));
+  border-radius: 6px; box-shadow: 0 4px 18px rgba(0,0,0,0.35);
+  padding: 6px; display: flex; flex-direction: column; gap: 2px;
+}
+.canvas-db-popover__label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--vscode-descriptionForeground, #888); padding: 4px 6px 2px; }
+.canvas-db-popover__input, .canvas-db-popover__select {
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #ddd);
+  border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.3));
+  border-radius: 4px; padding: 4px 8px; font-size: 13px; outline: none; margin: 2px 0;
+}
+.canvas-db-popover__input:focus { border-color: var(--vscode-focusBorder, #0e70c0); }
+.canvas-db-popover__primary {
+  background: var(--vscode-button-background, #0e70c0);
+  color: var(--vscode-button-foreground, #fff);
+  border: none; border-radius: 4px; padding: 5px 10px; font-size: 13px; cursor: pointer; margin-top: 4px;
+}
+.canvas-db-menuitem {
+  display: flex; align-items: center; gap: 7px; text-align: left;
+  background: none; border: none; color: var(--vscode-editor-foreground, #ddd);
+  padding: 5px 8px; font-size: 13px; cursor: pointer; border-radius: 4px;
+}
+.canvas-db-menuitem:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.12)); }
+.canvas-db-menuitem--danger { color: var(--vscode-errorForeground, #f48771); }
+.canvas-db-options { display: flex; flex-direction: column; gap: 3px; max-height: 200px; overflow-y: auto; }
+.canvas-db-options__row { display: flex; align-items: center; gap: 6px; padding: 2px 4px; }
+.canvas-db-options__row .canvas-db-pill { flex: 1; }
+.canvas-db-options__color, .canvas-db-options__del {
+  background: none; border: none; color: var(--vscode-descriptionForeground, #999); cursor: pointer; font-size: 13px;
+}
+.canvas-db-options__color:hover, .canvas-db-options__del:hover { color: var(--vscode-editor-foreground, #ddd); }
+
+/* ── Row-page database properties section (a row opened as a page) ── */
+.canvas-db-rowprops {
+  /* Match the centered page-content column (Notion: title → properties →
+     content all share the column). */
+  max-width: 760px;
+  margin: 4px auto 12px;
+  padding: 0 16px 10px;
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.18));
+}
+.canvas-db-rowprops__row { display: flex; align-items: center; gap: 10px; padding: 3px 0; min-height: 26px; }
+.canvas-db-rowprops__name {
+  display: inline-flex; align-items: center; gap: 6px;
+  width: 160px; flex: 0 0 auto;
+  font-size: 13px; color: var(--vscode-descriptionForeground, #999);
+}
+.canvas-db-rowprops__value { flex: 1; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; cursor: pointer; font-size: 13.5px; min-height: 20px; }
+.canvas-db-rowprops__value:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.07)); border-radius: 4px; }
+.canvas-db-rowprops__empty { color: var(--vscode-descriptionForeground, #777); }

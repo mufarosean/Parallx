@@ -137,6 +137,8 @@ export class CanvasSidebar {
   constructor(
     private readonly _dataService: ICanvasDataService,
     private readonly _api: CanvasSidebarApi,
+    /** Whether a page is a database (routes opens to the database editor). */
+    private readonly _isDatabasePage?: (pageId: string) => boolean,
   ) {}
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1240,7 +1242,8 @@ export class CanvasSidebar {
 
     try {
       await this._api.editors.openEditor({
-        typeId: 'canvas',
+        // Database pages open in the database editor (table/board views).
+        typeId: this._isDatabasePage?.(page.id) ? 'database' : 'canvas',
         title: page.title,
         icon: page.icon || undefined,
         iconHtml: renderPageIconHtml(page.icon),
@@ -1295,6 +1298,13 @@ export class CanvasSidebar {
         label: 'Blank page',
         icon: 'file',
         onClick: () => { void this._createPage(); },
+      },
+      {
+        label: 'Database',
+        icon: 'table',
+        onClick: () => {
+          void this._api.commands.executeCommand('canvas.newDatabase');
+        },
       },
       {
         label: 'From template…',

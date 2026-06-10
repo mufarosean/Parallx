@@ -63,11 +63,14 @@ function rowToProperty(r: Record<string, unknown>): IDatabaseProperty {
   };
 }
 
-/** Default schema seeded into a new database (Notion-style starter). */
+/** Default schema seeded into a new database. Colors are NAMED (Notion's
+ *  palette: default/gray/brown/orange/yellow/green/blue/purple/pink/red) and
+ *  resolved to theme-aware CSS by the views — matching Notion's status
+ *  defaults: To-do gray, In progress blue, Complete green. */
 const DEFAULT_STATUS_OPTIONS = [
-  { value: 'To do', color: 'var(--px-danger, #e5534b)' },
-  { value: 'In progress', color: 'var(--px-warning, #d4a72c)' },
-  { value: 'Done', color: 'var(--px-success, #57ab5a)' },
+  { value: 'To do', color: 'gray' },
+  { value: 'In progress', color: 'blue' },
+  { value: 'Done', color: 'green' },
 ];
 
 export class DatabaseDataService extends Disposable {
@@ -401,5 +404,27 @@ export class DatabaseDataService extends Disposable {
   async renameRow(databaseId: string, pageId: string, title: string): Promise<void> {
     await this._pages.updatePage(pageId, { title });
     this._onDidChangeRows.fire(databaseId);
+  }
+
+  /** The databases this page is a member (row) of. Drives the row-page
+   *  properties section shown when a row is opened as a page. */
+  async listDatabasesForPage(pageId: string): Promise<string[]> {
+    const res = await this._db.all('SELECT database_id FROM database_pages WHERE page_id = ?', [pageId]);
+    if (res.error) return [];
+    return (res.rows ?? []).map((r) => r.database_id as string);
+  }
+
+  /** One row's decoded cell values for a database. */
+  async getRowValues(databaseId: string, pageId: string): Promise<Record<string, unknown>> {
+    const res = await this._db.all(
+      'SELECT property_id, value FROM page_property_values WHERE database_id = ? AND page_id = ?',
+      [databaseId, pageId],
+    );
+    const out: Record<string, unknown> = {};
+    for (const r of res.rows ?? []) {
+      try { out[r.property_id as string] = JSON.parse((r.value as string) ?? 'null'); }
+      catch { out[r.property_id as string] = r.value; }
+    }
+    return out;
   }
 }

@@ -338,6 +338,7 @@ export const CANVAS_MANIFEST: IToolManifest = {
       // showKeyboardShortcuts / showTemplatePicker registered at runtime in
       // main.ts; declared here so manifest pipeline picks up aiInvocable.
       { id: 'canvas.newPage', title: 'Canvas: New Page' },
+      { id: 'canvas.newDatabase', title: 'Canvas: New Database' },
       { id: 'canvas.deletePage', title: 'Canvas: Delete Page' },
       { id: 'canvas.renamePage', title: 'Canvas: Rename Page' },
       { id: 'canvas.duplicatePage', title: 'Canvas: Duplicate Page' },

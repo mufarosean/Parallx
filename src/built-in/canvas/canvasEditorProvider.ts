@@ -142,6 +142,16 @@ export class CanvasEditorProvider {
   /** Property data service (set from main.ts after activation). */
   private _propertyService: IPropertyDataService | undefined;
 
+  /** Database data service (set from main.ts) — drives the row-page
+   *  properties section when an opened page is a database row. */
+  private _databaseService: import('./database/databaseDataService.js').DatabaseDataService | undefined;
+  setDatabaseService(db: import('./database/databaseDataService.js').DatabaseDataService): void {
+    this._databaseService = db;
+  }
+  get databaseService(): import('./database/databaseDataService.js').DatabaseDataService | undefined {
+    return this._databaseService;
+  }
+
   constructor(
     private readonly _dataService: ICanvasDataService,
     private readonly _window: CanvasWindowApi | undefined,
@@ -709,6 +719,17 @@ class CanvasEditorPane implements IDisposable {
     );
 
     this._initComplete = true;
+
+    // Database-row pages show their database properties between the title and
+    // the content (Notion parity: title → properties → body). Best-effort.
+    const dbService = this._provider.databaseService;
+    if (dbService && this._editorContainer && this._editor) {
+      const editorDom = this._editor.view.dom as HTMLElement;
+      import('./database/rowPropertiesSection.js')
+        .then((m) => m.mountRowPropertiesSection(this._editorContainer!, this._pageId, dbService, editorDom))
+        .then((d) => { if (d) this._saveDisposables.add(d); })
+        .catch((err) => console.warn('[CanvasEditorPane] Row-properties section failed:', err));
+    }
 
     // M66 Iter B — Listen for `parallx:canvas-reveal-block` events emitted
     // by the canvas link contract's open() handler. The contract dispatches

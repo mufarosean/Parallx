@@ -11,6 +11,7 @@
 import { isDevMode } from '../../platform/devMode.js';
 
 import './canvas.css';
+import './database/database.css';
 import 'katex/dist/katex.min.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
@@ -28,6 +29,8 @@ import { PageChangeKind } from './canvasTypes.js';
 import type { IPage, IPageTreeNode, PageChangeEvent, PageMutationField } from './canvasTypes.js';
 import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
+import { DatabaseDataService } from './database/databaseDataService.js';
+import { DatabaseEditorPane } from './database/databaseEditorPane.js';
 import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockRegistry.js';
 import { PropertyDataService } from './properties/propertyDataService.js';
 
@@ -124,6 +127,7 @@ let _dataService: CanvasDataService | null = null;
 let _sidebar: CanvasSidebar | null = null;
 let _propertyService: PropertyDataService | null = null;
 let _editorProvider: CanvasEditorProvider | null = null;
+let _databaseService: DatabaseDataService | null = null;
 
 // â”€â”€â”€ Activation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -376,7 +380,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 2a. parentId is the source of truth for hierarchy — no content reconciliation needed.
 
   // 3. Register sidebar view provider for page tree (Cap 4)
-  _sidebar = new CanvasSidebar(_dataService, api);
+  _sidebar = new CanvasSidebar(_dataService, api, (id) => _databaseService?.isDatabase(id) ?? false);
   context.subscriptions.push(
     api.views.registerViewProvider('view.canvas', {
       createView(container: HTMLElement): IDisposable {
@@ -396,9 +400,15 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     context.workspaceState.update('canvas.expandedPages', [...expandedIds]);
   };
 
+  // 3z. Database engine (Notion-style databases over migrations 006/007).
+  _databaseService = new DatabaseDataService(_dataService);
+  context.subscriptions.push(_databaseService);
+  void _databaseService.ensureIdsLoaded();
+
   // 4. Register editor provider for Canvas panes (Cap 5)
   const editorProvider = new CanvasEditorProvider(_dataService, api.window);
   _editorProvider = editorProvider;
+  editorProvider.setDatabaseService(_databaseService);
   editorProvider.setOpenEditor((opts) => api.editors.openEditor(opts));
   if (_propertyService) {
     editorProvider.setPropertyService(_propertyService);
@@ -407,6 +417,22 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     api.editors.registerEditorProvider('canvas', {
       createEditorPane(container: HTMLElement, input?: any): IDisposable {
         return editorProvider.createEditorPane(container, input);
+      },
+    }),
+  );
+
+  // 4a. Database editor — full-page Notion-style database views. The editor-id
+  // scaffolding for `*:database:<pageId>` has existed since M84; this registers
+  // the actual pane behind it.
+  context.subscriptions.push(
+    api.editors.registerEditorProvider('database', {
+      createEditorPane(container: HTMLElement, input?: any): IDisposable {
+        const pageId = (input?.id as string) ?? '';
+        return new DatabaseEditorPane(container, pageId, {
+          db: _databaseService!,
+          openPage: (id) => void openPageInEditor(id),
+          renamePage: async (id, title) => { await _dataService?.updatePage(id, { title }); },
+        });
       },
     }),
   );
@@ -756,6 +782,16 @@ async function _restoreLastOpenedPage(api: ParallxApi, context: ToolContext, dat
 function _registerCommands(api: ParallxApi, context: ToolContext): void {
   // canvas.newPage â€” Create a new page at root level
   context.subscriptions.push(
+    api.commands.registerCommand('canvas.newDatabase', async () => {
+      if (!_databaseService) return;
+      try {
+        const db = await _databaseService.createDatabase({ title: 'Untitled database' });
+        await openPageInEditor(db.id);
+      } catch (err) {
+        console.error('[Canvas] Failed to create database:', err);
+        await api.window.showErrorMessage('Failed to create database.');
+      }
+    }),
     api.commands.registerCommand('canvas.newPage', async () => {
       if (!_dataService) return;
       try {
@@ -1190,7 +1226,9 @@ export async function openPageInEditor(pageId: string): Promise<void> {
   if (!page) return;
   try {
     await _api.editors.openEditor({
-      typeId: 'canvas',
+      // Database pages open in the database editor (table/board views);
+      // regular pages open in the canvas editor.
+      typeId: _databaseService?.isDatabase(pageId) ? 'database' : 'canvas',
       title: page.title,
       icon: page.icon ?? undefined,
       iconHtml: renderPageIconHtml(page.icon),
