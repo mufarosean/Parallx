@@ -59,10 +59,17 @@ const EXEMPT_FILES = new Set([
   'database/databaseTypes.ts',     // Database type definitions (M8)
   'database/databaseDataService.ts', // Database data layer (M8)
   'database/database.css',         // Database stylesheet (M8 Phase 2)
+  'database/databaseViewModel.ts', // Pure filter/sort/group evaluation
+  'database/databaseEditorPane.ts', // Full-page database editor (table/board)
+  'database/rowPropertiesSection.ts', // Row-page database properties section
+  'database/legacyPropertyMigration.ts', // One-time legacy property migration
+  'canvasDocDiff.ts',              // Pure block-diff core for surgical live updates
+  'composeStreamSession.ts',       // Pure compose-stream patch session
+  'ai/relatePagesTool.ts',         // canvas_relate_pages tool (dep-injected)
+  'ai/composePageTool.ts',         // canvas_compose_page tool (dep-injected)
+  'ai/composePageRuntime.ts',      // compose streaming runtime (dep-injected)
+  'ai/databaseTools.ts',           // database AI tools (dep-injected)
   'properties/propertyTypes.ts',   // Property type definitions (M55)
-  'properties/propertyDataService.ts', // Property data layer (M55)
-  'properties/propertyBar.ts',     // Property bar UI component (M55 D3)
-  'properties/propertyBar.css',    // Property bar styles (M55 D3)
   'properties/propertyEditors.ts', // Type-specific editors (M55 D3)
   'properties/propertyPicker.ts',  // Add-property picker (M55 D3)
   'surfaces/canvasSurface.ts',     // M58 W6 — CanvasSurfacePlugin (read-only stub; no canvas-internal imports)
@@ -154,7 +161,9 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/toggleHeadingNode.ts':       [],
   'extensions/databaseInlineNode.ts':      ['config/blockRegistry'],
   'extensions/databaseFullPageNode.ts':    ['config/blockRegistry'],
-  'extensions/dataviewNode.ts':            [],
+  // dataview delegates its filter SQL to the shared blockApi builder
+  // (properties live in databases; one query engine, not two).
+  'extensions/dataviewNode.ts':            ['ai/blockApi'],
 
   // structuralInvariantPlugin imports from invariants/ — same pattern.
   'plugins/structuralInvariantPlugin.ts':  ['invariants/'],

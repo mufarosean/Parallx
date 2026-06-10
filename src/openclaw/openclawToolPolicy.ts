@@ -112,6 +112,7 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
       'canvas_create_page', 'canvas_edit_page', 'canvas_set_page_property', 'canvas_set_page_style',
       'canvas_edit_block', 'canvas_insert_block_after', 'canvas_link_block', 'canvas_relate_pages',
       'canvas_compose_page', 'canvas_query_database', 'canvas_create_database', 'canvas_add_database_row',
+      'canvas_add_page_to_database',
     ],
     deny: [],
   },

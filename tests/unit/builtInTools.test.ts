@@ -444,16 +444,16 @@ describe('read_page tool (M81 Phase 9: merged body + metadata + properties)', ()
       })
       .mockResolvedValueOnce({ cnt: 3 });
     (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
-      { key: 'status', value_type: 'select', value: '"active"', def_type: 'select' },
-      { key: 'tags', value_type: 'tags', value: '["alpha","beta"]', def_type: 'tags' },
-      { key: 'done', value_type: 'checkbox', value: 'true', def_type: 'checkbox' },
+      { key: 'status', value_type: 'select', value: '"active"', def_type: 'select', db_title: 'Projects' },
+      { key: 'tags', value_type: 'tags', value: '["alpha","beta"]', def_type: 'tags', db_title: 'Tags' },
+      { key: 'done', value_type: 'checkbox', value: 'true', def_type: 'checkbox', db_title: 'Projects' },
     ]);
 
     const result = await tool.handler({ pageId: 'p1' }, createToken());
-    expect(result.content).toContain('Custom Properties');
-    expect(result.content).toContain('**status** (select): active');
-    expect(result.content).toContain('**tags** (tags): alpha, beta');
-    expect(result.content).toContain('**done** (checkbox): Yes');
+    expect(result.content).toContain('Database Properties');
+    expect(result.content).toContain('**status** (select, in "Projects"): active');
+    expect(result.content).toContain('**tags** (tags, in "Tags"): alpha, beta');
+    expect(result.content).toContain('**done** (checkbox, in "Projects"): Yes');
   });
 
   it('omits custom properties section when page has none', async () => {
@@ -859,23 +859,28 @@ describe('list_property_definitions tool', () => {
     tool = toolsService.registeredTools.find(t => t.name === 'canvas_list_property_definitions')!;
   });
 
-  it('lists all property definitions', async () => {
-    (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
-      { name: 'tags', type: 'tags', config: '{}', sort_order: 0, created_at: '2025-01-01', updated_at: '2025-01-01' },
-      { name: 'status', type: 'select', config: '{"options":[{"value":"active","color":"green"}]}', sort_order: 1, created_at: '2025-01-01', updated_at: '2025-01-01' },
-    ]);
+  it('lists databases with their property schemas', async () => {
+    (db.all as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([
+        { id: 'db1', title: 'Projects' },
+        { id: 'db2', title: 'Tags' },
+      ]) // databases
+      .mockResolvedValueOnce([
+        { database_id: 'db1', name: 'Status', type: 'select' },
+        { database_id: 'db2', name: 'Tags', type: 'tags' },
+      ]); // properties
 
     const result = await tool.handler({}, createToken());
-    expect(result.content).toContain('2 property definition(s)');
-    expect(result.content).toContain('**tags** (tags)');
-    expect(result.content).toContain('**status** (select)');
-    expect(result.content).toContain('config:');
+    expect(result.content).toContain('2 database(s)');
+    expect(result.content).toContain('**Projects** (id: db1)');
+    expect(result.content).toContain('Status (select)');
+    expect(result.content).toContain('**Tags** (id: db2)');
   });
 
-  it('returns message when no definitions exist', async () => {
+  it('returns message when no databases exist', async () => {
     (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
     const result = await tool.handler({}, createToken());
-    expect(result.content).toContain('No property definitions found');
+    expect(result.content).toContain('No databases in the workspace');
   });
 });
 
@@ -890,92 +895,90 @@ describe('set_page_property tool', () => {
     tool = toolsService.registeredTools.find(t => t.name === 'canvas_set_page_property')!;
   });
 
-  it('sets a property on an existing page with existing definition', async () => {
+  /** Mock the new database-aware flow: page lookup (get) → memberships (all)
+   *  → per-membership property lookup (get) [→ MAX sort (get) when creating]. */
+  function mockMemberPage(opts: { property?: { id: string; type: string } | undefined }): void {
     (db.get as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce({ id: 'p1', title: 'My Page' }) // page lookup
-      .mockResolvedValueOnce({ name: 'status', type: 'select' }); // definition lookup
+      .mockResolvedValueOnce({ id: 'p1', title: 'My Page' })                 // page lookup
+      .mockResolvedValueOnce(opts.property)                                  // property by name in db1
+      .mockResolvedValueOnce({ max_sort: 1 });                               // MAX sort (creation path only)
+    (db.all as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([{ database_id: 'db1', title: 'Projects' }]);   // memberships
+  }
+
+  it('sets a cell on a member page with an existing database property', async () => {
+    mockMemberPage({ property: { id: 'prop-status', type: 'select' } });
 
     const result = await tool.handler({ pageId: 'p1', propertyName: 'status', value: 'active' }, createToken());
     expect(result.content).toContain("Set property 'status'");
     expect(result.content).toContain('"active"');
     expect(result.content).toContain('My Page');
+    expect(result.content).toContain('Projects');
     expect(db.run).toHaveBeenCalledWith(
-      expect.stringContaining('INSERT INTO page_properties'),
-      expect.arrayContaining(['p1', 'status', 'select', '"active"']),
+      expect.stringContaining('INSERT INTO page_property_values'),
+      expect.arrayContaining(['p1', 'prop-status', 'db1', '"active"']),
     );
   });
 
-  it('auto-creates property definition when it does not exist', async () => {
-    (db.get as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce({ id: 'p1', title: 'My Page' }) // page lookup
-      .mockResolvedValueOnce(undefined); // definition doesn't exist
+  it('auto-creates the database property (column) when it does not exist', async () => {
+    mockMemberPage({ property: undefined });
 
     await tool.handler({ pageId: 'p1', propertyName: 'priority', value: 5 }, createToken());
 
-    // First run call = INSERT INTO property_definitions
     const defCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(defCall[0]).toContain('INSERT INTO property_definitions');
-    expect(defCall[1]).toEqual(expect.arrayContaining(['priority', 'number']));
+    expect(defCall[0]).toContain('INSERT INTO database_properties');
+    expect(defCall[1]).toEqual(expect.arrayContaining(['db1', 'priority', 'number']));
 
-    // Second run call = INSERT INTO page_properties
-    const propCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[1];
-    expect(propCall[0]).toContain('INSERT INTO page_properties');
-    expect(propCall[1]).toEqual(expect.arrayContaining(['p1', 'priority', 'number', '5']));
+    const valCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[1];
+    expect(valCall[0]).toContain('INSERT INTO page_property_values');
+    expect(valCall[1]).toEqual(expect.arrayContaining(['p1', 'db1', '5']));
+  });
+
+  it('errors helpfully when the page is not in any database', async () => {
+    (db.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'p1', title: 'My Page' });
+    (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]); // no memberships
+
+    const result = await tool.handler({ pageId: 'p1', propertyName: 'status', value: 'x' }, createToken());
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain('not in any database');
+    expect(result.content).toContain('canvas_add_page_to_database');
+    expect(db.run).not.toHaveBeenCalled();
   });
 
   it('infers checkbox type for boolean values', async () => {
-    (db.get as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce({ id: 'p1', title: 'My Page' })
-      .mockResolvedValueOnce(undefined);
-
+    mockMemberPage({ property: undefined });
     await tool.handler({ pageId: 'p1', propertyName: 'done', value: true }, createToken());
-
     const defCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(defCall[1]).toEqual(expect.arrayContaining(['done', 'checkbox']));
   });
 
   it('infers tags type for array values', async () => {
-    (db.get as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce({ id: 'p1', title: 'My Page' })
-      .mockResolvedValueOnce(undefined);
-
+    mockMemberPage({ property: undefined });
     await tool.handler({ pageId: 'p1', propertyName: 'labels', value: ['alpha', 'beta'] }, createToken());
-
     const defCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(defCall[1]).toEqual(expect.arrayContaining(['labels', 'tags']));
   });
 
   it('recovers a stringified JSON array as tags (small-model safety net)', async () => {
-    (db.get as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce({ id: 'p1', title: 'My Page' })
-      .mockResolvedValueOnce(undefined);
-
+    mockMemberPage({ property: undefined });
     await tool.handler(
       { pageId: 'p1', propertyName: 'tags', value: '["Journal", "Daily", "San Antonio"]' },
       createToken(),
     );
-
     const defCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(defCall[1]).toEqual(expect.arrayContaining(['tags', 'tags']));
-
-    const propCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[1];
-    expect(propCall[0]).toContain('INSERT INTO page_properties');
+    const valCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[1];
+    expect(valCall[0]).toContain('INSERT INTO page_property_values');
     // Stored value must be the JSON array, not a JSON-encoded string of the array.
-    expect(propCall[1]).toEqual(
-      expect.arrayContaining(['p1', 'tags', 'tags', '["Journal","Daily","San Antonio"]']),
-    );
+    expect(valCall[1]).toEqual(expect.arrayContaining(['p1', 'db1', '["Journal","Daily","San Antonio"]']));
   });
 
   it('keeps a literal "[...]" string when contents are not valid JSON', async () => {
-    (db.get as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce({ id: 'p1', title: 'My Page' })
-      .mockResolvedValueOnce(undefined);
-
+    mockMemberPage({ property: undefined });
     await tool.handler(
       { pageId: 'p1', propertyName: 'note', value: '[wip]' },
       createToken(),
     );
-
     const defCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(defCall[1]).toEqual(expect.arrayContaining(['note', 'text']));
   });

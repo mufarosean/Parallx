@@ -747,9 +747,15 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   // ── Internal: Fetch page properties as key→value map ──
 
   private async _fetchPageProperties(pageId: string): Promise<Record<string, unknown>> {
+    // Properties live in DATABASES (post legacy-property migration): collect
+    // this page's cell values across all databases it is a member of, keyed by
+    // the property NAME from the database schema.
     try {
-      const rows = await this._db.all<{ key: string; value: string; value_type: string }>(
-        'SELECT key, value, value_type FROM page_properties WHERE page_id = ?',
+      const rows = await this._db.all<{ key: string; value: string }>(
+        `SELECT dp.name as key, ppv.value as value
+           FROM page_property_values ppv
+           JOIN database_properties dp ON dp.id = ppv.property_id AND dp.database_id = ppv.database_id
+          WHERE ppv.page_id = ?`,
         [pageId],
       );
       const props: Record<string, unknown> = {};

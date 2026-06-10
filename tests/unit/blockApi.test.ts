@@ -58,10 +58,14 @@ describe('decodeDocContent / encodeDocContent', () => {
 });
 
 describe('filterToSubquery', () => {
-  it('emits parametrized SQL for equals', () => {
+  it('emits parametrized SQL for equals over the database property tables', () => {
     const r = filterToSubquery({ prop: 'status', op: 'equals', value: 'Draft' });
-    expect(r.subquery).toContain('SELECT page_id');
-    expect(r.subquery).toContain('value = ?');
+    // Properties live in databases: values come from page_property_values
+    // resolved by NAME against database_properties.
+    expect(r.subquery).toContain('SELECT ppv.page_id FROM page_property_values ppv');
+    expect(r.subquery).toContain('JOIN database_properties dp');
+    expect(r.subquery).toContain('dp.name = ?');
+    expect(r.subquery).toContain('ppv.value = ?');
     expect(r.params).toEqual(['status', JSON.stringify('Draft')]);
   });
 

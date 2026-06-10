@@ -32,7 +32,6 @@ import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { DatabaseDataService } from './database/databaseDataService.js';
 import { DatabaseEditorPane } from './database/databaseEditorPane.js';
 import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockRegistry.js';
-import { PropertyDataService } from './properties/propertyDataService.js';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -125,7 +124,6 @@ interface CaptureDetail {
 let _api: ParallxApi;
 let _dataService: CanvasDataService | null = null;
 let _sidebar: CanvasSidebar | null = null;
-let _propertyService: PropertyDataService | null = null;
 let _editorProvider: CanvasEditorProvider | null = null;
 let _databaseService: DatabaseDataService | null = null;
 
@@ -230,6 +228,53 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   _databaseService = new DatabaseDataService(_dataService);
   context.subscriptions.push(_databaseService);
   void _databaseService.ensureIdsLoaded();
+
+  // 2z-ii. One-time legacy property migration (workspace-gated): moves the old
+  // per-page property data into databases (tags → "Tags", custom → "Migrated
+  // properties"), writing a JSON backup FIRST. Legacy tables stay on disk
+  // untouched as an archive. Runs in the background; never blocks activation.
+  const runLegacyMigrationNow = async (): Promise<void> => {
+    const dbService = _databaseService;
+    if (!dbService) return;
+    try {
+      const { runLegacyPropertyMigration } = await import('./database/legacyPropertyMigration.js');
+      const bridge = (window as unknown as { parallxElectron?: { database?: never } }).parallxElectron?.database;
+      if (!bridge) return; // no DB open yet — retry next activation
+      const result = await runLegacyPropertyMigration({
+        bridge,
+        db: dbService,
+        writeBackup: async (json) => {
+          const fs = api.workspace.fs;
+          const root = api.workspace.workspaceFolders?.[0]?.uri;
+          if (!fs || !root) throw new Error('workspace fs unavailable — cannot write the migration backup');
+          const dir = `${root}/.parallx-backups`;
+          if (!(await fs.exists(dir))) await fs.mkdir(dir);
+          await fs.writeFile(`${dir}/legacy-properties-${new Date().toISOString().slice(0, 10)}.json`, json);
+        },
+      });
+      context.workspaceState.update('canvas.legacyPropsMigrated', true);
+      if (result !== 'nothing-to-migrate') {
+        console.log(
+          `[Canvas] Legacy property migration complete: ${result.migratedTagPages} tagged page(s) → "Tags", ` +
+          `${result.migratedCustomValues} custom value(s) → "Migrated properties" (backup in .parallx-backups/).`,
+        );
+      }
+    } catch (err) {
+      // Backup failed or migration errored — DO NOT mark migrated; we retry
+      // on next activation. Nothing was deleted (legacy tables untouched).
+      console.error('[Canvas] Legacy property migration failed (will retry next launch):', err);
+    }
+  };
+  if (!context.workspaceState.get<boolean>('canvas.legacyPropsMigrated', false)) {
+    void runLegacyMigrationNow();
+  }
+  // Support/dev hook (same pattern as parallx:capture-to-canvas): force a
+  // re-run — e.g. after restoring legacy data — regardless of the memento.
+  const onForceLegacyMigration = (): void => { void runLegacyMigrationNow(); };
+  window.addEventListener('parallx:canvas-run-legacy-migration', onForceLegacyMigration);
+  context.subscriptions.push({
+    dispose: () => window.removeEventListener('parallx:canvas-run-legacy-migration', onForceLegacyMigration),
+  });
 
   // 2a. Publish read-only page query service to DI for cross-tool access (M56)
   api.services.registerInstance(ICanvasPageQueryService, _dataService);
@@ -341,32 +386,16 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     for (const d of canvasToolDisposables) context.subscriptions.push(d);
   }
 
-  // 2b. Create PropertyDataService and seed defaults
-  _propertyService = new PropertyDataService();
-  context.subscriptions.push(_propertyService);
-  await _propertyService.ensureDefaultProperties();
-  // Backfill auto-managed `created`/`modified` values for any page that
-  // pre-dates this feature so they appear in the property bar immediately
-  // instead of only after the next save.
-  await _propertyService.backfillTimestampProperties();
-
-  // 2c. Auto-populate `created` / `modified` datetime properties so every
-  //     page surfaces creation + last-modified timestamps in its property bar
-  //     by default. We mirror the same data the `pages` table already tracks
-  //     via its `created_at` / `updated_at` columns, exposed through the
-  //     property system so it appears in the UI and is queryable by dataview.
-  const propertyService = _propertyService;
+  // 2b. The LEGACY per-page property system (PropertyDataService + property
+  //     bar + page_properties/property_definitions tables) is RETIRED:
+  //     properties live in DATABASES (Notion model). Existing data is moved
+  //     by runLegacyPropertyMigration (below, one-time, backup-first); the
+  //     legacy tables stay on disk untouched as an archive. created/modified
+  //     are derived from pages.created_at/updated_at — no seeding needed.
   const dataServiceRef = _dataService;
   context.subscriptions.push(
     dataServiceRef.onDidChangePage((event) => {
       if (event.kind !== PageChangeKind.Created) return;
-      const nowIso = new Date().toISOString();
-      void propertyService.setProperty(event.pageId, 'created', nowIso).catch((err) => {
-        console.warn('[Canvas] Failed to seed `created` property for', event.pageId, err);
-      });
-      void propertyService.setProperty(event.pageId, 'modified', nowIso).catch((err) => {
-        console.warn('[Canvas] Failed to seed `modified` property for', event.pageId, err);
-      });
       // Feed canvas activity into the agent's perception, so autonomy can actually
       // SEE you create pages (the core surface) instead of being blind to it.
       // Routed via the autonomy-signal command (the API the news widget uses too).
@@ -376,15 +405,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       }).catch(() => { /* perception is best-effort; never block page creation */ });
     }),
   );
-  // M78 Phase 4 — the on-save write to the `modified` property was a
-  // denormalised copy of `pages.updated_at`, costing 2 extra IPC per
-  // autosave (INSERT/REPLACE + readback) on top of the page UPDATE
-  // itself. PropertyDataService.getPropertiesForPage now synthesises
-  // the value from `pages.updated_at` at read time, so this write is
-  // pure overhead and is removed. The on-Create `created` seed below
-  // is also redundant for the same reason (handled via read-time
-  // override) but is retained for compatibility with any consumer
-  // that queries `page_properties` directly via raw SQL.
 
   // 2a. parentId is the source of truth for hierarchy — no content reconciliation needed.
 
@@ -414,9 +434,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   _editorProvider = editorProvider;
   editorProvider.setDatabaseService(_databaseService);
   editorProvider.setOpenEditor((opts) => api.editors.openEditor(opts));
-  if (_propertyService) {
-    editorProvider.setPropertyService(_propertyService);
-  }
   context.subscriptions.push(
     api.editors.registerEditorProvider('canvas', {
       createEditorPane(container: HTMLElement, input?: any): IDisposable {
@@ -660,9 +677,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
-  // 5d. Re-index when page properties change (tags, dates, etc.)
+  // 5d. Re-index when a page's database properties change (tags, dates, etc.)
   context.subscriptions.push(
-    _propertyService.onDidChangePageProperty((event) => {
+    _databaseService.onDidChangeCell((event) => {
       // Invalidate dedup keys so the pipeline picks up the property change
       // (buildIndexedPagePayloadKey only hashes title+content, not properties)
       queuedPagePayloads.delete(event.pageId);
@@ -721,7 +738,7 @@ export async function deactivate(): Promise<void> {
   // Clear module-level state
   _dataService = null;
   _sidebar = null;
-  _propertyService = null;
+  _databaseService = null;
   _api = undefined!;
 
   if (isDevMode) console.log('[Canvas] Tool deactivated');

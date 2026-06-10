@@ -82,6 +82,10 @@ export class DatabaseDataService extends Disposable {
   /** Membership or cell values changed. */
   readonly onDidChangeRows: Event<string> = this._onDidChangeRows.event;
 
+  private readonly _onDidChangeCell = this._register(new Emitter<{ databaseId: string; pageId: string }>());
+  /** A single page's cell value changed (page-scoped — used for reindexing). */
+  readonly onDidChangeCell: Event<{ databaseId: string; pageId: string }> = this._onDidChangeCell.event;
+
   /** Known database ids (kept fresh for cheap sync isDatabase checks). */
   private readonly _databaseIds = new Set<string>();
   private _idsLoaded = false;
@@ -127,29 +131,33 @@ export class DatabaseDataService extends Disposable {
 
   /**
    * Create a database: a page row (delegated — sidebar events fire), the
-   * databases row, a starter property (Status select), and a default table
-   * view. Optionally nested under a parent page.
+   * databases row, a starter property (Status select — unless
+   * `seedDefaults: false`), and a default table view. Optionally nested
+   * under a parent page.
    */
-  async createDatabase(opts: { title?: string; parentId?: string | null } = {}): Promise<IDatabaseInfo> {
+  async createDatabase(opts: { title?: string; parentId?: string | null; seedDefaults?: boolean } = {}): Promise<IDatabaseInfo> {
     const page = opts.parentId
       ? await this._pages.createChildPageWithBlock({ parentId: opts.parentId, title: opts.title || 'Untitled database' })
       : await this._pages.createPage(null, opts.title || 'Untitled database');
 
     const statusPropId = crypto.randomUUID();
     const viewId = crypto.randomUUID();
-    const txn = await this._db.runTransaction([
+    const ops: { type: 'run'; sql: string; params: unknown[] }[] = [
       { type: 'run', sql: 'INSERT INTO databases (id, page_id) VALUES (?, ?)', params: [page.id, page.id] },
-      {
+    ];
+    if (opts.seedDefaults !== false) {
+      ops.push({
         type: 'run',
         sql: 'INSERT INTO database_properties (id, database_id, name, type, config, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
         params: [statusPropId, page.id, 'Status', 'select', JSON.stringify({ options: DEFAULT_STATUS_OPTIONS }), 1],
-      },
-      {
-        type: 'run',
-        sql: 'INSERT INTO database_views (id, database_id, name, type, sort_order) VALUES (?, ?, ?, ?, ?)',
-        params: [viewId, page.id, 'Table', 'table', 1],
-      },
-    ]);
+      });
+    }
+    ops.push({
+      type: 'run',
+      sql: 'INSERT INTO database_views (id, database_id, name, type, sort_order) VALUES (?, ?, ?, ?, ?)',
+      params: [viewId, page.id, 'Table', 'table', 1],
+    });
+    const txn = await this._db.runTransaction(ops);
     if (txn.error) throw new Error(`[DatabaseDataService] createDatabase failed: ${txn.error.message}`);
 
     this._databaseIds.add(page.id);
@@ -376,6 +384,26 @@ export class DatabaseDataService extends Disposable {
     };
   }
 
+  /**
+   * Add an EXISTING page as a row — membership only, the page keeps its place
+   * in the tree (database membership is the database_pages table, not
+   * parent_id). Used by the legacy-property migration and the
+   * canvas_add_page_to_database tool. Idempotent.
+   */
+  async addExistingPageAsRow(databaseId: string, pageId: string): Promise<void> {
+    const orderRes = await this._db.get(
+      'SELECT MAX(sort_order) as max_sort FROM database_pages WHERE database_id = ?',
+      [databaseId],
+    );
+    const sortOrder = ((orderRes.row?.max_sort as number) ?? 0) + 1;
+    const res = await this._db.run(
+      'INSERT OR IGNORE INTO database_pages (database_id, page_id, sort_order) VALUES (?, ?, ?)',
+      [databaseId, pageId, sortOrder],
+    );
+    if (res.error) throw new Error(res.error.message);
+    this._onDidChangeRows.fire(databaseId);
+  }
+
   /** Remove a row: drop membership + its cell values, and archive the page (trash). */
   async removeRow(databaseId: string, pageId: string): Promise<void> {
     const txn = await this._db.runTransaction([
@@ -398,11 +426,19 @@ export class DatabaseDataService extends Disposable {
     );
     if (res.error) throw new Error(res.error.message);
     this._onDidChangeRows.fire(databaseId);
+    this._onDidChangeCell.fire({ databaseId, pageId });
   }
 
   /** Rename a row (delegates to the page title — cards/sidebar stay in sync). */
   async renameRow(databaseId: string, pageId: string, title: string): Promise<void> {
     await this._pages.updatePage(pageId, { title });
+    this._onDidChangeRows.fire(databaseId);
+  }
+
+  /** Notify listeners that a database's rows/cells changed via an external
+   *  writer (e.g. the canvas_set_page_property tool's raw upsert) so open
+   *  database editors and row sections refresh. */
+  notifyRowsChanged(databaseId: string): void {
     this._onDidChangeRows.fire(databaseId);
   }
 

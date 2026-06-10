@@ -50,8 +50,10 @@ export interface IPropertyQuery {
  * single property filter. Returns `{ subquery, params }` to be used
  * inside an `INTERSECT`/`AND IN (...)` chain.
  *
- * Subquery shape: `SELECT page_id FROM page_properties WHERE key = ? AND
- * <op-specific clause>`.
+ * Properties live in DATABASES (post legacy-property migration): values are in
+ * `page_property_values` and the property is resolved by NAME against
+ * `database_properties` — so a filter on "Status" matches that column in ANY
+ * database the page belongs to.
  *
  * @throws if `op` is unknown.
  */
@@ -88,7 +90,13 @@ export function filterToSubquery(filter: IPropertyFilter): { subquery: string; p
     default:
       throw new Error(`Unknown property filter op: ${(filter as { op: string }).op}`);
   }
-  return { subquery: `SELECT page_id FROM page_properties WHERE key = ? AND ${clause}`, params };
+  return {
+    subquery:
+      `SELECT ppv.page_id FROM page_property_values ppv ` +
+      `JOIN database_properties dp ON dp.id = ppv.property_id AND dp.database_id = ppv.database_id ` +
+      `WHERE dp.name = ? AND ${clause.replace(/\bvalue\b/g, 'ppv.value')}`,
+    params,
+  };
 }
 
 // ─── Doc-tree walking (C2/C3) ────────────────────────────────────────────

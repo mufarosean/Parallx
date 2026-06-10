@@ -7,7 +7,7 @@
  * switches to a board view, and opens a row as a page to see the
  * row-properties section.
  */
-import { sharedTest as test, expect, openFolderViaMenu } from './fixtures';
+import { sharedTest as test, expect, openFolderViaMenu, createTestWorkspace, cleanupTestWorkspace } from './fixtures';
 
 async function openCanvasSidebar(page: import('@playwright/test').Page): Promise<void> {
   const canvasBtn = page.locator('button.activity-bar-item[data-icon-id="canvas-container"]');
@@ -17,9 +17,10 @@ async function openCanvasSidebar(page: import('@playwright/test').Page): Promise
 }
 
 test.describe('Canvas Databases', () => {
-  test('create database → table view → rows → cells → board → row page', async ({ window, electronApp, workspacePath }) => {
+  test('create database → table view → rows → cells → board → row page', async ({ window, electronApp }) => {
+    const workspacePath = await createTestWorkspace();
     test.setTimeout(120_000);
-    await openFolderViaMenu(electronApp, window, workspacePath);
+    await openFolderViaMenu(electronApp, window, workspacePath, { force: true });
     await window.waitForTimeout(2000);
     await openCanvasSidebar(window);
 
@@ -76,9 +77,78 @@ test.describe('Canvas Databases', () => {
     await expect(window.locator('.canvas-node', { hasText: 'Untitled database' }).first()).toBeVisible();
   });
 
-  test('/database slash command creates a nested database with its card at the cursor', async ({ window, electronApp, workspacePath }) => {
+  test('legacy property migration: tags + custom values move into databases, backup written, property bar gone', async ({ window, electronApp }) => {
+    const workspacePath = await createTestWorkspace();
     test.setTimeout(120_000);
-    await openFolderViaMenu(electronApp, window, workspacePath);
+    await openFolderViaMenu(electronApp, window, workspacePath, { force: true });
+    await window.waitForTimeout(2000);
+    await openCanvasSidebar(window);
+
+    // Create a page and find its id.
+    await window.locator('.canvas-sidebar-add-btn').click();
+    await window.waitForSelector('.canvas-node', { timeout: 5_000 });
+    const pageId = await window.locator('.canvas-node[role="treeitem"]').last().getAttribute('data-page-id');
+    expect(pageId).toBeTruthy();
+
+    // The legacy property bar must be GONE from regular pages.
+    await window.locator(`.canvas-node[role="treeitem"][data-page-id="${pageId}"]`).first().click();
+    await window.waitForSelector('.canvas-editor-wrapper', { timeout: 10_000 });
+    await expect(window.locator('.canvas-property-bar')).toHaveCount(0);
+
+    // Seed LEGACY property data directly (the pre-database system's tables).
+    // Unique ids: the shared test workspace persists across runs, so fixed PKs
+    // would silently collide with rows from a previous run.
+    await window.evaluate(async (pid) => {
+      const db = (window as any).parallxElectron.database;
+      const uid = () => `legacy-${Math.random().toString(36).slice(2)}`;
+      await db.run(
+        "INSERT OR IGNORE INTO property_definitions (name, type, config, sort_order) VALUES ('tags','tags','{\"options\":[{\"value\":\"work\",\"color\":\"rgba(125, 145, 235, 0.30)\"}]}',0)",
+      );
+      await db.run(
+        "INSERT OR IGNORE INTO property_definitions (name, type, config, sort_order) VALUES ('priority','select','{}',1)",
+      );
+      await db.run(
+        `INSERT INTO page_properties (id, page_id, key, value_type, value) VALUES ('${uid()}','${pid}','tags','tags','["work","deep"]')`,
+      );
+      await db.run(
+        `INSERT INTO page_properties (id, page_id, key, value_type, value) VALUES ('${uid()}','${pid}','priority','select','"High"')`,
+      );
+    }, pageId);
+
+    // Force the migration (support hook; normally runs once at activation).
+    await window.evaluate(() => window.dispatchEvent(new CustomEvent('parallx:canvas-run-legacy-migration')));
+    await window.waitForTimeout(2500);
+
+    // The Tags + Migrated properties databases exist in the tree.
+    await expect(window.locator('.canvas-node', { hasText: 'Tags' }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(window.locator('.canvas-node', { hasText: 'Migrated properties' }).first()).toBeVisible();
+
+    // The tagged page is a ROW of the Tags database with its tags intact.
+    await window.locator('.canvas-node', { hasText: 'Tags' }).first().click();
+    const pane = window.locator('.canvas-db-pane');
+    await expect(pane).toBeVisible({ timeout: 10_000 });
+    await expect(pane.locator('.canvas-db-pill', { hasText: 'work' }).first()).toBeVisible({ timeout: 5_000 });
+    await expect(pane.locator('.canvas-db-pill', { hasText: 'deep' }).first()).toBeVisible();
+
+    // The page itself shows its database properties (membership groups).
+    await window.locator(`.canvas-node[role="treeitem"][data-page-id="${pageId}"]`).first().click();
+    await expect(window.locator('.canvas-db-rowprops')).toBeVisible({ timeout: 10_000 });
+    await expect(window.locator('.canvas-db-rowprops__pill', { hasText: 'work' }).first()).toBeVisible();
+
+    // "Pages tagged X" popover opens from the pill (M85 parity).
+    await window.locator('.canvas-db-rowprops__pill', { hasText: 'work' }).first().click();
+    await expect(window.locator('.canvas-db-popover')).toBeVisible({ timeout: 5_000 });
+
+    // The backup JSON landed in the workspace.
+    const fs = await import('fs/promises');
+    const backups = await fs.readdir(`${workspacePath}/.parallx-backups`).catch(() => [] as string[]);
+    expect(backups.some((f) => f.startsWith('legacy-properties-'))).toBe(true);
+  });
+
+  test('/database slash command creates a nested database with its card at the cursor', async ({ window, electronApp }) => {
+    const workspacePath = await createTestWorkspace();
+    test.setTimeout(120_000);
+    await openFolderViaMenu(electronApp, window, workspacePath, { force: true });
     await window.waitForTimeout(2000);
     await openCanvasSidebar(window);
 

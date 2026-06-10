@@ -22,6 +22,7 @@
 // No inline styles.
 
 import { Node, mergeAttributes } from '@tiptap/core';
+import { filterToSubquery, type IPropertyFilter } from '../ai/blockApi.js';
 
 interface DataviewQueryFilter {
   prop: string;
@@ -52,39 +53,15 @@ export function buildDataviewSql(query: DataviewQuery): { sql: string; params: u
   const params: unknown[] = [];
   for (const f of query.filter) {
     if (!f.prop || !f.op) continue;
-    const sub = ['SELECT page_id FROM page_properties WHERE key = ?'];
-    params.push(f.prop);
-    switch (f.op) {
-      case 'equals':
-        sub.push('AND value = ?');
-        params.push(JSON.stringify(f.value));
-        break;
-      case 'not_equals':
-        sub.push('AND value != ?');
-        params.push(JSON.stringify(f.value));
-        break;
-      case 'contains':
-        sub.push("AND value LIKE ? ESCAPE '\\'");
-        params.push(`%${String(f.value).replace(/[\\%_]/g, '\\$&')}%`);
-        break;
-      case 'is_empty':
-        sub.push("AND (value IS NULL OR value = 'null' OR value = '\"\"' OR value = '[]')");
-        break;
-      case 'is_not_empty':
-        sub.push("AND value IS NOT NULL AND value != 'null' AND value != '\"\"' AND value != '[]'");
-        break;
-      case 'greater_than':
-        sub.push('AND CAST(value AS REAL) > ?');
-        params.push(Number(f.value));
-        break;
-      case 'less_than':
-        sub.push('AND CAST(value AS REAL) < ?');
-        params.push(Number(f.value));
-        break;
-      default:
-        return null;
+    // Delegate to the shared builder (properties live in databases now:
+    // page_property_values resolved by name via database_properties).
+    try {
+      const sub = filterToSubquery({ prop: f.prop, op: f.op as IPropertyFilter['op'], value: f.value });
+      subqueries.push(sub.subquery);
+      params.push(...sub.params);
+    } catch {
+      return null; // unknown op
     }
-    subqueries.push(sub.join(' '));
   }
   if (subqueries.length === 0) return null;
   const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 200);

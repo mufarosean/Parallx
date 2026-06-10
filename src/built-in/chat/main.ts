@@ -372,15 +372,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // live in the unified AI config — the old unwired substrate schemas were removed.)
     registerAutonomyFlagSettings(settingsRegistry, autonomyFlags);
 
-    // Canvas property-bar collapsed state (D3 migration target).
-    settingsRegistry.register({
-      key: 'canvas.propertyBar.collapsed',
-      type: 'boolean',
-      default: false,
-      scope: 'user',
-      description: 'Whether the canvas property bar starts collapsed.',
-      category: 'Canvas',
-    });
+    // (canvas.propertyBar.collapsed removed — the legacy property bar is
+    // retired; properties live in databases now.)
 
     // M62: Gmail-specific settings removed. Provider integrations now
     // ship as MCP servers (see tools/gmail-mcp-server). Users register

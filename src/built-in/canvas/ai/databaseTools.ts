@@ -121,6 +121,34 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
       },
     },
     {
+      name: 'canvas_add_page_to_database',
+      displaySummary: 'Add an existing page to a database.',
+      description:
+        'Add an EXISTING page as a row of a database — membership only; the page keeps its place in the ' +
+        'sidebar tree. After this, set its cells with canvas_set_page_property. ' +
+        'Use canvas_add_database_row instead when the row page should be created fresh.',
+      parameters: {
+        type: 'object',
+        required: ['databaseId', 'pageId'],
+        properties: {
+          databaseId: { type: 'string', description: 'UUID of the database.' },
+          pageId: { type: 'string', description: 'UUID of the existing page to add.' },
+        },
+      },
+      requiresConfirmation: true,
+      permissionLevel: 'requires-approval' as ToolPermissionLevel,
+      category: 'canvas',
+      async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+        const databaseId = String(args['databaseId'] ?? '').trim();
+        const pageId = String(args['pageId'] ?? '').trim();
+        if (!databaseId || !pageId) return { content: 'databaseId and pageId are required', isError: true };
+        const info = await db.getDatabase(databaseId);
+        if (!info) return { content: `Database not found: ${databaseId}`, isError: true };
+        await db.addExistingPageAsRow(databaseId, pageId);
+        return { content: `Added page ${pageId} as a row of "${info.title}". Its place in the page tree is unchanged.` };
+      },
+    },
+    {
       name: 'canvas_query_database',
       displaySummary: 'Query a database (filter/sort rows).',
       description:

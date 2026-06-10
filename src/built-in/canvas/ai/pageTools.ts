@@ -151,7 +151,7 @@ export function createFindPagesTool(db: IBuiltInToolDatabase | undefined): IChat
         if (sort.by === 'title') sortClause = `p.title ${dir}`;
         else if (sort.by === 'updated_at') sortClause = `p.updated_at ${dir}`;
         else if (sort.by === 'created_at') sortClause = `p.created_at ${dir}`;
-        else sortClause = `(SELECT value FROM page_properties WHERE page_id = p.id AND key = ${escapeSqlLiteral(sort.by)}) ${dir}`;
+        else sortClause = `(SELECT ppv.value FROM page_property_values ppv JOIN database_properties dp ON dp.id = ppv.property_id AND dp.database_id = ppv.database_id WHERE ppv.page_id = p.id AND dp.name = ${escapeSqlLiteral(sort.by)} LIMIT 1) ${dir}`;
       }
 
       const sql =
@@ -172,7 +172,7 @@ export function createFindPagesTool(db: IBuiltInToolDatabase | undefined): IChat
         const ids = rows.map((r) => r.id);
         const placeholders = ids.map(() => '?').join(',');
         const propRows = await db!.all<{ page_id: string; value: string }>(
-          `SELECT page_id, value FROM page_properties WHERE key = ? AND page_id IN (${placeholders})`,
+          `SELECT ppv.page_id as page_id, ppv.value as value FROM page_property_values ppv JOIN database_properties dp ON dp.id = ppv.property_id AND dp.database_id = ppv.database_id WHERE dp.name = ? AND ppv.page_id IN (${placeholders})`,
           [group, ...ids],
         );
         const groupValues = new Map<string, string>();
@@ -311,13 +311,20 @@ export function createReadPageTool(
         [page.id],
       );
 
+      // Properties live in databases: read this page's cell values across all
+      // databases it is a member of (name + type from the database schema).
       const props = await db!.all<{
         key: string;
         value_type: string;
         value: string;
         def_type: string | null;
+        db_title: string | null;
       }>(
-        'SELECT pp.key, pp.value_type, pp.value, pd.type as def_type FROM page_properties pp LEFT JOIN property_definitions pd ON pp.key = pd.name WHERE pp.page_id = ?',
+        `SELECT dp.name as key, dp.type as value_type, ppv.value as value, dp.type as def_type, pg.title as db_title
+           FROM page_property_values ppv
+           JOIN database_properties dp ON dp.id = ppv.property_id AND dp.database_id = ppv.database_id
+           LEFT JOIN pages pg ON pg.id = ppv.database_id
+          WHERE ppv.page_id = ?`,
         [page.id],
       );
 
@@ -332,11 +339,11 @@ export function createReadPageTool(
       ];
 
       if (props.length > 0) {
-        lines.push('', '**Custom Properties:**');
+        lines.push('', '**Database Properties:**');
         for (const prop of props) {
           const displayType = prop.def_type || prop.value_type;
           const formatted = formatPropertyValue(prop.value, displayType);
-          lines.push(`- **${prop.key}** (${displayType}): ${formatted}`);
+          lines.push(`- **${prop.key}** (${displayType}${prop.db_title ? `, in "${prop.db_title}"` : ''}): ${formatted}`);
         }
       }
 
@@ -368,8 +375,11 @@ function formatPropertyValue(raw: string, _type: string): string {
 export function createListPropertyDefinitionsTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
     name: 'canvas_list_property_definitions',
-    displaySummary: 'List canvas property definitions.',
-    description: 'List the property definitions registered for CANVAS PAGES in this workspace (page properties like tags, status, dates). Operates on the canvas page DB only.',
+    displaySummary: 'List databases and their property schemas.',
+    description:
+      'List every DATABASE in the workspace with its property schema (column names + types). ' +
+      'Properties live in databases (Notion model) — pages get properties by being database members. ' +
+      'Use the returned database id with canvas_query_database / canvas_add_database_row / canvas_set_page_property.',
     parameters: {
       type: 'object',
       properties: {},
@@ -380,38 +390,29 @@ export function createListPropertyDefinitionsTool(db: IBuiltInToolDatabase | und
     async handler(_args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
 
-      const defs = await db!.all<{
-        name: string;
-        type: string;
-        config: string;
-        sort_order: number;
-        created_at: string;
-        updated_at: string;
-      }>(
-        'SELECT * FROM property_definitions ORDER BY sort_order, name',
+      const dbs = await db!.all<{ id: string; title: string }>(
+        'SELECT d.id, p.title FROM databases d JOIN pages p ON p.id = d.id WHERE p.is_archived = 0 ORDER BY p.title',
       );
-
-      if (defs.length === 0) {
-        return { content: 'No property definitions found in the workspace.' };
+      if (dbs.length === 0) {
+        return { content: 'No databases in the workspace. Create one with canvas_create_database.' };
       }
-
-      const lines = defs.map((d) => {
-        let config = '';
-        try {
-          const parsed = JSON.parse(d.config);
-          if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-            config = ` — config: ${d.config}`;
-          }
-        } catch { /* empty */ }
-        return `- **${d.name}** (${d.type})${config}`;
-      });
-
-      return { content: `${defs.length} property definition(s):\n\n${lines.join('\n')}` };
+      const props = await db!.all<{ database_id: string; name: string; type: string }>(
+        'SELECT database_id, name, type FROM database_properties ORDER BY sort_order',
+      );
+      const lines: string[] = [];
+      for (const d of dbs) {
+        const cols = props.filter((p) => p.database_id === d.id);
+        lines.push(`- **${d.title}** (id: ${d.id}) — columns: Title${cols.length ? ', ' + cols.map((c) => `${c.name} (${c.type})`).join(', ') : ''}`);
+      }
+      return { content: `${dbs.length} database(s):\n\n${lines.join('\n')}` };
     },
   };
 }
 
-export function createSetPagePropertyTool(db: IBuiltInToolDatabase | undefined): IChatTool {
+export function createSetPagePropertyTool(
+  db: IBuiltInToolDatabase | undefined,
+  notifyDatabaseRowsChanged?: (databaseId: string) => void,
+): IChatTool {
   return {
     name: 'canvas_set_page_property',
     displaySummary: 'Set a property on a canvas page.',
@@ -476,33 +477,59 @@ export function createSetPagePropertyTool(db: IBuiltInToolDatabase | undefined):
         return { content: `Page "${pageId}" not found.`, isError: true };
       }
 
-      // Check/create property definition
-      const existingDef = await db!.get<{ name: string; type: string }>(
-        'SELECT name, type FROM property_definitions WHERE name = ?',
-        [propertyName],
+      // Properties live in DATABASES (Notion model): the page must be a member
+      // of at least one database. Resolve the property by name across its
+      // memberships; create the property on the first membership if missing.
+      const memberships = await db!.all<{ database_id: string; title: string }>(
+        `SELECT dpg.database_id, p.title FROM database_pages dpg JOIN pages p ON p.id = dpg.database_id WHERE dpg.page_id = ? ORDER BY dpg.created_at`,
+        [pageId],
       );
-
-      if (!existingDef) {
-        const inferredType = inferPropertyType(value);
-        const now = new Date().toISOString();
-        await db!.run(
-          'INSERT INTO property_definitions (name, type, config, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-          [propertyName, inferredType, '{}', 0, now, now],
-        );
+      if (memberships.length === 0) {
+        return {
+          content:
+            `Page "${page.title}" is not in any database — properties live in databases. ` +
+            `Add it with canvas_add_page_to_database (see canvas_list_property_definitions for databases), ` +
+            `or create a row with canvas_add_database_row.`,
+          isError: true,
+        };
       }
 
-      // Determine value type
-      const valueType = existingDef?.type ?? inferPropertyType(value);
+      let target: { database_id: string; title: string } | undefined;
+      let prop = undefined as { id: string; type: string } | undefined;
+      for (const m of memberships) {
+        const found = await db!.get<{ id: string; type: string }>(
+          'SELECT id, type FROM database_properties WHERE database_id = ? AND LOWER(name) = LOWER(?)',
+          [m.database_id, propertyName],
+        );
+        if (found) { target = m; prop = found; break; }
+      }
+      if (!prop) {
+        // Create the column on the first membership database.
+        target = memberships[0];
+        const inferredType = inferPropertyType(value);
+        const propId = generateId();
+        const orderRow = await db!.get<{ max_sort: number }>(
+          'SELECT MAX(sort_order) as max_sort FROM database_properties WHERE database_id = ?',
+          [target.database_id],
+        );
+        await db!.run(
+          'INSERT INTO database_properties (id, database_id, name, type, config, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
+          [propId, target.database_id, propertyName, inferredType, '{}', ((orderRow?.max_sort as number) ?? 0) + 1],
+        );
+        prop = { id: propId, type: inferredType };
+      }
+
       const serialized = JSON.stringify(value);
-      const id = generateId();
-
-      // UPSERT into page_properties
       await db!.run(
-        'INSERT INTO page_properties (id, page_id, key, value_type, value) VALUES (?, ?, ?, ?, ?) ON CONFLICT(page_id, key) DO UPDATE SET value_type = excluded.value_type, value = excluded.value',
-        [id, pageId, propertyName, valueType, serialized],
+        `INSERT INTO page_property_values (page_id, property_id, database_id, value, updated_at)
+         VALUES (?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(page_id, property_id, database_id)
+         DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
+        [pageId, prop.id, target!.database_id, serialized],
       );
+      try { notifyDatabaseRowsChanged?.(target!.database_id); } catch { /* non-fatal */ }
 
-      return { content: `Set property '${propertyName}' = ${serialized} on page '${page.title}'` };
+      return { content: `Set property '${propertyName}' = ${serialized} on page '${page.title}' (database "${target!.title}").` };
     },
   };
 }

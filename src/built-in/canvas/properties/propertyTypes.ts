@@ -1,9 +1,8 @@
-// propertyTypes.ts — type definitions for the Canvas property system
+// propertyTypes.ts — type definitions for canvas properties.
 //
-// Defines the property type union, definition/value interfaces,
-// type-specific configuration shapes, and the data service contract.
-
-import type { Event } from '../../../platform/events.js';
+// Defines the property type union, definition/value interfaces, and
+// type-specific configuration shapes — shared by the DATABASE system
+// (databaseDataService + database views), where properties live.
 
 export const SYSTEM_PROPERTY_NAMES: ReadonlySet<string> = new Set(['tags', 'created', 'modified']);
 
@@ -76,46 +75,7 @@ export interface ITagsConfig {
   readonly options?: ISelectOption[];
 }
 
-// ─── Change Events ───────────────────────────────────────────────────────────
-
-export interface PropertyDefinitionChangeEvent {
-  readonly name: string;
-  readonly kind: 'created' | 'updated' | 'deleted';
-}
-
-export interface PagePropertyChangeEvent {
-  readonly pageId: string;
-  readonly key: string;
-  readonly kind: 'set' | 'removed';
-}
-
-// ─── Service Interface ───────────────────────────────────────────────────────
-
-export interface IPropertyDataService {
-
-  // ── Events ──
-
-  readonly onDidChangeDefinition: Event<PropertyDefinitionChangeEvent>;
-  readonly onDidChangePageProperty: Event<PagePropertyChangeEvent>;
-
-  // ── Definition CRUD ──
-
-  createDefinition(name: string, type: PropertyType, config?: Record<string, unknown>): Promise<IPropertyDefinition>;
-  getDefinition(name: string): Promise<IPropertyDefinition | null>;
-  getAllDefinitions(): Promise<IPropertyDefinition[]>;
-  updateDefinition(name: string, updates: Partial<Pick<IPropertyDefinition, 'type' | 'config' | 'sortOrder'>>): Promise<IPropertyDefinition>;
-  deleteDefinition(name: string): Promise<void>;
-  getPropertyUsage(name: string, excludingPageId?: string): Promise<IPropertyUsage>;
-
-  // ── Page Property CRUD ──
-
-  getPropertiesForPage(pageId: string): Promise<(IPageProperty & { definition: IPropertyDefinition })[]>;
-  setProperty(pageId: string, key: string, value: unknown): Promise<IPageProperty>;
-  removeProperty(pageId: string, key: string): Promise<void>;
-  findPagesByProperty(propertyName: string, operator: string, value?: unknown): Promise<{ pageId: string; title: string; value: unknown }[]>;
-
-  // ── Initialization ──
-
-  ensureDefaultProperties(): Promise<void>;
-  backfillTimestampProperties(): Promise<void>;
-}
+// NOTE: the legacy IPropertyDataService interface (workspace-level property
+// service) is retired — properties live in DATABASES (databaseDataService).
+// This module keeps only the shared types the database UI consumes
+// (PropertyType, IPropertyDefinition, option configs, icons).

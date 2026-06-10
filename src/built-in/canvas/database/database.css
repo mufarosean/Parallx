@@ -221,3 +221,16 @@
 .canvas-db-rowprops__value { flex: 1; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; cursor: pointer; font-size: 13.5px; min-height: 20px; }
 .canvas-db-rowprops__value:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.07)); border-radius: 4px; }
 .canvas-db-rowprops__empty { color: var(--vscode-descriptionForeground, #777); }
+.canvas-db-rowprops__group {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--vscode-descriptionForeground, #888);
+  padding: 8px 0 2px;
+}
+.canvas-db-rowprops__pill { cursor: pointer; }
+.canvas-db-rowprops__pill:hover { filter: brightness(1.25); }
+.canvas-db-rowprops__edit {
+  background: none; border: none; cursor: pointer; font-size: 12px;
+  color: var(--vscode-descriptionForeground, #888); visibility: hidden;
+}
+.canvas-db-rowprops__row:hover .canvas-db-rowprops__edit { visibility: visible; }
+.canvas-db-rowprops__edit:hover { color: var(--vscode-editor-foreground, #ddd); }

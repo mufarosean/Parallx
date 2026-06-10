@@ -38,8 +38,6 @@ import { createEditorExtensions, PageChromeController, renderPageIconHtml } from
 import { BlockHandlesController, BlockSelectionController, BlockMarqueeController, createBlockSelectionPlugin } from './handles/handleRegistry.js';
 import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuRegistry.js';
 import type { SendChatRequestFn, RetrieveContextFn } from './menus/canvasMenuRegistry.js';
-import type { IPropertyDataService } from './properties/propertyTypes.js';
-import { PropertyBar } from './properties/propertyBar.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
@@ -139,9 +137,6 @@ export class CanvasEditorProvider {
   private _inlineAISendChat: SendChatRequestFn | undefined;
   private _inlineAIRetrieveContext: RetrieveContextFn | undefined;
 
-  /** Property data service (set from main.ts after activation). */
-  private _propertyService: IPropertyDataService | undefined;
-
   /** Database data service (set from main.ts) — drives the row-page
    *  properties section when an opened page is a database row. */
   private _databaseService: import('./database/databaseDataService.js').DatabaseDataService | undefined;
@@ -173,16 +168,6 @@ export class CanvasEditorProvider {
     this._inlineAIRetrieveContext = retrieveContext;
   }
 
-  /**
-   * Set the property data service so panes can show the property bar.
-   * Called from canvas main.ts after PropertyDataService creation.
-   */
-  setPropertyService(service: IPropertyDataService): void {
-    this._propertyService = service;
-  }
-
-  /** Get the property service (consumed by panes for PropertyBar). */
-  get propertyService(): IPropertyDataService | undefined { return this._propertyService; }
 
   /** Whether the inline AI provider has been configured. */
   get hasInlineAI(): boolean { return !!this._inlineAISendChat; }
@@ -328,7 +313,7 @@ class CanvasEditorPane implements IDisposable {
   private _blockMarquee!: BlockMarqueeController;
 
   // ── Property bar ──
-  private _propertyBar: PropertyBar | null = null;
+
 
   private readonly _handleEditorLinkClick = (event: MouseEvent): void => {
     if (event.defaultPrevented || event.button !== 0) return;
@@ -478,26 +463,9 @@ class CanvasEditorPane implements IDisposable {
     const externalRibbon = this._provider.getRibbonContainer(this._pageId);
     this._pageChrome.createChrome(externalRibbon);
 
-    // ── Create property bar (below header, above editor) ──
-    const propService = this._provider.propertyService;
-    const pageHeader = this._pageChrome.pageHeader;
-    if (propService && pageHeader) {
-      this._propertyBar = new PropertyBar(
-        this._editorContainer!,
-        pageHeader,
-        this._pageId,
-        propService,
-        this._dataService,
-        this._provider.window,
-        // M85 — let tag chips navigate to other pages sharing the tag.
-        (pageId, title) => {
-          void this._openEditor?.({ typeId: 'canvas', title: title || 'Untitled', instanceId: pageId });
-        },
-      );
-      this._propertyBar.init().catch(err => {
-        console.warn('[CanvasEditorPane] PropertyBar init failed:', err);
-      });
-    }
+    // NOTE: the legacy per-page PropertyBar is retired — properties live in
+    // DATABASES (Notion model). Database-row pages get their properties via
+    // mountRowPropertiesSection (mounted after init, below).
 
     // Create Tiptap editor with Notion-parity extensions
     this._editor = new Editor({
@@ -726,8 +694,19 @@ class CanvasEditorPane implements IDisposable {
     const dbService = this._provider.databaseService;
     if (dbService && this._editorContainer && this._editor) {
       const editorDom = this._editor.view.dom as HTMLElement;
+      const openMemberPage = (id: string): void => {
+        void this._dataService.getPage(id).then((page) => {
+          if (!page) return;
+          void this._openEditor?.({
+            typeId: dbService.isDatabase(id) ? 'database' : 'canvas',
+            title: page.title || 'Untitled',
+            icon: page.icon ?? undefined,
+            instanceId: id,
+          });
+        });
+      };
       import('./database/rowPropertiesSection.js')
-        .then((m) => m.mountRowPropertiesSection(this._editorContainer!, this._pageId, dbService, editorDom))
+        .then((m) => m.mountRowPropertiesSection(this._editorContainer!, this._pageId, dbService, editorDom, openMemberPage))
         .then((d) => { if (d) this._saveDisposables.add(d); })
         .catch((err) => console.warn('[CanvasEditorPane] Row-properties section failed:', err));
     }
@@ -1095,7 +1074,7 @@ class CanvasEditorPane implements IDisposable {
     this._blockHandles?.dispose();
     this._blockSelection?.dispose();
     this._blockMarquee?.dispose();
-    this._propertyBar?.dispose();
+
 
     // Dispose save-state subscriptions
     this._saveDisposables.dispose();

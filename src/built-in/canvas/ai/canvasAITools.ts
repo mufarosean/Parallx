@@ -80,7 +80,7 @@ export function registerCanvasAITools(deps: ICanvasAIToolDeps): IDisposable[] {
     createCreatePageTool(db, pageMutationNotifier, templateApi, createChildPage),
     createEditPageTool(db, pageMutationNotifier),
     createListPropertyDefinitionsTool(db),
-    createSetPagePropertyTool(db),
+    createSetPagePropertyTool(db, databaseService ? (id) => databaseService.notifyRowsChanged(id) : undefined),
     createSetPageStyleTool(db, pageMutationNotifier, workspaceRoot),
     ...createBlockTools(db, pageMutationNotifier),
     ...(relatePages ? [createRelatePagesTool(relatePages)] : []),
